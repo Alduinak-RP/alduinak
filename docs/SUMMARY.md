@@ -38,3 +38,4 @@
 ## Roleplay
 
 - [Roleplay Foundations (client/server contracts)](docs_roleplay_foundations.md)
+- [Survival Loop (bleedout, arrest, carry)](docs_roleplay_survival_loop.md)
