@@ -409,6 +409,17 @@ ipcMain.handle('game:createIsolated', async () => {
   const offenders = findDirtyFiles(src)
   if (offenders.length > 0) {
     const shown = offenders.slice(0, 6).join(', ') + (offenders.length > 6 ? ', …' : '')
+    await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Skyrim directory is not clean',
+      message: "Warning, your Skyrim directory isn't clean.",
+      detail:
+        'To clean it, delete the entire directory and redownload it by verifying local cache.\n' +
+        'To make things quicker, you can keep the vanilla BSA files if they\'re untouched.\n\n' +
+        `Found: ${shown}`,
+      buttons: ['OK'],
+      defaultId: 0,
+    })
     return {
       success: false,
       dirty:   true,
@@ -439,6 +450,17 @@ ipcMain.handle('game:createIsolated', async () => {
 
   // Dummy protection for those trying to install it on their base directory
   if (pathsOverlap(src, dst) || pathsOverlap(src, base)) {
+    await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Cannot install on top of itself',
+      message: 'Warning, you are trying to download the game on top of itself. ' +
+               'Please choose a new spot to install a copy of Skyrim, such as the root folder (c:/).',
+      detail:
+        'SkyRP uses a portable Skyrim install for maximum compatibility with other modlists or servers.\n' +
+        "If you're short on disk space, you can turn this feature off in the troubleshooting tab.",
+      buttons: ['OK'],
+      defaultId: 0,
+    })
     return {
       success: false,
       error: 'Choose an install location OUTSIDE your Skyrim folder. ' +
