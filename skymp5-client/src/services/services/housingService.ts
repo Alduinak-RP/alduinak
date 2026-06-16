@@ -242,7 +242,7 @@ export class HousingService extends ClientListener {
 
   private closeMenu(): void {
     this.menuOpen = false;
-    this.sp.browser.executeJavaScript('window.skyrimPlatform.widgets.set([]);');
+    this.sp.browser.executeJavaScript('(function(){var ws=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w.id!==8;});window.skyrimPlatform.widgets.set(ws);})();');
     this.sp.browser.setFocused(false);
   }
 
@@ -262,7 +262,9 @@ export class HousingService extends ClientListener {
         { type: "button", text: strings.cancel, tags: [], click: () => window.skyrimPlatform.sendMessage(events.cancel) },
       ],
     };
-    window.skyrimPlatform.widgets.set([widget]);
+    // Preserve any other widgets (e.g. the persistent chat) — only replace ours.
+    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== 8);
+    window.skyrimPlatform.widgets.set([...others, widget]);
   };
 
   private menuKey: DxScanCode = DxScanCode.H;

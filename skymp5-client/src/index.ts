@@ -43,6 +43,7 @@ import { CharacterSelectService } from "./services/services/characterSelectServi
 import { RestraintService } from "./services/services/restraintService";
 import { HousingService } from "./services/services/housingService";
 import { FactionService } from "./services/services/factionService";
+import { ChatService } from "./services/services/chatService";
 import { NetInfoService } from "./services/services/netInfoService";
 import { AnimDebugService } from "./services/services/animDebugService";
 import { TimersService } from "./services/services/timersService";
@@ -111,6 +112,7 @@ const main = () => {
       new RestraintService(sp, controller),
       new HousingService(sp, controller),
       new FactionService(sp, controller),
+      new ChatService(sp, controller),
       new NetInfoService(sp, controller),
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),

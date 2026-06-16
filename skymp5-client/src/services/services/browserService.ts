@@ -15,6 +15,26 @@ export class BrowserService extends ClientListener {
 
     this.sp.browser.setVisible(false);
 
+    // Key bindings are configurable from the launcher's client settings so
+    // server owners can rebind them. Defaults: F6 frees/locks the cursor,
+    // Enter and T focus the chat widget for typing.
+    try {
+      const settings = this.sp.settings["skymp5-client"] as any;
+      if (settings) {
+        if (typeof settings["freeCursorKeyCode"] === "number") {
+          this.freeCursorKey = settings["freeCursorKeyCode"];
+        }
+        if (Array.isArray(settings["chatFocusKeyCodes"])) {
+          const codes = settings["chatFocusKeyCodes"].filter((c: unknown) => typeof c === "number");
+          if (codes.length > 0) {
+            this.chatFocusKeys = codes as DxScanCode[];
+          }
+        }
+      }
+    } catch {
+      // fall back to defaults
+    }
+
     this.controller.emitter.on("queryKeyCodeBindings", (e) => this.onQueryKeyCodeBindings(e));
     this.controller.once("update", () => this.onceUpdate());
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
@@ -30,7 +50,7 @@ export class BrowserService extends ClientListener {
     if (e.isDown([DxScanCode.F2])) {
       this.sp.browser.setVisible(!this.sp.browser.isVisible());
     }
-    if (this.badMenusOpen.size === 0 && e.isDown([DxScanCode.F6])) {
+    if (this.badMenusOpen.size === 0 && e.isDown([this.freeCursorKey])) {
       const newState = !this.sp.browser.isFocused();
       this.sp.browser.setFocused(newState);
       if (newState) {
@@ -39,7 +59,8 @@ export class BrowserService extends ClientListener {
         this.sp.browser.executeJavaScript(unfocusEventString);
       }
     }
-    if (this.badMenusOpen.size === 0 && e.isDown([DxScanCode.Enter])) {
+    if (this.badMenusOpen.size === 0 && !this.sp.browser.isFocused() &&
+        this.chatFocusKeys.some((key) => e.isDown([key]))) {
       this.sp.browser.setFocused(true);
       this.sp.browser.executeJavaScript(focusEventString);
     }
@@ -89,6 +110,9 @@ export class BrowserService extends ClientListener {
   }
 
   private badMenusOpen = new Set<string>();
+
+  private freeCursorKey: DxScanCode = DxScanCode.F6;
+  private chatFocusKeys: DxScanCode[] = [DxScanCode.Enter, DxScanCode.T];
 
   private readonly badMenus: Menu[] = [
     Menu.Barter,

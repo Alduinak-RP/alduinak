@@ -210,9 +210,10 @@ const Chat = (props) => {
   };
   return (
     <div className='fullPage'>
-      <Draggable handle='#handle' disabled={!moveChat} bounds={'.fullPage'}>
+      <Draggable handle='.chat-drag-bar' disabled={false} bounds={'.fullPage'}>
         <div id='chat'>
           <div className="chat-main">
+            <div className='chat-drag-bar' title='Drag to move chat' />
             <ResizableBox
               height={320}
               maxConstraints={[800, 1100]}
