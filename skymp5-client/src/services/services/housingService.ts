@@ -17,6 +17,7 @@ const events = {
   abandon: 'housing:abandon',
   lock: 'housing:lock',
   unlock: 'housing:unlock',
+  transfer: 'housing:transfer',
   cancel: 'housing:cancel',
 };
 
@@ -27,8 +28,11 @@ const translations = {
     abandon: 'освободить',
     lock: 'запереть',
     unlock: 'отпереть',
+    transfer: 'передать',
     cancel: 'отмена',
     lookAtTarget: 'Наведитесь на дверь или контейнер',
+    lookAtNewOwner: 'Наведитесь на нового владельца и нажмите клавишу',
+    transferCancelled: 'Передача отменена',
   },
   "en": {
     manage: 'Manage',
@@ -36,8 +40,11 @@ const translations = {
     abandon: 'abandon',
     lock: 'lock',
     unlock: 'unlock',
+    transfer: 'transfer',
     cancel: 'cancel',
     lookAtTarget: 'Look at a door or container',
+    lookAtNewOwner: 'Look at the new owner and press the housing key',
+    transferCancelled: 'Transfer cancelled',
   },
 } as const;
 
@@ -103,6 +110,21 @@ export class HousingService extends ClientListener {
       return;
     }
 
+    // If a transfer is pending, this press picks the new owner (a player).
+    if (this.pendingTransferLocalId !== 0) {
+      const door = this.pendingTransferLocalId;
+      this.pendingTransferLocalId = 0;
+      const targeted = this.sp.Game.getCurrentCrosshairRef();
+      const recipient = targeted && Actor.from(targeted) ? targeted : null;
+      if (!recipient || recipient.getFormID() === 0x14) {
+        // Not a (different) player — cancel rather than transfer to nothing/self.
+        this.sp.Debug.notification(strings.transferCancelled);
+        return;
+      }
+      this.sendTransfer(door, recipient.getFormID());
+      return;
+    }
+
     const ref = this.sp.Game.getCurrentCrosshairRef();
     if (!ref || Actor.from(ref)) {
       // Nothing targeted, or it's a person — houses are doors/containers.
@@ -138,6 +160,12 @@ export class HousingService extends ClientListener {
       case events.unlock:
         this.sendRequest('unlock');
         this.closeMenu();
+        break;
+      case events.transfer:
+        // Defer to a second key press where the player looks at the new owner.
+        this.pendingTransferLocalId = this.targetLocalId;
+        this.closeMenu();
+        this.sp.Debug.notification(strings.lookAtNewOwner);
         break;
       case events.cancel:
         this.closeMenu();
@@ -180,6 +208,29 @@ export class HousingService extends ClientListener {
     });
   }
 
+  private sendTransfer(doorLocalId: number, recipientLocalId: number): void {
+    const target = localIdToRemoteId(doorLocalId);
+    const recipient = localIdToRemoteId(recipientLocalId);
+    if (!target || !recipient) {
+      logTrace(this, `Could not resolve ids for transfer`);
+      return;
+    }
+    logTrace(this, `Housing transfer 0x${target.toString(16)} -> 0x${recipient.toString(16)}`);
+    const message: CustomPacketMessage = {
+      t: MsgType.CustomPacket,
+      contentJsonDump: JSON.stringify({
+        customPacketType: "propertyRequest",
+        action: "transfer",
+        target,
+        recipient,
+      }),
+    };
+    this.controller.emitter.emit("sendMessage", {
+      message,
+      reliability: "reliable",
+    });
+  }
+
   private openMenu(): void {
     this.menuOpen = true;
     this.sp.browser.executeJavaScript(
@@ -207,7 +258,8 @@ export class HousingService extends ClientListener {
         { type: "button", text: strings.abandon, tags: [], click: () => window.skyrimPlatform.sendMessage(events.abandon) },
         { type: "button", text: strings.lock, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.lock) },
         { type: "button", text: strings.unlock, tags: [], click: () => window.skyrimPlatform.sendMessage(events.unlock) },
-        { type: "button", text: strings.cancel, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.cancel) },
+        { type: "button", text: strings.transfer, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.transfer) },
+        { type: "button", text: strings.cancel, tags: [], click: () => window.skyrimPlatform.sendMessage(events.cancel) },
       ],
     };
     window.skyrimPlatform.widgets.set([widget]);
@@ -216,4 +268,5 @@ export class HousingService extends ClientListener {
   private menuKey: DxScanCode = DxScanCode.H;
   private menuOpen = false;
   private targetLocalId = 0;
+  private pendingTransferLocalId = 0;
 }
