@@ -110,6 +110,18 @@ export class FactionService extends ClientListener {
     }
   }
 
+  // Native UI calls throw if made straight from an input/packet handler; defer
+  // to the next update tick (a safe context), matching AuthService's pattern.
+  private notify(text: string): void {
+    this.controller.once("update", () => {
+      try {
+        this.sp.Debug.notification(text);
+      } catch (e) {
+        // ignore
+      }
+    });
+  }
+
   private onButtonEvent(e: ButtonEvent): void {
     if (e.code !== this.menuKey || !e.isDown) {
       return;
@@ -124,7 +136,7 @@ export class FactionService extends ClientListener {
       const ref = this.sp.Game.getCurrentCrosshairRef();
       const recipient = ref && Actor.from(ref) ? ref : null;
       if (!recipient || recipient.getFormID() === 0x14) {
-        this.sp.Debug.notification(strings.addCancelled);
+        this.notify(strings.addCancelled);
         return;
       }
       this.sendRequest({ action: "add", recipient: localIdToRemoteId(recipient.getFormID()) });
@@ -160,7 +172,7 @@ export class FactionService extends ClientListener {
         break;
       case "factionNotice":
         if (typeof content["text"] === "string") {
-          this.sp.Debug.notification(content["text"]);
+          this.notify(content["text"]);
         }
         break;
       default:
@@ -180,7 +192,7 @@ export class FactionService extends ClientListener {
         // Defer to a second key press where the player looks at the new member.
         this.pendingAdd = true;
         this.closeMenu();
-        this.sp.Debug.notification(strings.lookAtNewMember);
+        this.notify(strings.lookAtNewMember);
         break;
       case events.remove:
         this.sendRequest({ action: "remove", profileId });

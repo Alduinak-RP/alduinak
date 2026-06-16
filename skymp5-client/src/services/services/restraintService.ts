@@ -65,6 +65,13 @@ export class RestraintService extends ClientListener {
   }
 
   private applyState(): void {
+    // These are native game-thread calls; running them straight from the packet
+    // handler throws "can't be called in this context". Defer to the next update
+    // tick (matching AuthService's disablePlayerControls usage).
+    this.controller.once("update", () => this.applyStateNow());
+  }
+
+  private applyStateNow(): void {
     const player = this.sp.Game.getPlayer();
     if (!player) {
       return;

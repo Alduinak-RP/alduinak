@@ -43,10 +43,12 @@ export class ChatService extends ClientListener {
   }
 
   private onCreateActorMessage(event: ConnectionMessage<CreateActorMessage>): void {
-    // Our own actor spawned. Bring up the chat a moment later so it runs after
-    // AuthService clears the login widgets on this same event.
+    // Our own actor spawned. Bring up the chat on the next update tick — a safe
+    // context for native calls (Utility.wait / executeJavaScript throw if called
+    // straight from this event), and it runs after AuthService clears the login
+    // widgets on this same event.
     if (event.message.isMe) {
-      this.sp.Utility.wait(0.1).then(() => this.ensureChat());
+      this.controller.once("update", () => this.ensureChat());
     }
   }
 

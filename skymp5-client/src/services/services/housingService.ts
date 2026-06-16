@@ -101,6 +101,18 @@ export class HousingService extends ClientListener {
     }
   }
 
+  // Native UI calls throw if made straight from an input/packet handler; defer
+  // to the next update tick (a safe context), matching AuthService's pattern.
+  private notify(text: string): void {
+    this.controller.once("update", () => {
+      try {
+        this.sp.Debug.notification(text);
+      } catch (e) {
+        // ignore
+      }
+    });
+  }
+
   private onButtonEvent(e: ButtonEvent): void {
     if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
@@ -118,7 +130,7 @@ export class HousingService extends ClientListener {
       const recipient = targeted && Actor.from(targeted) ? targeted : null;
       if (!recipient || recipient.getFormID() === 0x14) {
         // Not a (different) player — cancel rather than transfer to nothing/self.
-        this.sp.Debug.notification(strings.transferCancelled);
+        this.notify(strings.transferCancelled);
         return;
       }
       this.sendTransfer(door, recipient.getFormID());
@@ -128,7 +140,7 @@ export class HousingService extends ClientListener {
     const ref = this.sp.Game.getCurrentCrosshairRef();
     if (!ref || Actor.from(ref)) {
       // Nothing targeted, or it's a person — houses are doors/containers.
-      this.sp.Debug.notification(strings.lookAtTarget);
+      this.notify(strings.lookAtTarget);
       return;
     }
 
@@ -165,7 +177,7 @@ export class HousingService extends ClientListener {
         // Defer to a second key press where the player looks at the new owner.
         this.pendingTransferLocalId = this.targetLocalId;
         this.closeMenu();
-        this.sp.Debug.notification(strings.lookAtNewOwner);
+        this.notify(strings.lookAtNewOwner);
         break;
       case events.cancel:
         this.closeMenu();
@@ -183,7 +195,7 @@ export class HousingService extends ClientListener {
       return;
     }
     if (content["customPacketType"] === "propertyNotice" && typeof content["text"] === "string") {
-      this.sp.Debug.notification(content["text"]);
+      this.notify(content["text"]);
     }
   }
 
