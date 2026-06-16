@@ -34,3 +34,9 @@
 ## Game Mechanics
 
 - [Damage calculation and hit handling](docs_onhit_and_damage.md)
+
+## Roleplay
+
+- [Roleplay Foundations (client/server contracts)](docs_roleplay_foundations.md)
+- [Survival Loop (bleedout, arrest, carry)](docs_roleplay_survival_loop.md)
+- [Property & Factions (houses, locks, holds)](docs_roleplay_property_factions.md)

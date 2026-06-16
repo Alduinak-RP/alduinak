@@ -8,6 +8,7 @@ import ChatCorner from '../../img/chat_corner.svg';
 import Settings from './settings';
 import SendButton from './sendButton';
 import ChatInput from './input';
+import Channels, { DEFAULT_CHANNEL, applyChannel } from './channels';
 import { replaceIfMoreThan20 } from '../../utils/replaceIfMoreThan20';
 
 import './styles.scss';
@@ -30,6 +31,7 @@ const Chat = (props) => {
   const [moveChat, setMoveChat] = useState(false);
   const [showSendButton, setSendButtonShow] = useState(false);
   const [isSettingsOpened, setSettingsOpened] = useState(false);
+  const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [fontSize, setFontSize] = useState(16);
   const placeholder = props.placeholder;
   const isInputHidden = props.isInputHidden;
@@ -86,7 +88,7 @@ const Chat = (props) => {
     if (text !== '' && text.length <= MAX_LENGTH && isReset.current && shoutLen <= MAX_SHOUT_LENGTH && (shoutLen === 0 || shoutReset.current)) {
       if (send !== undefined) {
         const message = replaceIfMoreThan20(text.trim(), '\n', '', MAX_LINES);
-        send(message);
+        send(applyChannel(message, channel));
         addMessageToHistory(message);
       }
       isReset.current = false;
@@ -102,7 +104,7 @@ const Chat = (props) => {
         setShoutLength(0);
       }
     }
-  }, [send, updateInput, input, isReset.current, shoutReset.current, shoutLength, doesIncludeShout]);
+  }, [send, updateInput, input, channel, isReset.current, shoutReset.current, shoutLength, doesIncludeShout]);
 
   useEffect(() => {
     window.needToScroll = true;
@@ -242,6 +244,13 @@ const Chat = (props) => {
                 display: isInputHidden ? 'none' : 'block'
               }}
             >
+              <Channels
+                active={channel}
+                onSelect={(id) => {
+                  setChannel(id);
+                  if (inputRef.current) inputRef.current.focus();
+                }}
+              />
               <div className='chat-input'>
                 <ChatInput
                   id="chatInput"

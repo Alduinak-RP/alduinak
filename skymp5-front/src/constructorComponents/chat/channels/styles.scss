@@ -1,0 +1,47 @@
+.chat-channels {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  margin-bottom: 6px;
+
+  .chat-channel {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 8px;
+    font-family: Din-pro;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #fafafa;
+    opacity: 0.5;
+    transition: opacity 0.15s ease, color 0.15s ease;
+    text-shadow: -0 -2px 0 rgba(0, 0, 0, 0.63), 0 -2px 0 rgba(0, 0, 0, 0.63),
+      -0 2px 0 rgba(0, 0, 0, 0.63), 0 2px 0 rgba(0, 0, 0, 0.63),
+      -2px -0 0 rgba(0, 0, 0, 0.63), 2px -0 0 rgba(0, 0, 0, 0.63),
+      -2px 0 0 rgba(0, 0, 0, 0.63), 2px 0 0 rgba(0, 0, 0, 0.63),
+      -2px -2px 0 rgba(0, 0, 0, 0.63), 2px -2px 0 rgba(0, 0, 0, 0.63),
+      -2px 2px 0 rgba(0, 0, 0, 0.63), 2px 2px 0 rgba(0, 0, 0, 0.63);
+
+    &:hover {
+      opacity: 0.85;
+    }
+
+    &.active {
+      opacity: 1;
+    }
+
+    // Active-channel colours mirror the in-chat message colours so the
+    // selector reads as "what colour your next message will be".
+    &.channel-looc.active {
+      color: #8fb7ff;
+    }
+
+    &.channel-me.active {
+      color: #c37bdd;
+    }
+
+    &.channel-admin.active {
+      color: #ce3131;
+    }
+  }
+}

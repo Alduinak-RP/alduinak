@@ -29,7 +29,8 @@ const events = {
   clearAuthData: 'clearAuthData',
   updateRequired: 'updateRequired',
   backToLogin: 'backToLogin',
-  joinDiscord: 'joinDiscord'
+  joinDiscord: 'joinDiscord',
+  quitGame: 'quitGame'
 };
 
 // Vaiables used on both client and browser side (see browsersideWidgetSetter)
@@ -66,6 +67,8 @@ const translations = {
     oops: 'упс',
     join: 'вступить',
     back: 'назад',
+    quitGame: 'выйти из игры',
+    quitGameHint: 'Закрыть игру и выйти на рабочий стол',
   },
   "en": {
     loginViaDiscord: 'log in via Discord',
@@ -92,6 +95,8 @@ const translations = {
     oops: 'oops',
     join: 'join',
     back: 'back',
+    quitGame: 'quit game',
+    quitGameHint: 'Close the game and return to desktop',
   },
 } as const;
 
@@ -308,6 +313,10 @@ export class AuthService extends ClientListener {
         break;
       case events.joinDiscord:
         this.sp.win32.loadUrl("https://discord.gg/9KhSZ6zjGT");
+        break;
+      case events.quitGame:
+        logTrace(this, 'quitGame requested, exiting process');
+        this.sp.win32.exitProcess();
         break;
       default:
         break;
@@ -581,6 +590,13 @@ export class AuthService extends ClientListener {
           type: "text",
           text: browserState.comment,
           tags: [],
+        },
+        {
+          type: "button",
+          text: strings.quitGame,
+          tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
+          click: () => window.skyrimPlatform.sendMessage(events.quitGame),
+          hint: strings.quitGameHint,
         },
       ]
     };

@@ -220,9 +220,9 @@ export class AnimationSource {
         }
 
         if (!ctx.animationSucceeded) {
-          // Workaround, see carryAnimSystem.ts in gamemode
+          // Workaround, see carryAnimSystem.ts in gamemode and forcedSyncAnims.
           // Case-sensetive check here for better performance
-          if (ctx.animEventName !== "OffsetCarryBasketStart") {
+          if (!forcedSyncAnims.has(ctx.animEventName)) {
             return;
           }
         }
@@ -301,6 +301,16 @@ const ignoredAnims = new Set<string>([
   "CyclicFreeze",
   "TurnLeft",
   "TurnRight",
+]);
+
+// Offset/overlay animations (carry, bound hands, ...) report
+// animationSucceeded === false but still need to be synced to other clients so
+// remote players see the pose. See carryAnimSystem.ts in the gamemode for the
+// carry case; bound-hands (arrest) reuses the same mechanism.
+const forcedSyncAnims = new Set<string>([
+  "OffsetCarryBasketStart",
+  "OffsetBoundStandingStart",
+  "OffsetStop",
 ]);
 
 export const setupHooks = (): void => {
