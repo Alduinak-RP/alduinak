@@ -49,6 +49,7 @@ import { AuthService } from "./services/services/authService";
 // import { CharacterSelectService } from "./services/services/characterSelectService";
 // import { RestraintService } from "./services/services/restraintService";
 import { HousingService } from "./services/services/housingService";
+import { PlayerActionService } from "./services/services/playerActionService";
 // import { FactionService } from "./services/services/factionService";
 import { NetInfoService } from "./services/services/netInfoService";
 import { AnimDebugService } from "./services/services/animDebugService";
@@ -118,6 +119,7 @@ const main = () => {
       // (see import block above). HousingService is rewired to drive Frostfall's
       // /property chat commands, so it's enabled.
       new HousingService(sp, controller),
+      new PlayerActionService(sp, controller),
       new NetInfoService(sp, controller),
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),
