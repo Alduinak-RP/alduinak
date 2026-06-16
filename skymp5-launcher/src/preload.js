@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // OS folder picker
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 
+  // Settings tab — graphics (SkyrimPrefs.ini) and server hotkeys (client settings)
+  graphicsLoad: ()  => ipcRenderer.invoke('graphics:load'),
+  graphicsSave: (g) => ipcRenderer.invoke('graphics:save', g),
+  hotkeysLoad:  ()  => ipcRenderer.invoke('hotkeys:load'),
+  hotkeysSave:  (h) => ipcRenderer.invoke('hotkeys:save', h),
+
   // API calls proxied through main (keeps CSP clean, uses config.js values)
   fetchStatus:     () => ipcRenderer.invoke('api:status'),
   fetchNews:       () => ipcRenderer.invoke('api:news'),
