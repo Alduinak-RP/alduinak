@@ -17,6 +17,7 @@ const AdmZip = require('adm-zip')
 const config = require('./config')
 const mo2    = require('./mo2')
 const nexus  = require('./nexus')
+const ini    = require('./ini')
 
 const isDev = process.argv.includes('--dev')
 
@@ -162,6 +163,117 @@ ipcMain.handle('settings:save', (_e, data) => {
   const clean = {}
   for (const k of allowed) if (k in data) clean[k] = data[k]
   store.set(clean)
+})
+
+// ── Graphics / hotkey settings (Settings tab) ──────────────────────────────────
+// Graphics edit the MO2 portable profile's SkyrimPrefs.ini. NOTE: this assumes
+// the SkyRP profile uses profile-specific INI files; and if SSEDisplayTweaks is
+// active it may override window mode via its own ini.
+function skyrimPrefsPath() {
+  return path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
+}
+// Server hotkeys live in the Skyrim Platform client settings (the object exposed
+// to the client as settings["skymp5-client"] — the file content is that object).
+function clientSettingsPath() {
+  return path.join(effectiveGamePath() || '', 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
+}
+function readClientSettings() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(clientSettingsPath(), 'utf8'))
+    return obj && typeof obj === 'object' ? obj : {}
+  } catch { return {} }
+}
+
+ipcMain.handle('graphics:load', () => {
+  try {
+    const p = skyrimPrefsPath()
+    const data = ini.read(p)
+    const disp = data['Display'] || {}
+    const grass = data['Grass'] || {}
+    const controls = data['Controls'] || {}
+    const full = String(disp['bFull Screen'] || '0') === '1'
+    const borderless = String(disp['bBorderless'] || '0') === '1'
+    return {
+      ok: true,
+      path: p,
+      exists: fs.existsSync(p),
+      windowMode: full ? 'fullscreen' : (borderless ? 'borderless' : 'windowed'),
+      width:  disp['iSize W'] || '',
+      height: disp['iSize H'] || '',
+      invertY: String(controls['bInvertYValues'] || '0') === '1',
+      fades: {
+        actor:  disp['fLODFadeOutMultActors']  || '',
+        item:   disp['fLODFadeOutMultItems']   || '',
+        object: disp['fLODFadeOutMultObjects'] || '',
+        grass:  grass['fGrassStartFadeDistance'] || '',
+        shadow: disp['fShadowDistance']        || '',
+      },
+    }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle('graphics:save', (_e, g) => {
+  try {
+    g = g || {}
+    const display = {}
+    if (g.windowMode === 'fullscreen')      { display['bFull Screen'] = '1'; display['bBorderless'] = '0' }
+    else if (g.windowMode === 'borderless') { display['bFull Screen'] = '0'; display['bBorderless'] = '1' }
+    else if (g.windowMode === 'windowed')   { display['bFull Screen'] = '0'; display['bBorderless'] = '0' }
+    if (g.width)  display['iSize W'] = String(g.width)
+    if (g.height) display['iSize H'] = String(g.height)
+    const f = g.fades || {}
+    const num = (x) => (x !== undefined && x !== null && String(x).trim() !== '')
+    if (num(f.actor))  display['fLODFadeOutMultActors']  = String(f.actor)
+    if (num(f.item))   display['fLODFadeOutMultItems']   = String(f.item)
+    if (num(f.object)) display['fLODFadeOutMultObjects'] = String(f.object)
+    if (num(f.shadow)) display['fShadowDistance']        = String(f.shadow)
+    const edits = { Display: display, Controls: { bInvertYValues: g.invertY ? '1' : '0' } }
+    if (num(f.grass)) edits['Grass'] = { fGrassStartFadeDistance: String(f.grass) }
+    ini.write(skyrimPrefsPath(), edits)
+    return { ok: true, path: skyrimPrefsPath() }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle('hotkeys:load', () => {
+  try {
+    const c = readClientSettings()
+    const numOrNull = (v) => (typeof v === 'number' ? v : null)
+    return {
+      ok: true,
+      path: clientSettingsPath(),
+      chatFocus:  Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null,
+      freeCursor: numOrNull(c.freeCursorKeyCode),
+      housing:    numOrNull(c.housingMenuKeyCode),
+      faction:    numOrNull(c.factionMenuKeyCode),
+      interact:   numOrNull(c.interactMenuKeyCode),
+      personal:   numOrNull(c.personalMenuKeyCode),
+    }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle('hotkeys:save', (_e, h) => {
+  try {
+    h = h || {}
+    const c = readClientSettings()
+    if (Array.isArray(h.chatFocus))        c.chatFocusKeyCodes  = h.chatFocus.filter(n => typeof n === 'number')
+    if (typeof h.freeCursor === 'number')  c.freeCursorKeyCode  = h.freeCursor
+    if (typeof h.housing === 'number')     c.housingMenuKeyCode = h.housing
+    if (typeof h.faction === 'number')     c.factionMenuKeyCode = h.faction
+    if (typeof h.interact === 'number')    c.interactMenuKeyCode = h.interact
+    if (typeof h.personal === 'number')    c.personalMenuKeyCode = h.personal
+    const p = clientSettingsPath()
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, JSON.stringify(c, null, 2))
+    return { ok: true, path: p }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
 })
 
 // ── Folder picker ─────────────────────────────────────────────────────────────
@@ -409,6 +521,17 @@ ipcMain.handle('game:createIsolated', async () => {
   const offenders = findDirtyFiles(src)
   if (offenders.length > 0) {
     const shown = offenders.slice(0, 6).join(', ') + (offenders.length > 6 ? ', …' : '')
+    await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Skyrim directory is not clean',
+      message: "Warning, your Skyrim directory isn't clean.",
+      detail:
+        'To clean it, delete the entire directory and redownload it by verifying local cache.\n' +
+        'To make things quicker, you can keep the vanilla BSA files if they\'re untouched.\n\n' +
+        `Found: ${shown}`,
+      buttons: ['OK'],
+      defaultId: 0,
+    })
     return {
       success: false,
       dirty:   true,
@@ -439,6 +562,17 @@ ipcMain.handle('game:createIsolated', async () => {
 
   // Dummy protection for those trying to install it on their base directory
   if (pathsOverlap(src, dst) || pathsOverlap(src, base)) {
+    await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Cannot install on top of itself',
+      message: 'Warning, you are trying to download the game on top of itself. ' +
+               'Please choose a new spot to install a copy of Skyrim, such as the root folder (c:/).',
+      detail:
+        'SkyRP uses a portable Skyrim install for maximum compatibility with other modlists or servers.\n' +
+        "If you're short on disk space, you can turn this feature off in the troubleshooting tab.",
+      buttons: ['OK'],
+      defaultId: 0,
+    })
     return {
       success: false,
       error: 'Choose an install location OUTSIDE your Skyrim folder. ' +

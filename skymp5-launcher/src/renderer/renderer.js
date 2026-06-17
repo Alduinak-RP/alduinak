@@ -19,7 +19,7 @@ document.querySelectorAll('.topnav-link[data-href]').forEach(link => {
 // ── Settings modal ────────────────────────────────────────────────────────────
 const modalOverlay = document.getElementById('modal-settings')
 
-function openModal() { modalOverlay.hidden = false }
+function openModal() { modalOverlay.hidden = false; loadGameSettingsTab() }
 function closeModal() { modalOverlay.hidden = true }
 
 document.getElementById('btn-gear').addEventListener('click', openModal)
@@ -35,6 +35,103 @@ document.querySelectorAll('.modal-tab').forEach(tab => {
     document.getElementById(`tab-${tab.dataset.tab}`).hidden = false
   })
 })
+
+// ── Settings tab: graphics + server hotkeys ───────────────────────────────────
+// DirectInput scan codes — must match DxScanCode in the Skyrim Platform client.
+const KEY_OPTIONS = [
+  { label: '— none —', code: 0 },
+  { label: 'Enter', code: 28 }, { label: 'Space', code: 57 }, { label: 'Tab', code: 15 },
+  { label: 'Left Shift', code: 42 }, { label: 'Left Ctrl', code: 29 }, { label: 'Left Alt', code: 56 },
+  { label: 'Caps Lock', code: 58 }, { label: 'Grave (~)', code: 41 },
+  { label: 'A', code: 30 }, { label: 'B', code: 48 }, { label: 'C', code: 46 }, { label: 'D', code: 32 },
+  { label: 'E', code: 18 }, { label: 'F', code: 33 }, { label: 'G', code: 34 }, { label: 'H', code: 35 },
+  { label: 'I', code: 23 }, { label: 'J', code: 36 }, { label: 'K', code: 37 }, { label: 'L', code: 38 },
+  { label: 'M', code: 50 }, { label: 'N', code: 49 }, { label: 'O', code: 24 }, { label: 'P', code: 25 },
+  { label: 'Q', code: 16 }, { label: 'R', code: 19 }, { label: 'S', code: 31 }, { label: 'T', code: 20 },
+  { label: 'U', code: 22 }, { label: 'V', code: 47 }, { label: 'W', code: 17 }, { label: 'X', code: 45 },
+  { label: 'Y', code: 21 }, { label: 'Z', code: 44 },
+  { label: 'F1', code: 59 }, { label: 'F2', code: 60 }, { label: 'F3', code: 61 }, { label: 'F4', code: 62 },
+  { label: 'F5', code: 63 }, { label: 'F6', code: 64 }, { label: 'F7', code: 65 }, { label: 'F8', code: 66 },
+  { label: 'F9', code: 67 }, { label: 'F10', code: 68 }, { label: 'F11', code: 87 }, { label: 'F12', code: 88 },
+]
+const RESOLUTIONS = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1080', '2560x1440', '3440x1440', '3840x2160']
+
+function fillKeySelect(id) {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.innerHTML = ''
+  for (const o of KEY_OPTIONS) {
+    const opt = document.createElement('option')
+    opt.value = String(o.code)
+    opt.textContent = o.label
+    el.appendChild(opt)
+  }
+}
+function setKey(id, code) { const el = document.getElementById(id); if (el) el.value = String(typeof code === 'number' ? code : 0) }
+function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.value, 10) || 0) : 0 }
+
+;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction'].forEach(fillKeySelect)
+
+async function loadGameSettingsTab() {
+  try {
+    const g = await window.electronAPI.graphicsLoad()
+    if (g && g.ok) {
+      const wm = document.getElementById('gfx-windowmode'); if (wm) wm.value = g.windowMode || 'windowed'
+      const resSel = document.getElementById('gfx-resolution')
+      if (resSel) {
+        const cur = (g.width && g.height) ? `${g.width}x${g.height}` : ''
+        const list = RESOLUTIONS.slice()
+        if (cur && !list.includes(cur)) list.unshift(cur)
+        resSel.innerHTML = ''
+        for (const r of list) { const o = document.createElement('option'); o.value = r; o.textContent = r; resSel.appendChild(o) }
+        if (cur) resSel.value = cur
+      }
+      const f = g.fades || {}
+      const setv = (id, v) => { const e = document.getElementById(id); if (e) e.value = (v === undefined || v === null) ? '' : v }
+      setv('gfx-fade-actor', f.actor); setv('gfx-fade-item', f.item); setv('gfx-fade-object', f.object)
+      setv('gfx-fade-grass', f.grass); setv('gfx-fade-shadow', f.shadow)
+      const iy = document.getElementById('gfx-invert-y'); if (iy) iy.checked = !!g.invertY
+      const hint = document.getElementById('gfx-path-hint')
+      if (hint) hint.textContent = g.exists ? `Editing: ${g.path}` : `Will be created on save: ${g.path}`
+    }
+    const h = await window.electronAPI.hotkeysLoad()
+    if (h && h.ok) {
+      const chat = Array.isArray(h.chatFocus) ? (h.chatFocus.find(c => c !== 28) || h.chatFocus[0] || 20) : 20
+      setKey('hk-chat', chat)
+      setKey('hk-cursor', h.freeCursor != null ? h.freeCursor : 64)
+      setKey('hk-housing', h.housing != null ? h.housing : 35)
+      setKey('hk-interact', h.interact != null ? h.interact : 21)
+      setKey('hk-personal', h.personal != null ? h.personal : 22)
+      setKey('hk-faction', h.faction != null ? h.faction : 34)
+    }
+  } catch (err) { /* settings tab is best-effort */ }
+}
+
+async function saveGameSettingsTab() {
+  try {
+    const wm = document.getElementById('gfx-windowmode')
+    const resSel = document.getElementById('gfx-resolution')
+    let width = '', height = ''
+    if (resSel && /^\d+x\d+$/.test(resSel.value)) { const p = resSel.value.split('x'); width = p[0]; height = p[1] }
+    const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : '' }
+    const iy = document.getElementById('gfx-invert-y')
+    await window.electronAPI.graphicsSave({
+      windowMode: wm ? wm.value : 'windowed',
+      width, height,
+      invertY: !!(iy && iy.checked),
+      fades: { actor: val('gfx-fade-actor'), item: val('gfx-fade-item'), object: val('gfx-fade-object'), grass: val('gfx-fade-grass'), shadow: val('gfx-fade-shadow') },
+    })
+    const chatKey = getKey('hk-chat')
+    await window.electronAPI.hotkeysSave({
+      chatFocus: [28, chatKey].filter(c => c > 0),
+      freeCursor: getKey('hk-cursor'),
+      housing:    getKey('hk-housing'),
+      interact:   getKey('hk-interact'),
+      personal:   getKey('hk-personal'),
+      faction:    getKey('hk-faction'),
+    })
+  } catch (err) { /* best-effort */ }
+}
 
 // ── Form fields ───────────────────────────────────────────────────────────────
 const fieldSkyrimPath   = document.getElementById('setting-skyrim-path')
@@ -384,6 +481,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   }
 
   await window.electronAPI.saveSettings(data)
+  await saveGameSettingsTab()
   refreshMo2Status()
 
   const btn = document.getElementById('btn-save')

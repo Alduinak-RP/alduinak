@@ -16,11 +16,12 @@ export interface ChatChannel {
 }
 
 // The default channel is "say" (first entry). Order here is the render order.
+// Commands match the Frostfall gamemode's chat channels (/me, /ooc, /f).
 export const CHAT_CHANNELS: ChatChannel[] = [
   { id: 'say', label: 'Say', cmd: '', className: 'channel-say' },
-  { id: 'looc', label: 'LOOC', cmd: '/looc ', className: 'channel-looc' },
+  { id: 'ooc', label: 'OOC', cmd: '/ooc ', className: 'channel-looc' },
   { id: 'me', label: 'Me', cmd: '/me ', className: 'channel-me' },
-  { id: 'admin', label: 'Admin', cmd: '/admin ', className: 'channel-admin' },
+  { id: 'faction', label: 'Faction', cmd: '/f ', className: 'channel-admin' },
 ];
 
 export const DEFAULT_CHANNEL = CHAT_CHANNELS[0].id;

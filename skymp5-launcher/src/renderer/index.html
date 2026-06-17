@@ -179,11 +179,53 @@
 		  
         </div>
 
-        <!-- ── Settings tab (WIP) ── -->
+        <!-- ── Settings tab ── -->
         <div class="tab-panel" id="tab-settings" hidden>
-          <div class="settings-group">
-            <p class="setting-hint">⚙ Settings — work in progress.</p>
-          </div>
+
+          <details class="settings-collapse" open>
+            <summary>Graphics</summary>
+            <div class="settings-group">
+              <label class="setting-label">Window Mode</label>
+              <select class="setting-input" id="gfx-windowmode">
+                <option value="windowed">Windowed</option>
+                <option value="fullscreen">Full screen</option>
+                <option value="borderless">Borderless window</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Resolution</label>
+              <select class="setting-input" id="gfx-resolution"></select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Fade distances</label>
+              <div class="settings-grid">
+                <label class="grid-field">Actor<input type="number" step="0.1" id="gfx-fade-actor" /></label>
+                <label class="grid-field">Item<input type="number" step="0.1" id="gfx-fade-item" /></label>
+                <label class="grid-field">Object<input type="number" step="0.1" id="gfx-fade-object" /></label>
+                <label class="grid-field">Grass<input type="number" step="100" id="gfx-fade-grass" /></label>
+                <label class="grid-field">Shadow<input type="number" step="100" id="gfx-fade-shadow" /></label>
+              </div>
+            </div>
+            <p class="setting-hint" id="gfx-path-hint"></p>
+          </details>
+
+          <details class="settings-collapse">
+            <summary>Server Hotkeys</summary>
+            <div class="settings-group"><label class="setting-label">Activate Chat</label><select class="setting-input hotkey-select" id="hk-chat"></select></div>
+            <div class="settings-group"><label class="setting-label">Release Mouse</label><select class="setting-input hotkey-select" id="hk-cursor"></select></div>
+            <div class="settings-group"><label class="setting-label">Housing Menu</label><select class="setting-input hotkey-select" id="hk-housing"></select></div>
+            <div class="settings-group"><label class="setting-label">Player Actions Menu</label><select class="setting-input hotkey-select" id="hk-interact"></select></div>
+            <div class="settings-group"><label class="setting-label">Personal Menu</label><select class="setting-input hotkey-select" id="hk-personal"></select></div>
+            <div class="settings-group"><label class="setting-label">Faction Menu</label><select class="setting-input hotkey-select" id="hk-faction"></select></div>
+            <p class="setting-hint">Enter always focuses chat. Changes apply after the client reloads.</p>
+          </details>
+
+          <details class="settings-collapse">
+            <summary>Game Hotkeys</summary>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-invert-y" /><span>Invert Y axis</span></label>
+            <p class="setting-hint">Full control remapping is coming soon — remap other controls in-game for now.</p>
+          </details>
+
         </div>
 
         <!-- ── Troubleshooting tab ── -->
