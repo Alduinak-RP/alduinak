@@ -1,6 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
 import { BrowserMessageEvent } from "skyrimPlatform";
+import { MsgType } from "../../messages";
 
 declare const window: any;
 
@@ -98,11 +99,11 @@ const buildMountJs = (name: string, isAdmin: boolean) => `(function(){
     // Chat bubble
     var sf=function(raw){
       var p=parse(raw); if(!p) return;
-	  if (p.command){ if (window.mp && typeof window.mp.send==='function') window.mp.send('cef::chat:send', raw); return; }
+	  if (p.command){ if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) window.skyrimPlatform.sendMessage('cef::chat:send', raw); return; }
       if (p.denied){ pushSegs([{text:'Only admins can use that command.',color:COLORS.system}],'all'); return; }
       if (p.error){ pushSegs([{text:p.error,color:COLORS.system}],'personal'); return; }
       pushSegs(p.segs, p.tab);
-      if (window.mp && typeof window.mp.send==='function') window.mp.send('cef::chat:send', raw);
+      if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) window.skyrimPlatform.sendMessage('cef::chat:send', raw);
     };
 
     var chatWidget={ type:'chat', id:'chat', isInputHidden:false, placeholder:'', messages:window.chatMessages.slice(), send:sf };
@@ -156,7 +157,18 @@ export class ChatService extends ClientListener {
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
-    if (e.arguments[0] === "skyrpChatBubble") this.showBubble(Number(e.arguments[1] ?? 0), String(e.arguments[2] ?? ""));
+    if (e.arguments[0] === "skyrpChatBubble") {
+      this.showBubble(Number(e.arguments[1] ?? 0), String(e.arguments[2] ?? ""));
+      return;
+    }
+    if (e.arguments[0] === "cef::chat:send") {
+      const text = String(e.arguments[1] ?? "");
+      if (!text) return;
+      this.controller.emitter.emit("sendMessage", {
+        message: { t: MsgType.CustomPacket, contentJsonDump: JSON.stringify({ type: "cef::chat:send", data: text }) },
+        reliability: "reliable",
+      });
+    }
   }
 
   private onUpdate(): void {
