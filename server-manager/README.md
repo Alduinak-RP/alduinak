@@ -5,10 +5,14 @@ server box. **Run it as Administrator** — service control (nssm) needs it.
 
 ```bash
 cd server-manager
-setup.bat             # robust install (fixes Electron download issues)
-npm start             # dev run  (run the terminal as Administrator)
+setup.bat             # robust install — installs deps then launches the app
+Run.bat               # everyday launch (self-elevates for service control)
 npm run build:win     # packaged installer -> ../build/server-manager
 ```
+
+`setup.bat` installs dependencies and then starts the manager via `Run.bat`.
+After the first setup, just use `Run.bat` (it requests Administrator rights so
+the Console tab can start/stop the Windows services).
 
 If `npm start` reports *"Electron failed to install correctly"*, run `setup.bat`.
 It recovers the Electron runtime even on a flaky firewall by, in order:

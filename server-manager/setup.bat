@@ -79,6 +79,7 @@ exit /b 1
 
 :done
 echo.
-echo Done. Electron is ready. Start the manager with:  npm start
-echo (Run the terminal as Administrator so it can control the Windows services.)
-pause
+echo Done. Electron is ready.
+echo Launching the manager (Run.bat, which requests admin for service control)...
+start "" "%~dp0Run.bat"
+exit /b 0
