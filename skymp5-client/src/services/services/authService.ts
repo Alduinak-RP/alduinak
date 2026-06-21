@@ -563,18 +563,6 @@ export class AuthService extends ClientListener {
           ),
           tags: [/*"ELEMENT_SAME_LINE", "ELEMENT_STYLE_MARGIN_EXTENDED"*/],
         },
-        // {
-        //   type: "icon",
-        //   text: "discord",
-        //   tags: ["ICON_STYLE_DISCORD"],
-        // },
-        {
-          type: "button",
-          text: authData ? strings.changeAccount : strings.loginViaSkymp,
-          tags: [/*"ELEMENT_SAME_LINE"*/],
-          click: () => window.skyrimPlatform.sendMessage(events.openDiscordOauth),
-          hint: strings.loginOrChangeHint,
-        },
         {
           type: "button",
           text: strings.play,
