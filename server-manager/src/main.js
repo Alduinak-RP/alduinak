@@ -309,7 +309,7 @@ ipcMain.handle('modlist:updateManifest', async () => {
   const dep = await ensureDeps(config.paths.backend, 'npm', 'backend')   // compile-manifest needs 7zip-bin
   if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
   const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile]
-  if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.splice(2, 0, '--game', config.gameRoot)
+  if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
   const r = await runStreaming('node', args, config.paths.backend, 'compile-manifest')
   return r.ok ? { ok: true } : { ok: false, error: 'compile-manifest failed' }
 })
