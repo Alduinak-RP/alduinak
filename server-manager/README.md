@@ -5,10 +5,14 @@ server box. **Run it as Administrator** — service control (nssm) needs it.
 
 ```bash
 cd server-manager
-npm install
-npm start            # dev run
-npm run build:win    # packaged installer -> ../build/server-manager
+setup.bat             # robust install (fixes Electron download issues)
+npm start             # dev run  (run the terminal as Administrator)
+npm run build:win     # packaged installer -> ../build/server-manager
 ```
+
+If `npm start` reports *"Electron failed to install correctly"*, run `setup.bat`
+— it reinstalls with install scripts enabled and verifies the Electron binary
+downloaded (set `ELECTRON_MIRROR` first if you're behind a firewall/proxy).
 
 ## Tabs
 
