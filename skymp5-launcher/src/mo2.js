@@ -145,15 +145,29 @@ async function ensureInstalled(onProgress) {
 // Forward slashes everywhere: valid for Windows APIs and avoids INI escaping.
 const fwd = p => p.replace(/\\/g, '/')
 
+// Choose MO2 edition to skip popup
+const MO2_EDITIONS = new Set(['Steam', 'GOG', 'Epic Games', 'Microsoft Store'])
+
 // Detect the Skyrim SE store edition
 function detectEdition(gameDir) {
   try {
     const names = fs.readdirSync(gameDir)
     if (names.includes('Galaxy64.dll') || names.some(f => /^goggame-.*\.(info|dll|hashdb)$/i.test(f))) return 'GOG'
     if (names.includes('EOSSDK-Win64-Shipping.dll')) return 'Epic Games'
+    if (names.some(f => /^Gaming\.Desktop|appxmanifest/i.test(f))) return 'Microsoft Store'
     if (names.includes('steam_api64.dll')) return 'Steam'
   } catch { /* unreadable */ }
   return 'Steam'
+}
+
+// Resolve the edition to write into ModOrganizer.ini
+function resolveEdition(gameDir) {
+  try {
+    const cur = fs.readFileSync(path.join(getRoot(), 'ModOrganizer.ini'), 'utf8')
+    const m = cur.match(/^gameEdition\s*=\s*(.+)$/im)
+    if (m && MO2_EDITIONS.has(m[1].trim())) return m[1].trim()
+  } catch { /* no ini yet */ }
+  return detectEdition(gameDir)
 }
 
 /**
@@ -198,7 +212,7 @@ function ensureInstance(skyrimPath, loadOrder) {
   const ini = [
     '[General]',
     'gameName=Skyrim Special Edition',
-    `gameEdition=${detectEdition(skyrimPath)}`,
+    `gameEdition=${resolveEdition(skyrimPath)}`,
     `gamePath=@ByteArray(${fwd(skyrimPath)})`,
     `selected_profile=@ByteArray(${PROFILE})`,
     `version=${MO2_VERSION}`,
@@ -354,7 +368,7 @@ function clearCache(archiveId) {
  *
  * @returns { folder } | { error }
  */
-function applyMod(modName, files, extractedDirs, modId) {
+function applyMod(modName, files, extractedDirs, modId, hash) {
   const folderName = String(modName).replace(/[<>:"/\\|?*]/g, '')
   const modDir     = path.join(getModsDir(), folderName)
   const buildDir   = path.join(getRoot(), '.b', String(_applyCounter++))
@@ -365,7 +379,7 @@ function applyMod(modName, files, extractedDirs, modId) {
 
     fs.writeFileSync(lp(path.join(buildDir, 'meta.ini')), [
       '[General]', 'gameName=SkyrimSE', `modid=${modId || 0}`, `name=${folderName}`,
-      'repository=Nexus', 'skyrpManaged=true', '',
+      'repository=Nexus', 'skyrpManaged=true', `skyrpHash=${hash || ''}`, '',
     ].join('\r\n'))
 
     try { fs.rmSync(lp(modDir), { recursive: true, force: true }) } catch {}
@@ -574,6 +588,20 @@ function isManaged(modName) {
   } catch { return false }
 }
 
+/**
+ * The content hash recorded in a mod's meta.ini at install time, or '' if the
+ * mod folder is absent / has no recorded hash. Lets the installer skip a mod
+ * that's already on disk in the exact version the manifest expects (repair,
+ * not reinstall) without trusting external state.
+ */
+function readModHash(modName) {
+  const folder = String(modName).replace(/[<>:"/\\|?*]/g, '')
+  try {
+    const meta = fs.readFileSync(path.join(getModsDir(), folder, 'meta.ini'), 'utf8')
+    return (meta.match(/^skyrpHash\s*=\s*(.*)$/im) || [])[1]?.trim() || ''
+  } catch { return '' }
+}
+
 /** Does a mod folder ship a plugin (esp/esm/esl) or an SKSE plugin DLL? */
 function modHasRestrictedContent(modDir) {
   const stack = [modDir]
@@ -696,6 +724,7 @@ module.exports = {
   extractToCache,
   clearCache,
   applyMod,
+  readModHash,
   applyRootFiles,
   setModlistOrder,
   setPlugins,

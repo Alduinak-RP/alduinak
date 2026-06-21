@@ -32,8 +32,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   discordLogout:  () => ipcRenderer.invoke('discord:logout'),
   discordGetUser: () => ipcRenderer.invoke('discord:getUser'),
 
-  // Launcher update check
+  // Launcher update check + in-app install
   checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
+  installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
+  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, d) => cb(d)),
 
   // Open external URL in default browser (http/https only)
   openExternal: (url) => ipcRenderer.send('open:external', url),

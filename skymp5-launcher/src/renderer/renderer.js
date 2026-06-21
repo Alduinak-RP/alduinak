@@ -465,10 +465,7 @@ btnCreateIsolated.addEventListener('click', async () => {
   await window.electronAPI.saveSettings({ isolatedGame: true })
   refreshIsolatedStatus()
   refreshPlayState()
-
-  if (confirm('SkyRP game copy is ready. Download and install the modpack now?')) {
-    startModpackInstall()
-  }
+  startModpackInstall()
 })
 
 fieldIsolated.addEventListener('change', refreshIsolatedStatus)
@@ -890,9 +887,24 @@ async function checkLauncherUpdate() {
   if (result.hasUpdate) {
     launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
     launcherVersionEl.classList.add('update-available')
-    launcherVersionEl.title = `v${result.latest} is available — click to download`
-    launcherVersionEl.addEventListener('click', () => {
-      if (result.downloadUrl) window.electronAPI.openExternal(result.downloadUrl)
+    launcherVersionEl.title = `v${result.latest} is available — click to update`
+    launcherVersionEl.addEventListener('click', async () => {
+      if (launcherVersionEl.dataset.updating) return
+      launcherVersionEl.dataset.updating = '1'
+      launcherVersionEl.textContent = 'Downloading update…'
+      window.electronAPI.onUpdateProgress(d => {
+        if (d.phase === 'download' && d.total > 0) {
+          launcherVersionEl.textContent = `Downloading update… ${Math.round(d.received / d.total * 100)}%`
+        } else if (d.phase === 'install') {
+          launcherVersionEl.textContent = 'Installing — the launcher will restart…'
+        }
+      })
+      const r = await window.electronAPI.installUpdate()
+      if (!r.ok) {
+        launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
+        delete launcherVersionEl.dataset.updating
+        showWarning(`Update failed: ${r.error}`)
+      }
     })
   } else {
     launcherVersionEl.textContent = `v${result.current}`

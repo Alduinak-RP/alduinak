@@ -713,6 +713,53 @@ ipcMain.handle('app:checkUpdate', async () => {
   }
 })
 
+// Download a URL to a local file, following redirects (release URLs hit a CDN).
+function downloadToFile(url, dest, onProgress, redirectsLeft = 5) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http
+    const req = mod.get(url, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume()
+        if (redirectsLeft <= 0) return reject(new Error('Too many redirects'))
+        return resolve(downloadToFile(res.headers.location, dest, onProgress, redirectsLeft - 1))
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)) }
+      const total = parseInt(res.headers['content-length'] || '0', 10)
+      let received = 0
+      const file = fs.createWriteStream(dest)
+      res.on('data', c => { received += c.length; if (onProgress) onProgress(received, total) })
+      res.pipe(file)
+      file.on('finish', () => file.close(() => resolve(dest)))
+      file.on('error', err => { try { fs.unlinkSync(dest) } catch {} reject(err) })
+      res.on('error',  err => { try { fs.unlinkSync(dest) } catch {} reject(err) })
+    })
+    req.on('error', reject)
+    req.setTimeout(120_000, () => { req.destroy(); reject(new Error('Download timed out')) })
+  })
+}
+
+// In-app launcher update: download the new installer, run it silently, and let
+// it relaunch us (--force-run). Replaces the "open the download page" flow.
+ipcMain.handle('app:installUpdate', async () => {
+  try {
+    const data = await fetchJSON(`${config.apiUrl}/api/version`)
+    if (!data.downloadUrl) return { ok: false, error: 'No download URL is configured on the server.' }
+
+    const dest = path.join(os.tmpdir(), 'SkyrimRoleplayLauncher-update.exe')
+    send('update:progress', { phase: 'download', received: 0, total: 0 })
+    await downloadToFile(data.downloadUrl, dest, (received, total) =>
+      send('update:progress', { phase: 'download', received, total }))
+
+    send('update:progress', { phase: 'install' })
+    // /S silent + --force-run: NSIS replaces our files and relaunches the app.
+    spawn(dest, ['/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref()
+    setTimeout(() => app.quit(), 1200)   // release our files so the installer can overwrite
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
 // ── Launch SKSE ───────────────────────────────────────────────────────────────
 
 // Files that must exist before we allow launching
@@ -1201,18 +1248,12 @@ async function runMO2Install() {
     const apiKey  = store.get('nexusApiKey')
     const premium = !!(apiKey && store.get('nexusUser')?.isPremium)
     const mb = n => (n / 1024 / 1024).toFixed(1)
-
-    // ── Only (re)install what changed ────────────────────────────────────────
-    // Each mod carries a content hash; reinstall a mod only when its hash
-    // changed or its folder is missing — never the whole list. Mods whose hash
-    // matches are skipped entirely, so their archives are never re-downloaded.
     const sanitize       = n => String(n).replace(/[<>:"/\\|?*]/g, '')
     const modFolderPath  = m => path.join(mo2.getModsDir(), sanitize(m.name))
-    const installedHashes = store.get('installedModHashes') || {}
     const modChanged = m =>
       !fs.existsSync(modFolderPath(m)) ||
       !m.hash ||                                   // pre-hash manifest: be safe, reinstall
-      installedHashes[m.name] !== m.hash
+      mo2.readModHash(m.name) !== m.hash
     const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
     const needsRoot      = !rootSetUp || rootChanged
@@ -1225,10 +1266,6 @@ async function runMO2Install() {
       if (fs.existsSync(path.join(mo2.getModsDir(), 'SKSE')) && !order.includes('SKSE')) order.push('SKSE')
       mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
       mo2.setPlugins(manifest.plugins)
-      // Persist hashes, dropping mods no longer in the manifest (folders pruned).
-      const hashes = {}
-      for (const m of manifest.mods) if (installedHashes[m.name]) hashes[m.name] = installedHashes[m.name]
-      store.set('installedModHashes', hashes)
       store.set('installedRootHash', manifest.rootHash || '')
       store.set('manifestVersion', manifest.builtAt || '')
     }
@@ -1342,9 +1379,8 @@ async function runMO2Install() {
       send('install:progress', { phase: 'mods', file: `Installing ${mod.name}…`, index: i, total: modsToInstall.length, skipped: false })
       try {
         ensureExtracted(ids)
-        const r = mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId)
+        const r = mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId, mod.hash)
         if (r.error) failed.push(`${mod.name} (${r.error})`)
-        else installedHashes[mod.name] = mod.hash   // record so it's skipped next time
       } catch (err) {
         failed.push(`${mod.name} (${err.message})`)
       }
