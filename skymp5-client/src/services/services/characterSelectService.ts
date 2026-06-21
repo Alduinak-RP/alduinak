@@ -90,6 +90,12 @@ export class CharacterSelectService extends ClientListener {
 
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    // Tries to force character selection to be visible
+    this.controller.on("tick", () => {
+      if (!this.menuOpen) return;
+      if (!this.sp.browser.isVisible()) this.sp.browser.setVisible(true);
+      if (!this.sp.browser.isFocused()) this.sp.browser.setFocused(true);
+    });
 
     try {
       const lang = (this.sp.settings["skymp5-client"] as any)?.["language"] as string | undefined;
