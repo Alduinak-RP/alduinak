@@ -105,6 +105,10 @@ export class Spawn implements System {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
     }
 
+    for (const other of ctx.svr.getActorsByProfileId(auth.profileId)) {
+      if (other !== actorId) ctx.svr.setEnabled(other, false);
+    }
+
     ctx.svr.setEnabled(actorId, true);
     ctx.svr.setUserActor(userId, actorId);
     if (isNew) ctx.svr.setRaceMenuOpen(actorId, true);
