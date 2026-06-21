@@ -119,6 +119,28 @@ ipcMain.handle('server:rebuild', async () => {
   return { ok: true }
 })
 
+// ── Settings tab: edit server-settings.json and the backend .env ────────────────
+
+const CONFIG_FILES = { serverSettings: config.paths.serverSettings, backendEnv: config.paths.backendEnv }
+
+ipcMain.handle('config:read', (_e, key) => {
+  const file = CONFIG_FILES[key]
+  if (!file) return { ok: false, error: 'unknown config' }
+  try { return { ok: true, path: file, content: fs.readFileSync(file, 'utf8') } }
+  catch (err) { return { ok: false, path: file, error: err.message } }
+})
+
+ipcMain.handle('config:write', (_e, key, content) => {
+  const file = CONFIG_FILES[key]
+  if (!file) return { ok: false, error: 'unknown config' }
+  // Don't let a typo brick the game server — validate JSON before saving it.
+  if (key === 'serverSettings') {
+    try { JSON.parse(content) } catch (err) { return { ok: false, error: `Invalid JSON: ${err.message}` } }
+  }
+  try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, content); return { ok: true, path: file } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
 // ── Log tailing (Console tab) ───────────────────────────────────────────────────
 // Follow nssm's per-service log files, emitting only newly-appended bytes.
 

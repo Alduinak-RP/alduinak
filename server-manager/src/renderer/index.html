@@ -9,6 +9,7 @@
 <body>
   <nav id="tabs">
     <button class="tab active" data-tab="console">Console</button>
+    <button class="tab" data-tab="server">Server</button>
     <button class="tab" data-tab="launcher">Launcher</button>
     <button class="tab" data-tab="modlist">Modlist</button>
     <button class="tab" data-tab="client">Client</button>
@@ -22,7 +23,6 @@
         <button id="btn-start" class="action go">Start</button>
         <button id="btn-stop" class="action stop">Stop</button>
         <button id="btn-restart" class="action">Restart</button>
-        <button id="btn-rebuild" class="action">Rebuild server</button>
         <span id="svc-status" class="status"></span>
       </div>
       <pre id="log" class="log"></pre>
@@ -83,7 +83,25 @@
 
     <!-- Settings -->
     <section id="settings" class="panel">
-      <p class="muted">Nothing here yet — reserved for future settings.</p>
+      <div class="subtabs">
+        <button class="subtab active" data-cfg="serverSettings">server-settings.json</button>
+        <button class="subtab" data-cfg="backendEnv">backend .env</button>
+      </div>
+      <div class="row">
+        <button id="settings-reload" class="action">Reload</button>
+        <button id="settings-save" class="action go">Save</button>
+        <span id="settings-status" class="status"></span>
+      </div>
+      <textarea id="settings-editor" class="editor" spellcheck="false"></textarea>
+    </section>
+
+    <!-- Server -->
+    <section id="server" class="panel">
+      <div class="field">
+        <button id="server-build" class="action go">Build &amp; restart server</button>
+        <small>Recompiles dist_back/skymp5-server.js (build-ts) and restarts the game server. Use after server-side / gamemode changes.</small>
+      </div>
+      <pre id="server-log" class="log small"></pre>
     </section>
   </main>
 

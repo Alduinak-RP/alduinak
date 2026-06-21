@@ -39,14 +39,42 @@ async function svc(action, btn) {
 $('#btn-start').addEventListener('click', e => svc('start', e.target))
 $('#btn-stop').addEventListener('click', e => svc('stop', e.target))
 $('#btn-restart').addEventListener('click', e => svc('restart', e.target))
-$('#btn-rebuild').addEventListener('click', async e => {
+
+// ── Server tab ────────────────────────────────────────────────────────────────
+$('#server-build').addEventListener('click', async e => {
   e.target.disabled = true
-  appendLog(logNode, '\n--- rebuilding game server (build-ts) ---\n')
+  $('#server-log').textContent = ''
+  appendLog($('#server-log'), 'Rebuilding game server (build-ts)…\n')
   const r = await window.mgr.serverRebuild()
-  appendLog(logNode, r.ok ? '\nServer rebuilt and restarted.\n' : `\nFailed: ${r.error}\n`)
+  appendLog($('#server-log'), r.ok ? '\nServer rebuilt and restarted.\n' : `\nFailed: ${r.error}\n`)
   await refreshStatus()
   e.target.disabled = false
 })
+
+// ── Settings tab (config editors) ───────────────────────────────────────────────
+let settingsKey = 'serverSettings'
+async function loadConfig() {
+  const ed = $('#settings-editor')
+  const st = $('#settings-status')
+  st.textContent = 'loading…'
+  const r = await window.mgr.configRead(settingsKey)
+  if (r.ok) { ed.value = r.content; st.textContent = r.path }
+  else { ed.value = ''; st.textContent = `Error: ${r.error}` + (r.path ? ` (${r.path})` : '') }
+}
+document.querySelectorAll('.subtab').forEach(sub => {
+  sub.addEventListener('click', () => {
+    document.querySelectorAll('.subtab').forEach(s => s.classList.remove('active'))
+    sub.classList.add('active')
+    settingsKey = sub.dataset.cfg
+    loadConfig()
+  })
+})
+$('#settings-reload').addEventListener('click', loadConfig)
+$('#settings-save').addEventListener('click', async () => {
+  const r = await window.mgr.configWrite(settingsKey, $('#settings-editor').value)
+  $('#settings-status').textContent = r.ok ? `Saved ${r.path}` : `Error: ${r.error}`
+})
+loadConfig()
 
 $('#cmd-form').addEventListener('submit', async e => {
   e.preventDefault()

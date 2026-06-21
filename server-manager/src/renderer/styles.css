@@ -60,6 +60,17 @@ input[type=text] {
 .card .l { font-size: 12px; color: #8a7c66; }
 .card ul { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: #c8bca6; max-height: 160px; overflow-y: auto; }
 
+.subtabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.subtab { background: #1d1813; border: 1px solid #322a20; color: #a99a82; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.subtab:hover { color: #e8e0d2; }
+.subtab.active { color: #14110d; background: #e8b96b; border-color: #e8b96b; }
+
+.editor {
+  flex: 1; width: 100%; resize: none; background: #0a0806; border: 1px solid #2a221a;
+  border-radius: 4px; color: #c8bca6; font-family: Consolas, monospace; font-size: 12px;
+  padding: 10px; line-height: 1.5;
+}
+
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
 .modal.hidden { display: none; }
 .modal-box { background: #1d1813; border: 1px solid #4a3c2a; border-radius: 8px; padding: 20px; width: 460px; max-height: 80vh; overflow-y: auto; position: relative; }

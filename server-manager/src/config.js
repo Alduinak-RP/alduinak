@@ -46,6 +46,9 @@ module.exports = {
     clientPkg:    path.join(repoRoot, 'skymp5-client', 'package.json'),
     versionRoute: path.join(repoRoot, 'skymp5-backend', 'routes', 'version.js'),
     backendEnv:   path.join(repoRoot, 'skymp5-backend', '.env'),
+    // The deployed game server's settings (holds secrets; not in the repo).
+    serverSettings: process.env.SKYRP_SERVER_SETTINGS
+      || path.join(repoRoot, 'build', 'dist', 'server', 'server-settings.json'),
     launcherOut:  path.join(repoRoot, 'build', 'launcher'),
     frontConfig:  path.join(repoRoot, 'skymp5-front', 'config.js'),
     dataDir:      path.join(repoRoot, 'skymp5-backend', 'data'),
