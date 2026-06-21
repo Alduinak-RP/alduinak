@@ -47,11 +47,12 @@ Note, this is the default path, change as needed. You should get 3 folders: serv
 7) Follow the instructions inside of \SkyMP\builds\dist\server\README.md
 It will guide you almost completely, including a full server-settings.json to fill out. 
 
-8) Go to \SkyMP\skymp5-backend\ and run Setup-Backend.vat followed by build-client.bat
-Both of these will do everything for you. I recommend looking at the README.md for the launcher so you can configure it to your liking. 
+8) Go to \SkyMP\skymp5-backend\ and run Setup-Backend.bat to install the backend service and create your .env.
+Then set up and open the Server Manager: go to \SkyMP\server-manager\ and run setup.bat (use Run.bat thereafter).
+The Client tab's "Update client" button does what build-client did (build plugin + front-end + client bucket).
 
-9) Go to \SkyMP\skymp5-launcher\ and run the build-launcher.bat file
-This will give you your .exe to distribute to your players. Simply zip it up, and upload it to any CDN of your choosing (such as discord, or your website).
+9) In the Server Manager, open the Launcher tab and click "Rebuild".
+This produces SkyrimRoleplayLauncher.exe in build\launcher to distribute to your players. Simply zip it up, and upload it to any CDN of your choosing (such as discord, or your website).
 
 10) Finally, install nginx on your machine with the final script in the root directory.
 This script also will run win-acme to create certs for your API and Dashboard, making it a true server.

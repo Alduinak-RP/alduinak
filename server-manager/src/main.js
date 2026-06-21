@@ -38,12 +38,12 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // ── Process helpers ───────────────────────────────────────────────────────────
 
 // Run a command, streaming combined stdout/stderr to the renderer's build log.
-function runStreaming(cmd, args, cwd, label) {
+function runStreaming(cmd, args, cwd, label, env) {
   return new Promise(resolve => {
     send('build:log', `\n$ ${label || cmd + ' ' + args.join(' ')}\n`)
     let child
     try {
-      child = spawn(cmd, args, { cwd, shell: isWin, windowsHide: true })
+      child = spawn(cmd, args, { cwd, shell: isWin, windowsHide: true, env: { ...process.env, ...(env || {}) } })
     } catch (err) {
       send('build:log', `[spawn failed] ${err.message}\n`)
       return resolve({ ok: false, code: -1 })
@@ -73,6 +73,14 @@ const yarnOrNpm = () => {
   // build scripts prefer yarn when present, else npm with legacy peer deps.
   try { require('child_process').execSync(isWin ? 'where yarn' : 'which yarn', { stdio: 'ignore' }); return 'yarn' }
   catch { return 'npm' }
+}
+
+// Install a project's dependencies if they're missing (mirrors the build bats'
+// first-run behaviour), so the manager can build a freshly-cloned checkout.
+async function ensureDeps(dir, pm, label) {
+  if (fs.existsSync(path.join(dir, 'node_modules'))) return { ok: true }
+  const args = pm === 'yarn' ? ['install', '--frozen-lockfile'] : ['install', '--legacy-peer-deps']
+  return runStreaming(pm, args, dir, `${label}: install dependencies`)
 }
 
 // ── Services (Console tab) ──────────────────────────────────────────────────────
@@ -208,12 +216,13 @@ ipcMain.handle('launcher:rebuild', async () => {
   const install = await runStreaming('npm', ['install'], dir, 'launcher: npm install')
   if (!install.ok) return { ok: false, error: 'npm install failed' }
 
-  // CSC_IDENTITY_AUTO_DISCOVERY=false mirrors build-launcher.bat (avoid an
-  // expired cert aborting the build). artifactName forces the requested name.
+  // CSC_IDENTITY_AUTO_DISCOVERY=false stops an expired code-signing cert in the
+  // Windows store from aborting the build. artifactName forces the output name.
   const build = await runStreaming(
     'npx',
     ['electron-builder', '--win', '-c.nsis.artifactName=' + config.launcherArtifact],
-    dir, 'launcher: electron-builder --win')
+    dir, 'launcher: electron-builder --win',
+    { CSC_IDENTITY_AUTO_DISCOVERY: 'false' })
   if (!build.ok) return { ok: false, error: 'electron-builder failed' }
 
   // Fallback rename in case the artifactName override is ignored by an older builder.
@@ -248,16 +257,22 @@ ipcMain.handle('client:update', async () => {
   const buildArgs = pm === 'yarn' ? ['build'] : ['run', 'build']
 
   // 1. Client plugin (skymp5-client.js)
-  let r = await runStreaming(pm, buildArgs, config.paths.client, 'client plugin: build')
+  let r = await ensureDeps(config.paths.client, pm, 'client plugin')
+  if (!r.ok) return { ok: false, error: 'client plugin dependency install failed' }
+  r = await runStreaming(pm, buildArgs, config.paths.client, 'client plugin: build')
   if (!r.ok) return { ok: false, error: 'client plugin build failed' }
 
-  // 2. Front-end UI — build-front.bat writes this config.js first.
+  // 2. Front-end UI — the front build reads this config.js for its output path.
   fs.writeFileSync(config.paths.frontConfig,
     "module.exports = {\n  outputPath: '../build/dist/client/Data/Platform/UI',\n};\n")
+  r = await ensureDeps(config.paths.front, pm, 'front-end')
+  if (!r.ok) return { ok: false, error: 'front-end dependency install failed' }
   r = await runStreaming(pm, buildArgs, config.paths.front, 'front-end: build')
   if (!r.ok) return { ok: false, error: 'front-end build failed' }
 
   // 3. Package the client files bucket the launcher downloads.
+  r = await ensureDeps(config.paths.backend, 'npm', 'backend')
+  if (!r.ok) return { ok: false, error: 'backend dependency install failed' }
   r = await runStreaming('npm', ['run', 'build-client'], config.paths.backend, 'backend: build-client')
   if (!r.ok) return { ok: false, error: 'build-client failed' }
 
@@ -289,6 +304,8 @@ ipcMain.handle('modlist:read', () => {
 })
 
 ipcMain.handle('modlist:updateManifest', async () => {
+  const dep = await ensureDeps(config.paths.backend, 'npm', 'backend')   // compile-manifest needs 7zip-bin
+  if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
   const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile]
   if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.splice(2, 0, '--game', config.gameRoot)
   const r = await runStreaming('node', args, config.paths.backend, 'compile-manifest')
