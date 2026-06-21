@@ -231,20 +231,25 @@ export class CharacterSelectService extends ClientListener {
       });
       if (character) {
         if (character.info) widget.elements.push({ type: "text", text: character.info, tags: ["ELEMENT_SAME_LINE"] });
-        widget.elements.push({ type: "button", text: strings.edit, tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.edit, i) });
-        widget.elements.push({ type: "button", text: strings.del, tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.delete, i) });
+        widget.elements.push({ type: "button", text: strings.edit, tags: ["ELEMENT_SAME_LINE"], width: 90, click: () => window.skyrimPlatform.sendMessage(events.edit, i) });
+        widget.elements.push({ type: "button", text: strings.del, tags: ["ELEMENT_SAME_LINE"], width: 90, click: () => window.skyrimPlatform.sendMessage(events.delete, i) });
       }
     }
 
-    // Bottom row: Play (disabled until a slot is picked) and Quit.
+    // Bottom row: Quit on the left, Play (disabled until a slot is picked) on the right.
+    widget.elements.push({
+      type: "button",
+      text: strings.quit,
+      tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
+      click: () => window.skyrimPlatform.sendMessage(events.quit),
+    });
     widget.elements.push({
       type: "button",
       text: strings.play,
-      tags: ["BUTTON_STYLE_FRAME", "ELEMENT_STYLE_MARGIN_EXTENDED"],
+      tags: ["BUTTON_STYLE_FRAME", "ELEMENT_SAME_LINE"],
       isDisabled: selectedSlot === null,
       click: () => window.skyrimPlatform.sendMessage(events.play),
     });
-    widget.elements.push({ type: "button", text: strings.quit, tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.quit) });
 
     // Replace all widgets
     window.skyrimPlatform.widgets.set([widget]);

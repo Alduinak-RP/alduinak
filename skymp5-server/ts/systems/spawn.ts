@@ -66,9 +66,10 @@ export class Spawn implements System {
   // ── Character select ──────────────────────────────────────────────────────
 
   private characterName(ctx: SystemContext, actorId: number): string {
-    const mp = ctx.svr as unknown as Mp;
-    const n = mp.get(actorId, "private.charName");
-    return typeof n === "string" && n ? n : "";
+    try {
+      const n = ctx.svr.getActorName(actorId);
+      return typeof n === "string" ? n.trim() : "";
+    } catch { return ""; }
   }
 
   private sendCharacterList(ctx: SystemContext, userId: number, profileId: number): void {
@@ -99,7 +100,6 @@ export class Spawn implements System {
       const idx = randomInteger(0, startPoints.length - 1);
       actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
         +startPoints[idx].worldOrCell, auth.profileId);
-      mp.set(actorId, "private.charName", `Character ${slot + 1}`);
       this.log("Creating character", actorId.toString(16), "in slot", slot);
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
