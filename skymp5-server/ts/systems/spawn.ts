@@ -77,15 +77,21 @@ export class Spawn implements System {
     const slots: (number | undefined)[] = new Array(MAX_CHARACTERS).fill(undefined);
     const unassigned: number[] = [];
     for (const a of ctx.svr.getActorsByProfileId(profileId)) {
-      const s = mp.get(a, "private.charSlot");
-      if (Number.isInteger(s) && s >= 0 && s < MAX_CHARACTERS && slots[s] === undefined) slots[s] = a;
-      else unassigned.push(a);
+      // Crash handle for deleting characters
+      let s: unknown;
+      try { s = mp.get(a, "private.charSlot"); }
+      catch { continue; }
+      if (Number.isInteger(s) && (s as number) >= 0 && (s as number) < MAX_CHARACTERS && slots[s as number] === undefined) {
+        slots[s as number] = a;
+      } else {
+        unassigned.push(a);
+      }
     }
     for (const a of unassigned) {
       const free = slots.indexOf(undefined);
       if (free < 0) break;
       slots[free] = a;
-      mp.set(a, "private.charSlot", free);
+      try { mp.set(a, "private.charSlot", free); } catch { /* form vanished */ }
     }
     return slots;
   }
