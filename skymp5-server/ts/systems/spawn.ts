@@ -57,10 +57,12 @@ export class Spawn implements System {
 
   disconnect(userId: number, ctx: SystemContext): void {
     this.pending.delete(userId);
-    const actorId = ctx.svr.getUserActor(userId);
-    if (actorId !== 0) {
-      ctx.svr.setEnabled(actorId, false);
-    }
+    try {
+      const actorId = ctx.svr.getUserActor(userId);
+      if (actorId !== 0) {
+        ctx.svr.setEnabled(actorId, false);
+      }
+    } catch { /* form vanished */ }
   }
 
   // ── Character select ──────────────────────────────────────────────────────
@@ -111,7 +113,8 @@ export class Spawn implements System {
     if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= MAX_CHARACTERS) return;
 
     const mp = ctx.svr as unknown as Mp;
-    let actorId = this.slotMap(ctx, auth.profileId)[slot];
+    const slots = this.slotMap(ctx, auth.profileId);
+    let actorId = slots[slot];
     const isNew = actorId === undefined;
 
     if (isNew) {
@@ -125,8 +128,10 @@ export class Spawn implements System {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
     }
 
-    for (const other of ctx.svr.getActorsByProfileId(auth.profileId)) {
-      if (other !== actorId) ctx.svr.setEnabled(other, false);
+    for (const other of slots) {
+      if (other !== undefined && other !== actorId) {
+        try { ctx.svr.setEnabled(other, false); } catch { /* form vanished */ }
+      }
     }
 
     ctx.svr.setEnabled(actorId, true);
