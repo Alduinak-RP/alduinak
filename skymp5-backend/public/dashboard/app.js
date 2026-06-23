@@ -13,6 +13,7 @@ const state = {
   roles: {},
   knownPermissions: [],
   selectedRequirementId: '',
+  assignGroup: '',
   activeView: 'access',
 }
 
@@ -61,6 +62,7 @@ const nodes = {
   refreshButton: el('refreshButton'),
   requirementsTable: el('requirementsTable'),
   assignmentsTable: el('assignmentsTable'),
+  assignGroupSelect: el('assignGroupSelect'),
   requirementSelect: el('requirementSelect'),
   selectedSlot: el('selectedSlot'),
   slotCount: el('slotCount'),
@@ -367,12 +369,28 @@ function renderRequirements() {
     </table>
   `
 
-  nodes.requirementSelect.innerHTML = state.requirements
-    .map(req => `<option value="${escapeHtml(req.id)}">${escapeHtml(req.group)} - ${escapeHtml(req.rank)}</option>`)
-    .join('')
+  renderAssignForm()
+}
 
-  if (!state.selectedRequirementId && state.requirements[0]) {
-    state.selectedRequirementId = state.requirements[0].id
+function renderAssignForm() {
+  const groups = [...new Set(state.requirements.map(req => req.group))]
+  if (!groups.includes(state.assignGroup)) {
+    state.assignGroup = groups[0] || ''
+  }
+  nodes.assignGroupSelect.innerHTML = groups
+    .map(group => `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`)
+    .join('')
+  nodes.assignGroupSelect.value = state.assignGroup
+  renderRoleSelect()
+}
+
+function renderRoleSelect() {
+  const roles = state.requirements.filter(req => req.group === state.assignGroup)
+  nodes.requirementSelect.innerHTML = roles
+    .map(req => `<option value="${escapeHtml(req.id)}">${escapeHtml(req.rank)}</option>`)
+    .join('')
+  if (!roles.some(req => req.id === state.selectedRequirementId)) {
+    state.selectedRequirementId = roles[0] ? roles[0].id : ''
   }
   nodes.requirementSelect.value = state.selectedRequirementId
   renderSelectedSlot()
@@ -633,6 +651,10 @@ function bindEvents() {
   nodes.accessCheckForm.addEventListener('submit', event => checkAccess(event).catch(err => toast(err.message)))
   nodes.scopeFilter.addEventListener('change', renderRequirements)
   nodes.groupFilter.addEventListener('change', renderRequirements)
+  nodes.assignGroupSelect.addEventListener('change', event => {
+    state.assignGroup = event.target.value
+    renderRoleSelect()
+  })
   nodes.requirementSelect.addEventListener('change', event => {
     state.selectedRequirementId = event.target.value
     renderSelectedSlot()
@@ -652,7 +674,8 @@ function bindEvents() {
     const select = event.target.closest('[data-select]')
     if (select) {
       state.selectedRequirementId = select.dataset.select
-      nodes.requirementSelect.value = state.selectedRequirementId
+      const req = state.requirements.find(r => r.id === state.selectedRequirementId)
+      if (req) state.assignGroup = req.group
       renderRequirements()
       return
     }

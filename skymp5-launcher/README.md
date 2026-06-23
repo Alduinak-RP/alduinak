@@ -1,7 +1,7 @@
 # Skyrim Roleplay Launcher
 
 Desktop launcher for the Skyrim Roleplay SkyMP server. Handles Discord authentication, client file installation, mod management via Mod Organizer, and launching Skyrim through SKSE.
-Original by the Frostfall team: https://github.com/F02K/Frostfall-Launcher
+Original by the SkyMP team: https://github.com/F02K/SkyMP-Launcher
 
 Pre-built installers are available at **https://skyrimroleplay.co.uk/**.
 

@@ -1,14 +1,14 @@
-# Roleplay Client — Frostfall Integration
+# Roleplay Client — SkyMP Integration
 
-The live backend is the **Frostfall Roleplay** gamemode (a full fork with its
+The live backend is the **SkyMP Roleplay** gamemode (a full fork with its
 own client/server contracts). This repo's client was therefore aligned to drive
-Frostfall through its existing **chat-command** contract rather than inventing
-new packets. Each in-game menu builds a Frostfall `/command` and sends it the
+SkyMP through its existing **chat-command** contract rather than inventing
+new packets. Each in-game menu builds a SkyMP `/command` and sends it the
 same way the chat box does — a customPacket the gamemode reads as
 `{ type: 'cef::chat:send', data: '<text>' }`. Results come back through chat.
 
-All menus render as `form` widgets and **preserve Frostfall's chat widget**
-(Frostfall's chat `updateOwner` keeps non-chat widgets), so they coexist.
+All menus render as `form` widgets and **preserve SkyMP's chat widget**
+(SkyMP's chat `updateOwner` keeps non-chat widgets), so they coexist.
 
 ---
 
@@ -30,7 +30,7 @@ the chat input. Quit-to-desktop button is on the login menu.
 ## What each menu fires
 
 ### Housing (`H`)
-Hold picker → property picker (Frostfall's 16-property registry is embedded so
+Hold picker → property picker (SkyMP's 16-property registry is embedded so
 the list is real). Buttons:
 - `request` → `/property request <id>`
 - `approve` / `deny` / `revoke` → `/property <action> <id>` (leader/staff)
@@ -45,7 +45,7 @@ the list is real). Buttons:
 | Info | Check bounty `/bounty check <n>`, Faction slots `/faction slots <n>` |
 | Staff | Sober `/sober <n>`, Feed `/feed <n>`, Clear NVFL `/nvfl clear <n>` |
 
-`<n>` is the targeted actor's name. (Frostfall matches a player by the **first
+`<n>` is the targeted actor's name. (SkyMP matches a player by the **first
 whitespace token**, so only single-word character names resolve.)
 
 ### Personal hub (`U`)
@@ -63,27 +63,27 @@ Permissions are enforced **server-side** — unauthorized buttons just reply
 
 ## Gamemode patch (leadership bridge)
 
-Stock Frostfall never turns the dashboard's `private.frostfallAccess` into the
+Stock SkyMP never turns the dashboard's `private.skympAccess` into the
 in-game `isLeader` / `isStaff` / `holdId` flags, so every leader/staff command
 was denied for everyone. A small `applyAccessToPlayer()` function was added to
 the gamemode bundle (called on connect) to do that translation. It logs the raw
-`frostfallAccess` it sees (`[access] …`) so the role-matching checks can be
+`skympAccess` it sees (`[access] …`) so the role-matching checks can be
 tuned to the dashboard's actual encoding. (Provided as a patched `gamemode.js`,
-not committed — bundle edits are a stopgap; the clean fix belongs in Frostfall's
+not committed — bundle edits are a stopgap; the clean fix belongs in SkyMP's
 source.)
 
 ---
 
 ## Known limitations
 
-- **Frostfall is a fork.** Its structured client packets (`propertyList`,
+- **SkyMP is a fork.** Its structured client packets (`propertyList`,
   `playerDowned`, `playerCaptured`, …) use a 3-arg `sendCustomPacket(actorId,
   name, data)` native that the stock client doesn't have. So the menus can fire
-  commands, but Frostfall's rich client-side **visuals** (down/capture poses,
-  live property lists) need Frostfall's own client.
+  commands, but SkyMP's rich client-side **visuals** (down/capture poses,
+  live property lists) need SkyMP's own client.
 - **Disabled services** (kept in tree, unregistered): `ChatService`,
   `CharacterSelectService`, `RestraintService`, `FactionService`. They used
-  contracts of our own design that conflict with Frostfall. Re-enable only with
-  the matching gamemode, or after rewiring them to Frostfall like Housing.
+  contracts of our own design that conflict with SkyMP. Re-enable only with
+  the matching gamemode, or after rewiring them to SkyMP like Housing.
 - **Faction management menu** (assign/transfer Jarl) needs the hold/faction/slot
   IDs from the backend `gamemode.json` to fire the right `/faction` command.
