@@ -8,6 +8,17 @@ function randomInteger(min: number, max: number) {
   return Math.floor(rand);
 }
 
+// Per-character factions
+function filterAccessForSlot(access: any, slot: number): any {
+  if (!access || !Array.isArray(access.gameFactions)) return access;
+  return {
+    ...access,
+    gameFactions: access.gameFactions.filter(
+      (gf: any) => gf && (gf.slot === null || gf.slot === undefined || gf.slot === slot)
+    ),
+  };
+}
+
 const MAX_CHARACTERS = 3;
 
 // Character-select protocol (gated by the "characterSelect" server setting).
@@ -157,7 +168,7 @@ export class Spawn implements System {
       mp.get(actorId, "private.indexed.discordId") !== auth.discordId) {
       mp.set(actorId, "private.indexed.discordId", auth.discordId);
     }
-    this.setSkympProps(mp, actorId, auth.profileId, auth.discordId, auth.access);
+    this.setSkympProps(mp, actorId, auth.profileId, auth.discordId, filterAccessForSlot(auth.access, slot));
 
     this.pending.delete(userId);
   }

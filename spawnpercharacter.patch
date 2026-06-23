@@ -1,0 +1,33 @@
+diff --git a/skymp5-server/ts/systems/spawn.ts b/skymp5-server/ts/systems/spawn.ts
+index e118019..24a7053 100644
+--- a/skymp5-server/ts/systems/spawn.ts
++++ b/skymp5-server/ts/systems/spawn.ts
+@@ -8,6 +8,19 @@ function randomInteger(min: number, max: number) {
+   return Math.floor(rand);
+ }
+ 
++// Per-character factions: keep only gameFactions tagged for this character's
++// slot (or untagged, slot=null = every character). Account-level permissions
++// and factions are left untouched.
++function filterAccessForSlot(access: any, slot: number): any {
++  if (!access || !Array.isArray(access.gameFactions)) return access;
++  return {
++    ...access,
++    gameFactions: access.gameFactions.filter(
++      (gf: any) => gf && (gf.slot === null || gf.slot === undefined || gf.slot === slot)
++    ),
++  };
++}
++
+ const MAX_CHARACTERS = 3;
+ 
+ // Character-select protocol (gated by the "characterSelect" server setting).
+@@ -157,7 +170,7 @@ export class Spawn implements System {
+       mp.get(actorId, "private.indexed.discordId") !== auth.discordId) {
+       mp.set(actorId, "private.indexed.discordId", auth.discordId);
+     }
+-    this.setFrostfallProps(mp, actorId, auth.profileId, auth.discordId, auth.access);
++    this.setFrostfallProps(mp, actorId, auth.profileId, auth.discordId, filterAccessForSlot(auth.access, slot));
+ 
+     this.pending.delete(userId);
+   }

@@ -30,6 +30,12 @@ function normalizeDiscordId(discordId) {
   return String(discordId || '').trim()
 }
 
+function normalizeSlot(value) {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 0 && n <= 2 ? n : null
+}
+
 function list() {
   const data = load()
   const assignmentCounts = data.assignments.reduce((counts, assignment) => {
@@ -63,7 +69,9 @@ function createAssignment(input, actorId) {
     throw err
   }
 
-  if (data.assignments.some(item => item.requirementId === requirement.id && item.discordId === discordId)) {
+  const slot = normalizeSlot(input.slot)
+
+  if (data.assignments.some(item => item.requirementId === requirement.id && item.discordId === discordId && (item.slot ?? null) === slot)) {
     const err = new Error('player already has this rank')
     err.status = 409
     throw err
@@ -83,6 +91,7 @@ function createAssignment(input, actorId) {
     id: crypto.randomUUID(),
     requirementId: requirement.id,
     discordId,
+    slot,
     playerName: String(input.playerName || '').trim(),
     notes: String(input.notes || '').trim(),
     createdAt: now,
@@ -115,8 +124,9 @@ function updateAssignment(id, input, actorId) {
       err.status = 400
       throw err
     }
+    const newSlot = input.slot !== undefined ? normalizeSlot(input.slot) : (assignment.slot ?? null)
     const duplicate = data.assignments.some(item =>
-      item.id !== id && item.requirementId === assignment.requirementId && item.discordId === discordId
+      item.id !== id && item.requirementId === assignment.requirementId && item.discordId === discordId && (item.slot ?? null) === newSlot
     )
     if (duplicate) {
       const err = new Error('player already has this rank')
@@ -126,6 +136,7 @@ function updateAssignment(id, input, actorId) {
     assignment.discordId = discordId
   }
 
+  if (input.slot !== undefined) assignment.slot = normalizeSlot(input.slot)
   assignment.updatedAt = new Date().toISOString()
   assignment.updatedBy = actorId || null
   save(data)
@@ -175,6 +186,7 @@ function getPlayerGameFactions(discordId) {
         permission: req.permission,
         scope: req.scope,
         group: req.group,
+        slot: assignment.slot ?? null,
       }
     })
 }
