@@ -13,6 +13,13 @@
     "nexusId": 7300
   },
   {
+    "name": "Malukah Dragonborn Comes - Main Menu Theme Replacer",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 100518
+  },
+  {
     "name": "Skyrim Souls RE - Unpaused Menus",
     "required": true,
     "enabled": true,
