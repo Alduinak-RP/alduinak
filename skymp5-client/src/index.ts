@@ -44,7 +44,7 @@ import { HousingService } from "./services/services/housingService";
 import { PlayerActionService } from "./services/services/playerActionService";
 import { PersonalMenuService } from "./services/services/personalMenuService";
 import { ChatService } from "./services/services/chatService";
-// import { FactionService } from "./services/services/factionService";
+import { FactionService } from "./services/services/factionService";
 import { NetInfoService } from "./services/services/netInfoService";
 import { AnimDebugService } from "./services/services/animDebugService";
 import { TimersService } from "./services/services/timersService";
@@ -113,6 +113,7 @@ const main = () => {
       new HousingService(sp, controller),
       new PlayerActionService(sp, controller),
       new PersonalMenuService(sp, controller),
+      new FactionService(sp, controller),
       new NetInfoService(sp, controller),
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),
