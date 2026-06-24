@@ -83,6 +83,41 @@ async function ensureDeps(dir, pm, label) {
   return runStreaming(pm, args, dir, `${label}: install dependencies`)
 }
 
+// Compile native C++ (.dll / .node) via CMake into build/dist, overwriting the
+// old binaries. The first run configures the build dir (best-effort defaults —
+// front/tests/data/nexus are turned OFF since the native binaries don't need
+// them); if you've already run cmake there, that configuration is reused.
+// Overrides: SKYRP_CMAKE_CONFIGURE_ARGS (extra configure flags),
+// SKYRP_SKIP_NATIVE=1 (skip native builds entirely, e.g. JS-only boxes).
+async function buildNative(targets, label) {
+  if (process.env.SKYRP_SKIP_NATIVE === '1') {
+    send('build:log', `\n[${label}] SKYRP_SKIP_NATIVE=1 — skipping native build.\n`)
+    return { ok: true, skipped: true }
+  }
+  const buildDir = config.buildDir
+  if (!fs.existsSync(path.join(buildDir, 'CMakeCache.txt'))) {
+    const extra = (process.env.SKYRP_CMAKE_CONFIGURE_ARGS || '').trim()
+    const cfgArgs = [
+      '-B', buildDir,
+      '-DCMAKE_BUILD_TYPE=Release',
+      '-DSWEETPIE=OFF',
+      `-DSKYRIM_DIR=${config.gameRoot}`,
+      '-DBUILD_FRONT=OFF',
+      '-DDOWNLOAD_SKYRIM_DATA=OFF',
+      '-DPREPARE_NEXUS_ARCHIVES=OFF',
+      ...(extra ? extra.split(' ').filter(Boolean) : []),
+    ]
+    const cfg = await runStreaming('cmake', cfgArgs, config.repoRoot, `${label}: cmake configure`)
+    if (!cfg.ok) {
+      return { ok: false, error: 'cmake configure failed — run cmake once manually in build/ (vcpkg must be bootstrapped), set SKYRP_CMAKE_CONFIGURE_ARGS, or SKYRP_SKIP_NATIVE=1' }
+    }
+  }
+  const args = ['--build', buildDir, '--config', 'Release']
+  for (const t of targets) args.push('--target', t)
+  const r = await runStreaming('cmake', args, config.repoRoot, `${label}: cmake build (${targets.join(', ')})`)
+  return r.ok ? { ok: true } : { ok: false, error: `native build failed (${targets.join(', ')}) — see log` }
+}
+
 // ── Services (Console tab) ──────────────────────────────────────────────────────
 
 ipcMain.handle('services:status', async () => {
@@ -106,16 +141,27 @@ ipcMain.handle('services:action', async (_e, action) => {
   return { ok: true, steps, status }
 })
 
-// Rebuild the game-server TS bundle (dist_back/skymp5-server.js) and restart it,
-// so server-side gamemode/system changes go live without the client pipeline.
+// Rebuild the game server: the TS bundle (dist_back/skymp5-server.js) and the
+// native addon (scam_native.node), both into build/dist/server. Does NOT restart
+// the service — start/stop is the Console tab's job.
 ipcMain.handle('server:rebuild', async () => {
   const dir = config.paths.server
   const dep = await ensureDeps(dir, 'npm', 'game server')
   if (!dep.ok) return { ok: false, error: 'dependency install failed' }
+
+  // TS bundle — safe to overwrite even while the server runs (read at startup).
   const r = await runStreaming('npm', ['run', 'build-ts'], dir, 'game server: build-ts')
   if (!r.ok) return { ok: false, error: 'build-ts failed — see log (TypeScript errors stop the build)' }
-  await nssm('stop', 'SkyrpGameServer')
-  await nssm('start', 'SkyrpGameServer')
+
+  // Native addon (scam_native.node) -> build/dist/server. The file is locked
+  // while SkyrpGameServer runs, so only (re)build it when the service is stopped.
+  const status = await nssm('status', 'SkyrpGameServer')
+  if (/SERVICE_RUNNING/i.test(status)) {
+    send('build:log', '\n[server native] SkyrpGameServer is running — skipped scam_native.node (file is locked). Stop it from the Console tab, then rebuild to update the native addon.\n')
+  } else {
+    const n = await buildNative(['skymp5-server'], 'server native')
+    if (!n.ok) return n
+  }
   return { ok: true }
 })
 
@@ -310,6 +356,10 @@ ipcMain.handle('client:update', async () => {
   if (!r.ok) return { ok: false, error: 'backend dependency install failed' }
   r = await runStreaming('npm', ['run', 'build-client'], config.paths.backend, 'backend: build-client')
   if (!r.ok) return { ok: false, error: 'build-client failed' }
+
+  // 4. Native client DLLs (SkyrimPlatform.dll + impl + CEF) -> build/dist/client.
+  const native = await buildNative(['skyrim-platform'], 'client native')
+  if (!native.ok) return native
 
   return { ok: true }
 })

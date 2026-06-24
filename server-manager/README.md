@@ -35,9 +35,24 @@ and re-run `setup.bat` to install it with no further download.
   and **Update manifest** (runs `compile-manifest.js`).
 - **Client** — edit the client version (writes `skymp5-client/package.json` and
   `CLIENT_VERSION` in the backend `.env`), **Update client** (build plugin →
-  build front-end → build client), and a whitelist player list; click a player
-  for their Discord / faction / character details.
+  build front-end → build client → native SkyrimPlatform DLLs, into
+  `build/dist/client`), and a whitelist player list; click a player for their
+  Discord / faction / character details.
+- **Server** — **Build server** recompiles the game-server TS bundle (`build-ts`)
+  and the native addon (`scam_native.node`) into `build/dist/server`. It does
+  **not** restart the service — use the Console tab. The native addon is skipped
+  while the server is running (the file is locked); stop it first to rebuild it.
 - **Settings** — reserved for later.
+
+### Native builds (.dll / .node)
+
+The Client and Server build buttons now also compile the native C++ via CMake.
+The first native build **configures** the CMake build dir; after that it just
+runs `cmake --build`, overwriting the old binaries in `build/dist`. This needs a
+working C++ toolchain (MSVC Build Tools) and a **bootstrapped `vcpkg`** in the
+repo. The first configure pulls/builds vcpkg deps (CEF, CommonLibSSE-NG) — point
+vcpkg at the project's NuGet binary cache so they download instead of compile,
+or expect a long first run. Subsequent native builds are incremental (minutes).
 
 ## Configuration (environment variables)
 
@@ -47,6 +62,9 @@ and re-run `setup.bat` to install it with no further download.
 | `SKYRP_MO2_ROOT` | `C:\MO2` | reference MO2 install (Modlist tab) |
 | `SKYRP_GAME_ROOT` | `C:\GOG Games\Skyrim Anniversary Edition` | game root for root-file capture |
 | `SKYRP_MO2_PROFILE` | `Default` | MO2 profile to compile |
+| `SKYRP_BUILD_DIR` | `<repo>\build` | CMake build dir; native output lands in its `dist/` |
+| `SKYRP_SKIP_NATIVE` | *(unset)* | Set to `1` to skip native (.dll/.node) builds |
+| `SKYRP_CMAKE_CONFIGURE_ARGS` | *(none)* | Extra flags for the first `cmake` configure |
 
 The repo path, service names, and the WS relay port/secret (from the backend
 `.env`) are detected automatically.

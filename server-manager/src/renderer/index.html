@@ -71,7 +71,7 @@
       </div>
       <div class="field">
         <button id="client-update" class="action go">Update client</button>
-        <small>Runs build plugin → build front-end → build client, in order.</small>
+        <small>Runs build plugin → build front-end → build client → native DLLs (SkyrimPlatform), in order. Outputs into build/dist/client.</small>
       </div>
       <div class="field">
         <label>Whitelist players</label>
@@ -98,8 +98,8 @@
     <!-- Server -->
     <section id="server" class="panel">
       <div class="field">
-        <button id="server-build" class="action go">Build &amp; restart server</button>
-        <small>Recompiles dist_back/skymp5-server.js (build-ts) and restarts the game server. Use after server-side / gamemode changes.</small>
+        <button id="server-build" class="action go">Build server</button>
+        <small>Recompiles dist_back/skymp5-server.js (build-ts) + the native addon (scam_native.node) into build/dist/server. Does NOT restart — use the Console tab. The native addon is skipped while the server is running (file locked); stop it first to rebuild it.</small>
       </div>
       <pre id="server-log" class="log small"></pre>
     </section>

@@ -44,9 +44,9 @@ $('#btn-restart').addEventListener('click', e => svc('restart', e.target))
 $('#server-build').addEventListener('click', async e => {
   e.target.disabled = true
   $('#server-log').textContent = ''
-  appendLog($('#server-log'), 'Rebuilding game server (build-ts)…\n')
+  appendLog($('#server-log'), 'Building game server (build-ts + native addon)…\n')
   const r = await window.mgr.serverRebuild()
-  appendLog($('#server-log'), r.ok ? '\nServer rebuilt and restarted.\n' : `\nFailed: ${r.error}\n`)
+  appendLog($('#server-log'), r.ok ? '\nServer build complete (not restarted — use the Console tab to restart).\n' : `\nFailed: ${r.error}\n`)
   await refreshStatus()
   e.target.disabled = false
 })
@@ -144,7 +144,7 @@ $('#client-update').addEventListener('click', async e => {
   e.target.disabled = true
   $('#client-log').textContent = ''
   const r = await window.mgr.clientUpdate()
-  appendLog($('#client-log'), r.ok ? '\nClient updated and packaged.\n' : `\nFailed: ${r.error}\n`)
+  appendLog($('#client-log'), r.ok ? '\nClient updated, packaged, and native DLLs built.\n' : `\nFailed: ${r.error}\n`)
   e.target.disabled = false
 })
 

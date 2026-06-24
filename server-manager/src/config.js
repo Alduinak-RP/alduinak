@@ -28,6 +28,9 @@ module.exports = {
   logDir:   process.env.SKYRP_LOG_DIR || 'C:\\logs',
   nssm:     nssmPath(),
 
+  // CMake build directory (holds dist/ that the launcher/server consume).
+  buildDir: process.env.SKYRP_BUILD_DIR || path.join(repoRoot, 'build'),
+
   // nssm services, in start order (stop order is the reverse).
   services: ['SkyrpNginx', 'SkyrpBackend', 'SkyrpGameServer'],
 
