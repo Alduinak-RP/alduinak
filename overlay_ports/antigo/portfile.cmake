@@ -6,7 +6,8 @@ vcpkg_from_github(
   HEAD_REF master
 )
 
-vcpkg_configure_cmake(SOURCE_PATH ${SOURCE_PATH})
+# PREFER_NINJA so vcpkg's bundled CMake configures with Ninja instead of the host VS generator
+vcpkg_configure_cmake(SOURCE_PATH ${SOURCE_PATH} PREFER_NINJA)
 
 vcpkg_cmake_install()
 vcpkg_cmake_config_fixup()
