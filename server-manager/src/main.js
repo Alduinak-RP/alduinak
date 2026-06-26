@@ -110,12 +110,7 @@ function resolveCmake() {
   return found
 }
 
-// Compile native C++ (.dll / .node) via CMake into build/dist, overwriting the
-// old binaries. The first run configures the build dir (best-effort defaults —
-// front/tests/data/nexus are turned OFF since the native binaries don't need
-// them); if you've already run cmake there, that configuration is reused.
-// Overrides: SKYRP_CMAKE (cmake.exe path), SKYRP_CMAKE_CONFIGURE_ARGS (extra
-// configure flags), SKYRP_SKIP_NATIVE=1 (skip native builds entirely).
+// Compiler, requires VS 2022
 async function buildNative(targets, label) {
   if (process.env.SKYRP_SKIP_NATIVE === '1') {
     send('build:log', `\n[${label}] SKYRP_SKIP_NATIVE=1 — skipping native build.\n`)
@@ -128,6 +123,21 @@ async function buildNative(targets, label) {
   }
   send('build:log', `\n[${label}] cmake: ${cmake}\n`)
   const buildDir = config.buildDir
+  const generator = process.env.SKYRP_CMAKE_GENERATOR || 'Visual Studio 17 2022'
+
+  // Reset just the CMake cache, not /dist
+  try {
+    const cache = path.join(buildDir, 'CMakeCache.txt')
+    if (fs.existsSync(cache)) {
+      const m = fs.readFileSync(cache, 'utf8').match(/^CMAKE_GENERATOR:INTERNAL=(.*)$/m)
+      if (m && m[1].trim() !== generator) {
+        send('build:log', `\n[${label}] build dir was generated with "${m[1].trim()}"; resetting CMake cache for "${generator}".\n`)
+        fs.rmSync(cache, { force: true })
+        fs.rmSync(path.join(buildDir, 'CMakeFiles'), { recursive: true, force: true })
+      }
+    }
+  } catch {}
+
   // Configure unless the build system is fully GENERATED.
   let generated = false
   try {
@@ -138,7 +148,8 @@ async function buildNative(targets, label) {
     const extra = (process.env.SKYRP_CMAKE_CONFIGURE_ARGS || '').trim()
     const cfgArgs = [
       '-B', buildDir,
-      '-DCMAKE_BUILD_TYPE=Release',
+      '-G', generator,
+      ...(/visual studio/i.test(generator) ? ['-A', 'x64'] : []),
       '-DSWEETPIE=OFF',
       `-DSKYRIM_DIR=${config.gameRoot}`,
       '-DBUILD_FRONT=OFF',
@@ -148,7 +159,8 @@ async function buildNative(targets, label) {
     ]
     const cfg = await runStreaming(cmake, cfgArgs, config.repoRoot, `${label}: cmake configure`, undefined, false)
     if (!cfg.ok) {
-      return { ok: false, error: 'cmake configure failed — vcpkg must be bootstrapped and a C++ toolchain installed; or set SKYRP_CMAKE_CONFIGURE_ARGS / SKYRP_SKIP_NATIVE=1' }
+      return { ok: false, error: `cmake configure failed — needs the "${generator}" toolchain (install the VS 2022 Build Tools "Desktop development with C++" workload) and a bootstrapped vcpkg; or set SKYRP_CMAKE_GENERATOR / SKYRP_SKIP_NATIVE=1 (see log)` }
+
     }
   }
   const args = ['--build', buildDir, '--config', 'Release']
@@ -375,30 +387,32 @@ ipcMain.handle('client:setVersion', (_e, version) => {
 ipcMain.handle('client:update', async () => {
   const pm = yarnOrNpm()
   const buildArgs = pm === 'yarn' ? ['build'] : ['run', 'build']
+  const build = pm === 'yarn' ? ['build'] : ['run', 'build']
 
-  // 1. Client plugin (skymp5-client.js)
-  let r = await ensureDeps(config.paths.client, pm, 'client plugin')
-  if (!r.ok) return { ok: false, error: 'client plugin dependency install failed' }
-  r = await runStreaming(pm, buildArgs, config.paths.client, 'client plugin: build')
-  if (!r.ok) return { ok: false, error: 'client plugin build failed' }
-
-  // 2. Front-end UI — the front build reads this config.js for its output path.
   fs.writeFileSync(config.paths.frontConfig,
     "module.exports = {\n  outputPath: '../build/dist/client/Data/Platform/UI',\n};\n")
-  r = await ensureDeps(config.paths.front, pm, 'front-end')
-  if (!r.ok) return { ok: false, error: 'front-end dependency install failed' }
-  r = await runStreaming(pm, buildArgs, config.paths.front, 'front-end: build')
-  if (!r.ok) return { ok: false, error: 'front-end build failed' }
 
-  // 3. Native client DLLs -> build/dist/client.
-  const native = await buildNative(['skyrim-platform'], 'client native')
-  if (!native.ok) return native
+  const steps = [
+    { label: 'client logic (skymp5-client.js)',        dir: config.paths.client,  pm, args: build },
+    { label: 'front-end UI',                            dir: config.paths.front,   pm, args: build },
+    { label: 'native DLLs (SkyrimPlatform/MpClientPlugin/CEF)', native: ['skyrim-platform'] },
+    { label: 'package /dist for redistribution',        dir: config.paths.backend, pm: 'npm', args: ['run', 'build-client'] },
+  ]
 
-  // 4. Package the client files bucket the launcher downloads (zips dist/client).
-  r = await ensureDeps(config.paths.backend, 'npm', 'backend')
-  if (!r.ok) return { ok: false, error: 'backend dependency install failed' }
-  r = await runStreaming('npm', ['run', 'build-client'], config.paths.backend, 'backend: build-client')
-  if (!r.ok) return { ok: false, error: 'build-client failed' }
+  for (const s of steps) {
+    send('build:log', `\n==================== ${s.label} ====================\n`)
+    if (s.native) {
+      const r = await buildNative(s.native, s.label)
+      if (!r.ok) return { ok: false, error: `${s.label}: ${r.error}` }
+      continue
+    }
+    const dep = await ensureDeps(s.dir, s.pm, s.label)
+    if (!dep.ok) return { ok: false, error: `${s.label}: dependency install failed — see log` }
+    const r = await runStreaming(s.pm, s.args, s.dir, `${s.label}: build`)
+    if (!r.ok) return { ok: false, error: `${s.label}: build failed — see log` }
+  }
+
+  send('build:log', '\n✓ Client rebuilt and packaged into build/dist for redistribution.\n')
 
   return { ok: true }
 })

@@ -15,7 +15,7 @@ vcpkg_from_github(
       patches/06-fix-destructor.patch
 )
 
-vcpkg_configure_cmake(SOURCE_PATH ${SOURCE_PATH})
+vcpkg_configure_cmake(SOURCE_PATH ${SOURCE_PATH} PREFER_NINJA)
 
 vcpkg_install_cmake()
 vcpkg_fixup_cmake_targets(CONFIG_PATH "lib/cmake/commonlibsse")
