@@ -384,15 +384,15 @@ ipcMain.handle('client:update', async () => {
   r = await runStreaming(pm, buildArgs, config.paths.front, 'front-end: build')
   if (!r.ok) return { ok: false, error: 'front-end build failed' }
 
-  // 3. Package the client files bucket the launcher downloads.
+  // 3. Native client DLLs -> build/dist/client.
+  const native = await buildNative(['skyrim-platform'], 'client native')
+  if (!native.ok) return native
+
+  // 4. Package the client files bucket the launcher downloads (zips dist/client).
   r = await ensureDeps(config.paths.backend, 'npm', 'backend')
   if (!r.ok) return { ok: false, error: 'backend dependency install failed' }
   r = await runStreaming('npm', ['run', 'build-client'], config.paths.backend, 'backend: build-client')
   if (!r.ok) return { ok: false, error: 'build-client failed' }
-
-  // 4. Native client DLLs (SkyrimPlatform.dll + impl + CEF) -> build/dist/client.
-  const native = await buildNative(['skyrim-platform'], 'client native')
-  if (!native.ok) return native
 
   return { ok: true }
 })
