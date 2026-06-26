@@ -13,8 +13,6 @@ vcpkg_extract_source_archive_ex(
 
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH})
 
-# PREFER_NINJA: vcpkg's bundled CMake can't create a host VS generator it does
-# not recognise (e.g. "Visual Studio 18 2026" from a VS preview); Ninja avoids it.
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
     PREFER_NINJA
