@@ -9,16 +9,25 @@
 //               Identified by a one-time nonce that the gamemode registers
 //               before the browser connects.
 //
+//   console   — the SkyRP Server Manager admin console. Shares RELAY_SECRET;
+//               forwards typed commands to the gamemode and receives the
+//               gamemode's command output to display in the manager's Console.
+//
 // Message protocol (all JSON):
 //
 //   Handshake (first message, unauthenticated):
 //     { type:'auth', role:'gamemode', secret:'...' }   → gamemode auth
+//     { type:'auth', role:'console',  secret:'...' }   → console auth
 //     { type:'auth', nonce:'...' }                     → player auth
 //
 //   Gamemode → relay:
 //     { type:'register_nonce', nonce, userId }         → map nonce to userId
 //     { type:'chat_deliver',   userId, msg }           → push msg to one player
 //     { type:'chat_broadcast', msg }                   → push msg to all players
+//     { type:'console_output', text }                  → push text to all consoles
+//
+//   Console → relay → gamemode:
+//     { type:'console_command', text }                 → run a server command
 //
 //   Player → relay → gamemode:
 //     { type:'chat_send', text }                       → relayed with userId added
@@ -40,10 +49,11 @@ let gamemodeSocket = null
 // userId → WebSocket (one per authenticated player browser)
 const playerSockets = new Map()
 
+// Admin console sockets (the SkyRP Server Manager) — receive console_output.
+const consoleSockets = new Set()
+
 // nonce → userId (registered by gamemode, consumed on player auth)
 const nonceMap = new Map()
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function send(ws, msg) {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -55,8 +65,6 @@ function toGamemode(msg) {
   send(gamemodeSocket, msg)
 }
 
-// ── Server ────────────────────────────────────────────────────────────────────
-
 const wss = new WebSocketServer({ port: WS_PORT })
 
 wss.on('connection', (ws) => {
@@ -67,7 +75,7 @@ wss.on('connection', (ws) => {
     let msg
     try { msg = JSON.parse(raw.toString()) } catch { return }
 
-    // ── Auth handshake (must be first message) ────────────────────────────────
+    // auth handshake
     if (role === null) {
       if (msg.type === 'auth' && msg.role === 'gamemode') {
         if (msg.secret !== RELAY_SECRET) {
@@ -81,12 +89,11 @@ wss.on('connection', (ws) => {
         return
       }
 
-      // Admin console (the SkyRP Server Manager). Shares the gamemode secret;
-      // forwards typed commands to the gamemode. Command output surfaces in the
-      // game-server log, which the manager already tails.
+      // Admin console
       if (msg.type === 'auth' && msg.role === 'console') {
         if (msg.secret !== RELAY_SECRET) { ws.close(4001, 'bad secret'); return }
         role = 'console'
+        consoleSockets.add(ws)
         send(ws, { type: 'auth_ok', role: 'console' })
         console.log('[ws-relay] console authenticated')
         return
@@ -114,7 +121,6 @@ wss.on('connection', (ws) => {
       return
     }
 
-    // ── Gamemode messages ─────────────────────────────────────────────────────
     if (role === 'gamemode') {
       if (msg.type === 'register_nonce') {
         nonceMap.set(msg.nonce, msg.userId)
@@ -135,10 +141,18 @@ wss.on('connection', (ws) => {
         return
       }
 
+      // Command output from the gamemode
+      if (msg.type === 'console_output' && typeof msg.text === 'string') {
+        const payload = JSON.stringify({ type: 'console_output', text: msg.text })
+        for (const sock of consoleSockets) {
+          if (sock.readyState === WebSocket.OPEN) sock.send(payload)
+        }
+        return
+      }
+
       return
     }
 
-    // ── Console messages ──────────────────────────────────────────────────────
     if (role === 'console') {
       if (msg.type === 'console_command' && typeof msg.text === 'string') {
         toGamemode({ type: 'console_command', text: msg.text })
@@ -146,7 +160,6 @@ wss.on('connection', (ws) => {
       return
     }
 
-    // ── Player messages ───────────────────────────────────────────────────────
     if (role === 'player') {
       if (msg.type === 'chat_send' && typeof msg.text === 'string') {
         toGamemode({ type: 'chat_send', userId, text: msg.text })
@@ -159,6 +172,11 @@ wss.on('connection', (ws) => {
     if (role === 'gamemode') {
       if (gamemodeSocket === ws) gamemodeSocket = null
       console.log('[ws-relay] gamemode disconnected')
+      return
+    }
+    if (role === 'console') {
+      consoleSockets.delete(ws)
+      console.log('[ws-relay] console disconnected')
       return
     }
     if (role === 'player') {

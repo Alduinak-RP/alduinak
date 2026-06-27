@@ -3,12 +3,13 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs   = require('fs')
-const { spawn, execFile } = require('child_process')
+const { execFile } = require('child_process')
 const WebSocket = require('ws')
 const config = require('./config')
+const { Builder } = require('./build')
+const schema = require('./settingsSchema')
 
 let win = null
-const isWin = process.platform === 'win32'
 
 function send(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
@@ -16,7 +17,7 @@ function send(channel, ...args) {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1180, height: 760, minWidth: 900, minHeight: 560,
+    width: 1200, height: 780, minWidth: 980, minHeight: 600,
     backgroundColor: '#14110d',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -31,233 +32,95 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow()
   startLogTail()
+  consoleRelay.connect()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+	
+const serviceByKey = Object.fromEntries(config.services.map(s => [s.key, s]))
 
-// ── Process helpers ───────────────────────────────────────────────────────────
-
-// Run a command, streaming combined stdout/stderr to the renderer's build log.
-function runStreaming(cmd, args, cwd, label, env, shell = isWin) {
+// nssm <verb> <service ...args> — returns trimmed stdout (status / message).
+// nssm prints UTF-16LE; read as utf8 it interleaves NUL bytes — strip them.
+function nssm(verb, name, ...rest) {
   return new Promise(resolve => {
-    send('build:log', `\n$ ${label || cmd + ' ' + args.join(' ')}\n`)
-    let child
-    try {
-      child = spawn(cmd, args, { cwd, shell, windowsHide: true, env: { ...process.env, ...(env || {}) } })
-    } catch (err) {
-      send('build:log', `[spawn failed] ${err.message}\n`)
-      return resolve({ ok: false, code: -1 })
-    }
-    child.stdout.on('data', d => send('build:log', d.toString()))
-    child.stderr.on('data', d => send('build:log', d.toString()))
-    child.on('error', err => { send('build:log', `[error] ${err.message}\n`); resolve({ ok: false, code: -1 }) })
-    child.on('close', code => {
-      send('build:log', `\n[exit ${code}]\n`)
-      resolve({ ok: code === 0, code })
-    })
-  })
-}
-
-// nssm <verb> <service> — returns trimmed stdout (status string or message).
-function nssm(verb, service) {
-  return new Promise(resolve => {
-    execFile(config.nssm, [verb, service], { windowsHide: true, timeout: 30000 }, (err, stdout, stderr) => {
-      // nssm prints UTF-16LE; read as utf8 it interleaves NUL bytes — strip them.
+    execFile(config.nssm, [verb, name, ...rest], { windowsHide: true, timeout: 30000 }, (err, stdout, stderr) => {
       const clean = String(stdout || stderr || (err && err.message) || '').replace(/\u0000/g, '').trim()
       resolve(clean)
     })
   })
 }
 
-const yarnOrNpm = () => {
-  // build scripts prefer yarn when present, else npm with legacy peer deps.
-  try { require('child_process').execSync(isWin ? 'where yarn' : 'which yarn', { stdio: 'ignore' }); return 'yarn' }
-  catch { return 'npm' }
-}
-
-// Install a project's dependencies if they're missing (mirrors the build bats'
-// first-run behaviour), so the manager can build a freshly-cloned checkout.
-async function ensureDeps(dir, pm, label) {
-  if (fs.existsSync(path.join(dir, 'node_modules'))) return { ok: true }
-  const args = pm === 'yarn' ? ['install', '--frozen-lockfile'] : ['install', '--legacy-peer-deps']
-  return runStreaming(pm, args, dir, `${label}: install dependencies`)
-}
-
-let _cmakePath
-function resolveCmake() {
-  if (_cmakePath) return _cmakePath
-  const cp = require('child_process')
-  const ok = p => { try { return p && fs.existsSync(p) ? p : null } catch { return null } }
-  let found = ok(process.env.SKYRP_CMAKE)
-  if (!found) {
-    try {
-      const out = cp.execSync(isWin ? 'where cmake' : 'which cmake', { encoding: 'utf8' })
-      found = ok(out.split(/\r?\n/)[0].trim())
-    } catch {}
-  }
-  if (!found && isWin) {
-    const cands = ['C:\\Program Files\\CMake\\bin\\cmake.exe', 'C:\\Program Files (x86)\\CMake\\bin\\cmake.exe']
-    try {
-      const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'
-      if (fs.existsSync(vswhere)) {
-        const vs = cp.execSync(`"${vswhere}" -latest -products * -property installationPath`, { encoding: 'utf8' }).trim()
-        if (vs) cands.push(path.join(vs, 'Common7', 'IDE', 'CommonExtensions', 'Microsoft', 'CMake', 'CMake', 'bin', 'cmake.exe'))
-      }
-    } catch {}
-    for (const c of cands) { if (ok(c)) { found = c; break } }
-  }
-  if (found) _cmakePath = found
-  return found
-}
-
-// Compiler, requires VS 2022
-async function buildNative(targets, label) {
-  if (process.env.SKYRP_SKIP_NATIVE === '1') {
-    send('build:log', `\n[${label}] SKYRP_SKIP_NATIVE=1 — skipping native build.\n`)
-    return { ok: true, skipped: true }
-  }
-  const cmake = resolveCmake()
-  if (!cmake) {
-    send('build:log', `\n[${label}] cmake not found. Install CMake (or Visual Studio / Build Tools with the "C++ CMake tools" component), or set SKYRP_CMAKE to the full path of cmake.exe.\n`)
-    return { ok: false, error: 'cmake not found — install it or set SKYRP_CMAKE (see log)' }
-  }
-  send('build:log', `\n[${label}] cmake: ${cmake}\n`)
-  const buildDir = config.buildDir
-  const generator = process.env.SKYRP_CMAKE_GENERATOR || 'Visual Studio 17 2022'
-
-  // Reset just the CMake cache, not /dist
-  try {
-    const cache = path.join(buildDir, 'CMakeCache.txt')
-    if (fs.existsSync(cache)) {
-      const m = fs.readFileSync(cache, 'utf8').match(/^CMAKE_GENERATOR:INTERNAL=(.*)$/m)
-      if (m && m[1].trim() !== generator) {
-        send('build:log', `\n[${label}] build dir was generated with "${m[1].trim()}"; resetting CMake cache for "${generator}".\n`)
-        fs.rmSync(cache, { force: true })
-        fs.rmSync(path.join(buildDir, 'CMakeFiles'), { recursive: true, force: true })
-      }
-    }
-  } catch {}
-
-  // Configure unless the build system is fully GENERATED.
-  let generated = false
-  try {
-    generated = fs.existsSync(path.join(buildDir, 'build.ninja')) ||
-      (fs.existsSync(buildDir) && fs.readdirSync(buildDir).some(f => f.toLowerCase().endsWith('.sln')))
-  } catch {}
-  if (!generated) {
-    const extra = (process.env.SKYRP_CMAKE_CONFIGURE_ARGS || '').trim()
-    const cfgArgs = [
-      '-B', buildDir,
-      '-G', generator,
-      ...(/visual studio/i.test(generator) ? ['-A', 'x64'] : []),
-      '-DSWEETPIE=OFF',
-      `-DSKYRIM_DIR=${config.gameRoot}`,
-      '-DBUILD_FRONT=OFF',
-      '-DDOWNLOAD_SKYRIM_DATA=OFF',
-      '-DPREPARE_NEXUS_ARCHIVES=OFF',
-      ...(extra ? extra.split(' ').filter(Boolean) : []),
-    ]
-    const cfg = await runStreaming(cmake, cfgArgs, config.repoRoot, `${label}: cmake configure`, undefined, false)
-    if (!cfg.ok) {
-      return { ok: false, error: `cmake configure failed — needs the "${generator}" toolchain (install the VS 2022 Build Tools "Desktop development with C++" workload) and a bootstrapped vcpkg; or set SKYRP_CMAKE_GENERATOR / SKYRP_SKIP_NATIVE=1 (see log)` }
-
-    }
-  }
-  const args = ['--build', buildDir, '--config', 'Release']
-  for (const t of targets) args.push('--target', t)
-  const r = await runStreaming(cmake, args, config.repoRoot, `${label}: cmake build (${targets.join(', ')})`, undefined, false)
-  return r.ok ? { ok: true } : { ok: false, error: `native build failed (${targets.join(', ')}) — see log` }
-}
-
-// ── Services (Console tab) ──────────────────────────────────────────────────────
-
-ipcMain.handle('services:status', async () => {
+async function statusAll() {
   const out = {}
-  for (const s of config.services) out[s] = await nssm('status', s)
+  for (const s of config.services) out[s.key] = await nssm('status', s.name)
   return out
+}
+
+ipcMain.handle('services:status', () => statusAll())
+
+// Act on a single service (the per-service dropdowns).
+ipcMain.handle('service:action', async (_e, key, action) => {
+  const svc = serviceByKey[key]
+  if (!svc) return { ok: false, error: `unknown service ${key}` }
+  const steps = []
+  const stop  = async () => steps.push(`${svc.label}: ${await nssm('stop', svc.name)}`)
+  const start = async () => steps.push(`${svc.label}: ${await nssm('start', svc.name)}`)
+  if (action === 'stop') await stop()
+  else if (action === 'start') await start()
+  else if (action === 'restart') { await stop(); await new Promise(r => setTimeout(r, 1500)); await start() }
+  else return { ok: false, error: `unknown action ${action}` }
+  return { ok: true, steps, status: await statusAll() }
 })
 
+// Act on every service in order (stop order reversed) — the "all" controls.
 ipcMain.handle('services:action', async (_e, action) => {
   const steps = []
-  const doStop  = async () => { for (const s of [...config.services].reverse()) steps.push(`${s}: ${await nssm('stop', s)}`) }
-  const doStart = async () => { for (const s of config.services)               steps.push(`${s}: ${await nssm('start', s)}`) }
-
+  const doStop  = async () => { for (const s of [...config.services].reverse()) steps.push(`${s.label}: ${await nssm('stop', s.name)}`) }
+  const doStart = async () => { for (const s of config.services)                steps.push(`${s.label}: ${await nssm('start', s.name)}`) }
   if (action === 'stop') await doStop()
   else if (action === 'start') await doStart()
   else if (action === 'restart') { await doStop(); await new Promise(r => setTimeout(r, 2000)); await doStart() }
   else return { ok: false, error: `unknown action ${action}` }
-
-  const status = {}
-  for (const s of config.services) status[s] = await nssm('status', s)
-  return { ok: true, steps, status }
+  return { ok: true, steps, status: await statusAll() }
 })
-
-// Rebuild the game server: the TS bundle (dist_back/skymp5-server.js) and the
-// native addon (scam_native.node), both into build/dist/server. Does NOT restart
-// the service — start/stop is the Console tab's job.
-ipcMain.handle('server:rebuild', async () => {
-  const dir = config.paths.server
-  const dep = await ensureDeps(dir, 'npm', 'game server')
-  if (!dep.ok) return { ok: false, error: 'dependency install failed' }
-
-  // TS bundle — safe to overwrite even while the server runs (read at startup).
-  const r = await runStreaming('npm', ['run', 'build-ts'], dir, 'game server: build-ts')
-  if (!r.ok) return { ok: false, error: 'build-ts failed — see log (TypeScript errors stop the build)' }
-
-  // Native addon (scam_native.node) -> build/dist/server. The file is locked
-  // while SkyrpGameServer runs, so only (re)build it when the service is stopped.
-  const status = await nssm('status', 'SkyrpGameServer')
-  if (/SERVICE_RUNNING/i.test(status)) {
-    send('build:log', '\n[server native] SkyrpGameServer is running — skipped scam_native.node (file is locked). Stop it from the Console tab, then rebuild to update the native addon.\n')
-  } else {
-    const n = await buildNative(['skymp5-server'], 'server native')
-    if (!n.ok) return n
-  }
-  return { ok: true }
-})
-
-// ── Settings tab: edit server-settings.json and the backend .env ────────────────
-
-const CONFIG_FILES = { serverSettings: config.paths.serverSettings, backendEnv: config.paths.backendEnv }
-
-ipcMain.handle('config:read', (_e, key) => {
-  const file = CONFIG_FILES[key]
-  if (!file) return { ok: false, error: 'unknown config' }
-  try { return { ok: true, path: file, content: fs.readFileSync(file, 'utf8') } }
-  catch (err) { return { ok: false, path: file, error: err.message } }
-})
-
-ipcMain.handle('config:write', (_e, key, content) => {
-  const file = CONFIG_FILES[key]
-  if (!file) return { ok: false, error: 'unknown config' }
-  // Don't let a typo brick the game server — validate JSON before saving it.
-  if (key === 'serverSettings') {
-    try { JSON.parse(content) } catch (err) { return { ok: false, error: `Invalid JSON: ${err.message}` } }
-  }
-  try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, content); return { ok: true, path: file } }
-  catch (err) { return { ok: false, error: err.message } }
-})
-
-// ── Log tailing (Console tab) ───────────────────────────────────────────────────
-// Follow nssm's per-service log files, emitting only newly-appended bytes.
 
 const tailState = {}   // file -> last byte offset
+let logTargets = []    // [{ file, label }]
 
-function logFiles() {
-  return ['gameserver.log', 'gameserver-err.log', 'backend.log', 'backend-err.log']
-    .map(n => path.join(config.logDir, n))
+function parseNssmPath(s) {
+  const p = String(s || '').replace(/\u0000/g, '').trim().replace(/^"|"$/g, '')
+  return p && !/^reset|^\(|unknown|service/i.test(p) ? p : ''
+}
+
+async function discoverLogTargets() {
+  const targets = []
+  const seen = new Set()
+  const add = (file, label) => {
+    if (file && !seen.has(file)) { seen.add(file); targets.push({ file, label }) }
+  }
+  for (const s of config.services) {
+    for (const stream of ['AppStdout', 'AppStderr']) {
+      const p = parseNssmPath(await nssm('get', s.name, stream))
+      add(p, `${s.label}${stream === 'AppStderr' ? ' (err)' : ''}`)
+    }
+  }
+  // Fallbacks
+  const fallbacks = [
+    ['gameserver.log', 'Game'], ['gameserver-err.log', 'Game (err)'],
+    ['backend.log', 'Backend'], ['backend-err.log', 'Backend (err)'],
+  ]
+  for (const [name, label] of fallbacks) add(path.join(config.logDir, name), label)
+  for (const f of ['error.log', 'access.log']) add(path.join('C:\\nginx', 'logs', f), `Nginx (${f.replace('.log', '')})`)
+  // Keep only the files that actually exist right now (re-checked on each refresh).
+  logTargets = targets.filter(t => { try { return fs.statSync(t.file).isFile() } catch { return false } })
 }
 
 function pollLogs() {
-  for (const file of logFiles()) {
+  for (const { file, label } of logTargets) {
     let stat
     try { stat = fs.statSync(file) } catch { continue }
-    const prev = tailState[file]
-    if (prev === undefined) {
-      // First sight: seed from the tail so we don't dump the whole history.
-      tailState[file] = Math.max(0, stat.size - 8192)
-    }
-    if (stat.size < tailState[file]) tailState[file] = 0   // rotated/truncated
+    if (tailState[file] === undefined) tailState[file] = Math.max(0, stat.size - 8192) // seed from tail
+    if (stat.size < tailState[file]) tailState[file] = 0                                // rotated/truncated
     if (stat.size > tailState[file]) {
       try {
         const fd = fs.openSync(file, 'r')
@@ -266,37 +129,59 @@ function pollLogs() {
         fs.readSync(fd, buf, 0, len, tailState[file])
         fs.closeSync(fd)
         tailState[file] = stat.size
-        send('log:data', { file: path.basename(file), text: buf.toString('utf8') })
+        send('log:data', { source: label, text: buf.toString('utf8') })
       } catch { /* mid-write race — retry next tick */ }
     }
   }
 }
 
-function startLogTail() { setInterval(pollLogs, 1500) }
+function startLogTail() {
+  discoverLogTargets()
+  setInterval(pollLogs, 1500)
+  setInterval(discoverLogTargets, 30000)   // services may be re-installed/reconfigured
+}
 
 ipcMain.handle('log:dir', () => config.logDir)
+ipcMain.handle('log:targets', () => logTargets.map(t => ({ label: t.label, file: t.file })))
 
-// ── Console command over the WS relay ───────────────────────────────────────────
+const consoleRelay = {
+  ws: null, connected: false, timer: null,
+  connect() {
+    if (this.ws) return
+    let ws
+    try { ws = new WebSocket(`ws://127.0.0.1:${config.relay.port}`) }
+    catch { return this.scheduleReconnect() }
+    this.ws = ws
+    ws.on('open', () => ws.send(JSON.stringify({ type: 'auth', role: 'console', secret: config.relay.secret })))
+    ws.on('message', raw => {
+      let m; try { m = JSON.parse(raw.toString()) } catch { return }
+      if (m.type === 'auth_ok') { this.connected = true; send('console:relay', { kind: 'status', text: 'connected to relay' }); return }
+      if (m.type === 'console_output' || m.type === 'console_log') {
+        send('console:relay', { kind: 'output', text: String(m.text ?? '') })
+      }
+    })
+    ws.on('close', () => { this.connected = false; this.ws = null; this.scheduleReconnect() })
+    ws.on('error', () => { /* 'close' handles the retry */ })
+  },
+  scheduleReconnect() { if (this.timer) return; this.timer = setTimeout(() => { this.timer = null; this.connect() }, 4000) },
+  command(text) {
+    if (!this.connected || !this.ws) return { ok: false, error: 'relay not connected — is the backend running?' }
+    try { this.ws.send(JSON.stringify({ type: 'console_command', text })); return { ok: true } }
+    catch (err) { return { ok: false, error: err.message } }
+  },
+}
 
-ipcMain.handle('console:command', async (_e, text) => {
+ipcMain.handle('console:command', (_e, text) => {
   const cmd = String(text || '').trim()
   if (!cmd) return { ok: false, error: 'empty command' }
-  return new Promise(resolve => {
-    let settled = false
-    const finish = r => { if (!settled) { settled = true; try { ws.close() } catch {} resolve(r) } }
-    const ws = new WebSocket(`ws://127.0.0.1:${config.relay.port}`)
-    const timer = setTimeout(() => finish({ ok: false, error: 'relay timeout — is the backend running?' }), 5000)
-    ws.on('open', () => {
-      ws.send(JSON.stringify({ type: 'auth', role: 'console', secret: config.relay.secret }))
-      ws.send(JSON.stringify({ type: 'console_command', text: cmd }))
-      clearTimeout(timer)
-      finish({ ok: true })
-    })
-    ws.on('error', err => { clearTimeout(timer); finish({ ok: false, error: err.message }) })
-  })
+  return consoleRelay.command(cmd)
 })
 
-// ── Version file editing helpers ────────────────────────────────────────────────
+function builder() { return new Builder(t => send('build:log', t)) }
+
+ipcMain.handle('build:server',   () => builder().buildServer())
+ipcMain.handle('build:launcher', () => builder().buildLauncher())
+ipcMain.handle('build:client',   () => builder().buildClient())
 
 function setJsonVersion(file, version) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -312,112 +197,233 @@ function setRouteVersion(file, version) {
   fs.writeFileSync(file, next)
 }
 
-// Upsert KEY=value in a .env file, creating the key if missing.
+// Upsert KEY=value in a .env file, creating the key if missing, preserving the rest.
 function setEnvVar(file, key, value) {
   let txt = ''
   try { txt = fs.readFileSync(file, 'utf8') } catch {}
   const line = `${key}=${value}`
-  const re = new RegExp(`^\\s*${key}\\s*=.*$`, 'm')
+  const re = new RegExp(`^[ \\t]*${key}[ \\t]*=.*$`, 'm')
   if (re.test(txt)) txt = txt.replace(re, line)
   else txt = txt.replace(/\s*$/, '') + `\n${line}\n`
   fs.writeFileSync(file, txt)
 }
 
-// ── Launcher tab ────────────────────────────────────────────────────────────────
-
 ipcMain.handle('launcher:getVersion', () => {
-  try { return { version: require(config.paths.launcherPkg).version } }
+  try { return { version: JSON.parse(fs.readFileSync(config.paths.launcherPkg, 'utf8')).version } }
   catch (err) { return { version: '', error: err.message } }
 })
-
 ipcMain.handle('launcher:setVersion', (_e, version) => {
   version = String(version || '').trim()
   if (!/^\d+\.\d+\.\d+/.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
   try {
-    setJsonVersion(config.paths.launcherPkg, version)       // actual build version
-    setRouteVersion(config.paths.versionRoute, version)     // version the backend reports
+    setJsonVersion(config.paths.launcherPkg, version)
+    setRouteVersion(config.paths.versionRoute, version)
     return { ok: true }
   } catch (err) { return { ok: false, error: err.message } }
 })
 
-ipcMain.handle('launcher:rebuild', async () => {
-  const dir = config.paths.launcher
-  // Wipe the previous output so stale installers never linger.
-  try { fs.rmSync(config.paths.launcherOut, { recursive: true, force: true }) } catch {}
-
-  const install = await runStreaming('npm', ['install'], dir, 'launcher: npm install')
-  if (!install.ok) return { ok: false, error: 'npm install failed' }
-
-  // CSC_IDENTITY_AUTO_DISCOVERY=false stops an expired code-signing cert in the
-  // Windows store from aborting the build. artifactName forces the output name.
-  const build = await runStreaming(
-    'npx',
-    ['electron-builder', '--win', '-c.nsis.artifactName=' + config.launcherArtifact],
-    dir, 'launcher: electron-builder --win',
-    { CSC_IDENTITY_AUTO_DISCOVERY: 'false' })
-  if (!build.ok) return { ok: false, error: 'electron-builder failed' }
-
-  // Fallback rename in case the artifactName override is ignored by an older builder.
-  try {
-    const exe = fs.readdirSync(config.paths.launcherOut).find(f => f.toLowerCase().endsWith('.exe'))
-    if (exe && exe !== config.launcherArtifact) {
-      fs.renameSync(path.join(config.paths.launcherOut, exe), path.join(config.paths.launcherOut, config.launcherArtifact))
-    }
-  } catch {}
-  return { ok: true, out: config.paths.launcherOut }
-})
-
-// ── Client tab ──────────────────────────────────────────────────────────────────
-
 ipcMain.handle('client:getVersion', () => {
-  try { return { version: require(config.paths.clientPkg).version } }
+  try { return { version: JSON.parse(fs.readFileSync(config.paths.clientPkg, 'utf8')).version } }
   catch (err) { return { version: '', error: err.message } }
 })
-
 ipcMain.handle('client:setVersion', (_e, version) => {
   version = String(version || '').trim()
   if (!/^\d+\.\d+\.\d+/.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
   try {
-    setJsonVersion(config.paths.clientPkg, version)               // client package.json
-    setEnvVar(config.paths.backendEnv, 'CLIENT_VERSION', version) // backend .env -> files-version.json
+    setJsonVersion(config.paths.clientPkg, version)
+    setEnvVar(config.paths.backendEnv, 'CLIENT_VERSION', version)
     return { ok: true }
   } catch (err) { return { ok: false, error: err.message } }
 })
 
-ipcMain.handle('client:update', async () => {
-  const pm = yarnOrNpm()
-  const buildArgs = pm === 'yarn' ? ['build'] : ['run', 'build']
-  const build = pm === 'yarn' ? ['build'] : ['run', 'build']
+function backendModule(name) {
+  return require(path.join(config.paths.backend, 'sources', name))
+}
 
-  fs.writeFileSync(config.paths.frontConfig,
-    "module.exports = {\n  outputPath: '../build/dist/client/Data/Platform/UI',\n};\n")
-
-  const steps = [
-    { label: 'client logic (skymp5-client.js)',        dir: config.paths.client,  pm, args: build },
-    { label: 'front-end UI',                            dir: config.paths.front,   pm, args: build },
-    { label: 'native DLLs (SkyrimPlatform/MpClientPlugin/CEF)', native: ['skyrim-platform'] },
-    { label: 'package /dist for redistribution',        dir: config.paths.backend, pm: 'npm', args: ['run', 'build-client'] },
-  ]
-
-  for (const s of steps) {
-    send('build:log', `\n==================== ${s.label} ====================\n`)
-    if (s.native) {
-      const r = await buildNative(s.native, s.label)
-      if (!r.ok) return { ok: false, error: `${s.label}: ${r.error}` }
-      continue
+// Read the game server's character store (changeForms) and group by profileId
+let _charCache = { at: 0, map: new Map() }
+function readCharactersByProfile() {
+  if (Date.now() - _charCache.at < 3000) return _charCache.map
+  const map = new Map()
+  try {
+    let settings = {}
+    try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
+    const driver = settings.databaseDriver || 'file'
+    if (driver === 'file') {
+      const dbName = settings.databaseName || 'world'
+      const dbDir = path.isAbsolute(dbName) ? dbName : path.join(config.paths.serverDir, dbName)
+      const changeForms = path.join(dbDir, 'changeForms')
+      for (const entry of (fs.existsSync(changeForms) ? fs.readdirSync(changeForms) : [])) {
+        if (!entry.endsWith('.json')) continue
+        let cf
+        try { cf = JSON.parse(fs.readFileSync(path.join(changeForms, entry), 'utf8')) } catch { continue }
+        if (cf.recType !== 1) continue                 // 1 = ACHR (a character)
+        const pid = Number(cf.profileId)
+        if (!Number.isFinite(pid) || pid < 0) continue
+        const list = map.get(pid) || []
+        list.push({
+          name: cf.displayName || cf.formDesc || entry.replace(/\.json$/, ''),
+          formDesc: cf.formDesc,
+          baseDesc: cf.baseDesc,
+          disabled: !!cf.isDisabled,
+          worldOrCell: cf.worldOrCellDesc,
+        })
+        map.set(pid, list)
+      }
     }
-    const dep = await ensureDeps(s.dir, s.pm, s.label)
-    if (!dep.ok) return { ok: false, error: `${s.label}: dependency install failed — see log` }
-    const r = await runStreaming(s.pm, s.args, s.dir, `${s.label}: build`)
-    if (!r.ok) return { ok: false, error: `${s.label}: build failed — see log` }
-  }
+  } catch { /* best-effort */ }
+  _charCache = { at: Date.now(), map }
+  return map
+}
 
-  send('build:log', '\n✓ Client rebuilt and packaged into build/dist for redistribution.\n')
+function whitelistSet() {
+  try {
+    const wl = JSON.parse(fs.readFileSync(path.join(config.paths.dataDir, 'whitelist.json'), 'utf8'))
+    return new Set((Array.isArray(wl) ? wl : []).map(String))
+  } catch { return new Set() }
+}
 
-  return { ok: true }
+ipcMain.handle('players:list', () => {
+  try {
+    const players = backendModule('players').list()
+    const wl = whitelistSet()
+    const chars = readCharactersByProfile()
+    return {
+      ok: true,
+      players: players.map(p => ({
+        discordId: p.discordId,
+        profileId: p.profileId,
+        name: p.displayName || p.username || `Player ${p.profileId}`,
+        whitelisted: wl.has(String(p.discordId)),
+        characters: (chars.get(Number(p.profileId)) || []).map(c => c.name),
+      })),
+    }
+  } catch (err) { return { ok: false, error: err.message } }
 })
 
-// ── Modlist tab ─────────────────────────────────────────────────────────────────
+ipcMain.handle('players:detail', (_e, discordId) => {
+  try {
+    const players = backendModule('players').list()
+    const p = players.find(x => String(x.discordId) === String(discordId))
+    if (!p) return { ok: false, error: 'player not found' }
+    const wl = whitelistSet()
+    return {
+      ok: true,
+      player: {
+        discordId: p.discordId, profileId: p.profileId,
+        username: p.username || '', displayName: p.displayName || '',
+        avatar: p.avatar || null, notes: p.notes || '',
+        createdAt: p.createdAt || null, updatedAt: p.updatedAt || null, lastSeenAt: p.lastSeenAt || null,
+        whitelisted: wl.has(String(p.discordId)),
+      },
+      factions: p.assignments || [],
+      permissions: p.factionPermissions || [],
+      gameFactions: p.gameFactions || [],
+      characters: readCharactersByProfile().get(Number(p.profileId)) || [],
+    }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+// Persist edits to a player's username / displayName / notes.
+ipcMain.handle('players:update', (_e, profileId, patch) => {
+  try {
+    const clean = {}
+    for (const k of ['username', 'displayName', 'notes']) {
+      if (patch && patch[k] !== undefined) clean[k] = String(patch[k] ?? '')
+    }
+    const updated = backendModule('players').updateByProfileId(Number(profileId), clean)
+    return { ok: true, player: updated }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+// ── Settings tab (structured forms) ────────────────────────────────────────────
+
+ipcMain.handle('settings:schema', () => schema)
+
+// Parse a .env-style file into { values, order } preserving unknown lines on write.
+function readEnvValues(file) {
+  const values = {}
+  let txt = ''
+  try { txt = fs.readFileSync(file, 'utf8') } catch {}
+  for (const line of txt.split(/\r?\n/)) {
+    const m = line.match(/^[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*=(.*)$/)
+    if (m && !line.trimStart().startsWith('#')) values[m[1]] = m[2].trim()
+  }
+  return values
+}
+
+ipcMain.handle('settings:read', (_e, key) => {
+  if (key === 'serverSettings') {
+    const file = config.paths.serverSettings
+    let values = {}
+    try { values = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (err) {
+      if (fs.existsSync(file)) return { ok: false, path: file, error: `Invalid JSON: ${err.message}` }
+    }
+    const known = new Set(schema.serverSettings.map(f => f.key))
+    const extra = {}
+    for (const k of Object.keys(values)) if (!known.has(k)) extra[k] = values[k]
+    return { ok: true, path: file, values, extra }
+  }
+  if (key === 'backendEnv') {
+    const file = config.paths.backendEnv
+    const exists = fs.existsSync(file)
+    const source = exists ? file : config.paths.backendEnvExample
+    return { ok: true, path: file, values: readEnvValues(source), seeded: !exists }
+  }
+  return { ok: false, error: 'unknown config' }
+})
+
+ipcMain.handle('settings:write', (_e, key, values, extraRaw) => {
+  try {
+    if (key === 'serverSettings') {
+      const file = config.paths.serverSettings
+      let current = {}
+      try { current = JSON.parse(fs.readFileSync(file, 'utf8')) } catch {}
+      for (const field of schema.serverSettings) {
+        const v = values[field.key]
+        if (v === undefined) continue
+        if (field.type === 'number') {
+          if (v === '' || v === null) delete current[field.key]; else current[field.key] = Number(v)
+        } else if (field.type === 'bool') {
+          current[field.key] = !!v
+        } else if (field.type === 'json') {
+          if (v === '' || v === null) { delete current[field.key]; continue }
+          try { current[field.key] = JSON.parse(v) } catch (e) { throw new Error(`${field.label}: invalid JSON (${e.message})`) }
+        } else {
+          if (v === '' || v === null) delete current[field.key]; else current[field.key] = String(v)
+        }
+      }
+      // Merge the "other / advanced" raw-JSON bucket of unknown keys.
+      if (extraRaw && String(extraRaw).trim()) {
+        let extra
+        try { extra = JSON.parse(extraRaw) } catch (e) { throw new Error(`Advanced JSON: ${e.message}`) }
+        const known = new Set(schema.serverSettings.map(f => f.key))
+        for (const k of Object.keys(current)) if (!known.has(k)) delete current[k] // replace the bucket wholesale
+        Object.assign(current, extra)
+      }
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, JSON.stringify(current, null, 2) + '\n')
+      return { ok: true, path: file }
+    }
+    if (key === 'backendEnv') {
+      const file = config.paths.backendEnv
+      // Seed from the example on first save so comments/structure are preserved.
+      if (!fs.existsSync(file) && fs.existsSync(config.paths.backendEnvExample)) {
+        fs.copyFileSync(config.paths.backendEnvExample, file)
+      }
+      for (const field of schema.backendEnv) {
+        if (values[field.key] === undefined) continue
+        let v = values[field.key]
+        if (field.type === 'bool') v = v ? 'true' : 'false'
+        setEnvVar(file, field.key, String(v ?? ''))
+      }
+      return { ok: true, path: file }
+    }
+    return { ok: false, error: 'unknown config' }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+// ── Modlist tab (unchanged) ────────────────────────────────────────────────────
 
 ipcMain.handle('modlist:read', () => {
   const profileDir = path.join(config.mo2Root, 'profiles', config.profile)
@@ -444,54 +450,11 @@ ipcMain.handle('modlist:read', () => {
 })
 
 ipcMain.handle('modlist:updateManifest', async () => {
-  const dep = await ensureDeps(config.paths.backend, 'npm', 'backend')   // compile-manifest needs 7zip-bin
+  const b = builder()
+  const dep = await b.ensureDeps(config.paths.backend, 'backend', 'npm')   // compile-manifest needs 7zip-bin
   if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
   const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile]
   if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
-  const r = await runStreaming('node', args, config.paths.backend, 'compile-manifest')
+  const r = await b.run('node', args, config.paths.backend, 'compile-manifest')
   return r.ok ? { ok: true } : { ok: false, error: 'compile-manifest failed' }
-})
-
-// ── Players (Client tab list + popup) ───────────────────────────────────────────
-// Read the backend's source modules directly so the data matches the live API.
-
-function backendModule(name) {
-  return require(path.join(config.paths.backend, 'sources', name))
-}
-
-ipcMain.handle('players:list', () => {
-  try {
-    const players = backendModule('players.js').list()
-    let whitelist = []
-    try { whitelist = JSON.parse(fs.readFileSync(path.join(config.paths.dataDir, 'whitelist.json'), 'utf8')) } catch {}
-    const wl = new Set((Array.isArray(whitelist) ? whitelist : []).map(String))
-    return {
-      ok: true,
-      players: players.map(p => ({
-        discordId: p.discordId, profileId: p.profileId,
-        name: p.displayName || p.username || `Player ${p.profileId}`,
-        whitelisted: wl.has(String(p.discordId)),
-      })),
-    }
-  } catch (err) { return { ok: false, error: err.message } }
-})
-
-ipcMain.handle('players:detail', (_e, discordId) => {
-  try {
-    const players = backendModule('players.js').list()
-    const p = players.find(x => String(x.discordId) === String(discordId))
-    if (!p) return { ok: false, error: 'player not found' }
-    return {
-      ok: true,
-      discord: {
-        discordId: p.discordId, username: p.username, displayName: p.displayName,
-        avatar: p.avatar, profileId: p.profileId, notes: p.notes,
-        createdAt: p.createdAt, lastSeenAt: p.lastSeenAt,
-      },
-      factions: p.assignments || [],
-      permissions: p.factionPermissions || [],
-      // Characters live in the game-server save store (C++); not available here yet.
-      characters: [],
-    }
-  } catch (err) { return { ok: false, error: err.message } }
 })

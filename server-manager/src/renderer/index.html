@@ -9,22 +9,15 @@
 <body>
   <nav id="tabs">
     <button class="tab active" data-tab="console">Console</button>
-    <button class="tab" data-tab="server">Server</button>
-    <button class="tab" data-tab="launcher">Launcher</button>
+    <button class="tab" data-tab="players">Players</button>
+    <button class="tab" data-tab="build">Build</button>
     <button class="tab" data-tab="modlist">Modlist</button>
-    <button class="tab" data-tab="client">Client</button>
     <button class="tab" data-tab="settings">Settings</button>
   </nav>
 
   <main>
-    <!-- Console -->
     <section id="console" class="panel active">
-      <div class="row">
-        <button id="btn-start" class="action go">Start</button>
-        <button id="btn-stop" class="action stop">Stop</button>
-        <button id="btn-restart" class="action">Restart</button>
-        <span id="svc-status" class="status"></span>
-      </div>
+      <div id="services" class="services"></div>
       <pre id="log" class="log"></pre>
       <form id="cmd-form" class="row">
         <input id="cmd" type="text" placeholder="Type a server command and press Enter…" autocomplete="off" />
@@ -32,24 +25,55 @@
       </form>
     </section>
 
-    <!-- Launcher -->
-    <section id="launcher" class="panel">
-      <div class="field">
-        <label>Launcher version</label>
-        <div class="row">
-          <input id="launcher-version" type="text" placeholder="1.0.0" />
-          <button id="launcher-save" class="action">Save version</button>
+    <section id="players" class="panel">
+      <div class="row">
+        <input id="player-search" type="text" placeholder="Search name, Discord ID, or character…" autocomplete="off" />
+        <button id="players-refresh" class="action">Refresh</button>
+        <span id="players-count" class="status"></span>
+      </div>
+      <div class="split">
+        <ul id="players-list" class="players"></ul>
+        <div id="player-detail" class="detail">
+          <p class="muted">Select a player to view and edit their details.</p>
         </div>
-        <small>Updates the launcher package.json and the backend's reported version (version.js).</small>
       </div>
-      <div class="field">
-        <button id="launcher-rebuild" class="action go">Rebuild launcher</button>
-        <small>Clears build/launcher, rebuilds, and names the installer SkyrimRoleplayLauncher.exe.</small>
-      </div>
-      <pre id="launcher-log" class="log small"></pre>
     </section>
 
-    <!-- Modlist -->
+    <section id="build" class="panel">
+      <div class="build-cols">
+        <div class="build-col">
+          <h3>Game Server</h3>
+          <small>TS bundle + native <code>scam_native.node</code> → build/dist/server. Stop the service first to rebuild the native addon (file lock).</small>
+          <button id="build-server" class="action go">Build server</button>
+        </div>
+        <div class="build-col">
+          <h3>Launcher</h3>
+          <div class="field">
+            <label>Version</label>
+            <div class="row">
+              <input id="launcher-version" type="text" placeholder="1.0.0" />
+              <button id="launcher-save" class="action small">Save</button>
+            </div>
+          </div>
+          <small>Builds the installer (<code>SkyrimRoleplayLauncher.exe</code>) → build/launcher.</small>
+          <button id="build-launcher" class="action go">Build launcher</button>
+        </div>
+        <div class="build-col">
+          <h3>Client</h3>
+          <div class="field">
+            <label>Version</label>
+            <div class="row">
+              <input id="client-version" type="text" placeholder="1.0.0" />
+              <button id="client-save" class="action small">Save</button>
+            </div>
+          </div>
+          <small>Client logic + UI + native DLLs (SkyrimPlatform / MpClientPlugin / CEF) → build/dist/client.</small>
+          <button id="build-client" class="action go">Build client</button>
+        </div>
+      </div>
+      <pre id="build-log" class="log"></pre>
+    </section>
+
     <section id="modlist" class="panel">
       <div class="row">
         <button id="modlist-refresh" class="action">Read MO2 profile</button>
@@ -59,29 +83,6 @@
       <pre id="modlist-log" class="log small"></pre>
     </section>
 
-    <!-- Client -->
-    <section id="client" class="panel">
-      <div class="field">
-        <label>Client version</label>
-        <div class="row">
-          <input id="client-version" type="text" placeholder="1.0.0" />
-          <button id="client-save" class="action">Save version</button>
-        </div>
-        <small>Updates the client package.json and CLIENT_VERSION in the backend .env.</small>
-      </div>
-      <div class="field">
-        <button id="client-update" class="action go">Update client</button>
-        <small>Rebuilds every client file — client logic → front-end UI → native DLLs (SkyrimPlatform/MpClientPlugin/CEF) — then packages build/dist/client for redistribution.</small>
-      </div>
-      <div class="field">
-        <label>Whitelist players</label>
-        <button id="players-refresh" class="action small">Refresh</button>
-        <ul id="players" class="players"></ul>
-      </div>
-      <pre id="client-log" class="log small"></pre>
-    </section>
-
-    <!-- Settings -->
     <section id="settings" class="panel">
       <div class="subtabs">
         <button class="subtab active" data-cfg="serverSettings">server-settings.json</button>
@@ -92,25 +93,9 @@
         <button id="settings-save" class="action go">Save</button>
         <span id="settings-status" class="status"></span>
       </div>
-      <textarea id="settings-editor" class="editor" spellcheck="false"></textarea>
-    </section>
-
-    <!-- Server -->
-    <section id="server" class="panel">
-      <div class="field">
-        <button id="server-build" class="action go">Build server</button>
-        <small>Recompiles dist_back/skymp5-server.js (build-ts) + the native addon (scam_native.node) into build/dist/server. Does NOT restart — use the Console tab. The native addon is skipped while the server is running (file locked); stop it first to rebuild it.</small>
-      </div>
-      <pre id="server-log" class="log small"></pre>
+      <div id="settings-form" class="settings-form"></div>
     </section>
   </main>
-
-  <div id="modal" class="modal hidden">
-    <div class="modal-box">
-      <button id="modal-close" class="modal-close">×</button>
-      <div id="modal-body"></div>
-    </div>
-  </div>
 
   <script src="renderer.js"></script>
 </body>

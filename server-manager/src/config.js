@@ -23,6 +23,9 @@ function readEnv(key) {
   } catch { return '' }
 }
 
+const serverSettings = process.env.SKYRP_SERVER_SETTINGS
+  || path.join(repoRoot, 'build', 'dist', 'server', 'server-settings.json')
+
 module.exports = {
   repoRoot,
   logDir:   process.env.SKYRP_LOG_DIR || 'C:\\logs',
@@ -31,8 +34,16 @@ module.exports = {
   // CMake build directory (holds dist/ that the launcher/server consume).
   buildDir: process.env.SKYRP_BUILD_DIR || path.join(repoRoot, 'build'),
 
-  // nssm services, in start order (stop order is the reverse).
-  services: ['SkyrpNginx', 'SkyrpBackend', 'SkyrpGameServer'],
+  // vcpkg checkout (a git submodule of the repo) — bootstrapped on first native build.
+  vcpkgDir: process.env.SKYRP_VCPKG_DIR || path.join(repoRoot, 'vcpkg'),
+
+  // nssm services. `key` is the short label shown in the UI; `name` is the
+  // actual Windows service. Order is the start order (stop order is reversed).
+  services: [
+    { key: 'nginx',   name: 'SkyrpNginx',      label: 'Nginx'    },
+    { key: 'backend', name: 'SkyrpBackend',    label: 'Backend'  },
+    { key: 'game',    name: 'SkyrpGameServer', label: 'Game'     },
+  ],
 
   // Reference MO2 install used to compile the manifest (the Modlist tab).
   mo2Root:  process.env.SKYRP_MO2_ROOT  || 'C:\\MO2',
@@ -45,14 +56,19 @@ module.exports = {
     front:        path.join(repoRoot, 'skymp5-front'),
     client:       path.join(repoRoot, 'skymp5-client'),
     server:       path.join(repoRoot, 'skymp5-server'),
+    skyrimPlatform: path.join(repoRoot, 'skyrim-platform'),
     launcherPkg:  path.join(repoRoot, 'skymp5-launcher', 'package.json'),
     clientPkg:    path.join(repoRoot, 'skymp5-client', 'package.json'),
     versionRoute: path.join(repoRoot, 'skymp5-backend', 'routes', 'version.js'),
     backendEnv:   path.join(repoRoot, 'skymp5-backend', '.env'),
+    backendEnvExample: path.join(repoRoot, 'skymp5-backend', '.env.example'),
     // The deployed game server's settings (holds secrets; not in the repo).
-    serverSettings: process.env.SKYRP_SERVER_SETTINGS
-      || path.join(repoRoot, 'build', 'dist', 'server', 'server-settings.json'),
+    serverSettings,
+    // The game server's working directory — its file-database (changeForms)
+    // and data dir live here. Defaults to the folder holding server-settings.json.
+    serverDir:    process.env.SKYRP_SERVER_DIR || path.dirname(serverSettings),
     launcherOut:  path.join(repoRoot, 'build', 'launcher'),
+    clientOut:    path.join(repoRoot, 'build', 'dist', 'client'),
     frontConfig:  path.join(repoRoot, 'skymp5-front', 'config.js'),
     dataDir:      path.join(repoRoot, 'skymp5-backend', 'data'),
   },
