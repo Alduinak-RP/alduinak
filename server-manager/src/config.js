@@ -31,11 +31,9 @@ module.exports = {
   logDir:   process.env.SKYRP_LOG_DIR || 'C:\\logs',
   nssm:     nssmPath(),
 
-  // CMake build directory (holds dist/ that the launcher/server consume).
+  // Build output directory. Holds dist/ (the CI-built client/server payloads the
+  // launcher and game server consume) and launcher/ (the Electron installer).
   buildDir: process.env.SKYRP_BUILD_DIR || path.join(repoRoot, 'build'),
-
-  // vcpkg checkout (a git submodule of the repo) — bootstrapped on first native build.
-  vcpkgDir: process.env.SKYRP_VCPKG_DIR || path.join(repoRoot, 'vcpkg'),
 
   // nssm services. `key` is the short label shown in the UI; `name` is the
   // actual Windows service. Order is the start order (stop order is reversed).
@@ -69,7 +67,6 @@ module.exports = {
     serverDir:    process.env.SKYRP_SERVER_DIR || path.dirname(serverSettings),
     launcherOut:  path.join(repoRoot, 'build', 'launcher'),
     clientOut:    path.join(repoRoot, 'build', 'dist', 'client'),
-    frontConfig:  path.join(repoRoot, 'skymp5-front', 'config.js'),
     dataDir:      path.join(repoRoot, 'skymp5-backend', 'data'),
   },
 

@@ -43,7 +43,7 @@
       <div class="build-cols">
         <div class="build-col">
           <h3>Game Server</h3>
-          <small>TS bundle + native <code>scam_native.node</code> → build/dist/server. Stop the service first to rebuild the native addon (file lock).</small>
+          <small>Bundles the TS server into build/dist/server. <code>scam_native.node</code> comes from the CI <code>server-dist</code> artifact — drop it in build/dist/server.</small>
           <button id="build-server" class="action go">Build server</button>
         </div>
         <div class="build-col">
@@ -67,7 +67,7 @@
               <button id="client-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Client logic + UI + native DLLs (SkyrimPlatform / MpClientPlugin / CEF) → build/dist/client.</small>
+          <small>Zips the CI <code>dist</code> artifact (extract into build/dist/client) into skymp-client.zip for the launcher. Set Version first.</small>
           <button id="build-client" class="action go">Build client</button>
         </div>
       </div>
