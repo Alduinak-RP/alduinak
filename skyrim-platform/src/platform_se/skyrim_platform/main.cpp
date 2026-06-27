@@ -257,6 +257,7 @@ public:
     pCursorX = &RE::MenuScreenData::GetSingleton()->mousePos.x;
     pCursorY = &RE::MenuScreenData::GetSingleton()->mousePos.y;
     vkCodeDownDur.fill(0);
+    vkCodeLastRepeat.fill(0);
   }
 
   void Init(std::shared_ptr<OverlayService> service_,
@@ -307,6 +308,13 @@ public:
 
   void OnKeyStateChange(uint8_t code, bool down) noexcept override
   {
+    int virtualKeyCode = VscToVk(code);
+
+    if (!down && virtualKeyCode >= 0 &&
+        virtualKeyCode < vkCodeDownDur.size()) {
+      vkCodeDownDur[virtualKeyCode] = 0;
+    }
+
     if (!IsBrowserFocused())
       return;
 
@@ -322,10 +330,11 @@ public:
       }
     }
 
-    // Fill vkCodeDownDur
-    int virtualKeyCode = VscToVk(code);
-    if (virtualKeyCode >= 0 && virtualKeyCode < vkCodeDownDur.size()) {
-      vkCodeDownDur[virtualKeyCode] = down ? clock() : 0;
+    // Start the repeat timer on key-down (key-up is cleared above).
+    if (down && virtualKeyCode >= 0 &&
+        virtualKeyCode < vkCodeDownDur.size()) {
+      vkCodeDownDur[virtualKeyCode] = clock();
+      vkCodeLastRepeat[virtualKeyCode] = clock();
     }
 
     if (auto app = service->GetMyChromiumApp()) {
@@ -401,10 +410,15 @@ public:
     if (auto app = service->GetMyChromiumApp())
       app->RunTasks();
 
-    // Repeat the character until the key isn't released
-    for (int i = 0; i < 256; ++i) {
-      const auto pressMoment = this->vkCodeDownDur[i];
-      if (pressMoment && clock() - pressMoment > CLOCKS_PER_SEC / 2) {
+    if (IsBrowserFocused()) {
+      const clock_t now = clock();
+      for (int i = 0; i < 256; ++i) {
+        const auto pressMoment = this->vkCodeDownDur[i];
+        if (!pressMoment || now - pressMoment <= CLOCKS_PER_SEC / 2)
+          continue; // not held, or still inside the initial delay
+        if (now - this->vkCodeLastRepeat[i] < CLOCKS_PER_SEC / 30)
+          continue; // throttle to ~30 repeats/sec instead of every frame
+        this->vkCodeLastRepeat[i] = now;
         if (i == VK_BACK || i == VK_RIGHT || i == VK_LEFT) {
           InjectKey(MapVirtualKeyA(i, MAPVK_VK_TO_VSC), true);
           InjectKey(MapVirtualKeyA(i, MAPVK_VK_TO_VSC), false);
@@ -419,6 +433,7 @@ private:
   std::shared_ptr<OverlayService> service;
   std::shared_ptr<InputConverter> conv;
   std::array<clock_t, 256> vkCodeDownDur;
+  std::array<clock_t, 256> vkCodeLastRepeat;
   float* pCursorX = nullptr;
   float* pCursorY = nullptr;
   bool switchLayoutDownWas = false;
