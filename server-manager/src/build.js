@@ -78,17 +78,46 @@ class Builder {
     } catch { return false }
   }
 
-  // Path to an installed Visual Studio 2022 (v17) with the C++ x64 toolset
+  // Path to an installed Visual Studio 2022 (v17) with the C++ x64 toolset, or
+  // null. We check that the compiler dir (VC/Tools/MSVC) actually exists on disk
+  // rather than trusting vswhere's component query, which can false-negative.
   vs2022Path() {
     if (!isWin) return null
+    // 1) vswhere as JSON — find a v17 instance whose C++ compiler dir is present.
     const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'
-    if (!fs.existsSync(vswhere)) return null
+    if (fs.existsSync(vswhere)) {
+      try {
+        const out = cp.execSync(`"${vswhere}" -products * -prerelease -format json -utf8`, { encoding: 'utf8', windowsHide: true })
+        for (const inst of JSON.parse(out)) {
+          const major = parseInt(String(inst.installationVersion || '').split('.')[0], 10)
+          const p = inst.installationPath
+          if (major === 17 && p && fs.existsSync(path.join(p, 'VC', 'Tools', 'MSVC'))) return p
+        }
+      } catch {}
+    }
+    // 2) Fallback: well-known VS 2022 install locations (in case vswhere is stale).
+    for (const base of ['C:\\Program Files\\Microsoft Visual Studio\\2022', 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022']) {
+      for (const edition of ['BuildTools', 'Community', 'Professional', 'Enterprise']) {
+        const p = path.join(base, edition)
+        if (fs.existsSync(path.join(p, 'VC', 'Tools', 'MSVC'))) return p
+      }
+    }
+    return null
+  }
+
+  // Human-readable list of installed VS instances (for diagnostics in the log).
+  vsSummary() {
+    if (!isWin) return '(not Windows)'
+    const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'
+    if (!fs.existsSync(vswhere)) return '  vswhere.exe not found'
     try {
-      const out = cp.execSync(
-        `"${vswhere}" -products * -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`,
-        { encoding: 'utf8', windowsHide: true }).trim()
-      return out.split(/\r?\n/)[0].trim() || null
-    } catch { return null }
+      const arr = JSON.parse(cp.execSync(`"${vswhere}" -products * -prerelease -format json -utf8`, { encoding: 'utf8', windowsHide: true }))
+      if (!arr.length) return '  no Visual Studio instances found'
+      return arr.map(i => {
+        const cpp = i.installationPath && fs.existsSync(path.join(i.installationPath, 'VC', 'Tools', 'MSVC')) ? 'C++ present' : 'C++ MISSING'
+        return `  - ${i.displayName || 'VS'} ${i.installationVersion} @ ${i.installationPath} (${cpp})`
+      }).join('\n')
+    } catch (e) { return '  vswhere query failed: ' + e.message }
   }
 
   refreshPath() {
@@ -106,9 +135,12 @@ class Builder {
     this._cmake = undefined   // re-resolve cmake against the refreshed PATH
   }
 
-  wingetInstall(id, label, override) {
-    // `--silent` runs the installer unattended
+  wingetInstall(id, label, override, force) {
+    // `--silent` runs the installer unattended. `--force` re-runs even if winget
+    // thinks the package is present, so the VS `--override` (which adds the C++
+    // workload) actually applies when a VS Build Tools shell already exists.
     const args = ['install', '--id', id, '-e', '--accept-source-agreements', '--accept-package-agreements', '--silent']
+    if (force) args.push('--force')
     if (override) args.push('--override', override)
     return this.run('winget', args, config.repoRoot, `install ${label}`)
   }
@@ -131,6 +163,7 @@ class Builder {
         id: 'Microsoft.VisualStudio.2022.BuildTools',
         label: forcedGen ? 'MSVC C++ Build Tools' : 'Visual Studio 2022 C++ Build Tools',
         override: '--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended',
+        force: true,   // re-run even if a VS Build Tools shell exists, so the C++ workload is added
         check: haveToolset,
       })
     }
@@ -141,12 +174,15 @@ class Builder {
       }
       this.line(`[prereqs] missing: ${missing.map(m => m.label).join(', ')} — installing with winget (MSVC Build Tools is several GB; this can take a while)…`)
       for (const m of missing) {
-        await this.wingetInstall(m.id, m.label, m.override)
+        await this.wingetInstall(m.id, m.label, m.override, m.force)
         this.refreshPath()
       }
       const still = missing.filter(m => !m.check())
       if (still.length) {
-        return { ok: false, error: `still missing after install: ${still.map(m => m.label).join(', ')} — a manager restart (or reboot) may be needed for PATH/registration to take effect. See log.` }
+        if (still.some(m => /Visual Studio|MSVC/i.test(m.label))) {
+          this.line('[prereqs] Visual Studio instances detected after install:\n' + this.vsSummary())
+        }
+        return { ok: false, error: `still missing after install: ${still.map(m => m.label).join(', ')}. Check the winget output and the VS list above. VS installs commonly fail on a PENDING REBOOT — reboot and Build again; or install "VS 2022 Build Tools" with the "Desktop development with C++" workload manually (https://aka.ms/vs/17/release/vs_BuildTools.exe).` }
       }
       this.line('[prereqs] toolchain installed.')
     }
