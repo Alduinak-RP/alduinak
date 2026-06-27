@@ -8,7 +8,18 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 function appendLog(node, text) {
   if (!node) return
   const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 40
-  node.textContent += text
+  // Normalise CRLF to LF
+  text = text.replace(/\r\n/g, '\n')
+  if (text.indexOf('\r') === -1) {
+    node.textContent += text
+  } else {
+    const old = node.textContent
+    const cut = old.lastIndexOf('\n') + 1          // only the unfinished last line can be rewritten
+    node.textContent = old.slice(0, cut) + (old.slice(cut) + text)
+      .split('\n')
+      .map(seg => { const i = seg.lastIndexOf('\r'); return i === -1 ? seg : seg.slice(i + 1) })
+      .join('\n')
+  }
   if (atBottom) node.scrollTop = node.scrollHeight
 }
 

@@ -183,6 +183,22 @@ class Builder {
     return r.ok ? { ok: true } : { ok: false, error: 'vcpkg bootstrap failed — see log' }
   }
 
+  resolveGenerator(cmake) {
+    if (process.env.SKYRP_CMAKE_GENERATOR) return process.env.SKYRP_CMAKE_GENERATOR
+    try {
+      const help = cp.execSync(`"${cmake}" --help`, { encoding: 'utf8', windowsHide: true })
+      let firstVs = null
+      for (const raw of help.split(/\r?\n/)) {
+        const m = raw.match(/(Visual Studio \d+ \d{4})/)
+        if (!m) continue
+        if (!firstVs) firstVs = m[1]
+        if (raw.trimStart().startsWith('*')) return m[1]   // default = newest installed VS
+      }
+      if (firstVs) return firstVs
+    } catch {}
+    return 'Visual Studio 17 2022'
+  }
+
   // Configure (once) + build one or more CMake targets in Release.
   async buildNative(targets, label) {
     if (process.env.SKYRP_SKIP_NATIVE === '1') {
@@ -199,7 +215,8 @@ class Builder {
     if (!vc.ok) return vc
 
     const buildDir  = config.buildDir
-    const generator = process.env.SKYRP_CMAKE_GENERATOR || 'Visual Studio 17 2022'
+    const generator = this.resolveGenerator(cmake)
+    this.line(`[${label}] generator: ${generator}`)
 
     // If the cache was generated with a different generator, reset just the cache.
     try {
@@ -236,7 +253,7 @@ class Builder {
       this.line(`[${label}] configuring CMake (first run pulls vcpkg deps — this can take a while)…`)
       const cfg = await this.run(cmake, cfgArgs, config.repoRoot, `${label}: cmake configure`, undefined, false)
       if (!cfg.ok) {
-        return { ok: false, error: `cmake configure failed — needs the "${generator}" toolchain (VS 2022 Build Tools, "Desktop development with C++") and a bootstrapped vcpkg; or set SKYRP_CMAKE_GENERATOR / SKYRP_SKIP_NATIVE=1 (see log)` }
+        return { ok: false, error: `cmake configure failed — needs a Visual Studio C++ toolchain matching "${generator}" ("Desktop development with C++") and a bootstrapped vcpkg; or set SKYRP_CMAKE_GENERATOR / SKYRP_SKIP_NATIVE=1 (see log)` }
       }
     }
 
@@ -252,6 +269,24 @@ class Builder {
       const out = cp.execFileSync(config.nssm, ['status', 'SkyrpGameServer'], { windowsHide: true, timeout: 15000 })
       return /SERVICE_RUNNING/i.test(String(out).replace(/\u0000/g, ''))
     } catch { return false }
+  }
+
+  // Purges dist except for settings and world
+  pruneServerDeploy() {
+    const deployDir = path.join(config.buildDir, 'dist', 'server')
+    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node'])
+    for (const extra of (process.env.SKYRP_SERVER_KEEP || '').split(',')) {
+      const n = extra.trim(); if (n) keep.add(n)
+    }
+    let entries
+    try { entries = fs.readdirSync(deployDir) } catch { return }
+    for (const name of entries) {
+      if (keep.has(name) || keep.has(name.toLowerCase())) continue
+      try {
+        fs.rmSync(path.join(deployDir, name), { recursive: true, force: true })
+        this.line(`[deploy] removed stale ${name}`)
+      } catch (err) { this.line(`[deploy] could not remove ${name}: ${err.message}`) }
+    }
   }
 
   // GAME SERVER: TS bundle (dist_back/skymp5-server.js) + native scam_native.node,
@@ -274,10 +309,12 @@ class Builder {
     // Native addon — the .node file is locked while SkyrpGameServer runs.
     if (this.gameServerRunning()) {
       this.line('\n[server native] SkyrpGameServer is running — skipped scam_native.node (file is locked). Stop it from the Console tab, then rebuild to update the native addon.')
+      this.pruneServerDeploy()
       return { ok: true, nativeSkipped: true }
     }
     const n = await this.buildNative(['skymp5-server'], 'server native')
     if (!n.ok) return n
+    this.pruneServerDeploy()
     this.line('\n✓ Game server built into build/dist/server (TS bundle + scam_native.node).')
     return { ok: true }
   }
