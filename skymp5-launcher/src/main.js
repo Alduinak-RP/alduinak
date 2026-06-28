@@ -886,13 +886,64 @@ function ensureClientDirs(gamePath) {
   }
 }
 
+/** Read-only pre-launch staging check; returns a list of problems (empty = ready to launch). */
+function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
+  const problems = []
+
+  // SkyMP / Skyrim Platform client files.
+  const missingFiles = REQUIRED_FILES.filter(f => !fs.existsSync(path.join(skyrimPath, f)))
+  if (missingFiles.length > 0) {
+    const names = missingFiles.map(f => path.basename(f)).join(', ')
+    const hint  = viaMO2 ? 'run "Install Modpack via MO2"' : 'run Install'
+    problems.push(`Client files missing (${names}); ${hint} first.`)
+  }
+
+  // SKSE runtime.
+  if (!fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))) {
+    problems.push('SKSE is not installed (skse64_loader.exe missing); install the modpack first.')
+  }
+
+  // Server load order: every required plugin must be present.
+  if (Array.isArray(serverInfo?.loadOrder) && serverInfo.loadOrder.length > 0) {
+    const missingPlugins = viaMO2
+      ? missingPluginsForMO2(skyrimPath, serverInfo.loadOrder)
+      : serverInfo.loadOrder
+          .map(f => path.basename(f))
+          .filter(f => !VANILLA_MASTERS.has(f.toLowerCase()) &&
+                       !fs.existsSync(path.join(skyrimPath, 'Data', f)))
+    if (missingPlugins.length > 0) {
+      problems.push(`Required plugins missing (${missingPlugins.join(', ')}); install the server modlist first.`)
+    }
+  }
+
+  // Online servers need a launcher Discord login so auth-data-no-load.js can be seeded; without it SkyMP shows its own auth menu and never connects.
+  if (serverInfo && serverInfo.offlineMode === false) {
+    const session   = store.get('gameSession')
+    const user      = store.get('discordUser')
+    const profileId = store.get('gameProfileId')
+    if (!(session && user && profileId != null)) {
+      problems.push('Discord login required; log in from the launcher topbar before playing, otherwise the in-game auth menu appears and you stay on the main menu.')
+    }
+  }
+
+  return problems
+}
+
 async function prepareForLaunch(skyrimPath, viaMO2) {
   ensureClientDirs(skyrimPath)
   const srv = activeServer()
   let serverInfo = null
-
   if (srv) {
     try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+  }
+
+  // ── Staging gate: surface everything missing before we write settings or launch ──
+  const notReady = verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo)
+  if (notReady.length > 0) {
+    return { success: false, error: 'Not ready to launch:\n' + notReady.map(p => '• ' + p).join('\n') }
+  }
+
+  if (srv) {
     const settingsPath = path.join(skyrimPath, 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
     try {
       writeClientSettings(settingsPath, srv, serverInfo)
@@ -939,23 +990,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
     if (removed.length > 0) log(`[launch] disabled unauthorised mods: ${removed.join(', ')}`)
   }
 
-  // ── SKSE runtime ─────────────────────────────────────────────────────────────
-  if (!fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))) {
-    return {
-      success: false,
-      error: 'SKSE is not installed (skse64_loader.exe missing). ' +
-             'Install the modpack, or place SKSE in your game folder.',
-    }
-  }
-
-  // ── Required client files ────────────────────────────────────────────────────
-  const missingFiles = REQUIRED_FILES.filter(f => !fs.existsSync(path.join(skyrimPath, f)))
-  if (missingFiles.length > 0) {
-    const names = missingFiles.map(f => path.basename(f)).join(', ')
-    const hint  = viaMO2 ? 'run "Install Modpack via MO2" first' : 'run Install first'
-    return { success: false, error: `Files missing — ${hint}.\nMissing: ${names}` }
-  }
-
+  // SKSE, client files, plugins, and Discord auth were all confirmed by the staging gate above.
   return { success: true, loadOrderFixed }
 }
 
