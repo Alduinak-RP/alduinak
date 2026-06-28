@@ -76,8 +76,8 @@ router.get('/', (_req, res) => {
   <h1>SkyRP mod downloads</h1>
   <div class="note">
     <p><strong>Ctrl+click</strong> (Cmd+click on macOS) each link below to open it in a background tab, then click
-    <strong>Mod Manager Download</strong> on each Nexus page. Do about <strong>5 at a time</strong> so Nexus doesn't throttle you.</p>
-    <p>Every archive lands in your Mod Organizer 2 <code>downloads</code> folder, which the launcher opened for you. Leave the launcher running while they arrive.</p>
+    <strong>Slow Download</strong> on each Nexus page. Do about <strong>5 at a time</strong> so Nexus doesn't throttle you.</p>
+    <p>Move every zip/7z archive you download into your <code>SkyRP/downloads</code> folder, which the launcher opened for you.</p>
   </div>
   ${items.length ? `<ol>\n${rows}\n</ol>` : `<p class="empty">No Nexus mods in the current manifest.</p>`}`))
 })
