@@ -3,7 +3,6 @@ import Draggable from 'react-draggable';
 import { ResizableBox } from 'react-resizable';
 import ChatCorner from '../../img/chat_corner.svg';
 import Settings from './settings';
-import SendButton from './sendButton';
 import ChatInput from './input';
 import Channels, { DEFAULT_CHANNEL, SYSTEM_CHANNEL, applyChannel, channelForMessage } from './channels';
 import { replaceIfMoreThan20 } from '../../utils/replaceIfMoreThan20';
@@ -25,7 +24,6 @@ const Chat = (props) => {
   const [disableDiceSounds, setDisableDiceSounds] = useState(false);
   const [disableDiceColors, setDisableDiceColors] = useState(false);
   const [isPouchOpened, setPouchOpened] = useState(0);
-  const [showSendButton, setSendButtonShow] = useState(false);
   const [isSettingsOpened, setSettingsOpened] = useState(false);
   const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [fontSize, setFontSize] = useState(16);
@@ -257,25 +255,10 @@ const Chat = (props) => {
           <div className="chat-main">
             <div className='chat-header'>
               <div className='chat-drag-bar' title='Drag to move chat' />
-              {
-                !isInputHidden &&
-                <button
-                  type='button'
-                  className='chat-settings-toggle'
-                  title='Settings'
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (inputRef.current && !isSystemTab) inputRef.current.focus();
-                    setSettingsOpened((open) => !open);
-                  }}
-                >
-                  {'⚙'}
-                </button>
-              }
             </div>
             <ResizableBox
-              width={495}
-              height={420}
+              width={640}
+              height={320}
               maxConstraints={[1000, 1100]}
               minConstraints={[320, 320]}
               axis={'both'}
@@ -326,9 +309,18 @@ const Chat = (props) => {
                             fontSize={fontSize}
                             maxLines={MAX_LINES}
                           />
-                          {
-                            showSendButton && !isSystemTab && <SendButton onClick={() => sendMessage(input)} />
-                          }
+                          <button
+                            type='button'
+                            className='chat-settings-button'
+                            title='Settings'
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              if (inputRef.current && !isSystemTab) inputRef.current.focus();
+                              setSettingsOpened((open) => !open);
+                            }}
+                          >
+                            {'⚙ Settings'}
+                          </button>
                         </div>
                         <div className='chat-checkboxes'>
                           { !isSystemTab && doesIncludeShout &&
@@ -353,8 +345,6 @@ const Chat = (props) => {
           setFontSize={setFontSize}
           isSoundsDisabled={disableDiceSounds}
           setDisableSounds={setDisableDiceSounds}
-          showSendButton={showSendButton}
-          setShowSendButton={setSendButtonShow}
         />
       }
     </div>

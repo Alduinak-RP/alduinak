@@ -31,6 +31,32 @@
     margin: auto 8px;
     margin-left: 2px;
   }
+  
+  .chat-settings-button {
+    flex: 0 0 auto;
+    margin: auto 8px;
+    padding: 0 14px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    border: none;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fafafa;
+    font-family: Din-pro;
+    font-weight: bold;
+    font-size: 14px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.15s ease, background 0.15s ease;
+    &:hover {
+      opacity: 1;
+      background: rgba(0, 0, 0, 0.75);
+    }
+  }
   &--wrapper {
     width: 100%;
     display: flex;

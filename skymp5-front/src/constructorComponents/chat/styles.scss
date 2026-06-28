@@ -27,27 +27,6 @@
       gap: 4px;
       margin-bottom: 4px;
     }
-    .chat-settings-toggle {
-      flex: 0 0 auto;
-      height: 18px;
-      width: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      border: none;
-      border-radius: 3px;
-      background: rgba(0, 0, 0, 0.35);
-      color: #fafafa;
-      font-size: 12px;
-      line-height: 1;
-      opacity: 0.6;
-      cursor: pointer;
-      transition: opacity 0.15s ease;
-      &:hover {
-        opacity: 1;
-      }
-    }
     .chat-drag-bar {
       height: 18px;
       flex: 1 1 auto;
