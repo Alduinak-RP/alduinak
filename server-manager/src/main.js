@@ -189,12 +189,13 @@ function setJsonVersion(file, version) {
   fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n')
 }
 
-// Replace LATEST_VERSION = '...' inside routes/version.js.
+// Replace LATEST_VERSION = '...' inside routes/version.js (no-op if already set).
 function setRouteVersion(file, version) {
   const src = fs.readFileSync(file, 'utf8')
-  const next = src.replace(/(const\s+LATEST_VERSION\s*=\s*)['"][^'"]*['"]/, `$1'${version}'`)
-  if (next === src) throw new Error('LATEST_VERSION not found in version.js')
-  fs.writeFileSync(file, next)
+  const re = /(const\s+LATEST_VERSION\s*=\s*)['"][^'"]*['"]/
+  if (!re.test(src)) throw new Error('LATEST_VERSION not found in version.js')
+  const next = src.replace(re, `$1'${version}'`)
+  if (next !== src) fs.writeFileSync(file, next)
 }
 
 // Upsert KEY=value in a .env file, creating the key if missing, preserving the rest.
