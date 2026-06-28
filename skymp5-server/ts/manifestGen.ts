@@ -59,5 +59,7 @@ export const generateManifest = (settings: Settings): void => {
   });
 
   const manifestPath = path.join(settings.dataDir, "manifest.json");
+  // Create the data dir if missing so a fresh deployment doesn't crash on startup.
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 4));
 };
