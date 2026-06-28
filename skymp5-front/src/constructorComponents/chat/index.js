@@ -69,7 +69,9 @@ const Chat = (props) => {
 
   const handleScroll = () => {
     if (chatRef.current) {
-      window.needToScroll = (chatRef.current.scrollTop === chatRef.current.scrollHeight - chatRef.current.offsetHeight);
+      const el = chatRef.current;
+      // Keep following new messages while we're at (or near) the bottom.
+      window.needToScroll = (el.scrollHeight - el.offsetHeight - el.scrollTop < 40);
     }
   };
 
@@ -200,7 +202,8 @@ const Chat = (props) => {
   }, []);
 
   useEffect(() => {
-    if (window.needToScroll) window.scrollToLastMessage();
+    // Follow new messages to the bottom (chatRef is the scrolling list).
+    if (window.needToScroll && chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
     if (isInputFocus && inputRef !== undefined && inputRef.current !== undefined) {
       inputRef.current.focus();
     }
