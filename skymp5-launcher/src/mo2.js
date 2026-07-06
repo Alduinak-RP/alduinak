@@ -657,25 +657,124 @@ function enforceModRules() {
   return disabled
 }
 
+// Browser-partial and sidecar files that are never a finished archive.
+const PARTIAL_RE = /\.(meta|unfinished|part|tmp|crdownload|download)$/i
+// Cache so repeated scans (the wait loop, locate) don't re-hash unchanged files.
+const _archiveHashCache = new Map()   // `${full}:${size}:${mtimeMs}` -> sha256(lower)
+
+/** Async streaming SHA-256 that yields to the event loop, so the UI stays responsive mid-scan. */
+function sha256FileAsync(p) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256')
+    const s = fs.createReadStream(lp(p), { highWaterMark: 1 << 20 })
+    s.on('data', chunk => h.update(chunk))
+    s.on('end', () => resolve(h.digest('hex')))
+    s.on('error', reject)
+  })
+}
+
+// Hash a file through the cache; a changed size/mtime (e.g. a finishing copy) re-hashes.
+async function hashCached(full, st) {
+  const key = `${full}:${st.size}:${st.mtimeMs}`
+  let h = _archiveHashCache.get(key)
+  if (h === undefined) {
+    h = (await sha256FileAsync(full)).toLowerCase()
+    _archiveHashCache.set(key, h)
+  }
+  return h
+}
+
+/** Finished (non-partial) archive files in the downloads folder, one stat pass. */
+function listDownloadArchives() {
+  const out = []
+  let names
+  try { names = fs.readdirSync(getDownloadsDir()) } catch { return out }
+  for (const file of names) {
+    if (PARTIAL_RE.test(file)) continue
+    const full = path.join(getDownloadsDir(), file)
+    let st
+    try { st = fs.statSync(lp(full)) } catch { continue }
+    if (st.isFile()) out.push({ file, full, st })
+  }
+  return out
+}
+
 /**
- * Poll until every fileId in `wanted` has a finished download present. Used by
- * the free-account path, where archives arrive asynchronously via the nxm
- * handler after the user clicks "Mod Manager Download" on each mod page.
+ * Path of a finished archive in the downloads folder whose sha256 == hash, or
+ * null. Matches by content so manually moved ("Slow Download") files are found
+ * regardless of filename; the size pre-filter avoids hashing partials/unrelated files.
+ */
+async function findArchiveByHash(hash, size) {
+  if (!hash) return null
+  const want = String(hash).toLowerCase()
+  for (const a of listDownloadArchives()) {
+    if (typeof size === 'number' && size > 0 && a.st.size !== size) continue
+    try { if (await hashCached(a.full, a.st) === want) return a.full } catch { /* mid-copy or locked; caller retries */ }
+  }
+  return null
+}
+
+/** 7za listing of an archive, or null when unreadable (locked, truncated, or not an archive). */
+function listArchiveContents(archivePath) {
+  try {
+    return execFileSync(get7za(), ['l', lp(archivePath)],
+      { encoding: 'utf8', timeout: 60_000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+  } catch { return null }
+}
+
+/**
+ * Poll until every wanted archive is present in the downloads folder.
+ * `hash` items match by content, whatever the filename. `namePattern` items
+ * match by filename (pre-existing files included) and must yield a readable
+ * 7za listing, matching `expect` when given, so mid-copy files or the wrong
+ * archive are never claimed. Items with neither never match: guessing an
+ * unidentified file risks extracting it into the game root.
+ * Resolves to an array of local paths parallel to `wanted`.
  *
- *   wanted: [{ fileId, name }]
+ *   wanted: [{ name, hash?, size?, namePattern?, expect? }]
  */
 function waitForDownloads(wanted, onProgress, signal, intervalMs = 4000, timeoutMs = 900_000) {
   const deadline = Date.now() + timeoutMs
-  return new Promise((resolve, reject) => {
-    function tick() {
-      if (signal?.aborted) return reject(new Error('Cancelled'))
-      const waiting = wanted.filter(w => !findDownloadByFileId(w.fileId))
-      if (onProgress) {
-        onProgress(wanted.length - waiting.length, wanted.length,
-          waiting.length ? `Waiting for download: ${waiting.map(w => w.name).join(', ')}` : 'All downloads received')
+  const found    = new Array(wanted.length).fill(null)
+
+  const scan = async () => {
+    const archives = listDownloadArchives()
+    const consumed = new Set(found.filter(Boolean))
+    for (let i = 0; i < wanted.length; i++) {
+      if (found[i]) continue
+      const w = wanted[i]
+      for (const a of archives) {
+        if (consumed.has(a.full)) continue
+        if (w.hash) {
+          if (typeof w.size === 'number' && w.size > 0 && a.st.size !== w.size) continue
+          try { if (await hashCached(a.full, a.st) !== String(w.hash).toLowerCase()) continue }
+          catch { continue }                                   // unreadable now; retry next tick
+        } else if (w.namePattern) {
+          if (!w.namePattern.test(a.file)) continue
+          const listing = listArchiveContents(a.full)          // null while locked or incomplete
+          if (listing == null) continue
+          if (w.expect && !w.expect.test(listing)) continue    // right mod, wrong file (e.g. Part 1 vs 2)
+        } else {
+          continue
+        }
+        found[i] = a.full
+        consumed.add(a.full)
+        break
       }
-      if (waiting.length === 0) return resolve()
-      if (Date.now() > deadline) return reject(new Error(`Timed out waiting to download: ${waiting.map(w => w.name).join(', ')}`))
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    async function tick() {
+      if (signal?.aborted) return reject(new Error('Cancelled'))
+      try { await scan() } catch { /* transient fs error; retry next tick */ }
+      const remaining = wanted.filter((_, i) => !found[i]).map(w => w.name || 'download')
+      if (onProgress) {
+        onProgress(wanted.length - remaining.length, wanted.length,
+          remaining.length ? `Waiting for downloads: ${remaining.join(', ')}` : 'All downloads received')
+      }
+      if (remaining.length === 0) return resolve(found)
+      if (Date.now() > deadline) return reject(new Error(`Timed out waiting to download: ${remaining.join(', ')}`))
       setTimeout(tick, intervalMs)
     }
     setTimeout(tick, intervalMs)
@@ -728,6 +827,7 @@ module.exports = {
   registerNxmHandler,
   downloadToDownloads,
   findDownloadByFileId,
+  findArchiveByHash,
   verifyArchive,
   sha256File,
   extractToCache,
