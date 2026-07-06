@@ -13,6 +13,7 @@ import Text from './constructorComponents/text';
 import Chat from './constructorComponents/chat';
 import SkillsMenu from './features/skillsMenu';
 import TestMenu from './features/testMenu';
+import Trade from './features/trade';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -211,6 +212,8 @@ const Constructor = props => {
         <TestMenu send={rend.send}/>
         </>
       );
+    case 'trade':
+      return <Trade data={rend} />;
     default:
       break;
   }

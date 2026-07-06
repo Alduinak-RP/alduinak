@@ -47,6 +47,7 @@ import { CaptureConsentService } from "./services/services/captureConsentService
 import { PersonalMenuService } from "./services/services/personalMenuService";
 import { ChatService } from "./services/services/chatService";
 import { FactionService } from "./services/services/factionService";
+import { TradeService } from "./services/services/tradeService";
 import { NetInfoService } from "./services/services/netInfoService";
 import { AnimDebugService } from "./services/services/animDebugService";
 import { TimersService } from "./services/services/timersService";
@@ -118,6 +119,7 @@ const main = () => {
       new CaptureConsentService(sp, controller),
       new PersonalMenuService(sp, controller),
       new FactionService(sp, controller),
+      new TradeService(sp, controller),
       new NetInfoService(sp, controller),
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),

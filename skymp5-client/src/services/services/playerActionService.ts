@@ -56,6 +56,7 @@ const PACKET_ACTIONS: Record<string, string> = {
 const events = {
   action: 'pa:action',
   close: 'pa:close',
+  trade: 'pa:trade',
   // House actions (namespaced under 'pa:' so HousingService ignores them).
   hClaim: 'pa:h:claim',
   hLock: 'pa:h:lock',
@@ -153,6 +154,13 @@ export class PlayerActionService extends ClientListener {
       this.closeMenu();
       return;
     }
+    if (key === events.trade) {
+      if (this.mode === "player" && this.playerTarget) {
+        sendCustomPacket(this.controller, { customPacketType: "tradeRequest", recipient: this.playerTarget });
+      }
+      this.closeMenu();
+      return;
+    }
     if (key === events.action) {
       const actionId = typeof e.arguments[1] === "string" ? (e.arguments[1] as string) : "";
       const packetType = PACKET_ACTIONS[actionId];
@@ -221,6 +229,7 @@ export class PlayerActionService extends ClientListener {
   // Runs inside the CEF browser. Only injected vars + window are available.
   private playerWidgetSetter = () => {
     const elements: any[] = [];
+    elements.push({ type: "button", text: "Trade", tags: [], click: () => window.skyrimPlatform.sendMessage(events.trade) });
     let lastGroup = "";
     for (let i = 0; i < ACTIONS.length; i++) {
       const a = ACTIONS[i];

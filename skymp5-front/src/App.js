@@ -95,7 +95,7 @@ class App extends React.Component {
         <div style={{ position: 'static' }}>
           {this.state.widgets.map((widget, index) =>
             <Constructor
-              key={index.toString() + widget.type + ((widget.type === 'form') ? widget.elements + widget.caption : 'chat')}
+              key={(widget.type === 'trade') ? ('trade-' + widget.id) : (index.toString() + widget.type + ((widget.type === 'form') ? widget.elements + widget.caption : 'chat'))}
               dynamicSize={true}
               elem={widget}
               height={this.props.height || 704}
