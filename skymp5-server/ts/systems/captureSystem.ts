@@ -43,6 +43,13 @@ const CARRY_PACKET = "carryState";
 const CONSENT_REQUEST = "captureConsentRequest";
 const NOTICE_PACKET = "captureNotice";
 
+// Server-side property mirroring the captive's restraint state, so the gamemode
+// script (which cannot see this system's memory) can gate its own logic on it —
+// e.g. skip its temple pass-out for a player someone has bound or picked up.
+//   mp.get(actorId, "private.restrained")
+//     -> { boundHands, carried, captorActorId, carrierActorId } | null
+const RESTRAINED_PROP = "private.restrained";
+
 // Vanilla prisoner cuffs (ARMO) — the placeholder default for manaclesFormId.
 const DEFAULT_MANACLES = 0x0005dc02;
 
@@ -194,6 +201,7 @@ export class CaptureSystem implements System {
     }
     // Clear their own restraint record + any prompts they were part of.
     this.restraints.delete(actorId);
+    this.mirrorState(ctx, actorId);
     this.dropPendingFor(actorId);
   }
 
@@ -364,12 +372,29 @@ export class CaptureSystem implements System {
     }, CONSENT_TIMEOUT_MS);
   }
 
+  // Reflect the captive's current restraint record into RESTRAINED_PROP.
+  private mirrorState(ctx: SystemContext, targetActorId: number): void {
+    const info = this.restraints.get(targetActorId);
+    const value = info
+      ? {
+        boundHands: info.boundHands,
+        carried: info.carried,
+        captorActorId: info.captorActorId,
+        carrierActorId: this.carriedBy.get(targetActorId) ?? 0,
+      }
+      : null;
+    try {
+      (ctx.svr as Mp).set(targetActorId, RESTRAINED_PROP, value);
+    } catch { /* form gone */ }
+  }
+
   private applyCapture(ctx: SystemContext, targetActorId: number, captorActorId: number): void {
     const info = this.restraints.get(targetActorId)
       ?? { boundHands: false, carried: false, captorActorId };
     info.boundHands = true;
     info.captorActorId = captorActorId;
     this.restraints.set(targetActorId, info);
+    this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, info);
     this.log(`[capture] ${targetActorId.toString(16)} bound by ${captorActorId.toString(16)}`);
   }
@@ -382,6 +407,7 @@ export class CaptureSystem implements System {
     this.carrying.set(carrierActorId, targetActorId);
     this.carriedBy.set(targetActorId, carrierActorId);
     this.lastCarryPos.delete(targetActorId);
+    this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, info);
     this.sendCarryState(ctx, carrierActorId, true);
     this.log(`[carry] ${carrierActorId.toString(16)} carries ${targetActorId.toString(16)}`);
@@ -408,6 +434,7 @@ export class CaptureSystem implements System {
         this.sendRestraint(ctx, targetActorId, { boundHands: false, carried: false, captorActorId: carrier });
       }
     }
+    this.mirrorState(ctx, targetActorId);
   }
 
   // Fully free a captive: clear arrest + carry and restore their controls.
@@ -420,6 +447,7 @@ export class CaptureSystem implements System {
       this.sendCarryState(ctx, carrier, false);
     }
     this.restraints.delete(targetActorId);
+    this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, { boundHands: false, carried: false, captorActorId: 0 });
   }
 
