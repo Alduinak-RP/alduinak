@@ -26,6 +26,9 @@ const serverSettings = [
   { key: 'isPapyrusHotReloadEnabled', label: 'Papyrus hot reload',  type: 'bool',   group: 'Gameplay', help: 'Reload compiled .pex scripts on change.' },
   { key: 'enableGamemodeDataUpdatesBroadcast', label: 'Broadcast gamemode updates', type: 'bool', group: 'Gameplay', help: 'Push gamemode script updates to connected clients.' },
   { key: 'locale',                  label: 'Locale file',           type: 'text',   group: 'Gameplay', help: 'File in data/localization (no .json) for M.GetText().' },
+  { key: 'manaclesFormId',          label: 'Manacles item',         type: 'text',   group: 'Gameplay', help: 'Form id (number or "0x..." string) of the item a captor must hold to restrain a player. Defaults to vanilla prisoner cuffs 0x0005DC02.' },
+  { key: 'captiveAnimEvent',        label: 'Captive anim event',    type: 'text',   group: 'Gameplay', help: 'Behaviour-graph event played on a restrained player. Leave empty for the default bound-hands pose.' },
+  { key: 'carrierAnimEvent',        label: 'Carrier anim event',    type: 'text',   group: 'Gameplay', help: 'Behaviour-graph event played on a player carrying someone. Leave empty for the default hold pose.' },
 
   // Data & storage
   { key: 'dataDir',        label: 'Data directory', type: 'text',   group: 'Data & storage', placeholder: 'data', help: 'ESMs / ESPs / UI / scripts.' },

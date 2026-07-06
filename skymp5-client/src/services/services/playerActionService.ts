@@ -31,8 +31,10 @@ const ACTIONS: PlayerAction[] = [
   { id: 'arrest', label: 'Arrest', group: 'Justice', tmpl: '/arrest <n>' },
   { id: 'sentence_release', label: 'Sentence: release', group: 'Justice', tmpl: '/sentence <n> release' },
   { id: 'sentence_banish', label: 'Sentence: banish', group: 'Justice', tmpl: '/sentence <n> banish' },
-  { id: 'capture', label: 'Capture', group: 'Captivity', tmpl: '/capture <n>' },
-  { id: 'release', label: 'Release', group: 'Captivity', tmpl: '/release <n>' },
+  { id: 'capture', label: 'Capture', group: 'Captivity', tmpl: '' },
+  { id: 'carry', label: 'Carry', group: 'Captivity', tmpl: '' },
+  { id: 'putdown', label: 'Put down', group: 'Captivity', tmpl: '' },
+  { id: 'release', label: 'Release', group: 'Captivity', tmpl: '' },
   { id: 'down', label: 'Down', group: 'Combat', tmpl: '/down <n>' },
   { id: 'rise', label: 'Rise', group: 'Combat', tmpl: '/rise <n>' },
   { id: 'bounty', label: 'Check bounty', group: 'Info', tmpl: '/bounty check <n>' },
@@ -41,6 +43,15 @@ const ACTIONS: PlayerAction[] = [
   { id: 'feed', label: 'Feed', group: 'Staff', tmpl: '/feed <n>' },
   { id: 'nvfl', label: 'Clear NVFL', group: 'Staff', tmpl: '/nvfl clear <n>' },
 ];
+
+// Captivity actions are sent to the gamemode's CaptureSystem as custom packets
+// (keyed by the looked-at player's server form id), not as chat commands.
+const PACKET_ACTIONS: Record<string, string> = {
+  capture: 'captureRequest',
+  carry: 'carryRequest',
+  putdown: 'putdownRequest',
+  release: 'releaseRequest',
+};
 
 const events = {
   action: 'pa:action',
@@ -118,6 +129,7 @@ export class PlayerActionService extends ClientListener {
         notifyNextUpdate(this.controller, this.sp, "That target has no name.");
         return;
       }
+      this.playerTarget = localIdToRemoteId(ref.getFormID());
       this.mode = "player";
       logTrace(this, `Opening player-action menu for`, targetName);
       this.openMenu();
@@ -143,9 +155,19 @@ export class PlayerActionService extends ClientListener {
     }
     if (key === events.action) {
       const actionId = typeof e.arguments[1] === "string" ? (e.arguments[1] as string) : "";
-      const action = ACTIONS.find((a) => a.id === actionId);
-      if (action && targetName) {
-        this.sendCommand(action.tmpl.replace("<n>", targetName));
+      const packetType = PACKET_ACTIONS[actionId];
+      if (packetType) {
+        // Captivity actions go to the server's CaptureSystem by server form id.
+        if (this.playerTarget) {
+          sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
+        } else {
+          notifyNextUpdate(this.controller, this.sp, "Look at a player first.");
+        }
+      } else {
+        const action = ACTIONS.find((a) => a.id === actionId);
+        if (action && targetName) {
+          this.sendCommand(action.tmpl.replace("<n>", targetName));
+        }
       }
       this.closeMenu();
       return;
@@ -238,5 +260,6 @@ export class PlayerActionService extends ClientListener {
   private menuOpen = false;
   private mode: "player" | "house" = "player";
   private houseTarget = 0;
+  private playerTarget = 0;
   private pendingTransfer: number | null = null;
 }

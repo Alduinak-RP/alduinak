@@ -36,6 +36,21 @@ export class Settings {
   ];
   discordAuth: DiscordAuthSettings | null = null;
 
+  // ── Arrest / capture / carry ────────────────────────────────────────────────
+  // The inventory item that lets a player restrain (manacle) another player.
+  // Skyrim has no carryable "manacles" item by default — the Helgen intro cuffs
+  // are worn armor — so this is normally a custom item from your load order.
+  // Set `manaclesFormId` in server-settings.json to your item's global form id
+  // (a number, or a "0x..." hex string). Defaults to the vanilla prisoner cuffs
+  // (ARMO 0x0005DC02) so the feature is usable out of the box for testing.
+  manaclesFormId: number | string = 0x0005dc02;
+  // Animation events played on the captive / carrier. Defaults reuse vanilla
+  // behaviour-graph offsets already whitelisted in the client's forced-sync set
+  // (skymp5-client sync/animation.ts). Override only if your load order ships
+  // dedicated bind/carry animations — and add any custom names to that whitelist.
+  captiveAnimEvent = 'OffsetBoundStandingStart';
+  carrierAnimEvent = 'OffsetCarryBasketStart';
+
   allSettings: Record<string, unknown> | null = null;
 
   constructor() { }
@@ -72,6 +87,9 @@ export class Settings {
       'startPoints',
       'offlineMode',
       'discordAuth',
+      'manaclesFormId',
+      'captiveAnimEvent',
+      'carrierAnimEvent',
     ].forEach((prop) => {
       if (settings[prop]) {
         (this as Record<string, unknown>)[prop] = settings[prop];
