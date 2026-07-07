@@ -1317,11 +1317,8 @@ async function runDirectInstall() {
   installing = false
 }
 
-// SSE Engine Fixes pt 2, pinned to v2020.3 (fileId 725261). No manifest hash covers this
-// root component, so `version` pins the filename and every `expect` regex must match the
-// 7za listing: Part 2 ships exactly the preloader + TBB libs, Part 1 doesn't.
 const ENGINE_FIXES = {
-  modId: 17230, fileId: 725261, name: 'SSE Engine Fixes (Part 2)', version: '2020.3',
+  modId: 17230, fileId: 725261, name: 'SSE Engine Fixes (Part 2)',
   expect: [/d3dx9_42\.dll/i, /tbb\.dll/i, /tbbmalloc\.dll/i],
 }
 
@@ -1352,7 +1349,7 @@ function openDownloadList(downloadsDir) {
  * downloads list page and we wait for the "Slow Download" archive to be moved
  * into the downloads folder. Returns null if the free download never arrives.
  */
-async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, apiKey, premium, expect, version }) {
+async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, apiKey, premium, expect }) {
   const mb = n => (n / 1024 / 1024).toFixed(1)
   let name = mo2.findDownloadByFileId(fileId)
   if (name) return path.join(downloadsDir, name)
@@ -1365,8 +1362,10 @@ async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, a
     return path.join(downloadsDir, name)
   }
 
-  // Pre-existing files count, so an archive moved in before this wait starts is picked up immediately.
-  const namePattern = nexusNamePattern(modId, displayName, version)
+  // Pre-existing files count, so an archive moved in before this wait starts
+  // is picked up immediately. The name is a hint (mod id or name words);
+  // `expect` does the real gating by archive contents.
+  const namePattern = nexusNamePattern(modId, displayName)
 
   openDownloadList(downloadsDir)
   send('install:progress', { phase: 'mods', file: `Find ${displayName} on the downloads list, click "Slow Download", and move the archive into the SkyRP downloads folder`, index: 0, total: 1, skipped: false })
@@ -1604,7 +1603,7 @@ async function runMO2Install() {
       // SSE Engine Fixes Part 2 (Preloader + TBB) - extracts to the game root.
       try {
         const efPath = await acquireNexusArchive(ENGINE_FIXES.modId, ENGINE_FIXES.fileId, ENGINE_FIXES.name,
-          { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect, version: ENGINE_FIXES.version })
+          { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect })
         if (!efPath) return fail('Engine Fixes (Part 2) was not downloaded. Get it from the downloads list ("Slow Download") and move the archive into the SkyRP downloads folder.')
         send('install:progress', { phase: 'mods', file: 'Installing Engine Fixes…', index: 0, total: 0, skipped: false })
         mo2.installRootArchive(efPath, skyrimPath)
