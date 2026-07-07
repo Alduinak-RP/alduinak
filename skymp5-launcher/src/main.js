@@ -1317,6 +1317,14 @@ async function runDirectInstall() {
   installing = false
 }
 
+// SSE Engine Fixes pt 2 - LEGACY FALLBACK pin (fileId 725261, v2020.3), used
+// only when the manifest's root directives don't already carry the preloader
+// (see runMO2Install step 4). Acceptance is gated by CONTENT: every `expect`
+// regex must match the 7za listing. Part 2 ships exactly the preloader + TBB
+// libs, Part 1 doesn't. The filename is only a hint - an earlier
+// version-in-filename pin silently ignored correctly-downloaded archives
+// whose names didn't carry the exact version string, leaving the install
+// waiting forever on a file that was already in the folder.
 const ENGINE_FIXES = {
   modId: 17230, fileId: 725261, name: 'SSE Engine Fixes (Part 2)',
   expect: [/d3dx9_42\.dll/i, /tbb\.dll/i, /tbbmalloc\.dll/i],
@@ -1600,15 +1608,29 @@ async function runMO2Install() {
         return fail(`SKSE install failed: ${err.message}`)
       }
 
-      // SSE Engine Fixes Part 2 (Preloader + TBB) - extracts to the game root.
-      try {
-        const efPath = await acquireNexusArchive(ENGINE_FIXES.modId, ENGINE_FIXES.fileId, ENGINE_FIXES.name,
-          { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect })
-        if (!efPath) return fail('Engine Fixes (Part 2) was not downloaded. Get it from the downloads list ("Slow Download") and move the archive into the SkyRP downloads folder.')
-        send('install:progress', { phase: 'mods', file: 'Installing Engine Fixes…', index: 0, total: 0, skipped: false })
-        mo2.installRootArchive(efPath, skyrimPath)
-      } catch (err) {
-        return fail(`Engine Fixes install failed: ${err.message}`)
+      // SSE Engine Fixes Part 2 (preloader + TBB) - extracts to the game root.
+      //
+      // Preferred source: the manifest's root directives. When the server
+      // admin adds the preloader files to rootInclude (manifest-sources.json)
+      // and recompiles, applyRootFiles above already installed them - compiled
+      // from the reference install, hash-verified, and tracking whatever
+      // version the server actually runs. The pinned Nexus download below is
+      // only a fallback for manifests that don't capture them yet; its
+      // hardcoded fileId goes stale whenever the mod updates on Nexus.
+      const rootHasPreloader = (manifest.root || [])
+        .some(f => /^(?:d3dx9_42|winhttp)\.dll$/i.test(path.basename(f.to || '')))
+      if (rootHasPreloader) {
+        log('[mo2-install] preloader provided by manifest root files - skipping the pinned Engine Fixes download')
+      } else {
+        try {
+          const efPath = await acquireNexusArchive(ENGINE_FIXES.modId, ENGINE_FIXES.fileId, ENGINE_FIXES.name,
+            { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect })
+          if (!efPath) return fail('Engine Fixes (Part 2) was not downloaded. Get it from the downloads list ("Slow Download") and move the archive into the SkyRP downloads folder. (Server admins: add the preloader files to rootInclude and recompile the manifest so this pinned download is no longer needed.)')
+          send('install:progress', { phase: 'mods', file: 'Installing Engine Fixes…', index: 0, total: 0, skipped: false })
+          mo2.installRootArchive(efPath, skyrimPath)
+        } catch (err) {
+          return fail(`Engine Fixes install failed: ${err.message}`)
+        }
       }
     }
 

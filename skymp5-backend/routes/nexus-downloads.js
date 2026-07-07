@@ -66,7 +66,14 @@ router.get('/', (_req, res) => {
   for (const a of manifest.archives || []) {
     if (a.source && a.source.type === 'nexus') add(a.name, a.source.modId, a.source.fileId)
   }
-  for (const r of ROOT_NEXUS) add(r.name, r.modId, r.fileId)
+  // Legacy hardcoded root components: only when the manifest doesn't already
+  // reference the mod. Once the reference install tracks it (any file id),
+  // the manifest's link is current and the stale pin would point players at
+  // an outdated - possibly archived - Nexus file.
+  const manifestModIds = new Set(items.map(it => it.modId))
+  for (const r of ROOT_NEXUS) {
+    if (!manifestModIds.has(r.modId)) add(r.name, r.modId, r.fileId)
+  }
 
   const rows = items.map(it =>
     `<li><a href="${linkFor(it.modId, it.fileId)}" target="_blank" rel="noopener">${esc(it.name)}</a></li>`
