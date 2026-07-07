@@ -91,7 +91,8 @@ export class Settings {
       'captiveAnimEvent',
       'carrierAnimEvent',
     ].forEach((prop) => {
-      if (settings[prop]) {
+      // !== undefined, not truthiness: falsy overrides (false, 0, "") are valid
+      if (settings[prop] !== undefined) {
         (this as Record<string, unknown>)[prop] = settings[prop];
       }
     });

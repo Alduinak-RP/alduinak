@@ -62,16 +62,25 @@ const CARRY_FOLLOW_MIN_MOVE_SQ = 16 * 16;
 // A consent prompt lapses if the target doesn't answer in time.
 const CONSENT_TIMEOUT_MS = 20000;
 
+// The same (captor, target) pair may only be prompted this often.
+const CONSENT_COOLDOWN_MS = 15000;
+
+// Server-side backstop for the client's "look at a player" rule: capture/carry
+// may only be initiated within this many game units (~activate range).
+const INTERACT_MAX_DISTANCE = 256;
+
 interface RestraintInfo {
   boundHands: boolean;   // arrested
   carried: boolean;      // being carried
   captorActorId: number; // who applied it — release authority + disconnect cleanup
+  offlineCarrierActorId?: number; // who was carrying them when they logged out
 }
 
 interface PendingConsent {
   kind: "capture" | "carry";
   captorActorId: number;
   targetActorId: number;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 const toFormId = (v: unknown, fallback: number): number => {
@@ -105,10 +114,12 @@ export class CaptureSystem implements System {
   private lastCarryPos = new Map<number, [number, number, number]>();
   // requestId -> outstanding consent prompt
   private pending = new Map<number, PendingConsent>();
+  // "captorActorId:targetActorId" -> last prompt timestamp (spam guard)
+  private consentCooldown = new Map<string, number>();
   private nextRequestId = 1;
   private lastFollowMs = 0;
 
-  async initAsync(_ctx: SystemContext): Promise<void> {
+  async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
     this.manaclesFormId = toFormId(s.manaclesFormId, DEFAULT_MANACLES);
     if (typeof s.captiveAnimEvent === "string" && s.captiveAnimEvent) {
@@ -117,8 +128,17 @@ export class CaptureSystem implements System {
     if (typeof s.carrierAnimEvent === "string" && s.carrierAnimEvent) {
       this.carrierAnim = s.carrierAnimEvent;
     }
-    this.log(`[capture] manacles item = 0x${this.manaclesFormId.toString(16)} ` +
-      `(set "manaclesFormId" in server-settings.json to your restraint item)`);
+    if (this.manaclesFormId === DEFAULT_MANACLES) {
+      this.log(`[capture] WARNING: manaclesFormId is not configured, defaulting to ` +
+        `0x${DEFAULT_MANACLES.toString(16)} (Helgen prisoner cuffs — worn ARMO that ` +
+        `players never hold in inventory). The bind/arrest path will NOT work until ` +
+        `"manaclesFormId" in server-settings.json points to a real carryable item.`);
+    } else {
+      this.log(`[capture] manacles item = 0x${this.manaclesFormId.toString(16)}`);
+    }
+    ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
+      this.onActorAssigned(ctx, actorId);
+    });
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -166,10 +186,9 @@ export class CaptureSystem implements System {
         });
         this.lastCarryPos.set(carriedActorId, [x, y, z]);
       } catch (e) {
-        // carrier or carried vanished mid-carry — drop the pair silently
-        this.carrying.delete(carrierActorId);
-        this.carriedBy.delete(carriedActorId);
-        this.lastCarryPos.delete(carriedActorId);
+        // carrier or carried vanished mid-carry — free the pair entirely so no
+        // stale restraint record / private.restrained survives
+        this.releaseTarget(ctx, carriedActorId);
       }
     }
   }
@@ -192,6 +211,10 @@ export class CaptureSystem implements System {
       this.carriedBy.delete(actorId);
       this.lastCarryPos.delete(actorId);
       this.sendCarryState(ctx, carrier, false);
+      const own = this.restraints.get(actorId);
+      if (own) {
+        own.offlineCarrierActorId = carrier;
+      }
     }
     // Release anyone they had captured.
     for (const [tid, info] of Array.from(this.restraints)) {
@@ -199,10 +222,45 @@ export class CaptureSystem implements System {
         this.releaseTarget(ctx, tid);
       }
     }
-    // Clear their own restraint record + any prompts they were part of.
-    this.restraints.delete(actorId);
-    this.mirrorState(ctx, actorId);
+    // Their own restraint record is intentionally KEPT: relogging must not be
+    // an escape. onActorAssigned re-applies or cleans it up on reconnect.
     this.dropPendingFor(actorId);
+  }
+
+  // Fired by the Spawn system whenever a user gets an actor (login / character
+  // select). Re-applies a restraint that survived the captive's relog, or
+  // clears a stale persisted private.restrained (e.g. after a server restart).
+  private onActorAssigned(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as Mp;
+    const info = this.restraints.get(actorId);
+    if (!info) {
+      try {
+        if (mp.get(actorId, RESTRAINED_PROP)) {
+          mp.set(actorId, RESTRAINED_PROP, null);
+        }
+      } catch { /* form gone */ }
+      return;
+    }
+    if (this.userOf(ctx, info.captorActorId) < 0) {
+      this.releaseTarget(ctx, actorId);
+      return;
+    }
+    if (info.carried) {
+      const carrier = info.offlineCarrierActorId ?? info.captorActorId;
+      info.offlineCarrierActorId = undefined;
+      if (this.userOf(ctx, carrier) >= 0 && !this.carrying.has(carrier) &&
+        !this.carriedBy.has(actorId)) {
+        this.applyCarry(ctx, actorId, carrier);
+        return;
+      }
+      info.carried = false;
+      if (!info.boundHands) {
+        this.releaseTarget(ctx, actorId);
+        return;
+      }
+    }
+    this.mirrorState(ctx, actorId);
+    this.sendRestraint(ctx, actorId, info);
   }
 
   // ── Incoming requests ──────────────────────────────────────────────────────
@@ -317,14 +375,20 @@ export class CaptureSystem implements System {
       return;
     }
     this.pending.delete(requestId);
+    clearTimeout(pend.timer);
 
     const captorUser = this.userOf(ctx, pend.captorActorId);
-    if (!content.accepted) {
+    if (content.accepted !== true) {
       this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} refused.`);
       return;
     }
     if (captorUser < 0) {
       return; // captor left while we waited
+    }
+    // They may have moved apart (or perma-died) while the prompt was open.
+    if (!this.validTarget(ctx, pend.captorActorId, pend.targetActorId)) {
+      this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} is out of reach.`);
+      return;
     }
 
     if (pend.kind === "capture") {
@@ -351,8 +415,38 @@ export class CaptureSystem implements System {
     if (targetUser < 0) {
       return;
     }
+    for (const pend of this.pending.values()) {
+      if (pend.targetActorId === targetActorId || pend.captorActorId === captorActorId) {
+        this.notice(ctx, this.userOf(ctx, captorActorId),
+          "A consent request is already pending.");
+        return;
+      }
+    }
+    const now = Date.now();
+    const cooldownKey = `${captorActorId}:${targetActorId}`;
+    const lastPrompt = this.consentCooldown.get(cooldownKey);
+    if (lastPrompt !== undefined && now - lastPrompt < CONSENT_COOLDOWN_MS) {
+      this.notice(ctx, this.userOf(ctx, captorActorId),
+        `Wait before asking ${this.nameOf(ctx, targetActorId)} again.`);
+      return;
+    }
+    if (this.consentCooldown.size > 512) {
+      for (const [k, t] of Array.from(this.consentCooldown)) {
+        if (now - t >= CONSENT_COOLDOWN_MS) {
+          this.consentCooldown.delete(k);
+        }
+      }
+    }
+    this.consentCooldown.set(cooldownKey, now);
+
     const requestId = this.nextRequestId++;
-    this.pending.set(requestId, { kind, captorActorId, targetActorId });
+    const timer = setTimeout(() => {
+      if (this.pending.delete(requestId)) {
+        this.notice(ctx, this.userOf(ctx, captorActorId),
+          `${this.nameOf(ctx, targetActorId)} did not respond.`);
+      }
+    }, CONSENT_TIMEOUT_MS);
+    this.pending.set(requestId, { kind, captorActorId, targetActorId, timer });
 
     const captorName = this.nameOf(ctx, captorActorId) || "Someone";
     const verb = kind === "capture" ? "restrain" : "carry";
@@ -363,13 +457,6 @@ export class CaptureSystem implements System {
     }));
     this.notice(ctx, this.userOf(ctx, captorActorId),
       `Waiting for ${this.nameOf(ctx, targetActorId)} to accept…`);
-
-    setTimeout(() => {
-      if (this.pending.delete(requestId)) {
-        this.notice(ctx, this.userOf(ctx, captorActorId),
-          `${this.nameOf(ctx, targetActorId)} did not respond.`);
-      }
-    }, CONSENT_TIMEOUT_MS);
   }
 
   // Reflect the captive's current restraint record into RESTRAINED_PROP.
@@ -493,7 +580,39 @@ export class CaptureSystem implements System {
     if (!targetActorId || targetActorId === selfActorId) {
       return false;
     }
-    return this.userOf(ctx, targetActorId) >= 0; // must be a connected player, not an NPC
+    if (this.userOf(ctx, targetActorId) < 0) {
+      return false; // must be a connected player, not an NPC
+    }
+    if (this.isPermaDead(ctx.svr as Mp, targetActorId)) {
+      return false; // a permadead corpse stays in-world but is untouchable
+    }
+    return this.nearEnough(ctx, selfActorId, targetActorId);
+  }
+
+  // Same cell/worldspace and within INTERACT_MAX_DISTANCE. The target id is
+  // client-supplied, so this is what keeps a modified client from grabbing
+  // players across the map.
+  private nearEnough(ctx: SystemContext, selfActorId: number, targetActorId: number): boolean {
+    try {
+      if (ctx.svr.getActorCellOrWorld(selfActorId) !==
+        ctx.svr.getActorCellOrWorld(targetActorId)) {
+        return false;
+      }
+      const a = ctx.svr.getActorPos(selfActorId);
+      const b = ctx.svr.getActorPos(targetActorId);
+      const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+      return dx * dx + dy * dy + dz * dz <= INTERACT_MAX_DISTANCE * INTERACT_MAX_DISTANCE;
+    } catch {
+      return false;
+    }
+  }
+
+  private isPermaDead(mp: Mp, actorId: number): boolean {
+    try {
+      return mp.get(actorId, "private.permaDead") === true;
+    } catch {
+      return false;
+    }
   }
 
   private hasManacles(mp: Mp, actorId: number): boolean {
@@ -519,6 +638,9 @@ export class CaptureSystem implements System {
   // Stand a bleeding-out player back up in place (SetIsDead(false) -> Respawn
   // without teleport), cancelling the temple respawn.
   private stopBleedout(mp: Mp, actorId: number): void {
+    if (this.isPermaDead(mp, actorId)) {
+      return; // permadeath is final — never resurrect a locked corpse
+    }
     try {
       mp.set(actorId, "isDead", false);
     } catch { /* already up / form gone */ }
@@ -553,6 +675,7 @@ export class CaptureSystem implements System {
   private dropPendingFor(actorId: number): void {
     for (const [id, pend] of Array.from(this.pending)) {
       if (pend.captorActorId === actorId || pend.targetActorId === actorId) {
+        clearTimeout(pend.timer);
         this.pending.delete(id);
       }
     }

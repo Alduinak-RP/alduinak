@@ -80,6 +80,25 @@ no CMake, MSVC, vcpkg, or yarn, since nothing is compiled locally. Set
 instead). If `winget` itself isn't available, the build stops with links to
 install the tools by hand.
 
+### Script signing
+
+The gamemode signs the scripts it serves so the client's
+`ServerJsVerificationService` can verify them; without a signer it logs
+*"scripts will be unsigned"*. Generate the keypair once:
+
+```bash
+node server-manager/tools/gen-signing-keys.js
+```
+
+This writes `sign-gamemode.js` + `signing-private.pem` into `build/dist/server`
+(honours `SKYRP_BUILD_DIR`, refuses to overwrite an existing key without
+`--force`) and prints the entries to merge into
+`skymp5-backend/data/public-keys.json` - both the `GM...` key id and the same
+id without the `GM` prefix are required (different client services parse the
+signature line differently). Restart the backend and game server afterwards.
+The **Game Server** build's prune step preserves both files, so the signer
+survives rebuilds.
+
 ### Wiring the console
 
 Command execution is end-to-end on the in-repo side:

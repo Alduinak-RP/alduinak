@@ -2,6 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { TimersService } from "./timersService";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { logTrace } from "../../logging";
@@ -10,6 +11,10 @@ import { logTrace } from "../../logging";
 declare const window: any;
 
 const WIDGET_ID = 12;
+
+// Matches the server's consent window (captureSystem CONSENT_TIMEOUT_MS): once
+// it lapses server-side, answering is a no-op, so dismiss the prompt too.
+const CONSENT_TIMEOUT_MS = 20000;
 
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
@@ -96,10 +101,23 @@ export class CaptureConsentService extends ClientListener {
       );
       this.sp.browser.setVisible(true);
       this.sp.browser.setFocused(true);
+      const timers = this.controller.lookupListener(TimersService);
+      if (this.expiryTimer !== undefined) {
+        timers.clearTimeout(this.expiryTimer);
+      }
+      this.expiryTimer = timers.setTimeout(() => {
+        this.expiryTimer = undefined;
+        this.pendingRequestId = null;
+        this.closePrompt();
+      }, CONSENT_TIMEOUT_MS);
     });
   }
 
   private closePrompt(): void {
+    if (this.expiryTimer !== undefined) {
+      this.controller.lookupListener(TimersService).clearTimeout(this.expiryTimer);
+      this.expiryTimer = undefined;
+    }
     this.promptOpen = false;
     this.sp.browser.executeJavaScript('(function(){var ws=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w.id!==12;});window.skyrimPlatform.widgets.set(ws);})();');
     this.sp.browser.setFocused(false);
@@ -124,4 +142,5 @@ export class CaptureConsentService extends ClientListener {
 
   private promptOpen = false;
   private pendingRequestId: number | null = null;
+  private expiryTimer?: number;
 }

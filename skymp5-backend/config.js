@@ -3,6 +3,10 @@
  * All values are read from environment variables (set via .env for local dev,
  * real env vars in production).
  */
+// Must run before any process.env read below: this module snapshots the env at
+// load time, so it cannot rely on the entry point calling dotenv.config() first.
+require('dotenv').config()
+
 const path = require('path')
 
 const SKYMP_PORT = parseInt(process.env.SKYMP_PORT || '7777', 10)

@@ -136,6 +136,34 @@ TEST_CASE("A gamemode-set spawn point wins over the temple fallback",
   REQUIRE(ac.GetPos() == gamemodeChosen.pos);
 }
 
+TEST_CASE("GetRespawnPosition prefers a gamemode-set spawn point over the "
+          "nearest-temple fallback",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  const NiPoint3 deathPos{ 20000.f, 0.f, 0.f }; // near the Whiterun anchor
+  ac.SetPos(deathPos);
+  ac.SetCellOrWorld(FormDesc::Tamriel());
+
+  // Spawn point never set by the gamemode: the sentinel branch routes the
+  // player to the nearest temple.
+  REQUIRE(ac.GetRespawnPosition() ==
+          TempleRespawn::GetNearestTemple(deathPos).destination);
+
+  // respawn.ts sets a spawn point on every death; once set, it must always
+  // win over the native table, even standing right next to a temple anchor.
+  const LocationalData gamemodeChosen{ { 100.f, 200.f, 300.f },
+                                       { 0.f, 0.f, 90.f },
+                                       FormDesc::Tamriel() };
+  ac.SetSpawnPoint(gamemodeChosen);
+  REQUIRE(ac.GetRespawnPosition() == gamemodeChosen);
+}
+
 TEST_CASE("Nearest temple routing covers every hold", "[Respawn]")
 {
   using namespace TempleRespawn;
@@ -181,6 +209,57 @@ TEST_CASE("Nearest temple routing covers every hold", "[Respawn]")
   REQUIRE(
     GetNearestTemple(NiPoint3(-78931.f, 2789.f, 0.f)).destination.pos ==
     whiterunInterior); // Rorikstead
+
+  // High Hrothgar: a death on the Seven Thousand Steps resolves to its own
+  // anchor and wakes the player in Whiterun's temple, matching the
+  // gamemode's ANCHORS table.
+  REQUIRE(
+    std::string(GetNearestTemple(NiPoint3(56897.f, -31974.f, 0.f)).name) ==
+    "High Hrothgar");
+  REQUIRE(GetNearestTemple(NiPoint3(56897.f, -31974.f, 0.f)).destination.pos ==
+          whiterunInterior);
+}
+
+TEST_CASE("Deaths outside Tamriel route by worldspace override, not X/Y",
+          "[Respawn]")
+{
+  using namespace TempleRespawn;
+
+  // X/Y from another worldspace is meaningless against Tamriel anchors, so
+  // the override must win even when the raw coordinates sit exactly on some
+  // other anchor (here, Riften's).
+  const NiPoint3 riftenAnchor(174274.64f, -91459.67f, 0.f);
+  REQUIRE(std::string(GetNearestTemple(riftenAnchor).name) == "Riften");
+
+  // Solstheim connects to Skyrim by the Windhelm boat.
+  const auto& solstheim =
+    GetNearestTemple(riftenAnchor, FormDesc::FromString("800:Dragonborn.esm"));
+  REQUIRE(std::string(solstheim.name) == "Windhelm");
+  REQUIRE(solstheim.destination.pos == NiPoint3(0.f, -2800.f, 64.35f));
+
+  // The Dragonborn.esm override is file-wide: any of its cells/worldspaces
+  // (Apocrypha etc.) routes the same way.
+  REQUIRE(
+    std::string(GetNearestTemple(riftenAnchor,
+                                 FormDesc::FromString("12345:Dragonborn.esm"))
+                  .name) == "Windhelm");
+
+  // Forgotten Vale -> Markarth (Darkfall Cave in the Reach).
+  REQUIRE(
+    std::string(
+      GetNearestTemple(riftenAnchor, FormDesc::FromString("bb5:Dawnguard.esm"))
+        .name) == "Markarth");
+
+  // Soul Cairn -> Solitude (Castle Volkihar).
+  REQUIRE(
+    std::string(GetNearestTemple(riftenAnchor,
+                                 FormDesc::FromString("1408:Dawnguard.esm"))
+                  .name) == "Solitude");
+
+  // Tamriel itself is never overridden: nearest-anchor routing still runs.
+  REQUIRE(
+    std::string(GetNearestTemple(riftenAnchor, FormDesc::Tamriel()).name) ==
+    "Riften");
 }
 
 TEST_CASE("A healed player gets up where they fell, not at a temple",

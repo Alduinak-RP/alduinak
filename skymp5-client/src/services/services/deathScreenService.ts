@@ -1,9 +1,14 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { TimersService } from "./timersService";
 import { MsgType } from "../../messages";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { logTrace, logError } from "../../logging";
+
+// Failsafe: if the server's hide packet never arrives, dismiss the screen this
+// long after the displayed countdown runs out so the game gets input back.
+const FAILSAFE_GRACE_MS = 15000;
 
 // Death screen UI.
 //
@@ -57,10 +62,23 @@ export class DeathScreenService extends ClientListener {
     } catch (e) {
       logError(this, `failed to show death screen: ${e}`);
     }
+    const timers = this.controller.lookupListener(TimersService);
+    if (this.failsafeTimer !== undefined) {
+      timers.clearTimeout(this.failsafeTimer);
+    }
+    this.failsafeTimer = timers.setTimeout(() => {
+      this.failsafeTimer = undefined;
+      logTrace(this, "death screen failsafe dismiss");
+      this.hide();
+    }, Math.max(0, Math.floor(seconds)) * 1000 + FAILSAFE_GRACE_MS);
   }
 
   private hide(): void {
     logTrace(this, "hide death screen");
+    if (this.failsafeTimer !== undefined) {
+      this.controller.lookupListener(TimersService).clearTimeout(this.failsafeTimer);
+      this.failsafeTimer = undefined;
+    }
     const js =
       "(function(){" +
       "if(!window.skyrimPlatform||!window.skyrimPlatform.widgets)return;" +
@@ -91,4 +109,6 @@ export class DeathScreenService extends ClientListener {
       reliability: "reliable",
     });
   }
+
+  private failsafeTimer?: number;
 }

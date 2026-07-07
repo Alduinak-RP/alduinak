@@ -192,6 +192,8 @@ export class Spawn implements System {
     this.applyAuthProps(mp, actorId, auth.profileId, auth.roles, auth.discordId,
       filterAccessForSlot(auth.access, slot));
 
+    ctx.gm.emit("userAssignActor", userId, actorId);
+
     this.pending.delete(userId);
   }
 
@@ -201,12 +203,10 @@ export class Spawn implements System {
 
     const actorId = this.slotMap(ctx, auth.profileId)[slot];
     if (actorId !== undefined) {
-      if (this.isPermaDead(ctx.svr as unknown as Mp, actorId)) {
-        this.log("Refusing to delete permanently dead character", actorId.toString(16));
-      } else {
-        ctx.svr.destroyActor(actorId);
-        this.log("Deleted character", actorId.toString(16), "from slot", slot);
-      }
+      // Perma-dead characters may be deleted too — destroying the body — so a
+      // perma-death cannot lock the slot forever.
+      ctx.svr.destroyActor(actorId);
+      this.log("Deleted character", actorId.toString(16), "from slot", slot);
     }
     this.sendCharacterList(ctx, userId, auth.profileId);
   }
@@ -216,7 +216,11 @@ export class Spawn implements System {
   private legacySpawn(ctx: SystemContext, userId: number, userProfileId: number,
     discordRoleIds: string[], discordId?: string, access?: unknown): void {
     const { startPoints } = this.settingsObject;
-    let actorId = ctx.svr.getActorsByProfileId(userProfileId)[0];
+    const mp = ctx.svr as unknown as Mp;
+    // Permanently dead characters are locked here too (see onSelectCharacter):
+    // skip them and start a fresh character instead.
+    let actorId = ctx.svr.getActorsByProfileId(userProfileId)
+      .find((a) => !this.isPermaDead(mp, a));
     if (actorId) {
       this.log("Loading character", actorId.toString(16));
       ctx.svr.setEnabled(actorId, true);
@@ -230,7 +234,8 @@ export class Spawn implements System {
       ctx.svr.setRaceMenuOpen(actorId, true);
     }
 
-    const mp = ctx.svr as unknown as Mp;
     this.applyAuthProps(mp, actorId, userProfileId, discordRoleIds, discordId, access);
+
+    ctx.gm.emit("userAssignActor", userId, actorId);
   }
 }

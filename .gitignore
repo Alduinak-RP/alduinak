@@ -9,8 +9,14 @@ skymp5-backend/sources/skse/*.dll
 # Generated output
 # Both files are rebuilt by `npm run merge` - do not track them in git.
 skymp5-backend/public/files/*.zip
-skymp5-backend/data/
-# Need to exclude backend/data because these files will change with the server running. Make sure they can still be downloaded though.
+# Runtime state the backend rewrites while the server runs (sessions, balances,
+# whitelist, faction assignments...). Untracked so git operations on a live box
+# can never clobber production data. Uses `data/*` (not `data/`) because git
+# cannot re-include .gitkeep from inside an excluded directory. Seed/config
+# files that stay tracked (news.json, modlist.json, role-permissions.json) are
+# unaffected: gitignore never applies to already-tracked files.
+skymp5-backend/data/*
+!skymp5-backend/data/.gitkeep
 # public/files/root/ is rebuilt by the merge pipeline.
 # Uncomment the line below if you prefer to generate it on the server rather
 # than track it in git (requires running `npm run merge` on every deploy).

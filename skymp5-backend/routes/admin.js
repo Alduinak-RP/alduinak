@@ -10,7 +10,6 @@ const https      = require('https')
 const crypto     = require('crypto')
 const config     = require('../config')
 const sessions   = require('../sources/dashboardSessions')
-const { hasPermission } = require('../sources/permissions')
 
 const router = Router()
 
@@ -26,10 +25,12 @@ function validateToken(req, res) {
     return false
   }
 
-  // Accept a dashboard session token only when it carries superuser (admin.*)
-  // permission. View-only roles must not be able to control the game server.
+  // Accept a dashboard session token only when it carries an admin permission:
+  // either the 'admin.*' wildcard or a granular 'admin.<x>' grant from
+  // data/role-permissions.json. View-only roles must not be able to control
+  // the game server; anything else falls through to the static ADMIN_TOKEN.
   const session = sessions.validate(provided)
-  if (session && hasPermission(session.permissions || [], 'admin.*')) return true
+  if (session && (session.permissions || []).some(p => /^admin\./.test(p) || p === 'admin.*')) return true
 
   // Fall back to static ADMIN_TOKEN
   const expected = Buffer.from(config.adminToken)

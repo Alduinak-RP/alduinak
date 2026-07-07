@@ -129,12 +129,14 @@ async function api(path, options = {}) {
 
 function captureTokenFromUrl() {
   const url = new URL(window.location.href)
-  const token = url.searchParams.get('token')
+  // Token arrives in the URL fragment; keep the legacy ?token= query as a
+  // fallback for one deploy cycle (older backends still redirect with it).
+  const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''))
+  const token = hashParams.get('token') || url.searchParams.get('token')
   if (!token) return
   state.token = token
   localStorage.setItem(tokenKey, token)
-  url.searchParams.delete('token')
-  url.searchParams.delete('error')
+  // replaceState with the bare pathname drops both the query and the fragment.
   window.history.replaceState({}, '', url.pathname)
 }
 

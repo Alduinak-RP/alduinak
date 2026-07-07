@@ -23,7 +23,7 @@ const fs   = require('fs')
 const os   = require('os')
 const https = require('https')
 const crypto = require('crypto')
-const { spawn, execFileSync } = require('child_process')
+const { spawn, execFileSync, execFile } = require('child_process')
 
 const MO2_VERSION = '2.5.2'
 const MO2_URL     = `https://github.com/ModOrganizer2/modorganizer/releases/download/v${MO2_VERSION}/Mod.Organizer-${MO2_VERSION}.7z`
@@ -659,8 +659,9 @@ function enforceModRules() {
 
 // Browser-partial and sidecar files that are never a finished archive.
 const PARTIAL_RE = /\.(meta|unfinished|part|tmp|crdownload|download)$/i
-// Cache so repeated scans (the wait loop, locate) don't re-hash unchanged files.
-const _archiveHashCache = new Map()   // `${full}:${size}:${mtimeMs}` -> sha256(lower)
+// Caches so repeated scans (the wait loop, locate) don't re-hash or re-list unchanged files.
+const _archiveHashCache = new Map()   // full -> { size, mtimeMs, hash }
+const _archiveListCache = new Map()   // full -> { size, mtimeMs, listing }
 
 /** Async streaming SHA-256 that yields to the event loop, so the UI stays responsive mid-scan. */
 function sha256FileAsync(p) {
@@ -675,13 +676,11 @@ function sha256FileAsync(p) {
 
 // Hash a file through the cache; a changed size/mtime (e.g. a finishing copy) re-hashes.
 async function hashCached(full, st) {
-  const key = `${full}:${st.size}:${st.mtimeMs}`
-  let h = _archiveHashCache.get(key)
-  if (h === undefined) {
-    h = (await sha256FileAsync(full)).toLowerCase()
-    _archiveHashCache.set(key, h)
-  }
-  return h
+  const c = _archiveHashCache.get(full)
+  if (c && c.size === st.size && c.mtimeMs === st.mtimeMs) return c.hash
+  const hash = (await sha256FileAsync(full)).toLowerCase()
+  _archiveHashCache.set(full, { size: st.size, mtimeMs: st.mtimeMs, hash })
+  return hash
 }
 
 /** Finished (non-partial) archive files in the downloads folder, one stat pass. */
@@ -695,6 +694,10 @@ function listDownloadArchives() {
     let st
     try { st = fs.statSync(lp(full)) } catch { continue }
     if (st.isFile()) out.push({ file, full, st })
+  }
+  const present = new Set(out.map(a => a.full))
+  for (const cache of [_archiveHashCache, _archiveListCache]) {
+    for (const key of cache.keys()) if (!present.has(key)) cache.delete(key)
   }
   return out
 }
@@ -714,67 +717,109 @@ async function findArchiveByHash(hash, size) {
   return null
 }
 
-/** 7za listing of an archive, or null when unreadable (locked, truncated, or not an archive). */
-function listArchiveContents(archivePath) {
-  try {
-    return execFileSync(get7za(), ['l', lp(archivePath)],
-      { encoding: 'utf8', timeout: 60_000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
-  } catch { return null }
+/**
+ * 7za listing of an archive, or null when unreadable (locked, truncated, or
+ * not an archive). Successful listings are cached per size/mtime so an
+ * unchanged file isn't re-listed on every scan.
+ */
+function listArchiveContents(archivePath, st) {
+  const c = _archiveListCache.get(archivePath)
+  if (c && c.size === st.size && c.mtimeMs === st.mtimeMs) return Promise.resolve(c.listing)
+  return new Promise(resolve => {
+    execFile(get7za(), ['l', lp(archivePath)],
+      { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 << 20, windowsHide: true },
+      (err, stdout) => {
+        if (err) return resolve(null)
+        _archiveListCache.set(archivePath, { size: st.size, mtimeMs: st.mtimeMs, listing: stdout })
+        resolve(stdout)
+      })
+  })
 }
 
 /**
  * Poll until every wanted archive is present in the downloads folder.
- * `hash` items match by content, whatever the filename. `namePattern` items
- * match by filename (pre-existing files included) and must yield a readable
- * 7za listing, matching `expect` when given, so mid-copy files or the wrong
- * archive are never claimed. Items with neither never match: guessing an
- * unidentified file risks extracting it into the game root.
+ * `hash` items match by content, whatever the filename; their `namePattern`
+ * only flags a look-alike file that fails verification in the status message.
+ * `namePattern`-only items match by filename (pre-existing files included) and
+ * must yield a readable 7za listing matching every `expect` regex, so mid-copy
+ * files or the wrong archive are never claimed. Items with neither never
+ * match: guessing an unidentified file risks extracting it into the game root.
+ * The deadline slides while the user is actively staging files (a file appears
+ * or grows, or an item resolves).
  * Resolves to an array of local paths parallel to `wanted`.
  *
  *   wanted: [{ name, hash?, size?, namePattern?, expect? }]
  */
 function waitForDownloads(wanted, onProgress, signal, intervalMs = 4000, timeoutMs = 900_000) {
-  const deadline = Date.now() + timeoutMs
+  let deadline   = Date.now() + timeoutMs
   const found    = new Array(wanted.length).fill(null)
+  const prevSize = new Map()    // full -> size at the previous scan; a changing size = mid-copy
+  let mismatched = []           // settled files that look like a wanted mod but fail verification
+  let progressed = false        // a file appeared/grew or an item resolved since the last tick
 
   const scan = async () => {
     const archives = listDownloadArchives()
+    const settled  = a => prevSize.get(a.full) === a.st.size
     const consumed = new Set(found.filter(Boolean))
+    const suspect  = []
     for (let i = 0; i < wanted.length; i++) {
       if (found[i]) continue
       const w = wanted[i]
       for (const a of archives) {
-        if (consumed.has(a.full)) continue
         if (w.hash) {
-          if (typeof w.size === 'number' && w.size > 0 && a.st.size !== w.size) continue
-          try { if (await hashCached(a.full, a.st) !== String(w.hash).toLowerCase()) continue }
-          catch { continue }                                   // unreadable now; retry next tick
+          if (!settled(a)) continue                            // still being copied; retry once stable
+          const nameHit = w.namePattern && w.namePattern.test(a.file)
+          if (typeof w.size === 'number' && w.size > 0 && a.st.size !== w.size) {
+            if (nameHit) suspect.push(a)
+            continue
+          }
+          try {
+            if (await hashCached(a.full, a.st) !== String(w.hash).toLowerCase()) {
+              if (nameHit) suspect.push(a)
+              continue
+            }
+          } catch { continue }                                 // unreadable now; retry next tick
         } else if (w.namePattern) {
+          if (consumed.has(a.full)) continue
           if (!w.namePattern.test(a.file)) continue
-          const listing = listArchiveContents(a.full)          // null while locked or incomplete
+          const listing = await listArchiveContents(a.full, a.st)   // null while locked or incomplete
           if (listing == null) continue
-          if (w.expect && !w.expect.test(listing)) continue    // right mod, wrong file (e.g. Part 1 vs 2)
+          if ([].concat(w.expect || []).some(re => !re.test(listing))) {   // right mod, wrong file (e.g. Part 1 vs 2)
+            if (settled(a)) suspect.push(a)
+            continue
+          }
         } else {
           continue
         }
         found[i] = a.full
         consumed.add(a.full)
+        progressed = true
         break
       }
+    }
+    mismatched = [...new Set(suspect.filter(a => !consumed.has(a.full)).map(a => a.file))]
+    for (const a of archives) {
+      if (prevSize.get(a.full) !== a.st.size) progressed = true // new file, or a copy still landing
+      prevSize.set(a.full, a.st.size)
     }
   }
 
   return new Promise((resolve, reject) => {
     async function tick() {
       if (signal?.aborted) return reject(new Error('Cancelled'))
+      progressed = false
       try { await scan() } catch { /* transient fs error; retry next tick */ }
+      if (progressed) deadline = Date.now() + timeoutMs        // the user is actively staging files
       const remaining = wanted.filter((_, i) => !found[i]).map(w => w.name || 'download')
+      const note = mismatched.length
+        ? ` (${mismatched.map(f => `${f} doesn't match the expected version - wrong version downloaded?`).join('; ')})`
+        : ''
       if (onProgress) {
         onProgress(wanted.length - remaining.length, wanted.length,
-          remaining.length ? `Waiting for downloads: ${remaining.join(', ')}` : 'All downloads received')
+          remaining.length ? `Waiting for downloads: ${remaining.join(', ')}${note}` : 'All downloads received')
       }
       if (remaining.length === 0) return resolve(found)
-      if (Date.now() > deadline) return reject(new Error(`Timed out waiting to download: ${remaining.join(', ')}`))
+      if (Date.now() > deadline) return reject(new Error(`Timed out waiting to download: ${remaining.join(', ')}${note}`))
       setTimeout(tick, intervalMs)
     }
     setTimeout(tick, intervalMs)

@@ -103,7 +103,9 @@ router.get('/callback', async (req, res) => {
       : null
 
     const token = sessions.create(user.id, username, avatar, roleIds, permissions)
-    return res.redirect(`${pend.redirectUrl}?token=${token}`)
+    // Fragment, not query string: fragments never reach the server, so the
+    // token stays out of access logs, browser history sync and Referer headers.
+    return res.redirect(`${pend.redirectUrl}#token=${token}`)
 
   } catch (err) {
     console.error('[dashboard-auth] callback error:', err.message)

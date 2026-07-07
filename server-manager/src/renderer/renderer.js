@@ -352,7 +352,7 @@ function renderField(f) {
     for (const opt of [['On', true], ['Off', false]]) {
       const lbl = el('label', { className: 'radio' })
       const radio = el('input', { type: 'radio', name: id, value: String(opt[1]) })
-      if (opt[1] === on) radio.checked = true
+      if (val !== undefined && opt[1] === on) radio.checked = true
       lbl.appendChild(radio)
       lbl.appendChild(document.createTextNode(' ' + opt[0]))
       group.appendChild(lbl)
@@ -395,7 +395,7 @@ function collectSettings() {
     const id = 'set-' + f.key
     if (f.type === 'bool') {
       const checked = document.querySelector(`input[name="${id}"]:checked`)
-      values[f.key] = checked ? checked.value === 'true' : false
+      if (checked) values[f.key] = checked.value === 'true'
     } else {
       const node = document.getElementById(id)
       if (node) values[f.key] = node.value

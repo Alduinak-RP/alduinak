@@ -1,8 +1,5 @@
 const path = require('path')
-const dotenv = require('dotenv')
 const config = require('./config')
-
-dotenv.config()
 
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException] Server kept alive:', err.message)
@@ -58,7 +55,9 @@ const PORT = process.env.PORT || 4000
 // Without this, req.ip is 127.0.0.1 for every visitor, so per-IP rate limiting (routes/files.js) treats all players as a single client.
 app.set('trust proxy', 'loopback')
 
-app.use(cors({ origin: [config.websiteUrl, config.dashboardPublicUrl] }))
+const corsOrigins = [config.websiteUrl, config.dashboardPublicUrl]
+app.use(cors({ origin: corsOrigins }))
+console.log(`[cors] allowed origins: ${corsOrigins.join(', ')}`)
 
 // Capture the raw request body so the webhook route can verify the
 // GitHub HMAC-SHA256 signature without a separate body-parser step.

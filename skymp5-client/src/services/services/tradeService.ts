@@ -4,7 +4,7 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
-import { getInventory, Entry, hasExtras } from "../../sync/inventory";
+import { getInventory, Entry } from "../../sync/inventory";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setters (executed inside the CEF browser)
@@ -16,6 +16,24 @@ const INVITE_WIDGET_ID = 15; // the small "X wants to trade" prompt
 // Stacks larger than this prompt for a count when added/removed, like vanilla
 // container transfers. Smaller stacks move whole.
 const STACK_PROMPT_THRESHOLD = 5;
+
+// Mirror of the server's EXTRA_KEYS (trade.ts): a stack carrying any of these
+// is not a "simple" item and cannot be offered.
+const EXTRA_KEYS: (keyof Entry)[] = [
+  'health', 'enchantmentId', 'maxCharge', 'chargePercent', 'name',
+  'soul', 'poisonId', 'poisonCount', 'worn', 'wornLeft',
+  'removeEnchantmentOnUnequip',
+];
+
+const isSimpleEntry = (e: Entry): boolean => {
+  for (const k of EXTRA_KEYS) {
+    const v = e[k];
+    if (v !== undefined && v !== null && v !== false) {
+      return false;
+    }
+  }
+  return true;
+};
 
 interface Item {
   baseId: number;
@@ -99,11 +117,22 @@ export class TradeService extends ClientListener {
         logTrace(this, `Trade invite from`, inviteFrom);
         this.openInvite();
         break;
-      case "tradeState":
+      case "tradeState": {
+        const prev = this.state;
         this.state = this.parseState(content);
         this.closeInvite();
         this.renderWidget();
+        if (this.lockPending) {
+          this.lockPending = false;
+          // The server wipes the whole offer when a lock fails its affordability
+          // check; restore what we can still afford so only the lock resets.
+          if (!this.state.myLocked && this.state.myOffer.length === 0
+            && prev !== null && prev.myOffer.length > 0) {
+            this.restoreOffer(prev.myOffer);
+          }
+        }
         break;
+      }
       case "tradeCompleted":
         notifyNextUpdate(this.controller, this.sp, "Trade complete.");
         this.closeAll();
@@ -165,6 +194,7 @@ export class TradeService extends ClientListener {
         this.changeOffer(Number(e.arguments[1]), Number(e.arguments[2]), -1);
         break;
       case events.lock:
+        this.lockPending = true;
         sendCustomPacket(this.controller, { customPacketType: "tradeLock" });
         break;
       case events.unlock:
@@ -211,7 +241,22 @@ export class TradeService extends ClientListener {
     }
 
     const next = offer.filter((i) => i.count > 0);
+    this.lockPending = false;
     sendCustomPacket(this.controller, { customPacketType: "tradeSetOffer", items: next });
+  }
+
+  // Re-send a wiped offer clamped to what the player still holds.
+  private restoreOffer(offer: Item[]): void {
+    const items: Item[] = [];
+    for (const item of offer) {
+      const count = Math.min(item.count, this.ownedCount(item.baseId));
+      if (count > 0) {
+        items.push({ baseId: item.baseId, count });
+      }
+    }
+    if (items.length > 0) {
+      sendCustomPacket(this.controller, { customPacketType: "tradeSetOffer", items });
+    }
   }
 
   // ── Inventory reading ──────────────────────────────────────────────────────
@@ -238,7 +283,7 @@ export class TradeService extends ClientListener {
     } catch (e) {
       return [];
     }
-    return entries.filter((e) => e.count > 0 && !hasExtras(e));
+    return entries.filter((e) => e.count > 0 && isSimpleEntry(e));
   }
 
   private resolveName(baseId: number): string {
@@ -314,12 +359,15 @@ export class TradeService extends ClientListener {
     this.sp.browser.setFocused(true);
   }
 
+  // The invite is passive: the widget is shown without seizing input focus (the
+  // player focuses the browser themselves, as with chat), and a System-tab
+  // notification points at it.
   private openInvite(): void {
     this.sp.browser.executeJavaScript(
       new FunctionInfo(this.inviteWidgetSetter).getText({ events, inviteFrom, INVITE_WIDGET_ID })
     );
     this.sp.browser.setVisible(true);
-    this.sp.browser.setFocused(true);
+    notifyNextUpdate(this.controller, this.sp, inviteFrom + " wants to trade with you.");
   }
 
   private closeWidget(): void {
@@ -332,6 +380,7 @@ export class TradeService extends ClientListener {
 
   private closeAll(): void {
     this.state = null;
+    this.lockPending = false;
     this.closeWidget();
     this.closeInvite();
     this.sp.browser.setFocused(false);
@@ -362,5 +411,6 @@ export class TradeService extends ClientListener {
   // ── Networking & misc ─────────────────────────────────────────────────────────
 
   private state: TradeState | null = null;
+  private lockPending = false;
   private nameCache = new Map<number, string>();
 }

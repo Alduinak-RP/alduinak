@@ -1271,8 +1271,25 @@ async function runDirectInstall() {
   installing = false
 }
 
-// SSE Engine Fixes pt 2. `expect` must match the 7za listing: Part 2 ships the TBB libs, Part 1 doesn't.
-const ENGINE_FIXES = { modId: 17230, fileId: 725261, name: 'SSE Engine Fixes (Part 2)', expect: /tbbmalloc/i }
+// SSE Engine Fixes pt 2, pinned to v2020.3 (fileId 725261). No manifest hash covers this
+// root component, so `version` pins the filename and every `expect` regex must match the
+// 7za listing: Part 2 ships exactly the preloader + TBB libs, Part 1 doesn't.
+const ENGINE_FIXES = {
+  modId: 17230, fileId: 725261, name: 'SSE Engine Fixes (Part 2)', version: '2020.3',
+  expect: [/d3dx9_42\.dll/i, /tbb\.dll/i, /tbbmalloc\.dll/i],
+}
+
+// Filename pattern for a Nexus archive: downloads embed the mod id (…-17230-…); a renamed
+// file still matches on the mod's name words. `version` additionally pins the release
+// (Nexus encodes v2020.3 as "2020-3" in filenames).
+function nexusNamePattern(modId, displayName, version) {
+  const words = String(displayName).toLowerCase().match(/[a-z]{4,}/g) || []
+  const nameRe = words.slice(0, 2).join('.*')
+  const base = `(?:^|[^0-9])${modId}(?:[^0-9]|$)` + (nameRe ? `|${nameRe}` : '')
+  if (!version) return new RegExp(base, 'i')
+  const verRe = String(version).replace(/[.-]/g, '[.-]')
+  return new RegExp(`^(?=.*${verRe})(?=.*(?:${base}))`, 'i')
+}
 
 // Open the MO2 downloads folder (archive staging) + the backend page listing every file-pinned Nexus link, once per install run.
 let _downloadListOpened = false
@@ -1289,7 +1306,7 @@ function openDownloadList(downloadsDir) {
  * downloads list page and we wait for the "Slow Download" archive to be moved
  * into the downloads folder. Returns null if the free download never arrives.
  */
-async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, apiKey, premium, expect }) {
+async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, apiKey, premium, expect, version }) {
   const mb = n => (n / 1024 / 1024).toFixed(1)
   let name = mo2.findDownloadByFileId(fileId)
   if (name) return path.join(downloadsDir, name)
@@ -1302,12 +1319,8 @@ async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, a
     return path.join(downloadsDir, name)
   }
 
-  // Match by filename: Nexus downloads embed the mod id (…-17230-…); a renamed file
-  // still matches on the mod's name words. Pre-existing files count, so an archive
-  // moved in before this wait starts is picked up immediately.
-  const words = String(displayName).toLowerCase().match(/[a-z]{4,}/g) || []
-  const nameRe = words.slice(0, 2).join('.*')
-  const namePattern = new RegExp(`(?:^|[^0-9])${modId}(?:[^0-9]|$)` + (nameRe ? `|${nameRe}` : ''), 'i')
+  // Pre-existing files count, so an archive moved in before this wait starts is picked up immediately.
+  const namePattern = nexusNamePattern(modId, displayName, version)
 
   openDownloadList(downloadsDir)
   send('install:progress', { phase: 'mods', file: `Find ${displayName} on the downloads list, click "Slow Download", and move the archive into the SkyRP downloads folder`, index: 0, total: 1, skipped: false })
@@ -1455,9 +1468,10 @@ async function runMO2Install() {
         file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the SkyRP downloads folder.',
         index: 0, total: needBrowser.length, skipped: false,
       })
-      // Matched by sha256, so paths come back verified regardless of filename.
+      // Matched by sha256, so paths come back verified regardless of filename; the
+      // namePattern only flags likely wrong-version files in the status message.
       const paths = await mo2.waitForDownloads(
-        needBrowser.map(a => ({ name: a.name, hash: a.hash, size: a.size })),
+        needBrowser.map(a => ({ name: a.name, hash: a.hash, size: a.size, namePattern: nexusNamePattern(a.source.modId, a.name) })),
         (done, total, message) => send('install:progress', { phase: 'mods', file: message, index: done, total, skipped: false }))
       needBrowser.forEach((a, i) => { archivePaths[a.id] = paths[i] })
     }
@@ -1536,7 +1550,7 @@ async function runMO2Install() {
       // SSE Engine Fixes Part 2 (Preloader + TBB) - extracts to the game root.
       try {
         const efPath = await acquireNexusArchive(ENGINE_FIXES.modId, ENGINE_FIXES.fileId, ENGINE_FIXES.name,
-          { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect })
+          { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect, version: ENGINE_FIXES.version })
         if (!efPath) return fail('Engine Fixes (Part 2) was not downloaded. Get it from the downloads list ("Slow Download") and move the archive into the SkyRP downloads folder.')
         send('install:progress', { phase: 'mods', file: 'Installing Engine Fixes…', index: 0, total: 0, skipped: false })
         mo2.installRootArchive(efPath, skyrimPath)

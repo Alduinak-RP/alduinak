@@ -2,8 +2,10 @@
 
 #include "FormDesc.h"
 
+#include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -15,6 +17,43 @@ LocationalData MakeInteriorDestination(const char* cellDesc, float x, float y,
   // wakes on standable ground inside the temple.
   return LocationalData{ NiPoint3(x, y, z), NiPoint3(0.f, 0.f, rotZ),
                          FormDesc::FromString(cellDesc) };
+}
+
+struct WorldspaceOverride
+{
+  // The death cell/world this override matches: an exact form, or (when
+  // matchWholeFile is set) any cell/worldspace from match.file.
+  FormDesc match;
+  bool matchWholeFile;
+
+  // Name of the GetTemples() entry the death routes to.
+  const char* templeName;
+};
+
+// Deaths outside the Tamriel worldspace can't use X/Y distance (coordinates
+// are in a different space). Route them by where their region connects back
+// to Skyrim: Solstheim/Apocrypha -> Windhelm (the boat), Forgotten Vale ->
+// Markarth (Darkfall Cave in the Reach), Soul Cairn -> Solitude (Volkihar).
+// Keep in sync with WORLDSPACE_OVERRIDES in the gamemode's respawn.ts.
+const std::vector<WorldspaceOverride>& GetWorldspaceOverrides()
+{
+  static const std::vector<WorldspaceOverride> kOverrides{
+    { FormDesc(0, "Dragonborn.esm"), true, "Windhelm" },
+    { FormDesc::FromString("bb5:Dawnguard.esm"), false, "Markarth" },
+    { FormDesc::FromString("1408:Dawnguard.esm"), false, "Solitude" },
+  };
+  return kOverrides;
+}
+
+const TempleRespawn::Temple& FindTempleByName(const char* name)
+{
+  for (const auto& temple : TempleRespawn::GetTemples()) {
+    if (std::strcmp(temple.name, name) == 0) {
+      return temple;
+    }
+  }
+  throw std::runtime_error(std::string("TempleRespawn - no temple named ") +
+                           name);
 }
 
 }
@@ -58,14 +97,26 @@ const std::vector<TempleRespawn::Temple>& TempleRespawn::GetTemples()
       { "Rorikstead", NiPoint3(-78931.07f, 2789.23f, 0.f), whiterun },
       { "Ivarstead", NiPoint3(78291.95f, -67062.64f, 0.f), riften },
       { "Dragon's Bridge", NiPoint3(-100811.45f, 80907.16f, 0.f), solitude },
+      { "High Hrothgar", NiPoint3(56897.66f, -31974.11f, 0.f), whiterun },
     };
   }();
   return kTemples;
 }
 
 const TempleRespawn::Temple& TempleRespawn::GetNearestTemple(
-  const NiPoint3& fromPos)
+  const NiPoint3& fromPos, const FormDesc& fromCellOrWorld)
 {
+  // Deaths outside Tamriel are routed by worldspace, not by X/Y distance:
+  // coordinates from another space are meaningless against Tamriel anchors.
+  for (const auto& entry : GetWorldspaceOverrides()) {
+    const bool matches = entry.matchWholeFile
+      ? fromCellOrWorld.file == entry.match.file
+      : fromCellOrWorld == entry.match;
+    if (matches) {
+      return FindTempleByName(entry.templeName);
+    }
+  }
+
   const auto& temples = GetTemples();
   if (temples.empty()) {
     throw std::runtime_error(

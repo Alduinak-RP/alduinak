@@ -1474,7 +1474,8 @@ LocationalData MpActor::GetRespawnPosition() const
   // engine fallback for player characters whose spawn point was never set.
   if (IsCreatedAsPlayer() &&
       ChangeForm().spawnPoint == MpChangeForm::DefaultSpawnPoint()) {
-    return TempleRespawn::GetNearestTemple(GetPos()).destination;
+    return TempleRespawn::GetNearestTemple(GetPos(), GetCellOrWorld())
+      .destination;
   }
   return GetSpawnPoint();
 }

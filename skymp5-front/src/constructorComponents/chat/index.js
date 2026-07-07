@@ -17,8 +17,8 @@ const MAX_HISTORY_LENGTH = 20;
 
 const SHOUTREGEXP = /№(.*?)№/gi;
 
-// Chat settings persist across sessions: font size, transparency, lock, dice
-// sounds, highlight words, window position/size. The client injects the saved
+// Chat settings persist across sessions: font size, transparency, lock,
+// highlight words, window position/size. The client injects the saved
 // values into window.__skyrpChatSettings on mount and writes changes to a file
 // under Data/Platform (localStorage and the CEF cache do not survive a relaunch).
 const loadChatSettings = () => {
@@ -44,7 +44,6 @@ const Chat = (props) => {
   const [input, updateInput] = useState('');
   const [isInputFocus, changeInputFocus] = useState(false);
   const [hideNonRP, changeNonRPHide] = useState(false);
-  const [disableDiceSounds, setDisableDiceSounds] = useState(saved.disableDiceSounds != null ? saved.disableDiceSounds : false);
   const [isSettingsOpened, setSettingsOpened] = useState(false);
   const [lockChat, setLockChat] = useState(saved.lockChat != null ? saved.lockChat : false);
   const [chatTransparency, setChatTransparency] = useState(saved.chatTransparency != null ? saved.chatTransparency : 25);
@@ -237,8 +236,8 @@ const Chat = (props) => {
 
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
-    persistChatSettings({ fontSize, chatTransparency, lockChat, disableDiceSounds, customHighlights });
-  }, [fontSize, chatTransparency, lockChat, disableDiceSounds, customHighlights]);
+    persistChatSettings({ fontSize, chatTransparency, lockChat, customHighlights });
+  }, [fontSize, chatTransparency, lockChat, customHighlights]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -389,8 +388,6 @@ const Chat = (props) => {
         <Settings
           fontSize={fontSize}
           setFontSize={setFontSize}
-          isSoundsDisabled={disableDiceSounds}
-          setDisableSounds={setDisableDiceSounds}
           lockChat={lockChat}
           setLockChat={setLockChat}
           chatTransparency={chatTransparency}
