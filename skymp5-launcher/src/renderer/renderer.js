@@ -280,7 +280,12 @@ function renderTopbarDiscord() {
     loginBtn.textContent = 'Discord Login'
     loginBtn.addEventListener('click', async () => {
       loginBtn.disabled    = true
-      loginBtn.textContent = 'Opening…'
+      loginBtn.textContent = 'Waiting for Discord…'
+      loginBtn.title       = 'Finish logging in from the browser window that just opened.'
+      if (connectWarning.textContent.startsWith('Discord login failed:')) {
+        connectWarning.classList.remove('visible')
+        connectWarning.textContent = ''
+      }
       const result = await window.electronAPI.discordLogin()
       if (result.success) {
         discordUser = result.user
@@ -293,9 +298,11 @@ function renderTopbarDiscord() {
       } else {
         loginBtn.disabled    = false
         loginBtn.textContent = 'Discord Login'
-        connectWarning.textContent = `Discord: ${result.error}`
+        loginBtn.title       = ''
+        // Stays visible until the next attempt - the user is usually still
+        // alt-tabbed in the browser when the failure lands.
+        connectWarning.textContent = `Discord login failed: ${result.error}`
         connectWarning.classList.add('visible')
-        setTimeout(() => connectWarning.classList.remove('visible'), 4000)
       }
     })
     discordTopbarSlot.appendChild(loginBtn)

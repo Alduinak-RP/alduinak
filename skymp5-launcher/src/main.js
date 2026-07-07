@@ -395,6 +395,7 @@ ipcMain.handle('discord:login', async () => {
   // Poll the status endpoint until auth completes or times out (5 minutes).
   const POLL_INTERVAL_MS = 2000
   const deadline = Date.now() + 5 * 60 * 1000
+  let unexpectedStreak = 0   // consecutive non-401 poll failures
 
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
@@ -405,10 +406,23 @@ ipcMain.handle('discord:login', async () => {
         `${config.apiUrl}/api/users/login-discord/status?state=${encodeURIComponent(state)}`
       )
     } catch (err) {
-      if (err.statusCode === 401) continue  // still pending - keep polling
-      if (err.statusCode === 403) return { success: false, error: 'Auth expired or unknown state.' }
-      continue  // network blip - keep polling
+      if (err.statusCode === 401) { unexpectedStreak = 0; continue }  // still pending - keep polling
+      if (err.statusCode === 403) return { success: false, error: 'Auth expired or unknown state - try again.' }
+
+      // Anything else (cross-host redirect, 404 from a stale backend, 5xx,
+      // network blip): keep polling briefly, but give up with the real reason
+      // instead of burning the full five minutes in silence.
+      unexpectedStreak++
+      log(`[discord] status poll failed (${err.statusCode ? 'HTTP ' + err.statusCode : err.message}), ${unexpectedStreak} in a row`)
+      if (unexpectedStreak >= 10) {
+        return {
+          success: false,
+          error: `Cannot read the login status from the backend (${err.statusCode ? 'HTTP ' + err.statusCode : err.message}).`,
+        }
+      }
+      continue
     }
+    unexpectedStreak = 0
 
     // 200 OK - auth complete.
     // token is the play-session token; masterApiId is the stable numeric profileId.
@@ -423,6 +437,7 @@ ipcMain.handle('discord:login', async () => {
     store.set('discordUser',   discordUser)
     store.set('gameProfileId', masterApiId)
     store.set('gameSession',   token)
+    log(`[discord] logged in as ${discordUser.username} (profileId ${masterApiId})`)
 
     return { success: true, user: discordUser }
   }
@@ -1643,7 +1658,7 @@ function writeClientSettings(destPath, srv, serverInfo) {
   fs.writeFileSync(destPath, JSON.stringify(settings, null, 2) + '\n')
 }
 
-function fetchJSON(url, headers = {}) {
+function fetchJSON(url, headers = {}, redirectsLeft = 3) {
   return new Promise((resolve, reject) => {
     const mod    = url.startsWith('https') ? https : http
     const urlObj = new URL(url)
@@ -1655,6 +1670,23 @@ function fetchJSON(url, headers = {}) {
       headers,
     }
     const req = mod.request(opts, res => {
+      // Follow same-host redirects (e.g. the reverse proxy upgrading http to
+      // https). Cross-host hops and https->http downgrades stay errors so the
+      // session header can never leak to another origin.
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume()
+        let next = null
+        try { next = new URL(res.headers.location, url) } catch { /* malformed location */ }
+        const sameHost  = next && next.hostname === urlObj.hostname
+        const downgrade = next && urlObj.protocol === 'https:' && next.protocol !== 'https:'
+        if (next && sameHost && !downgrade && redirectsLeft > 0) {
+          return resolve(fetchJSON(next.href, headers, redirectsLeft - 1))
+        }
+        const e = new Error(`HTTP ${res.statusCode} from ${url} (redirect to ${res.headers.location})`)
+        e.statusCode = res.statusCode
+        reject(e)
+        return
+      }
       if (res.statusCode < 200 || res.statusCode >= 300) {
         res.resume()
         const e = new Error(`HTTP ${res.statusCode} from ${url}`)
