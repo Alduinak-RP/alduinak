@@ -1413,7 +1413,15 @@ async function runMO2Install() {
     // 3. Mods from the compiled install manifest
     let manifest
     try { manifest = await fetchJSON(`${config.apiUrl}/api/install-manifest`) }
-    catch (err) { return fail(`Could not fetch the install manifest: ${err.message}`) }
+    catch (err) {
+      // A 404 means the backend never compiled (or lost, after a fresh
+      // deploy) its manifest - surface the backend's own explanation.
+      if (err.statusCode === 404) {
+        return fail(err.serverError ||
+          'The server has not published a mod manifest yet - ask the server admin to run `npm run compile-manifest` on the backend.')
+      }
+      return fail(`Could not fetch the install manifest: ${err.message}`)
+    }
     if (!manifest || !Array.isArray(manifest.mods) || !Array.isArray(manifest.archives)) {
       return fail('Install manifest is missing or malformed - run "npm run compile-manifest" on the backend.')
     }
@@ -1719,16 +1727,31 @@ function fetchJSON(url, headers = {}, redirectsLeft = 3) {
         return
       }
       if (res.statusCode < 200 || res.statusCode >= 300) {
-        res.resume()
-        const e = new Error(`HTTP ${res.statusCode} from ${url}`)
-        e.statusCode = res.statusCode
-        reject(e)
+        // Read a little of the body: backend errors carry an explanatory
+        // { error } that is far more useful than the bare status code.
+        let body = ''
+        res.on('data', c => { if (body.length < 4096) body += c })
+        res.on('end', () => {
+          let detail = ''
+          try { detail = JSON.parse(body).error || '' } catch { /* not JSON */ }
+          const e = new Error(`HTTP ${res.statusCode} from ${url}${detail ? `: ${detail}` : ''}`)
+          e.statusCode   = res.statusCode
+          e.serverError  = detail || undefined
+          reject(e)
+        })
+        res.on('error', () => {
+          const e = new Error(`HTTP ${res.statusCode} from ${url}`)
+          e.statusCode = res.statusCode
+          reject(e)
+        })
         return
       }
-      let data = ''
-      res.on('data', chunk => { data += chunk })
+      // Accumulate Buffers, not a growing string: the install manifest can be
+      // hundreds of MB and string += chunk degrades quadratically there.
+      const chunks = []
+      res.on('data', chunk => chunks.push(chunk))
       res.on('end', () => {
-        try { resolve(JSON.parse(data)) }
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))) }
         catch (e) { reject(new Error(`Invalid JSON from ${url}: ${e.message}`)) }
       })
     })
