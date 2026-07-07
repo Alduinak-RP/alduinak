@@ -47,6 +47,12 @@ module.exports = {
   metricsUser:     process.env.METRICS_USER     || '',
   metricsPassword: process.env.METRICS_PASSWORD || '',
 
+  // Launch sanity check: refuse game-server connections from sessions whose
+  // launcher did not verify current client files + load order at launch time.
+  // Set LAUNCH_CHECK_ENFORCE=false to disable (e.g. while players are still
+  // on launcher builds that predate the check).
+  launchCheckEnforce: process.env.LAUNCH_CHECK_ENFORCE !== 'false',
+
   // Admin service
   adminUrl:   process.env.ADMIN_URL   || 'http://localhost:5001',
   adminToken: process.env.ADMIN_TOKEN || '',

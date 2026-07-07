@@ -47,6 +47,7 @@ const factionWhitelistRoute = require('./routes/faction-whitelist')
 const rolePermissionsRoute  = require('./routes/role-permissions')
 const serverAccessRoute     = require('./routes/server-access')
 const playersRoute          = require('./routes/players')
+const launchCheckRoute      = require('./routes/launch-check')
 
 const app  = express()
 const PORT = process.env.PORT || 4000
@@ -98,6 +99,7 @@ app.use('/api/faction-whitelist', factionWhitelistRoute)
 app.use('/api/role-permissions',  rolePermissionsRoute)
 app.use('/api/server-access',      serverAccessRoute)
 app.use('/api/players',            playersRoute)
+app.use('/api/launch-check',       launchCheckRoute)
 
 app.listen(PORT, () => {
   console.log(`SkyRP backend running on http://localhost:${PORT}`)

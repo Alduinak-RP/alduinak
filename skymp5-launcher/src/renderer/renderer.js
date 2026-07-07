@@ -696,7 +696,7 @@ async function refreshPlayState() {
 
   updatePlayButton()
 }
-setInterval(refreshPlayState, 60_000)
+setInterval(refreshPlayState, 10_000)
 
 async function pollGameRunning() {
   const running = await window.electronAPI.gameIsRunning()
@@ -813,10 +813,14 @@ btnConnect.addEventListener('click', async () => {
 })
 
 // Server status
+// The badge follows the GAME SERVER's state as reported by /api/status
+// (heartbeat, falling back to a metrics-port probe) - a reachable backend
+// with a dead game server reads OFFLINE.
 const badgeStatus  = document.getElementById('badge-status')
 const badgeLabel   = document.getElementById('badge-label')
 const badgePlayers = document.getElementById('badge-players')
-const footerPlayers = document.getElementById('footer-players')
+// Footer player count hidden for now - the topbar badge already shows it.
+// const footerPlayers = document.getElementById('footer-players')
 
 // track reachability so we can resync the one-shot panels when the backend returns
 let backendWasReachable = null
@@ -828,17 +832,17 @@ async function checkServerStatus() {
     badgeStatus.classList.remove('online')
     badgeLabel.textContent = 'OFFLINE'
     badgePlayers.hidden = true
-    footerPlayers.textContent = '—'
+    // footerPlayers.textContent = '—'
   } else {
     badgeStatus.classList.add('online')
     badgeLabel.textContent = 'ONLINE'
     if (data.players != null) {
       badgePlayers.textContent = `${data.players} PLAYERS`
       badgePlayers.hidden = false
-      footerPlayers.textContent = `${data.players}`
+      // footerPlayers.textContent = `${data.players}`
     } else {
       badgePlayers.hidden = true
-      footerPlayers.textContent = '—'
+      // footerPlayers.textContent = '—'
     }
   }
 
@@ -917,35 +921,48 @@ async function loadServerInfo() {
 const launcherVersionEl = document.getElementById('launcher-version')
 const clientVersionEl   = document.getElementById('client-version')
 
+// The check runs every 10s (see the polling block at the bottom), so the
+// UPDATE AVAILABLE state appears while the launcher is open - no restart
+// needed. Click/progress handlers are registered exactly once here; the
+// periodic check only flips the label state.
+let launcherUpdateReady = false
+
+window.electronAPI.onUpdateProgress(d => {
+  if (!launcherVersionEl.dataset.updating) return
+  if (d.phase === 'download' && d.total > 0) {
+    launcherVersionEl.textContent = `Downloading update… ${Math.round(d.received / d.total * 100)}%`
+  } else if (d.phase === 'install') {
+    launcherVersionEl.textContent = 'Installing - the launcher will restart…'
+  }
+})
+
+launcherVersionEl.addEventListener('click', async () => {
+  if (!launcherUpdateReady || launcherVersionEl.dataset.updating) return
+  launcherVersionEl.dataset.updating = '1'
+  launcherVersionEl.textContent = 'Downloading update…'
+  const r = await window.electronAPI.installUpdate()
+  if (!r.ok) {
+    launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
+    delete launcherVersionEl.dataset.updating
+    showWarning(`Update failed: ${r.error}`)
+  }
+})
+
 async function checkLauncherUpdate() {
   const result = await window.electronAPI.checkUpdate()
   if (!result) return
+  if (launcherVersionEl.dataset.updating) return  // don't clobber install progress UI
 
   if (result.hasUpdate) {
+    launcherUpdateReady = true
     launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
     launcherVersionEl.classList.add('update-available')
     launcherVersionEl.title = `v${result.latest} is available - click to update`
-    launcherVersionEl.addEventListener('click', async () => {
-      if (launcherVersionEl.dataset.updating) return
-      launcherVersionEl.dataset.updating = '1'
-      launcherVersionEl.textContent = 'Downloading update…'
-      window.electronAPI.onUpdateProgress(d => {
-        if (d.phase === 'download' && d.total > 0) {
-          launcherVersionEl.textContent = `Downloading update… ${Math.round(d.received / d.total * 100)}%`
-        } else if (d.phase === 'install') {
-          launcherVersionEl.textContent = 'Installing - the launcher will restart…'
-        }
-      })
-      const r = await window.electronAPI.installUpdate()
-      if (!r.ok) {
-        launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
-        delete launcherVersionEl.dataset.updating
-        showWarning(`Update failed: ${r.error}`)
-      }
-    })
   } else {
+    launcherUpdateReady = false
     launcherVersionEl.textContent = `v${result.current}`
     launcherVersionEl.classList.remove('update-available')
+    launcherVersionEl.title = ''
   }
 }
 
@@ -1225,5 +1242,10 @@ checkLauncherUpdate()
 loadNews()
 loadServerInfo()
 loadModlist()
-setInterval(checkServerStatus, 30_000)
+// Live 10s heartbeat: game-server status + players (topbar badge), client
+// files update (Play button flips to UPDATE), launcher self-update (footer
+// label flips to UPDATE AVAILABLE) - all without restarting the launcher.
+// refreshPlayState and pollGameRunning poll on their own 10s timers above.
+setInterval(checkServerStatus, 10_000)
+setInterval(checkLauncherUpdate, 10_000)
 refreshPlayState()

@@ -92,3 +92,6 @@ router.get('/', async (req, res) => {
 })
 
 module.exports = router
+// Exposed for the launch-check route, which compares a client's reported
+// plugin list against the game server's current load order.
+module.exports.getGameLoadOrder = getGameLoadOrder

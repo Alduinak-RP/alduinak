@@ -115,6 +115,39 @@ function lookupSession(token) {
   return sessions.get(token) || null
 }
 
+// Launch sanity check
+// The launcher reports its installed client-files version and plugin list to
+// POST /api/launch-check right before starting the game; the result is stored
+// on the session so the game server's session validation can refuse clients
+// running stale files or a wrong load order (or that skipped the launcher).
+
+const LAUNCH_VERSION_PATH = path.join(__dirname, '..', 'data', 'files-version.json')
+
+function currentFilesVersion() {
+  try { return JSON.parse(fs.readFileSync(LAUNCH_VERSION_PATH, 'utf8')).version || null }
+  catch { return null }   // no package published yet: nothing to enforce
+}
+
+function recordLaunchCheck(token, check) {
+  const entry = sessions.get(token)
+  if (!entry) return false
+  entry.launchCheck = { ...check, at: Date.now() }
+  saveSessions()
+  return true
+}
+
+// Returns { ok: true } or { ok: false, error } for the session-validation gate.
+function launchGateStatus(entry) {
+  if (!config.launchCheckEnforce) return { ok: true }
+  const required = currentFilesVersion()
+  if (!required) return { ok: true }   // no published package: can't compare
+  const lc = entry.launchCheck
+  if (!lc) return { ok: false, error: 'launchCheckMissing' }
+  if (lc.filesVersion !== required) return { ok: false, error: 'clientOutdated' }
+  if (lc.pluginsOk === false) return { ok: false, error: 'loadOrderMismatch' }
+  return { ok: true }
+}
+
 // Helper: validate server master key
 
 function checkKey(req, res) {
@@ -206,6 +239,14 @@ router.get('/:key/sessions/:session', async (req, res) => {
 
   if (!access.allowed) {
     return res.status(403).json({ error: access.error || 'accessDenied' })
+  }
+
+  // Launch sanity check: refuse clients whose files / load order were not
+  // verified as current by the launcher right before this game start.
+  const gate = launchGateStatus(entry)
+  if (!gate.ok) {
+    console.log(`[master-api] refused session for ${entry.username || entry.profileId}: ${gate.error}`)
+    return res.status(403).json({ error: gate.error })
   }
 
   // Sliding expiration
@@ -347,3 +388,5 @@ module.exports = router
 module.exports.lookupSession  = lookupSession
 module.exports.createSession  = createSession
 module.exports.isDiscordWhitelisted = isDiscordWhitelisted
+module.exports.recordLaunchCheck    = recordLaunchCheck
+module.exports.currentFilesVersion  = currentFilesVersion

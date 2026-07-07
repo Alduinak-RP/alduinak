@@ -1034,6 +1034,30 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
     if (removed.length > 0) log(`[launch] disabled unauthorised mods: ${removed.join(', ')}`)
   }
 
+  // Launch sanity check: report our files version + plugin list so the backend
+  // approves this session for the game server's session validation. Backend
+  // unreachable = fail open (the server itself still enforces at connect).
+  const session = store.get('gameSession')
+  if (session && serverInfo && serverInfo.offlineMode === false) {
+    try {
+      const check = await postJSON(`${config.apiUrl}/api/launch-check`, {
+        filesVersion: store.get('filesVersion') || '',
+        plugins: Array.isArray(serverInfo.loadOrder)
+          ? serverInfo.loadOrder.map(f => path.basename(f))
+          : [],
+      }, { 'x-session': session })
+      if (!check.ok) {
+        if (check.filesOk === false) {
+          return { success: false, error: 'Your client files are out of date. Press the button again to update, then launch.' }
+        }
+        return { success: false, error: 'Your plugin load order does not match the server. Run "Install Modpack" in Settings → Mod Manager.' }
+      }
+      log('[launch] launch-check passed')
+    } catch (err) {
+      log(`[launch] launch-check unavailable (${err.message}) - continuing, server will enforce`)
+    }
+  }
+
   // SKSE, client files, plugins, and Discord auth were all confirmed by the staging gate above.
   return { success: true, loadOrderFixed }
 }
@@ -1713,6 +1737,43 @@ function fetchJSON(url, headers = {}, redirectsLeft = 3) {
       req.destroy()
       reject(new Error(`Request timed out: ${url}`))
     })
+    req.end()
+  })
+}
+
+// POST JSON and parse the JSON reply. No redirect following: launch-check and
+// friends are same-origin API calls where a redirect means misconfiguration.
+function postJSON(url, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const mod    = url.startsWith('https') ? https : http
+    const urlObj = new URL(url)
+    const payload = JSON.stringify(body || {})
+    const req = mod.request({
+      hostname: urlObj.hostname,
+      port:     urlObj.port || (url.startsWith('https') ? 443 : 80),
+      path:     urlObj.pathname + urlObj.search,
+      method:   'POST',
+      headers:  {
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...headers,
+      },
+    }, res => {
+      let data = ''
+      res.on('data', chunk => { data += chunk })
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          const e = new Error(`HTTP ${res.statusCode} from ${url}`)
+          e.statusCode = res.statusCode
+          return reject(e)
+        }
+        try { resolve(JSON.parse(data)) }
+        catch (e) { reject(new Error(`Invalid JSON from ${url}: ${e.message}`)) }
+      })
+    })
+    req.on('error', reject)
+    req.setTimeout(10_000, () => { req.destroy(); reject(new Error(`Request timed out: ${url}`)) })
+    req.write(payload)
     req.end()
   })
 }
