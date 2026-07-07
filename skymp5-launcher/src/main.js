@@ -1317,17 +1317,21 @@ async function runDirectInstall() {
   installing = false
 }
 
-// SSE Engine Fixes pt 2 - LEGACY FALLBACK pin (fileId 725261, v2020.3), used
-// only when the manifest's root directives don't already carry the preloader
-// (see runMO2Install step 4). Acceptance is gated by CONTENT: every `expect`
-// regex must match the 7za listing. Part 2 ships exactly the preloader + TBB
-// libs, Part 1 doesn't. The filename is only a hint - an earlier
-// version-in-filename pin silently ignored correctly-downloaded archives
-// whose names didn't carry the exact version string, leaving the install
-// waiting forever on a file that was already in the folder.
+// SSE Engine Fixes preloader (the file Nexus used to call "Part 2").
+// Installed by the launcher because a preloader must sit physically next to
+// SkyrimSE.exe - MO2's VFS can't provide it. The fileId is best-effort for
+// the premium API path only and goes stale when the author re-uploads; the
+// browser flow identifies the file purely by mod hint + contents.
+// Acceptance is gated by CONTENT: the 7za listing must show a preloader dll.
+// That alone separates it from Part 1 (which ships EngineFixes.dll, no
+// preloader). Do NOT also require the TBB libs: Nexus repackaged the file as
+// a preloader-only archive (TBB is a 5.x-era dependency), and demanding
+// tbb.dll left the install waiting forever on a correctly-staged download.
+// The filename is only a hint for the status message; version strings in
+// names proved equally unreliable.
 const ENGINE_FIXES = {
-  modId: 17230, fileId: 725261, name: 'SSE Engine Fixes (Part 2)',
-  expect: [/d3dx9_42\.dll/i, /tbb\.dll/i, /tbbmalloc\.dll/i],
+  modId: 17230, fileId: 725261, name: 'Engine Fixes skse64 Preloader (formerly Part 2)',
+  expect: [/(?:d3dx9_42|winhttp)\.dll/i],
 }
 
 // Filename pattern for a Nexus archive: downloads embed the mod id (…-17230-…); a renamed
@@ -1363,11 +1367,18 @@ async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, a
   if (name) return path.join(downloadsDir, name)
 
   if (premium) {
-    name = await nexus.downloadFileEntry(apiKey, modId, { fileId, fileName: `${displayName}.7z` }, downloadsDir, (r, t) => {
-      const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-      send('install:progress', { phase: 'mods', file: `Downloading ${displayName}… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
-    })
-    return path.join(downloadsDir, name)
+    // Best effort: the pinned fileId goes stale whenever the author
+    // re-uploads the file on Nexus. On failure fall through to the browser
+    // staging flow, which accepts the file by content rather than id.
+    try {
+      name = await nexus.downloadFileEntry(apiKey, modId, { fileId, fileName: `${displayName}.7z` }, downloadsDir, (r, t) => {
+        const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
+        send('install:progress', { phase: 'mods', file: `Downloading ${displayName}… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
+      })
+      return path.join(downloadsDir, name)
+    } catch (err) {
+      log(`[nexus] pinned download of ${displayName} failed (${err.message}) - falling back to browser staging`)
+    }
   }
 
   // Pre-existing files count, so an archive moved in before this wait starts
@@ -1625,7 +1636,7 @@ async function runMO2Install() {
         try {
           const efPath = await acquireNexusArchive(ENGINE_FIXES.modId, ENGINE_FIXES.fileId, ENGINE_FIXES.name,
             { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect })
-          if (!efPath) return fail('Engine Fixes (Part 2) was not downloaded. Get it from the downloads list ("Slow Download") and move the archive into the SkyRP downloads folder. (Server admins: add the preloader files to rootInclude and recompile the manifest so this pinned download is no longer needed.)')
+          if (!efPath) return fail('The Engine Fixes skse64 Preloader (formerly "Part 2") was not downloaded. Get it from the downloads list ("Slow Download") and move the archive into the SkyRP downloads folder.')
           send('install:progress', { phase: 'mods', file: 'Installing Engine Fixes…', index: 0, total: 0, skipped: false })
           mo2.installRootArchive(efPath, skyrimPath)
         } catch (err) {

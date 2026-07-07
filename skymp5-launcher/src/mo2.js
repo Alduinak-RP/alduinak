@@ -828,7 +828,7 @@ function waitForDownloads(wanted, onProgress, signal, intervalMs = 4000, timeout
       if (progressed) deadline = Date.now() + timeoutMs        // the user is actively staging files
       const remaining = wanted.filter((_, i) => !found[i]).map(w => w.name || 'download')
       const note = mismatched.length
-        ? ` (${mismatched.map(f => `${f} doesn't match the expected version - wrong version downloaded?`).join('; ')})`
+        ? ` (${mismatched.map(f => `${f} is not the exact file the server expects - download it through its link on the downloads page, which pins the right version; if that version is gone from Nexus the server admin must update the modlist`).join('; ')})`
         : ''
       if (onProgress) {
         onProgress(wanted.length - remaining.length, wanted.length,

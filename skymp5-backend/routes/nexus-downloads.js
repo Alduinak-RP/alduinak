@@ -9,13 +9,17 @@ const GAME = 'skyrimspecialedition'
 const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
-// File-pinned Nexus link so free users grab the exact version the manifest expects.
+// File-pinned Nexus link so free users grab the exact version the manifest
+// expects. Without a fileId the link opens the files tab: used for root
+// components whose acceptance is content-based, where a pinned id would go
+// stale every time the author re-uploads the file.
 const linkFor = (modId, fileId) =>
-  `https://www.nexusmods.com/${GAME}/mods/${modId}?tab=files&file_id=${fileId}`
+  `https://www.nexusmods.com/${GAME}/mods/${modId}?tab=files${fileId ? `&file_id=${fileId}` : ''}`
 
-// Nexus root components installed outside the mod manifest (mirrors skymp5-launcher ENGINE_FIXES) so the page covers every browser download.
+// Nexus root components installed outside the mod manifest (mirrors
+// skymp5-launcher ENGINE_FIXES) so the page covers every browser download.
 const ROOT_NEXUS = [
-  { name: 'SSE Engine Fixes (Part 2)', modId: 17230, fileId: 725261 },
+  { name: 'Engine Fixes skse64 Preloader (formerly Part 2)', modId: 17230, fileId: null },
 ]
 
 const page = body => `<!doctype html>
@@ -63,11 +67,11 @@ router.get('/', (_req, res) => {
   const seen  = new Set()
   const items = []
   const add = (name, modId, fileId) => {
-    if (!modId || !fileId) return
-    const key = `${modId}-${fileId}`
+    if (!modId) return
+    const key = `${modId}-${fileId || 'any'}`
     if (seen.has(key)) return
     seen.add(key)
-    items.push({ name, modId, fileId })
+    items.push({ name, modId, fileId: fileId || null })
   }
   for (const a of manifest.archives || []) {
     if (a.source && a.source.type === 'nexus') add(a.name, a.source.modId, a.source.fileId)
