@@ -10,17 +10,10 @@ const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 // File-pinned Nexus link so free users grab the exact version the manifest
-// expects. Without a fileId the link opens the files tab: used for root
-// components whose acceptance is content-based, where a pinned id would go
-// stale every time the author re-uploads the file.
+// expects. (The Engine Fixes preloader is no longer listed here: it ships
+// inside the client files zip rather than as a launcher-installed root mod.)
 const linkFor = (modId, fileId) =>
   `https://www.nexusmods.com/${GAME}/mods/${modId}?tab=files${fileId ? `&file_id=${fileId}` : ''}`
-
-// Nexus root components installed outside the mod manifest (mirrors
-// skymp5-launcher ENGINE_FIXES) so the page covers every browser download.
-const ROOT_NEXUS = [
-  { name: 'Engine Fixes skse64 Preloader (formerly Part 2)', modId: 17230, fileId: null },
-]
 
 const page = body => `<!doctype html>
 <html lang="en">
@@ -63,7 +56,7 @@ router.get('/', (_req, res) => {
       `<p class="empty">The install manifest has not been built on the server.</p>`))
   }
 
-  // One link per unique Nexus file (modId+fileId): manifest mods first, then root components.
+  // One link per unique Nexus file (modId+fileId) from the manifest's archives.
   const seen  = new Set()
   const items = []
   const add = (name, modId, fileId) => {
@@ -75,14 +68,6 @@ router.get('/', (_req, res) => {
   }
   for (const a of manifest.archives || []) {
     if (a.source && a.source.type === 'nexus') add(a.name, a.source.modId, a.source.fileId)
-  }
-  // Legacy hardcoded root components: only when the manifest doesn't already
-  // reference the mod. Once the reference install tracks it (any file id),
-  // the manifest's link is current and the stale pin would point players at
-  // an outdated - possibly archived - Nexus file.
-  const manifestModIds = new Set(items.map(it => it.modId))
-  for (const r of ROOT_NEXUS) {
-    if (!manifestModIds.has(r.modId)) add(r.name, r.modId, r.fileId)
   }
 
   const rows = items.map(it =>

@@ -822,7 +822,7 @@ ipcMain.handle('files:updateCheck', async () => {
   try {
     const vd = await fetchJSON(`${config.apiUrl}/api/files/version`)
     const gamePath   = effectiveGamePath()
-    const allPresent = !!gamePath && REQUIRED_FILES.every(f => fs.existsSync(path.join(gamePath, f)))
+    const allPresent = clientFilesPresent(gamePath)
     // A failed modpack install also flips the Play button to UPDATE so one
     // click re-runs the install and self-heals the incomplete state.
     const modpackFailed = store.get('mo2Enabled') && store.get('modpackState') === 'failed'
@@ -926,6 +926,21 @@ const REQUIRED_FILES = [
   path.join('Data', 'SKSE', 'Plugins', 'SkyrimPlatform.dll'),
   path.join('Data', 'SKSE', 'Plugins', 'MpClientPlugin.dll'),
 ]
+
+// The Engine Fixes preloader ships inside the client files zip and must sit
+// next to SkyrimSE.exe, or the game errors after launch. Either proxy name
+// counts, so it can't live in REQUIRED_FILES (an every() list). A missing
+// dll (antivirus quarantine is a classic) flips the update check, and the
+// zip re-extract puts it back.
+const PRELOADER_DLLS = ['d3dx9_42.dll', 'winhttp.dll']
+const preloaderPresent = (gamePath) =>
+  !!gamePath && PRELOADER_DLLS.some(f => fs.existsSync(path.join(gamePath, f)))
+
+// True when every client-package file the launcher can check is on disk.
+const clientFilesPresent = (gamePath) =>
+  !!gamePath &&
+  REQUIRED_FILES.every(f => fs.existsSync(path.join(gamePath, f))) &&
+  preloaderPresent(gamePath)
 
 ipcMain.handle('launch:skse', async () => {
   const skyrimPath = effectiveGamePath()
@@ -1033,11 +1048,18 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
     }
   }
 
-  // A modpack install that never finished leaves the game missing root
-  // components (e.g. the Engine Fixes preloader) that the required-files
-  // check cannot see - the game then launches and errors on its own.
+  // A modpack install that never finished leaves the game missing components
+  // (SKSE payload, manifest root files) that the required-files check cannot
+  // see - the game then launches and errors on its own.
   if (viaMO2 && store.get('modpackState') === 'failed') {
     problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run "Install Modpack" to complete it first.')
+  }
+
+  // The preloader arrives via the client files zip; if it has gone missing
+  // (antivirus quarantine is a classic), block the launch - the game would
+  // start and then error about Engine Fixes on its own.
+  if (!preloaderPresent(skyrimPath)) {
+    problems.push('The Engine Fixes preloader dll is missing from the game folder; press PLAY (it will show UPDATE) to reinstall the client files.')
   }
 
   // Online servers need a launcher Discord login so auth-data-no-load.js can be seeded; without it SkyMP shows its own auth menu and never connects.
@@ -1348,14 +1370,14 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
         return { success: false, error: 'Client files have not been packaged on the server yet. Ask the server admin to run `npm run build-client`.' }
       }
       // Network error - play on cached files if they exist
-      const allPresent = REQUIRED_FILES.every(f => fs.existsSync(path.join(skyrimPath, f)))
+      const allPresent = clientFilesPresent(skyrimPath)
       if (!allPresent) return { success: false, error: 'Backend unreachable and client files are not installed. Check your connection.' }
       log('[install] Backend unreachable - files already installed, updating settings only')
       writeClientSettings(clientSettingsPath, srv, serverInfo)
       return { success: true, upToDate: true }
     }
 
-    const allPresent    = REQUIRED_FILES.every(f => fs.existsSync(path.join(skyrimPath, f)))
+    const allPresent    = clientFilesPresent(skyrimPath)
     const needsDownload = serverVersion !== store.get('filesVersion') || !allPresent
 
     if (!needsDownload) {
@@ -1382,6 +1404,17 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
     })
     log(`[install] extracted ${extracted} files`)
     ensureClientDirs(skyrimPath)
+
+    // The preloader is expected to ship inside this zip. Fail loudly if the
+    // server's package doesn't include it - otherwise every install reports
+    // success and the game errors about Engine Fixes at runtime.
+    if (!preloaderPresent(skyrimPath)) {
+      return {
+        success: false,
+        error: 'The client package installed, but no Engine Fixes preloader dll (d3dx9_42.dll / winhttp.dll) is next to SkyrimSE.exe. ' +
+               'The server admin needs to add the preloader files to the client package and rebuild it (npm run merge).',
+      }
+    }
 
     // 4. Write server settings
     writeClientSettings(clientSettingsPath, srv, serverInfo)
@@ -1421,23 +1454,6 @@ async function runDirectInstall() {
   installing = false
 }
 
-// SSE Engine Fixes preloader (the file Nexus used to call "Part 2").
-// Installed by the launcher because a preloader must sit physically next to
-// SkyrimSE.exe - MO2's VFS can't provide it. The fileId is best-effort for
-// the premium API path only and goes stale when the author re-uploads; the
-// browser flow identifies the file purely by mod hint + contents.
-// Acceptance is gated by CONTENT: the 7za listing must show a preloader dll.
-// That alone separates it from Part 1 (which ships EngineFixes.dll, no
-// preloader). Do NOT also require the TBB libs: Nexus repackaged the file as
-// a preloader-only archive (TBB is a 5.x-era dependency), and demanding
-// tbb.dll left the install waiting forever on a correctly-staged download.
-// The filename is only a hint for the status message; version strings in
-// names proved equally unreliable.
-const ENGINE_FIXES = {
-  modId: 17230, fileId: 725261, name: 'Engine Fixes skse64 Preloader (formerly Part 2)',
-  expect: [/(?:d3dx9_42|winhttp)\.dll/i],
-}
-
 // Filename pattern for a Nexus archive: downloads embed the mod id (…-17230-…); a renamed
 // file still matches on the mod's name words. `version` additionally pins the release
 // (Nexus encodes v2020.3 as "2020-3" in filenames).
@@ -1457,54 +1473,6 @@ function openDownloadList(downloadsDir) {
   _downloadListOpened = true
   try { fs.mkdirSync(downloadsDir, { recursive: true }); shell.openPath(downloadsDir) } catch {}
   shell.openExternal(`${config.apiUrl}/api/nexus-downloads`)
-}
-
-/**
- * Fetch a specific Nexus file into the downloads folder and return its local
- * path. Premium accounts download via the API; free accounts are sent to the
- * downloads list page and we wait for the "Slow Download" archive to be moved
- * into the downloads folder. Returns null if the free download never arrives.
- */
-async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, apiKey, premium, expect }) {
-  const mb = n => (n / 1024 / 1024).toFixed(1)
-  let name = mo2.findDownloadByFileId(fileId)
-  if (name) return path.join(downloadsDir, name)
-
-  if (premium) {
-    // Best effort: the pinned fileId goes stale whenever the author
-    // re-uploads the file on Nexus. On failure fall through to the browser
-    // staging flow, which accepts the file by content rather than id.
-    try {
-      name = await nexus.downloadFileEntry(apiKey, modId, { fileId, fileName: `${displayName}.7z` }, downloadsDir, (r, t) => {
-        const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-        send('install:progress', { phase: 'mods', file: `Downloading ${displayName}… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
-      })
-      return path.join(downloadsDir, name)
-    } catch (err) {
-      log(`[nexus] pinned download of ${displayName} failed (${err.message}) - falling back to browser staging`)
-    }
-  }
-
-  // Pre-existing files count, so an archive moved in before this wait starts
-  // is picked up immediately. The name is a hint (mod id or name words);
-  // `expect` does the real gating by archive contents.
-  const namePattern = nexusNamePattern(modId, displayName)
-
-  // Already staged from a previous run? Check quietly first so the browser
-  // page and folder don't open when there is nothing left to download.
-  try {
-    const [pre] = await mo2.waitForDownloads([{ name: displayName, namePattern, expect }], null, installAbort?.signal, 250, 1500)
-    if (pre) return pre
-  } catch (err) {
-    if (err.message === 'Cancelled') throw err
-    /* not staged yet - run the full browser flow below */
-  }
-
-  openDownloadList(downloadsDir)
-  send('install:progress', { phase: 'mods', file: `Find ${displayName} on the downloads list, click "Slow Download", and move the archive into the SkyRP downloads folder`, index: 0, total: 1, skipped: false })
-  const [p] = await mo2.waitForDownloads([{ name: displayName, namePattern, expect }], (d, t, msg) =>
-    send('install:progress', { phase: 'mods', file: msg, index: d, total: t, skipped: false }), installAbort?.signal)
-  return p || null
 }
 
 // MO2 install
@@ -1583,15 +1551,10 @@ async function runMO2Install() {
       !fs.existsSync(modFolderPath(m)) ||
       !m.hash ||                                   // pre-hash manifest: be safe, reinstall
       mo2.readModHash(m.name) !== m.hash
-    // Root is only "set up" when the preloader dll is physically next to the
-    // exe - the stored hash flag alone can desync from disk (deleted files,
-    // a wiped game copy) and used to silently skip the Engine Fixes step.
-    const PRELOADER_DLLS = ['d3dx9_42.dll', 'winhttp.dll']
-    const preloaderPresent = PRELOADER_DLLS.some(f => fs.existsSync(path.join(skyrimPath, f)))
-    const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe')) && preloaderPresent
+    const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
     const needsRoot      = !rootSetUp || rootChanged
-    log(`[mo2-install] root check: skse=${fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))} preloader=${preloaderPresent} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
+    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
     const modsToInstall  = manifest.mods.filter(modChanged)
 
     const finishOrder = () => {
@@ -1747,35 +1710,10 @@ async function runMO2Install() {
         return fail(`SKSE install failed: ${err.message}`)
       }
 
-      // SSE Engine Fixes Part 2 (preloader + TBB) - extracts to the game root.
-      //
-      // Preferred source: the manifest's root directives. When the server
-      // admin adds the preloader files to rootInclude (manifest-sources.json)
-      // and recompiles, applyRootFiles above already installed them - compiled
-      // from the reference install, hash-verified, and tracking whatever
-      // version the server actually runs. The pinned Nexus download below is
-      // only a fallback for manifests that don't capture them yet; its
-      // hardcoded fileId goes stale whenever the mod updates on Nexus.
-      const rootHasPreloader = (manifest.root || [])
-        .some(f => /^(?:d3dx9_42|winhttp)\.dll$/i.test(path.basename(f.to || '')))
-      if (rootHasPreloader) {
-        log('[mo2-install] preloader provided by manifest root files - skipping the pinned Engine Fixes download')
-      } else {
-        try {
-          const efPath = await acquireNexusArchive(ENGINE_FIXES.modId, ENGINE_FIXES.fileId, ENGINE_FIXES.name,
-            { downloadsDir, apiKey, premium, expect: ENGINE_FIXES.expect })
-          if (!efPath) return fail('The Engine Fixes skse64 Preloader (formerly "Part 2") was not downloaded. Get it from the downloads list ("Slow Download") and move the archive into the SkyRP downloads folder.')
-          send('install:progress', { phase: 'mods', file: 'Installing Engine Fixes…', index: 0, total: 0, skipped: false })
-          mo2.installRootArchive(efPath, skyrimPath)
-          // Trust nothing: confirm the preloader is actually next to the exe,
-          // or the game will error about Engine Fixes after launch.
-          if (!PRELOADER_DLLS.some(f => fs.existsSync(path.join(skyrimPath, f)))) {
-            return fail(`Engine Fixes was extracted from "${path.basename(efPath)}" but no preloader dll (d3dx9_42.dll / winhttp.dll) ended up next to SkyrimSE.exe. The archive layout is unexpected - check %TEMP%\\skyrp-install.log.`)
-          }
-        } catch (err) {
-          return fail(`Engine Fixes install failed: ${err.message}`)
-        }
-      }
+      // The Engine Fixes preloader is no longer a launcher-managed root mod:
+      // it ships inside the client files zip (hash-tracked and force-updated
+      // by the version check), so SKSE and MO2 are the only components the
+      // launcher installs itself.
     }
 
     // 5. Match MO2 priority + plugin order, record the installed version
