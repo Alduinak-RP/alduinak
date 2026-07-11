@@ -21,10 +21,16 @@ function filterAccessForSlot(access: any, slot: number): any {
 
 const MAX_CHARACTERS = 3;
 
-// Guards for characterSelectMenuRequest: parking (despawning) the actor on
-// demand would otherwise be an instant combat escape for a hacked client.
+// Guards for characterSelectMenuRequest: rapid repeats are ignored, and a
+// request right after an actor was assigned is treated as a stale client menu
+// event (scheduling a park for a body that is actually being played).
 const REQUEST_COOLDOWN_MS = 15 * 1000;
 const ASSIGN_GRACE_MS = 10 * 1000;
+
+// Logout grace: a body stays in the world this long after its player
+// disconnects, quits to the menu, or switches character, so combat logging
+// leaves a killable body behind. Selecting the character again cancels it.
+const LOGOUT_GRACE_MS = 5 * 60 * 1000;
 
 // Character-select protocol (gated by the "characterSelect" server setting).
 // When enabled, the server no longer auto-spawns on connect; instead it sends
@@ -52,6 +58,9 @@ export class Spawn implements System {
   // userId -> timestamps backing the onMenuRequest anti-abuse guards
   private lastMenuRequestMs = new Map<number, number>();
   private lastAssignMs = new Map<number, number>();
+  // actorId -> pending logout-grace despawn timer. Keyed by actor, not user:
+  // userIds are recycled across connections, actor form ids are not.
+  private parkTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
@@ -88,20 +97,51 @@ export class Spawn implements System {
     this.authCache.delete(userId);
     this.lastMenuRequestMs.delete(userId);
     this.lastAssignMs.delete(userId);
+    // Logout grace: the body stays in the world for a while (parkTimers is
+    // actorId-keyed and deliberately NOT cleaned here; the timer must outlive
+    // the connection). Reconnecting and selecting the character cancels it.
     try {
       const actorId = ctx.svr.getUserActor(userId);
       if (actorId !== 0) {
-        ctx.svr.setEnabled(actorId, false);
+        this.schedulePark(ctx, actorId);
       }
     } catch { /* form vanished */ }
   }
 
-  // The client asks for this when the player quits to the main menu: park the
-  // current character like disconnect() does and reopen the selection menu.
-  // Rapid repeats and requests right after an actor was assigned reopen the
-  // menu WITHOUT parking, so the body stays in the world: an at-will despawn
-  // packet would otherwise be an instant combat escape (same reason combat
-  // logging leaves a body). The stale-menuOpen client guard also lands here.
+  // Logout-grace despawn: disable the body LOGOUT_GRACE_MS from now unless the
+  // character is selected again first. Also detaches a still-connected owner
+  // when firing (a user idling at the menu past the grace): re-selecting a
+  // DISABLED actor while still mapped would stream CreateActor(isMe) twice.
+  private schedulePark(ctx: SystemContext, actorId: number): void {
+    this.cancelPark(actorId);
+    const handle = setTimeout(() => {
+      this.parkTimers.delete(actorId);
+      try {
+        ctx.svr.setEnabled(actorId, false);
+        const userId = ctx.svr.getUserByActor(actorId);
+        if (userId >= 0 && userId < 0xffff && ctx.svr.getUserActor(userId) === actorId) {
+          ctx.svr.setUserActor(userId, 0);
+        }
+        this.log("Logout grace expired, actor", actorId.toString(16), "despawned");
+      } catch { /* form vanished */ }
+    }, LOGOUT_GRACE_MS);
+    this.parkTimers.set(actorId, handle);
+  }
+
+  private cancelPark(actorId: number): void {
+    const handle = this.parkTimers.get(actorId);
+    if (handle !== undefined) {
+      clearTimeout(handle);
+      this.parkTimers.delete(actorId);
+    }
+  }
+
+  // The client asks for this when the player quits to the main menu: reopen
+  // the selection menu and start the logout grace on the current body (it
+  // stays in the world, so quitting out is never an instant combat escape).
+  // Rapid repeats and requests right after an actor was assigned are ignored
+  // for the grace scheduling: those are packet spam or a stale client menu
+  // event, and a stale park would despawn a body that is being played.
   private onMenuRequest(ctx: SystemContext, userId: number): void {
     const auth = this.authCache.get(userId);
     if (!auth) return; // not authenticated yet
@@ -114,16 +154,12 @@ export class Spawn implements System {
         try {
           const actorId = ctx.svr.getUserActor(userId);
           if (actorId !== 0) {
-            ctx.svr.setEnabled(actorId, false);
-            // Fully detach, matching the login lifecycle: a user still mapped
-            // to the actor makes the next same-slot select stream
-            // CreateActor(isMe) twice and run the client spawn path twice.
-            ctx.svr.setUserActor(userId, 0);
+            this.schedulePark(ctx, actorId);
           }
         } catch { /* form vanished */ }
       }
       this.pending.set(userId, auth);
-      this.log("Reopening character select for user", userId, mayPark ? "(actor parked)" : "(actor left in world)");
+      this.log("Reopening character select for user", userId, mayPark ? "(logout grace started)" : "(guarded, no grace timer)");
     }
     this.sendCharacterList(ctx, userId, auth.profileId);
   }
@@ -231,12 +267,20 @@ export class Spawn implements System {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
     }
 
+    // Other slots despawn through the logout grace too: switching character
+    // must not vanish the previous body instantly (combat-log escape). Bodies
+    // already under a running grace keep their original timer.
     for (const other of slots) {
       if (other !== undefined && other !== actorId) {
-        try { ctx.svr.setEnabled(other, false); } catch { /* form vanished */ }
+        if (!this.parkTimers.has(other)) {
+          this.schedulePark(ctx, other);
+        }
       }
     }
 
+    // Selecting the character is what cancels its pending logout-grace
+    // despawn. Enable BEFORE setUserActor: PartOne throws on disabled actors.
+    this.cancelPark(actorId);
     ctx.svr.setEnabled(actorId, true);
     ctx.svr.setUserActor(userId, actorId);
     if (isNew) ctx.svr.setRaceMenuOpen(actorId, true);
@@ -258,6 +302,7 @@ export class Spawn implements System {
     if (actorId !== undefined) {
       // Perma-dead characters may be deleted too — destroying the body — so a
       // perma-death cannot lock the slot forever.
+      this.cancelPark(actorId);
       ctx.svr.destroyActor(actorId);
       this.log("Deleted character", actorId.toString(16), "from slot", slot);
     }
@@ -276,6 +321,7 @@ export class Spawn implements System {
       .find((a) => !this.isPermaDead(mp, a));
     if (actorId) {
       this.log("Loading character", actorId.toString(16));
+      this.cancelPark(actorId); // reconnected within the logout grace
       ctx.svr.setEnabled(actorId, true);
       ctx.svr.setUserActor(userId, actorId);
     } else {

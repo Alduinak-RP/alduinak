@@ -262,6 +262,51 @@ TEST_CASE("Deaths outside Tamriel route by worldspace override, not X/Y",
     "Riften");
 }
 
+TEST_CASE("A revive before the respawn delay leaves the living actor alone",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+
+  // Dremora base: an untemplated NPC_ whose death item (DeathItemDremora,
+  // chanceNone 0, a single level-1 entry) ALWAYS resolves to one Daedra
+  // Heart, so the delayed-respawn death-item logic deterministically has an
+  // inventory wipe to perform. Draugr etc. have chance-gated sub-lists that
+  // can roll empty, which would make this test flaky.
+  constexpr uint32_t kEncDremoraMelee02 = 0x16ef0;
+  constexpr uint32_t kDaedraHeart = 0x3ad5b;
+  constexpr uint32_t kIronSword = 0x12eb7;
+
+  p.worldState.AddForm(
+    std::make_unique<MpActor>(
+      LocationalData{ { 0.f, 0.f, 0.f }, NiPoint3(), FormDesc::Tamriel() },
+      p.CreateFormCallbacks(), kEncDremoraMelee02),
+    0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  ac.AddItem(kIronSword, 1);
+  REQUIRE(ac.GetInventory().GetItemCount(kIronSword) == 1);
+
+  ac.SetRespawnTime(0.f); // the bleedout timer becomes due on the next tick
+  ac.Kill();
+  REQUIRE(ac.IsDead());
+
+  // Kill() added the base's death item: proves the timer's wipe branch (which
+  // keeps only SweetCantDrop items) would engage for this actor.
+  REQUIRE(ac.GetInventory().GetItemCount(kDaedraHeart) >= 1);
+
+  // The gamemode revives before the delay elapses (the death screen's
+  // "resurrect" / "temple" choices set isDead=false).
+  ac.SetIsDead(false);
+  REQUIRE(ac.IsDead() == false);
+
+  p.Tick(); // fire the stale respawn timer
+
+  // The stale timer used to wipe the living actor's inventory down to
+  // SweetCantDrop items; a revived actor must be left untouched.
+  REQUIRE(ac.GetInventory().GetItemCount(kIronSword) == 1);
+  REQUIRE(ac.IsDead() == false);
+}
+
 TEST_CASE("A healed player gets up where they fell, not at a temple",
           "[Respawn]")
 {

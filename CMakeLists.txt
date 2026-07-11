@@ -58,10 +58,14 @@ endif()
 # Bool options (Part 1)
 option(SKYRIM_VR "Skyrim VR (1.4) build" OFF)
 option(BUILD_NODEJS "Build NodeJS port if ON, use a pre-built otherwise" OFF)
+# Declared here (before vcpkg feature selection); also documented in Part 2
+option(BUILD_SKYRIM_PLATFORM "Build Skyrim Platform" ON)
 
+# CommonLibSSE is only consumed by Skyrim Platform: server-only builds
+# (-DBUILD_SKYRIM_PLATFORM=OFF) skip it, it needs a complete VS2022 toolset
 if(SKYRIM_VR)
   list(APPEND VCPKG_MANIFEST_FEATURES "skyrim-vr")
-else()
+elseif(BUILD_SKYRIM_PLATFORM)
   list(APPEND VCPKG_MANIFEST_FEATURES "skyrim-flatrim")
 endif()
 
@@ -75,8 +79,9 @@ cmake_minimum_required(VERSION 3.19)
 project(skymp)
 enable_testing()
 
-# Check the Visual Studio version
-if(MSVC)
+# Check the Visual Studio version. Server-only builds
+# (-DBUILD_SKYRIM_PLATFORM=OFF) may use any generator, e.g. Ninja
+if(MSVC AND BUILD_SKYRIM_PLATFORM)
   if(CMAKE_GENERATOR MATCHES "Visual Studio ([0-9]+)")
     if(CMAKE_MATCH_1 LESS 17)
       message(FATAL_ERROR "This project requires Visual Studio 2022 (v17) or newer. But the generator was \"${CMAKE_GENERATOR}\"")

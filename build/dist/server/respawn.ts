@@ -18,18 +18,10 @@
 //                     (spawn.ts reads private.permaDead)
 //       resurrect   → full health in place (logged; re-death to the same
 //                     killer within 1 hour = forced permadeath)
-//       temple      → nearest temple at full health, no return to the death
-//                     spot for 1h. Enforcement runs on a 30s tick and only
-//                     when the player is in the SAME cell-or-worldspace as the
-//                     death (X/Y across spaces don't compare, and the gamemode
-//                     API has no cell→parent-world mapping), so a quick
-//                     in-and-out inside one tick, or re-entry through a
-//                     different interior cell, is not caught. The zone is NOT
-//                     armed when it would cover the respawn temple itself
-//                     (death in the temple cell or near its city anchor), and
-//                     the tick only enforces after the player has been seen
-//                     outside the zone once; both guards kill the old
-//                     teleport-back-every-30s loop.
+//       temple      → nearest temple at full health. The 1h no-return zone
+//                     around the death spot is currently DISABLED (commented
+//                     out): deaths near a temple trapped players in
+//                     bounce-backs. The code is kept for a future rework.
 //
 // Every server → client packet resolves the connection first: sendCustomPacket
 // takes a networking userId, NOT an actor/form id, so send() translates via
@@ -56,9 +48,13 @@ const FULL_HEALTH = 1.0;
 const REGEN_INTERVAL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const REGEN_NATURAL = 0.01;             // ~1 HP / 8h (fraction of max)
 const REGEN_HEALER = 0.05;              // ~5 HP / 8h with a healer
-const NO_RETURN_MS = 60 * 60 * 1000;    // 1 hour
-const NO_RETURN_RADIUS = 6000;          // units around the death spot
-const TEMPLE_EXIT_MARGIN = 3000;        // anchor-to-door slack for the trap check
+// NO-RETURN SYSTEM DISABLED: a death near the respawn temple (e.g. inside
+// Whiterun) put the zone on top of the temple, locking the player into
+// bounce-backs. Kept commented out for a future rework, see doTempleFullHealth
+// and tick below.
+// const NO_RETURN_MS = 60 * 60 * 1000;    // 1 hour
+// const NO_RETURN_RADIUS = 6000;          // units around the death spot
+// const TEMPLE_EXIT_MARGIN = 3000;        // anchor-to-door slack for the trap check
 const ARMED_KILLER_TTL_MS = 60 * 60 * 1000; // resurrect anti-glitch arming expires after 1h
 const NEVER_RESPAWN = 1e12;             // spawnDelay for a permadead corpse
 const TICK_MS = 30 * 1000;
@@ -132,6 +128,7 @@ export function pickTemple(worldDesc: string | null, pos: number[] | null): { na
   return nearestTemple(pos);
 }
 
+// NO-RETURN SYSTEM DISABLED, kept for a future rework.
 // True when the no-return zone around the death spot would cover the temple
 // the player is being sent to: enforcing it would just bounce them back on
 // every tick. Measured against the DESTINATION temple's own city anchor, not
@@ -141,14 +138,14 @@ export function pickTemple(worldDesc: string | null, pos: number[] | null): { na
 // Tamriel coordinate frame with the walled-city child worldspaces, so the X/Y
 // comparison is valid for city deaths too; worldspace-override picks carry no
 // x/y and correctly fall through to false (their coords are in another space).
-function zoneWouldTrapTemple(temple: { dest: Loc; x?: number; y?: number }, deathWorld: string | null, deathPos: number[] | null): boolean {
-  if (deathWorld === temple.dest.cellOrWorldDesc) return true; // died in the temple cell
-  if (!Array.isArray(deathPos) || typeof temple.x !== 'number' || typeof temple.y !== 'number') return false;
-  const city = ANCHORS.find((a) => a.dest === temple.dest);
-  if (!city) return false;
-  const dx = city.x - deathPos[0], dy = city.y - deathPos[1];
-  return Math.sqrt(dx * dx + dy * dy) < NO_RETURN_RADIUS + TEMPLE_EXIT_MARGIN;
-}
+// function zoneWouldTrapTemple(temple: { dest: Loc; x?: number; y?: number }, deathWorld: string | null, deathPos: number[] | null): boolean {
+//   if (deathWorld === temple.dest.cellOrWorldDesc) return true; // died in the temple cell
+//   if (!Array.isArray(deathPos) || typeof temple.x !== 'number' || typeof temple.y !== 'number') return false;
+//   const city = ANCHORS.find((a) => a.dest === temple.dest);
+//   if (!city) return false;
+//   const dx = city.x - deathPos[0], dy = city.y - deathPos[1];
+//   return Math.sqrt(dx * dx + dy * dy) < NO_RETURN_RADIUS + TEMPLE_EXIT_MARGIN;
+// }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 function isPlayer(store: any, actorId: number): boolean {
@@ -329,26 +326,29 @@ function doTempleFullHealth(mp: any, actorId: number): void {
   safeSet(mp, actorId, 'private.injured', false);
   // Full-health outcome: don't leave the 1-HP wake armed for the engine.
   safeSet(mp, actorId, 'respawnPercentages', { health: FULL_HEALTH, magicka: 1, stamina: 1 });
-  if (zoneWouldTrapTemple(temple, deathWorld, deathPos)) {
-    // The zone would cover the respawn temple: skip it (and clear any older
-    // one) or the tick would teleport the player back every 30s for an hour.
-    safeSet(mp, actorId, 'private.noReturnUntilMs', 0);
-    console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name + ' (death spot at the temple, no-return skipped)');
-  } else {
-    // Can't return to the death spot for an hour. Enforcement stays dormant
-    // until the player is first seen outside the zone (see tick).
-    safeSet(mp, actorId, 'private.noReturnPos', Array.isArray(deathPos) ? deathPos : [0, 0, 0]);
-    safeSet(mp, actorId, 'private.noReturnWorld', typeof deathWorld === 'string' ? deathWorld : '');
-    safeSet(mp, actorId, 'private.noReturnUntilMs', Date.now() + NO_RETURN_MS);
-    safeSet(mp, actorId, 'private.noReturnSeenOutside', false);
-    console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name + ' (no-return 1h)');
-  }
+  // NO-RETURN SYSTEM DISABLED: clear any zone armed by an older build so
+  // nobody stays locked, and never arm a new one. Kept for a future rework.
+  safeSet(mp, actorId, 'private.noReturnUntilMs', 0);
+  // if (zoneWouldTrapTemple(temple, deathWorld, deathPos)) {
+  //   // The zone would cover the respawn temple: skip it (and clear any older
+  //   // one) or the tick would teleport the player back every 30s for an hour.
+  //   safeSet(mp, actorId, 'private.noReturnUntilMs', 0);
+  //   console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name + ' (death spot at the temple, no-return skipped)');
+  // } else {
+  //   // Can't return to the death spot for an hour. Enforcement stays dormant
+  //   // until the player is first seen outside the zone (see tick).
+  //   safeSet(mp, actorId, 'private.noReturnPos', Array.isArray(deathPos) ? deathPos : [0, 0, 0]);
+  //   safeSet(mp, actorId, 'private.noReturnWorld', typeof deathWorld === 'string' ? deathWorld : '');
+  //   safeSet(mp, actorId, 'private.noReturnUntilMs', Date.now() + NO_RETURN_MS);
+  //   safeSet(mp, actorId, 'private.noReturnSeenOutside', false);
+  //   console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name + ' (no-return 1h)');
+  // }
+  console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name);
   hideDeathScreen(mp, actorId);
 }
 
-// ── Periodic tick: slow recovery + no-return enforcement ──────────────────────
-// Granularity note: everything below runs every TICK_MS (30s). The no-return
-// zone can therefore be violated briefly inside one tick, and the injured
+// ── Periodic tick: slow recovery (no-return enforcement disabled) ─────────────
+// Granularity note: everything below runs every TICK_MS (30s). The injured
 // health clamp lets client-side natural regen creep up for at most 30s before
 // being pulled back down.
 function tick(mp: any, store: any): void {
@@ -385,6 +385,13 @@ function tick(mp: any, store: any): void {
       }
     }
 
+    // NO-RETURN SYSTEM DISABLED: enforcement commented out, kept for a future
+    // rework. Any zone persisted by an older build is cleared so nobody stays
+    // locked out of the area they died in.
+    const until = safeGet(mp, actorId, 'private.noReturnUntilMs', 0);
+    if (until) {
+      safeSet(mp, actorId, 'private.noReturnUntilMs', 0);
+    }
     // No-return zone after a "temple w/ full health" choice. Compared by the
     // full worldOrCell desc: enforcement applies only while the player is in
     // the SAME cell-or-worldspace as the death (X/Y from different spaces
@@ -394,28 +401,27 @@ function tick(mp: any, store: any): void {
     // Dormant until the player is first seen OUTSIDE the zone: the respawn
     // itself can land in the zone (death near the temple), and bouncing a
     // player who never left is the infinite-teleport bug, not enforcement.
-    const until = safeGet(mp, actorId, 'private.noReturnUntilMs', 0);
-    if (until && now < until) {
-      const zone = safeGet(mp, actorId, 'private.noReturnPos', null);
-      const zoneWorld = safeGet(mp, actorId, 'private.noReturnWorld', '');
-      const pos = safeGet(mp, actorId, 'pos', null);
-      const world = safeGet(mp, actorId, 'worldOrCellDesc', '');
-      if (Array.isArray(zone) && Array.isArray(pos)) {
-        const dx = zone[0] - pos[0], dy = zone[1] - pos[1];
-        const inZone = world === zoneWorld && Math.sqrt(dx * dx + dy * dy) < NO_RETURN_RADIUS;
-        if (!inZone) {
-          if (safeGet(mp, actorId, 'private.noReturnSeenOutside', false) !== true) {
-            safeSet(mp, actorId, 'private.noReturnSeenOutside', true);
-          }
-        } else if (safeGet(mp, actorId, 'private.noReturnSeenOutside', false) === true) {
-          const temple = pickTemple(zoneWorld, zone);
-          safeSet(mp, actorId, 'locationalData', temple.dest);
-          send(mp, actorId, { customPacketType: 'notification', text: 'You cannot return here yet.' });
-        }
-      }
-    } else if (until) {
-      safeSet(mp, actorId, 'private.noReturnUntilMs', 0);
-    }
+    // if (until && now < until) {
+    //   const zone = safeGet(mp, actorId, 'private.noReturnPos', null);
+    //   const zoneWorld = safeGet(mp, actorId, 'private.noReturnWorld', '');
+    //   const pos = safeGet(mp, actorId, 'pos', null);
+    //   const world = safeGet(mp, actorId, 'worldOrCellDesc', '');
+    //   if (Array.isArray(zone) && Array.isArray(pos)) {
+    //     const dx = zone[0] - pos[0], dy = zone[1] - pos[1];
+    //     const inZone = world === zoneWorld && Math.sqrt(dx * dx + dy * dy) < NO_RETURN_RADIUS;
+    //     if (!inZone) {
+    //       if (safeGet(mp, actorId, 'private.noReturnSeenOutside', false) !== true) {
+    //         safeSet(mp, actorId, 'private.noReturnSeenOutside', true);
+    //       }
+    //     } else if (safeGet(mp, actorId, 'private.noReturnSeenOutside', false) === true) {
+    //       const temple = pickTemple(zoneWorld, zone);
+    //       safeSet(mp, actorId, 'locationalData', temple.dest);
+    //       send(mp, actorId, { customPacketType: 'notification', text: 'You cannot return here yet.' });
+    //     }
+    //   }
+    // } else if (until) {
+    //   safeSet(mp, actorId, 'private.noReturnUntilMs', 0);
+    // }
   }
 }
 
