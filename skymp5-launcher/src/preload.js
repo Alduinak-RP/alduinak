@@ -63,9 +63,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('install:complete')
   },
 
-  // Nexus Mods login
+  // Nexus Mods login (one-click SSO only)
   nexusGetUser: ()    => ipcRenderer.invoke('nexus:getUser'),
-  nexusLogin:   (key) => ipcRenderer.invoke('nexus:login', key),
   nexusLogout:  ()    => ipcRenderer.invoke('nexus:logout'),
   nexusSsoAvailable: () => ipcRenderer.invoke('nexus:ssoAvailable'),
   nexusSsoLogin:     () => ipcRenderer.invoke('nexus:ssoLogin'),

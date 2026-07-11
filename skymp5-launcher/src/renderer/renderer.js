@@ -313,10 +313,10 @@ renderTopbarDiscord()
 
 
 // Nexus topbar widget
-const nexusTopbarSlot  = document.getElementById('nexus-topbar-slot')
-const modalNexus       = document.getElementById('modal-nexus')
-const nexusKeyInput    = document.getElementById('nexus-key-input')
-const nexusLoginStatus = document.getElementById('nexus-login-status')
+// Login is the one-click SSO flow (registered application slug): the button
+// opens nexusmods.com in the browser and the key arrives over the SSO
+// websocket. The old paste-your-API-key modal is gone.
+const nexusTopbarSlot = document.getElementById('nexus-topbar-slot')
 
 let nexusUser = null
 
@@ -359,66 +359,29 @@ function renderTopbarNexus() {
     const loginBtn = document.createElement('button')
     loginBtn.className   = 'btn-nexus-topbar'
     loginBtn.textContent = 'Nexus Login'
-    loginBtn.addEventListener('click', () => {
-      nexusLoginStatus.textContent = ''
-      nexusKeyInput.value = ''
-      modalNexus.hidden = false
-      nexusKeyInput.focus()
+    loginBtn.addEventListener('click', async () => {
+      loginBtn.disabled    = true
+      loginBtn.textContent = 'Waiting for Nexus…'
+      loginBtn.title       = 'Click Authorise on the Nexus page that just opened.'
+      if (connectWarning.textContent.startsWith('Nexus login failed:')) {
+        connectWarning.classList.remove('visible')
+        connectWarning.textContent = ''
+      }
+      const result = await window.electronAPI.nexusSsoLogin()
+      if (result.success) {
+        nexusUser = result.user
+        renderTopbarNexus()
+      } else {
+        loginBtn.disabled    = false
+        loginBtn.textContent = 'Nexus Login'
+        loginBtn.title       = ''
+        connectWarning.textContent = `Nexus login failed: ${result.error}`
+        connectWarning.classList.add('visible')
+      }
     })
     nexusTopbarSlot.appendChild(loginBtn)
   }
 }
-
-// Show the one-click SSO button only when the app has a registered slug
-window.electronAPI.nexusSsoAvailable().then(available => {
-  document.getElementById('nexus-sso-group').hidden = !available
-})
-
-document.getElementById('nexus-sso-login').addEventListener('click', async () => {
-  const btn = document.getElementById('nexus-sso-login')
-  btn.disabled = true
-  nexusLoginStatus.textContent = 'Waiting for you to authorise in the browser…'
-
-  const result = await window.electronAPI.nexusSsoLogin()
-  btn.disabled = false
-
-  if (!result.success) {
-    nexusLoginStatus.textContent = `Error: ${result.error}`
-    return
-  }
-
-  nexusUser = result.user
-  nexusLoginStatus.textContent = ''
-  modalNexus.hidden = true
-  renderTopbarNexus()
-})
-
-document.getElementById('nexus-modal-close').addEventListener('click', () => { modalNexus.hidden = true })
-modalNexus.addEventListener('click', e => { if (e.target === modalNexus) modalNexus.hidden = true })
-
-document.getElementById('nexus-keys-link').addEventListener('click', e => {
-  e.preventDefault()
-  window.electronAPI.openExternal('https://next.nexusmods.com/settings/api-keys')
-})
-
-document.getElementById('nexus-key-save').addEventListener('click', async () => {
-  const btn = document.getElementById('nexus-key-save')
-  btn.disabled = true
-  nexusLoginStatus.textContent = 'Validating key…'
-
-  const result = await window.electronAPI.nexusLogin(nexusKeyInput.value)
-  btn.disabled = false
-
-  if (!result.success) {
-    nexusLoginStatus.textContent = `Error: ${result.error}`
-    return
-  }
-
-  nexusUser = result.user
-  nexusLoginStatus.textContent = ''
-  modalNexus.hidden = true
-  renderTopbarNexus()
-})
 
 window.electronAPI.nexusGetUser().then(user => {
   nexusUser = user

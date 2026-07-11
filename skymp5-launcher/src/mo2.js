@@ -716,7 +716,7 @@ function listArchiveContents(archivePath, st) {
  *
  *   wanted: [{ name, hash?, size?, namePattern?, expect? }]
  */
-function waitForDownloads(wanted, onProgress, signal, intervalMs = 4000, timeoutMs = 900_000) {
+function waitForDownloads(wanted, onProgress, signal, intervalMs = 1000, timeoutMs = 900_000) {
   let deadline   = Date.now() + timeoutMs
   // The sliding deadline keeps an actively-staging user alive, but any churn
   // in the downloads folder (a crawling browser download, antivirus rewrites)

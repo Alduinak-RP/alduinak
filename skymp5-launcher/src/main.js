@@ -48,7 +48,8 @@ const store = new Store({
     filesVersion:      '',   // version tag from last successful file download
     discordUser:       null,
     mo2Enabled:        true,   // launch the game through the managed portable MO2
-    nexusApiKey:       '',     // Nexus API login
+    nexusApiKey:       '',     // Nexus API key (websocket SSO flow)
+    nexusOauth:        null,   // { accessToken, refreshToken, expiresAt } (OAuth flow)
     nexusUser:         null,   // { name, isPremium } from the last validation
     isolatedGame:      true,  // play from the isolated game copy instead of skyrimPath
     gameDirPath:       '',     // legacy: pre-base-dir location of the game copy
@@ -152,8 +153,8 @@ ipcMain.handle('settings:load', async () => {
 
   const servers = store.get('cachedServers') || []
   // Whitelist only what the renderer reads. Never spread the whole store: it
-  // holds secrets (nexusApiKey, gameSession, gameProfileId) the renderer must
-  // never receive.
+  // holds secrets (nexusApiKey, nexusOauth tokens, gameSession, gameProfileId)
+  // the renderer must never receive.
   return {
     skyrimPath:        store.get('skyrimPath'),
     activeServerIndex: store.get('activeServerIndex'),
@@ -509,36 +510,69 @@ ipcMain.handle('install:openFolder', async () => {
 
 ipcMain.handle('nexus:getUser', () => store.get('nexusUser') || null)
 
-ipcMain.handle('nexus:login', async (_e, apiKey) => {
-  if (typeof apiKey !== 'string' || apiKey.trim().length < 10) {
-    return { success: false, error: 'Paste your personal API key from the Nexus site.' }
-  }
-  try {
-    const user = await nexus.validateKey(apiKey.trim())
-    store.set('nexusApiKey', apiKey.trim())
-    store.set('nexusUser', user)
-    log(`[nexus] logged in as ${user.name} (premium: ${user.isPremium})`)
-    return { success: true, user }
-  } catch (err) {
-    return { success: false, error: err.message }
-  }
-})
-
 ipcMain.handle('nexus:logout', () => {
   store.set('nexusApiKey', '')
+  store.set('nexusOauth', null)
   store.set('nexusUser', null)
   return { success: true }
 })
 
-// One-click SSO (Vortex/Wabbajack-style). Only available once a Nexus
-// application slug has been registered and set in config.js.
-ipcMain.handle('nexus:ssoAvailable', () => !!config.nexusAppSlug)
+// One-click web login. Prefers OAuth (authorization code + PKCE) when a
+// client id is configured; falls back to the older websocket SSO when only
+// the application slug is set. The renderer flow is identical either way.
+ipcMain.handle('nexus:ssoAvailable', () => !!(config.nexusOauthClientId || config.nexusAppSlug))
+
+// Current Nexus credential for API calls: OAuth bearer (refreshed when close
+// to expiry) or the SSO-era API key. Null when logged out.
+async function getNexusAuth() {
+  const oauth = store.get('nexusOauth')
+  if (oauth && oauth.accessToken) {
+    const nearExpiry = oauth.expiresAt && Date.now() > oauth.expiresAt - 60_000
+    if (nearExpiry && oauth.refreshToken && config.nexusOauthClientId) {
+      try {
+        const t = await nexus.refreshOauth(config.nexusOauthClientId, oauth.refreshToken)
+        const next = {
+          accessToken:  t.access_token,
+          refreshToken: t.refresh_token || oauth.refreshToken,
+          expiresAt:    Date.now() + (t.expires_in ? t.expires_in * 1000 : 6 * 3600 * 1000),
+        }
+        store.set('nexusOauth', next)
+        log('[nexus] OAuth token refreshed')
+        return { bearer: next.accessToken }
+      } catch (err) {
+        log('[nexus] token refresh failed:', err.message)
+        // The old token may still work; the API answers 401 if not.
+      }
+    }
+    return { bearer: oauth.accessToken }
+  }
+  const key = store.get('nexusApiKey')
+  return key ? { apiKey: key } : null
+}
 
 ipcMain.handle('nexus:ssoLogin', async () => {
-  if (!config.nexusAppSlug) {
-    return { success: false, error: 'One-click login is not configured yet - paste your API key instead.' }
-  }
   try {
+    if (config.nexusOauthClientId) {
+      const tokens = await nexus.oauthLogin({
+        clientId: config.nexusOauthClientId,
+        port:     config.nexusOauthPort,
+        openUrl:  url => shell.openExternal(url),
+      })
+      store.set('nexusOauth', {
+        accessToken:  tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresAt:    Date.now() + (tokens.expires_in ? tokens.expires_in * 1000 : 6 * 3600 * 1000),
+      })
+      store.set('nexusApiKey', '')   // the bearer token replaces any old key
+      const user = await nexus.validateKey({ bearer: tokens.access_token })
+      store.set('nexusUser', user)
+      log(`[nexus] OAuth login as ${user.name} (premium: ${user.isPremium})`)
+      return { success: true, user }
+    }
+
+    if (!config.nexusAppSlug) {
+      return { success: false, error: 'Nexus login is not configured in this build (missing OAuth client id / application slug).' }
+    }
     const apiKey = await nexus.ssoLogin(config.nexusAppSlug, url => shell.openExternal(url))
     const user   = await nexus.validateKey(apiKey)
     store.set('nexusApiKey', apiKey)
@@ -1531,8 +1565,8 @@ async function runMO2Install() {
 
     // 3a. Acquire every referenced archive, verified by sha256
     const downloadsDir = mo2.getDownloadsDir()
-    const apiKey  = store.get('nexusApiKey')
-    const premium = !!(apiKey && store.get('nexusUser')?.isPremium)
+    const nexusAuth = await getNexusAuth()   // OAuth bearer or SSO API key
+    const premium   = !!(nexusAuth && store.get('nexusUser')?.isPremium)
     const mb = n => (n / 1024 / 1024).toFixed(1)
     const sanitize       = n => String(n).replace(/[<>:"/\\|?*]/g, '')
     const modFolderPath  = m => path.join(mo2.getModsDir(), sanitize(m.name))
@@ -1597,7 +1631,7 @@ async function runMO2Install() {
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus' && premium) {
         send('install:progress', { phase: 'mods', file: `Downloading ${a.name}…`, index: 0, total: 0, skipped: false })
-        const name = await nexus.downloadFileEntry(apiKey, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
+        const name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
           const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
           send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} / ${mb(t)} MB${pct}`, index: 0, total: 0, skipped: false })
         })
