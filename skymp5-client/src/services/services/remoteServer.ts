@@ -642,7 +642,14 @@ export class RemoteServer extends ClientListener {
       this.worldModel.playerCharacterRefrId = 0;
 
       // TODO: move to a separate module
-      once('update', () => Game.quitToMainMenu());
+      // "update" doesn't fire in the main menu, so this can trigger long after
+      // being queued. Re-check on fire: the server may have re-created our
+      // actor since (e.g. picking a character after quitting to the menu).
+      once('update', () => {
+        if (this.worldModel.playerCharacterFormIdx === -1) {
+          Game.quitToMainMenu();
+        }
+      });
     }
 
     this.getIdManager().freeIdFor(msg.idx);

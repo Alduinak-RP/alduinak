@@ -683,11 +683,15 @@ ipcMain.handle('game:createIsolated', async () => {
 })
 
 // Vanilla root files, by store edition. Only those present get copied.
+// Skyrim.ccc is deliberately NOT copied: no cc* plugins are copied either, and
+// an orphan ccc list makes the engine treat the AE/CC content set as changed,
+// which pops the Creation Club announcement over the main menu on first boot.
+// That box is modal and SkyrimPlatform cannot dismiss pre-game menus.
 const VANILLA_ROOT_FILES = [
   'SkyrimSE.exe', 'SkyrimSELauncher.exe', 'bink2w64.dll',
   'steam_api64.dll', 'Galaxy64.dll', 'EOSSDK-Win64-Shipping.dll',
   'High.ini', 'Medium.ini', 'Low.ini', 'Ultra.ini', 'Skyrim_Default.ini',
-  'Skyrim.ccc', 'installscript.vdf',
+  'installscript.vdf',
 ]
 
 // Vanilla BSAs the engine loads without a matching plugin (cc* still excluded).

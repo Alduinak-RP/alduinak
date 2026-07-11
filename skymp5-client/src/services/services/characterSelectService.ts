@@ -1,10 +1,12 @@
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { BrowserMessageEvent } from "skyrimPlatform";
+import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { MsgType } from "../../messages";
 import { logError, logTrace } from "../../logging";
+import { NetworkingService } from "./networkingService";
+import { SinglePlayerService } from "./singlePlayerService";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -13,8 +15,10 @@ declare const window: any;
 // slot is empty and Play should create a new character there.
 interface CharacterSlot {
   name?: string;
-  // Optional one-line summary, e.g. "Level 3 Nord — Whiterun".
+  // Optional one-line summary, e.g. "Level 3 Nord, Whiterun".
   info?: string;
+  // Permanently dead: shown crossed out and greyed, only Delete is allowed.
+  dead?: boolean;
 }
 
 // Event keys exchanged with the browser. Namespaced so they don't collide with
@@ -41,6 +45,7 @@ const translations = {
     confirm: 'Подтвердить',
     cancel: 'Отмена',
     quit: 'Выйти',
+    dead: 'Мёртв',
   },
   "en": {
     selectCharacter: 'Select Character',
@@ -53,6 +58,7 @@ const translations = {
     confirm: 'Confirm',
     cancel: 'Cancel',
     quit: 'Quit',
+    dead: 'Dead',
   },
 } as const;
 
@@ -90,6 +96,9 @@ export class CharacterSelectService extends ClientListener {
 
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
+    // "update" fires only in-game, so the first one marks the initial spawn.
+    this.controller.once("update", () => { this.sawGameplay = true; });
 
     try {
       const lang = (this.sp.settings["skymp5-client"] as any)?.["language"] as string | undefined;
@@ -138,11 +147,13 @@ export class CharacterSelectService extends ClientListener {
 
     switch (eventKey) {
       case events.select:
-        if (Number.isInteger(slot)) { selectedSlot = slot; this.renderMenu(); }
+        // Dead slots can't be selected; they are only deletable.
+        if (Number.isInteger(slot) && !characters[slot]?.dead) { selectedSlot = slot; this.renderMenu(); }
         break;
       case events.play:
         // Play loads the selected character, or starts creation if empty.
-        if (selectedSlot !== null) {
+        // Dead characters are refused here too; the server is the authority.
+        if (selectedSlot !== null && !characters[selectedSlot]?.dead) {
           const action = characters[selectedSlot] ? 'play' : 'create';
           this.sendResult(action, selectedSlot);
           this.closeMenu();
@@ -177,6 +188,31 @@ export class CharacterSelectService extends ClientListener {
     }
   }
 
+  // Quitting to the main menu mid-session should bring the character select
+  // back (the server forgets its menu state after a selection, so ask again).
+  // The reply re-opens the browser widget focused, which also makes the native
+  // main menu buttons invisible, same as during the initial login flow.
+  private onMenuOpen(e: MenuOpenEvent): void {
+    if (e.name !== Menu.Main) return;
+    if (!this.sawGameplay) return; // initial boot: the auth flow drives the menu
+    // menuOpen is queued into SP's update tasks: events raised while game
+    // functions are unavailable arrive late, on the first in-game frame. Only
+    // act when the main menu is REALLY open right now (stale-event guard).
+    try {
+      if (!this.sp.Ui.isMenuOpen(Menu.Main)) return;
+    } catch (err) {
+      return; // native context unavailable, event is certainly stale
+    }
+    if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
+    if (!this.controller.lookupListener(NetworkingService).isConnected()) return;
+    logTrace(this, 'Main menu opened while connected, requesting character select menu');
+    const message: CustomPacketMessage = {
+      t: MsgType.CustomPacket,
+      contentJsonDump: JSON.stringify({ customPacketType: 'characterSelectMenuRequest' }),
+    };
+    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+  }
+
   private sendResult(action: 'play' | 'create' | 'delete', slot: number): void {
     logTrace(this, `Sending character select result:`, action, slot);
     const message: CustomPacketMessage = {
@@ -198,7 +234,11 @@ export class CharacterSelectService extends ClientListener {
     this.menuOpen = false;
     selectedSlot = null;
     confirmDeleteSlot = null;
-    this.sp.browser.executeJavaScript('window.skyrimPlatform.widgets.set([]);');
+    // Clear forms only; chat and other in-game widgets must survive a
+    // mid-session reopen (quit to main menu and back).
+    this.sp.browser.executeJavaScript(
+      'window.skyrimPlatform.widgets.set((window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w&&w.type!=="form";}));'
+    );
     this.sp.browser.setFocused(false);
   }
 
@@ -207,6 +247,10 @@ export class CharacterSelectService extends ClientListener {
   // are available here.
   private browsersideWidgetSetter = () => {
     const widget: any = { type: "form", id: 7, caption: strings.selectCharacter, elements: [] as any[] };
+
+    // Cross out a name with combining long-stroke overlays (U+0336): the form
+    // renderer has no text styling, so the strike is baked into the string.
+    const strike = (s: string) => s.split("").map((c) => c + String.fromCharCode(0x0336)).join("");
 
     for (let i = 0; i < maxCharacters; i++) {
       const character = characters[i];
@@ -221,22 +265,28 @@ export class CharacterSelectService extends ClientListener {
       }
 
       const isSelected = selectedSlot === i;
+      const isDead = !!(character && character.dead);
       const label = character ? (character.name || strings.unnamed) : strings.emptySlot;
-      // The slot itself is a button; clicking it selects the slot.
+      // The slot itself is a button; clicking it selects the slot. Dead slots
+      // render crossed out and greyed (disabled buttons ignore clicks).
       widget.elements.push({
         type: "button",
-        text: (isSelected ? "> " : "") + label,
+        text: isDead ? strike(label) : (isSelected ? "> " : "") + label,
         tags: headerTags,
+        isDisabled: isDead,
         click: () => window.skyrimPlatform.sendMessage(events.select, i),
       });
       if (character) {
-        if (character.info) widget.elements.push({ type: "text", text: character.info, tags: ["ELEMENT_SAME_LINE"] });
-        widget.elements.push({ type: "button", text: strings.edit, tags: ["ELEMENT_SAME_LINE"], width: 90, click: () => window.skyrimPlatform.sendMessage(events.edit, i) });
+        if (isDead) widget.elements.push({ type: "text", text: strings.dead, tags: ["ELEMENT_SAME_LINE"] });
+        else if (character.info) widget.elements.push({ type: "text", text: character.info, tags: ["ELEMENT_SAME_LINE"] });
+        // Editing a corpse makes no sense, but freeing the slot must stay possible.
+        if (!isDead) widget.elements.push({ type: "button", text: strings.edit, tags: ["ELEMENT_SAME_LINE"], width: 90, click: () => window.skyrimPlatform.sendMessage(events.edit, i) });
         widget.elements.push({ type: "button", text: strings.del, tags: ["ELEMENT_SAME_LINE"], width: 90, click: () => window.skyrimPlatform.sendMessage(events.delete, i) });
       }
     }
 
-    // Bottom row: Quit on the left, Play (disabled until a slot is picked) on the right.
+    // Bottom row: Quit on the left, Play (disabled until a live slot is picked) on the right.
+    const selectedDead = selectedSlot !== null && !!(characters[selectedSlot] && characters[selectedSlot]!.dead);
     widget.elements.push({
       type: "button",
       text: strings.quit,
@@ -247,13 +297,16 @@ export class CharacterSelectService extends ClientListener {
       type: "button",
       text: strings.play,
       tags: ["BUTTON_STYLE_FRAME", "ELEMENT_SAME_LINE"],
-      isDisabled: selectedSlot === null,
+      isDisabled: selectedSlot === null || selectedDead,
       click: () => window.skyrimPlatform.sendMessage(events.play),
     });
 
-    // Replace all widgets
-    window.skyrimPlatform.widgets.set([widget]);
+    // Replace form widgets (auth/menu) but keep chat and other in-game
+    // widgets alive: this can render mid-session after a quit to main menu.
+    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w && w.type !== "form");
+    window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
   private menuOpen = false;
+  private sawGameplay = false;
 }

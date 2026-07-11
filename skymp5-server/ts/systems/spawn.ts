@@ -21,6 +21,11 @@ function filterAccessForSlot(access: any, slot: number): any {
 
 const MAX_CHARACTERS = 3;
 
+// Guards for characterSelectMenuRequest: parking (despawning) the actor on
+// demand would otherwise be an instant combat escape for a hacked client.
+const REQUEST_COOLDOWN_MS = 15 * 1000;
+const ASSIGN_GRACE_MS = 10 * 1000;
+
 // Character-select protocol (gated by the "characterSelect" server setting).
 // When enabled, the server no longer auto-spawns on connect; instead it sends
 // the player their character slots and waits for a selection. Matches the
@@ -41,6 +46,12 @@ export class Spawn implements System {
   private settingsObject!: Settings;
   // userId -> auth context awaiting a character selection
   private pending = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
+  // userId -> last resolved auth context, kept for the whole connection so the
+  // menu can reopen when the player quits to the main menu mid-session
+  private authCache = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
+  // userId -> timestamps backing the onMenuRequest anti-abuse guards
+  private lastMenuRequestMs = new Map<number, number>();
+  private lastAssignMs = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
@@ -49,7 +60,9 @@ export class Spawn implements System {
 
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
       if (this.characterSelect) {
-        this.pending.set(userId, { profileId: userProfileId, roles: discordRoleIds, discordId, access });
+        const auth = { profileId: userProfileId, roles: discordRoleIds, discordId, access };
+        this.authCache.set(userId, auth);
+        this.pending.set(userId, auth);
         this.sendCharacterList(ctx, userId, userProfileId);
         return;
       }
@@ -60,20 +73,59 @@ export class Spawn implements System {
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
-    if (!this.characterSelect || type !== "characterSelectResult") return;
-    const slot = Number(content.slot);
-    if (content.action === "delete") this.onDeleteCharacter(ctx, userId, slot);
-    else this.onSelectCharacter(ctx, userId, slot);   // "play" or "create"
+    if (!this.characterSelect) return;
+    if (type === "characterSelectResult") {
+      const slot = Number(content.slot);
+      if (content.action === "delete") this.onDeleteCharacter(ctx, userId, slot);
+      else this.onSelectCharacter(ctx, userId, slot);   // "play" or "create"
+    } else if (type === "characterSelectMenuRequest") {
+      this.onMenuRequest(ctx, userId);
+    }
   }
 
   disconnect(userId: number, ctx: SystemContext): void {
     this.pending.delete(userId);
+    this.authCache.delete(userId);
+    this.lastMenuRequestMs.delete(userId);
+    this.lastAssignMs.delete(userId);
     try {
       const actorId = ctx.svr.getUserActor(userId);
       if (actorId !== 0) {
         ctx.svr.setEnabled(actorId, false);
       }
     } catch { /* form vanished */ }
+  }
+
+  // The client asks for this when the player quits to the main menu: park the
+  // current character like disconnect() does and reopen the selection menu.
+  // Rapid repeats and requests right after an actor was assigned reopen the
+  // menu WITHOUT parking, so the body stays in the world: an at-will despawn
+  // packet would otherwise be an instant combat escape (same reason combat
+  // logging leaves a body). The stale-menuOpen client guard also lands here.
+  private onMenuRequest(ctx: SystemContext, userId: number): void {
+    const auth = this.authCache.get(userId);
+    if (!auth) return; // not authenticated yet
+    if (!this.pending.has(userId)) {
+      const now = Date.now();
+      const mayPark = now - (this.lastMenuRequestMs.get(userId) ?? 0) >= REQUEST_COOLDOWN_MS &&
+        now - (this.lastAssignMs.get(userId) ?? 0) >= ASSIGN_GRACE_MS;
+      this.lastMenuRequestMs.set(userId, now);
+      if (mayPark) {
+        try {
+          const actorId = ctx.svr.getUserActor(userId);
+          if (actorId !== 0) {
+            ctx.svr.setEnabled(actorId, false);
+            // Fully detach, matching the login lifecycle: a user still mapped
+            // to the actor makes the next same-slot select stream
+            // CreateActor(isMe) twice and run the client spawn path twice.
+            ctx.svr.setUserActor(userId, 0);
+          }
+        } catch { /* form vanished */ }
+      }
+      this.pending.set(userId, auth);
+      this.log("Reopening character select for user", userId, mayPark ? "(actor parked)" : "(actor left in world)");
+    }
+    this.sendCharacterList(ctx, userId, auth.profileId);
   }
 
   // Character select
@@ -194,6 +246,7 @@ export class Spawn implements System {
 
     ctx.gm.emit("userAssignActor", userId, actorId);
 
+    this.lastAssignMs.set(userId, Date.now());
     this.pending.delete(userId);
   }
 

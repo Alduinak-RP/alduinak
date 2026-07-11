@@ -24,7 +24,12 @@
 //                     death (X/Y across spaces don't compare, and the gamemode
 //                     API has no cell→parent-world mapping), so a quick
 //                     in-and-out inside one tick, or re-entry through a
-//                     different interior cell, is not caught.
+//                     different interior cell, is not caught. The zone is NOT
+//                     armed when it would cover the respawn temple itself
+//                     (death in the temple cell or near its city anchor), and
+//                     the tick only enforces after the player has been seen
+//                     outside the zone once; both guards kill the old
+//                     teleport-back-every-30s loop.
 //
 // Every server → client packet resolves the connection first: sendCustomPacket
 // takes a networking userId, NOT an actor/form id, so send() translates via
@@ -53,6 +58,7 @@ const REGEN_NATURAL = 0.01;             // ~1 HP / 8h (fraction of max)
 const REGEN_HEALER = 0.05;              // ~5 HP / 8h with a healer
 const NO_RETURN_MS = 60 * 60 * 1000;    // 1 hour
 const NO_RETURN_RADIUS = 6000;          // units around the death spot
+const TEMPLE_EXIT_MARGIN = 3000;        // anchor-to-door slack for the trap check
 const ARMED_KILLER_TTL_MS = 60 * 60 * 1000; // resurrect anti-glitch arming expires after 1h
 const NEVER_RESPAWN = 1e12;             // spawnDelay for a permadead corpse
 const TICK_MS = 30 * 1000;
@@ -111,13 +117,37 @@ export function nearestTemple(pos: number[] | null): { name: string; dest: Loc }
   return best;
 }
 
-export function pickTemple(worldDesc: string | null, pos: number[] | null): { name: string; dest: Loc } {
+export function pickTemple(worldDesc: string | null, pos: number[] | null): { name: string; dest: Loc; x?: number; y?: number } {
   if (typeof worldDesc === 'string') {
     for (const o of WORLDSPACE_OVERRIDES) {
       if (o.match(worldDesc)) return o;
     }
+    // A death inside a temple interior wakes the player in THAT temple:
+    // interior coords are cell-local and would otherwise mis-route to
+    // whichever anchor happens to be nearest the cell origin (Whiterun).
+    for (const t of ANCHORS) {
+      if (t.dest.cellOrWorldDesc === worldDesc) return t;
+    }
   }
   return nearestTemple(pos);
+}
+
+// True when the no-return zone around the death spot would cover the temple
+// the player is being sent to: enforcing it would just bounce them back on
+// every tick. Measured against the DESTINATION temple's own city anchor, not
+// the routing anchor (a Riverwood death routes to Whiterun's temple; the zone
+// at Riverwood never covers it). Capitals precede settlements in ANCHORS, so
+// find() resolves the capital that owns the destination. Anchors share the
+// Tamriel coordinate frame with the walled-city child worldspaces, so the X/Y
+// comparison is valid for city deaths too; worldspace-override picks carry no
+// x/y and correctly fall through to false (their coords are in another space).
+function zoneWouldTrapTemple(temple: { dest: Loc; x?: number; y?: number }, deathWorld: string | null, deathPos: number[] | null): boolean {
+  if (deathWorld === temple.dest.cellOrWorldDesc) return true; // died in the temple cell
+  if (!Array.isArray(deathPos) || typeof temple.x !== 'number' || typeof temple.y !== 'number') return false;
+  const city = ANCHORS.find((a) => a.dest === temple.dest);
+  if (!city) return false;
+  const dx = city.x - deathPos[0], dy = city.y - deathPos[1];
+  return Math.sqrt(dx * dx + dy * dy) < NO_RETURN_RADIUS + TEMPLE_EXIT_MARGIN;
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -299,12 +329,21 @@ function doTempleFullHealth(mp: any, actorId: number): void {
   safeSet(mp, actorId, 'private.injured', false);
   // Full-health outcome: don't leave the 1-HP wake armed for the engine.
   safeSet(mp, actorId, 'respawnPercentages', { health: FULL_HEALTH, magicka: 1, stamina: 1 });
-  // Can't return to the death spot for an hour.
-  safeSet(mp, actorId, 'private.noReturnPos', Array.isArray(deathPos) ? deathPos : [0, 0, 0]);
-  safeSet(mp, actorId, 'private.noReturnWorld', typeof deathWorld === 'string' ? deathWorld : '');
-  safeSet(mp, actorId, 'private.noReturnUntilMs', Date.now() + NO_RETURN_MS);
+  if (zoneWouldTrapTemple(temple, deathWorld, deathPos)) {
+    // The zone would cover the respawn temple: skip it (and clear any older
+    // one) or the tick would teleport the player back every 30s for an hour.
+    safeSet(mp, actorId, 'private.noReturnUntilMs', 0);
+    console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name + ' (death spot at the temple, no-return skipped)');
+  } else {
+    // Can't return to the death spot for an hour. Enforcement stays dormant
+    // until the player is first seen outside the zone (see tick).
+    safeSet(mp, actorId, 'private.noReturnPos', Array.isArray(deathPos) ? deathPos : [0, 0, 0]);
+    safeSet(mp, actorId, 'private.noReturnWorld', typeof deathWorld === 'string' ? deathWorld : '');
+    safeSet(mp, actorId, 'private.noReturnUntilMs', Date.now() + NO_RETURN_MS);
+    safeSet(mp, actorId, 'private.noReturnSeenOutside', false);
+    console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name + ' (no-return 1h)');
+  }
   hideDeathScreen(mp, actorId);
-  console.log('[respawn] ' + actorId.toString(16) + ' chose Temple w/ Full Health -> ' + temple.name + ' (no-return 1h)');
 }
 
 // ── Periodic tick: slow recovery + no-return enforcement ──────────────────────
@@ -352,15 +391,23 @@ function tick(mp: any, store: any): void {
     // don't compare, and there is no cell→parent-world mapping in the
     // gamemode API — re-entering via a different interior cell is a known
     // gap). Checked every 30s tick; see the granularity note above.
+    // Dormant until the player is first seen OUTSIDE the zone: the respawn
+    // itself can land in the zone (death near the temple), and bouncing a
+    // player who never left is the infinite-teleport bug, not enforcement.
     const until = safeGet(mp, actorId, 'private.noReturnUntilMs', 0);
     if (until && now < until) {
       const zone = safeGet(mp, actorId, 'private.noReturnPos', null);
       const zoneWorld = safeGet(mp, actorId, 'private.noReturnWorld', '');
       const pos = safeGet(mp, actorId, 'pos', null);
       const world = safeGet(mp, actorId, 'worldOrCellDesc', '');
-      if (Array.isArray(zone) && Array.isArray(pos) && world === zoneWorld) {
+      if (Array.isArray(zone) && Array.isArray(pos)) {
         const dx = zone[0] - pos[0], dy = zone[1] - pos[1];
-        if (Math.sqrt(dx * dx + dy * dy) < NO_RETURN_RADIUS) {
+        const inZone = world === zoneWorld && Math.sqrt(dx * dx + dy * dy) < NO_RETURN_RADIUS;
+        if (!inZone) {
+          if (safeGet(mp, actorId, 'private.noReturnSeenOutside', false) !== true) {
+            safeSet(mp, actorId, 'private.noReturnSeenOutside', true);
+          }
+        } else if (safeGet(mp, actorId, 'private.noReturnSeenOutside', false) === true) {
           const temple = pickTemple(zoneWorld, zone);
           safeSet(mp, actorId, 'locationalData', temple.dest);
           send(mp, actorId, { customPacketType: 'notification', text: 'You cannot return here yet.' });
