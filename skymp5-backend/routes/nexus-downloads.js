@@ -37,6 +37,8 @@ const page = body => `<!doctype html>
     padding:.5rem 1rem; font-size:1rem; cursor:pointer;
   }
   .open-all:hover { background:#3b4f8d; }
+  .open-all:disabled { opacity:.55; cursor:default; }
+  .open-all:disabled:hover { background:#31437a; }
   .open-all-hint { display:block; margin-top:.5rem; font-size:.85rem; color:#9a9aa5; }
 </style>
 </head>
@@ -81,21 +83,43 @@ router.get('/', (_req, res) => {
     <strong>Slow Download</strong> on each Nexus page. Do about <strong>5 at a time</strong> so Nexus doesn't throttle you.</p>
     <p>Move every zip/7z archive you download into your <code>SkyRP/downloads</code> folder, which the launcher opened for you.</p>
     ${items.length ? `<p>
-      <button class="open-all" id="open-all">Open all ${items.length} links in tabs</button>
-      <span class="open-all-hint">Your browser will ask you to allow pop-ups for this site the first time.
-      Opening everything at once may make Nexus throttle you - the 5-at-a-time route is gentler.</span>
+      <button class="open-all" id="open-batch">Open the first ${Math.min(5, items.length)} links</button>
+      <span class="open-all-hint">Opens 5 tabs per click, working down the list, so Nexus never gets hit all at once.
+      Your browser will ask you to allow pop-ups for this site the first time.</span>
     </p>` : ''}
   </div>
   ${items.length ? `<ol>\n${rows}\n</ol>` : `<p class="empty">No Nexus mods in the current manifest.</p>`}
   <script>
-    var openAll = document.getElementById('open-all')
-    if (openAll) openAll.addEventListener('click', function () {
-      // Synchronous loop on purpose: pop-up blockers only honour window.open
-      // calls made directly inside the click gesture - any setTimeout delay
-      // gets every tab after the first blocked.
+    var batchBtn = document.getElementById('open-batch')
+    if (batchBtn) {
+      var BATCH = 5
       var links = document.querySelectorAll('ol a')
-      for (var i = 0; i < links.length; i++) window.open(links[i].href, '_blank', 'noopener')
-    })
+      var next  = 0
+      batchBtn.addEventListener('click', function () {
+        // Synchronous loop on purpose: pop-up blockers only honour window.open calls
+        // made directly inside the click gesture, so each click opens one small batch.
+        var stop = Math.min(next + BATCH, links.length)
+        var blocked = false
+        while (next < stop) {
+          // No 'noopener' feature: it makes window.open return null even on success,
+          // which would hide blocked pop-ups. Sever the opener by hand instead.
+          var win = window.open(links[next].href, '_blank')
+          if (!win) { blocked = true; break }
+          win.opener = null
+          next++
+        }
+        if (blocked) {
+          batchBtn.textContent = 'Pop-ups blocked - allow them for this site, then click again (' +
+            next + ' of ' + links.length + ' opened)'
+        } else if (next >= links.length) {
+          batchBtn.disabled    = true
+          batchBtn.textContent = 'All ' + links.length + ' links opened'
+        } else {
+          batchBtn.textContent = 'Open the next ' + Math.min(BATCH, links.length - next) +
+            ' links (' + next + ' of ' + links.length + ' opened)'
+        }
+      })
+    }
   </script>`))
 })
 

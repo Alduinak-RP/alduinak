@@ -21,8 +21,16 @@ const fs     = require('fs')
 const path   = require('path')
 const crypto = require('crypto')
 
-const GAME       = 'skyrimspecialedition'
-const USER_AGENT = 'SkyRP-Launcher/1.0.0'
+const GAME = 'skyrimspecialedition'
+
+// Nexus API policy: every request must carry the application name and version.
+// Derived from package.json so the version stays accurate and forks inherit their own identity.
+const pkg = require('../package.json')
+const APP_HEADERS = {
+  'User-Agent':          `${pkg.name}/${pkg.version}`,
+  'Application-Name':    pkg.name,
+  'Application-Version': pkg.version,
+}
 
 // Logger
 let _log = (...args) => console.log('[nexus]', ...args)
@@ -42,7 +50,7 @@ function authHeaders(auth) {
 function apiGet(auth, apiPath) {
   return new Promise((resolve, reject) => {
     let headers
-    try { headers = { ...authHeaders(auth), 'User-Agent': USER_AGENT, accept: 'application/json' } }
+    try { headers = { ...authHeaders(auth), ...APP_HEADERS, accept: 'application/json' } }
     catch (err) { return reject(err) }
     const req = https.get({
       hostname: 'api.nexusmods.com',
@@ -100,7 +108,7 @@ async function getDownloadLink(auth, nexusId, fileId) {
 /** Stream a URL to destPath, following redirects. */
 function downloadFile(url, destPath, onProgress, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, res => {
+    const req = https.get(url, { headers: APP_HEADERS }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume()
         if (redirectsLeft <= 0) return reject(new Error('Too many redirects'))
@@ -237,7 +245,7 @@ function postForm(url, params) {
       headers: {
         'Content-Type':   'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(body),
-        'User-Agent':     USER_AGENT,
+        ...APP_HEADERS,
         accept:           'application/json',
       },
     }, res => {
