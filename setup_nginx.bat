@@ -22,9 +22,9 @@ set "NGINX_VER=1.28.0"
 set "WACS_DIR=C:\tools\win-acme"
 set "WACS_VER=2.2.9.1701"
 set "NSSM_DIR=C:\tools\nssm"
-set "EMAIL=[YOUR EMAIL HERE]"
-set "DOMAINS=api.[YOUR WEBSITE HERE],dashboard.[YOUR WEBSITE HERE]"
-set "CERT_NAME=api.[YOUR WEBSITE HERE]"
+set "EMAIL="igravespmc@gmail.com"
+set "DOMAINS=api.alduinak.com,dashboard.alduinak.com"
+set "CERT_NAME=api.alduinak.com"
 set "SERVICE=SkyMPNginx"
 
 :: ---- Re-launch elevated if not running as Administrator ----
