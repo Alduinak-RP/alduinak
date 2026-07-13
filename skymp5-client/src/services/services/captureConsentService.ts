@@ -137,7 +137,7 @@ export class CaptureConsentService extends ClientListener {
       ],
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
-    window.skyrimPlatform.widgets.set([...others, widget]);
+    window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
   private promptOpen = false;

@@ -286,9 +286,9 @@ export class FactionService extends ClientListener {
       click: () => window.skyrimPlatform.sendMessage(events.close),
     });
 
-    // Preserve any other widgets (e.g. the persistent chat) - only replace ours.
+    // Preserve any other widgets 
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== 9);
-    window.skyrimPlatform.widgets.set([...others, widget]);
+    window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
   private menuKey: DxScanCode = DxScanCode.G;
