@@ -1,8 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { showSystemNotification } from "./systemNotification";
+import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { MsgType } from "../../messages";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
@@ -72,7 +71,7 @@ export class HousingService extends ClientListener {
       this.pendingTransfer = null;
       const recipient = ref && Actor.from(ref) ? ref : null;
       if (!recipient) {
-        this.notify("Transfer cancelled — that is not a person.");
+        notifyNextUpdate(this.controller, this.sp, "Transfer cancelled - that is not a person.");
         return;
       }
       this.sendRequest({
@@ -85,7 +84,7 @@ export class HousingService extends ClientListener {
 
     // Otherwise open the Manage menu for the door/container under the crosshair.
     if (!ref || Actor.from(ref)) {
-      this.notify("Look at a door or container to manage it.");
+      notifyNextUpdate(this.controller, this.sp, "Look at a door or container to manage it.");
       return;
     }
     this.target = localIdToRemoteId(ref.getFormID());
@@ -102,7 +101,7 @@ export class HousingService extends ClientListener {
       return;
     }
     if (content["customPacketType"] === "propertyNotice" && typeof content["text"] === "string") {
-      this.notify(content["text"] as string);
+      notifyNextUpdate(this.controller, this.sp, content["text"] as string);
     }
   }
 
@@ -113,28 +112,21 @@ export class HousingService extends ClientListener {
     }
     const target = this.target;
 
+    // claim / abandon / lock / unlock share one request shape; the action name
+    // is the key suffix after 'housing:'.
+    const action = key.slice("housing:".length);
+    if (["claim", "abandon", "lock", "unlock"].includes(action)) {
+      this.sendRequest({ action, target });
+      this.closeMenu();
+      return;
+    }
+
     switch (key) {
-      case events.claim:
-        this.sendRequest({ action: "claim", target });
-        this.closeMenu();
-        break;
-      case events.abandon:
-        this.sendRequest({ action: "abandon", target });
-        this.closeMenu();
-        break;
-      case events.lock:
-        this.sendRequest({ action: "lock", target });
-        this.closeMenu();
-        break;
-      case events.unlock:
-        this.sendRequest({ action: "unlock", target });
-        this.closeMenu();
-        break;
       case events.transfer:
         // Defer to a second key press where the player looks at the new owner.
         this.pendingTransfer = target;
         this.closeMenu();
-        this.notify("Look at the new owner and press the housing key.");
+        notifyNextUpdate(this.controller, this.sp, "Look at the new owner and press the housing key.");
         break;
       case events.cancel:
         this.closeMenu();
@@ -145,21 +137,7 @@ export class HousingService extends ClientListener {
   }
 
   private sendRequest(payload: Record<string, unknown>): void {
-    this.sendPacket({ customPacketType: "propertyRequest", ...payload });
-  }
-
-  private sendPacket(payload: Record<string, unknown>): void {
-    const message: CustomPacketMessage = {
-      t: MsgType.CustomPacket,
-      contentJsonDump: JSON.stringify(payload),
-    };
-    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
-  }
-
-  private notify(text: string): void {
-    this.controller.once("update", () => {
-      showSystemNotification(this.sp, text);
-    });
+    sendCustomPacket(this.controller, { customPacketType: "propertyRequest", ...payload });
   }
 
   private openMenu(): void {

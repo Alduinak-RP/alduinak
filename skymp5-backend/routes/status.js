@@ -1,42 +1,26 @@
 const router = require('express').Router()
-const net    = require('net')
 const http   = require('http')
 const config = require('../config')
 const { getHeartbeat } = require('./servers')
 
-// UDP reachability check for the game port
-// TCP wasnt working lul
-function udpCheck(host, port) {
-  return new Promise(resolve => {
-    const dgram = require('dgram')
-    const socket = dgram.createSocket('udp4')
-    const msg = Buffer.from('ping')
-    let resolved = false
-
-    const done = (result) => {
-      if (resolved) return
-      resolved = true
-      try { socket.close() } catch {}
-      resolve(result)
-    }
-
-    socket.on('error', () => done(false))
-
-    socket.send(msg, 0, msg.length, port, host, (err) => {
-      if (err) return done(false)
-      done(true)
-    })
-
-    setTimeout(() => done(false), 3000)
-  })
+function metricsAuthHeader() {
+  const { metricsUser: user, metricsPassword: password } = config
+  if (user && password) {
+    return { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
+  }
+  return {}
 }
 
-// Fetch Prometheus metrics from SkyMP HTTP UI and derive online player count.
-// Online players ≈ skymp_connects_total − skymp_disconnects_total
-function fetchPlayerCount(host, uiPort) {
+// Probe the SkyMP HTTP UI port. Any HTTP response (even an auth error)
+// proves the server process is up; the player count is derived from the
+// Prometheus metrics when they are readable.
+//   Online players ≈ skymp_connects_total − skymp_disconnects_total
+// (The old UDP probe was meaningless: a UDP send "succeeds" as soon as the
+// OS accepts the packet, so a dead game server still read as online.)
+function probeGameServer(host, uiPort) {
   return new Promise(resolve => {
     const req = http.get(
-      { hostname: host, port: uiPort, path: '/metrics', timeout: 3000 },
+      { hostname: host, port: uiPort, path: '/metrics', timeout: 3000, headers: metricsAuthHeader() },
       res => {
         let raw = ''
         res.on('data', c => { raw += c })
@@ -47,16 +31,15 @@ function fetchPlayerCount(host, uiPort) {
           }
           const connects    = val('skymp_connects_total')
           const disconnects = val('skymp_disconnects_total')
-          if (connects !== null && disconnects !== null) {
-            resolve(Math.max(0, connects - disconnects))
-          } else {
-            resolve(null)
-          }
+          const players = (connects !== null && disconnects !== null)
+            ? Math.max(0, connects - disconnects)
+            : null
+          resolve({ reachable: true, players })
         })
       }
     )
-    req.on('error',   () => resolve(null))
-    req.on('timeout', () => { req.destroy(); resolve(null) })
+    req.on('error',   () => resolve({ reachable: false, players: null }))
+    req.on('timeout', () => { req.destroy(); resolve({ reachable: false, players: null }) })
   })
 }
 
@@ -64,21 +47,22 @@ function fetchPlayerCount(host, uiPort) {
 const HEARTBEAT_TTL_MS = 20_000
 
 router.get('/', async (_req, res) => {
-  const { skyrimServerHost: host, skyrimServerPort: gamePort, skympUiPort: uiPort } = config
+  const { skyrimServerHost: host, skympUiPort: uiPort } = config
   const hb = getHeartbeat()
 
-  // a fresh heartbeat proves the server process is up; fall back to UDP only if none seen
-  let online
+  // a fresh heartbeat proves the server process is up; fall back to probing
+  // the metrics port only when no heartbeat has been seen since backend start
+  let online  = null
+  let players = null
   if (hb && hb.lastSeen) {
     online = (Date.now() - new Date(hb.lastSeen).getTime()) < HEARTBEAT_TTL_MS
-  } else {
-    online = await udpCheck(host, gamePort)
+    if (online && typeof hb.online === 'number') players = hb.online
   }
 
-  // player count from the heartbeat, else from Prometheus /metrics
-  let players = null
-  if (online) {
-    players = (hb && typeof hb.online === 'number') ? hb.online : await fetchPlayerCount(host, uiPort)
+  if (online === null || (online && players === null)) {
+    const probe = await probeGameServer(host, uiPort)
+    if (online === null) online = probe.reachable
+    if (online && players === null) players = probe.players
   }
 
   res.json({ status: online ? 'online' : 'offline', players })

@@ -77,12 +77,12 @@ TEST_CASE("DeathState packed is correct if actor is respawning", "[Respawn]")
   REQUIRE(teleportMsg["t"] == MsgType::Teleport);
   REQUIRE(changeValuesMsg["t"] == MsgType::ChangeValues);
 
-  // The player is teleported to the Whiterun temple, not back to where they
-  // died.
+  // The player is teleported INSIDE the Whiterun temple (interior cell), not
+  // back to where they died and not to an exterior spot.
   REQUIRE(teleportMsg["pos"][0] == temple.destination.pos[0]);
   REQUIRE(teleportMsg["pos"][1] == temple.destination.pos[1]);
   REQUIRE(teleportMsg["pos"][2] == temple.destination.pos[2]);
-  REQUIRE(teleportMsg["worldOrCell"] == 0x3c);
+  REQUIRE(teleportMsg["worldOrCell"] == 0x165a7); // Temple of Kynareth
 
   REQUIRE(ac.GetPos() == temple.destination.pos);
 
@@ -90,6 +90,7 @@ TEST_CASE("DeathState packed is correct if actor is respawning", "[Respawn]")
   REQUIRE(ac.GetChangeForm().actorValues.healthPercentage == 1.f);
 
   // TODO: should probably not sending to ourselves. see also RespawnEvent.cpp
+
   // The RespawnEvent broadcasts an "isDead=false" property update; teleport
   // streaming means it is no longer at a fixed index, so scan for it.
   bool foundIsDeadBroadcast = false;
@@ -107,27 +108,85 @@ TEST_CASE("DeathState packed is correct if actor is respawning", "[Respawn]")
   REQUIRE(foundIsDeadBroadcast);
 }
 
+TEST_CASE("A gamemode-set spawn point wins over the temple fallback",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  // The gamemode owns respawn routing: once it sets a spawn point (as the
+  // roleplay gamemode does on every death), the engine must respawn there and
+  // NOT override it with the built-in temple table. This is what keeps
+  // gamemode coordinate updates from requiring a native rebuild.
+  const LocationalData gamemodeChosen{ { 100.f, 200.f, 300.f },
+                                       { 0.f, 0.f, 90.f },
+                                       FormDesc::Tamriel() };
+  ac.SetSpawnPoint(gamemodeChosen);
+
+  ac.SetPos({ 20000.f, 0.f, 0.f }); // near Whiterun; fallback would say temple
+  ac.SetCellOrWorld(FormDesc::Tamriel());
+
+  ac.Kill();
+  ac.Respawn();
+
+  REQUIRE(ac.IsDead() == false);
+  REQUIRE(ac.GetPos() == gamemodeChosen.pos);
+}
+
+TEST_CASE("GetRespawnPosition prefers a gamemode-set spawn point over the "
+          "nearest-temple fallback",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  const NiPoint3 deathPos{ 20000.f, 0.f, 0.f }; // near the Whiterun anchor
+  ac.SetPos(deathPos);
+  ac.SetCellOrWorld(FormDesc::Tamriel());
+
+  // Spawn point never set by the gamemode: the sentinel branch routes the
+  // player to the nearest temple.
+  REQUIRE(ac.GetRespawnPosition() ==
+          TempleRespawn::GetNearestTemple(deathPos).destination);
+
+  // respawn.ts sets a spawn point on every death; once set, it must always
+  // win over the native table, even standing right next to a temple anchor.
+  const LocationalData gamemodeChosen{ { 100.f, 200.f, 300.f },
+                                       { 0.f, 0.f, 90.f },
+                                       FormDesc::Tamriel() };
+  ac.SetSpawnPoint(gamemodeChosen);
+  REQUIRE(ac.GetRespawnPosition() == gamemodeChosen);
+}
+
 TEST_CASE("Nearest temple routing covers every hold", "[Respawn]")
 {
   using namespace TempleRespawn;
 
-  // Every hold's own anchor resolves to itself: the table has no two anchors
-  // that collide.
+  // Every anchor resolves to itself: the table has no two anchors that
+  // collide.
   for (const auto& temple : GetTemples()) {
     REQUIRE(std::string(GetNearestTemple(temple.anchor).name) == temple.name);
   }
 
-  const NiPoint3 windhelmPos(131512.f, 38458.f, -12522.f);
-  const NiPoint3 solitudePos(-58661.f, 110698.f, -7744.f);
+  const NiPoint3 windhelmInterior(0.f, -2800.f, 64.35f);
+  const NiPoint3 solitudeInterior(1676.93f, 1571.19f, 0.f);
+  const NiPoint3 whiterunInterior(223.24f, 248.85f, 54.f);
+  const NiPoint3 riftenInterior(-1414.34f, 208.64f, 64.f);
 
   // Temple-less holds route to a neighbouring temple per the design:
   //   Winterhold & Dawnstar -> Windhelm, Morthal -> Solitude.
-  REQUIRE(GetNearestTemple(NiPoint3(4000.f, 130000.f, 0.f)).destination.pos ==
-          windhelmPos);
-  REQUIRE(GetNearestTemple(NiPoint3(130000.f, 123000.f, 0.f)).destination.pos ==
-          windhelmPos);
-  REQUIRE(GetNearestTemple(NiPoint3(-32000.f, 92000.f, 0.f)).destination.pos ==
-          solitudePos);
+  REQUIRE(GetNearestTemple(NiPoint3(26328.f, 101092.f, 0.f)).destination.pos ==
+          windhelmInterior);
+  REQUIRE(GetNearestTemple(NiPoint3(114050.f, 94006.f, 0.f)).destination.pos ==
+          windhelmInterior);
+  REQUIRE(GetNearestTemple(NiPoint3(-39547.f, 70770.f, 0.f)).destination.pos ==
+          solitudeInterior);
 
   // A death out in a temple hold resolves to that hold's own temple.
   REQUIRE(std::string(GetNearestTemple(NiPoint3(20000.f, 0.f, 0.f)).name) ==
@@ -138,6 +197,114 @@ TEST_CASE("Nearest temple routing covers every hold", "[Respawn]")
   REQUIRE(std::string(
             GetNearestTemple(NiPoint3(-170000.f, 4000.f, 0.f)).name) ==
           "Markarth");
+
+  // Settlement anchors keep villages routed to their hold's temple.
+  REQUIRE(GetNearestTemple(NiPoint3(19233.f, -46721.f, 0.f)).destination.pos ==
+          whiterunInterior); // Riverwood
+  REQUIRE(GetNearestTemple(NiPoint3(78291.f, -67062.f, 0.f)).destination.pos ==
+          riftenInterior); // Ivarstead
+  REQUIRE(
+    GetNearestTemple(NiPoint3(-100811.f, 80907.f, 0.f)).destination.pos ==
+    solitudeInterior); // Dragon's Bridge
+  REQUIRE(
+    GetNearestTemple(NiPoint3(-78931.f, 2789.f, 0.f)).destination.pos ==
+    whiterunInterior); // Rorikstead
+
+  // High Hrothgar: a death on the Seven Thousand Steps resolves to its own
+  // anchor and wakes the player in Whiterun's temple, matching the
+  // gamemode's ANCHORS table.
+  REQUIRE(
+    std::string(GetNearestTemple(NiPoint3(56897.f, -31974.f, 0.f)).name) ==
+    "High Hrothgar");
+  REQUIRE(GetNearestTemple(NiPoint3(56897.f, -31974.f, 0.f)).destination.pos ==
+          whiterunInterior);
+}
+
+TEST_CASE("Deaths outside Tamriel route by worldspace override, not X/Y",
+          "[Respawn]")
+{
+  using namespace TempleRespawn;
+
+  // X/Y from another worldspace is meaningless against Tamriel anchors, so
+  // the override must win even when the raw coordinates sit exactly on some
+  // other anchor (here, Riften's).
+  const NiPoint3 riftenAnchor(174274.64f, -91459.67f, 0.f);
+  REQUIRE(std::string(GetNearestTemple(riftenAnchor).name) == "Riften");
+
+  // Solstheim connects to Skyrim by the Windhelm boat.
+  const auto& solstheim =
+    GetNearestTemple(riftenAnchor, FormDesc::FromString("800:Dragonborn.esm"));
+  REQUIRE(std::string(solstheim.name) == "Windhelm");
+  REQUIRE(solstheim.destination.pos == NiPoint3(0.f, -2800.f, 64.35f));
+
+  // The Dragonborn.esm override is file-wide: any of its cells/worldspaces
+  // (Apocrypha etc.) routes the same way.
+  REQUIRE(
+    std::string(GetNearestTemple(riftenAnchor,
+                                 FormDesc::FromString("12345:Dragonborn.esm"))
+                  .name) == "Windhelm");
+
+  // Forgotten Vale -> Markarth (Darkfall Cave in the Reach).
+  REQUIRE(
+    std::string(
+      GetNearestTemple(riftenAnchor, FormDesc::FromString("bb5:Dawnguard.esm"))
+        .name) == "Markarth");
+
+  // Soul Cairn -> Solitude (Castle Volkihar).
+  REQUIRE(
+    std::string(GetNearestTemple(riftenAnchor,
+                                 FormDesc::FromString("1408:Dawnguard.esm"))
+                  .name) == "Solitude");
+
+  // Tamriel itself is never overridden: nearest-anchor routing still runs.
+  REQUIRE(
+    std::string(GetNearestTemple(riftenAnchor, FormDesc::Tamriel()).name) ==
+    "Riften");
+}
+
+TEST_CASE("A revive before the respawn delay leaves the living actor alone",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+
+  // Dremora base: an untemplated NPC_ whose death item (DeathItemDremora,
+  // chanceNone 0, a single level-1 entry) ALWAYS resolves to one Daedra
+  // Heart, so the delayed-respawn death-item logic deterministically has an
+  // inventory wipe to perform. Draugr etc. have chance-gated sub-lists that
+  // can roll empty, which would make this test flaky.
+  constexpr uint32_t kEncDremoraMelee02 = 0x16ef0;
+  constexpr uint32_t kDaedraHeart = 0x3ad5b;
+  constexpr uint32_t kIronSword = 0x12eb7;
+
+  p.worldState.AddForm(
+    std::make_unique<MpActor>(
+      LocationalData{ { 0.f, 0.f, 0.f }, NiPoint3(), FormDesc::Tamriel() },
+      p.CreateFormCallbacks(), kEncDremoraMelee02),
+    0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  ac.AddItem(kIronSword, 1);
+  REQUIRE(ac.GetInventory().GetItemCount(kIronSword) == 1);
+
+  ac.SetRespawnTime(0.f); // the bleedout timer becomes due on the next tick
+  ac.Kill();
+  REQUIRE(ac.IsDead());
+
+  // Kill() added the base's death item: proves the timer's wipe branch (which
+  // keeps only SweetCantDrop items) would engage for this actor.
+  REQUIRE(ac.GetInventory().GetItemCount(kDaedraHeart) >= 1);
+
+  // The gamemode revives before the delay elapses (the death screen's
+  // "resurrect" / "temple" choices set isDead=false).
+  ac.SetIsDead(false);
+  REQUIRE(ac.IsDead() == false);
+
+  p.Tick(); // fire the stale respawn timer
+
+  // The stale timer used to wipe the living actor's inventory down to
+  // SweetCantDrop items; a revived actor must be left untouched.
+  REQUIRE(ac.GetInventory().GetItemCount(kIronSword) == 1);
+  REQUIRE(ac.IsDead() == false);
 }
 
 TEST_CASE("A healed player gets up where they fell, not at a temple",

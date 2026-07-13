@@ -28,7 +28,7 @@ jobs:
           submodules: 'true'
       - uses: ./.github/actions/pr_base
         with:
-          DESCRIPTION: 'Flatrim'
+          DESCRIPTION: 'SkyrimVR'
           SKYRIM_VR_FLAG: ON
           SP_NEXUS_ARTIFACT_NAME: Skyrim Platform %SP_VERSION% (VR)
           DEPLOY_BRANCH: ""

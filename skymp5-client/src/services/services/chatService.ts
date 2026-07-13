@@ -39,27 +39,28 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
     var NAME='#fbf724';
 
     var DARKEN_RANGE_M=80;
+    // Audible range per channel is enforced server-side, so it is not stored here.
     var CH = {
-      say:     {color:WHITE,  range:20,  tab:'local',    fmt:'say'},
-      low:     {color:WHITE,  range:10,  tab:'local',    fmt:'sayquiet'},
-      whisper: {color:WHITE,  range:3,   tab:'local',    fmt:'whisper'},
-      wide:    {color:WHITE,  range:80,  tab:'local',    fmt:'sayloud'},
-      shout:   {color:SHOUT,  range:160, tab:'local',    fmt:'shout'},
-      me:      {color:ME,     range:20,  tab:'local',    fmt:'me'},
-      melow:   {color:ME,     range:10,  tab:'local',    fmt:'me'},
-      melong:  {color:ME,     range:80,  tab:'local',    fmt:'me'},
-      my:      {color:ME,     range:20,  tab:'local',    fmt:'my'},
-      mylow:   {color:ME,     range:10,  tab:'local',    fmt:'my'},
-      mylong:  {color:ME,     range:80,  tab:'local',    fmt:'my'},
-      do:      {color:ME,     range:20,  tab:'local',    fmt:'do'},
-      dolow:   {color:ME,     range:10,  tab:'local',    fmt:'do'},
-      dolong:  {color:ME,     range:80,  tab:'local',    fmt:'do'},
-      ooc:     {color:OOC,    range:20,  tab:'local',    fmt:'ooc', oocLabel:'OOC'},
-      ooclow:  {color:OOC,    range:10,  tab:'local',    fmt:'ooc', oocLabel:'OOC - Low'},
-      ooclong: {color:OOC,    range:80,  tab:'local',    fmt:'ooc', oocLabel:'OOC - Long'},
-      system:  {color:SYS,    range:0,   tab:'all',      fmt:'plain', admin:1},
-      flavor:  {color:SYS,    range:0,   tab:'system',   fmt:'plain'},
-      pm:      {color:PM,     range:0,   tab:'personal', fmt:'pm'}
+      say:     {color:WHITE,  tab:'local',    fmt:'say'},
+      low:     {color:WHITE,  tab:'local',    fmt:'sayquiet'},
+      whisper: {color:WHITE,  tab:'local',    fmt:'whisper'},
+      wide:    {color:WHITE,  tab:'local',    fmt:'sayloud'},
+      shout:   {color:SHOUT,  tab:'local',    fmt:'shout'},
+      me:      {color:ME,     tab:'local',    fmt:'me'},
+      melow:   {color:ME,     tab:'local',    fmt:'me'},
+      melong:  {color:ME,     tab:'local',    fmt:'me'},
+      my:      {color:ME,     tab:'local',    fmt:'my'},
+      mylow:   {color:ME,     tab:'local',    fmt:'my'},
+      mylong:  {color:ME,     tab:'local',    fmt:'my'},
+      do:      {color:ME,     tab:'local',    fmt:'do'},
+      dolow:   {color:ME,     tab:'local',    fmt:'do'},
+      dolong:  {color:ME,     tab:'local',    fmt:'do'},
+      ooc:     {color:OOC,    tab:'local',    fmt:'ooc', oocLabel:'OOC'},
+      ooclow:  {color:OOC,    tab:'local',    fmt:'ooc', oocLabel:'OOC - Low'},
+      ooclong: {color:OOC,    tab:'local',    fmt:'ooc', oocLabel:'OOC - Long'},
+      system:  {color:SYS,    tab:'all',      fmt:'plain', admin:1},
+      flavor:  {color:SYS,    tab:'system',   fmt:'plain'},
+      pm:      {color:PM,     tab:'personal', fmt:'pm'}
     };
 
     var ALIAS = {
@@ -168,15 +169,12 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       return segs;
     }
 
+    var VERB={say:'says',sayquiet:'says quietly',whisper:'whispers',sayloud:'says loudly',shout:'shouts'};
     // Leading name is its own nohl segment so highlighting skips your own name.
     function fmtLine(kind, n, body){
       var ch=CH[kind], c=ch.color, f=ch.fmt;
       var nm={text:n,color:c,nohl:1};
-      if (f==='say')     return [nm,{text:' says: "'+body+'"',color:c}];
-      if (f==='sayquiet')return [nm,{text:' says quietly: "'+body+'"',color:c}];
-      if (f==='whisper') return [nm,{text:' whispers: "'+body+'"',color:c}];
-      if (f==='sayloud') return [nm,{text:' says loudly: "'+body+'"',color:c}];
-      if (f==='shout')   return [nm,{text:' shouts: "'+body+'"',color:c}];
+      if (VERB[f]) return [nm,{text:' '+VERB[f]+': "'+body+'"',color:c}];
       if (f==='me')      return [nm,{text:' ',color:c}].concat(quoteSegs(body,c));
       if (f==='my')      return [nm,{text:"'s ",color:c}].concat(quoteSegs(body,c));
       if (f==='do')      return quoteSegs(body,c);
@@ -193,7 +191,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       if (f==='ooc')  return '/looc '+body;
       if (f==='shout')return '/shout '+body;
       if (kind==='system') return '/system '+body;
-      // say family (say/low/whisper/wide) — unprefixed text is in-character say.
+      // say family (say/low/whisper/wide) - unprefixed text is in-character say.
       return body;
     }
 
@@ -209,6 +207,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
         if (!CH[kind]){ return { command:true }; }
       }
       var ch=CH[kind];
+      // Cosmetic gate only; the server is authoritative on admin-only commands.
       if (ch.admin && !window.__skyrpAdmin) return { denied:true };
       if (kind==='pm'){
         var i2=body.indexOf(' ');
@@ -255,7 +254,6 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
     };
 
     var chatWidget={ type:'chat', id:'chat', isInputHidden:false, placeholder:'', messages:window.chatMessages.slice(), send:sf };
-    window.__skyrpChatWidget=chatWidget;
     var cur=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){ return w.type!=='chat'; });
     window.skyrimPlatform.widgets.set([chatWidget].concat(cur)); // always own chat
 

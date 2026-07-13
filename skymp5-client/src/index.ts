@@ -23,6 +23,7 @@ import { DropItemService } from "./services/services/dropItemService";
 import { HitService } from "./services/services/hitService";
 import { RagdollService } from "./services/services/ragdollService";
 import { DeathService } from "./services/services/deathService";
+import { DeathScreenService } from "./services/services/deathScreenService";
 import { ContainersService } from "./services/services/containersService";
 import { NetworkingService } from "./services/services/networkingService";
 import { RemoteServer } from "./services/services/remoteServer";
@@ -42,9 +43,12 @@ import { AuthService } from "./services/services/authService";
 import { CharacterSelectService } from "./services/services/characterSelectService";
 import { HousingService } from "./services/services/housingService";
 import { PlayerActionService } from "./services/services/playerActionService";
+import { RestraintService } from "./services/services/restraintService";
+import { CaptureConsentService } from "./services/services/captureConsentService";
 import { PersonalMenuService } from "./services/services/personalMenuService";
 import { ChatService } from "./services/services/chatService";
 import { FactionService } from "./services/services/factionService";
+import { TradeService } from "./services/services/tradeService";
 import { NetInfoService } from "./services/services/netInfoService";
 import { AnimDebugService } from "./services/services/animDebugService";
 import { TimersService } from "./services/services/timersService";
@@ -62,6 +66,7 @@ import { SweetCameraEnforcementService } from "./services/services/sweetCameraEn
 import { SweetTaffyNicknamesService } from "./services/services/sweetTaffyNicknamesService";
 import { ServerJsVerificationService } from "./services/services/serverJsVerificationService";
 import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService";
+import { NotificationService } from "./services/services/notificationService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -90,6 +95,7 @@ const main = () => {
       new HitService(sp, controller),
       new RagdollService(sp, controller),
       new DeathService(sp, controller),
+      new DeathScreenService(sp, controller),
       new ContainersService(sp, controller),
       new NetworkingService(sp, controller),
       new RemoteServer(sp, controller),
@@ -112,8 +118,11 @@ const main = () => {
       new CharacterSelectService(sp, controller),
       new HousingService(sp, controller),
       new PlayerActionService(sp, controller),
+      new RestraintService(sp, controller),
+      new CaptureConsentService(sp, controller),
       new PersonalMenuService(sp, controller),
       new FactionService(sp, controller),
+      new TradeService(sp, controller),
       new NetInfoService(sp, controller),
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),
@@ -128,7 +137,8 @@ const main = () => {
       new MagicSyncService(sp, controller),
       new ProfilingService(sp, controller),
       new SweetTaffyNicknamesService(sp, controller),
-      new ServerJsVerificationService(sp, controller)
+      new ServerJsVerificationService(sp, controller),
+      new NotificationService(sp, controller)
     ];
     SpApiInteractor.setup(listeners);
   } catch (e) {

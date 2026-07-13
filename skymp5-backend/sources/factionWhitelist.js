@@ -33,7 +33,14 @@ function normalizeDiscordId(discordId) {
 function normalizeSlot(value) {
   if (value === null || value === undefined || value === '') return null
   const n = Number(value)
-  return Number.isInteger(n) && n >= 0 && n <= 2 ? n : null
+  if (!Number.isInteger(n) || n < 0 || n > 2) {
+    // Reject rather than coerce to null: null means "all characters", which
+    // would silently widen a per-character grant to every character.
+    const err = new Error('slot must be empty or an integer from 0 to 2')
+    err.status = 400
+    throw err
+  }
+  return n
 }
 
 function list() {

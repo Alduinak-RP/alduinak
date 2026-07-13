@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FormDesc.h"
 #include "LocationalData.h"
 #include "NiPoint3.h"
 
@@ -23,7 +24,14 @@ struct Temple
 // Routing table: one entry per hold.
 const std::vector<Temple>& GetTemples();
 
-// Returns the temple whose anchor is closest (2D Tamriel X/Y distance) to fromPos. Throws if the routing table is somehow empty.
-const Temple& GetNearestTemple(const NiPoint3& fromPos);
+// Returns the temple whose anchor is closest (2D Tamriel X/Y distance) to
+// fromPos. Deaths outside the Tamriel worldspace (Solstheim/Apocrypha, the
+// Forgotten Vale, the Soul Cairn) are instead routed by fixed worldspace
+// overrides: their coordinates live in a different space and can't be
+// compared with Tamriel anchors. Keep in sync with pickTemple in the
+// gamemode's respawn.ts. Throws if the routing table is somehow empty.
+const Temple& GetNearestTemple(
+  const NiPoint3& fromPos,
+  const FormDesc& fromCellOrWorld = FormDesc::Tamriel());
 
 }

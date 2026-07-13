@@ -69,6 +69,8 @@ const nodes = {
   assignmentCount: el('assignmentCount'),
   assignmentForm: el('assignmentForm'),
   discordIdInput: el('discordIdInput'),
+  slotSelect: el('slotSelect'),
+  playerSlotSelect: el('playerSlotSelect'),
   playerNameInput: el('playerNameInput'),
   notesInput: el('notesInput'),
   rolesTable: el('rolesTable'),
@@ -86,6 +88,16 @@ function toast(message) {
   nodes.toast.classList.remove('hidden')
   clearTimeout(toast.timer)
   toast.timer = setTimeout(() => nodes.toast.classList.add('hidden'), 3200)
+}
+
+// Character slot: '' in a select means "all characters" (slot null on the
+// backend); '0'..'2' are individual characters, shown to admins as 1-based.
+function slotFromSelect(value) {
+  return value === '' || value === null || value === undefined ? null : Number(value)
+}
+
+function slotLabel(slot) {
+  return slot === null || slot === undefined ? 'All' : `Character ${Number(slot) + 1}`
 }
 
 function escapeHtml(value) {
@@ -117,12 +129,14 @@ async function api(path, options = {}) {
 
 function captureTokenFromUrl() {
   const url = new URL(window.location.href)
-  const token = url.searchParams.get('token')
+  // Token arrives in the URL fragment; keep the legacy ?token= query as a
+  // fallback for one deploy cycle (older backends still redirect with it).
+  const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''))
+  const token = hashParams.get('token') || url.searchParams.get('token')
   if (!token) return
   state.token = token
   localStorage.setItem(tokenKey, token)
-  url.searchParams.delete('token')
-  url.searchParams.delete('error')
+  // replaceState with the bare pathname drops both the query and the fragment.
   window.history.replaceState({}, '', url.pathname)
 }
 
@@ -279,6 +293,7 @@ function renderPlayerAssignments(player) {
         <tr>
           <th>Group</th>
           <th>Rank</th>
+          <th>Character</th>
           <th></th>
         </tr>
       </thead>
@@ -287,6 +302,7 @@ function renderPlayerAssignments(player) {
           <tr>
             <td>${escapeHtml(assignment.requirement?.group || assignment.requirementId)}</td>
             <td>${escapeHtml(assignment.requirement?.rank || '')}</td>
+            <td>${escapeHtml(slotLabel(assignment.slot))}</td>
             <td><button class="danger mini" data-delete-player-assignment="${escapeHtml(assignment.id)}" type="button">Remove</button></td>
           </tr>
         `).join('')}
@@ -410,6 +426,7 @@ function renderAssignments() {
         <tr>
           <th>Player</th>
           <th>Discord ID</th>
+          <th>Character</th>
           <th>Group</th>
           <th>Rank</th>
           <th>Permission</th>
@@ -423,6 +440,7 @@ function renderAssignments() {
             <tr>
               <td>${escapeHtml(assignment.playerName || 'Unnamed')}</td>
               <td>${escapeHtml(assignment.discordId)}</td>
+              <td>${escapeHtml(slotLabel(assignment.slot))}</td>
               <td>${escapeHtml(req.group || '')}</td>
               <td>${escapeHtml(req.rank || '')}</td>
               <td>${escapeHtml(req.permission || '')}</td>
@@ -590,6 +608,7 @@ async function assignSelectedPlayerFaction(event) {
     method: 'POST',
     body: JSON.stringify({
       requirementId: nodes.playerRequirementSelect.value,
+      slot: slotFromSelect(nodes.playerSlotSelect.value),
       playerName: player.displayName || player.username,
       notes: nodes.playerFactionNotesInput.value,
     }),
@@ -606,6 +625,7 @@ async function saveAssignment(event) {
   const body = {
     requirementId: nodes.requirementSelect.value,
     discordId: nodes.discordIdInput.value,
+    slot: slotFromSelect(nodes.slotSelect.value),
     playerName: nodes.playerNameInput.value,
     notes: nodes.notesInput.value,
   }

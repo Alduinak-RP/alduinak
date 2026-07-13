@@ -20,6 +20,7 @@ import { System } from "./systems/system";
 import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
+import { CaptureSystem } from "./systems/captureSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { EventEmitter } from "events";
@@ -30,6 +31,7 @@ import * as path from "path";
 import * as os from "os";
 
 import * as manifestGen from "./manifestGen";
+import { attachBackendFactionApi } from "./backendFactionApi";
 import { createScampServer } from "./scampNative";
 import { MetricsSystem, tickDurationHistogram, tickDurationSummary } from "./systems/metricsSystem";
 
@@ -195,6 +197,7 @@ const main = async () => {
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
+    new CaptureSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );
@@ -305,6 +308,14 @@ const main = async () => {
     console.error(e);
     console.error(`Stopping the server due to the previous error`);
     process.exit(-1);
+  }
+
+  // The gamemode probes mp.assignBackendFaction etc, so attach before it loads.
+  // A failed attach must degrade to "natives unavailable", never block gamemode load.
+  try {
+    attachBackendFactionApi(server, settingsObject);
+  } catch (e) {
+    console.error("attachBackendFactionApi failed, faction sync natives unavailable:", e);
   }
 
   setupGamemode(server, gamemodePath);

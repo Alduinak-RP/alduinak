@@ -11,8 +11,10 @@ import Icon from './constructorComponents/icon';
 import CheckBox from './constructorComponents/checkbox';
 import Text from './constructorComponents/text';
 import Chat from './constructorComponents/chat';
+import DeathScreen from './constructorComponents/death';
 import SkillsMenu from './features/skillsMenu';
 import TestMenu from './features/testMenu';
+import Trade from './features/trade';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -99,7 +101,6 @@ const Constructor = props => {
                   marginTop: '4px'
                 };
               }
-              console.log(style, allElems[i]);
             }
           }
         }
@@ -211,6 +212,12 @@ const Constructor = props => {
         <Chat messages={rend.messages} send={rend.send} placeholder={rend.placeholder} isInputHidden={rend.isInputHidden} />
         <TestMenu send={rend.send}/>
         </>
+      );
+    case 'trade':
+      return <Trade data={rend} />;
+    case 'death':
+      return (
+        <DeathScreen seconds={rend.seconds} onChoice={rend.onChoice} />
       );
     default:
       break;

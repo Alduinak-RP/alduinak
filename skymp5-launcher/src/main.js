@@ -1,4 +1,4 @@
-// Load .env before anything else — only in unpackaged (dev/local) builds.
+// Load .env before anything else - only in unpackaged (dev/local) builds.
 // Packaged installers use real environment variables set by the OS / process manager.
 if (!require('electron').app.isPackaged) {
   require('dotenv').config()
@@ -21,7 +21,7 @@ const ini    = require('./ini')
 
 const isDev = process.argv.includes('--dev')
 
-// ── Dev logger ────────────────────────────────────────────────────────────────
+// Dev logger
 const LOG_FILE = isDev ? path.join(require('os').tmpdir(), 'skyrp-install.log') : null
 
 function log(...args) {
@@ -43,13 +43,13 @@ nexus.setLogger(log)
 const store = new Store({
   defaults: {
     skyrimPath:        '',
-    username:          '',
     activeServerIndex: 0,
     cachedServers:     [],   // last-known server list fetched from /api/servers
     filesVersion:      '',   // version tag from last successful file download
     discordUser:       null,
     mo2Enabled:        true,   // launch the game through the managed portable MO2
-    nexusApiKey:       '',     // Nexus API login
+    nexusApiKey:       '',     // Nexus API key (websocket SSO flow)
+    nexusOauth:        null,   // { accessToken, refreshToken, expiresAt } (OAuth flow)
     nexusUser:         null,   // { name, isPremium } from the last validation
     isolatedGame:      true,  // play from the isolated game copy instead of skyrimPath
     gameDirPath:       '',     // legacy: pre-base-dir location of the game copy
@@ -66,7 +66,7 @@ function send(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
 
-// ── Active server helper ──────────────────────────────────────────────────────
+// Active server helper
 // Returns the currently selected game server from the cached API list,
 // or null if no servers have been fetched yet.
 function activeServer() {
@@ -76,7 +76,7 @@ function activeServer() {
   return servers[idx]
 }
 
-// ── Effective game path ───────────────────────────────────────────────────────
+// Effective game path
 // Creates an isolated copy, this keeps the base directory clean
 function isolatedGameDir() {
   const base = store.get('baseDirPath')
@@ -97,7 +97,7 @@ function effectiveGamePath() {
   return store.get('skyrimPath')
 }
 
-// ── Window ────────────────────────────────────────────────────────────────────
+// Window
 function createWindow() {
   win = new BrowserWindow({
     width:     1280,
@@ -132,7 +132,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-// ── Window controls ───────────────────────────────────────────────────────────
+// Window controls
 ipcMain.on('window:minimize', () => win?.minimize())
 ipcMain.on('window:maximize', () => {
   if (win?.isMaximized()) win.unmaximize()
@@ -140,7 +140,7 @@ ipcMain.on('window:maximize', () => {
 })
 ipcMain.on('window:close', () => win?.close())
 
-// ── Settings ──────────────────────────────────────────────────────────────────
+// Settings
 ipcMain.handle('settings:load', async () => {
   // Refresh the server list from the backend on every load.
   // On failure we keep the previously cached list so offline launches still work.
@@ -152,11 +152,17 @@ ipcMain.handle('settings:load', async () => {
   } catch { /* keep existing cache */ }
 
   const servers = store.get('cachedServers') || []
+  // Whitelist only what the renderer reads. Never spread the whole store: it
+  // holds secrets (nexusApiKey, nexusOauth tokens, gameSession, gameProfileId)
+  // the renderer must never receive.
   return {
-    ...store.store,
+    skyrimPath:        store.get('skyrimPath'),
+    activeServerIndex: store.get('activeServerIndex'),
+    mo2Enabled:        store.get('mo2Enabled'),
+    isolatedGame:      store.get('isolatedGame'),
     servers,
-    multiServer: servers.length > 1,
-    discordUser: store.get('discordUser') || null,
+    multiServer:       servers.length > 1,
+    discordUser:       store.get('discordUser') || null,
   }
 })
 ipcMain.handle('settings:save', (_e, data) => {
@@ -166,7 +172,7 @@ ipcMain.handle('settings:save', (_e, data) => {
   store.set(clean)
 })
 
-// ── Graphics / hotkey settings (Settings tab) ──────────────────────────────────
+// Graphics / hotkey settings (Settings tab)
 // Graphics edit the MO2 portable profile's SkyrimPrefs.ini. NOTE: this assumes
 // the SkyRP profile uses profile-specific INI files; and if SSEDisplayTweaks is
 // active it may override window mode via its own ini.
@@ -174,7 +180,7 @@ function skyrimPrefsPath() {
   return path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
 }
 // Server hotkeys live in the Skyrim Platform client settings (the object exposed
-// to the client as settings["skymp5-client"] — the file content is that object).
+// to the client as settings["skymp5-client"] - the file content is that object).
 function clientSettingsPath() {
   return path.join(effectiveGamePath() || '', 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
 }
@@ -193,14 +199,24 @@ ipcMain.handle('graphics:load', () => {
     const grass = data['Grass'] || {}
     const controls = data['Controls'] || {}
     const full = String(disp['bFull Screen'] || '0') === '1'
-    const borderless = String(disp['bBorderless'] || '0') === '1'
+    // Default to borderless when the ini doesn't say otherwise (missing file
+    // or keys). An explicit bFull Screen=0 + bBorderless=0 reads as windowed.
+    const hasMode = ('bFull Screen' in disp) || ('bBorderless' in disp)
+    const borderless = hasMode ? String(disp['bBorderless'] || '0') === '1' : true
+    // Resolution fallback chain: profile ini, then the player's original
+    // My Games ini, then 1080p.
+    let orig = {}
+    try {
+      const src = findOriginalPrefsIni()
+      if (src) orig = ini.read(src)['Display'] || {}
+    } catch { /* fall through to 1080p */ }
     return {
       ok: true,
       path: p,
       exists: fs.existsSync(p),
       windowMode: full ? 'fullscreen' : (borderless ? 'borderless' : 'windowed'),
-      width:  disp['iSize W'] || '',
-      height: disp['iSize H'] || '',
+      width:  disp['iSize W'] || orig['iSize W'] || '1920',
+      height: disp['iSize H'] || orig['iSize H'] || '1080',
       invertY: String(controls['bInvertYValues'] || '0') === '1',
       fades: {
         actor:  disp['fLODFadeOutMultActors']  || '',
@@ -277,21 +293,45 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
   }
 })
 
-// ── Forced server defaults ─────────────────────────────────────────────────────
+// Forced server defaults
 // The server ships a couple of required defaults. We apply them once, when the
 // SkyRP install is first set up, so later tweaks in the Settings tab aren't
 // reverted on every client update:
-//   • 1080p borderless window → MO2 profile's SkyrimPrefs.ini [Display]
-//   • Wait key (T) unbound     → controlmap override (waiting is disabled here)
+//   • borderless window mode → MO2 profile's SkyrimPrefs.ini [Display]
+//     (resolution is player-owned: it comes from the seeded ini, or the
+//      Settings tab default when the ini doesn't specify one)
+//   • Wait key (T) unbound   → controlmap override (waiting is disabled here)
 function applyForcedServerDefaults(gamePath) {
-  // Graphics: force 1920x1080 borderless. ini.write preserves every other key.
+  // One-time repair for profiles created before resolution became
+  // player-owned: earlier builds force-stamped 1920x1080 into the profile
+  // ini, hiding the player's real resolution. Re-import it once from the
+  // original My Games ini; from then on the Settings tab owns the values.
+  if (!store.get('resolutionMigrated')) {
+    try {
+      const src  = findOriginalPrefsIni()
+      const prof = skyrimPrefsPath()
+      if (src && fs.existsSync(prof)) {
+        const orig = ini.read(src)['Display'] || {}
+        if (orig['iSize W'] && orig['iSize H']) {
+          ini.write(prof, { Display: { 'iSize W': String(orig['iSize W']), 'iSize H': String(orig['iSize H']) } })
+          log(`[defaults] re-imported resolution ${orig['iSize W']}x${orig['iSize H']} from the original ini`)
+        }
+      }
+      store.set('resolutionMigrated', true)
+    } catch (err) {
+      log('[defaults] resolution migration failed:', err.message)
+    }
+  }
+
+  // Graphics: force borderless window mode. ini.write preserves every other
+  // key, including whatever resolution the player's ini carries.
   if (!store.get('forcedDefaultsApplied')) {
     try {
       ini.write(skyrimPrefsPath(), {
-        Display: { 'bFull Screen': '0', 'bBorderless': '1', 'iSize W': '1920', 'iSize H': '1080' },
+        Display: { 'bFull Screen': '0', 'bBorderless': '1' },
       })
       store.set('forcedDefaultsApplied', true)
-      log('[defaults] forced 1080p borderless into SkyrimPrefs.ini')
+      log('[defaults] forced borderless window mode into SkyrimPrefs.ini')
     } catch (err) {
       log('[defaults] could not write graphics defaults:', err.message)
     }
@@ -313,7 +353,7 @@ function applyForcedServerDefaults(gamePath) {
   }
 }
 
-// ── Folder picker ─────────────────────────────────────────────────────────────
+// Folder picker
 ipcMain.handle('dialog:openFolder', async () => {
   const result = await dialog.showOpenDialog(win, {
     properties: ['openDirectory'],
@@ -322,14 +362,14 @@ ipcMain.handle('dialog:openFolder', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 
-// ── Open external URL — http/https only ──────────────────────────────────────
+// Open external URL - http/https only
 ipcMain.on('open:external', (_e, url) => {
   if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
     shell.openExternal(url)
   }
 })
 
-// ── News ──────────────────────────────────────────────────────────────────────
+// News
 ipcMain.handle('api:news', async () => {
   try {
     const items = await fetchJSON(`${config.apiUrl}/api/news`)
@@ -339,7 +379,7 @@ ipcMain.handle('api:news', async () => {
   }
 })
 
-// ── Server status ─────────────────────────────────────────────────────────────
+// Server status
 ipcMain.handle('api:status', async () => {
   try {
     const data = await fetchJSON(`${config.apiUrl}/api/status`)
@@ -349,7 +389,7 @@ ipcMain.handle('api:status', async () => {
   }
 })
 
-// ── Server info ───────────────────────────────────────────────────────────────
+// Server info
 // Include the stored session token so the backend's session-aware `allowed`
 // field reflects whether this user is on the whitelist / server lock list.
 ipcMain.handle('api:serverinfo', async () => {
@@ -359,7 +399,7 @@ ipcMain.handle('api:serverinfo', async () => {
   catch { return null }
 })
 
-// ── Discord OAuth ─────────────────────────────────────────────────────────────
+// Discord OAuth
 
 ipcMain.handle('discord:getUser', () => store.get('discordUser') || null)
 
@@ -390,6 +430,8 @@ ipcMain.handle('discord:login', async () => {
   // Poll the status endpoint until auth completes or times out (5 minutes).
   const POLL_INTERVAL_MS = 2000
   const deadline = Date.now() + 5 * 60 * 1000
+  let unexpectedStreak = 0    // consecutive non-401 poll failures
+  let stateRegistered  = false // backend has answered 401 (= browser reached /login-discord)
 
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
@@ -400,12 +442,31 @@ ipcMain.handle('discord:login', async () => {
         `${config.apiUrl}/api/users/login-discord/status?state=${encodeURIComponent(state)}`
       )
     } catch (err) {
-      if (err.statusCode === 401) continue  // still pending — keep polling
-      if (err.statusCode === 403) return { success: false, error: 'Auth expired or unknown state.' }
-      continue  // network blip — keep polling
-    }
+      if (err.statusCode === 401) { stateRegistered = true; unexpectedStreak = 0; continue }  // still pending - keep polling
+      if (err.statusCode === 403) {
+        // The state only exists server-side once the browser loads the login
+        // URL. A 403 before we ever saw it pending just means the browser is
+        // still opening (cold start, open-link prompt) - keep waiting.
+        if (!stateRegistered) { unexpectedStreak = 0; continue }
+        return { success: false, error: 'Login attempt expired - please try again.' }
+      }
 
-    // 200 OK — auth complete.
+      // Anything else (cross-host redirect, 404 from a stale backend, 5xx,
+      // network blip): keep polling briefly, but give up with the real reason
+      // instead of burning the full five minutes in silence.
+      unexpectedStreak++
+      log(`[discord] status poll failed (${err.statusCode ? 'HTTP ' + err.statusCode : err.message}), ${unexpectedStreak} in a row`)
+      if (unexpectedStreak >= 10) {
+        return {
+          success: false,
+          error: `Cannot read the login status from the backend (${err.statusCode ? 'HTTP ' + err.statusCode : err.message}).`,
+        }
+      }
+      continue
+    }
+    unexpectedStreak = 0
+
+    // 200 OK - auth complete.
     // token is the play-session token; masterApiId is the stable numeric profileId.
     const { token, masterApiId, discordUsername, discordAvatar } = data
 
@@ -418,14 +479,15 @@ ipcMain.handle('discord:login', async () => {
     store.set('discordUser',   discordUser)
     store.set('gameProfileId', masterApiId)
     store.set('gameSession',   token)
+    log(`[discord] logged in as ${discordUser.username} (profileId ${masterApiId})`)
 
     return { success: true, user: discordUser }
   }
 
-  return { success: false, error: 'Login timed out — please try again.' }
+  return { success: false, error: 'Login timed out - please try again.' }
 })
 
-// ── MO2 integration ───────────────────────────────────────────────────────────
+// MO2 integration
 
 ipcMain.handle('mo2:status', () => mo2.getStatus())
 
@@ -438,46 +500,79 @@ ipcMain.handle('mo2:open', () => {
 ipcMain.handle('install:openFolder', async () => {
   const dir = store.get('baseDirPath') || mo2.getRoot()
   if (!dir || !fs.existsSync(dir)) {
-    return { success: false, error: 'No portable install folder yet — set one up first.' }
+    return { success: false, error: 'No portable install folder yet - set one up first.' }
   }
   const err = await shell.openPath(dir)
   return err ? { success: false, error: err } : { success: true }
 })
 
-// ── Nexus Mods login ──────────────────────────────────────────────────────────
+// Nexus Mods login
 
 ipcMain.handle('nexus:getUser', () => store.get('nexusUser') || null)
 
-ipcMain.handle('nexus:login', async (_e, apiKey) => {
-  if (typeof apiKey !== 'string' || apiKey.trim().length < 10) {
-    return { success: false, error: 'Paste your personal API key from the Nexus site.' }
-  }
-  try {
-    const user = await nexus.validateKey(apiKey.trim())
-    store.set('nexusApiKey', apiKey.trim())
-    store.set('nexusUser', user)
-    log(`[nexus] logged in as ${user.name} (premium: ${user.isPremium})`)
-    return { success: true, user }
-  } catch (err) {
-    return { success: false, error: err.message }
-  }
-})
-
 ipcMain.handle('nexus:logout', () => {
   store.set('nexusApiKey', '')
+  store.set('nexusOauth', null)
   store.set('nexusUser', null)
   return { success: true }
 })
 
-// One-click SSO (Vortex/Wabbajack-style). Only available once a Nexus
-// application slug has been registered and set in config.js.
-ipcMain.handle('nexus:ssoAvailable', () => !!config.nexusAppSlug)
+// One-click web login. Prefers OAuth (authorization code + PKCE) when a
+// client id is configured; falls back to the older websocket SSO when only
+// the application slug is set. The renderer flow is identical either way.
+ipcMain.handle('nexus:ssoAvailable', () => !!(config.nexusOauthClientId || config.nexusAppSlug))
+
+// Current Nexus credential for API calls: OAuth bearer (refreshed when close
+// to expiry) or the SSO-era API key. Null when logged out.
+async function getNexusAuth() {
+  const oauth = store.get('nexusOauth')
+  if (oauth && oauth.accessToken) {
+    const nearExpiry = oauth.expiresAt && Date.now() > oauth.expiresAt - 60_000
+    if (nearExpiry && oauth.refreshToken && config.nexusOauthClientId) {
+      try {
+        const t = await nexus.refreshOauth(config.nexusOauthClientId, oauth.refreshToken)
+        const next = {
+          accessToken:  t.access_token,
+          refreshToken: t.refresh_token || oauth.refreshToken,
+          expiresAt:    Date.now() + (t.expires_in ? t.expires_in * 1000 : 6 * 3600 * 1000),
+        }
+        store.set('nexusOauth', next)
+        log('[nexus] OAuth token refreshed')
+        return { bearer: next.accessToken }
+      } catch (err) {
+        log('[nexus] token refresh failed:', err.message)
+        // The old token may still work; the API answers 401 if not.
+      }
+    }
+    return { bearer: oauth.accessToken }
+  }
+  const key = store.get('nexusApiKey')
+  return key ? { apiKey: key } : null
+}
 
 ipcMain.handle('nexus:ssoLogin', async () => {
-  if (!config.nexusAppSlug) {
-    return { success: false, error: 'One-click login is not configured yet — paste your API key instead.' }
-  }
   try {
+    if (config.nexusOauthClientId) {
+      const tokens = await nexus.oauthLogin({
+        clientId: config.nexusOauthClientId,
+        port:     config.nexusOauthPort,
+        openUrl:  url => shell.openExternal(url),
+      })
+      store.set('nexusOauth', {
+        accessToken:  tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresAt:    Date.now() + (tokens.expires_in ? tokens.expires_in * 1000 : 6 * 3600 * 1000),
+      })
+      store.set('nexusApiKey', '')   // the bearer token replaces any old key
+      const user = await nexus.validateKey({ bearer: tokens.access_token })
+      store.set('nexusUser', user)
+      log(`[nexus] OAuth login as ${user.name} (premium: ${user.isPremium})`)
+      return { success: true, user }
+    }
+
+    if (!config.nexusAppSlug) {
+      return { success: false, error: 'Nexus login is not configured in this build (missing OAuth client id / application slug).' }
+    }
     const apiKey = await nexus.ssoLogin(config.nexusAppSlug, url => shell.openExternal(url))
     const user   = await nexus.validateKey(apiKey)
     store.set('nexusApiKey', apiKey)
@@ -489,7 +584,7 @@ ipcMain.handle('nexus:ssoLogin', async () => {
   }
 })
 
-// ── Isolated game copy ────────────────────────────────────────────────────────
+// Isolated game copy
 
 ipcMain.handle('game:isolatedStatus', () => ({
   enabled: !!store.get('isolatedGame'),
@@ -511,6 +606,10 @@ ipcMain.handle('game:createIsolated', async () => {
     return { success: false, error: 'Set a valid Skyrim path first (SkyrimSE.exe not found).' }
   }
 
+  if (!findOriginalPrefsIni()) {
+    return { success: false, error: NEVER_LAUNCHED_ERROR }
+  }
+
   // No clean-install check needed: copyGameDir copies only vanilla files, so a modded source is fine.
 
   // Ask where to install the modlist.
@@ -529,7 +628,7 @@ ipcMain.handle('game:createIsolated', async () => {
     if (entries.length > 0 && !fs.existsSync(path.join(base, 'portable.txt'))) {
       base = path.join(base, 'SkyRP')
     }
-  } catch { /* unreadable — let later steps surface the real error */ }
+  } catch { /* unreadable - let later steps surface the real error */ }
 
   const dst = path.join(base, 'skyrim')
 
@@ -584,11 +683,15 @@ ipcMain.handle('game:createIsolated', async () => {
 })
 
 // Vanilla root files, by store edition. Only those present get copied.
+// Skyrim.ccc is deliberately NOT copied: no cc* plugins are copied either, and
+// an orphan ccc list makes the engine treat the AE/CC content set as changed,
+// which pops the Creation Club announcement over the main menu on first boot.
+// That box is modal and SkyrimPlatform cannot dismiss pre-game menus.
 const VANILLA_ROOT_FILES = [
   'SkyrimSE.exe', 'SkyrimSELauncher.exe', 'bink2w64.dll',
   'steam_api64.dll', 'Galaxy64.dll', 'EOSSDK-Win64-Shipping.dll',
   'High.ini', 'Medium.ini', 'Low.ini', 'Ultra.ini', 'Skyrim_Default.ini',
-  'Skyrim.ccc', 'installscript.vdf',
+  'installscript.vdf',
 ]
 
 // Vanilla BSAs the engine loads without a matching plugin (cc* still excluded).
@@ -655,19 +758,51 @@ async function copyGameDir(src, dst) {
   return { success: true, copied }
 }
 
-// Seed the MO2 profile SkyrimPrefs.ini from the player's prefs; forced 1080p/borderless merges on top later.
+// First-launch sanity check
+// The game writes its My Games inis (and registry entries) the first time
+// vanilla Skyrim reaches the main menu. Installing MO2 before that leaves the
+// profile with unconfigured defaults and the engine unregistered, which
+// breaks in confusing ways - so installs are blocked until the ini exists.
+// Folder name varies by store edition, mirroring pluginsTxtDirs().
+const MYGAMES_VARIANTS = [
+  'Skyrim Special Edition',
+  'Skyrim Special Edition GOG',
+  'Skyrim Special Edition EPIC',
+  'Skyrim Special Edition MS',
+]
+
+function findOriginalPrefsIni() {
+  const docs = app.getPath('documents')
+  for (const v of MYGAMES_VARIANTS) {
+    const p = path.join(docs, 'My Games', v, 'SkyrimPrefs.ini')
+    if (fs.existsSync(p)) return p
+  }
+  return null
+}
+
+const NEVER_LAUNCHED_ERROR =
+  'Skyrim has never been launched on this PC (no SkyrimPrefs.ini in Documents\\My Games). ' +
+  'Start the game once the normal way (Steam/GOG), reach the main menu, quit, then run this install again.'
+
+// Seed the MO2 profile SkyrimPrefs.ini from the player's own prefs, then
+// rewrite the server's forced window mode (borderless) on top. Resolution is
+// deliberately NOT rewritten: it stays whatever the player's ini says, and
+// the Settings tab only shows 1080p as a fallback when the ini has none.
 function seedProfilePrefs(skyrimPath) {
   const dest = path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
   if (fs.existsSync(dest)) return
   const candidates = [
     path.join(skyrimPath, 'Skyrim', 'SkyrimPrefs.ini'),
-    path.join(app.getPath('documents'), 'My Games', 'Skyrim Special Edition', 'SkyrimPrefs.ini'),
-  ]
+    findOriginalPrefsIni(),
+  ].filter(Boolean)
   for (const from of candidates) {
     if (!fs.existsSync(from)) continue
     try {
       fs.mkdirSync(path.dirname(dest), { recursive: true })
       fs.copyFileSync(from, dest)
+      ini.write(dest, {
+        Display: { 'bFull Screen': '0', 'bBorderless': '1' },
+      })
       log(`[isolated] seeded profile SkyrimPrefs.ini from ${from}`)
     } catch (err) {
       log(`[isolated] could not seed SkyrimPrefs.ini: ${err.message}`)
@@ -677,7 +812,7 @@ function seedProfilePrefs(skyrimPath) {
   log('[isolated] no source SkyrimPrefs.ini found to seed')
 }
 
-// ── Metrics ───────────────────────────────────────────────────────────────────
+// Metrics
 ipcMain.handle('api:metrics', async () => {
   try {
     const data = await fetchJSON(`${config.apiUrl}/api/metrics`)
@@ -686,7 +821,7 @@ ipcMain.handle('api:metrics', async () => {
   catch { return { ok: false, error: 'Backend unreachable' } }
 })
 
-// ── Servers ───────────────────────────────────────────────────────────────────
+// Servers
 ipcMain.handle('api:servers', async () => {
   try {
     const servers = await fetchJSON(`${config.apiUrl}/api/servers`)
@@ -697,7 +832,7 @@ ipcMain.handle('api:servers', async () => {
   }
 })
 
-// ── Modlist ───────────────────────────────────────────────────────────────────
+// Modlist
 ipcMain.handle('api:modlist', async () => {
   try {
     const items = await fetchJSON(`${config.apiUrl}/api/modlist`)
@@ -707,7 +842,7 @@ ipcMain.handle('api:modlist', async () => {
   }
 })
 
-// ── Game process detection ────────────────────────────────────────────────────
+// Game process detection
 // Used by the renderer to switch the Play button into its "running" state.
 function isProcessRunning(imageName) {
   return new Promise(resolve => {
@@ -725,10 +860,13 @@ ipcMain.handle('files:updateCheck', async () => {
   try {
     const vd = await fetchJSON(`${config.apiUrl}/api/files/version`)
     const gamePath   = effectiveGamePath()
-    const allPresent = !!gamePath && REQUIRED_FILES.every(f => fs.existsSync(path.join(gamePath, f)))
+    const allPresent = clientFilesPresent(gamePath)
+    // A failed modpack install also flips the Play button to UPDATE so one
+    // click re-runs the install and self-heals the incomplete state.
+    const modpackFailed = store.get('mo2Enabled') && store.get('modpackState') === 'failed'
     return {
       ok: true,
-      updateAvailable: vd.version !== store.get('filesVersion') || !allPresent,
+      updateAvailable: vd.version !== store.get('filesVersion') || !allPresent || modpackFailed,
       serverVersion:   vd.version,
     }
   } catch {
@@ -741,7 +879,7 @@ ipcMain.handle('game:isRunning', async () => {
   return (await isProcessRunning('SkyrimSE.exe')) || (await isProcessRunning('skse64_loader.exe'))
 })
 
-// ── Launcher update check ─────────────────────────────────────────────────────
+// Launcher update check
 ipcMain.handle('app:checkUpdate', async () => {
   const current = app.getVersion()
   try {
@@ -754,9 +892,21 @@ ipcMain.handle('app:checkUpdate', async () => {
   }
 })
 
+// Reject remote plain-HTTP downloads of payloads we run or extract: guards
+// against MITM tampering and https->http redirect downgrades. Loopback stays
+// allowed so the http://localhost dev backend still works.
+function assertSecureDownloadUrl(url) {
+  if (/^https:/i.test(url)) return
+  let host = ''
+  try { host = new URL(url).hostname } catch {}
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return
+  throw new Error(`Refusing to download over an insecure (non-HTTPS) URL: ${url}`)
+}
+
 // Download a URL to a local file, following redirects (release URLs hit a CDN).
 function downloadToFile(url, dest, onProgress, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
+    try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
     const mod = url.startsWith('https') ? https : http
     const req = mod.get(url, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -785,6 +935,11 @@ ipcMain.handle('app:installUpdate', async () => {
   try {
     const data = await fetchJSON(`${config.apiUrl}/api/version`)
     if (!data.downloadUrl) return { ok: false, error: 'No download URL is configured on the server.' }
+    // The installer is executed with the user's privileges, so refuse to fetch
+    // it over anything but HTTPS (no plain-http, no redirect downgrade).
+    if (!/^https:/i.test(data.downloadUrl)) {
+      return { ok: false, error: 'Refusing to install an update from a non-HTTPS URL.' }
+    }
 
     const dest = path.join(os.tmpdir(), 'SkyrimRoleplayLauncher-update.exe')
     send('update:progress', { phase: 'download', received: 0, total: 0 })
@@ -801,7 +956,7 @@ ipcMain.handle('app:installUpdate', async () => {
   }
 })
 
-// ── Launch SKSE ───────────────────────────────────────────────────────────────
+// Launch SKSE
 
 // Files that must exist before we allow launching
 const REQUIRED_FILES = [
@@ -809,6 +964,17 @@ const REQUIRED_FILES = [
   path.join('Data', 'SKSE', 'Plugins', 'SkyrimPlatform.dll'),
   path.join('Data', 'SKSE', 'Plugins', 'MpClientPlugin.dll'),
 ]
+
+// Engine fixes preloader
+const PRELOADER_DLLS = ['d3dx9_42.dll', 'winhttp.dll']
+const preloaderPresent = (gamePath) =>
+  !!gamePath && PRELOADER_DLLS.some(f => fs.existsSync(path.join(gamePath, f)))
+
+// True when every client-package file the launcher can check is on disk.
+const clientFilesPresent = (gamePath) =>
+  !!gamePath &&
+  REQUIRED_FILES.every(f => fs.existsSync(path.join(gamePath, f))) &&
+  preloaderPresent(gamePath)
 
 ipcMain.handle('launch:skse', async () => {
   const skyrimPath = effectiveGamePath()
@@ -819,7 +985,7 @@ ipcMain.handle('launch:skse', async () => {
   }
 
   if (mo2Enabled && !mo2.isInstalled()) {
-    return { success: false, error: 'MO2 is not set up — open Settings → Mod Manager and run setup.' }
+    return { success: false, error: 'MO2 is not set up - open Settings → Mod Manager and run setup.' }
   }
 
   // Shared pre-launch steps: client settings, load order, file validation.
@@ -848,7 +1014,7 @@ ipcMain.handle('launch:skse', async () => {
 ipcMain.handle('launch:viaMO2', async () => {
   const skyrimPath = effectiveGamePath()
   if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
-  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed — run Install Modpack first.' }
+  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - run Install Modpack first.' }
   const prep = await prepareForLaunch(skyrimPath, true)
   if (!prep.success) return prep
   try { mo2.launchGame(); return { success: true } }
@@ -916,6 +1082,16 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
     }
   }
 
+  // Fallback if install fails
+  if (viaMO2 && store.get('modpackState') === 'failed') {
+    problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run "Install Modpack" to complete it first.')
+  }
+
+  // Fallback for engine fixes failure (like with AV software)
+  if (!preloaderPresent(skyrimPath)) {
+    problems.push('The Engine Fixes preloader dll is missing from the game folder; press PLAY (it will show UPDATE) to reinstall the client files.')
+  }
+
   // Online servers need a launcher Discord login so auth-data-no-load.js can be seeded; without it SkyMP shows its own auth menu and never connects.
   if (serverInfo && serverInfo.offlineMode === false) {
     const session   = store.get('gameSession')
@@ -937,7 +1113,15 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
     try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
   }
 
-  // ── Staging gate: surface everything missing before we write settings or launch ──
+  // Non-portable installs play from the user's real Skyrim folder: quarantine
+  // Creation Club content the server doesn't use into "disabled CC mods", or
+  // the engine force-loads it via Skyrim.ccc and fights the server load order.
+  // The isolated game copy never receives cc* files, so this is a no-op there.
+  if (skyrimPath === store.get('skyrimPath')) {
+    mo2.disableCcContent(skyrimPath, serverInfo?.loadOrder)
+  }
+
+  // Staging gate: surface everything missing before we write settings or launch
   const notReady = verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo)
   if (notReady.length > 0) {
     return { success: false, error: 'Not ready to launch:\n' + notReady.map(p => '• ' + p).join('\n') }
@@ -953,7 +1137,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
     }
   }
 
-  // ── Load order sync ──────────────────────────────────────────────────────────
+  // Load order sync
   let loadOrderFixed = false
   if (Array.isArray(serverInfo?.loadOrder) && serverInfo.loadOrder.length > 0) {
     if (viaMO2) {
@@ -980,14 +1164,38 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
       if (result.changed) log('[launch] plugins.txt updated to match server load order')
     }
   } else {
-    log('[launch] server load order unavailable — leaving plugins.txt untouched')
+    log('[launch] server load order unavailable - leaving plugins.txt untouched')
   }
 
-  // ── MO2 lockdown ─────────────────────────────────────────────────────────────
+  // MO2 lockdown
   // Disables plugins or skse scripts not part of the server files
   if (viaMO2) {
     const removed = mo2.enforceModRules()
     if (removed.length > 0) log(`[launch] disabled unauthorised mods: ${removed.join(', ')}`)
+  }
+
+  // Launch sanity check: report our files version + plugin list so the backend
+  // approves this session for the game server's session validation. Backend
+  // unreachable = fail open (the server itself still enforces at connect).
+  const session = store.get('gameSession')
+  if (session && serverInfo && serverInfo.offlineMode === false) {
+    try {
+      const check = await postJSON(`${config.apiUrl}/api/launch-check`, {
+        filesVersion: store.get('filesVersion') || '',
+        plugins: Array.isArray(serverInfo.loadOrder)
+          ? serverInfo.loadOrder.map(f => path.basename(f))
+          : [],
+      }, { 'x-session': session })
+      if (!check.ok) {
+        if (check.filesOk === false) {
+          return { success: false, error: 'Your client files are out of date. Press the button again to update, then launch.' }
+        }
+        return { success: false, error: 'Your plugin load order does not match the server. Run "Install Modpack" in Settings → Mod Manager.' }
+      }
+      log('[launch] launch-check passed')
+    } catch (err) {
+      log(`[launch] launch-check unavailable (${err.message}) - continuing, server will enforce`)
+    }
   }
 
   // SKSE, client files, plugins, and Discord auth were all confirmed by the staging gate above.
@@ -1069,13 +1277,24 @@ function missingPluginsForMO2(skyrimPath, serverLoadOrder) {
       !modDirs.some(dir => fs.existsSync(path.join(dir, f))))
 }
 
-// ── Install files ─────────────────────────────────────────────────────────────
+// Install files
 
-let installing = false
+let installing   = false
+let installAbort = null   // AbortController for the running install's waits
 
 ipcMain.on('install:start', (_e, mode) => {
-  if (installing) return
+  if (installing) {
+    // Never ignore the click silently: the user has no other way to know an
+    // earlier install is still running (e.g. parked on a downloads wait).
+    send('install:progress', {
+      phase: 'mods',
+      file: 'An install is already running - press Cancel Install to stop it first.',
+      index: 0, total: 0, skipped: false,
+    })
+    return
+  }
   installing = true
+  installAbort = new AbortController()
 
   let fn
   if (mode === 'client') {
@@ -1083,7 +1302,7 @@ ipcMain.on('install:start', (_e, mode) => {
   } else if (mode === 'mo2') {
     fn = runMO2Install()
   } else {
-    // Auto mode (used by the Play button) — delegate based on mo2Enabled setting
+    // Auto mode (used by the Play button) - delegate based on mo2Enabled setting
     fn = store.get('mo2Enabled') ? runMO2Install() : runDirectInstall()
   }
   fn.catch(err => {
@@ -1093,7 +1312,12 @@ ipcMain.on('install:start', (_e, mode) => {
   })
 })
 
-// ── Shared download + extract helpers ─────────────────────────────────────────
+// Cancels the running install at its next wait/step boundary.
+ipcMain.on('install:cancel', () => {
+  if (installing && installAbort) installAbort.abort()
+})
+
+// Shared download + extract helpers
 
 /**
  * Stream the client zip from the backend to a local temp file.
@@ -1102,6 +1326,7 @@ ipcMain.on('install:start', (_e, mode) => {
 function downloadClientZip(tempPath, onProgress) {
   const url = `${config.apiUrl}/api/files/zip`
   return new Promise((resolve, reject) => {
+    try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
     const mod = url.startsWith('https') ? https : http
     const req = mod.get(url, res => {
       if (res.statusCode === 404) {
@@ -1141,8 +1366,15 @@ function extractClientZip(zipPath, destDir, onProgress) {
   const entries = zip.getEntries().filter(e => !e.isDirectory)
   const total   = entries.length
 
+  // Zip-slip guard (defense-in-depth over adm-zip): reject any entry whose
+  // resolved destination escapes destDir before writing it.
+  const root = path.resolve(destDir)
   for (let i = 0; i < total; i++) {
     const entry = entries[i]
+    const resolved = path.resolve(destDir, entry.entryName)
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      throw new Error(`Refusing to extract entry outside the target directory: ${entry.entryName}`)
+    }
     zip.extractEntryTo(entry.entryName, destDir, /* maintainEntryPath */ true, /* overwrite */ true)
     if (onProgress) onProgress(entry.entryName, i + 1, total)
   }
@@ -1150,7 +1382,7 @@ function extractClientZip(zipPath, destDir, onProgress) {
   return total
 }
 
-// ── Client files install core ─────────────────────────────────────────────────
+// Client files install core
 // Shared by the direct and MO2 installers: version check, download, extract, client settings.
 
 async function installClientFilesCore(skyrimPath, srv, serverInfo) {
@@ -1158,7 +1390,7 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
   const clientSettingsPath = path.join(skyrimPath, 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
 
   try {
-    // ── 1. Check whether a download is needed ────────────────────────────────
+    // 1. Check whether a download is needed
     let serverVersion = null
     try {
       const vd = await fetchJSON(`${config.apiUrl}/api/files/version`)
@@ -1167,15 +1399,15 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
       if (err.statusCode === 404) {
         return { success: false, error: 'Client files have not been packaged on the server yet. Ask the server admin to run `npm run build-client`.' }
       }
-      // Network error — play on cached files if they exist
-      const allPresent = REQUIRED_FILES.every(f => fs.existsSync(path.join(skyrimPath, f)))
+      // Network error - play on cached files if they exist
+      const allPresent = clientFilesPresent(skyrimPath)
       if (!allPresent) return { success: false, error: 'Backend unreachable and client files are not installed. Check your connection.' }
       log('[install] Backend unreachable - files already installed, updating settings only')
       writeClientSettings(clientSettingsPath, srv, serverInfo)
       return { success: true, upToDate: true }
     }
 
-    const allPresent    = REQUIRED_FILES.every(f => fs.existsSync(path.join(skyrimPath, f)))
+    const allPresent    = clientFilesPresent(skyrimPath)
     const needsDownload = serverVersion !== store.get('filesVersion') || !allPresent
 
     if (!needsDownload) {
@@ -1184,7 +1416,7 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
       return { success: true, upToDate: true }
     }
 
-    // ── 2. Download ──────────────────────────────────────────────────────────
+    // 2. Download
     send('install:progress', { phase: 'download', file: 'Connecting to server…', index: 0, total: 0, skipped: false })
     await downloadClientZip(tempZip, (received, total) => {
       const mb  = n => (n / 1024 / 1024).toFixed(1)
@@ -1196,14 +1428,22 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
       })
     })
 
-    // ── 3. Extract directly into Skyrim directory ────────────────────────────
+    // 3. Extract directly into Skyrim directory
     const extracted = extractClientZip(tempZip, skyrimPath, (file, i, total) => {
       send('install:progress', { phase: 'extract', file, index: i, total, skipped: false })
     })
     log(`[install] extracted ${extracted} files`)
     ensureClientDirs(skyrimPath)
 
-    // ── 4. Write server settings ─────────────────────────────────────────────
+    if (!preloaderPresent(skyrimPath)) {
+      return {
+        success: false,
+        error: 'The client package installed, but no Engine Fixes preloader dll (d3dx9_42.dll / winhttp.dll) is next to SkyrimSE.exe. ' +
+               'The server admin needs to add the preloader files to the client package and rebuild it (npm run merge).',
+      }
+    }
+
+    // 4. Write server settings
     writeClientSettings(clientSettingsPath, srv, serverInfo)
     store.set('filesVersion', serverVersion)
 
@@ -1215,7 +1455,7 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
   }
 }
 
-// ── Direct install (no mod manager) ───────────────────────────────────────────
+// Direct install (no mod manager)
 
 async function runDirectInstall() {
   const skyrimPath = effectiveGamePath()
@@ -1228,7 +1468,7 @@ async function runDirectInstall() {
   }
 
   if (!skyrimPath) return fail('Skyrim path not configured.')
-  if (!srv)        return fail('No server selected — open Settings and choose a server.')
+  if (!srv)        return fail('No server selected - open Settings and choose a server.')
 
   let serverInfo = null
   try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
@@ -1241,8 +1481,17 @@ async function runDirectInstall() {
   installing = false
 }
 
-// SSE Engine Fixes pt 2
-const ENGINE_FIXES = { modId: 17230, fileId: 725261, name: 'SSE Engine Fixes (Part 2)' }
+// Filename pattern for a Nexus archive: downloads embed the mod id (…-17230-…); a renamed
+// file still matches on the mod's name words. `version` additionally pins the release
+// (Nexus encodes v2020.3 as "2020-3" in filenames).
+function nexusNamePattern(modId, displayName, version) {
+  const words = String(displayName).toLowerCase().match(/[a-z]{4,}/g) || []
+  const nameRe = words.slice(0, 2).join('.*')
+  const base = `(?:^|[^0-9])${modId}(?:[^0-9]|$)` + (nameRe ? `|${nameRe}` : '')
+  if (!version) return new RegExp(base, 'i')
+  const verRe = String(version).replace(/[.-]/g, '[.-]')
+  return new RegExp(`^(?=.*${verRe})(?=.*(?:${base}))`, 'i')
+}
 
 // Open the MO2 downloads folder (archive staging) + the backend page listing every file-pinned Nexus link, once per install run.
 let _downloadListOpened = false
@@ -1253,34 +1502,7 @@ function openDownloadList(downloadsDir) {
   shell.openExternal(`${config.apiUrl}/api/nexus-downloads`)
 }
 
-/**
- * Fetch a specific Nexus file into the downloads folder and return its local
- * path. Premium accounts download via the API; free accounts are sent to the
- * downloads list page and we wait for the nxm "Mod Manager Download". Returns
- * null if the free download never arrives.
- */
-async function acquireNexusArchive(modId, fileId, displayName, { downloadsDir, apiKey, premium }) {
-  const mb = n => (n / 1024 / 1024).toFixed(1)
-  let name = mo2.findDownloadByFileId(fileId)
-  if (name) return path.join(downloadsDir, name)
-
-  if (premium) {
-    name = await nexus.downloadFileEntry(apiKey, modId, { fileId, fileName: `${displayName}.7z` }, downloadsDir, (r, t) => {
-      const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-      send('install:progress', { phase: 'mods', file: `Downloading ${displayName}… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
-    })
-    return path.join(downloadsDir, name)
-  }
-
-  openDownloadList(downloadsDir)
-  send('install:progress', { phase: 'mods', file: `Find ${displayName} on the downloads list, click "Mod Manager Download"; it stages in the MO2 downloads folder`, index: 0, total: 1, skipped: false })
-  await mo2.waitForDownloads([{ fileId, name: displayName }], (d, t, msg) =>
-    send('install:progress', { phase: 'mods', file: msg, index: d, total: t, skipped: false }))
-  name = mo2.findDownloadByFileId(fileId)
-  return name ? path.join(downloadsDir, name) : null
-}
-
-// ── MO2 install ───────────────────────────────────────────────────────────────
+// MO2 install
 // Full modpack pipeline: MO2 itself → SkyMP client files → manifest replay.
 // Mods are reproduced from the backend's compiled install manifest (download +
 // verify each archive, extract once, apply per-file directives) so every player
@@ -1290,6 +1512,9 @@ async function runMO2Install() {
   _downloadListOpened = false
   const fail = (msg) => {
     log('[mo2-install] ABORT:', msg)
+    // The modpack is not in a known-good state: the launch gate blocks PLAY
+    // and the update check flips the button to UPDATE until a run succeeds.
+    store.set('modpackState', 'failed')
     send('install:complete', { success: false, error: msg })
     installing = false
   }
@@ -1298,10 +1523,12 @@ async function runMO2Install() {
   if (!skyrimPath) return fail('Skyrim path not configured.')
 
   const srv = activeServer()
-  if (!srv) return fail('No server selected — open Settings and choose a server.')
+  if (!srv) return fail('No server selected - open Settings and choose a server.')
+
+  if (!findOriginalPrefsIni()) return fail(NEVER_LAUNCHED_ERROR)
 
   try {
-    // ── 1. MO2 itself, the portable instance, and the nxm:// handler ─────────
+    // 1. MO2 itself, the portable instance, and the nxm:// handler
     await mo2.ensureInstalled(msg =>
       send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
 
@@ -1309,32 +1536,41 @@ async function runMO2Install() {
     try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
     mo2.ensureInstance(skyrimPath, serverInfo?.loadOrder)
     mo2.registerNxmHandler()
+    seedProfilePrefs(store.get('skyrimPath') || skyrimPath)
     applyForcedServerDefaults(skyrimPath)
 
-    // ── 2. SkyMP client files into the real Data/ ─────────────────────────────
+    // 2. SkyMP client files into the real Data/
     const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
     if (!core.success) return fail(core.error)
 
-    // ── 3. Mods from the compiled install manifest ───────────────────────────
+    // 3. Mods from the compiled install manifest
     let manifest
     try { manifest = await fetchJSON(`${config.apiUrl}/api/install-manifest`) }
-    catch (err) { return fail(`Could not fetch the install manifest: ${err.message}`) }
+    catch (err) {
+      // A 404 means the backend never compiled (or lost, after a fresh
+      // deploy) its manifest - surface the backend's own explanation.
+      if (err.statusCode === 404) {
+        return fail(err.serverError ||
+          'The server has not published a mod manifest yet - ask the server admin to run `npm run compile-manifest` on the backend.')
+      }
+      return fail(`Could not fetch the install manifest: ${err.message}`)
+    }
     if (!manifest || !Array.isArray(manifest.mods) || !Array.isArray(manifest.archives)) {
-      return fail('Install manifest is missing or malformed — run "npm run compile-manifest" on the backend.')
+      return fail('Install manifest is missing or malformed - run "npm run compile-manifest" on the backend.')
     }
 
     if (manifest.mods.length === 0) {
       send('install:complete', {
         success: true, mo2: true, upToDate: core.upToDate, modsTotal: 0,
-        warning: 'The install manifest has no mods yet — compile it from the reference MO2 install on the backend.',
+        warning: 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.',
       })
       return
     }
 
-    // ── 3a. Acquire every referenced archive, verified by sha256 ─────────────
+    // 3a. Acquire every referenced archive, verified by sha256
     const downloadsDir = mo2.getDownloadsDir()
-    const apiKey  = store.get('nexusApiKey')
-    const premium = !!(apiKey && store.get('nexusUser')?.isPremium)
+    const nexusAuth = await getNexusAuth()   // OAuth bearer or SSO API key
+    const premium   = !!(nexusAuth && store.get('nexusUser')?.isPremium)
     const mb = n => (n / 1024 / 1024).toFixed(1)
     const sanitize       = n => String(n).replace(/[<>:"/\\|?*]/g, '')
     const modFolderPath  = m => path.join(mo2.getModsDir(), sanitize(m.name))
@@ -1345,6 +1581,7 @@ async function runMO2Install() {
     const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
     const needsRoot      = !rootSetUp || rootChanged
+    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
     const modsToInstall  = manifest.mods.filter(modChanged)
 
     const finishOrder = () => {
@@ -1355,11 +1592,11 @@ async function runMO2Install() {
       mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
       mo2.setPlugins(manifest.plugins)
       store.set('installedRootHash', manifest.rootHash || '')
-      store.set('manifestVersion', manifest.builtAt || '')
     }
 
     if (modsToInstall.length === 0 && !needsRoot) {
       finishOrder()
+      store.set('modpackState', 'ready')
       send('install:complete', { success: true, mo2: true, upToDate: true, modsTotal: manifest.mods.length })
       return
     }
@@ -1372,7 +1609,7 @@ async function runMO2Install() {
     for (const m of modsToInstall) for (const f of m.files) if (f.archive) neededArchiveIds.add(f.archive)
     if (needsRoot) for (const f of (manifest.root || [])) if (f.archive) neededArchiveIds.add(f.archive)
 
-    const locate = (a) => {
+    const locate = async (a) => {
       const names = []
       if (a.source.type === 'nexus') { const n = mo2.findDownloadByFileId(a.source.fileId); if (n) names.push(n) }
       names.push(a.name)
@@ -1380,11 +1617,11 @@ async function runMO2Install() {
         const p = path.join(downloadsDir, name)
         if (fs.existsSync(p) && mo2.verifyArchive(p, a.hash)) return p
       }
-      return null
+      return await mo2.findArchiveByHash(a.hash, a.size)   // manually moved / renamed file
     }
 
     for (const a of manifest.archives.filter(x => neededArchiveIds.has(x.id))) {
-      const existing = locate(a)
+      const existing = await locate(a)
       if (existing) { archivePaths[a.id] = existing; continue }
 
       if (a.source.type === 'url') {
@@ -1398,12 +1635,12 @@ async function runMO2Install() {
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus' && premium) {
         send('install:progress', { phase: 'mods', file: `Downloading ${a.name}…`, index: 0, total: 0, skipped: false })
-        const name = await nexus.downloadFileEntry(apiKey, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
+        const name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
           const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
           send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} / ${mb(t)} MB${pct}`, index: 0, total: 0, skipped: false })
         })
         const p = path.join(downloadsDir, name)
-        if (!mo2.verifyArchive(p, a.hash)) return fail(`${a.name}: downloaded file failed verification (hash mismatch — the version pin may have changed).`)
+        if (!mo2.verifyArchive(p, a.hash)) return fail(`${a.name}: downloaded file failed verification (hash mismatch - the version pin may have changed).`)
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus') {
         needBrowser.push(a)
@@ -1412,26 +1649,24 @@ async function runMO2Install() {
       }
     }
 
-    // ── 3b. Free / no-key path: open the downloads list page + MO2 staging folder ──
+    // 3b. Free / no-key path: open the downloads list page + MO2 staging folder
     if (needBrowser.length > 0) {
       openDownloadList(downloadsDir)
       send('install:progress', {
         phase: 'mods',
-        file:  'Opened the downloads list: Ctrl+click each link (about 5 at a time) and click "Mod Manager Download". Archives stage in the MO2 downloads folder.',
+        file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the SkyRP downloads folder.',
         index: 0, total: needBrowser.length, skipped: false,
       })
-      await mo2.waitForDownloads(needBrowser.map(a => ({ fileId: a.source.fileId, name: a.name })), (done, total, message) => {
-        send('install:progress', { phase: 'mods', file: message, index: done, total, skipped: false })
-      })
-      for (const a of needBrowser) {
-        const name = mo2.findDownloadByFileId(a.source.fileId)
-        const p = name && path.join(downloadsDir, name)
-        if (!p || !mo2.verifyArchive(p, a.hash)) return fail(`${a.name}: downloaded file failed verification (wrong version?).`)
-        archivePaths[a.id] = p
-      }
+      // Matched by sha256, so paths come back verified regardless of filename; the
+      // namePattern only flags likely wrong-version files in the status message.
+      const paths = await mo2.waitForDownloads(
+        needBrowser.map(a => ({ name: a.name, hash: a.hash, size: a.size, namePattern: nexusNamePattern(a.source.modId, a.name) })),
+        (done, total, message) => send('install:progress', { phase: 'mods', file: message, index: done, total, skipped: false }),
+        installAbort?.signal)
+      needBrowser.forEach((a, i) => { archivePaths[a.id] = paths[i] })
     }
 
-    // ── 3c. Replay the manifest: extract each archive once, apply directives ──
+    // 3c. Replay the manifest: extract each archive once, apply directives
     // Reference-count archives across mods + root so each extraction is freed
     // as soon as its last consumer is done (bounds temp disk use).
     const refCount = new Map()
@@ -1486,9 +1721,9 @@ async function runMO2Install() {
 
     if (failed.length > 0) return fail(`${failed.length} item(s) failed to install: ${failed.join('; ')}`)
 
-    // ── 4. Game-root components (only on a version change / fresh game copy) ──
+    // 4. Game-root components (only on a version change / fresh game copy)
     if (needsRoot) {
-      // SKSE — the build matching the player's game edition (Steam vs GOG).
+      // SKSE - the build matching the player's game edition (Steam vs GOG).
       try {
         const skse = mo2.skseSourceFor(skyrimPath)
         send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})…`, index: 0, total: 0, skipped: false })
@@ -1501,24 +1736,15 @@ async function runMO2Install() {
       } catch (err) {
         return fail(`SKSE install failed: ${err.message}`)
       }
-
-      // SSE Engine Fixes Part 2 (Preloader + TBB) — extracts to the game root.
-      try {
-        const efPath = await acquireNexusArchive(ENGINE_FIXES.modId, ENGINE_FIXES.fileId, ENGINE_FIXES.name,
-          { downloadsDir, apiKey, premium })
-        if (!efPath) return fail('Engine Fixes (Part 2) was not downloaded — open its Nexus page and use "Mod Manager Download".')
-        send('install:progress', { phase: 'mods', file: 'Installing Engine Fixes…', index: 0, total: 0, skipped: false })
-        mo2.installRootArchive(efPath, skyrimPath)
-      } catch (err) {
-        return fail(`Engine Fixes install failed: ${err.message}`)
-      }
     }
 
-    // ── 5. Match MO2 priority + plugin order, record the installed version ────
+    // 5. Match MO2 priority + plugin order, record the installed version
     finishOrder()
 
+    store.set('modpackState', 'ready')
     send('install:complete', { success: true, mo2: true, upToDate: core.upToDate, modsTotal: manifest.mods.length })
   } catch (err) {
+    if (err.message === 'Cancelled') { fail('Install cancelled.'); return }
     fail(`Install failed: ${err.message}`)
     return
   } finally {
@@ -1526,7 +1752,7 @@ async function runMO2Install() {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers
 
 /**
  * Write the SkyMP client settings file (skymp5-client-settings.txt).
@@ -1549,13 +1775,13 @@ async function runMO2Install() {
  * @param {object} serverInfo Cached serverinfo { offlineMode, masterKey, masterUrl }
  */
 function writeClientSettings(destPath, srv, serverInfo) {
-  // Start fresh every time — do not preserve stale keys from previous writes.
+  // Start fresh every time - do not preserve stale keys from previous writes.
   const settings = {}
 
   settings['server-ip']   = srv.address
   settings['server-port'] = Number(srv.port)
 
-  // Default to false (online mode) when serverInfo is unavailable — safer
+  // Default to false (online mode) when serverInfo is unavailable - safer
   // than defaulting to offline, which would write a wrong profileId-based gameData.
   const offlineMode = serverInfo?.offlineMode ?? false
 
@@ -1564,7 +1790,7 @@ function writeClientSettings(destPath, srv, serverInfo) {
 
   if (offlineMode) {
     const profileId = store.get('gameProfileId')
-    if (profileId == null) throw new Error('No profileId in store — login with Discord before playing')
+    if (profileId == null) throw new Error('No profileId in store - login with Discord before playing')
     settings['gameData'] = { profileId }
   } else {
     // Write auth-data-no-load.js so the SkyMP in-game client finds pre-existing
@@ -1598,7 +1824,7 @@ function writeClientSettings(destPath, srv, serverInfo) {
   fs.writeFileSync(destPath, JSON.stringify(settings, null, 2) + '\n')
 }
 
-function fetchJSON(url, headers = {}) {
+function fetchJSON(url, headers = {}, redirectsLeft = 3) {
   return new Promise((resolve, reject) => {
     const mod    = url.startsWith('https') ? https : http
     const urlObj = new URL(url)
@@ -1610,17 +1836,49 @@ function fetchJSON(url, headers = {}) {
       headers,
     }
     const req = mod.request(opts, res => {
-      if (res.statusCode < 200 || res.statusCode >= 300) {
+      // Follow same-host redirects (e.g. the reverse proxy upgrading http to
+      // https). Cross-host hops and https->http downgrades stay errors so the
+      // session header can never leak to another origin.
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume()
-        const e = new Error(`HTTP ${res.statusCode} from ${url}`)
+        let next = null
+        try { next = new URL(res.headers.location, url) } catch { /* malformed location */ }
+        const sameHost  = next && next.hostname === urlObj.hostname
+        const downgrade = next && urlObj.protocol === 'https:' && next.protocol !== 'https:'
+        if (next && sameHost && !downgrade && redirectsLeft > 0) {
+          return resolve(fetchJSON(next.href, headers, redirectsLeft - 1))
+        }
+        const e = new Error(`HTTP ${res.statusCode} from ${url} (redirect to ${res.headers.location})`)
         e.statusCode = res.statusCode
         reject(e)
         return
       }
-      let data = ''
-      res.on('data', chunk => { data += chunk })
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        // Read a little of the body: backend errors carry an explanatory
+        // { error } that is far more useful than the bare status code.
+        let body = ''
+        res.on('data', c => { if (body.length < 4096) body += c })
+        res.on('end', () => {
+          let detail = ''
+          try { detail = JSON.parse(body).error || '' } catch { /* not JSON */ }
+          const e = new Error(`HTTP ${res.statusCode} from ${url}${detail ? `: ${detail}` : ''}`)
+          e.statusCode   = res.statusCode
+          e.serverError  = detail || undefined
+          reject(e)
+        })
+        res.on('error', () => {
+          const e = new Error(`HTTP ${res.statusCode} from ${url}`)
+          e.statusCode = res.statusCode
+          reject(e)
+        })
+        return
+      }
+      // Accumulate Buffers, not a growing string: the install manifest can be
+      // hundreds of MB and string += chunk degrades quadratically there.
+      const chunks = []
+      res.on('data', chunk => chunks.push(chunk))
       res.on('end', () => {
-        try { resolve(JSON.parse(data)) }
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))) }
         catch (e) { reject(new Error(`Invalid JSON from ${url}: ${e.message}`)) }
       })
     })
@@ -1629,6 +1887,43 @@ function fetchJSON(url, headers = {}) {
       req.destroy()
       reject(new Error(`Request timed out: ${url}`))
     })
+    req.end()
+  })
+}
+
+// POST JSON and parse the JSON reply. No redirect following: launch-check and
+// friends are same-origin API calls where a redirect means misconfiguration.
+function postJSON(url, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const mod    = url.startsWith('https') ? https : http
+    const urlObj = new URL(url)
+    const payload = JSON.stringify(body || {})
+    const req = mod.request({
+      hostname: urlObj.hostname,
+      port:     urlObj.port || (url.startsWith('https') ? 443 : 80),
+      path:     urlObj.pathname + urlObj.search,
+      method:   'POST',
+      headers:  {
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...headers,
+      },
+    }, res => {
+      let data = ''
+      res.on('data', chunk => { data += chunk })
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          const e = new Error(`HTTP ${res.statusCode} from ${url}`)
+          e.statusCode = res.statusCode
+          return reject(e)
+        }
+        try { resolve(JSON.parse(data)) }
+        catch (e) { reject(new Error(`Invalid JSON from ${url}: ${e.message}`)) }
+      })
+    })
+    req.on('error', reject)
+    req.setTimeout(10_000, () => { req.destroy(); reject(new Error(`Request timed out: ${url}`)) })
+    req.write(payload)
     req.end()
   })
 }

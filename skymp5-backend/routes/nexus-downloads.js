@@ -9,14 +9,11 @@ const GAME = 'skyrimspecialedition'
 const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
-// File-pinned Nexus link so free users grab the exact version the manifest expects.
+// File-pinned Nexus link so free users grab the exact version the manifest
+// expects. (The Engine Fixes preloader is no longer listed here: it ships
+// inside the client files zip rather than as a launcher-installed root mod.)
 const linkFor = (modId, fileId) =>
-  `https://www.nexusmods.com/${GAME}/mods/${modId}?tab=files&file_id=${fileId}`
-
-// Nexus root components installed outside the mod manifest (mirrors skymp5-launcher ENGINE_FIXES) so the page covers every browser download.
-const ROOT_NEXUS = [
-  { name: 'SSE Engine Fixes (Part 2)', modId: 17230, fileId: 725261 },
-]
+  `https://www.nexusmods.com/${GAME}/mods/${modId}?tab=files${fileId ? `&file_id=${fileId}` : ''}`
 
 const page = body => `<!doctype html>
 <html lang="en">
@@ -35,6 +32,12 @@ const page = body => `<!doctype html>
   .note { background:#26262c; border:1px solid #36363e; border-radius:8px; padding:1rem 1.2rem; margin:1rem 0 1.5rem; }
   code { background:#000; padding:.1rem .35rem; border-radius:4px; }
   .empty { color:#bbb; }
+  .open-all {
+    background:#31437a; color:#e9e9ee; border:1px solid #4a5da0; border-radius:6px;
+    padding:.5rem 1rem; font-size:1rem; cursor:pointer;
+  }
+  .open-all:hover { background:#3b4f8d; }
+  .open-all-hint { display:block; margin-top:.5rem; font-size:.85rem; color:#9a9aa5; }
 </style>
 </head>
 <body><div class="wrap">${body}</div></body>
@@ -53,20 +56,19 @@ router.get('/', (_req, res) => {
       `<p class="empty">The install manifest has not been built on the server.</p>`))
   }
 
-  // One link per unique Nexus file (modId+fileId): manifest mods first, then root components.
+  // One link per unique Nexus file (modId+fileId) from the manifest's archives.
   const seen  = new Set()
   const items = []
   const add = (name, modId, fileId) => {
-    if (!modId || !fileId) return
-    const key = `${modId}-${fileId}`
+    if (!modId) return
+    const key = `${modId}-${fileId || 'any'}`
     if (seen.has(key)) return
     seen.add(key)
-    items.push({ name, modId, fileId })
+    items.push({ name, modId, fileId: fileId || null })
   }
   for (const a of manifest.archives || []) {
     if (a.source && a.source.type === 'nexus') add(a.name, a.source.modId, a.source.fileId)
   }
-  for (const r of ROOT_NEXUS) add(r.name, r.modId, r.fileId)
 
   const rows = items.map(it =>
     `<li><a href="${linkFor(it.modId, it.fileId)}" target="_blank" rel="noopener">${esc(it.name)}</a></li>`
@@ -78,8 +80,23 @@ router.get('/', (_req, res) => {
     <p><strong>Ctrl+click</strong> (Cmd+click on macOS) each link below to open it in a background tab, then click
     <strong>Slow Download</strong> on each Nexus page. Do about <strong>5 at a time</strong> so Nexus doesn't throttle you.</p>
     <p>Move every zip/7z archive you download into your <code>SkyRP/downloads</code> folder, which the launcher opened for you.</p>
+    ${items.length ? `<p>
+      <button class="open-all" id="open-all">Open all ${items.length} links in tabs</button>
+      <span class="open-all-hint">Your browser will ask you to allow pop-ups for this site the first time.
+      Opening everything at once may make Nexus throttle you - the 5-at-a-time route is gentler.</span>
+    </p>` : ''}
   </div>
-  ${items.length ? `<ol>\n${rows}\n</ol>` : `<p class="empty">No Nexus mods in the current manifest.</p>`}`))
+  ${items.length ? `<ol>\n${rows}\n</ol>` : `<p class="empty">No Nexus mods in the current manifest.</p>`}
+  <script>
+    var openAll = document.getElementById('open-all')
+    if (openAll) openAll.addEventListener('click', function () {
+      // Synchronous loop on purpose: pop-up blockers only honour window.open
+      // calls made directly inside the click gesture - any setTimeout delay
+      // gets every tab after the first blocked.
+      var links = document.querySelectorAll('ol a')
+      for (var i = 0; i < links.length; i++) window.open(links[i].href, '_blank', 'noopener')
+    })
+  </script>`))
 })
 
 module.exports = router

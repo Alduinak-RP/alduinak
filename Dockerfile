@@ -29,7 +29,6 @@ RUN \
   && echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' > /etc/apt/sources.list.d/kitware.list \
   && apt-get update \
   && apt-get install -y \
-    nodejs \
     yarn \
     libicu-dev \
     git \
@@ -46,7 +45,6 @@ RUN \
     autoconf-archive \
     automake \
     libtool \
-    cmake \
     clang-20 \
     clang-format-20 \
     ninja-build \
@@ -65,21 +63,17 @@ FROM skymp-build-base AS skymp-vcpkg-deps-builder
 ARG VCPKG_URL
 ARG VCPKG_COMMIT
 
-# 1. Set the working directory
 WORKDIR /src
 
-# 2. Copy files and set ownership of the copied files
 COPY --chown=skymp:skymp . .
 
-# 3. Explicitly fix ownership of the /src directory itself
-# This ensures skymp can create new folders (like 'vcpkg') inside it
+# Explicitly fix ownership of the /src directory itself so skymp can create
+# new folders (like 'vcpkg') inside it.
 USER root
 RUN chown skymp:skymp /src
 
-# 4. Now switch to the non-root user
 USER skymp
 
-# 5. Run the build commands
 RUN git clone "$VCPKG_URL" vcpkg \
  && git -C vcpkg checkout "$VCPKG_COMMIT" \
  && chmod +x build.sh \

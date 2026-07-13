@@ -8,8 +8,6 @@ contextBridge.exposeInMainWorld('mgr', {
   serviceAction:   (key, action)  => ipcRenderer.invoke('service:action', key, action),
   servicesAction:  (action)       => ipcRenderer.invoke('services:action', action),
   consoleCommand:  (text)         => ipcRenderer.invoke('console:command', text),
-  logDir:          ()             => ipcRenderer.invoke('log:dir'),
-  logTargets:      ()             => ipcRenderer.invoke('log:targets'),
   onLog:           (cb)           => ipcRenderer.on('log:data', (_e, d) => cb(d)),
   onConsoleRelay:  (cb)           => ipcRenderer.on('console:relay', (_e, d) => cb(d)),
   onBuildLog:      (cb)           => ipcRenderer.on('build:log', (_e, t) => cb(t)),

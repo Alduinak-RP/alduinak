@@ -1,6 +1,6 @@
 'use strict'
-// ── Dashboard Discord OAuth ───────────────────────────────────────────────────
-// Separate OAuth flow from the launcher — uses its own redirect_uri and issues
+// Dashboard Discord OAuth
+// Separate OAuth flow from the launcher: uses its own redirect_uri and issues
 // dashboard session tokens instead of launcher session tokens.
 //
 // Required Discord app settings:
@@ -16,10 +16,10 @@ const { resolvePermissions, hasPermission } = require('../sources/permissions')
 
 const router  = Router()
 
-// state → { redirectUrl }  (10-min TTL)
+// state -> { redirectUrl }  (10-min TTL)
 const pending = new Map()
 
-// ── GET /auth/dashboard/url ───────────────────────────────────────────────────
+// GET /auth/dashboard/url
 // Returns the Discord authorization URL. The website calls this then redirects
 // the user's browser there.
 // Query: ?redirect=<website-dashboard-url>  (where to return after auth)
@@ -29,7 +29,19 @@ router.get('/url', (req, res) => {
   }
 
   const state       = crypto.randomBytes(16).toString('hex')
-  const redirectUrl = req.query.redirect || config.websiteUrl + '/dashboard'
+
+  // The redirect target later receives the dashboard session token, so restrict
+  // it to an allowlist of known front-end origins to prevent token exfiltration
+  // to an attacker-chosen origin via ?redirect=.
+  let redirectUrl = config.websiteUrl + '/dashboard'
+  const requestedRedirect = req.query.redirect
+  if (requestedRedirect) {
+    try {
+      const u = new URL(String(requestedRedirect))
+      const allowedOrigins = [config.websiteUrl, config.dashboardPublicUrl].map(b => new URL(b).origin)
+      if (allowedOrigins.includes(u.origin)) redirectUrl = u.href
+    } catch { /* malformed redirect: keep default */ }
+  }
 
   pending.set(state, { redirectUrl })
   setTimeout(() => pending.delete(state), 10 * 60 * 1000)
@@ -45,9 +57,9 @@ router.get('/url', (req, res) => {
   res.json({ url: `https://discord.com/api/oauth2/authorize?${params}` })
 })
 
-// ── GET /auth/dashboard/callback ──────────────────────────────────────────────
+// GET /auth/dashboard/callback
 // Discord redirects here after the user authorizes (or cancels).
-// On success: validate Discord ID → issue session → redirect to website with token.
+// On success: validate Discord ID, issue session, redirect to website with token.
 // On failure: redirect to website dashboard with ?error=<reason>.
 router.get('/callback', async (req, res) => {
   const { code, state, error } = req.query
@@ -91,7 +103,9 @@ router.get('/callback', async (req, res) => {
       : null
 
     const token = sessions.create(user.id, username, avatar, roleIds, permissions)
-    return res.redirect(`${pend.redirectUrl}?token=${token}`)
+    // Fragment, not query string: fragments never reach the server, so the
+    // token stays out of access logs, browser history sync and Referer headers.
+    return res.redirect(`${pend.redirectUrl}#token=${token}`)
 
   } catch (err) {
     console.error('[dashboard-auth] callback error:', err.message)
@@ -99,7 +113,7 @@ router.get('/callback', async (req, res) => {
   }
 })
 
-// ── GET /auth/dashboard/me ────────────────────────────────────────────────────
+// GET /auth/dashboard/me
 // Validates a dashboard session token and returns the user's Discord info.
 // Used by the website to confirm the session is still valid after page load.
 router.get('/me', (req, res) => {
@@ -110,7 +124,7 @@ router.get('/me', (req, res) => {
   res.json({ ok: true, user: session })
 })
 
-// ── POST /auth/dashboard/logout ───────────────────────────────────────────────
+// POST /auth/dashboard/logout
 router.post('/logout', (req, res) => {
   const auth  = req.headers['authorization'] ?? ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
@@ -118,7 +132,7 @@ router.post('/logout', (req, res) => {
   res.json({ ok: true })
 })
 
-// ── Discord helpers ───────────────────────────────────────────────────────────
+// Discord helpers
 
 function _tokenExchange(code) {
   return new Promise((resolve, reject) => {

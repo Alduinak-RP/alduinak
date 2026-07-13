@@ -20,12 +20,12 @@ const fs   = require('fs')
 const CLIENT_REPO = 'https://github.com/skyrim-multiplayer/skymp.git'
 const CLIENT_DIR  = path.join(__dirname, '..', 'sources', 'client')
 
-// ── Clone or pull ─────────────────────────────────────────────────────────────
+// Clone or pull
 
 const isCloned = fs.existsSync(path.join(CLIENT_DIR, '.git'))
 
 if (isCloned) {
-  console.log('[setup] Client repo already present — pulling latest…')
+  console.log('[setup] Client repo already present, pulling latest…')
   try {
     const out = execFileSync('git', ['-C', CLIENT_DIR, 'pull', '--ff-only'], {
       encoding: 'utf8',
@@ -37,7 +37,7 @@ if (isCloned) {
   }
 } else {
   console.log('[setup] Cloning SkyMP-Client repo…')
-  console.log('[setup]   →', CLIENT_DIR)
+  console.log('[setup]   ->', CLIENT_DIR)
   try {
     execFileSync('git', ['clone', CLIENT_REPO, CLIENT_DIR], { stdio: 'inherit' })
   } catch (err) {
@@ -47,7 +47,7 @@ if (isCloned) {
   console.log('[setup] Clone complete.')
 }
 
-// ── Merge into root ───────────────────────────────────────────────────────────
+// Merge into root
 
 console.log('[setup] Running merge pipeline…')
 const { mergeSourcesIntoRoot } = require('./merge-files')

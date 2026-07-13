@@ -1372,6 +1372,15 @@ void MpActor::RespawnWithDelay(bool shouldTeleport)
       if (worldState->LookupFormById(formId).get() == this) {
         bool isLatestRespawn = respawnTimerIndex == pImpl->respawnTimerIndex;
         if (isLatestRespawn) {
+          // Revived before the delay elapsed (gamemode resurrect/temple
+          // choice): the timer is stale, don't touch the living actor
+          if (!IsDead()) {
+            spdlog::info("MpActor::RespawnWithDelay {:x} - no longer dead, "
+                         "skipping death item and respawn",
+                         GetFormId());
+            return;
+          }
+
           // This is implemented here, not in MpActor::Respawn because we don't
           // want inventory to be re-added in case of artificial resurrect from
           // the gamemode
@@ -1468,9 +1477,14 @@ LocationalData MpActor::GetSpawnPoint() const
 
 LocationalData MpActor::GetRespawnPosition() const
 {
-  // Respawn
-  if (IsCreatedAsPlayer()) {
-    return TempleRespawn::GetNearestTemple(GetPos()).destination;
+  // A spawn point chosen by the gamemode (SetSpawnPoint / the "spawnPoint"
+  // property) always wins — the gamemode owns respawn routing and updating it
+  // must never require a native rebuild. The nearest-temple table is only the
+  // engine fallback for player characters whose spawn point was never set.
+  if (IsCreatedAsPlayer() &&
+      ChangeForm().spawnPoint == MpChangeForm::DefaultSpawnPoint()) {
+    return TempleRespawn::GetNearestTemple(GetPos(), GetCellOrWorld())
+      .destination;
   }
   return GetSpawnPoint();
 }

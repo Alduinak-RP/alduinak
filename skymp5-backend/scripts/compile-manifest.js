@@ -19,7 +19,7 @@ const zlib    = require('zlib')
 const { execFileSync } = require('child_process')
 const SEVEN   = require('7zip-bin').path7za
 
-// ── Args ──────────────────────────────────────────────────────────────────────
+// Args
 
 function parseArgs(argv) {
   const a = { profile: 'SkyRP' }
@@ -54,7 +54,7 @@ try {
   sources = { urls: {}, rootInclude: [], ...JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'manifest-sources.json'), 'utf8')) }
 } catch { /* optional */ }
 
-// ── Hash helpers ──────────────────────────────────────────────────────────────
+// Hash helpers
 
 function sha256Buf(buf)  { return crypto.createHash('sha256').update(buf).digest('hex') }
 function crc32hex(buf)   { return (zlib.crc32(buf) >>> 0).toString(16).toUpperCase().padStart(8, '0') }
@@ -69,7 +69,7 @@ function sha256File(p) {
   })
 }
 
-// ── FS helpers ────────────────────────────────────────────────────────────────
+// FS helpers
 
 /** Recursively list files under dir as forward-slash paths relative to base. */
 function walk(dir, base = dir, out = []) {
@@ -121,12 +121,12 @@ function listEntries(archivePath) {
     .map(e => ({ path: e.path.split('\\').join('/'), size: e.size, crc: e.crc }))
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// Main
 
 async function main() {
   if (!fs.existsSync(MODS)) throw new Error(`mods folder not found: ${MODS}`)
 
-  // ── 1. Index every archive's entries by (size, CRC32) ──────────────────────
+  // 1. Index every archive's entries by (size, CRC32)
   const archives = []                 // { id, hash, size, name, source, _entries }
   const index    = new Map()          // "size:CRC" -> { id, from }
   const referenced = new Set()
@@ -162,7 +162,7 @@ async function main() {
     console.log(`  indexed ${name} (${entries.length} entries, ${source.type})`)
   }
 
-  // ── 2. Resolve the enabled mod order + plugin load order from the profile ──
+  // 2. Resolve the enabled mod order + plugin load order from the profile
   let order = []
   try {
     order = fs.readFileSync(path.join(PROFILE_DIR, 'modlist.txt'), 'utf8')
@@ -170,23 +170,23 @@ async function main() {
       .filter(l => l.startsWith('+') || (l.startsWith('-') && l.slice(1).trim().endsWith('_separator')))
       .map(l => l.slice(1).trim())
       .filter(Boolean)
-  } catch { /* no profile — fall back to every folder below */ }
+  } catch { /* no profile: fall back to every folder below */ }
 
   if (order.length === 0) {
     order = fs.readdirSync(MODS, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name)
-    console.warn(`No profiles/${args.profile}/modlist.txt found — using all ${order.length} mod folders (unordered).`)
+    console.warn(`No profiles/${args.profile}/modlist.txt found - using all ${order.length} mod folders (unordered).`)
   }
 
-  // plugins.txt — the esp/esm load order (MO2's "*" prefix marks an enabled plugin).
+  // plugins.txt: the esp/esm load order (MO2's "*" prefix marks an enabled plugin).
   let plugins = []
   try {
     plugins = fs.readFileSync(path.join(PROFILE_DIR, 'plugins.txt'), 'utf8')
       .split(/\r?\n/)
       .map(l => l.trim())
       .filter(l => l && !l.startsWith('#'))
-  } catch { /* no plugins.txt — load order then comes from the server at launch */ }
+  } catch { /* no plugins.txt: load order then comes from the server at launch */ }
 
-  // ── 3. Emit a directive per file in each mod folder ────────────────────────
+  // 3. Emit a directive per file in each mod folder
   const mods = []
   const inlineWarnings = []
 
@@ -217,7 +217,7 @@ async function main() {
     mods.push({ name: modName, modId: readModId(modDir), files, hash: contentHash(files) })
   }
 
-  // ── 4. Optional game-root files (preloaders, etc.) ─────────────────────────
+  // 4. Optional game-root files (preloaders, etc.)
   const root = []
   if (args.game) {
     const gameRoot = path.resolve(args.game)
@@ -228,7 +228,7 @@ async function main() {
     }
   }
 
-  // ── 5. Write the manifest (only referenced archives carry over) ────────────
+  // 5. Write the manifest (only referenced archives carry over)
   const usedArchives = archives
     .filter(a => referenced.has(a.id))
     .map(({ id, hash, size, name, source }) => ({ id, hash, size, name, source }))
@@ -259,7 +259,7 @@ async function main() {
   ]
   fs.writeFileSync(MODLIST_OUT, JSON.stringify(display, null, 2) + '\n')
 
-  // ── Report ─────────────────────────────────────────────────────────────────
+  // Report
   const inlineCount = mods.reduce((n, m) => n + m.files.filter(f => f.inline != null).length, 0) +
                       root.filter(f => f.inline != null).length
   console.log(`\narchives:    ${usedArchives.length} referenced (${archives.length} scanned)`)
@@ -271,12 +271,12 @@ async function main() {
 
   const manual = usedArchives.filter(a => a.source.type === 'manual')
   if (manual.length) {
-    console.warn('\nReferenced archives with NO download source — the launcher cannot fetch these.')
+    console.warn('\nReferenced archives with NO download source - the launcher cannot fetch these.')
     console.warn('Add a URL for each in data/manifest-sources.json ("urls"):')
     for (const a of manual) console.warn(`  - ${a.name}`)
   }
   if (inlineWarnings.length) {
-    console.warn('\nLarge files were inlined (bloats the manifest — add the source archive to downloads\\):')
+    console.warn('\nLarge files were inlined (bloats the manifest - add the source archive to downloads\\):')
     for (const w of inlineWarnings) console.warn(`  - ${w}`)
   }
 

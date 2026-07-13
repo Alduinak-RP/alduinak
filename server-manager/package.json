@@ -1,7 +1,7 @@
 {
   "name": "skyrp-server-manager",
   "version": "1.0.0",
-  "description": "Desktop control panel for the SkyRP server — services, launcher, modlist, client and players",
+  "description": "Desktop control panel for the SkyRP server: services, launcher, modlist, client and players",
   "main": "src/main.js",
   "author": "SkyRP",
   "license": "MIT",

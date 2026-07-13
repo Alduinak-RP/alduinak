@@ -56,20 +56,8 @@ jobs:
             run: |
               echo 'Commit tuple: ${{ steps.gather_prs.outputs['commit-tuple'] }}' | tee -a $GITHUB_STEP_SUMMARY
 
-          - name: Debug - print env
-            run: env
-
           - name: Get/build image to use for building & testing
             run: |
-              set -x  # print executed commands
-
-              echo Some debug data
-              id
-              uname -a
-              lsb_release -a
-
-              # cat ${{github.workspace}}/misc/github_env_linux >> "$GITHUB_ENV"
-
               # get base image for this distro (or build configuration, in case with skymp-deps)
               base_image="`misc/deps_linux/${{ inputs.base_system }}.sh --get-image-uri`"
 

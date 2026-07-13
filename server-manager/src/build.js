@@ -3,12 +3,11 @@
 const fs   = require('fs')
 const path = require('path')
 const cp   = require('child_process')
-const { spawn } = require('child_process')
 const config = require('./config')
 
 const isWin = process.platform === 'win32'
 
-// The manager no longer compiles native code (.dll / .node) locally — the GitHub
+// The manager no longer compiles native code (.dll / .node) locally - the GitHub
 // "PR Windows Flatrim" workflow does that and publishes the `dist` artifact. Each
 // Build button here is pure JS/packaging: it bundles TypeScript, builds the
 // Electron launcher, and zips the CI-produced client files for the launcher to
@@ -28,7 +27,7 @@ class Builder {
       this.log(`\n$ ${label || [cmd, ...args].join(' ')}\n`)
       let child
       try {
-        child = spawn(cmd, args, {
+        child = cp.spawn(cmd, args, {
           cwd, shell, windowsHide: true,
           env: { ...process.env, ...(env || {}) },
         })
@@ -58,7 +57,7 @@ class Builder {
     const r = await this.run(pm, args, dir, `${label}: ${pm} install`)
     // yarn --frozen-lockfile fails on a stale/absent lockfile; retry permissively.
     if (!r.ok && pm === 'yarn') {
-      this.line(`[${label}] frozen install failed — retrying without --frozen-lockfile…`)
+      this.line(`[${label}] frozen install failed - retrying without --frozen-lockfile…`)
       const r2 = await this.run(pm, ['install'], dir, `${label}: yarn install`)
       return r2.ok ? { ok: true } : { ok: false, error: `${label}: dependency install failed` }
     }
@@ -89,7 +88,7 @@ class Builder {
     return this.run('winget', args, config.repoRoot, `install ${label}`)
   }
 
-  // Ensure the JS toolchain every build needs (Node.js + Git). No C++ toolchain —
+  // Ensure the JS toolchain every build needs (Node.js + Git). No C++ toolchain,
   // the native binaries come prebuilt from CI.
   async ensurePrereqs() {
     if (!isWin) return { ok: true }                        // auto-install is Windows-only
@@ -102,16 +101,16 @@ class Builder {
 
     this.banner('Installing missing prerequisites')
     if (!this.hasCmd('winget')) {
-      return { ok: false, error: `missing ${missing.map(m => m.label).join(', ')} and winget is unavailable to auto-install — install the App Installer (winget), or get them manually: Node https://nodejs.org/ , Git https://git-scm.com/download/win . Then re-run (or set SKYRP_NO_AUTO_INSTALL=1).` }
+      return { ok: false, error: `missing ${missing.map(m => m.label).join(', ')} and winget is unavailable to auto-install - install the App Installer (winget), or get them manually: Node https://nodejs.org/ , Git https://git-scm.com/download/win . Then re-run (or set SKYRP_NO_AUTO_INSTALL=1).` }
     }
-    this.line(`[prereqs] missing: ${missing.map(m => m.label).join(', ')} — installing with winget…`)
+    this.line(`[prereqs] missing: ${missing.map(m => m.label).join(', ')} - installing with winget…`)
     for (const m of missing) {
       await this.wingetInstall(m.id, m.label)
       this.refreshPath()
     }
     const still = missing.filter(m => !m.check())
     if (still.length) {
-      return { ok: false, error: `still missing after install: ${still.map(m => m.label).join(', ')}. Check the winget output above (a PENDING REBOOT is the usual cause — reboot and Build again).` }
+      return { ok: false, error: `still missing after install: ${still.map(m => m.label).join(', ')}. Check the winget output above (a PENDING REBOOT is the usual cause - reboot and Build again).` }
     }
     this.line('[prereqs] toolchain installed.')
     return { ok: true }
@@ -120,7 +119,7 @@ class Builder {
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
     const deployDir = path.join(config.buildDir, 'dist', 'server')
-    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node', 'data'])
+    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem'])
     for (const extra of (process.env.SKYRP_SERVER_KEEP || '').split(',')) {
       const n = extra.trim(); if (n) keep.add(n)
     }
@@ -136,7 +135,7 @@ class Builder {
   }
 
   // GAME SERVER: bundle the TypeScript into build/dist/server/dist_back. The native
-  // scam_native.node comes prebuilt from CI (the "server-dist" artifact) — drop it
+  // scam_native.node comes prebuilt from CI (the "server-dist" artifact); drop it
   // next to dist_back and it's preserved by the prune step. Does not restart the
   // service.
   async buildServer() {
@@ -147,14 +146,14 @@ class Builder {
     const dep = await this.ensureDeps(dir, 'game server')
     if (!dep.ok) return dep
 
-    // TS bundle — safe to overwrite even while the server runs (read at startup).
+    // TS bundle, safe to overwrite even while the server runs (read at startup).
     const pm = this.packageManager()
     const r = await this.run(pm, pm === 'yarn' ? ['build-ts'] : ['run', 'build-ts'], dir, 'game server: build-ts')
-    if (!r.ok) return { ok: false, error: 'build-ts failed — TypeScript errors stop the build (see log)' }
+    if (!r.ok) return { ok: false, error: 'build-ts failed - TypeScript errors stop the build (see log)' }
 
     this.pruneServerDeploy()
     if (!fs.existsSync(path.join(config.buildDir, 'dist', 'server', 'scam_native.node'))) {
-      this.line('\n[server] note: scam_native.node is not in build/dist/server — copy it from the CI "server-dist" artifact so the game server can start.')
+      this.line('\n[server] note: scam_native.node is not in build/dist/server - copy it from the CI "server-dist" artifact so the game server can start.')
     }
     this.line('\n✓ Game server TS bundle built into build/dist/server (native scam_native.node comes from CI).')
     return { ok: true }
@@ -178,7 +177,7 @@ class Builder {
       ['electron-builder', '--win', '-c.nsis.artifactName=' + config.launcherArtifact],
       dir, 'launcher: electron-builder --win',
       { CSC_IDENTITY_AUTO_DISCOVERY: 'false' })
-    if (!build.ok) return { ok: false, error: 'electron-builder failed — see log' }
+    if (!build.ok) return { ok: false, error: 'electron-builder failed - see log' }
 
     // Fallback rename in case an older builder ignores the artifactName override.
     try {
@@ -237,7 +236,7 @@ class Builder {
 
     const clientData = path.join(config.paths.clientOut, 'Data')
     if (!fs.existsSync(clientData)) {
-      return { ok: false, error: `client build output not found at ${clientData} — download the CI "dist" artifact (PR Windows Flatrim workflow) and extract it into build/dist/client, then Build again.` }
+      return { ok: false, error: `client build output not found at ${clientData} - download the CI "dist" artifact (PR Windows Flatrim workflow) and extract it into build/dist/client, then Build again.` }
     }
 
     // Rebuild the client-side JS before packaging so the launcher ships the latest
@@ -249,11 +248,11 @@ class Builder {
 
     // populate-files.js copies build/dist/client/Data into the backend file bucket,
     // merge-files.js builds skymp-client.zip + data/files-version.json (version from
-    // CLIENT_VERSION in the backend .env — set it from the Client version field).
+    // CLIENT_VERSION in the backend .env, set it from the Client version field).
     const dep = await this.ensureDeps(config.paths.backend, 'backend', 'npm')
     if (!dep.ok) return dep
     const r = await this.run('npm', ['run', 'build-client'], config.paths.backend, 'package client: npm run build-client')
-    if (!r.ok) return { ok: false, error: 'build-client failed — see log (is build/dist/client complete?)' }
+    if (!r.ok) return { ok: false, error: 'build-client failed - see log (is build/dist/client complete?)' }
 
     this.line('\n✓ Client files packaged into the launcher bucket (skymp-client.zip + files-version.json) from the CI build.')
     return { ok: true, out: config.paths.clientOut }

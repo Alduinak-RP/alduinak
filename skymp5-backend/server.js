@@ -1,8 +1,5 @@
-const fs = require('fs')
 const path = require('path')
-const dotenv = require('dotenv')
-
-dotenv.config()
+const config = require('./config')
 
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException] Server kept alive:', err.message)
@@ -50,6 +47,7 @@ const factionWhitelistRoute = require('./routes/faction-whitelist')
 const rolePermissionsRoute  = require('./routes/role-permissions')
 const serverAccessRoute     = require('./routes/server-access')
 const playersRoute          = require('./routes/players')
+const launchCheckRoute      = require('./routes/launch-check')
 
 const app  = express()
 const PORT = process.env.PORT || 4000
@@ -58,7 +56,9 @@ const PORT = process.env.PORT || 4000
 // Without this, req.ip is 127.0.0.1 for every visitor, so per-IP rate limiting (routes/files.js) treats all players as a single client.
 app.set('trust proxy', 'loopback')
 
-app.use(cors())
+const corsOrigins = [config.websiteUrl, config.dashboardPublicUrl]
+app.use(cors({ origin: corsOrigins }))
+console.log(`[cors] allowed origins: ${corsOrigins.join(', ')}`)
 
 // Capture the raw request body so the webhook route can verify the
 // GitHub HMAC-SHA256 signature without a separate body-parser step.
@@ -66,10 +66,10 @@ app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf },
 }))
 
-// Static file serving — root/ is installed into Skyrim/ (Data/ sub-dir)
-app.use('/files/root', express.static(path.join(require('./config').clientFilesDir, 'root')))
+// Static file serving: root/ is installed into Skyrim/ (Data/ sub-dir)
+app.use('/files/root', express.static(path.join(config.clientFilesDir, 'root')))
 
-// News images — served at /images/<filename>
+// News images: served at /images/<filename>
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')))
 
 app.use('/api/news',       newsRoute)
@@ -83,7 +83,7 @@ app.use('/api/modlist',    modlistRoute)
 app.use('/api/install-manifest', installManifestRoute)
 app.use('/api/nexus-downloads',  nexusDownloadsRoute)
 app.use('/api/servers',    serversRoute)
-// SkyMP client Master-API compatibility — must be mounted before /api/servers
+// SkyMP client Master-API compatibility: must be mounted before /api/servers
 // so /api/users/login-discord/status is not swallowed by a shorter prefix.
 app.use('/api/users',      skympCompatRoute)
 app.use('/auth',           masterApiRoute)   // POST /auth/session
@@ -99,6 +99,7 @@ app.use('/api/faction-whitelist', factionWhitelistRoute)
 app.use('/api/role-permissions',  rolePermissionsRoute)
 app.use('/api/server-access',      serverAccessRoute)
 app.use('/api/players',            playersRoute)
+app.use('/api/launch-check',       launchCheckRoute)
 
 app.listen(PORT, () => {
   console.log(`SkyRP backend running on http://localhost:${PORT}`)

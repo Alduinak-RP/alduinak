@@ -1,0 +1,194 @@
+// Player-to-player trade window. A centred two-pane panel: the player's own
+// inventory on the left, and their offer / actions / the partner's offer stacked
+// on the right. Styled to sit alongside the other Skyrim-themed widgets.
+
+$trade-gold: #c8b48a;
+$trade-gold-dim: #8a7a55;
+$trade-bg: rgba(12, 12, 12, 0.92);
+$trade-pane-bg: rgba(0, 0, 0, 0.45);
+$trade-border: rgba(200, 180, 138, 0.45);
+
+.trade {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
+  z-index: 50;
+
+  &__window {
+    pointer-events: auto;
+    position: relative;
+    width: 760px;
+    max-width: 90%;
+    background: $trade-bg;
+    border: 1px solid $trade-border;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.8);
+    color: $trade-gold;
+    padding: 18px 20px 20px;
+  }
+
+  &__header {
+    text-align: center;
+    font-size: 22px;
+    letter-spacing: 1px;
+    color: $trade-gold;
+    border-bottom: 1px solid $trade-border;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+  }
+
+  &__body {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  &__pane {
+    background: $trade-pane-bg;
+    border: 1px solid $trade-border;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+
+    &--inventory {
+      flex: 1;
+      max-height: 420px;
+    }
+
+    &--offer,
+    &--their-offer {
+      flex: 1;
+    }
+  }
+
+  &__right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__pane-title {
+    font-size: 16px;
+    color: $trade-gold;
+    border-bottom: 1px solid $trade-border;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+    white-space: nowrap;
+  }
+
+  &__lock {
+    color: #6fae6f;
+    font-size: 13px;
+    margin-left: 6px;
+  }
+
+  &__list {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 70px;
+  }
+
+  &__item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 6px;
+    font-size: 15px;
+    color: $trade-gold;
+    border-bottom: 1px solid rgba(200, 180, 138, 0.12);
+
+    &--clickable {
+      cursor: pointer;
+
+      &:hover {
+        background: rgba(200, 180, 138, 0.16);
+        color: #fff;
+      }
+    }
+  }
+
+  &__item-count {
+    color: $trade-gold-dim;
+    margin-left: 12px;
+  }
+
+  &__empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $trade-gold-dim;
+    font-style: italic;
+    min-height: 70px;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  // SkyrimButton's default 30px type overflows the compact action/prompt
+  // buttons; scale it to the 36px-tall buttons used here.
+  &__actions,
+  &__prompt-row {
+    .skymp-input-button .skymp-input-button_text {
+      font-size: 16px;
+      line-height: 18px;
+    }
+  }
+
+  // ── Count prompt overlay ────────────────────────────────────────────────────
+  &__prompt-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__prompt {
+    background: $trade-bg;
+    border: 1px solid $trade-border;
+    padding: 20px 24px;
+    text-align: center;
+    min-width: 320px;
+  }
+
+  &__prompt-title {
+    font-size: 18px;
+    color: $trade-gold;
+    margin-bottom: 16px;
+  }
+
+  &__prompt-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  &__prompt-input {
+    width: 80px;
+    height: 32px;
+    text-align: center;
+    font-size: 18px;
+    color: $trade-gold;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid $trade-border;
+  }
+}

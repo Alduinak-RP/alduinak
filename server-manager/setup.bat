@@ -2,11 +2,9 @@
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
-:: ============================================================
-::  SkyRP Server Manager — resilient dependency install.
+::  SkyRP Server Manager: resilient dependency install.
 ::  Built for a flaky firewall: it tries several ways to get the
 ::  Electron runtime so a single failed download doesn't block you.
-:: ============================================================
 
 set "EL_VER=41.2.0"
 set "EL_PKG=node_modules\electron"

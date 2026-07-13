@@ -1,5 +1,5 @@
 'use strict'
-// ── Lore API ──────────────────────────────────────────────────────────────────
+// Lore API
 // CRUD for lore wiki entries stored in data/lore.json.
 // Public read (GET). Write operations require 'lore.write' permission.
 
@@ -20,14 +20,14 @@ function save(data) {
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2))
 }
 
-// GET /api/lore  — public; optional ?category= filter
+// GET /api/lore (public, optional ?category= filter)
 router.get('/', (req, res) => {
   const entries  = load()
   const category = req.query.category
   res.json(category ? entries.filter(e => e.category === category) : entries)
 })
 
-// PUT /api/lore/reorder  — requires lore.write  (must be before /:id)
+// PUT /api/lore/reorder (must be before /:id)
 router.put('/reorder', requirePermission('lore.write'), (req, res) => {
   const { ids } = req.body || {}
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' })
@@ -40,14 +40,14 @@ router.put('/reorder', requirePermission('lore.write'), (req, res) => {
   res.json({ ok: true })
 })
 
-// GET /api/lore/:id  — public
+// GET /api/lore/:id (public)
 router.get('/:id', (req, res) => {
   const entry = load().find(e => e.id === req.params.id)
   if (!entry) return res.status(404).json({ error: 'not found' })
   res.json(entry)
 })
 
-// POST /api/lore  — requires lore.write
+// POST /api/lore
 router.post('/', requirePermission('lore.write'), (req, res) => {
   const { title, category, content } = req.body || {}
   if (!title || content === undefined) {
@@ -69,7 +69,7 @@ router.post('/', requirePermission('lore.write'), (req, res) => {
   res.status(201).json(entry)
 })
 
-// PUT /api/lore/:id  — requires lore.write
+// PUT /api/lore/:id
 router.put('/:id', requirePermission('lore.write'), (req, res) => {
   const entries = load()
   const idx     = entries.findIndex(e => e.id === req.params.id)
@@ -86,7 +86,7 @@ router.put('/:id', requirePermission('lore.write'), (req, res) => {
   res.json(entry)
 })
 
-// DELETE /api/lore/:id  — requires lore.write
+// DELETE /api/lore/:id
 router.delete('/:id', requirePermission('lore.write'), (req, res) => {
   const entries = load()
   const idx     = entries.findIndex(e => e.id === req.params.id)

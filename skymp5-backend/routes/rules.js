@@ -1,5 +1,5 @@
 'use strict'
-// ── Rules API ─────────────────────────────────────────────────────────────────
+// Rules API
 // CRUD for RP rules stored as a flat array in data/rules.json.
 // Public read (GET). Write operations require 'rules.write' permission (Management only).
 
@@ -20,12 +20,12 @@ function save(data) {
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2))
 }
 
-// GET /api/rules  — public
+// GET /api/rules (public)
 router.get('/', (_req, res) => {
   res.json(load())
 })
 
-// POST /api/rules  — requires rules.write
+// POST /api/rules
 router.post('/', requirePermission('rules.write'), (req, res) => {
   const { title, content } = req.body || {}
   if (!title || content === undefined) {
@@ -45,7 +45,7 @@ router.post('/', requirePermission('rules.write'), (req, res) => {
   res.status(201).json(rule)
 })
 
-// PUT /api/rules/reorder  — requires rules.write  (must be before /:id)
+// PUT /api/rules/reorder (must be before /:id)
 router.put('/reorder', requirePermission('rules.write'), (req, res) => {
   const { ids } = req.body || {}
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' })
@@ -59,7 +59,7 @@ router.put('/reorder', requirePermission('rules.write'), (req, res) => {
   res.json({ ok: true })
 })
 
-// PUT /api/rules/:id  — requires rules.write
+// PUT /api/rules/:id
 router.put('/:id', requirePermission('rules.write'), (req, res) => {
   const rules = load()
   const idx   = rules.findIndex(r => r.id === req.params.id)
@@ -76,7 +76,7 @@ router.put('/:id', requirePermission('rules.write'), (req, res) => {
   res.json(rule)
 })
 
-// DELETE /api/rules/:id  — requires rules.write
+// DELETE /api/rules/:id
 router.delete('/:id', requirePermission('rules.write'), (req, res) => {
   const rules = load()
   const idx   = rules.findIndex(r => r.id === req.params.id)

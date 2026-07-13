@@ -11,12 +11,10 @@
  *   3. Runs `git pull` in sources/client/ then rebuilds public/files/root/.
  *
  * Environment variables
- * ─────────────────────
  *   GITHUB_WEBHOOK_SECRET  (required)
- *     The same secret you enter in the GitHub repo → Settings → Webhooks form.
+ *     The same secret you enter in the GitHub repo, Settings -> Webhooks form.
  *
  * GitHub webhook setup (SkyMP-Client repo)
- * ─────────────────────────────────────────────
  *   Payload URL : https://<your-server>/webhooks/github
  *   Content type: application/json
  *   Secret      : value of GITHUB_WEBHOOK_SECRET
@@ -42,7 +40,7 @@ const githubWebhookLimiter = rateLimit({
 const CLIENT_DIR   = path.join(__dirname, '..', 'sources', 'client')
 const DEFAULT_BRANCH = process.env.CLIENT_BRANCH || 'refs/heads/main'
 
-// ── Signature verification ────────────────────────────────────────────────────
+// Signature verification
 
 /**
  * Constant-time comparison of expected vs received HMAC-SHA256 signature.
@@ -68,7 +66,7 @@ function verifySignature(secret, rawBody, receivedSig) {
   }
 }
 
-// ── Update pipeline ───────────────────────────────────────────────────────────
+// Update pipeline
 
 /**
  * Pull latest from the client repo and rebuild the file root.
@@ -85,7 +83,7 @@ function pullAndMerge() {
 
     const summary = stdout.trim()
     if (summary === 'Already up to date.') {
-      console.log('[webhook] Client already up to date — skipping merge.')
+      console.log('[webhook] Client already up to date, skipping merge.')
       return
     }
 
@@ -97,12 +95,12 @@ function pullAndMerge() {
   })
 }
 
-// ── Route ─────────────────────────────────────────────────────────────────────
+// Route
 
 router.post('/github', githubWebhookLimiter, (req, res) => {
   const secret = process.env.GITHUB_WEBHOOK_SECRET
 
-  // Secret must be configured — reject silently otherwise
+  // Secret must be configured; reject silently otherwise
   if (!secret) {
     console.error('[webhook] GITHUB_WEBHOOK_SECRET is not set.')
     return res.status(500).json({ error: 'Webhook not configured on server.' })
@@ -118,14 +116,14 @@ router.post('/github', githubWebhookLimiter, (req, res) => {
   const event = req.headers['x-github-event']
   const body  = req.body  // already parsed by express.json()
 
-  // Acknowledge immediately — GitHub times out after 10 s
+  // Acknowledge immediately; GitHub times out after 10 s
   res.json({ ok: true, event })
 
-  // ── Handle push to the tracked branch ──────────────────────────────────────
+  // Handle push to the tracked branch
   if (event === 'push') {
     const ref = body?.ref
     if (ref !== DEFAULT_BRANCH) {
-      console.log(`[webhook] Push to ${ref} — not the tracked branch (${DEFAULT_BRANCH}), ignoring.`)
+      console.log(`[webhook] Push to ${ref}, not the tracked branch (${DEFAULT_BRANCH}), ignoring.`)
       return
     }
 
@@ -137,9 +135,9 @@ router.post('/github', githubWebhookLimiter, (req, res) => {
     return
   }
 
-  // ── ping — GitHub sends this when the webhook is first created ─────────────
+  // ping: GitHub sends this when the webhook is first created
   if (event === 'ping') {
-    console.log('[webhook] Ping received — webhook is connected.')
+    console.log('[webhook] Ping received, webhook is connected.')
     return
   }
 

@@ -22,6 +22,9 @@ const VERSION_PATH = path.join(__dirname, '..', 'data', 'files-version.json')
 
 const NOT_BUILT = { error: 'File package not found. Run `npm run merge` on the server first.' }
 
+// Only the zip download is rate-limited: it is the expensive endpoint, and
+// /version is now polled every 10s by every open launcher (90 requests per
+// window per client), which a router-wide cap of 100 would choke on.
 const filesRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per window
@@ -30,23 +33,21 @@ const filesRateLimiter = rateLimit({
   message: { error: 'Too many requests. Please try again later.' }
 })
 
-router.use(filesRateLimiter)
-
-// ── GET /api/files/version ────────────────────────────────────────────────────
+// GET /api/files/version
 
 router.get('/version', (_req, res) => {
   if (!fs.existsSync(VERSION_PATH)) return res.status(404).json(NOT_BUILT)
   try {
-    // Read fresh every time (do NOT use require() — it caches the module)
+    // Read fresh every time (do NOT use require(); it caches the module)
     res.json(JSON.parse(fs.readFileSync(VERSION_PATH, 'utf8')))
   } catch {
     res.status(500).json({ error: 'Could not read version file.' })
   }
 })
 
-// ── GET /api/files/zip ────────────────────────────────────────────────────────
+// GET /api/files/zip
 
-router.get('/zip', (req, res) => {
+router.get('/zip', filesRateLimiter, (req, res) => {
   if (!fs.existsSync(ZIP_PATH)) return res.status(404).json(NOT_BUILT)
 
   const stat = fs.statSync(ZIP_PATH)

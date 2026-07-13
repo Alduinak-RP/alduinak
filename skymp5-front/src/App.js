@@ -14,11 +14,14 @@ class App extends React.Component {
       isLoggined: false,
       widgets: this.props.elem || null
     };
+    // Bind once so the same references can be removed on unmount.
+    this.onWindowFocus = this.onWindowFocus.bind(this);
+    this.handleWidgetUpdate = this.handleWidgetUpdate.bind(this);
   }
 
   componentDidMount() {
-    window.addEventListener('focus', this.onWindowFocus.bind(this));
-    window.addEventListener('blur', this.onWindowFocus.bind(this));
+    window.addEventListener('focus', this.onWindowFocus);
+    window.addEventListener('blur', this.onWindowFocus);
     window.mp = {
       send: (type, data) => {
         try {
@@ -43,7 +46,7 @@ class App extends React.Component {
     window.addEventListener('mousemove', this.onMoveWindow);
     window.addEventListener('mouseup', this.onMouseUp);
 
-    window.skyrimPlatform.widgets.addListener(this.handleWidgetUpdate.bind(this));
+    window.skyrimPlatform.widgets.addListener(this.handleWidgetUpdate);
   }
 
   handleWidgetUpdate(newWidgets) {
@@ -54,10 +57,11 @@ class App extends React.Component {
   }
 
   componentWillUnmount() {
-    window.removeEventListener('focus', this.onWindowFocus.bind(this));
-    window.removeEventListener('blur', this.onWindowFocus.bind(this));
-    window.addEventListener('mousemove', this.onMoveWindow);
-    window.skyrimPlatform.widgets.removeListener(this.handleWidgetUpdate.bind(this));
+    window.removeEventListener('focus', this.onWindowFocus);
+    window.removeEventListener('blur', this.onWindowFocus);
+    window.removeEventListener('mousemove', this.onMoveWindow);
+    window.removeEventListener('mouseup', this.onMouseUp);
+    window.skyrimPlatform.widgets.removeListener(this.handleWidgetUpdate);
   }
 
   onWindowFocus(e) {
@@ -91,7 +95,7 @@ class App extends React.Component {
         <div style={{ position: 'static' }}>
           {this.state.widgets.map((widget, index) =>
             <Constructor
-              key={index.toString() + widget.type + ((widget.type === 'form') ? widget.elements + widget.caption : 'chat')}
+              key={(widget.type === 'trade') ? ('trade-' + widget.id) : (index.toString() + widget.type + ((widget.type === 'form') ? widget.elements + widget.caption : 'chat'))}
               dynamicSize={true}
               elem={widget}
               height={this.props.height || 704}

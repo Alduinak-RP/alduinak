@@ -37,6 +37,8 @@ module.exports = {
 
   // nssm services. `key` is the short label shown in the UI; `name` is the
   // actual Windows service. Order is the start order (stop order is reversed).
+  // Keep this list in sync with SERVICES in src/renderer/renderer.js (the
+  // renderer has its own copy of key/label and would show a stale set if they drift).
   services: [
     { key: 'nginx',   name: 'SkyrpNginx',      label: 'Nginx'    },
     { key: 'backend', name: 'SkyrpBackend',    label: 'Backend'  },
@@ -54,7 +56,6 @@ module.exports = {
     front:        path.join(repoRoot, 'skymp5-front'),
     client:       path.join(repoRoot, 'skymp5-client'),
     server:       path.join(repoRoot, 'skymp5-server'),
-    skyrimPlatform: path.join(repoRoot, 'skyrim-platform'),
     launcherPkg:  path.join(repoRoot, 'skymp5-launcher', 'package.json'),
     clientPkg:    path.join(repoRoot, 'skymp5-client', 'package.json'),
     versionRoute: path.join(repoRoot, 'skymp5-backend', 'routes', 'version.js'),
@@ -62,7 +63,7 @@ module.exports = {
     backendEnvExample: path.join(repoRoot, 'skymp5-backend', '.env.example'),
     // The deployed game server's settings (holds secrets; not in the repo).
     serverSettings,
-    // The game server's working directory — its file-database (changeForms)
+    // The game server's working directory: its file-database (changeForms)
     // and data dir live here. Defaults to the folder holding server-settings.json.
     serverDir:    process.env.SKYRP_SERVER_DIR || path.dirname(serverSettings),
     launcherOut:  path.join(repoRoot, 'build', 'launcher'),
@@ -73,7 +74,9 @@ module.exports = {
   // WS relay link for the Console command box (read live from the backend .env).
   relay: {
     get port()   { return parseInt(readEnv('WS_PORT') || '7778', 10) },
-    get secret() { return readEnv('RELAY_SECRET') || 'dev-relay-secret' },
+    // No fallback secret: when RELAY_SECRET is unset the relay must fail auth
+    // rather than silently authenticate with a well-known default.
+    get secret() { return readEnv('RELAY_SECRET') },
   },
 
   launcherArtifact: 'SkyrimRoleplayLauncher.exe',

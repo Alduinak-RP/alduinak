@@ -1,5 +1,5 @@
 'use strict'
-// ── Whitelist staff notes API ─────────────────────────────────────────────────
+// Whitelist staff notes API
 // A single editable document with notes for staff handling whitelist applications.
 // Read requires 'staff.whitelist_info', write requires 'rules.write' (Management).
 
@@ -23,12 +23,12 @@ function save(data) {
   fs.writeFileSync(FILE, JSON.stringify(data, null, 2))
 }
 
-// GET /api/whitelist-notes  — requires staff.whitelist_info
+// GET /api/whitelist-notes
 router.get('/', requirePermission('staff.whitelist_info'), (_req, res) => {
   res.json(load())
 })
 
-// PUT /api/whitelist-notes  — requires rules.write
+// PUT /api/whitelist-notes
 router.put('/', requirePermission('rules.write'), (req, res) => {
   const { content } = req.body || {}
   if (content === undefined) return res.status(400).json({ error: 'content required' })

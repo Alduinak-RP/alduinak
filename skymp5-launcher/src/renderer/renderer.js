@@ -1,9 +1,9 @@
-// ── Window controls ──────────────────────────────────────────────────────────
+// Window controls
 document.getElementById('btn-minimize').addEventListener('click', () => window.electronAPI.minimize())
 document.getElementById('btn-maximize').addEventListener('click', () => window.electronAPI.maximize())
 document.getElementById('btn-close').addEventListener('click',    () => window.electronAPI.close())
 
-// ── External nav links ────────────────────────────────────────────────────────
+// External nav links
 const EXTERNAL_URLS = {
   website: 'https://skyrimroleplay.co.uk/',   // e.g. 'https://skyrp.example.com'
   discord: 'https://discord.gg/xKY4Nud2rz',   // e.g. 'https://discord.gg/...'
@@ -16,7 +16,7 @@ document.querySelectorAll('.topnav-link[data-href]').forEach(link => {
   })
 })
 
-// ── Settings modal ────────────────────────────────────────────────────────────
+// Settings modal
 const modalOverlay = document.getElementById('modal-settings')
 
 function openModal() { modalOverlay.hidden = false; loadGameSettingsTab() }
@@ -26,7 +26,7 @@ document.getElementById('btn-gear').addEventListener('click', openModal)
 document.getElementById('modal-close').addEventListener('click', closeModal)
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal() })
 
-// ── Settings tabs ─────────────────────────────────────────────────────────────
+// Settings tabs
 document.querySelectorAll('.modal-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'))
@@ -36,8 +36,8 @@ document.querySelectorAll('.modal-tab').forEach(tab => {
   })
 })
 
-// ── Settings tab: graphics + server hotkeys ───────────────────────────────────
-// DirectInput scan codes — must match DxScanCode in the Skyrim Platform client.
+// Settings tab: graphics + server hotkeys
+// DirectInput scan codes - must match DxScanCode in the Skyrim Platform client.
 const KEY_OPTIONS = [
   { label: '— none —', code: 0 },
   { label: 'Enter', code: 28 }, { label: 'Space', code: 57 }, { label: 'Tab', code: 15 },
@@ -133,10 +133,10 @@ async function saveGameSettingsTab() {
   } catch (err) { /* best-effort */ }
 }
 
-// ── Form fields ───────────────────────────────────────────────────────────────
+// Form fields
 const fieldSkyrimPath   = document.getElementById('setting-skyrim-path')
 
-// ── Footer server selector ────────────────────────────────────────────────────
+// Footer server selector
 const footerServerName   = document.getElementById('footer-server-name')
 const footerServerSelect = document.getElementById('footer-server-select')
 
@@ -144,14 +144,13 @@ footerServerSelect.addEventListener('change', () => {
   window.electronAPI.saveSettings({ activeServerIndex: parseInt(footerServerSelect.value, 10) })
 })
 
-// ── MO2 fields ────────────────────────────────────────────────────────────────
+// MO2 fields
 const fieldMo2Enabled = document.getElementById('setting-mo2-enabled')
 const mo2StatusDot    = document.getElementById('mo2-status-dot')
 const mo2StatusText   = document.getElementById('mo2-status-text')
 
-// ── Discord auth state (kept in module scope for PLAY check) ──────────────────
+// Discord auth state (kept in module scope for PLAY check)
 let discordUser         = null
-let discordAuthRequired = false
 let serverLocked        = false
 // Whether the current user is allowed to join (session-aware: set after login
 // by re-fetching /api/serverinfo with X-Session).  Defaults true so unauthed
@@ -162,14 +161,14 @@ let serverAllowed       = true
 // Call this after login, logout, and initial serverinfo load.
 function updateLockState() {
   // While the game runs (or a play sequence is in flight) the button is
-  // managed by updatePlayButton() — don't fight over it here.
+  // managed by updatePlayButton() - don't fight over it here.
   if (gameRunning || playBusy) return
 
   if (serverLocked && discordUser && !serverAllowed) {
     // Logged in but not on the server lock allow-list
     btnConnect.disabled = true
     btnConnect.title    = 'The server is currently locked.'
-    connectWarning.textContent = 'Server is currently locked — you are not on the allow list.'
+    connectWarning.textContent = 'Server is currently locked - you are not on the allow list.'
     connectWarning.classList.add('visible')
   } else if (!serverLocked && discordUser && !serverAllowed) {
     // Logged in but not on the whitelist
@@ -182,7 +181,6 @@ function updateLockState() {
     btnConnect.title    = ''
     // Fix instantly disappearing
     const lockMessages = [
-      'Server is currently locked — you are not on the whitelist.',
       'You are not on the server whitelist.',
     ]
     if (lockMessages.includes(connectWarning.textContent)) {
@@ -192,12 +190,12 @@ function updateLockState() {
   }
 }
 
-// ── Load / save settings ──────────────────────────────────────────────────────
+// Load / save settings
 async function loadSettings() {
   const s = await window.electronAPI.loadSettings()
   fieldSkyrimPath.value = s.skyrimPath || ''
 
-  // Footer server selector — dropdown when >1 server, plain text otherwise
+  // Footer server selector - dropdown when >1 server, plain text otherwise
   if (s.servers && s.servers.length > 1) {
     footerServerName.hidden   = true
     footerServerSelect.hidden = false
@@ -234,7 +232,7 @@ async function loadSettings() {
   return s
 }
 
-// ── Discord topbar widget ─────────────────────────────────────────────────────
+// Discord topbar widget
 const discordTopbarSlot = document.getElementById('discord-topbar-slot')
 
 function renderTopbarDiscord() {
@@ -282,11 +280,16 @@ function renderTopbarDiscord() {
     loginBtn.textContent = 'Discord Login'
     loginBtn.addEventListener('click', async () => {
       loginBtn.disabled    = true
-      loginBtn.textContent = 'Opening…'
+      loginBtn.textContent = 'Waiting for Discord…'
+      loginBtn.title       = 'Finish logging in from the browser window that just opened.'
+      if (connectWarning.textContent.startsWith('Discord login failed:')) {
+        connectWarning.classList.remove('visible')
+        connectWarning.textContent = ''
+      }
       const result = await window.electronAPI.discordLogin()
       if (result.success) {
         discordUser = result.user
-        // Re-fetch serverinfo now that we have a session — the backend will
+        // Re-fetch serverinfo now that we have a session - the backend will
         // evaluate whitelist / lock access and return the correct `allowed` flag.
         const freshInfo = await window.electronAPI.fetchServerInfo()
         serverAllowed = freshInfo ? freshInfo.allowed !== false : true
@@ -295,9 +298,11 @@ function renderTopbarDiscord() {
       } else {
         loginBtn.disabled    = false
         loginBtn.textContent = 'Discord Login'
-        connectWarning.textContent = `Discord: ${result.error}`
+        loginBtn.title       = ''
+        // Stays visible until the next attempt - the user is usually still
+        // alt-tabbed in the browser when the failure lands.
+        connectWarning.textContent = `Discord login failed: ${result.error}`
         connectWarning.classList.add('visible')
-        setTimeout(() => connectWarning.classList.remove('visible'), 4000)
       }
     })
     discordTopbarSlot.appendChild(loginBtn)
@@ -307,11 +312,11 @@ function renderTopbarDiscord() {
 renderTopbarDiscord()
 
 
-// ── Nexus topbar widget ───────────────────────────────────────────────────────
-const nexusTopbarSlot  = document.getElementById('nexus-topbar-slot')
-const modalNexus       = document.getElementById('modal-nexus')
-const nexusKeyInput    = document.getElementById('nexus-key-input')
-const nexusLoginStatus = document.getElementById('nexus-login-status')
+// Nexus topbar widget
+// Login is the one-click SSO flow (registered application slug): the button
+// opens nexusmods.com in the browser and the key arrives over the SSO
+// websocket. The old paste-your-API-key modal is gone.
+const nexusTopbarSlot = document.getElementById('nexus-topbar-slot')
 
 let nexusUser = null
 
@@ -334,8 +339,8 @@ function renderTopbarNexus() {
     name.className   = 'discord-topbar-name'
     name.textContent = `Nexus: ${nexusUser.name}${nexusUser.isPremium ? ' \u2605' : ''}`
     name.title       = nexusUser.isPremium
-      ? 'Nexus Premium — automatic mod downloads enabled'
-      : 'Nexus free account — downloads open in the browser'
+      ? 'Nexus Premium - automatic mod downloads enabled'
+      : 'Nexus free account - downloads open in the browser'
     wrap.appendChild(name)
 
     const logoutBtn = document.createElement('button')
@@ -354,81 +359,46 @@ function renderTopbarNexus() {
     const loginBtn = document.createElement('button')
     loginBtn.className   = 'btn-nexus-topbar'
     loginBtn.textContent = 'Nexus Login'
-    loginBtn.addEventListener('click', () => {
-      nexusLoginStatus.textContent = ''
-      nexusKeyInput.value = ''
-      modalNexus.hidden = false
-      nexusKeyInput.focus()
+    loginBtn.addEventListener('click', async () => {
+      loginBtn.disabled    = true
+      loginBtn.textContent = 'Waiting for Nexus…'
+      loginBtn.title       = 'Click Authorise on the Nexus page that just opened.'
+      if (connectWarning.textContent.startsWith('Nexus login failed:')) {
+        connectWarning.classList.remove('visible')
+        connectWarning.textContent = ''
+      }
+      const result = await window.electronAPI.nexusSsoLogin()
+      if (result.success) {
+        nexusUser = result.user
+        renderTopbarNexus()
+      } else {
+        loginBtn.disabled    = false
+        loginBtn.textContent = 'Nexus Login'
+        loginBtn.title       = ''
+        connectWarning.textContent = `Nexus login failed: ${result.error}`
+        connectWarning.classList.add('visible')
+      }
     })
     nexusTopbarSlot.appendChild(loginBtn)
   }
 }
-
-// Show the one-click SSO button only when the app has a registered slug
-window.electronAPI.nexusSsoAvailable().then(available => {
-  document.getElementById('nexus-sso-group').hidden = !available
-})
-
-document.getElementById('nexus-sso-login').addEventListener('click', async () => {
-  const btn = document.getElementById('nexus-sso-login')
-  btn.disabled = true
-  nexusLoginStatus.textContent = 'Waiting for you to authorise in the browser…'
-
-  const result = await window.electronAPI.nexusSsoLogin()
-  btn.disabled = false
-
-  if (!result.success) {
-    nexusLoginStatus.textContent = `Error: ${result.error}`
-    return
-  }
-
-  nexusUser = result.user
-  nexusLoginStatus.textContent = ''
-  modalNexus.hidden = true
-  renderTopbarNexus()
-})
-
-document.getElementById('nexus-modal-close').addEventListener('click', () => { modalNexus.hidden = true })
-modalNexus.addEventListener('click', e => { if (e.target === modalNexus) modalNexus.hidden = true })
-
-document.getElementById('nexus-keys-link').addEventListener('click', e => {
-  e.preventDefault()
-  window.electronAPI.openExternal('https://next.nexusmods.com/settings/api-keys')
-})
-
-document.getElementById('nexus-key-save').addEventListener('click', async () => {
-  const btn = document.getElementById('nexus-key-save')
-  btn.disabled = true
-  nexusLoginStatus.textContent = 'Validating key…'
-
-  const result = await window.electronAPI.nexusLogin(nexusKeyInput.value)
-  btn.disabled = false
-
-  if (!result.success) {
-    nexusLoginStatus.textContent = `Error: ${result.error}`
-    return
-  }
-
-  nexusUser = result.user
-  nexusLoginStatus.textContent = ''
-  modalNexus.hidden = true
-  renderTopbarNexus()
-})
 
 window.electronAPI.nexusGetUser().then(user => {
   nexusUser = user
   renderTopbarNexus()
 })
 
-// ── Isolated game copy UI ─────────────────────────────────────────────────────
+// Isolated game copy UI
 const isolatedDot       = document.getElementById('isolated-status-dot')
 const isolatedText      = document.getElementById('isolated-status-text')
 const fieldIsolated     = document.getElementById('setting-isolated-game')
 const btnCreateIsolated = document.getElementById('btn-create-isolated')
 const btnInstallMo2     = document.getElementById('btn-install-mo2')
+const isolatedGroup     = document.getElementById('isolated-install-group')
 
 // locks install via mo2 until there's a game to manage
 function refreshDownloadModsState(st) {
+  if (mo2InstallRunning) return  // button is in Cancel mode; don't fight it
   const ready = !fieldIsolated.checked || st.ready
   btnInstallMo2.disabled = !ready
   btnInstallMo2.title = ready
@@ -438,12 +408,15 @@ function refreshDownloadModsState(st) {
 
 async function refreshIsolatedStatus() {
   const st = await window.electronAPI.isolatedStatus()
+  // Portable mode off: the whole "choose install location" section is
+  // irrelevant, so hide it instead of explaining it.
+  isolatedGroup.hidden = !fieldIsolated.checked
   if (!st.ready) {
     isolatedDot.className    = 'vortex-status-dot'
-    isolatedText.textContent = 'Not installed yet — choose a location to set up SkyRP'
+    isolatedText.textContent = 'Not installed yet - choose a location to set up SkyRP'
   } else if (!fieldIsolated.checked) {
     isolatedDot.className    = 'vortex-status-dot dot-warn'
-    isolatedText.textContent = 'SkyRP install exists — playing from the original Skyrim'
+    isolatedText.textContent = 'SkyRP install exists - playing from the original Skyrim'
   } else {
     isolatedDot.className    = 'vortex-status-dot dot-ok'
     isolatedText.textContent = `SkyRP installed at ${st.base || st.dir}`
@@ -497,13 +470,13 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   setTimeout(() => { btn.textContent = 'Save Settings' }, 1400)
 })
 
-// ── Browse folder ─────────────────────────────────────────────────────────────
+// Browse folder
 document.getElementById('btn-browse').addEventListener('click', async () => {
   const folder = await window.electronAPI.openFolder()
   if (folder) fieldSkyrimPath.value = folder
 })
 
-// ── MO2 UI ────────────────────────────────────────────────────────────────────
+// MO2 UI
 
 const mo2EnableText = document.getElementById('mo2-enable-text')
 
@@ -513,15 +486,15 @@ async function refreshMo2Status() {
 
   // Checkbox caption reflects what disabling MO2 means.
   mo2EnableText.textContent = enabled
-    ? 'Launch the game through MO2 — mods stay out of your Skyrim folder'
+    ? 'Launch the game through MO2 - mods stay out of your Skyrim folder'
     : 'You will need to install mods manually.'
 
   if (!status.installed) {
     mo2StatusDot.className    = 'vortex-status-dot'
-    mo2StatusText.textContent = 'MO2 not installed yet — run "Install Modpack via MO2" below'
+    mo2StatusText.textContent = 'MO2 not installed yet - run "Install Modpack via MO2" below'
   } else if (!enabled) {
     mo2StatusDot.className    = 'vortex-status-dot dot-warn'
-    mo2StatusText.textContent = `MO2 ${status.version} ready (${status.modCount} mods) — launching without it`
+    mo2StatusText.textContent = `MO2 ${status.version} ready (${status.modCount} mods) - launching without it`
   } else {
     mo2StatusDot.className    = 'vortex-status-dot dot-ok'
     mo2StatusText.textContent = `MO2 ${status.version} active (${status.modCount} mods)`
@@ -551,7 +524,7 @@ document.getElementById('btn-open-install').addEventListener('click', async () =
   if (!r.success) alert(`Could not open the install folder: ${r.error}`)
 })
 
-// ── Troubleshooting: manual launch buttons ───────────────────────────────────
+// Troubleshooting: manual launch buttons
 const troubleLaunchStatus = document.getElementById('trouble-launch-status')
 
 document.getElementById('btn-launch-mo2').addEventListener('click', async () => {
@@ -566,7 +539,7 @@ document.getElementById('btn-launch-direct').addEventListener('click', async () 
   troubleLaunchStatus.textContent = r.success ? 'Launched ✓' : `Error: ${r.error}`
 })
 
-// ── Install / Update Client Files ────────────────────────────────────────────
+// Install / Update Client Files
 const installStatusClient = document.getElementById('install-status-client')
 
 document.getElementById('btn-install-client').addEventListener('click', () => {
@@ -593,10 +566,21 @@ document.getElementById('btn-install-client').addEventListener('click', () => {
   window.electronAPI.startInstall('client')
 })
 
-// ── Install Modpack via MO2 ───────────────────────────────────────────────────
+// Install Modpack via MO2
 const installStatusMo2 = document.getElementById('install-status-mo2')
 
+let mo2InstallRunning = false
+
 function startModpackInstall() {
+  // While an install runs the same button cancels it, so a wedged install
+  // can always be stopped and retried without restarting the launcher.
+  if (mo2InstallRunning) {
+    installStatusMo2.textContent = 'Cancelling…'
+    window.electronAPI.cancelInstall()
+    return
+  }
+  mo2InstallRunning = true
+  btnInstallMo2.textContent = 'Cancel Install'
   installStatusMo2.textContent = 'Starting MO2 install…'
   window.electronAPI.removeInstallListeners()
 
@@ -612,6 +596,8 @@ function startModpackInstall() {
   })
 
   window.electronAPI.onInstallComplete(({ success, error, upToDate, warning, modsTotal }) => {
+    mo2InstallRunning = false
+    btnInstallMo2.textContent = 'Install Modpack via MO2'
     if (!success) {
       installStatusMo2.textContent = `Error: ${error}`
       return
@@ -622,7 +608,7 @@ function startModpackInstall() {
       return
     }
     const files = upToDate ? 'client files up to date' : 'client files installed'
-    installStatusMo2.textContent = `Modpack ready ✓ — ${modsTotal ?? 0} mods, ${files}`
+    installStatusMo2.textContent = `Modpack ready ✓ - ${modsTotal ?? 0} mods, ${files}`
     refreshMo2Status()
   })
 
@@ -630,7 +616,7 @@ function startModpackInstall() {
 }
 btnInstallMo2.addEventListener('click', startModpackInstall)
 
-// ── PLAY button ───────────────────────────────────────────────────────────────
+// PLAY button
 // One click does everything: verify/refresh client files, sync the load
 // order, then launch. While the game runs the button reflects that state.
 const btnConnect     = document.getElementById('btn-connect')
@@ -687,7 +673,7 @@ async function refreshPlayState() {
 
   updatePlayButton()
 }
-setInterval(refreshPlayState, 60_000)
+setInterval(refreshPlayState, 10_000)
 
 async function pollGameRunning() {
   const running = await window.electronAPI.gameIsRunning()
@@ -756,7 +742,7 @@ btnConnect.addEventListener('click', async () => {
 
   if (discordUser && !serverAllowed) {
     showWarning(serverLocked
-      ? 'Server is currently locked — you are not on the allow list.'
+      ? 'Server is currently locked - you are not on the allow list.'
       : 'You are not on the server whitelist.')
     return
   }
@@ -768,7 +754,7 @@ btnConnect.addEventListener('click', async () => {
   }
 
   if (!discordUser) {
-    showWarning('Login with Discord first — use the button in the toolbar.')
+    showWarning('Login with Discord first - use the button in the toolbar.')
     return
   }
 
@@ -785,7 +771,7 @@ btnConnect.addEventListener('click', async () => {
       return
     }
 
-    // 2. Launch — main also re-syncs plugins.txt against the server load order
+    // 2. Launch - main also re-syncs plugins.txt against the server load order
     btnConnect.textContent = '\u25BA LAUNCHING\u2026'
     clearWarning()
     const result = await window.electronAPI.launchSkse()
@@ -803,11 +789,15 @@ btnConnect.addEventListener('click', async () => {
   }
 })
 
-// ── Server status ─────────────────────────────────────────────────────────────
+// Server status
+// The badge follows the GAME SERVER's state as reported by /api/status
+// (heartbeat, falling back to a metrics-port probe) - a reachable backend
+// with a dead game server reads OFFLINE.
 const badgeStatus  = document.getElementById('badge-status')
 const badgeLabel   = document.getElementById('badge-label')
 const badgePlayers = document.getElementById('badge-players')
-const footerPlayers = document.getElementById('footer-players')
+// Footer player count hidden for now - the topbar badge already shows it.
+// const footerPlayers = document.getElementById('footer-players')
 
 // track reachability so we can resync the one-shot panels when the backend returns
 let backendWasReachable = null
@@ -819,17 +809,17 @@ async function checkServerStatus() {
     badgeStatus.classList.remove('online')
     badgeLabel.textContent = 'OFFLINE'
     badgePlayers.hidden = true
-    footerPlayers.textContent = '—'
+    // footerPlayers.textContent = '—'
   } else {
     badgeStatus.classList.add('online')
     badgeLabel.textContent = 'ONLINE'
     if (data.players != null) {
       badgePlayers.textContent = `${data.players} PLAYERS`
       badgePlayers.hidden = false
-      footerPlayers.textContent = `${data.players}`
+      // footerPlayers.textContent = `${data.players}`
     } else {
       badgePlayers.hidden = true
-      footerPlayers.textContent = '—'
+      // footerPlayers.textContent = '—'
     }
   }
 
@@ -848,7 +838,7 @@ function refreshServerData() {
   refreshPlayState()   // client version + update availability
 }
 
-// ── Server info strip ─────────────────────────────────────────────────────────
+// Server info strip
 async function loadServerInfo() {
   const info = await window.electronAPI.fetchServerInfo()
   if (!info || info.error) return
@@ -875,7 +865,6 @@ async function loadServerInfo() {
   }
 
   if (info.discordAuthRequired) {
-    discordAuthRequired = true
     discEl.hidden  = false
     discSep.hidden = false
   }
@@ -888,10 +877,10 @@ async function loadServerInfo() {
 
   // `allowed` is session-aware: false only when a session was sent and the
   // backend rejected it (locked/not whitelisted).  Without a session it
-  // defaults to true — access is re-checked after Discord login.
-  // `sessionValid: false` means the stored session expired — treat as logged out.
+  // defaults to true - access is re-checked after Discord login.
+  // `sessionValid: false` means the stored session expired - treat as logged out.
   if (info.sessionValid === false && discordUser) {
-    // Session expired — clear stale auth so the user can log in again cleanly.
+    // Session expired - clear stale auth so the user can log in again cleanly.
     await window.electronAPI.discordLogout()
     discordUser   = null
     serverAllowed = true
@@ -905,46 +894,59 @@ async function loadServerInfo() {
   strip.hidden = false
 }
 
-// ── Launcher update check ─────────────────────────────────────────────────────
+// Launcher update check
 const launcherVersionEl = document.getElementById('launcher-version')
 const clientVersionEl   = document.getElementById('client-version')
+
+// The check runs every 10s (see the polling block at the bottom), so the
+// UPDATE AVAILABLE state appears while the launcher is open - no restart
+// needed. Click/progress handlers are registered exactly once here; the
+// periodic check only flips the label state.
+let launcherUpdateReady = false
+
+window.electronAPI.onUpdateProgress(d => {
+  if (!launcherVersionEl.dataset.updating) return
+  if (d.phase === 'download' && d.total > 0) {
+    launcherVersionEl.textContent = `Downloading update… ${Math.round(d.received / d.total * 100)}%`
+  } else if (d.phase === 'install') {
+    launcherVersionEl.textContent = 'Installing - the launcher will restart…'
+  }
+})
+
+launcherVersionEl.addEventListener('click', async () => {
+  if (!launcherUpdateReady || launcherVersionEl.dataset.updating) return
+  launcherVersionEl.dataset.updating = '1'
+  launcherVersionEl.textContent = 'Downloading update…'
+  const r = await window.electronAPI.installUpdate()
+  if (!r.ok) {
+    launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
+    delete launcherVersionEl.dataset.updating
+    showWarning(`Update failed: ${r.error}`)
+  }
+})
 
 async function checkLauncherUpdate() {
   const result = await window.electronAPI.checkUpdate()
   if (!result) return
+  if (launcherVersionEl.dataset.updating) return  // don't clobber install progress UI
 
   if (result.hasUpdate) {
+    launcherUpdateReady = true
     launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
     launcherVersionEl.classList.add('update-available')
-    launcherVersionEl.title = `v${result.latest} is available — click to update`
-    launcherVersionEl.addEventListener('click', async () => {
-      if (launcherVersionEl.dataset.updating) return
-      launcherVersionEl.dataset.updating = '1'
-      launcherVersionEl.textContent = 'Downloading update…'
-      window.electronAPI.onUpdateProgress(d => {
-        if (d.phase === 'download' && d.total > 0) {
-          launcherVersionEl.textContent = `Downloading update… ${Math.round(d.received / d.total * 100)}%`
-        } else if (d.phase === 'install') {
-          launcherVersionEl.textContent = 'Installing — the launcher will restart…'
-        }
-      })
-      const r = await window.electronAPI.installUpdate()
-      if (!r.ok) {
-        launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
-        delete launcherVersionEl.dataset.updating
-        showWarning(`Update failed: ${r.error}`)
-      }
-    })
+    launcherVersionEl.title = `v${result.latest} is available - click to update`
   } else {
+    launcherUpdateReady = false
     launcherVersionEl.textContent = `v${result.current}`
     launcherVersionEl.classList.remove('update-available')
+    launcherVersionEl.title = ''
   }
 }
 
-// ── News ──────────────────────────────────────────────────────────────────────
+// News
 const newsGrid = document.getElementById('news-grid')
 
-// Shared error-state card with a retry button — used by news and modlist
+// Shared error-state card with a retry button - used by news and modlist
 // instead of silently showing fallback content when the backend is unreachable.
 function buildErrorState(message, onRetry) {
   const box = document.createElement('div')
@@ -1018,7 +1020,7 @@ async function loadNews() {
   newsGrid.innerHTML = ''
 
   if (!result || !result.ok) {
-    newsGrid.appendChild(buildErrorState('Couldn’t reach the server — news unavailable.', loadNews))
+    newsGrid.appendChild(buildErrorState('Couldn’t reach the server - news unavailable.', loadNews))
     return
   }
 
@@ -1033,7 +1035,7 @@ async function loadNews() {
   result.items.forEach(item => newsGrid.appendChild(buildNewsCard(item)))
 }
 
-// ── Modlist ───────────────────────────────────────────────────────────────────
+// Modlist
 
 const NEXUS_BASE = 'https://www.nexusmods.com/skyrimspecialedition/mods'
 
@@ -1103,7 +1105,7 @@ async function loadModlist() {
   if (!result || !result.ok) {
     currentModlist    = []
     count.textContent = '—'
-    panel.appendChild(buildErrorState('Couldn’t reach the server — modlist unavailable.', loadModlist))
+    panel.appendChild(buildErrorState('Couldn’t reach the server - modlist unavailable.', loadModlist))
     return
   }
 
@@ -1124,10 +1126,9 @@ async function loadModlist() {
   count.textContent = `${enabled} / ${currentModlist.length} enabled`
 }
 
-// ── Metrics modal ─────────────────────────────────────────────────────────────
+// Metrics modal
 const modalMetrics  = document.getElementById('modal-metrics')
 const metricsGrid   = document.getElementById('metrics-grid')
-const metricsLoading = document.getElementById('metrics-loading')
 
 document.getElementById('btn-stats').addEventListener('click', () => {
   modalMetrics.hidden = false
@@ -1211,12 +1212,17 @@ async function loadMetrics() {
   metricsGrid.appendChild(metricCard('Avg Tick Duration', fmtMs(tickAvg),  null))
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// Init
 loadSettings()
 checkServerStatus()
 checkLauncherUpdate()
 loadNews()
 loadServerInfo()
 loadModlist()
-setInterval(checkServerStatus, 30_000)
+// Live 10s heartbeat: game-server status + players (topbar badge), client
+// files update (Play button flips to UPDATE), launcher self-update (footer
+// label flips to UPDATE AVAILABLE) - all without restarting the launcher.
+// refreshPlayState and pollGameRunning poll on their own 10s timers above.
+setInterval(checkServerStatus, 10_000)
+setInterval(checkLauncherUpdate, 10_000)
 refreshPlayState()

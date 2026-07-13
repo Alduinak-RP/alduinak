@@ -151,7 +151,7 @@ public:
   void Teleport(const LocationalData& position);
   void SetSpawnPoint(const LocationalData& position);
   LocationalData GetSpawnPoint() const;
-  // Finds nearest temple
+  // Players respawn at the nearest temple; other actors at their spawn point
   LocationalData GetRespawnPosition() const;
   LocationalData GetEditorLocationalData() const;
   const float GetRespawnTime() const;

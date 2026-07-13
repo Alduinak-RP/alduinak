@@ -101,10 +101,16 @@ public:
   float magickaRespawnPercentage = 1.f;
   float staminaRespawnPercentage = 1.f;
 
-  // Used only for player characters. See GetSpawnPoint
-  LocationalData spawnPoint = { { 133857, -61130, 14662 },
-                                { 0.f, 0.f, 72.f },
-                                FormDesc::Tamriel() };
+  // Used only for player characters. See GetSpawnPoint. Kept as a named
+  // default so MpActor::GetRespawnPosition can tell "never set" apart from a
+  // gamemode-chosen spawn point.
+  static LocationalData DefaultSpawnPoint()
+  {
+    return { { 133857, -61130, 14662 },
+             { 0.f, 0.f, 72.f },
+             FormDesc::Tamriel() };
+  }
+  LocationalData spawnPoint = DefaultSpawnPoint();
 
   // Bleedout timer
   float spawnDelay = 60.0f;

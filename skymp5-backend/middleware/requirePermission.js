@@ -1,5 +1,5 @@
 'use strict'
-// ── requirePermission middleware ──────────────────────────────────────────────
+// requirePermission middleware
 // Factory that returns an Express middleware requiring a specific permission.
 // Validates the Bearer token from the Authorization header against dashboard
 // sessions and checks the resolved permissions stored in the session.

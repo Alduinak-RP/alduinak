@@ -6,14 +6,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window:maximize'),
   close:    () => ipcRenderer.send('window:close'),
 
-  // User settings (skyrimPath, username, activeServerIndex)
+  // User settings (skyrimPath, activeServerIndex, mo2Enabled, isolatedGame)
   loadSettings: ()     => ipcRenderer.invoke('settings:load'),
   saveSettings: (data) => ipcRenderer.invoke('settings:save', data),
 
   // OS folder picker
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 
-  // Settings tab — graphics (SkyrimPrefs.ini) and server hotkeys (client settings)
+  // Settings tab - graphics (SkyrimPrefs.ini) and server hotkeys (client settings)
   graphicsLoad: ()  => ipcRenderer.invoke('graphics:load'),
   graphicsSave: (g) => ipcRenderer.invoke('graphics:save', g),
   hotkeysLoad:  ()  => ipcRenderer.invoke('hotkeys:load'),
@@ -45,14 +45,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   launchViaMO2: () => ipcRenderer.invoke('launch:viaMO2'),
   launchDirect: () => ipcRenderer.invoke('launch:direct'),
 
-  // Client files update check — { ok, updateAvailable }
+  // Client files update check - { ok, updateAvailable }
   filesUpdateCheck: () => ipcRenderer.invoke('files:updateCheck'),
 
-  // Game process state — true while Skyrim / the SKSE loader is running
+  // Game process state - true while Skyrim / the SKSE loader is running
   gameIsRunning: () => ipcRenderer.invoke('game:isRunning'),
 
   // File install
   startInstall: (mode) => ipcRenderer.send('install:start', mode),
+  cancelInstall: () => ipcRenderer.send('install:cancel'),
   onInstallProgress: (cb) =>
     ipcRenderer.on('install:progress', (_e, data) => cb(data)),
   onInstallComplete: (cb) =>
@@ -62,9 +63,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('install:complete')
   },
 
-  // Nexus Mods login
+  // Nexus Mods login (one-click SSO only)
   nexusGetUser: ()    => ipcRenderer.invoke('nexus:getUser'),
-  nexusLogin:   (key) => ipcRenderer.invoke('nexus:login', key),
   nexusLogout:  ()    => ipcRenderer.invoke('nexus:logout'),
   nexusSsoAvailable: () => ipcRenderer.invoke('nexus:ssoAvailable'),
   nexusSsoLogin:     () => ipcRenderer.invoke('nexus:ssoLogin'),

@@ -3,10 +3,9 @@ const defaultState = {};
 export const commandReducer = (state = defaultState, action) => {
   switch (action.type) {
     case "COMMAND": {
-      console.log(action.data.commandType, action.data.commandArgs);
       switch (action.data.commandType) {
         case "SHOW_ANIMLIST": {
-          return setTimeout(() => {
+          setTimeout(() => {
             window.storage.dispatch({
               type: "UPDATE_ANIMLIST_SHOW",
               data: {
@@ -15,6 +14,7 @@ export const commandReducer = (state = defaultState, action) => {
               },
             });
           }, 1);
+          break;
         }
         default:
           setTimeout(() => {

@@ -1,5 +1,5 @@
 'use strict'
-// ── Permission resolution ─────────────────────────────────────────────────────
+// Permission resolution
 // Maps Discord role IDs to flat permission strings using data/role-permissions.json.
 
 const fs   = require('fs')

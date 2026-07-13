@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { showSystemNotification } from "./systemNotification";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { MsgType } from "../../messages";
+import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
@@ -33,8 +31,10 @@ const ACTIONS: PlayerAction[] = [
   { id: 'arrest', label: 'Arrest', group: 'Justice', tmpl: '/arrest <n>' },
   { id: 'sentence_release', label: 'Sentence: release', group: 'Justice', tmpl: '/sentence <n> release' },
   { id: 'sentence_banish', label: 'Sentence: banish', group: 'Justice', tmpl: '/sentence <n> banish' },
-  { id: 'capture', label: 'Capture', group: 'Captivity', tmpl: '/capture <n>' },
-  { id: 'release', label: 'Release', group: 'Captivity', tmpl: '/release <n>' },
+  { id: 'capture', label: 'Capture', group: 'Captivity', tmpl: '' },
+  { id: 'carry', label: 'Carry', group: 'Captivity', tmpl: '' },
+  { id: 'putdown', label: 'Put down', group: 'Captivity', tmpl: '' },
+  { id: 'release', label: 'Release', group: 'Captivity', tmpl: '' },
   { id: 'down', label: 'Down', group: 'Combat', tmpl: '/down <n>' },
   { id: 'rise', label: 'Rise', group: 'Combat', tmpl: '/rise <n>' },
   { id: 'bounty', label: 'Check bounty', group: 'Info', tmpl: '/bounty check <n>' },
@@ -44,9 +44,19 @@ const ACTIONS: PlayerAction[] = [
   { id: 'nvfl', label: 'Clear NVFL', group: 'Staff', tmpl: '/nvfl clear <n>' },
 ];
 
+// Captivity actions are sent to the gamemode's CaptureSystem as custom packets
+// (keyed by the looked-at player's server form id), not as chat commands.
+const PACKET_ACTIONS: Record<string, string> = {
+  capture: 'captureRequest',
+  carry: 'carryRequest',
+  putdown: 'putdownRequest',
+  release: 'releaseRequest',
+};
+
 const events = {
   action: 'pa:action',
   close: 'pa:close',
+  trade: 'pa:trade',
   // House actions (namespaced under 'pa:' so HousingService ignores them).
   hClaim: 'pa:h:claim',
   hLock: 'pa:h:lock',
@@ -95,10 +105,10 @@ export class PlayerActionService extends ClientListener {
       this.pendingTransfer = null;
       const recipient = ref && Actor.from(ref) ? ref : null;
       if (!recipient) {
-        this.notify("Transfer cancelled — that is not a person.");
+        notifyNextUpdate(this.controller, this.sp, "Transfer cancelled - that is not a person.");
         return;
       }
-      this.sendPacket({
+      sendCustomPacket(this.controller, {
         customPacketType: "propertyRequest",
         action: "transfer",
         target: transferTarget,
@@ -108,7 +118,7 @@ export class PlayerActionService extends ClientListener {
     }
 
     if (!ref) {
-      this.notify("Look at a player, door, or container.");
+      notifyNextUpdate(this.controller, this.sp, "Look at a player, door, or container.");
       return;
     }
 
@@ -117,9 +127,10 @@ export class PlayerActionService extends ClientListener {
     if (actor && ref.getFormID() !== 0x14) {
       targetName = (ref.getName() || "").trim();
       if (!targetName) {
-        this.notify("That target has no name.");
+        notifyNextUpdate(this.controller, this.sp, "That target has no name.");
         return;
       }
+      this.playerTarget = localIdToRemoteId(ref.getFormID());
       this.mode = "player";
       logTrace(this, `Opening player-action menu for`, targetName);
       this.openMenu();
@@ -130,7 +141,7 @@ export class PlayerActionService extends ClientListener {
       logTrace(this, `Opening house menu for`, targetName, `(${this.houseTarget})`);
       this.openMenu();
     } else {
-      this.notify("Look at a player, door, or container.");
+      notifyNextUpdate(this.controller, this.sp, "Look at a player, door, or container.");
     }
   }
 
@@ -143,11 +154,28 @@ export class PlayerActionService extends ClientListener {
       this.closeMenu();
       return;
     }
+    if (key === events.trade) {
+      if (this.mode === "player" && this.playerTarget) {
+        sendCustomPacket(this.controller, { customPacketType: "tradeRequest", recipient: this.playerTarget });
+      }
+      this.closeMenu();
+      return;
+    }
     if (key === events.action) {
       const actionId = typeof e.arguments[1] === "string" ? (e.arguments[1] as string) : "";
-      const action = ACTIONS.find((a) => a.id === actionId);
-      if (action && targetName) {
-        this.sendCommand(action.tmpl.replace("<n>", targetName));
+      const packetType = PACKET_ACTIONS[actionId];
+      if (packetType) {
+        // Captivity actions go to the server's CaptureSystem by server form id.
+        if (this.playerTarget) {
+          sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
+        } else {
+          notifyNextUpdate(this.controller, this.sp, "Look at a player first.");
+        }
+      } else {
+        const action = ACTIONS.find((a) => a.id === actionId);
+        if (action && targetName) {
+          this.sendCommand(action.tmpl.replace("<n>", targetName));
+        }
       }
       this.closeMenu();
       return;
@@ -156,21 +184,21 @@ export class PlayerActionService extends ClientListener {
     const target = this.houseTarget;
     switch (key) {
       case events.hClaim:
-        this.sendPacket({ customPacketType: "propertyRequest", action: "claim", target });
+        sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "claim", target });
         this.closeMenu();
         break;
       case events.hLock:
-        this.sendPacket({ customPacketType: "propertyRequest", action: "lock", target });
+        sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "lock", target });
         this.closeMenu();
         break;
       case events.hUnlock:
-        this.sendPacket({ customPacketType: "propertyRequest", action: "unlock", target });
+        sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "unlock", target });
         this.closeMenu();
         break;
       case events.hTransfer:
         this.pendingTransfer = target;
         this.closeMenu();
-        this.notify("Look at the new owner and press the interact key.");
+        notifyNextUpdate(this.controller, this.sp, "Look at the new owner and press the interact key.");
         break;
       default:
         break;
@@ -179,21 +207,7 @@ export class PlayerActionService extends ClientListener {
 
   private sendCommand(text: string): void {
     logTrace(this, `Player-action command:`, text);
-    this.sendPacket({ type: "cef::chat:send", data: text });
-  }
-
-  private sendPacket(payload: Record<string, unknown>): void {
-    const message: CustomPacketMessage = {
-      t: MsgType.CustomPacket,
-      contentJsonDump: JSON.stringify(payload),
-    };
-    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
-  }
-
-  private notify(text: string): void {
-    this.controller.once("update", () => {
-      showSystemNotification(this.sp, text);
-    });
+    sendCustomPacket(this.controller, { type: "cef::chat:send", data: text });
   }
 
   private openMenu(): void {
@@ -215,6 +229,7 @@ export class PlayerActionService extends ClientListener {
   // Runs inside the CEF browser. Only injected vars + window are available.
   private playerWidgetSetter = () => {
     const elements: any[] = [];
+    elements.push({ type: "button", text: "Trade", tags: [], click: () => window.skyrimPlatform.sendMessage(events.trade) });
     let lastGroup = "";
     for (let i = 0; i < ACTIONS.length; i++) {
       const a = ACTIONS[i];
@@ -254,5 +269,6 @@ export class PlayerActionService extends ClientListener {
   private menuOpen = false;
   private mode: "player" | "house" = "player";
   private houseTarget = 0;
+  private playerTarget = 0;
   private pendingTransfer: number | null = null;
 }

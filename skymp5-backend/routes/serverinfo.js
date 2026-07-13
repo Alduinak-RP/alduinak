@@ -81,10 +81,10 @@ router.get('/', async (req, res) => {
     masterKey:           config.serverMasterKey  || null,
     masterUrl:           config.masterUrl         || null,
     locked:              config.serverLocked,
-    // Server's esp/esm load order (basenames, in order) — null if offline
+    // Server's esp/esm load order (basenames, in order); null if offline
     loadOrder:           await getGameLoadOrder(),
-    // lockedAllowList intentionally omitted — never expose the allow-list to clients.
-    // Session-aware fields — only meaningful when X-Session header is present
+    // lockedAllowList intentionally omitted: never expose the allow-list to clients.
+    // Session-aware fields: only meaningful when X-Session header is present
     sessionValid,
     allowed,
     publicKeys: loadPublicKeys(),
@@ -92,3 +92,6 @@ router.get('/', async (req, res) => {
 })
 
 module.exports = router
+// Exposed for the launch-check route, which compares a client's reported
+// plugin list against the game server's current load order.
+module.exports.getGameLoadOrder = getGameLoadOrder

@@ -18,7 +18,7 @@ const serverSettings = [
   { key: 'master',      label: 'Master URL',    type: 'text', group: 'Mode & auth', help: 'Master API URL for online-mode session validation. Empty = offline.' },
   { key: 'masterKey',   label: 'Master key',    type: 'secret', group: 'Mode & auth', help: 'Shared secret; must match the backend SERVER_MASTER_KEY.' },
   { key: 'masterApiAuthToken', label: 'Master API auth token', type: 'secret', group: 'Mode & auth', help: 'Must match the backend MASTER_API_AUTH_TOKEN.' },
-  { key: 'enableConsoleCommandsForAll', label: 'Console commands for all', type: 'bool', group: 'Mode & auth', help: 'Allow every player to run console commands (testing only — dangerous).' },
+  { key: 'enableConsoleCommandsForAll', label: 'Console commands for all', type: 'bool', group: 'Mode & auth', help: 'Allow every player to run console commands (testing only - dangerous).' },
 
   // Gameplay
   { key: 'characterSelect',         label: 'Character select',      type: 'bool',   group: 'Gameplay', help: 'Show the character-select screen on join.' },
@@ -26,6 +26,9 @@ const serverSettings = [
   { key: 'isPapyrusHotReloadEnabled', label: 'Papyrus hot reload',  type: 'bool',   group: 'Gameplay', help: 'Reload compiled .pex scripts on change.' },
   { key: 'enableGamemodeDataUpdatesBroadcast', label: 'Broadcast gamemode updates', type: 'bool', group: 'Gameplay', help: 'Push gamemode script updates to connected clients.' },
   { key: 'locale',                  label: 'Locale file',           type: 'text',   group: 'Gameplay', help: 'File in data/localization (no .json) for M.GetText().' },
+  { key: 'manaclesFormId',          label: 'Manacles item',         type: 'text',   group: 'Gameplay', help: 'Form id (number or "0x..." string) of the item a captor must hold to restrain a player. Defaults to vanilla prisoner cuffs 0x0005DC02.' },
+  { key: 'captiveAnimEvent',        label: 'Captive anim event',    type: 'text',   group: 'Gameplay', help: 'Behaviour-graph event played on a restrained player. Leave empty for the default bound-hands pose.' },
+  { key: 'carrierAnimEvent',        label: 'Carrier anim event',    type: 'text',   group: 'Gameplay', help: 'Behaviour-graph event played on a player carrying someone. Leave empty for the default hold pose.' },
 
   // Data & storage
   { key: 'dataDir',        label: 'Data directory', type: 'text',   group: 'Data & storage', placeholder: 'data', help: 'ESMs / ESPs / UI / scripts.' },
@@ -43,10 +46,10 @@ const serverSettings = [
   { key: 'metricsAuth',   label: 'Metrics auth',   type: 'json', group: 'Advanced', help: '{ user, password } for /metrics basic auth.' },
   { key: 'damageMultFormulaSettings', label: 'Damage formula', type: 'json', group: 'Advanced' },
   { key: 'additionalServerSettings',  label: 'Additional settings (GitHub)', type: 'json', group: 'Advanced' },
-  { key: 'discordAuth',   label: 'Discord auth',   type: 'json', group: 'Advanced', help: 'Discord bot integration: { botToken, guilds:[{ guildId, banRoleId, eventLogChannelId }] }. Holds a bot token — keep it secret.' },
+  { key: 'discordAuth',   label: 'Discord auth',   type: 'json', group: 'Advanced', help: 'Discord bot integration: { botToken, guilds:[{ guildId, banRoleId, eventLogChannelId }] }. Holds a bot token - keep it secret.' },
 ]
 
-// backend .env — the Express backend configuration. `secret: true` masks the value.
+// backend .env - the Express backend configuration. `secret: true` masks the value.
 const backendEnv = [
   // HTTP / relay
   { key: 'PORT',         label: 'HTTP port',       type: 'number', group: 'HTTP & relay', help: 'Express backend listen port.' },
@@ -85,7 +88,7 @@ const backendEnv = [
   { key: 'DISCORD_DASHBOARD_REDIRECT_URI', label: 'Dashboard redirect URI', type: 'text', group: 'Admin dashboard' },
   { key: 'DASHBOARD_DISCORD_IDS', label: 'Dashboard Discord IDs', type: 'text',   group: 'Admin dashboard', help: 'Comma-separated Discord user IDs.' },
   { key: 'WEBSITE_URL',           label: 'Website URL',           type: 'text',   group: 'Admin dashboard' },
-  { key: 'ADMIN_URL',             label: 'Admin service URL',     type: 'text',   group: 'Admin dashboard', help: 'Local SkyMP-Admin service — never expose publicly.' },
+  { key: 'ADMIN_URL',             label: 'Admin service URL',     type: 'text',   group: 'Admin dashboard', help: 'Local SkyMP-Admin service - never expose publicly.' },
   { key: 'ADMIN_TOKEN',           label: 'Admin token',           type: 'secret', group: 'Admin dashboard' },
 
   // Metrics

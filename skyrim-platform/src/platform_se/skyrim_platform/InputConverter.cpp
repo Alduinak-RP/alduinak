@@ -15,7 +15,7 @@ wchar_t InputConverter::VkCodeToChar(uint8_t virtualKeyCode, bool shiftDown,
   if (shiftDown) {
     keyboardState[VK_SHIFT] = 0xff;
   }
-  
+
   if (capsLockOn) {
     keyboardState[VK_CAPITAL] = 0x01;
   }

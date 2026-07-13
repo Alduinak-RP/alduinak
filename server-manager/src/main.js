@@ -39,21 +39,39 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 	
 const serviceByKey = Object.fromEntries(config.services.map(s => [s.key, s]))
 
-// nssm <verb> <service ...args> — returns trimmed stdout (status / message).
-// nssm prints UTF-16LE; read as utf8 it interleaves NUL bytes — strip them.
+// nssm <verb> <service ...args> - returns trimmed stdout (status / message).
+// nssm prints UTF-16LE; read as utf8 it interleaves NUL bytes, so strip them.
 function nssm(verb, name, ...rest) {
   return new Promise(resolve => {
-    execFile(config.nssm, [verb, name, ...rest], { windowsHide: true, timeout: 30000 }, (err, stdout, stderr) => {
+    execFile(config.nssm, [verb, name, ...rest], { windowsHide: true, timeout: verb === 'status' ? 5000 : 30000 }, (err, stdout, stderr) => {
       const clean = String(stdout || stderr || (err && err.message) || '').replace(/\u0000/g, '').trim()
       resolve(clean)
     })
   })
 }
 
+// nssm start/stop returns before the service settles (exiting non-zero on the
+// transient *_PENDING states), so poll `nssm status` until the target state.
+async function awaitStatus(name, want) {
+  const deadline = Date.now() + 30000
+  for (;;) {
+    const status = await nssm('status', name)
+    if (status === want) return { ok: true }
+    if (!/^SERVICE_/.test(status) || Date.now() >= deadline) return { ok: false, status }
+    await new Promise(r => setTimeout(r, 1000))
+  }
+}
+
+async function act(name, verb) {
+  await nssm(verb, name)
+  const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
+  if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
+  return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
+}
+
 async function statusAll() {
-  const out = {}
-  for (const s of config.services) out[s.key] = await nssm('status', s.name)
-  return out
+  const pairs = await Promise.all(config.services.map(async s => [s.key, await nssm('status', s.name)]))
+  return Object.fromEntries(pairs)
 }
 
 ipcMain.handle('services:status', () => statusAll())
@@ -63,25 +81,27 @@ ipcMain.handle('service:action', async (_e, key, action) => {
   const svc = serviceByKey[key]
   if (!svc) return { ok: false, error: `unknown service ${key}` }
   const steps = []
-  const stop  = async () => steps.push(`${svc.label}: ${await nssm('stop', svc.name)}`)
-  const start = async () => steps.push(`${svc.label}: ${await nssm('start', svc.name)}`)
-  if (action === 'stop') await stop()
-  else if (action === 'start') await start()
-  else if (action === 'restart') { await stop(); await new Promise(r => setTimeout(r, 1500)); await start() }
+  let ok = true
+  const step = async verb => { const r = await act(svc.name, verb); ok = ok && r.ok; steps.push(`${svc.label}: ${r.text}`); return r.ok }
+  if (action === 'stop') await step('stop')
+  else if (action === 'start') await step('start')
+  else if (action === 'restart') { if (await step('stop')) await step('start') }
   else return { ok: false, error: `unknown action ${action}` }
-  return { ok: true, steps, status: await statusAll() }
+  return { ok, steps, status: await statusAll() }
 })
 
-// Act on every service in order (stop order reversed) — the "all" controls.
+// Act on every service in order (stop order reversed) - the "all" controls.
 ipcMain.handle('services:action', async (_e, action) => {
   const steps = []
-  const doStop  = async () => { for (const s of [...config.services].reverse()) steps.push(`${s.label}: ${await nssm('stop', s.name)}`) }
-  const doStart = async () => { for (const s of config.services)                steps.push(`${s.label}: ${await nssm('start', s.name)}`) }
+  let ok = true
+  const step = async (s, verb) => { const r = await act(s.name, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
+  const doStop  = async () => { for (const s of [...config.services].reverse()) await step(s, 'stop') }
+  const doStart = async () => { for (const s of config.services)                await step(s, 'start') }
   if (action === 'stop') await doStop()
   else if (action === 'start') await doStart()
-  else if (action === 'restart') { await doStop(); await new Promise(r => setTimeout(r, 2000)); await doStart() }
+  else if (action === 'restart') { await doStop(); await doStart() }
   else return { ok: false, error: `unknown action ${action}` }
-  return { ok: true, steps, status: await statusAll() }
+  return { ok, steps, status: await statusAll() }
 })
 
 const tailState = {}   // file -> last byte offset
@@ -130,7 +150,7 @@ function pollLogs() {
         fs.closeSync(fd)
         tailState[file] = stat.size
         send('log:data', { source: label, text: buf.toString('utf8') })
-      } catch { /* mid-write race — retry next tick */ }
+      } catch { /* mid-write race, retry next tick */ }
     }
   }
 }
@@ -140,9 +160,6 @@ function startLogTail() {
   setInterval(pollLogs, 1500)
   setInterval(discoverLogTargets, 30000)   // services may be re-installed/reconfigured
 }
-
-ipcMain.handle('log:dir', () => config.logDir)
-ipcMain.handle('log:targets', () => logTargets.map(t => ({ label: t.label, file: t.file })))
 
 const consoleRelay = {
   ws: null, connected: false, timer: null,
@@ -165,7 +182,7 @@ const consoleRelay = {
   },
   scheduleReconnect() { if (this.timer) return; this.timer = setTimeout(() => { this.timer = null; this.connect() }, 4000) },
   command(text) {
-    if (!this.connected || !this.ws) return { ok: false, error: 'relay not connected — is the backend running?' }
+    if (!this.connected || !this.ws) return { ok: false, error: 'relay not connected - is the backend running?' }
     try { this.ws.send(JSON.stringify({ type: 'console_command', text })); return { ok: true } }
     catch (err) { return { ok: false, error: err.message } }
   },
@@ -202,40 +219,41 @@ function setRouteVersion(file, version) {
 function setEnvVar(file, key, value) {
   let txt = ''
   try { txt = fs.readFileSync(file, 'utf8') } catch {}
+  // Strip CR/LF so a value cannot inject extra KEY=value lines into the .env.
+  value = String(value).replace(/[\r\n]+/g, ' ')
   const line = `${key}=${value}`
   const re = new RegExp(`^[ \\t]*${key}[ \\t]*=.*$`, 'm')
-  if (re.test(txt)) txt = txt.replace(re, line)
+  // Replace via a function so $-sequences in the value are not treated as patterns.
+  if (re.test(txt)) txt = txt.replace(re, () => line)
   else txt = txt.replace(/\s*$/, '') + `\n${line}\n`
   fs.writeFileSync(file, txt)
 }
 
-ipcMain.handle('launcher:getVersion', () => {
-  try { return { version: JSON.parse(fs.readFileSync(config.paths.launcherPkg, 'utf8')).version } }
-  catch (err) { return { version: '', error: err.message } }
-})
-ipcMain.handle('launcher:setVersion', (_e, version) => {
-  version = String(version || '').trim()
-  if (!/^\d+\.\d+\.\d+/.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
-  try {
-    setJsonVersion(config.paths.launcherPkg, version)
-    setRouteVersion(config.paths.versionRoute, version)
-    return { ok: true }
-  } catch (err) { return { ok: false, error: err.message } }
-})
+// Anchored at both ends: the version is spliced into backend source
+// (routes/version.js) and the backend .env, so trailing garbage must be rejected.
+const SEMVER_RE = /^\d+\.\d+\.\d+$/
 
-ipcMain.handle('client:getVersion', () => {
-  try { return { version: JSON.parse(fs.readFileSync(config.paths.clientPkg, 'utf8')).version } }
-  catch (err) { return { version: '', error: err.message } }
-})
-ipcMain.handle('client:setVersion', (_e, version) => {
-  version = String(version || '').trim()
-  if (!/^\d+\.\d+\.\d+/.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
-  try {
-    setJsonVersion(config.paths.clientPkg, version)
-    setEnvVar(config.paths.backendEnv, 'CLIENT_VERSION', version)
-    return { ok: true }
-  } catch (err) { return { ok: false, error: err.message } }
-})
+// Register the getVersion/setVersion IPC pair for one component. The getter reads
+// pkgPath's version; the setter validates the semver, writes pkgPath, then runs
+// each extra writer (e.g. routes/version.js or the backend .env).
+function registerVersionIpc(name, pkgPath, extraWriteFns) {
+  ipcMain.handle(`${name}:getVersion`, () => {
+    try { return { version: JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version } }
+    catch (err) { return { version: '', error: err.message } }
+  })
+  ipcMain.handle(`${name}:setVersion`, (_e, version) => {
+    version = String(version || '').trim()
+    if (!SEMVER_RE.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
+    try {
+      setJsonVersion(pkgPath, version)
+      for (const fn of extraWriteFns) fn(version)
+      return { ok: true }
+    } catch (err) { return { ok: false, error: err.message } }
+  })
+}
+
+registerVersionIpc('launcher', config.paths.launcherPkg, [v => setRouteVersion(config.paths.versionRoute, v)])
+registerVersionIpc('client', config.paths.clientPkg, [v => setEnvVar(config.paths.backendEnv, 'CLIENT_VERSION', v)])
 
 function backendModule(name) {
   return require(path.join(config.paths.backend, 'sources', name))
@@ -337,7 +355,7 @@ ipcMain.handle('players:update', (_e, profileId, patch) => {
   } catch (err) { return { ok: false, error: err.message } }
 })
 
-// ── Settings tab (structured forms) ────────────────────────────────────────────
+// Settings tab (structured forms)
 
 ipcMain.handle('settings:schema', () => schema)
 
@@ -424,7 +442,7 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw) => {
   } catch (err) { return { ok: false, error: err.message } }
 })
 
-// ── Modlist tab (unchanged) ────────────────────────────────────────────────────
+// Modlist tab
 
 ipcMain.handle('modlist:read', () => {
   const profileDir = path.join(config.mo2Root, 'profiles', config.profile)
@@ -456,6 +474,8 @@ ipcMain.handle('modlist:updateManifest', async () => {
   if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
   const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile]
   if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
-  const r = await b.run('node', args, config.paths.backend, 'compile-manifest')
+  // Spawn node.exe directly (shell=false): no cmd.exe means config-derived paths
+  // with spaces or shell metacharacters cannot split args or be interpreted.
+  const r = await b.run('node', args, config.paths.backend, 'compile-manifest', null, false)
   return r.ok ? { ok: true } : { ok: false, error: 'compile-manifest failed' }
 })

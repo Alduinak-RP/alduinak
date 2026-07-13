@@ -3,14 +3,14 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
 /**
- * Merge pipeline — copies the client source directory into the file bucket
+ * Merge pipeline: copies the client source directory into the file bucket
  * that the launcher downloads, and builds the distributable zip.
  *
- *   build/dist/client (via `npm run populate`)  →  build/client-files/root/
- *   build/client-files/root/                    →  build/client-files/<zip>
- *                                               →  data/files-version.json
+ *   build/dist/client (via `npm run populate`)  ->  build/client-files/root/
+ *   build/client-files/root/                    ->  build/client-files/<zip>
+ *                                               ->  data/files-version.json
  *
- * SKSE is NOT included here — it is managed by the user via the Vortex collection.
+ * SKSE is NOT included here; it is managed by the user via the Vortex collection.
  *
  * Run standalone:  node scripts/merge-files.js
  * Called by:       scripts/setup-client.js  and  routes/webhook.js
@@ -20,7 +20,7 @@ const path               = require('path')
 const fs                 = require('fs')
 const { execFileSync }   = require('child_process')
 const archiver           = require('archiver')
-const config     		 = require('../config')
+const config             = require('../config')
 
 const ROOT = path.join(__dirname, '..')
 
@@ -29,13 +29,13 @@ const OUTPUT_DIR   = path.join(config.clientFilesDir, 'root')
 const ZIP_PATH     = path.join(config.clientFilesDir, config.clientZipName)
 const VERSION_FILE = path.join(ROOT, 'data', 'files-version.json')
 
-// ── Version helpers ───────────────────────────────────────────────────────────
+// Version helpers
 
 /**
  * Short git commit hash identifying the client files version.
  * Tries the legacy sources/client checkout first, then the skyrp monorepo
  * this backend lives in (the client is built from skymp5-client there).
- * This changes exactly when new commits are pulled — never on mere restarts.
+ * This changes exactly when new commits are pulled, never on mere restarts.
  * Falls back to 'nogit' if neither directory is a git repo.
  */
 function clientGitHash() {
@@ -46,11 +46,11 @@ function clientGitHash() {
         stdio:    ['ignore', 'pipe', 'ignore'],
       }).trim()
     } catch { /* try next */ }
-   }
+  }
   return 'nogit'
- }
+}
 
-// ── File copy ─────────────────────────────────────────────────────────────────
+// File copy
 
 function copyDir(srcDir, destDir, skipNames = new Set()) {
   if (!fs.existsSync(srcDir)) {
@@ -74,7 +74,7 @@ function copyDir(srcDir, destDir, skipNames = new Set()) {
   return count
 }
 
-// ── Zip builder ───────────────────────────────────────────────────────────────
+// Zip builder
 
 function buildZip(srcDir, zipPath) {
   return new Promise((resolve, reject) => {
@@ -91,7 +91,7 @@ function buildZip(srcDir, zipPath) {
   })
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// Main export
 
 async function mergeSourcesIntoRoot() {
   const startMs = Date.now()
@@ -105,18 +105,16 @@ async function mergeSourcesIntoRoot() {
   const SKIP_ALWAYS = new Set(['.git', '.gitignore', '.gitattributes'])
 
   const clientFiles = copyDir(CLIENT_SRC, OUTPUT_DIR, SKIP_ALWAYS)
-  console.log(`[merge]   ${clientFiles} file(s) from client`)
-
   console.log(`[merge] Files merged: ${clientFiles} total in ${Date.now() - startMs}ms`)
 
-  // ── Build distributable zip ──────────────────────────────────────────────────
+  // Build distributable zip
   console.log('[merge] Building zip…')
   const zipStart = Date.now()
   const zipSize  = await buildZip(OUTPUT_DIR, ZIP_PATH)
   console.log(`[merge] Zip built: ${(zipSize / 1024 / 1024).toFixed(1)} MB in ${Date.now() - zipStart}ms`)
 
-  // ── Write version file ───────────────────────────────────────────────────────
-  // Set CLIENT_VERSION .env to set version for update signal
+  // Write version file
+  // Set CLIENT_VERSION in .env to override the update-signal version.
   const version = (process.env.CLIENT_VERSION || '').trim() || clientGitHash()
   fs.mkdirSync(path.dirname(VERSION_FILE), { recursive: true })
   fs.writeFileSync(VERSION_FILE, JSON.stringify({
@@ -130,7 +128,7 @@ async function mergeSourcesIntoRoot() {
   return { clientFiles, total: clientFiles, zipSize }
 }
 
-// ── CLI entry ─────────────────────────────────────────────────────────────────
+// CLI entry
 
 if (require.main === module) {
   mergeSourcesIntoRoot().catch(err => {

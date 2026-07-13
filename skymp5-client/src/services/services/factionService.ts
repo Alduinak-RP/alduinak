@@ -1,5 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { showSystemNotification } from "./systemNotification";
+import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { MsgType } from "../../messages";
@@ -65,7 +65,7 @@ let members: FactionMember[] = [];
  * to ask the server for your hold's roster; the server validates that you may
  * manage a hold and replies with the member list.
  *
- * Protocol — all messages are {@link MsgType.CustomPacket} with a JSON dump.
+ * Protocol - all messages are {@link MsgType.CustomPacket} with a JSON dump.
  *
  *   Client -> Server, open my hold roster:
  *     { "customPacketType": "factionMenuRequest" }
@@ -110,18 +110,12 @@ export class FactionService extends ClientListener {
     }
   }
 
-  private notify(text: string): void {
-    this.controller.once("update", () => {
-      showSystemNotification(this.sp, text);
-    });
-  }
-
   private onButtonEvent(e: ButtonEvent): void {
     if (e.code !== this.menuKey || !e.isDown) {
       return;
     }
     if (this.sp.browser.isFocused()) {
-      this.notify("Faction menu: press Escape to leave the chat box, then G.");
+      notifyNextUpdate(this.controller, this.sp, "Faction menu: press Escape to leave the chat box, then G.");
       return;
     }
 
@@ -131,7 +125,7 @@ export class FactionService extends ClientListener {
       const ref = this.sp.Game.getCurrentCrosshairRef();
       const recipient = ref && Actor.from(ref) ? ref : null;
       if (!recipient || recipient.getFormID() === 0x14) {
-        this.notify(strings.addCancelled);
+        notifyNextUpdate(this.controller, this.sp, strings.addCancelled);
         return;
       }
       this.sendRequest({ action: "add", recipient: localIdToRemoteId(recipient.getFormID()) });
@@ -142,8 +136,8 @@ export class FactionService extends ClientListener {
       return;
     }
     // Ask the server for the roster; it decides whether we may manage a hold.
-    this.notify("Requesting your hold roster…");
-    this.sendPacket({ customPacketType: "factionMenuRequest" });
+    notifyNextUpdate(this.controller, this.sp, "Requesting your hold roster…");
+    sendCustomPacket(this.controller, { customPacketType: "factionMenuRequest" });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -157,7 +151,21 @@ export class FactionService extends ClientListener {
     switch (content["customPacketType"]) {
       case "factionMenu":
         title = typeof content["title"] === "string" ? content["title"] as string : strings.title;
-        members = Array.isArray(content["members"]) ? content["members"] as FactionMember[] : [];
+        // Sanitize the server-supplied roster: skip non-objects and coerce
+        // profileId to a number so the browser-side setter cannot throw.
+        const rawMembers = Array.isArray(content["members"]) ? content["members"] : [];
+        members = [];
+        for (let i = 0; i < rawMembers.length; i++) {
+          const m: any = rawMembers[i];
+          if (!m || typeof m !== "object") {
+            continue;
+          }
+          const profileId = Number(m.profileId);
+          if (isNaN(profileId)) {
+            continue;
+          }
+          members.push({ profileId, name: String(m.name ?? ''), rank: typeof m.rank === "string" ? m.rank : undefined });
+        }
         logTrace(this, `Opening faction menu`, title, `(${members.length} members)`);
         this.openMenu();
         break;
@@ -168,7 +176,7 @@ export class FactionService extends ClientListener {
         break;
       case "factionNotice":
         if (typeof content["text"] === "string") {
-          this.notify(content["text"]);
+          notifyNextUpdate(this.controller, this.sp, content["text"]);
         }
         break;
       default:
@@ -188,7 +196,7 @@ export class FactionService extends ClientListener {
         // Defer to a second key press where the player looks at the new member.
         this.pendingAdd = true;
         this.closeMenu();
-        this.notify(strings.lookAtNewMember);
+        notifyNextUpdate(this.controller, this.sp, strings.lookAtNewMember);
         break;
       case events.remove:
         this.sendRequest({ action: "remove", profileId });
@@ -209,18 +217,7 @@ export class FactionService extends ClientListener {
   }
 
   private sendRequest(payload: Record<string, unknown>): void {
-    this.sendPacket({ customPacketType: "factionRequest", ...payload });
-  }
-
-  private sendPacket(payload: Record<string, unknown>): void {
-    const message: CustomPacketMessage = {
-      t: MsgType.CustomPacket,
-      contentJsonDump: JSON.stringify(payload),
-    };
-    this.controller.emitter.emit("sendMessage", {
-      message,
-      reliability: "reliable",
-    });
+    sendCustomPacket(this.controller, { customPacketType: "factionRequest", ...payload });
   }
 
   private openMenu(): void {
@@ -259,7 +256,7 @@ export class FactionService extends ClientListener {
     } else {
       for (let i = 0; i < members.length; i++) {
         const m = members[i];
-        const label = (m.name || `#${m.profileId}`) + (m.rank ? ` — ${m.rank}` : "");
+        const label = (m.name || `#${m.profileId}`) + (m.rank ? ` - ${m.rank}` : "");
         widget.elements.push({ type: "text", text: label, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
         widget.elements.push({
           type: "button",
@@ -289,9 +286,9 @@ export class FactionService extends ClientListener {
       click: () => window.skyrimPlatform.sendMessage(events.close),
     });
 
-    // Preserve any other widgets (e.g. the persistent chat) — only replace ours.
+    // Preserve any other widgets 
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== 9);
-    window.skyrimPlatform.widgets.set([...others, widget]);
+    window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
   private menuKey: DxScanCode = DxScanCode.G;

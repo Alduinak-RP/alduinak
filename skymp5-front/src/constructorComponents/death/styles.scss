@@ -1,0 +1,103 @@
+.death-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(20, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.9) 100%);
+  z-index: 9000;
+  pointer-events: auto;
+  font-family: 'Futura', 'Trebuchet MS', sans-serif;
+  color: #d8cfc0;
+
+  &__panel {
+    width: 620px;
+    max-width: 90vw;
+    padding: 40px 44px;
+    background: rgba(8, 8, 10, 0.92);
+    border: 1px solid #5a4a32;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), inset 0 0 24px rgba(0, 0, 0, 0.6);
+    text-align: center;
+  }
+
+  &__title {
+    margin: 0 0 18px;
+    font-size: 38px;
+    letter-spacing: 2px;
+    color: #b33;
+    text-shadow: 0 0 12px rgba(180, 30, 30, 0.6);
+  }
+
+  &__lead {
+    font-size: 18px;
+    margin: 0 0 16px;
+  }
+
+  &__count {
+    color: #e8c060;
+    font-weight: bold;
+    font-size: 22px;
+  }
+
+  &__body {
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 12px;
+    color: #b8ad9a;
+  }
+
+  &__hint {
+    font-size: 14px;
+    margin: 20px 0 14px;
+    color: #d8cfc0;
+    font-style: italic;
+  }
+
+  &__choices {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  &__btn {
+    cursor: pointer;
+    padding: 12px 18px;
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: #e8e0d0;
+    background: rgba(40, 36, 30, 0.9);
+    border: 1px solid #6a5840;
+    transition: background 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+      background: rgba(70, 60, 46, 0.95);
+      border-color: #9a8050;
+    }
+
+    &--permadeath:hover { border-color: #b33; color: #f0b0b0; }
+    &--danger { background: rgba(80, 20, 20, 0.9); border-color: #b33; }
+    &--danger:hover { background: rgba(120, 24, 24, 0.95); }
+    &--cancel { background: rgba(30, 30, 34, 0.9); }
+  }
+
+  &__confirm-title {
+    margin: 0 0 16px;
+    font-size: 26px;
+    color: #e8c060;
+  }
+
+  &__confirm-text {
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0 0 26px;
+    color: #c8bda8;
+  }
+
+  &__confirm-actions {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+
+    .death-screen__btn { flex: 1; max-width: 200px; }
+  }
+}

@@ -16,7 +16,7 @@
 
   <div id="app">
 
-    <!-- ── Top bar ──────────────────────────────────── -->
+    <!-- Top bar -->
     <header class="topbar">
       <div class="topbar-logo">
         <div class="logo-emblem">RP</div>
@@ -42,7 +42,7 @@
       </div>
     </header>
 
-    <!-- ── Main content ─────────────────────────────── -->
+    <!-- Main content -->
     <main class="main">
       <div class="main-header">
         <div class="status-badges">
@@ -55,7 +55,7 @@
         <a class="read-more" id="btn-read-more">READ MORE &rarr;</a>
       </div>
 
-      <!-- ── Server info strip ──────────────────────── -->
+      <!-- Server info strip -->
       <div class="server-info-strip" id="server-info-strip" hidden>
         <span class="sinfo-item" id="sinfo-name"></span>
         <span class="sinfo-sep">|</span>
@@ -68,7 +68,7 @@
         <span class="sinfo-item sinfo-locked" id="sinfo-locked" hidden>&#128274; Server locked</span>
       </div>
 
-      <!-- ── Two-column content layout ─────────────── -->
+      <!-- Two-column content layout -->
       <div class="content-layout">
 
         <!-- News -->
@@ -95,7 +95,7 @@
       </div>
     </main>
 
-    <!-- ── Bottom bar ────────────────────────────────── -->
+    <!-- Bottom bar -->
     <footer class="bottombar">
       <div class="bottombar-info">
         <div class="info-item">
@@ -112,11 +112,13 @@
           <span class="info-value" id="footer-server-name">—</span>
           <select class="footer-server-select" id="footer-server-select" hidden></select>
         </div>
+        <!-- Footer player count hidden for now: the topbar badge shows it.
         <div class="info-divider"></div>
         <div class="info-item">
           <span class="info-label">PLAYERS</span>
           <span class="info-value" id="footer-players">—</span>
         </div>
+        -->
         <div class="info-divider"></div>
         <span class="connect-warning" id="connect-warning"></span>
       </div>
@@ -128,7 +130,7 @@
 
   </div>
 
-  <!-- ── Settings modal ───────────────────────────── -->
+  <!-- Settings modal -->
   <div class="modal-overlay" id="modal-settings" hidden>
     <div class="modal-box">
       <div class="modal-header">
@@ -145,7 +147,7 @@
 
       <div class="modal-body">
 
-        <!-- ── Installation tab ── -->
+        <!-- Installation tab -->
         <div class="tab-panel" id="tab-install">
 
           <div class="settings-group">
@@ -158,7 +160,7 @@
             <p class="setting-hint">Skyrim Install Location - Needs to be a clean install</p>
           </div>
 
-          <div class="settings-group">
+          <div class="settings-group" id="isolated-install-group">
             <label class="setting-label">Game Installation</label>
             <div class="vortex-status-row">
             <button class="btn-detect-vortex" id="btn-create-isolated">Choose Install Location</button>
@@ -179,7 +181,7 @@
 		  
         </div>
 
-        <!-- ── Settings tab ── -->
+        <!-- Settings tab -->
         <div class="tab-panel" id="tab-settings" hidden>
 
           <details class="settings-collapse" open>
@@ -223,12 +225,12 @@
           <details class="settings-collapse">
             <summary>Game Hotkeys</summary>
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-invert-y" /><span>Invert Y axis</span></label>
-            <p class="setting-hint">Full control remapping is coming soon — remap other controls in-game for now.</p>
+            <p class="setting-hint">Full control remapping is coming soon - remap other controls in-game for now.</p>
           </details>
 
         </div>
 
-        <!-- ── Troubleshooting tab ── -->
+        <!-- Troubleshooting tab -->
         <div class="tab-panel" id="tab-trouble" hidden>
 
           <div class="settings-group">
@@ -270,7 +272,7 @@
 
         </div>
 
-        <!-- ── Actions (always visible) ── -->
+        <!-- Actions (always visible) -->
         <div class="modal-actions">
           <button class="btn-save" id="btn-save">Save Settings</button>
         </div>
@@ -278,38 +280,8 @@
     </div>
   </div>
 
-  <!-- ── Nexus login modal ────────────────────────── -->
-  <div class="modal-overlay" id="modal-nexus" hidden>
-    <div class="modal-box">
-      <div class="modal-header">
-        <span class="modal-title">Nexus Mods Login</span>
-        <button class="modal-close" id="nexus-modal-close" title="Close">&#10005;</button>
-      </div>
-      <div class="modal-body">
-        <div class="settings-group" id="nexus-sso-group" hidden>
-          <button class="btn-install" id="nexus-sso-login">Login via Nexus Mods website</button>
-          <p class="setting-hint">Opens nexusmods.com in your browser — click Authorise and you're done.</p>
-        </div>
-        <div class="settings-group">
-          <label class="setting-label">Personal API Key</label>
-          <p class="setting-hint">
-            Copy the key from your
-            <a href="#" id="nexus-keys-link">Nexus Mods API keys page</a>
-            and paste it below. Premium accounts get fully automatic mod
-            downloads; free accounts use the browser download buttons.
-          </p>
-          <div class="setting-path-row">
-            <input class="setting-input" id="nexus-key-input" type="password"
-                   placeholder="Paste your API key…" />
-            <button class="btn-browse" id="nexus-key-save">Login</button>
-          </div>
-          <div class="install-status" id="nexus-login-status"></div>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- ── Metrics modal ────────────────────────────── -->
+  <!-- Metrics modal -->
   <div class="modal-overlay" id="modal-metrics" hidden>
     <div class="modal-box modal-box--wide">
       <div class="modal-header">

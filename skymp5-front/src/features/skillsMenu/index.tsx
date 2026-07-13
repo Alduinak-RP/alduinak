@@ -65,22 +65,6 @@ const SkillsMenu = ({ send }: { send: (message: string) => void }) => {
     window.addEventListener('updateSkillMenu', fetchData);
     window.addEventListener('initSkillMenu', init);
     window.addEventListener('skymp5-client:browserUnfocused', quitHandler);
-    // !Important: Run commented code to dispatch event
-    // window.dispatchEvent(
-    //   new CustomEvent('updateSkillMenu', {
-    //     detail: {
-    //       exp: 800,
-    //       mem: 1000,
-    //       perks: {
-    //         saltmaker: 1,
-    //         weapon: 1,
-    //         leather: 3,
-    //         jewelry: 2,
-    //         clother: 4
-    //       }
-    //     }
-    //   })
-    // );
     return () => {
       setplayerData(undefined);
       window.removeEventListener('updateSkillMenu', fetchData);
