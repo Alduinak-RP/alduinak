@@ -4,5 +4,19 @@
     "required": true,
     "enabled": true,
     "source": "backend"
+  },
+  {
+    "name": "EngineFixes",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 17230
+  },
+  {
+    "name": "Address Library for SKSE Plugins",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 32444
   }
 ]

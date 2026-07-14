@@ -1508,6 +1508,21 @@ function openDownloadList(downloadsDir) {
 // verify each archive, extract once, apply per-file directives) so every player
 // gets the reference install's exact, byte-identical layout.
 
+// Download SKSE (edition-aware) and install it into the game root. Shared by
+// the manifest root step and the empty-manifest path: without SKSE nothing
+// can launch, no matter how few mods the server ships.
+async function installSkseIntoRoot(skyrimPath) {
+  const mb = n => (n / 1024 / 1024).toFixed(1)
+  const skse = mo2.skseSourceFor(skyrimPath)
+  send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})…`, index: 0, total: 0, skipped: false })
+  const name = await mo2.downloadToDownloads(skse.url, skse.fileName, (r, t) => {
+    const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
+    send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
+  })
+  send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
+  mo2.installSkse(path.join(mo2.getDownloadsDir(), name), skyrimPath)
+}
+
 async function runMO2Install() {
   _downloadListOpened = false
   const fail = (msg) => {
@@ -1559,7 +1574,25 @@ async function runMO2Install() {
       return fail('Install manifest is missing or malformed - run "npm run compile-manifest" on the backend.')
     }
 
+    const finishOrder = () => {
+      const order = (Array.isArray(manifest.order) && manifest.order.length)
+        ? manifest.order.slice()
+        : manifest.mods.map(m => m.name)
+      if (fs.existsSync(path.join(mo2.getModsDir(), 'SKSE')) && !order.includes('SKSE')) order.push('SKSE')
+      mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
+      mo2.setPlugins(manifest.plugins)
+      store.set('installedRootHash', manifest.rootHash || '')
+    }
+
     if (manifest.mods.length === 0) {
+      // No mods yet, but the game root still needs SKSE or nothing can launch,
+      // and the run must reach 'ready' or the button stays stuck on UPDATE.
+      if (!fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))) {
+        try { await installSkseIntoRoot(skyrimPath) }
+        catch (err) { return fail(`SKSE install failed: ${err.message}`) }
+      }
+      finishOrder()
+      store.set('modpackState', 'ready')
       send('install:complete', {
         success: true, mo2: true, upToDate: core.upToDate, modsTotal: 0,
         warning: 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.',
@@ -1583,16 +1616,6 @@ async function runMO2Install() {
     const needsRoot      = !rootSetUp || rootChanged
     log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
     const modsToInstall  = manifest.mods.filter(modChanged)
-
-    const finishOrder = () => {
-      const order = (Array.isArray(manifest.order) && manifest.order.length)
-        ? manifest.order.slice()
-        : manifest.mods.map(m => m.name)
-      if (fs.existsSync(path.join(mo2.getModsDir(), 'SKSE')) && !order.includes('SKSE')) order.push('SKSE')
-      mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
-      mo2.setPlugins(manifest.plugins)
-      store.set('installedRootHash', manifest.rootHash || '')
-    }
 
     if (modsToInstall.length === 0 && !needsRoot) {
       finishOrder()
@@ -1724,18 +1747,8 @@ async function runMO2Install() {
     // 4. Game-root components (only on a version change / fresh game copy)
     if (needsRoot) {
       // SKSE - the build matching the player's game edition (Steam vs GOG).
-      try {
-        const skse = mo2.skseSourceFor(skyrimPath)
-        send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})…`, index: 0, total: 0, skipped: false })
-        const name = await mo2.downloadToDownloads(skse.url, skse.fileName, (r, t) => {
-          const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-          send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
-        })
-        send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
-        mo2.installSkse(path.join(downloadsDir, name), skyrimPath)
-      } catch (err) {
-        return fail(`SKSE install failed: ${err.message}`)
-      }
+      try { await installSkseIntoRoot(skyrimPath) }
+      catch (err) { return fail(`SKSE install failed: ${err.message}`) }
     }
 
     // 5. Match MO2 priority + plugin order, record the installed version
