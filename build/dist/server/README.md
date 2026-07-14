@@ -10,8 +10,11 @@ Unless of course, you put those files there yourself after running a build, in w
 === DO NOT CLICK ON ANY BAT FILES!! ===
 
 The first time you get this folder, check the install-services.bat file (right click, edt) to make sure the pathing is correct. 
-By default, its expected to run at C:\Users\Administrator\Desktop\SkyMP\build\dist\server
+By default, its expected to run at C:\Users\Administrator\Desktop\alduinak\build\dist\server
 But, if you have a different path, you'll want to update that. Once its all good, you're free to run it by clicking on it. 
+
+Note: the services are named AlduinakNginx, AlduinakBackend, and AlduinakGameServer. Re-running this bat
+migrates any old SkyRP-named services (SkyrpNginx/SkyrpBackend/SkyrpGameServer) to the new names.
 
 After NSSM is installed, your server will now be a service, which means it'll run automatically when your computer starts, or if the program crashes. 
 You want this if you're running a server with a lot of players. After its installed, you're free to delete that bat.
@@ -22,7 +25,7 @@ If there are any errors, it should also spit out log files onto your desktop (or
 
 
 
-Next we have the restart-server.bat file. This is located in \SkyMP\deploy\
+Next we have the restart-server.bat file. This is located in \alduinak\deploy\
 You will need to run this whenever you make changes to the server files. 
 If you update the settings, pull the repo to update your files, or install an updated build of the server, run this bat. 
 

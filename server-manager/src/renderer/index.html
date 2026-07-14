@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>SkyRP Server Manager</title>
+  <title>Alduinak Server Manager</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -20,7 +20,7 @@
       <div id="services" class="services"></div>
       <pre id="log" class="log"></pre>
       <form id="cmd-form" class="row">
-        <input id="cmd" type="text" placeholder="Type a server command and press Enter…" autocomplete="off" />
+        <input id="cmd" type="text" placeholder="Type a command and press Enter - 'help' lists manager commands…" autocomplete="off" />
         <button class="action" type="submit">Send</button>
       </form>
     </section>
@@ -55,7 +55,7 @@
               <button id="launcher-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Builds the installer (<code>SkyrimRoleplayLauncher.exe</code>) → build/launcher.</small>
+          <small>Builds the installer (<code>AlduinakLauncher.exe</code>) → build/launcher.</small>
           <button id="build-launcher" class="action go">Build launcher</button>
         </div>
         <div class="build-col">

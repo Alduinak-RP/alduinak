@@ -1,6 +1,6 @@
-const config = window.SKYRP_DASHBOARD_CONFIG || {}
+const config = window.ALDUINAK_DASHBOARD_CONFIG || {}
 const apiBaseUrl = (config.apiBaseUrl || '').replace(/\/$/, '')
-const tokenKey = 'skyrp.dashboard.token'
+const tokenKey = 'alduinak.dashboard.token'
 
 const state = {
   token: localStorage.getItem(tokenKey) || '',

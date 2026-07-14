@@ -1,4 +1,4 @@
-; Custom NSIS hooks for the SkyRP Launcher installer.
+; Custom NSIS hooks for the Alduinak Launcher installer.
 ;
 ; Refuse to install/update while the launcher is running, otherwise its files
 ; are locked and the update silently half-applies. nsProcess ships with
@@ -28,7 +28,7 @@
       ${If} $R0 == 0
         nsProcess::_Unload
         MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
-          "SkyRP Launcher is still running.$\n$\nPlease fully quit it (check the system tray), then click Retry." \
+          "Alduinak Launcher is still running.$\n$\nPlease fully quit it (check the system tray), then click Retry." \
           IDRETRY retry_running_check
         Abort
       ${EndIf}

@@ -1,9 +1,12 @@
 const router = require('express').Router()
 const fs = require('fs')
 
-// Bump LATEST_VERSION on each launcher release; DOWNLOAD_URL is the installer link (e.g. a GitHub Releases URL)
-const LATEST_VERSION = '1.6.3'
-const DOWNLOAD_URL   = 'https://www.skyrimroleplay.co.uk/download'
+/**
+ * Update LATEST_VERSION here whenever you release a new launcher build.
+ * Set DOWNLOAD_URL to the installer download link (e.g. a GitHub Releases URL).
+ */
+const LATEST_VERSION = '2.0.0'
+const DOWNLOAD_URL   = 'https://alduinak.com/download'
 
 router.get('/', (_req, res) => {
   res.json({

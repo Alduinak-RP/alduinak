@@ -2,7 +2,7 @@
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
-::  SkyRP Server Manager: resilient dependency install.
+::  Alduinak Server Manager: resilient dependency install.
 ::  Built for a flaky firewall: it tries several ways to get the
 ::  Electron runtime so a single failed download doesn't block you.
 
@@ -11,7 +11,7 @@ set "EL_PKG=node_modules\electron"
 set "EL_BIN=%EL_PKG%\dist\electron.exe"
 set "EL_ZIP=electron-v%EL_VER%-win32-x64.zip"
 
-echo === SkyRP Server Manager setup ===
+echo === Alduinak Server Manager setup ===
 echo.
 
 where node >nul 2>&1
