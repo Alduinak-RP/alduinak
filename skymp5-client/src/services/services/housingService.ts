@@ -299,6 +299,13 @@ export class HousingService extends ClientListener {
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
     if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] property menu set: " + widget.elements.length + " elements, " + window.skyrimPlatform.widgets.get().length + " widgets total");
+    // Delayed DOM check: proves whether the loaded UI actually renders form widgets.
+    window.setTimeout(function () {
+      if (!window.__skyrpAddSystem) return;
+      var forms = window.document.querySelectorAll(".login-form").length;
+      var src = window.document.scripts.length ? String(window.document.scripts[window.document.scripts.length - 1].src) : "none";
+      window.__skyrpAddSystem("[debug] property DOM: formsInDom=" + forms + ", url=" + String(window.location.href).slice(-60) + ", script=" + src.slice(-40));
+    }, 500);
     } catch (err: any) {
       if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] property menu FAILED in CEF: " + (err && err.message));
     }

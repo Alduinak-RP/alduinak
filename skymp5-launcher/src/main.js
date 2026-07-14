@@ -564,7 +564,7 @@ ipcMain.handle('nexus:ssoLogin', async () => {
         expiresAt:    Date.now() + (tokens.expires_in ? tokens.expires_in * 1000 : 6 * 3600 * 1000),
       })
       store.set('nexusApiKey', '')   // the bearer token replaces any old key
-      const user = await nexus.validateKey({ bearer: tokens.access_token })
+      const user = await nexus.oauthUserInfo(tokens.access_token)
       store.set('nexusUser', user)
       log(`[nexus] OAuth login as ${user.name} (premium: ${user.isPremium})`)
       return { success: true, user }
