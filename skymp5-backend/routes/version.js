@@ -3,7 +3,7 @@ const fs = require('fs')
 
 // Bump LATEST_VERSION on each launcher release; DOWNLOAD_URL is the installer link (e.g. a GitHub Releases URL)
 const LATEST_VERSION = '2.0.2'
-const DOWNLOAD_URL   = 'https://www.skyrimroleplay.co.uk/download'
+const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 
 router.get('/', (_req, res) => {
   res.json({

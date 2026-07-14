@@ -96,9 +96,9 @@ html, body {
   font-family: 'Cinzel Decorative', 'Cinzel', serif;
   font-size: 16px;
   font-weight: 700;
-  color: var(--gold);
-  background: rgba(201, 162, 39, 0.08);
-  box-shadow: 0 0 12px rgba(201, 162, 39, 0.15);
+  color: #ff5a5a;
+  background: rgba(255, 90, 90, 0.08);
+  box-shadow: 0 0 12px rgba(255, 90, 90, 0.15);
 }
 
 .logo-text-block {
@@ -112,8 +112,8 @@ html, body {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 4px;
-  color: var(--gold);
-  text-shadow: 0 0 16px rgba(201, 162, 39, 0.4);
+  color: #ff5a5a;
+  text-shadow: 0 0 16px rgba(255, 90, 90, 0.4);
 }
 
 .logo-tagline {
@@ -640,14 +640,14 @@ html, body {
 
 .connect-warning.visible { display: block; }
 
-/* The PLAY button - solid amber, prominent */
+/* The PLAY button - solid red, prominent */
 .btn-play {
   height: 100%;
   padding: 0 48px;
-  background: linear-gradient(to bottom, #d4ab2a 0%, #b08920 100%);
+  background: linear-gradient(to bottom, #ff5a5a 0%, #d94848 100%);
   border: none;
   border-left: 1px solid rgba(255,255,255,0.1);
-  color: rgba(20, 12, 2, 0.95);
+  color: rgba(30, 6, 6, 0.95);
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 18px;
   font-weight: 700;
@@ -655,17 +655,17 @@ html, body {
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: -4px 0 20px rgba(201, 162, 39, 0.2);
+  box-shadow: -4px 0 20px rgba(255, 90, 90, 0.25);
 }
 
 .btn-play:hover {
-  background: linear-gradient(to bottom, #e8c240 0%, #c49a28 100%);
-  box-shadow: -4px 0 30px rgba(201, 162, 39, 0.4);
+  background: linear-gradient(to bottom, #ff7676 0%, #e85555 100%);
+  box-shadow: -4px 0 30px rgba(255, 90, 90, 0.4);
   letter-spacing: 6px;
 }
 
 .btn-play:active {
-  background: linear-gradient(to bottom, #b08920 0%, #96721a 100%);
+  background: linear-gradient(to bottom, #d94848 0%, #ba3a3a 100%);
 }
 
 /* SETTINGS MODAL */
