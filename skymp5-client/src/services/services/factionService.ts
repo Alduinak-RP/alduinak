@@ -145,6 +145,11 @@ export class FactionService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
+    // Escape closes an open menu.
+    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+      this.closeMenu();
+      return;
+    }
     if (e.code !== this.menuKey || !e.isDown) {
       return;
     }
@@ -296,8 +301,6 @@ export class FactionService extends ClientListener {
   private openMenu(): void {
     this.menuOpen = true;
     const text = new FunctionInfo(this.browsersideWidgetSetter).getText({ events, strings, title, members, regents });
-    // Debug breadcrumb: pairs with the CEF-side "widget set" line to locate render failures.
-    notifyNextUpdate(this.controller, this.sp, `[debug] faction menu: injecting ${text.length} chars, ${members.length} members`);
     this.sp.browser.executeJavaScript(text);
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);
@@ -312,7 +315,6 @@ export class FactionService extends ClientListener {
   // Runs inside the CEF browser; only the injected variables and window are available here.
   // No spread syntax: it breaks after FunctionInfo stringification (see commit 8d7c0c05).
   private browsersideWidgetSetter = () => {
-    try {
     const widget: any = {
       type: "form",
       id: 9,
@@ -415,17 +417,6 @@ export class FactionService extends ClientListener {
     // Preserve any other widgets
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== 9);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
-    if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] faction menu set: " + widget.elements.length + " elements, " + window.skyrimPlatform.widgets.get().length + " widgets total");
-    // Delayed DOM check: proves whether the loaded UI actually renders form widgets.
-    window.setTimeout(function () {
-      if (!window.__skyrpAddSystem) return;
-      var forms = window.document.querySelectorAll(".login-form").length;
-      var src = window.document.scripts.length ? String(window.document.scripts[window.document.scripts.length - 1].src) : "none";
-      window.__skyrpAddSystem("[debug] faction DOM: formsInDom=" + forms + ", url=" + String(window.location.href).slice(-60) + ", script=" + src.slice(-40));
-    }, 500);
-    } catch (err: any) {
-      if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] faction menu FAILED in CEF: " + (err && err.message));
-    }
   };
 
   private menuKey: DxScanCode = DxScanCode.G;

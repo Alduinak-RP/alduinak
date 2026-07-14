@@ -78,6 +78,11 @@ export class PlayerActionService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
+    // Escape closes an open menu.
+    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+      this.closeMenu();
+      return;
+    }
     if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
     }
