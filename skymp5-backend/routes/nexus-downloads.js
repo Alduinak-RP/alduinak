@@ -20,7 +20,7 @@ const page = body => `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SkyRP mod downloads</title>
+<title>Alduinak mod downloads</title>
 <style>
   body { font-family: system-ui, sans-serif; background:#1b1b1f; color:#e9e9ee; margin:0; padding:2rem; line-height:1.5; }
   .wrap { max-width: 760px; margin: 0 auto; }
@@ -75,11 +75,11 @@ router.get('/', (_req, res) => {
   ).join('\n')
 
   res.type('text/html').send(page(`
-  <h1>SkyRP mod downloads</h1>
+  <h1>Alduinak mod downloads</h1>
   <div class="note">
     <p><strong>Ctrl+click</strong> (Cmd+click on macOS) each link below to open it in a background tab, then click
     <strong>Slow Download</strong> on each Nexus page. Do about <strong>5 at a time</strong> so Nexus doesn't throttle you.</p>
-    <p>Move every zip/7z archive you download into your <code>SkyRP/downloads</code> folder, which the launcher opened for you.</p>
+    <p>Move every zip/7z archive you download into your <code>Alduinak/downloads</code> folder, which the launcher opened for you.</p>
     ${items.length ? `<p>
       <button class="open-all" id="open-all">Open all ${items.length} links in tabs</button>
       <span class="open-all-hint">Your browser will ask you to allow pop-ups for this site the first time.

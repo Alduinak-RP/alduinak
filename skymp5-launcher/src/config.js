@@ -1,14 +1,14 @@
 /**
  * Launcher configuration - developer-only.
  *
- * apiUrl  - Base URL of the SkyRP backend.
+ * apiUrl  - Base URL of the Alduinak backend.
  *           Overridden by the API_URL environment variable (set in .env for
  *           local dev, or as a real env var in a packaged/CI build).
  *           The available game servers are fetched from GET /api/servers
  *           at runtime so they never need a launcher rebuild to update.
  */
 module.exports = {
-  apiUrl: process.env.API_URL || 'https://api.skyrimroleplay.co.uk',
+  apiUrl: process.env.API_URL || 'https://api.alduinak.com',
 
   // Nexus login, in preference order:
   //  1. OAuth (users.nexusmods.com, authorization code + PKCE) when a client

@@ -6,10 +6,10 @@ setlocal
 ::    1. Installs nginx to C:\nginx
 ::    2. Installs win-acme (Let's Encrypt client) to C:\tools\win-acme
 ::    3. Starts nginx on port 80 and obtains certificates for
-::       api. and dashboard.skyrimroleplay.co.uk (auto-renewing)
+::       api. and dashboard.alduinak.com (auto-renewing)
 ::    4. Switches nginx to the full HTTPS proxy config
 ::       (api -> localhost:4000, dashboard -> localhost:4002)
-::    5. Registers nginx as the SkyMPNginx Windows service
+::    5. Registers nginx as the AlduinakNginx Windows service
 ::  PREREQUISITE: DNS A records for both subdomains must point at
 ::  this machine, and ports 80/443 must be reachable from outside.
 ::  Safe to re-run; existing certificates are kept.
@@ -25,7 +25,7 @@ set "NSSM_DIR=C:\tools\nssm"
 set "EMAIL="igravespmc@gmail.com"
 set "DOMAINS=api.alduinak.com,dashboard.alduinak.com"
 set "CERT_NAME=api.alduinak.com"
-set "SERVICE=SkyMPNginx"
+set "SERVICE=AlduinakNginx"
 
 :: ---- Re-launch elevated if not running as Administrator ----
 net session >nul 2>&1
@@ -108,6 +108,11 @@ echo Installing phase-1 config (HTTP only, for ACME validation)...
 copy /y "%REPO_DIR%\deploy\nginx\nginx-http.conf" "%NGINX_DIR%\conf\nginx.conf" >nul
 
 :: make sure no stray nginx is running, then register + start the service
+:: (also removes the legacy SkyrpNginx / SkyMPNginx service names)
+"%NSSM%" stop SkyrpNginx >nul 2>&1
+"%NSSM%" remove SkyrpNginx confirm >nul 2>&1
+"%NSSM%" stop SkyMPNginx >nul 2>&1
+"%NSSM%" remove SkyMPNginx confirm >nul 2>&1
 "%NSSM%" stop %SERVICE% >nul 2>&1
 "%NSSM%" remove %SERVICE% confirm >nul 2>&1
 taskkill /f /im nginx.exe >nul 2>&1
@@ -164,7 +169,7 @@ if errorlevel 1 (
 )
 echo.
 echo Test from this machine:
-echo   curl https://api.skyrimroleplay.co.uk/api/status
+echo   curl https://api.alduinak.com/api/status
 echo (The backend service must be running for it to return JSON.)
 echo.
 pause

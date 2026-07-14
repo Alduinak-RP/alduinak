@@ -1,6 +1,6 @@
-# SkyRP Server Manager
+# Alduinak Server Manager
 
-Desktop control panel for the SkyRP server. Runs on the server box. **Run it as
+Desktop control panel for the Alduinak server. Runs on the server box. **Run it as
 Administrator** - service control (nssm) needs it.
 
 ```bash
@@ -28,7 +28,11 @@ fails it prints a direct download URL - save that zip as
   - The log tail asks nssm where each service writes its stdout/stderr
     (`nssm get <svc> AppStdout`) instead of guessing a fixed folder, so it always
     shows the real run output regardless of where the install script put the logs.
-  - Typed commands go to the game server over the backend WS relay (admin
+  - The command box first checks for **manager commands** and runs them locally:
+    `help`, `status`, `start|stop|restart <nginx|backend|game|all>`, and
+    `build <server|gamemode|launcher|client>` (build output streams into the
+    console log; one build at a time).
+  - Anything else goes to the game server over the backend WS relay (admin
     `console` role) and the gamemode's command output streams back into the
     console. See **Wiring the console** below.
 - **Players** - a searchable player list on the left, an editable detail panel on
@@ -36,8 +40,9 @@ fails it prints a direct download URL - save that zip as
   panel edits `username` / `displayName` / `notes` (persisted to the backend) and
   shows factions and the player's **characters** (read from the game server's save
   store). No more pop-up.
-- **Build** - three columns (**Game Server**, **Launcher**, **Client**) with their
-  build buttons and version fields, sharing one build console. The buttons are
+- **Build** - three columns (**Game Server** incl. **Gamemode**, **Launcher**,
+  **Client**) with their build buttons and version fields, sharing one build
+  console. The buttons are
   **JS/packaging only** - the native code (`.dll` / `.node`) is compiled by the
   GitHub **PR Windows Flatrim** workflow and downloaded as the `dist` artifact;
   these buttons bundle TypeScript, build the Electron launcher, and zip the
@@ -68,7 +73,8 @@ Each Build button then does the JS/packaging work:
 | Button | Does |
 |--------|------|
 | **Game Server** | Bundles the TypeScript → `build/dist/server/dist_back/skymp5-server.js`, then prunes `build/dist/server` to the deploy set. `scam_native.node` (from CI) is preserved. |
-| **Launcher** | Builds the Electron installer `SkyrimRoleplayLauncher.exe` → `build/launcher`. |
+| **Gamemode** | Bundles `gamemode/` → `build/dist/server/gamemode.js` (chat, respawn, trade, console relay). A running game server hot-reloads it within ~1s. |
+| **Launcher** | Builds the Electron installer `AlduinakLauncher.exe` → `build/launcher`. |
 | **Client** | Runs the backend `build-client` script (`populate-files.js` + `merge-files.js`) to zip `build/dist/client/Data` into `skymp-client.zip` + `data/files-version.json` for the launcher to download. The version is taken from `CLIENT_VERSION` in the backend `.env` - set it from the **Client** version field before building. |
 
 **Missing prerequisites are installed automatically.** On Windows each build
@@ -76,7 +82,7 @@ button checks for **Node.js** and **Git** and installs anything missing with
 `winget` (the manager runs elevated), refreshing PATH from the registry so the
 new tools work without restarting the manager. That's the whole toolchain now,
 no CMake, MSVC, vcpkg, or yarn, since nothing is compiled locally. Set
-`SKYRP_NO_AUTO_INSTALL=1` to opt out (you'll get a manual-install hint with links
+`ALDUINAK_NO_AUTO_INSTALL=1` to opt out (you'll get a manual-install hint with links
 instead). If `winget` itself isn't available, the build stops with links to
 install the tools by hand.
 
@@ -91,7 +97,7 @@ node server-manager/tools/gen-signing-keys.js
 ```
 
 This writes `sign-gamemode.js` + `signing-private.pem` into `build/dist/server`
-(honours `SKYRP_BUILD_DIR`, refuses to overwrite an existing key without
+(honours `ALDUINAK_BUILD_DIR`, refuses to overwrite an existing key without
 `--force`) and prints the entries to merge into
 `skymp5-backend/data/public-keys.json` - both the `GM...` key id and the same
 id without the `GM` prefix are required (different client services parse the
@@ -124,15 +130,15 @@ gamemode. Until then, commands are delivered and acknowledged but not executed.
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `SKYRP_LOG_DIR` | `C:\logs` | Fallback log directory (nssm-configured paths win) |
-| `SKYRP_SERVER_DIR` | folder of `server-settings.json` | Game server working dir (holds the `world/changeForms` save store) |
-| `SKYRP_SERVER_SETTINGS` | `build/dist/server/server-settings.json` | Server settings file edited by the Settings tab |
-| `SKYRP_MO2_ROOT` | `C:\MO2` | Reference MO2 install (Modlist tab) |
-| `SKYRP_GAME_ROOT` | `C:\GOG Games\Skyrim Anniversary Edition` | Game root |
-| `SKYRP_MO2_PROFILE` | `Default` | MO2 profile to compile |
-| `SKYRP_BUILD_DIR` | `<repo>\build` | Build output dir; the CI `dist/` payloads and the launcher land here |
-| `SKYRP_SERVER_KEEP` | *(none)* | Comma-separated extra names to preserve when pruning `build/dist/server` |
-| `SKYRP_NO_AUTO_INSTALL` | *(unset)* | Set to `1` to disable auto-installing prerequisites (Node/Git) via winget |
+| `ALDUINAK_LOG_DIR` | `C:\logs` | Fallback log directory (nssm-configured paths win) |
+| `ALDUINAK_SERVER_DIR` | folder of `server-settings.json` | Game server working dir (holds the `world/changeForms` save store) |
+| `ALDUINAK_SERVER_SETTINGS` | `build/dist/server/server-settings.json` | Server settings file edited by the Settings tab |
+| `ALDUINAK_MO2_ROOT` | `C:\MO2` | Reference MO2 install (Modlist tab) |
+| `ALDUINAK_GAME_ROOT` | `C:\GOG Games\Skyrim Anniversary Edition` | Game root |
+| `ALDUINAK_MO2_PROFILE` | `Default` | MO2 profile to compile |
+| `ALDUINAK_BUILD_DIR` | `<repo>\build` | Build output dir; the CI `dist/` payloads and the launcher land here |
+| `ALDUINAK_SERVER_KEEP` | *(none)* | Comma-separated extra names to preserve when pruning `build/dist/server` |
+| `ALDUINAK_NO_AUTO_INSTALL` | *(unset)* | Set to `1` to disable auto-installing prerequisites (Node/Git) via winget |
 
 The repo path, service names, and the WS relay port/secret (from the backend
 `.env`) are detected automatically.

@@ -6,7 +6,7 @@ const fs = require('fs')
  * Set DOWNLOAD_URL to the installer download link (e.g. a GitHub Releases URL).
  */
 const LATEST_VERSION = '2.0.0'
-const DOWNLOAD_URL   = 'https://www.skyrimroleplay.co.uk/download'
+const DOWNLOAD_URL   = 'https://alduinak.com/download'
 
 router.get('/', (_req, res) => {
   res.json({

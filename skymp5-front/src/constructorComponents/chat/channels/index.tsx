@@ -60,7 +60,7 @@ export const channelForMessage = (text: string): string | null => {
   const i = text.indexOf(' ');
   const cmd = (i < 0 ? text : text.slice(0, i)).slice(1).toLowerCase();
   if (PERSONAL_CMDS.includes(cmd)) return 'personal';
-  if (ADMIN_CMDS.includes(cmd)) return (window as any).__skyrpAdmin ? 'admin' : null;
+  if (ADMIN_CMDS.includes(cmd)) return (window as any).__alduinakAdmin ? 'admin' : null;
   if (LOCAL_CMDS.includes(cmd)) return 'local';
   return null;
 };
@@ -73,7 +73,7 @@ const Channels = (props: {
   return (
     <div className="chat-channels">
       {CHAT_CHANNELS
-        .filter((channel) => !ADMIN_ONLY_CHANNELS.includes(channel.id) || (window as any).__skyrpAdmin)
+        .filter((channel) => !ADMIN_ONLY_CHANNELS.includes(channel.id) || (window as any).__alduinakAdmin)
         .map((channel) => (
           <button
             key={channel.id}

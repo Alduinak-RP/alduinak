@@ -9,7 +9,7 @@
 //               Identified by a one-time nonce that the gamemode registers
 //               before the browser connects.
 //
-//   console   - the SkyRP Server Manager admin console. Shares RELAY_SECRET;
+//   console   - the Alduinak Server Manager admin console. Shares RELAY_SECRET;
 //               forwards typed commands to the gamemode and receives the
 //               gamemode's command output to display in the manager's Console.
 //
@@ -66,7 +66,7 @@ let gamemodeSocket = null
 // userId -> WebSocket (one per authenticated player browser)
 const playerSockets = new Map()
 
-// Admin console sockets (the SkyRP Server Manager): receive console_output.
+// Admin console sockets (the Alduinak Server Manager): receive console_output.
 const consoleSockets = new Set()
 
 // nonce -> userId (registered by gamemode, consumed on player auth)

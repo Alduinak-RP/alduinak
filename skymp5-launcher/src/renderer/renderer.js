@@ -5,7 +5,7 @@ document.getElementById('btn-close').addEventListener('click',    () => window.e
 
 // External nav links
 const EXTERNAL_URLS = {
-  website: 'https://skyrimroleplay.co.uk/',   // e.g. 'https://skyrp.example.com'
+  website: 'https://alduinak.com/',           // e.g. 'https://example.com'
   discord: 'https://discord.gg/xKY4Nud2rz',   // e.g. 'https://discord.gg/...'
 }
 
@@ -413,13 +413,13 @@ async function refreshIsolatedStatus() {
   isolatedGroup.hidden = !fieldIsolated.checked
   if (!st.ready) {
     isolatedDot.className    = 'vortex-status-dot'
-    isolatedText.textContent = 'Not installed yet - choose a location to set up SkyRP'
+    isolatedText.textContent = 'Not installed yet - choose a location to set up Alduinak'
   } else if (!fieldIsolated.checked) {
     isolatedDot.className    = 'vortex-status-dot dot-warn'
-    isolatedText.textContent = 'SkyRP install exists - playing from the original Skyrim'
+    isolatedText.textContent = 'Alduinak install exists - playing from the original Skyrim'
   } else {
     isolatedDot.className    = 'vortex-status-dot dot-ok'
-    isolatedText.textContent = `SkyRP installed at ${st.base || st.dir}`
+    isolatedText.textContent = `Alduinak installed at ${st.base || st.dir}`
   }
   refreshDownloadModsState(st)
 }
@@ -644,7 +644,7 @@ function updatePlayButton() {
   if (!isoReady) {
     btnConnect.disabled    = false
     btnConnect.textContent = '\u2699 INSTALL'
-    btnConnect.title       = 'Set up your SkyRP game copy in Settings.'
+    btnConnect.title       = 'Set up your Alduinak game copy in Settings.'
     return
   }
 
