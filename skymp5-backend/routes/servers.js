@@ -19,9 +19,7 @@ router.get('/', (_req, res) => {
   ])
 })
 
-// Called by the SkyMP in-game client to get the game server's host/port.
-// The client sends X-Session so we also return sessionValid/allowed for UI hints,
-// but the required fields are just host and port.
+// Called by the SkyMP in-game client for the game server's host/port; sessionValid/allowed are extra UI hints when X-Session is sent
 router.get('/:key/serverinfo', async (req, res) => {
   if (req.params.key !== config.serverMasterKey) {
     return res.status(403).json({ error: 'Invalid master key.' })
@@ -66,8 +64,7 @@ router.get('/:key/serverinfo', async (req, res) => {
   })
 })
 
-// Called by the SkyMP client to fetch the server's mod list.
-// Returns a v1 SkyMP server manifest so the client doesn't loop on 404s.
+// Called by the SkyMP client for the server's mod list; returns a v1 manifest so the client doesn't loop on 404s
 router.get('/:key/manifest.json', (req, res) => {
   if (req.params.key !== config.serverMasterKey) {
     return res.status(403).json({ error: 'Invalid master key.' })

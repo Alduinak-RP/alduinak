@@ -3,9 +3,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { showSystemNotification } from "./systemNotification";
 
-// Server-sent one-line notices, e.g. the respawn system's "You cannot return
-// here yet.". Without this handler those packets were silently dropped and
-// server-side teleports looked like bugs.
+// Server-sent one-line notices; without this handler those packets were silently dropped.
 //
 // Server -> client custom packet:
 //   { "customPacketType": "notification", "text": "..." }

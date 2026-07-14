@@ -6,26 +6,20 @@ type Mp = any;
 
 // ── Arrest / capture / carry ──────────────────────────────────────────────────
 //
-// Server-authoritative restraint feature, built entirely on the `mp` JS API
-// (no engine changes). Two restraint states, both reflected on the captive's
-// client by the (server-driven) RestraintService:
-//
-//   • boundHands ("arrest"): the Helgen bound-hands pose. The captive can still
-//     walk and chat, but cannot fight, sneak or use their hands.
-//   • carried: fully immobilised; the server snaps the body onto the carrier
+// Server-authoritative restraint feature built on the `mp` JS API (no engine
+// changes). Two restraint states, both reflected on the captive's client by the
+// server-driven RestraintService:
+//   - boundHands ("arrest"): Helgen bound-hands pose; can walk and chat, cannot
+//     fight, sneak or use hands.
+//   - carried: fully immobilised; the server snaps the body onto the carrier
 //     every tick (like a horse passenger). Camera stays free.
+// Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
+// in the captor's inventory, carrying needs no item. A conscious target must
+// accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
+// captured/carried instantly with no prompt, and doing so STOPS their bleedout
+// (mp.set isDead=false stands them up instead of a temple respawn).
 //
-// Flows
-//   - A captor needs the configured "manacles" item (settings.manaclesFormId) in
-//     their inventory to arrest. Carrying needs no item.
-//   - A conscious target is asked to consent (a Yes/No prompt on their client);
-//     the restraint is only applied if they accept.
-//   - A DOWNED target (first death-state / bleeding out) is captured/carried
-//     INSTANTLY with no prompt — they can't answer one — and doing so STOPS
-//     their bleedout (mp.set isDead=false stands them up in place instead of
-//     letting the engine respawn them at a temple).
-//
-// Wire protocol — all packets are MsgType.CustomPacket carrying JSON.
+// Wire protocol: all packets are MsgType.CustomPacket carrying JSON.
 //   Client -> Server:
 //     { customPacketType: "captureRequest",  target: <actorFormId> }
 //     { customPacketType: "carryRequest",    target: <actorFormId> }
@@ -43,19 +37,15 @@ const CARRY_PACKET = "carryState";
 const CONSENT_REQUEST = "captureConsentRequest";
 const NOTICE_PACKET = "captureNotice";
 
-// Server-side property mirroring the captive's restraint state, so the gamemode
-// script (which cannot see this system's memory) can gate its own logic on it —
-// e.g. skip its temple pass-out for a player someone has bound or picked up.
-//   mp.get(actorId, "private.restrained")
-//     -> { boundHands, carried, captorActorId, carrierActorId } | null
+// Mirrors the captive's restraint state so the gamemode can gate its own logic
+// on it (e.g. skip its temple pass-out for a bound or carried player):
+//   mp.get(actorId, "private.restrained") -> { boundHands, carried, captorActorId, carrierActorId } | null
 const RESTRAINED_PROP = "private.restrained";
 
-// Vanilla prisoner cuffs (ARMO) — the placeholder default for manaclesFormId.
-const DEFAULT_MANACLES = 0x0005dc02;
+// 0 = no item requirement; set manaclesFormId in server-settings.json to gate arrests behind a carryable item
+const DEFAULT_MANACLES = 0;
 
-// How often a carried body is re-snapped onto its carrier, and how far (squared,
-// game units) the carrier must move before we bother re-teleporting. Throttling
-// keeps the reliable Teleport packets — and any rubber-banding — to a minimum.
+// Carry re-snap interval and min carrier movement (squared game units); throttling keeps reliable Teleport packets and rubber-banding to a minimum
 const CARRY_FOLLOW_INTERVAL_MS = 120;
 const CARRY_FOLLOW_MIN_MOVE_SQ = 16 * 16;
 
@@ -65,14 +55,13 @@ const CONSENT_TIMEOUT_MS = 20000;
 // The same (captor, target) pair may only be prompted this often.
 const CONSENT_COOLDOWN_MS = 15000;
 
-// Server-side backstop for the client's "look at a player" rule: capture/carry
-// may only be initiated within this many game units (~activate range).
+// Server-side backstop for the client's "look at a player" rule: max capture/carry initiation range in game units (~activate range)
 const INTERACT_MAX_DISTANCE = 256;
 
 interface RestraintInfo {
   boundHands: boolean;   // arrested
-  carried: boolean;      // being carried
-  captorActorId: number; // who applied it — release authority + disconnect cleanup
+  carried: boolean;
+  captorActorId: number; // who applied it: release authority + disconnect cleanup
   offlineCarrierActorId?: number; // who was carrying them when they logged out
 }
 
@@ -122,17 +111,20 @@ export class CaptureSystem implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
     this.manaclesFormId = toFormId(s.manaclesFormId, DEFAULT_MANACLES);
+    // Fail closed: a set-but-unparseable manaclesFormId must not disable the
+    // item requirement, so pin it to a form nobody can hold.
+    if (s.manaclesFormId && this.manaclesFormId === 0) {
+      this.manaclesFormId = 0xffffffff;
+      this.log(`[capture] ERROR: manaclesFormId "${s.manaclesFormId}" is not a valid form id — arrests disabled until fixed`);
+    }
     if (typeof s.captiveAnimEvent === "string" && s.captiveAnimEvent) {
       this.captiveAnim = s.captiveAnimEvent;
     }
     if (typeof s.carrierAnimEvent === "string" && s.carrierAnimEvent) {
       this.carrierAnim = s.carrierAnimEvent;
     }
-    if (this.manaclesFormId === DEFAULT_MANACLES) {
-      this.log(`[capture] WARNING: manaclesFormId is not configured, defaulting to ` +
-        `0x${DEFAULT_MANACLES.toString(16)} (Helgen prisoner cuffs — worn ARMO that ` +
-        `players never hold in inventory). The bind/arrest path will NOT work until ` +
-        `"manaclesFormId" in server-settings.json points to a real carryable item.`);
+    if (this.manaclesFormId === 0) {
+      this.log(`[capture] manaclesFormId not configured — arrests need no item`);
     } else {
       this.log(`[capture] manacles item = 0x${this.manaclesFormId.toString(16)}`);
     }
@@ -152,8 +144,7 @@ export class CaptureSystem implements System {
     }
   }
 
-  // Snap every carried body onto its carrier. Runs from the per-system update
-  // loop (~1ms); we self-throttle to CARRY_FOLLOW_INTERVAL_MS.
+  // Snap every carried body onto its carrier; runs from the ~1ms update loop, self-throttled to CARRY_FOLLOW_INTERVAL_MS
   async updateAsync(ctx: SystemContext): Promise<void> {
     if (this.carrying.size === 0) {
       return;
@@ -186,8 +177,7 @@ export class CaptureSystem implements System {
         });
         this.lastCarryPos.set(carriedActorId, [x, y, z]);
       } catch (e) {
-        // carrier or carried vanished mid-carry — free the pair entirely so no
-        // stale restraint record / private.restrained survives
+        // carrier or carried vanished mid-carry: free the pair so no stale restraint record survives
         this.releaseTarget(ctx, carriedActorId);
       }
     }
@@ -222,14 +212,11 @@ export class CaptureSystem implements System {
         this.releaseTarget(ctx, tid);
       }
     }
-    // Their own restraint record is intentionally KEPT: relogging must not be
-    // an escape. onActorAssigned re-applies or cleans it up on reconnect.
+    // Their own restraint record is intentionally KEPT: relogging must not be an escape; onActorAssigned re-applies or cleans up on reconnect
     this.dropPendingFor(actorId);
   }
 
-  // Fired by the Spawn system whenever a user gets an actor (login / character
-  // select). Re-applies a restraint that survived the captive's relog, or
-  // clears a stale persisted private.restrained (e.g. after a server restart).
+  // Fired by Spawn when a user gets an actor: re-applies a restraint that survived the captive's relog, or clears a stale persisted private.restrained (e.g. after a server restart)
   private onActorAssigned(ctx: SystemContext, actorId: number): void {
     const mp = ctx.svr as Mp;
     const info = this.restraints.get(actorId);
@@ -284,10 +271,9 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, "You need manacles to restrain someone.");
       return;
     }
-    // A downed (bleeding-out) target can't answer a prompt: capture instantly and
-    // stop their bleedout so the engine doesn't whisk them to a temple.
+    // A downed target can't answer a prompt: capture instantly and stop bleedout so the engine doesn't whisk them to a temple
     if (this.isDowned(mp, targetActorId)) {
-      this.stopBleedout(mp, targetActorId);
+      this.stopBleedout(ctx, targetActorId);
       this.applyCapture(ctx, targetActorId, captorActorId);
       this.notice(ctx, userId, `You restrained ${this.nameOf(ctx, targetActorId)}.`);
       return;
@@ -315,7 +301,7 @@ export class CaptureSystem implements System {
       return;
     }
     if (this.isDowned(mp, targetActorId)) {
-      this.stopBleedout(mp, targetActorId);
+      this.stopBleedout(ctx, targetActorId);
       this.applyCarry(ctx, targetActorId, carrierActorId);
       this.notice(ctx, userId, `You picked up ${this.nameOf(ctx, targetActorId)}.`);
       return;
@@ -353,7 +339,7 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, "They are not restrained.");
       return;
     }
-    // Only the captor (or whoever is carrying them) may release — prevents griefing.
+    // Only the captor (or whoever is carrying them) may release: prevents griefing
     const carrier = this.carriedBy.get(targetActorId);
     if (info.captorActorId !== requesterActorId && carrier !== requesterActorId) {
       this.notice(ctx, userId, "Only their captor can release them.");
@@ -459,7 +445,7 @@ export class CaptureSystem implements System {
       `Waiting for ${this.nameOf(ctx, targetActorId)} to accept…`);
   }
 
-  // Reflect the captive's current restraint record into RESTRAINED_PROP.
+  // Reflect the captive's current restraint record into RESTRAINED_PROP
   private mirrorState(ctx: SystemContext, targetActorId: number): void {
     const info = this.restraints.get(targetActorId);
     const value = info
@@ -589,9 +575,7 @@ export class CaptureSystem implements System {
     return this.nearEnough(ctx, selfActorId, targetActorId);
   }
 
-  // Same cell/worldspace and within INTERACT_MAX_DISTANCE. The target id is
-  // client-supplied, so this is what keeps a modified client from grabbing
-  // players across the map.
+  // Same cell/worldspace and within INTERACT_MAX_DISTANCE; the target id is client-supplied, so this stops a modified client grabbing players across the map
   private nearEnough(ctx: SystemContext, selfActorId: number, targetActorId: number): boolean {
     try {
       if (ctx.svr.getActorCellOrWorld(selfActorId) !==
@@ -616,6 +600,9 @@ export class CaptureSystem implements System {
   }
 
   private hasManacles(mp: Mp, actorId: number): boolean {
+    if (this.manaclesFormId === 0) {
+      return true; // no item requirement configured
+    }
     try {
       const inv = mp.get(actorId, "inventory");
       const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries : [];
@@ -625,8 +612,7 @@ export class CaptureSystem implements System {
     }
   }
 
-  // For players, isDead===true means "bleeding out" (they always respawn), i.e.
-  // the first death-state we may instant-capture.
+  // For players, isDead===true means "bleeding out" (they always respawn), the death-state we may instant-capture
   private isDowned(mp: Mp, actorId: number): boolean {
     try {
       return mp.get(actorId, "isDead") === true;
@@ -635,15 +621,24 @@ export class CaptureSystem implements System {
     }
   }
 
-  // Stand a bleeding-out player back up in place (SetIsDead(false) -> Respawn
-  // without teleport), cancelling the temple respawn.
-  private stopBleedout(mp: Mp, actorId: number): void {
+  // Stand a bleeding-out player up in place (isDead=false, no teleport), cancelling temple respawn; also closes the death screen and clears the pending death choice right away instead of waiting on the respawn hook
+  private stopBleedout(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as Mp;
     if (this.isPermaDead(mp, actorId)) {
-      return; // permadeath is final — never resurrect a locked corpse
+      return; // permadeath is final: never resurrect a locked corpse
     }
     try {
       mp.set(actorId, "isDead", false);
     } catch { /* already up / form gone */ }
+    try {
+      mp.set(actorId, "private.deathChoicePending", false);
+    } catch { /* form gone */ }
+    const u = this.userOf(ctx, actorId);
+    if (u >= 0) {
+      try {
+        ctx.svr.sendCustomPacket(u, JSON.stringify({ customPacketType: "deathScreen", hide: true }));
+      } catch { /* user gone */ }
+    }
   }
 
   private resolveActor(ctx: SystemContext, userId: number): number | null {
@@ -655,9 +650,15 @@ export class CaptureSystem implements System {
     }
   }
 
+  // getUserByActor returns Networking::InvalidUserId (65535) for userless
+  // actors (NPCs, logout-grace parked bodies), so normalize to -1 here.
   private userOf(ctx: SystemContext, actorId: number): number {
     try {
-      return ctx.svr.getUserByActor(actorId);
+      const u = ctx.svr.getUserByActor(actorId);
+      if (typeof u !== "number" || u < 0 || u >= 0xffff || !ctx.svr.isConnected(u)) {
+        return -1;
+      }
+      return u;
     } catch {
       return -1;
     }

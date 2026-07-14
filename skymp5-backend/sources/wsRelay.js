@@ -1,17 +1,7 @@
-// WS Relay
-//
-// Single WebSocketServer that bridges two connection types:
-//
-//   gamemode  - one persistent connection from the SkyMP gamemode sandbox.
-//               Identified by RELAY_SECRET on first message.
-//
-//   player    - one connection per in-game browser (skymp5-front).
-//               Identified by a one-time nonce that the gamemode registers
-//               before the browser connects.
-//
-//   console   - the Alduinak Server Manager admin console. Shares RELAY_SECRET;
-//               forwards typed commands to the gamemode and receives the
-//               gamemode's command output to display in the manager's Console.
+// WS Relay: single WebSocketServer bridging three connection types:
+//   gamemode - one persistent connection from the SkyMP gamemode sandbox; identified by RELAY_SECRET on first message
+//   player   - one connection per in-game browser (skymp5-front); identified by a one-time nonce the gamemode registers first
+//   console  - the SkyRP Server Manager admin console; shares RELAY_SECRET, sends typed commands to the gamemode and shows its output
 //
 // Message protocol (all JSON):
 //
@@ -45,9 +35,7 @@ const crypto = require('crypto')
 const RELAY_SECRET = process.env.RELAY_SECRET
 const WS_PORT      = parseInt(process.env.WS_PORT || '7778', 10)
 
-// Constant-time check of a client-provided secret for the privileged roles.
-// Fails closed when RELAY_SECRET is unset/empty so a misconfigured server never
-// grants console/gamemode control to anyone reaching the port.
+// Constant-time secret check for the privileged roles; fails closed when RELAY_SECRET is unset so a misconfigured server never grants console/gamemode control
 function secretMatches(provided) {
   if (!RELAY_SECRET) {
     console.error('[ws-relay] RELAY_SECRET is not set; refusing privileged auth')
@@ -85,7 +73,7 @@ function toGamemode(msg) {
 const wss = new WebSocketServer({ port: WS_PORT })
 
 wss.on('connection', (ws) => {
-  let role   = null   // 'gamemode' | 'player'
+  let role   = null   // 'gamemode' | 'player' | 'console'
   let userId = null
 
   ws.on('message', (raw) => {

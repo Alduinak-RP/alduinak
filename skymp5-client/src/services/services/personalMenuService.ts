@@ -1,4 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { closeWidget, readMenuKeyCode } from "./widgetMenuUtil";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { MsgType } from "../../messages";
 import { FunctionInfo } from "../../lib/functionInfo";
@@ -25,7 +26,7 @@ let view = 'main';
 
 /**
  * Personal RP hub for the SkyMP backend. Press the personal-menu key
- * (default U) to open a menu of self-targeted commands — help, your skills,
+ * (default U) to open a menu of self-targeted commands: help, your skills,
  * bounties, properties, and lecture/training/faction-doc submenus. Each button
  * fires the matching SkyMP chat command via the cef::chat:send contract;
  * output appears in chat. Invents no new server packets.
@@ -36,14 +37,7 @@ export class PersonalMenuService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
 
-    try {
-      const settings = this.sp.settings["skymp5-client"] as any;
-      if (settings && typeof settings["personalMenuKeyCode"] === "number") {
-        this.menuKey = settings["personalMenuKeyCode"];
-      }
-    } catch {
-      // default key
-    }
+    this.menuKey = readMenuKeyCode(this.sp, "personalMenuKeyCode", DxScanCode.U);
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -107,7 +101,7 @@ export class PersonalMenuService extends ClientListener {
 
   private closeMenu(): void {
     this.menuOpen = false;
-    this.sp.browser.executeJavaScript('(function(){var ws=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w.id!==11;});window.skyrimPlatform.widgets.set(ws);})();');
+    closeWidget(this.sp, WIDGET_ID);
     this.sp.browser.setFocused(false);
   }
 

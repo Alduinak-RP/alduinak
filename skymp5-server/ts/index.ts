@@ -78,8 +78,7 @@ function requireUncached(
       try {
         clear();
 
-        // In native module we now register mp-api methods into the ScampServer class
-        // This workaround allows code that is bound to global 'mp' object to run
+        // Native module registers mp-api methods on ScampServer; aliasing global 'mp' lets code bound to it run
         // @ts-ignore
         globalThis.mp = globalThis.mp || server;
 
@@ -125,7 +124,36 @@ const setupStreams = (scampNative: any) => {
 };
 
 const setupGamemode = (server: any, gamemodePath: string) => {
-  const clear = () => server.clear();
+  // Gamemode listeners are generation-scoped: every hot reload re-runs the
+  // bundle, which re-registers its mp.on handlers. Route them through one
+  // permanent forwarder per event and drop the old generation on reload,
+  // otherwise each reload stacks a full extra set of live handlers.
+  const gamemodeHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
+  const forwarded = new Set<string>();
+  const nativeOn = server.on.bind(server);
+  server.on = (eventName: string, handler: (...args: unknown[]) => void) => {
+    if (!forwarded.has(eventName)) {
+      forwarded.add(eventName);
+      nativeOn(eventName, (...args: unknown[]) => {
+        for (const h of gamemodeHandlers.get(eventName) || []) {
+          try {
+            h(...args);
+          } catch (e) {
+            console.error(`gamemode '${eventName}' handler error:`, e);
+          }
+        }
+      });
+    }
+    const handlers = gamemodeHandlers.get(eventName) || [];
+    handlers.push(handler);
+    gamemodeHandlers.set(eventName, handlers);
+    return server;
+  };
+
+  const clear = () => {
+    gamemodeHandlers.clear();
+    server.clear();
+  };
 
   const toAbsolute = (p: string) => {
     if (path.isAbsolute(p)) {
@@ -310,8 +338,7 @@ const main = async () => {
     process.exit(-1);
   }
 
-  // The gamemode probes mp.assignBackendFaction etc, so attach before it loads.
-  // A failed attach must degrade to "natives unavailable", never block gamemode load.
+  // Attach before gamemode load (it probes mp.assignBackendFaction etc); a failed attach must degrade, never block the load
   try {
     attachBackendFactionApi(server, settingsObject);
   } catch (e) {

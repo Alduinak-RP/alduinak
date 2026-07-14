@@ -6,8 +6,7 @@ import { MsgType } from "../../messages";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { logTrace, logError } from "../../logging";
 
-// Failsafe: if the server's hide packet never arrives, dismiss the screen this
-// long after the displayed countdown runs out so the game gets input back.
+// Failsafe: if the server's hide packet never arrives, dismiss this long after the countdown so input returns.
 const FAILSAFE_GRACE_MS = 15000;
 
 // Death screen UI.
@@ -19,8 +18,7 @@ const FAILSAFE_GRACE_MS = 15000;
 // Client → server (on a confirmed choice):
 //   { "customPacketType": "deathChoice", "choice": "permadeath"|"resurrect"|"temple" }
 //
-// The screen itself is the `death` widget rendered by skymp5-front; this service
-// just shows/hides it and relays the chosen button back to the gamemode.
+// The `death` widget is rendered by skymp5-front; this service shows/hides it and relays the choice.
 export class DeathScreenService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();

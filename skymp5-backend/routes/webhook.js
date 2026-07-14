@@ -1,24 +1,11 @@
 'use strict'
 
 /**
- * GitHub webhook handler
- * Route: POST /webhooks/github
- *
- * GitHub delivers a signed JSON payload whenever a push is made to the
- * SkyMP-Client repository.  This handler:
- *   1. Verifies the HMAC-SHA256 signature (X-Hub-Signature-256 header).
- *   2. Responds 200 immediately so GitHub doesn't time out.
- *   3. Runs `git pull` in sources/client/ then rebuilds public/files/root/.
- *
- * Environment variables
- *   GITHUB_WEBHOOK_SECRET  (required)
- *     The same secret you enter in the GitHub repo, Settings -> Webhooks form.
- *
- * GitHub webhook setup (SkyMP-Client repo)
- *   Payload URL : https://<your-server>/webhooks/github
- *   Content type: application/json
- *   Secret      : value of GITHUB_WEBHOOK_SECRET
- *   Events      : Just the push event
+ * GitHub webhook handler: POST /webhooks/github, fired on pushes to the SkyMP-Client repo.
+ * Verifies the HMAC-SHA256 signature (X-Hub-Signature-256), responds 200 immediately so
+ * GitHub doesn't time out, then runs `git pull` in sources/client/ and rebuilds public/files/root/.
+ * Setup (SkyMP-Client repo, Settings -> Webhooks): payload URL https://<server>/webhooks/github,
+ * content type application/json, secret GITHUB_WEBHOOK_SECRET (required env var), push event only.
  */
 
 const crypto  = require('crypto')
@@ -42,10 +29,7 @@ const DEFAULT_BRANCH = process.env.CLIENT_BRANCH || 'refs/heads/main'
 
 // Signature verification
 
-/**
- * Constant-time comparison of expected vs received HMAC-SHA256 signature.
- * Returns true if the payload was signed with `secret`.
- */
+// Constant-time compare of expected vs received HMAC-SHA256 signature; true if the payload was signed with `secret`
 function verifySignature(secret, rawBody, receivedSig) {
   if (typeof receivedSig !== 'string') return false
 
@@ -68,10 +52,7 @@ function verifySignature(secret, rawBody, receivedSig) {
 
 // Update pipeline
 
-/**
- * Pull latest from the client repo and rebuild the file root.
- * Runs asynchronously after the HTTP response is already sent.
- */
+// Pull latest from the client repo and rebuild the file root; runs after the HTTP response is already sent
 function pullAndMerge() {
   console.log('[webhook] Running git pull in', CLIENT_DIR)
 

@@ -1,6 +1,4 @@
-// Player-to-player trade window. A centred two-pane panel: the player's own
-// inventory on the left, and their offer / actions / the partner's offer stacked
-// on the right. Styled to sit alongside the other Skyrim-themed widgets.
+// Player-to-player trade window: inventory left, cancel/lock/trade center, both offers stacked right; a locked pane glows gold.
 
 $trade-gold: #c8b48a;
 $trade-gold-dim: #8a7a55;
@@ -66,6 +64,13 @@ $trade-border: rgba(200, 180, 138, 0.45);
     &--their-offer {
       flex: 1;
     }
+
+    // A locked offer glows gold until either side changes their offer.
+    &--locked {
+      border-color: $trade-gold;
+      box-shadow: 0 0 10px rgba(200, 180, 138, 0.55), inset 0 0 14px rgba(200, 180, 138, 0.18);
+      background: rgba(64, 54, 30, 0.5);
+    }
   }
 
   &__right {
@@ -85,7 +90,7 @@ $trade-border: rgba(200, 180, 138, 0.45);
   }
 
   &__lock {
-    color: #6fae6f;
+    color: $trade-gold;
     font-size: 13px;
     margin-left: 6px;
   }
@@ -132,13 +137,14 @@ $trade-border: rgba(200, 180, 138, 0.45);
 
   &__actions {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
+    flex: 0 0 128px;
   }
 
-  // SkyrimButton's default 30px type overflows the compact action/prompt
-  // buttons; scale it to the 36px-tall buttons used here.
+  // Scale SkyrimButton's default 30px type down to fit the compact 36px-tall action/prompt buttons.
   &__actions,
   &__prompt-row {
     .skymp-input-button .skymp-input-button_text {

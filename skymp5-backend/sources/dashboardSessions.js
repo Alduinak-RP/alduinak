@@ -1,7 +1,5 @@
 'use strict'
-// Dashboard session store
-// Short-lived tokens issued after Discord OAuth. Persisted to
-// data/dashboard-sessions.json so restarts don't log everyone out.
+// Dashboard session store: short-lived tokens issued after Discord OAuth, persisted to data/dashboard-sessions.json so restarts don't log everyone out
 
 const crypto = require('crypto')
 const fs     = require('fs')

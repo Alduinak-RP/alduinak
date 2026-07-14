@@ -19,8 +19,7 @@ namespace DiscordErrors {
   export const unknownMember = 10007;
 }
 
-// See also NetworkingCombined.h
-// In NetworkingCombined.h, we implement a hack to prevent the soul-transmission bug
+// See NetworkingCombined.h: it implements a hack to prevent the soul-transmission bug
 // TODO: reimplement Login system. Preferably, in C++ with clear data flow.
 export class Login implements System {
   systemName = "Login";
@@ -36,8 +35,7 @@ export class Login implements System {
 
   private getFetchOptions(callerFunctionName: string) {
     return {
-      // Retry on network errors or 5xx, capped at 10 attempts. The cap must live in
-      // the callback: fetch-retry ignores 'retries' when retryOn is a function.
+      // Retry on network errors or 5xx, capped at 10 attempts; the cap must live in retryOn since fetch-retry ignores 'retries' when retryOn is a function
       retryOn: (attempt: number, error: Error | null, response: Response) => {
         const retry = attempt < 10 && (error !== null || response.status >= 500);
         if (retry) {
@@ -190,8 +188,7 @@ export class Login implements System {
           }
 
           if (ip !== ctx.svr.getUserIp(userId)) {
-            // It's a quick and dirty way to check if it's the same user
-            // During async http call the user could free userId and someone else could connect with the same userId
+            // Quick and dirty same-user check: during the async http call the userId could be freed and reused by someone else
             ctx.svr.sendCustomPacket(userId, loginFailedIpMismatch);
             throw new Error("IP mismatch");
           }
@@ -215,9 +212,7 @@ export class Login implements System {
 
         const rolesToAssign = isMemberOfAny ? [...new Set(fetchedRoles)] : roles;
 
-        // Mirror the master-api faction access so the SkyMP gamemode can
-        // read it from the character (private.skympAccess). Account-level:
-        // the same payload applies to every character on this profile.
+        // Mirror master-api faction access into private.skympAccess; account-level, the same payload applies to every character on this profile
         const skympAccess = {
           permissions: (profile as any).permissions || [],
           gameFactions: (profile as any).gameFactions || [],

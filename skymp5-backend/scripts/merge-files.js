@@ -3,17 +3,10 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
 /**
- * Merge pipeline: copies the client source directory into the file bucket
- * that the launcher downloads, and builds the distributable zip.
- *
- *   build/dist/client (via `npm run populate`)  ->  build/client-files/root/
- *   build/client-files/root/                    ->  build/client-files/<zip>
- *                                               ->  data/files-version.json
- *
- * SKSE is NOT included here; it is managed by the user via the Vortex collection.
- *
- * Run standalone:  node scripts/merge-files.js
- * Called by:       scripts/setup-client.js  and  routes/webhook.js
+ * Merge pipeline: copies the client source into the bucket the launcher downloads and builds the zip.
+ *   build/dist/client (via `npm run populate`) -> build/client-files/root/ -> build/client-files/<zip> + data/files-version.json
+ * SKSE is NOT included; the user manages it via the Vortex collection.
+ * Run standalone: node scripts/merge-files.js. Called by scripts/setup-client.js and routes/webhook.js.
  */
 
 const path               = require('path')
@@ -31,13 +24,7 @@ const VERSION_FILE = path.join(ROOT, 'data', 'files-version.json')
 
 // Version helpers
 
-/**
- * Short git commit hash identifying the client files version.
- * Tries the legacy sources/client checkout first, then the alduinak monorepo
- * this backend lives in (the client is built from skymp5-client there).
- * This changes exactly when new commits are pulled, never on mere restarts.
- * Falls back to 'nogit' if neither directory is a git repo.
- */
+// Short git hash for the client files version: tries the legacy sources/client checkout, then the skyrp monorepo; changes only on new commits, 'nogit' if neither is a repo
 function clientGitHash() {
   for (const dir of [CLIENT_SRC, path.join(ROOT, '..')]) {
     try {
@@ -107,14 +94,12 @@ async function mergeSourcesIntoRoot() {
   const clientFiles = copyDir(CLIENT_SRC, OUTPUT_DIR, SKIP_ALWAYS)
   console.log(`[merge] Files merged: ${clientFiles} total in ${Date.now() - startMs}ms`)
 
-  // Build distributable zip
   console.log('[merge] Building zip…')
   const zipStart = Date.now()
   const zipSize  = await buildZip(OUTPUT_DIR, ZIP_PATH)
   console.log(`[merge] Zip built: ${(zipSize / 1024 / 1024).toFixed(1)} MB in ${Date.now() - zipStart}ms`)
 
-  // Write version file
-  // Set CLIENT_VERSION in .env to override the update-signal version.
+  // Set CLIENT_VERSION in .env to override the update-signal version
   const version = (process.env.CLIENT_VERSION || '').trim() || clientGitHash()
   fs.mkdirSync(path.dirname(VERSION_FILE), { recursive: true })
   fs.writeFileSync(VERSION_FILE, JSON.stringify({

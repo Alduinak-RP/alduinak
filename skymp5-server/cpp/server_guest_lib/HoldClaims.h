@@ -18,8 +18,8 @@ enum class Rank
   CourtWizard,
   Thane,
   Housecarl,
-  VillageElder,
   Guard,
+  VillageElder,
   Lord,
   Citizen,
 };
@@ -55,7 +55,7 @@ const char* ToString(LockLevel level) noexcept;
 std::optional<Rank> RankFromString(const std::string& text);
 
 // How many members a hold may hold at a rank. std::nullopt means unlimited.
-// Jarl is 1, Steward and Captain are 4, everyone else is uncapped.
+// Jarl 1; Steward, Captain, Court Wizard 4; Thane, Village Elder 5; rest uncapped.
 std::optional<int> RankCap(Rank rank) noexcept;
 
 // True when a hold with `currentCount` members already at `rank` has room for one more.

@@ -2,12 +2,8 @@
 
 /**
  * Compile an install manifest from a reference MO2 install.
- * 
  * Author overrides live in data/manifest-sources.json (all optional):
- *   {
- *     "urls":        { "<archiveName>": "https://direct-download/…" },
- *     "rootInclude": ["skse64_loader.exe", "IpHlpAPI.dll", …]
- *   }
+ *   { "urls": { "<archiveName>": "https://direct-download/…" }, "rootInclude": ["skse64_loader.exe", …] }
  * `urls` gives a download source to non-Nexus archives; `rootInclude` lists
  * game-root files to capture (skse64_*.exe/.dll are picked up automatically).
  */
@@ -190,8 +186,7 @@ async function main() {
   const mods = []
   const inlineWarnings = []
 
-  // Stable per-mod content fingerprint: lets the launcher reinstall only the
-  // mods that actually changed instead of everything when the manifest is rebuilt.
+  // Stable per-mod content fingerprint so the launcher reinstalls only mods that actually changed on rebuild
   const contentHash = files =>
     sha256Buf(Buffer.from(files.map(f => `${f.to}:${f.sha256}`).sort().join('\n')))
 
@@ -247,8 +242,7 @@ async function main() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
   fs.writeFileSync(OUT, JSON.stringify(manifest))
 
-  // Lightweight display list so /api/modlist (the launcher's Modlist panel)
-  // keeps its existing shape without a second source of truth.
+  // Lightweight display list so /api/modlist (the launcher's Modlist panel) keeps its shape without a second source of truth
   const display = [
     { name: 'SkyMP Client', required: true, enabled: true, source: 'backend' },
     ...mods.map(m => ({

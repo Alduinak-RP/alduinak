@@ -1,8 +1,5 @@
 'use strict'
-// Admin proxy
-// Validates the bearer token, then forwards requests to the SkyMP-Admin
-// service. Keeps the admin service off the public internet: only the backend
-// is exposed; the admin process binds to localhost only.
+// Admin proxy: validates the bearer token then forwards to the SkyMP-Admin service, which binds to localhost only and stays off the public internet
 
 const { Router } = require('express')
 const http       = require('http')
@@ -25,10 +22,7 @@ function validateToken(req, res) {
     return false
   }
 
-  // Accept a dashboard session token only when it carries an admin permission:
-  // either the 'admin.*' wildcard or a granular 'admin.<x>' grant from
-  // data/role-permissions.json. View-only roles must not be able to control
-  // the game server; anything else falls through to the static ADMIN_TOKEN.
+  // Accept a dashboard session only with an 'admin.*' or granular 'admin.<x>' grant; view-only roles must not control the game server, anything else falls through to ADMIN_TOKEN
   const session = sessions.validate(provided)
   if (session && (session.permissions || []).some(p => /^admin\./.test(p) || p === 'admin.*')) return true
 

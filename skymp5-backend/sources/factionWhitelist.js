@@ -34,8 +34,7 @@ function normalizeSlot(value) {
   if (value === null || value === undefined || value === '') return null
   const n = Number(value)
   if (!Number.isInteger(n) || n < 0 || n > 2) {
-    // Reject rather than coerce to null: null means "all characters", which
-    // would silently widen a per-character grant to every character.
+    // Reject rather than coerce to null: null means "all characters" and would silently widen a per-character grant
     const err = new Error('slot must be empty or an integer from 0 to 2')
     err.status = 400
     throw err
@@ -207,6 +206,26 @@ function getPlayerAssignments(discordId) {
     .map(assignment => decorateAssignment(assignment, byId.get(assignment.requirementId)))
 }
 
+// All assignments for one hold, online or not (requirement ids "hold:<slug>:*")
+function getHoldRoster(holdSlug) {
+  const data = load()
+  const prefix = `hold:${slug(holdSlug)}:`
+  const byId = new Map(data.requirements.map(req => [req.id, req]))
+  return data.assignments
+    .filter(assignment => String(assignment.requirementId || '').startsWith(prefix))
+    .map(assignment => {
+      const req = byId.get(assignment.requirementId)
+      return {
+        assignmentId: assignment.id,
+        discordId: assignment.discordId,
+        playerName: assignment.playerName || '',
+        slot: assignment.slot ?? null,
+        rank: req ? req.rank : null,
+        rankSlug: String(assignment.requirementId).slice(prefix.length),
+      }
+    })
+}
+
 function slug(value) {
   return String(value || '')
     .toLowerCase()
@@ -222,4 +241,5 @@ module.exports = {
   getPlayerFactionPermissions,
   getPlayerGameFactions,
   getPlayerAssignments,
+  getHoldRoster,
 }

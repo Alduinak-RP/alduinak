@@ -1,36 +1,22 @@
 'use strict'
 
 /**
- * SkyMP Master API compatibility routes.
- *
- * Implements the three endpoints that the SkyMP game client (authService.ts)
- * expects on the master server, bridging them to the existing session
- * infrastructure in master-api.js.
- *
- * Mounted in server.js as:
- *   app.use('/api/users', skympCompatRoute)
+ * SkyMP Master API compatibility routes: the endpoints the SkyMP game client
+ * (authService.ts) expects on the master server, bridged to the session
+ * infrastructure in master-api.js. Mounted as app.use('/api/users', ...) in server.js.
  *
  * Endpoints:
- *
  *   GET /api/users/login-discord?state=<hex>
- *     Client generates its own state token and opens this URL in the system
- *     browser.  We register the state as pending and redirect to Discord OAuth.
- *
+ *     Client opens this in the system browser with its own state token; we register the state as pending and redirect to Discord OAuth.
  *   GET /api/users/login-discord/callback?code=...&state=...
- *     Discord's registered redirect URI.  Exchanges the code, creates a
- *     session, and marks the state as done so the polling endpoint can return
- *     the result.
- *
+ *     Discord's registered redirect URI: exchanges the code, creates a session, marks the state done for the polling endpoint.
  *   GET /api/users/login-discord/status?state=<hex>
  *     Client polls this while waiting for the browser OAuth to finish.
  *     401: still pending
- *     200: done; returns { token, masterApiId, discordUsername, discordDiscriminator, discordAvatar }
- *           The `token` is the play-session token; /me/play just validates it.
+ *     200: done; returns { token, masterApiId, discordUsername, discordDiscriminator, discordAvatar } (token = play-session token; /me/play just validates it)
  *     403: unknown or expired state
- *
  *   POST /api/users/me/play/:serverKey
- *     Headers: { authorization: <token> }
- *     Body:    {} (ignored)
+ *     Headers: { authorization: <token> }  Body: {} (ignored)
  *     Validates the token is a live session and returns { session: token }.
  */
 
@@ -41,15 +27,10 @@ const fs      = require('fs')
 const path    = require('path')
 const config  = require('../config')
 
-// Pending/completed auth store
-// state -> { status: 'pending'|'done', expiresAt, ...sessionFields }
-// Pending entries expire after 10 minutes (OAuth timeout).
-// Done entries expire after 5 minutes, or 60 seconds after first delivery.
-// Persisted to disk on every mutation: the launcher polls this store for up to
-// 5 minutes while the user is off in the browser, and a backend restart in
-// that window (`node --watch` restarts on every file save in dev) would
-// otherwise wipe the in-flight login and leave the launcher polling a state
-// the server no longer knows.
+// Pending/completed auth store: state -> { status: 'pending'|'done', expiresAt, ...sessionFields }
+// Pending entries expire after 10 min (OAuth timeout); done entries after 5 min, or 60 s after first delivery.
+// Persisted on every mutation: the launcher polls for up to 5 min while the user is in the browser, and a
+// backend restart in that window (`node --watch` restarts on save in dev) would wipe the in-flight login.
 
 const authStates = new Map()
 const PENDING_TTL     = 10 * 60 * 1000
@@ -98,9 +79,7 @@ router.get('/login-discord', (req, res) => {
     }))
   }
 
-  // Register the state so we can distinguish "unknown" from "pending" in /status.
-  // Never clobber a completed login that hasn't been delivered yet (e.g. the
-  // browser re-loading this URL via Back/history after authorising).
+  // Register the state so /status can tell "unknown" from "pending"; never clobber a completed login awaiting delivery (e.g. browser Back re-loads this URL)
   const existing = authStates.get(state)
   if (!existing || existing.status === 'pending') {
     authStates.set(state, { status: 'pending', expiresAt: Date.now() + PENDING_TTL })
@@ -120,9 +99,7 @@ router.get('/login-discord', (req, res) => {
 })
 
 // GET /api/users/login-discord/callback
-// Discord's registered redirect URI.  Must be set to:
-//   <MASTER_URL>/api/users/login-discord/callback
-// in both DISCORD_REDIRECT_URI (.env) and the Discord application settings.
+// Discord's registered redirect URI: <MASTER_URL>/api/users/login-discord/callback, set in both DISCORD_REDIRECT_URI (.env) and the Discord app settings
 
 router.get('/login-discord/callback', async (req, res) => {
   const { code, state, error } = req.query
@@ -211,9 +188,7 @@ router.get('/login-discord/status', (req, res) => {
   if (!entry)          return res.status(403).json({ error: 'Unknown or expired state.' })
   if (entry.status === 'pending') return res.status(401).json({ error: 'Auth not completed yet.' })
 
-  // Don't consume on first read: if this response is lost in transit the
-  // launcher's next poll must still succeed. Instead shorten the entry's life
-  // to a small grace window; pruning collects it after that.
+  // Don't consume on first read: a lost response must let the next poll succeed, so just shorten the entry's life to a grace window for pruning to collect
   if (!entry.deliveredAt) {
     entry.deliveredAt = Date.now()
     entry.expiresAt   = Date.now() + DELIVERED_GRACE
@@ -254,12 +229,7 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
-/**
- * Minimal self-contained page shown at the end of the browser OAuth hop.
- * With autoClose the page immediately tries window.close(); browsers only
- * honour that for some external-app-opened tabs, so the message stays as a
- * fallback for the rest.
- */
+// End-of-OAuth page; autoClose tries window.close(), which browsers only honour for some external-app-opened tabs, so the message stays as a fallback
 function authPage({ ok, title, message, autoClose = false }) {
   const accent = ok ? '#c8a25f' : '#c0564f'
   const mark   = ok ? '&#10003;' : '&#10007;'

@@ -1,10 +1,5 @@
-/**
- * Backend server configuration.
- * All values are read from environment variables (set via .env for local dev,
- * real env vars in production).
- */
-// Must run before any process.env read below: this module snapshots the env at
-// load time, so it cannot rely on the entry point calling dotenv.config() first.
+// Backend server configuration; all values come from env vars (.env for local dev, real env in production)
+// Must run before any process.env read below: this module snapshots the env at load time
 require('dotenv').config()
 
 const path = require('path')
@@ -31,8 +26,7 @@ module.exports = {
   serverOfflineMode: process.env.SERVER_OFFLINE_MODE === 'true',
   serverNpcEnabled:  process.env.SERVER_NPC_ENABLED  === 'true',
   serverGamemode:    process.env.SERVER_GAMEMODE     || null,
-  // Master API: used by the SkyMP client for online-mode authentication.
-  // In offline mode these are ignored by the launcher but kept for future use.
+  // Master API: used by the SkyMP client for online-mode auth; ignored by the launcher in offline mode
   serverMasterKey:    process.env.SERVER_MASTER_KEY    || '',
   masterUrl:          process.env.MASTER_URL           || 'https://api.alduinak.com/',
   masterApiAuthToken: process.env.MASTER_API_AUTH_TOKEN || '',
@@ -47,10 +41,7 @@ module.exports = {
   metricsUser:     process.env.METRICS_USER     || '',
   metricsPassword: process.env.METRICS_PASSWORD || '',
 
-  // Launch sanity check: refuse game-server connections from sessions whose
-  // launcher did not verify current client files + load order at launch time.
-  // Set LAUNCH_CHECK_ENFORCE=false to disable (e.g. while players are still
-  // on launcher builds that predate the check).
+  // Refuse game-server connections whose launcher didn't verify client files + load order; set LAUNCH_CHECK_ENFORCE=false to disable (e.g. for launcher builds predating the check)
   launchCheckEnforce: process.env.LAUNCH_CHECK_ENFORCE !== 'false',
 
   // Admin service
@@ -70,16 +61,11 @@ module.exports = {
   // Public URL of the website (used to redirect back after OAuth).
   websiteUrl: process.env.WEBSITE_URL || 'http://localhost:4001',
 
-  // Discord bot (role-based access)
-  // Bot token and guild ID used to fetch member roles at login time.
-  // The bot must have the "Server Members Intent" enabled in the Developer Portal.
+  // Discord bot (role-based access): token/guild used to fetch member roles at login; the bot needs "Server Members Intent" enabled in the Developer Portal
   discordBotToken: process.env.DISCORD_BOT_TOKEN || '',
   discordGuildId:  process.env.DISCORD_GUILD_ID  || '',
 
-  // Server lockdown
-  // When true, only Discord users whose IDs appear in serverLockedAllowList
-  // can connect.  Everyone else receives loginFailedServerLocked from the TS
-  // server and the launcher shows a "Server locked" indicator.
+  // Server lockdown: when true only serverLockedAllowList IDs can connect; others get loginFailedServerLocked from the TS server and the launcher shows "Server locked"
   serverLocked:          process.env.SERVER_LOCKED === 'true',
   // Comma-separated list of Discord snowflake IDs that may still connect.
   serverLockedAllowList: (process.env.SERVER_LOCKED_ALLOW || '')
@@ -88,8 +74,7 @@ module.exports = {
   serverLockedRoleIds: (process.env.SERVER_LOCKED_ROLE_IDS || '')
     .split(',').map(s => s.trim()).filter(Boolean),
 
-  // Discord role used as the gameplay whitelist. When set, this replaces
-  // data/whitelist.json as the source of truth for who may join.
+  // Discord role used as the gameplay whitelist; when set it replaces data/whitelist.json as the source of truth for who may join
   whitelistRoleId: process.env.WHITELIST_ROLE_ID || '',
 
   // Discord role used as the gameplay ban list. Users with this role cannot join.

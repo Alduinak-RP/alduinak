@@ -1,16 +1,10 @@
 'use strict'
-// requirePermission middleware
-// Factory that returns an Express middleware requiring a specific permission.
-// Validates the Bearer token from the Authorization header against dashboard
-// sessions and checks the resolved permissions stored in the session.
+// Factory for Express middleware: validates the dashboard session Bearer token and requires the given permission
 
 const sessions         = require('../sources/dashboardSessions')
 const { hasPermission } = require('../sources/permissions')
 
-/**
- * @param {string} perm  Permission string to require, e.g. 'lore.write'
- * @returns {import('express').RequestHandler}
- */
+/** @param {string} perm Permission string to require, e.g. 'lore.write' */
 function requirePermission(perm) {
   return (req, res, next) => {
     const auth    = req.headers['authorization'] ?? ''

@@ -40,9 +40,10 @@ function payloadForSlot(payload: AccessPayload, slot: unknown): AccessPayload {
   return Number.isInteger(slot) ? filterAccessForSlot(payload, slot as number) : payload;
 }
 
-// A row applies to the played character: account-wide rows always, slot rows only on a known matching
-// slot. Rows scoped to OTHER characters never apply, so mutations can never destroy their grants.
+// Account-wide rows always apply, slot rows only on a known matching slot; rows scoped to OTHER characters never apply, so mutations cannot destroy their grants
+// slot 'any' matches every row: used for offline targets, where no slot is knowable
 function rowAppliesToSlot(row: AssignmentRow, slot: unknown): boolean {
+  if (slot === "any") return true;
   const rowSlot = row.slot === undefined ? null : row.slot;
   return rowSlot === null || (Number.isInteger(slot) && rowSlot === slot);
 }
@@ -53,9 +54,7 @@ function holdPrefixOf(requirementId: string): string | null {
   return parts.length === 3 && parts[0] === "hold" ? `${parts[0]}:${parts[1]}:` : null;
 }
 
-// Implements the backend-faction natives the gamemode probes for (mp.assignBackendFaction,
-// mp.removeBackendFaction, mp.fetchBackendAccess). All three resolve with the refreshed
-// { permissions, gameFactions, factions } payload for private.skympAccess.
+// Attaches the natives the gamemode probes for (mp.assignBackendFaction, mp.removeBackendFaction, mp.fetchBackendAccess); all resolve with the refreshed { permissions, gameFactions, factions } payload for private.skympAccess
 export function attachBackendFactionApi(server: Mp, settings: Settings): void {
   const master = String(settings.master || "").replace(/\/+$/, "");
   const masterKey = settings.masterKey;
@@ -67,10 +66,9 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
   }
 
   const doFetch = fetchRetry.default(global.fetch);
-  const base = `${master}/api/servers/${masterKey}/profiles`;
+  const base = `${master}/api/servers/${masterKey}`;
 
-  // fetch-retry ignores 'retries' when retryOn is a function, so the attempt cap lives in retryOn.
-  // Mutations are never retried: replaying a committed POST/DELETE misreports success as failure.
+  // Attempt cap lives in retryOn (fetch-retry ignores 'retries' when retryOn is a function); mutations never retry, replaying a committed POST/DELETE misreports success as failure
   const request = async (method: string, path: string, body?: unknown): Promise<any> => {
     const mayRetry = method === "GET";
     const response = await doFetch(`${base}${path}`, {
@@ -91,18 +89,23 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
   };
 
   const fetchCheck = async (profileId: number): Promise<AccessPayload> =>
-    pickPayload(await request("GET", `/${profileId}/check`));
+    pickPayload(await request("GET", `/profiles/${profileId}/check`));
 
   server.fetchBackendAccess = async (profileId: number, slot?: unknown): Promise<AccessPayload> =>
     payloadForSlot(await fetchCheck(profileId), slot);
+
+  // Full hold roster (online or not) for the in-game faction menu
+  server.fetchHoldRoster = async (holdSlug: string): Promise<unknown[]> => {
+    const data = await request("GET", `/holds/${encodeURIComponent(holdSlug)}/roster`);
+    return Array.isArray(data?.members) ? data.members : [];
+  };
 
   if (typeof authToken !== "string" || !authToken) {
     console.log("[backendFactionApi] masterApiAuthToken missing, read-only: assign/remove natives not attached");
     return;
   }
 
-  // Mutations are serialized per profile so concurrent appointments cannot interleave
-  // their read-then-write cycles (e.g. two officers granting a rankless player two ranks).
+  // Mutations are serialized per profile so concurrent appointments cannot interleave their read-then-write cycles
   const queues = new Map<number, Promise<unknown>>();
   const enqueue = <T>(profileId: number, job: () => Promise<T>): Promise<T> => {
     const next = (queues.get(profileId) || Promise.resolve()).then(job, job);
@@ -110,8 +113,7 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
     return next;
   };
 
-  // Replace-within-hold: a player holds one rank per hold, so stale ranks are deleted
-  // (otherwise demotions never apply, the old higher rank keeps winning in the gamemode).
+  // Replace-within-hold: one rank per hold, stale ranks are deleted (otherwise demotions never apply, the old higher rank keeps winning)
   server.assignBackendFaction = (profileId: number, requirementId: string, playerName?: string, slot?: unknown): Promise<AccessPayload> =>
     enqueue(profileId, async () => {
       const holdPrefix = holdPrefixOf(requirementId);
@@ -126,9 +128,9 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
       // POST before deleting the old rank: a rejected POST (capacity, validation) must not cost it
       let latest = alreadyAssigned
         ? current
-        : pickPayload(await request("POST", `/${profileId}/factions`, { requirementId, playerName }));
+        : pickPayload(await request("POST", `/profiles/${profileId}/factions`, { requirementId, playerName }));
       for (const row of staleRows) {
-        latest = pickPayload(await request("DELETE", `/${profileId}/factions/${row.id}`));
+        latest = pickPayload(await request("DELETE", `/profiles/${profileId}/factions/${row.id}`));
       }
       return payloadForSlot(latest, slot);
     });
@@ -138,7 +140,7 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
       let latest = await fetchCheck(profileId);
       for (const row of latest.factions.slice()) {
         if (row && row.id && row.requirementId === requirementId && rowAppliesToSlot(row, slot)) {
-          latest = pickPayload(await request("DELETE", `/${profileId}/factions/${row.id}`));
+          latest = pickPayload(await request("DELETE", `/profiles/${profileId}/factions/${row.id}`));
         }
       }
       return payloadForSlot(latest, slot);

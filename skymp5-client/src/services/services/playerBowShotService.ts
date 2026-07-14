@@ -105,9 +105,7 @@ export class PlayerBowShotService extends ClientListener {
             reliability: "unreliable"
         });
 
-        // Fixes race condition when the server removes an item faster than local crossbow does that: -1 total
-        // Then crossbow removes one more item: -2 total
-        // The item is being added back: -1 total (which is correct but looks ugly in process)
+        // Fixes a race: the server removes the ammo before the local crossbow does, briefly showing -2 then -1
         this.inventoryUnblockMoment = Date.now() + 5 * 1000;
 
         logTrace(this, `Sent crossbow shot`);

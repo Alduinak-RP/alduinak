@@ -1,7 +1,5 @@
 'use strict'
-// Rules API
-// CRUD for RP rules stored as a flat array in data/rules.json.
-// Public read (GET). Write operations require 'rules.write' permission (Management only).
+// RP rules CRUD backed by data/rules.json; public GET, writes require 'rules.write' (Management only)
 
 const { Router }        = require('express')
 const crypto            = require('crypto')

@@ -73,16 +73,20 @@ TEST_CASE("Every rank round-trips through its string id", "[HouseClaim]")
   REQUIRE_FALSE(RankFromString("emperor").has_value());
 }
 
-TEST_CASE("Hold seat caps: one Jarl, four Stewards, four Captains",
+TEST_CASE("Hold seat caps: 1 Jarl, 4 Stewards/Captains/Wizards, 5 Thanes/Elders",
           "[HouseClaim]")
 {
   REQUIRE(RankCap(Rank::Jarl) == 1);
   REQUIRE(RankCap(Rank::Steward) == 4);
   REQUIRE(RankCap(Rank::Captain) == 4);
+  REQUIRE(RankCap(Rank::CourtWizard) == 4);
+  REQUIRE(RankCap(Rank::Thane) == 5);
+  REQUIRE(RankCap(Rank::VillageElder) == 5);
 
   // The rest are uncapped.
-  REQUIRE_FALSE(RankCap(Rank::Thane).has_value());
+  REQUIRE_FALSE(RankCap(Rank::Housecarl).has_value());
   REQUIRE_FALSE(RankCap(Rank::Guard).has_value());
+  REQUIRE_FALSE(RankCap(Rank::Lord).has_value());
   REQUIRE_FALSE(RankCap(Rank::Citizen).has_value());
 
   // A hold that already has its single Jarl / four stewards is full.
@@ -90,8 +94,11 @@ TEST_CASE("Hold seat caps: one Jarl, four Stewards, four Captains",
   REQUIRE(CanAddMemberAtRank(Rank::Steward, 3));
   REQUIRE_FALSE(CanAddMemberAtRank(Rank::Steward, 4));
   REQUIRE_FALSE(CanAddMemberAtRank(Rank::Captain, 4));
+  REQUIRE(CanAddMemberAtRank(Rank::Thane, 4));
+  REQUIRE_FALSE(CanAddMemberAtRank(Rank::Thane, 5));
+  REQUIRE_FALSE(CanAddMemberAtRank(Rank::VillageElder, 5));
   // Uncapped ranks always have room.
-  REQUIRE(CanAddMemberAtRank(Rank::Thane, 999));
+  REQUIRE(CanAddMemberAtRank(Rank::Guard, 999));
 }
 
 TEST_CASE("A Jarl has full power over every door and container in the hold",
@@ -116,7 +123,7 @@ TEST_CASE("A Jarl has full power over every door and container in the hold",
   REQUIRE_FALSE(CanAppoint(Rank::Jarl, Rank::Jarl));
 }
 
-TEST_CASE("Stewards run housing and hire the civilian court", "[HouseClaim]")
+TEST_CASE("Stewards run housing and hire nobles and citizens", "[HouseClaim]")
 {
   // Housing authority: access, lock, transfer and reclaim buildings.
   REQUIRE(CanAccess(Rank::Steward, CellKind::House, false));
@@ -128,12 +135,12 @@ TEST_CASE("Stewards run housing and hire the civilian court", "[HouseClaim]")
   REQUIRE_FALSE(CanLock(Rank::Steward, CellKind::Dungeon, false));
   REQUIRE_FALSE(CanTransferOwnership(Rank::Steward, CellKind::Dungeon, false));
 
-  REQUIRE(CanAppoint(Rank::Steward, Rank::Housecarl));
-  REQUIRE(CanAppoint(Rank::Steward, Rank::CourtWizard));
   REQUIRE(CanAppoint(Rank::Steward, Rank::Lord));
-  REQUIRE(CanAppoint(Rank::Steward, Rank::VillageElder));
   REQUIRE(CanAppoint(Rank::Steward, Rank::Citizen));
-  
+
+  REQUIRE_FALSE(CanAppoint(Rank::Steward, Rank::Housecarl));
+  REQUIRE_FALSE(CanAppoint(Rank::Steward, Rank::CourtWizard));
+  REQUIRE_FALSE(CanAppoint(Rank::Steward, Rank::VillageElder));
   REQUIRE_FALSE(CanAppoint(Rank::Steward, Rank::Guard));
   REQUIRE_FALSE(CanAppoint(Rank::Steward, Rank::Captain));
   REQUIRE_FALSE(CanAppoint(Rank::Steward, Rank::Thane));
@@ -141,8 +148,7 @@ TEST_CASE("Stewards run housing and hire the civilian court", "[HouseClaim]")
   REQUIRE_FALSE(CanAppoint(Rank::Steward, Rank::Jarl));
 }
 
-TEST_CASE("Captains run the dungeon and hire guards and housecarls",
-          "[HouseClaim]")
+TEST_CASE("Captains run the dungeon and hire guards", "[HouseClaim]")
 {
   REQUIRE(CanAccess(Rank::Captain, CellKind::Dungeon, false));
   REQUIRE(CanLock(Rank::Captain, CellKind::Dungeon, false));
@@ -151,8 +157,8 @@ TEST_CASE("Captains run the dungeon and hire guards and housecarls",
   REQUIRE_FALSE(CanTransferOwnership(Rank::Captain, CellKind::House, false));
 
   REQUIRE(CanAppoint(Rank::Captain, Rank::Guard));
-  REQUIRE(CanAppoint(Rank::Captain, Rank::Housecarl));
-  
+
+  REQUIRE_FALSE(CanAppoint(Rank::Captain, Rank::Housecarl));
   REQUIRE_FALSE(CanAppoint(Rank::Captain, Rank::Thane));
   REQUIRE_FALSE(CanAppoint(Rank::Captain, Rank::Citizen));
 }
@@ -195,11 +201,18 @@ TEST_CASE("Village elders are mayors who enroll citizens and lords",
   REQUIRE_FALSE(CanAccess(Rank::VillageElder, CellKind::House, false));
 }
 
-TEST_CASE("Court wizards, guards, lords and citizens appoint no one",
-          "[HouseClaim]")
+TEST_CASE("Nobles enroll citizens", "[HouseClaim]")
 {
-  const Rank noAuthority[] = { Rank::CourtWizard, Rank::Guard, Rank::Lord,
-                               Rank::Citizen };
+  REQUIRE(CanAppoint(Rank::Lord, Rank::Citizen));
+
+  REQUIRE_FALSE(CanAppoint(Rank::Lord, Rank::Lord));
+  REQUIRE_FALSE(CanAppoint(Rank::Lord, Rank::Guard));
+  REQUIRE_FALSE(CanAccess(Rank::Lord, CellKind::House, false));
+}
+
+TEST_CASE("Court wizards, guards and citizens appoint no one", "[HouseClaim]")
+{
+  const Rank noAuthority[] = { Rank::CourtWizard, Rank::Guard, Rank::Citizen };
   const Rank anyTarget[] = { Rank::Guard, Rank::Citizen, Rank::Housecarl,
                              Rank::Lord };
   for (Rank who : noAuthority) {

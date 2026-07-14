@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import './styles.scss';
 
-// Bespoke death screen. Driven by a `death` widget set from the client:
-//   { type: 'death', seconds: <countdown>, onChoice: (key) => void }
-// The body copy and the per-choice confirm text live here (static UI), the
-// countdown is driven by `seconds`, and a confirmed choice calls onChoice with
-// one of: 'permadeath' | 'resurrect' | 'temple'.
+// Death screen widget contract: { type: 'death', seconds: <countdown>, onChoice: (key) => void }
+// where a confirmed choice calls onChoice with 'permadeath' | 'resurrect' | 'temple'. Body copy lives here (static UI).
 
 const CHOICES = [
   {
@@ -40,7 +37,6 @@ const DeathScreen = (props) => {
   const [remaining, setRemaining] = useState(initial);
   const [pending, setPending] = useState(null); // a CHOICES entry awaiting confirm
 
-  // Live countdown.
   useEffect(() => {
     setRemaining(initial);
     const id = setInterval(() => {

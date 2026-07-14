@@ -113,6 +113,10 @@ const namesEqual = (a: Entry, b: Entry): boolean => {
   return false;
 };
 
+// Property keys (housing system) are identified by their name extra, so name
+// blindness would merge distinct keys and desync against the server.
+const PROPERTY_KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
+
 const extrasEqual = (a: Entry, b: Entry, ignoreWorn = false) => {
   return (
     a.health === b.health &&
@@ -121,6 +125,7 @@ const extrasEqual = (a: Entry, b: Entry, ignoreWorn = false) => {
     !!a.removeEnchantmentOnUnequip === !!b.removeEnchantmentOnUnequip &&
     //a.chargePercent === b.chargePercent &&
     //namesEqual(a, b) &&
+    ((a.baseId >>> 0) !== PROPERTY_KEY_BASE_ID || (a.name || '') === (b.name || '')) &&
     a.soul === b.soul &&
     a.poisonId === b.poisonId &&
     a.poisonCount === b.poisonCount &&

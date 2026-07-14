@@ -1,7 +1,5 @@
 'use strict'
-// Whitelist staff notes API
-// A single editable document with notes for staff handling whitelist applications.
-// Read requires 'staff.whitelist_info', write requires 'rules.write' (Management).
+// Whitelist staff notes: one editable document; read requires 'staff.whitelist_info', write requires 'rules.write' (Management)
 
 const { Router }        = require('express')
 const fs                = require('fs')

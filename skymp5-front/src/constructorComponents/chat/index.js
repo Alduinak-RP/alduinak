@@ -17,10 +17,8 @@ const MAX_HISTORY_LENGTH = 20;
 
 const SHOUTREGEXP = /№(.*?)№/gi;
 
-// Chat settings persist across sessions: font size, transparency, lock,
-// highlight words, window position/size. The client injects the saved
-// values into window.__alduinakChatSettings on mount and writes changes to a file
-// under Data/Platform (localStorage and the CEF cache do not survive a relaunch).
+// Chat settings (font size, transparency, lock, highlights, window pos/size) persist via window.__skyrpChatSettings:
+// the client injects saved values on mount and writes changes to a file under Data/Platform (localStorage/CEF cache don't survive a relaunch).
 const loadChatSettings = () => {
   try { return window.__alduinakChatSettings || {}; }
   catch (e) { return {}; }
@@ -266,8 +264,7 @@ const Chat = (props) => {
   };
 
   const getList = () => {
-    // Show only the active tab's messages; 'all' (server /system) shows everywhere.
-    // Messages without a channel (legacy) fall back to Local.
+    // Show only the active tab's messages; 'all' (server /system) shows everywhere; channel-less legacy messages fall back to Local.
     return window.chatMessages.filter((msg) => {
       const ch = msg.channel || 'local';
       return ch === channel || ch === 'all';

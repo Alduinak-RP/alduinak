@@ -8,6 +8,7 @@ interface UiItem {
   baseId: number;
   count: number;
   name: string;
+  keyName?: string; // property keys: the credential that rides add/remove events
 }
 
 interface TradeEvents {
@@ -40,7 +41,7 @@ const send = (key: string, ...args: unknown[]): void => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).skyrimPlatform.sendMessage(key, ...args);
   } catch (e) {
-    // Running outside the game (e.g. Storybook) — log instead.
+    // Running outside the game (e.g. Storybook) - log instead.
     // eslint-disable-next-line no-console
     console.log('trade sendMessage', key, args);
   }
@@ -61,7 +62,7 @@ const ItemList = ({ items, emptyText, onItemClick }: ItemListProps) => {
     <div className="trade__list">
       {items.map((item) => (
         <div
-          key={item.baseId}
+          key={item.baseId + '|' + (item.keyName || '')}
           className={'trade__item' + (onItemClick ? ' trade__item--clickable' : '')}
           onClick={onItemClick ? () => onItemClick(item) : undefined}
         >
@@ -85,13 +86,17 @@ const Trade = ({ data }: { data: TradeData }) => {
   const ev = data.events || ({} as TradeEvents);
   const threshold = data.stackPromptThreshold || 5;
 
+  const sendMove = (dir: 'add' | 'remove', item: UiItem, count: number): void => {
+    send(dir === 'add' ? ev.add : ev.remove, item.baseId, count, item.keyName || '');
+  };
+
   // Small stacks move whole; large stacks ask "how many?" first (like vanilla).
   const clickItem = (dir: 'add' | 'remove', item: UiItem): void => {
     if (item.count > threshold) {
       setPromptCount(1);
       setPrompt({ dir, item });
     } else {
-      send(dir === 'add' ? ev.add : ev.remove, item.baseId, item.count);
+      sendMove(dir, item, item.count);
     }
   };
 
@@ -100,7 +105,7 @@ const Trade = ({ data }: { data: TradeData }) => {
       return;
     }
     const n = Math.max(1, Math.min(promptCount, prompt.item.count));
-    send(prompt.dir === 'add' ? ev.add : ev.remove, prompt.item.baseId, n);
+    sendMove(prompt.dir, prompt.item, n);
     setPrompt(null);
   };
 
@@ -115,7 +120,8 @@ const Trade = ({ data }: { data: TradeData }) => {
     setPromptCount(Math.max(1, Math.min(Math.floor(value), prompt.item.count)));
   };
 
-  const acceptAvailable = data.bothLocked && !data.iAccepted;
+  // The Trade button unlocks only when both sides have locked their offers.
+  const tradeAvailable = data.bothLocked && !data.iAccepted;
 
   return (
     <div className="trade">
@@ -133,9 +139,27 @@ const Trade = ({ data }: { data: TradeData }) => {
             />
           </div>
 
-          {/* Right: my offer / actions / their offer, stacked */}
+          {/* Center: cancel / lock / trade */}
+          <div className="trade__actions">
+            <Button text="Cancel" width={112} height={36} onClick={() => send(ev.cancel)} />
+            <Button
+              text={data.myLocked ? 'Unlock' : 'Lock'}
+              width={112}
+              height={36}
+              onClick={() => send(data.myLocked ? ev.unlock : ev.lock)}
+            />
+            <Button
+              text={data.iAccepted ? 'Waiting…' : 'Trade'}
+              width={112}
+              height={36}
+              disabled={!tradeAvailable}
+              onClick={() => send(ev.accept)}
+            />
+          </div>
+
+          {/* Right: my offer above the partner's offer */}
           <div className="trade__right">
-            <div className="trade__pane trade__pane--offer">
+            <div className={'trade__pane trade__pane--offer' + (data.myLocked ? ' trade__pane--locked' : '')}>
               <div className="trade__pane-title">
                 Your Offer {data.myLocked ? <span className="trade__lock">[locked]</span> : null}
               </div>
@@ -146,28 +170,11 @@ const Trade = ({ data }: { data: TradeData }) => {
               />
             </div>
 
-            <div className="trade__actions">
-              <Button text="Cancel" width={104} height={36} onClick={() => send(ev.cancel)} />
-              <Button
-                text={data.myLocked ? 'Unlock' : 'Lock'}
-                width={104}
-                height={36}
-                onClick={() => send(data.myLocked ? ev.unlock : ev.lock)}
-              />
-              <Button
-                text={data.iAccepted ? 'Waiting…' : 'Accept'}
-                width={104}
-                height={36}
-                disabled={!acceptAvailable}
-                onClick={() => send(ev.accept)}
-              />
-            </div>
-
-            <div className="trade__pane trade__pane--their-offer">
+            <div className={'trade__pane trade__pane--their-offer' + (data.theirLocked ? ' trade__pane--locked' : '')}>
               <div className="trade__pane-title">
                 {data.partnerName}&apos;s Offer{' '}
                 {data.theirLocked ? <span className="trade__lock">[locked]</span> : null}
-                {data.theyAccepted ? <span className="trade__lock">[accepted]</span> : null}
+                {data.theyAccepted ? <span className="trade__lock">[trading]</span> : null}
               </div>
               <ItemList items={data.theirOffer} emptyText="(empty)" />
             </div>

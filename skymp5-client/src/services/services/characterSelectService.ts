@@ -11,8 +11,7 @@ import { SinglePlayerService } from "./singlePlayerService";
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
 
-// A single character slot as described by the server. `null`/absent means the
-// slot is empty and Play should create a new character there.
+// A character slot from the server; null/absent means empty and Play creates a new character there.
 interface CharacterSlot {
   name?: string;
   // Optional one-line summary, e.g. "Level 3 Nord, Whiterun".
@@ -21,14 +20,13 @@ interface CharacterSlot {
   dead?: boolean;
 }
 
-// Event keys exchanged with the browser. Namespaced so they don't collide with
-// other services that also listen to "browserMessage" (e.g. AuthService).
+// Event keys exchanged with the browser; namespaced to avoid collisions with other "browserMessage" listeners.
 const events = {
-  select: 'characterSelect:select',         // arg: slot — pick a slot
+  select: 'characterSelect:select',         // arg: pick a slot
   play: 'characterSelect:play',             // confirm the selected slot
-  edit: 'characterSelect:edit',             // arg: slot — no-op for now
-  delete: 'characterSelect:delete',         // arg: slot — ask to delete
-  confirmDelete: 'characterSelect:confirmDelete', // arg: slot — really delete
+  edit: 'characterSelect:edit',             // arg: no-op for now
+  delete: 'characterSelect:delete',         // arg: ask to delete
+  confirmDelete: 'characterSelect:confirmDelete', // arg: delete check
   cancelDelete: 'characterSelect:cancelDelete',
   quit: 'characterSelect:quit',
 };
@@ -151,8 +149,7 @@ export class CharacterSelectService extends ClientListener {
         if (Number.isInteger(slot) && !characters[slot]?.dead) { selectedSlot = slot; this.renderMenu(); }
         break;
       case events.play:
-        // Play loads the selected character, or starts creation if empty.
-        // Dead characters are refused here too; the server is the authority.
+        // Play loads the selection or starts creation if empty; dead slots refused, server is the authority.
         if (selectedSlot !== null && !characters[selectedSlot]?.dead) {
           const action = characters[selectedSlot] ? 'play' : 'create';
           this.sendResult(action, selectedSlot);
@@ -188,16 +185,13 @@ export class CharacterSelectService extends ClientListener {
     }
   }
 
-  // Quitting to the main menu mid-session should bring the character select
-  // back (the server forgets its menu state after a selection, so ask again).
-  // The reply re-opens the browser widget focused, which also makes the native
-  // main menu buttons invisible, same as during the initial login flow.
+  // Quitting to main menu mid-session must reopen character select (the server forgets its menu state).
+  // The focused browser reply also hides the native main menu buttons, same as the initial login flow.
   private onMenuOpen(e: MenuOpenEvent): void {
     if (e.name !== Menu.Main) return;
     if (!this.sawGameplay) return; // initial boot: the auth flow drives the menu
-    // menuOpen is queued into SP's update tasks: events raised while game
-    // functions are unavailable arrive late, on the first in-game frame. Only
-    // act when the main menu is REALLY open right now (stale-event guard).
+    // menuOpen events can arrive late (queued into SP update tasks); only act
+    // when the main menu is REALLY open right now (stale-event guard).
     try {
       if (!this.sp.Ui.isMenuOpen(Menu.Main)) return;
     } catch (err) {
@@ -234,22 +228,18 @@ export class CharacterSelectService extends ClientListener {
     this.menuOpen = false;
     selectedSlot = null;
     confirmDeleteSlot = null;
-    // Clear forms only; chat and other in-game widgets must survive a
-    // mid-session reopen (quit to main menu and back).
+    // Clear forms only; chat and other in-game widgets must survive a mid-session reopen.
     this.sp.browser.executeJavaScript(
       'window.skyrimPlatform.widgets.set((window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w&&w.type!=="form";}));'
     );
     this.sp.browser.setFocused(false);
   }
 
-  // Runs inside the CEF browser. Only the injected variables (characters,
-  // maxCharacters, selectedSlot, confirmDeleteSlot, events, strings) and `window`
-  // are available here.
+  // Runs inside the CEF browser; only the injected variables and window are available here.
   private browsersideWidgetSetter = () => {
     const widget: any = { type: "form", id: 7, caption: strings.selectCharacter, elements: [] as any[] };
 
-    // Cross out a name with combining long-stroke overlays (U+0336): the form
-    // renderer has no text styling, so the strike is baked into the string.
+    // Strike through via combining U+0336 overlays; the form renderer has no text styling.
     const strike = (s: string) => s.split("").map((c) => c + String.fromCharCode(0x0336)).join("");
 
     for (let i = 0; i < maxCharacters; i++) {
@@ -267,8 +257,7 @@ export class CharacterSelectService extends ClientListener {
       const isSelected = selectedSlot === i;
       const isDead = !!(character && character.dead);
       const label = character ? (character.name || strings.unnamed) : strings.emptySlot;
-      // The slot itself is a button; clicking it selects the slot. Dead slots
-      // render crossed out and greyed (disabled buttons ignore clicks).
+      // The slot itself is a button that selects it; dead slots render struck out and disabled.
       widget.elements.push({
         type: "button",
         text: isDead ? strike(label) : (isSelected ? "> " : "") + label,
@@ -301,8 +290,7 @@ export class CharacterSelectService extends ClientListener {
       click: () => window.skyrimPlatform.sendMessage(events.play),
     });
 
-    // Replace form widgets (auth/menu) but keep chat and other in-game
-    // widgets alive: this can render mid-session after a quit to main menu.
+    // Replace form widgets (auth/menu) but keep chat alive: this can render mid-session.
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w && w.type !== "form");
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };

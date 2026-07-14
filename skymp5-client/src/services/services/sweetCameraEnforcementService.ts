@@ -261,9 +261,7 @@ export class SweetCameraEnforcementService extends ClientListener {
     }
 
     private startAntiExploitPolling(mode: "no_death" | "death" = "death") {
-        // Fixes https://github.com/skyrim-multiplayer/skymp5-gamemode/issues/240
-        // P.S. There is a very similar code in skymp5-gamemode
-        // See disableCheats.ts, skymp5-gamemode for comments
+        // Fixes https://github.com/skyrim-multiplayer/skymp5-gamemode/issues/240; see disableCheats.ts there
 
         let _callNative = this.sp.callNative;
         let cameraState = -1;
@@ -309,7 +307,6 @@ export class SweetCameraEnforcementService extends ClientListener {
             || e.code === DxScanCode.D) {
             if (this.needsExitingAnim) {
 
-                // Checking whether manual interruption is prohibited
                 if (this.currentAnim?.options?.preventManualInterrupt) {
                     return;
                 }

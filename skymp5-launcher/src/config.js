@@ -16,8 +16,9 @@ module.exports = {
   //     http://127.0.0.1:<nexusOauthPort>/nexus/callback
   //  2. Websocket SSO (the older Vortex/MO2/Wabbajack flow) when only the
   //     application slug is set.
-  // With neither, the Nexus Login button reports login as not configured.
-  nexusOauthClientId: process.env.NEXUS_OAUTH_CLIENT_ID || '',
+  // Defaults are the registered public "SkyRP" app (a public PKCE client, so
+  // no secret ships here); packaged builds have no .env, they rely on these.
+  nexusOauthClientId: process.env.NEXUS_OAUTH_CLIENT_ID || 'skyrp',
   nexusOauthPort:     parseInt(process.env.NEXUS_OAUTH_PORT || '48521', 10),
-  nexusAppSlug:       process.env.NEXUS_APP_SLUG || '',
+  nexusAppSlug:       process.env.NEXUS_APP_SLUG || 'skyrp',
 }

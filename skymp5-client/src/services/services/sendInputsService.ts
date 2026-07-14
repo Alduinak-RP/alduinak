@@ -66,8 +66,7 @@ export class SendInputsService extends ClientListener {
             this.equipmentChanged = true;
         }
 
-        // Send OnEquip for any equips including spell tomes, potions, ingredients
-        // Otherwise, the server won't trigger spell learn, potion drink, ingredient eat and Papyrus scripts
+        // Send OnEquip for all equips, else the server won't trigger spell learn, potion drink, eating, Papyrus
         this.controller.emitter.emit("sendMessage", {
             message: { t: MsgType.OnEquip, baseId: event.baseObj.getFormID() },
             reliability: "unreliable"
@@ -85,8 +84,7 @@ export class SendInputsService extends ClientListener {
     }
 
     private onLoadGame() {
-        // Currently only armor is equipped after relogging (see remoteServer.ts)
-        // This hack forces sending /equipment without weapons/ back to the server
+        // Only armor is equipped after relogging (see remoteServer.ts); this hack re-sends equipment to the server
         this.sp.Utility.wait(3).then(() => (this.equipmentChanged = true));
     }
 
@@ -165,8 +163,7 @@ export class SendInputsService extends ClientListener {
         }
 
         // Delaying actor values update due to casting
-        // TODO: use partial updates for actor values once server finally supports it
-        // i.e. keep sending health and stamina during casting, but delay magicka update
+        // TODO: partial updates once the server supports it (keep health/stamina during casting, delay magicka)
         if (
             currentTime - this.prevCastingDetectedTime < 500 &&
             av.health > 0 // don't delay death actor value update

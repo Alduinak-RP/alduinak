@@ -260,8 +260,7 @@ export class SweetTaffyPlayerCombatService extends ClientListener {
       weapon = WeaponType.Fist;
     }
 
-    // skymp5-client-settings.txt is perfectly editable by users, so we don't use it for now.
-    // It's well-tested though, so we can enable it once we have a protection mechanism.
+    // skymp5-client-settings.txt is user-editable so unused for now; well-tested, enable once protected.
 
     // const weaponTimings = this.getSettingsFromFile();
     const weaponTimings = this.getSettingsDefault();

@@ -1,6 +1,5 @@
 'use strict'
-// Permission resolution
-// Maps Discord role IDs to flat permission strings using data/role-permissions.json.
+// Maps Discord role IDs to flat permission strings using data/role-permissions.json
 
 const fs   = require('fs')
 const path = require('path')
@@ -52,12 +51,7 @@ function deleteRolePermissions(roleId) {
   _save(config)
 }
 
-/**
- * Given an array of Discord role ID strings, returns a deduplicated flat array
- * of permission strings based on the role-permissions config.
- * @param {string[]} roleIds
- * @returns {string[]}
- */
+/** Resolves Discord role IDs to a deduplicated flat array of permission strings. */
 function resolvePermissions(roleIds) {
   const config = _load()
   const perms  = new Set()
@@ -68,13 +62,7 @@ function resolvePermissions(roleIds) {
   return [...perms]
 }
 
-/**
- * Returns true if the given permissions array grants the required permission.
- * 'admin.*' is a wildcard that grants every permission.
- * @param {string[]} permissions
- * @param {string} required
- * @returns {boolean}
- */
+/** True if the permissions array grants `required`; 'admin.*' is a wildcard granting everything. */
 function hasPermission(permissions, required) {
   if (permissions.includes('admin.*')) return true
   return permissions.includes(required)
