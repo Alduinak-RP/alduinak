@@ -89,6 +89,41 @@ async function validateKey(auth) {
   }
 }
 
+/**
+ * Identity for an OAuth login. /v1/users/validate.json is API-key-only (500s
+ * on Bearer tokens), so OAuth callers use the userinfo endpoint instead.
+ * Returns the same shape as validateKey.
+ */
+function oauthUserInfo(accessToken, oauthBase = OAUTH_BASE) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(`${oauthBase}/oauth/userinfo`)
+    const req = https.get({
+      hostname: u.hostname,
+      path:     u.pathname,
+      headers:  { Authorization: `Bearer ${accessToken}`, accept: 'application/json', ...APP_HEADERS },
+    }, res => {
+      let data = ''
+      res.on('data', c => { data += c })
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`Nexus userinfo HTTP ${res.statusCode}`))
+        }
+        try {
+          const info = JSON.parse(data)
+          const roles = Array.isArray(info.membership_roles) ? info.membership_roles : []
+          resolve({
+            name:       info.name || 'Nexus user',
+            isPremium:  roles.includes('premium'),
+            profileUrl: info.avatar || null,
+          })
+        } catch (err) { reject(new Error(`Bad JSON from Nexus userinfo: ${err.message}`)) }
+      })
+    })
+    req.on('error', reject)
+    req.setTimeout(15_000, () => { req.destroy(); reject(new Error('Nexus userinfo request timed out')) })
+  })
+}
+
 // Mod files
 
 /**
@@ -370,6 +405,7 @@ module.exports = {
   setLogger,
   authHeaders,
   validateKey,
+  oauthUserInfo,
   getDownloadLink,
   downloadFileEntry,
   ssoLogin,
