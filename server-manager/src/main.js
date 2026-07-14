@@ -76,8 +76,8 @@ async function statusAll() {
 
 ipcMain.handle('services:status', () => statusAll())
 
-// Act on a single service (the per-service dropdowns).
-ipcMain.handle('service:action', async (_e, key, action) => {
+// Act on a single service (per-service dropdowns and console commands).
+async function doServiceAction(key, action) {
   const svc = serviceByKey[key]
   if (!svc) return { ok: false, error: `unknown service ${key}` }
   const steps = []
@@ -88,10 +88,10 @@ ipcMain.handle('service:action', async (_e, key, action) => {
   else if (action === 'restart') { if (await step('stop')) await step('start') }
   else return { ok: false, error: `unknown action ${action}` }
   return { ok, steps, status: await statusAll() }
-})
+}
 
 // Act on every service in order (stop order reversed) - the "all" controls.
-ipcMain.handle('services:action', async (_e, action) => {
+async function doServicesAction(action) {
   const steps = []
   let ok = true
   const step = async (s, verb) => { const r = await act(s.name, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
@@ -102,7 +102,10 @@ ipcMain.handle('services:action', async (_e, action) => {
   else if (action === 'restart') { await doStop(); await doStart() }
   else return { ok: false, error: `unknown action ${action}` }
   return { ok, steps, status: await statusAll() }
-})
+}
+
+ipcMain.handle('service:action', (_e, key, action) => doServiceAction(key, action))
+ipcMain.handle('services:action', (_e, action) => doServicesAction(action))
 
 const tailState = {}   // file -> last byte offset
 let logTargets = []    // [{ file, label }]
@@ -188,17 +191,90 @@ const consoleRelay = {
   },
 }
 
-ipcMain.handle('console:command', (_e, text) => {
+// Console box: manager commands are handled locally, anything else is
+// forwarded to the game server console over the WS relay (the gamemode).
+const BUILD_KINDS = ['server', 'launcher', 'client']
+const CONSOLE_HELP = [
+  'Manager commands:',
+  '  help                           this help',
+  '  status                         service status',
+  '  start|stop|restart <svc|all>   control services (' + config.services.map(s => s.key).join(', ') + ')',
+  '  build <' + BUILD_KINDS.join('|') + '>   run a build (output streams here)',
+  'Anything else is sent to the game server console (gamemode).',
+].join('\n')
+
+function consoleOut(text) { send('console:relay', { kind: 'output', text: text + '\n' }) }
+
+// Returns a result object when the command was handled locally, null otherwise.
+async function tryLocalCommand(cmd) {
+  const parts = cmd.split(/\s+/)
+  const verb = parts[0].toLowerCase()
+  const arg = (parts[1] || '').toLowerCase()
+  // help/status also go to the gamemode so its command list and player count
+  // append below the local output (fan-out arrives via console:relay).
+  if (verb === 'help' || verb === '?') {
+    consoleOut(CONSOLE_HELP)
+    if (!consoleRelay.command('help').ok) consoleOut('(game console offline - gamemode commands unavailable)')
+    return { ok: true }
+  }
+  if (verb === 'status') {
+    const st = await statusAll()
+    consoleOut(config.services.map(s => `${s.label}: ${st[s.key] || 'unknown'}`).join('\n'))
+    consoleRelay.command('status')
+    return { ok: true }
+  }
+  if (verb === 'start' || verb === 'stop' || verb === 'restart') {
+    const keys = config.services.map(s => s.key)
+    if (!arg || (arg !== 'all' && !keys.includes(arg))) {
+      consoleOut(`usage: ${verb} <${keys.join('|')}|all>`)
+      return { ok: true }
+    }
+    consoleOut(`${verb} ${arg}…`)
+    const r = arg === 'all' ? await doServicesAction(verb) : await doServiceAction(arg, verb)
+    consoleOut((r.steps || [r.error || 'failed']).join('\n'))
+    return { ok: r.ok !== false }
+  }
+  if (verb === 'build') {
+    if (!BUILD_KINDS.includes(arg)) { consoleOut(`usage: build <${BUILD_KINDS.join('|')}>`); return { ok: true } }
+    if (buildBusy) { consoleOut('a build is already running - wait for it to finish'); return { ok: true } }
+    consoleOut(`starting ${arg} build…`)
+    // Not awaited: builds take minutes; progress streams via build:log and the
+    // outcome is reported here when it lands.
+    runBuild(arg).then(r => consoleOut(r.ok ? `${arg} build complete` : `${arg} build failed: ${r.error || 'see log'}`))
+    return { ok: true }
+  }
+  return null
+}
+
+ipcMain.handle('console:command', async (_e, text) => {
   const cmd = String(text || '').trim()
   if (!cmd) return { ok: false, error: 'empty command' }
+  const local = await tryLocalCommand(cmd)
+  if (local) return local
   return consoleRelay.command(cmd)
 })
 
 function builder() { return new Builder(t => send('build:log', t)) }
 
-ipcMain.handle('build:server',   () => builder().buildServer())
-ipcMain.handle('build:launcher', () => builder().buildLauncher())
-ipcMain.handle('build:client',   () => builder().buildClient())
+// One build at a time: console commands and Build tab buttons share this gate.
+let buildBusy = false
+async function runBuild(kind) {
+  if (buildBusy) return { ok: false, error: 'a build is already running' }
+  buildBusy = true
+  try {
+    const b = builder()
+    if (kind === 'server')   return await b.buildServer()
+    if (kind === 'launcher') return await b.buildLauncher()
+    if (kind === 'client')   return await b.buildClient()
+    return { ok: false, error: `unknown build ${kind}` }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  } finally { buildBusy = false }
+}
+
+ipcMain.handle('build:server',   () => runBuild('server'))
+ipcMain.handle('build:launcher', () => runBuild('launcher'))
+ipcMain.handle('build:client',   () => runBuild('client'))
 
 function setJsonVersion(file, version) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -452,7 +528,7 @@ ipcMain.handle('modlist:read', () => {
   }
   const modlist = readLines('modlist.txt')
   const plugins = readLines('plugins.txt')
-  if (!modlist) return { ok: false, error: `No modlist.txt under ${profileDir}. Check SKYRP_MO2_ROOT / profile.` }
+  if (!modlist) return { ok: false, error: `No modlist.txt under ${profileDir}. Check ALDUINAK_MO2_ROOT / profile.` }
 
   const mods = [], separators = []
   for (const line of modlist) {

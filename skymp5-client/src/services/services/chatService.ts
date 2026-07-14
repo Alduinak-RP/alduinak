@@ -383,6 +383,14 @@ export class ChatService extends ClientListener {
 
     const appearance = owner["appearance"] as { name?: string } | undefined;
 
+    // A new owner model (login, respawn, character switch) carries the last
+    // persisted ff_chatMsg; treat it as already seen so it is not replayed.
+    if (owner !== this.lastOwner) {
+      this.lastOwner = owner;
+      const persisted = owner[CHAT_MSG_PROP];
+      this.lastMsg = typeof persisted === "string" ? persisted : null;
+    }
+
     if (!this.mounted) {
       this.mounted = true;
       const name = appearance?.name || "You";
@@ -390,6 +398,14 @@ export class ChatService extends ClientListener {
       logTrace(this, "Mounting chat widget (local parse + render)");
       this.sp.browser.executeJavaScript(buildMountJs(name, this.lastAdmin, this.readChatSettings()));
       this.sp.browser.setVisible(true);
+    }
+
+    // The server syncs isAdmin a few seconds after spawn; keep the CEF global
+    // live so the Admin tab and /system unlock without a relog.
+    const isAdminNow = owner["isAdmin"] === true;
+    if (isAdminNow !== this.lastAdmin) {
+      this.lastAdmin = isAdminNow;
+      this.sp.browser.executeJavaScript(`window.__alduinakAdmin = ${isAdminNow ? "true" : "false"};`);
     }
 
     const liveName = appearance?.name;
@@ -453,6 +469,8 @@ export class ChatService extends ClientListener {
   private mounted = false;
   private lastMsg: string | null = null;
   private lastName: string | null = null;
+  private lastAdmin = false;
+  private lastOwner: unknown = null;
   private bubbles: { id: number; expiresAt: number }[] = [];
   private readonly pluginChatSettingsName = "chat-settings-no-load";
 }
