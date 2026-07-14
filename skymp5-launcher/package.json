@@ -1,7 +1,8 @@
 {
-  "name": "skyrp-launcher",
+  "name": "alduinak-launcher",
   "version": "2.0.2",
-  "description": "Launcher for the Skyrim Roleplay server",
+  "description": "Launcher for the Alduinak server",
+  "productName": "Alduinak Launcher",
   "main": "src/main.js",
   "author": "F02K and Suraru",
   "license": "MIT",

@@ -96,9 +96,9 @@ html, body {
   font-family: 'Cinzel Decorative', 'Cinzel', serif;
   font-size: 16px;
   font-weight: 700;
-  color: #ff5a5a;
-  background: rgba(255, 90, 90, 0.08);
-  box-shadow: 0 0 12px rgba(255, 90, 90, 0.15);
+  color: #ff2222;
+  background: rgba(255, 34, 34, 0.08);
+  box-shadow: 0 0 12px rgba(255, 34, 34, 0.15);
 }
 
 .logo-text-block {
@@ -112,8 +112,8 @@ html, body {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 4px;
-  color: #ff5a5a;
-  text-shadow: 0 0 16px rgba(255, 90, 90, 0.4);
+  color: #ff2222;
+  text-shadow: 0 0 16px rgba(255, 34, 34, 0.4);
 }
 
 .logo-tagline {
@@ -644,7 +644,7 @@ html, body {
 .btn-play {
   height: 100%;
   padding: 0 48px;
-  background: linear-gradient(to bottom, #ff5a5a 0%, #d94848 100%);
+  background: linear-gradient(to bottom, #ff2222 0%, #d91414 100%);
   border: none;
   border-left: 1px solid rgba(255,255,255,0.1);
   color: rgba(30, 6, 6, 0.95);
@@ -655,17 +655,17 @@ html, body {
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: -4px 0 20px rgba(255, 90, 90, 0.25);
+  box-shadow: -4px 0 20px rgba(255, 34, 34, 0.25);
 }
 
 .btn-play:hover {
-  background: linear-gradient(to bottom, #ff7676 0%, #e85555 100%);
-  box-shadow: -4px 0 30px rgba(255, 90, 90, 0.4);
+  background: linear-gradient(to bottom, #ff4f4f 0%, #ea2a2a 100%);
+  box-shadow: -4px 0 30px rgba(255, 34, 34, 0.4);
   letter-spacing: 6px;
 }
 
 .btn-play:active {
-  background: linear-gradient(to bottom, #d94848 0%, #ba3a3a 100%);
+  background: linear-gradient(to bottom, #d91414 0%, #b60f0f 100%);
 }
 
 /* SETTINGS MODAL */
