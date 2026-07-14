@@ -18,6 +18,7 @@ const FACTION_DOCS = ['collegeOfWinterhold', 'companions', 'eastEmpireCompany', 
 const events = {
   run: 'pm:run',   // arg = full command text to send
   nav: 'pm:nav',   // arg = view name
+  switchChar: 'pm:switchchar',
   close: 'pm:close',
 };
 
@@ -69,6 +70,17 @@ export class PersonalMenuService extends ClientListener {
         view = arg || 'main';
         this.renderMenu();
         break;
+      case events.switchChar: {
+        // Reopens character select in-world; the server parks this body (logout
+        // grace) and assigns the picked character, no main-menu round trip.
+        const message: CustomPacketMessage = {
+          t: MsgType.CustomPacket,
+          contentJsonDump: JSON.stringify({ customPacketType: "characterSelectMenuRequest" }),
+        };
+        this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+        this.closeMenu();
+        break;
+      }
       case events.close:
         this.closeMenu();
         break;
@@ -138,6 +150,7 @@ export class PersonalMenuService extends ClientListener {
       elements.push({ type: "button", text: "lectures", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.nav, "lecture") });
       btn("training", events.nav, "training");
       btn("faction docs", events.nav, "factions");
+      elements.push({ type: "button", text: "switch character", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.switchChar) });
       elements.push({ type: "button", text: "close", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.close) });
     }
 

@@ -199,9 +199,10 @@ export class HousingService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    this.sp.browser.executeJavaScript(
-      new FunctionInfo(this.browsersideWidgetSetter).getText({ events, info, targetLabel, WIDGET_ID })
-    );
+    const text = new FunctionInfo(this.browsersideWidgetSetter).getText({ events, info, targetLabel, WIDGET_ID });
+    // Debug breadcrumb: pairs with the CEF-side "widget set" line to locate render failures.
+    notifyNextUpdate(this.controller, this.sp, `[debug] property menu: injecting ${text.length} chars, view=${info.view}`);
+    this.sp.browser.executeJavaScript(text);
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);
   }
@@ -215,6 +216,7 @@ export class HousingService extends ClientListener {
   // Runs inside the CEF browser. Only injected vars + window are available.
   // No spread syntax: it breaks after FunctionInfo stringification (8d7c0c05).
   private browsersideWidgetSetter = () => {
+    try {
     const displayName = info.name || targetLabel;
     const widget: any = {
       type: "form",
@@ -296,6 +298,10 @@ export class HousingService extends ClientListener {
     // Preserve any other widgets
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
+    if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] property menu set: " + widget.elements.length + " elements, " + window.skyrimPlatform.widgets.get().length + " widgets total");
+    } catch (err: any) {
+      if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] property menu FAILED in CEF: " + (err && err.message));
+    }
   };
 
   private menuKey: DxScanCode = DxScanCode.H;
