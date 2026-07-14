@@ -92,6 +92,18 @@ function isolatedGameReady() {
   return fs.existsSync(path.join(isolatedGameDir(), 'SkyrimSE.exe'))
 }
 
+// A usable game copy needs more than SkyrimSE.exe (it is copied first, so an
+// interrupted run leaves it behind with a partial Data). The completion marker
+// written by copyGameDir is authoritative; copies made before the marker
+// existed fall back to the masters check (the esms are copied nearly last,
+// so their presence implies the BSAs made it too).
+function gameCopyComplete(dir) {
+  if (!fs.existsSync(path.join(dir, 'SkyrimSE.exe'))) return false
+  if (fs.existsSync(path.join(dir, 'vanilla-copy-complete.json'))) return true
+  return fs.existsSync(path.join(dir, 'Data', 'Skyrim.esm'))
+    && fs.existsSync(path.join(dir, 'Data', 'Update.esm'))
+}
+
 function effectiveGamePath() {
   if (store.get('isolatedGame') && isolatedGameReady()) return isolatedGameDir()
   return store.get('skyrimPath')
@@ -657,8 +669,9 @@ ipcMain.handle('game:createIsolated', async () => {
     send('isolated:progress', 'Installing Mod Organizer 2…')
     await mo2.ensureInstalled(msg => send('isolated:progress', msg))
 
-    // portable copy setup
-    if (!fs.existsSync(path.join(dst, 'SkyrimSE.exe'))) {
+    // portable copy setup (re-copies when a previous copy was interrupted:
+    // SkyrimSE.exe lands first, so its presence alone proves nothing)
+    if (!gameCopyComplete(dst)) {
       const copy = await copyGameDir(src, dst)
       if (!copy.success) return copy
     } else {
@@ -743,6 +756,8 @@ async function copyGameDir(src, dst) {
   }
 
   let copied = 0
+  // A fresh run invalidates any previous completion marker.
+  try { fs.rmSync(path.join(dst, 'vanilla-copy-complete.json'), { force: true }) } catch {}
   for (const job of jobs) {
     const to = path.join(dst, job.sub, job.rel)
     try {
@@ -754,6 +769,12 @@ async function copyGameDir(src, dst) {
     copied++
     send('isolated:progress', `Copying vanilla game files… ${copied}/${jobs.length} (${job.rel})`)
   }
+  // Completion marker: file presence alone cannot prove the copy finished
+  // (the esms sort after the BSAs, so partial copies look deceptively full).
+  try {
+    fs.writeFileSync(path.join(dst, 'vanilla-copy-complete.json'),
+      JSON.stringify({ files: copied, at: new Date().toISOString() }) + '\n')
+  } catch { /* marker is an optimization; the masters check still applies */ }
   log(`[isolated] copied ${copied} vanilla file(s) to ${dst}`)
   return { success: true, copied }
 }
@@ -1067,6 +1088,12 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   // SKSE runtime.
   if (!fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))) {
     problems.push('SKSE is not installed (skse64_loader.exe missing); install the modpack first.')
+  }
+
+  // Vanilla masters: without them the engine hard-crashes before the menu.
+  if (!fs.existsSync(path.join(skyrimPath, 'Data', 'Skyrim.esm')) ||
+      !fs.existsSync(path.join(skyrimPath, 'Data', 'Update.esm'))) {
+    problems.push('Vanilla game files missing (Skyrim.esm/Update.esm); click UPDATE to repair the game copy.')
   }
 
   // Server load order: every required plugin must be present.
@@ -1543,6 +1570,18 @@ async function runMO2Install() {
   if (!findOriginalPrefsIni()) return fail(NEVER_LAUNCHED_ERROR)
 
   try {
+    // 0. Self-heal a partial isolated game copy (missing vanilla masters):
+    // one UPDATE click repairs it instead of crashing the game at launch.
+    if (store.get('isolatedGame') && isolatedGameReady() && !gameCopyComplete(skyrimPath)) {
+      const original = store.get('skyrimPath')
+      if (!original || !fs.existsSync(path.join(original, 'Data', 'Skyrim.esm'))) {
+        return fail('The game copy is missing vanilla files (Skyrim.esm/Update.esm) and the original Skyrim path is not set - set it in Settings, then run Update again.')
+      }
+      send('install:progress', { phase: 'download', file: 'Repairing game copy (vanilla files)…', index: 0, total: 0, skipped: false })
+      const copy = await copyGameDir(original, skyrimPath)
+      if (!copy.success) return fail(copy.error)
+    }
+
     // 1. MO2 itself, the portable instance, and the nxm:// handler
     await mo2.ensureInstalled(msg =>
       send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
