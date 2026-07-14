@@ -11,12 +11,9 @@ function metricsAuthHeader() {
   return {}
 }
 
-// Probe the SkyMP HTTP UI port. Any HTTP response (even an auth error)
-// proves the server process is up; the player count is derived from the
-// Prometheus metrics when they are readable.
-//   Online players ≈ skymp_connects_total − skymp_disconnects_total
-// (The old UDP probe was meaningless: a UDP send "succeeds" as soon as the
-// OS accepts the packet, so a dead game server still read as online.)
+// Probe the SkyMP HTTP UI port: any HTTP response (even an auth error) proves the process is up.
+// Player count from Prometheus metrics when readable: online players = skymp_connects_total - skymp_disconnects_total.
+// (The old UDP probe read dead servers as online: a UDP send "succeeds" once the OS accepts the packet.)
 function probeGameServer(host, uiPort) {
   return new Promise(resolve => {
     const req = http.get(
@@ -50,8 +47,7 @@ router.get('/', async (_req, res) => {
   const { skyrimServerHost: host, skympUiPort: uiPort } = config
   const hb = getHeartbeat()
 
-  // a fresh heartbeat proves the server process is up; fall back to probing
-  // the metrics port only when no heartbeat has been seen since backend start
+  // a fresh heartbeat proves the process is up; probe the metrics port only when no heartbeat has been seen since backend start
   let online  = null
   let players = null
   if (hb && hb.lastSeen) {

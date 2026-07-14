@@ -2,6 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { closeWidget } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
 import { getInventory, Entry } from "../../sync/inventory";
@@ -13,17 +14,18 @@ declare const window: any;
 const WIDGET_ID = 14; // the two-pane trade window (12 belongs to capture-consent)
 const INVITE_WIDGET_ID = 15; // the small "X wants to trade" prompt
 
-// Stacks larger than this prompt for a count when added/removed, like vanilla
-// container transfers. Smaller stacks move whole.
+// Stacks larger than this prompt for a count when added/removed (vanilla-style); smaller stacks move whole.
 const STACK_PROMPT_THRESHOLD = 5;
 
-// Mirror of the server's EXTRA_KEYS (trade.ts): a stack carrying any of these
-// is not a "simple" item and cannot be offered.
+// Mirror of the server's EXTRA_KEYS (trade.ts): a stack carrying any of these is not simple, can't be offered.
 const EXTRA_KEYS: (keyof Entry)[] = [
   'health', 'enchantmentId', 'maxCharge', 'chargePercent', 'name',
   'soul', 'poisonId', 'poisonCount', 'worn', 'wornLeft',
   'removeEnchantmentOnUnequip',
 ];
+
+// Property keys (housing system) are the one named item allowed through.
+const KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
 
 const isSimpleEntry = (e: Entry): boolean => {
   for (const k of EXTRA_KEYS) {
@@ -35,14 +37,40 @@ const isSimpleEntry = (e: Entry): boolean => {
   return true;
 };
 
+const isKeyEntry = (e: Entry): boolean => {
+  if ((e.baseId >>> 0) !== KEY_BASE_ID || typeof e.name !== 'string' || !e.name) {
+    return false;
+  }
+  for (const k of EXTRA_KEYS) {
+    if (k === 'name') {
+      continue;
+    }
+    const v = e[k];
+    if (v !== undefined && v !== null && v !== false) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const isTradeableEntry = (e: Entry): boolean => isSimpleEntry(e) || isKeyEntry(e);
+
 interface Item {
   baseId: number;
   count: number;
+  name?: string; // property keys only
 }
 
-interface UiItem extends Item {
+interface UiItem {
+  baseId: number;
+  count: number;
   name: string;
+  keyName?: string; // set on property keys; rides trade:add/remove events
 }
+
+// Identity of an offer line: plain stacks by baseId, keys by baseId + name.
+const lineKey = (baseId: number, name?: string): string =>
+  baseId + '|' + (typeof name === 'string' ? name : '');
 
 // Mirror of the server's tradeState packet (this player's point of view).
 interface TradeState {
@@ -68,8 +96,7 @@ const events = {
   inviteDecline: 'trade:invite:decline',
 };
 
-// Module-level state shared with the browser-side widget setters via runtime
-// injection (same pattern as FactionService / HousingService).
+// Module-level state shared with the browser-side widget setters via runtime injection.
 let tradeData: any = {};
 let inviteFrom = '';
 
@@ -92,7 +119,7 @@ let inviteFrom = '';
  *     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
  *
  * The window shows the player's own (offerable) inventory on the left and two
- * stacked boxes on the right — their own offer and the partner's. Offers and
+ * stacked boxes on the right: their own offer and the partner's. Offers and
  * lock/accept state are owned by the server; the client renders whatever the
  * latest `tradeState` says and only resolves item names locally.
  */
@@ -124,8 +151,7 @@ export class TradeService extends ClientListener {
         this.renderWidget();
         if (this.lockPending) {
           this.lockPending = false;
-          // The server wipes the whole offer when a lock fails its affordability
-          // check; restore what we can still afford so only the lock resets.
+          // The server wipes the offer when a lock fails affordability; restore what we can still afford.
           if (!this.state.myLocked && this.state.myOffer.length === 0
             && prev !== null && prev.myOffer.length > 0) {
             this.restoreOffer(prev.myOffer);
@@ -157,7 +183,13 @@ export class TradeService extends ClientListener {
     const items = (v: unknown): Item[] =>
       Array.isArray(v)
         ? (v as any[])
-            .map((x) => ({ baseId: Number(x?.baseId), count: Number(x?.count) }))
+            .map((x) => {
+              const item: Item = { baseId: Number(x?.baseId), count: Number(x?.count) };
+              if (typeof x?.name === "string" && x.name) {
+                item.name = x.name;
+              }
+              return item;
+            })
             .filter((x) => Number.isFinite(x.baseId) && x.count > 0)
         : [];
     return {
@@ -188,10 +220,10 @@ export class TradeService extends ClientListener {
         this.closeInvite();
         break;
       case events.add:
-        this.changeOffer(Number(e.arguments[1]), Number(e.arguments[2]), +1);
+        this.changeOffer(Number(e.arguments[1]), Number(e.arguments[2]), +1, this.keyNameArg(e.arguments[3]));
         break;
       case events.remove:
-        this.changeOffer(Number(e.arguments[1]), Number(e.arguments[2]), -1);
+        this.changeOffer(Number(e.arguments[1]), Number(e.arguments[2]), -1, this.keyNameArg(e.arguments[3]));
         break;
       case events.lock:
         this.lockPending = true;
@@ -212,20 +244,23 @@ export class TradeService extends ClientListener {
     }
   }
 
-  // Move `count` of `baseId` between my inventory and my offer, then ask the
-  // server to adopt the new offer. Clamped to what I actually hold so the server
-  // never has to reject a sane request.
-  private changeOffer(baseId: number, count: number, dir: 1 | -1): void {
+  private keyNameArg(raw: unknown): string | undefined {
+    return typeof raw === "string" && raw ? raw : undefined;
+  }
+
+  // Move `count` of one line between inventory and offer, then send it; clamped to what I actually hold.
+  private changeOffer(baseId: number, count: number, dir: 1 | -1, keyName?: string): void {
     if (!this.state || !Number.isFinite(baseId) || !Number.isFinite(count) || count <= 0) {
       return;
     }
+    const id = lineKey(baseId, keyName);
     const offer = this.state.myOffer.map((i) => ({ ...i }));
-    const offered = offer.find((i) => i.baseId === baseId);
+    const offered = offer.find((i) => lineKey(i.baseId, i.name) === id);
     const offeredCount = offered ? offered.count : 0;
 
     let delta: number;
     if (dir > 0) {
-      const free = this.ownedCount(baseId) - offeredCount;
+      const free = this.ownedCount(baseId, keyName) - offeredCount;
       delta = Math.min(count, free);
     } else {
       delta = -Math.min(count, offeredCount);
@@ -237,7 +272,11 @@ export class TradeService extends ClientListener {
     if (offered) {
       offered.count += delta;
     } else if (delta > 0) {
-      offer.push({ baseId, count: delta });
+      const line: Item = { baseId, count: delta };
+      if (keyName) {
+        line.name = keyName;
+      }
+      offer.push(line);
     }
 
     const next = offer.filter((i) => i.count > 0);
@@ -249,9 +288,13 @@ export class TradeService extends ClientListener {
   private restoreOffer(offer: Item[]): void {
     const items: Item[] = [];
     for (const item of offer) {
-      const count = Math.min(item.count, this.ownedCount(item.baseId));
+      const count = Math.min(item.count, this.ownedCount(item.baseId, item.name));
       if (count > 0) {
-        items.push({ baseId: item.baseId, count });
+        const line: Item = { baseId: item.baseId, count };
+        if (item.name) {
+          line.name = item.name;
+        }
+        items.push(line);
       }
     }
     if (items.length > 0) {
@@ -261,18 +304,19 @@ export class TradeService extends ClientListener {
 
   // ── Inventory reading ──────────────────────────────────────────────────────
 
-  // How many tradeable (extra-less) copies of baseId the player currently holds.
-  private ownedCount(baseId: number): number {
+  // How many tradeable copies of one line the player currently holds.
+  private ownedCount(baseId: number, keyName?: string): number {
+    const id = lineKey(baseId, keyName);
     let total = 0;
-    for (const e of this.localSimpleEntries()) {
-      if (e.baseId === baseId) {
+    for (const e of this.localTradeableEntries()) {
+      if (lineKey(e.baseId, isKeyEntry(e) ? (e.name as string) : undefined) === id) {
         total += e.count;
       }
     }
     return total;
   }
 
-  private localSimpleEntries(): Entry[] {
+  private localTradeableEntries(): Entry[] {
     const player = this.sp.Game.getPlayer() as ObjectReference | null;
     if (!player) {
       return [];
@@ -283,7 +327,7 @@ export class TradeService extends ClientListener {
     } catch (e) {
       return [];
     }
-    return entries.filter((e) => e.count > 0 && isSimpleEntry(e));
+    return entries.filter((e) => e.count > 0 && isTradeableEntry(e));
   }
 
   private resolveName(baseId: number): string {
@@ -305,8 +349,20 @@ export class TradeService extends ClientListener {
     return name;
   }
 
+  private toUiItem(i: Item): UiItem {
+    const ui: UiItem = {
+      baseId: i.baseId,
+      count: i.count,
+      name: i.name ? i.name : this.resolveName(i.baseId),
+    };
+    if (i.name) {
+      ui.keyName = i.name;
+    }
+    return ui;
+  }
+
   private withNames(items: Item[]): UiItem[] {
-    return items.map((i) => ({ baseId: i.baseId, count: i.count, name: this.resolveName(i.baseId) }));
+    return items.map((i) => this.toUiItem(i));
   }
 
   // The left pane: everything offerable, minus what's already in my offer.
@@ -314,19 +370,31 @@ export class TradeService extends ClientListener {
     if (!this.state) {
       return [];
     }
-    const offered = new Map<number, number>();
+    const offered = new Map<string, number>();
     for (const i of this.state.myOffer) {
-      offered.set(i.baseId, (offered.get(i.baseId) || 0) + i.count);
+      const id = lineKey(i.baseId, i.name);
+      offered.set(id, (offered.get(id) || 0) + i.count);
     }
-    const owned = new Map<number, number>();
-    for (const e of this.localSimpleEntries()) {
-      owned.set(e.baseId, (owned.get(e.baseId) || 0) + e.count);
+    const owned = new Map<string, Item>();
+    for (const e of this.localTradeableEntries()) {
+      const keyName = isKeyEntry(e) ? (e.name as string) : undefined;
+      const id = lineKey(e.baseId, keyName);
+      const prev = owned.get(id);
+      if (prev) {
+        prev.count += e.count;
+      } else {
+        const line: Item = { baseId: e.baseId, count: e.count };
+        if (keyName) {
+          line.name = keyName;
+        }
+        owned.set(id, line);
+      }
     }
     const out: UiItem[] = [];
-    owned.forEach((count, baseId) => {
-      const available = count - (offered.get(baseId) || 0);
+    owned.forEach((line, id) => {
+      const available = line.count - (offered.get(id) || 0);
       if (available > 0) {
-        out.push({ baseId, count: available, name: this.resolveName(baseId) });
+        out.push(this.toUiItem({ baseId: line.baseId, count: available, name: line.name }));
       }
     });
     out.sort((a, b) => a.name.localeCompare(b.name));
@@ -357,11 +425,10 @@ export class TradeService extends ClientListener {
     );
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);
+    this.windowOpen = true;
   }
 
-  // The invite is passive: the widget is shown without seizing input focus (the
-  // player focuses the browser themselves, as with chat), and a System-tab
-  // notification points at it.
+  // Passive invite: shown without seizing input focus (like chat); a System-tab notification points at it.
   private openInvite(): void {
     this.sp.browser.executeJavaScript(
       new FunctionInfo(this.inviteWidgetSetter).getText({ events, inviteFrom, INVITE_WIDGET_ID })
@@ -371,11 +438,11 @@ export class TradeService extends ClientListener {
   }
 
   private closeWidget(): void {
-    this.sp.browser.executeJavaScript(`(function(){var ws=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w.id!==${WIDGET_ID};});window.skyrimPlatform.widgets.set(ws);})();`);
+    closeWidget(this.sp, WIDGET_ID);
   }
 
   private closeInvite(): void {
-    this.sp.browser.executeJavaScript(`(function(){var ws=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w.id!==${INVITE_WIDGET_ID};});window.skyrimPlatform.widgets.set(ws);})();`);
+    closeWidget(this.sp, INVITE_WIDGET_ID);
   }
 
   private closeAll(): void {
@@ -383,7 +450,11 @@ export class TradeService extends ClientListener {
     this.lockPending = false;
     this.closeWidget();
     this.closeInvite();
-    this.sp.browser.setFocused(false);
+    // Only surrender focus we actually took (the invite never grabs it).
+    if (this.windowOpen) {
+      this.windowOpen = false;
+      this.sp.browser.setFocused(false);
+    }
   }
 
   // Runs inside the CEF browser. Only injected vars + `window` are available.
@@ -412,5 +483,6 @@ export class TradeService extends ClientListener {
 
   private state: TradeState | null = null;
   private lockPending = false;
+  private windowOpen = false;
   private nameCache = new Map<number, string>();
 }

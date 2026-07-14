@@ -1,7 +1,5 @@
 'use strict'
-// Lore API
-// CRUD for lore wiki entries stored in data/lore.json.
-// Public read (GET). Write operations require 'lore.write' permission.
+// Lore wiki CRUD backed by data/lore.json; public GET, writes require 'lore.write'
 
 const { Router }        = require('express')
 const crypto            = require('crypto')

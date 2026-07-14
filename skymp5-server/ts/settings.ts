@@ -37,17 +37,9 @@ export class Settings {
   discordAuth: DiscordAuthSettings | null = null;
 
   // ── Arrest / capture / carry ────────────────────────────────────────────────
-  // The inventory item that lets a player restrain (manacle) another player.
-  // Skyrim has no carryable "manacles" item by default — the Helgen intro cuffs
-  // are worn armor — so this is normally a custom item from your load order.
-  // Set `manaclesFormId` in server-settings.json to your item's global form id
-  // (a number, or a "0x..." hex string). Defaults to the vanilla prisoner cuffs
-  // (ARMO 0x0005DC02) so the feature is usable out of the box for testing.
-  manaclesFormId: number | string = 0x0005dc02;
-  // Animation events played on the captive / carrier. Defaults reuse vanilla
-  // behaviour-graph offsets already whitelisted in the client's forced-sync set
-  // (skymp5-client sync/animation.ts). Override only if your load order ships
-  // dedicated bind/carry animations — and add any custom names to that whitelist.
+  // Item that gates arrests: 0 (default) = none; set to a carryable item's global form id (number or "0x..." hex string)
+  manaclesFormId: number | string = 0x0010E039;
+  // Anim events for captive/carrier; defaults are in the client's forced-sync whitelist (skymp5-client sync/animation.ts), custom overrides must be added there too
   captiveAnimEvent = 'OffsetBoundStandingStart';
   carrierAnimEvent = 'OffsetCarryBasketStart';
 
@@ -59,7 +51,7 @@ export class Settings {
     if (!Settings.cachedPromise) {
       Settings.cachedPromise = (async () => {
         const res = new Settings();
-        await res.loadSettings();  // Load settings asynchronously
+        await res.loadSettings();
         return res;
       })();
     }
@@ -111,13 +103,11 @@ export class Settings {
   private static cachedPromise: Promise<Settings> | null = null;
 }
 
-/**
- * Resolves a Git ref to a commit hash if it's not already a commit hash.
- */
+/** Resolves a Git ref to a commit hash if it's not already one. */
 async function resolveRefToCommitHash(octokit: Octokit, owner: string, repo: string, ref: string): Promise<string> {
   // Check if `ref` is already a 40-character hexadecimal string (commit hash).
   if (/^[a-f0-9]{40}$/i.test(ref)) {
-    return ref; // It's already a commit hash.
+    return ref;
   }
 
   // First, try to resolve it as a branch.
@@ -151,7 +141,6 @@ async function getCommitHashFromRef(octokit: Octokit, owner: string, repo: strin
 }
 
 async function fetchServerSettings(): Promise<any> {
-  // Load server-settings.json
   const settingsPath = 'server-settings.json';
   const rawSettings = fs.readFileSync(settingsPath, 'utf8');
   let serverSettingsFile = JSON.parse(rawSettings);
@@ -239,7 +228,6 @@ async function fetchServerSettings(): Promise<any> {
       const onFile = async (file: { path: string, name: string }) => {
         if (file.name.endsWith('.json')) {
           if (regex.test(file.path)) {
-            // Fetch individual file content if it matches the regex
             const fileData = await octokit.repos.getContent({
               owner,
               repo: repoName,
@@ -249,10 +237,8 @@ async function fetchServerSettings(): Promise<any> {
             rateLimitRemaining = parseInt(fileData.headers["x-ratelimit-remaining"]);
 
             if ('content' in fileData.data && typeof fileData.data.content === 'string') {
-              // Decode Base64 content and parse JSON
               const content = Buffer.from(fileData.data.content, 'base64').toString('utf-8');
               const jsonContent = JSON.parse(content);
-              // Merge or handle the JSON content as needed
               console.log(`Merging "${file.path}"`);
 
               serverSettings = lodash.merge(serverSettings, jsonContent);

@@ -2,44 +2,26 @@
 
 /**
  * Master API, called by the SkyMP game server (not the client directly).
- *
  * Mounted twice in server.js:
  *   app.use('/auth',        masterApiRoute)  -> POST /auth/session
  *   app.use('/api/servers', masterApiRoute)  -> GET/POST /api/servers/:key/…
  *
  * Endpoints:
- *
  *   POST /auth/session
- *     Body:    { discordUser: { id, username } }
- *     Returns: { profileId, session }
- *     Launcher calls this after Discord login to get a stable profileId and
- *     a session token that the game client passes to the game server.
- *
+ *     Body: { discordUser: { id, username } }  Returns: { profileId, session }
+ *     Called by the launcher after Discord login; the game client passes the session token to the game server.
  *   GET /api/servers/:key/sessions/:session
- *     Called by the game server to validate a session token.
- *     Returns: { user: { id, discordId, username } }
- *
+ *     Validates a session token. Returns: { user: { id, discordId, username } }
  *   GET /api/servers/:key/sessions/:session/balance
- *     Called by the game server to fetch a player's coin balance.
- *     Returns: { user: { id, balance } }
- *
- *   POST /api/servers/:key/sessions/:session/purchase
- *     Called by the game server (with X-Auth-Token) to spend a player's coins.
- *     Body:    { balanceToSpend: number }
- *     Returns: { balanceSpent: number, success: boolean }
- *
+ *     Returns a player's coin balance: { user: { id, balance } }
+ *   POST /api/servers/:key/sessions/:session/purchase  (X-Auth-Token)
+ *     Spends a player's coins. Body: { balanceToSpend: number }  Returns: { balanceSpent, success }
  *   GET /api/servers/:key/profiles/:profileId/check
- *     Called by the game server in offline mode to verify a profileId is allowed.
- *     Applies the same lock / whitelist rules as session validation.
- *     Returns: { allowed: true }  or  403/404 with { error }
- *
- *   POST /api/servers/:key/profiles/:profileId/factions
- *     Called by the game server for immersive in-game faction appointments.
- *     Requires X-Auth-Token. Body: { requirementId, playerName?, notes? }
- *
- *   DELETE /api/servers/:key/profiles/:profileId/factions/:assignmentId
- *     Called by the game server to remove one official backend faction slot.
- *     Requires X-Auth-Token.
+ *     Offline-mode profileId check, same lock/whitelist rules as session validation. Returns { allowed: true } or 403/404 { error }
+ *   POST /api/servers/:key/profiles/:profileId/factions  (X-Auth-Token)
+ *     In-game faction appointment. Body: { requirementId, playerName?, notes? }
+ *   DELETE /api/servers/:key/profiles/:profileId/factions/:assignmentId  (X-Auth-Token)
+ *     Removes one official backend faction slot.
  */
 
 const router = require('express').Router()
@@ -115,11 +97,7 @@ function lookupSession(token) {
   return sessions.get(token) || null
 }
 
-// Launch sanity check
-// The launcher reports its installed client-files version and plugin list to
-// POST /api/launch-check right before starting the game; the result is stored
-// on the session so the game server's session validation can refuse clients
-// running stale files or a wrong load order (or that skipped the launcher).
+// Launch sanity check: the launcher reports files version + plugin list to POST /api/launch-check; the result is stored on the session so validation can refuse stale or launcher-skipping clients
 
 const LAUNCH_VERSION_PATH = path.join(__dirname, '..', 'data', 'files-version.json')
 
@@ -241,8 +219,7 @@ router.get('/:key/sessions/:session', async (req, res) => {
     return res.status(403).json({ error: access.error || 'accessDenied' })
   }
 
-  // Launch sanity check: refuse clients whose files / load order were not
-  // verified as current by the launcher right before this game start.
+  // Refuse clients whose files/load order weren't verified by the launcher right before this game start
   const gate = launchGateStatus(entry)
   if (!gate.ok) {
     console.log(`[master-api] refused session for ${entry.username || entry.profileId}: ${gate.error}`)
@@ -292,6 +269,28 @@ router.get('/:key/profiles/:profileId/check', async (req, res) => {
     roles: access.roles,
     ...getProfileFactionPayload(discordId),
   })
+})
+
+// GET /api/servers/:key/holds/:holdSlug/roster
+// Full member list of one hold (online or not) for the in-game faction menu.
+
+router.get('/:key/holds/:holdSlug/roster', (req, res) => {
+  if (!checkKey(req, res)) return
+
+  try {
+    // Read-only profile lookup, and discordIds stay out of the response
+    const profileMap = profiles.load().map
+    const members = factionWhitelist.getHoldRoster(req.params.holdSlug).map(member => ({
+      profileId: profileMap[member.discordId] || null,
+      playerName: member.playerName,
+      rank: member.rank,
+      rankSlug: member.rankSlug,
+      slot: member.slot,
+    }))
+    res.json({ hold: req.params.holdSlug, members })
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to load roster' })
+  }
 })
 
 // POST /api/servers/:key/profiles/:profileId/factions

@@ -1,16 +1,11 @@
 'use strict'
 
 /**
- * One-time (and subsequent) setup for the SkyMP-Client source directory.
- *
- *   First run  → git clone  https://github.com/skyrim-multiplayer/skymp.git  sources/client/
- *   Later runs → git pull --ff-only  (fast-forward only, refuse dirty merges)
- *
- * After the clone / pull the merge pipeline runs automatically so that
- * public/files/root/ is immediately up to date.
- *
- * Usage:  node scripts/setup-client.js
- *         npm run setup
+ * Setup for the SkyMP-Client source directory.
+ *   First run:  git clone https://github.com/skyrim-multiplayer/skymp.git sources/client/
+ *   Later runs: git pull --ff-only (refuse dirty merges)
+ * Then the merge pipeline runs so public/files/root/ is immediately up to date.
+ * Usage: node scripts/setup-client.js  (npm run setup)
  */
 
 const { execFileSync } = require('child_process')

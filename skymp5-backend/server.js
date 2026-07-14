@@ -52,16 +52,14 @@ const launchCheckRoute      = require('./routes/launch-check')
 const app  = express()
 const PORT = process.env.PORT || 4000
 
-// nginx terminates TLS on this machine and proxies over loopback.
-// Without this, req.ip is 127.0.0.1 for every visitor, so per-IP rate limiting (routes/files.js) treats all players as a single client.
+// nginx terminates TLS and proxies over loopback; without this req.ip is 127.0.0.1 for everyone and per-IP rate limiting (routes/files.js) treats all players as one client
 app.set('trust proxy', 'loopback')
 
 const corsOrigins = [config.websiteUrl, config.dashboardPublicUrl]
 app.use(cors({ origin: corsOrigins }))
 console.log(`[cors] allowed origins: ${corsOrigins.join(', ')}`)
 
-// Capture the raw request body so the webhook route can verify the
-// GitHub HMAC-SHA256 signature without a separate body-parser step.
+// Capture the raw request body so the webhook route can verify GitHub's HMAC-SHA256 signature
 app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf },
 }))
@@ -83,8 +81,7 @@ app.use('/api/modlist',    modlistRoute)
 app.use('/api/install-manifest', installManifestRoute)
 app.use('/api/nexus-downloads',  nexusDownloadsRoute)
 app.use('/api/servers',    serversRoute)
-// SkyMP client Master-API compatibility: must be mounted before /api/servers
-// so /api/users/login-discord/status is not swallowed by a shorter prefix.
+// SkyMP client Master-API compat: mount before /api/servers so /api/users/login-discord/status is not swallowed by a shorter prefix
 app.use('/api/users',      skympCompatRoute)
 app.use('/auth',           masterApiRoute)   // POST /auth/session
 app.use('/api/servers',    masterApiRoute)   // GET  /api/servers/:key/sessions/:session

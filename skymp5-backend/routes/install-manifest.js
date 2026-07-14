@@ -5,13 +5,8 @@ const path   = require('path')
 const MANIFEST_PATH = path.join(__dirname, '..', 'data', 'install-manifest.json')
 
 // Compiled, hash-verified install manifest (built by scripts/compile-manifest.js).
-//
-// Streamed rather than readFileSync+send: with base64-inlined files the
-// manifest can exceed Node's ~512 MB string cap, and the old string read then
-// threw - reporting a perfectly good manifest as "not built yet".
-//
-// data/ is untracked runtime state, so a fresh backend deploy has NO manifest
-// until compile-manifest is run again on the server box.
+// Streamed, not readFileSync: base64-inlined files can push the manifest past Node's ~512 MB string cap, which made the old string read report a good manifest as "not built yet".
+// data/ is untracked runtime state, so a fresh backend deploy has NO manifest until compile-manifest runs again on the server box.
 router.get('/', (_req, res) => {
   let stat
   try { stat = fs.statSync(MANIFEST_PATH) } catch {

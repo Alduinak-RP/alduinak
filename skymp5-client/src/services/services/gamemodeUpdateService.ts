@@ -11,8 +11,7 @@ import { FormViewArray } from "../../view/formViewArray";
 import { localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { GamemodeApiCtx } from "../messages_gamemode/gamemodeApiCtx";
 
-// The reason we use global skyrimPlatform is that this.sp may be limited, and gamemode api needs unlimited access to skyrimPlatform
-// Sligthly different types
+// Gamemode api needs unlimited access to global skyrimPlatform; this.sp may be limited (slightly different types)
 import * as skyrimPlatform from "skyrimPlatform";
 import { logError, logTrace } from "../../logging";
 import { SettingsService } from "./settingsService";
@@ -91,10 +90,8 @@ export class GamemodeUpdateService extends ClientListener {
     updateNeighbor(refr: ObjectReference, model: FormModel, state: Record<string, unknown>) {
         for (const key of this.updateNeighborFunctionsKeys) {
             const v = (model as Record<string, unknown>)[key];
-            // According to docs:
-            // In `updateOwner`/`updateNeighbor` equals to a value of a currently processed property.
-            // Can't be `undefined` here, since updates are not received for `undefined` property values.
-            // In other contexts is always `undefined`.
+            // Per docs: in updateOwner/updateNeighbor this is the currently processed property's value;
+            // can't be undefined here since updates aren't received for undefined values.
             if (v !== undefined) {
                 this.updateNeighborCtx.refr = refr;
                 this.updateNeighborCtx.value = v;

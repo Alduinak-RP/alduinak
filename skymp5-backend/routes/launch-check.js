@@ -1,20 +1,13 @@
 'use strict'
 
 /**
- * POST /api/launch-check
- *
- * Called by the launcher right before starting the game.
+ * POST /api/launch-check: called by the launcher right before starting the game.
  *   Headers: { x-session: <play-session token> }
  *   Body:    { filesVersion: string, plugins: string[] }  (plugins in load order)
- *
- * Compares the reported client-files version and plugin list against what the
- * backend currently publishes, and records the result on the session. The
- * game server's session validation (master-api.js) refuses sessions whose
- * last launch check is missing or stale, so out-of-date clients cannot
- * connect even if they bypass the launcher's own gate.
- *
- * Returns 200 { ok, filesOk, pluginsOk, requiredVersion } - `ok` false means
- * the launcher should update/repair instead of launching.
+ * Compares the report against what the backend publishes and records the result on
+ * the session; session validation (master-api.js) refuses sessions whose last check
+ * is missing or stale, so out-of-date clients can't bypass the launcher's gate.
+ * Returns 200 { ok, filesOk, pluginsOk, requiredVersion }; ok false means update/repair.
  */
 
 const router = require('express').Router()
@@ -22,8 +15,7 @@ const path   = require('path')
 const { lookupSession, recordLaunchCheck, currentFilesVersion } = require('./master-api')
 const { getGameLoadOrder } = require('./serverinfo')
 
-// Vanilla masters ship with the game; they are not distributed by the server
-// and are excluded from the comparison (mirrors the launcher's own list).
+// Vanilla masters ship with the game and are excluded from the comparison (mirrors the launcher's own list)
 const VANILLA_MASTERS = new Set([
   'skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm', '_resourcepack.esl',
 ])

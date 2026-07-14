@@ -132,8 +132,7 @@ export class RemoteServer extends ClientListener {
 
     let hosted = storage['hosted'];
     if (typeof hosted !== typeof []) {
-      // if you try to switch to Set please checkout .concat usage.
-      // concat compiles but doesn't work as expected
+      // if switching to Set, check .concat usage: it compiles but doesn't work as expected
       hosted = new Array<number>();
       storage['hosted'] = hosted;
     }
@@ -209,8 +208,7 @@ export class RemoteServer extends ClientListener {
         return;
       }
 
-      // In SkyMP containers have 2-nd, closing activation under the hood.
-      // This differs from Skyrim's behavior, where it's just one activation.
+      // SkyMP containers have a 2nd, closing activation under the hood, unlike Skyrim's single activation.
 
       (async () => {
         logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be true");
@@ -485,8 +483,7 @@ export class RemoteServer extends ClientListener {
     if (msg.isMe) {
       const spawnTask = { running: false };
       once('update', () => {
-        // Use MoveRefrToPosition to spawn if possible (not in main menu)
-        // In case of connection lost this is essential
+        // Use MoveRefrToPosition to spawn if possible (not in main menu); essential after a lost connection
         if (!spawnTask.running) {
           spawnTask.running = true;
           logTrace(this, 'Using moveRefrToPosition to spawn player');
@@ -642,9 +639,8 @@ export class RemoteServer extends ClientListener {
       this.worldModel.playerCharacterRefrId = 0;
 
       // TODO: move to a separate module
-      // "update" doesn't fire in the main menu, so this can trigger long after
-      // being queued. Re-check on fire: the server may have re-created our
-      // actor since (e.g. picking a character after quitting to the menu).
+      // "update" doesn't fire in the main menu, so this can trigger long after queueing;
+      // re-check on fire since the server may have re-created our actor by then.
       once('update', () => {
         if (this.worldModel.playerCharacterFormIdx === -1) {
           Game.quitToMainMenu();
@@ -853,8 +849,7 @@ export class RemoteServer extends ClientListener {
     const msg = event.message;
 
     if (msg.open) {
-      // wait 0.3s cause we can see visual bugs when teleporting
-      // and showing this menu at the same time in onConnect
+      // wait 0.3s to avoid visual bugs when teleporting and showing this menu at the same time in onConnect
       once('update', () =>
         Utility.wait(0.3).then(() => {
           unequipIronHelmet();

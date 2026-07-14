@@ -62,8 +62,7 @@ export class WorldCleanerService extends ClientListener {
     }
 
     if (this.isActorInDialogue(actor)) {
-      // Deleting actor in dialogue crashes Skyrim
-      // https://github.com/skyrim-multiplayer/issue-tracker/issues/13
+      // Deleting an actor in dialogue crashes Skyrim: https://github.com/skyrim-multiplayer/issue-tracker/issues/13
       actor.setPosition(0, 0, 0);
       actor.disableNoWait(true); // Seems to not crash
       return;
@@ -80,8 +79,7 @@ export class WorldCleanerService extends ClientListener {
 
     const chickenRace = 0xa919d;
 
-    // We discovered anomaly chickens that fail to Disable if we load game near to them
-    // Refs: 106C22, 106C23
+    // Anomaly chickens fail to Disable if we load the game near them. Refs: 106C22, 106C23
     if (actorId < 0xff000000 && actor.getRace()?.getFormID() === chickenRace) {
       if (this.initialPos && ObjectReferenceEx.getDistanceNoZ(pos, this.initialPos) < 4096) {
         if (cellOrWorld === this.initialCellOrWorld) {

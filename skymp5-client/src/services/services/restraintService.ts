@@ -3,25 +3,21 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { logTrace } from "../../logging";
 
-// Vanilla Skyrim behaviour-graph events (no ESP required). The bound-hands pose
-// is an "offset" overlay started with OffsetBoundStandingStart and cleared with
-// OffsetStop — the same family the carry system uses (OffsetCarryBasketStart).
-// All three are whitelisted in sync/animation.ts (forcedSyncAnims) so the poses
-// are visible to other players, not just locally. The server may override the
-// pose event names (settings.captiveAnimEvent / carrierAnimEvent); custom names
-// must also be added to that whitelist to sync.
+// Vanilla behaviour-graph "offset" overlay events (no ESP required), cleared with OffsetStop.
+// All three are whitelisted in sync/animation.ts (forcedSyncAnims) so the poses sync to other players.
+// Server-overridden pose names (settings.captiveAnimEvent / carrierAnimEvent) must also be whitelisted.
 const BOUND_HANDS_ANIM_START = "OffsetBoundStandingStart";
 const CARRY_HOLD_ANIM_START = "OffsetCarryBasketStart";
 const OFFSET_STOP_ANIM = "OffsetStop";
 
 /**
- * Applies the local player's restraint state — bound hands (arrest), being
- * carried, and (for a captor) the carry-hold pose — to controls and animation.
+ * Applies the local player's restraint state (bound hands, being carried, and
+ * the captor's carry-hold pose) to controls and animation.
  * Server-authoritative: the gamemode's CaptureSystem owns who may bind/carry
  * whom, consent, bleedout timers and respawn; this service only reflects the
  * resulting state on the local client.
  *
- * Protocol — Server -> Client, {@link MsgType.CustomPacket} with a JSON dump.
+ * Protocol: Server -> Client, {@link MsgType.CustomPacket} with a JSON dump.
  * Fields are optional; only the ones present are changed:
  *
  *   // The restrained player (captive):
@@ -86,9 +82,7 @@ export class RestraintService extends ClientListener {
   }
 
   private applyState(): void {
-    // These are native game-thread calls; running them straight from the packet
-    // handler throws "can't be called in this context". Defer to the next update
-    // tick (matching AuthService's disablePlayerControls usage).
+    // Native game-thread calls throw "can't be called in this context" from the packet handler; defer to update.
     this.controller.once("update", () => this.applyStateNow());
   }
 
@@ -98,17 +92,15 @@ export class RestraintService extends ClientListener {
       return;
     }
 
-    // Pose: a bound or carried captive shows the captive pose; otherwise clear
-    // it. Only fire on transition to avoid re-triggering every packet.
+    // Bound or carried shows the captive pose, otherwise clear it; only fire on transition.
     const desiredPose = (this.boundHands || this.carried) ? this.captiveAnim : OFFSET_STOP_ANIM;
     if (desiredPose !== this.appliedPose) {
       this.sp.Debug.sendAnimationEvent(player, desiredPose);
       this.appliedPose = desiredPose;
     }
 
-    // Recompute the control lock from scratch each time. Argument order:
-    // (movement, fighting, camSwitch, looking, sneaking, menu, activate,
-    //  journalTabs, disablePOVType).
+    // Recompute the control lock each time. Argument order:
+    // (movement, fighting, camSwitch, looking, sneaking, menu, activate, journalTabs, disablePOVType).
     if (this.carried) {
       // Immobilised so the server can move the body; camera/looking left free.
       this.sp.Game.disablePlayerControls(true, true, false, false, true, false, true, false, 0);
@@ -123,8 +115,7 @@ export class RestraintService extends ClientListener {
     }
   }
 
-  // The carry-hold pose for the carrier. Pose only — no control change, so the
-  // carrier can walk the captive around. Deferred like applyState.
+  // The carrier's carry-hold pose only, no control change; deferred like applyState.
   private applyCarryAnim(): void {
     this.controller.once("update", () => {
       const player = this.sp.Game.getPlayer();

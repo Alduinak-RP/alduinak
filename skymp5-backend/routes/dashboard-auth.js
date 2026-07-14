@@ -1,10 +1,6 @@
 'use strict'
-// Dashboard Discord OAuth
-// Separate OAuth flow from the launcher: uses its own redirect_uri and issues
-// dashboard session tokens instead of launcher session tokens.
-//
-// Required Discord app settings:
-//   Redirects: add DISCORD_DASHBOARD_REDIRECT_URI (e.g. https://api.SkyMP.online/auth/dashboard/callback)
+// Dashboard Discord OAuth: separate flow from the launcher (own redirect_uri, issues dashboard session tokens)
+// Discord app settings must list DISCORD_DASHBOARD_REDIRECT_URI under Redirects
 
 const { Router }              = require('express')
 const https                   = require('https')
@@ -19,10 +15,7 @@ const router  = Router()
 // state -> { redirectUrl }  (10-min TTL)
 const pending = new Map()
 
-// GET /auth/dashboard/url
-// Returns the Discord authorization URL. The website calls this then redirects
-// the user's browser there.
-// Query: ?redirect=<website-dashboard-url>  (where to return after auth)
+// GET /auth/dashboard/url?redirect=<return-url>: returns the Discord authorization URL for the website to send the browser to
 router.get('/url', (req, res) => {
   if (!config.discordClientId) {
     return res.status(503).json({ error: 'Discord not configured on this server.' })
@@ -30,9 +23,7 @@ router.get('/url', (req, res) => {
 
   const state       = crypto.randomBytes(16).toString('hex')
 
-  // The redirect target later receives the dashboard session token, so restrict
-  // it to an allowlist of known front-end origins to prevent token exfiltration
-  // to an attacker-chosen origin via ?redirect=.
+  // The redirect target later receives the session token, so restrict it to known front-end origins to prevent token exfiltration via ?redirect=
   let redirectUrl = config.websiteUrl + '/dashboard'
   const requestedRedirect = req.query.redirect
   if (requestedRedirect) {
@@ -57,10 +48,7 @@ router.get('/url', (req, res) => {
   res.json({ url: `https://discord.com/api/oauth2/authorize?${params}` })
 })
 
-// GET /auth/dashboard/callback
-// Discord redirects here after the user authorizes (or cancels).
-// On success: validate Discord ID, issue session, redirect to website with token.
-// On failure: redirect to website dashboard with ?error=<reason>.
+// GET /auth/dashboard/callback: Discord redirects here; on success issue a session and redirect to the website with the token, on failure redirect with ?error=<reason>
 router.get('/callback', async (req, res) => {
   const { code, state, error } = req.query
 
@@ -90,8 +78,7 @@ router.get('/callback', async (req, res) => {
       permissions.push('admin.*')
     }
 
-    // Allow access through a configurable dashboard permission, or through the
-    // legacy DASHBOARD_DISCORD_IDS allowlist.
+    // Allow access via the dashboard permission or the legacy DASHBOARD_DISCORD_IDS allowlist
     const isAllowed = hasPermission(permissions, 'dashboard.access') || config.dashboardDiscordIds.includes(user.id)
     if (!isAllowed) {
       return res.redirect(pend.redirectUrl + '?error=unauthorized')
@@ -103,8 +90,7 @@ router.get('/callback', async (req, res) => {
       : null
 
     const token = sessions.create(user.id, username, avatar, roleIds, permissions)
-    // Fragment, not query string: fragments never reach the server, so the
-    // token stays out of access logs, browser history sync and Referer headers.
+    // Fragment, not query string: fragments never reach the server, keeping the token out of access logs, history sync and Referer headers
     return res.redirect(`${pend.redirectUrl}#token=${token}`)
 
   } catch (err) {
@@ -113,9 +99,7 @@ router.get('/callback', async (req, res) => {
   }
 })
 
-// GET /auth/dashboard/me
-// Validates a dashboard session token and returns the user's Discord info.
-// Used by the website to confirm the session is still valid after page load.
+// GET /auth/dashboard/me: validates a session token and returns the user's Discord info; the website uses it to confirm the session after page load
 router.get('/me', (req, res) => {
   const auth    = req.headers['authorization'] ?? ''
   const token   = auth.startsWith('Bearer ') ? auth.slice(7) : ''

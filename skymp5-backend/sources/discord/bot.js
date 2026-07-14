@@ -49,7 +49,6 @@ async function getMemberRoles(discordId) {
         return []  // genuinely not in server
       }
       console.warn('[discord-bot] guild fetch failed, falling back to HTTP:', err.message)
-      // Fall through to HTTP fallback below
     }
   }
 

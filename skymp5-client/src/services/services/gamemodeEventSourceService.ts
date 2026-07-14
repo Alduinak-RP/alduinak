@@ -7,8 +7,7 @@ import { RemoteServer } from "./remoteServer";
 import { MsgType } from "../../messages";
 import { GamemodeApiEventSourceCtx } from "../messages_gamemode/gamemodeApiEventSourceCtx";
 
-// The reason we use global skyrimPlatform is that this.sp may be limited, and gamemode api needs unlimited access to skyrimPlatform
-// Sligthly different types
+// Gamemode api needs unlimited access to global skyrimPlatform; this.sp may be limited (slightly different types)
 import * as skyrimPlatform from "skyrimPlatform";
 import { logError, logTrace } from "../../logging";
 import { ServerJsVerificationService } from "./serverJsVerificationService";

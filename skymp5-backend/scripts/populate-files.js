@@ -1,12 +1,8 @@
 /**
- * Copies the built client files into the backend's file bucket
- *
- *   build/dist/client/Data/  ->  <clientFilesDir>/root/Data/
- *
- * SKSE itself is not included here; the launcher installs it separately.
- *
- * Run from the backend/ directory:  npm run populate
- *   Override the source with SKYMP_CLIENT_DATA=<path to built Data/>.
+ * Copies the built client files into the backend's file bucket:
+ *   build/dist/client/Data/ -> <clientFilesDir>/root/Data/
+ * SKSE is not included; the launcher installs it separately.
+ * Run from backend/: npm run populate (override the source with SKYMP_CLIENT_DATA=<Data/ path>).
  */
 
 const fs   = require('fs')

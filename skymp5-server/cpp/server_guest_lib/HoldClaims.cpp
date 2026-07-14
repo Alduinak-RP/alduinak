@@ -136,12 +136,13 @@ std::optional<int> HoldClaims::RankCap(Rank rank) noexcept
       return 1;
     case Rank::Steward:
     case Rank::Captain:
-      return 4;
-    case Rank::Outsider:
     case Rank::CourtWizard:
+      return 4;
     case Rank::Thane:
-    case Rank::Housecarl:
     case Rank::VillageElder:
+      return 5;
+    case Rank::Outsider:
+    case Rank::Housecarl:
     case Rank::Guard:
     case Rank::Lord:
     case Rank::Citizen:
@@ -164,10 +165,9 @@ const std::vector<HoldClaims::HoldCell>& HoldClaims::GetHoldCells()
   // Interior cell form ids grouped by hold.
   // Caves are listed only so the registry can explicitly exclude them
   static const std::vector<HoldCell> kCells = {
-    // Whiterun
+    // Whiterun (no cave entry: 0x1A26F is the WhiterunWorld worldspace id)
     { 0x000165A8, "whiterun", CellKind::House },   // Breezehome
     { 0x0001B131, "whiterun", CellKind::Dungeon }, // Dragonsreach Dungeon
-    { 0x0001A26F, "whiterun", CellKind::Cave },    // (excluded) cave
 
     // Eastmarch
     { 0x0003480E, "eastmarch", CellKind::House },   // Hjerim
@@ -315,22 +315,21 @@ bool HoldClaims::CanAppoint(Rank appointer, Rank targetRank) noexcept
     case Rank::Jarl:
       return true;
     case Rank::Steward:
-      return targetRank == Rank::Housecarl ||
-        targetRank == Rank::CourtWizard || targetRank == Rank::Lord ||
-        targetRank == Rank::VillageElder || targetRank == Rank::Citizen;
+      return targetRank == Rank::Lord || targetRank == Rank::Citizen;
     case Rank::Captain:
-      return targetRank == Rank::Guard || targetRank == Rank::Housecarl;
+      return targetRank == Rank::Guard;
     case Rank::Thane:
-      return targetRank == Rank::Housecarl ||
+      return targetRank == Rank::Housecarl || targetRank == Rank::Guard ||
         targetRank == Rank::VillageElder || targetRank == Rank::Lord ||
-        targetRank == Rank::Citizen || targetRank == Rank::Guard;
+        targetRank == Rank::Citizen;
     case Rank::Housecarl:
       return targetRank == Rank::Guard;
     case Rank::VillageElder:
-      return targetRank == Rank::Citizen || targetRank == Rank::Lord;
+      return targetRank == Rank::Lord || targetRank == Rank::Citizen;
+    case Rank::Lord:
+      return targetRank == Rank::Citizen;
     case Rank::CourtWizard:
     case Rank::Guard:
-    case Rank::Lord:
     case Rank::Citizen:
     case Rank::Outsider:
       return false;

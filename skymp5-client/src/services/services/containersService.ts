@@ -32,10 +32,7 @@ export class ContainersService extends ClientListener {
                 if (lastInvService.lastInv) {
                     const newInv = getInventory(this.sp.Game.getPlayer() as Actor);
 
-                    // It seems that 'ignoreWorn = false' fixes this:
-                    // https://github.com/skyrim-multiplayer/issue-tracker/issues/43
-                    // For some reason excess diff is produced when 'ignoreWorn = true'
-                    // I thought that it would be vice versa but that's how it works
+                    // 'ignoreWorn = true' produces excess diff, see https://github.com/skyrim-multiplayer/issue-tracker/issues/43
                     const ignoreWorn = false;
                     const diff = getDiff(lastInvService.lastInv, newInv, ignoreWorn);
 
@@ -72,9 +69,7 @@ export class ContainersService extends ClientListener {
                         reliability: "reliable"
                     }));
 
-                    // Prevent emitting 1,2,3,4,5 changes when taking/putting 5 potions one by one
-                    // This code makes it 1,1,1,1,1 but works only for extra-less items
-                    // At the moment of writing this I think it's not needed for items with extras
+                    // Turn 1,2,3,4,5 changes into 1,1,1,1,1 when moving items one by one; extra-less items only
                     diff.entries.forEach((entry) => {
                         if (lastInvService.lastInv && !hasExtras(entry)) {
                             const put = entry.count > 0;

@@ -11,29 +11,22 @@ function randomInteger(min: number, max: number) {
 
 const MAX_CHARACTERS = 3;
 
-// Guards for characterSelectMenuRequest: rapid repeats are ignored, and a
-// request right after an actor was assigned is treated as a stale client menu
-// event (scheduling a park for a body that is actually being played).
+// characterSelectMenuRequest guards: rapid repeats are ignored, and a request right after actor assign is treated as a stale client menu event
 const REQUEST_COOLDOWN_MS = 15 * 1000;
 const ASSIGN_GRACE_MS = 10 * 1000;
 
-// Logout grace: a body stays in the world this long after its player
-// disconnects, quits to the menu, or switches character, so combat logging
-// leaves a killable body behind. Selecting the character again cancels it.
+// Logout grace: the body stays in the world this long after disconnect/menu quit/character switch, so combat logging leaves a killable body; re-selecting cancels it
 const LOGOUT_GRACE_MS = 5 * 60 * 1000;
 
 // Character-select protocol (gated by the "characterSelect" server setting).
-// When enabled, the server no longer auto-spawns on connect; instead it sends
-// the player their character slots and waits for a selection. Matches the
-// client's CharacterSelectService.
-//
+// When enabled the server no longer auto-spawns on connect; it sends the player
+// their character slots and waits for a selection (matches the client's
+// CharacterSelectService). Flag off (default) keeps the original
+// single-character behaviour, so enabling can never brick login on its own.
 //   Server -> Client:
 //     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info} | null ] }
 //   Client -> Server:
 //     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot }
-//
-// With the flag off (default) the original single-character behaviour is kept,
-// so enabling the feature can never brick login on its own.
 export class Spawn implements System {
   systemName = "Spawn";
   constructor(private log: Log) { }
@@ -42,14 +35,12 @@ export class Spawn implements System {
   private settingsObject!: Settings;
   // userId -> auth context awaiting a character selection
   private pending = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
-  // userId -> last resolved auth context, kept for the whole connection so the
-  // menu can reopen when the player quits to the main menu mid-session
+  // userId -> last resolved auth context, kept for the whole connection so the menu can reopen after a mid-session quit to main menu
   private authCache = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
   // userId -> timestamps backing the onMenuRequest anti-abuse guards
   private lastMenuRequestMs = new Map<number, number>();
   private lastAssignMs = new Map<number, number>();
-  // actorId -> pending logout-grace despawn timer. Keyed by actor, not user:
-  // userIds are recycled across connections, actor form ids are not.
+  // actorId -> pending logout-grace despawn timer; keyed by actor since userIds are recycled across connections, actor form ids are not
   private parkTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -87,9 +78,7 @@ export class Spawn implements System {
     this.authCache.delete(userId);
     this.lastMenuRequestMs.delete(userId);
     this.lastAssignMs.delete(userId);
-    // Logout grace: the body stays in the world for a while (parkTimers is
-    // actorId-keyed and deliberately NOT cleaned here; the timer must outlive
-    // the connection). Reconnecting and selecting the character cancels it.
+    // Logout grace: parkTimers is actorId-keyed and deliberately NOT cleaned here, the timer must outlive the connection; re-selecting the character cancels it
     try {
       const actorId = ctx.svr.getUserActor(userId);
       if (actorId !== 0) {
@@ -98,10 +87,7 @@ export class Spawn implements System {
     } catch { /* form vanished */ }
   }
 
-  // Logout-grace despawn: disable the body LOGOUT_GRACE_MS from now unless the
-  // character is selected again first. Also detaches a still-connected owner
-  // when firing (a user idling at the menu past the grace): re-selecting a
-  // DISABLED actor while still mapped would stream CreateActor(isMe) twice.
+  // Disable the body LOGOUT_GRACE_MS from now unless re-selected first; also detaches a still-connected owner when firing, since re-selecting a DISABLED actor while still mapped would stream CreateActor(isMe) twice
   private schedulePark(ctx: SystemContext, actorId: number): void {
     this.cancelPark(actorId);
     const handle = setTimeout(() => {
@@ -126,12 +112,8 @@ export class Spawn implements System {
     }
   }
 
-  // The client asks for this when the player quits to the main menu: reopen
-  // the selection menu and start the logout grace on the current body (it
-  // stays in the world, so quitting out is never an instant combat escape).
-  // Rapid repeats and requests right after an actor was assigned are ignored
-  // for the grace scheduling: those are packet spam or a stale client menu
-  // event, and a stale park would despawn a body that is being played.
+  // Sent when the player quits to the main menu: reopen the selection menu and start logout grace on the current body (it stays in the world, so quitting is never an instant combat escape)
+  // Rapid repeats or requests right after actor assign skip the grace scheduling: packet spam / stale menu events must not park a body that is being played
   private onMenuRequest(ctx: SystemContext, userId: number): void {
     const auth = this.authCache.get(userId);
     if (!auth) return; // not authenticated yet
@@ -156,8 +138,7 @@ export class Spawn implements System {
 
   // Character select
 
-  // The SkyMP gamemode reads these private props off the character; mirror
-  // the master-api profile onto the actor so dashboard ranks resolve in-game.
+  // The gamemode reads these private props off the character; mirror the master-api profile onto the actor so dashboard ranks resolve in-game
   private setSkympProps(mp: Mp, actorId: number, profileId: number, discordId?: string, access?: unknown): void {
     try {
       mp.set(actorId, "private.skympProfileId", profileId);
@@ -170,8 +151,7 @@ export class Spawn implements System {
     } catch { /* form vanished */ }
   }
 
-  // Mirror the resolved auth context onto the actor. indexed.discordId is only
-  // rewritten when it actually changes, keeping the private index stable.
+  // Mirror the resolved auth context onto the actor; indexed.discordId is only rewritten when it actually changes, keeping the private index stable
   private applyAuthProps(mp: Mp, actorId: number, profileId: number,
     roles: string[], discordId?: string, access?: unknown): void {
     mp.set(actorId, "private.discordRoles", roles);
@@ -238,8 +218,7 @@ export class Spawn implements System {
     let actorId = slots[slot];
     const isNew = actorId === undefined;
 
-    // Permanently dead characters are locked: their body remains in the world
-    // but they can never be played again.
+    // Permanently dead characters are locked: the body remains in the world but can never be played again
     if (!isNew && actorId !== undefined && this.isPermaDead(mp, actorId)) {
       this.log("Refusing to play permanently dead character", actorId.toString(16), "in slot", slot);
       this.sendCharacterList(ctx, userId, auth.profileId);
@@ -257,9 +236,7 @@ export class Spawn implements System {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
     }
 
-    // Other slots despawn through the logout grace too: switching character
-    // must not vanish the previous body instantly (combat-log escape). Bodies
-    // already under a running grace keep their original timer.
+    // Other slots despawn via logout grace too (switching must not vanish the previous body instantly); bodies already under a running grace keep their timer
     for (const other of slots) {
       if (other !== undefined && other !== actorId) {
         if (!this.parkTimers.has(other)) {
@@ -268,8 +245,7 @@ export class Spawn implements System {
       }
     }
 
-    // Selecting the character is what cancels its pending logout-grace
-    // despawn. Enable BEFORE setUserActor: PartOne throws on disabled actors.
+    // Selecting the character cancels its pending logout-grace despawn; enable BEFORE setUserActor, PartOne throws on disabled actors
     this.cancelPark(actorId);
     ctx.svr.setEnabled(actorId, true);
     ctx.svr.setUserActor(userId, actorId);
@@ -292,8 +268,7 @@ export class Spawn implements System {
 
     const actorId = this.slotMap(ctx, auth.profileId)[slot];
     if (actorId !== undefined) {
-      // Perma-dead characters may be deleted too — destroying the body — so a
-      // perma-death cannot lock the slot forever.
+      // Perma-dead characters may be deleted too (destroying the body) so a perma-death cannot lock the slot forever
       this.cancelPark(actorId);
       ctx.svr.destroyActor(actorId);
       this.log("Deleted character", actorId.toString(16), "from slot", slot);
@@ -307,8 +282,7 @@ export class Spawn implements System {
     discordRoleIds: string[], discordId?: string, access?: unknown): void {
     const { startPoints } = this.settingsObject;
     const mp = ctx.svr as unknown as Mp;
-    // Permanently dead characters are locked here too (see onSelectCharacter):
-    // skip them and start a fresh character instead.
+    // Perma-dead characters are locked here too (see onSelectCharacter): skip them and start a fresh character instead
     let actorId = ctx.svr.getActorsByProfileId(userProfileId)
       .find((a) => !this.isPermaDead(mp, a));
     if (actorId) {

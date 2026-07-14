@@ -2,6 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { closeWidget } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent } from "skyrimPlatform";
@@ -12,8 +13,7 @@ declare const window: any;
 
 const WIDGET_ID = 12;
 
-// Matches the server's consent window (captureSystem CONSENT_TIMEOUT_MS): once
-// it lapses server-side, answering is a no-op, so dismiss the prompt too.
+// Matches the server's captureSystem CONSENT_TIMEOUT_MS; once it lapses answering is a no-op, so dismiss too.
 const CONSENT_TIMEOUT_MS = 20000;
 
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
@@ -22,8 +22,7 @@ const events = {
   no: "consent:no",
 };
 
-// Module-level so the browser-side widget setter can read it (runtime injection,
-// same pattern as FactionService / PlayerActionService).
+// Module-level so the browser-side widget setter can read it via runtime injection.
 let promptText = "";
 
 /**
@@ -31,9 +30,9 @@ let promptText = "";
  * to restrain or carry this player, the server sends a `captureConsentRequest`
  * and we pop a Yes/No widget; the player's choice is returned as a
  * `captureConsentResult`. Also routes `captureNotice` feedback into the chat's
- * System tab. Server-authoritative — inert until the server sends a packet.
+ * System tab. Server-authoritative: inert until the server sends a packet.
  *
- * Protocol — {@link MsgType.CustomPacket} with a JSON dump:
+ * Protocol: {@link MsgType.CustomPacket} with a JSON dump.
  *   Server -> Client:
  *     { "customPacketType": "captureConsentRequest", "requestId": 4, "text": "X wants to restrain you. Allow?" }
  *     { "customPacketType": "captureNotice", "text": "You restrained Y." }
@@ -119,12 +118,11 @@ export class CaptureConsentService extends ClientListener {
       this.expiryTimer = undefined;
     }
     this.promptOpen = false;
-    this.sp.browser.executeJavaScript('(function(){var ws=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w.id!==12;});window.skyrimPlatform.widgets.set(ws);})();');
+    closeWidget(this.sp, WIDGET_ID);
     this.sp.browser.setFocused(false);
   }
 
-  // Runs inside the CEF browser. Only the injected variables (events, promptText,
-  // WIDGET_ID) and `window` are available here.
+  // Runs inside the CEF browser; only the injected vars (events, promptText, WIDGET_ID) and window exist here.
   private browsersideWidgetSetter = () => {
     const widget = {
       type: "form",

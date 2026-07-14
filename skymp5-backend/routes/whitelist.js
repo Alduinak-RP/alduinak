@@ -1,6 +1,5 @@
 'use strict'
-// Role-backed whitelist API. Read-only for now: Discord roles are the source
-// of truth, and future character/race locks can hang off this response shape.
+// Role-backed whitelist API, read-only for now: Discord roles are the source of truth; future character/race locks can hang off this response shape
 
 const { Router }        = require('express')
 const discordBot        = require('../sources/discordBot')

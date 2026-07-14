@@ -6,19 +6,15 @@ export interface ChatChannel {
   id: string;
   // Short label shown on the selector button.
   label: string;
-  // Slash-command prefix prepended to outgoing messages for this channel.
-  // An empty string means the message is sent verbatim (the server treats
-  // unprefixed text as /say), preserving the historical default behaviour.
+  // Slash-command prefix for outgoing messages; empty string sends verbatim (the server treats unprefixed text as /say).
   cmd: string;
-  // Extra class used to colour the active channel, mirroring the message
-  // colours already defined in ../styles.scss (.action, .admin, ...).
+  // Extra class colouring the active channel, mirroring the message colours in ../styles.scss (.action, .admin, ...).
   className: string;
 }
 
 export const CHAT_CHANNELS: ChatChannel[] = [
   { id: 'local',    label: 'Local',    cmd: '',          className: 'channel-local' },
-  // System: read-only feed of vanilla notifications, admin /system broadcasts and
-  // flavour text. Not typeable. (#eda841)
+  // System: read-only feed of vanilla notifications, admin /system broadcasts and flavour text. Not typeable. (#eda841)
   { id: 'system',   label: 'System',   cmd: '',          className: 'channel-system' },
   // Admin-to-admin chat, hidden from normal players.
   { id: 'admin',    label: 'Admin',    cmd: '/admin ',   className: 'channel-admin' },

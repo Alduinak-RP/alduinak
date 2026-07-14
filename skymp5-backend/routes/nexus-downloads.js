@@ -9,9 +9,7 @@ const GAME = 'skyrimspecialedition'
 const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
-// File-pinned Nexus link so free users grab the exact version the manifest
-// expects. (The Engine Fixes preloader is no longer listed here: it ships
-// inside the client files zip rather than as a launcher-installed root mod.)
+// File-pinned Nexus link so free users grab the exact version the manifest expects (the Engine Fixes preloader now ships in the client zip, not here)
 const linkFor = (modId, fileId) =>
   `https://www.nexusmods.com/${GAME}/mods/${modId}?tab=files${fileId ? `&file_id=${fileId}` : ''}`
 
@@ -45,9 +43,7 @@ const page = body => `<!doctype html>
 <body><div class="wrap">${body}</div></body>
 </html>`
 
-// HTML page listing every Nexus archive's direct download link. Free Nexus
-// accounts can't fetch archives through the API, so players open this page and
-// Ctrl+click each link (about 5 at a time) to start the Mod Manager Downloads.
+// HTML page of every Nexus archive's download link; free accounts can't use the API, so players Ctrl+click links (about 5 at a time) to start Mod Manager Downloads
 router.get('/', (_req, res) => {
   let manifest
   try {

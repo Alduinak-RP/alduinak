@@ -3,8 +3,7 @@ import { showSystemNotification } from "./systemNotification";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { MsgType } from "../../messages";
 
-// Shared by the housing / faction / player-action services, which all emit the
-// same reliable CustomPacket shape and defer notifications to the next update.
+// Shared by the widget menu services: same reliable CustomPacket shape, notifications deferred to next update.
 
 export function sendCustomPacket(controller: CombinedController, payload: Record<string, unknown>): void {
   const message: CustomPacketMessage = {
