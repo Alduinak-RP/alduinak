@@ -40,10 +40,11 @@ module.exports = {
   // Keep this list in sync with SERVICES in src/renderer/renderer.js (the
   // renderer has its own copy of key/label and would show a stale set if they drift).
   // Renamed services: migrate the live box by re-running build/dist/server/install-services.bat
+  // legacyNames are pre-rename service names the manager falls back to until then.
   services: [
-    { key: 'nginx',   name: 'AlduinakNginx',      label: 'Nginx'    },
-    { key: 'backend', name: 'AlduinakBackend',    label: 'Backend'  },
-    { key: 'game',    name: 'AlduinakGameServer', label: 'Game'     },
+    { key: 'nginx',   name: 'AlduinakNginx',      legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx'    },
+    { key: 'backend', name: 'AlduinakBackend',    legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend'  },
+    { key: 'game',    name: 'AlduinakGameServer', legacyNames: ['SkyrpGameServer'],               label: 'Game'     },
   ],
 
   // Reference MO2 install used to compile the manifest (the Modlist tab).

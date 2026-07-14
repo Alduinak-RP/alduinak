@@ -6,7 +6,7 @@ document.getElementById('btn-close').addEventListener('click',    () => window.e
 // External nav links
 const EXTERNAL_URLS = {
   website: 'https://alduinak.com/',           // e.g. 'https://example.com'
-  discord: 'https://discord.gg/xKY4Nud2rz',   // e.g. 'https://discord.gg/...'
+  discord: 'https://discord.gg/Pkxdgt6W8q',   // e.g. 'https://discord.gg/...'
 }
 
 document.querySelectorAll('.topnav-link[data-href]').forEach(link => {

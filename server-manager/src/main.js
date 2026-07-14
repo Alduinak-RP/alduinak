@@ -34,6 +34,14 @@ app.whenReady().then(() => {
   startLogTail()
   consoleRelay.connect()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+  // One-time hint when the box still runs pre-rename service names.
+  setTimeout(async () => {
+    await statusAll()
+    const legacy = config.services.filter(s => resolvedNames[s.key] && resolvedNames[s.key] !== s.name)
+    if (legacy.length) {
+      send('console:relay', { kind: 'status', text: `legacy service names in use (${legacy.map(s => resolvedNames[s.key]).join(', ')}) - run build\\dist\\server\\install-services.bat once to migrate` })
+    }
+  }, 4000)
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 	
@@ -62,7 +70,26 @@ async function awaitStatus(name, want) {
   }
 }
 
-async function act(name, verb) {
+// The live box may still run the pre-rename service names until
+// install-services.bat is re-run, so resolve which installed name to target:
+// canonical first, then legacyNames. Cached per key; re-probed if it vanishes.
+const resolvedNames = {}
+async function probeService(svc) {
+  const candidates = [...new Set([resolvedNames[svc.key], svc.name, ...(svc.legacyNames || [])].filter(Boolean))]
+  let firstStatus = ''
+  for (const name of candidates) {
+    const status = await nssm('status', name)
+    if (!firstStatus) firstStatus = status
+    if (/^SERVICE_/.test(status)) { resolvedNames[svc.key] = name; return { name, status } }
+  }
+  delete resolvedNames[svc.key]
+  return { name: svc.name, status: firstStatus || 'unknown' }
+}
+
+async function serviceName(svc) { return (await probeService(svc)).name }
+
+async function act(svc, verb) {
+  const name = await serviceName(svc)
   await nssm(verb, name)
   const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
   if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
@@ -70,7 +97,7 @@ async function act(name, verb) {
 }
 
 async function statusAll() {
-  const pairs = await Promise.all(config.services.map(async s => [s.key, await nssm('status', s.name)]))
+  const pairs = await Promise.all(config.services.map(async s => [s.key, (await probeService(s)).status]))
   return Object.fromEntries(pairs)
 }
 
@@ -82,7 +109,7 @@ async function doServiceAction(key, action) {
   if (!svc) return { ok: false, error: `unknown service ${key}` }
   const steps = []
   let ok = true
-  const step = async verb => { const r = await act(svc.name, verb); ok = ok && r.ok; steps.push(`${svc.label}: ${r.text}`); return r.ok }
+  const step = async verb => { const r = await act(svc, verb); ok = ok && r.ok; steps.push(`${svc.label}: ${r.text}`); return r.ok }
   if (action === 'stop') await step('stop')
   else if (action === 'start') await step('start')
   else if (action === 'restart') { if (await step('stop')) await step('start') }
@@ -94,7 +121,7 @@ async function doServiceAction(key, action) {
 async function doServicesAction(action) {
   const steps = []
   let ok = true
-  const step = async (s, verb) => { const r = await act(s.name, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
+  const step = async (s, verb) => { const r = await act(s, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
   const doStop  = async () => { for (const s of [...config.services].reverse()) await step(s, 'stop') }
   const doStart = async () => { for (const s of config.services)                await step(s, 'start') }
   if (action === 'stop') await doStop()
@@ -122,8 +149,9 @@ async function discoverLogTargets() {
     if (file && !seen.has(file)) { seen.add(file); targets.push({ file, label }) }
   }
   for (const s of config.services) {
+    const name = await serviceName(s)
     for (const stream of ['AppStdout', 'AppStderr']) {
-      const p = parseNssmPath(await nssm('get', s.name, stream))
+      const p = parseNssmPath(await nssm('get', name, stream))
       add(p, `${s.label}${stream === 'AppStderr' ? ' (err)' : ''}`)
     }
   }
