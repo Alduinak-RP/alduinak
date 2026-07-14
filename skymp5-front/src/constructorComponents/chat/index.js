@@ -20,13 +20,13 @@ const SHOUTREGEXP = /№(.*?)№/gi;
 // Chat settings (font size, transparency, lock, highlights, window pos/size) persist via window.__skyrpChatSettings:
 // the client injects saved values on mount and writes changes to a file under Data/Platform (localStorage/CEF cache don't survive a relaunch).
 const loadChatSettings = () => {
-  try { return window.__skyrpChatSettings || {}; }
+  try { return window.__alduinakChatSettings || {}; }
   catch (e) { return {}; }
 };
 const persistChatSettings = (patch) => {
   try {
     const next = Object.assign(loadChatSettings(), patch);
-    window.__skyrpChatSettings = next;
+    window.__alduinakChatSettings = next;
     if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) {
       window.skyrimPlatform.sendMessage('cef::chat:saveSettings', JSON.stringify(next));
     }
@@ -229,7 +229,7 @@ const Chat = (props) => {
 
   // Expose the player's custom highlight words to the injected chat JS (chatService).
   useEffect(() => {
-    window.__skyrpCustomHighlightsRaw = customHighlights;
+    window.__alduinakCustomHighlightsRaw = customHighlights;
   }, [customHighlights]);
 
   // Persist the settings whenever they change so they survive a relaunch.

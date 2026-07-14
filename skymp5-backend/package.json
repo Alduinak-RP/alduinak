@@ -1,7 +1,7 @@
 {
-  "name": "skyrp-backend",
+  "name": "alduinak-backend",
   "version": "1.0.0",
-  "description": "Skyrim Roleplay launcher backend API - serves news, server status, and client setup files",
+  "description": "Alduinak launcher backend API - serves news, server status, and client setup files",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

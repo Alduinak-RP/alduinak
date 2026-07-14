@@ -92,7 +92,7 @@ class Builder {
   // the native binaries come prebuilt from CI.
   async ensurePrereqs() {
     if (!isWin) return { ok: true }                        // auto-install is Windows-only
-    if (process.env.SKYRP_NO_AUTO_INSTALL === '1') return { ok: true }
+    if (process.env.ALDUINAK_NO_AUTO_INSTALL === '1') return { ok: true }
 
     const missing = []
     if (!this.hasCmd('node')) missing.push({ id: 'OpenJS.NodeJS.LTS', label: 'Node.js LTS', check: () => this.hasCmd('node') })
@@ -101,7 +101,7 @@ class Builder {
 
     this.banner('Installing missing prerequisites')
     if (!this.hasCmd('winget')) {
-      return { ok: false, error: `missing ${missing.map(m => m.label).join(', ')} and winget is unavailable to auto-install - install the App Installer (winget), or get them manually: Node https://nodejs.org/ , Git https://git-scm.com/download/win . Then re-run (or set SKYRP_NO_AUTO_INSTALL=1).` }
+      return { ok: false, error: `missing ${missing.map(m => m.label).join(', ')} and winget is unavailable to auto-install - install the App Installer (winget), or get them manually: Node https://nodejs.org/ , Git https://git-scm.com/download/win . Then re-run (or set ALDUINAK_NO_AUTO_INSTALL=1).` }
     }
     this.line(`[prereqs] missing: ${missing.map(m => m.label).join(', ')} - installing with winget…`)
     for (const m of missing) {
@@ -119,8 +119,8 @@ class Builder {
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
     const deployDir = path.join(config.buildDir, 'dist', 'server')
-    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem'])
-    for (const extra of (process.env.SKYRP_SERVER_KEEP || '').split(',')) {
+    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'README.md'])
+    for (const extra of (process.env.ALDUINAK_SERVER_KEEP || '').split(',')) {
       const n = extra.trim(); if (n) keep.add(n)
     }
     let entries

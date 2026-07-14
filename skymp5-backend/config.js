@@ -28,7 +28,7 @@ module.exports = {
   serverGamemode:    process.env.SERVER_GAMEMODE     || null,
   // Master API: used by the SkyMP client for online-mode auth; ignored by the launcher in offline mode
   serverMasterKey:    process.env.SERVER_MASTER_KEY    || '',
-  masterUrl:          process.env.MASTER_URL           || 'https://api.skyrimroleplay.co.uk/',
+  masterUrl:          process.env.MASTER_URL           || 'https://api.alduinak.com/',
   masterApiAuthToken: process.env.MASTER_API_AUTH_TOKEN || '',
 
   // Discord OAuth (launcher login)

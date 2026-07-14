@@ -22,7 +22,7 @@ const ini    = require('./ini')
 const isDev = process.argv.includes('--dev')
 
 // Dev logger
-const LOG_FILE = isDev ? path.join(require('os').tmpdir(), 'skyrp-install.log') : null
+const LOG_FILE = isDev ? path.join(require('os').tmpdir(), 'alduinak-install.log') : null
 
 function log(...args) {
   const line = args.join(' ')
@@ -31,7 +31,7 @@ function log(...args) {
 }
 
 if (LOG_FILE) {
-  fs.writeFileSync(LOG_FILE, `=== skyrp install log ${new Date().toISOString()} ===\n`)
+  fs.writeFileSync(LOG_FILE, `=== alduinak install log ${new Date().toISOString()} ===\n`)
   console.log('[dev] logging to', LOG_FILE)
 }
 
@@ -53,7 +53,7 @@ const store = new Store({
     nexusUser:         null,   // { name, isPremium } from the last validation
     isolatedGame:      true,  // play from the isolated game copy instead of skyrimPath
     gameDirPath:       '',     // legacy: pre-base-dir location of the game copy
-    baseDirPath:       '',     // SkyRP base dir: MO2 root, with the game at <base>\skyrim
+    baseDirPath:       '',     // Alduinak base dir: MO2 root, with the game at <base>\skyrim
     forcedDefaultsApplied: false, // server-required graphics defaults seeded once at first install
   }
 })
@@ -85,7 +85,7 @@ function isolatedGameDir() {
   const legacy = store.get('gameDirPath')
   if (legacy) return legacy
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
-  return path.join(local, 'SkyRP', 'GameDir')
+  return path.join(local, 'Alduinak', 'GameDir')
 }
 
 function isolatedGameReady() {
@@ -174,7 +174,7 @@ ipcMain.handle('settings:save', (_e, data) => {
 
 // Graphics / hotkey settings (Settings tab)
 // Graphics edit the MO2 portable profile's SkyrimPrefs.ini. NOTE: this assumes
-// the SkyRP profile uses profile-specific INI files; and if SSEDisplayTweaks is
+// the Alduinak profile uses profile-specific INI files; and if SSEDisplayTweaks is
 // active it may override window mode via its own ini.
 function skyrimPrefsPath() {
   return path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
@@ -295,7 +295,7 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
 
 // Forced server defaults
 // The server ships a couple of required defaults. We apply them once, when the
-// SkyRP install is first set up, so later tweaks in the Settings tab aren't
+// Alduinak install is first set up, so later tweaks in the Settings tab aren't
 // reverted on every client update:
 //   • borderless window mode → MO2 profile's SkyrimPrefs.ini [Display]
 //     (resolution is player-owned: it comes from the seeded ini, or the
@@ -614,7 +614,7 @@ ipcMain.handle('game:createIsolated', async () => {
 
   // Ask where to install the modlist.
   const picked = await dialog.showOpenDialog(win, {
-    title:       'Choose where to install SkyRP (~16 GB: MO2 + game copy)',
+    title:       'Choose where to install Alduinak (~16 GB: MO2 + game copy)',
     buttonLabel: 'Install here',
     properties:  ['openDirectory', 'createDirectory'],
   })
@@ -626,7 +626,7 @@ ipcMain.handle('game:createIsolated', async () => {
   try {
     const entries = fs.readdirSync(base)
     if (entries.length > 0 && !fs.existsSync(path.join(base, 'portable.txt'))) {
-      base = path.join(base, 'SkyRP')
+      base = path.join(base, 'Alduinak')
     }
   } catch { /* unreadable - let later steps surface the real error */ }
 
@@ -640,7 +640,7 @@ ipcMain.handle('game:createIsolated', async () => {
       message: 'Warning, you are trying to download the game on top of itself. ' +
                'Please choose a new spot to install a copy of Skyrim, such as the root folder (c:/).',
       detail:
-        'SkyRP uses a portable Skyrim install for maximum compatibility with other modlists or servers.\n' +
+        'Alduinak uses a portable Skyrim install for maximum compatibility with other modlists or servers.\n' +
         "If you're short on disk space, you can turn this feature off in the troubleshooting tab.",
       buttons: ['OK'],
       defaultId: 0,
@@ -675,7 +675,7 @@ ipcMain.handle('game:createIsolated', async () => {
     store.set('isolatedGame', true)
     store.set('mo2Enabled', true)
 
-    log(`[isolated] SkyRP install ready at ${base}`)
+    log(`[isolated] Alduinak install ready at ${base}`)
     return { success: true, dir: base }
   } catch (err) {
     return { success: false, error: err.message }
@@ -941,7 +941,7 @@ ipcMain.handle('app:installUpdate', async () => {
       return { ok: false, error: 'Refusing to install an update from a non-HTTPS URL.' }
     }
 
-    const dest = path.join(os.tmpdir(), 'SkyrimRoleplayLauncher-update.exe')
+    const dest = path.join(os.tmpdir(), 'AlduinakLauncher-update.exe')
     send('update:progress', { phase: 'download', received: 0, total: 0 })
     await downloadToFile(data.downloadUrl, dest, (received, total) =>
       send('update:progress', { phase: 'download', received, total }))
@@ -1386,7 +1386,7 @@ function extractClientZip(zipPath, destDir, onProgress) {
 // Shared by the direct and MO2 installers: version check, download, extract, client settings.
 
 async function installClientFilesCore(skyrimPath, srv, serverInfo) {
-  const tempZip = path.join(os.tmpdir(), 'skyrp-client.zip')
+  const tempZip = path.join(os.tmpdir(), 'alduinak-client.zip')
   const clientSettingsPath = path.join(skyrimPath, 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
 
   try {
@@ -1654,7 +1654,7 @@ async function runMO2Install() {
       openDownloadList(downloadsDir)
       send('install:progress', {
         phase: 'mods',
-        file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the SkyRP downloads folder.',
+        file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the Alduinak downloads folder.',
         index: 0, total: needBrowser.length, skipped: false,
       })
       // Matched by sha256, so paths come back verified regardless of filename; the

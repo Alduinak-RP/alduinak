@@ -140,6 +140,7 @@ $('#cmd-form').addEventListener('submit', async e => {
 renderServices()
 refreshStatus()
 setInterval(refreshStatus, 10000)
+appendLog(logNode, "Type 'help' for manager commands (services, builds); anything else goes to the game console.\n")
 
 let allPlayers = []
 let selectedDiscordId = null

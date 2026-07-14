@@ -307,7 +307,7 @@ function postForm(url, params) {
 // itself where the browser allows it, mirroring the Discord callback page.
 function oauthCallbackPage(ok, message) {
   const accent = ok ? '#c8a25f' : '#c0564f'
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SkyRP - Nexus login</title>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alduinak - Nexus login</title>
 <style>html,body{height:100%;margin:0}body{display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#16120d 0%,#0b0906 70%);color:#d8cdb8;font-family:Georgia,serif;text-align:center}h1{color:${accent};font-weight:normal;letter-spacing:.12em;text-transform:uppercase;font-size:1.4rem}p{color:#857a66}</style>
 </head><body><div><h1>${ok ? 'Logged in to Nexus' : 'Nexus login failed'}</h1><p id="note">${ok ? 'This tab will close itself…' : String(message || 'Return to the launcher and try again.').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</p></div>
 ${ok ? '<script>window.close();setTimeout(function(){var n=document.getElementById("note");if(n)n.textContent="You can close this tab and return to the launcher."},600)</script>' : ''}</body></html>`

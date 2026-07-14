@@ -238,7 +238,7 @@ function authPage({ ok, title, message, autoClose = false }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SkyRP — ${escapeHtml(title)}</title>
+<title>Alduinak - ${escapeHtml(title)}</title>
 <style>
   html, body { height: 100%; margin: 0; }
   body {

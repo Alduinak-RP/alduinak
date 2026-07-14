@@ -52,7 +52,7 @@ Then set up and open the Server Manager: go to \SkyMP\server-manager\ and run se
 The Client tab's "Update client" button does what build-client did (build plugin + front-end + client bucket).
 
 9) In the Server Manager, open the Launcher tab and click "Rebuild".
-This produces SkyrimRoleplayLauncher.exe in build\launcher to distribute to your players. Simply zip it up, and upload it to any CDN of your choosing (such as discord, or your website).
+This produces AlduinakLauncher.exe in build\launcher to distribute to your players. Simply zip it up, and upload it to any CDN of your choosing (such as discord, or your website).
 
 10) Finally, install nginx on your machine with the final script in the root directory.
 This script also will run win-acme to create certs for your API and Dashboard, making it a true server.
