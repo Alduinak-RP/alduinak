@@ -723,8 +723,11 @@ function isVanillaDataFile(name) {
   return false
 }
 
-// Copy only Bethesda's vanilla files from the (possibly modded) source so the user's install stays intact.
-async function copyGameDir(src, dst) {
+// The vanilla file inventory of a source install: exactly what copyGameDir
+// copies, and what the integrity check verifies. Only vanilla files can ever
+// appear here (isVanillaDataFile), so skse, the engine-fixes preloader, and
+// downloaded client files are naturally out of scope.
+function vanillaJobs(src) {
   const jobs = []
   for (const name of VANILLA_ROOT_FILES) {
     if (fs.existsSync(path.join(src, name))) jobs.push({ rel: name, sub: '' })
@@ -750,6 +753,12 @@ async function copyGameDir(src, dst) {
       }
     }
   } catch { /* no Strings folder */ }
+  return jobs
+}
+
+// Copy only Bethesda's vanilla files from the (possibly modded) source so the user's install stays intact.
+async function copyGameDir(src, dst) {
+  const jobs = vanillaJobs(src)
 
   if (!jobs.some(j => j.rel.toLowerCase() === 'skyrim.esm')) {
     return { success: false, error: 'Skyrim.esm not found in Data - is the Skyrim path correct?' }
@@ -777,6 +786,57 @@ async function copyGameDir(src, dst) {
   } catch { /* marker is an optimization; the masters check still applies */ }
   log(`[isolated] copied ${copied} vanilla file(s) to ${dst}`)
   return { success: true, copied }
+}
+
+// Vanilla files in the game copy that are missing or the wrong size compared
+// to the original install.
+function vanillaMismatches(src, dir) {
+  const sizeOf = p => { try { return fs.statSync(p).size } catch { return -1 } }
+  const bad = []
+  for (const job of vanillaJobs(src)) {
+    const want = sizeOf(path.join(src, job.sub, job.rel))
+    if (want >= 0 && sizeOf(path.join(dir, job.sub, job.rel)) !== want) bad.push(job)
+  }
+  return bad
+}
+
+// Vanilla integrity gate, run on every install pass. Portable copies are
+// verified against the player's original install and repaired file by file;
+// when playing from the real install there is no clean source to copy from,
+// so a failed check only warns (verify the game in Steam/GOG instead).
+async function ensureVanillaIntegrity(gamePath) {
+  const portable = store.get('isolatedGame') && isolatedGameReady() && gamePath === isolatedGameDir()
+  if (portable) {
+    const original = store.get('skyrimPath')
+    if (!original || !fs.existsSync(path.join(original, 'Data', 'Skyrim.esm'))) {
+      // No source to verify against; the launch gate still blocks a broken copy.
+      return { ok: true, warning: null }
+    }
+    const bad = vanillaMismatches(original, gamePath)
+    if (bad.length === 0) return { ok: true, warning: null }
+    log(`[integrity] repairing ${bad.length} vanilla file(s): ${bad.map(j => j.rel).join(', ')}`)
+    let done = 0
+    for (const job of bad) {
+      const to = path.join(gamePath, job.sub, job.rel)
+      try {
+        fs.mkdirSync(path.dirname(to), { recursive: true })
+        await fs.promises.copyFile(path.join(original, job.sub, job.rel), to)
+      } catch (err) {
+        return { ok: false, error: `Vanilla file repair failed on ${job.rel}: ${err.message}` }
+      }
+      done++
+      send('install:progress', { phase: 'download', file: `Repairing vanilla game files… ${done}/${bad.length} (${job.rel})`, index: done, total: bad.length, skipped: false })
+    }
+    return { ok: true, warning: null, repaired: done }
+  }
+  // Real install: the masters every SE edition ships must at least exist.
+  const missing = [...VANILLA_MASTERS]
+    .filter(m => m !== '_resourcepack.esl')
+    .filter(m => !fs.existsSync(path.join(gamePath, 'Data', m)))
+  if (missing.length > 0) {
+    return { ok: true, warning: `Vanilla file check failed: ${missing.join(', ')} missing from the game folder. Verify the game files in Steam/GOG Galaxy.` }
+  }
+  return { ok: true, warning: null }
 }
 
 // First-launch sanity check
@@ -1497,13 +1557,17 @@ async function runDirectInstall() {
   if (!skyrimPath) return fail('Skyrim path not configured.')
   if (!srv)        return fail('No server selected - open Settings and choose a server.')
 
+  // Vanilla integrity (repairs portable copies, warns for the real install).
+  const integrity = await ensureVanillaIntegrity(skyrimPath)
+  if (!integrity.ok) return fail(integrity.error)
+
   let serverInfo = null
   try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
 
   const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
   if (core.success) applyForcedServerDefaults(skyrimPath)
   send('install:complete', core.success
-    ? { success: true, upToDate: core.upToDate }
+    ? { success: true, upToDate: core.upToDate, ...(integrity.warning ? { warning: integrity.warning } : {}) }
     : { success: false, error: core.error })
   installing = false
 }
@@ -1570,17 +1634,13 @@ async function runMO2Install() {
   if (!findOriginalPrefsIni()) return fail(NEVER_LAUNCHED_ERROR)
 
   try {
-    // 0. Self-heal a partial isolated game copy (missing vanilla masters):
-    // one UPDATE click repairs it instead of crashing the game at launch.
-    if (store.get('isolatedGame') && isolatedGameReady() && !gameCopyComplete(skyrimPath)) {
-      const original = store.get('skyrimPath')
-      if (!original || !fs.existsSync(path.join(original, 'Data', 'Skyrim.esm'))) {
-        return fail('The game copy is missing vanilla files (Skyrim.esm/Update.esm) and the original Skyrim path is not set - set it in Settings, then run Update again.')
-      }
-      send('install:progress', { phase: 'download', file: 'Repairing game copy (vanilla files)…', index: 0, total: 0, skipped: false })
-      const copy = await copyGameDir(original, skyrimPath)
-      if (!copy.success) return fail(copy.error)
-    }
+    // 0. Vanilla integrity: verify the game copy (existence + size) against
+    // the original install and repair portable copies file by file. Playing
+    // from the real install only produces a warning.
+    const integrity = await ensureVanillaIntegrity(skyrimPath)
+    if (!integrity.ok) return fail(integrity.error)
+    if (integrity.repaired) log(`[mo2-install] repaired ${integrity.repaired} vanilla file(s)`)
+    const vanillaWarning = integrity.warning || null
 
     // 1. MO2 itself, the portable instance, and the nxm:// handler
     await mo2.ensureInstalled(msg =>
@@ -1634,7 +1694,8 @@ async function runMO2Install() {
       store.set('modpackState', 'ready')
       send('install:complete', {
         success: true, mo2: true, upToDate: core.upToDate, modsTotal: 0,
-        warning: 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.',
+        warning: [vanillaWarning, 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.']
+          .filter(Boolean).join(' | '),
       })
       return
     }
@@ -1659,7 +1720,10 @@ async function runMO2Install() {
     if (modsToInstall.length === 0 && !needsRoot) {
       finishOrder()
       store.set('modpackState', 'ready')
-      send('install:complete', { success: true, mo2: true, upToDate: true, modsTotal: manifest.mods.length })
+      send('install:complete', {
+        success: true, mo2: true, upToDate: true, modsTotal: manifest.mods.length,
+        ...(vanillaWarning ? { warning: vanillaWarning } : {}),
+      })
       return
     }
 
@@ -1794,7 +1858,10 @@ async function runMO2Install() {
     finishOrder()
 
     store.set('modpackState', 'ready')
-    send('install:complete', { success: true, mo2: true, upToDate: core.upToDate, modsTotal: manifest.mods.length })
+    send('install:complete', {
+      success: true, mo2: true, upToDate: core.upToDate, modsTotal: manifest.mods.length,
+      ...(vanillaWarning ? { warning: vanillaWarning } : {}),
+    })
   } catch (err) {
     if (err.message === 'Cancelled') { fail('Install cancelled.'); return }
     fail(`Install failed: ${err.message}`)

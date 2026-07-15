@@ -33,7 +33,14 @@
     "files": [
       "src/**/*",
       "assets/**/*",
+      "!assets/7zip/**",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/7zip",
+        "to": "7zip"
+      }
     ],
     "win": {
       "target": [

@@ -62,8 +62,17 @@ function isInstalled() {
   return fs.existsSync(getExe())
 }
 
-// 7za ships inside the 7zip-bin npm package
+// Prefer the vendored full 7-Zip (7z.exe + 7z.dll from assets/7zip, shipped
+// via extraResources): unlike the standalone 7za in the 7zip-bin package it
+// can read the .rar archives many Nexus mods come as. 7za stays as fallback.
 function get7za() {
+  const candidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, '7zip', '7z.exe') : null,
+    path.join(__dirname, '..', 'assets', '7zip', '7z.exe'),
+  ].filter(Boolean)
+  for (const p of candidates) {
+    try { if (fs.existsSync(p)) return p } catch {}
+  }
   const sevenBin = require('7zip-bin')
   return sevenBin.path7za.replace('app.asar', 'app.asar.unpacked')
 }
