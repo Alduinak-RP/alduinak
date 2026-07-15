@@ -608,6 +608,34 @@ function modHasRestrictedContent(modDir) {
  * cheats). Launcher-managed mods and separators are always kept; texture/mesh-
  * only user mods stay enabled. Returns the names that were disabled.
  */
+// Clears out plugins in overwrite (like CC mods).
+const OVERWRITE_PLUGIN_RE = /\.(esp|esl|esm)$/i
+function cleanOverwritePlugins() {
+  const overwrite = path.join(getRoot(), 'overwrite')
+  let entries
+  try { entries = fs.readdirSync(overwrite, { withFileTypes: true }) } catch { return [] }
+
+  const removed = []
+  for (const e of entries) {
+    if (!e.isFile() || !OVERWRITE_PLUGIN_RE.test(e.name)) continue
+    try { fs.rmSync(lp(path.join(overwrite, e.name)), { force: true }); removed.push(e.name) }
+    catch (err) { _log(`could not remove overwrite plugin ${e.name}: ${err.message}`) }
+  }
+  if (removed.length === 0) return []
+
+  // Drop the now-orphaned plugin lines from plugins.txt (matched case-insensitively).
+  const pluginsPath = path.join(getProfileDir(), 'plugins.txt')
+  try {
+    const gone = new Set(removed.map(n => n.toLowerCase()))
+    const kept = fs.readFileSync(pluginsPath, 'utf8').split(/\r?\n/)
+      .filter(l => !gone.has(l.replace(/^\*/, '').trim().toLowerCase()))
+    fs.writeFileSync(pluginsPath, kept.join('\r\n'))
+  } catch { /* plugins.txt is rewritten from the server list on install anyway */ }
+
+  _log(`removed ${removed.length} stray overwrite plugin(s): ${removed.join(', ')}`)
+  return removed
+}
+
 function enforceModRules() {
   const modlistPath = path.join(getProfileDir(), 'modlist.txt')
   let lines
@@ -923,6 +951,7 @@ module.exports = {
   skseSourceFor,
   installSkse,
   enforceModRules,
+  cleanOverwritePlugins,
   waitForDownloads,
   disableCcContent,
   launchGame,

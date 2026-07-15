@@ -1257,6 +1257,10 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
   // MO2 lockdown
   // Disables plugins or skse scripts not part of the server files
   if (viaMO2) {
+    // Wipe stray plugins from the overwrite folder first: they load at top
+    // priority and would otherwise desync the client load order from the server.
+    const wiped = mo2.cleanOverwritePlugins()
+    if (wiped.length > 0) log(`[launch] removed stray overwrite plugins: ${wiped.join(', ')}`)
     const removed = mo2.enforceModRules()
     if (removed.length > 0) log(`[launch] disabled unauthorised mods: ${removed.join(', ')}`)
   }

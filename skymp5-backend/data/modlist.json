@@ -293,11 +293,11 @@
     "nexusId": 142655
   },
   {
-    "name": "Ancient Argonian Armor",
+    "name": "Ancient Argonian Armor SE",
     "required": true,
     "enabled": true,
     "source": "nexus",
-    "nexusId": 116522
+    "nexusId": 100724
   },
   {
     "name": "Faster HDT-SMP",
