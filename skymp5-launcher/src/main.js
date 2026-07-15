@@ -634,13 +634,11 @@ ipcMain.handle('game:createIsolated', async () => {
     return { success: false, canceled: true, error: 'Installation cancelled.' }
   }
 
+  // Portable instance fix
   let base = picked.filePaths[0]
-  try {
-    const entries = fs.readdirSync(base)
-    if (entries.length > 0 && !fs.existsSync(path.join(base, 'portable.txt'))) {
-      base = path.join(base, 'Alduinak')
-    }
-  } catch { /* unreadable - let later steps surface the real error */ }
+  if (!fs.existsSync(path.join(base, 'alduinak-instance.txt'))) {
+    base = path.join(base, 'Alduinak')
+  }
 
   const dst = path.join(base, 'skyrim')
 
@@ -666,6 +664,9 @@ ipcMain.handle('game:createIsolated', async () => {
 
   try {
     store.set('baseDirPath', base)
+    // Mark this folder as an Alduinak instance so future setups reuse it in
+    // place instead of nesting again.
+    try { fs.mkdirSync(base, { recursive: true }); fs.writeFileSync(path.join(base, 'alduinak-instance.txt'), '') } catch {}
     send('isolated:progress', 'Installing Mod Organizer 2…')
     await mo2.ensureInstalled(msg => send('isolated:progress', msg))
 
@@ -1257,10 +1258,10 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
   // MO2 lockdown
   // Disables plugins or skse scripts not part of the server files
   if (viaMO2) {
-    // Wipe stray plugins from the overwrite folder first: they load at top
+    // Wipe stray plugins/BSAs from the overwrite folder first: they load at top
     // priority and would otherwise desync the client load order from the server.
-    const wiped = mo2.cleanOverwritePlugins()
-    if (wiped.length > 0) log(`[launch] removed stray overwrite plugins: ${wiped.join(', ')}`)
+    const wiped = mo2.cleanOverwrite()
+    if (wiped.length > 0) log(`[launch] cleaned stray overwrite items: ${wiped.join(', ')}`)
     const removed = mo2.enforceModRules()
     if (removed.length > 0) log(`[launch] disabled unauthorised mods: ${removed.join(', ')}`)
   }
