@@ -1761,10 +1761,21 @@ async function runMO2Install() {
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus' && premium) {
         send('install:progress', { phase: 'mods', file: `Downloading ${a.name}…`, index: 0, total: 0, skipped: false })
-        const name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
-          const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-          send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} / ${mb(t)} MB${pct}`, index: 0, total: 0, skipped: false })
-        })
+        let name = null
+        try {
+          name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
+            const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
+            send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} / ${mb(t)} MB${pct}`, index: 0, total: 0, skipped: false })
+          })
+        } catch (err) {
+          // A dead pin (HTTP 404 = the file was removed or archived on Nexus)
+          // must not abort the whole install: fall back to the manual browser
+          // flow, which also accepts an already-downloaded copy by sha256.
+          log(`[install] auto-download failed for ${a.name} (mod ${a.source.modId}, file ${a.source.fileId}): ${err.message} - falling back to manual download`)
+          send('install:progress', { phase: 'mods', file: `${a.name}: auto-download failed (${err.message}) - queued for manual download`, index: 0, total: 0, skipped: false })
+          needBrowser.push(a)
+          continue
+        }
         const p = path.join(downloadsDir, name)
         if (!mo2.verifyArchive(p, a.hash)) return fail(`${a.name}: downloaded file failed verification (hash mismatch - the version pin may have changed).`)
         archivePaths[a.id] = p

@@ -196,9 +196,11 @@ async function main() {
 
     const meta = readDownloadMeta(name)
     let source
-    if (meta.modId && meta.fileId) source = { type: 'nexus', modId: meta.modId, fileId: meta.fileId }
-    else if (sources.urls[name])   source = { type: 'url', url: sources.urls[name] }
-    else                           source = { type: 'manual', name }
+    // An explicit URL override wins over the Nexus meta: it is the escape
+    // hatch for files whose Nexus pin has died (author removed the version).
+    if (sources.urls[name])             source = { type: 'url', url: sources.urls[name] }
+    else if (meta.modId && meta.fileId) source = { type: 'nexus', modId: meta.modId, fileId: meta.fileId }
+    else                                source = { type: 'manual', name }
 
     const id   = 'a' + (archives.length + 1)
     const hash = await sha256File(full)
