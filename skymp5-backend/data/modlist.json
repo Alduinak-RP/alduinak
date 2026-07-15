@@ -6,6 +6,377 @@
     "source": "backend"
   },
   {
+    "name": "Winterhold Restored",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 12811
+  },
+  {
+    "name": "Viking's Longhouse",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 10860
+  },
+  {
+    "name": "Vernim Wood",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 79036
+  },
+  {
+    "name": "The Great City Of Morthal SSE Edition",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 19592
+  },
+  {
+    "name": "The Great City Of Falkreath SSE Edition",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 19709
+  },
+  {
+    "name": "The Great Cities- Resources",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 104373
+  },
+  {
+    "name": "Reich Corigate",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 58214
+  },
+  {
+    "name": "Oakwood",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 61007
+  },
+  {
+    "name": "Morthal Expanded",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 51242
+  },
+  {
+    "name": "Moonlight Cottage - Player Home",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 70659
+  },
+  {
+    "name": "Mammoth Manor",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 9710
+  },
+  {
+    "name": "Lillemyr",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 163760
+  },
+  {
+    "name": "Lainalten",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 61422
+  },
+  {
+    "name": "JK's Whiterun Outskirts",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 78351
+  },
+  {
+    "name": "JK's Whiterun",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 2259
+  },
+  {
+    "name": "JK's Riverwood",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 2013
+  },
+  {
+    "name": "Iggath",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 75157
+  },
+  {
+    "name": "Helgen Rebuilt Special Edition",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 9873
+  },
+  {
+    "name": "Greymoor",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 80824
+  },
+  {
+    "name": "Granitehall",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 57180
+  },
+  {
+    "name": "Dawnstar - The Pale Capital",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 23080
+  },
+  {
+    "name": "Amol Village",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 75264
+  },
+  {
+    "name": "Nirn Necessities - My patches SE by Xtudo - Non-HDT Optimized Textures Backpack Satchel Scarf Cape Cloak Gaiter",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 133857
+  },
+  {
+    "name": "Nirn Necessities - SMP Accessories",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 112481
+  },
+  {
+    "name": "Titus Mede I - My version SE by Xtudo - Emperor Civil War reward",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 69940
+  },
+  {
+    "name": "Stormcloak Einherjar Armors",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 100787
+  },
+  {
+    "name": "Silver Armor SE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 79088
+  },
+  {
+    "name": "Sentinel - An Equipment Overhaul",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 100985
+  },
+  {
+    "name": "More Craftable Equipment",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 44666
+  },
+  {
+    "name": "Rihad Swordsman Set",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 120576
+  },
+  {
+    "name": "New Legion",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 30468
+  },
+  {
+    "name": "Moon Monk's Robes",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 82495
+  },
+  {
+    "name": "Lifesworn Vestiges -- Champion of Arkay armor (optional SMP)",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 136837
+  },
+  {
+    "name": "Imperial Guard Centurion Armor SE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 50410
+  },
+  {
+    "name": "Imperial Battlemage Armour",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 115405
+  },
+  {
+    "name": "Common Clothes (by FranklinZunge for SSE)",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 5063
+  },
+  {
+    "name": "Closed Helmets",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 107802
+  },
+  {
+    "name": "Cloaks and Capes",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 2019
+  },
+  {
+    "name": "Armors of the Velothi Pt. II",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 69996
+  },
+  {
+    "name": "Armor Variants Expansion",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 34100
+  },
+  {
+    "name": "Ancient Imperial Armor SE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 142655
+  },
+  {
+    "name": "Ancient Argonian Armor",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 116522
+  },
+  {
+    "name": "Faster HDT-SMP",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 57339
+  },
+  {
+    "name": "Animation Queue Fix",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 82395
+  },
+  {
+    "name": "SkyUI",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 12604
+  },
+  {
+    "name": "Skyrim Souls RE - Unpaused Menus",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 27859
+  },
+  {
+    "name": "SSE Display Tweaks",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 34705
+  },
+  {
+    "name": "MCM Helper",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 53000
+  },
+  {
+    "name": "Constructible Object Custom Keyword System",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 81409
+  },
+  {
+    "name": "powerofthree's Tweaks",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 51073
+  },
+  {
+    "name": "Native EditorID Fix",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 85260
+  },
+  {
+    "name": "Crash Logger SSE AE VR - PDB support",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 59818
+  },
+  {
+    "name": "Actor Limit Fix",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 32349
+  },
+  {
     "name": "EngineFixes",
     "required": true,
     "enabled": true,

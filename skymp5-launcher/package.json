@@ -1,6 +1,6 @@
 {
   "name": "alduinak-launcher",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Launcher for the Alduinak server",
   "productName": "Alduinak Launcher",
   "main": "src/main.js",
