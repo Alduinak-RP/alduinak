@@ -42,6 +42,7 @@ import { BrowserService } from "./services/services/browserService";
 import { AuthService } from "./services/services/authService";
 import { CharacterSelectService } from "./services/services/characterSelectService";
 import { HousingService } from "./services/services/housingService";
+import { RefDecorService } from "./services/services/refDecorService";
 import { PlayerActionService } from "./services/services/playerActionService";
 import { RestraintService } from "./services/services/restraintService";
 import { CaptureConsentService } from "./services/services/captureConsentService";
@@ -117,6 +118,7 @@ const main = () => {
       new AuthService(sp, controller),
       new CharacterSelectService(sp, controller),
       new HousingService(sp, controller),
+      new RefDecorService(sp, controller),
       new PlayerActionService(sp, controller),
       new RestraintService(sp, controller),
       new CaptureConsentService(sp, controller),

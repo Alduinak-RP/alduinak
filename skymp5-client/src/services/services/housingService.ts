@@ -32,6 +32,7 @@ const events = {
 interface PropertyMenuInfo {
   target: number;
   view: 'owner' | 'manager' | 'claimable' | 'denied';
+  owned: boolean;
   name: string | null;
   locked: boolean;
   hasKeys: boolean;
@@ -41,7 +42,7 @@ interface PropertyMenuInfo {
 
 // Module-level state shared with the browser-side widget setter via runtime injection
 let info: PropertyMenuInfo = {
-  target: 0, view: 'denied', name: null, locked: false,
+  target: 0, view: 'denied', owned: false, name: null, locked: false,
   hasKeys: false, canGrantContainers: false, ownerName: null,
 };
 let targetLabel = '';
@@ -77,6 +78,11 @@ export class HousingService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
+    // Escape closes an open menu.
+    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+      this.closeMenu();
+      return;
+    }
     if (e.code !== this.menuKey || !e.isDown) {
       return;
     }
@@ -132,6 +138,7 @@ export class HousingService extends ClientListener {
         info = {
           target: Number(content["target"]) || this.target,
           view: view === 'owner' || view === 'manager' || view === 'claimable' ? view : 'denied',
+          owned: content["owned"] === true,
           name: typeof content["name"] === "string" ? content["name"] as string : null,
           locked: content["locked"] === true,
           hasKeys: content["hasKeys"] === true,
@@ -159,6 +166,8 @@ export class HousingService extends ClientListener {
     const target = info.target || this.target;
 
     switch (key) {
+      // State-changing actions leave the menu open; the server re-sends
+      // propertyMenu on success so the new state shows in place.
       case events.claim:
       case events.abandon:
       case events.revoke:
@@ -168,7 +177,6 @@ export class HousingService extends ClientListener {
       case events.revokeKeys: {
         const action = key.slice("housing:".length);
         sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action, target });
-        this.closeMenu();
         break;
       }
       case events.rename: {
@@ -176,7 +184,6 @@ export class HousingService extends ClientListener {
         if (name) {
           sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "rename", target, name });
         }
-        this.closeMenu();
         break;
       }
       case events.transfer:
@@ -199,10 +206,9 @@ export class HousingService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    const text = new FunctionInfo(this.browsersideWidgetSetter).getText({ events, info, targetLabel, WIDGET_ID });
-    // Debug breadcrumb: pairs with the CEF-side "widget set" line to locate render failures.
-    notifyNextUpdate(this.controller, this.sp, `[debug] property menu: injecting ${text.length} chars, view=${info.view}`);
-    this.sp.browser.executeJavaScript(text);
+    this.sp.browser.executeJavaScript(
+      new FunctionInfo(this.browsersideWidgetSetter).getText({ events, info, targetLabel, WIDGET_ID })
+    );
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);
   }
@@ -216,7 +222,6 @@ export class HousingService extends ClientListener {
   // Runs inside the CEF browser. Only injected vars + window are available.
   // No spread syntax: it breaks after FunctionInfo stringification (8d7c0c05).
   private browsersideWidgetSetter = () => {
-    try {
     const displayName = info.name || targetLabel;
     const widget: any = {
       type: "form",
@@ -261,7 +266,10 @@ export class HousingService extends ClientListener {
         pushButton("transfer", events.transfer, false);
         pushButton("abandon", events.abandon, true);
       } else {
-        pushButton("grant ownership", events.transfer, false);
+        if (!info.owned) {
+          pushButton("claim", events.claim, false);
+        }
+        pushButton("grant ownership", events.transfer, !info.owned);
         pushButton("revoke ownership", events.revoke, true);
         if (info.hasKeys) {
           pushButton("void all keys", events.revokeKeys, true);
@@ -298,17 +306,6 @@ export class HousingService extends ClientListener {
     // Preserve any other widgets
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
-    if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] property menu set: " + widget.elements.length + " elements, " + window.skyrimPlatform.widgets.get().length + " widgets total");
-    // Delayed DOM check: proves whether the loaded UI actually renders form widgets.
-    window.setTimeout(function () {
-      if (!window.__skyrpAddSystem) return;
-      var forms = window.document.querySelectorAll(".login-form").length;
-      var src = window.document.scripts.length ? String(window.document.scripts[window.document.scripts.length - 1].src) : "none";
-      window.__skyrpAddSystem("[debug] property DOM: formsInDom=" + forms + ", url=" + String(window.location.href).slice(-60) + ", script=" + src.slice(-40));
-    }, 500);
-    } catch (err: any) {
-      if (window.__skyrpAddSystem) window.__skyrpAddSystem("[debug] property menu FAILED in CEF: " + (err && err.message));
-    }
   };
 
   private menuKey: DxScanCode = DxScanCode.H;

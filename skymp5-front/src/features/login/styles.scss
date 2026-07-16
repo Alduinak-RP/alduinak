@@ -1,12 +1,20 @@
+// Fixed overlay: form widgets must center on screen regardless of document
+// flow, or any widget rendered after the chat lands below the viewport.
 .login {
+  position: fixed;
+  top: 0;
+  left: 0;
   height: 100vh;
   width: 100%;
   display: flex;
+  pointer-events: none;
+  z-index: 40; // above chat, below the trade window (50) and death screen (9000)
   &-form {
     height: 704px;
     width: 512px;
     margin: auto;
     position: relative;
+    pointer-events: auto;
     &--content {
       font-family: 'Bankir-Retro', sans-serif;
       display: flex;
