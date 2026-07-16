@@ -22,6 +22,7 @@ const serverSettings = [
 
   // Gameplay
   { key: 'characterSelect',         label: 'Character select',      type: 'bool',   group: 'Gameplay', help: 'Show the character-select screen on join.' },
+  { key: 'characterSelectMaxCharacters', label: 'Max characters',   type: 'number', group: 'Gameplay', help: 'Character slots per player when character select is on (1-10, default 3).' },
   { key: 'npcEnabled',              label: 'NPCs enabled',          type: 'bool',   group: 'Gameplay' },
   { key: 'isPapyrusHotReloadEnabled', label: 'Papyrus hot reload',  type: 'bool',   group: 'Gameplay', help: 'Reload compiled .pex scripts on change.' },
   { key: 'enableGamemodeDataUpdatesBroadcast', label: 'Broadcast gamemode updates', type: 'bool', group: 'Gameplay', help: 'Push gamemode script updates to connected clients.' },
