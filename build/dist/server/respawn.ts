@@ -42,7 +42,7 @@
 import { safeGet, safeSet } from '../mpUtil';
 
 // ── Tuning ────────────────────────────────────────────────────────────────────
-const BLEEDOUT_SECONDS = 60;
+const BLEEDOUT_SECONDS = 15;
 const WAKE_HEALTH = 0.01;               // ~1 HP
 const FULL_HEALTH = 1.0;
 const REGEN_INTERVAL_MS = 8 * 60 * 60 * 1000; // 8 hours
