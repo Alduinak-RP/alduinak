@@ -13,12 +13,15 @@ const path    = require('path')
 const crypto  = require('crypto')
 const zlib    = require('zlib')
 const { execFileSync } = require('child_process')
-const SEVEN   = require('7zip-bin').path7za
+// Prefer a full 7-Zip: the standalone 7za from 7zip-bin has no Rar codec, so
+// .rar downloads would be silently skipped and their mods inlined instead.
+const SEVEN = [process.env.ALDUINAK_7Z, 'C:\\Program Files\\7-Zip\\7z.exe']
+  .find(p => p && fs.existsSync(p)) || require('7zip-bin').path7za
 
 // Args
 
 function parseArgs(argv) {
-  const a = { profile: 'SkyRP' }
+  const a = { profile: 'Alduinak' }
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]
     if      (k === '--mo2')     a.mo2     = argv[++i]
@@ -31,7 +34,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2))
 if (!args.mo2) {
-  console.error('Usage: node scripts/compile-manifest.js --mo2 <MO2 root> [--game <game root>] [--profile SkyRP]')
+  console.error('Usage: node scripts/compile-manifest.js --mo2 <MO2 root> [--game <game root>] [--profile Alduinak]')
   process.exit(1)
 }
 
@@ -44,6 +47,10 @@ const OUT         = args.out ? path.resolve(args.out) : path.join(DATA_DIR, 'ins
 const MODLIST_OUT = path.join(DATA_DIR, 'modlist.json')
 
 const INLINE_WARN = 50 * 1024 * 1024   // warn when inlining anything this large
+// Hard cap on total inlined base64: the launcher parses the manifest as one
+// JSON string, which V8 caps at ~512 MB. Fail fast with the offenders listed
+// rather than shipping a manifest no client can read.
+const MAX_INLINE_TOTAL = 384 * 1024 * 1024
 
 let sources = { urls: {}, rootInclude: [] }
 try {
@@ -53,7 +60,6 @@ try {
 // Hash helpers
 
 function sha256Buf(buf)  { return crypto.createHash('sha256').update(buf).digest('hex') }
-function crc32hex(buf)   { return (zlib.crc32(buf) >>> 0).toString(16).toUpperCase().padStart(8, '0') }
 
 function sha256File(p) {
   return new Promise((resolve, reject) => {
@@ -61,6 +67,23 @@ function sha256File(p) {
     fs.createReadStream(p)
       .on('data', d => h.update(d))
       .on('end', () => resolve(h.digest('hex')))
+      .on('error', reject)
+  })
+}
+
+// Streaming sha256 + CRC32 + size: mod folders hold multi-GB BSAs, so file
+// contents must never be loaded into memory just to hash them.
+function hashFile(p) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256')
+    let crc = 0, size = 0
+    fs.createReadStream(p)
+      .on('data', d => { h.update(d); crc = zlib.crc32(d, crc); size += d.length })
+      .on('end', () => resolve({
+        sha: h.digest('hex'),
+        crc: (crc >>> 0).toString(16).toUpperCase().padStart(8, '0'),
+        size,
+      }))
       .on('error', reject)
   })
 }
@@ -117,6 +140,35 @@ function listEntries(archivePath) {
     .map(e => ({ path: e.path.split('\\').join('/'), size: e.size, crc: e.crc }))
 }
 
+// Write the manifest incrementally: JSON.stringify of the whole object dies
+// with "Invalid string length" once inlined files push it past V8's ~512 MB
+// string cap, so each directive is stringified on its own.
+function writeManifestFile(out, m) {
+  const fd = fs.openSync(out, 'w')
+  const w = s => fs.writeSync(fd, s)
+  const writeFiles = list => list.forEach((f, i) => { if (i) w(','); w(JSON.stringify(f)) })
+  try {
+    w('{"schema":' + JSON.stringify(m.schema))
+    w(',"builtAt":' + JSON.stringify(m.builtAt))
+    w(',"game":' + JSON.stringify(m.game))
+    w(',"archives":' + JSON.stringify(m.archives))
+    w(',"mods":[')
+    m.mods.forEach((mod, i) => {
+      if (i) w(',')
+      w('{"name":' + JSON.stringify(mod.name) + ',"modId":' + JSON.stringify(mod.modId) + ',"files":[')
+      writeFiles(mod.files)
+      w('],"hash":' + JSON.stringify(mod.hash) + '}')
+    })
+    w('],"order":' + JSON.stringify(m.order))
+    w(',"plugins":' + JSON.stringify(m.plugins))
+    w(',"root":[')
+    writeFiles(m.root)
+    w('],"rootHash":' + JSON.stringify(m.rootHash) + '}')
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
 // Main
 
 async function main() {
@@ -138,14 +190,17 @@ async function main() {
     if (!st.isFile()) continue
 
     let entries
-    try { entries = listEntries(full) } catch { continue }   // not an archive
+    try { entries = listEntries(full) }
+    catch { console.warn(`  skipped ${name}: cannot list as archive (unsupported format?)`); continue }
     if (entries.length === 0) continue
 
     const meta = readDownloadMeta(name)
     let source
-    if (meta.modId && meta.fileId) source = { type: 'nexus', modId: meta.modId, fileId: meta.fileId }
-    else if (sources.urls[name])   source = { type: 'url', url: sources.urls[name] }
-    else                           source = { type: 'manual', name }
+    // An explicit URL override wins over the Nexus meta: it is the escape
+    // hatch for files whose Nexus pin has died (author removed the version).
+    if (sources.urls[name])             source = { type: 'url', url: sources.urls[name] }
+    else if (meta.modId && meta.fileId) source = { type: 'nexus', modId: meta.modId, fileId: meta.fileId }
+    else                                source = { type: 'manual', name }
 
     const id   = 'a' + (archives.length + 1)
     const hash = await sha256File(full)
@@ -190,16 +245,22 @@ async function main() {
   const contentHash = files =>
     sha256Buf(Buffer.from(files.map(f => `${f.to}:${f.sha256}`).sort().join('\n')))
 
-  function directiveFor(absFile, toRel) {
-    const buf = fs.readFileSync(absFile)
-    const sha = sha256Buf(buf)
-    const hit = index.get(buf.length + ':' + crc32hex(buf))
+  // Inline accounting for the MAX_INLINE_TOTAL guard.
+  let inlineTotal = 0
+  const inlineByLabel = new Map()
+
+  async function directiveFor(absFile, toRel, label) {
+    const { sha, crc, size } = await hashFile(absFile)
+    const hit = index.get(size + ':' + crc)
     if (hit) {
       referenced.add(hit.id)
-      return { to: toRel, archive: hit.id, from: hit.from, sha256: sha, size: buf.length }
+      return { to: toRel, archive: hit.id, from: hit.from, sha256: sha, size }
     }
-    if (buf.length > INLINE_WARN) inlineWarnings.push(`${toRel} (${(buf.length / 1048576).toFixed(0)} MB)`)
-    return { to: toRel, inline: buf.toString('base64'), sha256: sha, size: buf.length }
+    if (size > INLINE_WARN) inlineWarnings.push(`${toRel} (${(size / 1048576).toFixed(0)} MB)`)
+    const inline = fs.readFileSync(absFile).toString('base64')
+    inlineTotal += inline.length
+    inlineByLabel.set(label, (inlineByLabel.get(label) || 0) + inline.length)
+    return { to: toRel, inline, sha256: sha, size }
   }
 
   for (const modName of order) {
@@ -208,7 +269,10 @@ async function main() {
     const rels = walk(modDir).filter(r => r.toLowerCase() !== 'meta.ini')
     if (rels.length === 0) continue
 
-    const files = rels.map(rel => directiveFor(path.join(modDir, rel.split('/').join(path.sep)), rel))
+    const files = []
+    for (const rel of rels) {
+      files.push(await directiveFor(path.join(modDir, rel.split('/').join(path.sep)), rel, modName))
+    }
     mods.push({ name: modName, modId: readModId(modDir), files, hash: contentHash(files) })
   }
 
@@ -219,8 +283,20 @@ async function main() {
     for (const rel of new Set(sources.rootInclude || [])) {
       const full = path.join(gameRoot, rel.split('/').join(path.sep))
       if (!fs.existsSync(full)) { console.warn(`rootInclude not found, skipping: ${rel}`); continue }
-      root.push(directiveFor(full, rel))
+      root.push(await directiveFor(full, rel, 'root'))
     }
+  }
+
+  // Fail fast when the inline volume would produce a manifest the launcher
+  // cannot parse - name the offending mods so the fix is obvious.
+  if (inlineTotal > MAX_INLINE_TOTAL) {
+    const top = [...inlineByLabel.entries()]
+      .sort((a, b) => b[1] - a[1]).slice(0, 10)
+      .map(([n, b]) => `  - ${n}: ${(b / 1048576).toFixed(0)} MB inlined`).join('\n')
+    throw new Error(
+      `manifest would inline ${(inlineTotal / 1048576).toFixed(0)} MB of base64 ` +
+      `(limit ${(MAX_INLINE_TOTAL / 1048576).toFixed(0)} MB). ` +
+      'Add the missing source archives to downloads\\ (or "urls" in data/manifest-sources.json) for:\n' + top)
   }
 
   // 5. Write the manifest (only referenced archives carry over)
@@ -240,7 +316,7 @@ async function main() {
     rootHash: contentHash(root),
   }
   fs.mkdirSync(DATA_DIR, { recursive: true })
-  fs.writeFileSync(OUT, JSON.stringify(manifest))
+  writeManifestFile(OUT, manifest)
 
   // Lightweight display list so /api/modlist (the launcher's Modlist panel) keeps its shape without a second source of truth
   const display = [

@@ -23,35 +23,38 @@ function readEnv(key) {
   } catch { return '' }
 }
 
-const serverSettings = process.env.SKYRP_SERVER_SETTINGS
+const serverSettings = process.env.ALDUINAK_SERVER_SETTINGS
   || path.join(repoRoot, 'build', 'dist', 'server', 'server-settings.json')
 
 module.exports = {
   repoRoot,
-  logDir:   process.env.SKYRP_LOG_DIR || 'C:\\logs',
+  logDir:   process.env.ALDUINAK_LOG_DIR || 'C:\\logs',
   nssm:     nssmPath(),
 
   // Build output directory. Holds dist/ (the CI-built client/server payloads the
   // launcher and game server consume) and launcher/ (the Electron installer).
-  buildDir: process.env.SKYRP_BUILD_DIR || path.join(repoRoot, 'build'),
+  buildDir: process.env.ALDUINAK_BUILD_DIR || path.join(repoRoot, 'build'),
 
   // nssm services. `key` is the short label shown in the UI; `name` is the
   // actual Windows service. Order is the start order (stop order is reversed).
   // Keep this list in sync with SERVICES in src/renderer/renderer.js (the
   // renderer has its own copy of key/label and would show a stale set if they drift).
+  // Renamed services: migrate the live box by re-running build/dist/server/install-services.bat
+  // legacyNames are pre-rename service names the manager falls back to until then.
   services: [
-    { key: 'nginx',   name: 'SkyrpNginx',      label: 'Nginx'    },
-    { key: 'backend', name: 'SkyrpBackend',    label: 'Backend'  },
-    { key: 'game',    name: 'SkyrpGameServer', label: 'Game'     },
+    { key: 'nginx',   name: 'AlduinakNginx',      legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx'    },
+    { key: 'backend', name: 'AlduinakBackend',    legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend'  },
+    { key: 'game',    name: 'AlduinakGameServer', legacyNames: ['SkyrpGameServer'],               label: 'Game'     },
   ],
 
   // Reference MO2 install used to compile the manifest (the Modlist tab).
-  mo2Root:  process.env.SKYRP_MO2_ROOT  || 'C:\\MO2',
-  gameRoot: process.env.SKYRP_GAME_ROOT || 'C:\\GOG Games\\Skyrim Anniversary Edition',
-  profile:  process.env.SKYRP_MO2_PROFILE || 'Default',
+  mo2Root:  process.env.ALDUINAK_MO2_ROOT  || 'C:\\MO2',
+  gameRoot: process.env.ALDUINAK_GAME_ROOT || 'C:\\GOG Games\\Skyrim Anniversary Edition',
+  profile:  process.env.ALDUINAK_MO2_PROFILE || 'Default',
 
   paths: {
     launcher:     path.join(repoRoot, 'skymp5-launcher'),
+    gamemode:     path.join(repoRoot, 'gamemode'),
     backend:      path.join(repoRoot, 'skymp5-backend'),
     front:        path.join(repoRoot, 'skymp5-front'),
     client:       path.join(repoRoot, 'skymp5-client'),
@@ -65,7 +68,7 @@ module.exports = {
     serverSettings,
     // The game server's working directory: its file-database (changeForms)
     // and data dir live here. Defaults to the folder holding server-settings.json.
-    serverDir:    process.env.SKYRP_SERVER_DIR || path.dirname(serverSettings),
+    serverDir:    process.env.ALDUINAK_SERVER_DIR || path.dirname(serverSettings),
     launcherOut:  path.join(repoRoot, 'build', 'launcher'),
     clientOut:    path.join(repoRoot, 'build', 'dist', 'client'),
     dataDir:      path.join(repoRoot, 'skymp5-backend', 'data'),
@@ -79,5 +82,5 @@ module.exports = {
     get secret() { return readEnv('RELAY_SECRET') },
   },
 
-  launcherArtifact: 'SkyrimRoleplayLauncher.exe',
+  launcherArtifact: 'AlduinakLauncher.exe',
 }

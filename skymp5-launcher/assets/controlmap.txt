@@ -1,4 +1,4 @@
-// SkyRP launcher controlmap override.
+// Alduinak launcher controlmap override.
 // Based on the vanilla Skyrim SE controlmap.txt. The only change from vanilla
 // is the "Wait" action keyboard binding (T / 0x14) set to 0xff (unbound),
 // because waiting is disabled on the server. All other bindings are vanilla.

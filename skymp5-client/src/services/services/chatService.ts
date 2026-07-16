@@ -12,20 +12,20 @@ const UNITS_PER_METER = 70;
 
 const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `(function(){
   try {
-    if (window.__skyrpChatReady) return;
+    if (window.__alduinakChatReady) return;
     if (!window.skyrimPlatform || !window.skyrimPlatform.widgets) return;
-    window.__skyrpChatReady = true;
-    window.__skyrpAdmin = ${isAdmin ? 'true' : 'false'};
+    window.__alduinakChatReady = true;
+    window.__alduinakAdmin = ${isAdmin ? 'true' : 'false'};
     if (!window.chatMessages) window.chatMessages = [];
 
     // Restore saved settings before the widget mounts so the UI seeds from them.
-    window.__skyrpChatSettings = ${settingsJson};
-    if (window.__skyrpChatSettings && window.__skyrpChatSettings.customHighlights != null) window.__skyrpCustomHighlightsRaw = window.__skyrpChatSettings.customHighlights;
+    window.__alduinakChatSettings = ${settingsJson};
+    if (window.__alduinakChatSettings && window.__alduinakChatSettings.customHighlights != null) window.__alduinakCustomHighlightsRaw = window.__alduinakChatSettings.customHighlights;
 
     // Force the chat to the upper-left corner.
-    if (!document.getElementById('skyrpChatCss')) {
+    if (!document.getElementById('alduinakChatCss')) {
       var st = document.createElement('style');
-      st.id = 'skyrpChatCss';
+      st.id = 'alduinakChatCss';
       st.innerHTML = '#chat{top:24px!important;left:24px!important;right:auto!important;bottom:auto!important;}';
       document.head.appendChild(st);
     }
@@ -77,18 +77,18 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       dm:'pm', to:'pm', too:'pm'
     };
 
-    if (!window.__skyrpNames) window.__skyrpNames = [];
-    window.__skyrpSetNames=function(full){
-      window.__skyrpName=String(full==null?'':full);
-      var parts=window.__skyrpName.trim().split(' ').filter(function(x){ return x.length; });
+    if (!window.__alduinakNames) window.__alduinakNames = [];
+    window.__alduinakSetNames=function(full){
+      window.__alduinakName=String(full==null?'':full);
+      var parts=window.__alduinakName.trim().split(' ').filter(function(x){ return x.length; });
       var arr=[];
-      if (window.__skyrpName.trim()) arr.push(window.__skyrpName.trim());
+      if (window.__alduinakName.trim()) arr.push(window.__alduinakName.trim());
       if (parts.length>1){ arr.push(parts[0]); arr.push(parts[parts.length-1]); }
       var seen={}, out=[];
       for (var i=0;i<arr.length;i++){ var k=arr[i].toLowerCase(); if(!seen[k]){ seen[k]=1; out.push(arr[i]); } }
-      window.__skyrpNames=out;
+      window.__alduinakNames=out;
     };
-    window.__skyrpSetNames(${JSON.stringify(name)});
+    window.__alduinakSetNames(${JSON.stringify(name)});
 
     function escapeRe(s){
       var sp='.*+?^()|[]{}$';
@@ -99,10 +99,10 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
     // Build highlight matchers: names (whole-word, case-insensitive) + custom words.
     function buildTerms(){
       var terms=[];
-      var names=(window.__skyrpNames||[]).filter(function(n){ return n && n.length>1; });
+      var names=(window.__alduinakNames||[]).filter(function(n){ return n && n.length>1; });
       for (var i=0;i<names.length;i++) terms.push(new RegExp('\\\\b'+escapeRe(names[i])+'\\\\b','gi'));
       // custom words: * wildcard, "quotes" = case-sensitive, comma/colon/newline separators.
-      var raw=String(window.__skyrpCustomHighlightsRaw||''), NL=String.fromCharCode(10);
+      var raw=String(window.__alduinakCustomHighlightsRaw||''), NL=String.fromCharCode(10);
       var toks=raw.split(',').join(NL).split(':').join(NL).split(String.fromCharCode(13)).join(NL).split(NL);
       for (var j=0;j<toks.length;j++){
         var t=toks[j].trim(); if(!t) continue;
@@ -191,7 +191,11 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       if (f==='ooc')  return '/looc '+body;
       if (f==='shout')return '/shout '+body;
       if (kind==='system') return '/system '+body;
-      // say family (say/low/whisper/wide) - unprefixed text is in-character say.
+      // Quiet/whisper/loud keep their channel so the server can enforce range.
+      if (f==='sayquiet') return '/low '+body;
+      if (f==='whisper')  return '/whisper '+body;
+      if (f==='sayloud')  return '/wide '+body;
+      // Unprefixed text is in-character say.
       return body;
     }
 
@@ -208,7 +212,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       }
       var ch=CH[kind];
       // Cosmetic gate only; the server is authoritative on admin-only commands.
-      if (ch.admin && !window.__skyrpAdmin) return { denied:true };
+      if (ch.admin && !window.__alduinakAdmin) return { denied:true };
       if (kind==='pm'){
         var i2=body.indexOf(' ');
         var target=i2<0?body:body.slice(0,i2);
@@ -217,7 +221,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
         return { kind:kind, segs:[{text:'To '+target+': '+pmText,color:PM}], tab:'personal', fwd:raw };
       }
       if (!body) return null;
-      var n=window.__skyrpName||'You';
+      var n=window.__alduinakName||'You';
       return { kind:kind, segs:fmtLine(kind,n,body), tab:ch.tab, fwd:forwardFor(kind,body) };
     }
 
@@ -258,7 +262,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
     window.skyrimPlatform.widgets.set([chatWidget].concat(cur)); // always own chat
 
     // Incoming text from the server / other players and distance dimming
-    window.__skyrpAddChat=function(raw, dist){
+    window.__alduinakAddChat=function(raw, dist){
       var s=String(raw);
       // Strip the server's "<nonce>" prefix (makes repeats unique so they render).
       var us=s.indexOf('\\u001f');
@@ -296,19 +300,19 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
         if (d>0) segs=darkenSegs(segs, d/DARKEN_RANGE_M);
         pushSegs(segs,tab);
         if (bubbleRefr && window.skyrimPlatform && window.skyrimPlatform.sendMessage){
-          window.skyrimPlatform.sendMessage('skyrpChatBubble', bubbleRefr, segs.map(function(x){ return x.text; }).join(''));
+          window.skyrimPlatform.sendMessage('alduinakChatBubble', bubbleRefr, segs.map(function(x){ return x.text; }).join(''));
         }
       }
     };
 
     // Vanilla-style corner notifications system tab
-    window.__skyrpAddSystem=function(text){
+    window.__alduinakAddSystem=function(text){
       var t=String(text==null?'':text); if(!t) return;
       pushSegs([{text:t,color:SYS}],'system');
     };
 
     // Lines triggered by spells, conditions, zones, etc
-    window.__skyrpAddFlavor=function(text){
+    window.__alduinakAddFlavor=function(text){
       var t=String(text==null?'':text); if(!t) return;
       pushSegs([{text:t,color:SYS}], CH.flavor.tab);
     };
@@ -323,7 +327,7 @@ export class ChatService extends ClientListener {
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
-    if (e.arguments[0] === "skyrpChatBubble") {
+    if (e.arguments[0] === "alduinakChatBubble") {
       this.showBubble(Number(e.arguments[1] ?? 0), String(e.arguments[2] ?? ""));
       return;
     }
@@ -379,26 +383,42 @@ export class ChatService extends ClientListener {
 
     const appearance = owner["appearance"] as { name?: string } | undefined;
 
+    // A new owner model (login, respawn, character switch) carries the last
+    // persisted ff_chatMsg; treat it as already seen so it is not replayed.
+    if (owner !== this.lastOwner) {
+      this.lastOwner = owner;
+      const persisted = owner[CHAT_MSG_PROP];
+      this.lastMsg = typeof persisted === "string" ? persisted : null;
+    }
+
     if (!this.mounted) {
       this.mounted = true;
       const name = appearance?.name || "You";
-      const isAdmin = owner["isAdmin"] === true;
+      this.lastAdmin = owner["isAdmin"] === true;
       logTrace(this, "Mounting chat widget (local parse + render)");
-      this.sp.browser.executeJavaScript(buildMountJs(name, isAdmin, this.readChatSettings()));
+      this.sp.browser.executeJavaScript(buildMountJs(name, this.lastAdmin, this.readChatSettings()));
       this.sp.browser.setVisible(true);
+    }
+
+    // The server syncs isAdmin a few seconds after spawn; keep the CEF global
+    // live so the Admin tab and /system unlock without a relog.
+    const isAdminNow = owner["isAdmin"] === true;
+    if (isAdminNow !== this.lastAdmin) {
+      this.lastAdmin = isAdminNow;
+      this.sp.browser.executeJavaScript(`window.__alduinakAdmin = ${isAdminNow ? "true" : "false"};`);
     }
 
     const liveName = appearance?.name;
     if (liveName && liveName !== this.lastName) {
       this.lastName = liveName;
-      this.sp.browser.executeJavaScript(`window.__skyrpSetNames && window.__skyrpSetNames(${JSON.stringify(liveName)});`);
+      this.sp.browser.executeJavaScript(`window.__alduinakSetNames && window.__alduinakSetNames(${JSON.stringify(liveName)});`);
     }
 
     const msg = owner[CHAT_MSG_PROP];
     if (typeof msg === "string" && msg !== "" && msg !== this.lastMsg) {
       this.lastMsg = msg;
       const dist = this.senderDistanceMeters(msg);
-      this.sp.browser.executeJavaScript(`window.__skyrpAddChat && window.__skyrpAddChat(${JSON.stringify(msg)}, ${dist});`);
+      this.sp.browser.executeJavaScript(`window.__alduinakAddChat && window.__alduinakAddChat(${JSON.stringify(msg)}, ${dist});`);
     }
   }
 
@@ -449,6 +469,8 @@ export class ChatService extends ClientListener {
   private mounted = false;
   private lastMsg: string | null = null;
   private lastName: string | null = null;
+  private lastAdmin = false;
+  private lastOwner: unknown = null;
   private bubbles: { id: number; expiresAt: number }[] = [];
   private readonly pluginChatSettingsName = "chat-settings-no-load";
 }

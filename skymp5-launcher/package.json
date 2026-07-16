@@ -1,7 +1,8 @@
 {
-  "name": "skyrp-launcher",
-  "version": "2.0.2",
-  "description": "Launcher for the Skyrim Roleplay server",
+  "name": "alduinak-launcher",
+  "version": "2.0.8",
+  "description": "Launcher for the Alduinak server",
+  "productName": "Alduinak Launcher",
   "main": "src/main.js",
   "author": "F02K and Suraru",
   "license": "MIT",
@@ -24,15 +25,22 @@
     "electron-builder": "26.8.1"
   },
   "build": {
-    "appId": "com.skyrp.launcher",
-    "productName": "SkyRP Launcher",
+    "appId": "com.alduinak.launcher",
+    "productName": "Alduinak Launcher",
     "directories": {
       "output": "../build/launcher"
     },
     "files": [
       "src/**/*",
       "assets/**/*",
+      "!assets/7zip/**",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/7zip",
+        "to": "7zip"
+      }
     ],
     "win": {
       "target": [
@@ -63,7 +71,7 @@
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
-      "artifactName": "SkyrimRoleplayLauncher.exe",
+      "artifactName": "AlduinakLauncher.exe",
       "include": "installer.nsh"
     },
     "asarUnpack": [

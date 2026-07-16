@@ -42,11 +42,15 @@ export class LoadOrderVerificationService extends ClientListener {
         let fail = [];
         for (let i = 0; i < serverMods.length; ++i) {
           // Need case-insensitive check for 1.6+
-          if (
-            clientMods[i].filename.toLowerCase() !== serverMods[i].filename.toLowerCase() ||
-            clientMods[i].size !== serverMods[i].size ||
-            clientMods[i].crc32 !== serverMods[i].crc32
-          ) {
+          const nameMismatch = clientMods[i].filename.toLowerCase() !== serverMods[i].filename.toLowerCase();
+          // Older SkyrimPlatform builds reject plugin names with spaces from
+          // getFileInfo, so the client cannot hash them (crc32/size come back
+          // as the 0/0 sentinel). Don't treat that as a content mismatch - the
+          // name still has to match; the native fix restores real hashing.
+          const unhashable = clientMods[i].crc32 === 0 && clientMods[i].size === 0;
+          const contentMismatch = !unhashable &&
+            (clientMods[i].size !== serverMods[i].size || clientMods[i].crc32 !== serverMods[i].crc32);
+          if (nameMismatch || contentMismatch) {
             fail.push(i);
             printConsole(`${i}-th mod (numbered from 0) does not match.`);
             printConsole(`Server has ${JSON.stringify(serverMods[i])}`);

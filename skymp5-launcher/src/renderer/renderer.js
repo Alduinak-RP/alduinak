@@ -5,8 +5,8 @@ document.getElementById('btn-close').addEventListener('click',    () => window.e
 
 // External nav links
 const EXTERNAL_URLS = {
-  website: 'https://skyrimroleplay.co.uk/',   // e.g. 'https://skyrp.example.com'
-  discord: 'https://discord.gg/xKY4Nud2rz',   // e.g. 'https://discord.gg/...'
+  website: 'https://alduinak.com/',           // e.g. 'https://example.com'
+  discord: 'https://discord.gg/Pkxdgt6W8q',   // e.g. 'https://discord.gg/...'
 }
 
 document.querySelectorAll('.topnav-link[data-href]').forEach(link => {
@@ -413,13 +413,13 @@ async function refreshIsolatedStatus() {
   isolatedGroup.hidden = !fieldIsolated.checked
   if (!st.ready) {
     isolatedDot.className    = 'vortex-status-dot'
-    isolatedText.textContent = 'Not installed yet - choose a location to set up SkyRP'
+    isolatedText.textContent = 'Not installed yet - choose a location to set up Alduinak'
   } else if (!fieldIsolated.checked) {
     isolatedDot.className    = 'vortex-status-dot dot-warn'
-    isolatedText.textContent = 'SkyRP install exists - playing from the original Skyrim'
+    isolatedText.textContent = 'Alduinak install exists - playing from the original Skyrim'
   } else {
     isolatedDot.className    = 'vortex-status-dot dot-ok'
-    isolatedText.textContent = `SkyRP installed at ${st.base || st.dir}`
+    isolatedText.textContent = `Alduinak installed at ${st.base || st.dir}`
   }
   refreshDownloadModsState(st)
 }
@@ -598,6 +598,9 @@ function startModpackInstall() {
   window.electronAPI.onInstallComplete(({ success, error, upToDate, warning, modsTotal }) => {
     mo2InstallRunning = false
     btnInstallMo2.textContent = 'Install Modpack via MO2'
+    // Keep the Play button honest right away instead of waiting for the 10s
+    // poll - otherwise a stale UPDATE label eats the player's next click.
+    refreshPlayState()
     if (!success) {
       installStatusMo2.textContent = `Error: ${error}`
       return
@@ -644,7 +647,7 @@ function updatePlayButton() {
   if (!isoReady) {
     btnConnect.disabled    = false
     btnConnect.textContent = '\u2699 INSTALL'
-    btnConnect.title       = 'Set up your SkyRP game copy in Settings.'
+    btnConnect.title       = 'Set up your Alduinak game copy in Settings.'
     return
   }
 
@@ -719,42 +722,21 @@ btnConnect.addEventListener('click', async () => {
     return
   }
 
-  // Update mode: refresh the client files, don't launch.
-  if (updateAvailable) {
-    playBusy            = true
-    btnConnect.disabled = true
-    clearWarning()
-    try {
-      btnConnect.textContent = '\u2913 UPDATING\u2026'
-      const result = await runInstallForPlay()
-      if (!result.success) {
-        showWarning(result.error || 'Update failed.')
-        return
-      }
-      showWarning('Client files updated \u2713')
-      setTimeout(clearWarning, 4000)
-    } finally {
-      playBusy = false
-      await refreshPlayState()
-    }
-    return
-  }
-
+  // Launch prerequisites. When an update is pending they don't block the
+  // update itself - the files still refresh, and the warning explains what
+  // is missing before the game can start.
+  const blockers = []
   if (discordUser && !serverAllowed) {
-    showWarning(serverLocked
+    blockers.push(serverLocked
       ? 'Server is currently locked - you are not on the allow list.'
       : 'You are not on the server whitelist.')
-    return
   }
-
   const s = await window.electronAPI.loadSettings()
-  if (!s.skyrimPath) {
-    showWarning('Set Skyrim path in Settings first.')
-    return
-  }
+  if (!s.skyrimPath) blockers.push('Set Skyrim path in Settings first.')
+  if (!discordUser)  blockers.push('Login with Discord first - use the button in the toolbar.')
 
-  if (!discordUser) {
-    showWarning('Login with Discord first - use the button in the toolbar.')
+  if (blockers.length > 0 && !updateAvailable) {
+    showWarning(blockers[0])
     return
   }
 
@@ -763,17 +745,26 @@ btnConnect.addEventListener('click', async () => {
   clearWarning()
 
   try {
-    // 1. Make sure client files are present and current (fast no-op when up to date)
-    btnConnect.textContent = '\u2699 CHECKING FILES\u2026'
+    // 1. Make sure client files are present and current (fast no-op when up
+    // to date; a pending update runs the full install pipeline here).
+    btnConnect.textContent = updateAvailable ? '\u2913 UPDATING\u2026' : '\u2699 CHECKING FILES\u2026'
     const install = await runInstallForPlay()
     if (!install.success) {
-      showWarning(install.error || 'Install failed.')
+      showWarning(install.error || 'Update failed.')
+      return
+    }
+    if (install.warning) showWarning(`\u26A0 ${install.warning}`)
+
+    // Updated but not launchable yet (e.g. no Discord login): say why and stop.
+    if (blockers.length > 0) {
+      showWarning(blockers[0])
       return
     }
 
-    // 2. Launch - main also re-syncs plugins.txt against the server load order
+    // 2. Launch - main also re-syncs plugins.txt against the server load order.
+    // One click both updates and launches; no second press needed.
     btnConnect.textContent = '\u25BA LAUNCHING\u2026'
-    clearWarning()
+    if (!install.warning) clearWarning()
     const result = await window.electronAPI.launchSkse()
 
     if (!result.success) {
@@ -781,7 +772,7 @@ btnConnect.addEventListener('click', async () => {
       return
     }
 
-    clearWarning()
+    if (!install.warning) clearWarning()
     gameRunning = true  // optimistic; the 10s poll keeps it honest
   } finally {
     playBusy = false

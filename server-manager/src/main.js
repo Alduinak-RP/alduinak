@@ -34,6 +34,14 @@ app.whenReady().then(() => {
   startLogTail()
   consoleRelay.connect()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+  // One-time hint when the box still runs pre-rename service names.
+  setTimeout(async () => {
+    await statusAll()
+    const legacy = config.services.filter(s => resolvedNames[s.key] && resolvedNames[s.key] !== s.name)
+    if (legacy.length) {
+      send('console:relay', { kind: 'status', text: `legacy service names in use (${legacy.map(s => resolvedNames[s.key]).join(', ')}) - run build\\dist\\server\\install-services.bat once to migrate` })
+    }
+  }, 4000)
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 	
@@ -62,39 +70,140 @@ async function awaitStatus(name, want) {
   }
 }
 
-async function act(name, verb) {
+// The live box may still run the pre-rename service names until
+// install-services.bat is re-run, so resolve which installed name to target:
+// canonical first, then legacyNames. Cached per key; re-probed if it vanishes.
+const resolvedNames = {}
+async function probeService(svc) {
+  const candidates = [...new Set([resolvedNames[svc.key], svc.name, ...(svc.legacyNames || [])].filter(Boolean))]
+  let firstStatus = ''
+  for (const name of candidates) {
+    const status = await nssm('status', name)
+    if (!firstStatus) firstStatus = status
+    if (/^SERVICE_/.test(status)) { resolvedNames[svc.key] = name; return { name, status } }
+  }
+  delete resolvedNames[svc.key]
+  return { name: svc.name, status: firstStatus || 'unknown' }
+}
+
+async function serviceName(svc) { return (await probeService(svc)).name }
+
+async function act(svc, verb) {
+  const name = await serviceName(svc)
+  // Archive logs while the service is stopped (nssm frees the file handle),
+  // so a restart (stop then start) always begins a fresh log file.
+  if (verb === 'start' && await nssm('status', name) === 'SERVICE_STOPPED') {
+    await rotateServiceLogs(svc)
+  }
   await nssm(verb, name)
   const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
   if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
   return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
 }
 
+// ── Log rotation: datestamp on restart, archived into <dir>\YYYY-MM ────────────
+
+function pad2(n) { return String(n).padStart(2, '0') }
+function monthDirName(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}` }
+function datestamp(d) {
+  return `${monthDirName(d)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`
+}
+
+// chat.log lives wherever the gamemode writes it; mirror its resolution chain
+// (env var, then the optional logDir key in server-settings.json, then default).
+function chatLogDir() {
+  let settings = {}
+  try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
+  return process.env.ALDUINAK_LOG_DIR || settings.logDir || 'C:\\logs'
+}
+
+// The nssm-configured stdout/stderr files for a service, plus the gamemode's
+// chat.log for the game server (written directly, not via nssm).
+async function serviceLogFiles(svc) {
+  const name = await serviceName(svc)
+  const files = []
+  for (const stream of ['AppStdout', 'AppStderr']) {
+    const p = parseNssmPath(await nssm('get', name, stream))
+    if (p) files.push(p)
+  }
+  if (svc.key === 'game') files.push(path.join(chatLogDir(), 'chat.log'))
+  return files
+}
+
+// Rename the active log with a datestamp and file it under <dir>\YYYY-MM
+// (month taken from the file's last write, so a December log lands in December).
+function archiveLogFile(file) {
+  let stat
+  try { stat = fs.statSync(file) } catch { return }
+  if (!stat.isFile() || stat.size === 0) return
+  const ext = path.extname(file) || '.log'
+  const base = path.basename(file, ext)
+  const monthDir = path.join(path.dirname(file), monthDirName(stat.mtime))
+  try {
+    fs.mkdirSync(monthDir, { recursive: true })
+    fs.renameSync(file, path.join(monthDir, `${base}-${datestamp(stat.mtime)}${ext}`))
+    delete tailState[file] // fresh file: restart the tail from the top
+  } catch (err) {
+    send('console:relay', { kind: 'status', text: `log rotation skipped for ${file}: ${err.message}` })
+  }
+}
+
+// Sweep already-rotated siblings (ours and nssm's own size rotation, both named
+// <base>-<digits...>) into their month folder. "-<digit>" avoids eating other
+// active logs like gameserver-err.log.
+function sweepRotatedLogs(file) {
+  const dir = path.dirname(file)
+  const ext = path.extname(file) || '.log'
+  const base = path.basename(file, ext)
+  let entries = []
+  try { entries = fs.readdirSync(dir) } catch { return }
+  for (const entry of entries) {
+    if (!entry.startsWith(base + '-') || !entry.endsWith(ext)) continue
+    if (!/^\d/.test(entry.slice(base.length + 1))) continue
+    let stat
+    try { stat = fs.statSync(path.join(dir, entry)) } catch { continue }
+    if (!stat.isFile()) continue
+    const monthDir = path.join(dir, monthDirName(stat.mtime))
+    try {
+      fs.mkdirSync(monthDir, { recursive: true })
+      fs.renameSync(path.join(dir, entry), path.join(monthDir, entry))
+    } catch { /* locked or already moved, retry on the next restart */ }
+  }
+}
+
+async function rotateServiceLogs(svc) {
+  for (const file of await serviceLogFiles(svc)) {
+    sweepRotatedLogs(file)
+    archiveLogFile(file)
+  }
+}
+
 async function statusAll() {
-  const pairs = await Promise.all(config.services.map(async s => [s.key, await nssm('status', s.name)]))
+  const pairs = await Promise.all(config.services.map(async s => [s.key, (await probeService(s)).status]))
   return Object.fromEntries(pairs)
 }
 
 ipcMain.handle('services:status', () => statusAll())
 
-// Act on a single service (the per-service dropdowns).
-ipcMain.handle('service:action', async (_e, key, action) => {
+// Act on a single service (per-service dropdowns and console commands).
+async function doServiceAction(key, action) {
   const svc = serviceByKey[key]
   if (!svc) return { ok: false, error: `unknown service ${key}` }
   const steps = []
   let ok = true
-  const step = async verb => { const r = await act(svc.name, verb); ok = ok && r.ok; steps.push(`${svc.label}: ${r.text}`); return r.ok }
+  const step = async verb => { const r = await act(svc, verb); ok = ok && r.ok; steps.push(`${svc.label}: ${r.text}`); return r.ok }
   if (action === 'stop') await step('stop')
   else if (action === 'start') await step('start')
   else if (action === 'restart') { if (await step('stop')) await step('start') }
   else return { ok: false, error: `unknown action ${action}` }
   return { ok, steps, status: await statusAll() }
-})
+}
 
 // Act on every service in order (stop order reversed) - the "all" controls.
-ipcMain.handle('services:action', async (_e, action) => {
+async function doServicesAction(action) {
   const steps = []
   let ok = true
-  const step = async (s, verb) => { const r = await act(s.name, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
+  const step = async (s, verb) => { const r = await act(s, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
   const doStop  = async () => { for (const s of [...config.services].reverse()) await step(s, 'stop') }
   const doStart = async () => { for (const s of config.services)                await step(s, 'start') }
   if (action === 'stop') await doStop()
@@ -102,7 +211,10 @@ ipcMain.handle('services:action', async (_e, action) => {
   else if (action === 'restart') { await doStop(); await doStart() }
   else return { ok: false, error: `unknown action ${action}` }
   return { ok, steps, status: await statusAll() }
-})
+}
+
+ipcMain.handle('service:action', (_e, key, action) => doServiceAction(key, action))
+ipcMain.handle('services:action', (_e, action) => doServicesAction(action))
 
 const tailState = {}   // file -> last byte offset
 let logTargets = []    // [{ file, label }]
@@ -119,8 +231,9 @@ async function discoverLogTargets() {
     if (file && !seen.has(file)) { seen.add(file); targets.push({ file, label }) }
   }
   for (const s of config.services) {
+    const name = await serviceName(s)
     for (const stream of ['AppStdout', 'AppStderr']) {
-      const p = parseNssmPath(await nssm('get', s.name, stream))
+      const p = parseNssmPath(await nssm('get', name, stream))
       add(p, `${s.label}${stream === 'AppStderr' ? ' (err)' : ''}`)
     }
   }
@@ -188,17 +301,90 @@ const consoleRelay = {
   },
 }
 
-ipcMain.handle('console:command', (_e, text) => {
+// Console box: manager commands are handled locally, anything else is
+// forwarded to the game server console over the WS relay (the gamemode).
+const BUILD_KINDS = ['server', 'launcher', 'client']
+const CONSOLE_HELP = [
+  'Manager commands:',
+  '  help                           this help',
+  '  status                         service status',
+  '  start|stop|restart <svc|all>   control services (' + config.services.map(s => s.key).join(', ') + ')',
+  '  build <' + BUILD_KINDS.join('|') + '>   run a build (output streams here)',
+  'Anything else is sent to the game server console (gamemode).',
+].join('\n')
+
+function consoleOut(text) { send('console:relay', { kind: 'output', text: text + '\n' }) }
+
+// Returns a result object when the command was handled locally, null otherwise.
+async function tryLocalCommand(cmd) {
+  const parts = cmd.split(/\s+/)
+  const verb = parts[0].toLowerCase()
+  const arg = (parts[1] || '').toLowerCase()
+  // help/status also go to the gamemode so its command list and player count
+  // append below the local output (fan-out arrives via console:relay).
+  if (verb === 'help' || verb === '?') {
+    consoleOut(CONSOLE_HELP)
+    if (!consoleRelay.command('help').ok) consoleOut('(game console offline - gamemode commands unavailable)')
+    return { ok: true }
+  }
+  if (verb === 'status') {
+    const st = await statusAll()
+    consoleOut(config.services.map(s => `${s.label}: ${st[s.key] || 'unknown'}`).join('\n'))
+    consoleRelay.command('status')
+    return { ok: true }
+  }
+  if (verb === 'start' || verb === 'stop' || verb === 'restart') {
+    const keys = config.services.map(s => s.key)
+    if (!arg || (arg !== 'all' && !keys.includes(arg))) {
+      consoleOut(`usage: ${verb} <${keys.join('|')}|all>`)
+      return { ok: true }
+    }
+    consoleOut(`${verb} ${arg}…`)
+    const r = arg === 'all' ? await doServicesAction(verb) : await doServiceAction(arg, verb)
+    consoleOut((r.steps || [r.error || 'failed']).join('\n'))
+    return { ok: r.ok !== false }
+  }
+  if (verb === 'build') {
+    if (!BUILD_KINDS.includes(arg)) { consoleOut(`usage: build <${BUILD_KINDS.join('|')}>`); return { ok: true } }
+    if (buildBusy) { consoleOut('a build is already running - wait for it to finish'); return { ok: true } }
+    consoleOut(`starting ${arg} build…`)
+    // Not awaited: builds take minutes; progress streams via build:log and the
+    // outcome is reported here when it lands.
+    runBuild(arg).then(r => consoleOut(r.ok ? `${arg} build complete` : `${arg} build failed: ${r.error || 'see log'}`))
+    return { ok: true }
+  }
+  return null
+}
+
+ipcMain.handle('console:command', async (_e, text) => {
   const cmd = String(text || '').trim()
   if (!cmd) return { ok: false, error: 'empty command' }
+  const local = await tryLocalCommand(cmd)
+  if (local) return local
   return consoleRelay.command(cmd)
 })
 
 function builder() { return new Builder(t => send('build:log', t)) }
 
-ipcMain.handle('build:server',   () => builder().buildServer())
-ipcMain.handle('build:launcher', () => builder().buildLauncher())
-ipcMain.handle('build:client',   () => builder().buildClient())
+// One build at a time: console commands and Build tab buttons share this gate.
+let buildBusy = false
+async function runBuild(kind) {
+  if (buildBusy) return { ok: false, error: 'a build is already running' }
+  buildBusy = true
+  try {
+    const b = builder()
+    if (kind === 'server')   return await b.buildServer()
+    if (kind === 'launcher') return await b.buildLauncher()
+    if (kind === 'client')   return await b.buildClient()
+    return { ok: false, error: `unknown build ${kind}` }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  } finally { buildBusy = false }
+}
+
+ipcMain.handle('build:server',   () => runBuild('server'))
+ipcMain.handle('build:launcher', () => runBuild('launcher'))
+ipcMain.handle('build:client',   () => runBuild('client'))
 
 function setJsonVersion(file, version) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -452,7 +638,7 @@ ipcMain.handle('modlist:read', () => {
   }
   const modlist = readLines('modlist.txt')
   const plugins = readLines('plugins.txt')
-  if (!modlist) return { ok: false, error: `No modlist.txt under ${profileDir}. Check SKYRP_MO2_ROOT / profile.` }
+  if (!modlist) return { ok: false, error: `No modlist.txt under ${profileDir}. Check ALDUINAK_MO2_ROOT / profile.` }
 
   const mods = [], separators = []
   for (const line of modlist) {

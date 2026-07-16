@@ -99,5 +99,5 @@ app.use('/api/players',            playersRoute)
 app.use('/api/launch-check',       launchCheckRoute)
 
 app.listen(PORT, () => {
-  console.log(`SkyRP backend running on http://localhost:${PORT}`)
+  console.log(`Alduinak backend running on http://localhost:${PORT}`)
 })

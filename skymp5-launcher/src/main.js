@@ -22,7 +22,7 @@ const ini    = require('./ini')
 const isDev = process.argv.includes('--dev')
 
 // Dev logger
-const LOG_FILE = isDev ? path.join(require('os').tmpdir(), 'skyrp-install.log') : null
+const LOG_FILE = isDev ? path.join(require('os').tmpdir(), 'alduinak-install.log') : null
 
 function log(...args) {
   const line = args.join(' ')
@@ -31,7 +31,7 @@ function log(...args) {
 }
 
 if (LOG_FILE) {
-  fs.writeFileSync(LOG_FILE, `=== skyrp install log ${new Date().toISOString()} ===\n`)
+  fs.writeFileSync(LOG_FILE, `=== alduinak install log ${new Date().toISOString()} ===\n`)
   console.log('[dev] logging to', LOG_FILE)
 }
 
@@ -53,7 +53,7 @@ const store = new Store({
     nexusUser:         null,   // { name, isPremium } from the last validation
     isolatedGame:      true,  // play from the isolated game copy instead of skyrimPath
     gameDirPath:       '',     // legacy: pre-base-dir location of the game copy
-    baseDirPath:       '',     // SkyRP base dir: MO2 root, with the game at <base>\skyrim
+    baseDirPath:       '',     // Alduinak base dir: MO2 root, with the game at <base>\skyrim
     forcedDefaultsApplied: false, // server-required graphics defaults seeded once at first install
   }
 })
@@ -85,11 +85,23 @@ function isolatedGameDir() {
   const legacy = store.get('gameDirPath')
   if (legacy) return legacy
   const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
-  return path.join(local, 'SkyRP', 'GameDir')
+  return path.join(local, 'Alduinak', 'GameDir')
 }
 
 function isolatedGameReady() {
   return fs.existsSync(path.join(isolatedGameDir(), 'SkyrimSE.exe'))
+}
+
+// A usable game copy needs more than SkyrimSE.exe (it is copied first, so an
+// interrupted run leaves it behind with a partial Data). The completion marker
+// written by copyGameDir is authoritative; copies made before the marker
+// existed fall back to the masters check (the esms are copied nearly last,
+// so their presence implies the BSAs made it too).
+function gameCopyComplete(dir) {
+  if (!fs.existsSync(path.join(dir, 'SkyrimSE.exe'))) return false
+  if (fs.existsSync(path.join(dir, 'vanilla-copy-complete.json'))) return true
+  return fs.existsSync(path.join(dir, 'Data', 'Skyrim.esm'))
+    && fs.existsSync(path.join(dir, 'Data', 'Update.esm'))
 }
 
 function effectiveGamePath() {
@@ -174,7 +186,7 @@ ipcMain.handle('settings:save', (_e, data) => {
 
 // Graphics / hotkey settings (Settings tab)
 // Graphics edit the MO2 portable profile's SkyrimPrefs.ini. NOTE: this assumes
-// the SkyRP profile uses profile-specific INI files; and if SSEDisplayTweaks is
+// the Alduinak profile uses profile-specific INI files; and if SSEDisplayTweaks is
 // active it may override window mode via its own ini.
 function skyrimPrefsPath() {
   return path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
@@ -295,7 +307,7 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
 
 // Forced server defaults
 // The server ships a couple of required defaults. We apply them once, when the
-// SkyRP install is first set up, so later tweaks in the Settings tab aren't
+// Alduinak install is first set up, so later tweaks in the Settings tab aren't
 // reverted on every client update:
 //   • borderless window mode → MO2 profile's SkyrimPrefs.ini [Display]
 //     (resolution is player-owned: it comes from the seeded ini, or the
@@ -614,7 +626,7 @@ ipcMain.handle('game:createIsolated', async () => {
 
   // Ask where to install the modlist.
   const picked = await dialog.showOpenDialog(win, {
-    title:       'Choose where to install SkyRP (~16 GB: MO2 + game copy)',
+    title:       'Choose where to install Alduinak (~16 GB: MO2 + game copy)',
     buttonLabel: 'Install here',
     properties:  ['openDirectory', 'createDirectory'],
   })
@@ -622,13 +634,11 @@ ipcMain.handle('game:createIsolated', async () => {
     return { success: false, canceled: true, error: 'Installation cancelled.' }
   }
 
+  // Portable instance fix
   let base = picked.filePaths[0]
-  try {
-    const entries = fs.readdirSync(base)
-    if (entries.length > 0 && !fs.existsSync(path.join(base, 'portable.txt'))) {
-      base = path.join(base, 'SkyRP')
-    }
-  } catch { /* unreadable - let later steps surface the real error */ }
+  if (!fs.existsSync(path.join(base, 'alduinak-instance.txt'))) {
+    base = path.join(base, 'Alduinak')
+  }
 
   const dst = path.join(base, 'skyrim')
 
@@ -640,7 +650,7 @@ ipcMain.handle('game:createIsolated', async () => {
       message: 'Warning, you are trying to download the game on top of itself. ' +
                'Please choose a new spot to install a copy of Skyrim, such as the root folder (c:/).',
       detail:
-        'SkyRP uses a portable Skyrim install for maximum compatibility with other modlists or servers.\n' +
+        'Alduinak uses a portable Skyrim install for maximum compatibility with other modlists or servers.\n' +
         "If you're short on disk space, you can turn this feature off in the troubleshooting tab.",
       buttons: ['OK'],
       defaultId: 0,
@@ -654,11 +664,15 @@ ipcMain.handle('game:createIsolated', async () => {
 
   try {
     store.set('baseDirPath', base)
+    // Mark this folder as an Alduinak instance so future setups reuse it in
+    // place instead of nesting again.
+    try { fs.mkdirSync(base, { recursive: true }); fs.writeFileSync(path.join(base, 'alduinak-instance.txt'), '') } catch {}
     send('isolated:progress', 'Installing Mod Organizer 2…')
     await mo2.ensureInstalled(msg => send('isolated:progress', msg))
 
-    // portable copy setup
-    if (!fs.existsSync(path.join(dst, 'SkyrimSE.exe'))) {
+    // portable copy setup (re-copies when a previous copy was interrupted:
+    // SkyrimSE.exe lands first, so its presence alone proves nothing)
+    if (!gameCopyComplete(dst)) {
       const copy = await copyGameDir(src, dst)
       if (!copy.success) return copy
     } else {
@@ -675,7 +689,7 @@ ipcMain.handle('game:createIsolated', async () => {
     store.set('isolatedGame', true)
     store.set('mo2Enabled', true)
 
-    log(`[isolated] SkyRP install ready at ${base}`)
+    log(`[isolated] Alduinak install ready at ${base}`)
     return { success: true, dir: base }
   } catch (err) {
     return { success: false, error: err.message }
@@ -710,8 +724,11 @@ function isVanillaDataFile(name) {
   return false
 }
 
-// Copy only Bethesda's vanilla files from the (possibly modded) source so the user's install stays intact.
-async function copyGameDir(src, dst) {
+// The vanilla file inventory of a source install: exactly what copyGameDir
+// copies, and what the integrity check verifies. Only vanilla files can ever
+// appear here (isVanillaDataFile), so skse, the engine-fixes preloader, and
+// downloaded client files are naturally out of scope.
+function vanillaJobs(src) {
   const jobs = []
   for (const name of VANILLA_ROOT_FILES) {
     if (fs.existsSync(path.join(src, name))) jobs.push({ rel: name, sub: '' })
@@ -737,12 +754,20 @@ async function copyGameDir(src, dst) {
       }
     }
   } catch { /* no Strings folder */ }
+  return jobs
+}
+
+// Copy only Bethesda's vanilla files from the (possibly modded) source so the user's install stays intact.
+async function copyGameDir(src, dst) {
+  const jobs = vanillaJobs(src)
 
   if (!jobs.some(j => j.rel.toLowerCase() === 'skyrim.esm')) {
     return { success: false, error: 'Skyrim.esm not found in Data - is the Skyrim path correct?' }
   }
 
   let copied = 0
+  // A fresh run invalidates any previous completion marker.
+  try { fs.rmSync(path.join(dst, 'vanilla-copy-complete.json'), { force: true }) } catch {}
   for (const job of jobs) {
     const to = path.join(dst, job.sub, job.rel)
     try {
@@ -754,8 +779,65 @@ async function copyGameDir(src, dst) {
     copied++
     send('isolated:progress', `Copying vanilla game files… ${copied}/${jobs.length} (${job.rel})`)
   }
+  // Completion marker: file presence alone cannot prove the copy finished
+  // (the esms sort after the BSAs, so partial copies look deceptively full).
+  try {
+    fs.writeFileSync(path.join(dst, 'vanilla-copy-complete.json'),
+      JSON.stringify({ files: copied, at: new Date().toISOString() }) + '\n')
+  } catch { /* marker is an optimization; the masters check still applies */ }
   log(`[isolated] copied ${copied} vanilla file(s) to ${dst}`)
   return { success: true, copied }
+}
+
+// Vanilla files in the game copy that are missing or the wrong size compared
+// to the original install.
+function vanillaMismatches(src, dir) {
+  const sizeOf = p => { try { return fs.statSync(p).size } catch { return -1 } }
+  const bad = []
+  for (const job of vanillaJobs(src)) {
+    const want = sizeOf(path.join(src, job.sub, job.rel))
+    if (want >= 0 && sizeOf(path.join(dir, job.sub, job.rel)) !== want) bad.push(job)
+  }
+  return bad
+}
+
+// Vanilla integrity gate, run on every install pass. Portable copies are
+// verified against the player's original install and repaired file by file;
+// when playing from the real install there is no clean source to copy from,
+// so a failed check only warns (verify the game in Steam/GOG instead).
+async function ensureVanillaIntegrity(gamePath) {
+  const portable = store.get('isolatedGame') && isolatedGameReady() && gamePath === isolatedGameDir()
+  if (portable) {
+    const original = store.get('skyrimPath')
+    if (!original || !fs.existsSync(path.join(original, 'Data', 'Skyrim.esm'))) {
+      // No source to verify against; the launch gate still blocks a broken copy.
+      return { ok: true, warning: null }
+    }
+    const bad = vanillaMismatches(original, gamePath)
+    if (bad.length === 0) return { ok: true, warning: null }
+    log(`[integrity] repairing ${bad.length} vanilla file(s): ${bad.map(j => j.rel).join(', ')}`)
+    let done = 0
+    for (const job of bad) {
+      const to = path.join(gamePath, job.sub, job.rel)
+      try {
+        fs.mkdirSync(path.dirname(to), { recursive: true })
+        await fs.promises.copyFile(path.join(original, job.sub, job.rel), to)
+      } catch (err) {
+        return { ok: false, error: `Vanilla file repair failed on ${job.rel}: ${err.message}` }
+      }
+      done++
+      send('install:progress', { phase: 'download', file: `Repairing vanilla game files… ${done}/${bad.length} (${job.rel})`, index: done, total: bad.length, skipped: false })
+    }
+    return { ok: true, warning: null, repaired: done }
+  }
+  // Real install: the masters every SE edition ships must at least exist.
+  const missing = [...VANILLA_MASTERS]
+    .filter(m => m !== '_resourcepack.esl')
+    .filter(m => !fs.existsSync(path.join(gamePath, 'Data', m)))
+  if (missing.length > 0) {
+    return { ok: true, warning: `Vanilla file check failed: ${missing.join(', ')} missing from the game folder. Verify the game files in Steam/GOG Galaxy.` }
+  }
+  return { ok: true, warning: null }
 }
 
 // First-launch sanity check
@@ -941,7 +1023,7 @@ ipcMain.handle('app:installUpdate', async () => {
       return { ok: false, error: 'Refusing to install an update from a non-HTTPS URL.' }
     }
 
-    const dest = path.join(os.tmpdir(), 'SkyrimRoleplayLauncher-update.exe')
+    const dest = path.join(os.tmpdir(), 'AlduinakLauncher-update.exe')
     send('update:progress', { phase: 'download', received: 0, total: 0 })
     await downloadToFile(data.downloadUrl, dest, (received, total) =>
       send('update:progress', { phase: 'download', received, total }))
@@ -1069,6 +1151,12 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
     problems.push('SKSE is not installed (skse64_loader.exe missing); install the modpack first.')
   }
 
+  // Vanilla masters: without them the engine hard-crashes before the menu.
+  if (!fs.existsSync(path.join(skyrimPath, 'Data', 'Skyrim.esm')) ||
+      !fs.existsSync(path.join(skyrimPath, 'Data', 'Update.esm'))) {
+    problems.push('Vanilla game files missing (Skyrim.esm/Update.esm); click UPDATE to repair the game copy.')
+  }
+
   // Server load order: every required plugin must be present.
   if (Array.isArray(serverInfo?.loadOrder) && serverInfo.loadOrder.length > 0) {
     const missingPlugins = viaMO2
@@ -1170,6 +1258,10 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
   // MO2 lockdown
   // Disables plugins or skse scripts not part of the server files
   if (viaMO2) {
+    // Wipe stray plugins/BSAs from the overwrite folder first: they load at top
+    // priority and would otherwise desync the client load order from the server.
+    const wiped = mo2.cleanOverwrite()
+    if (wiped.length > 0) log(`[launch] cleaned stray overwrite items: ${wiped.join(', ')}`)
     const removed = mo2.enforceModRules()
     if (removed.length > 0) log(`[launch] disabled unauthorised mods: ${removed.join(', ')}`)
   }
@@ -1386,7 +1478,7 @@ function extractClientZip(zipPath, destDir, onProgress) {
 // Shared by the direct and MO2 installers: version check, download, extract, client settings.
 
 async function installClientFilesCore(skyrimPath, srv, serverInfo) {
-  const tempZip = path.join(os.tmpdir(), 'skyrp-client.zip')
+  const tempZip = path.join(os.tmpdir(), 'alduinak-client.zip')
   const clientSettingsPath = path.join(skyrimPath, 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
 
   try {
@@ -1470,13 +1562,17 @@ async function runDirectInstall() {
   if (!skyrimPath) return fail('Skyrim path not configured.')
   if (!srv)        return fail('No server selected - open Settings and choose a server.')
 
+  // Vanilla integrity (repairs portable copies, warns for the real install).
+  const integrity = await ensureVanillaIntegrity(skyrimPath)
+  if (!integrity.ok) return fail(integrity.error)
+
   let serverInfo = null
   try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
 
   const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
   if (core.success) applyForcedServerDefaults(skyrimPath)
   send('install:complete', core.success
-    ? { success: true, upToDate: core.upToDate }
+    ? { success: true, upToDate: core.upToDate, ...(integrity.warning ? { warning: integrity.warning } : {}) }
     : { success: false, error: core.error })
   installing = false
 }
@@ -1508,6 +1604,21 @@ function openDownloadList(downloadsDir) {
 // verify each archive, extract once, apply per-file directives) so every player
 // gets the reference install's exact, byte-identical layout.
 
+// Download SKSE (edition-aware) and install it into the game root. Shared by
+// the manifest root step and the empty-manifest path: without SKSE nothing
+// can launch, no matter how few mods the server ships.
+async function installSkseIntoRoot(skyrimPath) {
+  const mb = n => (n / 1024 / 1024).toFixed(1)
+  const skse = mo2.skseSourceFor(skyrimPath)
+  send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})…`, index: 0, total: 0, skipped: false })
+  const name = await mo2.downloadToDownloads(skse.url, skse.fileName, (r, t) => {
+    const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
+    send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
+  })
+  send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
+  mo2.installSkse(path.join(mo2.getDownloadsDir(), name), skyrimPath)
+}
+
 async function runMO2Install() {
   _downloadListOpened = false
   const fail = (msg) => {
@@ -1528,6 +1639,14 @@ async function runMO2Install() {
   if (!findOriginalPrefsIni()) return fail(NEVER_LAUNCHED_ERROR)
 
   try {
+    // 0. Vanilla integrity: verify the game copy (existence + size) against
+    // the original install and repair portable copies file by file. Playing
+    // from the real install only produces a warning.
+    const integrity = await ensureVanillaIntegrity(skyrimPath)
+    if (!integrity.ok) return fail(integrity.error)
+    if (integrity.repaired) log(`[mo2-install] repaired ${integrity.repaired} vanilla file(s)`)
+    const vanillaWarning = integrity.warning || null
+
     // 1. MO2 itself, the portable instance, and the nxm:// handler
     await mo2.ensureInstalled(msg =>
       send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
@@ -1559,10 +1678,29 @@ async function runMO2Install() {
       return fail('Install manifest is missing or malformed - run "npm run compile-manifest" on the backend.')
     }
 
+    const finishOrder = () => {
+      const order = (Array.isArray(manifest.order) && manifest.order.length)
+        ? manifest.order.slice()
+        : manifest.mods.map(m => m.name)
+      if (fs.existsSync(path.join(mo2.getModsDir(), 'SKSE')) && !order.includes('SKSE')) order.push('SKSE')
+      mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
+      mo2.setPlugins(manifest.plugins)
+      store.set('installedRootHash', manifest.rootHash || '')
+    }
+
     if (manifest.mods.length === 0) {
+      // No mods yet, but the game root still needs SKSE or nothing can launch,
+      // and the run must reach 'ready' or the button stays stuck on UPDATE.
+      if (!fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))) {
+        try { await installSkseIntoRoot(skyrimPath) }
+        catch (err) { return fail(`SKSE install failed: ${err.message}`) }
+      }
+      finishOrder()
+      store.set('modpackState', 'ready')
       send('install:complete', {
         success: true, mo2: true, upToDate: core.upToDate, modsTotal: 0,
-        warning: 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.',
+        warning: [vanillaWarning, 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.']
+          .filter(Boolean).join(' | '),
       })
       return
     }
@@ -1584,20 +1722,13 @@ async function runMO2Install() {
     log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
     const modsToInstall  = manifest.mods.filter(modChanged)
 
-    const finishOrder = () => {
-      const order = (Array.isArray(manifest.order) && manifest.order.length)
-        ? manifest.order.slice()
-        : manifest.mods.map(m => m.name)
-      if (fs.existsSync(path.join(mo2.getModsDir(), 'SKSE')) && !order.includes('SKSE')) order.push('SKSE')
-      mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
-      mo2.setPlugins(manifest.plugins)
-      store.set('installedRootHash', manifest.rootHash || '')
-    }
-
     if (modsToInstall.length === 0 && !needsRoot) {
       finishOrder()
       store.set('modpackState', 'ready')
-      send('install:complete', { success: true, mo2: true, upToDate: true, modsTotal: manifest.mods.length })
+      send('install:complete', {
+        success: true, mo2: true, upToDate: true, modsTotal: manifest.mods.length,
+        ...(vanillaWarning ? { warning: vanillaWarning } : {}),
+      })
       return
     }
 
@@ -1635,10 +1766,21 @@ async function runMO2Install() {
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus' && premium) {
         send('install:progress', { phase: 'mods', file: `Downloading ${a.name}…`, index: 0, total: 0, skipped: false })
-        const name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
-          const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-          send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} / ${mb(t)} MB${pct}`, index: 0, total: 0, skipped: false })
-        })
+        let name = null
+        try {
+          name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
+            const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
+            send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} / ${mb(t)} MB${pct}`, index: 0, total: 0, skipped: false })
+          })
+        } catch (err) {
+          // A dead pin (HTTP 404 = the file was removed or archived on Nexus)
+          // must not abort the whole install: fall back to the manual browser
+          // flow, which also accepts an already-downloaded copy by sha256.
+          log(`[install] auto-download failed for ${a.name} (mod ${a.source.modId}, file ${a.source.fileId}): ${err.message} - falling back to manual download`)
+          send('install:progress', { phase: 'mods', file: `${a.name}: auto-download failed (${err.message}) - queued for manual download`, index: 0, total: 0, skipped: false })
+          needBrowser.push(a)
+          continue
+        }
         const p = path.join(downloadsDir, name)
         if (!mo2.verifyArchive(p, a.hash)) return fail(`${a.name}: downloaded file failed verification (hash mismatch - the version pin may have changed).`)
         archivePaths[a.id] = p
@@ -1654,7 +1796,7 @@ async function runMO2Install() {
       openDownloadList(downloadsDir)
       send('install:progress', {
         phase: 'mods',
-        file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the SkyRP downloads folder.',
+        file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the Alduinak downloads folder.',
         index: 0, total: needBrowser.length, skipped: false,
       })
       // Matched by sha256, so paths come back verified regardless of filename; the
@@ -1724,25 +1866,18 @@ async function runMO2Install() {
     // 4. Game-root components (only on a version change / fresh game copy)
     if (needsRoot) {
       // SKSE - the build matching the player's game edition (Steam vs GOG).
-      try {
-        const skse = mo2.skseSourceFor(skyrimPath)
-        send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})…`, index: 0, total: 0, skipped: false })
-        const name = await mo2.downloadToDownloads(skse.url, skse.fileName, (r, t) => {
-          const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-          send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
-        })
-        send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
-        mo2.installSkse(path.join(downloadsDir, name), skyrimPath)
-      } catch (err) {
-        return fail(`SKSE install failed: ${err.message}`)
-      }
+      try { await installSkseIntoRoot(skyrimPath) }
+      catch (err) { return fail(`SKSE install failed: ${err.message}`) }
     }
 
     // 5. Match MO2 priority + plugin order, record the installed version
     finishOrder()
 
     store.set('modpackState', 'ready')
-    send('install:complete', { success: true, mo2: true, upToDate: core.upToDate, modsTotal: manifest.mods.length })
+    send('install:complete', {
+      success: true, mo2: true, upToDate: core.upToDate, modsTotal: manifest.mods.length,
+      ...(vanillaWarning ? { warning: vanillaWarning } : {}),
+    })
   } catch (err) {
     if (err.message === 'Cancelled') { fail('Install cancelled.'); return }
     fail(`Install failed: ${err.message}`)
