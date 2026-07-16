@@ -90,10 +90,92 @@ async function serviceName(svc) { return (await probeService(svc)).name }
 
 async function act(svc, verb) {
   const name = await serviceName(svc)
+  // Archive logs while the service is stopped (nssm frees the file handle),
+  // so a restart (stop then start) always begins a fresh log file.
+  if (verb === 'start' && await nssm('status', name) === 'SERVICE_STOPPED') {
+    await rotateServiceLogs(svc)
+  }
   await nssm(verb, name)
   const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
   if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
   return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
+}
+
+// ── Log rotation: datestamp on restart, archived into <dir>\YYYY-MM ────────────
+
+function pad2(n) { return String(n).padStart(2, '0') }
+function monthDirName(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}` }
+function datestamp(d) {
+  return `${monthDirName(d)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`
+}
+
+// chat.log lives wherever the gamemode writes it; mirror its resolution chain
+// (env var, then the optional logDir key in server-settings.json, then default).
+function chatLogDir() {
+  let settings = {}
+  try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
+  return process.env.ALDUINAK_LOG_DIR || settings.logDir || 'C:\\logs'
+}
+
+// The nssm-configured stdout/stderr files for a service, plus the gamemode's
+// chat.log for the game server (written directly, not via nssm).
+async function serviceLogFiles(svc) {
+  const name = await serviceName(svc)
+  const files = []
+  for (const stream of ['AppStdout', 'AppStderr']) {
+    const p = parseNssmPath(await nssm('get', name, stream))
+    if (p) files.push(p)
+  }
+  if (svc.key === 'game') files.push(path.join(chatLogDir(), 'chat.log'))
+  return files
+}
+
+// Rename the active log with a datestamp and file it under <dir>\YYYY-MM
+// (month taken from the file's last write, so a December log lands in December).
+function archiveLogFile(file) {
+  let stat
+  try { stat = fs.statSync(file) } catch { return }
+  if (!stat.isFile() || stat.size === 0) return
+  const ext = path.extname(file) || '.log'
+  const base = path.basename(file, ext)
+  const monthDir = path.join(path.dirname(file), monthDirName(stat.mtime))
+  try {
+    fs.mkdirSync(monthDir, { recursive: true })
+    fs.renameSync(file, path.join(monthDir, `${base}-${datestamp(stat.mtime)}${ext}`))
+    delete tailState[file] // fresh file: restart the tail from the top
+  } catch (err) {
+    send('console:relay', { kind: 'status', text: `log rotation skipped for ${file}: ${err.message}` })
+  }
+}
+
+// Sweep already-rotated siblings (ours and nssm's own size rotation, both named
+// <base>-<digits...>) into their month folder. "-<digit>" avoids eating other
+// active logs like gameserver-err.log.
+function sweepRotatedLogs(file) {
+  const dir = path.dirname(file)
+  const ext = path.extname(file) || '.log'
+  const base = path.basename(file, ext)
+  let entries = []
+  try { entries = fs.readdirSync(dir) } catch { return }
+  for (const entry of entries) {
+    if (!entry.startsWith(base + '-') || !entry.endsWith(ext)) continue
+    if (!/^\d/.test(entry.slice(base.length + 1))) continue
+    let stat
+    try { stat = fs.statSync(path.join(dir, entry)) } catch { continue }
+    if (!stat.isFile()) continue
+    const monthDir = path.join(dir, monthDirName(stat.mtime))
+    try {
+      fs.mkdirSync(monthDir, { recursive: true })
+      fs.renameSync(path.join(dir, entry), path.join(monthDir, entry))
+    } catch { /* locked or already moved, retry on the next restart */ }
+  }
+}
+
+async function rotateServiceLogs(svc) {
+  for (const file of await serviceLogFiles(svc)) {
+    sweepRotatedLogs(file)
+    archiveLogFile(file)
+  }
 }
 
 async function statusAll() {

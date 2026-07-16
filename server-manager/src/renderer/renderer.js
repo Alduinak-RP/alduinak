@@ -5,6 +5,10 @@ const $$ = sel => Array.from(document.querySelectorAll(sel))
 const el = (tag, props = {}, html) => Object.assign(document.createElement(tag), props, html != null ? { innerHTML: html } : {})
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 
+// Per-pane line caps: the console tails services forever and unbounded
+// textContent eventually breaks rendering, so keep only the newest lines.
+const LINE_LIMITS = { log: 500, 'build-log': 2000 }
+
 function appendLog(node, text) {
   if (!node) return
   const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 40
@@ -19,6 +23,18 @@ function appendLog(node, text) {
       .split('\n')
       .map(seg => { const i = seg.lastIndexOf('\r'); return i === -1 ? seg : seg.slice(i + 1) })
       .join('\n')
+  }
+  const max = LINE_LIMITS[node.id]
+  if (max) {
+    // A trailing '' after split is the usual newline-terminated state, not a line
+    const lines = node.textContent.split('\n')
+    const count = lines[lines.length - 1] === '' ? lines.length - 1 : lines.length
+    if (count > max) {
+      const before = node.scrollHeight
+      node.textContent = lines.slice(count - max).join('\n')
+      // Content was removed from the top: keep a scrolled-up reader anchored
+      if (!atBottom) node.scrollTop = Math.max(0, node.scrollTop - (before - node.scrollHeight))
+    }
   }
   if (atBottom) node.scrollTop = node.scrollHeight
 }
