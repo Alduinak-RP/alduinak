@@ -12,6 +12,14 @@ function randomInteger(min: number, max: number) {
 // Slots per player; override with the "characterSelectMaxCharacters" server setting (1-10)
 const DEFAULT_MAX_CHARACTERS = 3;
 
+// Fresh characters start with a miner's outfit and pocket change, nothing else.
+// Form ids verified against Skyrim.esm: ClothesMinerClothes, ClothesMinerBoots, Gold001.
+const STARTING_ITEMS = [
+  { baseId: 0x00080697, count: 1 },
+  { baseId: 0x00080699, count: 1 },
+  { baseId: 0x0000000f, count: 50 },
+];
+
 // characterSelectMenuRequest guards: rapid repeats are ignored, and a request right after actor assign is treated as a stale client menu event
 const REQUEST_COOLDOWN_MS = 15 * 1000;
 const ASSIGN_GRACE_MS = 10 * 1000;
@@ -204,6 +212,12 @@ export class Spawn implements System {
     catch { return false; }
   }
 
+  // New actors are created with an empty inventory, so a wholesale set is safe
+  private giveStartingItems(mp: Mp, actorId: number): void {
+    try { mp.set(actorId, "inventory", { entries: STARTING_ITEMS.map(e => ({ ...e })) }); }
+    catch { /* form vanished */ }
+  }
+
   private sendCharacterList(ctx: SystemContext, userId: number, profileId: number): void {
     const mp = ctx.svr as unknown as Mp;
     const characters = this.slotMap(ctx, profileId).map((actorId, i) =>
@@ -237,6 +251,7 @@ export class Spawn implements System {
       actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
         +startPoints[idx].worldOrCell, auth.profileId);
       mp.set(actorId, "private.charSlot", slot);
+      this.giveStartingItems(mp, actorId);
       this.log("Creating character", actorId.toString(16), "in slot", slot);
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
@@ -300,6 +315,7 @@ export class Spawn implements System {
       const idx = randomInteger(0, startPoints.length - 1);
       actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
         +startPoints[idx].worldOrCell, userProfileId);
+      this.giveStartingItems(mp, actorId);
       this.log("Creating character", actorId.toString(16));
       ctx.svr.setUserActor(userId, actorId);
       ctx.svr.setRaceMenuOpen(actorId, true);
