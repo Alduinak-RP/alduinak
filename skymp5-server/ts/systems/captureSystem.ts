@@ -248,6 +248,9 @@ export class CaptureSystem implements System {
     }
     this.mirrorState(ctx, actorId);
     this.sendRestraint(ctx, actorId, info);
+    if (info.boundHands) {
+      this.equipShackles(ctx, actorId); // relog must not shed the cuffs
+    }
   }
 
   // ── Incoming requests ──────────────────────────────────────────────────────
@@ -469,6 +472,7 @@ export class CaptureSystem implements System {
     this.restraints.set(targetActorId, info);
     this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, info);
+    this.equipShackles(ctx, targetActorId);
     this.log(`[capture] ${targetActorId.toString(16)} bound by ${captorActorId.toString(16)}`);
   }
 
@@ -519,9 +523,13 @@ export class CaptureSystem implements System {
       this.lastCarryPos.delete(targetActorId);
       this.sendCarryState(ctx, carrier, false);
     }
+    const wasBound = this.restraints.get(targetActorId)?.boundHands === true;
     this.restraints.delete(targetActorId);
     this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, { boundHands: false, carried: false, captorActorId: 0 });
+    if (wasBound) {
+      this.removeShackles(ctx, targetActorId);
+    }
   }
 
   // ── Packet senders ─────────────────────────────────────────────────────────
@@ -597,6 +605,48 @@ export class CaptureSystem implements System {
     } catch {
       return false;
     }
+  }
+
+  // The manacles item is also worn by the captive: equipped on capture (the
+  // engine's EquipItem adds one if missing), stripped again on release.
+  private equipShackles(ctx: SystemContext, targetActorId: number): void {
+    if (this.manaclesFormId === 0 || this.manaclesFormId === 0xffffffff) {
+      return;
+    }
+    const mp = ctx.svr as Mp;
+    try {
+      const self = { type: "form", desc: mp.getDescFromId(targetActorId) };
+      const item = { type: "espm", desc: mp.getDescFromId(this.manaclesFormId) };
+      // EquipItem(akItem, abPreventRemoval, abSilent)
+      mp.callPapyrusFunction("method", "Actor", "EquipItem", self, [item, true, true]);
+    } catch (e) {
+      this.log(`[capture] equip shackles failed: ${e}`);
+    }
+  }
+
+  private removeShackles(ctx: SystemContext, targetActorId: number): void {
+    if (this.manaclesFormId === 0 || this.manaclesFormId === 0xffffffff) {
+      return;
+    }
+    const mp = ctx.svr as Mp;
+    try {
+      const self = { type: "form", desc: mp.getDescFromId(targetActorId) };
+      const item = { type: "espm", desc: mp.getDescFromId(this.manaclesFormId) };
+      // UnequipItem(akItem, abPreventEquip, abSilent)
+      mp.callPapyrusFunction("method", "Actor", "UnequipItem", self, [item, false, true]);
+    } catch (e) {
+      this.log(`[capture] unequip shackles failed: ${e}`);
+    }
+    // Strip the cuffs from the bag too so a release leaves no loose pair behind
+    try {
+      const inv = mp.get(targetActorId, "inventory");
+      if (inv && Array.isArray(inv.entries)) {
+        const entries = inv.entries.filter((e: any) => (e.baseId >>> 0) !== this.manaclesFormId);
+        if (entries.length !== inv.entries.length) {
+          mp.set(targetActorId, "inventory", { entries });
+        }
+      }
+    } catch { /* form gone */ }
   }
 
   private hasManacles(mp: Mp, actorId: number): boolean {
