@@ -98,6 +98,7 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("getActorsByProfileId",
                      &ScampServer::GetActorsByProfileId),
       InstanceMethod("setEnabled", &ScampServer::SetEnabled),
+      InstanceMethod("setInventoryOccupant", &ScampServer::SetInventoryOccupant),
       InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
@@ -666,6 +667,27 @@ Napi::Value ScampServer::SetEnabled(const Napi::CallbackInfo& info)
   auto enabled = static_cast<bool>(info[1].As<Napi::Boolean>());
   try {
     partOne->SetEnabled(actorFormId, enabled);
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// setInventoryOccupant(targetFormId, occupantActorFormId) - occupant 0 clears.
+// Lets the gamemode authorize PutItem/TakeItem against a ref (player search).
+Napi::Value ScampServer::SetInventoryOccupant(const Napi::CallbackInfo& info)
+{
+  auto targetFormId = info[0].As<Napi::Number>().Uint32Value();
+  auto occupantFormId = info[1].As<Napi::Number>().Uint32Value();
+  try {
+    auto& target =
+      partOne->worldState.GetFormAt<MpObjectReference>(targetFormId);
+    if (occupantFormId == 0) {
+      target.SetOccupant(nullptr);
+    } else {
+      auto& occupant = partOne->worldState.GetFormAt<MpActor>(occupantFormId);
+      target.SetOccupant(&occupant);
+    }
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }

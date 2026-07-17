@@ -47,6 +47,7 @@ public:
   Napi::Value SetRaceMenuOpen(const Napi::CallbackInfo& info);
   Napi::Value GetActorsByProfileId(const Napi::CallbackInfo& info);
   Napi::Value SetEnabled(const Napi::CallbackInfo& info);
+  Napi::Value SetInventoryOccupant(const Napi::CallbackInfo& info);
   Napi::Value CreateBot(const Napi::CallbackInfo& info);
   Napi::Value GetUserByActor(const Napi::CallbackInfo& info);
   Napi::Value GetUserIp(const Napi::CallbackInfo& info);
