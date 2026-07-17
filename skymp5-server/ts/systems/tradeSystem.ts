@@ -170,6 +170,16 @@ export class TradeSystem implements System {
   // Each connected user is in at most one session; both participants point at
   // the same Session object so either side can be looked up in O(1).
   private sessions = new Map<number, Session>();
+
+  async initAsync(ctx: SystemContext): Promise<void> {
+    // A character switch mid-trade would swap items out of the NEW body; void the deal instead
+    ctx.gm.on("userAssignActor", (userId: number) => {
+      const s = this.sessions.get(userId);
+      if (s && s.active) {
+        this.cancel(ctx.svr as Mp, s, 'The trade was interrupted.');
+      }
+    });
+  }
   // "initiatorUserId:targetUserId" -> last invite timestamp (anti focus-steal)
   private inviteCooldowns = new Map<string, number>();
 
@@ -228,13 +238,27 @@ export class TradeSystem implements System {
     }
   }
 
+  // The subject's name as the viewer may see it: real once introduced
+  // (gamemode ff_knownIds), otherwise the anonymity placeholder.
+  private nameShownTo(mp: Mp, viewerUserId: number, subjectUserId: number): string {
+    const viewerActorId = this.actorOf(mp, viewerUserId);
+    const subjectActorId = this.actorOf(mp, subjectUserId);
+    try {
+      const known = mp.get(viewerActorId, 'ff_knownIds');
+      if (Array.isArray(known) && !known.includes(subjectActorId)) {
+        return 'A stranger';
+      }
+    } catch { /* fall through to the real name */ }
+    return this.nameOf(mp, subjectUserId);
+  }
+
   // Push the current deal to one participant, framed from their point of view.
   private sendStateTo(mp: Mp, s: Session, userId: number): void {
     const me = s.a === userId;
     const bothLocked = s.lockedA && s.lockedB;
     this.send(mp, userId, {
       customPacketType: 'tradeState',
-      partnerName: this.nameOf(mp, me ? s.b : s.a),
+      partnerName: this.nameShownTo(mp, userId, me ? s.b : s.a),
       myOffer: me ? s.offerA : s.offerB,
       theirOffer: me ? s.offerB : s.offerA,
       myLocked: me ? s.lockedA : s.lockedB,
@@ -347,8 +371,8 @@ export class TradeSystem implements System {
     s.inviteSeq++;
     const seq = s.inviteSeq;
     this.markInviteCooldown(s.a, s.b);
-    this.send(mp, s.b, { customPacketType: 'tradeInvite', fromName: this.nameOf(mp, s.a) });
-    this.notice(mp, s.a, 'Trade request sent to ' + this.nameOf(mp, s.b) + '.');
+    this.send(mp, s.b, { customPacketType: 'tradeInvite', fromName: this.nameShownTo(mp, s.b, s.a) });
+    this.notice(mp, s.a, 'Trade request sent to ' + this.nameShownTo(mp, s.a, s.b) + '.');
     setTimeout(() => {
       try {
         if (this.sessions.get(s.a) !== s || s.active || s.inviteSeq !== seq) {
@@ -400,11 +424,11 @@ export class TradeSystem implements System {
         this.sendInvite(mp, existing);
         return;
       }
-      this.cancel(mp, existing, this.nameOf(mp, userId) + ' cancelled the trade.', userId);
+      this.cancel(mp, existing, this.nameShownTo(mp, existing.b === userId ? existing.a : existing.b, userId) + ' cancelled the trade.', userId);
     }
 
     if (this.sessions.has(targetUserId)) {
-      this.notice(mp, userId, this.nameOf(mp, targetUserId) + ' is busy with another trade.');
+      this.notice(mp, userId, this.nameShownTo(mp, userId, targetUserId) + ' is busy with another trade.');
       return;
     }
     if (this.onInviteCooldown(userId, targetUserId)) {
@@ -416,7 +440,7 @@ export class TradeSystem implements System {
       return;
     }
     if (this.tradeBlockReason(mp, targetUserId)) {
-      this.notice(mp, userId, this.nameOf(mp, targetUserId) + ' cannot trade right now.');
+      this.notice(mp, userId, this.nameShownTo(mp, userId, targetUserId) + ' cannot trade right now.');
       return;
     }
     const s: Session = {
@@ -446,7 +470,7 @@ export class TradeSystem implements System {
       // A decline also refreshes the brake so the initiator can't immediately
       // re-seize the decliner's browser focus with a fresh invite.
       this.markInviteCooldown(s.a, s.b);
-      this.cancel(mp, s, this.nameOf(mp, userId) + ' declined the trade.', userId);
+      this.cancel(mp, s, this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) + ' declined the trade.', userId);
       return;
     }
     if (!this.bothConnected(mp, s) || !this.withinRange(mp, s)) {
@@ -530,7 +554,7 @@ export class TradeSystem implements System {
     if (s) {
       // Blame the canceller: the packet goes to the PARTNER, so the name shown
       // must be the canceller's own.
-      this.cancel(mp, s, this.nameOf(mp, userId) + ' cancelled the trade.', userId);
+      this.cancel(mp, s, this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) + ' cancelled the trade.', userId);
     }
   }
 

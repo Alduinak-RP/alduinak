@@ -93,6 +93,11 @@ export class SearchSystem implements System {
     }
     this.lastWatchMs = now;
     for (const s of Array.from(this.sessions.values())) {
+      // A side that lost its user (character switch, logout-grace park) ends the search
+      if (this.userOf(ctx, s.searcherActorId) < 0 || this.userOf(ctx, s.targetActorId) < 0) {
+        this.endSession(ctx, s, "");
+        continue;
+      }
       if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, KEEP_MAX_DISTANCE)) {
         this.endSession(ctx, s, "They moved away.");
       }
@@ -145,7 +150,7 @@ export class SearchSystem implements System {
       return;
     }
     if (this.sessions.has(targetActorId)) {
-      this.notice(ctx, userId, `${this.nameOf(ctx, targetActorId)} is already being searched.`);
+      this.notice(ctx, userId, `${this.nameShownTo(ctx, searcherActorId, targetActorId)} is already being searched.`);
       return;
     }
     if (this.searching.has(searcherActorId)) {
@@ -162,7 +167,7 @@ export class SearchSystem implements System {
     const cooldownKey = `${searcherActorId}:${targetActorId}`;
     const lastPrompt = this.consentCooldown.get(cooldownKey);
     if (lastPrompt !== undefined && now - lastPrompt < CONSENT_COOLDOWN_MS) {
-      this.notice(ctx, userId, `Wait before asking ${this.nameOf(ctx, targetActorId)} again.`);
+      this.notice(ctx, userId, `Wait before asking ${this.nameShownTo(ctx, searcherActorId, targetActorId)} again.`);
       return;
     }
     if (this.consentCooldown.size > 512) {
@@ -182,18 +187,18 @@ export class SearchSystem implements System {
     const timer = setTimeout(() => {
       if (this.pending.delete(requestId)) {
         this.notice(ctx, this.userOf(ctx, searcherActorId),
-          `${this.nameOf(ctx, targetActorId)} did not respond.`);
+          `${this.nameShownTo(ctx, searcherActorId, targetActorId)} did not respond.`);
       }
     }, CONSENT_TIMEOUT_MS);
     this.pending.set(requestId, { searcherActorId, targetActorId, timer });
 
-    const searcherName = this.nameOf(ctx, searcherActorId) || "Someone";
+    const searcherName = this.nameShownTo(ctx, targetActorId, searcherActorId);
     ctx.svr.sendCustomPacket(targetUser, JSON.stringify({
       customPacketType: "searchConsentRequest",
       requestId,
       text: `${searcherName} wants to search you. Allow?`,
     }));
-    this.notice(ctx, userId, `Waiting for ${this.nameOf(ctx, targetActorId)} to accept…`);
+    this.notice(ctx, userId, `Waiting for ${this.nameShownTo(ctx, searcherActorId, targetActorId)} to accept…`);
   }
 
   private onConsentResult(ctx: SystemContext, userId: number, content: Content): void {
@@ -212,14 +217,14 @@ export class SearchSystem implements System {
 
     const searcherUser = this.userOf(ctx, pend.searcherActorId);
     if (content.accepted !== true) {
-      this.notice(ctx, searcherUser, `${this.nameOf(ctx, pend.targetActorId)} refused the search.`);
+      this.notice(ctx, searcherUser, `${this.nameShownTo(ctx, pend.searcherActorId, pend.targetActorId)} refused the search.`);
       return;
     }
     if (searcherUser < 0) {
       return; // searcher left while we waited
     }
     if (!this.validTarget(ctx, pend.searcherActorId, pend.targetActorId)) {
-      this.notice(ctx, searcherUser, `${this.nameOf(ctx, pend.targetActorId)} is out of reach.`);
+      this.notice(ctx, searcherUser, `${this.nameShownTo(ctx, pend.searcherActorId, pend.targetActorId)} is out of reach.`);
       return;
     }
     if (this.sessions.has(pend.targetActorId) || this.searching.has(pend.searcherActorId)) {
@@ -238,9 +243,12 @@ export class SearchSystem implements System {
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
       target: pend.targetActorId,
+      // Simple stacks of the real inventory: the searcher's local clone only
+      // mirrors equipment, so the client tops it up before opening the window
+      entries: this.simpleEntriesOf(ctx, pend.targetActorId),
     }));
     this.notice(ctx, this.userOf(ctx, pend.targetActorId),
-      `${this.nameOf(ctx, pend.searcherActorId)} is searching you.`);
+      `${this.nameShownTo(ctx, pend.targetActorId, pend.searcherActorId)} is searching you.`);
     this.log(`[search] ${pend.searcherActorId.toString(16)} searches ${pend.targetActorId.toString(16)}`);
   }
 
@@ -339,6 +347,31 @@ export class SearchSystem implements System {
       return typeof n === "string" ? n.trim() : "";
     } catch {
       return "";
+    }
+  }
+
+  // The subject's name as the viewer may see it: real once introduced
+  // (gamemode ff_knownIds), otherwise the anonymity placeholder.
+  private nameShownTo(ctx: SystemContext, viewerActorId: number, subjectActorId: number): string {
+    try {
+      const known = (ctx.svr as Mp).get(viewerActorId, "ff_knownIds");
+      if (Array.isArray(known) && !known.includes(subjectActorId)) {
+        return "A stranger";
+      }
+    } catch { /* fall through to the real name */ }
+    return this.nameOf(ctx, subjectActorId) || "Someone";
+  }
+
+  // Plain {baseId, count} stacks without extra data, mirroring what TakeItem can move
+  private simpleEntriesOf(ctx: SystemContext, actorId: number): { baseId: number, count: number }[] {
+    try {
+      const inv = (ctx.svr as Mp).get(actorId, "inventory");
+      const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries : [];
+      return entries
+        .filter((e) => e && typeof e.baseId === "number" && (e.count | 0) > 0)
+        .map((e) => ({ baseId: e.baseId >>> 0, count: e.count | 0 }));
+    } catch {
+      return [];
     }
   }
 
