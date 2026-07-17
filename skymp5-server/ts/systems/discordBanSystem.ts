@@ -28,7 +28,7 @@ export class DiscordBanSystem implements System {
             return console.warn("discordAuth.guilds array is empty or missing, skipping Discord ban system");
         }
 
-        const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+        const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration] });
 
         try {
             await client.login(discordAuth.botToken);
@@ -67,6 +67,21 @@ export class DiscordBanSystem implements System {
                     ctx.svr.setEnabled(formId, false);
                 });
             }
+        });
+
+        // Actual Discord guild bans (not just the ban role) also boot the player
+        client.on("guildBanAdd", (ban) => {
+            const guildConfig = discordAuth.guilds.find(g => g.guildId === ban.guild.id);
+            if (!guildConfig) return;
+
+            const discordId = ban.user.id;
+            const mp = ctx.svr as unknown as Mp;
+            const forms = mp.findFormsByPropertyValue("private.indexed.discordId", discordId) as number[];
+
+            forms.forEach(formId => {
+                console.log(`Detected Discord guild ban on ${ban.guild.id}, kicking ${formId.toString(16)}`);
+                ctx.svr.setEnabled(formId, false);
+            });
         });
     }
 }

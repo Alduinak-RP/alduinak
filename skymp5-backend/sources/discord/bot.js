@@ -3,9 +3,11 @@
 const { Client, GatewayIntentBits } = require('discord.js')
 const https = require('https')
 const config = require('../../config')
+const bans = require('../bans')
+const players = require('../players')
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration],
 })
 
 let ready = false
@@ -17,6 +19,26 @@ client.once('ready', () => {
 
 client.on('error', err => {
   console.error('[discord-bot] error:', err.message)
+})
+
+// A real Discord guild ban snapshots the player's hwid/ip into bans.json
+client.on('guildBanAdd', ban => {
+  try {
+    if (config.discordGuildId && ban.guild.id !== config.discordGuildId) return
+    const discordId = ban.user.id
+    const record = players.load()[discordId] || {}
+    const entry = bans.add({
+      discordId,
+      hwid: record.hwid || null,
+      ip: record.lastIp || null,
+      reason: 'discord ban',
+      bannedBy: 'discord',
+    })
+    bans.logBan(`discord ban: discordId=${discordId} username=${ban.user.username || 'unknown'} hwid=${entry.hwid || 'none'} ip=${entry.ip || 'none'}`)
+    console.log(`[discord-bot] recorded guild ban for ${discordId}`)
+  } catch (err) {
+    console.error('[discord-bot] failed to record guild ban:', err.message)
+  }
 })
 
 function ensureRoleLookupConfigured() {
