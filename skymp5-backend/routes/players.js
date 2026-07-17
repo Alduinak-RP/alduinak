@@ -80,9 +80,28 @@ async function mutateAccess(req, res, type) {
   try {
     const discordId = requireDiscordId(req.params.profileId)
     const enabled = req.body && req.body.enabled === true
-    const result = type === 'whitelist'
-      ? await serverAccess.setWhitelisted(discordId, enabled)
-      : await serverAccess.setBanned(discordId, enabled)
+    let result
+    if (type === 'whitelist') {
+      result = await serverAccess.setWhitelisted(discordId, enabled)
+    } else {
+      // bans.json snapshot is the source of truth; capture hwid/ip so alts can be matched
+      const record = players.load()[discordId] || {}
+      const actor = (req.session && (req.session.username || req.session.discordId)) || null
+      if (enabled) {
+        const entry = bans.add({ discordId, hwid: record.hwid || null, ip: record.lastIp || null, reason: 'dashboard ban', bannedBy: actor })
+        bans.logBan(`banned: discordId=${discordId} hwid=${entry.hwid || 'none'} ip=${entry.ip || 'none'} by=${actor || 'unknown'}`)
+      } else {
+        bans.removeByDiscordId(discordId)
+        bans.logBan(`unbanned: discordId=${discordId} by=${actor || 'unknown'}`)
+      }
+      // Discord role toggle is best effort: it throws when bannedRoleId is unconfigured
+      try {
+        result = await serverAccess.setBanned(discordId, enabled)
+      } catch (err) {
+        console.warn('[players] discord ban role toggle failed:', err.message)
+        result = { source: 'bans-file', roleId: null, banned: enabled }
+      }
+    }
     res.json({ ok: true, ...result, player: await enrichPlayer(players.getByProfileId(req.params.profileId)) })
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'failed to update access' })

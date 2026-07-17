@@ -274,7 +274,7 @@ function renderPlayerDetail() {
   nodes.whitelistPlayerButton.textContent = player?.access?.roles?.includes(state.access?.whitelistRoleId)
     ? 'Remove Whitelist'
     : 'Add Whitelist'
-  nodes.banPlayerButton.textContent = player?.access?.roles?.includes(state.access?.bannedRoleId)
+  nodes.banPlayerButton.textContent = playerIsBanned(player)
     ? 'Remove Ban'
     : 'Add Ban'
   nodes.playerAssignmentsTable.innerHTML = player
@@ -590,10 +590,15 @@ async function toggleWhitelist() {
   toast(enabled ? 'Player whitelisted' : 'Player removed from whitelist')
 }
 
+// Banned when a bans.json snapshot exists or the discord ban role is present
+function playerIsBanned(player) {
+  return !!(player?.ban || player?.access?.roles?.includes(state.access?.bannedRoleId))
+}
+
 async function toggleBan() {
   const player = selectedPlayer()
   if (!player) return
-  const enabled = !player.access?.roles?.includes(state.access?.bannedRoleId)
+  const enabled = !playerIsBanned(player)
   await api(`/api/players/${player.profileId}/ban`, {
     method: 'PUT',
     body: JSON.stringify({ enabled }),
