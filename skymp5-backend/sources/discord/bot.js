@@ -41,6 +41,20 @@ client.on('guildBanAdd', ban => {
   }
 })
 
+// A Discord unban lifts the snapshot too, or the player would stay banned forever
+client.on('guildBanRemove', ban => {
+  try {
+    if (config.discordGuildId && ban.guild.id !== config.discordGuildId) return
+    const discordId = ban.user.id
+    if (bans.removeByDiscordId(discordId)) {
+      bans.logBan(`discord unban: discordId=${discordId} username=${ban.user.username || 'unknown'}`)
+      console.log(`[discord-bot] lifted guild ban for ${discordId}`)
+    }
+  } catch (err) {
+    console.error('[discord-bot] failed to lift guild ban:', err.message)
+  }
+})
+
 function ensureRoleLookupConfigured() {
   if (!config.discordBotToken || !config.discordGuildId) {
     throw new Error('discord bot role lookup is not configured')
