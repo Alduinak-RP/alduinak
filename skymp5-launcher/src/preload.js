@@ -57,6 +57,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File install
   startInstall: (mode) => ipcRenderer.send('install:start', mode),
   cancelInstall: () => ipcRenderer.send('install:cancel'),
+  // Standalone install steps (progress arrives via install:progress)
+  installMo2Only: () => ipcRenderer.invoke('install:mo2only'),
+  installSkse:    () => ipcRenderer.invoke('install:skse'),
   onInstallProgress: (cb) =>
     ipcRenderer.on('install:progress', (_e, data) => cb(data)),
   onInstallComplete: (cb) =>

@@ -818,6 +818,22 @@ html, body {
 
 .setting-warning { color: #c9a227; }
 
+.install-buttons-row { flex-wrap: wrap; }
+
+.install-progress {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  color: rgba(232,224,208,0.45);
+  background: rgba(6, 4, 2, 0.5);
+  border: 1px solid var(--glass-border);
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  height: 110px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .btn-install {
   padding: 9px 18px;
   background: transparent;

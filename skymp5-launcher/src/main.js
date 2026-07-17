@@ -1150,7 +1150,7 @@ ipcMain.handle('launch:skse', async () => {
 ipcMain.handle('launch:viaMO2', async () => {
   const skyrimPath = effectiveGamePath()
   if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
-  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - run Install Modpack first.' }
+  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - run Full Install first.' }
   const prep = await prepareForLaunch(skyrimPath, true)
   if (!prep.success) return prep
   try { mo2.launchGame(); return { success: true } }
@@ -1196,7 +1196,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   const missingFiles = REQUIRED_FILES.filter(f => !fs.existsSync(path.join(skyrimPath, f)))
   if (missingFiles.length > 0) {
     const names = missingFiles.map(f => path.basename(f)).join(', ')
-    const hint  = viaMO2 ? 'run "Install Modpack via MO2"' : 'run Install'
+    const hint  = viaMO2 ? 'run Full Install in Settings' : 'run Install'
     problems.push(`Client files missing (${names}); ${hint} first.`)
   }
 
@@ -1226,7 +1226,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
 
   // Fallback if install fails
   if (viaMO2 && store.get('modpackState') === 'failed') {
-    problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run "Install Modpack" to complete it first.')
+    problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run Full Install to complete it first.')
   }
 
   // Fallback for engine fixes failure (like with AV software)
@@ -1289,7 +1289,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
         return {
           success: false,
           error: `Missing required plugins: ${missing.join(', ')}. ` +
-                 `Run "Install Modpack" in Settings → Mod Manager first.`,
+                 `Run Full Install in Settings first.`,
         }
       }
       loadOrderFixed = true
@@ -1336,7 +1336,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
         if (check.filesOk === false) {
           return { success: false, error: 'Your client files are out of date. Press the button again to update, then launch.' }
         }
-        return { success: false, error: 'Your plugin load order does not match the server. Run "Install Modpack" in Settings → Mod Manager.' }
+        return { success: false, error: 'Your plugin load order does not match the server. Run Full Install in Settings.' }
       }
       log('[launch] launch-check passed')
     } catch (err) {
@@ -1461,6 +1461,49 @@ ipcMain.on('install:start', (_e, mode) => {
 // Cancels the running install at its next wait/step boundary.
 ipcMain.on('install:cancel', () => {
   if (installing && installAbort) installAbort.abort()
+})
+
+// Standalone install steps (Installation tab buttons). Both stream their
+// progress over the same install:progress channel as the full installers.
+
+// MO2 only: download/unpack MO2 and refresh the portable instance.
+ipcMain.handle('install:mo2only', async () => {
+  if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
+  installing = true
+  try {
+    await mo2.ensureInstalled(msg =>
+      send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
+    const gamePath = effectiveGamePath()
+    if (gamePath && fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))) {
+      let serverInfo = null
+      try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+      mo2.ensureInstance(gamePath, serverInfo?.loadOrder)
+      mo2.registerNxmHandler()
+    }
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  } finally {
+    installing = false
+  }
+})
+
+// SKSE only: download the edition-matched SKSE and install it into the game root.
+ipcMain.handle('install:skse', async () => {
+  if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
+  const gamePath = effectiveGamePath()
+  if (!gamePath || !fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))) {
+    return { success: false, error: 'No game folder found - install the game copy or set a valid Skyrim path first.' }
+  }
+  installing = true
+  try {
+    await installSkseIntoRoot(gamePath)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err.message }
+  } finally {
+    installing = false
+  }
 })
 
 // Shared download + extract helpers

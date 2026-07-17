@@ -172,25 +172,26 @@
             <p class="setting-hint">MO2 and the portable game copy install under this folder (~16 GB)</p>
           </div>
 
-          <div class="settings-group" id="isolated-install-group">
-            <label class="setting-label">Game Installation</label>
-            <div class="vortex-status-row">
-            <button class="btn-detect-vortex" id="btn-create-isolated">Choose Install Location</button>
+          <div class="settings-group">
+            <label class="setting-label">Installation</label>
+            <div class="vortex-status-row install-buttons-row">
+              <button class="btn-detect-vortex" id="btn-create-isolated">Install Game Copy</button>
+              <button class="btn-detect-vortex" id="btn-install-mo2">Install MO2</button>
+              <button class="btn-detect-vortex" id="btn-install-skse">Install SKSE</button>
+              <button class="btn-detect-vortex" id="btn-install-client">Install Client Files</button>
+              <button class="btn-detect-vortex" id="btn-full-install" disabled>Full Install</button>
+            </div>
+            <div class="vortex-status-row" id="isolated-install-group">
               <span class="vortex-status-dot" id="isolated-status-dot"></span>
               <span class="vortex-status-text" id="isolated-status-text">Checking…</span>
             </div>
-          </div>
-
-          <div class="settings-group">
-            <label class="setting-label">Modlist Installation</label>
             <div class="vortex-status-row" id="mo2-status-row">
-              <button class="btn-install" id="btn-install-mo2" disabled>Install Modpack via MO2</button>
               <span class="vortex-status-dot" id="mo2-status-dot"></span>
               <span class="vortex-status-text" id="mo2-status-text">Checking…</span>
             </div>
-            <div class="install-status" id="install-status-mo2"></div>
+            <pre class="install-progress" id="install-progress"></pre>
           </div>
-		  
+
         </div>
 
         <!-- Settings tab -->
@@ -244,12 +245,6 @@
 
         <!-- Troubleshooting tab -->
         <div class="tab-panel" id="tab-trouble" hidden>
-
-          <div class="settings-group">
-            <label class="setting-label">Client Files</label>
-            <div class="install-status" id="install-status-client"></div>
-            <button class="btn-detect-vortex" id="btn-install-client">Reinstall / Update Client Files</button>
-          </div>
 
           <div class="settings-group">
             <label class="setting-label">Portable Skyrim Mode</label>
