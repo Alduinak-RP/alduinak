@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
@@ -19,6 +20,9 @@ const STARTING_ITEMS = [
   { baseId: 0x00080699, count: 1 },
   { baseId: 0x0000000f, count: 50 },
 ];
+
+// One kit per profile+slot, persisted so delete/recreate cycling can't farm gold
+const STARTER_GRANTS_FILE = "./starter-grants.json";
 
 // characterSelectMenuRequest guards: rapid repeats are ignored, and a request right after actor assign is treated as a stale client menu event
 const REQUEST_COOLDOWN_MS = 15 * 1000;
@@ -212,10 +216,31 @@ export class Spawn implements System {
     catch { return false; }
   }
 
-  // New actors are created with an empty inventory, so a wholesale set is safe
-  private giveStartingItems(mp: Mp, actorId: number): void {
-    try { mp.set(actorId, "inventory", { entries: STARTING_ITEMS.map(e => ({ ...e })) }); }
+  // New actors are created with an empty inventory, so a wholesale set is safe.
+  // The kit is granted once per profile+slot: recreating a deleted character
+  // reuses the slot and gets clothes but no repeat gold faucet.
+  private giveStartingItems(mp: Mp, actorId: number, profileId: number, slot: number): void {
+    const key = `${profileId}:${slot}`;
+    const granted = this.loadStarterGrants();
+    const items = granted[key]
+      ? STARTING_ITEMS.filter(e => e.baseId !== 0x0000000f)
+      : STARTING_ITEMS;
+    try { mp.set(actorId, "inventory", { entries: items.map(e => ({ ...e })) }); }
     catch { /* form vanished */ }
+    if (!granted[key]) {
+      granted[key] = true;
+      try { fs.writeFileSync(STARTER_GRANTS_FILE, JSON.stringify(granted)); }
+      catch (e) { this.log(`[spawn] starter-grants write failed: ${e}`); }
+    }
+  }
+
+  private loadStarterGrants(): Record<string, boolean> {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(STARTER_GRANTS_FILE, "utf8"));
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
   }
 
   private sendCharacterList(ctx: SystemContext, userId: number, profileId: number): void {
@@ -251,7 +276,7 @@ export class Spawn implements System {
       actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
         +startPoints[idx].worldOrCell, auth.profileId);
       mp.set(actorId, "private.charSlot", slot);
-      this.giveStartingItems(mp, actorId);
+      this.giveStartingItems(mp, actorId, auth.profileId, slot);
       this.log("Creating character", actorId.toString(16), "in slot", slot);
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
@@ -315,7 +340,7 @@ export class Spawn implements System {
       const idx = randomInteger(0, startPoints.length - 1);
       actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
         +startPoints[idx].worldOrCell, userProfileId);
-      this.giveStartingItems(mp, actorId);
+      this.giveStartingItems(mp, actorId, userProfileId, 0);
       this.log("Creating character", actorId.toString(16));
       ctx.svr.setUserActor(userId, actorId);
       ctx.svr.setRaceMenuOpen(actorId, true);
