@@ -68,6 +68,36 @@ export class Login implements System {
     return data.user as UserProfile;
   }
 
+  // Backend ban check (discordId/hwid/ip); fails OPEN so a backend outage cannot lock everyone out
+  private async checkConnectionAllowed(profileId: number, ip: string): Promise<boolean> {
+    try {
+      const authToken = this.settingsObject.allSettings ? this.settingsObject.allSettings["masterApiAuthToken"] : undefined;
+      if (typeof authToken !== "string" || !authToken) {
+        console.warn("checkConnectionAllowed: masterApiAuthToken missing, skipping ban check");
+        return true;
+      }
+      const response = await this.fetchRetry(
+        `${this.masterUrl}/api/servers/${this.masterKey}/connection-check`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Auth-Token': authToken },
+          body: JSON.stringify({ profileId, ip }),
+          retryOn: (attempt: number, error: Error | null, response: Response) =>
+            attempt < 3 && (error !== null || response.status >= 500),
+        },
+      );
+      if (!response.ok) {
+        console.warn(`checkConnectionAllowed: HTTP ${response.status}, failing open`);
+        return true;
+      }
+      const data = await response.json();
+      return !(data && data.allowed === false);
+    } catch (err) {
+      console.warn("checkConnectionAllowed: request failed, failing open:", err);
+      return true;
+    }
+  }
+
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
 
@@ -125,6 +155,13 @@ export class Login implements System {
             ctx.svr.sendCustomPacket(userId, loginFailedBanned);
             throw new Error("Banned by gamemode");
           }
+        }
+
+        // Backend ban store check by discordId/hwid/ip; also records the connecting ip
+        const connectionAllowed = await this.checkConnectionAllowed(profile.id, ip);
+        if (!connectionAllowed) {
+          ctx.svr.sendCustomPacket(userId, loginFailedBanned);
+          throw new Error("Banned by backend connection-check");
         }
 
 
