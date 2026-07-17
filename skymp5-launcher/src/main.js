@@ -135,6 +135,25 @@ function isValidSkyrimPath(p) {
   return !!p && fs.existsSync(path.join(p, 'SkyrimSE.exe'))
 }
 
+// Stable per-machine id (Windows MachineGuid) reported to the backend for the
+// ban system; null when unavailable, the backend treats it as optional.
+function getHwid() {
+  if (process.platform !== 'win32') return null
+  const guid = regQueryValue('HKLM\\SOFTWARE\\Microsoft\\Cryptography', 'MachineGuid')
+  return guid && /^[0-9a-fA-F-]{10,64}$/.test(guid) ? guid : null
+}
+
+// Fire-and-forget: attach this machine's hwid to the fresh play session.
+async function reportHwid(token) {
+  const hwid = getHwid()
+  if (!hwid || !token) return
+  try {
+    await postJSON(`${config.apiUrl}/api/users/me/hwid`, { hwid }, { Authorization: `Bearer ${token}` })
+  } catch (err) {
+    log(`[hwid] report failed (${err.statusCode || err.message}) - continuing without it`)
+  }
+}
+
 // First registry hit that exists on disk and contains SkyrimSE.exe, or null.
 function detectSkyrimPath() {
   if (process.platform !== 'win32') return null
@@ -552,6 +571,8 @@ ipcMain.handle('discord:login', async () => {
     store.set('gameProfileId', masterApiId)
     store.set('gameSession',   token)
     log(`[discord] logged in as ${discordUser.username} (profileId ${masterApiId})`)
+
+    reportHwid(token) // not awaited: login must not block on the ban-system hwid
 
     return { success: true, user: discordUser }
   }
