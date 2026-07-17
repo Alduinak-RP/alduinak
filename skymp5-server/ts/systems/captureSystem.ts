@@ -63,6 +63,7 @@ interface RestraintInfo {
   carried: boolean;
   captorActorId: number; // who applied it: release authority + disconnect cleanup
   offlineCarrierActorId?: number; // who was carrying them when they logged out
+  addedShackle?: boolean; // a pair was moved captor -> captive, remove it on release
 }
 
 interface PendingConsent {
@@ -112,8 +113,10 @@ export class CaptureSystem implements System {
     const s = await Settings.get();
     this.manaclesFormId = toFormId(s.manaclesFormId, DEFAULT_MANACLES);
     // Fail closed: a set-but-unparseable manaclesFormId must not disable the
-    // item requirement, so pin it to a form nobody can hold.
-    if (s.manaclesFormId && this.manaclesFormId === 0) {
+    // item requirement, so pin it to a form nobody can hold. An explicit "0"
+    // or "0x0" is a legitimate disable, not a parse failure.
+    const rawManacles = String(s.manaclesFormId ?? "").trim();
+    if (rawManacles && rawManacles !== "0" && rawManacles !== "0x0" && this.manaclesFormId === 0) {
       this.manaclesFormId = 0xffffffff;
       this.log(`[capture] ERROR: manaclesFormId "${s.manaclesFormId}" is not a valid form id — arrests disabled until fixed`);
     }
@@ -472,7 +475,9 @@ export class CaptureSystem implements System {
     this.restraints.set(targetActorId, info);
     this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, info);
-    this.equipShackles(ctx, targetActorId);
+    if (this.equipShackles(ctx, targetActorId, captorActorId)) {
+      info.addedShackle = true;
+    }
     this.log(`[capture] ${targetActorId.toString(16)} bound by ${captorActorId.toString(16)}`);
   }
 
@@ -523,12 +528,12 @@ export class CaptureSystem implements System {
       this.lastCarryPos.delete(targetActorId);
       this.sendCarryState(ctx, carrier, false);
     }
-    const wasBound = this.restraints.get(targetActorId)?.boundHands === true;
+    const info = this.restraints.get(targetActorId);
     this.restraints.delete(targetActorId);
     this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, { boundHands: false, carried: false, captorActorId: 0 });
-    if (wasBound) {
-      this.removeShackles(ctx, targetActorId);
+    if (info?.boundHands === true) {
+      this.removeShackles(ctx, targetActorId, info.addedShackle === true);
     }
   }
 
@@ -607,13 +612,54 @@ export class CaptureSystem implements System {
     }
   }
 
-  // The manacles item is also worn by the captive: equipped on capture (the
-  // engine's EquipItem adds one if missing), stripped again on release.
-  private equipShackles(ctx: SystemContext, targetActorId: number): void {
+  private countShackles(mp: Mp, actorId: number): number {
+    try {
+      const inv = mp.get(actorId, "inventory");
+      const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries : [];
+      return entries.reduce((n, e) => (e.baseId >>> 0) === this.manaclesFormId ? n + (e.count | 0) : n, 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  // Adjust an actor's cuff count by +-1 via the inventory property.
+  private moveShackle(mp: Mp, actorId: number, delta: number): boolean {
+    try {
+      const inv = mp.get(actorId, "inventory");
+      const entries: any[] = (inv && Array.isArray(inv.entries) ? inv.entries : []).map((e: any) => ({ ...e }));
+      const stack = entries.find((e) => (e.baseId >>> 0) === this.manaclesFormId && !e.worn && !e.wornLeft);
+      if (delta > 0) {
+        if (stack) { stack.count += delta; } else { entries.push({ baseId: this.manaclesFormId, count: delta }); }
+      } else {
+        const any = entries.find((e) => (e.baseId >>> 0) === this.manaclesFormId && e.count > 0);
+        if (!any) { return false; }
+        any.count += delta;
+      }
+      mp.set(actorId, "inventory", { entries: entries.filter((e) => e.count > 0) });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // The captive wears a pair of the manacles item. On the initial capture one
+  // pair is MOVED from the captor so cuffs are conserved, never minted; a
+  // re-apply after relog only re-equips. Returns true when a pair was moved.
+  private equipShackles(ctx: SystemContext, targetActorId: number, captorActorId?: number): boolean {
     if (this.manaclesFormId === 0 || this.manaclesFormId === 0xffffffff) {
-      return;
+      return false;
     }
     const mp = ctx.svr as Mp;
+    let transferred = false;
+    if (captorActorId && this.countShackles(mp, targetActorId) === 0) {
+      if (this.moveShackle(mp, captorActorId, -1)) {
+        this.moveShackle(mp, targetActorId, +1);
+        transferred = true;
+      }
+    }
+    if (this.countShackles(mp, targetActorId) === 0) {
+      return transferred; // nothing to equip and EquipItem must not mint one
+    }
     try {
       const self = { type: "form", desc: mp.getDescFromId(targetActorId) };
       const item = { type: "espm", desc: mp.getDescFromId(this.manaclesFormId) };
@@ -622,9 +668,12 @@ export class CaptureSystem implements System {
     } catch (e) {
       this.log(`[capture] equip shackles failed: ${e}`);
     }
+    return transferred;
   }
 
-  private removeShackles(ctx: SystemContext, targetActorId: number): void {
+  // Unequip always; destroy exactly the one transferred pair (a captive's own
+  // pre-owned cuffs are never touched).
+  private removeShackles(ctx: SystemContext, targetActorId: number, removeOne: boolean): void {
     if (this.manaclesFormId === 0 || this.manaclesFormId === 0xffffffff) {
       return;
     }
@@ -637,16 +686,9 @@ export class CaptureSystem implements System {
     } catch (e) {
       this.log(`[capture] unequip shackles failed: ${e}`);
     }
-    // Strip the cuffs from the bag too so a release leaves no loose pair behind
-    try {
-      const inv = mp.get(targetActorId, "inventory");
-      if (inv && Array.isArray(inv.entries)) {
-        const entries = inv.entries.filter((e: any) => (e.baseId >>> 0) !== this.manaclesFormId);
-        if (entries.length !== inv.entries.length) {
-          mp.set(targetActorId, "inventory", { entries });
-        }
-      }
-    } catch { /* form gone */ }
+    if (removeOne) {
+      this.moveShackle(mp, targetActorId, -1);
+    }
   }
 
   private hasManacles(mp: Mp, actorId: number): boolean {
