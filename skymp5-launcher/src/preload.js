@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // OS folder picker
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 
+  // Skyrim path auto-detection (registry probe) - { path } or { path: null }
+  detectSkyrimPath: () => ipcRenderer.invoke('game:detectPath'),
+
   // Settings tab - graphics (SkyrimPrefs.ini) and server hotkeys (client settings)
   graphicsLoad: ()  => ipcRenderer.invoke('graphics:load'),
   graphicsSave: (g) => ipcRenderer.invoke('graphics:save', g),

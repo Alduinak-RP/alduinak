@@ -19,7 +19,8 @@ document.querySelectorAll('.topnav-link[data-href]').forEach(link => {
 // Settings modal
 const modalOverlay = document.getElementById('modal-settings')
 
-function openModal() { modalOverlay.hidden = false; loadGameSettingsTab() }
+// loadSettings re-runs main's registry auto-detect and refreshes the path fields.
+function openModal() { modalOverlay.hidden = false; loadSettings(); loadGameSettingsTab() }
 function closeModal() { modalOverlay.hidden = true }
 
 document.getElementById('btn-gear').addEventListener('click', openModal)
@@ -135,6 +136,14 @@ async function saveGameSettingsTab() {
 
 // Form fields
 const fieldSkyrimPath   = document.getElementById('setting-skyrim-path')
+const skyrimPathWarning = document.getElementById('skyrim-path-warning')
+
+const DETECT_FAIL_MSG = 'Could not auto-detect Skyrim - set the path manually'
+
+function setPathWarning(msg) {
+  skyrimPathWarning.textContent = msg || ''
+  skyrimPathWarning.hidden = !msg
+}
 
 // Footer server selector
 const footerServerName   = document.getElementById('footer-server-name')
@@ -194,6 +203,8 @@ function updateLockState() {
 async function loadSettings() {
   const s = await window.electronAPI.loadSettings()
   fieldSkyrimPath.value = s.skyrimPath || ''
+  // Empty here means main's registry auto-detect already failed.
+  setPathWarning(s.skyrimPath ? '' : DETECT_FAIL_MSG)
 
   // Footer server selector - dropdown when >1 server, plain text otherwise
   if (s.servers && s.servers.length > 1) {
@@ -473,7 +484,18 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 // Browse folder
 document.getElementById('btn-browse').addEventListener('click', async () => {
   const folder = await window.electronAPI.openFolder()
-  if (folder) fieldSkyrimPath.value = folder
+  if (folder) { fieldSkyrimPath.value = folder; setPathWarning('') }
+})
+
+// Detect Skyrim from the registry (persists on success)
+document.getElementById('btn-detect-path').addEventListener('click', async () => {
+  const r = await window.electronAPI.detectSkyrimPath()
+  if (r && r.path) {
+    fieldSkyrimPath.value = r.path
+    setPathWarning('')
+  } else {
+    setPathWarning(DETECT_FAIL_MSG)
+  }
 })
 
 // MO2 UI

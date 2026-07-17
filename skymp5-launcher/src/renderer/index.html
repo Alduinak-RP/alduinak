@@ -155,9 +155,11 @@
             <div class="setting-path-row">
               <input class="setting-input" id="setting-skyrim-path" type="text"
                      placeholder="C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition" />
+              <button class="btn-browse" id="btn-detect-path">Detect</button>
               <button class="btn-browse" id="btn-browse">Browse…</button>
             </div>
             <p class="setting-hint">Skyrim Install Location - Needs to be a clean install</p>
+            <p class="setting-hint setting-warning" id="skyrim-path-warning" hidden></p>
           </div>
 
           <div class="settings-group" id="isolated-install-group">

@@ -11,7 +11,7 @@ const os     = require('os')
 const crypto = require('crypto')
 const http   = require('http')
 const https  = require('https')
-const { spawn } = require('child_process')
+const { spawn, execFileSync } = require('child_process')
 const Store  = require('electron-store')
 const AdmZip = require('adm-zip')
 const config = require('./config')
@@ -109,6 +109,57 @@ function effectiveGamePath() {
   return store.get('skyrimPath')
 }
 
+// Skyrim path auto-detection
+// Registry keys the store editions write at install time, probed in order.
+const SKYRIM_REGISTRY_PROBES = [
+  { key: 'HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1801825368', value: 'path' },   // Skyrim AE GOG
+  { key: 'HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1711237643', value: 'path' },   // Skyrim SE GOG
+  { key: 'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 489830', value: 'InstallLocation' },  // Steam
+  { key: 'HKLM\\SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Skyrim Special Edition', value: 'installed path' },
+]
+
+// Read a single registry value via reg.exe (argv array, same pattern as mo2.js).
+function regQueryValue(key, value) {
+  try {
+    const out = execFileSync('reg', ['query', key, '/v', value],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true })
+    const m = out.match(/REG_(?:EXPAND_)?SZ\s+(.+)/)
+    return m ? m[1].trim() : null
+  } catch { return null }   // key or value missing
+}
+
+function isValidSkyrimPath(p) {
+  return !!p && fs.existsSync(path.join(p, 'SkyrimSE.exe'))
+}
+
+// First registry hit that exists on disk and contains SkyrimSE.exe, or null.
+function detectSkyrimPath() {
+  if (process.platform !== 'win32') return null
+  for (const probe of SKYRIM_REGISTRY_PROBES) {
+    const p = regQueryValue(probe.key, probe.value)
+    if (isValidSkyrimPath(p)) return p
+  }
+  return null
+}
+
+// When the stored path is empty or invalid, auto-fill it from the registry and persist.
+function ensureSkyrimPath() {
+  const stored = store.get('skyrimPath')
+  if (isValidSkyrimPath(stored)) return stored
+  const detected = detectSkyrimPath()
+  if (detected) {
+    store.set('skyrimPath', detected)
+    log(`[detect] Skyrim path auto-detected: ${detected}`)
+  }
+  return detected
+}
+
+ipcMain.handle('game:detectPath', () => {
+  const p = detectSkyrimPath()
+  if (p) store.set('skyrimPath', p)
+  return { path: p }
+})
+
 // Window
 function createWindow() {
   win = new BrowserWindow({
@@ -134,6 +185,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  ensureSkyrimPath()
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -162,6 +214,10 @@ ipcMain.handle('settings:load', async () => {
       store.set('cachedServers', fetched)
     }
   } catch { /* keep existing cache */ }
+
+  // Auto-fill an empty/invalid Skyrim path from the registry (renderer calls
+  // this at startup and whenever the settings modal opens).
+  ensureSkyrimPath()
 
   const servers = store.get('cachedServers') || []
   // Whitelist only what the renderer reads. Never spread the whole store: it

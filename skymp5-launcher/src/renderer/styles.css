@@ -816,6 +816,8 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.setting-warning { color: #c9a227; }
+
 .btn-install {
   padding: 9px 18px;
   background: transparent;
