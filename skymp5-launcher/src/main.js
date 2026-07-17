@@ -58,7 +58,7 @@ const store = new Store({
   }
 })
 
-mo2.setRootProvider(() => store.get('baseDirPath') || null)
+mo2.setRootProvider(() => store.get('baseDirPath') || DEFAULT_BASE_DIR)
 
 // Default install root for MO2 + the portable game copy when none is stored.
 const DEFAULT_BASE_DIR = 'C:\\Alduinak'
@@ -177,9 +177,8 @@ function ensureSkyrimPath() {
 }
 
 ipcMain.handle('game:detectPath', () => {
-  const p = detectSkyrimPath()
-  if (p) store.set('skyrimPath', p)
-  return { path: p }
+  // Fill-only: the renderer shows the result and Save persists it
+  return { path: detectSkyrimPath() }
 })
 
 // Window
@@ -694,6 +693,18 @@ function pathsOverlap(a, b) {
 }
 
 ipcMain.handle('game:createIsolated', async (_e, baseDirOverride) => {
+  if (installing) {
+    return { success: false, error: 'An install is already running - wait for it to finish.' }
+  }
+  installing = true
+  try {
+    return await createIsolatedImpl(baseDirOverride)
+  } finally {
+    installing = false
+  }
+})
+
+async function createIsolatedImpl(baseDirOverride) {
   const src = store.get('skyrimPath')
   if (!src || !fs.existsSync(path.join(src, 'SkyrimSE.exe'))) {
     return { success: false, error: 'Set a valid Skyrim path first (SkyrimSE.exe not found).' }
@@ -769,7 +780,7 @@ ipcMain.handle('game:createIsolated', async (_e, baseDirOverride) => {
   } catch (err) {
     return { success: false, error: err.message }
   }
-})
+}
 
 // Vanilla root files, by store edition. Only those present get copied.
 // Skyrim.ccc is deliberately NOT copied: no cc* plugins are copied either, and
@@ -1512,7 +1523,16 @@ ipcMain.handle('install:mo2only', async () => {
 // SKSE only: download the edition-matched SKSE and install it into the game root.
 ipcMain.handle('install:skse', async () => {
   if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
-  const gamePath = effectiveGamePath()
+  // With isolation on, SKSE must land in the portable copy, never the original install
+  let gamePath
+  if (store.get('isolatedGame')) {
+    gamePath = isolatedGameDir()
+    if (!isolatedGameReady()) {
+      return { success: false, error: 'Install the game copy first - SKSE belongs in the portable copy, not your original Skyrim.' }
+    }
+  } else {
+    gamePath = effectiveGamePath()
+  }
   if (!gamePath || !fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))) {
     return { success: false, error: 'No game folder found - install the game copy or set a valid Skyrim path first.' }
   }

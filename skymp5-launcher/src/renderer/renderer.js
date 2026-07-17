@@ -598,17 +598,31 @@ function formatInstallProgress({ phase, file, index, total, skipped }) {
   return `${skipped ? '[skip]' : `[${index}/${total}]`} ${file}`
 }
 
-// (Re)take the install channels for the Installation tab; the Play button's
-// own handlers grab them back the same way when it runs an install.
-function listenInstallProgress() {
-  window.electronAPI.removeInstallListeners()
-  window.electronAPI.onInstallProgress(p => installLive(formatInstallProgress(p)))
+// Single owner of the install channels, attached once: progress always feeds
+// the shared pane (plus an optional per-flow mirror) and completion resolves
+// whichever flow started the install. Nothing detaches these, so a second
+// button click can no longer strand a running install's events.
+let installCompleteHandler = null
+let installProgressMirror = null
+window.electronAPI.onInstallProgress(p => {
+  if (installProgressMirror) installProgressMirror(p)
+  installLive(formatInstallProgress(p))
+})
+window.electronAPI.onInstallComplete(d => {
+  const cb = installCompleteHandler
+  installCompleteHandler = null
+  installProgressMirror = null
+  if (cb) cb(d)
+})
+
+function installBusy() {
+  if (installCompleteHandler) { installLog('An install is already running.'); return true }
+  return false
 }
 
 // Install MO2 (standalone)
 btnInstallMo2.addEventListener('click', async () => {
   btnInstallMo2.disabled = true
-  listenInstallProgress()
   installLog('Installing Mod Organizer 2…')
   const r = await window.electronAPI.installMo2Only()
   installLog(r.success ? 'MO2 installed ✓' : `Error: ${r.error}`)
@@ -619,7 +633,6 @@ btnInstallMo2.addEventListener('click', async () => {
 // Install SKSE (standalone)
 btnInstallSkse.addEventListener('click', async () => {
   btnInstallSkse.disabled = true
-  listenInstallProgress()
   installLog('Installing SKSE…')
   const r = await window.electronAPI.installSkse()
   installLog(r.success ? 'SKSE installed ✓' : `Error: ${r.error}`)
@@ -628,9 +641,9 @@ btnInstallSkse.addEventListener('click', async () => {
 
 // Install / Update Client Files
 btnInstallClient.addEventListener('click', () => {
+  if (installBusy()) return
   btnInstallClient.disabled = true
-  listenInstallProgress()
-  window.electronAPI.onInstallComplete(({ success, error, upToDate }) => {
+  installCompleteHandler = (({ success, error, upToDate }) => {
     btnInstallClient.disabled = false
     if (!success) {
       installLog(`Error: ${error}`)
@@ -653,12 +666,12 @@ function startModpackInstall() {
     window.electronAPI.cancelInstall()
     return
   }
+  if (installBusy()) return
   mo2InstallRunning = true
   btnFullInstall.textContent = 'Cancel Install'
   installLog('Starting full install…')
-  listenInstallProgress()
 
-  window.electronAPI.onInstallComplete(({ success, error, upToDate, warning, modsTotal }) => {
+  installCompleteHandler = (({ success, error, upToDate, warning, modsTotal }) => {
     mo2InstallRunning = false
     btnFullInstall.textContent = 'Full Install'
     // Keep the Play button honest right away instead of waiting for the 10s
@@ -765,12 +778,14 @@ function clearWarning() {
 // mirroring progress onto the Play button / warning strip.
 function runInstallForPlay() {
   return new Promise(resolve => {
-    window.electronAPI.removeInstallListeners()
-    window.electronAPI.onInstallProgress(({ phase, file }) => {
+    if (installCompleteHandler) {
+      return resolve({ success: false, error: 'An install is already running - wait for it to finish.' })
+    }
+    installProgressMirror = ({ phase, file }) => {
       btnConnect.textContent = phase === 'download' ? '\u2913 DOWNLOADING\u2026' : '\u2699 INSTALLING\u2026'
       showWarning(file)
-    })
-    window.electronAPI.onInstallComplete(result => resolve(result))
+    }
+    installCompleteHandler = result => resolve(result)
     window.electronAPI.startInstall('auto')
   })
 }
