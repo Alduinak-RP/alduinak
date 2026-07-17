@@ -21,6 +21,8 @@ import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
 import { CaptureSystem } from "./systems/captureSystem";
+import { TradeSystem } from "./systems/tradeSystem";
+import { SearchSystem } from "./systems/searchSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { EventEmitter } from "events";
@@ -202,6 +204,8 @@ const main = async () => {
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
     new CaptureSystem(log),
+    new TradeSystem(log),
+    new SearchSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );
