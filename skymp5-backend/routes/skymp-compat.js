@@ -251,7 +251,9 @@ router.post('/me/play/:serverKey', (req, res) => {
 // Called by the launcher right after login; missing/invalid hwid is a soft no-op.
 
 router.post('/me/hwid', (req, res) => {
-  const token = req.headers['authorization'] || (req.body && req.body.token)
+  // The launcher sends "Bearer <token>"; the game client convention is the raw token
+  const rawAuth = req.headers['authorization'] || (req.body && req.body.token) || ''
+  const token = rawAuth.startsWith('Bearer ') ? rawAuth.slice(7) : rawAuth
   if (!token) return res.status(401).json({ error: 'Missing authorization header.' })
 
   const { lookupSession } = require('./master-api')
