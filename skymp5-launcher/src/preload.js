@@ -10,8 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadSettings: ()     => ipcRenderer.invoke('settings:load'),
   saveSettings: (data) => ipcRenderer.invoke('settings:save', data),
 
-  // OS folder picker
-  openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  // OS folder picker (optional dialog title)
+  openFolder: (title) => ipcRenderer.invoke('dialog:openFolder', title),
 
   // Skyrim path auto-detection (registry probe) - { path } or { path: null }
   detectSkyrimPath: () => ipcRenderer.invoke('game:detectPath'),
@@ -72,9 +72,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   nexusSsoAvailable: () => ipcRenderer.invoke('nexus:ssoAvailable'),
   nexusSsoLogin:     () => ipcRenderer.invoke('nexus:ssoLogin'),
 
-  // Isolated game copy
+  // Isolated game copy (baseDir optional; falls back to the stored/default install location)
   isolatedStatus: () => ipcRenderer.invoke('game:isolatedStatus'),
-  createIsolated: () => ipcRenderer.invoke('game:createIsolated'),
+  createIsolated: (baseDir) => ipcRenderer.invoke('game:createIsolated', baseDir),
   onIsolatedProgress: (cb) => ipcRenderer.on('isolated:progress', (_e, msg) => cb(msg)),
   removeIsolatedListeners: () => ipcRenderer.removeAllListeners('isolated:progress'),
 

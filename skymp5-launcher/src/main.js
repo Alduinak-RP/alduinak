@@ -60,6 +60,9 @@ const store = new Store({
 
 mo2.setRootProvider(() => store.get('baseDirPath') || null)
 
+// Default install root for MO2 + the portable game copy when none is stored.
+const DEFAULT_BASE_DIR = 'C:\\Alduinak'
+
 let win = null
 
 function send(channel, ...args) {
@@ -225,6 +228,7 @@ ipcMain.handle('settings:load', async () => {
   // the renderer must never receive.
   return {
     skyrimPath:        store.get('skyrimPath'),
+    baseDirPath:       store.get('baseDirPath') || DEFAULT_BASE_DIR,
     activeServerIndex: store.get('activeServerIndex'),
     mo2Enabled:        store.get('mo2Enabled'),
     isolatedGame:      store.get('isolatedGame'),
@@ -234,7 +238,7 @@ ipcMain.handle('settings:load', async () => {
   }
 })
 ipcMain.handle('settings:save', (_e, data) => {
-  const allowed = ['skyrimPath', 'activeServerIndex', 'mo2Enabled', 'isolatedGame']
+  const allowed = ['skyrimPath', 'baseDirPath', 'activeServerIndex', 'mo2Enabled', 'isolatedGame']
   const clean = {}
   for (const k of allowed) if (k in data) clean[k] = data[k]
   store.set(clean)
@@ -422,10 +426,10 @@ function applyForcedServerDefaults(gamePath) {
 }
 
 // Folder picker
-ipcMain.handle('dialog:openFolder', async () => {
+ipcMain.handle('dialog:openFolder', async (_e, title) => {
   const result = await dialog.showOpenDialog(win, {
-    properties: ['openDirectory'],
-    title: 'Select Skyrim Installation Folder',
+    properties: ['openDirectory', 'createDirectory'],
+    title: typeof title === 'string' && title ? title : 'Select Skyrim Installation Folder',
   })
   return result.canceled ? null : result.filePaths[0]
 })
@@ -668,7 +672,7 @@ function pathsOverlap(a, b) {
   return na.startsWith(nb) || nb.startsWith(na)
 }
 
-ipcMain.handle('game:createIsolated', async () => {
+ipcMain.handle('game:createIsolated', async (_e, baseDirOverride) => {
   const src = store.get('skyrimPath')
   if (!src || !fs.existsSync(path.join(src, 'SkyrimSE.exe'))) {
     return { success: false, error: 'Set a valid Skyrim path first (SkyrimSE.exe not found).' }
@@ -680,19 +684,13 @@ ipcMain.handle('game:createIsolated', async () => {
 
   // No clean-install check needed: copyGameDir copies only vanilla files, so a modded source is fine.
 
-  // Ask where to install the modlist.
-  const picked = await dialog.showOpenDialog(win, {
-    title:       'Choose where to install Alduinak (~16 GB: MO2 + game copy)',
-    buttonLabel: 'Install here',
-    properties:  ['openDirectory', 'createDirectory'],
-  })
-  if (picked.canceled || !picked.filePaths[0]) {
-    return { success: false, canceled: true, error: 'Installation cancelled.' }
-  }
+  // Install target: the Install Location field, else the stored/default base dir.
+  let base = (typeof baseDirOverride === 'string' && baseDirOverride.trim()) ||
+             store.get('baseDirPath') || DEFAULT_BASE_DIR
 
-  // Portable instance fix
-  let base = picked.filePaths[0]
-  if (!fs.existsSync(path.join(base, 'alduinak-instance.txt'))) {
+  // Portable instance fix: nest a generic folder under \Alduinak
+  if (path.basename(base).toLowerCase() !== 'alduinak' &&
+      !fs.existsSync(path.join(base, 'alduinak-instance.txt'))) {
     base = path.join(base, 'Alduinak')
   }
 

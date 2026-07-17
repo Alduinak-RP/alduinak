@@ -136,6 +136,7 @@ async function saveGameSettingsTab() {
 
 // Form fields
 const fieldSkyrimPath   = document.getElementById('setting-skyrim-path')
+const fieldBaseDir      = document.getElementById('setting-base-dir')
 const skyrimPathWarning = document.getElementById('skyrim-path-warning')
 
 const DETECT_FAIL_MSG = 'Could not auto-detect Skyrim - set the path manually'
@@ -205,6 +206,7 @@ async function loadSettings() {
   fieldSkyrimPath.value = s.skyrimPath || ''
   // Empty here means main's registry auto-detect already failed.
   setPathWarning(s.skyrimPath ? '' : DETECT_FAIL_MSG)
+  fieldBaseDir.value = s.baseDirPath || ''
 
   // Footer server selector - dropdown when >1 server, plain text otherwise
   if (s.servers && s.servers.length > 1) {
@@ -446,7 +448,7 @@ btnCreateIsolated.addEventListener('click', async () => {
     installStatusMo2.textContent = msg
   })
 
-  const result = await window.electronAPI.createIsolated()
+  const result = await window.electronAPI.createIsolated(fieldBaseDir.value.trim())
   window.electronAPI.removeIsolatedListeners()
 
   btnCreateIsolated.disabled = false
@@ -456,6 +458,8 @@ btnCreateIsolated.addEventListener('click', async () => {
     installStatusMo2.textContent = `Error: ${result.error}`
     return
   }
+  // The base may have been nested under \Alduinak - reflect what was used.
+  if (result.dir) fieldBaseDir.value = result.dir
   fieldIsolated.checked = true
   await window.electronAPI.saveSettings({ isolatedGame: true })
   refreshIsolatedStatus()
@@ -468,6 +472,7 @@ fieldIsolated.addEventListener('change', refreshIsolatedStatus)
 document.getElementById('btn-save').addEventListener('click', async () => {
   const data = {
     skyrimPath:   fieldSkyrimPath.value.trim(),
+    baseDirPath:  fieldBaseDir.value.trim(),
     mo2Enabled:   fieldMo2Enabled.checked,
     isolatedGame: fieldIsolated.checked,
   }
@@ -485,6 +490,12 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 document.getElementById('btn-browse').addEventListener('click', async () => {
   const folder = await window.electronAPI.openFolder()
   if (folder) { fieldSkyrimPath.value = folder; setPathWarning('') }
+})
+
+// Browse install location (dialog fallback for the Install Location field)
+document.getElementById('btn-browse-base').addEventListener('click', async () => {
+  const folder = await window.electronAPI.openFolder('Choose where to install Alduinak (~16 GB: MO2 + game copy)')
+  if (folder) fieldBaseDir.value = folder
 })
 
 // Detect Skyrim from the registry (persists on success)
