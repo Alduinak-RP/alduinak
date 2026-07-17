@@ -18,35 +18,21 @@ interface PlayerAction {
   tmpl: string; // '<n>' = target's name
 }
 
+// Kept intentionally small: the character interaction menu (Trade is a
+// dedicated button above these).
 const ACTIONS: PlayerAction[] = [
-  { id: 'appoint_steward', label: 'Appoint: Steward', group: 'Hold', tmpl: '/appoint <n> steward' },
-  { id: 'appoint_captain', label: 'Appoint: Captain', group: 'Hold', tmpl: '/appoint <n> captain' },
-  { id: 'appoint_courtwizard', label: 'Appoint: Court Wizard', group: 'Hold', tmpl: '/appoint <n> courtwizard' },
-  { id: 'appoint_thane', label: 'Appoint: Thane', group: 'Hold', tmpl: '/appoint <n> thane' },
-  { id: 'appoint_housecarl', label: 'Appoint: Housecarl', group: 'Hold', tmpl: '/appoint <n> housecarl' },
-  { id: 'appoint_elder', label: 'Appoint: Village Elder', group: 'Hold', tmpl: '/appoint <n> villageelder' },
-  { id: 'appoint_guard', label: 'Appoint: Guard', group: 'Hold', tmpl: '/appoint <n> guard' },
-  { id: 'appoint_lord', label: 'Appoint: Lord/Lady', group: 'Hold', tmpl: '/appoint <n> lord' },
-  { id: 'appoint_citizen', label: 'Appoint: Citizen', group: 'Hold', tmpl: '/appoint <n> citizen' },
-  { id: 'dismiss', label: 'Dismiss from hold', group: 'Hold', tmpl: '/dismiss <n>' },
-  { id: 'arrest', label: 'Send to jail', group: 'Justice', tmpl: '/arrest <n>' },
-  { id: 'sentence_release', label: 'Sentence: release', group: 'Justice', tmpl: '/sentence <n> release' },
-  { id: 'sentence_banish', label: 'Sentence: banish', group: 'Justice', tmpl: '/sentence <n> banish' },
-  { id: 'capture', label: 'Request arrest', group: 'Restraint', tmpl: '' },
-  { id: 'carry', label: 'Pick up', group: 'Restraint', tmpl: '' },
-  { id: 'putdown', label: 'Put down', group: 'Restraint', tmpl: '' },
-  { id: 'release', label: 'Release', group: 'Restraint', tmpl: '' },
-  { id: 'down', label: 'Down', group: 'Combat', tmpl: '/down <n>' },
-  { id: 'rise', label: 'Rise', group: 'Combat', tmpl: '/rise <n>' },
-  { id: 'bounty', label: 'Check bounty', group: 'Info', tmpl: '/bounty check <n>' },
-  { id: 'slots', label: 'Faction slots', group: 'Info', tmpl: '/faction slots <n>' },
-  { id: 'sober', label: 'Sober', group: 'Staff', tmpl: '/sober <n>' },
-  { id: 'feed', label: 'Feed', group: 'Staff', tmpl: '/feed <n>' },
-  { id: 'nvfl', label: 'Clear NVFL', group: 'Staff', tmpl: '/nvfl clear <n>' },
+  { id: 'introduce', label: 'Introduce', group: '', tmpl: '' },
+  { id: 'search', label: 'Search', group: '', tmpl: '' },
+  { id: 'capture', label: 'Restrain', group: '', tmpl: '' },
+  { id: 'carry', label: 'Carry', group: '', tmpl: '' },
+  { id: 'putdown', label: 'Put down', group: '', tmpl: '' },
+  { id: 'release', label: 'Release', group: '', tmpl: '' },
 ];
 
-// Captivity actions go to the gamemode's CaptureSystem as custom packets (by server form id), not chat commands.
+// Every action goes to the server systems as a custom packet (by server form id).
 const PACKET_ACTIONS: Record<string, string> = {
+  introduce: 'introduceRequest',
+  search: 'searchRequest',
   capture: 'captureRequest',
   carry: 'carryRequest',
   putdown: 'putdownRequest',
@@ -104,6 +90,10 @@ export class PlayerActionService extends ClientListener {
         return;
       }
       this.playerTarget = localIdToRemoteId(ref.getFormID());
+      // Names stay hidden until introduced (ff_knownIds owner prop)
+      if (!this.knowsTarget(this.playerTarget)) {
+        targetName = "Stranger";
+      }
       logTrace(this, `Opening player-action menu for`, targetName);
       this.openMenu();
     } else if (!actor) {
@@ -153,6 +143,20 @@ export class PlayerActionService extends ClientListener {
   private sendCommand(text: string): void {
     logTrace(this, `Player-action command:`, text);
     sendCustomPacket(this.controller, { type: "cef::chat:send", data: text });
+  }
+
+  // True when the local player's ff_knownIds list contains the remote actor id.
+  // A missing list (gamemode without the introduce feature) shows real names.
+  private knowsTarget(remoteId: number): boolean {
+    if (this.sp.storage["ownerModelSet"] !== true) {
+      return true;
+    }
+    const owner = this.sp.storage["ownerModel"] as Record<string, unknown> | undefined;
+    const known = owner ? owner["ff_knownIds"] : undefined;
+    if (!Array.isArray(known)) {
+      return true;
+    }
+    return known.includes(remoteId);
   }
 
   private openMenu(): void {

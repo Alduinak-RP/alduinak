@@ -565,7 +565,8 @@ export class FormView {
         const textYPos = Math.round((1 - headScreenPos[1]) * resolution.height);
 
         if (!this.textNameId && headScreenPos[2] > 0) {
-          this.textNameId = createText(textXPos, textYPos, refr.getDisplayName(), [1, 1, 1, 0.8]);
+          this.createdTagName = this.tagName(refr);
+          this.textNameId = createText(textXPos, textYPos, this.createdTagName, [1, 1, 1, 0.8]);
           setTextSize(this.textNameId, 0.5);
           // Local (ffxxxxxx) actor id on a second line under the name
           this.textActorIdId = createText(
@@ -584,6 +585,10 @@ export class FormView {
           if (deleteNickname) {
             this.removeNickname();
           }
+          // Rename (/mask) or a fresh introduction: recreate with the new string
+          if (this.textNameId && this.tagName(refr) !== this.createdTagName) {
+            this.removeNickname();
+          }
           if (this.textNameId) {
             setTextPos(this.textNameId, textXPos, textYPos);
           }
@@ -597,6 +602,22 @@ export class FormView {
     } else {
       this.removeNickname();
     }
+  }
+
+  // Tag string for this actor: real name only once they introduced themselves
+  // to the local player (ff_knownIds owner prop); otherwise "Stranger". A
+  // missing list (gamemode without the feature) keeps real names for everyone.
+  private tagName(refr: ObjectReference): string {
+    const name = refr.getDisplayName();
+    if (storage["ownerModelSet"] !== true) {
+      return name;
+    }
+    const owner = storage["ownerModel"] as Record<string, unknown> | undefined;
+    const known = owner ? owner["ff_knownIds"] : undefined;
+    if (!Array.isArray(known)) {
+      return name;
+    }
+    return known.includes(this.getRemoteRefrId()) ? name : "Stranger";
   }
 
   private isSweetHidePerson(refr: ObjectReference): boolean {
@@ -708,6 +729,7 @@ export class FormView {
   private localImmortal = false;
   private textNameId: number | undefined = undefined;
   private textActorIdId: number | undefined = undefined;
+  private createdTagName = "";
 
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
