@@ -710,7 +710,7 @@ function updatePlayButton() {
   if (!isoReady) {
     btnConnect.disabled    = false
     btnConnect.textContent = '\u2699 INSTALL'
-    btnConnect.title       = 'Set up your Alduinak game copy in Settings.'
+    btnConnect.title       = 'Installs Alduinak automatically, then launches.'
     return
   }
 
@@ -778,27 +778,28 @@ function runInstallForPlay() {
 btnConnect.addEventListener('click', async () => {
   if (gameRunning || playBusy) return
 
-  // No game copy yet: the button reads INSTALL and leads to Settings,
-  // where the isolated-copy setup lives.
-  if (!isoReady) {
+  // settings:load re-runs the registry auto-detect for an empty/invalid path,
+  // so an empty result here means Skyrim really could not be found.
+  const s = await window.electronAPI.loadSettings()
+  if (!s.skyrimPath) {
+    showWarning('Could not auto-detect Skyrim - set the path manually in Settings.')
     openModal()
     return
   }
 
-  // Launch prerequisites. When an update is pending they don't block the
-  // update itself - the files still refresh, and the warning explains what
-  // is missing before the game can start.
+  // Launch prerequisites. A pending update or first-run install still runs -
+  // the files refresh, and the warning explains what is missing before the
+  // game can start.
   const blockers = []
   if (discordUser && !serverAllowed) {
     blockers.push(serverLocked
       ? 'Server is currently locked - you are not on the allow list.'
       : 'You are not on the server whitelist.')
   }
-  const s = await window.electronAPI.loadSettings()
-  if (!s.skyrimPath) blockers.push('Set Skyrim path in Settings first.')
-  if (!discordUser)  blockers.push('Login with Discord first - use the button in the toolbar.')
+  if (!discordUser) blockers.push('Login with Discord first - use the button in the toolbar.')
 
-  if (blockers.length > 0 && !updateAvailable) {
+  const needsGameCopy = !isoReady
+  if (blockers.length > 0 && !updateAvailable && !needsGameCopy) {
     showWarning(blockers[0])
     return
   }
@@ -808,9 +809,29 @@ btnConnect.addEventListener('click', async () => {
   clearWarning()
 
   try {
+    // 0. First run: create the game copy + MO2 at the default/current install
+    // location automatically instead of bouncing the player into Settings.
+    if (needsGameCopy) {
+      btnConnect.textContent = '\u2699 INSTALLING\u2026'
+      window.electronAPI.removeIsolatedListeners()
+      window.electronAPI.onIsolatedProgress(msg => showWarning(msg))
+      const created = await window.electronAPI.createIsolated()
+      window.electronAPI.removeIsolatedListeners()
+      if (!created.success) {
+        showWarning(created.error || 'Install failed.')
+        return
+      }
+      fieldIsolated.checked = true
+      await window.electronAPI.saveSettings({ isolatedGame: true })
+      refreshIsolatedStatus()
+      isoReady = true
+      clearWarning()
+    }
+
     // 1. Make sure client files are present and current (fast no-op when up
-    // to date; a pending update runs the full install pipeline here).
-    btnConnect.textContent = updateAvailable ? '\u2913 UPDATING\u2026' : '\u2699 CHECKING FILES\u2026'
+    // to date; a pending update or fresh install runs the full pipeline here).
+    btnConnect.textContent = needsGameCopy ? '\u2699 INSTALLING\u2026'
+      : (updateAvailable ? '\u2913 UPDATING\u2026' : '\u2699 CHECKING FILES\u2026')
     const install = await runInstallForPlay()
     if (!install.success) {
       showWarning(install.error || 'Update failed.')
