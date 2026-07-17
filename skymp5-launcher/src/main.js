@@ -1182,7 +1182,7 @@ ipcMain.handle('launch:skse', async () => {
 ipcMain.handle('launch:viaMO2', async () => {
   const skyrimPath = effectiveGamePath()
   if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
-  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - run Full Install first.' }
+  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - use Install MO2 first.' }
   const prep = await prepareForLaunch(skyrimPath, true)
   if (!prep.success) return prep
   try { mo2.launchGame(); return { success: true } }
@@ -1228,7 +1228,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   const missingFiles = REQUIRED_FILES.filter(f => !fs.existsSync(path.join(skyrimPath, f)))
   if (missingFiles.length > 0) {
     const names = missingFiles.map(f => path.basename(f)).join(', ')
-    const hint  = viaMO2 ? 'run Full Install in Settings' : 'run Install'
+    const hint  = viaMO2 ? 'run Install Modlist in Settings' : 'run Install'
     problems.push(`Client files missing (${names}); ${hint} first.`)
   }
 
@@ -1258,7 +1258,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
 
   // Fallback if install fails
   if (viaMO2 && store.get('modpackState') === 'failed') {
-    problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run Full Install to complete it first.')
+    problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run Install Modlist to complete it first.')
   }
 
   // Fallback for engine fixes failure (like with AV software)
@@ -1321,7 +1321,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
         return {
           success: false,
           error: `Missing required plugins: ${missing.join(', ')}. ` +
-                 `Run Full Install in Settings first.`,
+                 `Run Install Modlist in Settings first.`,
         }
       }
       loadOrderFixed = true
@@ -1368,7 +1368,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
         if (check.filesOk === false) {
           return { success: false, error: 'Your client files are out of date. Press the button again to update, then launch.' }
         }
-        return { success: false, error: 'Your plugin load order does not match the server. Run Full Install in Settings.' }
+        return { success: false, error: 'Your plugin load order does not match the server. Run Install Modlist in Settings.' }
       }
       log('[launch] launch-check passed')
     } catch (err) {
@@ -1479,6 +1479,8 @@ ipcMain.on('install:start', (_e, mode) => {
     fn = runDirectInstall()
   } else if (mode === 'mo2') {
     fn = runMO2Install()
+  } else if (mode === 'modlist') {
+    fn = runMO2Install({ modlistOnly: true })
   } else {
     // Auto mode (used by the Play button) - delegate based on mo2Enabled setting
     fn = store.get('mo2Enabled') ? runMO2Install() : runDirectInstall()
@@ -1757,7 +1759,8 @@ async function installSkseIntoRoot(skyrimPath) {
   mo2.installSkse(path.join(mo2.getDownloadsDir(), name), skyrimPath)
 }
 
-async function runMO2Install() {
+async function runMO2Install(opts = {}) {
+  const modlistOnly = opts.modlistOnly === true
   _downloadListOpened = false
   const fail = (msg) => {
     log('[mo2-install] ABORT:', msg)
@@ -1796,9 +1799,11 @@ async function runMO2Install() {
     seedProfilePrefs(store.get('skyrimPath') || skyrimPath)
     applyForcedServerDefaults(skyrimPath)
 
-    // 2. SkyMP client files into the real Data/
-    const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
-    if (!core.success) return fail(core.error)
+    // 2. SkyMP client files into the real Data/ (skipped by Install Modlist)
+    if (!modlistOnly) {
+      const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
+      if (!core.success) return fail(core.error)
+    }
 
     // 3. Mods from the compiled install manifest
     let manifest

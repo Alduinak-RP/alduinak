@@ -430,7 +430,7 @@ async function refreshIsolatedStatus() {
   btnCreateIsolated.hidden = !fieldIsolated.checked
   if (!st.ready) {
     isolatedDot.className    = 'vortex-status-dot'
-    isolatedText.textContent = 'Game copy not installed yet - use Install Game Copy or Full Install'
+    isolatedText.textContent = 'Game copy not installed yet - use Install Game Copy'
   } else if (!fieldIsolated.checked) {
     isolatedDot.className    = 'vortex-status-dot dot-warn'
     isolatedText.textContent = 'Alduinak install exists - playing from the original Skyrim'
@@ -524,7 +524,7 @@ async function refreshMo2Status() {
 
   if (!status.installed) {
     mo2StatusDot.className    = 'vortex-status-dot'
-    mo2StatusText.textContent = 'MO2 not installed yet - use Install MO2 or Full Install'
+    mo2StatusText.textContent = 'MO2 not installed yet - use Install MO2'
   } else if (!enabled) {
     mo2StatusDot.className    = 'vortex-status-dot dot-warn'
     mo2StatusText.textContent = `MO2 ${status.version} ready (${status.modCount} mods) - launching without it`
@@ -669,11 +669,11 @@ function startModpackInstall() {
   if (installBusy()) return
   mo2InstallRunning = true
   btnFullInstall.textContent = 'Cancel Install'
-  installLog('Starting full install…')
+  installLog('Installing modlist…')
 
   installCompleteHandler = (({ success, error, upToDate, warning, modsTotal }) => {
     mo2InstallRunning = false
-    btnFullInstall.textContent = 'Full Install'
+    btnFullInstall.textContent = 'Install Modlist'
     // Keep the Play button honest right away instead of waiting for the 10s
     // poll - otherwise a stale UPDATE label eats the player's next click.
     refreshPlayState()
@@ -686,12 +686,11 @@ function startModpackInstall() {
       refreshMo2Status()
       return
     }
-    const files = upToDate ? 'client files up to date' : 'client files installed'
-    installLog(`Modpack ready ✓ - ${modsTotal ?? 0} mods, ${files}`)
+    installLog(upToDate ? `Modlist up to date ✓ - ${modsTotal ?? 0} mods` : `Modlist ready ✓ - ${modsTotal ?? 0} mods`)
     refreshMo2Status()
   })
 
-  window.electronAPI.startInstall('mo2')
+  window.electronAPI.startInstall('modlist')
 }
 btnFullInstall.addEventListener('click', startModpackInstall)
 
