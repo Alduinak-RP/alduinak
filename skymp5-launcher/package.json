@@ -32,6 +32,7 @@
     "files": [
       "src/**/*",
       "assets/**/*",
+      "!assets/7zip/**",
       "package.json"
     ],
     "win": {
@@ -68,6 +69,12 @@
     },
     "asarUnpack": [
       "node_modules/7zip-bin/**"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/7zip",
+        "to": "7zip"
+      }
     ]
   }
 }

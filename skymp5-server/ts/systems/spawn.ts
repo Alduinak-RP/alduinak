@@ -9,7 +9,8 @@ function randomInteger(min: number, max: number) {
   return Math.floor(rand);
 }
 
-const MAX_CHARACTERS = 3;
+// Slots per player; override with the "characterSelectMaxCharacters" server setting (1-10)
+const DEFAULT_MAX_CHARACTERS = 3;
 
 // characterSelectMenuRequest guards: rapid repeats are ignored, and a request right after actor assign is treated as a stale client menu event
 const REQUEST_COOLDOWN_MS = 15 * 1000;
@@ -18,7 +19,8 @@ const ASSIGN_GRACE_MS = 10 * 1000;
 // Logout grace: the body stays in the world this long after disconnect/menu quit/character switch, so combat logging leaves a killable body; re-selecting cancels it
 const LOGOUT_GRACE_MS = 5 * 60 * 1000;
 
-// Character-select protocol (gated by the "characterSelect" server setting).
+// Character-select protocol (gated by the "characterSelect" server setting;
+// slot count via "characterSelectMaxCharacters", 1-10, default 3).
 // When enabled the server no longer auto-spawns on connect; it sends the player
 // their character slots and waits for a selection (matches the client's
 // CharacterSelectService). Flag off (default) keeps the original
@@ -32,6 +34,7 @@ export class Spawn implements System {
   constructor(private log: Log) { }
 
   private characterSelect = false;
+  private maxCharacters = DEFAULT_MAX_CHARACTERS;
   private settingsObject!: Settings;
   // userId -> auth context awaiting a character selection
   private pending = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
@@ -47,6 +50,9 @@ export class Spawn implements System {
     this.settingsObject = await Settings.get();
     this.characterSelect = !!(this.settingsObject.allSettings &&
       (this.settingsObject.allSettings as Record<string, unknown>)["characterSelect"]);
+    const rawMax = Number(this.settingsObject.allSettings &&
+      (this.settingsObject.allSettings as Record<string, unknown>)["characterSelectMaxCharacters"]);
+    if (Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= 10) this.maxCharacters = rawMax;
 
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
       if (this.characterSelect) {
@@ -171,14 +177,14 @@ export class Spawn implements System {
 
   private slotMap(ctx: SystemContext, profileId: number): (number | undefined)[] {
     const mp = ctx.svr as unknown as Mp;
-    const slots: (number | undefined)[] = new Array(MAX_CHARACTERS).fill(undefined);
+    const slots: (number | undefined)[] = new Array(this.maxCharacters).fill(undefined);
     const unassigned: number[] = [];
     for (const a of ctx.svr.getActorsByProfileId(profileId)) {
       // Crash handle for deleting characters
       let s: unknown;
       try { s = mp.get(a, "private.charSlot"); }
       catch { continue; }
-      if (Number.isInteger(s) && (s as number) >= 0 && (s as number) < MAX_CHARACTERS && slots[s as number] === undefined) {
+      if (Number.isInteger(s) && (s as number) >= 0 && (s as number) < this.maxCharacters && slots[s as number] === undefined) {
         slots[s as number] = a;
       } else {
         unassigned.push(a);
@@ -205,13 +211,13 @@ export class Spawn implements System {
         ? { name: this.characterName(ctx, actorId) || `Character ${i + 1}`, dead: this.isPermaDead(mp, actorId) }
         : null);
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
-      customPacketType: "characterSelectMenu", maxCharacters: MAX_CHARACTERS, characters,
+      customPacketType: "characterSelectMenu", maxCharacters: this.maxCharacters, characters,
     }));
   }
 
   private onSelectCharacter(ctx: SystemContext, userId: number, slot: number): void {
     const auth = this.pending.get(userId);
-    if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= MAX_CHARACTERS) return;
+    if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= this.maxCharacters) return;
 
     const mp = ctx.svr as unknown as Mp;
     const slots = this.slotMap(ctx, auth.profileId);
@@ -264,7 +270,7 @@ export class Spawn implements System {
 
   private onDeleteCharacter(ctx: SystemContext, userId: number, slot: number): void {
     const auth = this.pending.get(userId);
-    if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= MAX_CHARACTERS) return;
+    if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= this.maxCharacters) return;
 
     const actorId = this.slotMap(ctx, auth.profileId)[slot];
     if (actorId !== undefined) {

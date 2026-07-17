@@ -119,7 +119,7 @@ class Builder {
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
     const deployDir = path.join(config.buildDir, 'dist', 'server')
-    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem'])
+    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'README.md'])
     for (const extra of (process.env.SKYRP_SERVER_KEEP || '').split(',')) {
       const n = extra.trim(); if (n) keep.add(n)
     }

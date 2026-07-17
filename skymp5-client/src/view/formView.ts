@@ -96,6 +96,8 @@ export class FormView {
             const refr = ObjectReference.from(Game.getFormEx(this.refrId));
             refr?.getBaseObject()?.setName(model.appearance.name);
             refr?.setDisplayName(model.appearance.name, true);
+            // Recreate the floating tag so watchers see the new name (/mask)
+            this.removeNickname();
             //printConsole("Appearance updated, changing name inplace");
           } else {
             // Force re-apply appearance on the next getAppearanceBasedBase call
@@ -565,6 +567,14 @@ export class FormView {
         if (!this.textNameId && headScreenPos[2] > 0) {
           this.textNameId = createText(textXPos, textYPos, refr.getDisplayName(), [1, 1, 1, 0.8]);
           setTextSize(this.textNameId, 0.5);
+          // Local (ffxxxxxx) actor id on a second line under the name
+          this.textActorIdId = createText(
+            textXPos,
+            textYPos + FormView.actorIdLineOffset,
+            this.refrId.toString(16).toUpperCase().padStart(8, "0"),
+            [1, 1, 1, 0.6]
+          );
+          setTextSize(this.textActorIdId, 0.4);
           SpApiInteractor.getControllerInstance().emitter.emit("nicknameCreate", {
             remoteRefrId: this.getRemoteRefrId(),
             textId: this.textNameId
@@ -576,6 +586,9 @@ export class FormView {
           }
           if (this.textNameId) {
             setTextPos(this.textNameId, textXPos, textYPos);
+          }
+          if (this.textActorIdId) {
+            setTextPos(this.textActorIdId, textXPos, textYPos + FormView.actorIdLineOffset);
           }
         }
       } else {
@@ -603,6 +616,10 @@ export class FormView {
       });
       destroyText(this.textNameId);
       this.textNameId = undefined;
+    }
+    if (this.textActorIdId) {
+      destroyText(this.textActorIdId);
+      this.textActorIdId = undefined;
     }
   }
 
@@ -690,7 +707,10 @@ export class FormView {
   private state = {};
   private localImmortal = false;
   private textNameId: number | undefined = undefined;
+  private textActorIdId: number | undefined = undefined;
 
+  // Screen-space pixels between the name line and the actor id line
+  private static readonly actorIdLineOffset = 18;
 
   public static isDisplayingNicknames: boolean = true;
 }

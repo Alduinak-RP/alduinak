@@ -113,7 +113,7 @@ public:
   LocationalData spawnPoint = DefaultSpawnPoint();
 
   // Bleedout timer
-  float spawnDelay = 60.0f;
+  float spawnDelay = 15.0f;
 
   std::vector<FormDesc> templateChain;
 

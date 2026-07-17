@@ -39,10 +39,12 @@ module.exports = {
   // actual Windows service. Order is the start order (stop order is reversed).
   // Keep this list in sync with SERVICES in src/renderer/renderer.js (the
   // renderer has its own copy of key/label and would show a stale set if they drift).
+  // Renamed services: migrate the live box by re-running build/dist/server/install-services.bat
+  // legacyNames are pre-rename service names the manager falls back to until then.
   services: [
-    { key: 'nginx',   name: 'SkyrpNginx',      label: 'Nginx'    },
-    { key: 'backend', name: 'SkyrpBackend',    label: 'Backend'  },
-    { key: 'game',    name: 'SkyrpGameServer', label: 'Game'     },
+    { key: 'nginx',   name: 'SkyrpNginx',      legacyNames: ['SkyMPNginx'],      label: 'Nginx'    },
+    { key: 'backend', name: 'SkyrpBackend',    legacyNames: ['SkyRP-Backend'], label: 'Backend'  },
+    { key: 'game',    name: 'SkyrpGameServer', legacyNames: [],               label: 'Game'     },
   ],
 
   // Reference MO2 install used to compile the manifest (the Modlist tab).
@@ -52,6 +54,7 @@ module.exports = {
 
   paths: {
     launcher:     path.join(repoRoot, 'skymp5-launcher'),
+    gamemode:     path.join(repoRoot, 'gamemode'),
     backend:      path.join(repoRoot, 'skymp5-backend'),
     front:        path.join(repoRoot, 'skymp5-front'),
     client:       path.join(repoRoot, 'skymp5-client'),

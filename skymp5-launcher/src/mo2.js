@@ -9,7 +9,7 @@
  *     nxmhandler.ini            nxm:// → this MO2 instance
  *     downloads\                Nexus "Mod Manager Download" archives land here
  *     mods\<Mod Name>\          installed mods (assembled from the manifest)
- *     profiles\SkyRP\           the single launcher-managed profile
+ *     profiles\SkyRP\        the single launcher-managed profile
  *
  * Mods are installed by replaying a compiled manifest (see the backend's
  * scripts/compile-manifest.js): each archive is downloaded + verified by
@@ -62,8 +62,17 @@ function isInstalled() {
   return fs.existsSync(getExe())
 }
 
-// 7za ships inside the 7zip-bin npm package
+// Prefer the vendored full 7-Zip (7z.exe + 7z.dll from assets/7zip, shipped
+// via extraResources): unlike the standalone 7za in the 7zip-bin package it
+// can read the .rar archives many Nexus mods come as. 7za stays as fallback.
 function get7za() {
+  const candidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, '7zip', '7z.exe') : null,
+    path.join(__dirname, '..', 'assets', '7zip', '7z.exe'),
+  ].filter(Boolean)
+  for (const p of candidates) {
+    try { if (fs.existsSync(p)) return p } catch {}
+  }
   const sevenBin = require('7zip-bin')
   return sevenBin.path7za.replace('app.asar', 'app.asar.unpacked')
 }
@@ -157,6 +166,18 @@ function detectEdition(gameDir) {
   return 'Steam'
 }
 
+function instanceDirLines() {
+  const root = fwd(getRoot())
+  return [
+    `base_directory=${root}`,
+    `mod_directory=${root}/mods`,
+    `download_directory=${root}/downloads`,
+    `cache_directory=${root}/webcache`,
+    `profiles_directory=${root}/profiles`,
+    `overwrite_directory=${root}/overwrite`,
+  ]
+}
+
 // Full portable-instance ini, written once when the instance is first created.
 function buildInstanceIni(skyrimPath, style) {
   return [
@@ -170,6 +191,7 @@ function buildInstanceIni(skyrimPath, style) {
     '',
     '[Settings]',
     'check_for_updates=false',
+    ...instanceDirLines(),
     ...(style ? [`style=${style}`] : []),
     '',
     '[customExecutables]',
@@ -185,8 +207,7 @@ function buildInstanceIni(skyrimPath, style) {
   ].join('\r\n')
 }
 
-// Update only the path lines in an existing ini so a moved install still
-// launches, without touching gameEdition or any other MO2-written state.
+// Update ini path
 function healInstancePaths(iniPath, skyrimPath) {
   const gamePath = fwd(skyrimPath)
   const ssePath  = fwd(path.join(skyrimPath, 'skse64_loader.exe'))
@@ -195,6 +216,15 @@ function healInstancePaths(iniPath, skyrimPath) {
   txt = txt.replace(/^gamePath=.*$/m,            () => `gamePath=@ByteArray(${gamePath})`)
   txt = txt.replace(/^1\\binary=.*$/m,           () => `1\\binary=${ssePath}`)
   txt = txt.replace(/^1\\workingDirectory=.*$/m, () => `1\\workingDirectory=${gamePath}`)
+
+  // Upsert each directory pin: replace an existing key or append under [Settings].
+  for (const line of instanceDirLines()) {
+    const key = line.slice(0, line.indexOf('='))
+    const re = new RegExp(`^${key}=.*$`, 'm')
+    if (re.test(txt)) txt = txt.replace(re, () => line)
+    else if (/^\[Settings\]\s*$/m.test(txt)) txt = txt.replace(/^\[Settings\]\s*$/m, m => `${m}\r\n${line}`)
+    else txt += `\r\n[Settings]\r\n${line}\r\n`
+  }
   fs.writeFileSync(iniPath, txt)
 }
 
@@ -593,12 +623,35 @@ function modHasRestrictedContent(modDir) {
   return false
 }
 
-/**
- * Disable any user-added mod that ships a plugin or an SKSE plugin DLL, so only
- * the server's modpack content can load (prevents desync and SKSE-plugin
- * cheats). Launcher-managed mods and separators are always kept; texture/mesh-
- * only user mods stay enabled. Returns the names that were disabled.
- */
+// Checksum function
+const OVERWRITE_JUNK_RE = /\.(esp|esl|esm|bsa)$/i
+function cleanOverwrite() {
+  const overwrite = path.join(getRoot(), 'overwrite')
+  let entries
+  try { entries = fs.readdirSync(overwrite, { withFileTypes: true }) } catch { return [] }
+
+  const removed = []
+  for (const e of entries) {
+    const junk = e.isFile() && (OVERWRITE_JUNK_RE.test(e.name) || /^cc/i.test(e.name))
+    if (!junk) continue
+    try { fs.rmSync(lp(path.join(overwrite, e.name)), { force: true }); removed.push(e.name) }
+    catch (err) { _log(`could not remove overwrite item ${e.name}: ${err.message}`) }
+  }
+  if (removed.length === 0) return []
+
+  // Drop any now-orphaned plugin lines from plugins.txt (matched case-insensitively).
+  const pluginsPath = path.join(getProfileDir(), 'plugins.txt')
+  try {
+    const gone = new Set(removed.filter(n => OVERWRITE_JUNK_RE.test(n)).map(n => n.toLowerCase()))
+    const kept = fs.readFileSync(pluginsPath, 'utf8').split(/\r?\n/)
+      .filter(l => !gone.has(l.replace(/^\*/, '').trim().toLowerCase()))
+    fs.writeFileSync(pluginsPath, kept.join('\r\n'))
+  } catch { /* plugins.txt is rewritten from the server list on install anyway */ }
+
+  _log(`cleaned ${removed.length} stray overwrite item(s): ${removed.join(', ')}`)
+  return removed
+}
+
 function enforceModRules() {
   const modlistPath = path.join(getProfileDir(), 'modlist.txt')
   let lines
@@ -914,6 +967,7 @@ module.exports = {
   skseSourceFor,
   installSkse,
   enforceModRules,
+  cleanOverwrite,
   waitForDownloads,
   disableCcContent,
   launchGame,

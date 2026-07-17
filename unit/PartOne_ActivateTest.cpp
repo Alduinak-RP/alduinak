@@ -647,3 +647,39 @@ TEST_CASE("Regress: LvlGiant mustn't have Fox race health", "[PartOne][espm]")
 
   REQUIRE(baseActorValues.health == 250.f);
 }
+
+TEST_CASE("Forbidden-reloot base types are static and can't be picked up",
+          "[PartOne][espm]")
+{
+  auto& partOne = GetPartOne();
+
+  partOne.Messages().clear();
+
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 22572, -8634, -3597 }, 0, 0x1a26f);
+  partOne.SetUserActor(0, 0xff000000);
+  auto& ac = partOne.worldState.GetFormAt<MpActor>(0xff000000);
+  ac.RemoveAllItems();
+
+  const auto refrId = 0x0100122a; // PurpleMountainFlower (FLOR)
+  auto& ref = partOne.worldState.GetFormAt<MpObjectReference>(refrId);
+  REQUIRE(!ref.IsHarvested());
+
+  partOne.worldState.SetForbiddenRelootTypes({ "FLOR" });
+  ref.Activate(ac);
+  partOne.Tick();
+
+  // The activation must be a no-op: nothing given, nothing harvested
+  REQUIRE(!ref.IsHarvested());
+  REQUIRE(ac.GetInventory().GetTotalItemCount() == 0);
+
+  // With the flag gone the same ref is lootable again
+  partOne.worldState.SetForbiddenRelootTypes({});
+  ref.Activate(ac);
+  partOne.Tick();
+  REQUIRE(ref.IsHarvested());
+  REQUIRE(ac.GetInventory().GetTotalItemCount() == 1);
+
+  DoDisconnect(partOne, 0);
+  partOne.DestroyActor(0xff000000);
+}
