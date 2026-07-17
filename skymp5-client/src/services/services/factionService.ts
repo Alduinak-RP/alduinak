@@ -249,6 +249,11 @@ export class FactionService extends ClientListener {
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
     const key = e.arguments[0];
+    // Escape pressed inside the browser closes the menu on the first press.
+    if (key === "menu:escape") {
+      if (this.menuOpen) this.closeMenu();
+      return;
+    }
     if (typeof key !== "string" || !key.startsWith("faction:") || !this.menuOpen) {
       return;
     }
@@ -327,13 +332,6 @@ export class FactionService extends ClientListener {
       }
       return false;
     };
-
-    widget.elements.push({
-      type: "button",
-      text: strings.addMember,
-      tags: [],
-      click: () => window.skyrimPlatform.sendMessage(events.add),
-    });
 
     if (regents.actingName) {
       widget.elements.push({ type: "text", text: strings.actingLeader + ": " + regents.actingName, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });

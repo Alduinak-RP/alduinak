@@ -41,3 +41,10 @@ window.playSound = (name) => {
 if (window.skyrimPlatform?.sendMessage) {
   window.skyrimPlatform.sendMessage('front-loaded');
 }
+
+// Escape inside the browser closes any open RP menu on the first press.
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    try { window.skyrimPlatform.sendMessage("menu:escape"); } catch (err) { /* outside game */ }
+  }
+});

@@ -160,6 +160,11 @@ export class HousingService extends ClientListener {
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
     const key = e.arguments[0];
+    // Escape pressed inside the browser closes the menu on the first press.
+    if (key === "menu:escape") {
+      if (this.menuOpen) this.closeMenu();
+      return;
+    }
     if (typeof key !== "string" || !key.startsWith("housing:") || !this.menuOpen) {
       return;
     }
