@@ -16,8 +16,11 @@
  *     200: done; returns { token, masterApiId, discordUsername, discordDiscriminator, discordAvatar } (token = play-session token; /me/play just validates it)
  *     403: unknown or expired state
  *   POST /api/users/me/play/:serverKey
- *     Headers: { authorization: <token> }  Body: {} (ignored)
+ *     Headers: { authorization: <token> }  Body: { hwid? }
  *     Validates the token is a live session and returns { session: token }.
+ *   POST /api/users/me/hwid
+ *     Headers: { authorization: <token> } (or Body: { token })  Body: { hwid }
+ *     Stores the launcher-reported hardware id on the session and player record. Returns { ok }.
  */
 
 const router  = require('express').Router()
@@ -26,6 +29,24 @@ const crypto  = require('crypto')
 const fs      = require('fs')
 const path    = require('path')
 const config  = require('../config')
+const players = require('../sources/players')
+
+// Launcher-supplied hardware id: printable chars only, capped length; returns '' when unusable
+function sanitizeHwid(value) {
+  if (typeof value !== 'string') return ''
+  return value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 128)
+}
+
+// Stores a hwid on both the session record and the player record; never throws
+function storeHwid(token, session, hwid) {
+  const { recordSessionHwid } = require('./master-api')
+  try {
+    recordSessionHwid(token, hwid)
+    players.updateIdentity(session.discordId, { hwid })
+  } catch (e) {
+    console.error('[skymp-compat] failed to store hwid:', e.message)
+  }
+}
 
 // Pending/completed auth store: state -> { status: 'pending'|'done', expiresAt, ...sessionFields }
 // Pending entries expire after 10 min (OAuth timeout); done entries after 5 min, or 60 s after first delivery.
@@ -219,7 +240,29 @@ router.post('/me/play/:serverKey', (req, res) => {
   const session = lookupSession(token)
   if (!session) return res.status(401).json({ error: 'Invalid or expired session token.' })
 
+  // Optional hardware id from the client; used by the ban system
+  const hwid = sanitizeHwid(req.body && req.body.hwid)
+  if (hwid) storeHwid(token, session, hwid)
+
   res.json({ session: token })
+})
+
+// POST /api/users/me/hwid
+// Called by the launcher right after login; missing/invalid hwid is a soft no-op.
+
+router.post('/me/hwid', (req, res) => {
+  const token = req.headers['authorization'] || (req.body && req.body.token)
+  if (!token) return res.status(401).json({ error: 'Missing authorization header.' })
+
+  const { lookupSession } = require('./master-api')
+  const session = lookupSession(token)
+  if (!session) return res.status(401).json({ error: 'Invalid or expired session token.' })
+
+  const hwid = sanitizeHwid(req.body && req.body.hwid)
+  if (!hwid) return res.json({ ok: false })
+
+  storeHwid(token, session, hwid)
+  res.json({ ok: true })
 })
 
 // Browser-facing pages

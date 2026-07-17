@@ -18,6 +18,8 @@
  *     Spends a player's coins. Body: { balanceToSpend: number }  Returns: { balanceSpent, success }
  *   GET /api/servers/:key/profiles/:profileId/check
  *     Offline-mode profileId check, same lock/whitelist rules as session validation. Returns { allowed: true } or 403/404 { error }
+ *   POST /api/servers/:key/connection-check  (X-Auth-Token)
+ *     Game server reports a connecting player. Body: { profileId, ip }  Returns { allowed: true } or { allowed: false, reason: 'banned' }
  *   POST /api/servers/:key/profiles/:profileId/factions  (X-Auth-Token)
  *     In-game faction appointment. Body: { requirementId, playerName?, notes? }
  *   DELETE /api/servers/:key/profiles/:profileId/factions/:assignmentId  (X-Auth-Token)
@@ -33,6 +35,7 @@ const factionWhitelist = require('../sources/factionWhitelist')
 const serverAccess = require('../sources/serverAccess')
 const profiles = require('../sources/profiles')
 const players  = require('../sources/players')
+const bans     = require('../sources/bans')
 
 // Persistent balance store: profileId -> coin balance
 
@@ -110,6 +113,15 @@ function recordLaunchCheck(token, check) {
   const entry = sessions.get(token)
   if (!entry) return false
   entry.launchCheck = { ...check, at: Date.now() }
+  saveSessions()
+  return true
+}
+
+// Stores the launcher-reported hardware id on the session for ban matching
+function recordSessionHwid(token, hwid) {
+  const entry = sessions.get(token)
+  if (!entry) return false
+  entry.hwid = hwid
   saveSessions()
   return true
 }
@@ -219,6 +231,15 @@ router.get('/:key/sessions/:session', async (req, res) => {
     return res.status(403).json({ error: access.error || 'accessDenied' })
   }
 
+  // Ban snapshots: refuse by discordId or hardware id even if the discord role is gone
+  const playerRecord = players.load()[entry.discordId] || {}
+  const hwid = entry.hwid || playerRecord.hwid || null
+  const ban = bans.isBanned({ discordId: entry.discordId, hwid })
+  if (ban) {
+    bans.logBan(`refused session: ${entry.username || entry.profileId} discordId=${entry.discordId} hwid=${hwid || 'none'} reason=${ban.reason || 'banned'}`)
+    return res.status(403).json({ error: 'banned' })
+  }
+
   // Refuse clients whose files/load order weren't verified by the launcher right before this game start
   const gate = launchGateStatus(entry)
   if (!gate.ok) {
@@ -269,6 +290,33 @@ router.get('/:key/profiles/:profileId/check', async (req, res) => {
     roles: access.roles,
     ...getProfileFactionPayload(discordId),
   })
+})
+
+// POST /api/servers/:key/connection-check
+// Called by the game server at login: records the connecting ip and refuses banned discordId/hwid/ip.
+
+router.post('/:key/connection-check', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  const { profileId, ip } = req.body || {}
+  const id = parseInt(profileId, 10)
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid profileId.' })
+
+  const discordId = profiles.getDiscordIdByProfileId(id)
+  if (!discordId) return res.status(404).json({ error: 'profileNotFound' })
+
+  const cleanIp = typeof ip === 'string' ? ip.trim().slice(0, 64) : ''
+  const player = players.updateIdentity(discordId, { ip: cleanIp }) || {}
+
+  const ban = bans.isBanned({ discordId, hwid: player.hwid, ip: cleanIp })
+  if (ban) {
+    const matched = String(ban.discordId) === discordId ? 'discordId'
+      : (ban.hwid && ban.hwid === player.hwid ? 'hwid' : 'ip')
+    bans.logBan(`refused connection: profileId=${id} discordId=${discordId} ip=${cleanIp || 'none'} matched=${matched} reason=${ban.reason || 'banned'}`)
+    return res.json({ allowed: false, reason: 'banned' })
+  }
+
+  res.json({ allowed: true })
 })
 
 // GET /api/servers/:key/holds/:holdSlug/roster
@@ -388,4 +436,5 @@ module.exports.lookupSession  = lookupSession
 module.exports.createSession  = createSession
 module.exports.isDiscordWhitelisted = isDiscordWhitelisted
 module.exports.recordLaunchCheck    = recordLaunchCheck
+module.exports.recordSessionHwid    = recordSessionHwid
 module.exports.currentFilesVersion  = currentFilesVersion

@@ -6,6 +6,7 @@ const profiles          = require('../sources/profiles')
 const players           = require('../sources/players')
 const serverAccess      = require('../sources/serverAccess')
 const factions          = require('../sources/factionWhitelist')
+const bans              = require('../sources/bans')
 
 const router = Router()
 
@@ -115,7 +116,9 @@ async function enrichPlayer(player) {
   } catch (err) {
     access = { allowed: false, error: 'accessUnavailable', roles: [] }
   }
-  return { ...player, access }
+  // Ban snapshot (bans.json) matched on any stored identifier; hwid/lastIp ride along in ...player
+  const ban = bans.isBanned({ discordId: player.discordId, hwid: player.hwid, ip: player.lastIp })
+  return { ...player, access, ban: ban ? { reason: ban.reason, bannedAt: ban.bannedAt, bannedBy: ban.bannedBy } : null }
 }
 
 module.exports = router

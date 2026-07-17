@@ -35,6 +35,8 @@ function upsertFromDiscordUser(discordUser) {
     displayName: discordUser.global_name || discordUser.displayName || discordUser.username || existing.displayName || '',
     avatar: discordUser.avatar || existing.avatar || null,
     notes: existing.notes || '',
+    hwid: existing.hwid || null,
+    lastIp: existing.lastIp || null,
     createdAt: existing.createdAt || now,
     updatedAt: now,
     lastSeenAt: now,
@@ -63,6 +65,8 @@ function createManual(input) {
     displayName: String(input.displayName || existing.displayName || input.username || '').trim(),
     avatar: existing.avatar || null,
     notes: String(input.notes || existing.notes || '').trim(),
+    hwid: existing.hwid || null,
+    lastIp: existing.lastIp || null,
     createdAt: existing.createdAt || now,
     updatedAt: now,
     lastSeenAt: existing.lastSeenAt || null,
@@ -70,6 +74,36 @@ function createManual(input) {
 
   save(data)
   return decorate(data[discordId])
+}
+
+// Records the latest hwid and/or ip for a player; empty values never overwrite stored ones
+function updateIdentity(discordId, { hwid, ip } = {}) {
+  const id = String(discordId || '').trim()
+  if (!id) return null
+  const data = load()
+  const now = new Date().toISOString()
+  const current = data[id] || {
+    profileId: profiles.getOrCreateProfileId(id),
+    discordId: id,
+    username: '',
+    displayName: '',
+    avatar: null,
+    notes: '',
+    createdAt: now,
+    updatedAt: now,
+    lastSeenAt: null,
+  }
+  let changed = !data[id]
+  const cleanHwid = String(hwid || '').trim()
+  const cleanIp = String(ip || '').trim()
+  if (cleanHwid && current.hwid !== cleanHwid) { current.hwid = cleanHwid; changed = true }
+  if (cleanIp && current.lastIp !== cleanIp) { current.lastIp = cleanIp; changed = true }
+  if (changed) {
+    current.updatedAt = now
+    data[id] = current
+    save(data)
+  }
+  return current
 }
 
 function updateByProfileId(profileId, patch) {
@@ -134,4 +168,5 @@ module.exports = {
   upsertFromDiscordUser,
   createManual,
   updateByProfileId,
+  updateIdentity,
 }

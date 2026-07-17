@@ -238,6 +238,7 @@ function renderPlayers() {
           <th>Name</th>
           <th>Discord ID</th>
           <th>Access</th>
+          <th>HWID</th>
           <th>Factions</th>
           <th></th>
         </tr>
@@ -248,7 +249,8 @@ function renderPlayers() {
             <td>#${player.profileId}</td>
             <td>${escapeHtml(player.displayName || player.username || 'Unnamed')}</td>
             <td>${escapeHtml(player.discordId)}</td>
-            <td><span class="tag ${player.access?.allowed ? '' : 'locked'}">${escapeHtml(player.access?.allowed ? 'allowed' : (player.access?.error || 'blocked'))}</span></td>
+            <td><span class="tag ${player.access?.allowed ? '' : 'locked'}">${escapeHtml(player.access?.allowed ? 'allowed' : (player.access?.error || 'blocked'))}</span>${player.ban ? ' <span class="tag locked">banned</span>' : ''}</td>
+            <td>${escapeHtml(player.hwid ? player.hwid.slice(0, 12) : '-')}</td>
             <td>${escapeHtml((player.assignments || []).map(a => a.requirement ? `${a.requirement.group} ${a.requirement.rank}` : a.requirementId).join(', '))}</td>
             <td><button class="ghost mini" data-select-player="${player.profileId}" type="button">Open</button></td>
           </tr>
