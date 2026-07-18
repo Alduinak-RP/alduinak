@@ -1180,7 +1180,7 @@ ipcMain.handle('launch:skse', async () => {
   try {
     if (mo2Enabled) {
       // MO2 manages plugins.txt itself via the profile; launch through its VFS.
-      mo2.launchGame()
+      mo2.launchGame(skyrimPath)
     } else {
       // Direct launch (manual mod installs): run SKSE in active game dir
       const exe = path.join(skyrimPath, 'skse64_loader.exe')
@@ -1202,7 +1202,7 @@ ipcMain.handle('launch:viaMO2', async () => {
   if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - use Install MO2 first.' }
   const prep = await prepareForLaunch(skyrimPath, true)
   if (!prep.success) return prep
-  try { mo2.launchGame(); return { success: true } }
+  try { mo2.launchGame(skyrimPath); return { success: true } }
   catch (err) { return { success: false, error: err.message } }
 })
 
@@ -1330,9 +1330,10 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
 
   // Load order sync
   let loadOrderFixed = false
+  // Heal the instance ini (paths + SKSE shortcut) before every MO2 launch, even when serverinfo is unavailable.
+  if (viaMO2) mo2.ensureInstance(skyrimPath, serverInfo?.loadOrder)
   if (Array.isArray(serverInfo?.loadOrder) && serverInfo.loadOrder.length > 0) {
     if (viaMO2) {
-      mo2.ensureInstance(skyrimPath, serverInfo.loadOrder)
       const missing = missingPluginsForMO2(skyrimPath, serverInfo.loadOrder)
       if (missing.length > 0) {
         return {
