@@ -1072,28 +1072,45 @@ function assertSecureDownloadUrl(url) {
 }
 
 // Download a URL to a local file, following redirects (release URLs hit a CDN).
+// Settles exactly once on every outcome (an aborted response used to hang forever).
 function downloadToFile(url, dest, onProgress, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
     try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
+    let file = null
+    let settled = false
+    const finish = val => { if (!settled) { settled = true; resolve(val) } }
+    // Destroy the stream before unlinking: an open handle leaves the partial file delete-pending on Windows and blocks every retry this session.
+    const fail = err => {
+      if (settled) return
+      settled = true
+      if (file && !file.destroyed) {
+        file.once('close', () => { try { fs.unlinkSync(dest) } catch {} reject(err) })
+        file.destroy()
+      } else {
+        try { fs.unlinkSync(dest) } catch {}
+        reject(err)
+      }
+    }
     const mod = url.startsWith('https') ? https : http
     const req = mod.get(url, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume()
-        if (redirectsLeft <= 0) return reject(new Error('Too many redirects'))
-        return resolve(downloadToFile(res.headers.location, dest, onProgress, redirectsLeft - 1))
+        if (redirectsLeft <= 0) return fail(new Error('Too many redirects'))
+        return finish(downloadToFile(res.headers.location, dest, onProgress, redirectsLeft - 1))
       }
-      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)) }
+      if (res.statusCode !== 200) { res.resume(); return fail(new Error(`HTTP ${res.statusCode}`)) }
       const total = parseInt(res.headers['content-length'] || '0', 10)
       let received = 0
-      const file = fs.createWriteStream(dest)
+      file = fs.createWriteStream(dest)
       res.on('data', c => { received += c.length; if (onProgress) onProgress(received, total) })
       res.pipe(file)
-      file.on('finish', () => file.close(() => resolve(dest)))
-      file.on('error', err => { try { fs.unlinkSync(dest) } catch {} reject(err) })
-      res.on('error',  err => { try { fs.unlinkSync(dest) } catch {} reject(err) })
+      file.on('finish', () => file.close(() => finish(dest)))
+      file.on('error', fail)
+      res.on('error',  fail)
+      res.on('aborted', () => fail(new Error('Download interrupted')))
     })
-    req.on('error', reject)
-    req.setTimeout(120_000, () => { req.destroy(); reject(new Error('Download timed out')) })
+    req.on('error', fail)
+    req.setTimeout(120_000, () => { req.destroy(); fail(new Error('Download timed out')) })
   })
 }
 
@@ -1559,32 +1576,48 @@ function downloadClientZip(tempPath, onProgress) {
   const url = `${config.apiUrl}/api/files/zip`
   return new Promise((resolve, reject) => {
     try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
+    let file = null
+    let settled = false
+    const finish = () => { if (!settled) { settled = true; resolve() } }
+    // Destroy the stream before unlinking: an open handle leaves the partial file delete-pending on Windows and blocks every retry this session.
+    const fail = err => {
+      if (settled) return
+      settled = true
+      if (file && !file.destroyed) {
+        file.once('close', () => { try { fs.unlinkSync(tempPath) } catch {} reject(err) })
+        file.destroy()
+      } else {
+        try { fs.unlinkSync(tempPath) } catch {}
+        reject(err)
+      }
+    }
     const mod = url.startsWith('https') ? https : http
     const req = mod.get(url, res => {
       if (res.statusCode === 404) {
         res.resume()
-        return reject(new Error('Update package not found on server. Run npm run merge on the backend.'))
+        return fail(new Error('Update package not found on server. Run npm run merge on the backend.'))
       }
       if (res.statusCode < 200 || res.statusCode >= 300) {
         res.resume()
-        return reject(new Error(`Server returned HTTP ${res.statusCode}`))
+        return fail(new Error(`Server returned HTTP ${res.statusCode}`))
       }
 
       const total    = parseInt(res.headers['content-length'] || '0', 10)
       let   received = 0
 
-      const file = fs.createWriteStream(tempPath)
+      file = fs.createWriteStream(tempPath)
       res.on('data', chunk => {
         received += chunk.length
         if (onProgress) onProgress(received, total)
       })
       res.pipe(file)
-      file.on('finish', () => file.close(resolve))
-      file.on('error', err => { try { fs.unlinkSync(tempPath) } catch {} reject(err) })
-      res.on('error',  err => { try { fs.unlinkSync(tempPath) } catch {} reject(err) })
+      file.on('finish', () => file.close(finish))
+      file.on('error', fail)
+      res.on('error',  fail)
+      res.on('aborted', () => fail(new Error('Download interrupted')))
     })
-    req.on('error', reject)
-    req.setTimeout(60_000, () => { req.destroy(); reject(new Error('Download timed out')) })
+    req.on('error', fail)
+    req.setTimeout(60_000, () => { req.destroy(); fail(new Error('Download timed out')) })
   })
 }
 
@@ -1800,9 +1833,11 @@ async function runMO2Install(opts = {}) {
     applyForcedServerDefaults(skyrimPath)
 
     // 2. SkyMP client files into the real Data/ (skipped by Install Modlist)
+    let coreUpToDate = false
     if (!modlistOnly) {
       const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
       if (!core.success) return fail(core.error)
+      coreUpToDate = !!core.upToDate
     }
 
     // 3. Mods from the compiled install manifest
@@ -1841,7 +1876,7 @@ async function runMO2Install(opts = {}) {
       finishOrder()
       store.set('modpackState', 'ready')
       send('install:complete', {
-        success: true, mo2: true, upToDate: core.upToDate, modsTotal: 0,
+        success: true, mo2: true, upToDate: coreUpToDate, modsTotal: 0,
         warning: [vanillaWarning, 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.']
           .filter(Boolean).join(' | '),
       })
@@ -2018,7 +2053,7 @@ async function runMO2Install(opts = {}) {
 
     store.set('modpackState', 'ready')
     send('install:complete', {
-      success: true, mo2: true, upToDate: core.upToDate, modsTotal: manifest.mods.length,
+      success: true, mo2: true, upToDate: coreUpToDate, modsTotal: manifest.mods.length,
       ...(vanillaWarning ? { warning: vanillaWarning } : {}),
     })
   } catch (err) {

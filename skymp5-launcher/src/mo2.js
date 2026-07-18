@@ -80,33 +80,51 @@ function get7za() {
 // Download / install MO2
 
 /** Download url to dest, following redirects (GitHub releases redirect to a CDN). */
+// Every outcome settles the promise exactly once: an aborted response used to fire
+// no handler at all, leaving the install awaiting this forever until app restart.
 function downloadFile(url, dest, onProgress, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
+    let file = null
+    let settled = false
+    const finish = val => { if (!settled) { settled = true; resolve(val) } }
+    // Destroy the stream before unlinking: an open handle leaves the partial file delete-pending on Windows and blocks every retry this session.
+    const fail = err => {
+      if (settled) return
+      settled = true
+      if (file && !file.destroyed) {
+        file.once('close', () => { try { fs.unlinkSync(dest) } catch {} reject(err) })
+        file.destroy()
+      } else {
+        try { fs.unlinkSync(dest) } catch {}
+        reject(err)
+      }
+    }
     const req = https.get(url, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume()
-        if (redirectsLeft <= 0) return reject(new Error('Too many redirects'))
-        return resolve(downloadFile(res.headers.location, dest, onProgress, redirectsLeft - 1))
+        if (redirectsLeft <= 0) return fail(new Error('Too many redirects'))
+        return finish(downloadFile(res.headers.location, dest, onProgress, redirectsLeft - 1))
       }
       if (res.statusCode !== 200) {
         res.resume()
-        return reject(new Error(`HTTP ${res.statusCode} downloading ${url}`))
+        return fail(new Error(`HTTP ${res.statusCode} downloading ${url}`))
       }
 
       const total = parseInt(res.headers['content-length'] || '0', 10)
       let received = 0
-      const file = fs.createWriteStream(dest)
+      file = fs.createWriteStream(dest)
       res.on('data', chunk => {
         received += chunk.length
         if (onProgress) onProgress(received, total)
       })
       res.pipe(file)
-      file.on('finish', () => file.close(resolve))
-      file.on('error', err => { try { fs.unlinkSync(dest) } catch {} reject(err) })
-      res.on('error',  err => { try { fs.unlinkSync(dest) } catch {} reject(err) })
+      file.on('finish', () => file.close(() => finish(dest)))
+      file.on('error', fail)
+      res.on('error',  fail)
+      res.on('aborted', () => fail(new Error('Download interrupted')))
     })
-    req.on('error', reject)
-    req.setTimeout(120_000, () => { req.destroy(); reject(new Error('Download timed out')) })
+    req.on('error', fail)
+    req.setTimeout(120_000, () => { req.destroy(); fail(new Error('Download timed out')) })
   })
 }
 
@@ -374,7 +392,15 @@ async function downloadToDownloads(url, fileName, onProgress) {
   if (fs.existsSync(dest)) return fileName
   fs.mkdirSync(getDownloadsDir(), { recursive: true })
   const temp = dest + '.unfinished'
-  await downloadFile(url, temp, onProgress)
+  try { fs.rmSync(temp, { force: true }) } catch {}   // stale partial from an earlier failed run
+  try {
+    await downloadFile(url, temp, onProgress)
+  } catch (err) {
+    // One retry: SKSE and mod hosts drop connections often enough that a single blip should not fail the whole install pass.
+    _log(`download failed (${err.message}), retrying: ${url}`)
+    await new Promise(r => setTimeout(r, 3000))
+    await downloadFile(url, temp, onProgress)
+  }
   fs.renameSync(temp, dest)
   return fileName
 }
