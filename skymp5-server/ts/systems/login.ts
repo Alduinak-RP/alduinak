@@ -176,7 +176,13 @@ export class Login implements System {
 
           const actorId = ctx.svr.getActorsByProfileId(profile.id)[0];
           const mp = ctx.svr as unknown as Mp;
-          const currentRoles: string[] | null = actorId ? mp.get(actorId, "private.discordRoles") : null;
+          // The profile index can hold a deleted character's id; a stale entry
+          // must not abort the whole login (delete-then-relog lockout)
+          let currentRoles: string[] | null = null;
+          if (actorId) {
+            try { currentRoles = mp.get(actorId, "private.discordRoles"); }
+            catch { /* form destroyed, ignore */ }
+          }
 
           if (currentRoles && currentRoles.length > 0) {
             roles = currentRoles;

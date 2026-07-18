@@ -1306,6 +1306,18 @@ void MpActor::BeforeDestroy()
     sink->BeforeDestroy(*this);
   }
 
+  // Drop the profile index entry, or GetActorsByProfileId keeps handing out
+  // this dead formId and login crashes on it (character delete lockout)
+  if (auto worldState = GetParent()) {
+    auto profileId = ChangeForm().profileId;
+    if (profileId > 0) {
+      auto it = worldState->actorIdByProfileId.find(profileId);
+      if (it != worldState->actorIdByProfileId.end()) {
+        it->second.erase(GetFormId());
+      }
+    }
+  }
+
   MpObjectReference::BeforeDestroy();
 
   UnsubscribeFromAll();
