@@ -54,6 +54,7 @@ struct WorldState::Impl
   bool formLoadingInProgress = false;
   std::vector<RelootTimeForTypesEntry> relootTimeForTypes;
   std::set<std::string> forbiddenRelootTypes;
+  std::set<uint32_t> blockedSpells;
   std::vector<std::unique_ptr<IPapyrusClassBase>> classes;
   std::array<std::shared_ptr<std::vector<uint32_t>>, 0x100>
     allFormsByModIndexCache;
@@ -1193,6 +1194,16 @@ bool WorldState::IsRelootForbidden(std::string type) const noexcept
 {
   return pImpl->forbiddenRelootTypes.find(type) !=
     pImpl->forbiddenRelootTypes.end();
+}
+
+void WorldState::SetBlockedSpells(const std::set<uint32_t>& spells)
+{
+  pImpl->blockedSpells = spells;
+}
+
+bool WorldState::IsSpellBlocked(uint32_t spellId) const noexcept
+{
+  return pImpl->blockedSpells.find(spellId) != pImpl->blockedSpells.end();
 }
 
 bool WorldState::HasEspmFile(std::string_view filename) const noexcept

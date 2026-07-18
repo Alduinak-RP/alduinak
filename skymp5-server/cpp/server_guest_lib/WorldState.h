@@ -229,6 +229,7 @@ public:
   void SetNpcSettings(
     std::unordered_map<std::string, NpcSettingsEntry>&& settings);
   void SetForbiddenRelootTypes(const std::set<std::string>& types);
+  void SetBlockedSpells(const std::set<uint32_t>& spells);
   void SetEnableConsoleCommandsForAllSetting(bool enable);
 
 public:
@@ -284,6 +285,7 @@ private:
   [[nodiscard]] bool IsNpcAllowed(uint32_t refrId) const noexcept;
   [[nodiscard]] uint32_t GetFileIdx(uint32_t formId) const noexcept;
   [[nodiscard]] bool IsRelootForbidden(std::string type) const noexcept;
+  [[nodiscard]] bool IsSpellBlocked(uint32_t spellId) const noexcept;
 
 private:
   struct GridInfo

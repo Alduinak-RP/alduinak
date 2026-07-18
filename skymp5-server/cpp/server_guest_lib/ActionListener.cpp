@@ -28,6 +28,7 @@
 #include "SpSnippet.h"
 #include "UpdateAnimVariablesMessage.h"
 #include "UpdateEquipmentMessage.h"
+#include <algorithm>
 
 namespace FormIdCasts {
 uint32_t LongToNormal(uint64_t longFormId)
@@ -257,34 +258,30 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     spellIdsToRemove = {};
 
   if (leftSpell > 0 && !actor->IsSpellLearned(leftSpell)) {
-    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - rejected equipment "
-                 "update: spell {:x} is not learned",
+    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - stripping "
+                 "unlearned spell {:x} from the update",
                  actorFormId, leftSpell);
-    isAllowed = false;
     spellIdsToRemove[static_cast<size_t>(SpellSlotId::Left)] = leftSpell;
   }
 
   if (rightSpell > 0 && !actor->IsSpellLearned(rightSpell)) {
-    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - rejected equipment "
-                 "update: spell {:x} is not learned",
+    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - stripping "
+                 "unlearned spell {:x} from the update",
                  actorFormId, rightSpell);
-    isAllowed = false;
     spellIdsToRemove[static_cast<size_t>(SpellSlotId::Right)] = rightSpell;
   }
 
   if (voiceSpell > 0 && !actor->IsSpellLearned(voiceSpell)) {
-    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - rejected equipment "
-                 "update: spell {:x} is not learned",
+    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - stripping "
+                 "unlearned spell {:x} from the update",
                  actorFormId, voiceSpell);
-    isAllowed = false;
     spellIdsToRemove[static_cast<size_t>(SpellSlotId::Voice)] = voiceSpell;
   }
 
   if (instantSpell > 0 && !actor->IsSpellLearned(instantSpell)) {
-    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - rejected equipment "
-                 "update: spell {:x} is not learned",
+    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - stripping "
+                 "unlearned spell {:x} from the update",
                  actorFormId, instantSpell);
-    isAllowed = false;
     spellIdsToRemove[static_cast<size_t>(SpellSlotId::Instant)] = instantSpell;
   }
 
@@ -370,26 +367,37 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     }
   }
 
+  const bool anySpellStripped =
+    std::any_of(spellIdsToRemove.begin(), spellIdsToRemove.end(),
+                [](uint32_t id) { return id != 0; });
+
   if (isAllowed) {
-    SendToNeighbours(msg.idx, rawMsgData, true);
-    actor->SetEquipment(data);
+    // An unlearned spell no longer rejects the whole update: the slot is
+    // stripped and weapons/armor still reach neighbours (silent-desync fix)
+    if (anySpellStripped) {
+      UpdateEquipmentMessage sanitizedMsg = msg;
+      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Left)]) {
+        sanitizedMsg.data.leftSpell = std::nullopt;
+      }
+      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Right)]) {
+        sanitizedMsg.data.rightSpell = std::nullopt;
+      }
+      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Voice)]) {
+        sanitizedMsg.data.voiceSpell = std::nullopt;
+      }
+      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Instant)]) {
+        sanitizedMsg.data.instantSpell = std::nullopt;
+      }
+      for (auto listener : actor->GetActorListeners()) {
+        listener->SendToUser(sanitizedMsg, true);
+      }
+      actor->SetEquipment(sanitizedMsg.data);
+    } else {
+      SendToNeighbours(msg.idx, rawMsgData, true);
+      actor->SetEquipment(data);
+    }
   } else {
     actor->SendInventoryUpdate();
-
-    for (uint32_t spellId : spellIdsToRemove) {
-      if (spellId == 0) {
-        continue;
-      }
-      SpSnippetObjectArgument spellArg;
-      spellArg.formId = spellId;
-      spellArg.type = "Spell";
-      std::vector<std::optional<
-        std::variant<bool, double, std::string, SpSnippetObjectArgument>>>
-        args;
-      args.push_back(spellArg);
-      SpSnippet("Actor", "RemoveSpell", args, actor->GetFormId())
-        .Execute(actor, SpSnippetMode::kNoReturnResult);
-    }
 
     // Calculate diff between current (server) equipment and new (rejected)
     // equipment. Items worn in the new set but not in the current set need
@@ -432,6 +440,22 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
       SpSnippet("Actor", "UnequipItem", args, actor->GetFormId())
         .Execute(actor, SpSnippetMode::kNoReturnResult);
     }
+  }
+
+  // Stripped spells are removed on the caster's client in both branches
+  for (uint32_t spellId : spellIdsToRemove) {
+    if (spellId == 0) {
+      continue;
+    }
+    SpSnippetObjectArgument spellArg;
+    spellArg.formId = spellId;
+    spellArg.type = "Spell";
+    std::vector<std::optional<
+      std::variant<bool, double, std::string, SpSnippetObjectArgument>>>
+      args;
+    args.push_back(spellArg);
+    SpSnippet("Actor", "RemoveSpell", args, actor->GetFormId())
+      .Execute(actor, SpSnippetMode::kNoReturnResult);
   }
 
   UpdateEquipmentAttemptEvent updateEquipmentAttemptEvent(actor, data,
@@ -1170,6 +1194,14 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   if (equipment.IsSpellEquipped(spellCastData.spell) == false) {
     spdlog::info("ActionListener::OnSpellCast - spell {0:x} not "
                  "found in equipment",
+                 spellCastData.spell);
+    return;
+  }
+
+  // Server-settings denylist (blockedSpells): never replicated, no OnSpellCast
+  if (partOne.worldState.IsSpellBlocked(spellCastData.spell)) {
+    spdlog::info("ActionListener::OnSpellCast - spell {:x} is blocked by "
+                 "server settings",
                  spellCastData.spell);
     return;
   }

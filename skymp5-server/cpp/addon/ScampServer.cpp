@@ -417,6 +417,22 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         (*it).get<std::set<std::string>>());
     }
 
+    // blockedSpells: array of spell form ids (numbers or "0x..." strings)
+    // that players may not cast (racial powers etc)
+    auto blockedIt = serverSettings.find("blockedSpells");
+    if (blockedIt != serverSettings.end() && (*blockedIt).is_array()) {
+      std::set<uint32_t> blockedSpells;
+      for (auto& v : *blockedIt) {
+        if (v.is_number_unsigned()) {
+          blockedSpells.insert(v.get<uint32_t>());
+        } else if (v.is_string()) {
+          blockedSpells.insert(static_cast<uint32_t>(
+            std::stoul(v.get<std::string>(), nullptr, 0)));
+        }
+      }
+      partOne->worldState.SetBlockedSpells(blockedSpells);
+    }
+
     if (auto it = serverSettings.find("serverKey");
         it != serverSettings.end()) {
       auto serverKey = it.value();
