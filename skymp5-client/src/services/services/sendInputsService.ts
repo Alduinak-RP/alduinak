@@ -48,6 +48,23 @@ export class SendInputsService extends ClientListener {
             if (isPlayerCasting) {
                 this.prevCastingDetectedTime = Date.now();
             }
+
+            this.checkSpellEquipmentChanged(player);
+        }
+    }
+
+    // Spell-to-hand changes fire no TESEquipEvent, so poll them; otherwise
+    // clones keep showing the last weapon/spell loadout (desync S1/S3)
+    private checkSpellEquipmentChanged(player: Actor) {
+        // Slot ids left/right/voice/instant (SpellType enum not exported here)
+        const sig = [0, 1, 2, 3]
+            .map(t => player.getEquippedSpell(t as never)?.getFormID() ?? 0)
+            .join(',');
+        if (this.lastSpellSignature === undefined) {
+            this.lastSpellSignature = sig;
+        } else if (sig !== this.lastSpellSignature) {
+            this.lastSpellSignature = sig;
+            this.equipmentChanged = true;
         }
     }
 
@@ -259,7 +276,10 @@ export class SendInputsService extends ClientListener {
         if (_refrId) {
           return;
         }
-        if (this.equipmentChanged) {
+        // Coalesce bursts: rapid re-equips flooded the server with reliable
+        // updates whose forced-revert snippets could freeze the client (S2)
+        if (this.equipmentChanged && Date.now() - this.lastEquipmentSentMs >= 300) {
+            this.lastEquipmentSentMs = Date.now();
             this.equipmentChanged = false;
 
             ++this.numEquipmentChanges;
@@ -329,6 +349,8 @@ export class SendInputsService extends ClientListener {
     private actorValuesNeedUpdate = false;
     private isRaceSexMenuShown = false;
     private equipmentChanged = false;
+    private lastSpellSignature?: string;
+    private lastEquipmentSentMs = 0;
     private numEquipmentChanges = 0;
     private prevValues: ActorValues = { health: 0, stamina: 0, magicka: 0 };
     private prevActorValuesUpdateTime = 0;

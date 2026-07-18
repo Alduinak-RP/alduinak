@@ -2,13 +2,28 @@
 import { localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 
 // @ts-expect-error (TODO: Remove in 2.10.0)
-import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType } from 'skyrimPlatform'
+import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { logTrace } from '../../logging';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessageMsgData } from "../messages/updateAnimVariablesMessage";
+
+// Racial greater powers are disabled on this server (form ids verified
+// against Skyrim.esm on the reference install)
+const BLOCKED_POWER_IDS = new Set([
+    0x000E40C3, // PowerNordBattleCry
+    0x000E40C8, // PowerHighElfMagickaRegen (Highborn)
+    0x000E40CA, // PowerImperialPacify (Voice of the Emperor)
+    0x000E40CE, // PowerRedguardStaminaRegen (Adrenaline Rush)
+    0x000E40CF, // PowerWoodElfCommandAnimal
+    0x000E40D4, // PowerDarkElfFlameCloak (Ancestor's Wrath)
+    0x000E40D5, // PowerArgonianHistskin
+    0x000AA01D, // PowerKhajiitNightEye
+    0x000AA022, // PowerBretonAbsorbSpell (Dragonskin)
+    0x000AA026, // RaceOrcBerserk (Berserker Rage)
+]);
 
 export class MagicSyncService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -28,6 +43,8 @@ export class MagicSyncService extends ClientListener {
     }
 
     private onUpdate() {
+        this.detectCastStop();
+
         if (this.isAnyMagicStuffEquiped() === false) {
             return;
         }
@@ -56,6 +73,21 @@ export class MagicSyncService extends ClientListener {
     }
 
     private onSpellCast(event: SpellCastEvent) {
+        // Blocked racial powers: dispel locally, tell the player, do not relay
+        if (event.caster && event.caster.getFormID() === this.playerId &&
+            event.spell && BLOCKED_POWER_IDS.has(event.spell.getFormID())) {
+            const spellId = event.spell.getFormID();
+            this.controller.once('update', () => {
+                const player = Game.getPlayer();
+                const spell = Spell.from(Game.getFormEx(spellId));
+                if (player && spell) {
+                    player.dispelSpell(spell);
+                }
+                Debug.notification("Racial powers are disabled on this server.");
+            });
+            return;
+        }
+
         const isInterruptCast = false;
 
         const msg: SpellCastMsgData = this.getSpellCastEventData(event, isInterruptCast);
@@ -131,6 +163,35 @@ export class MagicSyncService extends ClientListener {
         return animVarsData;
     }
 
+    // Releasing a concentration cast fires no anim equip event, so poll the
+    // casting vars and sync the stop; otherwise clones stream Flames until stow (S4)
+    private detectCastStop() {
+        const player = Game.getPlayer();
+        if (!player) {
+            return;
+        }
+        const casting = player.getAnimationVariableBool("IsCastingRight")
+            || player.getAnimationVariableBool("IsCastingLeft")
+            || player.getAnimationVariableBool("IsCastingDual");
+        const stopped = this.prevIsCasting && !casting;
+        this.prevIsCasting = casting;
+        if (!stopped || !this.lastSpellCastEventMsg || this.lastSpellCastEventMsg.interruptCast) {
+            return;
+        }
+        this.controller.once('update', () => {
+            if (!this.lastSpellCastEventMsg || this.lastSpellCastEventMsg.interruptCast) {
+                return;
+            }
+            const msg: SpellCastMsgData = this.lastSpellCastEventMsg;
+            msg.interruptCast = true;
+            msg.actorAnimationVariables = this.getAnimationVariablesFromActorConverted(remoteIdToLocalId(msg.caster));
+            this.controller.emitter.emit("sendMessage", {
+                message: { t: MsgType.SpellCast, data: msg },
+                reliability: "reliable"
+            });
+        });
+    }
+
     private isInteraptSpellCastAnim(animEventName: string): boolean {
         const eventName = animEventName.toLowerCase();
         return eventName === "mlh_equipped_event" || eventName === "mrh_equipped_event";
@@ -178,4 +239,5 @@ export class MagicSyncService extends ClientListener {
     private sendUpdateAnimationVariablesRateMs = 500;
     private lastSpellCastEventMsg: SpellCastMsgData | null = null;
     private lastSendUpdateAnimationVariables: number = 0;
+    private prevIsCasting = false;
 }

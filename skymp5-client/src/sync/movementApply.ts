@@ -70,7 +70,10 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
 
 const keepOffsetFromActor = (ac: Actor, m: Movement) => {
   let offsetAngle = m.rot[2] - ac.getAngleZ();
-  if (Math.abs(offsetAngle) < 5) {
+  // Standing gets a wide deadzone: the self-referential offset hunts back and
+  // forth on 130ms-stale idle angle noise (visible left-right turning)
+  const deadzone = m.runMode === "Standing" ? 12 : 5;
+  if (Math.abs(offsetAngle) < deadzone) {
     offsetAngle = 0;
   }
 
@@ -160,7 +163,8 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
 
   // Local lag compensation
   // TODO: Remove "|| 0" hack (added to support old MpClientPlugin)
-  const distanceAdd = (m.speed || 0) * time;
+  // Clamped so a stale speed sample can't fling the clone past the target
+  const distanceAdd = Math.min((m.speed || 0) * time, 128);
   const direction = m.rot[2] + m.direction;
   gTempTargetPos[0] = m.pos[0];
   gTempTargetPos[1] = m.pos[1];

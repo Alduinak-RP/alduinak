@@ -960,9 +960,12 @@ export class RemoteServer extends ClientListener {
         return;
       }
 
-      const spell = ac.getEquippedSpell(msg.data.castingSource);
-      if (spell) {
-        castSpellImmediate(ac.getFormID(), msg.data.castingSource, spell.getFormID(), remoteIdToLocalId(msg.data.target),
+      // Prefer the spell id carried in the message: the clone's equipped spell
+      // can be stale (spell swaps fire no equip event), showing the wrong cast
+      const transmitted = msg.data.spell ? Game.getFormEx(msg.data.spell) : null;
+      const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
+      if (spellId) {
+        castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
           msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables);
       }
     });
