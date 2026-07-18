@@ -441,6 +441,40 @@ function applyForcedServerDefaults(gamePath) {
   } catch (err) {
     log('[defaults] could not write controlmap override:', err.message)
   }
+
+  // AE popup suppression, re-applied on every install pass so existing installs pick it up.
+  try {
+    // Portable copies only: never blank the ccc of a player's real install.
+    if (gamePath && store.get('isolatedGame') && gamePath === isolatedGameDir()) {
+      const ccc = path.join(gamePath, 'Skyrim.ccc')
+      if (!fs.existsSync(ccc) || fs.statSync(ccc).size > 0) {
+        fs.writeFileSync(ccc, '')
+        log('[defaults] wrote empty Skyrim.ccc (no CC content expected)')
+      }
+    }
+  } catch (err) {
+    log('[defaults] could not write Skyrim.ccc:', err.message)
+  }
+  // Profile ini: kill the Bethesda.net platform, which drives the "AE content available for download" prompt and the CC news.
+  try {
+    const dest = path.join(mo2.getProfileDir(), 'skyrim.ini')
+    if (!fs.existsSync(dest)) {
+      // Seed from the player's own ini first so a minimal profile ini never hides their settings (language, archives, etc).
+      const prefs = findOriginalPrefsIni()
+      const src = prefs ? path.join(path.dirname(prefs), 'Skyrim.ini') : null
+      if (src && fs.existsSync(src)) {
+        fs.mkdirSync(path.dirname(dest), { recursive: true })
+        fs.copyFileSync(src, dest)
+      }
+    }
+    const cur = ini.read(dest)['Bethesda.net'] || {}
+    if (String(cur['bEnablePlatform'] || '') !== '0') {
+      ini.write(dest, { 'Bethesda.net': { bEnablePlatform: '0' } })
+      log('[defaults] disabled the Bethesda.net platform in the profile Skyrim.ini')
+    }
+  } catch (err) {
+    log('[defaults] could not write the profile Skyrim.ini:', err.message)
+  }
 }
 
 // Folder picker
@@ -787,6 +821,9 @@ async function createIsolatedImpl(baseDirOverride) {
 // an orphan ccc list makes the engine treat the AE/CC content set as changed,
 // which pops the Creation Club announcement over the main menu on first boot.
 // That box is modal and SkyrimPlatform cannot dismiss pre-game menus.
+// copyGameDir instead writes an EMPTY Skyrim.ccc (engine expects no CC content)
+// and applyForcedServerDefaults keeps it empty plus disables the Bethesda.net
+// platform, so AE owners never get the "download AE content" prompt either.
 const VANILLA_ROOT_FILES = [
   'SkyrimSE.exe', 'SkyrimSELauncher.exe', 'bink2w64.dll',
   'steam_api64.dll', 'Galaxy64.dll', 'EOSSDK-Win64-Shipping.dll',
@@ -865,6 +902,8 @@ async function copyGameDir(src, dst) {
     copied++
     send('isolated:progress', `Copying vanilla game files… ${copied}/${jobs.length} (${job.rel})`)
   }
+  // AE popup fix: an empty Skyrim.ccc declares no CC content expected, so the engine never prompts AE owners to download it.
+  try { fs.writeFileSync(path.join(dst, 'Skyrim.ccc'), '') } catch { /* re-applied by applyForcedServerDefaults */ }
   // Completion marker: file presence alone cannot prove the copy finished
   // (the esms sort after the BSAs, so partial copies look deceptively full).
   try {
