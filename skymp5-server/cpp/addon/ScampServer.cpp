@@ -1,5 +1,7 @@
 #include "ScampServer.h"
 
+#include <string>
+
 #include "Bot.h"
 #include "ConditionsEvaluator.h"
 #include "FormCallbacks.h"
