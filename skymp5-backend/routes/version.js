@@ -2,7 +2,7 @@ const router = require('express').Router()
 const fs = require('fs')
 
 // Bump LATEST_VERSION on each launcher release; DOWNLOAD_URL is the installer link (e.g. a GitHub Releases URL)
-const LATEST_VERSION = '2.1.0'
+const LATEST_VERSION = '2.1.1'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 
 router.get('/', (_req, res) => {
