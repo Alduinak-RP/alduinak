@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs   = require('fs')
+const https = require('https')
 const { execFile } = require('child_process')
 const WebSocket = require('ws')
 const config = require('./config')
@@ -385,6 +386,37 @@ async function runBuild(kind) {
 ipcMain.handle('build:server',   () => runBuild('server'))
 ipcMain.handle('build:launcher', () => runBuild('launcher'))
 ipcMain.handle('build:client',   () => runBuild('client'))
+
+// Trigger the flatrim CI workflow on GitHub to rebuild the native binaries.
+function ghDispatch() {
+  return new Promise((resolve) => {
+    const g = config.github
+    if (!g.token) return resolve({ ok: false, error: 'No GitHub token. Set ALDUINAK_GH_TOKEN in skymp5-backend/.env (a PAT with actions:write scope).' })
+    const body = JSON.stringify({ ref: g.ref })
+    const req = https.request({
+      hostname: 'api.github.com',
+      path: `/repos/${g.repo}/actions/workflows/${encodeURIComponent(g.workflow)}/dispatches`,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${g.token}`,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'AlduinakManager',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    }, res => {
+      let d = ''; res.on('data', c => d += c)
+      res.on('end', () => {
+        if (res.statusCode === 204) resolve({ ok: true, url: `https://github.com/${g.repo}/actions/workflows/${g.workflow}` })
+        else resolve({ ok: false, error: `GitHub API ${res.statusCode}: ${String(d).slice(0, 300)}` })
+      })
+    })
+    req.on('error', e => resolve({ ok: false, error: e.message }))
+    req.write(body); req.end()
+  })
+}
+ipcMain.handle('build:ci', () => ghDispatch())
 
 function setJsonVersion(file, version) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'))

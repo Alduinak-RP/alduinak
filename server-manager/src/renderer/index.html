@@ -70,6 +70,11 @@
           <small>Rebuilds the front-end UI and skymp5-client.js into build/dist/client, then zips the client files into skymp-client.zip for the launcher. Drop the CI <code>dist</code> (.dll) into build/dist/client first; set Version first.</small>
           <button id="build-client" class="action go">Build client</button>
         </div>
+        <div class="build-col">
+          <h3>CI Rebuild</h3>
+          <small>Triggers the flatrim CI (dist-windows-flatrim.yml) on GitHub to rebuild the native binaries (scam_native.node + client dlls). Needs ALDUINAK_GH_TOKEN in the backend .env. Watch progress on GitHub Actions.</small>
+          <button id="build-ci" class="action go">Trigger CI rebuild</button>
+        </div>
       </div>
       <pre id="build-log" class="log"></pre>
     </section>

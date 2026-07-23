@@ -274,6 +274,15 @@ wireBuild('#build-server',   () => window.mgr.buildServer(),   'server')
 wireBuild('#build-launcher', () => window.mgr.buildLauncher(), 'launcher')
 wireBuild('#build-client',   () => window.mgr.buildClient(),   'client')
 
+// CI rebuild is a single GitHub API call, not a local streaming build.
+$('#build-ci').addEventListener('click', async e => {
+  e.target.disabled = true
+  appendLog($('#build-log'), '\nTriggering CI rebuild...\n')
+  const r = await window.mgr.buildCi()
+  appendLog($('#build-log'), r.ok ? `CI rebuild triggered. Watch: ${r.url}\n` : `Error: ${r.error}\n`)
+  e.target.disabled = false
+})
+
 $('#modlist-refresh').addEventListener('click', async () => {
   const r = await window.mgr.modlistRead()
   const box = $('#modlist-summary')

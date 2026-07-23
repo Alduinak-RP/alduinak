@@ -82,5 +82,13 @@ module.exports = {
     get secret() { return readEnv('RELAY_SECRET') },
   },
 
+  // GitHub Actions dispatch for the CI Rebuild button (needs a PAT with actions:write).
+  github: {
+    token:    process.env.ALDUINAK_GH_TOKEN || readEnv('ALDUINAK_GH_TOKEN'),
+    repo:     process.env.ALDUINAK_GH_REPO || 'Alduinak-RP/alduinak',
+    workflow: process.env.ALDUINAK_GH_WORKFLOW || 'dist-windows-flatrim.yml',
+    ref:      process.env.ALDUINAK_GH_REF || 'main',
+  },
+
   launcherArtifact: 'AlduinakLauncher.exe',
 }
