@@ -1,6 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { notifyNextUpdate } from "./customPacketUtil";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { getInventory } from "../../sync/inventory";
 import { ObjectReference } from "skyrimPlatform";
@@ -66,6 +67,7 @@ export class RefDecorService extends ClientListener {
         }
       });
     }
+    notifyNextUpdate(this.controller, this.sp, `[decor] sync: ${(content["refs"] as any[]).length} refs`);
     for (const raw of content["refs"] as any[]) {
       const refId = Number(raw?.refId) >>> 0;
       if (!refId) {
@@ -89,10 +91,14 @@ export class RefDecorService extends ClientListener {
     }
     this.updateCounter = 0;
     const heldKeys = this.heldKeyNames();
-    this.decor.forEach((d) => this.apply(d, heldKeys));
+    const stats = { names: 0, locks: 0, errors: 0, notLoaded: 0, firstError: "" };
+    this.decor.forEach((d) => this.apply(d, heldKeys, stats));
+    if (stats.names || stats.locks || stats.errors) {
+      notifyNextUpdate(this.controller, this.sp, `[decor] applied names=${stats.names} locks=${stats.locks} errors=${stats.errors} notloaded=${stats.notLoaded}${stats.firstError ? " | " + stats.firstError : ""}`);
+    }
   }
 
-  private apply(d: RefDecor, heldKeys: Set<string>): void {
+  private apply(d: RefDecor, heldKeys: Set<string>, stats: { names: number; locks: number; errors: number; notLoaded: number; firstError: string }): void {
     let refr: ObjectReference | null = null;
     try {
       const localId = remoteIdToLocalId(d.refId);
@@ -104,23 +110,36 @@ export class RefDecorService extends ClientListener {
       return;
     }
     if (!refr) {
+      stats.notLoaded++;
       return; // not loaded yet; retried on a later tick
     }
 
     const prev = this.applied.get(d.refId) || {};
     if (d.name && prev.name !== d.name) {
-      refr.setDisplayName(d.name, true);
-      prev.name = d.name;
+      try {
+        refr.setDisplayName(d.name, true);
+        prev.name = d.name;
+        stats.names++;
+      } catch (e: any) {
+        stats.errors++;
+        if (!stats.firstError) stats.firstError = "name: " + (e && e.message);
+      }
     }
     const shouldLock = d.locked && !d.access && !(d.keyName !== null && heldKeys.has(d.keyName));
     if (prev.engineLocked !== shouldLock) {
-      if (shouldLock) {
-        refr.setLockLevel(REQUIRES_KEY_LOCK_LEVEL);
-        refr.lock(true, false);
-      } else {
-        refr.lock(false, false);
+      try {
+        if (shouldLock) {
+          refr.setLockLevel(REQUIRES_KEY_LOCK_LEVEL);
+          refr.lock(true, false);
+        } else {
+          refr.lock(false, false);
+        }
+        prev.engineLocked = shouldLock;
+        stats.locks++;
+      } catch (e: any) {
+        stats.errors++;
+        if (!stats.firstError) stats.firstError = "lock: " + (e && e.message);
       }
-      prev.engineLocked = shouldLock;
     }
     this.applied.set(d.refId, prev);
   }
