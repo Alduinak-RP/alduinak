@@ -10,6 +10,7 @@
     "build:win": "electron-builder --win"
   },
   "dependencies": {
+    "mongodb": "^6.0.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {

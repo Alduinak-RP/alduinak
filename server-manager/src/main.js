@@ -477,16 +477,60 @@ function backendModule(name) {
   return require(path.join(config.paths.backend, 'sources', name))
 }
 
-// Read the game server's character store (changeForms) and group by profileId
+// Build a character record from a changeform (file JSON or mongo doc); null if not a character.
+function charFromCf(cf) {
+  if (!cf || cf.recType !== 1) return null            // 1 = ACHR (a character)
+  const profileId = Number(cf.profileId)
+  if (!Number.isFinite(profileId) || profileId < 0) return null
+  let name = cf.displayName
+  if (!name) { try { name = JSON.parse(cf.appearanceDump).name } catch {} }
+  name = name || cf.formDesc || '(unnamed)'
+  return {
+    profileId,
+    formDesc: cf.formDesc,
+    name,
+    disabled: !!cf.isDisabled,
+    dead: !!cf.isDead,
+    worldOrCell: cf.worldOrCellDesc,
+    position: Array.isArray(cf.position) ? cf.position : null,
+    health: cf.healthPercentage,
+    magicka: cf.magickaPercentage,
+    stamina: cf.staminaPercentage,
+    inventory: (cf.inv && Array.isArray(cf.inv.entries)) ? cf.inv.entries.map(x => ({ baseId: x.baseId, count: x.count })) : [],
+    spellCount: Array.isArray(cf.learnedSpells) ? cf.learnedSpells.length : 0,
+    spawnDelay: cf.spawnDelay,
+  }
+}
+
+// Read the game server's character store (changeForms) and group by profileId.
+// Driver-aware: file reads world/changeForms/*.json, mongodb queries the collection.
 let _charCache = { at: 0, map: new Map() }
-function readCharactersByProfile() {
+let _charError = ''
+async function readCharactersByProfile() {
   if (Date.now() - _charCache.at < 3000) return _charCache.map
   const map = new Map()
+  const add = cf => {
+    const c = charFromCf(cf)
+    if (!c) return
+    const list = map.get(c.profileId) || []
+    list.push(c)
+    map.set(c.profileId, list)
+  }
+  let settings = {}
+  try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
+  const driver = settings.databaseDriver || 'file'
   try {
-    let settings = {}
-    try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
-    const driver = settings.databaseDriver || 'file'
-    if (driver === 'file') {
+    if (driver === 'mongodb') {
+      let MongoClient
+      try { ({ MongoClient } = require('mongodb')) }
+      catch { throw new Error('mongodb module not installed in server-manager - run npm install') }
+      const client = new MongoClient(settings.databaseUri, { serverSelectionTimeoutMS: 3000 })
+      try {
+        await client.connect()
+        const docs = await client.db(settings.databaseName || 'db').collection('changeForms').find({ recType: 1 }).toArray()
+        for (const cf of docs) add(cf)
+      } finally { await client.close() }
+    } else {
       const dbName = settings.databaseName || 'world'
       const dbDir = path.isAbsolute(dbName) ? dbName : path.join(config.paths.serverDir, dbName)
       const changeForms = path.join(dbDir, 'changeForms')
@@ -494,21 +538,13 @@ function readCharactersByProfile() {
         if (!entry.endsWith('.json')) continue
         let cf
         try { cf = JSON.parse(fs.readFileSync(path.join(changeForms, entry), 'utf8')) } catch { continue }
-        if (cf.recType !== 1) continue                 // 1 = ACHR (a character)
-        const pid = Number(cf.profileId)
-        if (!Number.isFinite(pid) || pid < 0) continue
-        const list = map.get(pid) || []
-        list.push({
-          name: cf.displayName || cf.formDesc || entry.replace(/\.json$/, ''),
-          formDesc: cf.formDesc,
-          baseDesc: cf.baseDesc,
-          disabled: !!cf.isDisabled,
-          worldOrCell: cf.worldOrCellDesc,
-        })
-        map.set(pid, list)
+        add(cf)
       }
     }
-  } catch { /* best-effort */ }
+    _charError = ''
+  } catch (err) {
+    _charError = err.message
+  }
   _charCache = { at: Date.now(), map }
   return map
 }
@@ -520,13 +556,14 @@ function whitelistSet() {
   } catch { return new Set() }
 }
 
-ipcMain.handle('players:list', () => {
+ipcMain.handle('players:list', async () => {
   try {
     const players = backendModule('players').list()
     const wl = whitelistSet()
-    const chars = readCharactersByProfile()
+    const chars = await readCharactersByProfile()
     return {
       ok: true,
+      charError: _charError || undefined,
       players: players.map(p => ({
         discordId: p.discordId,
         profileId: p.profileId,
@@ -538,14 +575,16 @@ ipcMain.handle('players:list', () => {
   } catch (err) { return { ok: false, error: err.message } }
 })
 
-ipcMain.handle('players:detail', (_e, discordId) => {
+ipcMain.handle('players:detail', async (_e, discordId) => {
   try {
     const players = backendModule('players').list()
     const p = players.find(x => String(x.discordId) === String(discordId))
     if (!p) return { ok: false, error: 'player not found' }
     const wl = whitelistSet()
+    const chars = await readCharactersByProfile()
     return {
       ok: true,
+      charError: _charError || undefined,
       player: {
         discordId: p.discordId, profileId: p.profileId,
         username: p.username || '', displayName: p.displayName || '',
@@ -556,7 +595,7 @@ ipcMain.handle('players:detail', (_e, discordId) => {
       factions: p.assignments || [],
       permissions: p.factionPermissions || [],
       gameFactions: p.gameFactions || [],
-      characters: readCharactersByProfile().get(Number(p.profileId)) || [],
+      characters: chars.get(Number(p.profileId)) || [],
     }
   } catch (err) { return { ok: false, error: err.message } }
 })
