@@ -276,7 +276,7 @@ function startLogTail() {
 }
 
 const consoleRelay = {
-  ws: null, connected: false, timer: null,
+  ws: null, connected: false, timer: null, pending: new Map(),
   connect() {
     if (this.ws) return
     let ws
@@ -288,7 +288,13 @@ const consoleRelay = {
       let m; try { m = JSON.parse(raw.toString()) } catch { return }
       if (m.type === 'auth_ok') { this.connected = true; send('console:relay', { kind: 'status', text: 'connected to relay' }); return }
       if (m.type === 'console_output' || m.type === 'console_log') {
-        send('console:relay', { kind: 'output', text: String(m.text ?? '') })
+        const text = String(m.text ?? '')
+        // A marked reply line is consumed by its pending query, not shown in the console.
+        for (const [marker, p] of this.pending) {
+          const idx = text.indexOf(marker)
+          if (idx !== -1) { this.pending.delete(marker); clearTimeout(p.timer); p.resolve(text.slice(idx + marker.length).trim()); return }
+        }
+        send('console:relay', { kind: 'output', text })
       }
     })
     ws.on('close', () => { this.connected = false; this.ws = null; this.scheduleReconnect() })
@@ -299,6 +305,16 @@ const consoleRelay = {
     if (!this.connected || !this.ws) return { ok: false, error: 'relay not connected - is the backend running?' }
     try { this.ws.send(JSON.stringify({ type: 'console_command', text })); return { ok: true } }
     catch (err) { return { ok: false, error: err.message } }
+  },
+  // Send a command and resolve with the reply line following its marker.
+  query(command, marker, timeoutMs = 2500) {
+    return new Promise(resolve => {
+      if (!this.connected || !this.ws) return resolve({ ok: false, error: 'relay not connected' })
+      const timer = setTimeout(() => { this.pending.delete(marker); resolve({ ok: false, error: 'query timed out' }) }, timeoutMs)
+      this.pending.set(marker, { resolve: payload => resolve({ ok: true, payload }), timer })
+      try { this.ws.send(JSON.stringify({ type: 'console_command', text: command })) }
+      catch (err) { this.pending.delete(marker); clearTimeout(timer); resolve({ ok: false, error: err.message }) }
+    })
   },
 }
 
@@ -610,6 +626,16 @@ ipcMain.handle('players:update', (_e, profileId, patch) => {
     const updated = backendModule('players').updateByProfileId(Number(profileId), clean)
     return { ok: true, player: updated }
   } catch (err) { return { ok: false, error: err.message } }
+})
+
+// Ask the gamemode (over the relay) which profiles are currently online.
+ipcMain.handle('players:online', async () => {
+  const r = await consoleRelay.query('__playersjson', '__PLAYERSJSON__')
+  if (!r.ok) return { ok: false, error: r.error }
+  try {
+    const list = JSON.parse(r.payload)
+    return { ok: true, profileIds: list.map(p => Number(p.profileId)), online: list }
+  } catch { return { ok: false, error: 'bad players payload' } }
 })
 
 // Settings tab (structured forms)
