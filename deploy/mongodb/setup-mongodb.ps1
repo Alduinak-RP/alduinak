@@ -14,7 +14,8 @@
 #>
 param(
   [Parameter(Mandatory = $true)] [string] $Password,
-  [string] $MongoVersion = "7.0.14",
+  # 8.0.x is the current LTS track (recommended for a production Windows Server box)
+  [string] $MongoVersion = "8.0.28",
   [string] $Root = "C:\Alduinak\mongodb",
   [string] $User = "skympuser"
 )

@@ -15,7 +15,7 @@
     powershell -ExecutionPolicy Bypass -File deploy\livekit\setup-livekit.ps1
 #>
 param(
-  [string] $Version = "1.8.0",
+  [string] $Version = "1.13.4",
   [string] $Root = "C:\Alduinak\livekit"
 )
 
