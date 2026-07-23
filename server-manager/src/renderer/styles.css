@@ -80,6 +80,11 @@ select {
 .pl-name { font-weight: 600; }
 .pl-sub { font-size: 11px; color: #8a7c66; margin-top: 2px; }
 .badge { font-size: 11px; color: #bfe08b; border: 1px solid #5a7a3a; border-radius: 3px; padding: 0 6px; }
+.badge.online { color: #14110d; background: #7bbf4a; border-color: #7bbf4a; }
+.chk { font-size: 12px; color: #c8bca6; display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+details.char { border: 1px solid #221b13; border-radius: 4px; margin: 4px 0; padding: 4px 8px; background: #120f0b; }
+details.char summary { cursor: pointer; font-weight: 600; color: #d8c8a8; }
+.char-inv { font-size: 11px; color: #8a7c66; margin-top: 4px; font-family: Consolas, monospace; word-break: break-all; }
 
 .detail {
   width: 50%; overflow-y: auto; border: 1px solid #2a221a; border-radius: 6px;

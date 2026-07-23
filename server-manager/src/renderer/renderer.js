@@ -160,21 +160,31 @@ appendLog(logNode, "Type 'help' for manager commands (services, builds); anythin
 
 let allPlayers = []
 let selectedDiscordId = null
+let onlineProfileIds = new Set()
 
 async function loadPlayers() {
   const r = await window.mgr.playersList()
   if (!r.ok) { allPlayers = []; $('#players-list').innerHTML = `<li>Error: ${esc(r.error)}</li>`; return }
   allPlayers = r.players
   renderPlayerList()
+  refreshOnline()
+}
+
+// Poll the gamemode for the currently-online profiles (drives the filter and badge).
+async function refreshOnline() {
+  const r = await window.mgr.playersOnline()
+  onlineProfileIds = r.ok ? new Set(r.profileIds) : new Set()
+  renderPlayerList()
 }
 
 function renderPlayerList() {
   const ul = $('#players-list')
   const q = $('#player-search').value.trim().toLowerCase()
-  const filtered = !q ? allPlayers : allPlayers.filter(p =>
+  let filtered = !q ? allPlayers : allPlayers.filter(p =>
     String(p.name).toLowerCase().includes(q) ||
     String(p.discordId).toLowerCase().includes(q) ||
     (p.characters || []).some(c => String(c).toLowerCase().includes(q)))
+  if ($('#players-online-only').checked) filtered = filtered.filter(p => onlineProfileIds.has(Number(p.profileId)))
 
   ul.innerHTML = ''
   $('#players-count').textContent = `${filtered.length} / ${allPlayers.length}`
@@ -185,6 +195,7 @@ function renderPlayerList() {
     if (p.discordId === selectedDiscordId) li.classList.add('selected')
     const main = el('div', { className: 'pl-main' })
     main.appendChild(el('span', { className: 'pl-name' }, esc(p.name)))
+    if (onlineProfileIds.has(Number(p.profileId))) main.appendChild(el('span', { className: 'badge online' }, 'online'))
     if (p.whitelisted) main.appendChild(el('span', { className: 'badge' }, 'whitelist'))
     li.appendChild(main)
     const sub = (p.characters && p.characters.length)
@@ -208,8 +219,31 @@ async function selectPlayer(discordId) {
   const factions = r.factions.length
     ? '<ul class="mini">' + r.factions.map(f => `<li>${esc(f.requirement ? `${f.requirement.group || f.requirement.faction || ''} — ${f.requirement.rank ?? ''}` : (f.requirementId || ''))}</li>`).join('') + '</ul>'
     : '<p class="muted">None</p>'
+  const fmtPct = x => (x === undefined || x === null) ? '—' : Math.round(x * 100) + '%'
+  const fmtBase = id => '0x' + Number(id >>> 0).toString(16).toUpperCase()
+  const charRow = c => {
+    const badges =
+      (onlineProfileIds.has(Number(c.profileId)) ? ' <span class="badge online">online</span>' : '') +
+      (c.dead ? ' <span class="badge">dead</span>' : '') +
+      (c.disabled ? ' <span class="muted">(disabled)</span>' : '')
+    const inv = c.inventory || []
+    const invList = inv.length
+      ? esc(inv.slice(0, 40).map(i => `${fmtBase(i.baseId)} x${i.count}`).join(', ')) + (inv.length > 40 ? ', …' : '')
+      : 'empty'
+    const pos = c.position ? c.position.map(n => Math.round(n)).join(', ') : '—'
+    return `<details class="char"><summary>${esc(c.name)}${badges}</summary>` +
+      `<div class="kv"><b>Location</b><span>${esc(c.worldOrCell || '—')}</span></div>` +
+      `<div class="kv"><b>Position</b><span>${esc(pos)}</span></div>` +
+      `<div class="kv"><b>Health</b><span>${fmtPct(c.health)}</span></div>` +
+      `<div class="kv"><b>Magicka</b><span>${fmtPct(c.magicka)}</span></div>` +
+      `<div class="kv"><b>Stamina</b><span>${fmtPct(c.stamina)}</span></div>` +
+      `<div class="kv"><b>Spells</b><span>${esc(c.spellCount)}</span></div>` +
+      `<div class="kv"><b>Items</b><span>${esc(inv.length)}</span></div>` +
+      `<div class="char-inv">${invList}</div></details>`
+  }
+  const charWarn = r.charError ? `<p class="muted">character data unavailable: ${esc(r.charError)}</p>` : ''
   const chars = r.characters.length
-    ? '<ul class="mini">' + r.characters.map(c => `<li>${esc(c.name)}${c.disabled ? ' <span class="muted">(disabled)</span>' : ''}</li>`).join('') + '</ul>'
+    ? r.characters.map(charRow).join('')
     : '<p class="muted">No characters found in the save store.</p>'
 
   box.innerHTML =
@@ -224,7 +258,7 @@ async function selectPlayer(discordId) {
     `<div class="field"><label>Notes</label><textarea id="pd-notes" rows="3">${esc(p.notes)}</textarea></div>` +
     `<div class="row"><button id="pd-save" class="action go">Save changes</button><span id="pd-status" class="status"></span></div>` +
     `<h4>Factions</h4>${factions}` +
-    `<h4>Characters</h4>${chars}`
+    `<h4>Characters</h4>${charWarn}${chars}`
 
   $('#pd-save').addEventListener('click', async () => {
     const patch = {
@@ -245,7 +279,9 @@ async function selectPlayer(discordId) {
 
 $('#players-refresh').addEventListener('click', loadPlayers)
 $('#player-search').addEventListener('input', renderPlayerList)
+$('#players-online-only').addEventListener('change', renderPlayerList)
 loadPlayers()
+setInterval(refreshOnline, 10000)
 
 window.mgr.launcherGetVersion().then(r => { if (r.version) $('#launcher-version').value = r.version })
 window.mgr.clientGetVersion().then(r => { if (r.version) $('#client-version').value = r.version })
