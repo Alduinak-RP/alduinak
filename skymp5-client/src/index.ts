@@ -28,15 +28,11 @@ import { ContainersService } from "./services/services/containersService";
 import { NetworkingService } from "./services/services/networkingService";
 import { RemoteServer } from "./services/services/remoteServer";
 import { SpSnippetService } from "./services/services/spSnippetService";
-import { SweetTaffyDynamicPerksService } from "./services/services/sweetTaffyDynamicPerksService";
 import { SweetTaffySweetCantDropService } from "./services/services/sweetTaffySweetCantDropService";
-import { SweetTaffyStaticPerksService } from "./services/services/sweetTaffyStaticPerksService";
 import { DisableSkillAdvanceService } from "./services/services/disableSkillAdvanceService";
 import { DisableFastTravelService } from "./services/services/disableFastTravelService";
 import { DisableDifficultySelectionService } from "./services/services/disableDifficultySelectionService";
-import { SweetTaffyPlayerCombatService } from "./services/services/sweetTaffyPlayerCombatService";
 import { WorldCleanerService } from "./services/services/worldCleanerService";
-import { SweetTaffySkillMenuService } from "./services/services/sweetTaffySkillMenuService";
 import { LoadOrderVerificationService } from "./services/services/loadOrderVerificationService";
 import { BrowserService } from "./services/services/browserService";
 import { AuthService } from "./services/services/authService";
@@ -66,7 +62,6 @@ import { MagicSyncService } from "./services/services/magicSyncService";
 import { ProfilingService } from "./services/services/profilingService";
 import { SettingsService } from "./services/services/settingsService";
 import { SweetCameraEnforcementService } from "./services/services/sweetCameraEnforcementService";
-import { SweetTaffyNicknamesService } from "./services/services/sweetTaffyNicknamesService";
 import { ServerJsVerificationService } from "./services/services/serverJsVerificationService";
 import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService";
 import { NotificationService } from "./services/services/notificationService";
@@ -104,11 +99,7 @@ const main = () => {
       new RemoteServer(sp, controller),
       new SpSnippetService(sp, controller),
       new SettingsService(sp, controller),
-      new SweetTaffyDynamicPerksService(sp, controller),
-      new SweetTaffyStaticPerksService(sp, controller),
       new SweetTaffySweetCantDropService(sp, controller),
-      new SweetTaffyPlayerCombatService(sp, controller),
-      new SweetTaffySkillMenuService(sp, controller),
       new SweetCameraEnforcementService(sp, controller),
       new SweetTaffyEvalService(sp, controller),
       new DisableSkillAdvanceService(sp, controller),
@@ -140,7 +131,6 @@ const main = () => {
       new KeyboardEventsService(sp, controller),
       new MagicSyncService(sp, controller),
       new ProfilingService(sp, controller),
-      new SweetTaffyNicknamesService(sp, controller),
       new ServerJsVerificationService(sp, controller),
       new NotificationService(sp, controller)
     ];
