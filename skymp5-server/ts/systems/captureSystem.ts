@@ -49,14 +49,14 @@ const DEFAULT_MANACLES = 0;
 const CARRY_FOLLOW_INTERVAL_MS = 120;
 const CARRY_FOLLOW_MIN_MOVE_SQ = 16 * 16;
 
-// A consent prompt lapses if the target doesn't answer in time.
-const CONSENT_TIMEOUT_MS = 20000;
+// A consent prompt lapses if the target doesn't answer in time. Overridable via "captureConsentTimeoutMs".
+const DEFAULT_CONSENT_TIMEOUT_MS = 20000;
 
-// The same (captor, target) pair may only be prompted this often.
-const CONSENT_COOLDOWN_MS = 15000;
+// The same (captor, target) pair may only be prompted this often. Overridable via "captureConsentCooldownMs".
+const DEFAULT_CONSENT_COOLDOWN_MS = 15000;
 
-// Server-side backstop for the client's "look at a player" rule: max capture/carry initiation range in game units (~activate range)
-const INTERACT_MAX_DISTANCE = 256;
+// Server-side backstop for the client's "look at a player" rule: max capture/carry initiation range in game units (~activate range). Overridable via "captureInteractMaxDistance".
+const DEFAULT_INTERACT_MAX_DISTANCE = 256;
 
 interface RestraintInfo {
   boundHands: boolean;   // arrested
@@ -93,6 +93,9 @@ export class CaptureSystem implements System {
   private manaclesFormId = DEFAULT_MANACLES;
   private captiveAnim = "OffsetBoundStandingStart";
   private carrierAnim = "OffsetCarryBasketStart";
+  private interactMaxDistance = DEFAULT_INTERACT_MAX_DISTANCE;
+  private consentTimeoutMs = DEFAULT_CONSENT_TIMEOUT_MS;
+  private consentCooldownMs = DEFAULT_CONSENT_COOLDOWN_MS;
 
   // targetActorId -> restraint state
   private restraints = new Map<number, RestraintInfo>();
@@ -126,6 +129,13 @@ export class CaptureSystem implements System {
     if (typeof s.carrierAnimEvent === "string" && s.carrierAnimEvent) {
       this.carrierAnim = s.carrierAnimEvent;
     }
+    const all = s.allSettings as Record<string, unknown> | null;
+    const rawDist = Number(all?.["captureInteractMaxDistance"]);
+    if (Number.isFinite(rawDist) && rawDist > 0) this.interactMaxDistance = rawDist;
+    const rawTimeout = Number(all?.["captureConsentTimeoutMs"]);
+    if (Number.isInteger(rawTimeout) && rawTimeout > 0) this.consentTimeoutMs = rawTimeout;
+    const rawCooldown = Number(all?.["captureConsentCooldownMs"]);
+    if (Number.isInteger(rawCooldown) && rawCooldown >= 0) this.consentCooldownMs = rawCooldown;
     if (this.manaclesFormId === 0) {
       this.log(`[capture] manaclesFormId not configured — arrests need no item`);
     } else {
@@ -417,14 +427,14 @@ export class CaptureSystem implements System {
     const now = Date.now();
     const cooldownKey = `${captorActorId}:${targetActorId}`;
     const lastPrompt = this.consentCooldown.get(cooldownKey);
-    if (lastPrompt !== undefined && now - lastPrompt < CONSENT_COOLDOWN_MS) {
+    if (lastPrompt !== undefined && now - lastPrompt < this.consentCooldownMs) {
       this.notice(ctx, this.userOf(ctx, captorActorId),
         `Wait before asking ${this.nameOf(ctx, targetActorId)} again.`);
       return;
     }
     if (this.consentCooldown.size > 512) {
       for (const [k, t] of Array.from(this.consentCooldown)) {
-        if (now - t >= CONSENT_COOLDOWN_MS) {
+        if (now - t >= this.consentCooldownMs) {
           this.consentCooldown.delete(k);
         }
       }
@@ -437,7 +447,7 @@ export class CaptureSystem implements System {
         this.notice(ctx, this.userOf(ctx, captorActorId),
           `${this.nameOf(ctx, targetActorId)} did not respond.`);
       }
-    }, CONSENT_TIMEOUT_MS);
+    }, this.consentTimeoutMs);
     this.pending.set(requestId, { kind, captorActorId, targetActorId, timer });
 
     const captorName = this.nameOf(ctx, captorActorId) || "Someone";
@@ -588,7 +598,7 @@ export class CaptureSystem implements System {
     return this.nearEnough(ctx, selfActorId, targetActorId);
   }
 
-  // Same cell/worldspace and within INTERACT_MAX_DISTANCE; the target id is client-supplied, so this stops a modified client grabbing players across the map
+  // Same cell/worldspace and within interactMaxDistance; the target id is client-supplied, so this stops a modified client grabbing players across the map
   private nearEnough(ctx: SystemContext, selfActorId: number, targetActorId: number): boolean {
     try {
       if (ctx.svr.getActorCellOrWorld(selfActorId) !==
@@ -598,7 +608,7 @@ export class CaptureSystem implements System {
       const a = ctx.svr.getActorPos(selfActorId);
       const b = ctx.svr.getActorPos(targetActorId);
       const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
-      return dx * dx + dy * dy + dz * dz <= INTERACT_MAX_DISTANCE * INTERACT_MAX_DISTANCE;
+      return dx * dx + dy * dy + dz * dz <= this.interactMaxDistance * this.interactMaxDistance;
     } catch {
       return false;
     }

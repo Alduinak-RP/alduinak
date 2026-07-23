@@ -15,11 +15,35 @@ const DEFAULT_MAX_CHARACTERS = 3;
 
 // Fresh characters start with a miner's outfit and pocket change, nothing else.
 // Form ids verified against Skyrim.esm: ClothesMinerClothes, ClothesMinerBoots, Gold001.
-const STARTING_ITEMS = [
+// Overridable via the "startingItems" server setting.
+const DEFAULT_STARTING_ITEMS = [
   { baseId: 0x00080697, count: 1 },
   { baseId: 0x00080699, count: 1 },
   { baseId: 0x0000000f, count: 50 },
 ];
+
+// Parse a base id that may arrive as a decimal number or a "0x..." hex string
+const toBaseId = (v: unknown): number | null => {
+  if (typeof v === "number" && Number.isFinite(v)) return v >>> 0;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v.trim());
+    if (Number.isFinite(n)) return n >>> 0;
+  }
+  return null;
+};
+
+// Validate a "startingItems" setting into {baseId,count} stacks; null if absent or malformed
+function parseStartingItems(raw: unknown): { baseId: number; count: number }[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: { baseId: number; count: number }[] = [];
+  for (const e of raw) {
+    const baseId = toBaseId((e as { baseId?: unknown })?.baseId);
+    const count = Number((e as { count?: unknown })?.count);
+    if (baseId === null || !Number.isInteger(count) || count <= 0) return null;
+    out.push({ baseId, count });
+  }
+  return out.length ? out : null;
+}
 
 // One kit per profile+slot, persisted so delete/recreate cycling can't farm gold
 const STARTER_GRANTS_FILE = "./starter-grants.json";
@@ -29,7 +53,8 @@ const REQUEST_COOLDOWN_MS = 15 * 1000;
 const ASSIGN_GRACE_MS = 10 * 1000;
 
 // Logout grace: the body stays in the world this long after disconnect/menu quit/character switch, so combat logging leaves a killable body; re-selecting cancels it
-const LOGOUT_GRACE_MS = 5 * 60 * 1000;
+// Overridable via the "logoutGraceMs" server setting.
+const DEFAULT_LOGOUT_GRACE_MS = 5 * 60 * 1000;
 
 // Character-select protocol (gated by the "characterSelect" server setting;
 // slot count via "characterSelectMaxCharacters", 1-10, default 3).
@@ -47,6 +72,8 @@ export class Spawn implements System {
 
   private characterSelect = false;
   private maxCharacters = DEFAULT_MAX_CHARACTERS;
+  private startingItems = DEFAULT_STARTING_ITEMS;
+  private logoutGraceMs = DEFAULT_LOGOUT_GRACE_MS;
   private settingsObject!: Settings;
   // userId -> auth context awaiting a character selection
   private pending = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
@@ -62,9 +89,13 @@ export class Spawn implements System {
     this.settingsObject = await Settings.get();
     this.characterSelect = !!(this.settingsObject.allSettings &&
       (this.settingsObject.allSettings as Record<string, unknown>)["characterSelect"]);
-    const rawMax = Number(this.settingsObject.allSettings &&
-      (this.settingsObject.allSettings as Record<string, unknown>)["characterSelectMaxCharacters"]);
+    const all = this.settingsObject.allSettings as Record<string, unknown> | null;
+    const rawMax = Number(all && all["characterSelectMaxCharacters"]);
     if (Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= 10) this.maxCharacters = rawMax;
+    const parsedItems = parseStartingItems(all?.["startingItems"]);
+    if (parsedItems) this.startingItems = parsedItems;
+    const rawGrace = Number(all?.["logoutGraceMs"]);
+    if (Number.isInteger(rawGrace) && rawGrace >= 0) this.logoutGraceMs = rawGrace;
 
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
       if (this.characterSelect) {
@@ -105,7 +136,7 @@ export class Spawn implements System {
     } catch { /* form vanished */ }
   }
 
-  // Disable the body LOGOUT_GRACE_MS from now unless re-selected first; also detaches a still-connected owner when firing, since re-selecting a DISABLED actor while still mapped would stream CreateActor(isMe) twice
+  // Disable the body after the logout grace unless re-selected first; also detaches a still-connected owner when firing, since re-selecting a DISABLED actor while still mapped would stream CreateActor(isMe) twice
   private schedulePark(ctx: SystemContext, actorId: number): void {
     this.cancelPark(actorId);
     const handle = setTimeout(() => {
@@ -118,7 +149,7 @@ export class Spawn implements System {
         }
         this.log("Logout grace expired, actor", actorId.toString(16), "despawned");
       } catch { /* form vanished */ }
-    }, LOGOUT_GRACE_MS);
+    }, this.logoutGraceMs);
     this.parkTimers.set(actorId, handle);
   }
 
@@ -223,8 +254,8 @@ export class Spawn implements System {
     const key = `${profileId}:${slot}`;
     const granted = this.loadStarterGrants();
     const items = granted[key]
-      ? STARTING_ITEMS.filter(e => e.baseId !== 0x0000000f)
-      : STARTING_ITEMS;
+      ? this.startingItems.filter(e => e.baseId !== 0x0000000f)
+      : this.startingItems;
     try { mp.set(actorId, "inventory", { entries: items.map(e => ({ ...e })) }); }
     catch { /* form vanished */ }
     if (!granted[key]) {

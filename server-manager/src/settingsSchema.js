@@ -30,12 +30,27 @@ const serverSettings = [
   { key: 'manaclesFormId',          label: 'Manacles item',         type: 'text',   group: 'Gameplay', help: 'Form id (number or "0x..." string) of the item a captor must hold to restrain a player. Defaults to vanilla prisoner cuffs 0x0005DC02.' },
   { key: 'captiveAnimEvent',        label: 'Captive anim event',    type: 'text',   group: 'Gameplay', help: 'Behaviour-graph event played on a restrained player. Leave empty for the default bound-hands pose.' },
   { key: 'carrierAnimEvent',        label: 'Carrier anim event',    type: 'text',   group: 'Gameplay', help: 'Behaviour-graph event played on a player carrying someone. Leave empty for the default hold pose.' },
+  { key: 'startingItems',           label: 'Starting items',        type: 'json',   group: 'Gameplay', help: 'Kit granted to fresh characters: [{ baseId, count }]. baseId as a number or "0x..." string. Gold (0x0000000f) is granted once per slot.' },
+  { key: 'logoutGraceMs',           label: 'Logout grace (ms)',     type: 'number', group: 'Gameplay', help: 'How long a disconnected body stays killable in the world before despawning. Default 300000.' },
+
+  // Interactions (capture / carry / search / trade tunables)
+  { key: 'captureInteractMaxDistance', label: 'Capture range',                 type: 'number', group: 'Interactions', help: 'Max game-units distance to start a capture/carry. Default 256.' },
+  { key: 'captureConsentTimeoutMs',    label: 'Capture consent timeout (ms)',  type: 'number', group: 'Interactions', help: 'How long a capture/carry consent prompt waits for an answer. Default 20000.' },
+  { key: 'captureConsentCooldownMs',   label: 'Capture consent cooldown (ms)', type: 'number', group: 'Interactions', help: 'Min gap before prompting the same target again. Default 15000.' },
+  { key: 'tradeMaxDistance',           label: 'Trade range',                   type: 'number', group: 'Interactions', help: 'Max game-units distance both players must stay within to trade. Default 1024.' },
+  { key: 'tradeInviteTtlMs',           label: 'Trade invite TTL (ms)',         type: 'number', group: 'Interactions', help: 'Pending trade invites auto-cancel after this. Default 60000.' },
+  { key: 'tradeInviteCooldownMs',      label: 'Trade invite cooldown (ms)',    type: 'number', group: 'Interactions', help: 'Min gap between trade invites per initiator to target. Default 30000.' },
+  { key: 'searchStartMaxDistance',     label: 'Search start range',            type: 'number', group: 'Interactions', help: 'Max game-units distance to start searching a player. Default 256.' },
+  { key: 'searchKeepMaxDistance',      label: 'Search keep range',             type: 'number', group: 'Interactions', help: 'The search window closes once the pair drift further apart than this. Default 512.' },
+  { key: 'searchConsentTimeoutMs',     label: 'Search consent timeout (ms)',   type: 'number', group: 'Interactions', help: 'How long a search consent prompt waits for an answer. Default 20000.' },
+  { key: 'searchConsentCooldownMs',    label: 'Search consent cooldown (ms)',  type: 'number', group: 'Interactions', help: 'Min gap before prompting the same target again. Default 15000.' },
 
   // Data & storage
   { key: 'dataDir',        label: 'Data directory', type: 'text',   group: 'Data & storage', placeholder: 'data', help: 'ESMs / ESPs / UI / scripts.' },
   { key: 'gamemodePath',   label: 'Gamemode path',  type: 'text',   group: 'Data & storage', placeholder: './gamemode.js' },
   { key: 'databaseDriver', label: 'Database driver', type: 'select', group: 'Data & storage', options: ['file', 'mongodb', 'zip', 'migration'] },
   { key: 'databaseName',   label: 'Database name',   type: 'text',   group: 'Data & storage', placeholder: 'world', help: 'File DB folder / Mongo db name. Characters live in <name>/changeForms.' },
+  { key: 'logDir',         label: 'Log directory',   type: 'text',   group: 'Data & storage', placeholder: 'C:\\logs', help: 'Where chat.log and service logs are written. Overridden by the ALDUINAK_LOG_DIR env var.' },
 
   // Complex / nested (rendered as JSON sub-editors)
   { key: 'loadOrder',     label: 'Load order',     type: 'json', group: 'Advanced', help: 'Array of ESM/ESP filenames in order.' },
@@ -44,6 +59,7 @@ const serverSettings = [
   { key: 'reloot',        label: 'Reloot timers',  type: 'json', group: 'Advanced', help: 'Record type → ms before respawn.' },
   { key: 'forbiddenReloot', label: 'Forbidden reloot', type: 'json', group: 'Advanced', help: 'Record types that never respawn.' },
   { key: 'blockedSpells',  label: 'Blocked spells',  type: 'json', group: 'Advanced', help: 'Spell form ids players may not cast (numbers or "0x..." strings), e.g. racial powers.' },
+  { key: 'adminProfileIds', label: 'Admin profile IDs', type: 'json', group: 'Advanced', help: 'Master-api profile ids granted in-game admin chat commands. Array of numbers.' },
   { key: 'npcSettings',   label: 'NPC settings',   type: 'json', group: 'Advanced' },
   { key: 'metricsAuth',   label: 'Metrics auth',   type: 'json', group: 'Advanced', help: '{ user, password } for /metrics basic auth.' },
   { key: 'damageMultFormulaSettings', label: 'Damage formula', type: 'json', group: 'Advanced' },

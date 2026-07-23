@@ -1,3 +1,4 @@
+import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -28,9 +29,10 @@ type Mp = any;
 //     { customPacketType: "tradeCompleted" } | { customPacketType: "tradeCancelled", reason }
 //     { customPacketType: "tradeNotice", text }
 
-const MAX_TRADE_DISTANCE = 1024;      // game units; both must stay within this range
-const INVITE_TTL_MS = 60 * 1000;      // pending invites auto-cancel after this
-const INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per initiator->target
+// Defaults; overridable via "tradeMaxDistance" / "tradeInviteTtlMs" / "tradeInviteCooldownMs".
+const DEFAULT_MAX_TRADE_DISTANCE = 1024;      // game units; both must stay within this range
+const DEFAULT_INVITE_TTL_MS = 60 * 1000;      // pending invites auto-cancel after this
+const DEFAULT_INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per initiator->target
 
 interface Item {
   baseId: number;
@@ -171,7 +173,20 @@ export class TradeSystem implements System {
   // the same Session object so either side can be looked up in O(1).
   private sessions = new Map<number, Session>();
 
+  private maxTradeDistance = DEFAULT_MAX_TRADE_DISTANCE;
+  private inviteTtlMs = DEFAULT_INVITE_TTL_MS;
+  private inviteCooldownMs = DEFAULT_INVITE_COOLDOWN_MS;
+
   async initAsync(ctx: SystemContext): Promise<void> {
+    const s = await Settings.get();
+    const all = s.allSettings as Record<string, unknown> | null;
+    const rawDist = Number(all?.["tradeMaxDistance"]);
+    if (Number.isFinite(rawDist) && rawDist > 0) this.maxTradeDistance = rawDist;
+    const rawTtl = Number(all?.["tradeInviteTtlMs"]);
+    if (Number.isInteger(rawTtl) && rawTtl > 0) this.inviteTtlMs = rawTtl;
+    const rawCooldown = Number(all?.["tradeInviteCooldownMs"]);
+    if (Number.isInteger(rawCooldown) && rawCooldown >= 0) this.inviteCooldownMs = rawCooldown;
+
     // A character switch mid-trade would swap items out of the NEW body; void the deal instead
     ctx.gm.on("userAssignActor", (userId: number) => {
       const s = this.sessions.get(userId);
@@ -315,7 +330,7 @@ export class TradeSystem implements System {
       const dx = pa[0] - pb[0];
       const dy = pa[1] - pb[1];
       const dz = pa[2] - pb[2];
-      return dx * dx + dy * dy + dz * dz <= MAX_TRADE_DISTANCE * MAX_TRADE_DISTANCE;
+      return dx * dx + dy * dy + dz * dz <= this.maxTradeDistance * this.maxTradeDistance;
     } catch {
       return false;
     }
@@ -350,14 +365,14 @@ export class TradeSystem implements System {
 
   private onInviteCooldown(a: number, b: number): boolean {
     const last = this.inviteCooldowns.get(a + ':' + b) || 0;
-    return Date.now() - last < INVITE_COOLDOWN_MS;
+    return Date.now() - last < this.inviteCooldownMs;
   }
 
   private markInviteCooldown(a: number, b: number): void {
     const now = Date.now();
     // Opportunistic prune so the map can't grow without bound.
     this.inviteCooldowns.forEach((ts, key) => {
-      if (now - ts >= INVITE_COOLDOWN_MS) {
+      if (now - ts >= this.inviteCooldownMs) {
         this.inviteCooldowns.delete(key);
       }
     });
@@ -382,7 +397,7 @@ export class TradeSystem implements System {
       } catch (err: any) {
         this.log('[trade] invite expiry error: ' + (err && err.message));
       }
-    }, INVITE_TTL_MS);
+    }, this.inviteTtlMs);
   }
 
   // ── Packet handlers ─────────────────────────────────────────────────────────

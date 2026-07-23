@@ -1,3 +1,4 @@
+import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -24,13 +25,14 @@ type Mp = any;
 //     { customPacketType: "searchClose" }                            // -> searcher: close it
 //     { customPacketType: "searchNotice", text }                     // corner toast
 
-const CONSENT_TIMEOUT_MS = 20000;
-const CONSENT_COOLDOWN_MS = 15000;
+// Defaults; overridable via "searchConsentTimeoutMs" / "searchConsentCooldownMs".
+const DEFAULT_CONSENT_TIMEOUT_MS = 20000;
+const DEFAULT_CONSENT_COOLDOWN_MS = 15000;
 
-// Initiation range mirrors CaptureSystem's activate-range backstop.
-const START_MAX_DISTANCE = 256;
-// The window closes when the pair drifts further apart than this.
-const KEEP_MAX_DISTANCE = 512;
+// Initiation range mirrors CaptureSystem's activate-range backstop. Overridable via "searchStartMaxDistance".
+const DEFAULT_START_MAX_DISTANCE = 256;
+// The window closes when the pair drifts further apart than this. Overridable via "searchKeepMaxDistance".
+const DEFAULT_KEEP_MAX_DISTANCE = 512;
 // Distance re-check cadence.
 const WATCH_INTERVAL_MS = 500;
 
@@ -73,6 +75,23 @@ export class SearchSystem implements System {
   private nextRequestId = 1;
   private lastWatchMs = 0;
   private warnedNoNative = false;
+  private consentTimeoutMs = DEFAULT_CONSENT_TIMEOUT_MS;
+  private consentCooldownMs = DEFAULT_CONSENT_COOLDOWN_MS;
+  private startMaxDistance = DEFAULT_START_MAX_DISTANCE;
+  private keepMaxDistance = DEFAULT_KEEP_MAX_DISTANCE;
+
+  async initAsync(_ctx: SystemContext): Promise<void> {
+    const s = await Settings.get();
+    const all = s.allSettings as Record<string, unknown> | null;
+    const rawStart = Number(all?.["searchStartMaxDistance"]);
+    if (Number.isFinite(rawStart) && rawStart > 0) this.startMaxDistance = rawStart;
+    const rawKeep = Number(all?.["searchKeepMaxDistance"]);
+    if (Number.isFinite(rawKeep) && rawKeep > 0) this.keepMaxDistance = rawKeep;
+    const rawTimeout = Number(all?.["searchConsentTimeoutMs"]);
+    if (Number.isInteger(rawTimeout) && rawTimeout > 0) this.consentTimeoutMs = rawTimeout;
+    const rawCooldown = Number(all?.["searchConsentCooldownMs"]);
+    if (Number.isInteger(rawCooldown) && rawCooldown >= 0) this.consentCooldownMs = rawCooldown;
+  }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     switch (type) {
@@ -98,7 +117,7 @@ export class SearchSystem implements System {
         this.endSession(ctx, s, "");
         continue;
       }
-      if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, KEEP_MAX_DISTANCE)) {
+      if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, this.keepMaxDistance)) {
         this.endSession(ctx, s, "They moved away.");
       }
     }
@@ -166,13 +185,13 @@ export class SearchSystem implements System {
     const now = Date.now();
     const cooldownKey = `${searcherActorId}:${targetActorId}`;
     const lastPrompt = this.consentCooldown.get(cooldownKey);
-    if (lastPrompt !== undefined && now - lastPrompt < CONSENT_COOLDOWN_MS) {
+    if (lastPrompt !== undefined && now - lastPrompt < this.consentCooldownMs) {
       this.notice(ctx, userId, `Wait before asking ${this.nameShownTo(ctx, searcherActorId, targetActorId)} again.`);
       return;
     }
     if (this.consentCooldown.size > 512) {
       for (const [k, t] of Array.from(this.consentCooldown)) {
-        if (now - t >= CONSENT_COOLDOWN_MS) {
+        if (now - t >= this.consentCooldownMs) {
           this.consentCooldown.delete(k);
         }
       }
@@ -189,7 +208,7 @@ export class SearchSystem implements System {
         this.notice(ctx, this.userOf(ctx, searcherActorId),
           `${this.nameShownTo(ctx, searcherActorId, targetActorId)} did not respond.`);
       }
-    }, CONSENT_TIMEOUT_MS);
+    }, this.consentTimeoutMs);
     this.pending.set(requestId, { searcherActorId, targetActorId, timer });
 
     const searcherName = this.nameShownTo(ctx, targetActorId, searcherActorId);
@@ -295,7 +314,7 @@ export class SearchSystem implements System {
     if (this.isPermaDead(ctx.svr as Mp, targetActorId)) {
       return false;
     }
-    return this.nearEnough(ctx, selfActorId, targetActorId, START_MAX_DISTANCE);
+    return this.nearEnough(ctx, selfActorId, targetActorId, this.startMaxDistance);
   }
 
   private nearEnough(ctx: SystemContext, aActorId: number, bActorId: number, max: number): boolean {
