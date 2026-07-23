@@ -32,6 +32,10 @@ const serverSettings = [
   { key: 'carrierAnimEvent',        label: 'Carrier anim event',    type: 'text',   group: 'Gameplay', help: 'Behaviour-graph event played on a player carrying someone. Leave empty for the default hold pose.' },
   { key: 'startingItems',           label: 'Starting items',        type: 'json',   group: 'Gameplay', help: 'Kit granted to fresh characters: [{ baseId, count }]. baseId as a number or "0x..." string. Gold (0x0000000f) is granted once per slot.' },
   { key: 'logoutGraceMs',           label: 'Logout grace (ms)',     type: 'number', group: 'Gameplay', help: 'How long a disconnected body stays killable in the world before despawning. Default 300000.' },
+  { key: 'respawnSeconds',          label: 'Respawn seconds',       type: 'number', group: 'Gameplay', help: 'Bleedout/respawn timer applied to players (gamemode). Default 15.' },
+  { key: 'chatRanges',              label: 'Chat ranges',           type: 'json',   group: 'Gameplay', help: 'Audible ranges in game units: { whisper, low, say, wide, shout }. Provided keys override the defaults.' },
+  { key: 'maskName',                label: 'Mask name',             type: 'text',   group: 'Gameplay', help: 'Name shown for a /mask-ed player. Default "Masked Person".' },
+  { key: 'introduceCooldownMs',     label: 'Introduce cooldown (ms)', type: 'number', group: 'Gameplay', help: 'Min gap between /introduce prompts to the same target. Default 10000.' },
 
   // Interactions (capture / carry / search / trade tunables)
   { key: 'captureInteractMaxDistance', label: 'Capture range',                 type: 'number', group: 'Interactions', help: 'Max game-units distance to start a capture/carry. Default 256.' },
