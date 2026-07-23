@@ -4,7 +4,13 @@ Our build system is CMake-based. This document describes some caveats of our CMa
 
 When you switch between commits, you should run `cmake ..` in the `build` directory. This action is called "CMake re-generation".
 
-Only `Visual Studio 16 2019` generator is supported on Windows.
+On Windows the build requires the `Visual Studio 17 2022` generator (v143 toolset). CMake enforces this and errors out on older Visual Studio generators. CI runs on the `windows-2022` runner. A local configure looks like:
+
+```
+cmake .. -G "Visual Studio 17 2022" -A x64 -DSKYRIM_DIR="<your Skyrim install folder>"
+```
+
+Note: there is no `SKYMP_VOICE_CHAT` CMake option or `voice-chat` vcpkg feature in this tree. Do not pass `-DSKYMP_VOICE_CHAT=ON` (nothing reads it) or `-DVCPKG_MANIFEST_FEATURES=voice-chat` (vcpkg aborts with an unknown-feature error). See `alduinak_voice_chat.md`.
 
 ## Adding Source Files
 

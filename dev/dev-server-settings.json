@@ -1,0 +1,20 @@
+{
+  "name": "Alduinak Dev (offline)",
+  "port": 7777,
+  "maxPlayers": 100,
+  "offlineMode": true,
+  "databaseDriver": "file",
+  "databaseName": "world-dev",
+  "dataDir": "data",
+  "gamemodePath": "gamemode.js",
+  "loadOrder": [
+    "C:/Alduinak/skyrim/Data/Skyrim.esm",
+    "C:/Alduinak/skyrim/Data/Update.esm",
+    "C:/Alduinak/skyrim/Data/Dawnguard.esm",
+    "C:/Alduinak/skyrim/Data/HearthFires.esm",
+    "C:/Alduinak/skyrim/Data/Dragonborn.esm"
+  ],
+  "startPoints": [
+    { "pos": [22659, -8697, -3594], "worldOrCell": "0x1a26f", "angleZ": 268 }
+  ]
+}
