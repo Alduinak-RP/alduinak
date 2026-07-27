@@ -131,8 +131,8 @@ executes `help`, `status`, `players`, `say <text>`, `notify <name|all> <text>`,
 | `ALDUINAK_LOG_DIR` | `C:\logs` | Fallback log directory (nssm-configured paths win) |
 | `ALDUINAK_SERVER_DIR` | folder of `server-settings.json` | Game server working dir (holds the `world/changeForms` save store) |
 | `ALDUINAK_SERVER_SETTINGS` | `build/dist/server/server-settings.json` | Server settings file edited by the Settings tab |
-| `ALDUINAK_MO2_ROOT` | `C:\MO2` | Reference MO2 install (Modlist tab) |
-| `ALDUINAK_GAME_ROOT` | `C:\GOG Games\Skyrim Anniversary Edition` | Game root |
+| `ALDUINAK_MO2_ROOT` | `X:\MO2` | Reference MO2 install (Modlist tab) |
+| `ALDUINAK_GAME_ROOT` | `X:\GOG Games\Skyrim Anniversary Edition` | Game root |
 | `ALDUINAK_MO2_PROFILE` | `Default` | MO2 profile to compile |
 | `ALDUINAK_BUILD_DIR` | `<repo>\build` | Build output dir; the CI `dist/` payloads and the launcher land here |
 | `ALDUINAK_SERVER_KEEP` | *(none)* | Comma-separated extra names to preserve when pruning `build/dist/server` |

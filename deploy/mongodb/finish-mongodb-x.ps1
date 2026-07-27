@@ -48,17 +48,28 @@ if (-not $mongosh) {
 if (-not $mongosh) {
   throw "mongosh not found. Install it first: https://downloads.mongodb.com/compass/mongosh-2.9.2-x64.msi"
 }
-if ((Get-Service MongoDB).Status -ne "Running") { Start-Service MongoDB; Start-Sleep -Seconds 3 }
+$mongoSvc = Get-Service MongoDB -ErrorAction SilentlyContinue
+if (-not $mongoSvc) { throw "MongoDB service not found; install MongoDB Community Server 8.0 (MSI) first." }
+if ($mongoSvc.Status -ne "Running") { Start-Service MongoDB; Start-Sleep -Seconds 3 }
 
-function Patch-Settings([string]$newText) {
-  Copy-Item $settingsPath "$settingsPath.pre-mongo.bak" -Force
-  Set-Content -Path $settingsPath -Value $newText -Encoding UTF8 -NoNewline
+# The server bundle JSON.parses this file; PS 5.1 Set-Content -Encoding UTF8
+# writes a BOM that crashes it, so write BOM-free explicitly.
+function Patch-Settings([string]$newText, [string]$backupSuffix) {
+  Copy-Item $settingsPath "$settingsPath.$backupSuffix.bak" -Force
+  [IO.File]::WriteAllText($settingsPath, $newText, (New-Object System.Text.UTF8Encoding $false))
   try { Get-Content $settingsPath -Raw | ConvertFrom-Json | Out-Null }
   catch {
-    Copy-Item "$settingsPath.pre-mongo.bak" $settingsPath -Force
+    Copy-Item "$settingsPath.$backupSuffix.bak" $settingsPath -Force
     throw "Patched settings failed to parse; restored backup. $_"
   }
-  Write-Host "[mongo] patched $settingsPath (backup: $settingsPath.pre-mongo.bak)"
+  Write-Host "[mongo] patched $settingsPath (backup: $settingsPath.$backupSuffix.bak)"
+}
+
+# Runs mongosh, throws on nonzero exit, returns trimmed stdout.
+function Invoke-Mongosh([string]$connString, [string]$evalJs, [string]$what) {
+  $out = & $mongosh $connString --quiet --eval $evalJs
+  if ($LASTEXITCODE -ne 0) { throw "mongosh failed during '$what' (exit $LASTEXITCODE): $out" }
+  return ("$out").Trim()
 }
 
 # The game server must not run while we rewrite its database settings.
@@ -81,10 +92,19 @@ if (-not $Finalize) {
     Write-Warning "world dir not found at $world; nothing to back up or migrate."
   }
 
-  # 2. Create the app user while auth is still off (idempotent).
+  # 2. Create the app user while auth is still off. The password goes via an
+  #    env var so quotes/backslashes in it can't break the JS or argv quoting.
+  #    Must succeed BEFORE auth gets enabled or we'd lock ourselves out.
   Write-Host "[mongo] creating user $User"
-  $js = "try { db.getSiblingDB('admin').createUser({ user: '$User', pwd: '$Password', roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] }); print('CREATED'); } catch (e) { print('CREATEUSER: ' + e.message); }"
-  & $mongosh "mongodb://127.0.0.1:27017/admin" --quiet --eval $js
+  $env:ALDUINAK_MONGO_PWD = $Password
+  try {
+    $js = "try { db.getSiblingDB('admin').createUser({ user: '$User', pwd: process.env.ALDUINAK_MONGO_PWD, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] }); print('CREATED'); } catch (e) { if (/already exists/.test(e.message)) { print('EXISTS'); } else { print('FAILED: ' + e.message); quit(1); } }"
+    $created = Invoke-Mongosh "mongodb://127.0.0.1:27017/admin" $js "createUser"
+  } finally {
+    Remove-Item Env:ALDUINAK_MONGO_PWD -ErrorAction SilentlyContinue
+  }
+  if ($created -notmatch "CREATED|EXISTS") { throw "createUser did not succeed: $created" }
+  Write-Host "[mongo] user: $created"
 
   # 3. Enable authorization in the service config and restart.
   $cfg = Get-Content $MongoCfg -Raw
@@ -104,8 +124,8 @@ if (-not $Finalize) {
   }
 
   # 4. Verify the credentials actually work before wiring the server to them.
-  $ping = & $mongosh $uri --quiet --eval "db.runCommand({ ping: 1 }).ok"
-  if ("$ping" -notmatch "1") { throw "Authenticated ping failed; check user/password. Output: $ping" }
+  $ping = Invoke-Mongosh $uri "db.runCommand({ ping: 1 }).ok" "auth ping"
+  if ($ping -ne "1") { throw "Authenticated ping failed; check user/password. Output: $ping" }
   Write-Host "[mongo] authenticated ping OK"
 
   # 5. Insert the migration driver block into server-settings.json.
@@ -126,7 +146,7 @@ if (-not $Finalize) {
     "databaseUri": "$uri"
   },
 "@
-    Patch-Settings ($text -replace '^\s*\{', $block)
+    Patch-Settings ($text -replace '^\s*\{', $block) "stage1"
   }
 
   Write-Host ""
@@ -137,15 +157,21 @@ if (-not $Finalize) {
 }
 
 # ---- Stage 2: -Finalize ----
-$count = & $mongosh $uri --quiet --eval "db.getSiblingDB('skymp').changeForms.countDocuments()"
-Write-Host "[mongo] skymp.changeForms has $count docs"
-if ([int]"$count" -le 0) { throw "No migrated docs found; run the migration first (start the game server once after stage 1)." }
-
 $text = Get-Content $settingsPath -Raw
+if ($text -match '"databaseDriver":\s*"mongodb"') {
+  Write-Host "[mongo] already finalized; nothing to do."
+  exit 0
+}
+
+$count = Invoke-Mongosh $uri "db.getSiblingDB('skymp').changeForms.countDocuments()" "doc count"
+if (-not ($count -match '^\d+$')) { throw "Could not read migrated doc count from mongo. Output: $count" }
+Write-Host "[mongo] skymp.changeForms has $count docs"
+if ([int]$count -le 0) { throw "No migrated docs found; run the migration first (start the game server once after stage 1)." }
+
 $pattern = '(?s)"databaseDriver":\s*"migration",\s*"databaseOld":\s*\{.*?\},\s*"databaseNew":\s*\{.*?\},'
 if ($text -notmatch $pattern) { throw "Migration block not found in server-settings.json; nothing to finalize." }
 $final = "`"databaseDriver`": `"mongodb`",`r`n  `"databaseName`": `"skymp`",`r`n  `"databaseUri`": `"$uri`","
-Patch-Settings ($text -replace $pattern, $final)
+Patch-Settings ($text -replace $pattern, $final) "stage2"
 
 Write-Host ""
 Write-Host "[mongo] finalized. Start AlduinakGameServer normally; it now runs on MongoDB."

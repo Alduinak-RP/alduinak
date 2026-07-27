@@ -14,7 +14,7 @@ up the **media server only**.
 - `livekit.yaml` - server config (signaling 7880, TCP 7881, UDP media
   50000-50200). Key placeholders are filled in by the setup script.
 - `setup-livekit.ps1` - **run yourself, elevated.** Downloads the LiveKit
-  binary, generates API keys into a live config copy at `C:\Alduinak\livekit`,
+  binary, generates API keys into a live config copy at `X:\Alduinak\livekit`,
   opens the firewall ports, and registers the `AlduinakLiveKit` service.
 
 ## Steps
@@ -23,7 +23,7 @@ up the **media server only**.
    ```
    powershell -ExecutionPolicy Bypass -File deploy\livekit\setup-livekit.ps1
    ```
-2. Note the generated API key/secret in `C:\Alduinak\livekit\livekit.yaml` -
+2. Note the generated API key/secret in `X:\Alduinak\livekit\livekit.yaml` -
    the client token endpoint and the in-game voice client will need them.
 3. Verify the server is reachable on `127.0.0.1:7880` (and externally if you
    forward the ports at your host/router).

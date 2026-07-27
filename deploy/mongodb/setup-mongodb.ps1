@@ -46,7 +46,7 @@ if (-not $mongosh) { Write-Warning "mongosh not found on PATH; install the Mongo
 
 # 2. Register the service against our config (nssm if present, else sc/mongod).
 $nssm = Join-Path $repoRoot "server-manager\tools\nssm.exe"
-if (-not (Test-Path $nssm)) { $nssm = "nssm" }
+if (-not (Test-Path $nssm)) { $nssm = "C:\tools\nssm\nssm.exe" }
 Write-Host "[mongo] registering AlduinakMongo service"
 Start-Process $mongod -ArgumentList "--config `"$cfg`" --install --serviceName AlduinakMongo --serviceDisplayName `"Alduinak MongoDB`"" -Wait -ErrorAction SilentlyContinue
 Start-Service AlduinakMongo -ErrorAction SilentlyContinue

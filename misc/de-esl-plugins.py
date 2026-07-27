@@ -14,7 +14,7 @@ WHAT IT DOES (all-or-nothing, with backups):
   1. Backs up each .esl (game Data dir + MO2 mod dir) to a dated Desktop folder.
   2. Clears TES4 header flag 0x200 and renames the file to .esp in both places.
   3. Rewrites the loadOrder entries in build/dist/server/server-settings.json.
-  4. Rewrites C:\\MO2\\profiles\\<profile>\\plugins.txt entries.
+  4. Rewrites X:\\MO2\\profiles\\<profile>\\plugins.txt entries.
 
 AFTER RUNNING, still required (Server Manager):
   - Modlist tab -> "Update manifest" (regenerates data/manifest.json crc/size).

@@ -1,7 +1,8 @@
 <#
   Alduinak LiveKit media-server setup. RUN THIS YOURSELF, elevated.
-  Downloads the LiveKit server binary, generates API keys into livekit.yaml,
-  registers a Windows service, and opens the firewall ports.
+  Deploys the LiveKit server binary (reusing X:\Downloads if present),
+  generates API keys into livekit.yaml, registers a Windows service, and
+  opens the firewall ports. Safe to re-run: keys are only generated once.
 
   Claude does not run this (downloading binaries, registering services, and
   changing firewall rules are operator actions).
@@ -20,6 +21,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  throw "Run this script elevated (Administrator); it registers a service and firewall rules."
+}
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $cfgSrc = Join-Path $PSScriptRoot "livekit.yaml"
 $cfgDst = Join-Path $Root "livekit.yaml"
@@ -51,33 +55,57 @@ if ((Test-Path "X:\Downloads\lk.exe") -and -not (Test-Path (Join-Path $Root "lk.
   Copy-Item "X:\Downloads\lk.exe" (Join-Path $Root "lk.exe")
 }
 
-# 2. Generate real API keys and write them into a copy of the config.
-Write-Host "[livekit] generating API keys"
-$keys = & $exe generate-keys 2>&1 | Out-String
-# generate-keys prints lines like "API Key:  APIxxxx" / "API Secret: yyyy"
-$apiKey    = ([regex]::Match($keys, "(?im)^\s*API Key:\s*(\S+)")).Groups[1].Value
-$apiSecret = ([regex]::Match($keys, "(?im)^\s*API Secret:\s*(\S+)")).Groups[1].Value
-if (-not $apiKey -or -not $apiSecret) { throw "Could not parse generated keys; run '$exe generate-keys' manually and edit livekit.yaml." }
-
-$cfg = Get-Content $cfgSrc -Raw
-$cfg = $cfg -replace "REPLACE_API_KEY", $apiKey -replace "REPLACE_API_SECRET", $apiSecret
-Set-Content -Path $cfgDst -Value $cfg -Encoding UTF8
-Write-Host "[livekit] wrote $cfgDst with a fresh key/secret (keep them secret)"
-
-# 3. Firewall: signaling TCP 7880/7881 + UDP media range 50000-50200.
-Write-Host "[livekit] opening firewall ports"
-netsh advfirewall firewall add rule name="Alduinak LiveKit TCP" dir=in action=allow protocol=TCP localport=7880,7881 | Out-Null
-netsh advfirewall firewall add rule name="Alduinak LiveKit UDP" dir=in action=allow protocol=UDP localport=50000-50200 | Out-Null
-
-# 4. Register as a service via nssm (bundled with the server manager).
-$nssm = Join-Path $repoRoot "server-manager\tools\nssm.exe"
-if (Test-Path $nssm) {
-  Write-Host "[livekit] registering AlduinakLiveKit service"
-  & $nssm install AlduinakLiveKit $exe "--config" $cfgDst
-  & $nssm set AlduinakLiveKit AppDirectory $Root
-  & $nssm start AlduinakLiveKit
+# 2. Generate API keys once and write them into a copy of the config.
+#    Re-runs keep the existing livekit.yaml so credentials never rotate silently.
+if (Test-Path $cfgDst) {
+  Write-Host "[livekit] $cfgDst already exists; keeping its keys"
 } else {
-  Write-Warning "nssm not found; run manually: `"$exe`" --config `"$cfgDst`""
+  Write-Host "[livekit] generating API keys"
+  # No stderr redirection: generate-keys prints to stdout, and 2>&1 on a native
+  # command under EAP=Stop turns any future stderr logging into a fatal error.
+  $keys = & $exe generate-keys | Out-String
+  if ($LASTEXITCODE -ne 0) { throw "generate-keys failed (exit $LASTEXITCODE)" }
+  # generate-keys prints lines like "API Key:  APIxxxx" / "API Secret: yyyy"
+  $apiKey    = ([regex]::Match($keys, "(?im)^\s*API Key:\s*(\S+)")).Groups[1].Value
+  $apiSecret = ([regex]::Match($keys, "(?im)^\s*API Secret:\s*(\S+)")).Groups[1].Value
+  if (-not $apiKey -or -not $apiSecret) { throw "Could not parse generated keys; run '$exe generate-keys' manually and edit livekit.yaml." }
+
+  $cfg = Get-Content $cfgSrc -Raw
+  $cfg = $cfg -replace "REPLACE_API_KEY", $apiKey -replace "REPLACE_API_SECRET", $apiSecret
+  Set-Content -Path $cfgDst -Value $cfg -Encoding UTF8
+  Write-Host "[livekit] wrote $cfgDst with a fresh key/secret (keep them secret)"
+}
+
+# 3. Firewall: signaling TCP 7880/7881 + UDP media range 50000-50200 (skip if present).
+foreach ($rule in @(
+  @{ Name = "Alduinak LiveKit TCP"; Proto = "TCP"; Ports = "7880,7881" },
+  @{ Name = "Alduinak LiveKit UDP"; Proto = "UDP"; Ports = "50000-50200" }
+)) {
+  netsh advfirewall firewall show rule name="$($rule.Name)" | Out-Null
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "[livekit] firewall rule '$($rule.Name)' already exists"
+  } else {
+    netsh advfirewall firewall add rule name="$($rule.Name)" dir=in action=allow protocol=$($rule.Proto) localport=$($rule.Ports) | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "netsh failed adding rule '$($rule.Name)' (exit $LASTEXITCODE)" }
+    Write-Host "[livekit] opened $($rule.Proto) $($rule.Ports)"
+  }
+}
+
+# 4. Register as a service via nssm (repo tools copy, else the box's C:\tools).
+$nssm = Join-Path $repoRoot "server-manager\tools\nssm.exe"
+if (-not (Test-Path $nssm)) { $nssm = "C:\tools\nssm\nssm.exe" }
+if (Test-Path $nssm) {
+  $existing = Get-Service AlduinakLiveKit -ErrorAction SilentlyContinue
+  if (-not $existing) {
+    Write-Host "[livekit] registering AlduinakLiveKit service"
+    & $nssm install AlduinakLiveKit $exe "--config" $cfgDst
+    if ($LASTEXITCODE -ne 0) { throw "nssm install failed (exit $LASTEXITCODE)" }
+    & $nssm set AlduinakLiveKit AppDirectory $Root
+  }
+  & $nssm start AlduinakLiveKit
+  Write-Host "[livekit] AlduinakLiveKit service started"
+} else {
+  Write-Warning "nssm not found (server-manager\tools or C:\tools\nssm); run manually: `"$exe`" --config `"$cfgDst`""
 }
 
 Write-Host ""
