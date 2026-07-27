@@ -34,8 +34,8 @@ from datetime import date
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SETTINGS = os.path.join(REPO, 'build', 'dist', 'server', 'server-settings.json')
-MO2_PROFILE = os.environ.get('ALDUINAK_MO2_PROFILE_DIR', r'C:\MO2\profiles\Default')
-MO2_MODS = os.environ.get('ALDUINAK_MO2_MODS_DIR', r'C:\MO2\mods')
+MO2_PROFILE = os.environ.get('ALDUINAK_MO2_PROFILE_DIR', r'X:\MO2\profiles\Default')
+MO2_MODS = os.environ.get('ALDUINAK_MO2_MODS_DIR', r'X:\MO2\mods')
 BACKUP = os.path.join(os.path.expanduser('~'), 'Desktop', f'plugin-backups-{date.today().isoformat()}')
 
 APPLY = '--apply' in sys.argv

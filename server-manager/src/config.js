@@ -48,8 +48,8 @@ module.exports = {
   ],
 
   // Reference MO2 install used to compile the manifest (the Modlist tab).
-  mo2Root:  process.env.ALDUINAK_MO2_ROOT  || 'C:\\MO2',
-  gameRoot: process.env.ALDUINAK_GAME_ROOT || 'C:\\GOG Games\\Skyrim Anniversary Edition',
+  mo2Root:  process.env.ALDUINAK_MO2_ROOT  || 'X:\\MO2',
+  gameRoot: process.env.ALDUINAK_GAME_ROOT || 'X:\\GOG Games\\Skyrim Anniversary Edition',
   profile:  process.env.ALDUINAK_MO2_PROFILE || 'Default',
 
   paths: {
