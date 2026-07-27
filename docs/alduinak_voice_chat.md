@@ -1,5 +1,35 @@
 # Voice chat (VOIP): current state and realistic path
 
+## IMPLEMENTED 2026-07-28 - proximity voice is now in this fork
+
+The integration described as "future work" below has been built:
+
+- **SkyrimPlatform (C++)**: CEF media switches unlock mic capture
+  (`MyChromiumApp.cpp` / `MyBrowserProcessHandler.cpp`). **Needs a CI flatrim
+  rebuild**; until the new `SkyrimPlatform.dll` ships, players can hear but not
+  speak.
+- **Server**: `skymp5-server/ts/systems/voiceSystem.ts` mints LiveKit HS256
+  tokens (identity = the player's actor id in hex, unspoofable). Config =
+  `voiceChat` object in `server-settings.json` (enabled/url/apiKey/apiSecret/
+  room/rangeUnits; range falls back to `chatRanges.say`). Already built into
+  `dist_back` on the box.
+- **Front (CEF)**: `skymp5-front/src/utils/VoiceManager.js` + `livekit-client`.
+  Joins the room, attaches remote audio, per-participant volume falloff by
+  distance, unsubscribes tracks beyond ~1.15x range.
+- **Client**: `skymp5-client/src/services/services/voiceService.ts`. Push-to-
+  talk on `voicePushToTalkKeyCode` (default V, DX 47), suppressed while chat is
+  focused; requests a token per actor assignment; pushes peer distances
+  (same world only) every 400ms.
+- **Launcher**: "Voice Push-to-Talk" picker in Server Hotkeys; the hotkey-wipe
+  bug in `writeClientSettings` is fixed so rebinds survive launches.
+
+Rollout order: (1) CI flatrim rebuild -> new SkyrimPlatform.dll into the client
+dist, (2) server manager "Build Client" (front + client logic + repackage),
+(3) launcher rebuild/redistribute, (4) players re-download via launcher.
+LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
+
+The historical analysis below is kept for context.
+
 ## TL;DR
 
 Voice chat does **not** exist in this codebase, and it does not exist in
