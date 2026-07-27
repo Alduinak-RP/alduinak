@@ -16,7 +16,7 @@
 #>
 param(
   [string] $Version = "1.13.4",
-  [string] $Root = "C:\Alduinak\livekit"
+  [string] $Root = "X:\Alduinak\livekit"
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,19 +26,29 @@ $cfgDst = Join-Path $Root "livekit.yaml"
 
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 
-# 1. Download the LiveKit server release. Verify the latest at
-#    https://github.com/livekit/livekit/releases if this 404s.
+# 1. Get the LiveKit server binary: reuse an already-downloaded copy from
+#    X:\Downloads if present, otherwise download the release zip. Verify the
+#    latest at https://github.com/livekit/livekit/releases if the URL 404s.
 $exe = Join-Path $Root "livekit-server.exe"
 if (-not (Test-Path $exe)) {
-  $zip = "$env:TEMP\livekit_$Version.zip"
-  $url = "https://github.com/livekit/livekit/releases/download/v$Version/livekit_${Version}_windows_amd64.zip"
-  Write-Host "[livekit] downloading $url"
-  Invoke-WebRequest -Uri $url -OutFile $zip
-  Expand-Archive -Path $zip -DestinationPath $Root -Force
-  if (-not (Test-Path $exe)) {
-    $found = Get-ChildItem $Root -Recurse -Filter "livekit-server.exe" | Select-Object -First 1
-    if ($found) { Copy-Item $found.FullName $exe -Force }
+  if (Test-Path "X:\Downloads\livekit-server.exe") {
+    Write-Host "[livekit] using existing X:\Downloads\livekit-server.exe"
+    Copy-Item "X:\Downloads\livekit-server.exe" $exe
+  } else {
+    $zip = "$env:TEMP\livekit_$Version.zip"
+    $url = "https://github.com/livekit/livekit/releases/download/v$Version/livekit_${Version}_windows_amd64.zip"
+    Write-Host "[livekit] downloading $url"
+    Invoke-WebRequest -Uri $url -OutFile $zip
+    Expand-Archive -Path $zip -DestinationPath $Root -Force
+    if (-not (Test-Path $exe)) {
+      $found = Get-ChildItem $Root -Recurse -Filter "livekit-server.exe" | Select-Object -First 1
+      if ($found) { Copy-Item $found.FullName $exe -Force }
+    }
   }
+}
+# lk.exe (LiveKit CLI, token generation) rides along if it was downloaded too.
+if ((Test-Path "X:\Downloads\lk.exe") -and -not (Test-Path (Join-Path $Root "lk.exe"))) {
+  Copy-Item "X:\Downloads\lk.exe" (Join-Path $Root "lk.exe")
 }
 
 # 2. Generate real API keys and write them into a copy of the config.
