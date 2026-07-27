@@ -23,6 +23,7 @@ import { Login } from "./systems/login";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { SearchSystem } from "./systems/searchSystem";
+import { VoiceSystem } from "./systems/voiceSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { EventEmitter } from "events";
@@ -206,6 +207,7 @@ const main = async () => {
     new CaptureSystem(log),
     new TradeSystem(log),
     new SearchSystem(log),
+    new VoiceSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );
