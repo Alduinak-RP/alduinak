@@ -358,6 +358,7 @@ ipcMain.handle('hotkeys:load', () => {
       faction:    numOrNull(c.factionMenuKeyCode),
       interact:   numOrNull(c.interactMenuKeyCode),
       personal:   numOrNull(c.personalMenuKeyCode),
+      voicePtt:   numOrNull(c.voicePushToTalkKeyCode),
     }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -374,6 +375,7 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
     if (typeof h.faction === 'number')     c.factionMenuKeyCode = h.faction
     if (typeof h.interact === 'number')    c.interactMenuKeyCode = h.interact
     if (typeof h.personal === 'number')    c.personalMenuKeyCode = h.personal
+    if (typeof h.voicePtt === 'number')    c.voicePushToTalkKeyCode = h.voicePtt
     const p = clientSettingsPath()
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(c, null, 2))
@@ -2129,7 +2131,17 @@ async function runMO2Install(opts = {}) {
  */
 function writeClientSettings(destPath, srv, serverInfo) {
   // Start fresh every time - do not preserve stale keys from previous writes.
+  // Exception: user hotkey bindings, which the settings UI owns; without this
+  // carve-out every launch silently reset them to the in-game defaults.
+  const HOTKEY_KEYS = [
+    'chatFocusKeyCodes', 'freeCursorKeyCode', 'housingMenuKeyCode',
+    'factionMenuKeyCode', 'interactMenuKeyCode', 'personalMenuKeyCode',
+    'voicePushToTalkKeyCode',
+  ]
+  let prev = {}
+  try { prev = JSON.parse(fs.readFileSync(destPath, 'utf8')) || {} } catch { /* first run */ }
   const settings = {}
+  for (const k of HOTKEY_KEYS) if (prev[k] !== undefined) settings[k] = prev[k]
 
   settings['server-ip']   = srv.address
   settings['server-port'] = Number(srv.port)

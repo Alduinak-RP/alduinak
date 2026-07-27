@@ -71,7 +71,7 @@ function fillKeySelect(id) {
 function setKey(id, code) { const el = document.getElementById(id); if (el) el.value = String(typeof code === 'number' ? code : 0) }
 function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.value, 10) || 0) : 0 }
 
-;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction'].forEach(fillKeySelect)
+;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt'].forEach(fillKeySelect)
 
 async function loadGameSettingsTab() {
   try {
@@ -104,6 +104,7 @@ async function loadGameSettingsTab() {
       setKey('hk-interact', h.interact != null ? h.interact : 21)
       setKey('hk-personal', h.personal != null ? h.personal : 22)
       setKey('hk-faction', h.faction != null ? h.faction : 34)
+      setKey('hk-voice-ptt', h.voicePtt != null ? h.voicePtt : 47)
     }
   } catch (err) { /* settings tab is best-effort */ }
 }
@@ -130,6 +131,7 @@ async function saveGameSettingsTab() {
       interact:   getKey('hk-interact'),
       personal:   getKey('hk-personal'),
       faction:    getKey('hk-faction'),
+      voicePtt:   getKey('hk-voice-ptt'),
     })
   } catch (err) { /* best-effort */ }
 }
