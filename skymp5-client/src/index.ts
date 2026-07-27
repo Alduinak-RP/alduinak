@@ -43,6 +43,7 @@ import { PlayerActionService } from "./services/services/playerActionService";
 import { RestraintService } from "./services/services/restraintService";
 import { CaptureConsentService } from "./services/services/captureConsentService";
 import { SearchService } from "./services/services/searchService";
+import { VoiceService } from "./services/services/voiceService";
 // U-key personal menu disabled for now, features not needed yet
 // import { PersonalMenuService } from "./services/services/personalMenuService";
 import { ChatService } from "./services/services/chatService";
@@ -116,6 +117,7 @@ const main = () => {
       new RestraintService(sp, controller),
       new CaptureConsentService(sp, controller),
       new SearchService(sp, controller),
+      new VoiceService(sp, controller),
       new FactionService(sp, controller),
       new TradeService(sp, controller),
       new NetInfoService(sp, controller),
