@@ -7,6 +7,7 @@ import { store } from './redux/store';
 import { Provider } from 'react-redux';
 
 import { Widgets } from './utils/Widgets';
+import './utils/VoiceManager';
 
 import './main.scss';
 
