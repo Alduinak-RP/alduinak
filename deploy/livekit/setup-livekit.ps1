@@ -102,8 +102,12 @@ if (Test-Path $nssm) {
     if ($LASTEXITCODE -ne 0) { throw "nssm install failed (exit $LASTEXITCODE)" }
     & $nssm set AlduinakLiveKit AppDirectory $Root
   }
-  & $nssm start AlduinakLiveKit
-  Write-Host "[livekit] AlduinakLiveKit service started"
+  if ((Get-Service AlduinakLiveKit).Status -eq "Running") {
+    Write-Host "[livekit] AlduinakLiveKit service already running"
+  } else {
+    & $nssm start AlduinakLiveKit
+    Write-Host "[livekit] AlduinakLiveKit service started"
+  }
 } else {
   Write-Warning "nssm not found (server-manager\tools or C:\tools\nssm); run manually: `"$exe`" --config `"$cfgDst`""
 }
