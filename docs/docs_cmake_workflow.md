@@ -1,5 +1,32 @@
 # CMake Workflow
 
+## Alduinak note (2026-07-28): building the C++ locally
+
+The server manager's Build tab has a **Native (C++)** button that runs this whole
+flow for you (`server-manager/src/build.js` -> `buildNative`), or `build native`
+in the manager console. It uses the same flags as the flatrim CI workflow.
+
+Prerequisite on this box: VS 2022 Community is installed on X: but **without** the
+C++ workload, so nothing can compile yet. Add it, elevated:
+
+```
+"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify ^
+  --productId Microsoft.VisualStudio.Product.Community ^
+  --channelId VisualStudio.17.Release ^
+  --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --norestart
+```
+
+That brings MSVC v143, the Windows SDK and CMake. The first native build then
+compiles every vcpkg dependency (expect 1-3 hours and tens of GB); later builds
+are incremental. The `CI Rebuild` button remains the alternative.
+
+**Two flags in the circulating "SkyMP Build Instructions" note are fictional:**
+`-DSKYMP_VOICE_CHAT=ON` is read by nothing, and `-DVCPKG_MANIFEST_FEATURES=voice-chat`
+**aborts** the configure (no such vcpkg feature). Do not pass either; voice chat is
+already implemented in this fork (see docs/alduinak_voice_chat.md).
+
+## Upstream documentation
+
 Our build system is CMake-based. This document describes some caveats of our CMake code and guides you in making changes in CMake parts of the codebase.
 
 When you switch between commits, you should run `cmake ..` in the `build` directory. This action is called "CMake re-generation".
