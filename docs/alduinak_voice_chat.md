@@ -28,6 +28,27 @@ dist, (2) server manager "Build Client" (front + client logic + repackage),
 (3) launcher rebuild/redistribute, (4) players re-download via launcher.
 LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
 
+### Trust model and accepted limitations
+
+- **Range gating is client-side.** Every token grants publish+subscribe to the
+  one shared room; distance-based volume and unsubscription happen in the CEF
+  page. A modified client (or the raw token in any LiveKit web client) can hear
+  every speaker server-wide regardless of distance, which partially undermines
+  the Stranger/mask anonymity system. Accepted for v1; the fix is a server-side
+  range enforcer driving LiveKit's admin API from authoritative positions.
+- **Revocation = token expiry.** Tokens live 1 hour and nothing calls the
+  LiveKit admin API on kick/ban, so a banned player's existing token keeps
+  working against the voice room until it expires.
+- **Voice is inherently identifying.** Nothing in the UI ties a LiveKit
+  identity to a character name (identities are actor ids, never rendered), but
+  a recognizable voice defeats /mask on its own - an RP-rules matter. The
+  front emits `voice::speaking` (actor ids); any future speaking-indicator UI
+  built on it must gate names through ff_knownIds or it will leak masks.
+- **Dead players can talk and hear.** No isDead gate on PTT or listening yet.
+- **~200 concurrent voice users max**: the UDP media range is 50000-50200 (one
+  port per participant). Widen the range or switch LiveKit to single-port UDP
+  mux before the server approaches that.
+
 The historical analysis below is kept for context.
 
 ## TL;DR

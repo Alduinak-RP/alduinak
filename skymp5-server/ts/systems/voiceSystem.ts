@@ -23,7 +23,9 @@ type Mp = any;
 //     "apiSecret": "...", "room": "alduinak", "rangeUnits": 2000 }
 // rangeUnits falls back to chatRanges.say, then 2000 game units.
 
-const TOKEN_TTL_SECONDS = 24 * 60 * 60;
+// Short on purpose: LiveKit refreshes tokens over live connections, and a
+// kicked/banned player's credential dies with the TTL (no admin-API revocation)
+const TOKEN_TTL_SECONDS = 60 * 60;
 
 function b64url(input: Buffer | string): string {
   return (typeof input === "string" ? Buffer.from(input) : input).toString("base64url");

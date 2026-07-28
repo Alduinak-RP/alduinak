@@ -27,11 +27,17 @@ export class VoiceService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("update", () => this.onUpdate());
+    // Fresh game connection = fresh voice session; also kills ghost rooms
+    // that would otherwise outlive a disconnect back to the main menu
+    this.controller.emitter.on("connectionAccepted", () => this.resetSession());
+    this.controller.emitter.on("connectionFailed", () => this.resetSession());
+    this.controller.emitter.on("connectionDenied", () => this.resetSession());
   }
 
   private voiceKey: DxScanCode;
   private disabledByServer = false;
   private connectedForRefrId = 0;
+  private pendingRefrId = 0;
   private rangeUnits = 2000;
   private pttDown = false;
   private micDeniedShown = false;
@@ -56,7 +62,11 @@ export class VoiceService extends ClientListener {
 
   private onBrowserMessage(e: BrowserMessageEvent) {
     const kind = e.arguments[0];
-    if (kind === "voice::micDenied") {
+    if (kind === "voice::ready") {
+      // Only the front's ack marks the session healthy; a connect call that
+      // lands on an unloaded page simply never acks and the 5s loop retries
+      this.connectedForRefrId = this.pendingRefrId;
+    } else if (kind === "voice::micDenied") {
       if (!this.micDeniedShown) {
         this.micDeniedShown = true;
         this.controller.once("update", () => {
@@ -69,6 +79,15 @@ export class VoiceService extends ClientListener {
       this.nextTokenAttemptAt = Date.now() + TOKEN_RETRY_MS;
       logTrace(this, `voice error from front: ${e.arguments[1]}`);
     }
+  }
+
+  private resetSession() {
+    if (this.pttDown) this.releasePtt();
+    this.connectedForRefrId = 0;
+    this.pendingRefrId = 0;
+    this.disabledByServer = false;
+    this.nextTokenAttemptAt = 0;
+    this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.disconnect()`);
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -91,7 +110,7 @@ export class VoiceService extends ClientListener {
     const range = Number(content["rangeUnits"]);
     if (Number.isFinite(range) && range > 0) this.rangeUnits = range;
 
-    this.connectedForRefrId = this.myRefrId();
+    this.pendingRefrId = this.myRefrId();
     this.sp.browser.executeJavaScript(
       `window.__alduinakVoice && window.__alduinakVoice.connect(${JSON.stringify(url)}, ${JSON.stringify(token)}, ${this.rangeUnits})`
     );
@@ -106,8 +125,9 @@ export class VoiceService extends ClientListener {
     const now = Date.now();
     const myRefr = this.myRefrId();
 
-    // Chat focus steals the key-up event, so drop the mic when typing starts
-    if (this.pttDown && this.sp.browser.isFocused()) this.releasePtt();
+    // Chat focus steals the key-up event, so drop the mic when typing starts;
+    // same when our actor despawns (character park, connection loss)
+    if (this.pttDown && (this.sp.browser.isFocused() || !myRefr)) this.releasePtt();
 
     if (!myRefr) return; // not spawned yet
 

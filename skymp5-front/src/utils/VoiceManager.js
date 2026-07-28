@@ -35,15 +35,16 @@ class VoiceManager {
   async connect(url, token, rangeUnits) {
     if (rangeUnits > 0) this.rangeUnits = rangeUnits;
     if (this.connecting || (this.room && this.lastToken === token)) return;
-    this.lastToken = token;
-    await this.disconnect();
-    this.connecting = true;
+    this.connecting = true; // set before any await so calls cannot interleave
     try {
+      await this.disconnect();
+      this.lastToken = token; // after disconnect(), which nulls it
       const room = new Room({ adaptiveStream: false, dynacast: false });
-      this.room = room;
 
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (track.kind !== Track.Kind.Audio) return;
+        const stale = this.audioEls.get(participant.identity);
+        if (stale) stale.remove(); // never leave an orphan playing unmanaged
         const el = track.attach();
         el.volume = 0; // silent until proximity says otherwise
         document.body.appendChild(el);
@@ -62,8 +63,13 @@ class VoiceManager {
       room.on(RoomEvent.Disconnected, () => {
         this.audioEls.forEach((el) => el.remove());
         this.audioEls.clear();
-        if (this.room === room) { this.room = null; this.lastToken = null; }
-        sendToGame('voice::error', 'disconnected');
+        // Intentional teardowns null this.room first; only report real drops,
+        // otherwise the game re-requests a token and churns forever
+        if (this.room === room) {
+          this.room = null;
+          this.lastToken = null;
+          sendToGame('voice::error', 'disconnected');
+        }
       });
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         const audible = speakers
@@ -74,6 +80,12 @@ class VoiceManager {
 
       await room.connect(url, token, { autoSubscribe: true });
       try { await room.startAudio(); } catch (e) { /* autoplay policy: unlocked by CEF switch */ }
+      // Expose the room only once connected so setPtt cannot hit a
+      // not-yet-connected room (that threw and mis-reported micDenied)
+      this.room = room;
+      if (this.ptt) {
+        try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { /* applied on next press */ }
+      }
       sendToGame('voice::ready');
     } catch (e) {
       this.room = null;
@@ -119,6 +131,7 @@ class VoiceManager {
 
   setPeers(distances) {
     this.distances = distances || {};
+    this.lastPeersAt = Date.now();
     if (!this.room) return;
     this.audioEls.forEach((el, identity) => this.applyVolume(identity));
     // Bandwidth: don't even receive audio from players far out of range
@@ -135,5 +148,15 @@ class VoiceManager {
 }
 
 window.__alduinakVoice = new VoiceManager();
+
+// Failsafe: if the game stops feeding distances (main menu, script reload),
+// go silent instead of playing the last-known volumes forever.
+setInterval(() => {
+  const vm = window.__alduinakVoice;
+  if (vm.room && vm.lastPeersAt && Date.now() - vm.lastPeersAt > 5000) {
+    vm.distances = {};
+    vm.audioEls.forEach((el) => { el.volume = 0; });
+  }
+}, 2000);
 
 export default window.__alduinakVoice;

@@ -1735,10 +1735,18 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
       })
     })
 
-    // 3. Extract directly into Skyrim directory
+    // 3. Extract directly into Skyrim directory. The zip may carry a stock
+    // skymp5-client-settings.txt that would clobber the player's hotkey
+    // rebinds, so snapshot the current file and let writeClientSettings
+    // (which reads prev from disk) see the pre-extract version.
+    let settingsSnapshot = null
+    try { settingsSnapshot = fs.readFileSync(clientSettingsPath, 'utf8') } catch { /* first install */ }
     const extracted = extractClientZip(tempZip, skyrimPath, (file, i, total) => {
       send('install:progress', { phase: 'extract', file, index: i, total, skipped: false })
     })
+    if (settingsSnapshot !== null) {
+      try { fs.writeFileSync(clientSettingsPath, settingsSnapshot) } catch { /* fall back to zip copy */ }
+    }
     log(`[install] extracted ${extracted} files`)
     ensureClientDirs(skyrimPath)
 
