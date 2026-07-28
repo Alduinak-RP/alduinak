@@ -57,8 +57,9 @@ export class VoiceService extends ClientListener {
   private nextPeersAt = 0;
 
   private onButtonEvent(e: ButtonEvent) {
-    // V + mousewheel adjusts the talk range (whisper..shout)
-    if (this.pttDown && e.device === InputDeviceType.Mouse && e.isDown &&
+    // V + mousewheel adjusts the talk range (whisper..shout); talkRange 0
+    // means not initialized yet, adjusting then would clobber the saved value
+    if (this.pttDown && this.talkRange > 0 && e.device === InputDeviceType.Mouse && e.isDown &&
         ((e.code as number) === MOUSE_WHEEL_UP || (e.code as number) === MOUSE_WHEEL_DOWN)) {
       const factor = (e.code as number) === MOUSE_WHEEL_UP ? RANGE_STEP : 1 / RANGE_STEP;
       this.applyTalkRange(this.talkRange * factor);

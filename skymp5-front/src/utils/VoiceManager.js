@@ -170,9 +170,11 @@ class VoiceManager {
 
   publishRange() {
     if (!this.room) return;
+    this.lastRangePublishAt = Date.now();
     try {
       const payload = new TextEncoder().encode(JSON.stringify({ t: 'voiceRange', r: this.myRange }));
-      this.room.localParticipant.publishData(payload, { reliable: true });
+      const p = this.room.localParticipant.publishData(payload, { reliable: true });
+      if (p && p.catch) p.catch(() => { /* transient; republished on the heartbeat */ });
     } catch (e) { /* transient; republished on next change/join */ }
   }
 
@@ -273,12 +275,17 @@ class VoiceManager {
 window.__alduinakVoice = new VoiceManager();
 
 // Failsafe: if the game stops feeding distances (main menu, script reload),
-// go silent instead of playing the last-known volumes forever.
+// go silent instead of playing the last-known volumes forever. Also heartbeat
+// the talk range so listeners who missed the data packet eventually heal.
 setInterval(() => {
   const vm = window.__alduinakVoice;
-  if (vm.room && vm.lastPeersAt && Date.now() - vm.lastPeersAt > 5000) {
+  if (!vm.room) return;
+  if (vm.lastPeersAt && Date.now() - vm.lastPeersAt > 5000) {
     vm.distances = {};
     vm.audioEls.forEach((el) => { el.volume = 0; });
+  }
+  if (!vm.lastRangePublishAt || Date.now() - vm.lastRangePublishAt > 20000) {
+    vm.publishRange();
   }
 }, 2000);
 
