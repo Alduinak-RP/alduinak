@@ -20,7 +20,6 @@ import { Room, RoomEvent, Track } from 'livekit-client';
 
 const UNSUB_HYSTERESIS = 1.15;   // unsubscribe only past range*this (no flapping)
 const UNITS_PER_METER = 70;
-const METER_HIDE_MS = 1800;
 
 function sendToGame(...args) {
   try { window.skyrimPlatform.sendMessage(...args); } catch (e) { /* outside game */ }
@@ -41,7 +40,6 @@ class VoiceManager {
     this.ptt = false;
     this.audioEls = new Map(); // identity -> HTMLAudioElement
     this.meterEl = null;
-    this.meterHideTimer = null;
     this.lastPeersAt = 0;
   }
 
@@ -152,7 +150,7 @@ class VoiceManager {
 
   async setPtt(down) {
     this.ptt = !!down;
-    if (this.ptt) this.showMeter(); else this.scheduleMeterHide();
+    if (this.ptt) this.showMeter(); else this.hideMeter();
     if (!this.room) return;
     try {
       await this.room.localParticipant.setMicrophoneEnabled(this.ptt);
@@ -165,7 +163,6 @@ class VoiceManager {
     this.myRange = this.clampRange(units);
     this.publishRange();
     this.showMeter();
-    this.scheduleMeterHide();
   }
 
   publishRange() {
@@ -229,22 +226,24 @@ class VoiceManager {
     const wrap = document.createElement('div');
     wrap.id = 'alduinak-voice-meter';
     wrap.style.cssText =
-      'position:fixed;bottom:5vh;left:50%;transform:translateX(-50%);z-index:99999;' +
-      'pointer-events:none;opacity:0;transition:opacity .25s;text-align:center;' +
+      'position:fixed;bottom:5vh;left:24px;z-index:99999;' +
+      'pointer-events:none;opacity:0;transition:opacity .15s;' +
+      'display:flex;flex-direction:column;align-items:flex-start;gap:6px;' +
       'font-family:inherit;user-select:none;';
     const label = document.createElement('div');
     label.style.cssText =
-      'color:#fff;font-size:14px;text-shadow:0 1px 3px #000;margin-bottom:4px;letter-spacing:.5px;';
+      'color:#fff;font-size:13px;text-shadow:0 1px 3px #000;letter-spacing:.5px;white-space:nowrap;';
     const bar = document.createElement('div');
     bar.style.cssText =
-      'width:240px;height:8px;border-radius:4px;background:rgba(0,0,0,.55);' +
-      'border:1px solid rgba(255,255,255,.35);overflow:hidden;';
+      'width:10px;height:140px;border-radius:5px;background:rgba(0,0,0,.55);' +
+      'border:1px solid rgba(255,255,255,.35);overflow:hidden;position:relative;margin-left:8px;';
     const fill = document.createElement('div');
     fill.style.cssText =
-      'height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#7fb4e6,#e6c97f);transition:width .1s;';
+      'position:absolute;bottom:0;left:0;width:100%;height:0%;border-radius:5px;' +
+      'background:linear-gradient(0deg,#7fb4e6,#e6c97f);transition:height .1s;';
     bar.appendChild(fill);
-    wrap.appendChild(label);
     wrap.appendChild(bar);
+    wrap.appendChild(label);
     document.body.appendChild(wrap);
     this.meterEl = wrap;
     this.meterLabelEl = label;
@@ -254,21 +253,16 @@ class VoiceManager {
 
   showMeter() {
     const el = this.ensureMeter();
-    // Log scale so whisper..shout spreads evenly across the bar
+    // Log scale so whisper..shout spreads evenly along the bar
     const frac = Math.log(this.myRange / this.minRange) / Math.log(this.maxRange / this.minRange);
-    this.meterFillEl.style.width = `${Math.round(Math.min(1, Math.max(0, frac)) * 100)}%`;
+    this.meterFillEl.style.height = `${Math.round(Math.min(1, Math.max(0, frac)) * 100)}%`;
     const meters = Math.round(this.myRange / UNITS_PER_METER);
-    this.meterLabelEl.textContent = `Voice: ${this.tierLabel(this.myRange)} (${meters}m)`;
+    this.meterLabelEl.textContent = `${this.tierLabel(this.myRange)} (${meters}m)`;
     el.style.opacity = '1';
-    if (this.meterHideTimer) { clearTimeout(this.meterHideTimer); this.meterHideTimer = null; }
-    if (!this.ptt) this.scheduleMeterHide();
   }
 
-  scheduleMeterHide() {
-    if (this.meterHideTimer) clearTimeout(this.meterHideTimer);
-    this.meterHideTimer = setTimeout(() => {
-      if (this.meterEl && !this.ptt) this.meterEl.style.opacity = '0';
-    }, METER_HIDE_MS);
+  hideMeter() {
+    if (this.meterEl) this.meterEl.style.opacity = '0';
   }
 }
 
