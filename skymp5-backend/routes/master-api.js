@@ -319,6 +319,32 @@ router.post('/:key/connection-check', (req, res) => {
   res.json({ allowed: true })
 })
 
+// POST /api/servers/:key/ban  (X-Auth-Token)
+// In-game admin ban: snapshots the player's full identity (discordId/hwid/ip)
+// into the ban list so connection-check refuses them from then on.
+
+router.post('/:key/ban', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  const { profileId, reason, bannedBy } = req.body || {}
+  const id = parseInt(profileId, 10)
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid profileId.' })
+
+  const discordId = profiles.getDiscordIdByProfileId(id)
+  if (!discordId) return res.status(404).json({ error: 'profileNotFound' })
+
+  const player = players.getByProfileId(id) || {}
+  const entry = bans.add({
+    discordId,
+    hwid: player.hwid || null,
+    ip: player.lastIp || null,
+    reason: String(reason || 'in-game admin ban').slice(0, 200),
+    bannedBy: String(bannedBy || 'in-game admin').slice(0, 100),
+  })
+  bans.logBan(`in-game ban: profileId=${id} discordId=${discordId} hwid=${entry.hwid || 'none'} ip=${entry.ip || 'none'} by=${entry.bannedBy} reason=${entry.reason}`)
+  res.json({ ok: true })
+})
+
 // GET /api/servers/:key/holds/:holdSlug/roster
 // Full member list of one hold (online or not) for the in-game faction menu.
 

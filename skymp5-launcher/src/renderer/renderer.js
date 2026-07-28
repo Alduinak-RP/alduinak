@@ -54,6 +54,7 @@ const KEY_OPTIONS = [
   { label: 'F1', code: 59 }, { label: 'F2', code: 60 }, { label: 'F3', code: 61 }, { label: 'F4', code: 62 },
   { label: 'F5', code: 63 }, { label: 'F6', code: 64 }, { label: 'F7', code: 65 }, { label: 'F8', code: 66 },
   { label: 'F9', code: 67 }, { label: 'F10', code: 68 }, { label: 'F11', code: 87 }, { label: 'F12', code: 88 },
+  { label: 'Insert', code: 210 }, { label: 'Delete', code: 211 }, { label: 'Home', code: 199 }, { label: 'End', code: 207 },
 ]
 const RESOLUTIONS = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1080', '2560x1440', '3440x1440', '3840x2160']
 
@@ -71,7 +72,7 @@ function fillKeySelect(id) {
 function setKey(id, code) { const el = document.getElementById(id); if (el) el.value = String(typeof code === 'number' ? code : 0) }
 function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.value, 10) || 0) : 0 }
 
-;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt'].forEach(fillKeySelect)
+;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin'].forEach(fillKeySelect)
 
 async function loadGameSettingsTab() {
   try {
@@ -105,6 +106,7 @@ async function loadGameSettingsTab() {
       setKey('hk-personal', h.personal != null ? h.personal : 22)
       setKey('hk-faction', h.faction != null ? h.faction : 34)
       setKey('hk-voice-ptt', h.voicePtt != null ? h.voicePtt : 47)
+      setKey('hk-admin', h.adminMenu != null ? h.adminMenu : 210)
     }
   } catch (err) { /* settings tab is best-effort */ }
 }
@@ -132,6 +134,7 @@ async function saveGameSettingsTab() {
       personal:   getKey('hk-personal'),
       faction:    getKey('hk-faction'),
       voicePtt:   getKey('hk-voice-ptt'),
+      adminMenu:  getKey('hk-admin'),
     })
   } catch (err) { /* best-effort */ }
 }
