@@ -312,5 +312,9 @@ void MyChromiumApp::OnBeforeCommandLineProcessing(
   aCommandLine->AppendSwitch("use-fake-ui-for-media-stream");
   aCommandLine->AppendSwitchWithValue("autoplay-policy",
                                       "no-user-gesture-required");
+  // Run the audio service in-process: the out-of-process audio utility uses
+  // the hooked CEF subprocess binary, a classic crash source for embedders
+  aCommandLine->AppendSwitchWithValue(
+    "disable-features", "AudioServiceOutOfProcess,AudioServiceSandbox");
 }
 }

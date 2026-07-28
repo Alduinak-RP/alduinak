@@ -56,7 +56,17 @@ export class VoiceService extends ClientListener {
   private nextTokenAttemptAt = 0;
   private nextPeersAt = 0;
 
+  // A throw here would abort the shared event dispatch chain and take input
+  // and movement processing down with it; voice must never do that
   private onButtonEvent(e: ButtonEvent) {
+    try {
+      this.onButtonEventImpl(e);
+    } catch (err) {
+      logTrace(this, `onButtonEvent failed: ${err}`);
+    }
+  }
+
+  private onButtonEventImpl(e: ButtonEvent) {
     // V + mousewheel adjusts the talk range (whisper..shout); talkRange 0
     // means not initialized yet, adjusting then would clobber the saved value
     if (this.pttDown && this.talkRange > 0 && e.device === InputDeviceType.Mouse && e.isDown &&
@@ -191,6 +201,14 @@ export class VoiceService extends ClientListener {
   }
 
   private onUpdate() {
+    try {
+      this.onUpdateImpl();
+    } catch (err) {
+      logTrace(this, `onUpdate failed: ${err}`);
+    }
+  }
+
+  private onUpdateImpl() {
     if (this.disabledByServer) return;
     const now = Date.now();
     const myRefr = this.myRefrId();
