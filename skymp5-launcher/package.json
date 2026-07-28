@@ -1,6 +1,6 @@
 {
   "name": "alduinak-launcher",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Launcher for the Alduinak server",
   "productName": "Alduinak Launcher",
   "main": "src/main.js",
@@ -76,12 +76,6 @@
     },
     "asarUnpack": [
       "node_modules/7zip-bin/**"
-    ],
-    "extraResources": [
-      {
-        "from": "assets/7zip",
-        "to": "7zip"
-      }
     ]
   }
 }
