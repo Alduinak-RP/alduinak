@@ -309,6 +309,7 @@ function wireBuild(btnId, fn, label) {
 wireBuild('#build-server',   () => window.mgr.buildServer(),   'server')
 wireBuild('#build-launcher', () => window.mgr.buildLauncher(), 'launcher')
 wireBuild('#build-client',   () => window.mgr.buildClient(),   'client')
+wireBuild('#build-native',   () => window.mgr.buildNative(),   'native')
 
 // CI rebuild is a single GitHub API call, not a local streaming build.
 $('#build-ci').addEventListener('click', async e => {

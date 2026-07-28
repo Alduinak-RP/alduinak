@@ -334,7 +334,7 @@ const consoleRelay = {
 
 // Console box: manager commands are handled locally, anything else is
 // forwarded to the game server console over the WS relay (the gamemode).
-const BUILD_KINDS = ['server', 'launcher', 'client']
+const BUILD_KINDS = ['server', 'launcher', 'client', 'native']
 const CONSOLE_HELP = [
   'Manager commands:',
   '  help                           this help',
@@ -407,6 +407,7 @@ async function runBuild(kind) {
     if (kind === 'server')   return await b.buildServer()
     if (kind === 'launcher') return await b.buildLauncher()
     if (kind === 'client')   return await b.buildClient()
+    if (kind === 'native')   return await b.buildNative()
     return { ok: false, error: `unknown build ${kind}` }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -416,6 +417,7 @@ async function runBuild(kind) {
 ipcMain.handle('build:server',   () => runBuild('server'))
 ipcMain.handle('build:launcher', () => runBuild('launcher'))
 ipcMain.handle('build:client',   () => runBuild('client'))
+ipcMain.handle('build:native',   () => runBuild('native'))
 
 // Trigger the flatrim CI workflow on GitHub to rebuild the native binaries.
 function ghDispatch() {

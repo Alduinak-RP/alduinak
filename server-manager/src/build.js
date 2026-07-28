@@ -7,12 +7,14 @@ const config = require('./config')
 
 const isWin = process.platform === 'win32'
 
-// The manager no longer compiles native code (.dll / .node) locally - the GitHub
-// "PR Windows Flatrim" workflow does that and publishes the `dist` artifact. Each
-// Build button here is pure JS/packaging: it bundles TypeScript, builds the
-// Electron launcher, and zips the CI-produced client files for the launcher to
-// download. Drop the CI `dist` into build/dist/client (and scam_native.node into
-// build/dist/server) before building.
+// Most Build buttons here are pure JS/packaging: they bundle TypeScript, build the
+// Electron launcher, and zip client files for the launcher to download.
+//
+// buildNative() additionally compiles the C++ (SkyrimPlatform.dll, scam_native.node)
+// locally with CMake + MSVC, mirroring what the "Dist Windows Flatrim" CI workflow
+// does. It needs Visual Studio 2022 with the "Desktop development with C++" workload;
+// see checkNativeToolchain() for the preflight. Using the CI Rebuild button instead
+// remains valid - it just round-trips through GitHub.
 class Builder {
   constructor(log) {
     this.log = log || (() => {})
@@ -114,6 +116,134 @@ class Builder {
     }
     this.line('[prereqs] toolchain installed.')
     return { ok: true }
+  }
+
+  // ── Native (C++) build ──────────────────────────────────────────────────────
+
+  // Locate a VS 2022 install that actually has the C++ toolset. vswhere is the
+  // supported way; -requires filters out installs missing the workload.
+  findVsWithCpp() {
+    const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'
+    if (!fs.existsSync(vswhere)) return null
+    try {
+      const out = cp.execSync(
+        `"${vswhere}" -products * -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -latest -format value -property installationPath`,
+        { encoding: 'utf8' }
+      ).trim()
+      const dir = out.split(/\r?\n/)[0]
+      if (dir && fs.existsSync(path.join(dir, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat'))) return dir
+    } catch {}
+    return null
+  }
+
+  // cmake: PATH first, then the copy VS ships with the C++ workload.
+  findCmake(vsDir) {
+    if (this.hasCmd('cmake')) return 'cmake'
+    if (vsDir) {
+      const bundled = path.join(vsDir, 'Common7', 'IDE', 'CommonExtensions', 'Microsoft', 'CMake', 'CMake', 'bin', 'cmake.exe')
+      if (fs.existsSync(bundled)) return bundled
+    }
+    return null
+  }
+
+  // Everything the native build needs, reported in one go so the operator can
+  // fix all of it in a single pass instead of one failure per run.
+  checkNativeToolchain() {
+    const problems = []
+    const vsDir = this.findVsWithCpp()
+    if (!vsDir) {
+      problems.push(
+        'Visual Studio 2022 with the "Desktop development with C++" workload.\n' +
+        '      Add it to an existing VS 2022 install (elevated):\n' +
+        '      "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vs_installer.exe" modify ^\n' +
+        '        --productId Microsoft.VisualStudio.Product.Community ^\n' +
+        '        --channelId VisualStudio.17.Release ^\n' +
+        '        --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --norestart'
+      )
+    }
+    const cmake = this.findCmake(vsDir)
+    if (!cmake) problems.push('CMake (comes with the C++ workload above, or install it separately and put it on PATH)')
+    if (!this.hasCmd('git')) problems.push('Git (needed for the vcpkg submodule)')
+    if (!this.hasCmd('python') && !this.hasCmd('python3')) problems.push('Python 3 (some vcpkg ports need it)')
+    const vcpkgDir = path.join(config.repoRoot, 'vcpkg')
+    if (!fs.existsSync(path.join(vcpkgDir, '.git')) && !fs.existsSync(path.join(vcpkgDir, 'bootstrap-vcpkg.bat'))) {
+      problems.push('the vcpkg submodule (run: git submodule update --init --recursive)')
+    }
+    return { vsDir, cmake, vcpkgDir, problems }
+  }
+
+  // NATIVE: configure + build the C++ with CMake/MSVC, the same flags the
+  // "Dist Windows Flatrim" CI workflow uses (see .github/actions/pr_base).
+  // Produces SkyrimPlatform.dll + scam_native.node under build/dist.
+  async buildNative(opts = {}) {
+    this.banner('Native (C++) build')
+    if (!isWin) return { ok: false, error: 'native build is Windows-only' }
+
+    const tc = this.checkNativeToolchain()
+    if (tc.problems.length) {
+      this.line('[native] cannot build - missing:')
+      for (const p of tc.problems) this.line(`  - ${p}`)
+      this.line('\n[native] Tip: the "CI Rebuild" button builds the same binaries on GitHub instead.')
+      return { ok: false, error: `missing build tools: ${tc.problems.length} item(s), see log` }
+    }
+    this.line(`[native] Visual Studio: ${tc.vsDir}`)
+    this.line(`[native] cmake: ${tc.cmake}`)
+
+    // vcpkg builds hundreds of ports; keep them off the small system drive.
+    const buildDir = process.env.ALDUINAK_NATIVE_BUILD_DIR || path.join(config.buildDir, 'native')
+    fs.mkdirSync(buildDir, { recursive: true })
+
+    if (!fs.existsSync(path.join(tc.vcpkgDir, 'vcpkg.exe'))) {
+      this.line('[native] bootstrapping vcpkg (first run, this takes a few minutes)…')
+      const boot = await this.run(path.join(tc.vcpkgDir, 'bootstrap-vcpkg.bat'), [], tc.vcpkgDir, 'bootstrap vcpkg')
+      if (!boot.ok) return { ok: false, error: 'vcpkg bootstrap failed - see log' }
+    }
+
+    // Flag notes: SKYMP_VOICE_CHAT / VCPKG_MANIFEST_FEATURES=voice-chat appear in
+    // some circulating build guides but do not exist here (the latter aborts the
+    // configure). Voice chat is already built in; see docs/alduinak_voice_chat.md.
+    const args = [
+      '-B', buildDir,
+      '-G', 'Visual Studio 17 2022',
+      '-A', 'x64',
+      `-DVCPKG_ROOT=${tc.vcpkgDir.replace(/\\/g, '/')}`,
+      '-DCMAKE_BUILD_TYPE=Release',
+      '-DBUILD_NODEJS=OFF',
+      '-DBUILD_FRONT=OFF',
+      '-DDOWNLOAD_SKYRIM_DATA=OFF',
+      `-DBUILD_UNIT_TESTS=${opts.unitTests ? 'ON' : 'OFF'}`,
+      `-DSKYRIM_VR=${opts.skyrimVr ? 'ON' : 'OFF'}`,
+    ]
+    if (config.gameRoot && fs.existsSync(config.gameRoot)) {
+      args.push(`-DSKYRIM_DIR=${config.gameRoot.replace(/\\/g, '/')}`)
+    }
+
+    // The client TS bundle is an input to the native packaging step; CI builds it
+    // before configuring (pr_base "Early build skymp5-client").
+    const clientDeps = await this.ensureDeps(config.paths.client, 'client')
+    if (!clientDeps.ok) return clientDeps
+    const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle')
+    if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
+
+    this.line('\n[native] configuring (first run compiles all vcpkg dependencies - expect 1-3 hours)…')
+    const cfg = await this.run(tc.cmake, args, config.repoRoot, 'cmake configure', { VCPKG_FEATURE_FLAGS: 'manifests' })
+    if (!cfg.ok) return { ok: false, error: 'cmake configure failed - see log' }
+
+    this.line('\n[native] compiling…')
+    const build = await this.run(tc.cmake, ['--build', buildDir, '--config', 'Release'], config.repoRoot, 'cmake build')
+    if (!build.ok) return { ok: false, error: 'cmake build failed - see log' }
+
+    // CMake writes its dist next to the build dir; report what landed so the
+    // operator knows which files to copy into build/dist.
+    const outDir = path.join(buildDir, 'dist')
+    this.line('')
+    for (const rel of ['client/Data/SKSE/Plugins/SkyrimPlatform.dll', 'server/scam_native.node']) {
+      const p = path.join(outDir, rel)
+      this.line(fs.existsSync(p) ? `✓ ${rel}` : `MISSING ${rel}`)
+    }
+    this.line(`\n✓ Native build complete: ${outDir}`)
+    this.line('  Copy client/ into build/dist/client and scam_native.node into build/dist/server, then run Build Client.')
+    return { ok: true, out: outDir }
   }
 
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
