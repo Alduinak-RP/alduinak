@@ -43,7 +43,7 @@ function mintLiveKitToken(apiKey: string, apiSecret: string, identity: string, r
     nbf: now - 10,
     exp: now + TOKEN_TTL_SECONDS,
     name: identity,
-    video: { roomJoin: true, room, canPublish: true, canSubscribe: true },
+    video: { roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true },
   };
   const body = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
   const sig = crypto.createHmac("sha256", apiSecret).update(body).digest("base64url");
@@ -59,7 +59,12 @@ export class VoiceSystem implements System {
   private apiKey = "";
   private apiSecret = "";
   private room = "alduinak";
-  private rangeUnits = 2000;
+  // Talk range is speaker-chosen (V + mousewheel); these bound it and mirror
+  // the chat tiers so voice loudness lines up with /whisper ... /shout.
+  private minRangeUnits = 150;
+  private defaultRangeUnits = 2000;
+  private maxRangeUnits = 10000;
+  private tiers: Array<{ u: number; label: string }> = [];
 
   async initAsync(_ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -73,10 +78,29 @@ export class VoiceSystem implements System {
     this.apiKey = typeof vc.apiKey === "string" ? vc.apiKey : "";
     this.apiSecret = typeof vc.apiSecret === "string" ? vc.apiSecret : "";
     if (typeof vc.room === "string" && vc.room) this.room = vc.room;
-    const range = Number(vc.rangeUnits ?? all?.["chatRanges"]?.["say"]);
-    if (Number.isFinite(range) && range > 0) this.rangeUnits = range;
+
+    const chat = (all?.["chatRanges"] ?? {}) as Record<string, unknown>;
+    const num = (v: unknown, fallback: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : fallback;
+    };
+    this.minRangeUnits = num(vc.minRangeUnits, num(chat["whisper"], 150));
+    this.defaultRangeUnits = num(vc.defaultRangeUnits, num(chat["say"], 2000));
+    this.maxRangeUnits = num(vc.rangeUnits, num(chat["shout"], 10000));
+    const tierDefs: Array<[string, number]> = [
+      ["Whisper", num(chat["whisper"], 150)],
+      ["Low", num(chat["low"], 700)],
+      ["Say", num(chat["say"], 2000)],
+      ["Wide", num(chat["wide"], 4000)],
+      ["Shout", num(chat["shout"], 10000)],
+    ];
+    this.tiers = tierDefs
+      .filter(([, u]) => u >= this.minRangeUnits && u <= this.maxRangeUnits)
+      .map(([label, u]) => ({ u, label }))
+      .sort((a, b) => a.u - b.u);
+
     this.enabled = vc.enabled !== false && !!(this.url && this.apiKey && this.apiSecret);
-    this.log(`VoiceSystem: ${this.enabled ? `enabled, room '${this.room}', range ${this.rangeUnits}` : "disabled (missing url/apiKey/apiSecret or enabled=false)"}`);
+    this.log(`VoiceSystem: ${this.enabled ? `enabled, room '${this.room}', talk range ${this.minRangeUnits}..${this.maxRangeUnits} (default ${this.defaultRangeUnits})` : "disabled (missing url/apiKey/apiSecret or enabled=false)"}`);
   }
 
   customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
@@ -99,7 +123,10 @@ export class VoiceSystem implements System {
         token,
         room: this.room,
         identity,
-        rangeUnits: this.rangeUnits,
+        rangeUnits: this.defaultRangeUnits,
+        minRangeUnits: this.minRangeUnits,
+        maxRangeUnits: this.maxRangeUnits,
+        tiers: this.tiers,
       }));
     } catch (e) {
       this.log(`VoiceSystem: token mint failed for user ${userId}: ${e}`);

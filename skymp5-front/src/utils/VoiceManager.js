@@ -3,9 +3,13 @@
 // purpose: the repo pins TypeScript 4.6 and livekit-client's types need 5.x.
 //
 // Contract with the game side:
-//   connect(url, token, rangeUnits)  join the room (idempotent per token)
-//   disconnect()                     leave the room
-//   setPtt(bool)                     push-to-talk: enable/disable the mic track
+//   connect(url, token, cfg)  join the room; cfg = { talk, min, max, def,
+//       tiers: [{u, label}] } - talk range bounds in game units
+//   disconnect()              leave the room
+//   setPtt(bool)              push-to-talk: enable/disable the mic track
+//   setTalkRange(units)       V + mousewheel: my audible range; published to
+//       the room over the LiveKit data channel so listeners attenuate by the
+//       SPEAKER's loudness (a whisperer is only audible at whisper range)
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms;
 //       peers absent from the map are treated as out of range
 // Events back to the game (window.skyrimPlatform.sendMessage):
@@ -14,8 +18,9 @@
 
 import { Room, RoomEvent, Track } from 'livekit-client';
 
-const FULL_VOLUME_UNITS = 350;   // within ~5m you hear full volume
 const UNSUB_HYSTERESIS = 1.15;   // unsubscribe only past range*this (no flapping)
+const UNITS_PER_METER = 70;
+const METER_HIDE_MS = 1800;
 
 function sendToGame(...args) {
   try { window.skyrimPlatform.sendMessage(...args); } catch (e) { /* outside game */ }
@@ -26,14 +31,35 @@ class VoiceManager {
     this.room = null;
     this.connecting = false;
     this.lastToken = null;
-    this.rangeUnits = 2000;
+    this.minRange = 150;
+    this.maxRange = 10000;
+    this.defRange = 2000;
+    this.myRange = 2000;
+    this.tiers = [];
     this.distances = {};       // identity -> game units, refreshed by setPeers
+    this.peerRanges = {};      // identity -> that speaker's chosen talk range
     this.ptt = false;
     this.audioEls = new Map(); // identity -> HTMLAudioElement
+    this.meterEl = null;
+    this.meterHideTimer = null;
+    this.lastPeersAt = 0;
   }
 
-  async connect(url, token, rangeUnits) {
-    if (rangeUnits > 0) this.rangeUnits = rangeUnits;
+  applyCfg(cfg) {
+    if (!cfg || typeof cfg !== 'object') return;
+    if (cfg.min > 0) this.minRange = cfg.min;
+    if (cfg.max > 0) this.maxRange = cfg.max;
+    if (cfg.def > 0) this.defRange = cfg.def;
+    if (Array.isArray(cfg.tiers)) this.tiers = cfg.tiers;
+    if (cfg.talk > 0) this.myRange = this.clampRange(cfg.talk);
+  }
+
+  clampRange(units) {
+    return Math.min(this.maxRange, Math.max(this.minRange, Math.round(units)));
+  }
+
+  async connect(url, token, cfg) {
+    this.applyCfg(cfg);
     if (this.connecting || (this.room && this.lastToken === token)) return;
     this.connecting = true; // set before any await so calls cannot interleave
     try {
@@ -59,10 +85,25 @@ class VoiceManager {
       room.on(RoomEvent.ParticipantDisconnected, (participant) => {
         const el = this.audioEls.get(participant.identity);
         if (el) { el.remove(); this.audioEls.delete(participant.identity); }
+        delete this.peerRanges[participant.identity];
+      });
+      room.on(RoomEvent.ParticipantConnected, () => {
+        this.publishRange(); // newcomers need to learn my current range
+      });
+      room.on(RoomEvent.DataReceived, (payload, participant) => {
+        if (!participant) return;
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload));
+          if (msg && msg.t === 'voiceRange' && msg.r > 0) {
+            this.peerRanges[participant.identity] = this.clampRange(msg.r);
+            this.applyVolume(participant.identity);
+          }
+        } catch (e) { /* not ours */ }
       });
       room.on(RoomEvent.Disconnected, () => {
         this.audioEls.forEach((el) => el.remove());
         this.audioEls.clear();
+        this.peerRanges = {};
         // Intentional teardowns null this.room first; only report real drops,
         // otherwise the game re-requests a token and churns forever
         if (this.room === room) {
@@ -83,6 +124,7 @@ class VoiceManager {
       // Expose the room only once connected so setPtt cannot hit a
       // not-yet-connected room (that threw and mis-reported micDenied)
       this.room = room;
+      this.publishRange();
       if (this.ptt) {
         try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { /* applied on next press */ }
       }
@@ -105,10 +147,12 @@ class VoiceManager {
     }
     this.audioEls.forEach((el) => el.remove());
     this.audioEls.clear();
+    this.peerRanges = {};
   }
 
   async setPtt(down) {
     this.ptt = !!down;
+    if (this.ptt) this.showMeter(); else this.scheduleMeterHide();
     if (!this.room) return;
     try {
       await this.room.localParticipant.setMicrophoneEnabled(this.ptt);
@@ -117,11 +161,33 @@ class VoiceManager {
     }
   }
 
+  setTalkRange(units) {
+    this.myRange = this.clampRange(units);
+    this.publishRange();
+    this.showMeter();
+    this.scheduleMeterHide();
+  }
+
+  publishRange() {
+    if (!this.room) return;
+    try {
+      const payload = new TextEncoder().encode(JSON.stringify({ t: 'voiceRange', r: this.myRange }));
+      this.room.localParticipant.publishData(payload, { reliable: true });
+    } catch (e) { /* transient; republished on next change/join */ }
+  }
+
+  rangeFor(identity) {
+    const r = this.peerRanges[identity];
+    return r > 0 ? r : this.defRange;
+  }
+
   gainFor(identity) {
     const d = this.distances[identity];
-    if (d === undefined || d > this.rangeUnits) return 0;
-    if (d <= FULL_VOLUME_UNITS) return 1;
-    return Math.max(0, 1 - (d - FULL_VOLUME_UNITS) / (this.rangeUnits - FULL_VOLUME_UNITS));
+    const r = this.rangeFor(identity);
+    if (d === undefined || d > r) return 0;
+    const full = r / 3; // full volume in the closest third, then linear falloff
+    if (d <= full) return 1;
+    return Math.max(0, 1 - (d - full) / (r - full));
   }
 
   applyVolume(identity) {
@@ -137,13 +203,70 @@ class VoiceManager {
     // Bandwidth: don't even receive audio from players far out of range
     this.room.remoteParticipants.forEach((participant) => {
       const d = this.distances[participant.identity];
-      const wanted = d !== undefined && d <= this.rangeUnits * UNSUB_HYSTERESIS;
+      const wanted = d !== undefined && d <= this.rangeFor(participant.identity) * UNSUB_HYSTERESIS;
       participant.audioTrackPublications.forEach((pub) => {
         if (pub.isSubscribed !== wanted && typeof pub.setSubscribed === 'function') {
           try { pub.setSubscribed(wanted); } catch (e) { /* transient */ }
         }
       });
     });
+  }
+
+  // ── Talk-range meter (bottom center, shown while PTT held or adjusting) ────
+
+  tierLabel(units) {
+    let label = '';
+    for (const t of this.tiers) {
+      if (t && t.u > 0 && units >= t.u * 0.999) label = t.label;
+    }
+    return label || `${Math.round(units)}u`;
+  }
+
+  ensureMeter() {
+    if (this.meterEl) return this.meterEl;
+    const wrap = document.createElement('div');
+    wrap.id = 'alduinak-voice-meter';
+    wrap.style.cssText =
+      'position:fixed;bottom:5vh;left:50%;transform:translateX(-50%);z-index:99999;' +
+      'pointer-events:none;opacity:0;transition:opacity .25s;text-align:center;' +
+      'font-family:inherit;user-select:none;';
+    const label = document.createElement('div');
+    label.style.cssText =
+      'color:#fff;font-size:14px;text-shadow:0 1px 3px #000;margin-bottom:4px;letter-spacing:.5px;';
+    const bar = document.createElement('div');
+    bar.style.cssText =
+      'width:240px;height:8px;border-radius:4px;background:rgba(0,0,0,.55);' +
+      'border:1px solid rgba(255,255,255,.35);overflow:hidden;';
+    const fill = document.createElement('div');
+    fill.style.cssText =
+      'height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#7fb4e6,#e6c97f);transition:width .1s;';
+    bar.appendChild(fill);
+    wrap.appendChild(label);
+    wrap.appendChild(bar);
+    document.body.appendChild(wrap);
+    this.meterEl = wrap;
+    this.meterLabelEl = label;
+    this.meterFillEl = fill;
+    return wrap;
+  }
+
+  showMeter() {
+    const el = this.ensureMeter();
+    // Log scale so whisper..shout spreads evenly across the bar
+    const frac = Math.log(this.myRange / this.minRange) / Math.log(this.maxRange / this.minRange);
+    this.meterFillEl.style.width = `${Math.round(Math.min(1, Math.max(0, frac)) * 100)}%`;
+    const meters = Math.round(this.myRange / UNITS_PER_METER);
+    this.meterLabelEl.textContent = `Voice: ${this.tierLabel(this.myRange)} (${meters}m)`;
+    el.style.opacity = '1';
+    if (this.meterHideTimer) { clearTimeout(this.meterHideTimer); this.meterHideTimer = null; }
+    if (!this.ptt) this.scheduleMeterHide();
+  }
+
+  scheduleMeterHide() {
+    if (this.meterHideTimer) clearTimeout(this.meterHideTimer);
+    this.meterHideTimer = setTimeout(() => {
+      if (this.meterEl && !this.ptt) this.meterEl.style.opacity = '0';
+    }, METER_HIDE_MS);
   }
 }
 

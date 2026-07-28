@@ -5,7 +5,7 @@ import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { RemoteServer } from "./remoteServer";
-import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
+import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 // Proximity voice chat: push-to-talk (default V, launcher-configurable via
@@ -18,6 +18,13 @@ import { logTrace } from "../../logging";
 const PEERS_INTERVAL_MS = 400;
 const TOKEN_RETRY_MS = 5000;
 const PLAYER_ID_SPACE = 0xff000000;
+
+// Mouse wheel arrives as buttonEvent with device Mouse and these id codes
+const MOUSE_WHEEL_UP = 8;
+const MOUSE_WHEEL_DOWN = 9;
+const RANGE_STEP = 1.25; // multiplicative per wheel notch
+const RANGE_PERSIST_DELAY_MS = 1000;
+const VOICE_SETTINGS_PLUGIN = "voice-settings-no-load";
 
 export class VoiceService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -39,13 +46,25 @@ export class VoiceService extends ClientListener {
   private connectedForRefrId = 0;
   private pendingRefrId = 0;
   private rangeUnits = 2000;
+  private minRangeUnits = 150;
+  private maxRangeUnits = 10000;
+  private tiers: unknown[] = [];
+  private talkRange = 0; // 0 = not yet initialized from settings/packet
+  private rangePersistAt = 0;
   private pttDown = false;
   private micDeniedShown = false;
   private nextTokenAttemptAt = 0;
   private nextPeersAt = 0;
 
   private onButtonEvent(e: ButtonEvent) {
-    if (e.code !== this.voiceKey) return;
+    // V + mousewheel adjusts the talk range (whisper..shout)
+    if (this.pttDown && e.device === InputDeviceType.Mouse && e.isDown &&
+        ((e.code as number) === MOUSE_WHEEL_UP || (e.code as number) === MOUSE_WHEEL_DOWN)) {
+      const factor = (e.code as number) === MOUSE_WHEEL_UP ? RANGE_STEP : 1 / RANGE_STEP;
+      this.applyTalkRange(this.talkRange * factor);
+      return;
+    }
+    if (e.device !== InputDeviceType.Keyboard || e.code !== this.voiceKey) return;
     if (e.isDown && !this.pttDown) {
       if (this.sp.browser.isFocused()) return; // typing in chat
       this.pttDown = true;
@@ -53,6 +72,39 @@ export class VoiceService extends ClientListener {
     } else if (e.isUp && this.pttDown) {
       this.releasePtt();
     }
+  }
+
+  private applyTalkRange(units: number) {
+    const clamped = Math.min(this.maxRangeUnits, Math.max(this.minRangeUnits, Math.round(units)));
+    if (clamped === this.talkRange) return;
+    this.talkRange = clamped;
+    this.rangePersistAt = Date.now() + RANGE_PERSIST_DELAY_MS;
+    this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setTalkRange(${clamped})`);
+  }
+
+  // Chosen range survives relaunches, same mechanism as chat settings
+  private readPersistedRange(): number {
+    try {
+      // @ts-expect-error (TODO: Remove in 2.10.0)
+      const data = this.sp.getPluginSourceCode(VOICE_SETTINGS_PLUGIN, "PluginsNoLoad");
+      if (!data) return 0;
+      const parsed = JSON.parse(data.slice(2));
+      const r = Number(parsed?.talkRange);
+      return Number.isFinite(r) && r > 0 ? r : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  private persistRange(): void {
+    try {
+      this.sp.writePlugin(
+        VOICE_SETTINGS_PLUGIN,
+        "//" + JSON.stringify({ talkRange: this.talkRange }),
+        // @ts-expect-error (TODO: Remove in 2.10.0)
+        "PluginsNoLoad"
+      );
+    } catch (e) { }
   }
 
   private releasePtt() {
@@ -107,12 +159,29 @@ export class VoiceService extends ClientListener {
     const url = content["url"];
     const token = content["token"];
     if (typeof url !== "string" || typeof token !== "string") return;
-    const range = Number(content["rangeUnits"]);
-    if (Number.isFinite(range) && range > 0) this.rangeUnits = range;
+    const num = (v: unknown, fallback: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : fallback;
+    };
+    this.rangeUnits = num(content["rangeUnits"], this.rangeUnits);
+    this.minRangeUnits = num(content["minRangeUnits"], this.minRangeUnits);
+    this.maxRangeUnits = num(content["maxRangeUnits"], this.maxRangeUnits);
+    if (Array.isArray(content["tiers"])) this.tiers = content["tiers"];
+    if (!this.talkRange) {
+      const persisted = this.readPersistedRange();
+      this.talkRange = Math.min(this.maxRangeUnits, Math.max(this.minRangeUnits, persisted || this.rangeUnits));
+    }
 
+    const cfg = {
+      talk: this.talkRange,
+      min: this.minRangeUnits,
+      max: this.maxRangeUnits,
+      def: this.rangeUnits,
+      tiers: this.tiers,
+    };
     this.pendingRefrId = this.myRefrId();
     this.sp.browser.executeJavaScript(
-      `window.__alduinakVoice && window.__alduinakVoice.connect(${JSON.stringify(url)}, ${JSON.stringify(token)}, ${this.rangeUnits})`
+      `window.__alduinakVoice && window.__alduinakVoice.connect(${JSON.stringify(url)}, ${JSON.stringify(token)}, ${JSON.stringify(cfg)})`
     );
   }
 
@@ -128,6 +197,12 @@ export class VoiceService extends ClientListener {
     // Chat focus steals the key-up event, so drop the mic when typing starts;
     // same when our actor despawns (character park, connection loss)
     if (this.pttDown && (this.sp.browser.isFocused() || !myRefr)) this.releasePtt();
+
+    // Write the chosen range to disk once the wheel settles
+    if (this.rangePersistAt && now >= this.rangePersistAt) {
+      this.rangePersistAt = 0;
+      this.persistRange();
+    }
 
     if (!myRefr) return; // not spawned yet
 
@@ -152,7 +227,9 @@ export class VoiceService extends ClientListener {
     const myMovement = me?.movement;
     if (!myMovement || !Array.isArray(myMovement.pos)) return;
 
-    const includeWithin = this.rangeUnits * 1.5;
+    // Speakers choose their own range up to the max, so feed distances out to
+    // the max tier: a shouter 9000 units away must still be audible
+    const includeWithin = this.maxRangeUnits * 1.2;
     const peers: Record<string, number> = {};
     for (let i = 0; i < worldModel.forms.length; i++) {
       if (i === worldModel.playerCharacterFormIdx) continue;

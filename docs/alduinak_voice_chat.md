@@ -20,6 +20,13 @@ The integration described as "future work" below has been built:
   talk on `voicePushToTalkKeyCode` (default V, DX 47), suppressed while chat is
   focused; requests a token per actor assignment; pushes peer distances
   (same world only) every 400ms.
+- **Talk range**: V + mousewheel picks the speaker's audible range between
+  chatRanges.whisper (150u) and chatRanges.shout (10000u), default say (2000u).
+  The range is published to the room over LiveKit's data channel, so LISTENERS
+  attenuate by the speaker's chosen loudness (whisperers audible at ~2m,
+  shouters at ~143m). A bottom-center meter (chat-tier label + log-scale bar)
+  shows while PTT is held or the wheel moves; the choice persists across
+  relaunches via `voice-settings-no-load`.
 - **Launcher**: "Voice Push-to-Talk" picker in Server Hotkeys; the hotkey-wipe
   bug in `writeClientSettings` is fixed so rebinds survive launches.
 
