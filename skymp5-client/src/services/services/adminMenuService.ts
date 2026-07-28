@@ -37,7 +37,12 @@ export class AdminMenuService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent) {
-    if (e.device !== InputDeviceType.Keyboard || e.code !== this.menuKey || !e.isDown) return;
+    if (e.device !== InputDeviceType.Keyboard || !e.isDown) return;
+    if (e.code === DxScanCode.Escape && this.menuOpen) {
+      this.closeMenu();
+      return;
+    }
+    if (e.code !== this.menuKey) return;
     if (this.menuOpen) {
       this.closeMenu();
       return;
@@ -77,7 +82,7 @@ export class AdminMenuService extends ClientListener {
 
   private onBrowserMessage(e: BrowserMessageEvent) {
     const kind = e.arguments[0];
-    if (kind === events.close) {
+    if (kind === events.close || (kind === "menu:escape" && this.menuOpen)) {
       this.closeMenu();
       return;
     }

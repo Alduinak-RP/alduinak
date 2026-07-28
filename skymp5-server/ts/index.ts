@@ -205,11 +205,14 @@ const main = async () => {
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
+    // AdminSystem registers its userAssignActor listener before capture/trade:
+    // the console grant/revoke is security-relevant and must never be skipped
+    // by an earlier listener throwing
+    new AdminSystem(log),
     new CaptureSystem(log),
     new TradeSystem(log),
     new SearchSystem(log),
     new VoiceSystem(log),
-    new AdminSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );

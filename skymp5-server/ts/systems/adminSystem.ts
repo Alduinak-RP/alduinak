@@ -86,6 +86,7 @@ export class AdminSystem implements System {
   private onlinePlayers(mp: Mp): Array<{ userId: number; actorId: number; profileId: number; name: string }> {
     const out: Array<{ userId: number; actorId: number; profileId: number; name: string }> = [];
     for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
+      try { if (!mp.isConnected(userId)) continue; } catch { continue; }
       let actorId = 0;
       try { actorId = mp.getUserActor(userId); } catch { continue; }
       if (!actorId) continue;
@@ -138,11 +139,14 @@ export class AdminSystem implements System {
         mp.set(target.actorId, "locationalData", mp.get(myActorId, "locationalData"));
         this.reply(mp, userId, true, `Summoned ${target.name}`);
       } else if (action === "kick") {
+        // Disable boots to the menu; kick drops the connection so they can't
+        // just re-enter from character select
         ctx.svr.setEnabled(target.actorId, false);
+        try { (ctx.svr as Mp).kick(target.userId); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} kicked profile ${target.profileId} (${target.name})`);
         this.reply(mp, userId, true, `Kicked ${target.name}`);
       } else if (action === "ban") {
-        this.banViaBackend(mp, ctx, userId, target, adminProfile);
+        this.banViaBackend(mp, ctx, userId, myActorId, target, adminProfile);
       } else {
         this.reply(mp, userId, false, `Unknown action '${action}'`);
       }
@@ -156,7 +160,8 @@ export class AdminSystem implements System {
     mp: Mp,
     ctx: SystemContext,
     userId: number,
-    target: { actorId: number; profileId: number; name: string },
+    adminActorId: number,
+    target: { userId: number; actorId: number; profileId: number; name: string },
     adminProfile: number
   ): void {
     if (!this.masterUrl || !this.masterKey || !this.authToken) {
@@ -177,16 +182,29 @@ export class AdminSystem implements System {
       }),
     }).then(res => {
       if (res.ok) {
+        // Boot AND drop the connection; connection-check refuses the reconnect
         try { ctx.svr.setEnabled(target.actorId, false); } catch { }
+        try { (ctx.svr as Mp).kick(target.userId); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} banned profile ${target.profileId} (${target.name})`);
-        this.reply(mp, userId, true, `Banned ${target.name}`);
+        this.replyIfSameAdmin(mp, userId, adminActorId, true, `Banned ${target.name}`);
       } else {
         this.log(`AdminSystem: backend ban failed with status ${res.status}`);
-        this.reply(mp, userId, false, `Ban failed (backend ${res.status})`);
+        this.replyIfSameAdmin(mp, userId, adminActorId, false, `Ban failed (backend ${res.status})`);
       }
     }).catch(e => {
       this.log(`AdminSystem: backend ban request failed: ${e}`);
-      this.reply(mp, userId, false, "Ban failed: backend unreachable");
+      this.replyIfSameAdmin(mp, userId, adminActorId, false, "Ban failed: backend unreachable");
     });
+  }
+
+  // The HTTP round-trip outlives the packet handler; make sure the userId
+  // slot still belongs to the same admin before sending the result toast
+  private replyIfSameAdmin(mp: Mp, userId: number, adminActorId: number, ok: boolean, text: string): void {
+    try {
+      if (mp.getUserActor(userId) !== adminActorId) return;
+    } catch {
+      return;
+    }
+    this.reply(mp, userId, ok, text);
   }
 }
