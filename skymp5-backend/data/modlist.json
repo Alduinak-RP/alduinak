@@ -6,6 +6,12 @@
     "source": "backend"
   },
   {
+    "name": "Alduinak",
+    "required": true,
+    "enabled": true,
+    "source": "url"
+  },
+  {
     "name": "Winterhold Restored",
     "required": true,
     "enabled": true,
