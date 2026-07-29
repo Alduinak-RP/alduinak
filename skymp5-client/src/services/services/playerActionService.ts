@@ -14,19 +14,17 @@ const WIDGET_ID = 10;
 interface PlayerAction {
   id: string;
   label: string;
-  group: string;
-  tmpl: string; // '<n>' = target's name
 }
 
 // Kept intentionally small: the character interaction menu (Trade is a
 // dedicated button above these).
 const ACTIONS: PlayerAction[] = [
-  { id: 'introduce', label: 'Introduce', group: '', tmpl: '' },
-  { id: 'search', label: 'Search', group: '', tmpl: '' },
-  { id: 'capture', label: 'Restrain', group: '', tmpl: '' },
-  { id: 'carry', label: 'Carry', group: '', tmpl: '' },
-  { id: 'putdown', label: 'Put down', group: '', tmpl: '' },
-  { id: 'release', label: 'Release', group: '', tmpl: '' },
+  { id: 'introduce', label: 'Introduce' },
+  { id: 'search', label: 'Search' },
+  { id: 'capture', label: 'Restrain' },
+  { id: 'carry', label: 'Carry' },
+  { id: 'putdown', label: 'Put down' },
+  { id: 'release', label: 'Release' },
 ];
 
 // Every action goes to the server systems as a custom packet (by server form id).
@@ -87,13 +85,9 @@ export class PlayerActionService extends ClientListener {
     const actor = Actor.from(ref);
     if (actor && ref.getFormID() !== 0x14) {
       targetName = (ref.getName() || "").trim();
-      if (!targetName) {
-        notifyNextUpdate(this.controller, this.sp, "That target has no name.");
-        return;
-      }
       this.playerTarget = localIdToRemoteId(ref.getFormID());
       // Names stay hidden until introduced (ff_knownIds owner prop)
-      if (!this.knowsTarget(this.playerTarget)) {
+      if (!targetName || !this.knowsTarget(this.playerTarget)) {
         targetName = "Stranger";
       }
       logTrace(this, `Opening player-action menu for`, targetName);
@@ -129,27 +123,14 @@ export class PlayerActionService extends ClientListener {
     if (key === events.action) {
       const actionId = typeof e.arguments[1] === "string" ? (e.arguments[1] as string) : "";
       const packetType = PACKET_ACTIONS[actionId];
-      if (packetType) {
-        // Restraint actions go to the server's CaptureSystem by server form id.
-        if (this.playerTarget) {
-          sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
-        } else {
-          notifyNextUpdate(this.controller, this.sp, "Look at a player first.");
-        }
-      } else {
-        const action = ACTIONS.find((a) => a.id === actionId);
-        if (action && targetName) {
-          this.sendCommand(action.tmpl.replace("<n>", targetName));
-        }
+      if (packetType && this.playerTarget) {
+        sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
+      } else if (packetType) {
+        notifyNextUpdate(this.controller, this.sp, "Look at a player first.");
       }
       this.closeMenu();
       return;
     }
-  }
-
-  private sendCommand(text: string): void {
-    logTrace(this, `Player-action command:`, text);
-    sendCustomPacket(this.controller, { type: "cef::chat:send", data: text });
   }
 
   // True when the local player's ff_knownIds list contains the remote actor id.
@@ -185,13 +166,8 @@ export class PlayerActionService extends ClientListener {
   private playerWidgetSetter = () => {
     const elements: any[] = [];
     elements.push({ type: "button", text: "Trade", tags: [], click: () => window.skyrimPlatform.sendMessage(events.trade) });
-    let lastGroup = "";
     for (let i = 0; i < ACTIONS.length; i++) {
       const a = ACTIONS[i];
-      if (a.group !== lastGroup) {
-        lastGroup = a.group;
-        elements.push({ type: "text", text: a.group, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
-      }
       elements.push({ type: "button", text: a.label, tags: [], click: () => window.skyrimPlatform.sendMessage(events.action, a.id) });
     }
     elements.push({ type: "button", text: "close", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.close) });
