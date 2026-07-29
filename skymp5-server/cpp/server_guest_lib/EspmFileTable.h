@@ -12,6 +12,22 @@ class EspmFileTable : public std::vector<std::string>
 public:
   using std::vector<std::string>::vector;
 
+  EspmFileTable() = default;
+
+  // Inherited constructors do not include the base copy/move ones, so allow
+  // assigning a plain name list (espm::Loader::GetFileNames) directly.
+  EspmFileTable(std::vector<std::string> names)
+    : std::vector<std::string>(std::move(names))
+  {
+  }
+
+  EspmFileTable& operator=(std::vector<std::string> names)
+  {
+    std::vector<std::string>::operator=(std::move(names));
+    slots.clear();
+    return *this;
+  }
+
   // Without explicit slots every file is treated as a full plugin indexed by
   // position, which is exactly the pre-ESL behaviour (used by tests).
   espm::PluginSlot SlotAt(size_t i) const
