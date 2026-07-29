@@ -3,6 +3,7 @@
 #include "MathUtils.h"
 #include "MpActor.h"
 #include "MpChangeForms.h"
+#include "WorldState.h"
 
 namespace {
 
@@ -14,6 +15,12 @@ BaseActorValues GetValues(MpActor* actor)
   auto worldState = actor->GetParent();
   return GetBaseActorValues(worldState, baseId, raceId,
                             actor->GetTemplateChain());
+}
+
+float GetServerRegenMultiplier(MpActor* actor)
+{
+  auto worldState = actor->GetParent();
+  return worldState ? worldState->regenerationMultiplier : 1.f;
 }
 
 }
@@ -70,7 +77,8 @@ float CropHealthRegeneration(float newAttributeValue,
 {
   const BaseActorValues baseValues = GetValues(actor);
   const ActorValues& actorValues = actor->GetActorValues();
-  const float rate = std::max(baseValues.healRate, actorValues.healRate);
+  const float rate = std::max(baseValues.healRate, actorValues.healRate) *
+    GetServerRegenMultiplier(actor);
   const float rateMult =
     std::max(baseValues.healRateMult, actorValues.healRateMult);
   const float oldPercentage = actorValues.healthPercentage;
@@ -84,7 +92,9 @@ float CropMagickaRegeneration(float newAttributeValue,
 {
   const BaseActorValues baseValues = GetValues(actor);
   const ActorValues& actorValues = actor->GetActorValues();
-  const float rate = std::max(baseValues.magickaRate, actorValues.magickaRate);
+  const float rate =
+    std::max(baseValues.magickaRate, actorValues.magickaRate) *
+    GetServerRegenMultiplier(actor);
   const float rateMult =
     std::max(baseValues.magickaRateMult, actorValues.magickaRateMult);
   const float oldPercentage = actorValues.magickaPercentage;
@@ -98,9 +108,10 @@ float CropStaminaRegeneration(float newAttributeValue,
 {
   const BaseActorValues baseValues = GetValues(actor);
   const ActorValues& actorValues = actor->GetActorValues();
-  const float rate = actor->IsBlockActive()
+  const float rate = (actor->IsBlockActive()
     ? actorValues.staminaRate
-    : std::max(baseValues.staminaRate, actorValues.staminaRate);
+    : std::max(baseValues.staminaRate, actorValues.staminaRate)) *
+    GetServerRegenMultiplier(actor);
   const float rateMult =
     std::max(baseValues.staminaRateMult, actorValues.staminaRateMult);
   const float oldPercentage = actorValues.staminaPercentage;

@@ -1229,16 +1229,70 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   const auto targetRef = std::dynamic_pointer_cast<MpObjectReference>(
     partOne.worldState.LookupFormById(spellCastData.target));
 
-  if (!targetRef) {
-    spdlog::info(
-      "ActionListener::OnSpellCast - MpObjectReference not found for "
-      "spellCastData.target {:x}",
-      spellCastData.target);
+  // Restorative (non-hostile) effects apply here; hostile damage stays on
+  // the OnSpellHit path
+  const auto spellData =
+    espm::GetData<espm::SPEL>(spellCastData.spell, &partOne.worldState);
+
+  MpActor* targetActor = nullptr;
+  const bool selfDelivery = spellData.spellItem &&
+    spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
+  if (selfDelivery) {
+    targetActor = caster;
+  } else if (targetRef) {
+    targetActor = targetRef->AsActor();
+  }
+
+  if (!targetActor) {
     return;
   }
 
-  // TODO: apply magic effects if this is not a fireball-like spell.
-  // Previous attempt was not successful, so it was deleted.
+  if (targetActor != caster) {
+    if (targetActor->GetCellOrWorld() != caster->GetCellOrWorld()) {
+      return;
+    }
+    constexpr float kMaxHealDistance = 4096.f;
+    if ((targetActor->GetPos() - caster->GetPos()).SqrLength() >
+        kMaxHealDistance * kMaxHealDistance) {
+      return;
+    }
+  }
+
+  std::vector<espm::Effects::Effect> restoreEffects;
+  for (const auto& effect : spellData.effects) {
+    if (!effect.effectItem || effect.effectFormId == 0) {
+      continue;
+    }
+    const auto magicEffect =
+      espm::GetData<espm::MGEF>(effect.effectFormId, &partOne.worldState);
+    if (magicEffect.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
+        magicEffect.data.IsFlagSet(espm::MGEF::Flags::Detrimental)) {
+      continue;
+    }
+    const auto av = magicEffect.data.primaryAV;
+    if (av != espm::ActorValue::Health && av != espm::ActorValue::Magicka &&
+        av != espm::ActorValue::Stamina) {
+      continue;
+    }
+    espm::Effects::Effect converted;
+    converted.effectId = effect.effectFormId;
+    converted.magnitude = effect.effectItem->magnitude;
+    converted.areaOfEffect = effect.effectItem->areaOfEffect;
+    converted.duration = effect.effectItem->duration;
+    restoreEffects.push_back(converted);
+  }
+
+  if (!restoreEffects.empty()) {
+    std::unordered_set<std::string> modFiles = {
+      partOne.worldState.espmFiles.begin(), partOne.worldState.espmFiles.end()
+    };
+    const bool hasSweetpie = modFiles.count("SweetPie.esp") > 0;
+    targetActor->ApplyMagicEffects(restoreEffects, hasSweetpie);
+    spdlog::info("ActionListener::OnSpellCast - applied {} restorative "
+                 "effect(s) of spell {:x} to actor {:x}",
+                 restoreEffects.size(), spellCastData.spell,
+                 targetActor->GetFormId());
+  }
 }
 
 void ActionListener::OnUnknown(const RawMessageData& rawMsgData)

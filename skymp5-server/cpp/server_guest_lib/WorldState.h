@@ -254,6 +254,7 @@ public:
   std::unordered_map<std::string, NpcSettingsEntry> npcSettings;
   NpcSettingsEntry defaultSetting;
   bool enableConsoleCommandsForAll = false;
+  float regenerationMultiplier = 1.f;
 
   bool disableVanillaScriptsInExterior = true;
 

@@ -301,6 +301,22 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       }
     }
 
+    if (serverSettings.find("regenerationMultiplier") !=
+        serverSettings.end()) {
+      if (serverSettings.at("regenerationMultiplier").is_number()) {
+        float regenerationMultiplier =
+          serverSettings["regenerationMultiplier"].get<float>();
+        if (regenerationMultiplier >= 0.f) {
+          partOne->worldState.regenerationMultiplier = regenerationMultiplier;
+          spdlog::info("regenerationMultiplier set to {}",
+                       regenerationMultiplier);
+        }
+      } else {
+        spdlog::error(
+          "Unexpected value of regenerationMultiplier, should be a number");
+      }
+    }
+
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&
       serverSettings.at("isPapyrusHotReloadEnabled").get<bool>();

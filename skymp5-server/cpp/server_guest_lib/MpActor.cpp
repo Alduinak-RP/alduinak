@@ -376,7 +376,18 @@ void MpActor::VisitProperties(CreateActorMessage& message,
                                                        changeForm, message);
   }
 
-  message.props.learnedSpells = changeForm.learnedSpells.GetLearnedSpells();
+  // Base NPC_/race spells ride along so the client's spell reconciliation
+  // does not wipe Flames/Healing and friends
+  auto learnedSpells = changeForm.learnedSpells.GetLearnedSpells();
+  if (worldState && worldState->HasEspm()) {
+    for (uint32_t spellId : GetBaseSpells()) {
+      if (std::find(learnedSpells.begin(), learnedSpells.end(), spellId) ==
+          learnedSpells.end()) {
+        learnedSpells.push_back(spellId);
+      }
+    }
+  }
+  message.props.learnedSpells = std::move(learnedSpells);
 
   if (!changeForm.templateChain.empty()) {
     std::vector<uint32_t> templateChain;
@@ -851,31 +862,48 @@ bool MpActor::IsSpellLearned(const uint32_t spellId) const
 
 bool MpActor::IsSpellLearnedFromBase(const uint32_t spellId) const
 {
+  const auto spells = GetBaseSpells();
+  return std::find(spells.begin(), spells.end(), spellId) != spells.end();
+}
+
+std::vector<uint32_t> MpActor::GetBaseSpells() const
+{
   // TODO: support npc templates here?
 
-  const auto npcData = espm::GetData<espm::NPC_>(GetBaseId(), GetParent());
-  const auto npc = GetParent()->GetEspm().GetBrowser().LookupById(GetBaseId());
+  std::vector<uint32_t> result;
 
-  const uint32_t raceId = npc.ToGlobalId(npcData.race);
-
-  const auto raceData = espm::GetData<espm::RACE>(raceId, GetParent());
-  const auto race = GetParent()->GetEspm().GetBrowser().LookupById(raceId);
-
-  for (auto npcSpellRaw : npcData.spells) {
-    const auto npcSpell = npc.ToGlobalId(npcSpellRaw);
-    if (npcSpell == spellId) {
-      return true;
-    }
+  auto worldState = GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return result;
   }
 
-  for (auto raceSpellRaw : raceData.spells) {
-    const auto raceSpell = race.ToGlobalId(raceSpellRaw);
-    if (raceSpell == spellId) {
-      return true;
+  try {
+    const auto npcData = espm::GetData<espm::NPC_>(GetBaseId(), worldState);
+    const auto npc = worldState->GetEspm().GetBrowser().LookupById(GetBaseId());
+
+    for (auto npcSpellRaw : npcData.spells) {
+      result.push_back(npc.ToGlobalId(npcSpellRaw));
     }
+
+    // Players carry their chosen race in appearance, not in the NPC_ record
+    uint32_t raceId = npc.ToGlobalId(npcData.race);
+    if (auto appearance = GetAppearance()) {
+      if (appearance->raceId != 0) {
+        raceId = appearance->raceId;
+      }
+    }
+
+    const auto raceData = espm::GetData<espm::RACE>(raceId, worldState);
+    const auto race = worldState->GetEspm().GetBrowser().LookupById(raceId);
+
+    for (auto raceSpellRaw : raceData.spells) {
+      result.push_back(race.ToGlobalId(raceSpellRaw));
+    }
+  } catch (std::exception& e) {
+    spdlog::warn("MpActor::GetBaseSpells {:x} - {}", GetFormId(), e.what());
   }
 
-  return false;
+  return result;
 }
 
 std::vector<uint32_t> MpActor::GetSpellList() const
