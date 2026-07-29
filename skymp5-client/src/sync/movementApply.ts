@@ -70,8 +70,7 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
 
 const keepOffsetFromActor = (ac: Actor, m: Movement) => {
   let offsetAngle = m.rot[2] - ac.getAngleZ();
-  // Standing gets a wide deadzone: the self-referential offset hunts back and
-  // forth on 130ms-stale idle angle noise (visible left-right turning)
+  // Wider deadzone when standing: 130ms-stale idle angle noise makes the offset hunt visibly
   const deadzone = m.runMode === "Standing" ? 12 : 5;
   if (Math.abs(offsetAngle) < deadzone) {
     offsetAngle = 0;

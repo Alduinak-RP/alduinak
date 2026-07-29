@@ -7,14 +7,8 @@ type Mp = any;
 
 // ── Player search ─────────────────────────────────────────────────────────────
 //
-// Lets one player go through another's inventory with consent, using the
-// VANILLA container window: on accept the server marks the searcher as the
-// target actor's inventory occupant (setInventoryOccupant native), which is
-// what authorizes the engine's PutItem/TakeItem messages, and tells the
-// searcher's client to open the target's inventory. Item moves then ride the
-// normal container-sync path (ContainersService -> TakeItem/PutItem), fully
-// server-validated. If the pair separates, the session ends and the client is
-// told to close the window.
+// Consent-gated search of another player's inventory via the VANILLA container window: on accept the server marks the searcher as the target's inventory occupant (setInventoryOccupant native), which authorizes the engine's PutItem/TakeItem, and tells the searcher's client to open the target's inventory.
+// Item moves ride the normal server-validated container-sync path; if the pair separates, the session ends and the client closes the window.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -250,8 +244,7 @@ export class SearchSystem implements System {
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
       target: pend.targetActorId,
-      // Simple stacks of the real inventory: the searcher's local clone only
-      // mirrors equipment, so the client tops it up before opening the window
+      // Simple stacks of the real inventory: the searcher's local clone only mirrors equipment, so the client tops it up before opening the window
       entries: this.simpleEntriesOf(ctx, pend.targetActorId),
     }));
     this.notice(ctx, this.userOf(ctx, pend.targetActorId),
@@ -357,8 +350,7 @@ export class SearchSystem implements System {
     }
   }
 
-  // The subject's name as the viewer may see it: real once introduced
-  // (gamemode ff_knownIds), otherwise the anonymity placeholder.
+  // The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
   private nameShownTo(ctx: SystemContext, viewerActorId: number, subjectActorId: number): string {
     try {
       const known = (ctx.svr as Mp).get(viewerActorId, "ff_knownIds");

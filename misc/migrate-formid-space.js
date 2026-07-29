@@ -1,16 +1,8 @@
-// Rewrites raw numeric form ids in MongoDB after the server learned to index
-// ESL / light plugins the way the game runtime does.
-//
-// Before: every plugin got a flat byte index (0,1,2,...) regardless of ESL.
-// After:  full plugins are numbered among themselves; light plugins move to
-//         0xFE | slot<<12 | localId.
+// Rewrites raw numeric form ids in MongoDB from flat plugin indexing to ESL-aware indexing.
+// Full plugins renumber among themselves; light plugins become 0xFE | slot<<12 | localId.
 // FormDesc strings ("1a26f:Skyrim.esm") are filename-keyed and need no change.
-//
-// Run with the GAME SERVER STOPPED. Dry run by default.
-//   node misc/migrate-formid-space.js
-//   node misc/migrate-formid-space.js --apply
-//
-// Needs the mongodb driver: it resolves from server-manager/node_modules.
+// Run with the game server STOPPED. Dry run by default; pass --apply to write.
+// Resolves the mongodb driver from server-manager/node_modules.
 
 'use strict'
 
@@ -176,8 +168,7 @@ async function main() {
           console.log(`  ${String(doc.formDesc).padEnd(22)} ${h.where.padEnd(40)} ${hex(h.before)} -> ${hex(h.after)}`)
         }
       }
-      // Only rewrite documents that actually changed. Writing back untouched
-      // subtrees would revert any save the server made after we read them.
+      // Only rewrite changed docs; writing back untouched subtrees would revert newer server saves.
       if (APPLY && hits.length) {
         const set = { _fidv: SCHEMA_VERSION }
         if (doc.inv) set.inv = doc.inv

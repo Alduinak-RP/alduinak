@@ -306,14 +306,14 @@ void MyChromiumApp::RunTasks()
 void MyChromiumApp::OnBeforeCommandLineProcessing(
   const CefString& aProcessType, CefRefPtr<CefCommandLine> aCommandLine)
 {
-  // Voice chat: CEF has no permission prompt UI, so getUserMedia would be
-  // auto-denied without these. Real mic capture, not the fake-device switches.
+  // Voice chat: CEF has no permission prompt UI, so getUserMedia is auto-denied without these.
+  // Real mic capture, not the fake-device switches.
   aCommandLine->AppendSwitch("enable-media-stream");
   aCommandLine->AppendSwitch("use-fake-ui-for-media-stream");
   aCommandLine->AppendSwitchWithValue("autoplay-policy",
                                       "no-user-gesture-required");
-  // Run the audio service in-process: the out-of-process audio utility uses
-  // the hooked CEF subprocess binary, a classic crash source for embedders
+  // Run the audio service in-process.
+  // The out-of-process audio utility uses the hooked CEF subprocess binary, a classic embedder crash source.
   aCommandLine->AppendSwitchWithValue(
     "disable-features", "AudioServiceOutOfProcess,AudioServiceSandbox");
 }

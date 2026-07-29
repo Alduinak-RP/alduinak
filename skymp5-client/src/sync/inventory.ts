@@ -301,9 +301,8 @@ export const getDiff = (
       sameFromLeft.count -= e.count;
       return;
     }
-    // The server stores items without extras (enchantment, charge, soul), so an
-    // enchanted item never matches its plain server entry. Falling through here
-    // would delete the player's real item. Match on baseId alone in that case.
+    // Server entries lack extras (enchantment, charge, soul), so enchanted items never match them
+    // Falling through would delete the player's real item, so match on baseId alone
     const plainFromLeft = lhsCopy.entries.find(
       (x) => x.baseId === e.baseId && hasExtras(x) && !hasExtras(e)
     );

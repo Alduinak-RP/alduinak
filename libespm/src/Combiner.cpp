@@ -27,9 +27,8 @@ void espm::Combiner::AddSource(Browser* src, const char* fileName) noexcept
 }
 
 namespace {
-// TES4 header flag 0x200 (CommonLibSSE RecordFlag::kSmallFile) marks a light
-// plugin. Light plugins are indexed in the 0xFE space by the runtime, so the
-// server has to match or every form id past the first ESL resolves wrong.
+// TES4 flag 0x200 (CommonLibSSE kSmallFile) marks a light plugin, indexed in the 0xFE space at runtime.
+// The server must match or every form id past the first ESL resolves wrong.
 constexpr uint32_t kSmallFileFlag = 0x200;
 }
 
@@ -77,9 +76,8 @@ std::unique_ptr<espm::CombineBrowser> Combiner::Combine()
     auto toComb = std::make_unique<IdMapping>();
     auto toRaw = std::make_unique<IdMapping>();
 
-    // Inside a plugin file, a reference's high byte is always an index into
-    // that file's own master list, even when the master is light. Only the
-    // combined side uses the 0xFE space.
+    // Inside a plugin file a reference's high byte indexes that file's own master list, even for light masters.
+    // Only the combined side uses the 0xFE space.
     size_t m = 0;
     for (m = 0; m < masters.size(); ++m) {
       const int globalIdx = pImpl->GetFileIndex(masters[m]);

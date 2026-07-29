@@ -15,8 +15,7 @@ interface PlayerAction {
   label: string;
 }
 
-// Kept intentionally small: the character interaction menu (Trade is a
-// dedicated button above these).
+// Character interaction menu, kept intentionally small (Trade is a dedicated button above these).
 const ACTIONS: PlayerAction[] = [
   { id: 'introduce', label: 'Introduce' },
   { id: 'search', label: 'Search' },

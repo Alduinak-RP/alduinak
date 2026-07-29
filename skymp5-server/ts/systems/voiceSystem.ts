@@ -7,11 +7,8 @@ type Mp = any;
 
 // ── Proximity voice chat (LiveKit) ───────────────────────────────────────────
 //
-// The client asks for a room token after login; the server mints a LiveKit
-// HS256 access token whose identity is the player's server-side actor id in
-// hex. Other clients already know every remote player's refrId, so they match
-// LiveKit participants to actors (and gate volume by distance) without any
-// extra identity sync. Minting server-side means identities cannot be spoofed.
+// The client asks for a room token after login; the server mints a LiveKit HS256 access token whose identity is the player's server-side actor id in hex.
+// Clients already know every remote player's refrId, so they match LiveKit participants to actors and gate volume by distance; server-side minting means identities cannot be spoofed.
 //
 // Wire protocol (CustomPacket JSON):
 //   Client -> Server: { customPacketType: "voiceTokenRequest" }
@@ -23,8 +20,7 @@ type Mp = any;
 //     "apiSecret": "...", "room": "alduinak", "rangeUnits": 2000 }
 // rangeUnits falls back to chatRanges.say, then 2000 game units.
 
-// Short on purpose: LiveKit refreshes tokens over live connections, and a
-// kicked/banned player's credential dies with the TTL (no admin-API revocation)
+// Short on purpose: LiveKit refreshes tokens over live connections, and a kicked/banned player's credential dies with the TTL (no admin-API revocation)
 const TOKEN_TTL_SECONDS = 60 * 60;
 
 function b64url(input: Buffer | string): string {
@@ -59,8 +55,7 @@ export class VoiceSystem implements System {
   private apiKey = "";
   private apiSecret = "";
   private room = "alduinak";
-  // Voice modes cycled in-game with Alt+V. Units are game units (70 per meter):
-  // whisper 2m, talk 12m, shout 45m by default.
+  // Voice modes cycled in-game with Alt+V; units are game units (70 per meter): whisper 2m, talk 12m, shout 45m by default
   private modes: Array<{ key: string; label: string; units: number }> = [
     { key: "whisper", label: "Whisper", units: 140 },
     { key: "talk", label: "Talk", units: 840 },

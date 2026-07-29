@@ -5,10 +5,8 @@ import { System, Log, SystemContext } from "./system";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Configurable NPC spawn zones. A zone populates its NPCs (server-side
-// PlaceAtMe) when a player enters the radius and despawns them after the
-// zone stays empty. Spawned ids persist in a sidecar file so leftovers
-// from a crash are removed on the next boot.
+// Configurable NPC spawn zones: a zone populates its NPCs (server-side PlaceAtMe) when a player enters the radius and despawns them after the zone stays empty.
+// Spawned ids persist in a sidecar file so leftovers from a crash are removed on the next boot.
 //
 // server-settings.json:
 //   "npcSpawnZones": [{
@@ -20,10 +18,8 @@ type Mp = any;
 //     "respawnSeconds": 600,
 //     "despawnSeconds": 300
 //   }]
-// npc.base is a form desc "hexLocalId:Plugin.esp" or a hex id from the load order.
-// npc.pos/rot default to the zone pos. respawnSeconds drives the engine
-// spawnDelay of dead zone NPCs; despawnSeconds removes NPCs once no player
-// is near (0 keeps them forever).
+// npc.base is a form desc "hexLocalId:Plugin.esp" or a hex id from the load order; npc.pos/rot default to the zone pos.
+// respawnSeconds drives the engine spawnDelay of dead zone NPCs; despawnSeconds removes NPCs once no player is near (0 keeps them forever).
 
 const POLL_MS = 2000;
 const SPAWNS_FILE = "./zone-spawns.json";
@@ -203,8 +199,7 @@ export class ZoneSpawnSystem implements System {
     this.saveSpawns();
   }
 
-  // Zone NPCs persist in the world DB, so ids from a previous run are
-  // destroyed on boot instead of leaking forever
+  // Zone NPCs persist in the world DB, so ids from a previous run are destroyed on boot instead of leaking forever
   private cleanupLeftovers(mp: Mp): void {
     let ids: number[] = [];
     try { ids = JSON.parse(fs.readFileSync(SPAWNS_FILE, "utf8")); } catch { }

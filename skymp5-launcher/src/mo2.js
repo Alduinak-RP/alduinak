@@ -80,8 +80,7 @@ function get7za() {
 // Download / install MO2
 
 /** Download url to dest, following redirects (GitHub releases redirect to a CDN). */
-// Every outcome settles the promise exactly once: an aborted response used to fire
-// no handler at all, leaving the install awaiting this forever until app restart.
+// Settle the promise exactly once on every outcome, including an aborted response.
 function downloadFile(url, dest, onProgress, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
     let file = null

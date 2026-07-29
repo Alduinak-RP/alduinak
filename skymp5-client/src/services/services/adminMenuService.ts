@@ -7,10 +7,8 @@ import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "s
 
 declare const window: any;
 
-// Admin menu (default Insert, launcher-configurable via adminMenuKeyCode).
-// The server decides who is an admin (Discord roles / profile ids); non-admin
-// requests are ignored server-side, so the menu simply never opens for them.
-// Item spawning is via the in-game console the server grants admins.
+// Admin menu (default Insert, launcher-configurable via adminMenuKeyCode); item spawning is via the server-granted in-game console.
+// The server decides who is admin (Discord roles / profile ids); non-admin requests are ignored server-side.
 
 const WIDGET_ID = 23;
 

@@ -6,14 +6,9 @@ type Mp = any;
 
 // ── Player-to-player trade ────────────────────────────────────────────────────
 //
-// Server-authoritative barter between two players, ported from the WIP
-// build/dist/server/trade.ts gamemode module into a server-core System so it
-// survives gamemode hot reloads and ships with the TS bundle. The shipped
-// client TradeService speaks exactly this protocol.
+// Server-authoritative barter between two players; lives in server core so it survives gamemode hot reloads. The shipped client TradeService speaks exactly this protocol.
 //
-// Flow: A sends tradeRequest -> B gets tradeInvite and accepts/declines ->
-// both edit offers (tradeSetOffer resets locks) -> both tradeLock -> only then
-// tradeAccept counts; when both accept the server swaps the items atomically.
+// Flow: tradeRequest -> tradeInvite accept/decline -> both edit offers (tradeSetOffer resets locks) -> both tradeLock -> both tradeAccept, then the server swaps the items atomically.
 // Only "simple" stacks trade (no enchanted/named/worn extras).
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
@@ -169,8 +164,7 @@ export class TradeSystem implements System {
   systemName = "TradeSystem";
   constructor(private log: Log) { }
 
-  // Each connected user is in at most one session; both participants point at
-  // the same Session object so either side can be looked up in O(1).
+  // Each connected user is in at most one session; both participants point at the same Session object for O(1) lookup from either side
   private sessions = new Map<number, Session>();
 
   private maxTradeDistance = DEFAULT_MAX_TRADE_DISTANCE;
@@ -253,8 +247,7 @@ export class TradeSystem implements System {
     }
   }
 
-  // The subject's name as the viewer may see it: real once introduced
-  // (gamemode ff_knownIds), otherwise the anonymity placeholder.
+  // The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
   private nameShownTo(mp: Mp, viewerUserId: number, subjectUserId: number): string {
     const viewerActorId = this.actorOf(mp, viewerUserId);
     const subjectActorId = this.actorOf(mp, subjectUserId);
@@ -336,8 +329,7 @@ export class TradeSystem implements System {
     }
   }
 
-  // Why a player may not trade right now, or null if they may. Gates on the
-  // engine isDead (bleeding out) plus CaptureSystem's private.restrained mirror.
+  // Why a player may not trade right now, or null if they may: engine isDead (bleeding out) plus CaptureSystem's private.restrained mirror
   private tradeBlockReason(mp: Mp, userId: number): string | null {
     const actorId = this.actorOf(mp, userId);
     if (!actorId) {
@@ -379,9 +371,7 @@ export class TradeSystem implements System {
     this.inviteCooldowns.set(a + ':' + b, now);
   }
 
-  // (Re-)send the invite prompt and arm the expiry timer. The timer re-checks
-  // it is still the CURRENT invite of a still-pending session, so stale timers
-  // are harmless.
+  // (Re-)send the invite prompt and arm the expiry timer; the timer re-checks it is still the CURRENT invite of a still-pending session, so stale timers are harmless
   private sendInvite(mp: Mp, s: Session): void {
     s.inviteSeq++;
     const seq = s.inviteSeq;
@@ -407,8 +397,7 @@ export class TradeSystem implements System {
     if (!Number.isFinite(recipientActorId) || recipientActorId <= 0) {
       return;
     }
-    // getUserByActor returns the InvalidUserId sentinel (0xffff) for userless
-    // actors, which isConnected rejects.
+    // getUserByActor returns the InvalidUserId sentinel (0xffff) for userless actors, which isConnected rejects
     let targetUserId: number;
     try {
       targetUserId = mp.getUserByActor(recipientActorId);
@@ -429,8 +418,7 @@ export class TradeSystem implements System {
         this.notice(mp, userId, 'You are already in a trade.');
         return;
       }
-      // Our own invite is still pending. Same target again -> re-invite; a
-      // different target -> drop the stale invite and start over.
+      // Our own invite is still pending: same target again -> re-invite; a different target -> drop the stale invite and start over
       if (existing.b === targetUserId) {
         if (this.onInviteCooldown(userId, targetUserId)) {
           this.notice(mp, userId, 'Please wait before sending another trade request.');
@@ -482,8 +470,7 @@ export class TradeSystem implements System {
       return;
     }
     if (!content.accept) {
-      // A decline also refreshes the brake so the initiator can't immediately
-      // re-seize the decliner's browser focus with a fresh invite.
+      // A decline also refreshes the brake so the initiator can't immediately re-seize the decliner's browser focus with a fresh invite
       this.markInviteCooldown(s.a, s.b);
       this.cancel(mp, s, this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) + ' declined the trade.', userId);
       return;
@@ -567,8 +554,7 @@ export class TradeSystem implements System {
   private onCancel(mp: Mp, userId: number): void {
     const s = this.sessions.get(userId);
     if (s) {
-      // Blame the canceller: the packet goes to the PARTNER, so the name shown
-      // must be the canceller's own.
+      // Blame the canceller: the packet goes to the PARTNER, so the name shown must be the canceller's own
       this.cancel(mp, s, this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) + ' cancelled the trade.', userId);
     }
   }
@@ -608,8 +594,7 @@ export class TradeSystem implements System {
       return;
     }
 
-    // Snapshot A's pre-swap inventory BEFORE mutating, so a failure of the
-    // second write can restore the first.
+    // Snapshot A's pre-swap inventory BEFORE mutating, so a failure of the second write can restore the first
     const preSwapA: Inventory = JSON.parse(JSON.stringify(invA));
 
     removeOffer(invA, s.offerA);

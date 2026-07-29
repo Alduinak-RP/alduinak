@@ -5,24 +5,13 @@ import { System, Log, SystemContext, Content } from "./system";
 type Mp = any;
 
 // ── In-game admin (Discord-role gated) ───────────────────────────────────────
-//
-// Admins are players holding any Discord role in "adminRoleIds" (or a profile
-// id in "adminProfileIds"). They get:
-//  - the server console (~): AddItem / EquipItem / PlaceAtMe / Disable / Mp,
-//    granted per-actor via the consoleCommandsAllowed flag on every assign
-//    (keep enableConsoleCommandsForAll OFF or everyone has it anyway)
-//  - the admin menu (client AdminMenuService, default Insert key):
-//    teleport to / summon / kick / ban per online player
-//
-// Bans post to the backend with the master key + auth token (same auth as
-// connection-check), which snapshots discordId/hwid/ip into bans.json; the
-// existing connection-check then refuses the player permanently.
+// Admins: players with any Discord role in "adminRoleIds" or a profile id in "adminProfileIds".
+// They get the server console (consoleCommandsAllowed per assign; keep enableConsoleCommandsForAll OFF) and the admin menu (client AdminMenuService, Insert key): teleport to / summon / kick / ban.
+// Bans post to the backend (master key + auth token), which snapshots discordId/hwid/ip into bans.json; connection-check then refuses the player permanently.
 //
 // Wire protocol (CustomPacket JSON):
 //   Client -> Server: { customPacketType: "adminMenuRequest" }
-//                     { customPacketType: "adminAction", action, target }
-//                       action: teleportTo | summon | kick | ban
-//                       target: actor id hex string
+//                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban, target: actor id hex
 //   Server -> Client: { customPacketType: "adminMenu", players: [{a, p, n}] }
 //                     { customPacketType: "adminActionResult", ok, text }
 // Non-admin requests are ignored silently.
@@ -111,8 +100,7 @@ export class AdminSystem implements System {
     let myActorId = 0;
     try { myActorId = mp.getUserActor(userId); } catch { }
     if (!myActorId || !this.isAdminActor(mp, myActorId)) {
-      // Log the rejection with the actor's real roles: a silent no-op made
-      // misconfigured adminRoleIds impossible to diagnose from the game
+      // Log the actor's real roles so a misconfigured adminRoleIds is diagnosable from the game
       let roles: unknown = [];
       try { roles = mp.get(myActorId, "private.discordRoles"); } catch { }
       this.log(`AdminSystem: refused '${type}' from actor ${myActorId.toString(16)} (not an admin). Their roles: ${JSON.stringify(roles)}. Configured: ${JSON.stringify(this.adminRoleIds)}`);
@@ -146,8 +134,7 @@ export class AdminSystem implements System {
         mp.set(target.actorId, "locationalData", mp.get(myActorId, "locationalData"));
         this.reply(mp, userId, true, `Summoned ${target.name}`);
       } else if (action === "kick") {
-        // Disable boots to the menu; kick drops the connection so they can't
-        // just re-enter from character select
+        // Disable boots to the menu; kick drops the connection so they can't re-enter from character select
         ctx.svr.setEnabled(target.actorId, false);
         try { (ctx.svr as Mp).kick(target.userId); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} kicked profile ${target.profileId} (${target.name})`);
@@ -204,8 +191,7 @@ export class AdminSystem implements System {
     });
   }
 
-  // The HTTP round-trip outlives the packet handler; make sure the userId
-  // slot still belongs to the same admin before sending the result toast
+  // The HTTP round-trip outlives the packet handler; verify the userId slot still belongs to the same admin before sending the toast
   private replyIfSameAdmin(mp: Mp, userId: number, adminActorId: number, ok: boolean, text: string): void {
     try {
       if (mp.getUserActor(userId) !== adminActorId) return;

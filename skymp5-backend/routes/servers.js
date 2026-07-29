@@ -86,11 +86,8 @@ function fetchGameJson(pathname) {
 
 let modsCache = { value: null, expiresAt: 0 }
 
-// Called by the SkyMP client for the server's mod list. This used to return an
-// empty array, which made the client's load-order check always warn "you have
-// more mods than server". Proxy the game server's real manifest instead.
-// BSAs and .esl files are filtered out: the client counts only full plugins
-// (Game.getModCount excludes light plugins), so anything else skews the compare.
+// Called by the SkyMP client for its load-order check; proxies the game server's real manifest.
+// BSAs and .esl files are filtered out: the client counts only full plugins (Game.getModCount excludes light plugins).
 router.get('/:key/manifest.json', async (req, res) => {
   if (req.params.key !== config.serverMasterKey) {
     return res.status(403).json({ error: 'Invalid master key.' })

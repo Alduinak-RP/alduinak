@@ -4,9 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// AFK autokick. A player is active while their locationalData changes or any
-// player-driven CustomPacket arrives (chat, menus, afkPing from voice PTT).
-// Movement/animation packets never reach TS, so position polling stands in.
+// AFK autokick. Active = locationalData changed or any player-driven CustomPacket; movement packets never reach TS, so position polling stands in.
 // Kick uses svr.kick alone so the normal logout grace parks the body.
 //
 // server-settings.json keys:

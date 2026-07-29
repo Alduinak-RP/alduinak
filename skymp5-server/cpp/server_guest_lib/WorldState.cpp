@@ -90,8 +90,7 @@ void WorldState::AttachEspm(espm::Loader* espm_,
   espmCache.reset(new espm::CompressedFieldsCache);
   espmFiles = espm->GetFileNames();
 
-  // Reuse the combiner's full/light slot assignment (single source of truth)
-  // so FormDesc encodes the same form ids the game runtime does.
+  // Reuse the combiner's slot assignment so FormDesc encodes the same form ids the game runtime does
   std::vector<espm::PluginSlot> slots;
   slots.reserve(espmFiles.size());
   for (size_t i = 0; i < espmFiles.size(); ++i) {

@@ -4,9 +4,7 @@
 #include <vector>
 
 // The loaded plugin list plus each plugin's slot in the form-id space.
-// Derives from vector<string> so the many places that only need the names keep
-// working unchanged; FormDesc uses the slots to encode light (ESL) plugins into
-// the 0xFE space the game runtime uses.
+// Derives from vector<string> so name-only callers keep working; slots let FormDesc encode ESL plugins into the 0xFE space.
 class EspmFileTable : public std::vector<std::string>
 {
 public:
@@ -14,8 +12,7 @@ public:
 
   EspmFileTable() = default;
 
-  // Inherited constructors do not include the base copy/move ones, so allow
-  // assigning a plain name list (espm::Loader::GetFileNames) directly.
+  // Inherited ctors lack base copy/move, so allow assigning a plain name list (espm::Loader::GetFileNames)
   EspmFileTable(std::vector<std::string> names)
     : std::vector<std::string>(std::move(names))
   {
@@ -28,8 +25,7 @@ public:
     return *this;
   }
 
-  // Without explicit slots every file is treated as a full plugin indexed by
-  // position, which is exactly the pre-ESL behaviour (used by tests).
+  // Without explicit slots every file is a full plugin indexed by position (pre-ESL behaviour, used by tests)
   espm::PluginSlot SlotAt(size_t i) const
   {
     if (i < slots.size()) {

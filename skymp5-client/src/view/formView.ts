@@ -603,9 +603,8 @@ export class FormView {
     }
   }
 
-  // Tag string for this actor: real name only once they introduced themselves
-  // to the local player (ff_knownIds owner prop); otherwise "Stranger". A
-  // missing list (gamemode without the feature) keeps real names for everyone.
+  // Real name once introduced to the local player (ff_knownIds owner prop), else "Stranger"
+  // A missing list (gamemode without the feature) keeps real names for everyone
   private tagName(refr: ObjectReference): string {
     const name = refr.getDisplayName();
     if (storage["ownerModelSet"] !== true) {

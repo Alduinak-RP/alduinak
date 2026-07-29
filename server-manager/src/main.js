@@ -106,8 +106,7 @@ async function act(svc, verb) {
   return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
 }
 
-// LiveKit (voice media server) rides along with the game server: best effort,
-// a box without the AlduinakLiveKit service just skips this silently.
+// Best-effort LiveKit (voice media server) start alongside the game server; boxes without the AlduinakLiveKit service skip silently.
 async function startLiveKitAlongside() {
   const status = await nssm('status', 'AlduinakLiveKit')
   if (!/^SERVICE_/.test(status) || status === 'SERVICE_RUNNING') return ''
@@ -410,8 +409,7 @@ async function runBuild(kind) {
     else if (kind === 'client')   r = await b.buildClient()
     else if (kind === 'native')   r = await b.buildNative()
     else return { ok: false, error: `unknown build ${kind}` }
-    // Let queued build:log messages land before the renderer prints the
-    // outcome, otherwise the failure line appears above its own error
+    // Let queued build:log messages land before the renderer prints the outcome, else the failure line appears above its error.
     await new Promise(res => setTimeout(res, 100))
     return r
   } catch (err) {

@@ -960,8 +960,7 @@ export class RemoteServer extends ClientListener {
         return;
       }
 
-      // Prefer the spell id carried in the message: the clone's equipped spell
-      // can be stale (spell swaps fire no equip event), showing the wrong cast
+      // Prefer the spell id in the message; the clone's equipped spell can be stale (spell swaps fire no equip event)
       const transmitted = msg.data.spell ? Game.getFormEx(msg.data.spell) : null;
       const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
       if (spellId) {

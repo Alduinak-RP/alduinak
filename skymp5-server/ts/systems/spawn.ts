@@ -13,8 +13,7 @@ function randomInteger(min: number, max: number) {
 // Slots per player; override with the "characterSelectMaxCharacters" server setting (1-10)
 const DEFAULT_MAX_CHARACTERS = 3;
 
-// Fresh characters start with a miner's outfit and pocket change, nothing else.
-// Form ids verified against Skyrim.esm: ClothesMinerClothes, ClothesMinerBoots, Gold001.
+// Fresh characters start with a miner's outfit and pocket change (Skyrim.esm: ClothesMinerClothes, ClothesMinerBoots, Gold001).
 // Overridable via the "startingItems" server setting.
 const DEFAULT_STARTING_ITEMS = [
   { baseId: 0x00080697, count: 1 },
@@ -248,8 +247,7 @@ export class Spawn implements System {
   }
 
   // New actors are created with an empty inventory, so a wholesale set is safe.
-  // The kit is granted once per profile+slot: recreating a deleted character
-  // reuses the slot and gets clothes but no repeat gold faucet.
+  // One kit per profile+slot: recreating a deleted character reuses the slot and gets clothes but no repeat gold faucet.
   private giveStartingItems(mp: Mp, actorId: number, profileId: number, slot: number): void {
     const key = `${profileId}:${slot}`;
     const granted = this.loadStarterGrants();

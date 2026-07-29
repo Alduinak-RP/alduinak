@@ -63,8 +63,8 @@ export const generateManifest = (settings: Settings): void => {
   fs.mkdirSync(settings.dataDir, { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 4));
 
-  // ui.ts serves the cwd-relative "data" folder; when dataDir points elsewhere
-  // (e.g. the game's Data dir) mirror the manifest so clients never see a stale copy.
+  // ui.ts serves the cwd-relative "data" folder, not dataDir.
+  // Mirror the manifest there so clients never see a stale copy.
   const servedPath = path.resolve("data", "manifest.json");
   if (path.resolve(manifestPath) !== servedPath) {
     fs.mkdirSync(path.dirname(servedPath), { recursive: true });

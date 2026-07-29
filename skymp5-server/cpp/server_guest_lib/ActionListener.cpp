@@ -289,9 +289,7 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
 
   const auto& inventory = actor->GetInventory();
   for (auto& entry : equipmentInv.entries) {
-    // Only worn items matter here. Scanning the whole inventory meant one
-    // unknown item in the backpack rejected the update and stripped the
-    // player bare via the unequip path below.
+    // Only worn items matter; validating the whole inventory would strip the player bare via the unequip path below
     if (entry.GetWorn() == Inventory::Worn::None) {
       continue;
     }
@@ -378,8 +376,7 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
                 [](uint32_t id) { return id != 0; });
 
   if (isAllowed) {
-    // An unlearned spell no longer rejects the whole update: the slot is
-    // stripped and weapons/armor still reach neighbours (silent-desync fix)
+    // An unlearned spell strips just that slot; weapons/armor still reach neighbours (avoids silent desync)
     if (anySpellStripped) {
       UpdateEquipmentMessage sanitizedMsg = msg;
       if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Left)]) {
@@ -1229,8 +1226,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   const auto targetRef = std::dynamic_pointer_cast<MpObjectReference>(
     partOne.worldState.LookupFormById(spellCastData.target));
 
-  // Restorative (non-hostile) effects apply here; hostile damage stays on
-  // the OnSpellHit path
+  // Restorative (non-hostile) effects apply here; hostile damage stays on the OnSpellHit path
   const auto spellData =
     espm::GetData<espm::SPEL>(spellCastData.spell, &partOne.worldState);
 

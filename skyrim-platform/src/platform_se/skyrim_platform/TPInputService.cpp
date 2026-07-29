@@ -262,7 +262,7 @@ static LRESULT CALLBACK InputServiceWndProc(HWND hwnd, UINT uMsg,
     RAWINPUT input{};
     UINT size = sizeof(RAWINPUT);
 
-    // Controller crash fix
+    // GetRawInputData can fail for controller input; bail out instead of reading garbage
     if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &input,
                         &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1)) {
       return 0;

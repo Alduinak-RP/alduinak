@@ -93,8 +93,7 @@ async function mergeSourcesIntoRoot() {
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true })
 
-  // skymp5-client-settings.txt is the launcher's per-player file (server ip +
-  // hotkey rebinds); shipping a stock copy in the zip would clobber rebinds.
+  // skymp5-client-settings.txt is the launcher's per-player file (server ip, hotkey rebinds); a stock copy in the zip would clobber rebinds
   const SKIP_ALWAYS = new Set(['.git', '.gitignore', '.gitattributes', 'skymp5-client-settings.txt'])
 
   const clientFiles = copyDir(CLIENT_SRC, OUTPUT_DIR, SKIP_ALWAYS)

@@ -5,11 +5,8 @@
 
 namespace espm {
 
-// Where a plugin sits in a form-id space. Skyrim has two: full plugins get a
-// byte-wide index plus 24 bits of local id, light plugins (ESL / ESPFE) live
-// under the 0xFE prefix with a 12-bit slot and 12 bits of local id.
-// Runtime formula (CommonLibSSE TESDataHandler::LookupFormID):
-//   compileIndex << 24 | smallFileCompileIndex << 12 | localFormId
+// A plugin's place in a form-id space: full = index<<24 | 24-bit local id.
+// Light (ESL) = 0xFE000000 | slot<<12 | 12-bit local id (TESDataHandler::LookupFormID).
 struct PluginSlot
 {
   bool light = false;
@@ -24,14 +21,12 @@ struct PluginSlot
   uint32_t LocalMask() const noexcept { return light ? 0xFFFu : 0xFFFFFFu; }
 };
 
-// Translates form ids between spaces (raw per-file space <-> combined space).
-// Full source indices use the array fast path; light sources are keyed by their
-// 12-bit slot because they all share the 0xFE high byte.
+// Translates form ids between raw per-file space and combined space.
+// Full sources use the array fast path; light sources key by 12-bit slot (all share 0xFE).
 class IdMapping
 {
 public:
-  // Out of the valid id range, so callers keep using the existing
-  // ">= 0xff000000 means skip this source" contract.
+  // Out of valid range, so callers keep the ">= 0xff000000 means skip this source" contract.
   static constexpr uint32_t kInvalid = 0xFFFFFFFFu;
 
   IdMapping() { mapped.fill(false); }

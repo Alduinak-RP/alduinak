@@ -657,8 +657,8 @@ void MpObjectReference::TakeItem(MpActor& ac, const Inventory::Entry& e)
   takeItemEvent.Fire(GetParent());
 }
 
-// Grants/revokes PutItem/TakeItem access without a container activation, so
-// the gamemode can let one player search another's inventory (SearchSystem)
+// Grants/revokes PutItem/TakeItem access without a container activation.
+// Lets the gamemode allow one player to search another's inventory (SearchSystem).
 void MpObjectReference::SetOccupant(MpActor* newOccupant)
 {
   if (this->occupant == newOccupant) {

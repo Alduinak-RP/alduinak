@@ -104,8 +104,7 @@ export class CaptureSystem implements System {
     const s = await Settings.get();
     this.manaclesFormId = toFormId(s.manaclesFormId, DEFAULT_MANACLES);
     // Fail closed: a set-but-unparseable manaclesFormId must not disable the
-    // item requirement, so pin it to a form nobody can hold. An explicit "0"
-    // or "0x0" is a legitimate disable, not a parse failure.
+    // item requirement, so pin it to a form nobody can hold. Explicit "0"/"0x0" is a legitimate disable, not a parse failure.
     const rawManacles = String(s.manaclesFormId ?? "").trim();
     if (rawManacles && rawManacles !== "0" && rawManacles !== "0x0" && this.manaclesFormId === 0) {
       this.manaclesFormId = 0xffffffff;
@@ -640,9 +639,8 @@ export class CaptureSystem implements System {
     }
   }
 
-  // The captive wears a pair of the manacles item. On the initial capture one
-  // pair is MOVED from the captor so cuffs are conserved, never minted; a
-  // re-apply after relog only re-equips. Returns true when a pair was moved.
+  // On initial capture one pair is MOVED from the captor so cuffs are conserved, never minted; a relog re-apply only re-equips.
+  // Returns true when a pair was moved.
   private equipShackles(ctx: SystemContext, targetActorId: number, captorActorId?: number): boolean {
     if (this.manaclesFormId === 0 || this.manaclesFormId === 0xffffffff) {
       return false;
@@ -669,8 +667,7 @@ export class CaptureSystem implements System {
     return transferred;
   }
 
-  // Unequip always; destroy exactly the one transferred pair (a captive's own
-  // pre-owned cuffs are never touched).
+  // Unequip always; destroy only the one transferred pair, a captive's pre-owned cuffs are never touched.
   private removeShackles(ctx: SystemContext, targetActorId: number, removeOne: boolean): void {
     if (this.manaclesFormId === 0 || this.manaclesFormId === 0xffffffff) {
       return;

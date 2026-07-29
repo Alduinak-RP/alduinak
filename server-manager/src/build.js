@@ -7,14 +7,8 @@ const config = require('./config')
 
 const isWin = process.platform === 'win32'
 
-// Most Build buttons here are pure JS/packaging: they bundle TypeScript, build the
-// Electron launcher, and zip client files for the launcher to download.
-//
-// buildNative() additionally compiles the C++ (SkyrimPlatform.dll, scam_native.node)
-// locally with CMake + MSVC, mirroring what the "Dist Windows Flatrim" CI workflow
-// does. It needs Visual Studio 2022 with the "Desktop development with C++" workload;
-// see checkNativeToolchain() for the preflight. Using the CI Rebuild button instead
-// remains valid - it just round-trips through GitHub.
+// Most Build buttons are pure JS/packaging: bundle TypeScript, build the launcher, zip client files.
+// buildNative() compiles the C++ locally with CMake + MSVC (needs the VS 2022 C++ workload); the CI Rebuild button builds the same on GitHub.
 class Builder {
   constructor(log) {
     this.log = log || (() => {})
@@ -24,9 +18,7 @@ class Builder {
   banner(text) { this.log(`\n==================== ${text} ====================\n`) }
 
   // Run a command, streaming combined stdout/stderr to the build console.
-  // With shell:true the command line is one string, so a spaced program path
-  // must be quoted or cmd.exe splits it ("X:\Program Files\..." -> 'X:\Program').
-  // Args with spaces need shell:false - only the caller knows if that's safe.
+  // With shell:true a spaced program path must be quoted or cmd.exe splits it; args with spaces need shell:false.
   run(cmd, args, cwd, label, env, shell = isWin) {
     if (shell && isWin && /\s/.test(cmd) && !cmd.startsWith('"')) cmd = `"${cmd}"`
     return new Promise(resolve => {
@@ -124,8 +116,7 @@ class Builder {
 
   // ── Native (C++) build ──────────────────────────────────────────────────────
 
-  // Locate a VS 2022 install that actually has the C++ toolset. vswhere is the
-  // supported way; -requires filters out installs missing the workload.
+  // Locate a VS 2022 install with the C++ toolset; vswhere -requires filters out installs missing it.
   findVsWithCpp() {
     const vswhere = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'
     if (!fs.existsSync(vswhere)) return null
@@ -150,8 +141,7 @@ class Builder {
     return null
   }
 
-  // Everything the native build needs, reported in one go so the operator can
-  // fix all of it in a single pass instead of one failure per run.
+  // Reports everything the native build needs in one go, so the operator fixes it all in one pass.
   checkNativeToolchain() {
     const problems = []
     const vsDir = this.findVsWithCpp()
@@ -176,8 +166,7 @@ class Builder {
     return { vsDir, cmake, vcpkgDir, problems }
   }
 
-  // NATIVE: configure + build the C++ with CMake/MSVC, the same flags the
-  // "Dist Windows Flatrim" CI workflow uses (see .github/actions/pr_base).
+  // Configure + build the C++ with CMake/MSVC, same flags as the "Dist Windows Flatrim" CI workflow (.github/actions/pr_base).
   // Produces SkyrimPlatform.dll + scam_native.node under build/dist.
   async buildNative(opts = {}) {
     this.banner('Native (C++) build')
@@ -203,9 +192,8 @@ class Builder {
       if (!boot.ok) return { ok: false, error: 'vcpkg bootstrap failed - see log' }
     }
 
-    // Flag notes: SKYMP_VOICE_CHAT / VCPKG_MANIFEST_FEATURES=voice-chat appear in
-    // some circulating build guides but do not exist here (the latter aborts the
-    // configure). Voice chat is already built in; see docs/alduinak_voice_chat.md.
+    // SKYMP_VOICE_CHAT / VCPKG_MANIFEST_FEATURES=voice-chat from circulating guides do not exist here (the latter aborts configure).
+    // Voice chat is already built in; see docs/alduinak_voice_chat.md.
     const args = [
       '-B', buildDir,
       '-G', 'Visual Studio 17 2022',
@@ -222,16 +210,13 @@ class Builder {
       args.push(`-DSKYRIM_DIR=${config.gameRoot.replace(/\\/g, '/')}`)
     }
 
-    // The client TS bundle is an input to the native packaging step; CI builds it
-    // before configuring (pr_base "Early build skymp5-client").
+    // The client TS bundle feeds native packaging; CI builds it before configuring (pr_base "Early build skymp5-client").
     const clientDeps = await this.ensureDeps(config.paths.client, 'client')
     if (!clientDeps.ok) return clientDeps
     const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle')
     if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
 
-    // shell:false - cmake.exe and several args ("-G Visual Studio 17 2022",
-    // SKYRIM_DIR, the VS-bundled cmake path) contain spaces, which a shell
-    // command line would split.
+    // shell:false: cmake.exe and several args contain spaces a shell command line would split.
     this.line('\n[native] configuring (first run compiles all vcpkg dependencies - expect 1-3 hours)…')
     const cfg = await this.run(tc.cmake, args, config.repoRoot, 'cmake configure', { VCPKG_FEATURE_FLAGS: 'manifests' }, false)
     if (!cfg.ok) return { ok: false, error: 'cmake configure failed - see log' }
@@ -240,8 +225,7 @@ class Builder {
     const build = await this.run(tc.cmake, ['--build', buildDir, '--config', 'Release'], config.repoRoot, 'cmake build', null, false)
     if (!build.ok) return { ok: false, error: 'cmake build failed - see log' }
 
-    // CMake writes its dist next to the build dir; report what landed so the
-    // operator knows which files to copy into build/dist.
+    // CMake writes its dist next to the build dir; report what landed to copy into build/dist.
     const outDir = path.join(buildDir, 'dist')
     this.line('')
     for (const rel of ['client/Data/SKSE/Plugins/SkyrimPlatform.dll', 'server/scam_native.node']) {

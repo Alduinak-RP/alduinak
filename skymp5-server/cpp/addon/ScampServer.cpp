@@ -435,8 +435,7 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         (*it).get<std::set<std::string>>());
     }
 
-    // blockedSpells: array of spell form ids (numbers or "0x..." strings)
-    // that players may not cast (racial powers etc)
+    // blockedSpells: spell form ids (numbers or "0x..." strings) players may not cast (racial powers etc)
     auto blockedIt = serverSettings.find("blockedSpells");
     if (blockedIt != serverSettings.end() && (*blockedIt).is_array()) {
       std::set<uint32_t> blockedSpells;

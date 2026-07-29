@@ -1,7 +1,6 @@
 'use strict'
 
-// Persistent ban snapshots: data/bans.json holds one entry per banned discordId
-// with the hwid/ip captured at ban time so alt accounts can be matched later.
+// data/bans.json: one entry per banned discordId with hwid/ip captured at ban time, so alt accounts can be matched later
 
 const fs   = require('fs')
 const path = require('path')

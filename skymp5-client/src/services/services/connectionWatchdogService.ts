@@ -6,8 +6,7 @@ import { showSystemNotification } from "./systemNotification";
 import { logTrace } from "../../logging";
 
 // Returns the player to the main menu when the server stays unreachable.
-// NetworkingService already auto-reconnects forever; this adds the give-up
-// path so players are not stuck in a frozen world.
+// NetworkingService auto-reconnects forever; this adds the give-up path so players are not stuck in a frozen world.
 
 const QUIT_AFTER_MS = 60000;
 

@@ -471,8 +471,7 @@ function refreshDownloadModsState(st) {
 
 async function refreshIsolatedStatus() {
   const st = await window.electronAPI.isolatedStatus()
-  // Portable mode off: the game-copy button and status are irrelevant,
-  // so hide them instead of explaining them.
+  // Portable mode off: hide the game-copy button and status instead of explaining them.
   isolatedGroup.hidden = !fieldIsolated.checked
   btnCreateIsolated.hidden = !fieldIsolated.checked
   if (!st.ready) {
@@ -645,10 +644,8 @@ function formatInstallProgress({ phase, file, index, total, skipped }) {
   return `${skipped ? '[skip]' : `[${index}/${total}]`} ${file}`
 }
 
-// Single owner of the install channels, attached once: progress always feeds
-// the shared pane (plus an optional per-flow mirror) and completion resolves
-// whichever flow started the install. Nothing detaches these, so a second
-// button click can no longer strand a running install's events.
+// Single owner of the install channels, attached once: progress feeds the shared pane (plus an optional per-flow mirror).
+// Completion resolves whichever flow started the install; nothing ever detaches these handlers.
 let installCompleteHandler = null
 let installProgressMirror = null
 window.electronAPI.onInstallProgress(p => {
@@ -839,8 +836,7 @@ function runInstallForPlay() {
 btnConnect.addEventListener('click', async () => {
   if (gameRunning || playBusy) return
 
-  // settings:load re-runs the registry auto-detect for an empty/invalid path,
-  // so an empty result here means Skyrim really could not be found.
+  // settings:load re-runs the registry auto-detect, so an empty path here means Skyrim really could not be found.
   const s = await window.electronAPI.loadSettings()
   if (!s.skyrimPath) {
     showWarning('Could not auto-detect Skyrim - set the path manually in Settings.')
@@ -848,9 +844,8 @@ btnConnect.addEventListener('click', async () => {
     return
   }
 
-  // Launch prerequisites. A pending update or first-run install still runs -
-  // the files refresh, and the warning explains what is missing before the
-  // game can start.
+  // Launch prerequisites. A pending update or first-run install still runs and refreshes the files.
+  // The warning explains what is missing before the game can start.
   const blockers = []
   if (discordUser && !serverAllowed) {
     blockers.push(serverLocked
@@ -870,8 +865,7 @@ btnConnect.addEventListener('click', async () => {
   clearWarning()
 
   try {
-    // 0. First run: create the game copy + MO2 at the default/current install
-    // location automatically instead of bouncing the player into Settings.
+    // 0. First run: create the game copy + MO2 at the default install location instead of bouncing the player into Settings.
     if (needsGameCopy) {
       btnConnect.textContent = '\u2699 INSTALLING\u2026'
       window.electronAPI.removeIsolatedListeners()

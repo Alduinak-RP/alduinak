@@ -320,8 +320,7 @@ router.post('/:key/connection-check', (req, res) => {
 })
 
 // POST /api/servers/:key/ban  (X-Auth-Token)
-// In-game admin ban: snapshots the player's full identity (discordId/hwid/ip)
-// into the ban list so connection-check refuses them from then on.
+// In-game admin ban: snapshots the player's identity (discordId/hwid/ip) into the ban list so connection-check refuses them.
 
 router.post('/:key/ban', (req, res) => {
   if (!checkKey(req, res) || !checkWriteToken(req, res)) return

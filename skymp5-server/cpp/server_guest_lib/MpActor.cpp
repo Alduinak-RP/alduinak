@@ -376,8 +376,7 @@ void MpActor::VisitProperties(CreateActorMessage& message,
                                                        changeForm, message);
   }
 
-  // Base NPC_/race spells ride along so the client's spell reconciliation
-  // does not wipe Flames/Healing and friends
+  // Base NPC_/race spells ride along so the client's spell reconciliation does not wipe Flames/Healing
   auto learnedSpells = changeForm.learnedSpells.GetLearnedSpells();
   if (worldState && worldState->HasEspm()) {
     for (uint32_t spellId : GetBaseSpells()) {
@@ -1334,8 +1333,8 @@ void MpActor::BeforeDestroy()
     sink->BeforeDestroy(*this);
   }
 
-  // Drop the profile index entry, or GetActorsByProfileId keeps handing out
-  // this dead formId and login crashes on it (character delete lockout)
+  // Drop the profile index entry, or GetActorsByProfileId keeps serving this dead formId.
+  // Logins then crash on it (character delete lockout).
   if (auto worldState = GetParent()) {
     auto profileId = ChangeForm().profileId;
     if (profileId > 0) {

@@ -95,8 +95,8 @@ FormDesc FormDesc::FromFormId(uint32_t formId, const EspmFileTable& files)
     return res;
   }
 
-  // Light plugins share the 0xFE high byte, so resolve them by slot. This must
-  // run before the byte-index path below, which would read 254 as a file index.
+  // Light plugins share the 0xFE high byte, so resolve them by slot.
+  // Must run before the byte-index path below, which would read 254 as a file index.
   const int fileIdx = files.FileIndexOf(formId);
   if (fileIdx < 0) {
     throw std::runtime_error("FromFormId failed due to invalid file index " +

@@ -1,9 +1,8 @@
 const router = require('express').Router()
 const fs = require('fs')
 
-// Single source of truth for release versions, written by the manager Build tab.
-// LATEST_VERSION  = launcher app release (GET /api/version, update prompt)
-// CLIENT_VERSION  = client files release (baked into data/files-version.json by merge-files.js)
+// Written by the manager Build tab. LATEST_VERSION = launcher app release (GET /api/version, update prompt)
+// CLIENT_VERSION = client files release (baked into data/files-version.json by merge-files.js)
 const LATEST_VERSION = '2.1.4'
 const CLIENT_VERSION = '0.0.13'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'

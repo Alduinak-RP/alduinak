@@ -135,8 +135,7 @@ function isValidSkyrimPath(p) {
   return !!p && fs.existsSync(path.join(p, 'SkyrimSE.exe'))
 }
 
-// Stable per-machine id (Windows MachineGuid) reported to the backend for the
-// ban system; null when unavailable, the backend treats it as optional.
+// Stable per-machine id (Windows MachineGuid) for the backend ban system; null when unavailable, treated as optional.
 function getHwid() {
   if (process.platform !== 'win32') return null
   const guid = regQueryValue('HKLM\\SOFTWARE\\Microsoft\\Cryptography', 'MachineGuid')
@@ -236,8 +235,7 @@ ipcMain.handle('settings:load', async () => {
     }
   } catch { /* keep existing cache */ }
 
-  // Auto-fill an empty/invalid Skyrim path from the registry (renderer calls
-  // this at startup and whenever the settings modal opens).
+  // Auto-fill an empty/invalid Skyrim path from the registry (runs at startup and on settings open).
   ensureSkyrimPath()
 
   const servers = store.get('cachedServers') || []
@@ -533,8 +531,7 @@ function applyForcedServerDefaults(gamePath) {
     log('[defaults] could not write the profile Skyrim.ini:', err.message)
   }
 
-  // MO2 only honors the profile inis the Settings tab edits when the profile
-  // has local settings enabled.
+  // MO2 only honors the profile inis the Settings tab edits when local settings are enabled.
   try {
     const settingsIni = path.join(mo2.getProfileDir(), 'settings.ini')
     const general = ini.read(settingsIni)['General'] || {}
@@ -891,9 +888,8 @@ async function createIsolatedImpl(baseDirOverride) {
 // an orphan ccc list makes the engine treat the AE/CC content set as changed,
 // which pops the Creation Club announcement over the main menu on first boot.
 // That box is modal and SkyrimPlatform cannot dismiss pre-game menus.
-// copyGameDir instead writes an EMPTY Skyrim.ccc (engine expects no CC content)
-// and applyForcedServerDefaults keeps it empty plus disables the Bethesda.net
-// platform, so AE owners never get the "download AE content" prompt either.
+// copyGameDir instead writes an EMPTY Skyrim.ccc and applyForcedServerDefaults keeps it empty.
+// With the Bethesda.net platform disabled too, AE owners never get the "download AE content" prompt.
 const VANILLA_ROOT_FILES = [
   'SkyrimSE.exe', 'SkyrimSELauncher.exe', 'bink2w64.dll',
   'steam_api64.dll', 'Galaxy64.dll', 'EOSSDK-Win64-Shipping.dll',
@@ -1181,7 +1177,7 @@ function assertSecureDownloadUrl(url) {
 }
 
 // Download a URL to a local file, following redirects (release URLs hit a CDN).
-// Settles exactly once on every outcome (an aborted response used to hang forever).
+// Settles exactly once on every outcome, including an aborted response.
 function downloadToFile(url, dest, onProgress, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
     try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
@@ -1624,8 +1620,7 @@ ipcMain.on('install:cancel', () => {
   if (installing && installAbort) installAbort.abort()
 })
 
-// Standalone install steps (Installation tab buttons). Both stream their
-// progress over the same install:progress channel as the full installers.
+// Standalone install steps (Installation tab buttons); both stream progress over the shared install:progress channel.
 
 // MO2 only: download/unpack MO2 and refresh the portable instance.
 ipcMain.handle('install:mo2only', async () => {
@@ -1803,10 +1798,8 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
       })
     })
 
-    // 3. Extract directly into Skyrim directory. The zip may carry a stock
-    // skymp5-client-settings.txt that would clobber the player's hotkey
-    // rebinds, so snapshot the current file and let writeClientSettings
-    // (which reads prev from disk) see the pre-extract version.
+    // 3. Extract directly into Skyrim directory.
+    // The zip's stock skymp5-client-settings.txt would clobber hotkey rebinds; snapshot it so writeClientSettings sees the pre-extract file.
     let settingsSnapshot = null
     try { settingsSnapshot = fs.readFileSync(clientSettingsPath, 'utf8') } catch { /* first install */ }
     const extracted = extractClientZip(tempZip, skyrimPath, (file, i, total) => {
@@ -2207,8 +2200,7 @@ async function runMO2Install(opts = {}) {
  */
 function writeClientSettings(destPath, srv, serverInfo) {
   // Start fresh every time - do not preserve stale keys from previous writes.
-  // Exception: user hotkey bindings, which the settings UI owns; without this
-  // carve-out every launch silently reset them to the in-game defaults.
+  // Exception: user hotkey bindings, owned by the settings UI; a launch must never reset them to defaults.
   const HOTKEY_KEYS = [
     'chatFocusKeyCodes', 'freeCursorKeyCode', 'housingMenuKeyCode',
     'factionMenuKeyCode', 'interactMenuKeyCode', 'personalMenuKeyCode',

@@ -25,23 +25,8 @@ const events = {
 // Module-level so the browser-side widget setter can read it via runtime injection.
 let promptText = "";
 
-/**
- * Consent prompt + window plumbing for the player-search feature. When another
- * player asks to search this player, the server sends `searchConsentRequest`
- * and we pop a Yes/No widget. When WE are the approved searcher, the server
- * sends `searchApproved` and we open the target's inventory with the VANILLA
- * container window (the server has authorized TakeItem/PutItem for the pair);
- * `searchClose` force-closes it again (target moved away or logged off).
- *
- * Protocol: {@link MsgType.CustomPacket} with a JSON dump.
- *   Server -> Client:
- *     { "customPacketType": "searchConsentRequest", "requestId": 4, "text": "X wants to search you. Allow?" }
- *     { "customPacketType": "searchApproved", "target": <actorFormId> }
- *     { "customPacketType": "searchClose" }
- *     { "customPacketType": "searchNotice", "text": "..." }
- *   Client -> Server:
- *     { "customPacketType": "searchConsentResult", "requestId": 4, "accepted": true }
- */
+// Player-search plumbing: searchConsentRequest pops a Yes/No widget on the target; searchApproved opens the target's inventory for the searcher in the vanilla container window (TakeItem/PutItem server-authorized); searchClose force-closes it.
+// Protocol (MsgType.CustomPacket JSON): server sends searchConsentRequest{requestId,text}, searchApproved{target}, searchClose, searchNotice{text}; client replies searchConsentResult{requestId,accepted}.
 export class SearchService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -109,10 +94,8 @@ export class SearchService extends ClientListener {
     this.closePrompt();
   }
 
-  // The vanilla container window on the target's synced body; item moves ride
-  // the normal ContainersService PutItem/TakeItem sync, which the server has
-  // just authorized for this pair. The local clone only mirrors equipment, so
-  // the server-sent entries top up the clone's bag before the window opens.
+  // Vanilla container window on the target's synced body; item moves ride the normal ContainersService PutItem/TakeItem sync the server just authorized for this pair.
+  // The local clone only mirrors equipment, so the server-sent entries top up the clone's bag before the window opens.
   private openTargetInventory(remoteId: number, entries: { baseId: number, count: number }[]): void {
     this.searchWindowOpen = true;
     this.controller.once("update", () => {
@@ -147,8 +130,7 @@ export class SearchService extends ClientListener {
     }
     this.searchWindowOpen = false;
     this.controller.once("update", () => {
-      // No close-menu API in SkyrimPlatform: tap the cancel key while the
-      // container window is up, which is exactly the player's own close.
+      // No close-menu API in SkyrimPlatform: tap the cancel key while the container window is up, same as the player's own close.
       if (this.sp.Ui.isMenuOpen("ContainerMenu")) {
         this.sp.Input.tapKey(DxScanCode.Tab);
       }

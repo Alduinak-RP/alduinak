@@ -10,8 +10,7 @@ import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessageMsgData } from "../messages/updateAnimVariablesMessage";
 
-// Racial greater powers are disabled on this server (form ids verified
-// against Skyrim.esm on the reference install)
+// Racial greater powers are disabled on this server (form ids verified against Skyrim.esm on the reference install)
 const BLOCKED_POWER_IDS = new Set([
     0x000E40C3, // PowerNordBattleCry
     0x000E40C8, // PowerHighElfMagickaRegen (Highborn)
@@ -163,8 +162,7 @@ export class MagicSyncService extends ClientListener {
         return animVarsData;
     }
 
-    // Releasing a concentration cast fires no anim equip event, so poll the
-    // casting vars and sync the stop; otherwise clones stream Flames until stow (S4)
+    // Concentration cast release fires no anim equip event; poll casting vars and sync the stop, else clones stream Flames until stow (S4)
     private detectCastStop() {
         const player = Game.getPlayer();
         if (!player) {

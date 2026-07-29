@@ -1,20 +1,13 @@
-// Proximity voice chat over LiveKit, driven entirely by the game side via
-// window.__alduinakVoice (see skymp5-client voiceService.ts). Plain JS on
-// purpose: the repo pins TypeScript 4.6 and livekit-client's types need 5.x.
-//
+// Proximity voice chat over LiveKit, driven by the game side via window.__alduinakVoice (skymp5-client voiceService.ts).
+// Plain JS on purpose: the repo pins TypeScript 4.6 and livekit-client's types need 5.x.
 // Contract with the game side:
-//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}],
-//       mode } - the voice modes and which one is active
+//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}], mode }
 //   disconnect()              leave the room
 //   setPtt(bool)              push-to-talk: enable/disable the mic track
-//   setMode(key)              Alt+V cycles whisper/talk/shout; the mode's range
-//       is published to the room over the LiveKit data channel so listeners
-//       attenuate by the SPEAKER's loudness (a whisperer carries ~2m only)
-//   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms;
-//       peers absent from the map are treated as out of range
+//   setMode(key)              Alt+V cycles whisper/talk/shout; the range goes out on the data channel so listeners attenuate by the SPEAKER's loudness
+//   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
 // Events back to the game (window.skyrimPlatform.sendMessage):
-//   'voice::ready', 'voice::micDenied', 'voice::error' <text>,
-//   'voice::speaking' <jsonArray of identities currently audible+speaking>
+//   'voice::ready', 'voice::micDenied', 'voice::error' <text>, 'voice::speaking' <json array of audible speaking identities>
 
 import { Room, RoomEvent, Track } from 'livekit-client';
 
@@ -120,8 +113,7 @@ class VoiceManager {
         this.audioEls.forEach((el) => el.remove());
         this.audioEls.clear();
         this.peerRanges = {};
-        // Intentional teardowns null this.room first; only report real drops,
-        // otherwise the game re-requests a token and churns forever
+        // Intentional teardowns null this.room first; report only real drops or the game re-requests tokens forever
         if (this.room === room) {
           this.room = null;
           this.lastToken = null;
@@ -137,8 +129,7 @@ class VoiceManager {
 
       await room.connect(url, token, { autoSubscribe: true });
       try { await room.startAudio(); } catch (e) { /* autoplay policy: unlocked by CEF switch */ }
-      // Expose the room only once connected so setPtt cannot hit a
-      // not-yet-connected room (that threw and mis-reported micDenied)
+      // Expose the room only once connected so setPtt cannot hit a not-yet-connected room and mis-report micDenied
       this.room = room;
       this.publishRange();
       if (this.ptt) {
@@ -168,8 +159,7 @@ class VoiceManager {
 
   async setPtt(down) {
     this.ptt = !!down;
-    // The banner doubles as the transmit indicator: solid while the mic is
-    // open, instant hide on release
+    // The banner doubles as the transmit indicator: solid while the mic is open, hidden on release
     if (this.ptt) this.showBanner(this.mode);
     else this.hideBanner();
     if (!this.room) return;
@@ -267,9 +257,8 @@ class VoiceManager {
 
 window.__alduinakVoice = new VoiceManager();
 
-// Failsafe: if the game stops feeding distances (main menu, script reload),
-// go silent instead of playing the last-known volumes forever. Also heartbeat
-// the talk range so listeners who missed the data packet eventually heal.
+// Failsafe: if the game stops feeding distances (main menu, script reload), go silent instead of playing stale volumes.
+// Also heartbeat the range so listeners who missed the data packet eventually heal.
 setInterval(() => {
   const vm = window.__alduinakVoice;
   if (!vm.room) return;

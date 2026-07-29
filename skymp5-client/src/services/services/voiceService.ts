@@ -8,12 +8,8 @@ import { RemoteServer } from "./remoteServer";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
-// Proximity voice chat: push-to-talk (default V, launcher-configurable via
-// voicePushToTalkKeyCode) + LiveKit room managed by the CEF page (VoiceManager
-// in skymp5-front). This service owns the game-side halves: requesting the
-// room token from the server, feeding peer distances to the browser, and the
-// PTT key. Who is audible is decided by distance against the server-provided
-// range (chat "say" range by default), same-world only.
+// Proximity voice chat: push-to-talk (default V, launcher-configurable via voicePushToTalkKeyCode) + LiveKit room managed by VoiceManager in the skymp5-front CEF page.
+// This service owns the game side: room token requests, peer distances to the browser, and the PTT key; audibility is distance vs the server-provided range (chat "say" range by default), same-world only.
 
 const PEERS_INTERVAL_MS = 400;
 const TOKEN_RETRY_MS = 5000;
@@ -40,8 +36,7 @@ export class VoiceService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("update", () => this.onUpdate());
-    // Fresh game connection = fresh voice session; also kills ghost rooms
-    // that would otherwise outlive a disconnect back to the main menu
+    // Fresh game connection = fresh voice session; also kills ghost rooms that would outlive a disconnect back to the main menu
     this.controller.emitter.on("connectionAccepted", () => this.resetSession());
     this.controller.emitter.on("connectionFailed", () => this.resetSession());
     this.controller.emitter.on("connectionDenied", () => this.resetSession());
@@ -61,8 +56,7 @@ export class VoiceService extends ClientListener {
   private nextPeersAt = 0;
   private nextAfkPingAt = 0;
 
-  // A throw here would abort the shared event dispatch chain and take input
-  // and movement processing down with it; voice must never do that
+  // A throw here would abort the shared event dispatch chain, taking input and movement processing down with it; voice must never do that
   private onButtonEvent(e: ButtonEvent) {
     try {
       this.onButtonEventImpl(e);
@@ -82,8 +76,7 @@ export class VoiceService extends ClientListener {
     }
     if (e.code !== this.voiceKey) return;
 
-    // isHeld frames let a V hold that outlives the Alt+V cycle start
-    // transmitting once Alt releases (isDown fires only on the press frame)
+    // isHeld frames let a V hold that outlives the Alt+V cycle start transmitting once Alt releases (isDown fires only on the press frame)
     if ((e.isDown || e.isHeld) && !this.pttDown) {
       if (this.sp.browser.isFocused()) return; // typing in chat
       if (this.altDown) {
@@ -153,8 +146,7 @@ export class VoiceService extends ClientListener {
   private onBrowserMessage(e: BrowserMessageEvent) {
     const kind = e.arguments[0];
     if (kind === "voice::ready") {
-      // Only the front's ack marks the session healthy; a connect call that
-      // lands on an unloaded page simply never acks and the 5s loop retries
+      // Only the front's ack marks the session healthy; a connect call landing on an unloaded page never acks and the 5s loop retries
       this.connectedForRefrId = this.pendingRefrId;
     } else if (kind === "voice::micDenied") {
       if (!this.micDeniedShown) {
@@ -248,8 +240,7 @@ export class VoiceService extends ClientListener {
       this.altDown = false;
     }
 
-    // Chat focus steals the key-up event, so drop the mic when typing starts;
-    // same when our actor despawns (character park, connection loss)
+    // Chat focus steals the key-up event, so drop the mic when typing starts; same when our actor despawns (character park, connection loss)
     if (this.pttDown && (this.sp.browser.isFocused() || !myRefr)) this.releasePtt();
 
     // Write the chosen mode to disk shortly after it changes
@@ -289,8 +280,7 @@ export class VoiceService extends ClientListener {
     const myMovement = me?.movement;
     if (!myMovement || !Array.isArray(myMovement.pos)) return;
 
-    // Speakers pick their own mode, so feed distances out to the loudest mode:
-    // a shouter at 3000 units must still be audible
+    // Speakers pick their own mode, so feed distances out to the loudest mode: a shouter at 3000 units must still be audible
     const maxUnits = this.modes.reduce((a, m) => Math.max(a, m.units), 0) || 3150;
     const includeWithin = maxUnits * 1.2;
     const peers: Record<string, number> = {};
