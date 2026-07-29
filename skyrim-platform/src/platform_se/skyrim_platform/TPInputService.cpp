@@ -262,10 +262,7 @@ static LRESULT CALLBACK InputServiceWndProc(HWND hwnd, UINT uMsg,
     RAWINPUT input{};
     UINT size = sizeof(RAWINPUT);
 
-    // HID devices (gamepads) send variable-length data that can exceed
-    // sizeof(RAWINPUT); the call then fails and writes nothing, so branching on
-    // the struct would read uninitialised stack. Zeroing is not enough because
-    // 0 is RIM_TYPEMOUSE, so bail out explicitly on failure.
+    // Controller crash fix
     if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &input,
                         &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1)) {
       return 0;
