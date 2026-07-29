@@ -26,6 +26,7 @@ import { SearchSystem } from "./systems/searchSystem";
 import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
+import { ZoneSpawnSystem } from "./systems/zoneSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { EventEmitter } from "events";
@@ -215,6 +216,7 @@ const main = async () => {
     new SearchSystem(log),
     new VoiceSystem(log),
     new AfkSystem(log),
+    new ZoneSpawnSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );
