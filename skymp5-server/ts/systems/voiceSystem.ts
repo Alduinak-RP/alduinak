@@ -59,12 +59,13 @@ export class VoiceSystem implements System {
   private apiKey = "";
   private apiSecret = "";
   private room = "alduinak";
-  // Talk range is speaker-chosen (V + mousewheel); these bound it and mirror
-  // the chat tiers so voice loudness lines up with /whisper ... /shout.
-  private minRangeUnits = 150;
-  private defaultRangeUnits = 2000;
-  private maxRangeUnits = 10000;
-  private tiers: Array<{ u: number; label: string }> = [];
+  // Voice modes cycled in-game with Alt+V. Units are game units (70 per meter):
+  // whisper 2m, talk 12m, shout 45m by default.
+  private modes: Array<{ key: string; label: string; units: number }> = [
+    { key: "whisper", label: "Whisper", units: 140 },
+    { key: "talk", label: "Talk", units: 840 },
+    { key: "shout", label: "Shout", units: 3150 },
+  ];
 
   async initAsync(_ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -79,28 +80,23 @@ export class VoiceSystem implements System {
     this.apiSecret = typeof vc.apiSecret === "string" ? vc.apiSecret : "";
     if (typeof vc.room === "string" && vc.room) this.room = vc.room;
 
-    const chat = (all?.["chatRanges"] ?? {}) as Record<string, unknown>;
-    const num = (v: unknown, fallback: number) => {
-      const n = Number(v);
-      return Number.isFinite(n) && n > 0 ? n : fallback;
-    };
-    this.minRangeUnits = num(vc.minRangeUnits, num(chat["whisper"], 150));
-    this.defaultRangeUnits = num(vc.defaultRangeUnits, num(chat["say"], 2000));
-    this.maxRangeUnits = num(vc.rangeUnits, num(chat["shout"], 10000));
-    const tierDefs: Array<[string, number]> = [
-      ["Whisper", num(chat["whisper"], 150)],
-      ["Low", num(chat["low"], 700)],
-      ["Say", num(chat["say"], 2000)],
-      ["Wide", num(chat["wide"], 4000)],
-      ["Shout", num(chat["shout"], 10000)],
-    ];
-    this.tiers = tierDefs
-      .filter(([, u]) => u >= this.minRangeUnits && u <= this.maxRangeUnits)
-      .map(([label, u]) => ({ u, label }))
-      .sort((a, b) => a.u - b.u);
+    // Optional override: voiceChat.modes = [{ key, label, meters }]
+    if (Array.isArray(vc.modes) && vc.modes.length) {
+      const parsed: Array<{ key: string; label: string; units: number }> = [];
+      for (const m of vc.modes) {
+        const key = String(m?.key ?? "");
+        const meters = Number(m?.meters);
+        const units = Number.isFinite(meters) && meters > 0 ? meters * 70 : Number(m?.units);
+        if (key && Number.isFinite(units) && units > 0) {
+          parsed.push({ key, label: String(m?.label ?? key), units: Math.round(units) });
+        }
+      }
+      if (parsed.length) this.modes = parsed;
+    }
 
     this.enabled = vc.enabled !== false && !!(this.url && this.apiKey && this.apiSecret);
-    this.log(`VoiceSystem: ${this.enabled ? `enabled, room '${this.room}', talk range ${this.minRangeUnits}..${this.maxRangeUnits} (default ${this.defaultRangeUnits})` : "disabled (missing url/apiKey/apiSecret or enabled=false)"}`);
+    const modeDesc = this.modes.map(m => `${m.label} ${Math.round(m.units / 70)}m`).join(", ");
+    this.log(`VoiceSystem: ${this.enabled ? `enabled, room '${this.room}', modes: ${modeDesc}` : "disabled (missing url/apiKey/apiSecret or enabled=false)"}`);
   }
 
   customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
@@ -123,10 +119,7 @@ export class VoiceSystem implements System {
         token,
         room: this.room,
         identity,
-        rangeUnits: this.defaultRangeUnits,
-        minRangeUnits: this.minRangeUnits,
-        maxRangeUnits: this.maxRangeUnits,
-        tiers: this.tiers,
+        modes: this.modes,
       }));
     } catch (e) {
       this.log(`VoiceSystem: token mint failed for user ${userId}: ${e}`);

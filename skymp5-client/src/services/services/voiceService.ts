@@ -19,12 +19,17 @@ const PEERS_INTERVAL_MS = 400;
 const TOKEN_RETRY_MS = 5000;
 const PLAYER_ID_SPACE = 0xff000000;
 
-// Mouse wheel arrives as buttonEvent with device Mouse and these id codes
-const MOUSE_WHEEL_UP = 8;
-const MOUSE_WHEEL_DOWN = 9;
-const RANGE_STEP = 1.25; // multiplicative per wheel notch
-const RANGE_PERSIST_DELAY_MS = 1000;
+const MODE_PERSIST_DELAY_MS = 1000;
 const VOICE_SETTINGS_PLUGIN = "voice-settings-no-load";
+
+interface VoiceMode { key: string; label: string; units: number }
+
+// Fallbacks; the server sends the real list with the token
+const DEFAULT_MODES: VoiceMode[] = [
+  { key: "whisper", label: "Whisper", units: 140 },
+  { key: "talk", label: "Talk", units: 840 },
+  { key: "shout", label: "Shout", units: 3150 },
+];
 
 export class VoiceService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -45,12 +50,10 @@ export class VoiceService extends ClientListener {
   private disabledByServer = false;
   private connectedForRefrId = 0;
   private pendingRefrId = 0;
-  private rangeUnits = 2000;
-  private minRangeUnits = 150;
-  private maxRangeUnits = 10000;
-  private tiers: unknown[] = [];
-  private talkRange = 0; // 0 = not yet initialized from settings/packet
-  private rangePersistAt = 0;
+  private modes: VoiceMode[] = DEFAULT_MODES;
+  private mode = "";        // "" = not yet initialized from settings/packet
+  private modePersistAt = 0;
+  private altDown = false;
   private pttDown = false;
   private micDeniedShown = false;
   private nextTokenAttemptAt = 0;
@@ -67,17 +70,22 @@ export class VoiceService extends ClientListener {
   }
 
   private onButtonEventImpl(e: ButtonEvent) {
-    // V + mousewheel adjusts the talk range (whisper..shout); talkRange 0
-    // means not initialized yet, adjusting then would clobber the saved value
-    if (this.pttDown && this.talkRange > 0 && e.device === InputDeviceType.Mouse && e.isDown &&
-        ((e.code as number) === MOUSE_WHEEL_UP || (e.code as number) === MOUSE_WHEEL_DOWN)) {
-      const factor = (e.code as number) === MOUSE_WHEEL_UP ? RANGE_STEP : 1 / RANGE_STEP;
-      this.applyTalkRange(this.talkRange * factor);
+    if (e.device !== InputDeviceType.Keyboard) return;
+
+    // Track Alt so Alt+V can mean "cycle mode" instead of "talk"
+    if (e.code === DxScanCode.LeftAlt || e.code === DxScanCode.RightAlt) {
+      if (e.isDown) this.altDown = true;
+      else if (e.isUp) this.altDown = false;
       return;
     }
-    if (e.device !== InputDeviceType.Keyboard || e.code !== this.voiceKey) return;
+    if (e.code !== this.voiceKey) return;
+
     if (e.isDown && !this.pttDown) {
       if (this.sp.browser.isFocused()) return; // typing in chat
+      if (this.altDown) {
+        this.cycleMode();
+        return;
+      }
       this.pttDown = true;
       this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(true)`);
     } else if (e.isUp && this.pttDown) {
@@ -85,33 +93,47 @@ export class VoiceService extends ClientListener {
     }
   }
 
-  private applyTalkRange(units: number) {
-    const clamped = Math.min(this.maxRangeUnits, Math.max(this.minRangeUnits, Math.round(units)));
-    if (clamped === this.talkRange) return;
-    this.talkRange = clamped;
-    this.rangePersistAt = Date.now() + RANGE_PERSIST_DELAY_MS;
-    this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setTalkRange(${clamped})`);
+  // Alt+V steps whisper -> talk -> shout -> whisper
+  private cycleMode() {
+    if (!this.mode) return; // not initialized yet
+    const idx = this.modes.findIndex(m => m.key === this.mode);
+    const next = this.modes[(idx + 1) % this.modes.length];
+    if (!next) return;
+    this.applyMode(next.key);
   }
 
-  // Chosen range survives relaunches, same mechanism as chat settings
-  private readPersistedRange(): number {
+  private applyMode(key: string) {
+    if (!this.modes.some(m => m.key === key) || key === this.mode) return;
+    this.mode = key;
+    this.modePersistAt = Date.now() + MODE_PERSIST_DELAY_MS;
+    this.sp.browser.executeJavaScript(
+      `window.__alduinakVoice && window.__alduinakVoice.setMode(${JSON.stringify(key)})`
+    );
+  }
+
+  private currentRangeUnits(): number {
+    const m = this.modes.find(x => x.key === this.mode);
+    return m ? m.units : 840;
+  }
+
+  // Chosen mode survives relaunches, same mechanism as chat settings
+  private readPersistedMode(): string {
     try {
       // @ts-expect-error (TODO: Remove in 2.10.0)
       const data = this.sp.getPluginSourceCode(VOICE_SETTINGS_PLUGIN, "PluginsNoLoad");
-      if (!data) return 0;
+      if (!data) return "";
       const parsed = JSON.parse(data.slice(2));
-      const r = Number(parsed?.talkRange);
-      return Number.isFinite(r) && r > 0 ? r : 0;
+      return typeof parsed?.mode === "string" ? parsed.mode : "";
     } catch (e) {
-      return 0;
+      return "";
     }
   }
 
-  private persistRange(): void {
+  private persistMode(): void {
     try {
       this.sp.writePlugin(
         VOICE_SETTINGS_PLUGIN,
-        "//" + JSON.stringify({ talkRange: this.talkRange }),
+        "//" + JSON.stringify({ mode: this.mode }),
         // @ts-expect-error (TODO: Remove in 2.10.0)
         "PluginsNoLoad"
       );
@@ -170,26 +192,27 @@ export class VoiceService extends ClientListener {
     const url = content["url"];
     const token = content["token"];
     if (typeof url !== "string" || typeof token !== "string") return;
-    const num = (v: unknown, fallback: number) => {
-      const n = Number(v);
-      return Number.isFinite(n) && n > 0 ? n : fallback;
-    };
-    this.rangeUnits = num(content["rangeUnits"], this.rangeUnits);
-    this.minRangeUnits = num(content["minRangeUnits"], this.minRangeUnits);
-    this.maxRangeUnits = num(content["maxRangeUnits"], this.maxRangeUnits);
-    if (Array.isArray(content["tiers"])) this.tiers = content["tiers"];
-    if (!this.talkRange) {
-      const persisted = this.readPersistedRange();
-      this.talkRange = Math.min(this.maxRangeUnits, Math.max(this.minRangeUnits, persisted || this.rangeUnits));
+    // Voice modes come from the server so admins can retune them centrally
+    const rawModes = content["modes"];
+    if (Array.isArray(rawModes) && rawModes.length) {
+      const parsed: VoiceMode[] = [];
+      for (const m of rawModes) {
+        const key = String((m as VoiceMode)?.key ?? "");
+        const units = Number((m as VoiceMode)?.units);
+        if (key && Number.isFinite(units) && units > 0) {
+          parsed.push({ key, label: String((m as VoiceMode)?.label ?? key), units });
+        }
+      }
+      if (parsed.length) this.modes = parsed;
+    }
+    if (!this.mode || !this.modes.some(m => m.key === this.mode)) {
+      const persisted = this.readPersistedMode();
+      this.mode = this.modes.some(m => m.key === persisted)
+        ? persisted
+        : (this.modes.find(m => m.key === "talk") || this.modes[0]).key;
     }
 
-    const cfg = {
-      talk: this.talkRange,
-      min: this.minRangeUnits,
-      max: this.maxRangeUnits,
-      def: this.rangeUnits,
-      tiers: this.tiers,
-    };
+    const cfg = { modes: this.modes, mode: this.mode };
     this.pendingRefrId = this.myRefrId();
     this.sp.browser.executeJavaScript(
       `window.__alduinakVoice && window.__alduinakVoice.connect(${JSON.stringify(url)}, ${JSON.stringify(token)}, ${JSON.stringify(cfg)})`
@@ -217,10 +240,10 @@ export class VoiceService extends ClientListener {
     // same when our actor despawns (character park, connection loss)
     if (this.pttDown && (this.sp.browser.isFocused() || !myRefr)) this.releasePtt();
 
-    // Write the chosen range to disk once the wheel settles
-    if (this.rangePersistAt && now >= this.rangePersistAt) {
-      this.rangePersistAt = 0;
-      this.persistRange();
+    // Write the chosen mode to disk shortly after it changes
+    if (this.modePersistAt && now >= this.modePersistAt) {
+      this.modePersistAt = 0;
+      this.persistMode();
     }
 
     if (!myRefr) return; // not spawned yet
@@ -246,9 +269,10 @@ export class VoiceService extends ClientListener {
     const myMovement = me?.movement;
     if (!myMovement || !Array.isArray(myMovement.pos)) return;
 
-    // Speakers choose their own range up to the max, so feed distances out to
-    // the max tier: a shouter 9000 units away must still be audible
-    const includeWithin = this.maxRangeUnits * 1.2;
+    // Speakers pick their own mode, so feed distances out to the loudest mode:
+    // a shouter at 3000 units must still be audible
+    const maxUnits = this.modes.reduce((a, m) => Math.max(a, m.units), 0) || 3150;
+    const includeWithin = maxUnits * 1.2;
     const peers: Record<string, number> = {};
     for (let i = 0; i < worldModel.forms.length; i++) {
       if (i === worldModel.playerCharacterFormIdx) continue;
