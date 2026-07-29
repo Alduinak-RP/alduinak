@@ -1,5 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
+import { toFormId } from "./formIdUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -72,19 +73,6 @@ interface PendingConsent {
   targetActorId: number;
   timer: ReturnType<typeof setTimeout>;
 }
-
-const toFormId = (v: unknown, fallback: number): number => {
-  if (typeof v === "number" && Number.isFinite(v)) {
-    return v >>> 0;
-  }
-  if (typeof v === "string" && v.trim()) {
-    const n = Number(v.trim());
-    if (Number.isFinite(n)) {
-      return n >>> 0;
-    }
-  }
-  return fallback;
-};
 
 export class CaptureSystem implements System {
   systemName = "CaptureSystem";

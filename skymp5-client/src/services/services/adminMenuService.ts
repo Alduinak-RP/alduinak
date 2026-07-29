@@ -1,9 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { closeWidget, readMenuKeyCode } from "./widgetMenuUtil";
+import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 
 declare const window: any;
@@ -52,12 +51,8 @@ export class AdminMenuService extends ClientListener {
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
+    const content = parseCustomPacket(event);
+    if (!content) return;
     if (content["customPacketType"] === "adminMenu") {
       players = Array.isArray(content["players"]) ? content["players"] : [];
       this.showMenu();
@@ -67,16 +62,12 @@ export class AdminMenuService extends ClientListener {
   }
 
   private showMenu(): void {
-    const text = new FunctionInfo(this.browsersideWidgetSetter).getText({ events, players });
-    this.sp.browser.executeJavaScript(text);
-    this.sp.browser.setVisible(true);
-    this.sp.browser.setFocused(true);
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, players, WIDGET_ID });
     this.menuOpen = true;
   }
 
   private closeMenu(): void {
-    closeWidget(this.sp, WIDGET_ID);
-    this.sp.browser.setFocused(false);
+    closeFormMenu(this.sp, WIDGET_ID);
     this.menuOpen = false;
   }
 
@@ -106,7 +97,7 @@ export class AdminMenuService extends ClientListener {
   private browsersideWidgetSetter = () => {
     const widget: any = {
       type: "form",
-      id: 23,
+      id: WIDGET_ID,
       caption: "Admin",
       elements: [] as any[],
     };
@@ -162,7 +153,7 @@ export class AdminMenuService extends ClientListener {
       tags: ["ELEMENT_SAME_LINE"],
       click: () => window.skyrimPlatform.sendMessage(events.close),
     });
-    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== 23);
+    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 

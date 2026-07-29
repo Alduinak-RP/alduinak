@@ -1,10 +1,11 @@
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
+import { openFormMenu, readMenuLanguage } from "./widgetMenuUtil";
 import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { MsgType } from "../../messages";
-import { logError, logTrace } from "../../logging";
+import { logTrace } from "../../logging";
 import { NetworkingService } from "./networkingService";
 import { SinglePlayerService } from "./singlePlayerService";
 
@@ -19,6 +20,8 @@ interface CharacterSlot {
   // Permanently dead: shown crossed out and greyed, only Delete is allowed.
   dead?: boolean;
 }
+
+const WIDGET_ID = 7;
 
 // Event keys exchanged with the browser; namespaced to avoid collisions with other "browserMessage" listeners.
 const events = {
@@ -98,23 +101,15 @@ export class CharacterSelectService extends ClientListener {
     // "update" fires only in-game, so the first one marks the initial spawn.
     this.controller.once("update", () => { this.sawGameplay = true; });
 
-    try {
-      const lang = (this.sp.settings["skymp5-client"] as any)?.["language"] as string | undefined;
-      if (lang && lang in translations) {
-        strings = translations[lang as keyof typeof translations];
-      }
-    } catch {
-      // fall back to English
+    const lang = readMenuLanguage(this.sp);
+    if (lang in translations) {
+      strings = translations[lang as keyof typeof translations];
     }
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return; // other services validate their own packets
-    }
+    const content = parseCustomPacket(event);
+    if (!content) return;
 
     switch (content["customPacketType"]) {
       case 'characterSelectMenu':
@@ -124,9 +119,7 @@ export class CharacterSelectService extends ClientListener {
         confirmDeleteSlot = null;
         this.menuOpen = true;
         logTrace(this, `Opening character select menu with`, maxCharacters, `slots`);
-        this.renderMenu();
-        this.sp.browser.setVisible(true);
-        this.sp.browser.setFocused(true);
+        openFormMenu(this.sp, this.browsersideWidgetSetter, this.menuArgs());
         break;
       case 'characterSelectMenuClose':
         if (this.menuOpen) this.closeMenu();
@@ -200,27 +193,21 @@ export class CharacterSelectService extends ClientListener {
     if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
     if (!this.controller.lookupListener(NetworkingService).isConnected()) return;
     logTrace(this, 'Main menu opened while connected, requesting character select menu');
-    const message: CustomPacketMessage = {
-      t: MsgType.CustomPacket,
-      contentJsonDump: JSON.stringify({ customPacketType: 'characterSelectMenuRequest' }),
-    };
-    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+    sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest' });
   }
 
   private sendResult(action: 'play' | 'create' | 'delete', slot: number): void {
     logTrace(this, `Sending character select result:`, action, slot);
-    const message: CustomPacketMessage = {
-      t: MsgType.CustomPacket,
-      contentJsonDump: JSON.stringify({ customPacketType: 'characterSelectResult', action, slot }),
-    };
-    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+    sendCustomPacket(this.controller, { customPacketType: 'characterSelectResult', action, slot });
+  }
+
+  private menuArgs(): Record<string, unknown> {
+    return { characters, maxCharacters, selectedSlot, confirmDeleteSlot, events, strings, WIDGET_ID };
   }
 
   private renderMenu(): void {
     this.sp.browser.executeJavaScript(
-      new FunctionInfo(this.browsersideWidgetSetter).getText({
-        characters, maxCharacters, selectedSlot, confirmDeleteSlot, events, strings,
-      })
+      new FunctionInfo(this.browsersideWidgetSetter).getText(this.menuArgs())
     );
   }
 
@@ -237,7 +224,7 @@ export class CharacterSelectService extends ClientListener {
 
   // Runs inside the CEF browser; only the injected variables and window are available here.
   private browsersideWidgetSetter = () => {
-    const widget: any = { type: "form", id: 7, caption: strings.selectCharacter, elements: [] as any[] };
+    const widget: any = { type: "form", id: WIDGET_ID, caption: strings.selectCharacter, elements: [] as any[] };
 
     // Strike through via combining U+0336 overlays; the form renderer has no text styling.
     const strike = (s: string) => s.split("").map((c) => c + String.fromCharCode(0x0336)).join("");

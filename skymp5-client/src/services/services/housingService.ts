@@ -1,9 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { closeWidget, readMenuKeyCode } from "./widgetMenuUtil";
+import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
@@ -127,12 +126,8 @@ export class HousingService extends ClientListener {
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
+    const content = parseCustomPacket(event);
+    if (!content) return;
 
     switch (content["customPacketType"]) {
       case "propertyMenu": {
@@ -213,17 +208,12 @@ export class HousingService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    this.sp.browser.executeJavaScript(
-      new FunctionInfo(this.browsersideWidgetSetter).getText({ events, info, targetLabel, WIDGET_ID })
-    );
-    this.sp.browser.setVisible(true);
-    this.sp.browser.setFocused(true);
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, targetLabel, WIDGET_ID });
   }
 
   private closeMenu(): void {
     this.menuOpen = false;
-    closeWidget(this.sp, WIDGET_ID);
-    this.sp.browser.setFocused(false);
+    closeFormMenu(this.sp, WIDGET_ID);
   }
 
   // Runs inside the CEF browser. Only injected vars + window are available.

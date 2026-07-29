@@ -1,4 +1,5 @@
 import { Sp } from "./clientListener";
+import { FunctionInfo } from "../../lib/functionInfo";
 
 // Shared helpers for CEF form-widget menus; widget setters stay per-service (browser-side, injected vars).
 
@@ -8,6 +9,29 @@ export function closeWidget(sp: Sp, widgetId: number): void {
     '(function(){var ws=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w.id!==' +
     widgetId + ';});window.skyrimPlatform.widgets.set(ws);})();'
   );
+}
+
+// Injects the setter into CEF and gives it focus.
+export function openFormMenu(sp: Sp, setter: () => void, args: Record<string, unknown>): void {
+  sp.browser.executeJavaScript(new FunctionInfo(setter).getText(args));
+  sp.browser.setVisible(true);
+  sp.browser.setFocused(true);
+}
+
+export function closeFormMenu(sp: Sp, widgetId: number): void {
+  closeWidget(sp, widgetId);
+  sp.browser.setFocused(false);
+}
+
+// Reads the UI language from the skymp5-client settings block.
+export function readMenuLanguage(sp: Sp): string {
+  try {
+    const settings = sp.settings["skymp5-client"] as any;
+    const lang = settings && settings["language"];
+    return typeof lang === "string" ? lang : "";
+  } catch {
+    return "";
+  }
 }
 
 // Reads a DxScanCode key binding from the skymp5-client settings block.

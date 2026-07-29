@@ -1,10 +1,9 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { closeWidget } from "./widgetMenuUtil";
+import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { openFormMenu, closeFormMenu } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
-import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
@@ -47,12 +46,8 @@ export class CaptureConsentService extends ClientListener {
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
+    const content = parseCustomPacket(event);
+    if (!content) return;
 
     switch (content["customPacketType"]) {
       case "captureConsentRequest":
@@ -95,11 +90,7 @@ export class CaptureConsentService extends ClientListener {
   private openPrompt(): void {
     this.controller.once("update", () => {
       this.promptOpen = true;
-      this.sp.browser.executeJavaScript(
-        new FunctionInfo(this.browsersideWidgetSetter).getText({ events, promptText, WIDGET_ID })
-      );
-      this.sp.browser.setVisible(true);
-      this.sp.browser.setFocused(true);
+      openFormMenu(this.sp, this.browsersideWidgetSetter, { events, promptText, WIDGET_ID });
       const timers = this.controller.lookupListener(TimersService);
       if (this.expiryTimer !== undefined) {
         timers.clearTimeout(this.expiryTimer);
@@ -118,8 +109,7 @@ export class CaptureConsentService extends ClientListener {
       this.expiryTimer = undefined;
     }
     this.promptOpen = false;
-    closeWidget(this.sp, WIDGET_ID);
-    this.sp.browser.setFocused(false);
+    closeFormMenu(this.sp, WIDGET_ID);
   }
 
   // Runs inside the CEF browser; only the injected vars (events, promptText, WIDGET_ID) and window exist here.

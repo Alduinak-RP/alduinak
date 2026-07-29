@@ -1,5 +1,6 @@
 import { CombinedController, Sp } from "./clientListener";
 import { showSystemNotification } from "./systemNotification";
+import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { MsgType } from "../../messages";
 
@@ -11,6 +12,15 @@ export function sendCustomPacket(controller: CombinedController, payload: Record
     contentJsonDump: JSON.stringify(payload),
   };
   controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+}
+
+export function parseCustomPacket(event: ConnectionMessage<CustomPacketMessage>): Record<string, unknown> | null {
+  try {
+    const content = JSON.parse(event.message.contentJsonDump);
+    return content && typeof content === "object" ? content : null;
+  } catch {
+    return null;
+  }
 }
 
 export function notifyNextUpdate(controller: CombinedController, sp: Sp, text: string): void {

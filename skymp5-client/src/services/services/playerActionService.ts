@@ -1,7 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { closeWidget, readMenuKeyCode } from "./widgetMenuUtil";
-import { FunctionInfo } from "../../lib/functionInfo";
+import { openFormMenu, closeFormMenu, readMenuKeyCode } from "./widgetMenuUtil";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
@@ -149,17 +148,12 @@ export class PlayerActionService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    this.sp.browser.executeJavaScript(
-      new FunctionInfo(this.playerWidgetSetter).getText({ ACTIONS, targetName, events, WIDGET_ID })
-    );
-    this.sp.browser.setVisible(true);
-    this.sp.browser.setFocused(true);
+    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID });
   }
 
   private closeMenu(): void {
     this.menuOpen = false;
-    closeWidget(this.sp, WIDGET_ID);
-    this.sp.browser.setFocused(false);
+    closeFormMenu(this.sp, WIDGET_ID);
   }
 
   // Runs inside the CEF browser. Only injected vars + window are available.

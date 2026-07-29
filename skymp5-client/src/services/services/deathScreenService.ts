@@ -1,8 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { TimersService } from "./timersService";
-import { MsgType } from "../../messages";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { logTrace, logError } from "../../logging";
 
@@ -27,10 +27,8 @@ export class DeathScreenService extends ClientListener {
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
+    const content = parseCustomPacket(event);
+    if (!content) {
       return;
     }
     if (content["customPacketType"] !== "deathScreen") {
@@ -99,13 +97,7 @@ export class DeathScreenService extends ClientListener {
       return;
     }
     logTrace(this, `death choice: ${choice}`);
-    this.controller.emitter.emit("sendMessage", {
-      message: {
-        t: MsgType.CustomPacket,
-        contentJsonDump: JSON.stringify({ customPacketType: "deathChoice", choice }),
-      },
-      reliability: "reliable",
-    });
+    sendCustomPacket(this.controller, { customPacketType: "deathChoice", choice });
   }
 
   private failsafeTimer?: number;

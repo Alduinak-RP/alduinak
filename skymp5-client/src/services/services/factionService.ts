@@ -1,10 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { closeWidget, readMenuKeyCode } from "./widgetMenuUtil";
+import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, readMenuLanguage } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { MsgType } from "../../messages";
-import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
@@ -27,6 +25,8 @@ interface RegentInfo {
   actingName: string | null;
   canManage: boolean;
 }
+
+const WIDGET_ID = 9;
 
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
@@ -134,13 +134,9 @@ export class FactionService extends ClientListener {
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
 
     this.menuKey = readMenuKeyCode(this.sp, "factionMenuKeyCode", DxScanCode.G);
-    try {
-      const settings = this.sp.settings["skymp5-client"] as any;
-      if (settings && settings["language"] && settings["language"] in translations) {
-        strings = translations[settings["language"] as keyof typeof translations];
-      }
-    } catch {
-      // fall back to defaults
+    const language = readMenuLanguage(this.sp);
+    if (language in translations) {
+      strings = translations[language as keyof typeof translations];
     }
   }
 
@@ -182,12 +178,8 @@ export class FactionService extends ClientListener {
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
+    const content = parseCustomPacket(event);
+    if (!content) return;
 
     switch (content["customPacketType"]) {
       case "factionMenu":
@@ -307,16 +299,12 @@ export class FactionService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    const text = new FunctionInfo(this.browsersideWidgetSetter).getText({ events, strings, title, members, regents });
-    this.sp.browser.executeJavaScript(text);
-    this.sp.browser.setVisible(true);
-    this.sp.browser.setFocused(true);
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, strings, title, members, regents, WIDGET_ID });
   }
 
   private closeMenu(): void {
     this.menuOpen = false;
-    closeWidget(this.sp, 9);
-    this.sp.browser.setFocused(false);
+    closeFormMenu(this.sp, WIDGET_ID);
   }
 
   // Runs inside the CEF browser; only the injected variables and window are available here.
@@ -324,7 +312,7 @@ export class FactionService extends ClientListener {
   private browsersideWidgetSetter = () => {
     const widget: any = {
       type: "form",
-      id: 9,
+      id: WIDGET_ID,
       caption: title || strings.title,
       elements: [] as any[],
     };
@@ -415,7 +403,7 @@ export class FactionService extends ClientListener {
     });
 
     // Preserve any other widgets
-    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== 9);
+    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
