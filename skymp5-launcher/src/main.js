@@ -387,6 +387,59 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
   }
 })
 
+// Game hotkeys edit the keyboard column of the game's controlmap.txt.
+// Values are DirectInput scan codes, the same space KEY_OPTIONS uses.
+const GAME_HOTKEY_EVENTS = ['Activate', 'Jump', 'Sprint', 'Sneak', 'Shout', 'Toggle POV']
+
+function controlmapPath() {
+  const gp = effectiveGamePath()
+  return gp ? path.join(gp, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt') : ''
+}
+
+function readControlmapText() {
+  const p = controlmapPath()
+  if (p && fs.existsSync(p)) return { path: p, text: fs.readFileSync(p, 'utf8'), exists: true }
+  const seed = fs.readFileSync(path.join(__dirname, '..', 'assets', 'controlmap.txt'), 'utf8')
+  return { path: p, text: seed, exists: false }
+}
+
+function controlmapEventRe(ev) {
+  const escaped = ev.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp('^(' + escaped + '[ \\t]+)(0x[0-9a-fA-F]+)', 'm')
+}
+
+ipcMain.handle('gameHotkeys:load', () => {
+  try {
+    const cm = readControlmapText()
+    const keys = {}
+    for (const ev of GAME_HOTKEY_EVENTS) {
+      const m = cm.text.match(controlmapEventRe(ev))
+      keys[ev] = m ? parseInt(m[2], 16) : null
+    }
+    return { ok: true, path: cm.path, exists: cm.exists, hasGamePath: !!cm.path, keys }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle('gameHotkeys:save', (_e, keys) => {
+  try {
+    const p = controlmapPath()
+    if (!p) return { ok: false, error: 'Skyrim path is not configured yet' }
+    let { text } = readControlmapText()
+    for (const [ev, code] of Object.entries(keys || {})) {
+      if (!GAME_HOTKEY_EVENTS.includes(ev) || typeof code !== 'number' || code <= 0 || code > 0xff) continue
+      const hex = '0x' + code.toString(16)
+      text = text.replace(controlmapEventRe(ev), (_m, head) => head + hex)
+    }
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(p, text)
+    return { ok: true, path: p }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
 // Forced server defaults
 // The server ships a couple of required defaults. We apply them once, when the
 // Alduinak install is first set up, so later tweaks in the Settings tab aren't
@@ -478,6 +531,19 @@ function applyForcedServerDefaults(gamePath) {
     }
   } catch (err) {
     log('[defaults] could not write the profile Skyrim.ini:', err.message)
+  }
+
+  // MO2 only honors the profile inis the Settings tab edits when the profile
+  // has local settings enabled.
+  try {
+    const settingsIni = path.join(mo2.getProfileDir(), 'settings.ini')
+    const general = ini.read(settingsIni)['General'] || {}
+    if (String(general['LocalSettings'] || '') !== 'true') {
+      ini.write(settingsIni, { General: { LocalSettings: 'true', LocalSaves: 'false' } })
+      log('[defaults] enabled profile-local inis in the MO2 profile')
+    }
+  } catch (err) {
+    log('[defaults] could not enable profile-local inis:', err.message)
   }
 }
 

@@ -240,7 +240,13 @@
           <details class="settings-collapse">
             <summary>Game Hotkeys</summary>
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-invert-y" /><span>Invert Y axis</span></label>
-            <p class="setting-hint">Full control remapping is coming soon - remap other controls in-game for now.</p>
+            <div class="settings-group"><label class="setting-label">Activate</label><select class="setting-input hotkey-select" id="ghk-activate"></select></div>
+            <div class="settings-group"><label class="setting-label">Jump</label><select class="setting-input hotkey-select" id="ghk-jump"></select></div>
+            <div class="settings-group"><label class="setting-label">Sprint</label><select class="setting-input hotkey-select" id="ghk-sprint"></select></div>
+            <div class="settings-group"><label class="setting-label">Sneak</label><select class="setting-input hotkey-select" id="ghk-sneak"></select></div>
+            <div class="settings-group"><label class="setting-label">Shout / Power</label><select class="setting-input hotkey-select" id="ghk-shout"></select></div>
+            <div class="settings-group"><label class="setting-label">Toggle POV</label><select class="setting-input hotkey-select" id="ghk-pov"></select></div>
+            <p class="setting-hint" id="ghk-hint">Written to the game's controlmap. Rows unlock once the game files are installed.</p>
           </details>
 
         </div>

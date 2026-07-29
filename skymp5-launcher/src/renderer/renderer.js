@@ -72,7 +72,19 @@ function fillKeySelect(id) {
 function setKey(id, code) { const el = document.getElementById(id); if (el) el.value = String(typeof code === 'number' ? code : 0) }
 function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.value, 10) || 0) : 0 }
 
-;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin'].forEach(fillKeySelect)
+;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin',
+  'ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov'].forEach(fillKeySelect)
+
+// Game hotkey select ids -> controlmap event names
+const GHK_MAP = {
+  'ghk-activate': 'Activate', 'ghk-jump': 'Jump', 'ghk-sprint': 'Sprint',
+  'ghk-sneak': 'Sneak', 'ghk-shout': 'Shout', 'ghk-pov': 'Toggle POV',
+}
+const GFX_INPUT_IDS = ['gfx-windowmode', 'gfx-resolution', 'gfx-fade-actor', 'gfx-fade-item', 'gfx-fade-object', 'gfx-fade-grass', 'gfx-fade-shadow']
+
+function setInputsDisabled(ids, disabled) {
+  for (const id of ids) { const el = document.getElementById(id); if (el) el.disabled = !!disabled }
+}
 
 async function loadGameSettingsTab() {
   try {
@@ -94,7 +106,26 @@ async function loadGameSettingsTab() {
       setv('gfx-fade-grass', f.grass); setv('gfx-fade-shadow', f.shadow)
       const iy = document.getElementById('gfx-invert-y'); if (iy) iy.checked = !!g.invertY
       const hint = document.getElementById('gfx-path-hint')
-      if (hint) hint.textContent = g.exists ? `Editing: ${g.path}` : `Will be created on save: ${g.path}`
+      if (hint) hint.textContent = g.exists ? `Editing: ${g.path}` : `Locked until the game is installed (creates ${g.path})`
+      setInputsDisabled(GFX_INPUT_IDS, !g.exists)
+    }
+    const gh = await window.electronAPI.gameHotkeysLoad()
+    const ghkEditable = !!(gh && gh.ok && gh.hasGamePath)
+    setInputsDisabled(Object.keys(GHK_MAP), !ghkEditable)
+    if (gh && gh.ok) {
+      for (const [id, ev] of Object.entries(GHK_MAP)) {
+        const code = gh.keys ? gh.keys[ev] : null
+        if (typeof code === 'number' && code > 0 && code <= 0xff) {
+          const el = document.getElementById(id)
+          if (el && !Array.from(el.options).some(o => o.value === String(code))) {
+            const opt = document.createElement('option')
+            opt.value = String(code)
+            opt.textContent = `0x${code.toString(16)}`
+            el.appendChild(opt)
+          }
+          setKey(id, code)
+        }
+      }
     }
     const h = await window.electronAPI.hotkeysLoad()
     if (h && h.ok) {
@@ -119,12 +150,23 @@ async function saveGameSettingsTab() {
     if (resSel && /^\d+x\d+$/.test(resSel.value)) { const p = resSel.value.split('x'); width = p[0]; height = p[1] }
     const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : '' }
     const iy = document.getElementById('gfx-invert-y')
-    await window.electronAPI.graphicsSave({
-      windowMode: wm ? wm.value : 'windowed',
-      width, height,
-      invertY: !!(iy && iy.checked),
-      fades: { actor: val('gfx-fade-actor'), item: val('gfx-fade-item'), object: val('gfx-fade-object'), grass: val('gfx-fade-grass'), shadow: val('gfx-fade-shadow') },
-    })
+    if (wm && !wm.disabled) {
+      await window.electronAPI.graphicsSave({
+        windowMode: wm ? wm.value : 'windowed',
+        width, height,
+        invertY: !!(iy && iy.checked),
+        fades: { actor: val('gfx-fade-actor'), item: val('gfx-fade-item'), object: val('gfx-fade-object'), grass: val('gfx-fade-grass'), shadow: val('gfx-fade-shadow') },
+      })
+    }
+    const ghkFirst = document.getElementById('ghk-activate')
+    if (ghkFirst && !ghkFirst.disabled) {
+      const keys = {}
+      for (const [id, ev] of Object.entries(GHK_MAP)) {
+        const code = getKey(id)
+        if (code > 0) keys[ev] = code
+      }
+      await window.electronAPI.gameHotkeysSave(keys)
+    }
     const chatKey = getKey('hk-chat')
     await window.electronAPI.hotkeysSave({
       chatFocus: [28, chatKey].filter(c => c > 0),

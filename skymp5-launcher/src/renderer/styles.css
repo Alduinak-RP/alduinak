@@ -779,6 +779,10 @@ html, body {
 
 .setting-input::placeholder { color: rgba(232,224,208,0.2); }
 .setting-input:focus { border-color: rgba(201,162,39,0.5); }
+.setting-input:disabled, .settings-grid input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .btn-browse {
   padding: 0 14px;

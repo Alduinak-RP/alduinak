@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   graphicsSave: (g) => ipcRenderer.invoke('graphics:save', g),
   hotkeysLoad:  ()  => ipcRenderer.invoke('hotkeys:load'),
   hotkeysSave:  (h) => ipcRenderer.invoke('hotkeys:save', h),
+  gameHotkeysLoad: ()  => ipcRenderer.invoke('gameHotkeys:load'),
+  gameHotkeysSave: (k) => ipcRenderer.invoke('gameHotkeys:save', k),
 
   // API calls proxied through main (keeps CSP clean, uses config.js values)
   fetchStatus:     () => ipcRenderer.invoke('api:status'),
