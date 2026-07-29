@@ -70,6 +70,12 @@ uint32_t FormDesc::ToFormId(const EspmFileTable& files) const
 
     // Light (ESL) plugins live in the 0xFE space with a 12-bit local id
     const espm::PluginSlot slot = files.SlotAt(fileIdx);
+    if (slot.light && shortFormId > slot.LocalMask()) {
+      // Truncating would silently resolve to an unrelated record
+      throw std::runtime_error(
+        file + " is a light plugin but form id " + std::to_string(shortFormId) +
+        " does not fit its 12-bit local id space");
+    }
     realFormId = slot.Base() | (shortFormId & slot.LocalMask());
   }
   return realFormId;

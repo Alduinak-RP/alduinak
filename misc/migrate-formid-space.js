@@ -106,6 +106,11 @@ function walkDoc(doc, map, hits) {
       if (after !== v) { doc.learnedSpells[i] = after; hits.push({ where: `learnedSpells[${i}]`, before: v, after }) }
     })
   }
+  if (Array.isArray(doc.effects)) {
+    doc.effects.forEach((e, i) => {
+      if (e) num(e, 'effectId', `effects[${i}].effectId`)
+    })
+  }
   // appearanceDump.tints[].argb are colors, not form ids - deliberately skipped
   if (doc.appearanceDump) {
     num(doc.appearanceDump, 'raceId', 'appearanceDump.raceId')
@@ -171,12 +176,15 @@ async function main() {
           console.log(`  ${String(doc.formDesc).padEnd(22)} ${h.where.padEnd(40)} ${hex(h.before)} -> ${hex(h.after)}`)
         }
       }
-      if (APPLY) {
+      // Only rewrite documents that actually changed. Writing back untouched
+      // subtrees would revert any save the server made after we read them.
+      if (APPLY && hits.length) {
         const set = { _fidv: SCHEMA_VERSION }
         if (doc.inv) set.inv = doc.inv
         if (doc.equipmentDump) set.equipmentDump = doc.equipmentDump
         if (doc.learnedSpells) set.learnedSpells = doc.learnedSpells
         if (doc.appearanceDump) set.appearanceDump = doc.appearanceDump
+        if (doc.effects) set.effects = doc.effects
         ops.push({ updateOne: { filter: { _id: doc._id }, update: { $set: set } } })
       }
     }
@@ -195,6 +203,9 @@ async function main() {
     for (let i = 0; i < ops.length; i += 500) {
       await coll.bulkWrite(ops.slice(i, i + 500), { ordered: false })
     }
+    // Mark the untouched documents too, so a re-run does not rescan them
+    await coll.updateMany({ _fidv: { $ne: SCHEMA_VERSION } },
+                          { $set: { _fidv: SCHEMA_VERSION } })
     await meta.updateOne(
       { _id: 'formIdSpace' },
       { $set: { version: SCHEMA_VERSION, appliedAt: new Date().toISOString(), plugins: map.length } },
