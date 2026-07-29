@@ -385,7 +385,7 @@ class Builder {
 
     // populate-files.js copies build/dist/client/Data into the backend file bucket,
     // merge-files.js builds skymp-client.zip + data/files-version.json (version from
-    // CLIENT_VERSION in the backend .env, set it from the Client version field).
+    // CLIENT_VERSION in routes/version.js, set it from the Client version field).
     const dep = await this.ensureDeps(config.paths.backend, 'backend', 'npm')
     if (!dep.ok) return dep
     const r = await this.run('npm', ['run', 'build-client'], config.paths.backend, 'package client: npm run build-client')

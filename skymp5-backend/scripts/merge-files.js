@@ -24,6 +24,10 @@ const VERSION_FILE = path.join(ROOT, 'data', 'files-version.json')
 
 // Version helpers
 
+function routeClientVersion() {
+  return require('../routes/version').readConst('CLIENT_VERSION', '').trim()
+}
+
 // Short git hash for the client files version: tries the legacy sources/client checkout, then the skyrp monorepo; changes only on new commits, 'nogit' if neither is a repo
 function clientGitHash() {
   for (const dir of [CLIENT_SRC, path.join(ROOT, '..')]) {
@@ -101,8 +105,8 @@ async function mergeSourcesIntoRoot() {
   const zipSize  = await buildZip(OUTPUT_DIR, ZIP_PATH)
   console.log(`[merge] Zip built: ${(zipSize / 1024 / 1024).toFixed(1)} MB in ${Date.now() - zipStart}ms`)
 
-  // Set CLIENT_VERSION in .env to override the update-signal version
-  const version = (process.env.CLIENT_VERSION || '').trim() || clientGitHash()
+  // CLIENT_VERSION in routes/version.js overrides the update-signal version
+  const version = routeClientVersion() || clientGitHash()
   fs.mkdirSync(path.dirname(VERSION_FILE), { recursive: true })
   fs.writeFileSync(VERSION_FILE, JSON.stringify({
     version,

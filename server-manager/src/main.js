@@ -461,11 +461,11 @@ function setJsonVersion(file, version) {
   fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n')
 }
 
-// Replace LATEST_VERSION = '...' inside routes/version.js (no-op if already set).
-function setRouteVersion(file, version) {
+// Replace const <name> = '...' inside routes/version.js (no-op if already set).
+function setRouteVersion(file, name, version) {
   const src = fs.readFileSync(file, 'utf8')
-  const re = /(const\s+LATEST_VERSION\s*=\s*)['"][^'"]*['"]/
-  if (!re.test(src)) throw new Error('LATEST_VERSION not found in version.js')
+  const re = new RegExp(`(const\\s+${name}\\s*=\\s*)['"][^'"]*['"]`)
+  if (!re.test(src)) throw new Error(`${name} not found in version.js`)
   const next = src.replace(re, `$1'${version}'`)
   if (next !== src) fs.writeFileSync(file, next)
 }
@@ -485,7 +485,7 @@ function setEnvVar(file, key, value) {
 }
 
 // Anchored at both ends: the version is spliced into backend source
-// (routes/version.js) and the backend .env, so trailing garbage must be rejected.
+// (routes/version.js), so trailing garbage must be rejected.
 const SEMVER_RE = /^\d+\.\d+\.\d+$/
 
 // Register the getVersion/setVersion IPC pair for one component. The getter reads
@@ -507,8 +507,8 @@ function registerVersionIpc(name, pkgPath, extraWriteFns) {
   })
 }
 
-registerVersionIpc('launcher', config.paths.launcherPkg, [v => setRouteVersion(config.paths.versionRoute, v)])
-registerVersionIpc('client', config.paths.clientPkg, [v => setEnvVar(config.paths.backendEnv, 'CLIENT_VERSION', v)])
+registerVersionIpc('launcher', config.paths.launcherPkg, [v => setRouteVersion(config.paths.versionRoute, 'LATEST_VERSION', v)])
+registerVersionIpc('client', config.paths.clientPkg, [v => setRouteVersion(config.paths.versionRoute, 'CLIENT_VERSION', v)])
 
 function backendModule(name) {
   return require(path.join(config.paths.backend, 'sources', name))
