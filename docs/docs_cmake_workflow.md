@@ -6,15 +6,17 @@ The server manager's Build tab has a **Native (C++)** button that runs this whol
 flow for you (`server-manager/src/build.js` -> `buildNative`), or `build native`
 in the manager console. It uses the same flags as the flatrim CI workflow.
 
-Prerequisite on this box: VS 2022 Community is installed on X: but **without** the
-C++ workload, so nothing can compile yet. Add it, elevated:
+Toolchain state: VS 2022 Community lives at
+`X:\Program Files\Microsoft Visual Studio\2022\Community`, and the C++ workload
+was added on 2026-07-28 (MSVC 14.44, Windows SDK 10.0.26100, CMake 3.31.6).
+If it ever needs reinstalling, run elevated:
 
 ```
-"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify ^
-  --productId Microsoft.VisualStudio.Product.Community ^
-  --channelId VisualStudio.17.Release ^
-  --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --norestart
+"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "X:\Program Files\Microsoft Visual Studio\2022\Community" --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --norestart
 ```
+
+Do not add `--wait`; `vs_installer.exe` rejects it with exit code 87 (it is a
+flag for the `vs_community.exe` bootstrapper, not the installer).
 
 That brings MSVC v143, the Windows SDK and CMake. The first native build then
 compiles every vcpkg dependency (expect 1-3 hours and tens of GB); later builds

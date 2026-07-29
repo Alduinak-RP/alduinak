@@ -404,11 +404,16 @@ async function runBuild(kind) {
   buildBusy = true
   try {
     const b = builder()
-    if (kind === 'server')   return await b.buildServer()
-    if (kind === 'launcher') return await b.buildLauncher()
-    if (kind === 'client')   return await b.buildClient()
-    if (kind === 'native')   return await b.buildNative()
-    return { ok: false, error: `unknown build ${kind}` }
+    let r
+    if (kind === 'server')        r = await b.buildServer()
+    else if (kind === 'launcher') r = await b.buildLauncher()
+    else if (kind === 'client')   r = await b.buildClient()
+    else if (kind === 'native')   r = await b.buildNative()
+    else return { ok: false, error: `unknown build ${kind}` }
+    // Let queued build:log messages land before the renderer prints the
+    // outcome, otherwise the failure line appears above its own error
+    await new Promise(res => setTimeout(res, 100))
+    return r
   } catch (err) {
     return { ok: false, error: err.message }
   } finally { buildBusy = false }

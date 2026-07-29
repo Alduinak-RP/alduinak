@@ -24,7 +24,11 @@ class Builder {
   banner(text) { this.log(`\n==================== ${text} ====================\n`) }
 
   // Run a command, streaming combined stdout/stderr to the build console.
+  // With shell:true the command line is one string, so a spaced program path
+  // must be quoted or cmd.exe splits it ("X:\Program Files\..." -> 'X:\Program').
+  // Args with spaces need shell:false - only the caller knows if that's safe.
   run(cmd, args, cwd, label, env, shell = isWin) {
+    if (shell && isWin && /\s/.test(cmd) && !cmd.startsWith('"')) cmd = `"${cmd}"`
     return new Promise(resolve => {
       this.log(`\n$ ${label || [cmd, ...args].join(' ')}\n`)
       let child
@@ -225,12 +229,15 @@ class Builder {
     const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle')
     if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
 
+    // shell:false - cmake.exe and several args ("-G Visual Studio 17 2022",
+    // SKYRIM_DIR, the VS-bundled cmake path) contain spaces, which a shell
+    // command line would split.
     this.line('\n[native] configuring (first run compiles all vcpkg dependencies - expect 1-3 hours)…')
-    const cfg = await this.run(tc.cmake, args, config.repoRoot, 'cmake configure', { VCPKG_FEATURE_FLAGS: 'manifests' })
+    const cfg = await this.run(tc.cmake, args, config.repoRoot, 'cmake configure', { VCPKG_FEATURE_FLAGS: 'manifests' }, false)
     if (!cfg.ok) return { ok: false, error: 'cmake configure failed - see log' }
 
     this.line('\n[native] compiling…')
-    const build = await this.run(tc.cmake, ['--build', buildDir, '--config', 'Release'], config.repoRoot, 'cmake build')
+    const build = await this.run(tc.cmake, ['--build', buildDir, '--config', 'Release'], config.repoRoot, 'cmake build', null, false)
     if (!build.ok) return { ok: false, error: 'cmake build failed - see log' }
 
     // CMake writes its dist next to the build dir; report what landed so the
