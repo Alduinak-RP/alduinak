@@ -513,8 +513,10 @@ export class FormView {
         if (isOnScreen != this.isOnScreen) {
           this.isOnScreen = isOnScreen;
           if (isOnScreen) {
+            // Only the remote actor needs its 3D refreshed. Rebuilding the
+            // local player's too detaches HDT-SMP cloth (cloaks, robes) every
+            // time someone walks on screen.
             actor.queueNiNodeUpdate();
-            (Game.getPlayer() as Actor).queueNiNodeUpdate();
           }
         }
       }

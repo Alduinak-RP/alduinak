@@ -110,7 +110,14 @@ export class AdminSystem implements System {
     const mp = ctx.svr as Mp;
     let myActorId = 0;
     try { myActorId = mp.getUserActor(userId); } catch { }
-    if (!myActorId || !this.isAdminActor(mp, myActorId)) return; // silent for non-admins
+    if (!myActorId || !this.isAdminActor(mp, myActorId)) {
+      // Log the rejection with the actor's real roles: a silent no-op made
+      // misconfigured adminRoleIds impossible to diagnose from the game
+      let roles: unknown = [];
+      try { roles = mp.get(myActorId, "private.discordRoles"); } catch { }
+      this.log(`AdminSystem: refused '${type}' from actor ${myActorId.toString(16)} (not an admin). Their roles: ${JSON.stringify(roles)}. Configured: ${JSON.stringify(this.adminRoleIds)}`);
+      return;
+    }
 
     if (type === "adminMenuRequest") {
       const players = this.onlinePlayers(mp)

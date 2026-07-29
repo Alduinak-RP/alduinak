@@ -259,11 +259,17 @@ static LRESULT CALLBACK InputServiceWndProc(HWND hwnd, UINT uMsg,
                    static_cast<uint16_t>(position.y));
 
   if (uMsg == WM_INPUT) {
-    RAWINPUT input;
+    RAWINPUT input{};
     UINT size = sizeof(RAWINPUT);
 
-    GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &input,
-                    &size, sizeof(RAWINPUTHEADER));
+    // HID devices (gamepads) send variable-length data that can exceed
+    // sizeof(RAWINPUT); the call then fails and writes nothing, so branching on
+    // the struct would read uninitialised stack. Zeroing is not enough because
+    // 0 is RIM_TYPEMOUSE, so bail out explicitly on failure.
+    if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, &input,
+                        &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1)) {
+      return 0;
+    }
 
     if (input.header.dwType == RIM_TYPEKEYBOARD) {
       const auto keyboard = input.data.keyboard;

@@ -289,6 +289,12 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
 
   const auto& inventory = actor->GetInventory();
   for (auto& entry : equipmentInv.entries) {
+    // Only worn items matter here. Scanning the whole inventory meant one
+    // unknown item in the backpack rejected the update and stripped the
+    // player bare via the unequip path below.
+    if (entry.GetWorn() == Inventory::Worn::None) {
+      continue;
+    }
     if (!inventory.HasItem(entry.baseId)) {
       spdlog::warn(
         "ActionListener::OnUpdateEquipment {:x} - rejected equipment "

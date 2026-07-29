@@ -4,7 +4,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { AnimDebugSettings } from "../messages_settings/animDebugSettings";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ButtonEvent, DxScanCode, Menu } from "skyrimPlatform";
+import { ButtonEvent, DxScanCode, InputDeviceType, Menu } from "skyrimPlatform";
 import * as fs from "fs";
 
 const playerId = 0x14;
@@ -296,6 +296,10 @@ export class SweetCameraEnforcementService extends ClientListener {
     }
 
     private onButtonEvent(e: ButtonEvent) {
+        // Gamepad idCodes are bitmasks that alias onto keyboard scancodes
+        if (e.device !== InputDeviceType.Keyboard) {
+            return;
+        }
         // TODO: de-hardcode controls
         if (e.isPressed) {
             return;

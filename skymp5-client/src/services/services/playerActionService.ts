@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { closeWidget, readMenuKeyCode } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 
@@ -64,6 +64,8 @@ export class PlayerActionService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
+    // Gamepad idCodes are bitmasks that alias onto keyboard scancodes
+    if (e.device !== InputDeviceType.Keyboard) return;
     // Escape closes an open menu.
     if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
       this.closeMenu();

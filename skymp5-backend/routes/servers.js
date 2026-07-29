@@ -1,6 +1,7 @@
 'use strict'
 
 const router = require('express').Router()
+const http   = require('http')
 const config = require('../config')
 
 // Last heartbeat received from the game server via POST /:key
@@ -64,12 +65,47 @@ router.get('/:key/serverinfo', async (req, res) => {
   })
 })
 
-// Called by the SkyMP client for the server's mod list; returns a v1 manifest so the client doesn't loop on 404s
-router.get('/:key/manifest.json', (req, res) => {
+// Fetch a JSON file the game server publishes on its UI port.
+function fetchGameJson(pathname) {
+  return new Promise(resolve => {
+    const req = http.get(
+      { host: config.skyrimServerHost, port: config.skympUiPort, path: pathname, timeout: 3000 },
+      res => {
+        if (res.statusCode !== 200) { res.resume(); return resolve(null) }
+        let data = ''
+        res.on('data', c => { data += c })
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)) } catch { resolve(null) }
+        })
+      }
+    )
+    req.on('error',   () => resolve(null))
+    req.on('timeout', () => { req.destroy(); resolve(null) })
+  })
+}
+
+let modsCache = { value: null, expiresAt: 0 }
+
+// Called by the SkyMP client for the server's mod list. This used to return an
+// empty array, which made the client's load-order check always warn "you have
+// more mods than server". Proxy the game server's real manifest instead.
+// BSAs and .esl files are filtered out: the client counts only full plugins
+// (Game.getModCount excludes light plugins), so anything else skews the compare.
+router.get('/:key/manifest.json', async (req, res) => {
   if (req.params.key !== config.serverMasterKey) {
     return res.status(403).json({ error: 'Invalid master key.' })
   }
-  res.json({ versionMajor: 1, mods: [] })
+  const now = Date.now()
+  if (!modsCache.value || now >= modsCache.expiresAt) {
+    const manifest = await fetchGameJson('/manifest.json') || await fetchGameJson('/data/manifest.json')
+    const mods = Array.isArray(manifest?.mods)
+      ? manifest.mods.filter(m => m && typeof m.filename === 'string' && !/\.(bsa|esl)$/i.test(m.filename))
+      : []
+    // Only cache a real answer; an empty list means the game server was down
+    if (mods.length) modsCache = { value: mods, expiresAt: now + 60000 }
+    else return res.json({ versionMajor: 1, mods: [] })
+  }
+  res.json({ versionMajor: 1, mods: modsCache.value })
 })
 
 // Called by MasterClient every 5 s: POST /api/servers/:key

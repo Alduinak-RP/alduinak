@@ -299,10 +299,20 @@ export const getDiff = (
     );
     if (sameFromLeft) {
       sameFromLeft.count -= e.count;
-    } else {
-      lhsCopy.entries.push(e);
-      lhsCopy.entries[lhsCopy.entries.length - 1].count *= -1;
+      return;
     }
+    // The server stores items without extras (enchantment, charge, soul), so an
+    // enchanted item never matches its plain server entry. Falling through here
+    // would delete the player's real item. Match on baseId alone in that case.
+    const plainFromLeft = lhsCopy.entries.find(
+      (x) => x.baseId === e.baseId && hasExtras(x) && !hasExtras(e)
+    );
+    if (plainFromLeft) {
+      plainFromLeft.count -= e.count;
+      return;
+    }
+    lhsCopy.entries.push(e);
+    lhsCopy.entries[lhsCopy.entries.length - 1].count *= -1;
   });
 
   return { entries: lhsCopy.entries.filter((x) => x.count !== 0) };
