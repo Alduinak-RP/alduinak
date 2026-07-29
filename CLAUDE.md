@@ -33,13 +33,24 @@ cd build
    .env, gamemode.js, or server-settings.json) so I can update them on the server
    manually. These are live files, they are not carried by a commit.
 
-2) Keep code comments concise and on one line. Do not use the em dash.
+2) Code comments (these apply to code comments only, not chat replies):
+   a) Keep comments concise, simple, and on a single line.
+   b) Do not use the em dash.
+   c) Do not comment explanations of changes made to a script.
+   d) Do not comment when the function name is self explanatory.
 
-3) Don't reinvent the wheel. Check whether this repo already has code that does
-   the job before writing a new function from scratch.
+3) Keep code concise:
+   a) Use shared functions where possible.
+   b) Don't reinvent the wheel. Check whether this repo already has code that
+      does the job before writing a new function from scratch.
 
-4) Warn me if I need to run a CI flatrim build to regenerate the .dlls, or any
-   other workflow/rebuild step, after a patch. Say which artifacts are affected.
+4) Git workflow:
+   a) Never make a PR; the user reviews code before it goes to GitHub.
+   b) Make several commits, one per step, each with a description of what was done.
+
+5) Warn me at the end of your reply if I need to take any extra steps, such as a
+   CI flatrim build to regenerate the .dlls or any other workflow/rebuild step
+   after a patch. Say which artifacts are affected.
 
 ## Deployment reality (read before promising a fix works)
 
