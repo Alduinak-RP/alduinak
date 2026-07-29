@@ -1535,6 +1535,8 @@ void MpObjectReference::ProcessActivateNormal(
         FormDesc::FromFormId(teleportWorldOrCell, worldState->espmFiles));
       activationSource.SetPos({ pos[0], pos[1], pos[2] });
       activationSource.SetAngle({ rot[0], rot[1], rot[2] });
+      // In-flight movement packets from the old cell must not rubber-band
+      activationSource.SetTeleportFlag(true);
 
     } else {
       SetOpen(!IsOpen());

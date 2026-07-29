@@ -1495,6 +1495,7 @@ void MpActor::Teleport(const LocationalData& position)
   SetCellOrWorldObsolete(position.cellOrWorldDesc);
   SetPos(position.pos);
   SetAngle(position.rot);
+  SetTeleportFlag(true);
 }
 
 void MpActor::SetSpawnPoint(const LocationalData& position)
