@@ -296,7 +296,9 @@ $('#client-save').addEventListener('click', async () => {
 })
 
 function wireBuild(btnId, fn, label) {
-  $(btnId).addEventListener('click', async e => {
+  const btn = $(btnId)
+  if (!btn) return // button removed from the UI; console "build <kind>" still works
+  btn.addEventListener('click', async e => {
     const buttons = $$('#build .action.go')
     buttons.forEach(b => b.disabled = true)
     appendLog($('#build-log'), `\n######## Building ${label} ########\n`)
@@ -312,7 +314,7 @@ wireBuild('#build-client',   () => window.mgr.buildClient(),   'client')
 wireBuild('#build-native',   () => window.mgr.buildNative(),   'native')
 
 // CI rebuild is a single GitHub API call, not a local streaming build.
-$('#build-ci').addEventListener('click', async e => {
+$('#build-ci')?.addEventListener('click', async e => {
   e.target.disabled = true
   appendLog($('#build-log'), '\nTriggering CI rebuild...\n')
   const r = await window.mgr.buildCi()

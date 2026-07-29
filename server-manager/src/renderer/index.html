@@ -71,16 +71,8 @@
           <small>Rebuilds the front-end UI and skymp5-client.js into build/dist/client, then zips the client files into skymp-client.zip for the launcher. Drop the CI <code>dist</code> (.dll) into build/dist/client first; set Version first.</small>
           <button id="build-client" class="action go">Build client</button>
         </div>
-<!--        <div class="build-col">
-          <h3>Native (C++)</h3>
-          <small>Compiles <code>SkyrimPlatform.dll</code> + <code>scam_native.node</code> here with CMake/MSVC, same flags as the flatrim CI. Needs VS 2022 with the "Desktop development with C++" workload; the first run compiles all vcpkg dependencies and takes hours. Output lands in build/native/dist.</small>
-          <button id="build-native" class="action go">Build DLLs locally</button>
-        </div>
-        <div class="build-col">
-          <h3>CI Rebuild</h3>
-          <small>Triggers the flatrim CI (dist-windows-flatrim.yml) on GitHub to rebuild the native binaries (scam_native.node + client dlls). Needs ALDUINAK_GH_TOKEN in the backend .env. Watch progress on GitHub Actions.</small>
-          <button id="build-ci" class="action go">Trigger CI rebuild</button>
-        </div>
+        <!-- Native (C++) and CI Rebuild buttons removed; the console still
+             accepts "build native" if a local DLL build is ever wanted. -->
       </div>
       <pre id="build-log" class="log"></pre>
     </section>
@@ -106,7 +98,6 @@
       </div>
       <div id="settings-form" class="settings-form"></div>
     </section>
-	-->
   </main>
 
   <script src="renderer.js"></script>
