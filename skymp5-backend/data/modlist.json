@@ -12,6 +12,13 @@
     "source": "url"
   },
   {
+    "name": "Missives 2.03 SSE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 17576
+  },
+  {
     "name": "Winterhold Restored",
     "required": true,
     "enabled": true,

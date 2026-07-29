@@ -10,7 +10,7 @@
     "build:win": "electron-builder --win"
   },
   "dependencies": {
-    "mongodb": "^6.0.0",
+    "mongodb": "^6.21.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {
@@ -20,12 +20,27 @@
   "build": {
     "appId": "com.alduinak.manager",
     "productName": "Alduinak Server Manager",
-    "directories": { "output": "../build/server-manager" },
-    "files": ["src/**/*", "package.json"],
+    "directories": {
+      "output": "../build/server-manager"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "requestedExecutionLevel": "requireAdministrator"
     },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
