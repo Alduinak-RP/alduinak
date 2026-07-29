@@ -17,6 +17,7 @@ import { logTrace } from "../../logging";
 
 const PEERS_INTERVAL_MS = 400;
 const TOKEN_RETRY_MS = 5000;
+const AFK_PING_INTERVAL_MS = 60000;
 const PLAYER_ID_SPACE = 0xff000000;
 
 const MODE_PERSIST_DELAY_MS = 1000;
@@ -58,6 +59,7 @@ export class VoiceService extends ClientListener {
   private micDeniedShown = false;
   private nextTokenAttemptAt = 0;
   private nextPeersAt = 0;
+  private nextAfkPingAt = 0;
 
   // A throw here would abort the shared event dispatch chain and take input
   // and movement processing down with it; voice must never do that
@@ -88,6 +90,7 @@ export class VoiceService extends ClientListener {
       }
       this.pttDown = true;
       this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(true)`);
+      this.sendAfkPing();
     } else if (e.isUp && this.pttDown) {
       this.releasePtt();
     }
@@ -259,6 +262,14 @@ export class VoiceService extends ClientListener {
       this.nextPeersAt = now + PEERS_INTERVAL_MS;
       this.pushPeers();
     }
+
+    if (this.pttDown && now >= this.nextAfkPingAt) this.sendAfkPing();
+  }
+
+  // Talking counts as activity for the server's AFK autokick
+  private sendAfkPing() {
+    this.nextAfkPingAt = Date.now() + AFK_PING_INTERVAL_MS;
+    sendCustomPacket(this.controller, { customPacketType: "afkPing" });
   }
 
   // Distances in game units keyed by refrId hex = the LiveKit identity scheme
