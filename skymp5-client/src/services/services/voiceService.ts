@@ -82,10 +82,12 @@ export class VoiceService extends ClientListener {
     }
     if (e.code !== this.voiceKey) return;
 
-    if (e.isDown && !this.pttDown) {
+    // isHeld frames let a V hold that outlives the Alt+V cycle start
+    // transmitting once Alt releases (isDown fires only on the press frame)
+    if ((e.isDown || e.isHeld) && !this.pttDown) {
       if (this.sp.browser.isFocused()) return; // typing in chat
       if (this.altDown) {
-        this.cycleMode();
+        if (e.isDown) this.cycleMode();
         return;
       }
       this.pttDown = true;
@@ -238,6 +240,13 @@ export class VoiceService extends ClientListener {
     if (this.disabledByServer) return;
     const now = Date.now();
     const myRefr = this.myRefrId();
+
+    // Alt-Tab can swallow the Alt keyup, leaving V stuck in cycle mode
+    if (this.altDown
+      && !this.sp.Input.isKeyPressed(DxScanCode.LeftAlt)
+      && !this.sp.Input.isKeyPressed(DxScanCode.RightAlt)) {
+      this.altDown = false;
+    }
 
     // Chat focus steals the key-up event, so drop the mic when typing starts;
     // same when our actor despawns (character park, connection loss)

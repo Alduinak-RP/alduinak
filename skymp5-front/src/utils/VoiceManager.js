@@ -168,6 +168,10 @@ class VoiceManager {
 
   async setPtt(down) {
     this.ptt = !!down;
+    // The banner doubles as the transmit indicator: solid while the mic is
+    // open, instant hide on release
+    if (this.ptt) this.showBanner(this.mode);
+    else this.hideBanner();
     if (!this.room) return;
     try {
       await this.room.localParticipant.setMicrophoneEnabled(this.ptt);
@@ -236,8 +240,8 @@ class VoiceManager {
     const img = document.createElement('img');
     img.id = 'alduinak-voice-banner';
     img.style.cssText =
-      'position:fixed;bottom:6vh;left:2vw;z-index:99999;width:18vw;min-width:180px;' +
-      'max-width:340px;height:auto;pointer-events:none;opacity:0;' +
+      'position:fixed;bottom:6vh;left:2vw;z-index:99999;width:9vw;min-width:110px;' +
+      'max-width:170px;height:auto;pointer-events:none;opacity:0;' +
       'transition:opacity .18s;user-select:none;';
     document.body.appendChild(img);
     this.bannerEl = img;
@@ -250,8 +254,14 @@ class VoiceManager {
     const el = this.ensureBanner();
     el.src = src;
     el.style.opacity = '1';
-    if (this.bannerTimer) clearTimeout(this.bannerTimer);
-    this.bannerTimer = setTimeout(() => { el.style.opacity = '0'; }, BANNER_MS);
+    if (this.bannerTimer) { clearTimeout(this.bannerTimer); this.bannerTimer = null; }
+    // While transmitting the banner stays until setPtt(false) hides it
+    if (!this.ptt) this.bannerTimer = setTimeout(() => { el.style.opacity = '0'; }, BANNER_MS);
+  }
+
+  hideBanner() {
+    if (this.bannerTimer) { clearTimeout(this.bannerTimer); this.bannerTimer = null; }
+    if (this.bannerEl) this.bannerEl.style.opacity = '0';
   }
 }
 

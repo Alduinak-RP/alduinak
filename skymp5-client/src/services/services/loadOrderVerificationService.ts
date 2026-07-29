@@ -14,11 +14,11 @@ interface State {
 export class LoadOrderVerificationService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.once("update", () => this.onceUpdate());
-  }
-
-  private onceUpdate() {
-    this.verifyLoadOrder();
+    this.controller.once("update", () => this.verifyLoadOrder());
+    // Re-check on every (re)connect so a stale error clears once the check passes
+    this.controller.emitter.on("connectionAccepted", () => {
+      this.controller.once("update", () => this.verifyLoadOrder());
+    });
   }
 
   private verifyLoadOrder() {
@@ -73,8 +73,8 @@ export class LoadOrderVerificationService extends ClientListener {
           return;
         }
         this.updateText(
-          'LOAD ORDER ERROR!\nCheck console for details.',
-          [255, 0, 0, 1],
+          'LOAD ORDER ERROR!\nCheck console for details.\nThis message will disappear after 60 seconds.',
+          [255, 0, 0, 1], 60,
         );
       });
   };
@@ -109,7 +109,10 @@ export class LoadOrderVerificationService extends ClientListener {
     setTextSize(statusTextId, 0.5);
     this.setState({ statusTextId });
     if (clearDelay) {
-      Utility.wait(clearDelay).then(() => this.resetText());
+      // Only clear the text this call created, never a newer one
+      Utility.wait(clearDelay).then(() => {
+        if (this.getState().statusTextId === statusTextId) this.resetText();
+      });
     }
   }
 
