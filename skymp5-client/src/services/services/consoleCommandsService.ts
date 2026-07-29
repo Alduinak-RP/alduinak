@@ -13,7 +13,7 @@ enum CmdArgument {
     String,
 }
 
-type CmdName = "additem" | "equipitem" | "placeatme" | "disable" | "mp";
+type CmdName = "additem" | "equipitem" | "placeatme" | "disable" | "markfordelete" | "mp";
 
 export class ConsoleCommandsService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -29,6 +29,7 @@ export class ConsoleCommandsService extends ClientListener {
         schemas.set("equipitem", [CmdArgument.ObjectReference, CmdArgument.BaseForm]);
         schemas.set("placeatme", [CmdArgument.ObjectReference, CmdArgument.BaseForm]);
         schemas.set("disable", [CmdArgument.ObjectReference]);
+        schemas.set("markfordelete", [CmdArgument.ObjectReference]);
         schemas.set("mp", [CmdArgument.ObjectReference, CmdArgument.String]);
         return schemas;
     }
@@ -79,6 +80,10 @@ export class ConsoleCommandsService extends ClientListener {
                 switch (schema[i]) {
                     case CmdArgument.ObjectReference:
                         args[i] = localIdToRemoteId(parseInt(`${args[i]}`));
+                        if (!args[i]) {
+                            this.sp.printConsole("no server id for the selected ref");
+                            return false;
+                        }
                         break;
                 }
             }

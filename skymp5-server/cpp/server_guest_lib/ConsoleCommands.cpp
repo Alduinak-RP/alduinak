@@ -162,6 +162,37 @@ void ExecuteDisable(MpActor& caller,
   }
 }
 
+void ExecuteMarkForDelete(MpActor& caller,
+                          const std::vector<ConsoleCommands::Argument>& args)
+{
+  EnsureAdmin(caller);
+
+  const auto targetId = static_cast<uint32_t>(args.at(0).GetInteger());
+  if (targetId == 0x14 || targetId == caller.GetFormId()) {
+    throw std::runtime_error("Refusing to delete the caller");
+  }
+
+  auto worldState = caller.GetParent();
+  auto& target = worldState->GetFormAt<MpObjectReference>(targetId);
+
+  if (target.GetFormId() < 0xff000000) {
+    throw std::runtime_error("Only server-created (ff) forms can be deleted");
+  }
+
+  if (dynamic_cast<MpActor*>(&target) != nullptr) {
+    if (target.GetChangeForm().profileId != -1) {
+      throw std::runtime_error("Refusing to delete a player character");
+    }
+    target.Delete();
+    // Destroying the form also disarms any pending respawn timer
+    std::shared_ptr<MpActor> destroyedForm;
+    worldState->DestroyForm<MpActor>(targetId, &destroyedForm);
+    return;
+  }
+
+  target.Delete();
+}
+
 void ExecuteMp(MpActor& caller,
                const std::vector<ConsoleCommands::Argument>& args)
 {
@@ -184,6 +215,8 @@ void ConsoleCommands::Execute(
     ExecutePlaceAtMe(me, args);
   } else if (!Utils::stricmp(consoleCommandName.data(), "Disable")) {
     ExecuteDisable(me, args);
+  } else if (!Utils::stricmp(consoleCommandName.data(), "MarkForDelete")) {
+    ExecuteMarkForDelete(me, args);
   } else if (!Utils::stricmp(consoleCommandName.data(), "Mp")) {
     ExecuteMp(me, args);
   } else {
