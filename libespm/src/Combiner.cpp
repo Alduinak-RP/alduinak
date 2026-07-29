@@ -98,6 +98,7 @@ std::unique_ptr<espm::CombineBrowser> Combiner::Combine()
 
     src.toComb = std::move(toComb);
     src.toRaw = std::move(toRaw);
+    src.slot = slots[i];
   }
 
   std::unique_ptr<espm::CombineBrowser> res(new CombineBrowser);
