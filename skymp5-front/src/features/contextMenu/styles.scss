@@ -1,0 +1,61 @@
+// Compact quickloot-style interaction menu anchored next to the crosshair target.
+
+.context-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
+  z-index: 48;
+
+  &__panel {
+    pointer-events: auto;
+    position: absolute;
+    min-width: 150px;
+    max-width: 240px;
+    background: rgba(10, 10, 10, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.7);
+    padding: 4px 0;
+  }
+
+  &__title {
+    color: #fff;
+    font-size: 15px;
+    letter-spacing: 1px;
+    text-align: center;
+    padding: 5px 14px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__row {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    color: #d8d8d8;
+    font-family: inherit;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    text-align: left;
+    padding: 5px 14px;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
+    &--close {
+      color: #8f8f8f;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+      margin-top: 4px;
+    }
+  }
+}

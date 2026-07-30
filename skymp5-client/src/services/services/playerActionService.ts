@@ -1,7 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, readMenuKeyCode } from "./widgetMenuUtil";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 
@@ -41,8 +41,9 @@ const events = {
   trade: 'pa:trade',
 };
 
-// Module-level so the browser-side widget setter can read it (runtime injection).
+// Module-level so the browser-side widget setter can read them (runtime injection).
 let targetName = '';
+let anchor = { x: 0.56, y: 0.5 };
 
 /**
  * Look-at-target interaction menu (default X). Looking at a player opens the
@@ -88,6 +89,7 @@ export class PlayerActionService extends ClientListener {
       if (!targetName || !this.knowsTarget(this.playerTarget)) {
         targetName = "Stranger";
       }
+      anchor = this.computeAnchor(ref);
       logTrace(this, `Opening player-action menu for`, targetName);
       this.openMenu();
     } else if (!actor) {
@@ -145,9 +147,27 @@ export class PlayerActionService extends ClientListener {
     return known.includes(remoteId);
   }
 
+  // Head position projected to normalized CSS coords; right-of-center fallback when off-screen.
+  private computeAnchor(ref: ObjectReference): { x: number; y: number } {
+    try {
+      const head = "NPC Head [Head]";
+      const [p] = this.sp.worldPointToScreenPoint([
+        this.sp.NetImmerse.getNodeWorldPositionX(ref, head, false),
+        this.sp.NetImmerse.getNodeWorldPositionY(ref, head, false),
+        this.sp.NetImmerse.getNodeWorldPositionZ(ref, head, false),
+      ]);
+      if (p[2] > 0 && p[0] > 0 && p[0] < 1 && p[1] > 0 && p[1] < 1) {
+        return { x: p[0], y: 1 - p[1] };
+      }
+    } catch (e) {
+      // node lookup can fail on unloaded refs
+    }
+    return { x: 0.56, y: 0.5 };
+  }
+
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID });
+    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID, anchor });
   }
 
   private closeMenu(): void {
@@ -157,15 +177,14 @@ export class PlayerActionService extends ClientListener {
 
   // Runs inside the CEF browser. Only injected vars + window are available.
   private playerWidgetSetter = () => {
-    const elements: any[] = [];
-    elements.push({ type: "button", text: "Trade", tags: [], click: () => window.skyrimPlatform.sendMessage(events.trade) });
-    for (let i = 0; i < ACTIONS.length; i++) {
-      const a = ACTIONS[i];
-      elements.push({ type: "button", text: a.label, tags: [], click: () => window.skyrimPlatform.sendMessage(events.action, a.id) });
-    }
-    elements.push({ type: "button", text: "close", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.close) });
-
-    const widget = { type: "form", id: WIDGET_ID, caption: "Actions: " + targetName, elements: elements };
+    const widget = {
+      type: "contextMenu",
+      id: WIDGET_ID,
+      targetName: targetName,
+      actions: ACTIONS,
+      anchor: anchor,
+      events: events,
+    };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
