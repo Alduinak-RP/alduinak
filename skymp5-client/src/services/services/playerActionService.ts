@@ -45,7 +45,7 @@ const events = {
 let targetName = '';
 
 /**
- * Look-at-target interaction menu (default Y). Looking at a player opens the
+ * Look-at-target interaction menu (default X). Looking at a player opens the
  * player-action / hold-appointment menu. Doors and containers are managed by
  * the housing key (HousingService). Drives the gamemode through its existing
  * contracts.
@@ -56,7 +56,7 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
 
-    this.menuKey = readMenuKeyCode(this.sp, "interactMenuKeyCode", DxScanCode.Y);
+    this.menuKey = readMenuKeyCode(this.sp, "interactMenuKeyCode", DxScanCode.X);
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -170,7 +170,7 @@ export class PlayerActionService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
-  private menuKey: DxScanCode = DxScanCode.Y;
+  private menuKey: DxScanCode = DxScanCode.X;
   private menuOpen = false;
   private playerTarget = 0;
 }

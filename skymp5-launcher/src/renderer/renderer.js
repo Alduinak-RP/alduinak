@@ -133,7 +133,7 @@ async function loadGameSettingsTab() {
       setKey('hk-chat', chat)
       setKey('hk-cursor', h.freeCursor != null ? h.freeCursor : 64)
       setKey('hk-housing', h.housing != null ? h.housing : 35)
-      setKey('hk-interact', h.interact != null ? h.interact : 21)
+      setKey('hk-interact', h.interact != null ? h.interact : 45)
       setKey('hk-personal', h.personal != null ? h.personal : 22)
       setKey('hk-faction', h.faction != null ? h.faction : 34)
       setKey('hk-voice-ptt', h.voicePtt != null ? h.voicePtt : 47)
