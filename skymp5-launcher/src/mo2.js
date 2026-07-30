@@ -477,7 +477,14 @@ function applyMod(modName, files, extractedDirs, modId, hash) {
 
   try { fs.rmSync(lp(buildDir), { recursive: true, force: true }) } catch {}
   try {
-    for (const f of files) writeDirective(f, buildDir, extractedDirs)
+    for (const f of files) {
+      try {
+        writeDirective(f, buildDir, extractedDirs)
+      } catch (err) {
+        // Name the file and its source: "mod failed" alone is undiagnosable
+        throw new Error(`${f.to}: ${err.message}${f.archive ? ` [archive ${f.archive}, from ${f.from}]` : ' [inline]'}`)
+      }
+    }
 
     fs.writeFileSync(lp(path.join(buildDir, 'meta.ini')), [
       '[General]', 'gameName=SkyrimSE', `modid=${modId || 0}`, `name=${folderName}`,

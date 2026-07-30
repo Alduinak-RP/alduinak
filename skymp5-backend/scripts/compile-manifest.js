@@ -207,6 +207,10 @@ async function main() {
     archives.push({ id, hash, size: st.size, name, source })
 
     for (const e of entries) {
+      // Every empty file shares one size+crc key, so indexing them makes an
+      // unrelated archive the source for any mod's empty files. They cost
+      // nothing inline, so leave them out and let directiveFor emit them.
+      if (e.size === 0) continue
       const key = e.size + ':' + e.crc
       if (!index.has(key)) index.set(key, { id, from: e.path })   // first archive wins
     }

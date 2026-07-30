@@ -25,19 +25,23 @@ const ini    = require('./ini')
 
 const isDev = process.argv.includes('--dev')
 
-// Dev logger
-const LOG_FILE = isDev ? path.join(require('os').tmpdir(), 'alduinak-install.log') : null
+// Always log installs: a packaged launcher that fails on a player's machine is
+// undiagnosable without one. Dev builds keep using the temp path.
+const LOG_FILE = isDev
+  ? path.join(require('os').tmpdir(), 'alduinak-install.log')
+  : path.join(app.getPath('userData'), 'install.log')
 
 function log(...args) {
   const line = args.join(' ')
   console.log(line)
-  if (LOG_FILE) fs.appendFileSync(LOG_FILE, line + '\n')
+  try { fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${line}\n`) } catch { }
 }
 
-if (LOG_FILE) {
+try {
+  fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true })
+  // Truncate per run so the file stays small and always covers the last attempt
   fs.writeFileSync(LOG_FILE, `=== alduinak install log ${new Date().toISOString()} ===\n`)
-  console.log('[dev] logging to', LOG_FILE)
-}
+} catch { }
 
 // Route module debug output through the same logger
 mo2.setLogger(log)
