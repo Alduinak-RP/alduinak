@@ -1,5 +1,12 @@
 // Compact quickloot-style interaction menu anchored next to the crosshair target.
 
+// Same 280px corner knotwork as the admin frame, on a smaller sheet.
+$cm-frame: url('../../img/skyrim/Boxes/Info Card Small.png');
+$cm-frame-slice: 280;
+$cm-frame-width: 18px;
+$cm-rule: url('../../img/skyrim/Bars/Divider Mid.png');
+$cm-marker: url('../../img/skyrim/Menu Icons/Indicator.png');
+
 .context-menu {
   position: fixed;
   top: 0;
@@ -13,12 +20,19 @@
   &__panel {
     pointer-events: auto;
     position: absolute;
-    min-width: 150px;
-    max-width: 240px;
-    background: rgba(10, 10, 10, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 0 12px rgba(0, 0, 0, 0.7);
-    padding: 4px 0;
+    min-width: 178px;
+    max-width: 264px;
+    padding: 2px 0 4px;
+    background-color: rgba(6, 6, 6, 0.9);
+    background-clip: padding-box;
+    border-style: solid;
+    border-color: transparent;
+    border-width: $cm-frame-width;
+    border-image-source: $cm-frame;
+    border-image-slice: $cm-frame-slice;
+    border-image-width: $cm-frame-width;
+    border-image-repeat: stretch;
+    box-shadow: 0 0 14px rgba(0, 0, 0, 0.75);
   }
 
   &__title {
@@ -26,15 +40,19 @@
     font-size: 15px;
     letter-spacing: 1px;
     text-align: center;
-    padding: 5px 14px 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 2px 6px 8px;
     margin-bottom: 4px;
+    background-image: $cm-rule;
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: 100% 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   &__row {
+    position: relative;
     display: block;
     width: 100%;
     background: none;
@@ -44,12 +62,31 @@
     font-size: 14px;
     letter-spacing: 0.5px;
     text-align: left;
-    padding: 5px 14px;
+    padding: 5px 8px 5px 21px;
     cursor: pointer;
 
+    &::before {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 50%;
+      width: 10px;
+      height: 10px;
+      margin-top: -5px;
+      opacity: 0;
+      background-image: $cm-marker;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+    }
+
     &:hover {
-      background: rgba(255, 255, 255, 0.14);
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.03));
       color: #fff;
+
+      &::before {
+        opacity: 1;
+      }
     }
 
     &--close {

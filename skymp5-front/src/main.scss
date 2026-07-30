@@ -10,6 +10,7 @@
 
 body {
   overflow: hidden;
+  font-family: 'Futura Condensed', 'Din-pro', sans-serif;
 }
 
 .App {
@@ -47,6 +48,24 @@ body {
 @font-face {
   font-family: 'Futura-pt CB';
   src: url('./fonts/futura-pt-cond-book.ttf');
+}
+
+@font-face {
+  font-family: 'Futura Condensed';
+  font-weight: 300;
+  src: url('./img/skyrim/Fonts/Futura Condensed Light.ttf');
+}
+
+@font-face {
+  font-family: 'Futura Condensed';
+  font-weight: 500;
+  src: url('./img/skyrim/Fonts/Futura Condensed Medium.ttf');
+}
+
+@font-face {
+  font-family: 'Futura Condensed';
+  font-weight: 700;
+  src: url('./img/skyrim/Fonts/Futura Condensed Bold.ttf');
 }
 
 @font-face {

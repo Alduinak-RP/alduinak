@@ -34,6 +34,18 @@ Tons of installed vcpkg ports have their own licenses/copyrights. You can read a
 
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+
+This software uses Skyrim Interface Elements by SanneARBY:
+
+https://www.nexusmods.com/skyrimspecialedition/mods/82169
+
+UI artwork under skymp5-front/src/img/skyrim (bars, boxes, menu icons, key
+glyphs, loading icons and the bundled Futura Condensed fonts) comes from that
+resource pack. Credit SanneARBY in anything that ships these assets.
+
+--------------------------------------------------------------------------------
+
 Font licenses:
 
 Black Horse Courier - modified Bankir-Retro by A. L. Gopfmann 2006, free

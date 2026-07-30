@@ -40,8 +40,10 @@ module.exports = {
         use: ["style-loader", "css-loader"],
       },
       {
+        // Native webpack 5 asset handling. The old file-loader rule emitted JS
+        // stubs in place of images, so every SCSS url() resolved to a script.
         test: /\.(png|svg|jpg|gif|mp3|wav)$/,
-        use: "file-loader",
+        type: "asset/resource",
       },
     ],
   },

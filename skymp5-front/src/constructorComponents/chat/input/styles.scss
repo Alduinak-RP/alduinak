@@ -20,6 +20,11 @@
   width: 100%;
   border-radius: 15px;
   background-color: rgba(0, 0, 0, var(--chat-bg-alpha, 0.75));
+  // Thin Skyrim rule along the bottom edge of the input row
+  background-image: url('../../../img/skyrim/Bars/Bottom Bar Ultra Thin.png');
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: 100% 6px;
   display: flex;
   flex-direction: row;
   min-height: 48px;
@@ -48,7 +53,7 @@
   margin-bottom: 0;
   padding-left: 8px;
   padding-right: 8px;
-  font-family: Din-pro;
+  font-family: 'Futura Condensed', Din-pro;
   font-size: 16px;
   color: #fafafa;
   opacity: 0;

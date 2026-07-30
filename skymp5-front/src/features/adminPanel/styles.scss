@@ -2,10 +2,28 @@
 
 $admin-gold: #c8b48a;
 $admin-gold-dim: #8a7a55;
-$admin-bg: rgba(12, 12, 12, 0.92);
+$admin-bg: rgba(6, 6, 6, 0.95);
 $admin-pane-bg: rgba(0, 0, 0, 0.45);
 $admin-border: rgba(200, 180, 138, 0.45);
 $admin-online: #6fce6f;
+
+// Skyrim card art: 280px corner knotwork, frame rule ~65px in, opaque black interior.
+$admin-frame: url('../../img/skyrim/Boxes/Info Card - Wide.png');
+$admin-frame-slice: 280;
+$admin-frame-width: 34px;
+
+// Small Bar: nested chevron caps occupy the outer 205px, the strip between them is uniform.
+$admin-tab-bar: url('../../img/skyrim/Bars/Small Bar.png');
+$admin-tab-slice: 205;
+$admin-tab-cap: 26px;
+
+// Message Card Selector: a gem bracket in columns 0..100 and 184..284 of a 286px sheet.
+$admin-selector: url('../../img/skyrim/Boxes/Message Card Selector.png');
+$admin-marker: url('../../img/skyrim/Menu Icons/Indicator.png');
+$admin-rule: url('../../img/skyrim/Bars/Divider Mid.png');
+
+// Every row reserves the same side gutter so the selector art never shifts the columns.
+$admin-row-gutter: 16px;
 
 .admin-panel {
   position: fixed;
@@ -25,20 +43,30 @@ $admin-online: #6fce6f;
     position: relative;
     width: 1040px;
     max-width: 94%;
-    background: $admin-bg;
-    border: 1px solid $admin-border;
-    box-shadow: 0 0 24px rgba(0, 0, 0, 0.8);
     color: $admin-gold;
-    padding: 16px 20px 20px;
+    padding: 10px 12px 14px;
+    background-color: $admin-bg;
+    background-clip: padding-box;
+    border-style: solid;
+    border-color: transparent;
+    border-width: $admin-frame-width;
+    border-image-source: $admin-frame;
+    border-image-slice: $admin-frame-slice;
+    border-image-width: $admin-frame-width;
+    border-image-repeat: stretch;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.8);
   }
 
   &__header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid $admin-border;
-    padding-bottom: 10px;
-    margin-bottom: 10px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    background-image: $admin-rule;
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: 100% 5px;
   }
 
   &__title {
@@ -59,11 +87,13 @@ $admin-online: #6fce6f;
 
   &__tab {
     background: $admin-pane-bg;
-    border: 1px solid $admin-border;
+    border-style: solid;
+    border-color: transparent;
+    border-width: 0 $admin-tab-cap;
     color: $admin-gold-dim;
     font-family: inherit;
     font-size: 17px;
-    padding: 6px 22px;
+    padding: 7px 4px;
     cursor: pointer;
 
     &:hover {
@@ -72,9 +102,12 @@ $admin-online: #6fce6f;
 
     &--active {
       color: #fff;
-      border-color: $admin-gold;
-      background: rgba(64, 54, 30, 0.5);
-      box-shadow: inset 0 0 10px rgba(200, 180, 138, 0.18);
+      text-shadow: 0 0 8px rgba(200, 180, 138, 0.6);
+      background-clip: padding-box;
+      border-image-source: $admin-tab-bar;
+      border-image-slice: 0 $admin-tab-slice fill;
+      border-image-width: 0 $admin-tab-cap;
+      border-image-repeat: stretch;
     }
   }
 
@@ -129,23 +162,43 @@ $admin-online: #6fce6f;
     min-height: 100px;
     border: 1px solid rgba(200, 180, 138, 0.2);
     background: $admin-pane-bg;
+    scrollbar-width: thin;
+
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: rgba(200, 180, 138, 0.35);
+
+      &:hover {
+        background: rgba(200, 180, 138, 0.6);
+      }
+    }
   }
 
   &__row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 8px;
+    padding: 4px 0;
     font-size: 14px;
-    border-bottom: 1px solid rgba(200, 180, 138, 0.12);
+    border-style: solid;
+    border-color: transparent transparent rgba(200, 180, 138, 0.12);
+    border-width: 0 $admin-row-gutter 1px;
 
     &--head {
       font-size: 13px;
       color: $admin-gold-dim;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      border: 1px solid rgba(200, 180, 138, 0.2);
-      border-bottom: none;
+      border-color: rgba(200, 180, 138, 0.2) transparent transparent;
+      border-width: 1px $admin-row-gutter 0;
       background: rgba(0, 0, 0, 0.6);
     }
 
@@ -158,9 +211,33 @@ $admin-online: #6fce6f;
     }
 
     &--selected {
-      background: rgba(64, 54, 30, 0.7);
-      box-shadow: inset 0 0 10px rgba(200, 180, 138, 0.25);
       color: #fff;
+      background: linear-gradient(
+        90deg,
+        rgba(200, 180, 138, 0.3),
+        rgba(200, 180, 138, 0.12) 55%,
+        rgba(200, 180, 138, 0.03)
+      );
+      box-shadow: inset 0 0 12px rgba(200, 180, 138, 0.22);
+      // Right gem only; the left gutter carries the marker below.
+      border-image-source: $admin-selector;
+      border-image-slice: 0 101 0 0;
+      border-image-width: 0 $admin-row-gutter 0 0;
+      border-image-repeat: stretch;
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: -13px;
+        top: 50%;
+        width: 11px;
+        height: 11px;
+        margin-top: -5.5px;
+        background-image: $admin-marker;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+      }
     }
 
     &--offline {
@@ -170,7 +247,7 @@ $admin-online: #6fce6f;
 
     &--location {
       justify-content: space-between;
-      padding: 6px 10px;
+      padding: 6px 0;
       font-size: 16px;
     }
   }

@@ -401,6 +401,7 @@ const Chat = (props) => {
                             {'⚙ Settings'}
                           </button>
                         </div>
+                        <div className='chat-divider' />
                         <div className='chat-input'>
                           <ChatInput
                             id="chatInput"
