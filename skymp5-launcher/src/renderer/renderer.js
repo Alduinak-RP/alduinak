@@ -80,7 +80,7 @@ const GHK_MAP = {
   'ghk-activate': 'Activate', 'ghk-jump': 'Jump', 'ghk-sprint': 'Sprint',
   'ghk-sneak': 'Sneak', 'ghk-shout': 'Shout', 'ghk-pov': 'Toggle POV',
 }
-const GFX_INPUT_IDS = ['gfx-windowmode', 'gfx-resolution', 'gfx-fade-actor', 'gfx-fade-item', 'gfx-fade-object', 'gfx-fade-grass', 'gfx-fade-shadow']
+const GFX_INPUT_IDS = ['gfx-windowmode', 'gfx-resolution']
 
 function setInputsDisabled(ids, disabled) {
   for (const id of ids) { const el = document.getElementById(id); if (el) el.disabled = !!disabled }
@@ -100,10 +100,6 @@ async function loadGameSettingsTab() {
         for (const r of list) { const o = document.createElement('option'); o.value = r; o.textContent = r; resSel.appendChild(o) }
         if (cur) resSel.value = cur
       }
-      const f = g.fades || {}
-      const setv = (id, v) => { const e = document.getElementById(id); if (e) e.value = (v === undefined || v === null) ? '' : v }
-      setv('gfx-fade-actor', f.actor); setv('gfx-fade-item', f.item); setv('gfx-fade-object', f.object)
-      setv('gfx-fade-grass', f.grass); setv('gfx-fade-shadow', f.shadow)
       const iy = document.getElementById('gfx-invert-y'); if (iy) iy.checked = !!g.invertY
       const hint = document.getElementById('gfx-path-hint')
       if (hint) hint.textContent = g.exists ? `Editing: ${g.path}` : `Locked until the game is installed (creates ${g.path})`
@@ -148,14 +144,12 @@ async function saveGameSettingsTab() {
     const resSel = document.getElementById('gfx-resolution')
     let width = '', height = ''
     if (resSel && /^\d+x\d+$/.test(resSel.value)) { const p = resSel.value.split('x'); width = p[0]; height = p[1] }
-    const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : '' }
     const iy = document.getElementById('gfx-invert-y')
     if (wm && !wm.disabled) {
       await window.electronAPI.graphicsSave({
         windowMode: wm ? wm.value : 'windowed',
         width, height,
         invertY: !!(iy && iy.checked),
-        fades: { actor: val('gfx-fade-actor'), item: val('gfx-fade-item'), object: val('gfx-fade-object'), grass: val('gfx-fade-grass'), shadow: val('gfx-fade-shadow') },
       })
     }
     const ghkFirst = document.getElementById('ghk-activate')

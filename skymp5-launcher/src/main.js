@@ -284,7 +284,6 @@ ipcMain.handle('graphics:load', () => {
     const p = skyrimPrefsPath()
     const data = ini.read(p)
     const disp = data['Display'] || {}
-    const grass = data['Grass'] || {}
     const controls = data['Controls'] || {}
     const full = String(disp['bFull Screen'] || '0') === '1'
     // Default to borderless when the ini doesn't say otherwise (missing file
@@ -306,13 +305,6 @@ ipcMain.handle('graphics:load', () => {
       width:  disp['iSize W'] || orig['iSize W'] || '1920',
       height: disp['iSize H'] || orig['iSize H'] || '1080',
       invertY: String(controls['bInvertYValues'] || '0') === '1',
-      fades: {
-        actor:  disp['fLODFadeOutMultActors']  || '',
-        item:   disp['fLODFadeOutMultItems']   || '',
-        object: disp['fLODFadeOutMultObjects'] || '',
-        grass:  grass['fGrassStartFadeDistance'] || '',
-        shadow: disp['fShadowDistance']        || '',
-      },
     }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -328,14 +320,7 @@ ipcMain.handle('graphics:save', (_e, g) => {
     else if (g.windowMode === 'windowed')   { display['bFull Screen'] = '0'; display['bBorderless'] = '0' }
     if (g.width)  display['iSize W'] = String(g.width)
     if (g.height) display['iSize H'] = String(g.height)
-    const f = g.fades || {}
-    const num = (x) => (x !== undefined && x !== null && String(x).trim() !== '')
-    if (num(f.actor))  display['fLODFadeOutMultActors']  = String(f.actor)
-    if (num(f.item))   display['fLODFadeOutMultItems']   = String(f.item)
-    if (num(f.object)) display['fLODFadeOutMultObjects'] = String(f.object)
-    if (num(f.shadow)) display['fShadowDistance']        = String(f.shadow)
     const edits = { Display: display, Controls: { bInvertYValues: g.invertY ? '1' : '0' } }
-    if (num(f.grass)) edits['Grass'] = { fGrassStartFadeDistance: String(f.grass) }
     ini.write(skyrimPrefsPath(), edits)
     return { ok: true, path: skyrimPrefsPath() }
   } catch (err) {
