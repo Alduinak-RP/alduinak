@@ -9,6 +9,7 @@ import { logTrace } from "../../logging";
 const BOUND_HANDS_ANIM_START = "OffsetBoundStandingStart";
 const CARRY_HOLD_ANIM_START = "OffsetCarryBasketStart";
 const OFFSET_STOP_ANIM = "OffsetStop";
+const CARRY_OVERLOAD = 10000;
 
 /**
  * Applies the local player's restraint state (bound hands, being carried, and
@@ -46,6 +47,35 @@ export class RestraintService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+
+    // Jumping ends the offset pose; block it while restrained
+    for (const anim of ["JumpStandingStart", "JumpDirectionalStart"]) {
+      this.sp.hooks.sendAnimationEvent.add({
+        enter: (ctx) => { if (this.boundHands || this.carried) ctx.animEventName = ""; },
+        leave: () => { },
+      }, 0x14, 0x14, anim);
+    }
+    // Falling off a ledge still lands; re-apply the pose afterwards
+    for (const anim of ["JumpLand", "JumpLandDirectional"]) {
+      this.sp.hooks.sendAnimationEvent.add({
+        enter: () => { },
+        leave: () => {
+          if (this.boundHands || this.carried) {
+            this.appliedPose = "";
+            this.applyState();
+          }
+        },
+      }, 0x14, 0x14, anim);
+    }
+    // A game reload wipes the pose; restore it
+    this.controller.emitter.on("gameLoad", () => {
+      if (this.boundHands || this.carried || this.carrying) {
+        this.appliedPose = "";
+        this.appliedCarrierAnim = "";
+        this.applyState();
+        this.applyCarryAnim();
+      }
+    });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -115,7 +145,7 @@ export class RestraintService extends ClientListener {
     }
   }
 
-  // The carrier's carry-hold pose only, no control change; deferred like applyState.
+  // The carrier's carry-hold pose plus over-encumbrance; deferred like applyState.
   private applyCarryAnim(): void {
     this.controller.once("update", () => {
       const player = this.sp.Game.getPlayer();
@@ -126,6 +156,15 @@ export class RestraintService extends ClientListener {
       if (desired !== this.appliedCarrierAnim) {
         this.sp.Debug.sendAnimationEvent(player, desired);
         this.appliedCarrierAnim = desired;
+      }
+      // Carrying a body over-encumbers: blocks sprint/jump and forces walk.
+      // Delta-based so fortify effects survive; guarded so re-sends can't stack.
+      if (this.carrying && !this.encumbranceApplied) {
+        player.modActorValue("CarryWeight", -CARRY_OVERLOAD);
+        this.encumbranceApplied = true;
+      } else if (!this.carrying && this.encumbranceApplied) {
+        player.modActorValue("CarryWeight", CARRY_OVERLOAD);
+        this.encumbranceApplied = false;
       }
     });
   }
@@ -138,4 +177,5 @@ export class RestraintService extends ClientListener {
   private carrying = false;
   private carrierAnim = CARRY_HOLD_ANIM_START;
   private appliedCarrierAnim = "";
+  private encumbranceApplied = false;
 }

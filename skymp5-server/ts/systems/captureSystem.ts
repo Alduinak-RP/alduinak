@@ -47,8 +47,9 @@ const RESTRAINED_PROP = "private.restrained";
 const DEFAULT_MANACLES = 0;
 
 // Carry re-snap interval and min carrier movement (squared game units); throttling keeps reliable Teleport packets and rubber-banding to a minimum
-const CARRY_FOLLOW_INTERVAL_MS = 120;
-const CARRY_FOLLOW_MIN_MOVE_SQ = 16 * 16;
+const CARRY_FOLLOW_INTERVAL_MS = 350;
+const CARRY_FOLLOW_MIN_MOVE_SQ = 96 * 96;
+const CARRY_MAX_DRIFT_SQ = 256 * 256;
 
 // A consent prompt lapses if the target doesn't answer in time. Overridable via "captureConsentTimeoutMs".
 const DEFAULT_CONSENT_TIMEOUT_MS = 20000;
@@ -158,16 +159,37 @@ export class CaptureSystem implements System {
     const mp = ctx.svr as Mp;
     for (const [carrierActorId, carriedActorId] of Array.from(this.carrying)) {
       try {
+        // A dead carrier drops the body; a dead body slips free
+        if (this.isDowned(mp, carrierActorId)) {
+          this.stopCarry(ctx, carriedActorId);
+          this.notice(ctx, this.userOf(ctx, carriedActorId), "Your carrier collapsed.");
+          continue;
+        }
+        if (this.isDowned(mp, carriedActorId)) {
+          this.stopCarry(ctx, carriedActorId);
+          continue;
+        }
         const loc = mp.get(carrierActorId, "locationalData");
         if (!loc || !Array.isArray(loc.pos)) {
           continue;
         }
         const [x, y, z] = loc.pos as number[];
-        const prev = this.lastCarryPos.get(carriedActorId);
-        if (prev) {
-          const dx = x - prev[0], dy = y - prev[1], dz = z - prev[2];
-          if (dx * dx + dy * dy + dz * dz < CARRY_FOLLOW_MIN_MOVE_SQ) {
-            continue; // carrier hasn't moved enough to bother
+        // Each snap is a full engine teleport on the carried client; only
+        // resend when the body actually drifted or changed cell
+        const carriedLoc = mp.get(carriedActorId, "locationalData");
+        if (carriedLoc && Array.isArray(carriedLoc.pos) &&
+          carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) {
+          const dx = x - carriedLoc.pos[0], dy = y - carriedLoc.pos[1], dz = z - carriedLoc.pos[2];
+          if (dx * dx + dy * dy + dz * dz < CARRY_MAX_DRIFT_SQ) {
+            continue;
+          }
+        } else {
+          const prev = this.lastCarryPos.get(carriedActorId);
+          if (prev && carriedLoc && carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) {
+            const dx = x - prev[0], dy = y - prev[1], dz = z - prev[2];
+            if (dx * dx + dy * dy + dz * dz < CARRY_FOLLOW_MIN_MOVE_SQ) {
+              continue;
+            }
           }
         }
         mp.set(carriedActorId, "locationalData", {
@@ -235,8 +257,8 @@ export class CaptureSystem implements System {
     if (info.carried) {
       const carrier = info.offlineCarrierActorId ?? info.captorActorId;
       info.offlineCarrierActorId = undefined;
-      if (this.userOf(ctx, carrier) >= 0 && !this.carrying.has(carrier) &&
-        !this.carriedBy.has(actorId)) {
+      if (this.userOf(ctx, carrier) >= 0 && !this.isDowned(mp, carrier) &&
+        !this.carrying.has(carrier) && !this.carriedBy.has(actorId)) {
         this.applyCarry(ctx, actorId, carrier);
         return;
       }
