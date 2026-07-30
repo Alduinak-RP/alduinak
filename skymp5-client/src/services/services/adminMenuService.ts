@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
@@ -47,7 +47,7 @@ export class AdminMenuService extends ClientListener {
       this.closeMenu();
       return;
     }
-    if (this.sp.browser.isFocused()) return;
+    if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
     sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
   }
 

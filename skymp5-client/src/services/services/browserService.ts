@@ -121,6 +121,16 @@ export class BrowserService extends ClientListener {
     return this.badMenus.includes(menu as Menu);
   }
 
+  // Typing in the console must not reach menu hotkeys or push-to-talk
+  isConsoleOpen(): boolean {
+    return this.badMenusOpen.has(Menu.Console);
+  }
+
+  // Any menu that swallows gameplay input (inventory, map, console, ...)
+  isBlockingMenuOpen(): boolean {
+    return this.badMenusOpen.size > 0;
+  }
+
   private badMenusOpen = new Set<string>();
 
   private freeCursorKey: DxScanCode = DxScanCode.F6;

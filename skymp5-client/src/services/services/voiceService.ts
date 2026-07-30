@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket } from "./customPacketUtil";
-import { readMenuKeyCode } from "./widgetMenuUtil";
+import { readMenuKeyCode, isConsoleOpen } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
@@ -78,7 +78,8 @@ export class VoiceService extends ClientListener {
 
     // isHeld frames let a V hold that outlives the Alt+V cycle start transmitting once Alt releases (isDown fires only on the press frame)
     if ((e.isDown || e.isHeld) && !this.pttDown) {
-      if (this.sp.browser.isFocused()) return; // typing in chat
+      // Typing in chat or the console must not open the mic; other menus may
+      if (this.sp.browser.isFocused() || isConsoleOpen(this.sp)) return;
       if (this.altDown) {
         if (e.isDown) this.cycleMode();
         return;
@@ -241,7 +242,7 @@ export class VoiceService extends ClientListener {
     }
 
     // Chat focus steals the key-up event, so drop the mic when typing starts; same when our actor despawns (character park, connection loss)
-    if (this.pttDown && (this.sp.browser.isFocused() || !myRefr)) this.releasePtt();
+    if (this.pttDown && (this.sp.browser.isFocused() || isConsoleOpen(this.sp) || !myRefr)) this.releasePtt();
 
     // Write the chosen mode to disk shortly after it changes
     if (this.modePersistAt && now >= this.modePersistAt) {

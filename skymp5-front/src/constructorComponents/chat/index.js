@@ -212,10 +212,16 @@ const Chat = (props) => {
         setEndOfContenteditable(el);
       }
     };
+    // Enter and T both focus chat; the read-only System tab hands off to Local
     const onBrowserFocused = () => {
       browserFocusedRef.current = true;
       bumpIdle();
-      if (isInputHidden || isSystemTab) return;
+      if (isInputHidden) return;
+      if (isSystemTab) {
+        setChannel(DEFAULT_CHANNEL);
+        requestAnimationFrame(focusInput);
+        return;
+      }
       focusInput();
     };
     // The dedicated chat key always lands in the Local tab

@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
@@ -87,7 +87,7 @@ export class HousingService extends ClientListener {
     if (e.code !== this.menuKey || !e.isDown) {
       return;
     }
-    if (this.sp.browser.isFocused()) {
+    if (isMenuHotkeyBlocked(this.sp, this.controller)) {
       return;
     }
 

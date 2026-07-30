@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
@@ -71,7 +71,7 @@ export class PlayerActionService extends ClientListener {
     if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
     }
-    if (this.sp.browser.isFocused()) {
+    if (isMenuHotkeyBlocked(this.sp, this.controller)) {
       return;
     }
 

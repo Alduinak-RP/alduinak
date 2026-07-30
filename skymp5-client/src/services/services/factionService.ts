@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, readMenuLanguage } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, readMenuLanguage, isMenuHotkeyBlocked } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
@@ -151,8 +151,10 @@ export class FactionService extends ClientListener {
     if (e.code !== this.menuKey || !e.isDown) {
       return;
     }
-    if (this.sp.browser.isFocused()) {
-      notifyNextUpdate(this.controller, this.sp, "Faction menu: press Escape to leave the chat box, then G.");
+    if (isMenuHotkeyBlocked(this.sp, this.controller)) {
+      if (this.sp.browser.isFocused()) {
+        notifyNextUpdate(this.controller, this.sp, "Faction menu: press Escape to leave the chat box, then G.");
+      }
       return;
     }
 
