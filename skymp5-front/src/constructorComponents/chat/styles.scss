@@ -5,6 +5,26 @@
   display: flex;
 }
 
+// Idle fade: after the Fade delay the chrome animates to invisible; message text stays.
+#chat .chat-input,
+#chat .chat-drag-bar,
+#chat .chat-corner,
+#chat .chat-tabs-row,
+#chat .chat-checkboxes,
+#chat #chatInput {
+  transition: opacity 1s ease, background-color 1s ease;
+}
+#chat.chat-idle {
+  .chat-input { background-color: rgba(0, 0, 0, 0); }
+  .chat-drag-bar,
+  .chat-corner,
+  .chat-tabs-row,
+  .chat-checkboxes,
+  #chatInput {
+    opacity: 0;
+  }
+}
+
 #chat {
   // width: calc(26.6% + 70px);
   position: absolute;

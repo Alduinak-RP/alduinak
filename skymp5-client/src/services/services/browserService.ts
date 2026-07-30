@@ -8,6 +8,7 @@ import { BrowserMessageEvent, DxScanCode, Menu, MenuCloseEvent, MenuOpenEvent } 
 
 const unfocusEventString = `window.dispatchEvent(new CustomEvent('skymp5-client:browserUnfocused', {}))`;
 const focusEventString = `window.dispatchEvent(new CustomEvent('skymp5-client:browserFocused', {}))`;
+const chatKeyFocusEventString = `window.dispatchEvent(new CustomEvent('skymp5-client:chatKeyFocused', {}))`;
 
 export class BrowserService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -61,6 +62,11 @@ export class BrowserService extends ClientListener {
         this.chatFocusKeys.some((key) => e.isDown([key]))) {
       this.sp.browser.setFocused(true);
       this.sp.browser.executeJavaScript(focusEventString);
+      // The dedicated chat key (default T, never Enter) also jumps to Local
+      const chatKeyOnly = this.chatFocusKeys.filter((key) => key !== DxScanCode.Enter);
+      if (chatKeyOnly.some((key) => e.isDown([key]))) {
+        this.sp.browser.executeJavaScript(chatKeyFocusEventString);
+      }
     }
     if (e.isDown([DxScanCode.Escape])) {
       if (this.sp.browser.isFocused()) {

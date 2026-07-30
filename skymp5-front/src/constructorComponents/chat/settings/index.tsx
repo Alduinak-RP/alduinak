@@ -11,6 +11,8 @@ const Settings = (props: {
   setLockChat: (value: boolean) => void,
   chatTransparency: number,
   setChatTransparency: (value: number) => void,
+  fadeSeconds: number,
+  setFadeSeconds: (value: number) => void,
   customHighlights: string,
   setCustomHighlights: (value: string) => void,
   onBack: () => void,
@@ -35,6 +37,7 @@ const Settings = (props: {
       <div className='content' ref={contentRef}>
         <SkyrimSlider text={'font size'} name={'fontSize'} min={14} max={22} setValue={(value) => props.setFontSize(value)} sliderValue={props.fontSize} marks={[14, 15, 16, 17, 18, 19, 20, 21, 22]}/>
         <SkyrimSlider text={'transparency'} name={'transparency'} min={0} max={80} setValue={(value) => props.setChatTransparency(value)} sliderValue={props.chatTransparency} marks={[0, 20, 40, 60, 80]}/>
+        <SkyrimSlider text={'fade (seconds, 0 = never)'} name={'fadeSeconds'} min={0} max={60} setValue={(value) => props.setFadeSeconds(value)} sliderValue={props.fadeSeconds} marks={[0, 10, 20, 30, 45, 60]}/>
         <CheckBox text={'lock chat'} initialValue={props.lockChat} setChecked={props.setLockChat} disabled={false} />
         <div className='chat-highlights'>
           <span className='chat-highlights-label'>highlight words</span>

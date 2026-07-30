@@ -2,6 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { MsgType } from "../../messages";
+import { getScreenResolution } from "../../view/formView";
 
 declare const window: any;
 
@@ -376,6 +377,7 @@ export class ChatService extends ClientListener {
 
   private onUpdate(): void {
     this.expireBubbles();
+    this.expireSystemOverlay();
 
     if (this.sp.storage["ownerModelSet"] !== true) return;
     const owner = this.sp.storage["ownerModel"] as Record<string, unknown> | undefined;
@@ -419,6 +421,36 @@ export class ChatService extends ClientListener {
       this.lastMsg = msg;
       const dist = this.senderDistanceMeters(msg);
       this.sp.browser.executeJavaScript(`window.__alduinakAddChat && window.__alduinakAddChat(${JSON.stringify(msg)}, ${dist});`);
+      this.maybeShowSystemOverlay(msg);
+    }
+  }
+
+  // /system broadcasts also flash center-screen like the modlist warnings
+  private maybeShowSystemOverlay(raw: string): void {
+    try {
+      let s = raw;
+      const us = s.indexOf("\u001f");
+      if (us > 0 && /^[0-9]+$/.test(s.slice(0, us))) s = s.slice(us + 1);
+      if (s.indexOf("[[S]]") !== 0) return;
+      const text = s.slice(5).replace(/#\{[0-9a-fA-F]{6}\}/g, "").trim();
+      if (!text) return;
+      if (this.systemOverlay) {
+        this.sp.destroyText(this.systemOverlay.id);
+        this.systemOverlay = null;
+      }
+      const { width, height } = getScreenResolution();
+      const id = this.sp.createText(width / 2, height / 3, text, [0.93, 0.66, 0.25, 1]);
+      this.sp.setTextSize(id, 0.5);
+      this.systemOverlay = { id, expiresAt: Date.now() + 15000 };
+    } catch (e) {
+      // overlay is best-effort
+    }
+  }
+
+  private expireSystemOverlay(): void {
+    if (this.systemOverlay && Date.now() >= this.systemOverlay.expiresAt) {
+      this.sp.destroyText(this.systemOverlay.id);
+      this.systemOverlay = null;
     }
   }
 
@@ -472,5 +504,6 @@ export class ChatService extends ClientListener {
   private lastAdmin = false;
   private lastOwner: unknown = null;
   private bubbles: { id: number; expiresAt: number }[] = [];
+  private systemOverlay: { id: number; expiresAt: number } | null = null;
   private readonly pluginChatSettingsName = "chat-settings-no-load";
 }

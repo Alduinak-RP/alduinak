@@ -48,6 +48,10 @@ const Chat = (props) => {
   const [customHighlights, setCustomHighlights] = useState(saved.customHighlights != null ? saved.customHighlights : '');
   const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [fontSize, setFontSize] = useState(saved.fontSize != null ? saved.fontSize : 16);
+  const [fadeSeconds, setFadeSeconds] = useState(saved.fadeSeconds != null ? saved.fadeSeconds : 10);
+  const [idle, setIdle] = useState(false);
+  const idleTimerRef = useRef();
+  const browserFocusedRef = useRef(false);
   const placeholder = props.placeholder;
   const isInputHidden = props.isInputHidden;
   const send = props.send;
@@ -201,29 +205,77 @@ const Chat = (props) => {
 
   // Behavior for T button (activate chat)
   useEffect(() => {
-    const onBrowserFocused = () => {
-      if (isInputHidden || isSystemTab) return;
+    const focusInput = () => {
       const el = inputRef.current;
       if (el) {
         el.focus();
         setEndOfContenteditable(el);
       }
     };
+    const onBrowserFocused = () => {
+      browserFocusedRef.current = true;
+      bumpIdle();
+      if (isInputHidden || isSystemTab) return;
+      focusInput();
+    };
+    // The dedicated chat key always lands in the Local tab
+    const onChatKeyFocused = () => {
+      if (isInputHidden) return;
+      setChannel(DEFAULT_CHANNEL);
+      requestAnimationFrame(focusInput);
+    };
     window.addEventListener('skymp5-client:browserFocused', onBrowserFocused);
-    return () => window.removeEventListener('skymp5-client:browserFocused', onBrowserFocused);
+    window.addEventListener('skymp5-client:chatKeyFocused', onChatKeyFocused);
+    return () => {
+      window.removeEventListener('skymp5-client:browserFocused', onBrowserFocused);
+      window.removeEventListener('skymp5-client:chatKeyFocused', onChatKeyFocused);
+    };
   }, [isInputHidden, isSystemTab]);
 
   useEffect(() => {
-    const onUnfocused = () => setSettingsOpened(false);
+    const onUnfocused = () => {
+      browserFocusedRef.current = false;
+      bumpIdle();
+      setSettingsOpened(false);
+    };
     window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
   }, []);
 
+  // Idle fade: the chrome melts away after fadeSeconds of no activity (text stays).
+  const fadeSecondsRef = useRef(fadeSeconds);
+  fadeSecondsRef.current = fadeSeconds;
+  const bumpIdle = () => {
+    setIdle(false);
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = undefined;
+    if (fadeSecondsRef.current > 0 && !browserFocusedRef.current) {
+      idleTimerRef.current = setTimeout(() => setIdle(true), fadeSecondsRef.current * 1000);
+    }
+  };
+  useEffect(() => {
+    bumpIdle();
+    return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
+  }, [fadeSeconds]);
+
+  const prevMessageCountRef = useRef(window.chatMessages.length);
   useEffect(() => {
     // Follow new messages to the bottom (chatRef is the scrolling list).
     if (window.needToScroll && chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
     if (isInputFocus && inputRef !== undefined && inputRef.current !== undefined) {
       inputRef.current.focus();
+    }
+    bumpIdle();
+    // Incoming system messages and PMs pull their tab into focus (never mid-typing)
+    const prevCount = prevMessageCountRef.current;
+    prevMessageCountRef.current = window.chatMessages.length;
+    if (!isInputFocus && window.chatMessages.length > prevCount) {
+      const fresh = window.chatMessages.slice(prevCount);
+      if (fresh.some((m) => m.channel === SYSTEM_CHANNEL)) {
+        setChannel(SYSTEM_CHANNEL);
+      } else if (fresh.some((m) => m.channel === 'personal')) {
+        setChannel('personal');
+      }
     }
   }, [props.messages]);
 
@@ -234,8 +286,8 @@ const Chat = (props) => {
 
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
-    persistChatSettings({ fontSize, chatTransparency, lockChat, customHighlights });
-  }, [fontSize, chatTransparency, lockChat, customHighlights]);
+    persistChatSettings({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds });
+  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -290,7 +342,7 @@ const Chat = (props) => {
         defaultPosition={saved.pos || undefined}
         onStop={(e, data) => persistChatSettings({ pos: { x: data.x, y: data.y } })}
       >
-        <div id='chat' style={{ '--chat-bg-alpha': (100 - chatTransparency) / 100 }}>
+        <div id='chat' className={idle ? 'chat-idle' : ''} onMouseEnter={() => bumpIdle()} onMouseMove={() => { if (idle) bumpIdle(); }} style={{ '--chat-bg-alpha': (100 - chatTransparency) / 100 }}>
           <div className="chat-main">
             <div className='chat-header'>
               {!lockChat && <div className='chat-drag-bar' title='Drag to move chat' />}
@@ -389,6 +441,8 @@ const Chat = (props) => {
           setLockChat={setLockChat}
           chatTransparency={chatTransparency}
           setChatTransparency={setChatTransparency}
+          fadeSeconds={fadeSeconds}
+          setFadeSeconds={setFadeSeconds}
           customHighlights={customHighlights}
           setCustomHighlights={setCustomHighlights}
           onBack={() => {
