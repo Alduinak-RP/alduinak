@@ -7,8 +7,9 @@ import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "s
 
 declare const window: any;
 
-// Admin menu (default Insert, launcher-configurable via adminMenuKeyCode); item spawning is via the server-granted in-game console.
+// Tabbed admin panel (default Insert, launcher-configurable via adminMenuKeyCode); item spawning is via the server-granted in-game console.
 // The server decides who is admin (Discord roles / profile ids); non-admin requests are ignored server-side.
+// Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
 
 const WIDGET_ID = 23;
 
@@ -17,12 +18,14 @@ const events = {
   summon: "admin::summon",
   kick: "admin::kick",
   ban: "admin::ban",
+  tpLoc: "admin::tploc",
+  mode: "admin::mode",
   refresh: "admin::refresh",
   close: "admin::close",
 };
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let players: unknown[] = [];
+let panelData: any = { players: [], locations: [], modes: [], events };
 
 export class AdminMenuService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -52,15 +55,28 @@ export class AdminMenuService extends ClientListener {
     const content = parseCustomPacket(event);
     if (!content) return;
     if (content["customPacketType"] === "adminMenu") {
-      players = Array.isArray(content["players"]) ? content["players"] : [];
+      panelData = {
+        players: Array.isArray(content["players"]) ? content["players"] : [],
+        locations: Array.isArray(content["locations"]) ? content["locations"] : [],
+        modes: Array.isArray(content["modes"]) ? content["modes"] : [],
+        events,
+      };
       this.showMenu();
+    } else if (content["customPacketType"] === "adminMode") {
+      // Keep the Modes tab highlight in sync without a full roster refresh
+      const mode = String(content["mode"] ?? "");
+      const on = !!content["on"];
+      for (const m of Array.isArray(panelData.modes) ? panelData.modes : []) {
+        if (m && m.id === mode) m.active = on;
+      }
+      if (this.menuOpen) this.showMenu();
     } else if (content["customPacketType"] === "adminActionResult") {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
     }
   }
 
   private showMenu(): void {
-    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, players, WIDGET_ID });
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { panelData, WIDGET_ID });
     this.menuOpen = true;
   }
 
@@ -79,6 +95,14 @@ export class AdminMenuService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
       return;
     }
+    if (kind === events.tpLoc) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "teleportLoc", target: String(e.arguments[1] ?? "") });
+      return;
+    }
+    if (kind === events.mode) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "toggleMode", mode: String(e.arguments[1] ?? "") });
+      return;
+    }
     if (kind !== events.tp && kind !== events.summon && kind !== events.kick && kind !== events.ban) return;
     const target = String(e.arguments[1] ?? "");
     const action =
@@ -86,71 +110,16 @@ export class AdminMenuService extends ClientListener {
       kind === events.summon ? "summon" :
       kind === events.kick ? "kick" : "ban";
     sendCustomPacket(this.controller, { customPacketType: "adminAction", action, target });
-    // Kick/ban changes the roster; drop the stale menu
-    if (action === "kick" || action === "ban") this.closeMenu();
+    // Kick/ban changes the roster; ask for a fresh one
+    if (action === "kick" || action === "ban") {
+      sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+    }
   }
 
   // Runs inside the CEF browser; only the injected variables and window are available here.
   // No spread syntax: it breaks after FunctionInfo stringification.
   private browsersideWidgetSetter = () => {
-    const widget: any = {
-      type: "form",
-      id: WIDGET_ID,
-      caption: "Admin",
-      elements: [] as any[],
-    };
-    if (players.length === 0) {
-      widget.elements.push({ type: "text", text: "No other players online", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
-    }
-    for (let i = 0; i < players.length; i++) {
-      const pl: any = players[i];
-      widget.elements.push({
-        type: "text",
-        text: pl.n + "  (profile " + pl.p + ")",
-        tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
-      });
-      widget.elements.push({
-        type: "button",
-        text: "TP to",
-        tags: ["ELEMENT_SAME_LINE"],
-        click: () => window.skyrimPlatform.sendMessage(events.tp, pl.a),
-      });
-      widget.elements.push({
-        type: "button",
-        text: "Summon",
-        tags: ["ELEMENT_SAME_LINE"],
-        click: () => window.skyrimPlatform.sendMessage(events.summon, pl.a),
-      });
-      widget.elements.push({
-        type: "button",
-        text: "Kick",
-        tags: ["ELEMENT_SAME_LINE"],
-        click: () => window.skyrimPlatform.sendMessage(events.kick, pl.a),
-      });
-      widget.elements.push({
-        type: "button",
-        text: "Ban",
-        tags: ["ELEMENT_SAME_LINE"],
-        click: () => window.skyrimPlatform.sendMessage(events.ban, pl.a),
-      });
-    }
-    widget.elements.push({
-      type: "text",
-      text: "Items: use the console (~), e.g. AddItem 0x0000000f 100",
-      tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
-    });
-    widget.elements.push({
-      type: "button",
-      text: "Refresh",
-      tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
-      click: () => window.skyrimPlatform.sendMessage(events.refresh),
-    });
-    widget.elements.push({
-      type: "button",
-      text: "Close",
-      tags: ["ELEMENT_SAME_LINE"],
-      click: () => window.skyrimPlatform.sendMessage(events.close),
-    });
+    const widget: any = Object.assign({ type: "adminPanel", id: WIDGET_ID }, panelData);
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };

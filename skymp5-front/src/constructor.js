@@ -15,6 +15,8 @@ import DeathScreen from './constructorComponents/death';
 import SkillsMenu from './features/skillsMenu';
 import TestMenu from './features/testMenu';
 import Trade from './features/trade';
+import AdminPanel from './features/adminPanel';
+import ContextMenu from './features/contextMenu';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -215,6 +217,10 @@ const Constructor = props => {
       );
     case 'trade':
       return <Trade data={rend} />;
+    case 'adminPanel':
+      return <AdminPanel data={rend} />;
+    case 'contextMenu':
+      return <ContextMenu data={rend} />;
     case 'death':
       return (
         <DeathScreen seconds={rend.seconds} onChoice={rend.onChoice} />

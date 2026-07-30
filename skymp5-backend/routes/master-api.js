@@ -20,6 +20,8 @@
  *     Offline-mode profileId check, same lock/whitelist rules as session validation. Returns { allowed: true } or 403/404 { error }
  *   POST /api/servers/:key/connection-check  (X-Auth-Token)
  *     Game server reports a connecting player. Body: { profileId, ip }  Returns { allowed: true } or { allowed: false, reason: 'banned' }
+ *   GET /api/servers/:key/players  (X-Auth-Token)
+ *     Full player roster (identity fields only) for the in-game admin panel.
  *   POST /api/servers/:key/profiles/:profileId/factions  (X-Auth-Token)
  *     In-game faction appointment. Body: { requirementId, playerName?, notes? }
  *   DELETE /api/servers/:key/profiles/:profileId/factions/:assignmentId  (X-Auth-Token)
@@ -342,6 +344,27 @@ router.post('/:key/ban', (req, res) => {
   })
   bans.logBan(`in-game ban: profileId=${id} discordId=${discordId} hwid=${entry.hwid || 'none'} ip=${entry.ip || 'none'} by=${entry.bannedBy} reason=${entry.reason}`)
   res.json({ ok: true })
+})
+
+// GET /api/servers/:key/players  (X-Auth-Token)
+// Full player roster for the in-game admin panel; the game server masks ips before showing them.
+
+router.get('/:key/players', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  try {
+    const rows = players.list().map(p => ({
+      profileId: p.profileId,
+      discordId: p.discordId,
+      username: p.username || '',
+      displayName: p.displayName || '',
+      hwid: p.hwid || null,
+      lastIp: p.lastIp || null,
+    }))
+    res.json({ players: rows })
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'failed to load players' })
+  }
 })
 
 // GET /api/servers/:key/holds/:holdSlug/roster

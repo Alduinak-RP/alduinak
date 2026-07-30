@@ -6,17 +6,42 @@ type Mp = any;
 
 // ── In-game admin (Discord-role gated) ───────────────────────────────────────
 // Admins: players with any Discord role in "adminRoleIds" or a profile id in "adminProfileIds".
-// They get the server console (consoleCommandsAllowed per assign; keep enableConsoleCommandsForAll OFF) and the admin menu (client AdminMenuService, Insert key): teleport to / summon / kick / ban.
+// They get the server console (consoleCommandsAllowed per assign; keep enableConsoleCommandsForAll OFF) and the tabbed admin panel (client AdminMenuService, Insert key).
 // Bans post to the backend (master key + auth token), which snapshots discordId/hwid/ip into bans.json; connection-check then refuses the player permanently.
 //
 // Wire protocol (CustomPacket JSON):
 //   Client -> Server: { customPacketType: "adminMenuRequest" }
-//                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban, target: actor id hex
-//   Server -> Client: { customPacketType: "adminMenu", players: [{a, p, n}] }
+//                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
+//                     { customPacketType: "adminAction", action: "toggleMode", mode }
+//   Server -> Client: { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping}], locations: [{name}], modes: [{id, label, active}] }
+//                     { customPacketType: "adminMode", mode, on }
 //                     { customPacketType: "adminActionResult", ok, text }
+// The roster merges online actors with the backend's full player list (GET /:key/players);
+// ips are masked to the first two octets before leaving the server (full ip stays in the backend).
 // Non-admin requests are ignored silently.
 
 const MAX_USER_SLOTS = 1024;
+const PING_CACHE_MS = 3000;
+
+const ADMIN_MODES: Array<{ id: string; label: string }> = [
+  { id: "god", label: "God" },
+  { id: "noclip", label: "NoClip" },
+  { id: "invis", label: "Invisible" },
+  { id: "ghost", label: "Ghost" },
+  { id: "freecam", label: "Freecam" },
+  { id: "smite", label: "Smite" },
+  { id: "healhit", label: "Heal on Hit" },
+];
+
+// Modes mirrored onto the neighbors-visible ff_adminModes actor property (registered in gamemode.js)
+const MIRRORED_MODES = ["god", "smite", "healhit", "invis"];
+
+interface TeleportLocation {
+  name: string;
+  cellOrWorldDesc: string;
+  pos: number[];
+  rot: number[];
+}
 
 export class AdminSystem implements System {
   systemName = "AdminSystem";
@@ -27,6 +52,10 @@ export class AdminSystem implements System {
   private masterUrl = "";
   private masterKey = "";
   private authToken = "";
+  private locations: TeleportLocation[] = [];
+  private modesByProfile = new Map<number, Record<string, boolean>>();
+  private pingCache = new Map<number, number>();
+  private pingCacheAt = 0;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -39,6 +68,13 @@ export class AdminSystem implements System {
     }
     if (Array.isArray(all?.["adminProfileIds"])) {
       this.adminProfileIds = all["adminProfileIds"].map(Number).filter(Number.isFinite);
+    }
+    if (Array.isArray(all?.["adminTeleportLocations"])) {
+      const mp = ctx.svr as Mp;
+      for (const raw of all["adminTeleportLocations"]) {
+        const loc = this.parseLocation(mp, raw);
+        if (loc) this.locations.push(loc);
+      }
     }
 
     // Console rights follow the admin check on every actor assignment
@@ -55,7 +91,26 @@ export class AdminSystem implements System {
       }
     });
 
-    this.log(`AdminSystem: ${this.adminRoleIds.length} admin role(s), ${this.adminProfileIds.length} admin profile(s)`);
+    this.log(`AdminSystem: ${this.adminRoleIds.length} admin role(s), ${this.adminProfileIds.length} admin profile(s), ${this.locations.length} teleport location(s)`);
+  }
+
+  // Validated like zoneSpawnSystem.parseZone; bad descs are dropped at boot
+  private parseLocation(mp: Mp, raw: any): TeleportLocation | null {
+    try {
+      const name = String(raw?.name ?? "");
+      const cellOrWorldDesc = String(raw?.cellOrWorldDesc ?? "");
+      const pos = Array.isArray(raw?.pos) ? raw.pos.map(Number) : null;
+      const rot = Array.isArray(raw?.rot) && raw.rot.length === 3 ? raw.rot.map(Number) : [0, 0, 0];
+      if (!name || !cellOrWorldDesc || !pos || pos.length !== 3 || pos.some((n: number) => !Number.isFinite(n))) {
+        this.log(`AdminSystem: teleport location '${name || "?"}' skipped, needs name/cellOrWorldDesc/pos`);
+        return null;
+      }
+      mp.getIdFromDesc(cellOrWorldDesc);
+      return { name, cellOrWorldDesc, pos, rot };
+    } catch (e) {
+      this.log(`AdminSystem: bad teleport location skipped: ${e}`);
+      return null;
+    }
   }
 
   private isAdminActor(mp: Mp, actorId: number): boolean {
@@ -88,6 +143,106 @@ export class AdminSystem implements System {
     return out;
   }
 
+  // Per-slot ping in ms parsed from the prometheus text; cached to match the C++ update period
+  private pings(mp: Mp): Map<number, number> {
+    const now = Date.now();
+    if (now - this.pingCacheAt < PING_CACHE_MS) return this.pingCache;
+    this.pingCache = new Map();
+    this.pingCacheAt = now;
+    try {
+      const text = String(mp.getPrometheusMetrics() ?? "");
+      const re = /skymp_server_ping_per_slot_seconds\{networking_user_id="(\d+)"\}\s+([0-9.eE+-]+)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) {
+        this.pingCache.set(Number(m[1]), Math.round(Number(m[2]) * 1000));
+      }
+    } catch { }
+    return this.pingCache;
+  }
+
+  // In-game ip display conflicts with hideIpRoleId; only the first two octets leave the server
+  private maskIp(ip: unknown): string {
+    const text = String(ip ?? "").trim();
+    if (!text) return "";
+    const parts = text.split(".");
+    if (parts.length !== 4) return "x.x.x.x";
+    return `${parts[0]}.${parts[1]}.x.x`;
+  }
+
+  private async fetchBackendRoster(): Promise<any[]> {
+    if (!this.masterUrl || !this.masterKey || !this.authToken) return [];
+    try {
+      const res = await fetch(`${this.masterUrl}/api/servers/${this.masterKey}/players`, {
+        headers: { "X-Auth-Token": this.authToken },
+      });
+      if (!res.ok) {
+        this.log(`AdminSystem: backend roster fetch failed with status ${res.status}`);
+        return [];
+      }
+      const body: any = await res.json();
+      return Array.isArray(body?.players) ? body.players : [];
+    } catch (e) {
+      this.log(`AdminSystem: backend roster fetch failed: ${e}`);
+      return [];
+    }
+  }
+
+  // Offline backend records merged with live actors; online rows win their profile slot
+  private buildRoster(mp: Mp, myActorId: number, adminProfile: number, backendPlayers: any[]): any[] {
+    const pings = this.pings(mp);
+    const byProfile = new Map<number, any>();
+    for (const raw of backendPlayers) {
+      const profileId = Number(raw?.profileId);
+      if (!Number.isFinite(profileId) || profileId <= 0) continue;
+      byProfile.set(profileId, {
+        p: profileId,
+        n: "",
+        d: String(raw?.discordId ?? ""),
+        dn: String(raw?.displayName || raw?.username || ""),
+        ip: this.maskIp(raw?.lastIp),
+        hwid: String(raw?.hwid ?? ""),
+        online: false,
+        ping: null,
+      });
+    }
+    const extra: any[] = [];
+    for (const p of this.onlinePlayers(mp)) {
+      if (p.actorId === myActorId) continue;
+      const base = byProfile.get(p.profileId);
+      let discordId = "";
+      try { discordId = String(mp.get(p.actorId, "private.skympDiscordId") ?? ""); } catch { }
+      if (!discordId) {
+        try { discordId = String(mp.get(p.actorId, "private.indexed.discordId") ?? ""); } catch { }
+      }
+      let ip = "";
+      try { ip = String(mp.getUserIp(p.userId) ?? ""); } catch { }
+      let guid = "";
+      try { guid = String(mp.getUserGuid(p.userId) ?? ""); } catch { }
+      const row = {
+        a: p.actorId.toString(16),
+        p: p.profileId,
+        n: p.name || "(no name)",
+        d: discordId || (base ? base.d : ""),
+        dn: base ? base.dn : "",
+        ip: this.maskIp(ip) || (base ? base.ip : ""),
+        hwid: (base && base.hwid) ? base.hwid : guid,
+        online: true,
+        ping: pings.get(p.userId) ?? null,
+      };
+      if (p.profileId > 0) byProfile.set(p.profileId, row);
+      else extra.push(row);
+    }
+    byProfile.delete(adminProfile);
+    const rows = Array.from(byProfile.values()).concat(extra);
+    rows.sort((a, b) => (a.online === b.online) ? a.p - b.p : (a.online ? -1 : 1));
+    return rows;
+  }
+
+  private modesFor(adminProfile: number): Array<{ id: string; label: string; active: boolean }> {
+    const state = this.modesByProfile.get(adminProfile) ?? {};
+    return ADMIN_MODES.map(m => ({ id: m.id, label: m.label, active: !!state[m.id] }));
+  }
+
   private reply(mp: Mp, userId: number, ok: boolean, text: string): void {
     try {
       mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminActionResult", ok, text }));
@@ -112,15 +267,51 @@ export class AdminSystem implements System {
       return;
     }
 
+    let adminProfile = 0;
+    try { adminProfile = Number(mp.get(myActorId, "profileId")) || 0; } catch { }
+
     if (type === "adminMenuRequest") {
-      const players = this.onlinePlayers(mp)
-        .filter(p => p.actorId !== myActorId)
-        .map(p => ({ a: p.actorId.toString(16), p: p.profileId, n: p.name || "(no name)" }));
-      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminMenu", players }));
+      this.fetchBackendRoster().then(backendPlayers => {
+        try {
+          // The fetch outlives the packet handler; the slot must still belong to the same admin
+          if (mp.getUserActor(userId) !== myActorId) return;
+          mp.sendCustomPacket(userId, JSON.stringify({
+            customPacketType: "adminMenu",
+            players: this.buildRoster(mp, myActorId, adminProfile, backendPlayers),
+            locations: this.locations.map(l => ({ name: l.name })),
+            modes: this.modesFor(adminProfile),
+          }));
+        } catch (e) {
+          this.log(`AdminSystem: adminMenu reply failed: ${e}`);
+        }
+      });
       return;
     }
 
     const action = String(content["action"] ?? "");
+
+    if (action === "toggleMode") {
+      this.toggleMode(mp, userId, myActorId, adminProfile, String(content["mode"] ?? ""));
+      return;
+    }
+    if (action === "teleportLoc") {
+      const name = String(content["target"] ?? "");
+      const loc = this.locations.find(l => l.name === name);
+      if (!loc) {
+        this.reply(mp, userId, false, "Unknown location");
+        return;
+      }
+      try {
+        mp.set(myActorId, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: loc.pos, rot: loc.rot });
+        this.adminLog(`profile ${adminProfile} teleported to location '${loc.name}'`);
+        this.reply(mp, userId, true, `Teleported to ${loc.name}`);
+      } catch (e) {
+        this.log(`AdminSystem: teleportLoc '${name}' by profile ${adminProfile} failed: ${e}`);
+        this.reply(mp, userId, false, "Teleport failed, see server log");
+      }
+      return;
+    }
+
     const targetId = parseInt(String(content["target"] ?? ""), 16);
     // Only currently-online player actors are valid targets
     const target = this.onlinePlayers(mp).find(p => p.actorId === targetId);
@@ -128,8 +319,6 @@ export class AdminSystem implements System {
       this.reply(mp, userId, false, "Target is no longer online");
       return;
     }
-    let adminProfile = 0;
-    try { adminProfile = Number(mp.get(myActorId, "profileId")) || 0; } catch { }
 
     try {
       if (action === "teleportTo") {
@@ -156,6 +345,31 @@ export class AdminSystem implements System {
       this.log(`AdminSystem: action '${action}' by profile ${adminProfile} failed: ${e}`);
       this.reply(mp, userId, false, "Action failed, see server log");
     }
+  }
+
+  private toggleMode(mp: Mp, userId: number, actorId: number, adminProfile: number, mode: string): void {
+    if (!ADMIN_MODES.some(m => m.id === mode)) {
+      this.reply(mp, userId, false, `Unknown mode '${mode}'`);
+      return;
+    }
+    const state = this.modesByProfile.get(adminProfile) ?? {};
+    state[mode] = !state[mode];
+    this.modesByProfile.set(adminProfile, state);
+    const on = !!state[mode];
+    if (MIRRORED_MODES.includes(mode)) {
+      // Registration lives in gamemode.js; a missing property must not break the toggle
+      try {
+        const mirror: Record<string, boolean> = {};
+        for (const m of MIRRORED_MODES) mirror[m] = !!state[m];
+        mp.set(actorId, "ff_adminModes", mirror);
+      } catch (e) {
+        this.log(`AdminSystem: ff_adminModes mirror failed (property registered in gamemode.js?): ${e}`);
+      }
+    }
+    try {
+      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminMode", mode, on }));
+    } catch { }
+    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}`);
   }
 
   private banViaBackend(
