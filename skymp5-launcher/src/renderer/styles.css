@@ -1363,4 +1363,13 @@ html, body {
   color: var(--parchment);
   padding: 4px 6px;
 }
-select.hotkey-select { max-width: 220px; }
+button.hotkey-btn {
+  max-width: 220px;
+  text-align: left;
+  cursor: pointer;
+}
+button.hotkey-btn:hover:not(:disabled) { border-color: rgba(201, 162, 39, 0.5); }
+button.hotkey-btn--capturing {
+  border-color: var(--gold);
+  color: var(--gold);
+}

@@ -199,7 +199,7 @@ function createWindow() {
   })
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => { win.show(); maybeWarnNeverLaunched() })
 
   if (isDev) win.webContents.openDevTools({ mode: 'detach' })
 }
@@ -290,21 +290,50 @@ ipcMain.handle('graphics:load', () => {
     // or keys). An explicit bFull Screen=0 + bBorderless=0 reads as windowed.
     const hasMode = ('bFull Screen' in disp) || ('bBorderless' in disp)
     const borderless = hasMode ? String(disp['bBorderless'] || '0') === '1' : true
-    // Resolution fallback chain: profile ini, then the player's original
-    // My Games ini, then 1080p.
+    // Fallback chain for player-owned values: profile ini, then the player's
+    // original My Games ini, then the engine default.
     let orig = {}
     try {
       const src = findOriginalPrefsIni()
-      if (src) orig = ini.read(src)['Display'] || {}
-    } catch { /* fall through to 1080p */ }
+      if (src) orig = ini.read(src)
+    } catch { /* fall through to defaults */ }
+    const origDisp = orig['Display'] || {}
+    const val = (section, key, dflt) => {
+      const a = data[section] || {}
+      if (key in a) return String(a[key])
+      const b = orig[section] || {}
+      if (key in b) return String(b[key])
+      return dflt
+    }
+    const num = (section, key, dflt) => {
+      const n = parseInt(val(section, key, ''), 10)
+      return Number.isNaN(n) ? dflt : n
+    }
+    const skip = num('Display', 'iTexMipMapSkip', 0)
+    const shadowRes = num('Display', 'iShadowMapResolution', 2048)
+    const reflH = num('Water', 'iWaterReflectHeight', 512)
+    const maxDecals = num('Decals', 'uMaxDecals', 250)
     return {
       ok: true,
       path: p,
       exists: fs.existsSync(p),
       windowMode: full ? 'fullscreen' : (borderless ? 'borderless' : 'windowed'),
-      width:  disp['iSize W'] || orig['iSize W'] || '1920',
-      height: disp['iSize H'] || orig['iSize H'] || '1080',
+      width:  disp['iSize W'] || origDisp['iSize W'] || '1920',
+      height: disp['iSize H'] || origDisp['iSize H'] || '1080',
       invertY: String(controls['bInvertYValues'] || '0') === '1',
+      texQuality: skip >= 2 ? 'low' : (skip === 1 ? 'medium' : 'high'),
+      aa: val('Display', 'bUseTAA', '1') === '1' ? 'taa'
+        : (val('Display', 'bFXAAEnabled', '0') === '1' ? 'fxaa' : 'off'),
+      shadowQuality: shadowRes <= 512 ? 'low' : (shadowRes <= 1024 ? 'medium' : (shadowRes <= 2048 ? 'high' : 'ultra')),
+      decals: val('Decals', 'bDecals', '1') === '0' ? 'off'
+        : (maxDecals <= 100 ? 'low' : (maxDecals <= 250 ? 'medium' : (maxDecals <= 350 ? 'high' : 'ultra'))),
+      reflections: reflH >= 1024
+        ? (val('Water', 'bReflectLODTrees', '0') === '1' ? 'ultra' : 'high')
+        : (val('Water', 'bReflectLODLand', '0') === '1' ? 'medium' : 'low'),
+      godrays:   val('Display', 'bVolumetricLightingEnable', '1') === '1',
+      lensFlare: val('Imagespace', 'bLensFlare', '1') === '1',
+      ao:        val('Display', 'bSAOEnable', '1') === '1',
+      precip:    val('Display', 'bPrecipitationOcclusion', '1') === '1',
     }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -320,7 +349,37 @@ ipcMain.handle('graphics:save', (_e, g) => {
     else if (g.windowMode === 'windowed')   { display['bFull Screen'] = '0'; display['bBorderless'] = '0' }
     if (g.width)  display['iSize W'] = String(g.width)
     if (g.height) display['iSize H'] = String(g.height)
+    const TEX = { high: '0', medium: '1', low: '2' }
+    if (TEX[g.texQuality]) display['iTexMipMapSkip'] = TEX[g.texQuality]
+    if (['off', 'fxaa', 'taa'].includes(g.aa)) {
+      display['bUseTAA']      = g.aa === 'taa'  ? '1' : '0'
+      display['bFXAAEnabled'] = g.aa === 'fxaa' ? '1' : '0'
+    }
+    const SHADOW = { low: '512', medium: '1024', high: '2048', ultra: '4096' }
+    if (SHADOW[g.shadowQuality]) display['iShadowMapResolution'] = SHADOW[g.shadowQuality]
+    if (typeof g.godrays === 'boolean') display['bVolumetricLightingEnable'] = g.godrays ? '1' : '0'
+    if (typeof g.ao === 'boolean')      display['bSAOEnable'] = g.ao ? '1' : '0'
+    if (typeof g.precip === 'boolean')  display['bPrecipitationOcclusion'] = g.precip ? '1' : '0'
     const edits = { Display: display, Controls: { bInvertYValues: g.invertY ? '1' : '0' } }
+    if (typeof g.lensFlare === 'boolean') {
+      display['bIBLFEnable'] = g.lensFlare ? '1' : '0'
+      edits.Imagespace = { bLensFlare: g.lensFlare ? '1' : '0' }
+    }
+    const DECALS = {
+      off:    { bDecals: '0', bSkinnedDecals: '0' },
+      low:    { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '100',  uMaxSkinDecals: '25',  uMaxSkinDecalsPerActor: '20' },
+      medium: { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '250',  uMaxSkinDecals: '50',  uMaxSkinDecalsPerActor: '40' },
+      high:   { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '350',  uMaxSkinDecals: '75',  uMaxSkinDecalsPerActor: '50' },
+      ultra:  { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '1000', uMaxSkinDecals: '100', uMaxSkinDecalsPerActor: '60' },
+    }
+    if (DECALS[g.decals]) edits.Decals = DECALS[g.decals]
+    const REFLECTIONS = {
+      low:    { iWaterReflectHeight: '512',  iWaterReflectWidth: '512',  bReflectLODLand: '0', bReflectLODObjects: '0', bReflectLODTrees: '0', bReflectSky: '0' },
+      medium: { iWaterReflectHeight: '512',  iWaterReflectWidth: '512',  bReflectLODLand: '1', bReflectLODObjects: '0', bReflectLODTrees: '0', bReflectSky: '1' },
+      high:   { iWaterReflectHeight: '1024', iWaterReflectWidth: '1024', bReflectLODLand: '1', bReflectLODObjects: '1', bReflectLODTrees: '0', bReflectSky: '1' },
+      ultra:  { iWaterReflectHeight: '1024', iWaterReflectWidth: '1024', bReflectLODLand: '1', bReflectLODObjects: '1', bReflectLODTrees: '1', bReflectSky: '1' },
+    }
+    if (REFLECTIONS[g.reflections]) edits.Water = Object.assign({ bUseWaterReflections: '1' }, REFLECTIONS[g.reflections])
     ini.write(skyrimPrefsPath(), edits)
     return { ok: true, path: skyrimPrefsPath() }
   } catch (err) {
@@ -371,7 +430,7 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
 })
 
 // Game hotkeys edit the keyboard column of the game's controlmap.txt.
-// Values are DirectInput scan codes, the same space KEY_OPTIONS uses.
+// Values are DirectInput scan codes, the same space the renderer's KEY_TABLE uses.
 const GAME_HOTKEY_EVENTS = ['Activate', 'Jump', 'Sprint', 'Sneak', 'Shout', 'Toggle POV']
 
 function controlmapPath() {
@@ -1041,6 +1100,25 @@ function findOriginalPrefsIni() {
 const NEVER_LAUNCHED_ERROR =
   'Skyrim has never been launched on this PC (no SkyrimPrefs.ini in Documents\\My Games). ' +
   'Start the game once the normal way (Steam/GOG), reach the main menu, quit, then run this install again.'
+
+// Startup warning, once per launch. Fires only when a Skyrim install was found
+// but the My Games inis are missing; a missing game has its own renderer flow.
+let neverLaunchedWarned = false
+function maybeWarnNeverLaunched() {
+  if (neverLaunchedWarned) return
+  neverLaunchedWarned = true
+  if (!store.get('skyrimPath') || findOriginalPrefsIni()) return
+  dialog.showMessageBox(win, {
+    type: 'warning',
+    title: 'Skyrim has never been launched',
+    message: "Skyrim's My Documents ini files are missing.",
+    detail:
+      'Run vanilla Skyrim once (Steam/GOG), reach the main menu, then quit so the game creates them. ' +
+      'The Alduinak install steps stay blocked until then.',
+    buttons: ['OK'],
+    defaultId: 0,
+  })
+}
 
 // Seed the MO2 profile SkyrimPrefs.ini from the player's own prefs, then
 // rewrite the server's forced window mode (borderless) on top. Resolution is

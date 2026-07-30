@@ -211,31 +211,79 @@
               <label class="setting-label">Resolution</label>
               <select class="setting-input" id="gfx-resolution"></select>
             </div>
+            <div class="settings-group">
+              <label class="setting-label">Texture Quality</label>
+              <select class="setting-input" id="gfx-texquality">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Antialiasing</label>
+              <select class="setting-input" id="gfx-aa">
+                <option value="off">Off</option>
+                <option value="fxaa">FXAA</option>
+                <option value="taa">TAA</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Shadow Quality</label>
+              <select class="setting-input" id="gfx-shadowquality">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="ultra">Ultra</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Decal Quantity</label>
+              <select class="setting-input" id="gfx-decals">
+                <option value="off">Off</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="ultra">Ultra</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Water Reflections</label>
+              <select class="setting-input" id="gfx-reflections">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="ultra">Ultra</option>
+              </select>
+            </div>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-godrays" /><span>Godrays</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-lensflare" /><span>Lens flare</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-ao" /><span>Ambient occlusion</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-precip" /><span>Precipitation occlusion</span></label>
             <p class="setting-hint" id="gfx-path-hint"></p>
           </details>
 
           <details class="settings-collapse">
             <summary>Server Hotkeys</summary>
-            <div class="settings-group"><label class="setting-label">Activate Chat</label><select class="setting-input hotkey-select" id="hk-chat"></select></div>
-            <div class="settings-group"><label class="setting-label">Release Mouse</label><select class="setting-input hotkey-select" id="hk-cursor"></select></div>
-            <div class="settings-group"><label class="setting-label">Housing Menu</label><select class="setting-input hotkey-select" id="hk-housing"></select></div>
-            <div class="settings-group"><label class="setting-label">Player Actions Menu</label><select class="setting-input hotkey-select" id="hk-interact"></select></div>
-            <div class="settings-group"><label class="setting-label">Personal Menu</label><select class="setting-input hotkey-select" id="hk-personal"></select></div>
-            <div class="settings-group"><label class="setting-label">Faction Menu</label><select class="setting-input hotkey-select" id="hk-faction"></select></div>
-            <div class="settings-group"><label class="setting-label">Voice Push-to-Talk</label><select class="setting-input hotkey-select" id="hk-voice-ptt"></select></div>
-            <div class="settings-group"><label class="setting-label">Admin Menu</label><select class="setting-input hotkey-select" id="hk-admin"></select></div>
-            <p class="setting-hint">Enter always focuses chat. Changes apply after the client reloads.</p>
+            <div class="settings-group"><label class="setting-label">Activate Chat</label><button type="button" class="setting-input hotkey-btn" id="hk-chat"></button></div>
+            <div class="settings-group"><label class="setting-label">Release Mouse</label><button type="button" class="setting-input hotkey-btn" id="hk-cursor"></button></div>
+            <div class="settings-group"><label class="setting-label">Housing Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-housing"></button></div>
+            <div class="settings-group"><label class="setting-label">Player Actions Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-interact"></button></div>
+            <div class="settings-group"><label class="setting-label">Personal Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-personal"></button></div>
+            <div class="settings-group"><label class="setting-label">Faction Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-faction"></button></div>
+            <div class="settings-group"><label class="setting-label">Voice Push-to-Talk</label><button type="button" class="setting-input hotkey-btn" id="hk-voice-ptt"></button></div>
+            <div class="settings-group"><label class="setting-label">Admin Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-admin"></button></div>
+            <p class="setting-hint">Click a key, then press the new binding. Esc cancels, Backspace unbinds. Enter always focuses chat. Changes apply after the client reloads.</p>
           </details>
 
           <details class="settings-collapse">
             <summary>Game Hotkeys</summary>
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-invert-y" /><span>Invert Y axis</span></label>
-            <div class="settings-group"><label class="setting-label">Activate</label><select class="setting-input hotkey-select" id="ghk-activate"></select></div>
-            <div class="settings-group"><label class="setting-label">Jump</label><select class="setting-input hotkey-select" id="ghk-jump"></select></div>
-            <div class="settings-group"><label class="setting-label">Sprint</label><select class="setting-input hotkey-select" id="ghk-sprint"></select></div>
-            <div class="settings-group"><label class="setting-label">Sneak</label><select class="setting-input hotkey-select" id="ghk-sneak"></select></div>
-            <div class="settings-group"><label class="setting-label">Shout / Power</label><select class="setting-input hotkey-select" id="ghk-shout"></select></div>
-            <div class="settings-group"><label class="setting-label">Toggle POV</label><select class="setting-input hotkey-select" id="ghk-pov"></select></div>
+            <div class="settings-group"><label class="setting-label">Activate</label><button type="button" class="setting-input hotkey-btn" id="ghk-activate"></button></div>
+            <div class="settings-group"><label class="setting-label">Jump</label><button type="button" class="setting-input hotkey-btn" id="ghk-jump"></button></div>
+            <div class="settings-group"><label class="setting-label">Sprint</label><button type="button" class="setting-input hotkey-btn" id="ghk-sprint"></button></div>
+            <div class="settings-group"><label class="setting-label">Sneak</label><button type="button" class="setting-input hotkey-btn" id="ghk-sneak"></button></div>
+            <div class="settings-group"><label class="setting-label">Shout / Power</label><button type="button" class="setting-input hotkey-btn" id="ghk-shout"></button></div>
+            <div class="settings-group"><label class="setting-label">Toggle POV</label><button type="button" class="setting-input hotkey-btn" id="ghk-pov"></button></div>
             <p class="setting-hint" id="ghk-hint">Written to the game's controlmap. Rows unlock once the game files are installed.</p>
           </details>
 

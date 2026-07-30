@@ -21,7 +21,7 @@ const modalOverlay = document.getElementById('modal-settings')
 
 // loadSettings re-runs main's registry auto-detect and refreshes the path fields.
 function openModal() { modalOverlay.hidden = false; loadSettings(); loadGameSettingsTab() }
-function closeModal() { modalOverlay.hidden = true }
+function closeModal() { endCapture(true); modalOverlay.hidden = true }
 
 document.getElementById('btn-gear').addEventListener('click', openModal)
 document.getElementById('modal-close').addEventListener('click', closeModal)
@@ -38,49 +38,118 @@ document.querySelectorAll('.modal-tab').forEach(tab => {
 })
 
 // Settings tab: graphics + server hotkeys
-// DirectInput scan codes - must match DxScanCode in the Skyrim Platform client.
-const KEY_OPTIONS = [
-  { label: '— none —', code: 0 },
-  { label: 'Enter', code: 28 }, { label: 'Space', code: 57 }, { label: 'Tab', code: 15 },
-  { label: 'Left Shift', code: 42 }, { label: 'Left Ctrl', code: 29 }, { label: 'Left Alt', code: 56 },
-  { label: 'Caps Lock', code: 58 }, { label: 'Grave (~)', code: 41 },
-  { label: 'A', code: 30 }, { label: 'B', code: 48 }, { label: 'C', code: 46 }, { label: 'D', code: 32 },
-  { label: 'E', code: 18 }, { label: 'F', code: 33 }, { label: 'G', code: 34 }, { label: 'H', code: 35 },
-  { label: 'I', code: 23 }, { label: 'J', code: 36 }, { label: 'K', code: 37 }, { label: 'L', code: 38 },
-  { label: 'M', code: 50 }, { label: 'N', code: 49 }, { label: 'O', code: 24 }, { label: 'P', code: 25 },
-  { label: 'Q', code: 16 }, { label: 'R', code: 19 }, { label: 'S', code: 31 }, { label: 'T', code: 20 },
-  { label: 'U', code: 22 }, { label: 'V', code: 47 }, { label: 'W', code: 17 }, { label: 'X', code: 45 },
-  { label: 'Y', code: 21 }, { label: 'Z', code: 44 },
-  { label: 'F1', code: 59 }, { label: 'F2', code: 60 }, { label: 'F3', code: 61 }, { label: 'F4', code: 62 },
-  { label: 'F5', code: 63 }, { label: 'F6', code: 64 }, { label: 'F7', code: 65 }, { label: 'F8', code: 66 },
-  { label: 'F9', code: 67 }, { label: 'F10', code: 68 }, { label: 'F11', code: 87 }, { label: 'F12', code: 88 },
-  { label: 'Insert', code: 210 }, { label: 'Delete', code: 211 }, { label: 'Home', code: 199 }, { label: 'End', code: 207 },
-]
+// KeyboardEvent.code -> [DirectInput scan code, label].
+// DIK codes must match DxScanCode in the Skyrim Platform client.
+const KEY_TABLE = {
+  Enter: [28, 'Enter'], Space: [57, 'Space'], Tab: [15, 'Tab'],
+  ShiftLeft: [42, 'Left Shift'], ControlLeft: [29, 'Left Ctrl'], AltLeft: [56, 'Left Alt'],
+  ShiftRight: [54, 'Right Shift'], ControlRight: [157, 'Right Ctrl'], AltRight: [184, 'Right Alt'],
+  CapsLock: [58, 'Caps Lock'], Backquote: [41, 'Grave (~)'], Backspace: [14, 'Backspace'],
+  KeyA: [30, 'A'], KeyB: [48, 'B'], KeyC: [46, 'C'], KeyD: [32, 'D'],
+  KeyE: [18, 'E'], KeyF: [33, 'F'], KeyG: [34, 'G'], KeyH: [35, 'H'],
+  KeyI: [23, 'I'], KeyJ: [36, 'J'], KeyK: [37, 'K'], KeyL: [38, 'L'],
+  KeyM: [50, 'M'], KeyN: [49, 'N'], KeyO: [24, 'O'], KeyP: [25, 'P'],
+  KeyQ: [16, 'Q'], KeyR: [19, 'R'], KeyS: [31, 'S'], KeyT: [20, 'T'],
+  KeyU: [22, 'U'], KeyV: [47, 'V'], KeyW: [17, 'W'], KeyX: [45, 'X'],
+  KeyY: [21, 'Y'], KeyZ: [44, 'Z'],
+  Digit1: [2, '1'], Digit2: [3, '2'], Digit3: [4, '3'], Digit4: [5, '4'], Digit5: [6, '5'],
+  Digit6: [7, '6'], Digit7: [8, '7'], Digit8: [9, '8'], Digit9: [10, '9'], Digit0: [11, '0'],
+  Minus: [12, '-'], Equal: [13, '='],
+  BracketLeft: [26, '['], BracketRight: [27, ']'],
+  Semicolon: [39, ';'], Quote: [40, "'"], Backslash: [43, '\\'],
+  Comma: [51, ','], Period: [52, '.'], Slash: [53, '/'],
+  F1: [59, 'F1'], F2: [60, 'F2'], F3: [61, 'F3'], F4: [62, 'F4'],
+  F5: [63, 'F5'], F6: [64, 'F6'], F7: [65, 'F7'], F8: [66, 'F8'],
+  F9: [67, 'F9'], F10: [68, 'F10'], F11: [87, 'F11'], F12: [88, 'F12'],
+  Numpad0: [82, 'Numpad 0'], Numpad1: [79, 'Numpad 1'], Numpad2: [80, 'Numpad 2'],
+  Numpad3: [81, 'Numpad 3'], Numpad4: [75, 'Numpad 4'], Numpad5: [76, 'Numpad 5'],
+  Numpad6: [77, 'Numpad 6'], Numpad7: [71, 'Numpad 7'], Numpad8: [72, 'Numpad 8'],
+  Numpad9: [73, 'Numpad 9'],
+  NumpadMultiply: [55, 'Numpad *'], NumpadSubtract: [74, 'Numpad -'], NumpadAdd: [78, 'Numpad +'],
+  NumpadDecimal: [83, 'Numpad .'], NumpadDivide: [181, 'Numpad /'], NumpadEnter: [156, 'Numpad Enter'],
+  NumLock: [69, 'Num Lock'], ScrollLock: [70, 'Scroll Lock'], Pause: [197, 'Pause'], PrintScreen: [183, 'Print Screen'],
+  ArrowUp: [200, 'Up'], ArrowDown: [208, 'Down'], ArrowLeft: [203, 'Left'], ArrowRight: [205, 'Right'],
+  PageUp: [201, 'Page Up'], PageDown: [209, 'Page Down'],
+  Insert: [210, 'Insert'], Delete: [211, 'Delete'], Home: [199, 'Home'], End: [207, 'End'],
+  MetaLeft: [219, 'Left Win'], MetaRight: [220, 'Right Win'], ContextMenu: [221, 'Menu'],
+}
+const DIK_LABELS = {}
+for (const [dik, label] of Object.values(KEY_TABLE)) DIK_LABELS[dik] = label
+
 const RESOLUTIONS = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1080', '2560x1440', '3440x1440', '3840x2160']
 
-function fillKeySelect(id) {
+function labelForCode(code) {
+  if (!code) return '— none —'
+  return DIK_LABELS[code] || `0x${code.toString(16)}`
+}
+function setKey(id, code) {
   const el = document.getElementById(id)
   if (!el) return
-  el.innerHTML = ''
-  for (const o of KEY_OPTIONS) {
-    const opt = document.createElement('option')
-    opt.value = String(o.code)
-    opt.textContent = o.label
-    el.appendChild(opt)
-  }
+  const c = typeof code === 'number' ? code : 0
+  el.dataset.code = String(c)
+  el.textContent = labelForCode(c)
 }
-function setKey(id, code) { const el = document.getElementById(id); if (el) el.value = String(typeof code === 'number' ? code : 0) }
-function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.value, 10) || 0) : 0 }
+function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.dataset.code, 10) || 0) : 0 }
 
-;['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin',
-  'ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov'].forEach(fillKeySelect)
+// Press-to-bind capture. Backspace unbinds server hotkeys only: gameHotkeys:save
+// drops code 0, so an unbound game key would silently keep its old binding.
+const SERVER_HOTKEY_IDS = ['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin']
+const GAME_HOTKEY_IDS = ['ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov']
 
-// Game hotkey select ids -> controlmap event names
+let activeCapture = null
+
+function endCapture(restorePrev) {
+  if (!activeCapture) return
+  const { btn, prevCode, onKey, timer } = activeCapture
+  activeCapture = null
+  if (timer) clearTimeout(timer)
+  window.removeEventListener('keydown', onKey, { capture: true })
+  btn.classList.remove('hotkey-btn--capturing')
+  if (restorePrev) setKey(btn.id, prevCode)
+  btn.blur()
+}
+
+function startCapture(btn, canUnbind) {
+  endCapture(true)
+  const prompt = canUnbind ? 'Press a key… (Esc cancels, Backspace unbinds)' : 'Press a key… (Esc cancels)'
+  const onKey = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.code === 'Escape') { endCapture(true); return }
+    if (canUnbind && e.code === 'Backspace') { endCapture(false); setKey(btn.id, 0); return }
+    const entry = KEY_TABLE[e.code]
+    if (!entry) {
+      if (activeCapture.timer) clearTimeout(activeCapture.timer)
+      btn.textContent = 'Unsupported key'
+      activeCapture.timer = setTimeout(() => { if (activeCapture) btn.textContent = prompt }, 1000)
+      return
+    }
+    endCapture(false)
+    setKey(btn.id, entry[0])
+  }
+  btn.classList.add('hotkey-btn--capturing')
+  btn.textContent = prompt
+  window.addEventListener('keydown', onKey, { capture: true })
+  activeCapture = { btn, prevCode: getKey(btn.id), onKey, timer: null }
+}
+
+;[...SERVER_HOTKEY_IDS, ...GAME_HOTKEY_IDS].forEach(id => {
+  const btn = document.getElementById(id)
+  if (!btn) return
+  setKey(id, 0)
+  btn.addEventListener('click', () => startCapture(btn, SERVER_HOTKEY_IDS.includes(id)))
+})
+window.addEventListener('blur', () => endCapture(true))
+
+// Game hotkey button ids -> controlmap event names
 const GHK_MAP = {
   'ghk-activate': 'Activate', 'ghk-jump': 'Jump', 'ghk-sprint': 'Sprint',
   'ghk-sneak': 'Sneak', 'ghk-shout': 'Shout', 'ghk-pov': 'Toggle POV',
 }
-const GFX_INPUT_IDS = ['gfx-windowmode', 'gfx-resolution']
+const GFX_INPUT_IDS = [
+  'gfx-windowmode', 'gfx-resolution', 'gfx-texquality', 'gfx-aa', 'gfx-shadowquality',
+  'gfx-decals', 'gfx-reflections', 'gfx-godrays', 'gfx-lensflare', 'gfx-ao', 'gfx-precip',
+]
 
 function setInputsDisabled(ids, disabled) {
   for (const id of ids) { const el = document.getElementById(id); if (el) el.disabled = !!disabled }
@@ -101,6 +170,17 @@ async function loadGameSettingsTab() {
         if (cur) resSel.value = cur
       }
       const iy = document.getElementById('gfx-invert-y'); if (iy) iy.checked = !!g.invertY
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v }
+      const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v }
+      setVal('gfx-texquality', g.texQuality)
+      setVal('gfx-aa', g.aa)
+      setVal('gfx-shadowquality', g.shadowQuality)
+      setVal('gfx-decals', g.decals)
+      setVal('gfx-reflections', g.reflections)
+      setChk('gfx-godrays', g.godrays)
+      setChk('gfx-lensflare', g.lensFlare)
+      setChk('gfx-ao', g.ao)
+      setChk('gfx-precip', g.precip)
       const hint = document.getElementById('gfx-path-hint')
       if (hint) hint.textContent = g.exists ? `Editing: ${g.path}` : `Locked until the game is installed (creates ${g.path})`
       setInputsDisabled(GFX_INPUT_IDS, !g.exists)
@@ -111,16 +191,7 @@ async function loadGameSettingsTab() {
     if (gh && gh.ok) {
       for (const [id, ev] of Object.entries(GHK_MAP)) {
         const code = gh.keys ? gh.keys[ev] : null
-        if (typeof code === 'number' && code > 0 && code <= 0xff) {
-          const el = document.getElementById(id)
-          if (el && !Array.from(el.options).some(o => o.value === String(code))) {
-            const opt = document.createElement('option')
-            opt.value = String(code)
-            opt.textContent = `0x${code.toString(16)}`
-            el.appendChild(opt)
-          }
-          setKey(id, code)
-        }
+        if (typeof code === 'number' && code > 0 && code <= 0xff) setKey(id, code)
       }
     }
     const h = await window.electronAPI.hotkeysLoad()
@@ -146,10 +217,21 @@ async function saveGameSettingsTab() {
     if (resSel && /^\d+x\d+$/.test(resSel.value)) { const p = resSel.value.split('x'); width = p[0]; height = p[1] }
     const iy = document.getElementById('gfx-invert-y')
     if (wm && !wm.disabled) {
+      const val = (id) => { const el = document.getElementById(id); return el ? el.value : '' }
+      const chk = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
       await window.electronAPI.graphicsSave({
         windowMode: wm ? wm.value : 'windowed',
         width, height,
         invertY: !!(iy && iy.checked),
+        texQuality:    val('gfx-texquality'),
+        aa:            val('gfx-aa'),
+        shadowQuality: val('gfx-shadowquality'),
+        decals:        val('gfx-decals'),
+        reflections:   val('gfx-reflections'),
+        godrays:       chk('gfx-godrays'),
+        lensFlare:     chk('gfx-lensflare'),
+        ao:            chk('gfx-ao'),
+        precip:        chk('gfx-precip'),
       })
     }
     const ghkFirst = document.getElementById('ghk-activate')
