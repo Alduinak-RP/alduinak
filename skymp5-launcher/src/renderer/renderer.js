@@ -181,8 +181,6 @@ async function loadGameSettingsTab() {
       setChk('gfx-lensflare', g.lensFlare)
       setChk('gfx-ao', g.ao)
       setChk('gfx-precip', g.precip)
-      const hint = document.getElementById('gfx-path-hint')
-      if (hint) hint.textContent = g.exists ? `Editing: ${g.path}` : `Locked until the game is installed (creates ${g.path})`
       setInputsDisabled(GFX_INPUT_IDS, !g.exists)
     }
     const gh = await window.electronAPI.gameHotkeysLoad()

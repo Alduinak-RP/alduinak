@@ -44,7 +44,8 @@ const page = body => `<!doctype html>
 </html>`
 
 // HTML page of every Nexus archive's download link; free accounts can't use the API, so players Ctrl+click links (about 5 at a time) to start Mod Manager Downloads
-router.get('/', (_req, res) => {
+// ?need=<modId>-<fileId>,... narrows the list to what the launcher is still missing.
+router.get('/', (req, res) => {
   let manifest
   try {
     manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'))
@@ -68,7 +69,16 @@ router.get('/', (_req, res) => {
     if (a.source && a.source.type === 'nexus') add(a.name, a.source.modId, a.source.fileId)
   }
 
-  const rows = items.map(it =>
+  // The launcher sends the archives it could not find locally; anything else is
+  // already downloaded, so keep it off the page.
+  const needParam = typeof req.query.need === 'string' ? req.query.need.trim() : ''
+  const needed = needParam ? new Set(needParam.split(',').map(s => s.trim()).filter(Boolean)) : null
+  const shown = needed
+    ? items.filter(it => needed.has(`${it.modId}-${it.fileId || 'any'}`))
+    : items.slice()
+  const hiddenCount = items.length - shown.length
+
+  const rows = shown.map(it =>
     `<li><a href="${linkFor(it.modId, it.fileId)}" target="_blank" rel="noopener">${esc(it.name)}</a></li>`
   ).join('\n')
 
@@ -78,13 +88,16 @@ router.get('/', (_req, res) => {
     <p><strong>Ctrl+click</strong> (Cmd+click on macOS) each link below to open it in a background tab, then click
     <strong>Slow Download</strong> on each Nexus page. Do about <strong>5 at a time</strong> so Nexus doesn't throttle you.</p>
     <p>Move every zip/7z archive you download into your <code>Alduinak/downloads</code> folder, which the launcher opened for you.</p>
-    ${items.length ? `<p>
-      <button class="open-all" id="open-batch">Open the first ${Math.min(5, items.length)} links</button>
+    ${hiddenCount > 0 ? `<p>${hiddenCount} mod${hiddenCount === 1 ? '' : 's'} you already downloaded ${hiddenCount === 1 ? 'is' : 'are'} hidden.</p>` : ''}
+    ${shown.length ? `<p>
+      <button class="open-all" id="open-batch">Open the first ${Math.min(5, shown.length)} links</button>
       <span class="open-all-hint">Opens 5 tabs per click, working down the list, so Nexus never gets hit all at once.
       Your browser will ask you to allow pop-ups for this site the first time.</span>
     </p>` : ''}
   </div>
-  ${items.length ? `<ol>\n${rows}\n</ol>` : `<p class="empty">No Nexus mods in the current manifest.</p>`}
+  ${shown.length
+    ? `<ol>\n${rows}\n</ol>`
+    : `<p class="empty">${hiddenCount > 0 ? 'Every mod is already downloaded. Go back to the launcher and continue the install.' : 'No Nexus mods in the current manifest.'}</p>`}
   <script>
     var batchBtn = document.getElementById('open-batch')
     if (batchBtn) {

@@ -5,6 +5,10 @@ if (!require('electron').app.isPackaged) {
 }
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+
+// Basic/Remote display adapters (RDP, VMs, servers) bugcheck the video
+// scheduler when Chromium drives them; the launcher UI does not need the GPU.
+app.disableHardwareAcceleration()
 const path   = require('path')
 const fs     = require('fs')
 const os     = require('os')
@@ -116,10 +120,42 @@ function effectiveGamePath() {
 // Registry keys the store editions write at install time, probed in order.
 const SKYRIM_REGISTRY_PROBES = [
   { key: 'HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1801825368', value: 'path' },   // Skyrim AE GOG
-  { key: 'HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1711237643', value: 'path' },   // Skyrim SE GOG
+  { key: 'HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1711230643', value: 'path' },   // Skyrim SE GOG
   { key: 'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 489830', value: 'InstallLocation' },  // Steam
   { key: 'HKLM\\SOFTWARE\\WOW6432Node\\Bethesda Softworks\\Skyrim Special Edition', value: 'installed path' },
 ]
+
+// GOG product ids differ per store listing, so enumerate the whole Games key
+// instead of relying on the pinned ids above.
+function gogSkyrimPaths() {
+  const out = []
+  for (const root of ['HKLM\\SOFTWARE\\WOW6432Node\\GOG.com\\Games', 'HKLM\\SOFTWARE\\GOG.com\\Games']) {
+    let listing = ''
+    try {
+      listing = execFileSync('reg', ['query', root], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    } catch { continue }
+    for (const line of listing.split(/\r?\n/)) {
+      const key = line.trim()
+      if (!key.startsWith('HK')) continue
+      const p = regQueryValue(key, 'path')
+      if (p) out.push(p)
+    }
+  }
+  return out
+}
+
+// Common Steam library roots, for installs outside the default library.
+function steamSkyrimPaths() {
+  const out = []
+  const suffix = path.join('steamapps', 'common', 'Skyrim Special Edition')
+  for (const drive of ['C', 'D', 'E', 'F', 'G']) {
+    out.push(path.join(`${drive}:\\`, 'Program Files (x86)', 'Steam', suffix))
+    out.push(path.join(`${drive}:\\`, 'Steam', suffix))
+    out.push(path.join(`${drive}:\\`, 'SteamLibrary', suffix))
+    out.push(path.join(`${drive}:\\`, 'Games', 'Steam', suffix))
+  }
+  return out
+}
 
 // Read a single registry value via reg.exe (argv array, same pattern as mo2.js).
 function regQueryValue(key, value) {
@@ -158,6 +194,12 @@ function detectSkyrimPath() {
   if (process.platform !== 'win32') return null
   for (const probe of SKYRIM_REGISTRY_PROBES) {
     const p = regQueryValue(probe.key, probe.value)
+    if (isValidSkyrimPath(p)) return p
+  }
+  for (const p of gogSkyrimPaths()) {
+    if (isValidSkyrimPath(p)) return p
+  }
+  for (const p of steamSkyrimPaths()) {
     if (isValidSkyrimPath(p)) return p
   }
   return null
@@ -1936,13 +1978,20 @@ function nexusNamePattern(modId, displayName, version) {
   return new RegExp(`^(?=.*${verRe})(?=.*(?:${base}))`, 'i')
 }
 
-// Open the MO2 downloads folder (archive staging) + the backend page listing every file-pinned Nexus link, once per install run.
+// Open the MO2 downloads folder (archive staging) + the backend page listing the
+// file-pinned Nexus links, once per install run. `missing` narrows the page to
+// the archives this install still needs, so nothing already downloaded is listed.
 let _downloadListOpened = false
-function openDownloadList(downloadsDir) {
+function openDownloadList(downloadsDir, missing) {
   if (_downloadListOpened) return
   _downloadListOpened = true
   try { fs.mkdirSync(downloadsDir, { recursive: true }); shell.openPath(downloadsDir) } catch {}
-  shell.openExternal(`${config.apiUrl}/api/nexus-downloads`)
+  const need = (missing || [])
+    .filter(a => a.source && a.source.modId)
+    .map(a => `${a.source.modId}-${a.source.fileId || 'any'}`)
+    .join(',')
+  const query = need ? `?need=${encodeURIComponent(need)}` : ''
+  shell.openExternal(`${config.apiUrl}/api/nexus-downloads${query}`)
 }
 
 // MO2 install
@@ -2145,7 +2194,7 @@ async function runMO2Install(opts = {}) {
 
     // 3b. Free / no-key path: open the downloads list page + MO2 staging folder
     if (needBrowser.length > 0) {
-      openDownloadList(downloadsDir)
+      openDownloadList(downloadsDir, needBrowser)
       send('install:progress', {
         phase: 'mods',
         file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the Alduinak downloads folder.',
