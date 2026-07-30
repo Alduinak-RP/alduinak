@@ -1,5 +1,6 @@
 #include "TPInputService.h"
 #include "TPOverlayService.h"
+#include <spdlog/spdlog.h>
 
 static OverlayService* s_pOverlay = nullptr;
 
@@ -238,6 +239,38 @@ void ProcessMouseWheel(uint16_t aX, uint16_t aY, int16_t aZ)
 static LRESULT CALLBACK InputServiceWndProc(HWND hwnd, UINT uMsg,
                                             WPARAM wParam, LPARAM lParam)
 {
+  // A same-process helper window (in-process CEF audio stack on the first mic
+  // open) stealing activation drops DirectInput's DISCL_FOREGROUND acquisition
+  // until alt-tab; swallow the theft and keep the game window active
+  if (uMsg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
+    const HWND other = reinterpret_cast<HWND>(lParam);
+    DWORD pid = 0;
+    if (other) {
+      GetWindowThreadProcessId(other, &pid);
+    }
+    if (other && pid == GetCurrentProcessId()) {
+      char className[128] = { 0 };
+      GetClassNameA(other, className, sizeof(className) - 1);
+      spdlog::info("InputServiceWndProc - blocked same-process activation "
+                   "theft by window class '{}'",
+                   className);
+      SetForegroundWindow(hwnd);
+      SetFocus(hwnd);
+      return 1;
+    }
+  }
+  if (uMsg == WM_KILLFOCUS) {
+    const HWND other = reinterpret_cast<HWND>(wParam);
+    DWORD pid = 0;
+    if (other) {
+      GetWindowThreadProcessId(other, &pid);
+    }
+    if (other && pid == GetCurrentProcessId()) {
+      SetFocus(hwnd);
+      return 1;
+    }
+  }
+
   const auto pApp = s_pOverlay->GetMyChromiumApp();
   if (!pApp)
     return 0;

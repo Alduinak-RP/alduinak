@@ -134,6 +134,13 @@ class VoiceManager {
       this.publishRange();
       if (this.ptt) {
         try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { /* applied on next press */ }
+      } else {
+        // Pre-warm: the first mic open runs Chromium's device stack in-process
+        // and can hitch; do it at connect so the first PTT only unmutes
+        try {
+          await room.localParticipant.setMicrophoneEnabled(true);
+          await room.localParticipant.setMicrophoneEnabled(false);
+        } catch (e) { /* micDenied is reported on the first real PTT */ }
       }
       sendToGame('voice::ready');
     } catch (e) {
