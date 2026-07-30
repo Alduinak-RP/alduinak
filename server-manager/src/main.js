@@ -140,7 +140,11 @@ async function serviceLogFiles(svc) {
     const p = parseNssmPath(await nssm('get', name, stream))
     if (p) files.push(p)
   }
-  if (svc.key === 'game') files.push(path.join(chatLogDir(), 'chat.log'))
+  if (svc.key === 'game') {
+    for (const f of ['chat.log', 'admin.log', 'pvp.log']) {
+      files.push(path.join(chatLogDir(), f))
+    }
+  }
   return files
 }
 

@@ -94,6 +94,11 @@ export class AdminSystem implements System {
     } catch { }
   }
 
+  // Routes into the gamemode's admin.log + staff channel when loaded
+  private adminLog(text: string): void {
+    try { (globalThis as any).__alduinakAdminLog?.(text); } catch { }
+  }
+
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     if (type !== "adminMenuRequest" && type !== "adminAction") return;
     const mp = ctx.svr as Mp;
@@ -129,15 +134,18 @@ export class AdminSystem implements System {
     try {
       if (action === "teleportTo") {
         mp.set(myActorId, "locationalData", mp.get(target.actorId, "locationalData"));
+        this.adminLog(`profile ${adminProfile} teleported to ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, true, `Teleported to ${target.name}`);
       } else if (action === "summon") {
         mp.set(target.actorId, "locationalData", mp.get(myActorId, "locationalData"));
+        this.adminLog(`profile ${adminProfile} summoned ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, true, `Summoned ${target.name}`);
       } else if (action === "kick") {
         // Disable boots to the menu; kick drops the connection so they can't re-enter from character select
         ctx.svr.setEnabled(target.actorId, false);
         try { (ctx.svr as Mp).kick(target.userId); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} kicked profile ${target.profileId} (${target.name})`);
+        this.adminLog(`profile ${adminProfile} kicked ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, true, `Kicked ${target.name}`);
       } else if (action === "ban") {
         this.banViaBackend(mp, ctx, userId, myActorId, target, adminProfile);
@@ -180,6 +188,7 @@ export class AdminSystem implements System {
         try { ctx.svr.setEnabled(target.actorId, false); } catch { }
         try { (ctx.svr as Mp).kick(target.userId); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} banned profile ${target.profileId} (${target.name})`);
+        this.adminLog(`profile ${adminProfile} banned ${target.name} (profile ${target.profileId})`);
         this.replyIfSameAdmin(mp, userId, adminActorId, true, `Banned ${target.name}`);
       } else {
         this.log(`AdminSystem: backend ban failed with status ${res.status}`);

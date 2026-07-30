@@ -666,6 +666,19 @@ void ActionListener::OnConsoleCommand(const RawMessageData& rawMsgData,
     for (size_t i = 0; i < msg.data.args.size(); i++) {
       consoleArgs[i] = ConsoleCommands::Argument(msg.data.args[i]);
     }
+
+    // Fired before Execute so denied attempts are visible to the gamemode
+    // too; CustomEvent prepends the caller's form id
+    nlohmann::json argsJson = nlohmann::json::array();
+    argsJson.push_back(msg.data.commandName);
+    for (const auto& arg : msg.data.args) {
+      std::visit([&argsJson](const auto& value) { argsJson.push_back(value); },
+                 arg);
+    }
+    CustomEvent consoleEvent(me->GetFormId(), "onConsoleCommand",
+                             argsJson.dump());
+    consoleEvent.Fire(&partOne.worldState);
+
     ConsoleCommands::Execute(*me, msg.data.commandName, consoleArgs);
   }
 }
@@ -1421,6 +1434,8 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
                "damage. By caster: {3:x})",
                spellCastData.target, spellCastData.spell, damage,
                spellCastData.caster);
+
+  FireHitDamageEvent(aggressor, targetActorPtr, hitData.source, damage);
 }
 
 void ActionListener::OnWeaponHit(MpActor* aggressor,
@@ -1581,6 +1596,23 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     "percentage now: {2}, base health: {4})",
     hitData.target, damage, currentActorValues.healthPercentage,
     healthPercentage, outBaseHealth);
+
+  FireHitDamageEvent(aggressor, &targetActor, hitData.source, damage);
+}
+
+void ActionListener::FireHitDamageEvent(MpActor* aggressor, MpActor* target,
+                                        uint32_t sourceId, float damage)
+{
+  if (!aggressor || !target || damage <= 0.f) {
+    return;
+  }
+  nlohmann::json argsJson = nlohmann::json::array();
+  argsJson.push_back(target->GetFormId());
+  argsJson.push_back(sourceId);
+  argsJson.push_back(damage);
+  CustomEvent hitEvent(aggressor->GetFormId(), "onHitDamage",
+                       argsJson.dump());
+  hitEvent.Fire(&partOne.worldState);
 }
 
 void ActionListener::SendPapyrusOnHitEvent(MpActor* aggressor,
