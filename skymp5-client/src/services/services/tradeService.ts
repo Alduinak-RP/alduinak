@@ -148,15 +148,20 @@ export class TradeService extends ClientListener {
         const prev = this.state;
         this.state = this.parseState(content);
         this.closeInvite();
-        this.renderWidget();
-        if (this.lockPending) {
-          this.lockPending = false;
-          // The server wipes the offer when a lock fails affordability; restore what we can still afford.
-          if (!this.state.myLocked && this.state.myOffer.length === 0
-            && prev !== null && prev.myOffer.length > 0) {
-            this.restoreOffer(prev.myOffer);
+        const wasLockPending = this.lockPending;
+        this.lockPending = false;
+        // Packet handlers run in tick context where inventory natives throw; defer to update
+        this.controller.once("update", () => {
+          if (!this.state) return;
+          this.renderWidget();
+          if (wasLockPending) {
+            // The server wipes the offer when a lock fails affordability; restore what we can still afford.
+            if (!this.state.myLocked && this.state.myOffer.length === 0
+              && prev !== null && prev.myOffer.length > 0) {
+              this.restoreOffer(prev.myOffer);
+            }
           }
-        }
+        });
         break;
       }
       case "tradeCompleted":
@@ -219,12 +224,17 @@ export class TradeService extends ClientListener {
         sendCustomPacket(this.controller, { customPacketType: "tradeRespond", accept: false });
         this.closeInvite();
         break;
-      case events.add:
-        this.changeOffer(Number(e.arguments[1]), Number(e.arguments[2]), +1, this.keyNameArg(e.arguments[3]));
+      case events.add: {
+        // Browser messages arrive in tick context; inventory natives need update
+        const [baseId, count, keyRaw] = [Number(e.arguments[1]), Number(e.arguments[2]), this.keyNameArg(e.arguments[3])];
+        this.controller.once("update", () => this.changeOffer(baseId, count, +1, keyRaw));
         break;
-      case events.remove:
-        this.changeOffer(Number(e.arguments[1]), Number(e.arguments[2]), -1, this.keyNameArg(e.arguments[3]));
+      }
+      case events.remove: {
+        const [baseId, count, keyRaw] = [Number(e.arguments[1]), Number(e.arguments[2]), this.keyNameArg(e.arguments[3])];
+        this.controller.once("update", () => this.changeOffer(baseId, count, -1, keyRaw));
         break;
+      }
       case events.lock:
         this.lockPending = true;
         sendCustomPacket(this.controller, { customPacketType: "tradeLock" });
@@ -342,11 +352,12 @@ export class TradeService extends ClientListener {
     } catch (e) {
       name = "";
     }
-    if (!name) {
-      name = "0x" + (baseId >>> 0).toString(16);
+    // Only cache real names so a transient native failure cannot stick
+    if (name) {
+      this.nameCache.set(baseId, name);
+      return name;
     }
-    this.nameCache.set(baseId, name);
-    return name;
+    return "0x" + (baseId >>> 0).toString(16);
   }
 
   private toUiItem(i: Item): UiItem {
