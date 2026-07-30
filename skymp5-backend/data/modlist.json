@@ -12,6 +12,62 @@
     "source": "url"
   },
   {
+    "name": "JK's Riften Outskirts",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 90864
+  },
+  {
+    "name": "JK's Windhelm Outskirts",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 86975
+  },
+  {
+    "name": "Riften Extension - Southwoods District",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 47074
+  },
+  {
+    "name": "Riften Extension - Northshore District",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 128258
+  },
+  {
+    "name": "Markarth Outskirts",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 70213
+  },
+  {
+    "name": "Capital Windhelm Expansion",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 42990
+  },
+  {
+    "name": "Warbird's Whiterun Metropolis",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 56839
+  },
+  {
+    "name": "The Great City of Solitude SSE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 22243
+  },
+  {
     "name": "Missives 2.03 SSE",
     "required": true,
     "enabled": true,
@@ -75,13 +131,6 @@
     "nexusId": 61007
   },
   {
-    "name": "Morthal Expanded",
-    "required": true,
-    "enabled": true,
-    "source": "nexus",
-    "nexusId": 51242
-  },
-  {
     "name": "Moonlight Cottage - Player Home",
     "required": true,
     "enabled": true,
@@ -131,13 +180,6 @@
     "nexusId": 2013
   },
   {
-    "name": "Iggath",
-    "required": true,
-    "enabled": true,
-    "source": "nexus",
-    "nexusId": 75157
-  },
-  {
     "name": "Helgen Rebuilt Special Edition",
     "required": true,
     "enabled": true,
@@ -171,6 +213,13 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 75264
+  },
+  {
+    "name": "Redoran Tombwarden Armors",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 139546
   },
   {
     "name": "Nirn Necessities - My patches SE by Xtudo - Non-HDT Optimized Textures Backpack Satchel Scarf Cape Cloak Gaiter",
@@ -227,6 +276,13 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 120576
+  },
+  {
+    "name": "Redgarb",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 121339
   },
   {
     "name": "New Legion",
