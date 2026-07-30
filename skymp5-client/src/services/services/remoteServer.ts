@@ -124,6 +124,7 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("spellCastMessage", (e) => this.onSpellCastMessage(e));
     this.controller.emitter.on("updateAnimVariablesMessage", (e) => this.onUpdateAnimVariablesMessage(e));
 
+    this.controller.on("update", () => this.sweepCloneCasts());
   }
 
   private onHostStartMessage(event: ConnectionMessage<HostStartMessage>) {
@@ -254,6 +255,23 @@ export class RemoteServer extends ClientListener {
       const ragdollService = this.controller.lookupListener(RagdollService);
 
       const refrId = refr?.getFormID();
+
+      // Same-cell short hops (carry follow) ride the cheap havok translate;
+      // the ragdoll purge + moveRefrToPosition path costs the local player a
+      // full reference reattach per message
+      if (refr && refrId === 0x14 &&
+        ObjectReferenceEx.getWorldOrCell(refr) === msg.worldOrCell) {
+        const dist = ObjectReferenceEx.getDistance(
+          ObjectReferenceEx.getPos(refr), [msg.pos[0], msg.pos[1], msg.pos[2]]);
+        if (dist < 2048) {
+          refr.translateTo(
+            msg.pos[0], msg.pos[1], msg.pos[2],
+            msg.rot[0], msg.rot[1], msg.rot[2],
+            Math.max(dist / 0.35, 100), 0,
+          );
+          return;
+        }
+      }
 
       const removeRagdollCallback = () => {
         TESModPlatform.moveRefrToPosition(
@@ -956,9 +974,18 @@ export class RemoteServer extends ClientListener {
       };
 
       if (msg.data.interruptCast) {
+        this.cloneCastWatch.delete(msg.data.caster);
         interruptCast(ac.getFormID(), msg.data.castingSource, actorAnimationVariables);
         return;
       }
+
+      // Casters refresh channeled casts every ~3s; a clone whose refresh and
+      // stop both got lost is interrupted by sweepCloneCasts
+      this.cloneCastWatch.set(msg.data.caster, {
+        expiresAt: Date.now() + 8000,
+        castingSource: msg.data.castingSource,
+        animVars: actorAnimationVariables,
+      });
 
       // Prefer the spell id in the message; the clone's equipped spell can be stale (spell swaps fire no equip event)
       const transmitted = msg.data.spell ? Game.getFormEx(msg.data.spell) : null;
@@ -968,6 +995,31 @@ export class RemoteServer extends ClientListener {
           msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables);
       }
     });
+  }
+
+  private sweepCloneCasts(): void {
+    const now = Date.now();
+    if (now - this.lastCloneCastSweep < 2000 || this.cloneCastWatch.size === 0) {
+      return;
+    }
+    this.lastCloneCastSweep = now;
+    for (const [casterRemoteId, watch] of Array.from(this.cloneCastWatch)) {
+      if (now < watch.expiresAt) {
+        continue;
+      }
+      this.cloneCastWatch.delete(casterRemoteId);
+      const ac = Actor.from(Game.getFormEx(remoteIdToLocalId(casterRemoteId)));
+      if (!ac) {
+        continue;
+      }
+      const stillCasting = ac.getAnimationVariableBool("IsCastingRight")
+        || ac.getAnimationVariableBool("IsCastingLeft")
+        || ac.getAnimationVariableBool("IsCastingDual");
+      if (stillCasting) {
+        logTrace(this, `Clone cast timed out for remote caster`, casterRemoteId.toString(16));
+        interruptCast(ac.getFormID(), watch.castingSource, watch.animVars);
+      }
+    }
   }
 
   private onUpdateAnimVariablesMessage(event: ConnectionMessage<UpdateAnimVariablesMessage>): void {
@@ -993,5 +1045,7 @@ export class RemoteServer extends ClientListener {
     });
   }
 
+  private cloneCastWatch = new Map<number, { expiresAt: number, castingSource: number, animVars: ActorAnimationVariables }>();
+  private lastCloneCastSweep = 0;
   private numSetInventory = 0;
 }

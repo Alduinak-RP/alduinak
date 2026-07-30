@@ -170,12 +170,16 @@ Napi::Value MagicApi::InterruptCast(const Napi::CallbackInfo& info)
         return;
       }
 
+      // Anim vars are best-effort: the cast must stop even when they fail,
+      // or a lost stop leaves the clone channeling forever
       const bool isAnimationVariablesApplied =
         AnimationGraphMasterBehaviourDescriptor{ std::move(animVars) }
           .ApplyVariablesToActor(*pActor);
 
       if (!isAnimationVariablesApplied) {
-        return;
+        logger::warn("InterruptCast - failed to apply animation variables to "
+                     "actor {:x}, stopping the cast anyway",
+                     actorFormId);
       }
 
       if (auto* caster = pActor->GetMagicCaster(castingSource)) {

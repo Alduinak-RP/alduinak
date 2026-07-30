@@ -800,6 +800,16 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
   }
 
   if (actor->ShouldSkipRestoration()) {
+    // Echo the server values instead of dropping silently: the client's
+    // dedup never re-sends an unchanged report, so a bare return here
+    // desyncs the bar until the next damage event
+    const auto& serverValues = actor->GetActorValues();
+    ChangeValuesMessage correction;
+    correction.idx = actor->GetIdx();
+    correction.data.health = serverValues.healthPercentage;
+    correction.data.magicka = serverValues.magickaPercentage;
+    correction.data.stamina = serverValues.staminaPercentage;
+    actor->SendToUser(correction, true);
     return;
   }
 
@@ -1212,6 +1222,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   SendToNeighbours(myActor->idx, rawMsgData);
 
   if (spellCastData.interruptCast) {
+    restorationChannels.erase(caster->GetFormId());
     return;
   }
 
@@ -1283,12 +1294,89 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
       partOne.worldState.espmFiles.begin(), partOne.worldState.espmFiles.end()
     };
     const bool hasSweetpie = modFiles.count("SweetPie.esp") > 0;
-    targetActor->ApplyMagicEffects(restoreEffects, hasSweetpie);
-    spdlog::info("ActionListener::OnSpellCast - applied {} restorative "
-                 "effect(s) of spell {:x} to actor {:x}",
-                 restoreEffects.size(), spellCastData.spell,
-                 targetActor->GetFormId());
+
+    const bool isConcentration = spellData.spellItem &&
+      spellData.spellItem->castType == espm::SPEL::CastType::Concentration;
+    const uint32_t casterId = caster->GetFormId();
+    auto existing = restorationChannels.find(casterId);
+    const bool isChannelRefresh = isConcentration &&
+      existing != restorationChannels.end() &&
+      existing->second.spellId == spellCastData.spell;
+
+    // Client keep-alives refresh the channel; only fresh casts apply now
+    if (!isChannelRefresh) {
+      targetActor->ApplyMagicEffects(restoreEffects, hasSweetpie);
+      spdlog::info("ActionListener::OnSpellCast - applied {} restorative "
+                   "effect(s) of spell {:x} to actor {:x}",
+                   restoreEffects.size(), spellCastData.spell,
+                   targetActor->GetFormId());
+    }
+
+    // Concentration restoratives heal magnitude PER SECOND while channeled;
+    // tick the channel until the interrupt arrives or validation fails
+    if (isConcentration) {
+      const bool hadChannel = existing != restorationChannels.end();
+      RestorationChannel channel;
+      channel.spellId = spellCastData.spell;
+      channel.targetId = targetActor->GetFormId();
+      channel.effects = restoreEffects;
+      channel.hasSweetpie = hasSweetpie;
+      restorationChannels[casterId] = std::move(channel);
+      if (!hadChannel) {
+        partOne.worldState.SetTimer(std::chrono::milliseconds(1000))
+          .Then([this, casterId](Viet::Void) {
+            TickRestorationChannel(casterId);
+          });
+      }
+    }
   }
+}
+
+void ActionListener::TickRestorationChannel(uint32_t casterId)
+{
+  auto it = restorationChannels.find(casterId);
+  if (it == restorationChannels.end()) {
+    return;
+  }
+  auto& channel = it->second;
+
+  constexpr uint32_t kMaxChannelTicks = 30;
+
+  auto& worldState = partOne.worldState;
+  auto casterForm = worldState.LookupFormById(casterId);
+  MpActor* caster = casterForm
+    ? std::dynamic_pointer_cast<MpActor>(casterForm).get()
+    : nullptr;
+
+  bool valid = caster && !caster->IsDead() &&
+    partOne.GetUserByActor(casterId) != Networking::InvalidUserId &&
+    caster->GetEquipment().IsSpellEquipped(channel.spellId) &&
+    ++channel.ticks <= kMaxChannelTicks;
+
+  MpActor* targetActor = nullptr;
+  if (valid) {
+    auto targetForm = worldState.LookupFormById(channel.targetId);
+    targetActor = targetForm
+      ? std::dynamic_pointer_cast<MpActor>(targetForm).get()
+      : nullptr;
+    valid = targetActor && !targetActor->IsDead();
+  }
+  if (valid && targetActor != caster) {
+    constexpr float kMaxHealDistance = 4096.f;
+    valid = targetActor->GetCellOrWorld() == caster->GetCellOrWorld() &&
+      (targetActor->GetPos() - caster->GetPos()).SqrLength() <=
+        kMaxHealDistance * kMaxHealDistance;
+  }
+
+  if (!valid) {
+    restorationChannels.erase(it);
+    return;
+  }
+
+  targetActor->ApplyMagicEffects(channel.effects, channel.hasSweetpie);
+
+  worldState.SetTimer(std::chrono::milliseconds(1000))
+    .Then([this, casterId](Viet::Void) { TickRestorationChannel(casterId); });
 }
 
 void ActionListener::OnUnknown(const RawMessageData& rawMsgData)

@@ -173,6 +173,15 @@ export class MagicSyncService extends ClientListener {
             || player.getAnimationVariableBool("IsCastingDual");
         const stopped = this.prevIsCasting && !casting;
         this.prevIsCasting = casting;
+        // Keep-alive while channeling so observers can time out a clone whose stop message got lost
+        if (casting && this.lastSpellCastEventMsg && !this.lastSpellCastEventMsg.interruptCast
+            && Date.now() - this.lastCastKeepAliveMs > this.castKeepAliveRateMs) {
+            this.lastCastKeepAliveMs = Date.now();
+            this.controller.emitter.emit("sendMessage", {
+                message: { t: MsgType.SpellCast, data: this.lastSpellCastEventMsg },
+                reliability: "reliable"
+            });
+        }
         if (!stopped || !this.lastSpellCastEventMsg || this.lastSpellCastEventMsg.interruptCast) {
             return;
         }
@@ -235,7 +244,9 @@ export class MagicSyncService extends ClientListener {
 
     private playerId = 0x14;
     private sendUpdateAnimationVariablesRateMs = 500;
+    private castKeepAliveRateMs = 3000;
     private lastSpellCastEventMsg: SpellCastMsgData | null = null;
     private lastSendUpdateAnimationVariables: number = 0;
+    private lastCastKeepAliveMs = 0;
     private prevIsCasting = false;
 }

@@ -10,6 +10,8 @@
 #include "SweetHidePlayerNamesService.h"
 #include "libespm/Loader.h"
 #include <memory>
+#include <unordered_map>
+#include <vector>
 
 class ServerState;
 class WorldState;
@@ -90,6 +92,17 @@ public:
   }
 
 private:
+  struct RestorationChannel
+  {
+    uint32_t spellId = 0;
+    uint32_t targetId = 0;
+    std::vector<espm::Effects::Effect> effects;
+    bool hasSweetpie = false;
+    uint32_t ticks = 0;
+  };
+
+  void TickRestorationChannel(uint32_t casterId);
+
   void OnSpellHit(MpActor* aggressor, MpObjectReference* targetRef,
                   const HitData& hitData);
   void OnWeaponHit(MpActor* aggressor, MpObjectReference* targetRef,
@@ -107,6 +120,8 @@ private:
                             bool reliable = false);
 
   PartOne& partOne;
+
+  std::unordered_map<uint32_t, RestorationChannel> restorationChannels;
 
   // TODO: inverse dependency
   std::shared_ptr<CraftService> craftService;
