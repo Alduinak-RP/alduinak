@@ -3,7 +3,7 @@ const fs = require('fs')
 
 // Written by the manager Build tab. LATEST_VERSION = launcher app release (GET /api/version, update prompt)
 // CLIENT_VERSION = client files release (baked into data/files-version.json by merge-files.js)
-const LATEST_VERSION = '2.1.7'
+const LATEST_VERSION = '2.1.8'
 const CLIENT_VERSION = '0.0.15'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 
