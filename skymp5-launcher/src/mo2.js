@@ -448,16 +448,35 @@ async function downloadToDownloads(url, fileName, onProgress) {
  * Extract an archive into a per-run cache dir (.x/<archiveId>) and return its
  * path. Re-extraction is skipped if the cache already exists this run.
  */
+// An interrupted extraction leaves a partial folder. Reusing it makes every
+// later run fail with "not found in archive" until the install is deleted, so
+// a cached extraction counts only when this marker says it finished.
+const EXTRACT_MARKER = '.complete'
+
 function extractToCache(archivePath, archiveId) {
   const dir = path.join(getRoot(), '.x', String(archiveId))
-  if (!fs.existsSync(lp(dir))) extractArchive(archivePath, dir)
+  const marker = path.join(dir, EXTRACT_MARKER)
+  if (fs.existsSync(lp(marker))) return dir
+
+  if (fs.existsSync(lp(dir))) {
+    _log(`discarding incomplete extraction of ${archiveId}`)
+    fs.rmSync(lp(dir), { recursive: true, force: true })
+  }
+  extractArchive(archivePath, dir)
+  fs.writeFileSync(lp(marker), '')
   return dir
 }
 
 /** Remove a cached extraction (or the whole .x cache when no id is given). */
 function clearCache(archiveId) {
   const dir = archiveId == null ? path.join(getRoot(), '.x') : path.join(getRoot(), '.x', String(archiveId))
-  try { fs.rmSync(lp(dir), { recursive: true, force: true }) } catch {}
+  try {
+    fs.rmSync(lp(dir), { recursive: true, force: true })
+  } catch (err) {
+    // A locked cache used to be swallowed here and then reused as if valid
+    _log(`could not clear extraction cache ${dir}: ${err.message}`)
+    try { fs.rmSync(lp(path.join(dir, EXTRACT_MARKER)), { force: true }) } catch {}
+  }
 }
 
 /**
