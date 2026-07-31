@@ -822,12 +822,13 @@ let gameRunning     = false
 let playBusy        = false
 let isoReady        = true   // isolation disabled, or the game copy exists
 let updateAvailable = false  // server has newer client files than installed
+let launcherUpdateReady = false  // a newer launcher build is published
 
 const PLAY_LABEL = '\u25BA PLAY'
 const updatePill = document.getElementById('update-pill')
 
 function updatePlayButton() {
-  updatePill.hidden = !(updateAvailable && isoReady && !gameRunning)
+  updatePill.hidden = !((launcherUpdateReady || (updateAvailable && isoReady)) && !gameRunning)
 
   if (gameRunning) {
     btnConnect.disabled    = true
@@ -836,6 +837,15 @@ function updatePlayButton() {
     return
   }
   if (playBusy) return  // label managed by the play/update sequence
+
+  // The launcher updates itself first: a client update run by an outdated
+  // launcher would be replaced by the restart anyway.
+  if (launcherUpdateReady) {
+    btnConnect.disabled    = false
+    btnConnect.textContent = '\u2913 UPDATE LAUNCHER'
+    btnConnect.title       = 'Installs the launcher update and restarts.'
+    return
+  }
 
   if (!isoReady) {
     btnConnect.disabled    = false
@@ -865,7 +875,16 @@ async function refreshPlayState() {
 
   const uc = await window.electronAPI.filesUpdateCheck()
   updateAvailable = !!uc.updateAvailable
-  if (uc.serverVersion) clientVersionEl.textContent = `v${uc.serverVersion}`
+  // Mirror the launcher notice so players can see which one is updating
+  if (updateAvailable) {
+    clientVersionEl.textContent = '⬆ UPDATE AVAILABLE'
+    clientVersionEl.classList.add('update-available')
+    clientVersionEl.title = uc.serverVersion ? `v${uc.serverVersion} is available` : ''
+  } else {
+    if (uc.serverVersion) clientVersionEl.textContent = `v${uc.serverVersion}`
+    clientVersionEl.classList.remove('update-available')
+    clientVersionEl.title = ''
+  }
 
   updatePlayButton()
 }
@@ -909,6 +928,12 @@ function runInstallForPlay() {
 
 btnConnect.addEventListener('click', async () => {
   if (gameRunning || playBusy) return
+
+  // Launcher update takes priority over everything: it replaces this process.
+  if (launcherUpdateReady) {
+    await runLauncherUpdate()
+    return
+  }
 
   // settings:load re-runs the registry auto-detect, so an empty path here means Skyrim really could not be found.
   const s = await window.electronAPI.loadSettings()
@@ -1104,9 +1129,8 @@ const clientVersionEl   = document.getElementById('client-version')
 
 // The check runs every 10s (see the polling block at the bottom), so the
 // UPDATE AVAILABLE state appears while the launcher is open - no restart
-// needed. Click/progress handlers are registered exactly once here; the
-// periodic check only flips the label state.
-let launcherUpdateReady = false
+// needed. Progress handlers are registered exactly once here; the periodic
+// check only flips the label state.
 
 window.electronAPI.onUpdateProgress(d => {
   if (!launcherVersionEl.dataset.updating) return
@@ -1117,34 +1141,45 @@ window.electronAPI.onUpdateProgress(d => {
   }
 })
 
-launcherVersionEl.addEventListener('click', async () => {
+// Driven by the Play button; the version labels are read-only notices.
+async function runLauncherUpdate() {
   if (!launcherUpdateReady || launcherVersionEl.dataset.updating) return
+  playBusy            = true
+  btnConnect.disabled = true
   launcherVersionEl.dataset.updating = '1'
   launcherVersionEl.textContent = 'Downloading update…'
+  btnConnect.textContent = '⤓ UPDATING LAUNCHER…'
+  clearWarning()
+
   const r = await window.electronAPI.installUpdate()
   if (!r.ok) {
     launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
     delete launcherVersionEl.dataset.updating
+    playBusy = false
     showWarning(`Update failed: ${r.error}`)
+    updatePlayButton()
   }
-})
+  // On success the installer restarts the launcher, so leave the UI as is.
+}
 
 async function checkLauncherUpdate() {
   const result = await window.electronAPI.checkUpdate()
   if (!result) return
   if (launcherVersionEl.dataset.updating) return  // don't clobber install progress UI
 
+  const was = launcherUpdateReady
   if (result.hasUpdate) {
     launcherUpdateReady = true
     launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
     launcherVersionEl.classList.add('update-available')
-    launcherVersionEl.title = `v${result.latest} is available - click to update`
+    launcherVersionEl.title = `v${result.latest} is available - use the Play button to update`
   } else {
     launcherUpdateReady = false
     launcherVersionEl.textContent = `v${result.current}`
     launcherVersionEl.classList.remove('update-available')
     launcherVersionEl.title = ''
   }
+  if (was !== launcherUpdateReady) updatePlayButton()
 }
 
 // News

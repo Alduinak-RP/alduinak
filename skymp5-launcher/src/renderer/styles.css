@@ -604,9 +604,9 @@ html, body {
   color: rgba(232, 224, 208, 0.65);
 }
 
+/* Read-only notice: updating runs from the Play button */
 .info-value.update-available {
   color: var(--gold-bright);
-  cursor: pointer;
   animation: pulse-gold 2s ease-in-out infinite;
 }
 
