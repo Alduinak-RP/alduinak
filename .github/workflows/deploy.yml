@@ -10,7 +10,6 @@ on:
                 options:
                     - 'deploy'
                     - 'restart'
-                    - 'stop'
                 default: 'restart'
             branch:
                 description: 'Branch, meaning server instance'
@@ -19,7 +18,6 @@ on:
                 options:
                     - 'sweetpie'
                     - 'indev'
-                    - 'indev-imp'
                 default: 'indev'
 
 jobs:
