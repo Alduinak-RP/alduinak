@@ -346,6 +346,22 @@ router.post('/:key/ban', (req, res) => {
   res.json({ ok: true })
 })
 
+// DELETE /api/servers/:key/sessions-by-discord/:discordId  (X-Auth-Token)
+// Drops every session of one Discord user, so a deleted player cannot rejoin
+// on a cached launcher token under a stale profile id (the TTL slides 24h).
+
+router.delete('/:key/sessions-by-discord/:discordId', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+  const discordId = String(req.params.discordId || '').trim()
+  if (!discordId) return res.status(400).json({ error: 'Invalid discordId.' })
+  let dropped = 0
+  for (const [token, s] of sessions) {
+    if (String(s.discordId) === discordId) { sessions.delete(token); dropped++ }
+  }
+  if (dropped) saveSessions()
+  res.json({ ok: true, dropped })
+})
+
 // GET /api/servers/:key/players  (X-Auth-Token)
 // Full player roster for the in-game admin panel; the game server masks ips before showing them.
 

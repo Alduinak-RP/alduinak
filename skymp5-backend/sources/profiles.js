@@ -45,10 +45,21 @@ function list() {
     .sort((a, b) => a.profileId - b.profileId)
 }
 
+// nextId is never rewound, so a deleted profile id is not handed to a new player
+function deleteByDiscordId(discordId) {
+  const id = String(discordId || '').trim()
+  const data = load()
+  if (!(id in data.map)) return false
+  delete data.map[id]
+  save(data)
+  return true
+}
+
 module.exports = {
   load,
   save,
   list,
   getOrCreateProfileId,
   getDiscordIdByProfileId,
+  deleteByDiscordId,
 }

@@ -243,7 +243,14 @@ async function selectPlayer(discordId) {
     `<div class="field"><label>Notes</label><textarea id="pd-notes" rows="3">${esc(p.notes)}</textarea></div>` +
     `<div class="row"><button id="pd-save" class="action go">Save changes</button><span id="pd-status" class="status"></span></div>` +
     `<h4>Factions</h4>${factions}` +
-    `<h4>Characters</h4>${charWarn}${chars}`
+    `<h4>Characters</h4>${charWarn}${chars}` +
+    `<h4>Danger zone</h4>` +
+    `<div class="row">` +
+      `<label class="chk"><input type="checkbox" id="pd-del-chars"${r.characters.length ? '' : ' disabled'} /> also delete ${r.characters.length} character${r.characters.length === 1 ? '' : 's'}</label>` +
+      `<button id="pd-delete" class="action small stop">Delete player</button>` +
+      `<span id="pd-del-status" class="status"></span>` +
+    `</div>` +
+    `<small>Removes the player record and profile mapping; a returning player gets a fresh profile. Characters stay in the database unless ticked. Delete while the server is stopped or the player is offline.</small>`
 
   $('#pd-save').addEventListener('click', async () => {
     const patch = {
@@ -263,6 +270,49 @@ async function selectPlayer(discordId) {
 
   $$('#player-detail .char-list li').forEach(li =>
     li.addEventListener('click', () => openCharModal(r.characters[Number(li.dataset.idx)])))
+
+  armConfirm($('#pd-delete'), 'Delete player', async () => {
+    $('#pd-del-status').textContent = 'deleting…'
+    const res = await window.mgr.playersDelete(p.profileId, { deleteCharacters: $('#pd-del-chars').checked })
+    if (!res.ok) {
+      $('#pd-del-status').textContent = 'Error: ' + res.error +
+        (res.deletedChars ? ` (${res.deletedChars} character${res.deletedChars === 1 ? ' was' : 's were'} already deleted)` : '')
+      return
+    }
+    selectedDiscordId = null
+    const bits = ['Player deleted']
+    if (res.deletedChars) bits.push(`${res.deletedChars} character${res.deletedChars === 1 ? '' : 's'} deleted`)
+    if (res.sessions && res.sessions.dropped) bits.push(`${res.sessions.dropped} cached session${res.sessions.dropped === 1 ? '' : 's'} dropped`)
+    let html = `<p class="muted">${esc(bits.join('; '))}.</p>`
+    if (res.sessions && res.sessions.warnRestart) {
+      html += '<p class="muted">Restart the backend to flush its in-memory session cache, or the player may rejoin on a cached login for up to 24h.</p>'
+    }
+    box.innerHTML = html
+    loadPlayers()
+  })
+}
+
+// Destructive buttons ask for a second click within 4s instead of a dialog;
+// disabled while the action runs so a double-click cannot fire it twice.
+function armConfirm(btn, label, fn) {
+  if (!btn) return
+  btn.dataset.label = label
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return
+    if (!btn.dataset.armed) {
+      btn.dataset.armed = '1'
+      btn.textContent = 'Click again to confirm'
+      setTimeout(() => disarmConfirm(btn), 4000)
+      return
+    }
+    disarmConfirm(btn)
+    btn.disabled = true
+    try { await fn() } finally { btn.disabled = false }
+  })
+}
+
+function disarmConfirm(btn) {
+  if (btn && btn.dataset.label) { delete btn.dataset.armed; btn.textContent = btn.dataset.label }
 }
 
 // ── Character modal: appearance + inventory editing straight in the store ──────
@@ -301,6 +351,7 @@ function openCharModal(c) {
   cmChar = c
   cmEntries = (c.inventory || []).map(e => ({ ...e }))
   cmItemNames = {}
+  disarmConfirm($('#cm-delete')) // an armed delete must never carry over to another character
   $('#cm-title').textContent = `${c.name} — ${fmtFormDesc(c.formDesc)}`
   $('#cm-status').textContent = ''
   const pos = c.position ? c.position.map(n => Math.round(n)).join(', ') : '—'
@@ -470,6 +521,15 @@ async function saveCmInventory() {
 
 function closeCharModal() { $('#char-modal').hidden = true; cmChar = null }
 $('#cm-close').addEventListener('click', closeCharModal)
+armConfirm($('#cm-delete'), 'Delete character', async () => {
+  if (!cmChar) return
+  $('#cm-status').textContent = 'deleting…'
+  const r = await window.mgr.charsDelete(cmChar.formDesc)
+  if (!r.ok) { $('#cm-status').textContent = `Error: ${r.error}`; return }
+  closeCharModal()
+  loadPlayers()
+  if (selectedDiscordId) selectPlayer(selectedDiscordId)
+})
 // Close only on a true backdrop click: a drag that starts in an input and ends
 // on the backdrop fires click on the overlay too, and must not eat edits.
 let cmDownOnBackdrop = false

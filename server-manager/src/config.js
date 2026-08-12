@@ -75,6 +75,13 @@ module.exports = {
     dataDir:      path.join(repoRoot, 'skymp5-backend', 'data'),
   },
 
+  // Local backend master API (read live from the backend .env).
+  backendApi: {
+    get port()  { return parseInt(readEnv('PORT') || '4000', 10) },
+    get key()   { return readEnv('SERVER_MASTER_KEY') },
+    get token() { return readEnv('MASTER_API_AUTH_TOKEN') },
+  },
+
   // WS relay link for the Console command box (read live from the backend .env).
   relay: {
     get port()   { return parseInt(readEnv('WS_PORT') || '7778', 10) },

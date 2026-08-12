@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs   = require('fs')
+const http = require('http')
 const https = require('https')
 const { execFile } = require('child_process')
 const WebSocket = require('ws')
@@ -126,9 +127,7 @@ function datestamp(d) {
 // chat.log lives wherever the gamemode writes it; mirror its resolution chain
 // (env var, then the optional logDir key in server-settings.json, then default).
 function chatLogDir() {
-  let settings = {}
-  try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
-  return process.env.ALDUINAK_LOG_DIR || settings.logDir || 'C:\\logs'
+  return process.env.ALDUINAK_LOG_DIR || readServerSettings().logDir || 'C:\\logs'
 }
 
 // The nssm-configured stdout/stderr files for a service, plus the gamemode's
@@ -555,6 +554,36 @@ function charFromCf(cf) {
   }
 }
 
+function readServerSettings() {
+  try { return JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch { return {} }
+}
+
+// Run fn against the mongo changeForms collection, closing the client either way.
+async function withMongoChangeForms(settings, fn) {
+  let MongoClient
+  try { ({ MongoClient } = require('mongodb')) }
+  catch { throw new Error('mongodb module not installed in server-manager - run npm install') }
+  const client = new MongoClient(settings.databaseUri, { serverSelectionTimeoutMS: 3000 })
+  try {
+    await client.connect()
+    return await fn(client.db(settings.databaseName || 'db').collection('changeForms'))
+  } finally { await client.close() }
+}
+
+// File driver: yields [file, changeForm] for every parseable json in the store.
+function* fileChangeForms(settings) {
+  const dbName = settings.databaseName || 'world'
+  const dbDir = path.isAbsolute(dbName) ? dbName : path.join(config.paths.serverDir, dbName)
+  const changeForms = path.join(dbDir, 'changeForms')
+  for (const entry of (fs.existsSync(changeForms) ? fs.readdirSync(changeForms) : [])) {
+    if (!entry.endsWith('.json')) continue
+    const file = path.join(changeForms, entry)
+    let cf
+    try { cf = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { continue }
+    yield [file, cf]
+  }
+}
+
 // Read the game server's character store (changeForms) and group by profileId.
 // Driver-aware: file reads world/changeForms/*.json, mongodb queries the collection.
 let _charCache = { at: 0, map: new Map() }
@@ -569,30 +598,14 @@ async function readCharactersByProfile() {
     list.push(c)
     map.set(c.profileId, list)
   }
-  let settings = {}
-  try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
-  const driver = settings.databaseDriver || 'file'
+  const settings = readServerSettings()
   try {
-    if (driver === 'mongodb') {
-      let MongoClient
-      try { ({ MongoClient } = require('mongodb')) }
-      catch { throw new Error('mongodb module not installed in server-manager - run npm install') }
-      const client = new MongoClient(settings.databaseUri, { serverSelectionTimeoutMS: 3000 })
-      try {
-        await client.connect()
-        const docs = await client.db(settings.databaseName || 'db').collection('changeForms').find({ recType: 1 }).toArray()
-        for (const cf of docs) add(cf)
-      } finally { await client.close() }
+    if ((settings.databaseDriver || 'file') === 'mongodb') {
+      await withMongoChangeForms(settings, async col => {
+        for (const cf of await col.find({ recType: 1 }).toArray()) add(cf)
+      })
     } else {
-      const dbName = settings.databaseName || 'world'
-      const dbDir = path.isAbsolute(dbName) ? dbName : path.join(config.paths.serverDir, dbName)
-      const changeForms = path.join(dbDir, 'changeForms')
-      for (const entry of (fs.existsSync(changeForms) ? fs.readdirSync(changeForms) : [])) {
-        if (!entry.endsWith('.json')) continue
-        let cf
-        try { cf = JSON.parse(fs.readFileSync(path.join(changeForms, entry), 'utf8')) } catch { continue }
-        add(cf)
-      }
+      for (const [, cf] of fileChangeForms(settings)) add(cf)
     }
     _charError = ''
   } catch (err) {
@@ -725,29 +738,15 @@ async function saveCharacter(formDesc, patch) {
   if (patch && patch.appearance !== undefined) set.appearanceDump = sanitizeAppearance(patch.appearance)
   if (patch && patch.invEntries !== undefined) set.inv = { entries: sanitizeInvEntries(patch.invEntries) }
   if (!Object.keys(set).length) throw new Error('nothing to save')
-  let settings = {}
-  try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
+  const settings = readServerSettings()
   if ((settings.databaseDriver || 'file') === 'mongodb') {
-    let MongoClient
-    try { ({ MongoClient } = require('mongodb')) }
-    catch { throw new Error('mongodb module not installed in server-manager - run npm install') }
-    const client = new MongoClient(settings.databaseUri, { serverSelectionTimeoutMS: 3000 })
-    try {
-      await client.connect()
-      const r = await client.db(settings.databaseName || 'db').collection('changeForms')
-        .updateOne({ formDesc, recType: 1 }, { $set: set })
+    await withMongoChangeForms(settings, async col => {
+      const r = await col.updateOne({ formDesc, recType: 1 }, { $set: set })
       if (!r.matchedCount) throw new Error(`no character with formDesc ${formDesc}`)
-    } finally { await client.close() }
+    })
   } else {
-    const dbName = settings.databaseName || 'world'
-    const dbDir = path.isAbsolute(dbName) ? dbName : path.join(config.paths.serverDir, dbName)
-    const changeForms = path.join(dbDir, 'changeForms')
     let saved = false
-    for (const entry of (fs.existsSync(changeForms) ? fs.readdirSync(changeForms) : [])) {
-      if (!entry.endsWith('.json')) continue
-      const file = path.join(changeForms, entry)
-      let cf
-      try { cf = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { continue }
+    for (const [file, cf] of fileChangeForms(settings)) {
       if (cf.formDesc !== formDesc || cf.recType !== 1) continue
       Object.assign(cf, set)
       fs.writeFileSync(file, JSON.stringify(cf, null, 2))
@@ -759,9 +758,117 @@ async function saveCharacter(formDesc, patch) {
   _charCache = { at: 0, map: new Map() }
 }
 
+async function deleteCharacter(formDesc) {
+  if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
+  const settings = readServerSettings()
+  if ((settings.databaseDriver || 'file') === 'mongodb') {
+    await withMongoChangeForms(settings, async col => {
+      const r = await col.deleteOne({ formDesc, recType: 1 })
+      if (!r.deletedCount) throw new Error(`no character with formDesc ${formDesc}`)
+    })
+  } else {
+    let deleted = false
+    for (const [file, cf] of fileChangeForms(settings)) {
+      if (cf.formDesc !== formDesc || cf.recType !== 1) continue
+      fs.unlinkSync(file)
+      deleted = true
+      break
+    }
+    if (!deleted) throw new Error(`no character with formDesc ${formDesc}`)
+  }
+  _charCache = { at: 0, map: new Map() }
+}
+
+async function deleteCharactersByProfile(profileId) {
+  if (!Number.isInteger(profileId) || profileId < 0) throw new Error('bad profileId')
+  const settings = readServerSettings()
+  let count = 0
+  if ((settings.databaseDriver || 'file') === 'mongodb') {
+    count = await withMongoChangeForms(settings, async col =>
+      (await col.deleteMany({ recType: 1, profileId })).deletedCount)
+  } else {
+    for (const [file, cf] of fileChangeForms(settings)) {
+      if (cf.recType !== 1 || Number(cf.profileId) !== profileId) continue
+      fs.unlinkSync(file)
+      count++
+    }
+  }
+  _charCache = { at: 0, map: new Map() }
+  return count
+}
+
 ipcMain.handle('chars:save', async (_e, formDesc, patch) => {
   try { await saveCharacter(formDesc, patch); return { ok: true } }
   catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('chars:delete', async (_e, formDesc) => {
+  try { await deleteCharacter(formDesc); return { ok: true } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+// Ask the running backend to drop a user's sessions (they live in its memory).
+function backendDropSessions(discordId) {
+  return new Promise((resolve, reject) => {
+    const api = config.backendApi
+    if (!api.key || !api.token) return reject(new Error('backend api credentials missing'))
+    const req = http.request({
+      hostname: '127.0.0.1', port: api.port, method: 'DELETE',
+      path: `/api/servers/${encodeURIComponent(api.key)}/sessions-by-discord/${encodeURIComponent(discordId)}`,
+      headers: { 'X-Auth-Token': api.token },
+      timeout: 3000,
+    }, res => {
+      let d = ''; res.on('data', c => d += c)
+      res.on('end', () => {
+        if (res.statusCode === 200) { try { resolve({ ok: true, dropped: JSON.parse(d).dropped || 0 }) } catch { resolve({ ok: true, dropped: 0 }) } }
+        else if (res.statusCode === 404) resolve({ ok: false, noRoute: true })  // backend runs pre-route code
+        else resolve({ ok: false })
+      })
+    })
+    req.on('timeout', () => { req.destroy(new Error('timeout')) })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+// A deleted player's cached launcher session (24h sliding TTL) would let them
+// rejoin under the removed profile id, so their sessions must go too.
+async function dropPlayerSessions(discordId) {
+  try {
+    const r = await backendDropSessions(discordId)
+    if (r.ok) return { dropped: r.dropped, warnRestart: false }
+    if (!r.noRoute) return { dropped: 0, warnRestart: true }
+    // fall through to the file scrub with a restart warning
+  } catch { /* backend down: the file scrub below is fully effective */ }
+  // Scrub the persisted store; a RUNNING backend keeps its in-memory copy
+  // (and rewrites the file), so it needs a restart in the noRoute case.
+  let dropped = 0
+  let backendRunning = false
+  try {
+    const file = path.join(config.paths.dataDir, 'sessions.json')
+    const entries = JSON.parse(fs.readFileSync(file, 'utf8'))
+    const keep = entries.filter(([, s]) => String(s && s.discordId) !== String(discordId))
+    dropped = entries.length - keep.length
+    if (dropped) fs.writeFileSync(file, JSON.stringify(keep, null, 2) + '\n')
+  } catch { /* no sessions file yet */ }
+  try { backendRunning = /^SERVICE_RUNNING/.test(await nssm('status', await serviceName(serviceByKey.backend))) } catch {}
+  return { dropped, warnRestart: backendRunning }
+}
+
+// Deletes the backend player record + profile mapping (and their sessions),
+// optionally with all their characters. A returning player gets a fresh profile.
+ipcMain.handle('players:delete', async (_e, profileId, opts) => {
+  const pid = Number(profileId)
+  let deletedChars = 0
+  try {
+    const players = backendModule('players')
+    // Verify the mapping BEFORE the irreversible character delete.
+    if (!players.getByProfileId(pid)) return { ok: false, error: 'player not found' }
+    if (opts && opts.deleteCharacters) deletedChars = await deleteCharactersByProfile(pid)
+    const r = players.deleteByProfileId(pid)
+    const sessions = await dropPlayerSessions(r.discordId)
+    return { ok: true, discordId: r.discordId, deletedChars, sessions }
+  } catch (err) { return { ok: false, error: err.message, deletedChars } }
 })
 
 // Resolve item display names through the live gamemode (espm access is server-side only).
