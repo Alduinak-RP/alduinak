@@ -362,13 +362,6 @@
     "nexusId": 142655
   },
   {
-    "name": "Ancient Argonian Armor SE",
-    "required": true,
-    "enabled": true,
-    "source": "nexus",
-    "nexusId": 100724
-  },
-  {
     "name": "Faster HDT-SMP",
     "required": true,
     "enabled": true,
@@ -381,6 +374,13 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 82395
+  },
+  {
+    "name": "Silent Main Menu - No more music on the main menu",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 62342
   },
   {
     "name": "SkyUI",

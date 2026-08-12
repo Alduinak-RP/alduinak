@@ -136,12 +136,63 @@ function extractArchive(archivePath, destDir) {
   })
 }
 
+const MO2_STAMP = '.mo2-integrity.json'
+
+// Size+count stamp over MO2's own exe/dll files: inis and caches change in
+// normal use, but the binaries only change with the pinned MO2 version, so a
+// mismatch means corruption or an AV quarantine and triggers a reinstall.
+function mo2BinaryStats() {
+  const root = getRoot()
+  const skipTop = new Set(['mods', 'downloads', 'profiles', 'overwrite', 'webcache', 'logs', '.x', '.b', '.skse', 'skyrim'])
+  let size = 0
+  let count = 0
+  const stack = [root]
+  while (stack.length) {
+    const dir = stack.pop()
+    let entries = []
+    try { entries = fs.readdirSync(lp(dir), { withFileTypes: true }) } catch { continue }
+    for (const e of entries) {
+      if (dir === root && skipTop.has(e.name.toLowerCase())) continue
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) { stack.push(p); continue }
+      if (!/\.(exe|dll)$/i.test(e.name)) continue
+      count++
+      try { size += fs.statSync(lp(p)).size } catch { /* unreadable = size mismatch */ }
+    }
+  }
+  return { size, count }
+}
+
+function readMo2Stamp() {
+  try { return JSON.parse(fs.readFileSync(path.join(getRoot(), MO2_STAMP), 'utf8')) } catch { return null }
+}
+
+function writeMo2Stamp() {
+  const stats = mo2BinaryStats()
+  fs.writeFileSync(path.join(getRoot(), MO2_STAMP),
+    JSON.stringify({ version: MO2_VERSION, size: stats.size, count: stats.count }) + '\n')
+}
+
 /**
- * Download and unpack MO2 itself. Resolves immediately if already installed.
+ * Download and unpack MO2 itself. Resolves immediately when the installed
+ * binaries match the integrity stamp; anything else (corruption, quarantine,
+ * version bump, pre-stamp install) re-extracts over the existing install.
  * onProgress(message) receives human-readable status lines.
  */
 async function ensureInstalled(onProgress) {
-  if (isInstalled()) return
+  if (isInstalled()) {
+    const stamp = readMo2Stamp()
+    if (stamp && stamp.version === MO2_VERSION) {
+      const now = mo2BinaryStats()
+      if (now.size === stamp.size && now.count === stamp.count) return
+      _log(`MO2 binaries do not match the stamp (${now.count} files/${now.size} bytes vs ${stamp.count}/${stamp.size}) - repairing`)
+      if (onProgress) onProgress('Repairing Mod Organizer 2…')
+    } else {
+      // No stamp (pre-stamp install) or a different pinned version: one
+      // re-extract establishes a known-good baseline to stamp.
+      _log(stamp ? `MO2 version changed (${stamp.version} -> ${MO2_VERSION})` : 'no MO2 integrity stamp - refreshing install')
+    }
+  }
 
   const root    = getRoot()
   const archive = path.join(os.tmpdir(), `mo2-${MO2_VERSION}.7z`)
@@ -163,6 +214,7 @@ async function ensureInstalled(onProgress) {
   if (!isInstalled()) {
     throw new Error('MO2 extraction finished but ModOrganizer.exe was not found.')
   }
+  writeMo2Stamp()
   _log('MO2 installed')
 }
 
@@ -571,26 +623,36 @@ function setModlistOrder(order) {
     }
   }
 
-  // Reconcile the previous modlist against the new manifest:
-  //  - genuine user-added mods (not launcher-managed) are kept below ours;
-  //  - launcher-managed mods that dropped out of the manifest are stale - their
-  //    folder is deleted and their line removed, so changes apply without a
-  //    full reinstall.
+  // Genuine user-added mods (not launcher-managed) keep their lines below
+  // ours; dangling lines whose folder is gone are dropped so MO2 never
+  // reports missing mods.
   const modlistPath = path.join(getProfileDir(), 'modlist.txt')
   let userLines = []
   try {
-    const leftover = fs.readFileSync(modlistPath, 'utf8').split(/\r?\n/)
-      .filter(l => /^[+-]/.test(l) && !managed.has(l.slice(1).trim()))
-    for (const line of leftover) {
-      const name = line.slice(1).trim()
-      if (isManaged(name)) {
-        try { fs.rmSync(lp(path.join(getModsDir(), name)), { recursive: true, force: true }) } catch {}
-        _log(`removed stale managed mod (no longer in manifest): ${name}`)
-      } else {
-        userLines.push(line)
-      }
-    }
+    userLines = fs.readFileSync(modlistPath, 'utf8').split(/\r?\n/)
+      .filter(l => {
+        if (!/^[+-]/.test(l)) return false
+        const name = l.slice(1).trim()
+        if (managed.has(name) || isManaged(name)) return false
+        return fs.existsSync(path.join(getModsDir(), name))
+      })
   } catch { /* first install */ }
+
+  // Stale managed mods are found by scanning the mods dir itself, never the
+  // old modlist.txt: folders left by failed runs or a rewritten modlist have
+  // no line there, which is exactly how they used to survive and break the game.
+  let modDirs = []
+  try { modDirs = fs.readdirSync(getModsDir(), { withFileTypes: true }) } catch {}
+  for (const e of modDirs) {
+    if (!e.isDirectory() || managed.has(e.name) || e.name === 'SKSE') continue
+    if (!isManaged(e.name)) continue // the player's own mod: keep
+    try {
+      fs.rmSync(lp(path.join(getModsDir(), e.name)), { recursive: true, force: true })
+      _log(`removed stale managed mod (no longer in manifest): ${e.name}`)
+    } catch (err) {
+      _log(`could not remove stale mod ${e.name}: ${err.message}`)
+    }
+  }
 
   const lines = [
     '# This file was automatically generated by Mod Organizer.',
@@ -694,6 +756,31 @@ function readModHash(modName) {
     const meta = fs.readFileSync(path.join(getModsDir(), folder, 'meta.ini'), 'utf8')
     return (meta.match(/^alduinakHash\s*=\s*(.*)$/im) || [])[1]?.trim() || ''
   } catch { return '' }
+}
+
+/**
+ * Total byte size of an installed mod folder, excluding the launcher's own
+ * meta.ini - directly comparable to the summed directive sizes from the
+ * manifest. Returns -1 when the folder is missing or unreadable.
+ */
+function modFolderSize(modName) {
+  const folder = String(modName).replace(/[<>:"/\\|?*]/g, '')
+  const root = path.join(getModsDir(), folder)
+  if (!fs.existsSync(lp(root))) return -1
+  let total = 0
+  const stack = [root]
+  while (stack.length) {
+    const dir = stack.pop()
+    let entries
+    try { entries = fs.readdirSync(lp(dir), { withFileTypes: true }) } catch { return -1 }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) { stack.push(p); continue }
+      if (dir === root && e.name.toLowerCase() === 'meta.ini') continue
+      try { total += fs.statSync(lp(p)).size } catch { return -1 }
+    }
+  }
+  return total
 }
 
 /** Does a mod folder ship a plugin (esp/esm/esl) or an SKSE plugin DLL? */
@@ -1055,6 +1142,7 @@ module.exports = {
   clearCache,
   applyMod,
   readModHash,
+  modFolderSize,
   applyRootFiles,
   setModlistOrder,
   setPlugins,

@@ -715,6 +715,7 @@ function installLog(msg) {
 function formatInstallProgress({ phase, file, index, total, skipped }) {
   if (phase === 'download') return file
   if (phase === 'mods') return total > 0 ? `[mods ${index}/${total}] ${file}` : file
+  if (phase === 'verify') return `Verifying installed mods… ${index}/${total}`
   return `${skipped ? '[skip]' : `[${index}/${total}]`} ${file}`
 }
 

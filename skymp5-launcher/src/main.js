@@ -2117,15 +2117,34 @@ async function runMO2Install(opts = {}) {
     const mb = n => (n / 1024 / 1024).toFixed(1)
     const sanitize       = n => String(n).replace(/[<>:"/\\|?*]/g, '')
     const modFolderPath  = m => path.join(mo2.getModsDir(), sanitize(m.name))
-    const modChanged = m =>
-      !fs.existsSync(modFolderPath(m)) ||
-      !m.hash ||                                   // pre-hash manifest: be safe, reinstall
-      mo2.readModHash(m.name) !== m.hash
+    const modChanged = m => {
+      if (!fs.existsSync(modFolderPath(m))) return true
+      if (!m.hash) return true                     // pre-hash manifest: be safe, reinstall
+      if (mo2.readModHash(m.name) !== m.hash) return true
+      // Cheap integrity gate: the summed directive sizes vs the folder's
+      // actual bytes. The install-time hash stamp alone cannot see files an
+      // AV quarantined or a player deleted; a mismatch rebuilds the mod.
+      const files = Array.isArray(m.files) ? m.files : []
+      if (!files.length || !files.every(f => Number.isFinite(f.size))) return false
+      const expected = files.reduce((a, f) => a + f.size, 0)
+      const actual = mo2.modFolderSize(m.name)
+      if (actual !== expected) {
+        log(`[mo2-install] ${m.name}: folder is ${actual} bytes, manifest expects ${expected} - repairing`)
+        return true
+      }
+      return false
+    }
     const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
     const needsRoot      = !rootSetUp || rootChanged
     log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
-    const modsToInstall  = manifest.mods.filter(modChanged)
+    const modsToInstall  = []
+    manifest.mods.forEach((m, i) => {
+      if (modChanged(m)) modsToInstall.push(m)
+      if ((i + 1) % 10 === 0 || i + 1 === manifest.mods.length) {
+        send('install:progress', { phase: 'verify', index: i + 1, total: manifest.mods.length })
+      }
+    })
 
     if (modsToInstall.length === 0 && !needsRoot) {
       finishOrder()
