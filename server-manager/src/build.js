@@ -167,7 +167,9 @@ class Builder {
   }
 
   // Configure + build the C++ with CMake/MSVC, same flags as the "Dist Windows Flatrim" CI workflow (.github/actions/pr_base).
-  // Produces SkyrimPlatform.dll + scam_native.node under build/dist.
+  // The repo pins the CMake binary dir to <repo>/build - the same tree the live
+  // deploy uses - so artifacts land in build/dist directly, no copy step.
+  // opts.targets limits the build (e.g. ['skymp5-server']); omit for everything.
   async buildNative(opts = {}) {
     this.banner('Native (C++) build')
     if (!isWin) return { ok: false, error: 'native build is Windows-only' }
@@ -182,9 +184,21 @@ class Builder {
     this.line(`[native] Visual Studio: ${tc.vsDir}`)
     this.line(`[native] cmake: ${tc.cmake}`)
 
-    // vcpkg builds hundreds of ports; keep them off the small system drive.
-    const buildDir = process.env.ALDUINAK_NATIVE_BUILD_DIR || path.join(config.buildDir, 'native')
+    // CMakeLists refuses any other binary dir, so this cannot be relocated.
+    const buildDir = path.join(config.repoRoot, 'build')
     fs.mkdirSync(buildDir, { recursive: true })
+
+    // The linker writes scam_native.node straight into the live dist/server;
+    // fail before the long build instead of at the very end.
+    const serverOnly = Array.isArray(opts.targets) && opts.targets.every(t => t === 'skymp5-server')
+    const buildsServer = !Array.isArray(opts.targets) || opts.targets.includes('skymp5-server')
+    if (buildsServer) {
+      const nodeBin = path.join(buildDir, 'dist', 'server', 'scam_native.node')
+      if (fs.existsSync(nodeBin)) {
+        try { fs.closeSync(fs.openSync(nodeBin, 'r+')) }
+        catch { return { ok: false, error: 'scam_native.node is locked - stop the game service before a server native build' } }
+      }
+    }
 
     if (!fs.existsSync(path.join(tc.vcpkgDir, 'vcpkg.exe'))) {
       this.line('[native] bootstrapping vcpkg (first run, this takes a few minutes)…')
@@ -211,50 +225,55 @@ class Builder {
     }
 
     // The client TS bundle feeds native packaging; CI builds it before configuring (pr_base "Early build skymp5-client").
-    const clientDeps = await this.ensureDeps(config.paths.client, 'client')
-    if (!clientDeps.ok) return clientDeps
-    const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle')
-    if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
+    if (!serverOnly) {
+      const clientDeps = await this.ensureDeps(config.paths.client, 'client')
+      if (!clientDeps.ok) return clientDeps
+      const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle')
+      if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
+    }
 
     // shell:false: cmake.exe and several args contain spaces a shell command line would split.
     this.line('\n[native] configuring (first run compiles all vcpkg dependencies - expect 1-3 hours)…')
     const cfg = await this.run(tc.cmake, args, config.repoRoot, 'cmake configure', { VCPKG_FEATURE_FLAGS: 'manifests' }, false)
     if (!cfg.ok) return { ok: false, error: 'cmake configure failed - see log' }
 
+    // The server post-build step regenerates server-settings.json with
+    // upstream defaults (it force-sets offlineMode and master), so snapshot
+    // the live files and put them back afterwards.
+    const guarded = ['server-settings.json', 'launch_server.bat'].map(name => {
+      const file = path.join(buildDir, 'dist', 'server', name)
+      let before = null
+      try { before = fs.readFileSync(file) } catch {}
+      return { file, before }
+    })
+
     this.line('\n[native] compiling…')
-    const build = await this.run(tc.cmake, ['--build', buildDir, '--config', 'Release'], config.repoRoot, 'cmake build', null, false)
+    const buildArgs = ['--build', buildDir, '--config', 'Release']
+    for (const t of (opts.targets || [])) buildArgs.push('--target', t)
+    const build = await this.run(tc.cmake, buildArgs, config.repoRoot, 'cmake build', null, false)
+
+    for (const g of guarded) {
+      if (!g.before) continue
+      let after = null
+      try { after = fs.readFileSync(g.file) } catch {}
+      if (!after || !after.equals(g.before)) {
+        fs.writeFileSync(g.file, g.before)
+        this.line(`[native] restored live ${path.basename(g.file)} (the build regenerates it with upstream defaults)`)
+      }
+    }
     if (!build.ok) return { ok: false, error: 'cmake build failed - see log' }
 
-    // CMake writes its dist next to the build dir; report what landed to copy into build/dist.
     const outDir = path.join(buildDir, 'dist')
     this.line('')
-    for (const rel of ['client/Data/SKSE/Plugins/SkyrimPlatform.dll', 'server/scam_native.node']) {
+    const expected = []
+    if (buildsServer) expected.push('server/scam_native.node')
+    if (!serverOnly) expected.push('client/Data/SKSE/Plugins/SkyrimPlatform.dll')
+    for (const rel of expected) {
       const p = path.join(outDir, rel)
       this.line(fs.existsSync(p) ? `✓ ${rel}` : `MISSING ${rel}`)
     }
-    this.line(`\n✓ Native build complete: ${outDir}`)
-    this.line('  Copy client/ into build/dist/client and scam_native.node into build/dist/server, then run Build Client.')
+    this.line(`\n✓ Native build complete; artifacts are live in ${outDir}`)
     return { ok: true, out: outDir }
-  }
-
-  // Copy the native build's outputs into the deploy tree (build/dist), so a
-  // checked "CMake first" box ships the fresh .dlls without a manual copy step.
-  applyNativeArtifacts(nativeOut, which) {
-    if (which === 'server') {
-      const src = path.join(nativeOut, 'server', 'scam_native.node')
-      if (!fs.existsSync(src)) return { ok: false, error: 'native build produced no server/scam_native.node' }
-      const dst = path.join(config.buildDir, 'dist', 'server', 'scam_native.node')
-      try { fs.copyFileSync(src, dst) }
-      catch (err) { return { ok: false, error: `could not copy scam_native.node (${err.message}) - stop the game service first` } }
-      this.line(`[native] applied scam_native.node -> ${dst}`)
-      return { ok: true }
-    }
-    const src = path.join(nativeOut, 'client')
-    if (!fs.existsSync(path.join(src, 'Data'))) return { ok: false, error: 'native build produced no client/Data' }
-    try { fs.cpSync(src, config.paths.clientOut, { recursive: true, force: true }) }
-    catch (err) { return { ok: false, error: `could not copy native client files (${err.message})` } }
-    this.line(`[native] applied client files -> ${config.paths.clientOut}`)
-    return { ok: true }
   }
 
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
@@ -325,10 +344,9 @@ class Builder {
     const pre = await this.ensurePrereqs()
     if (!pre.ok) return pre
     if (opts.native) {
-      const nat = await this.buildNative()
+      // Targeted: only the server native module; its output lands in dist/server directly
+      const nat = await this.buildNative({ targets: ['skymp5-server'] })
       if (!nat.ok) return nat
-      const applied = this.applyNativeArtifacts(nat.out, 'server')
-      if (!applied.ok) return applied
     }
     const dir = config.paths.server
     const dep = await this.ensureDeps(dir, 'game server')
@@ -426,10 +444,9 @@ class Builder {
     if (!pre.ok) return pre
 
     if (opts.native) {
-      const nat = await this.buildNative()
+      // Targeted: the platform DLLs + client bundle, written into dist/client directly
+      const nat = await this.buildNative({ targets: ['skymp5-client', 'skyrim-platform'] })
       if (!nat.ok) return nat
-      const applied = this.applyNativeArtifacts(nat.out, 'client')
-      if (!applied.ok) return applied
     }
 
     const clientData = path.join(config.paths.clientOut, 'Data')

@@ -63,7 +63,7 @@ single most common source of "the fix didn't work":
 | `build/dist/server/gamemode_extensions` | manager "Build gamemode only" (or "Build server", or console `build gamemode`) regenerates `gamemode.js`; the server hot-reloads it, no restart. Never edit `gamemode.js` directly - it is generated |
 | `skymp5-client/src` | manager "Build Client" + players re-download via launcher |
 | `skymp5-front/src` | manager "Build Client" (same pipeline) + players re-download |
-| C++ (`skyrim-platform`, `skymp5-server/cpp`) | **CI flatrim build** (or the manager's Native build), then apply the artifact into `build/dist`, then Build Client |
+| C++ (`skyrim-platform`, `skymp5-server/cpp`) | **CI flatrim build** (apply the artifact into `build/dist`), or the manager's CMake checkbox / `build native`: CMake configures into `build/` itself (the repo refuses any other binary dir) and writes `build/dist` directly - no copy step, but the game service must be stopped for server builds. Then Build Client for client-side changes |
 | `skymp5-launcher/src` | manager "Build launcher" + redistribute the launcher |
 | `server-manager/src` | restart the manager app (runs from source) |
 
