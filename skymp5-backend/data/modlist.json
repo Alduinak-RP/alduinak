@@ -131,13 +131,6 @@
     "nexusId": 61007
   },
   {
-    "name": "Moonlight Cottage - Player Home",
-    "required": true,
-    "enabled": true,
-    "source": "nexus",
-    "nexusId": 70659
-  },
-  {
     "name": "Mammoth Manor",
     "required": true,
     "enabled": true,
