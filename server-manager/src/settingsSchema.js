@@ -59,6 +59,7 @@ const serverSettings = [
   { key: 'gamemodePath',   label: 'Gamemode path',  type: 'text',   group: 'Data & storage', placeholder: './gamemode.js' },
   { key: 'databaseDriver', label: 'Database driver', type: 'select', group: 'Data & storage', options: ['file', 'mongodb', 'zip', 'migration'] },
   { key: 'databaseName',   label: 'Database name',   type: 'text',   group: 'Data & storage', placeholder: 'world', help: 'File DB folder / Mongo db name. Characters live in <name>/changeForms.' },
+  { key: 'databaseUri',    label: 'Database URI',    type: 'secret', group: 'Data & storage', placeholder: 'mongodb://user:pass@127.0.0.1:27017', help: 'Mongo connection string (mongodb driver only). Embeds credentials - keep it secret.' },
   { key: 'logDir',         label: 'Log directory',   type: 'text',   group: 'Data & storage', placeholder: 'C:\\logs', help: 'Where chat.log and service logs are written. Overridden by the ALDUINAK_LOG_DIR env var.' },
 
   // Complex / nested (rendered as JSON sub-editors)
@@ -88,6 +89,7 @@ const backendEnv = [
   // Game server connection
   { key: 'SKYMP_HOST',     label: 'Game server host', type: 'text',   group: 'Game server', placeholder: '127.0.0.1' },
   { key: 'SKYMP_PORT',     label: 'Game server port (UDP)', type: 'number', group: 'Game server' },
+  { key: 'SKYMP_UI_PORT',  label: 'Game UI/metrics port', type: 'number', group: 'Game server', help: 'HTTP/metrics port of the game server. Empty = 3000 for game port 7777, else game port + 1.' },
   { key: 'SERVER_ADDRESS', label: 'Public address',   type: 'text',   group: 'Game server', help: 'Public IP advertised to external clients.' },
 
   // Server metadata (reported to the launcher)
@@ -129,10 +131,16 @@ const backendEnv = [
   { key: 'SERVER_LOCKED_ALLOW',    label: 'Locked allow list', type: 'text', group: 'Access control', help: 'Comma-separated Discord user IDs (legacy).' },
   { key: 'WHITELIST_ROLE_ID',      label: 'Whitelist role ID', type: 'text', group: 'Access control', help: 'Discord role used as the gameplay whitelist.' },
   { key: 'BANNED_ROLE_ID',         label: 'Banned role ID',    type: 'text', group: 'Access control' },
+  { key: 'LAUNCH_CHECK_ENFORCE',   label: 'Enforce launch check', type: 'bool', group: 'Access control', help: 'Refuse connections whose launcher did not verify client files + load order. Off only while players run pre-check launcher builds.' },
+  { key: 'BAN_LOG_DIR',            label: 'Ban log directory', type: 'text', group: 'Access control', help: 'Where ban snapshot logs are written. Empty = the default logs folder.' },
 
   // Client updates
   { key: 'GITHUB_WEBHOOK_SECRET', label: 'GitHub webhook secret', type: 'secret', group: 'Client updates' },
   { key: 'CLIENT_BRANCH',         label: 'Client branch',         type: 'text',   group: 'Client updates', placeholder: 'refs/heads/main' },
+  { key: 'CLIENT_FILES_DIR',      label: 'Client files directory', type: 'text',  group: 'Client updates', help: 'Bucket holding skymp-client.zip and the served client files. Empty = build/client-files.' },
+
+  // CI & tooling
+  { key: 'ALDUINAK_GH_TOKEN',     label: 'GitHub token (PAT)',    type: 'secret', group: 'CI & tooling', help: 'PAT with actions:write - powers the manager CI Rebuild (workflow dispatch).' },
 ]
 
 module.exports = { serverSettings, backendEnv }
