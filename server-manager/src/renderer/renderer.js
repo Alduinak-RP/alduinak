@@ -281,6 +281,14 @@ function parseHex(text, label) {
   return n >>> 0
 }
 
+// Strict decimal: a typo or emptied field must error, not silently become 0.
+function parseNum(text, label) {
+  const s = String(text).trim()
+  const n = Number(s)
+  if (!s || !Number.isFinite(n)) throw new Error(label + ': not a number')
+  return n
+}
+
 function entryHasExtras(e) {
   for (const k of Object.keys(e)) {
     if (k !== 'baseId' && k !== 'count' && e[k] !== undefined && e[k] !== null && e[k] !== false) return true
@@ -382,9 +390,9 @@ async function saveCmAppearance() {
       appearance.name = $('#cma-name').value
       appearance.isFemale = $('#cma-isFemale').value === 'true'
       appearance.raceId = parseHex($('#cma-raceId').value, 'Race ID')
-      appearance.weight = Number($('#cma-weight').value) || 0
-      appearance.skinColor = Number($('#cma-skinColor').value) | 0
-      appearance.hairColor = Number($('#cma-hairColor').value) | 0
+      appearance.weight = parseNum($('#cma-weight').value, 'Weight')
+      appearance.skinColor = parseNum($('#cma-skinColor').value, 'Skin color') | 0
+      appearance.hairColor = parseNum($('#cma-hairColor').value, 'Hair color') | 0
       appearance.headTextureSetId = parseHex($('#cma-headTextureSetId').value, 'Head texture set')
       appearance.headpartIds = $('#cma-headpartIds').value.split(/[\s,]+/).filter(Boolean).map(x => parseHex(x, 'Headparts'))
     }
@@ -393,6 +401,7 @@ async function saveCmAppearance() {
     $('#cm-status').textContent = r.ok ? 'Appearance saved.' : `Error: ${r.error}`
     if (r.ok) {
       cmChar.appearance = appearance
+      renderCmAppearance() // re-seed the fields and the raw-JSON baseline from the saved state
       if (selectedDiscordId) selectPlayer(selectedDiscordId)
     }
   } catch (err) {
@@ -461,7 +470,11 @@ async function saveCmInventory() {
 
 function closeCharModal() { $('#char-modal').hidden = true; cmChar = null }
 $('#cm-close').addEventListener('click', closeCharModal)
-$('#char-modal').addEventListener('click', e => { if (e.target === $('#char-modal')) closeCharModal() })
+// Close only on a true backdrop click: a drag that starts in an input and ends
+// on the backdrop fires click on the overlay too, and must not eat edits.
+let cmDownOnBackdrop = false
+$('#char-modal').addEventListener('mousedown', e => { cmDownOnBackdrop = e.target === $('#char-modal') })
+$('#char-modal').addEventListener('click', e => { if (cmDownOnBackdrop && e.target === $('#char-modal')) closeCharModal() })
 
 $('#players-refresh').addEventListener('click', loadPlayers)
 $('#player-search').addEventListener('input', renderPlayerList)

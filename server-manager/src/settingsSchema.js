@@ -131,7 +131,7 @@ const backendEnv = [
   { key: 'SERVER_LOCKED_ALLOW',    label: 'Locked allow list', type: 'text', group: 'Access control', help: 'Comma-separated Discord user IDs (legacy).' },
   { key: 'WHITELIST_ROLE_ID',      label: 'Whitelist role ID', type: 'text', group: 'Access control', help: 'Discord role used as the gameplay whitelist.' },
   { key: 'BANNED_ROLE_ID',         label: 'Banned role ID',    type: 'text', group: 'Access control' },
-  { key: 'LAUNCH_CHECK_ENFORCE',   label: 'Enforce launch check', type: 'bool', group: 'Access control', help: 'Refuse connections whose launcher did not verify client files + load order. Off only while players run pre-check launcher builds.' },
+  { key: 'LAUNCH_CHECK_ENFORCE',   label: 'Enforce launch check', type: 'bool', group: 'Access control', help: 'Refuse connections whose launcher did not verify client files + load order. Unset = enforced (the default); only Off disables it, for players on pre-check launcher builds.' },
   { key: 'BAN_LOG_DIR',            label: 'Ban log directory', type: 'text', group: 'Access control', help: 'Where ban snapshot logs are written. Empty = the default logs folder.' },
 
   // Client updates

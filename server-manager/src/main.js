@@ -306,10 +306,10 @@ const consoleRelay = {
       if (m.type === 'auth_ok') { this.connected = true; send('console:relay', { kind: 'status', text: 'connected to relay' }); return }
       if (m.type === 'console_output' || m.type === 'console_log') {
         const text = String(m.text ?? '')
-        // A marked reply line is consumed by its pending query, not shown in the console.
+        // A marked reply line is consumed by its pending query, not shown in the
+        // console. Position 0 only: a marker mid-text could be player-supplied.
         for (const [marker, p] of this.pending) {
-          const idx = text.indexOf(marker)
-          if (idx !== -1) { this.pending.delete(marker); clearTimeout(p.timer); p.resolve(text.slice(idx + marker.length).trim()); return }
+          if (text.startsWith(marker)) { this.pending.delete(marker); clearTimeout(p.timer); p.resolve(text.slice(marker.length).trim()); return }
         }
         send('console:relay', { kind: 'output', text })
       }
@@ -324,7 +324,15 @@ const consoleRelay = {
     catch (err) { return { ok: false, error: err.message } }
   },
   // Send a command and resolve with the reply line following its marker.
+  // Same-marker queries are serialized: pending is keyed on the marker, so two
+  // in flight at once would clobber each other's resolver.
   query(command, marker, timeoutMs = 2500) {
+    const queues = this.queues || (this.queues = new Map())
+    const next = (queues.get(marker) || Promise.resolve()).then(() => this.queryNow(command, marker, timeoutMs))
+    queues.set(marker, next)
+    return next
+  },
+  queryNow(command, marker, timeoutMs) {
     return new Promise(resolve => {
       if (!this.connected || !this.ws) return resolve({ ok: false, error: 'relay not connected' })
       const timer = setTimeout(() => { this.pending.delete(marker); resolve({ ok: false, error: 'query timed out' }) }, timeoutMs)
@@ -659,10 +667,14 @@ ipcMain.handle('players:update', (_e, profileId, patch) => {
 
 // ── Character editing: writes straight to the changeForms store ────────────────
 
+// Strict: only numbers and non-empty numeric strings ('' / null / [] / true
+// would all coerce to 0 or 1 through Number()).
 function asUint(v, label) {
-  const n = Number(v)
-  if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) throw new Error(`${label}: not a valid number/form id`)
-  return n >>> 0
+  if (typeof v === 'string' && v.trim() !== '') v = Number(v)
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 0xffffffff) {
+    throw new Error(`${label}: not a valid number/form id`)
+  }
+  return v >>> 0
 }
 
 // The server's Appearance::FromJson needs the full field set with exact types;
@@ -689,6 +701,8 @@ function sanitizeAppearance(a) {
   if (out.options.some(n => !Number.isFinite(n)) || out.presets.some(n => !Number.isFinite(n))) {
     throw new Error('appearance: options/presets must be numbers')
   }
+  // raceId 0 resolves to no espm record, which makes the server skip the whole character at load
+  if (!out.raceId) throw new Error('appearance: raceId must be a non-zero race form id')
   return out
 }
 
@@ -811,7 +825,11 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw) => {
     if (key === 'serverSettings') {
       const file = config.paths.serverSettings
       let current = {}
-      try { current = JSON.parse(fs.readFileSync(file, 'utf8')) } catch {}
+      if (fs.existsSync(file)) {
+        // A corrupt file must block the save, or this write replaces the live config with {}.
+        try { current = JSON.parse(fs.readFileSync(file, 'utf8')) }
+        catch (err) { throw new Error(`refusing to save: ${path.basename(file)} is invalid JSON (${err.message}) - fix the file first`) }
+      }
       for (const field of schema.serverSettings) {
         const v = values[field.key]
         if (v === undefined) continue
