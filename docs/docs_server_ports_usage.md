@@ -12,12 +12,12 @@ Used to perform synchronization and other basic networking.
 
 ## UI Port
 
-Used by the embedded browser to access HTML/CSS/JS and other assets.
+Used by the embedded browser to access HTML/CSS/JS and other assets, and by the backend to reach `/metrics` and `/rpc`.
 
 - Protocol is HTTPS
 - Default value is 3000
-- Non-configurable
-- Equals `(Main Port + 1)` if its value is non-default
+- Configurable via the `uiPort` setting in the [configuration file](docs_server_configuration_reference.md)
+- Equals `(Main Port + 1)` if `uiPort` is unset and the main port is non-default
 
 ## WebPack DevServer Port
 

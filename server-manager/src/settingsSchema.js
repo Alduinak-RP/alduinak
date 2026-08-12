@@ -11,6 +11,7 @@ const serverSettings = [
   // Networking
   { key: 'listenHost',   label: 'Listen host',    type: 'text', group: 'Networking', placeholder: '0.0.0.0', help: 'Bind address for game (RakNet) traffic.' },
   { key: 'uiListenHost', label: 'UI listen host', type: 'text', group: 'Networking', placeholder: '0.0.0.0', help: 'Bind address for the HTTP/UI port.' },
+  { key: 'uiPort',       label: 'UI/metrics port', type: 'number', group: 'Networking', help: 'Port for HTTP/metrics/rpc. Empty = 3000 for game port 7777, else game port + 1. Must match the backend SKYMP_UI_PORT.' },
   { key: 'ip',           label: 'Advertised IP',  type: 'text', group: 'Networking', help: 'Public IP advertised to clients (NAT).' },
 
   // Mode & auth

@@ -79,6 +79,22 @@ This port would be used by player clients to connect to your server. At the curr
 }
 ```
 
+## uiPort
+
+TCP port serving the http endpoints: static `dataDir` contents, `/metrics` and `/rpc/:rpcClassName`.
+
+Unset, it derives from `port`: `3000` when `port` is the default `7777`, otherwise `port + 1`. Set it explicitly when the derived port is unavailable, as on orchestrators that hand out non-contiguous port allocations.
+
+The backend must agree, via its `SKYMP_UI_PORT` environment variable. Values colliding with `port` or outside 1-65535 are rejected and the derived port is used instead.
+
+```json5
+{
+  // ...
+  "uiPort": 25566
+  // ...
+}
+```
+
 ## maxPlayers
 
 Sets player limit of the server. Visible in launcher and on skymp.io.

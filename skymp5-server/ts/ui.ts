@@ -94,12 +94,36 @@ export const setServer = (scampServer: any) => {
   gScampServer = scampServer;
 };
 
+// Explicit uiPort wins; otherwise keep the legacy 7777 -> 3000, else port + 1 mapping.
+// Mirrors SKYMP_UI_PORT in the backend config, which must agree with this value.
+export const resolveUiPort = (settings: Settings): number => {
+  const derived = settings.port === 7777 ? 3000 : settings.port + 1;
+  const raw = settings.allSettings?.uiPort;
+
+  if (raw === undefined || raw === null || raw === "") {
+    return derived;
+  }
+
+  const parsed = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    console.error(`Ignoring invalid uiPort ${JSON.stringify(raw)}, using ${derived}`);
+    return derived;
+  }
+
+  if (parsed === settings.port) {
+    console.error(`uiPort ${parsed} collides with the game port, using ${derived}`);
+    return derived;
+  }
+
+  return parsed;
+};
+
 export const main = (settings: Settings): void => {
   metricsAuthParse(settings);
   const devServerPort = 1234;
 
   const uiListenHost = settings.allSettings.uiListenHost as (string | undefined);
-  const uiPort = settings.port === 7777 ? 3000 : settings.port + 1;
+  const uiPort = resolveUiPort(settings);
 
   Axios({
     method: "get",
