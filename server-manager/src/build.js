@@ -240,7 +240,7 @@ class Builder {
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
     const deployDir = path.join(config.buildDir, 'dist', 'server')
-    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'README.md'])
+    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'README.md', 'starter-grants.json', 'zone-spawns.json'])
     for (const extra of (process.env.ALDUINAK_SERVER_KEEP || '').split(',')) {
       const n = extra.trim(); if (n) keep.add(n)
     }
@@ -253,6 +253,47 @@ class Builder {
         this.line(`[deploy] removed stale ${name}`)
       } catch (err) { this.line(`[deploy] could not remove ${name}: ${err.message}`) }
     }
+  }
+
+  // GAMEMODE: concatenate build/dist/server/gamemode_extensions/*.js (sorted by
+  // filename) into gamemode.js. The game server hot-reloads the result within a
+  // second, so this needs no service restart.
+  async buildGamemode() {
+    this.banner('Gamemode')
+    const serverDir = config.paths.serverDir
+    const extDir = path.join(serverDir, 'gamemode_extensions')
+    const target = path.join(serverDir, 'gamemode.js')
+    let parts = []
+    try { parts = fs.readdirSync(extDir).filter(f => f.endsWith('.js')).sort() } catch {}
+    if (!parts.length) {
+      this.line('[gamemode] no gamemode_extensions/*.js found - gamemode.js left untouched.')
+      return { ok: true }
+    }
+    const bodies = []
+    for (const name of parts) {
+      try {
+        bodies.push(fs.readFileSync(path.join(extDir, name), 'utf8').replace(/\r\n/g, '\n').replace(/\s+$/, ''))
+        this.line(`[gamemode] + ${name}`)
+      } catch (err) {
+        return { ok: false, error: `gamemode: could not read ${name} (${err.message})` }
+      }
+    }
+    const banner = '// GENERATED from gamemode_extensions/ by the Server Manager - edit the parts, not this file.\n\n'
+    const out = banner + bodies.join('\n\n') + '\n'
+    // Compile without running: a part with a syntax error must never reach the live file.
+    try { new (require('vm').Script)(out, { filename: 'gamemode.js' }) }
+    catch (err) { return { ok: false, error: `gamemode: syntax error in the concatenated output - ${err.message}` } }
+    let current = ''
+    try { current = fs.readFileSync(target, 'utf8') } catch {}
+    if (current === out) {
+      this.line('[gamemode] gamemode.js already up to date.')
+      return { ok: true }
+    }
+    const tmp = target + '.tmp'
+    fs.writeFileSync(tmp, out)
+    fs.renameSync(tmp, target)
+    this.line(`\n✓ gamemode.js built from ${parts.length} extension file(s); the server hot-reloads it within a second.`)
+    return { ok: true }
   }
 
   // GAME SERVER: bundle the TypeScript into build/dist/server/dist_back. The native
@@ -271,6 +312,9 @@ class Builder {
     const pm = this.packageManager()
     const r = await this.run(pm, pm === 'yarn' ? ['build-ts'] : ['run', 'build-ts'], dir, 'game server: build-ts')
     if (!r.ok) return { ok: false, error: 'build-ts failed - TypeScript errors stop the build (see log)' }
+
+    const gm = await this.buildGamemode()
+    if (!gm.ok) return gm
 
     this.pruneServerDeploy()
     if (!fs.existsSync(path.join(config.buildDir, 'dist', 'server', 'scam_native.node'))) {

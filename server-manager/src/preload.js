@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('mgr', {
   buildLauncher:      ()   => ipcRenderer.invoke('build:launcher'),
   buildClient:        ()   => ipcRenderer.invoke('build:client'),
   buildNative:        ()   => ipcRenderer.invoke('build:native'),
+  buildGamemode:      ()   => ipcRenderer.invoke('build:gamemode'),
   buildCi:            ()   => ipcRenderer.invoke('build:ci'),
   launcherGetVersion: ()   => ipcRenderer.invoke('launcher:getVersion'),
   launcherSetVersion: (v)  => ipcRenderer.invoke('launcher:setVersion', v),

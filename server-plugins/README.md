@@ -1,5 +1,19 @@
 # Server plugins
 
+## gamemode_extensions (the gamemode source)
+
+The live gamemode is no longer edited as one file. Its source lives in
+`build/dist/server/gamemode_extensions/*.js` (gitignored, server box only):
+numbered parts that the Server Manager concatenates - sorted by filename -
+into `build/dist/server/gamemode.js` on **Build server**, **Build gamemode
+only**, or the console command `build gamemode`. The server hot-reloads the
+generated file within a second; never edit `gamemode.js` directly.
+`00_core.js` must stay first and `99_bootstrap.js` last; everything else is a
+drop-in numbered part sharing one script scope. See the README inside that
+folder for the ordering rules.
+
+## Plugins
+
 Creator-named gamemode plugin folders, one directory per creator, one
 subdirectory per plugin (Space Station 14 downstream style):
 

@@ -60,6 +60,7 @@ single most common source of "the fix didn't work":
 | Changed | Rebuild needed |
 |---|---|
 | `skymp5-server/ts` | manager "Build server" (writes `dist_back`), restart game service |
+| `build/dist/server/gamemode_extensions` | manager "Build gamemode only" (or "Build server", or console `build gamemode`) regenerates `gamemode.js`; the server hot-reloads it, no restart. Never edit `gamemode.js` directly - it is generated |
 | `skymp5-client/src` | manager "Build Client" + players re-download via launcher |
 | `skymp5-front/src` | manager "Build Client" (same pipeline) + players re-download |
 | C++ (`skyrim-platform`, `skymp5-server/cpp`) | **CI flatrim build** (or the manager's Native build), then apply the artifact into `build/dist`, then Build Client |
