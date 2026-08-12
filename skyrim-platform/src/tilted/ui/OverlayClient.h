@@ -13,6 +13,7 @@ struct OverlayClient
   : CefClient
   , CefLifeSpanHandler
   , CefContextMenuHandler
+  , CefFocusHandler
 {
   explicit OverlayClient(
     MyRenderHandler* apHandler,
@@ -25,6 +26,8 @@ struct OverlayClient
   CefRefPtr<CefLoadHandler> GetLoadHandler() override;
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override;
   CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override;
+  CefRefPtr<CefFocusHandler> GetFocusHandler() override;
+  bool OnSetFocus(CefRefPtr<CefBrowser> aBrowser, FocusSource aSource) override;
 
   [[nodiscard]] CefRefPtr<CefBrowser> GetBrowser() const noexcept;
   [[nodiscard]] const std::wstring& GetCursorPathPNG() const noexcept;

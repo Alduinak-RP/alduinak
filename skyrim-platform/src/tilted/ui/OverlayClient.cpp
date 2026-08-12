@@ -1,4 +1,5 @@
 #include "../ui/TextToDraw.h"
+#include <DInputHook.hpp>
 #include <Filesystem.hpp>
 #include <MyCtxHandler.h>
 #include <OverlayClient.h>
@@ -50,6 +51,24 @@ CefRefPtr<CefLifeSpanHandler> OverlayClient::GetLifeSpanHandler()
 CefRefPtr<CefContextMenuHandler> OverlayClient::GetContextMenuHandler()
 {
   return m_pContextMenuHandler;
+}
+
+CefRefPtr<CefFocusHandler> OverlayClient::GetFocusHandler()
+{
+  return this;
+}
+
+// The overlay renders offscreen and receives injected input, so the browser
+// must never take focus on its own; page loads grabbing it deactivates the
+// game window at startup. The only allowed grab is the explicit one
+// MyChromiumApp::RunTasks issues while a menu actually holds input focus.
+bool OverlayClient::OnSetFocus(CefRefPtr<CefBrowser> aBrowser,
+                               FocusSource aSource)
+{
+  if (aSource == FOCUS_SOURCE_NAVIGATION) {
+    return true;
+  }
+  return !DInputHook::ChromeFocus();
 }
 
 void OverlayClient::SetBrowser(const CefRefPtr<CefBrowser>& aBrowser) noexcept

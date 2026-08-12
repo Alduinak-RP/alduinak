@@ -252,6 +252,7 @@ static bool IsSameProcessWindow(HWND aWindow)
 }
 
 static void ArmReforeground(HWND hwnd)
+{
   if (!s_reforegroundArmed) {
     s_reforegroundArmed = true;
     s_reforegroundAttempts = 0;
