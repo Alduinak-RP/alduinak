@@ -8,6 +8,7 @@ import { Provider } from 'react-redux';
 
 import { Widgets } from './utils/Widgets';
 import './utils/VoiceManager';
+import './utils/MainMenuMedia';
 
 import './main.scss';
 

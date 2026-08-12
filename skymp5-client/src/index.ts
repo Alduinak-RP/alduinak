@@ -69,6 +69,7 @@ import { ServerJsVerificationService } from "./services/services/serverJsVerific
 import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService";
 import { NotificationService } from "./services/services/notificationService";
 import { ConnectionWatchdogService } from "./services/services/connectionWatchdogService";
+import { MenuMediaService } from "./services/services/menuMediaService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -133,6 +134,7 @@ const main = () => {
       new GamemodeEventSourceService(sp, controller),
       new GamemodeUpdateService(sp, controller),
       new ChatService(sp, controller),
+      new MenuMediaService(sp, controller),
       new FrontHotReloadService(sp, controller),
       new BlockedAnimationsService(sp, controller),
       new WorldView(sp, controller),

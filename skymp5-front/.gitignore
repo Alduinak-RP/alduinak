@@ -121,3 +121,6 @@ config.js
 .idea
 */.DS_Store
 .DS_Store
+
+# on-box UI media shipped by the manager buildFront (not committed - see server-manager/src/build.js)
+ui-static/

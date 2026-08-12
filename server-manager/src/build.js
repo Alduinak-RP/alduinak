@@ -427,6 +427,19 @@ class Builder {
     const pm = this.packageManager()
     const r = await this.run(pm, pm === 'yarn' ? ['build'] : ['run', 'build'], dir, 'front-end: webpack build')
     if (!r.ok) return { ok: false, error: 'front-end build failed (see log)' }
+    // On-box static UI media (menu background/music - kept out of the public
+    // repo): everything in skymp5-front/ui-static ships next to index.html.
+    const staticDir = path.join(dir, 'ui-static')
+    if (fs.existsSync(staticDir)) {
+      for (const name of fs.readdirSync(staticDir)) {
+        try {
+          fs.copyFileSync(path.join(staticDir, name), path.join(uiOut, name))
+          this.line(`[front] + ui-static/${name}`)
+        } catch (err) {
+          return { ok: false, error: `front-end: could not copy ui-static/${name} (${err.message})` }
+        }
+      }
+    }
     this.line(`\n✓ Front-end UI built into ${uiOut}`)
     return { ok: true }
   }
