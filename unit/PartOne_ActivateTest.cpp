@@ -661,11 +661,14 @@ TEST_CASE("Forbidden-reloot base types are static and can't be picked up",
   auto& ac = partOne.worldState.GetFormAt<MpActor>(0xff000000);
   ac.RemoveAllItems();
 
-  const auto refrId = 0x0100122a; // PurpleMountainFlower (FLOR)
+  // Skyrim models harvestable mountain flowers as TREE, not FLOR, so this ref
+  // is only blocked by forbidding TREE.
+  const auto refrId = 0x0100122a; // PurpleMountainFlower, base 0xbcf3a (TREE)
   auto& ref = partOne.worldState.GetFormAt<MpObjectReference>(refrId);
   REQUIRE(!ref.IsHarvested());
+  REQUIRE(ref.GetBaseType() == "TREE");
 
-  partOne.worldState.SetForbiddenRelootTypes({ "FLOR" });
+  partOne.worldState.SetForbiddenRelootTypes({ "TREE" });
   ref.Activate(ac);
   partOne.Tick();
 
