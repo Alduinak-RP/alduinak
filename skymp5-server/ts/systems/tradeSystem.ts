@@ -625,7 +625,35 @@ export class TradeSystem implements System {
     this.endSession(s);
     this.send(mp, s.a, { customPacketType: 'tradeCompleted' });
     this.send(mp, s.b, { customPacketType: 'tradeCompleted' });
-    this.log('[trade] ' + this.nameOf(mp, s.a) + ' <-> ' + this.nameOf(mp, s.b) + ' completed');
+    const summary = '[trade] ' + this.describeParty(mp, s.a) + ' gave [' + this.describeOffer(s.offerA)
+      + '] to ' + this.describeParty(mp, s.b) + ' for [' + this.describeOffer(s.offerB) + ']';
+    this.log(summary);
+    // trading.log via the gamemode's shared appender (same pattern as adminLog)
+    try { (globalThis as any).__alduinakTradeLog?.(summary); } catch { /* log only */ }
+  }
+
+  // JSON-quoted name plus fixed-position ids, so a crafted character name
+  // cannot forge another player's trade line.
+  private describeParty(mp: Mp, userId: number): string {
+    const actorId = this.actorOf(mp, userId);
+    let profileId = -1;
+    try { profileId = Number(mp.get(actorId, 'profileId')); } catch { /* form gone */ }
+    return JSON.stringify(this.nameOf(mp, userId)) + ' (profile ' + profileId + ', actor ' + actorId.toString(16) + ')';
+  }
+
+  private describeOffer(offer: Item[]): string {
+    if (!offer.length) {
+      return 'nothing';
+    }
+    const nameOf = (globalThis as any).__alduinakItemName;
+    return offer.map((i) => {
+      let label = i.count + 'x 0x' + (i.baseId >>> 0).toString(16);
+      try {
+        const n = nameOf?.(i.baseId);
+        if (n) label += ' ' + JSON.stringify(n);
+      } catch { /* hex id is enough */ }
+      return label;
+    }).join(', ');
   }
 }
 
