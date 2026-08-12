@@ -2128,6 +2128,12 @@ async function runMO2Install(opts = {}) {
       if (!files.length || !files.every(f => Number.isFinite(f.size))) return false
       const expected = files.reduce((a, f) => a + f.size, 0)
       const actual = mo2.modFolderSize(m.name)
+      if (actual === -1) {
+        // Unreadable mid-scan (AV holding a handle): do not wipe a mod over a
+        // transient lock, only over a real size mismatch.
+        log(`[mo2-install] ${m.name}: folder unreadable during verify - skipping size check`)
+        return false
+      }
       if (actual !== expected) {
         log(`[mo2-install] ${m.name}: folder is ${actual} bytes, manifest expects ${expected} - repairing`)
         return true
@@ -2139,12 +2145,14 @@ async function runMO2Install(opts = {}) {
     const needsRoot      = !rootSetUp || rootChanged
     log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
     const modsToInstall  = []
-    manifest.mods.forEach((m, i) => {
-      if (modChanged(m)) modsToInstall.push(m)
+    for (let i = 0; i < manifest.mods.length; i++) {
+      if (modChanged(manifest.mods[i])) modsToInstall.push(manifest.mods[i])
       if ((i + 1) % 10 === 0 || i + 1 === manifest.mods.length) {
         send('install:progress', { phase: 'verify', index: i + 1, total: manifest.mods.length })
       }
-    })
+      // Yield between folder walks so the UI stays responsive on slow disks
+      await new Promise(r => setImmediate(r))
+    }
 
     if (modsToInstall.length === 0 && !needsRoot) {
       finishOrder()

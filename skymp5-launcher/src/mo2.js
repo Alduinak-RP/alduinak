@@ -187,10 +187,16 @@ async function ensureInstalled(onProgress) {
       if (now.size === stamp.size && now.count === stamp.count) return
       _log(`MO2 binaries do not match the stamp (${now.count} files/${now.size} bytes vs ${stamp.count}/${stamp.size}) - repairing`)
       if (onProgress) onProgress('Repairing Mod Organizer 2…')
+    } else if (!stamp) {
+      // Pre-stamp install: adopt the current binaries as the baseline instead
+      // of forcing every existing player through a re-download; the stamp
+      // catches corruption from here on. Player-added MO2 plugins converge
+      // after one refresh cycle.
+      _log('no MO2 integrity stamp - adopting the current install as baseline')
+      writeMo2Stamp()
+      return
     } else {
-      // No stamp (pre-stamp install) or a different pinned version: one
-      // re-extract establishes a known-good baseline to stamp.
-      _log(stamp ? `MO2 version changed (${stamp.version} -> ${MO2_VERSION})` : 'no MO2 integrity stamp - refreshing install')
+      _log(`MO2 version changed (${stamp.version} -> ${MO2_VERSION}) - reinstalling`)
     }
   }
 
@@ -562,9 +568,24 @@ function applyMod(modName, files, extractedDirs, modId, hash) {
       'repository=Nexus', 'alduinakManaged=true', `alduinakHash=${hash || ''}`, '',
     ].join('\r\n'))
 
-    try { fs.rmSync(lp(modDir), { recursive: true, force: true }) } catch {}
+    // Swap via rename-aside: a locked file fails the rename cleanly instead
+    // of a partial rmSync leaving a half-deleted mod. Leftover .stale dirs
+    // are collected by the stale-mod scan on the next run.
+    const staleDir = modDir + '.stale'
+    try { fs.rmSync(lp(staleDir), { recursive: true, force: true }) } catch {}
     fs.mkdirSync(lp(path.dirname(modDir)), { recursive: true })
-    fs.renameSync(lp(buildDir), lp(modDir))
+    let movedAside = false
+    if (fs.existsSync(lp(modDir))) {
+      fs.renameSync(lp(modDir), lp(staleDir))
+      movedAside = true
+    }
+    try {
+      fs.renameSync(lp(buildDir), lp(modDir))
+    } catch (err) {
+      if (movedAside) { try { fs.renameSync(lp(staleDir), lp(modDir)) } catch {} }
+      throw err
+    }
+    try { fs.rmSync(lp(staleDir), { recursive: true, force: true }) } catch {}
     _log(`installed ${folderName} (${files.length} file(s))`)
     return { folder: folderName }
   } catch (err) {
@@ -640,18 +661,30 @@ function setModlistOrder(order) {
 
   // Stale managed mods are found by scanning the mods dir itself, never the
   // old modlist.txt: folders left by failed runs or a rewritten modlist have
-  // no line there, which is exactly how they used to survive and break the game.
-  let modDirs = []
-  try { modDirs = fs.readdirSync(getModsDir(), { withFileTypes: true }) } catch {}
-  for (const e of modDirs) {
-    if (!e.isDirectory() || managed.has(e.name) || e.name === 'SKSE') continue
-    if (!isManaged(e.name)) continue // the player's own mod: keep
-    try {
-      fs.rmSync(lp(path.join(getModsDir(), e.name)), { recursive: true, force: true })
-      _log(`removed stale managed mod (no longer in manifest): ${e.name}`)
-    } catch (err) {
-      _log(`could not remove stale mod ${e.name}: ${err.message}`)
+  // no line there, which is exactly how they used to survive and break the
+  // game. NTFS is case-insensitive, so names are compared folded. An empty
+  // order means a broken or empty manifest: never mass-prune on it.
+  const managedFold = new Set(order.map(n => String(n).replace(/[<>:"/\\|?*]/g, '').toLowerCase()))
+  if (managedFold.size > 0) {
+    let modDirs = []
+    try { modDirs = fs.readdirSync(getModsDir(), { withFileTypes: true }) } catch {}
+    for (const e of modDirs) {
+      const fold = e.name.toLowerCase()
+      if (!e.isDirectory() || managedFold.has(fold) || fold === 'skse') continue
+      if (!isManaged(e.name)) continue // the player's own mod: keep
+      // A copied managed folder keeps its original meta name= - that is a
+      // player's copy, keep it. Transient .stale folders from an interrupted
+      // swap are always ours regardless of the recorded name.
+      if (!fold.endsWith('.stale') && readMetaName(e.name).toLowerCase() !== fold) continue
+      try {
+        fs.rmSync(lp(path.join(getModsDir(), e.name)), { recursive: true, force: true })
+        _log(`removed stale managed mod (no longer in manifest): ${e.name}`)
+      } catch (err) {
+        _log(`could not remove stale mod ${e.name}: ${err.message}`)
+      }
     }
+  } else {
+    _log('manifest order is empty - skipping stale-mod pruning')
   }
 
   const lines = [
@@ -742,6 +775,14 @@ function isManaged(modName) {
   try {
     return /^alduinakManaged\s*=\s*true/im.test(fs.readFileSync(path.join(getModsDir(), modName, 'meta.ini'), 'utf8'))
   } catch { return false }
+}
+
+/** The name= recorded in a mod's meta.ini ('' when absent). */
+function readMetaName(modName) {
+  try {
+    const meta = fs.readFileSync(path.join(getModsDir(), modName, 'meta.ini'), 'utf8')
+    return (meta.match(/^name\s*=\s*(.*)$/im) || [])[1]?.trim() || ''
+  } catch { return '' }
 }
 
 /**
