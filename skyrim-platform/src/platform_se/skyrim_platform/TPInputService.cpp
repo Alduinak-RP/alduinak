@@ -236,12 +236,6 @@ void ProcessMouseWheel(uint16_t aX, uint16_t aY, int16_t aZ)
   }
 }
 
-// Same-process helper windows (the in-process CEF audio stack, first opened
-// for voice) steal activation from the game window, which drops DirectInput's
-// DISCL_FOREGROUND acquisition until the player alt-tabs. WM_ACTIVATE only
-// reports a switch the OS has already begun, and re-activating from inside
-// the handler is undone when that switch completes, so the reclaim runs on a
-// short timer that retries until the settled foreground is ours again.
 static constexpr UINT_PTR kReforegroundTimerId = 0x54503FA;
 static constexpr int kReforegroundMaxAttempts = 8;
 static int s_reforegroundAttempts = 0;
@@ -258,9 +252,6 @@ static bool IsSameProcessWindow(HWND aWindow)
 }
 
 static void ArmReforeground(HWND hwnd)
-{
-  // A re-theft mid-episode keeps its attempt count, so a window that steals
-  // back after every reclaim cannot ping-pong the foreground forever
   if (!s_reforegroundArmed) {
     s_reforegroundArmed = true;
     s_reforegroundAttempts = 0;
@@ -277,10 +268,6 @@ static void StopReforeground(HWND hwnd)
 static LRESULT CALLBACK InputServiceWndProc(HWND hwnd, UINT uMsg,
                                             WPARAM wParam, LPARAM lParam)
 {
-  // A same-process thief handle is theft for sure: swallow so the game never
-  // sees itself deactivate. Cross-thread switches often deliver a NULL handle
-  // where theft and a real alt-tab look identical, so those pass through to
-  // the game and the timer decides from wherever the foreground settles.
   if (uMsg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
     const HWND other = reinterpret_cast<HWND>(lParam);
     if (IsSameProcessWindow(other)) {
