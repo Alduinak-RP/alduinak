@@ -33,10 +33,12 @@ jobs:
     linux-build-base:
         runs-on: ubuntu-latest
         steps:
+          # No `repository:` here on purpose. Pinning it to the upstream repo
+          # meant every Linux run built upstream's code, so this fork's changes
+          # were never compiled on Linux by CI at all.
           - name: Checkout
             uses: actions/checkout@v6
             with:
-              repository: skyrim-multiplayer/skymp
               token: ${{ secrets.combined_server_token || github.token }}
               submodules: recursive
               fetch-depth: 0
