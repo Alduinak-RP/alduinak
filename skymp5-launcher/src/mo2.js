@@ -448,6 +448,33 @@ function lp(p) {
   return abs.startsWith('\\\\?\\') ? abs : '\\\\?\\' + abs
 }
 
+// Windows refuses to delete read-only files even with force:true, and both 7z
+// (restoring archive attributes into .x) and copyFileSync (propagating them
+// into mod folders) produce them. Strip attributes and retry before giving up.
+function rmrfSync(target) {
+  try {
+    fs.rmSync(lp(target), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+    return
+  } catch (err) {
+    if (process.platform !== 'win32') throw err
+  }
+  const stack = [target]
+  const dirs = []
+  while (stack.length) {
+    const dir = stack.pop()
+    dirs.push(dir)
+    let entries = []
+    try { entries = fs.readdirSync(lp(dir), { withFileTypes: true }) } catch { continue }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) stack.push(p)
+      else try { fs.chmodSync(lp(p), 0o666) } catch {}
+    }
+  }
+  for (const d of dirs) { try { fs.chmodSync(lp(d), 0o777) } catch {} }
+  fs.rmSync(lp(target), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+}
+
 /** Streaming SHA-256 of a file (handles multi-GB archives without buffering). */
 function sha256File(p) {
   const fd  = fs.openSync(lp(p), 'r')
@@ -518,7 +545,7 @@ function extractToCache(archivePath, archiveId) {
 
   if (fs.existsSync(lp(dir))) {
     _log(`discarding incomplete extraction of ${archiveId}`)
-    fs.rmSync(lp(dir), { recursive: true, force: true })
+    rmrfSync(dir)
   }
   extractArchive(archivePath, dir)
   fs.writeFileSync(lp(marker), '')
@@ -529,7 +556,7 @@ function extractToCache(archivePath, archiveId) {
 function clearCache(archiveId) {
   const dir = archiveId == null ? path.join(getRoot(), '.x') : path.join(getRoot(), '.x', String(archiveId))
   try {
-    fs.rmSync(lp(dir), { recursive: true, force: true })
+    rmrfSync(dir)
   } catch (err) {
     // A locked cache used to be swallowed here and then reused as if valid
     _log(`could not clear extraction cache ${dir}: ${err.message}`)
@@ -552,7 +579,7 @@ function applyMod(modName, files, extractedDirs, modId, hash) {
   const modDir     = path.join(getModsDir(), folderName)
   const buildDir   = path.join(getRoot(), '.b', String(_applyCounter++))
 
-  try { fs.rmSync(lp(buildDir), { recursive: true, force: true }) } catch {}
+  try { rmrfSync(buildDir) } catch {}
   try {
     for (const f of files) {
       try {
@@ -572,7 +599,7 @@ function applyMod(modName, files, extractedDirs, modId, hash) {
     // of a partial rmSync leaving a half-deleted mod. Leftover .stale dirs
     // are collected by the stale-mod scan on the next run.
     const staleDir = modDir + '.stale'
-    try { fs.rmSync(lp(staleDir), { recursive: true, force: true }) } catch {}
+    try { rmrfSync(staleDir) } catch {}
     fs.mkdirSync(lp(path.dirname(modDir)), { recursive: true })
     let movedAside = false
     if (fs.existsSync(lp(modDir))) {
@@ -585,11 +612,11 @@ function applyMod(modName, files, extractedDirs, modId, hash) {
       if (movedAside) { try { fs.renameSync(lp(staleDir), lp(modDir)) } catch {} }
       throw err
     }
-    try { fs.rmSync(lp(staleDir), { recursive: true, force: true }) } catch {}
+    try { rmrfSync(staleDir) } catch {}
     _log(`installed ${folderName} (${files.length} file(s))`)
     return { folder: folderName }
   } catch (err) {
-    try { fs.rmSync(lp(buildDir), { recursive: true, force: true }) } catch {}
+    try { rmrfSync(buildDir) } catch {}
     return { error: err.message }   // existing modDir left intact
   }
 }
@@ -677,7 +704,7 @@ function setModlistOrder(order) {
       // swap are always ours regardless of the recorded name.
       if (!fold.endsWith('.stale') && readMetaName(e.name).toLowerCase() !== fold) continue
       try {
-        fs.rmSync(lp(path.join(getModsDir(), e.name)), { recursive: true, force: true })
+        rmrfSync(path.join(getModsDir(), e.name))
         _log(`removed stale managed mod (no longer in manifest): ${e.name}`)
       } catch (err) {
         _log(`could not remove stale mod ${e.name}: ${err.message}`)
