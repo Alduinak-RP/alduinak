@@ -200,6 +200,17 @@ class Builder {
       }
     }
 
+    // The CMake configure itself runs `yarn install` (cmake/yarn.cmake); npm is
+    // not accepted there, so the JS builds' npm fallback does not apply.
+    if (!this.hasCmd('yarn')) {
+      this.line('[native] yarn missing - installing with npm…')
+      const y = await this.run('npm', ['install', '-g', 'yarn'], config.repoRoot, 'install yarn')
+      this.refreshPath()
+      if (!y.ok || !this.hasCmd('yarn')) {
+        return { ok: false, error: 'yarn is required by the CMake configure - install it manually: npm install -g yarn' }
+      }
+    }
+
     if (!fs.existsSync(path.join(tc.vcpkgDir, 'vcpkg.exe'))) {
       this.line('[native] bootstrapping vcpkg (first run, this takes a few minutes)…')
       const boot = await this.run(path.join(tc.vcpkgDir, 'bootstrap-vcpkg.bat'), [], tc.vcpkgDir, 'bootstrap vcpkg')
