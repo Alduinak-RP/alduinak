@@ -6,7 +6,7 @@ const fs = require('fs')
 // SERVER_VERSION = game server release label (informational)
 const LATEST_VERSION = '2.1.8'
 const CLIENT_VERSION = '0.0.15'
-const SERVER_VERSION = '0.0.0'
+const SERVER_VERSION = '0.1.0'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 
 router.get('/', (_req, res) => {
