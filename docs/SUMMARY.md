@@ -20,6 +20,8 @@
 ## Server Usage
 
 - [Running A Server](docs_running_a_server.md)
+- [Running A Server In Docker](../deploy/docker/README.md)
+- [Pterodactyl Eggs](../deploy/pterodactyl/README.md)
 - [Server Configuration Reference](docs_server_configuration_reference.md)
 - [Server Command Line Api](docs_server_command_line_api.md)
 - [Server Ports Usage](docs_server_ports_usage.md)

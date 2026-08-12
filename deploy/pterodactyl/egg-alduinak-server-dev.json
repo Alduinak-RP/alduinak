@@ -10,10 +10,10 @@
     "description": "DEV ONLY. Identical to the Alduinak Server egg except the install step downloads the Skyrim master files from the mirror this repository's CI uses. Those files are Bethesda's property and this is not a licensed redistribution channel. Internal testing only.",
     "features": null,
     "docker_images": {
-        "Alduinak Server": "ghcr.io\/mesaindigoroleplay\/alduinak-server:latest"
+        "Alduinak Server": "ghcr.io/mesaindigoroleplay/alduinak-server:latest"
     },
     "file_denylist": [],
-    "startup": "\/opt\/alduinak\/entrypoint.sh node dist_back\/skymp5-server.js",
+    "startup": "/opt/alduinak/entrypoint.sh node dist_back/skymp5-server.js",
     "config": {
         "files": "{}",
         "startup": "{\r\n    \"done\": \"Current process ID is\"\r\n}",
@@ -22,8 +22,8 @@
     },
     "scripts": {
         "installation": {
-            "script": "#!\/bin\/bash\n# DEV ONLY: fetches Bethesda-copyrighted master files from a third-party mirror.\n# This is the same source this repository's CI uses for tests. It is not a\n# licensed redistribution channel. Never run this egg on a public node.\n\nset -e\n\napt-get update\napt-get install -y --no-install-recommends curl ca-certificates\n\nmkdir -p \/mnt\/server\/data\nmkdir -p \/mnt\/server\/world\nmkdir -p \/mnt\/server\/gamemode_extensions\n\nSE_DATA_BASE=\"${SE_DATA_BASE:-https:\/\/gitlab.com\/pospelov\/se-data\/-\/raw\/main}\"\n\ncd \/mnt\/server\/data\nfor esm in Skyrim.esm Update.esm Dawnguard.esm HearthFires.esm Dragonborn.esm; do\n  if [ -f \"$esm\" ]; then\n    echo \"$esm already present, skipping\"\n    continue\n  fi\n  echo \"fetching $esm\"\n  curl -fsSL --retry 3 -o \"$esm\" \"${SE_DATA_BASE}\/${esm}\"\ndone\n\ncat > \/mnt\/server\/data\/DEV-BUILD-DO-NOT-DISTRIBUTE.txt <<'EOF'\nThe .esm files in this directory were downloaded automatically by the\ndevelopment egg. They are Bethesda's copyrighted game files.\n\nThis server is for internal testing only. Do not expose it publicly and do\nnot distribute this volume or any image built from it.\nEOF\n\necho \"Dev install complete.\"\n",
-            "container": "ghcr.io\/pterodactyl\/installers:debian",
+            "script": "#!/bin/bash\n# DEV ONLY: fetches Bethesda-copyrighted master files from a third-party mirror.\n# This is the same source this repository's CI uses for tests. It is not a\n# licensed redistribution channel. Never run this egg on a public node.\n\nset -e\n\napt-get update\napt-get install -y --no-install-recommends curl ca-certificates\n\nmkdir -p /mnt/server/data\n# scripts/ must exist: the server registers it as a script storage and the\n# directory iterator throws if it is absent.\nmkdir -p /mnt/server/data/scripts\nmkdir -p /mnt/server/world\nmkdir -p /mnt/server/gamemode_extensions\n\nSE_DATA_BASE=\"${SE_DATA_BASE:-https://gitlab.com/pospelov/se-data/-/raw/main}\"\n\ncd /mnt/server/data\nfor esm in Skyrim.esm Update.esm Dawnguard.esm HearthFires.esm Dragonborn.esm; do\n  if [ -f \"$esm\" ]; then\n    echo \"$esm already present, skipping\"\n    continue\n  fi\n  echo \"fetching $esm\"\n  curl -fsSL --retry 3 -o \"$esm\" \"${SE_DATA_BASE}/${esm}\"\ndone\n\ncat > /mnt/server/data/DEV-BUILD-DO-NOT-DISTRIBUTE.txt <<'EOF'\nThe .esm files in this directory were downloaded automatically by the\ndevelopment egg. They are Bethesda's copyrighted game files.\n\nThis server is for internal testing only. Do not expose it publicly and do\nnot distribute this volume or any image built from it.\nEOF\n\necho \"Dev install complete.\"\n",
+            "container": "ghcr.io/pterodactyl/installers:debian",
             "entrypoint": "bash"
         }
     },
@@ -50,7 +50,7 @@
         },
         {
             "name": "UI / metrics port",
-            "description": "TCP port for the http endpoints (static data, \/metrics, \/rpc). This must be a SECOND allocation assigned to this server, and must not equal the game port. Add the allocation under the Network tab first.",
+            "description": "TCP port for the http endpoints (static data, /metrics, /rpc). This must be a SECOND allocation assigned to this server, and must not equal the game port. Add the allocation under the Network tab first.",
             "env_variable": "UI_PORT",
             "default_value": "3000",
             "user_viewable": true,
@@ -90,7 +90,7 @@
         },
         {
             "name": "Database driver",
-            "description": "file = flat changeForms in world\/. mongodb = external MongoDB, needs the URI below.",
+            "description": "file = flat changeForms in world/. mongodb = external MongoDB, needs the URI below.",
             "env_variable": "DATABASE_DRIVER",
             "default_value": "file",
             "user_viewable": true,

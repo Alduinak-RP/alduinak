@@ -27,7 +27,10 @@ ln -sfn "${ALDUINAK_HOME}/scam_native.node" ./scam_native.node
 ln -sfn "${ALDUINAK_HOME}/dist_back"        ./dist_back
 
 # ── Game data ────────────────────────────────────────────────────────────────
-mkdir -p "${DATA_DIR}"
+# scripts/ is not optional: ScriptStorageFactory always registers it as a
+# directory storage and the iterator throws if it is missing, which stops the
+# server before it ever opens a socket.
+mkdir -p "${DATA_DIR}" "${DATA_DIR}/scripts"
 
 # Dev image only: seed the Bethesda files baked into the image
 if [ -n "${ALDUINAK_DEV_DATA:-}" ] && [ -d "${ALDUINAK_DEV_DATA}" ]; then

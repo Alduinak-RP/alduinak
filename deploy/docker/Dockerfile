@@ -113,10 +113,13 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       nodejs \
-      libicu74 \
       tzdata \
  && rm -rf /var/lib/apt/lists/* \
  && useradd -m -d /home/container -s /bin/bash container
+
+# scam_native.node links only libc, libm, libgcc_s, libresolv and libstdc++;
+# vcpkg statically links the rest. Anything else nodejs needs comes in as its
+# own apt dependency, so nothing further is pinned here.
 
 COPY --from=builder /src/build/dist/server/scam_native.node /opt/alduinak/scam_native.node
 COPY --from=builder /src/build/dist/server/dist_back        /opt/alduinak/dist_back
@@ -132,10 +135,11 @@ RUN sed -i 's/\r$//' /opt/alduinak/entrypoint.sh \
                      /opt/alduinak/build-gamemode.js \
  && chmod +x /opt/alduinak/entrypoint.sh
 
-ENV ALDUINAK_HOME=/opt/alduinak \
-    SERVER_PORT=7777 \
-    UI_PORT=3000 \
-    DATA_DIR=data
+# Deliberately no SERVER_PORT/UI_PORT/DATA_DIR defaults here. render-settings.js
+# only overwrites a key when its variable is set, so baking defaults would make
+# those settings permanently unmanageable from server-settings.json. Unset, the
+# server and the entrypoint fall back to 7777, the derived ui port and ./data.
+ENV ALDUINAK_HOME=/opt/alduinak
 
 USER container
 WORKDIR /home/container

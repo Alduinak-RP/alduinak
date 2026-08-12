@@ -10,11 +10,11 @@
     "description": "Multiplayer Skyrim roleplay server (SkyRP / Alduinak). Requires operator-supplied Skyrim Special Edition master files.",
     "features": null,
     "docker_images": {
-        "Alduinak Server": "ghcr.io\/mesaindigoroleplay\/alduinak-server:latest",
-        "Alduinak Server (pinned)": "ghcr.io\/mesaindigoroleplay\/alduinak-server:byo"
+        "Alduinak Server": "ghcr.io/mesaindigoroleplay/alduinak-server:latest",
+        "Alduinak Server (pinned)": "ghcr.io/mesaindigoroleplay/alduinak-server:byo"
     },
     "file_denylist": [],
-    "startup": "\/opt\/alduinak\/entrypoint.sh node dist_back\/skymp5-server.js",
+    "startup": "/opt/alduinak/entrypoint.sh node dist_back/skymp5-server.js",
     "config": {
         "files": "{}",
         "startup": "{\r\n    \"done\": \"Current process ID is\"\r\n}",
@@ -23,8 +23,8 @@
     },
     "scripts": {
         "installation": {
-            "script": "#!\/bin\/bash\n# Alduinak server install: prepare the volume layout.\n#\n# The Skyrim master files are NOT downloaded here. They are part of your own\n# Skyrim Special Edition installation and are not redistributable.\n\nset -e\n\nmkdir -p \/mnt\/server\/data\nmkdir -p \/mnt\/server\/world\nmkdir -p \/mnt\/server\/gamemode_extensions\n\ncat > \/mnt\/server\/data\/PUT-ESM-FILES-HERE.txt <<'EOF'\nThis server needs five files from your own Skyrim Special Edition install:\n\n  Skyrim.esm\n  Update.esm\n  Dawnguard.esm\n  HearthFires.esm\n  Dragonborn.esm\n\nCopy them from:\n\n  <Steam>\/steamapps\/common\/Skyrim Special Edition\/Data\/\n\ninto this data\/ directory, using the panel file manager or SFTP.\n\nThe server refuses to start until all five are present. Delete this file\nonce you are done.\nEOF\n\ncat > \/mnt\/server\/gamemode_extensions\/README.txt <<'EOF'\nDrop your gamemode parts here as .js files.\n\nOn every server start they are concatenated in filename order into\ngamemode.js, exactly like the Server Manager's \"Build gamemode only\".\nA part with a syntax error aborts the build and leaves the last good\ngamemode.js in place.\n\nIf you would rather manage one file, delete this directory and upload\ngamemode.js directly instead.\nEOF\n\necho \"Install complete. Upload your .esm files into data\/ before starting.\"\n",
-            "container": "ghcr.io\/pterodactyl\/installers:debian",
+            "script": "#!/bin/bash\n# Alduinak server install: prepare the volume layout.\n#\n# The Skyrim master files are NOT downloaded here. They are part of your own\n# Skyrim Special Edition installation and are not redistributable.\n\nset -e\n\nmkdir -p /mnt/server/data\n# scripts/ must exist: the server registers it as a script storage and the\n# directory iterator throws if it is absent.\nmkdir -p /mnt/server/data/scripts\nmkdir -p /mnt/server/world\nmkdir -p /mnt/server/gamemode_extensions\n\ncat > /mnt/server/data/PUT-ESM-FILES-HERE.txt <<'EOF'\nThis server needs five files from your own Skyrim Special Edition install:\n\n  Skyrim.esm\n  Update.esm\n  Dawnguard.esm\n  HearthFires.esm\n  Dragonborn.esm\n\nCopy them from:\n\n  <Steam>/steamapps/common/Skyrim Special Edition/Data/\n\ninto this data/ directory, using the panel file manager or SFTP.\n\nThe server refuses to start until all five are present. Delete this file\nonce you are done.\nEOF\n\ncat > /mnt/server/gamemode_extensions/README.txt <<'EOF'\nDrop your gamemode parts here as .js files.\n\nOn every server start they are concatenated in filename order into\ngamemode.js, exactly like the Server Manager's \"Build gamemode only\".\nA part with a syntax error aborts the build and leaves the last good\ngamemode.js in place.\n\nIf you would rather manage one file, delete this directory and upload\ngamemode.js directly instead.\nEOF\n\necho \"Install complete. Upload your .esm files into data/ before starting.\"\n",
+            "container": "ghcr.io/pterodactyl/installers:debian",
             "entrypoint": "bash"
         }
     },
@@ -51,7 +51,7 @@
         },
         {
             "name": "UI / metrics port",
-            "description": "TCP port for the http endpoints (static data, \/metrics, \/rpc). This must be a SECOND allocation assigned to this server, and must not equal the game port. Add the allocation under the Network tab first.",
+            "description": "TCP port for the http endpoints (static data, /metrics, /rpc). This must be a SECOND allocation assigned to this server, and must not equal the game port. Add the allocation under the Network tab first.",
             "env_variable": "UI_PORT",
             "default_value": "3000",
             "user_viewable": true,
@@ -91,7 +91,7 @@
         },
         {
             "name": "Database driver",
-            "description": "file = flat changeForms in world\/. mongodb = external MongoDB, needs the URI below.",
+            "description": "file = flat changeForms in world/. mongodb = external MongoDB, needs the URI below.",
             "env_variable": "DATABASE_DRIVER",
             "default_value": "file",
             "user_viewable": true,
