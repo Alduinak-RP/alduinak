@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('mgr', {
   playersDetail:  (id)            => ipcRenderer.invoke('players:detail', id),
   playersUpdate:  (profileId, p)  => ipcRenderer.invoke('players:update', profileId, p),
   playersOnline:  ()              => ipcRenderer.invoke('players:online'),
+  charsItemNames: (ids)           => ipcRenderer.invoke('chars:itemNames', ids),
+  charsSave:      (formDesc, p)   => ipcRenderer.invoke('chars:save', formDesc, p),
 
   // Settings tab
   settingsSchema: ()                   => ipcRenderer.invoke('settings:schema'),

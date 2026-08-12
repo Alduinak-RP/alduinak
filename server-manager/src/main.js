@@ -524,9 +524,11 @@ function charFromCf(cf) {
   if (!cf || cf.recType !== 1) return null            // 1 = ACHR (a character)
   const profileId = Number(cf.profileId)
   if (!Number.isFinite(profileId) || profileId < 0) return null
-  let name = cf.displayName
-  if (!name) { try { name = JSON.parse(cf.appearanceDump).name } catch {} }
-  name = name || cf.formDesc || '(unnamed)'
+  // The store embeds appearanceDump as an object; very old file saves held a JSON string.
+  let appearance = null
+  if (cf.appearanceDump && typeof cf.appearanceDump === 'object') appearance = cf.appearanceDump
+  else if (typeof cf.appearanceDump === 'string') { try { appearance = JSON.parse(cf.appearanceDump) } catch {} }
+  const name = cf.displayName || (appearance && appearance.name) || cf.formDesc || '(unnamed)'
   return {
     profileId,
     formDesc: cf.formDesc,
@@ -538,9 +540,10 @@ function charFromCf(cf) {
     health: cf.healthPercentage,
     magicka: cf.magickaPercentage,
     stamina: cf.staminaPercentage,
-    inventory: (cf.inv && Array.isArray(cf.inv.entries)) ? cf.inv.entries.map(x => ({ baseId: x.baseId, count: x.count })) : [],
+    inventory: (cf.inv && Array.isArray(cf.inv.entries)) ? cf.inv.entries : [],
     spellCount: Array.isArray(cf.learnedSpells) ? cf.learnedSpells.length : 0,
     spawnDelay: cf.spawnDelay,
+    appearance,
   }
 }
 
@@ -652,6 +655,108 @@ ipcMain.handle('players:update', (_e, profileId, patch) => {
     const updated = backendModule('players').updateByProfileId(Number(profileId), clean)
     return { ok: true, player: updated }
   } catch (err) { return { ok: false, error: err.message } }
+})
+
+// ── Character editing: writes straight to the changeForms store ────────────────
+
+function asUint(v, label) {
+  const n = Number(v)
+  if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) throw new Error(`${label}: not a valid number/form id`)
+  return n >>> 0
+}
+
+// The server's Appearance::FromJson needs the full field set with exact types;
+// normalize everything so a save can never brick the character.
+function sanitizeAppearance(a) {
+  if (!a || typeof a !== 'object' || Array.isArray(a)) throw new Error('appearance: not an object')
+  const out = {
+    isFemale: !!a.isFemale,
+    raceId: asUint(a.raceId, 'raceId'),
+    weight: Number(a.weight) || 0,
+    skinColor: Number(a.skinColor) | 0,
+    hairColor: Number(a.hairColor) | 0,
+    headpartIds: (Array.isArray(a.headpartIds) ? a.headpartIds : []).map(x => asUint(x, 'headpartIds')),
+    headTextureSetId: asUint(a.headTextureSetId, 'headTextureSetId'),
+    options: (Array.isArray(a.options) ? a.options : []).map(Number),
+    presets: (Array.isArray(a.presets) ? a.presets : []).map(Number),
+    tints: (Array.isArray(a.tints) ? a.tints : []).map(t => ({
+      texturePath: String((t && t.texturePath) || ''),
+      argb: Number(t && t.argb) | 0,
+      type: Number(t && t.type) | 0,
+    })),
+    name: String(a.name || ''),
+  }
+  if (out.options.some(n => !Number.isFinite(n)) || out.presets.some(n => !Number.isFinite(n))) {
+    throw new Error('appearance: options/presets must be numbers')
+  }
+  return out
+}
+
+const INV_EXTRA_KEYS = ['health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip', 'chargePercent', 'name', 'soul', 'poisonId', 'poisonCount', 'worn', 'wornLeft']
+function sanitizeInvEntries(list) {
+  if (!Array.isArray(list)) throw new Error('inventory: not an array')
+  const out = []
+  for (const e of list) {
+    const entry = { baseId: asUint(e && e.baseId, 'baseId'), count: asUint(e && e.count, 'count') }
+    if (!entry.baseId || !entry.count) continue
+    for (const k of INV_EXTRA_KEYS) if (e[k] !== undefined && e[k] !== null) entry[k] = e[k]
+    out.push(entry)
+  }
+  return out
+}
+
+async function saveCharacter(formDesc, patch) {
+  if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
+  const set = {}
+  if (patch && patch.appearance !== undefined) set.appearanceDump = sanitizeAppearance(patch.appearance)
+  if (patch && patch.invEntries !== undefined) set.inv = { entries: sanitizeInvEntries(patch.invEntries) }
+  if (!Object.keys(set).length) throw new Error('nothing to save')
+  let settings = {}
+  try { settings = JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch {}
+  if ((settings.databaseDriver || 'file') === 'mongodb') {
+    let MongoClient
+    try { ({ MongoClient } = require('mongodb')) }
+    catch { throw new Error('mongodb module not installed in server-manager - run npm install') }
+    const client = new MongoClient(settings.databaseUri, { serverSelectionTimeoutMS: 3000 })
+    try {
+      await client.connect()
+      const r = await client.db(settings.databaseName || 'db').collection('changeForms')
+        .updateOne({ formDesc, recType: 1 }, { $set: set })
+      if (!r.matchedCount) throw new Error(`no character with formDesc ${formDesc}`)
+    } finally { await client.close() }
+  } else {
+    const dbName = settings.databaseName || 'world'
+    const dbDir = path.isAbsolute(dbName) ? dbName : path.join(config.paths.serverDir, dbName)
+    const changeForms = path.join(dbDir, 'changeForms')
+    let saved = false
+    for (const entry of (fs.existsSync(changeForms) ? fs.readdirSync(changeForms) : [])) {
+      if (!entry.endsWith('.json')) continue
+      const file = path.join(changeForms, entry)
+      let cf
+      try { cf = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { continue }
+      if (cf.formDesc !== formDesc || cf.recType !== 1) continue
+      Object.assign(cf, set)
+      fs.writeFileSync(file, JSON.stringify(cf, null, 2))
+      saved = true
+      break
+    }
+    if (!saved) throw new Error(`no character with formDesc ${formDesc}`)
+  }
+  _charCache = { at: 0, map: new Map() }
+}
+
+ipcMain.handle('chars:save', async (_e, formDesc, patch) => {
+  try { await saveCharacter(formDesc, patch); return { ok: true } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+// Resolve item display names through the live gamemode (espm access is server-side only).
+ipcMain.handle('chars:itemNames', async (_e, baseIds) => {
+  const ids = [...new Set((Array.isArray(baseIds) ? baseIds : []).map(n => Number(n) >>> 0).filter(n => n > 0))].slice(0, 500)
+  if (!ids.length) return { ok: true, names: {} }
+  const r = await consoleRelay.query('__itemnamesjson ' + ids.map(n => n.toString(16)).join(','), '__ITEMNAMESJSON__', 5000)
+  if (!r.ok) return { ok: false, error: r.error }
+  try { return { ok: true, names: JSON.parse(r.payload) } } catch { return { ok: false, error: 'bad names payload' } }
 })
 
 // Ask the gamemode (over the relay) which profiles are currently online.

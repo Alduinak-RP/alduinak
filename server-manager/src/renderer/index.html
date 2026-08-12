@@ -110,6 +110,22 @@
     </section>
   </main>
 
+  <div id="char-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="cm-title">Character</h3>
+        <span id="cm-status" class="status"></span>
+        <button id="cm-close" class="action small">Close</button>
+      </div>
+      <div id="cm-meta" class="muted"></div>
+      <small>Edits write straight to the character store. Apply them while the game server is stopped (or at least while this player is offline) - a running server can overwrite them at any time.</small>
+      <div class="modal-cols">
+        <div class="modal-col" id="cm-appearance"></div>
+        <div class="modal-col" id="cm-inventory"></div>
+      </div>
+    </div>
+  </div>
+
   <script src="renderer.js"></script>
 </body>
 </html>

@@ -219,31 +219,16 @@ async function selectPlayer(discordId) {
   const factions = r.factions.length
     ? '<ul class="mini">' + r.factions.map(f => `<li>${esc(f.requirement ? `${f.requirement.group || f.requirement.faction || ''} — ${f.requirement.rank ?? ''}` : (f.requirementId || ''))}</li>`).join('') + '</ul>'
     : '<p class="muted">None</p>'
-  const fmtPct = x => (x === undefined || x === null) ? '—' : Math.round(x * 100) + '%'
-  const fmtBase = id => '0x' + Number(id >>> 0).toString(16).toUpperCase()
-  const charRow = c => {
+  const charRow = (c, idx) => {
     const badges =
       (onlineProfileIds.has(Number(c.profileId)) ? ' <span class="badge online">online</span>' : '') +
       (c.dead ? ' <span class="badge">dead</span>' : '') +
       (c.disabled ? ' <span class="muted">(disabled)</span>' : '')
-    const inv = c.inventory || []
-    const invList = inv.length
-      ? esc(inv.slice(0, 40).map(i => `${fmtBase(i.baseId)} x${i.count}`).join(', ')) + (inv.length > 40 ? ', …' : '')
-      : 'empty'
-    const pos = c.position ? c.position.map(n => Math.round(n)).join(', ') : '—'
-    return `<details class="char"><summary>${esc(c.name)}${badges}</summary>` +
-      `<div class="kv"><b>Location</b><span>${esc(c.worldOrCell || '—')}</span></div>` +
-      `<div class="kv"><b>Position</b><span>${esc(pos)}</span></div>` +
-      `<div class="kv"><b>Health</b><span>${fmtPct(c.health)}</span></div>` +
-      `<div class="kv"><b>Magicka</b><span>${fmtPct(c.magicka)}</span></div>` +
-      `<div class="kv"><b>Stamina</b><span>${fmtPct(c.stamina)}</span></div>` +
-      `<div class="kv"><b>Spells</b><span>${esc(c.spellCount)}</span></div>` +
-      `<div class="kv"><b>Items</b><span>${esc(inv.length)}</span></div>` +
-      `<div class="char-inv">${invList}</div></details>`
+    return `<li data-idx="${idx}"><span class="cid">${esc(fmtFormDesc(c.formDesc))}</span><span class="cname">${esc(c.name)}</span>${badges}</li>`
   }
   const charWarn = r.charError ? `<p class="muted">character data unavailable: ${esc(r.charError)}</p>` : ''
   const chars = r.characters.length
-    ? r.characters.map(charRow).join('')
+    ? '<ul class="char-list">' + r.characters.map(charRow).join('') + '</ul>'
     : '<p class="muted">No characters found in the save store.</p>'
 
   box.innerHTML =
@@ -275,7 +260,208 @@ async function selectPlayer(discordId) {
     if (row) row.name = patch.displayName || patch.username || row.name
     renderPlayerList()
   })
+
+  $$('#player-detail .char-list li').forEach(li =>
+    li.addEventListener('click', () => openCharModal(r.characters[Number(li.dataset.idx)])))
 }
+
+// ── Character modal: appearance + inventory editing straight in the store ──────
+
+let cmChar = null      // the character record being edited
+let cmEntries = []     // working copy of inventory entries
+let cmItemNames = {}   // baseId hex -> display name (resolved by the gamemode)
+
+const cmHex = id => '0x' + Number(id >>> 0).toString(16).toUpperCase()
+const fmtFormDesc = fd => String(fd || '').includes(':') ? String(fd) : '0x' + String(fd || '').toUpperCase()
+const fmtPct = x => (x === undefined || x === null) ? '—' : Math.round(x * 100) + '%'
+
+function parseHex(text, label) {
+  const n = parseInt(String(text).trim().replace(/^0x/i, ''), 16)
+  if (!Number.isFinite(n) || n < 0) throw new Error(label + ': bad hex id')
+  return n >>> 0
+}
+
+function entryHasExtras(e) {
+  for (const k of Object.keys(e)) {
+    if (k !== 'baseId' && k !== 'count' && e[k] !== undefined && e[k] !== null && e[k] !== false) return true
+  }
+  return false
+}
+
+function openCharModal(c) {
+  if (!c) return
+  cmChar = c
+  cmEntries = (c.inventory || []).map(e => ({ ...e }))
+  cmItemNames = {}
+  $('#cm-title').textContent = `${c.name} — ${fmtFormDesc(c.formDesc)}`
+  $('#cm-status').textContent = ''
+  const pos = c.position ? c.position.map(n => Math.round(n)).join(', ') : '—'
+  $('#cm-meta').textContent =
+    `${c.worldOrCell || '—'} (${pos}) · HP ${fmtPct(c.health)} · MP ${fmtPct(c.magicka)} · SP ${fmtPct(c.stamina)} · ${c.spellCount} spells`
+  renderCmAppearance()
+  renderCmInventory()
+  $('#char-modal').hidden = false
+  fetchItemNames()
+}
+
+async function fetchItemNames() {
+  const ids = cmEntries.map(e => e.baseId)
+  if (!ids.length) return
+  const r = await window.mgr.charsItemNames(ids)
+  if (!r.ok) { $('#cm-status').textContent = `item names unavailable (${r.error})`; return }
+  cmItemNames = r.names || {}
+  renderCmInventory()
+}
+
+// key, label, kind (text | bool | hex | number | int | hexlist)
+const CM_APPEARANCE_FIELDS = [
+  ['name', 'Name', 'text'],
+  ['isFemale', 'Female', 'bool'],
+  ['raceId', 'Race ID', 'hex'],
+  ['weight', 'Weight (0-100)', 'number'],
+  ['skinColor', 'Skin color (ARGB int)', 'int'],
+  ['hairColor', 'Hair color (ARGB int)', 'int'],
+  ['headTextureSetId', 'Head texture set', 'hex'],
+  ['headpartIds', 'Headparts (hex ids, one per line)', 'hexlist'],
+]
+
+function renderCmAppearance() {
+  const box = $('#cm-appearance')
+  box.innerHTML = ''
+  box.appendChild(el('h4', {}, 'Appearance'))
+  const a = cmChar.appearance
+  if (!a) {
+    box.appendChild(el('p', { className: 'muted' }, 'No appearance data on this character.'))
+    return
+  }
+  for (const [key, label, kind] of CM_APPEARANCE_FIELDS) {
+    const wrap = el('div', { className: 'sfield' })
+    wrap.appendChild(el('label', {}, esc(label)))
+    if (kind === 'bool') {
+      const sel = el('select', { id: 'cma-' + key, className: 'sinput' })
+      for (const [t, v] of [['No', 'false'], ['Yes', 'true']]) {
+        const op = el('option', { value: v }, t)
+        if (String(!!a[key]) === v) op.selected = true
+        sel.appendChild(op)
+      }
+      wrap.appendChild(sel)
+    } else if (kind === 'hexlist') {
+      const ta = el('textarea', { id: 'cma-' + key, rows: 5, spellcheck: false })
+      ta.value = (Array.isArray(a[key]) ? a[key] : []).map(cmHex).join('\n')
+      wrap.appendChild(ta)
+    } else {
+      const inp = el('input', { id: 'cma-' + key, type: 'text', className: 'sinput' })
+      inp.value = kind === 'hex' ? cmHex(a[key] || 0) : String(a[key] ?? '')
+      wrap.appendChild(inp)
+    }
+    box.appendChild(wrap)
+  }
+  // Full-object escape hatch for options/presets/tints
+  const adv = el('details')
+  adv.appendChild(el('summary', {}, 'Raw appearance JSON (overrides the fields above when edited)'))
+  const ta = el('textarea', { id: 'cma-raw', rows: 10, spellcheck: false })
+  ta.value = JSON.stringify(a, null, 2)
+  ta.dataset.initial = ta.value
+  adv.appendChild(ta)
+  box.appendChild(adv)
+  const row = el('div', { className: 'row' })
+  const save = el('button', { className: 'action go' }, 'Save appearance')
+  save.addEventListener('click', saveCmAppearance)
+  row.appendChild(save)
+  box.appendChild(row)
+}
+
+async function saveCmAppearance() {
+  try {
+    const rawTa = $('#cma-raw')
+    let appearance
+    if (rawTa && rawTa.value !== rawTa.dataset.initial) {
+      appearance = JSON.parse(rawTa.value)
+    } else {
+      appearance = JSON.parse(JSON.stringify(cmChar.appearance))
+      appearance.name = $('#cma-name').value
+      appearance.isFemale = $('#cma-isFemale').value === 'true'
+      appearance.raceId = parseHex($('#cma-raceId').value, 'Race ID')
+      appearance.weight = Number($('#cma-weight').value) || 0
+      appearance.skinColor = Number($('#cma-skinColor').value) | 0
+      appearance.hairColor = Number($('#cma-hairColor').value) | 0
+      appearance.headTextureSetId = parseHex($('#cma-headTextureSetId').value, 'Head texture set')
+      appearance.headpartIds = $('#cma-headpartIds').value.split(/[\s,]+/).filter(Boolean).map(x => parseHex(x, 'Headparts'))
+    }
+    $('#cm-status').textContent = 'saving appearance…'
+    const r = await window.mgr.charsSave(cmChar.formDesc, { appearance })
+    $('#cm-status').textContent = r.ok ? 'Appearance saved.' : `Error: ${r.error}`
+    if (r.ok) {
+      cmChar.appearance = appearance
+      if (selectedDiscordId) selectPlayer(selectedDiscordId)
+    }
+  } catch (err) {
+    $('#cm-status').textContent = `Error: ${err.message}`
+  }
+}
+
+function renderCmInventory() {
+  const box = $('#cm-inventory')
+  box.innerHTML = ''
+  box.appendChild(el('h4', {}, `Inventory (${cmEntries.length} stack${cmEntries.length === 1 ? '' : 's'})`))
+
+  const add = el('div', { className: 'inv-add' })
+  const idInp = el('input', { id: 'cmi-id', type: 'text', placeholder: 'form id, e.g. 0xF' })
+  const cntInp = el('input', { id: 'cmi-count', type: 'number', value: '1', min: '1' })
+  const addBtn = el('button', { className: 'action small' }, 'Add')
+  addBtn.addEventListener('click', () => {
+    try {
+      const baseId = parseHex(idInp.value, 'Form id')
+      if (!baseId) throw new Error('Form id: bad hex id')
+      const count = Math.max(1, Math.floor(Number(cntInp.value) || 1))
+      const stack = cmEntries.find(e => e.baseId === baseId && !entryHasExtras(e))
+      if (stack) stack.count += count
+      else cmEntries.push({ baseId, count })
+      $('#cm-status').textContent = ''
+      renderCmInventory()
+      fetchItemNames()
+    } catch (err) { $('#cm-status').textContent = `Error: ${err.message}` }
+  })
+  add.appendChild(idInp); add.appendChild(cntInp); add.appendChild(addBtn)
+  box.appendChild(add)
+
+  cmEntries.forEach((e, i) => {
+    const row = el('div', { className: 'inv-row' })
+    row.appendChild(el('span', { className: 'iid' }, esc(cmHex(e.baseId))))
+    const name = cmItemNames[(e.baseId >>> 0).toString(16)] || ''
+    const extras = entryHasExtras(e) ? ` <span class="badge" title="${esc(JSON.stringify(e))}">extras</span>` : ''
+    row.appendChild(el('span', { className: 'iname' }, esc(name) + extras))
+    const cnt = el('input', { type: 'number', className: 'icount', value: String(e.count), min: '0' })
+    cnt.addEventListener('change', () => { e.count = Math.max(0, Math.floor(Number(cnt.value) || 0)) })
+    row.appendChild(cnt)
+    const rm = el('button', { className: 'action small stop', title: 'Remove' }, '✕')
+    rm.addEventListener('click', () => { cmEntries.splice(i, 1); renderCmInventory() })
+    row.appendChild(rm)
+    box.appendChild(row)
+  })
+
+  const rowB = el('div', { className: 'row' })
+  const save = el('button', { className: 'action go' }, 'Save inventory')
+  save.addEventListener('click', saveCmInventory)
+  rowB.appendChild(save)
+  box.appendChild(rowB)
+}
+
+async function saveCmInventory() {
+  $('#cm-status').textContent = 'saving inventory…'
+  const entries = cmEntries.filter(e => e.count > 0)
+  const r = await window.mgr.charsSave(cmChar.formDesc, { invEntries: entries })
+  $('#cm-status').textContent = r.ok ? 'Inventory saved.' : `Error: ${r.error}`
+  if (r.ok) {
+    cmEntries = entries.map(e => ({ ...e }))
+    renderCmInventory()
+    if (selectedDiscordId) selectPlayer(selectedDiscordId)
+  }
+}
+
+function closeCharModal() { $('#char-modal').hidden = true; cmChar = null }
+$('#cm-close').addEventListener('click', closeCharModal)
+$('#char-modal').addEventListener('click', e => { if (e.target === $('#char-modal')) closeCharModal() })
 
 $('#players-refresh').addEventListener('click', loadPlayers)
 $('#player-search').addEventListener('input', renderPlayerList)
