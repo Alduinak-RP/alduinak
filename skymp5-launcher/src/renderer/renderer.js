@@ -692,6 +692,53 @@ document.getElementById('btn-launch-direct').addEventListener('click', async () 
   troubleLaunchStatus.textContent = r.success ? 'Launched ✓' : `Error: ${r.error}`
 })
 
+// Troubleshooting: server files export
+const serverFilesStatus = document.getElementById('server-files-status')
+const btnExportServerFiles = document.getElementById('btn-export-server-files')
+const btnRevealServerFiles = document.getElementById('btn-reveal-server-files')
+let lastServerFilesPath = null
+
+const fmtBytes = n =>
+  n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+
+window.electronAPI.onServerFilesProgress(msg => { serverFilesStatus.textContent = msg })
+
+btnExportServerFiles.addEventListener('click', async () => {
+  btnExportServerFiles.disabled = true
+  btnRevealServerFiles.hidden = true
+  serverFilesStatus.textContent = 'Preparing…'
+  try {
+    const r = await window.electronAPI.exportServerFiles()
+    if (r.canceled) {
+      serverFilesStatus.textContent = ''
+      return
+    }
+    if (!r.success) {
+      serverFilesStatus.textContent = `Error: ${r.error}`
+      return
+    }
+    lastServerFilesPath = r.zipPath
+    btnRevealServerFiles.hidden = false
+    const parts = [
+      `${r.pluginCount} plugin${r.pluginCount === 1 ? '' : 's'}`,
+      `${r.scriptCount} script${r.scriptCount === 1 ? '' : 's'}`,
+      fmtBytes(r.bytes),
+    ]
+    serverFilesStatus.textContent = `Created ✓  ${parts.join(' · ')}`
+    if (r.warnings && r.warnings.length) {
+      serverFilesStatus.textContent += `\n${r.warnings.length} warning(s): ${r.warnings.join(' ')}`
+    }
+  } finally {
+    btnExportServerFiles.disabled = false
+  }
+})
+
+btnRevealServerFiles.addEventListener('click', async () => {
+  if (!lastServerFilesPath) return
+  const r = await window.electronAPI.revealServerFiles(lastServerFilesPath)
+  if (!r.success) serverFilesStatus.textContent = `Error: ${r.error}`
+})
+
 // Installation tab: shared install progress log
 // All five install buttons stream their progress into the one <pre> below them.
 const installProgressEl = document.getElementById('install-progress')

@@ -128,6 +128,38 @@ into the file is preserved.
 allocations can guarantee is free. If you set it, the backend's `SKYMP_UI_PORT`
 has to agree.
 
+## Mods
+
+The server is authoritative over inventory, actors, containers and cells, and
+resolves FormIDs through its own `loadOrder`, so every plugin whose records it
+simulates must be loaded server-side. Purely cosmetic mods (textures, meshes,
+ENB, UI, sounds) stay client-side; `.bsa` archives are client-side only.
+
+The client enforces the match. `loadOrderVerificationService` compares its
+plugin list against the server manifest **index by index** on filename, crc32
+and size:
+
+- every server plugin must sit at the same index on the client, byte-identical
+- client-only extras are allowed but must sort **after** every server plugin
+- a client with fewer plugins than the server cannot connect
+
+To produce the server's half, use the launcher: **Settings → Troubleshooting →
+Server Files → Create Server Files zip**. It packs the installed plugins and
+loose server-side Papyrus from the MO2 profile, and writes
+`server-loadorder.json` with the exact order.
+
+Unzip it into the server directory so the files land in `data/`, then set the
+load order from that manifest:
+
+```bash
+LOAD_ORDER="$(node -e 'console.log(require("./server-loadorder.json").loadOrder.join(","))')"
+```
+
+or paste the array straight into `server-settings.json`.
+
+The vanilla masters are deliberately not in the zip; they come from the same
+place as always, your own game install.
+
 ## Gamemode
 
 `gamemode.js` is not in this repository, and not because it is secret: it lives

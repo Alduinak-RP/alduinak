@@ -22,6 +22,7 @@ const config = require('./config')
 const mo2    = require('./mo2')
 const nexus  = require('./nexus')
 const ini    = require('./ini')
+const serverFiles = require('./serverFiles')
 
 const isDev = process.argv.includes('--dev')
 
@@ -787,6 +788,50 @@ ipcMain.handle('install:openFolder', async () => {
   }
   const err = await shell.openPath(dir)
   return err ? { success: false, error: err } : { success: true }
+})
+
+// Server files export
+
+// Packs the installed plugins and loose server-side Papyrus into a zip the
+// server operator unpacks into the game server's data directory, so the
+// server's loadOrder matches what players actually run.
+ipcMain.handle('serverFiles:export', async () => {
+  try {
+    if (!mo2.isInstalled()) {
+      return { success: false, error: 'MO2 is not installed yet. Install the game files first.' }
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10)
+    const picked = await dialog.showSaveDialog(win, {
+      title: 'Save Server Files',
+      defaultPath: path.join(app.getPath('downloads'), `alduinak-server-files-${stamp}.zip`),
+      filters: [{ name: 'Zip archive', extensions: ['zip'] }],
+    })
+    if (picked.canceled || !picked.filePath) return { success: false, canceled: true }
+
+    const skyrimPath = store.get('skyrimPath')
+    const result = serverFiles.buildServerFiles({
+      destZip: picked.filePath,
+      modsDir: mo2.getModsDir(),
+      profileDir: mo2.getProfileDir(),
+      gameDataDir: skyrimPath ? path.join(skyrimPath, 'Data') : null,
+      onProgress: msg => {
+        try { win.webContents.send('serverFiles:progress', msg) } catch { /* window gone */ }
+      },
+    })
+    return { success: true, ...result }
+  } catch (err) {
+    log('[serverfiles] export failed:', err.message)
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('serverFiles:reveal', async (_e, filePath) => {
+  if (typeof filePath !== 'string' || !filePath || !fs.existsSync(filePath)) {
+    return { success: false, error: 'File no longer exists.' }
+  }
+  shell.showItemInFolder(filePath)
+  return { success: true }
 })
 
 // Nexus Mods login

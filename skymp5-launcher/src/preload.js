@@ -89,4 +89,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Open the portable install (base) folder in the OS file manager
   openInstallFolder: () => ipcRenderer.invoke('install:openFolder'),
+
+  // Server files export - zip of plugins + server scripts for the game server
+  exportServerFiles: () => ipcRenderer.invoke('serverFiles:export'),
+  revealServerFiles: (p) => ipcRenderer.invoke('serverFiles:reveal', p),
+  onServerFilesProgress: (cb) =>
+    ipcRenderer.on('serverFiles:progress', (_e, msg) => cb(msg)),
+  removeServerFilesListeners: () =>
+    ipcRenderer.removeAllListeners('serverFiles:progress'),
 })
