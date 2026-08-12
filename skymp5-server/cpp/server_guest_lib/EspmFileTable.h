@@ -1,5 +1,6 @@
 #pragma once
 #include "libespm/IdMapping.h"
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,16 @@ public:
   EspmFileTable& operator=(std::vector<std::string> names)
   {
     std::vector<std::string>::operator=(std::move(names));
+    slots.clear();
+    return *this;
+  }
+
+  // A braced list matches the overload above and the implicit copy/move
+  // assignments equally well, which clang rejects as ambiguous. List
+  // initialisation prefers an initializer_list parameter over both.
+  EspmFileTable& operator=(std::initializer_list<std::string> names)
+  {
+    std::vector<std::string>::operator=(names);
     slots.clear();
     return *this;
   }
