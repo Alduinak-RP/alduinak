@@ -60,11 +60,12 @@ function readPlugins(profileDir) {
     if (name && PLUGIN_EXT.test(name)) enabled.push(name)
   }
 
-  // The masters are implicitly active and some profiles omit them entirely.
-  // The server needs them named, and named first.
-  const present = new Set(enabled.map(n => n.toLowerCase()))
-  const missingMasters = VANILLA_MASTERS.filter(m => !present.has(m.toLowerCase()))
-  return [...missingMasters, ...enabled]
+  // Skyrim always loads the masters first, in this fixed order. Profiles may
+  // list all of them, some of them, or none, so pull any out of the parsed
+  // list and re-seat the canonical five in front: interleaving a partially
+  // listed set would silently produce a wrong order.
+  const rest = enabled.filter(n => !isVanilla(n))
+  return [...VANILLA_MASTERS, ...rest]
 }
 
 /** Mod folder names in modlist.txt order, used only to break duplicate hits. */
