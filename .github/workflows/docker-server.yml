@@ -1,0 +1,104 @@
+name: Server container
+
+# Builds the Linux game-server image and publishes it to GHCR, where the
+# Pterodactyl eggs pull it from.
+#
+# Only the runtime-byo target is ever built here. The runtime-dev target bakes
+# Bethesda-copyrighted master files into its layers, so pushing it would be
+# redistribution. Build that one locally if you need it.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'deploy/docker/**'
+      - 'skymp5-server/**'
+      - 'libespm/**'
+      - 'papyrus-vm/**'
+      - 'viet/**'
+      - 'serialization/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+      - 'cmake/**'
+      - '.github/workflows/docker-server.yml'
+  pull_request:
+    paths:
+      - 'deploy/docker/**'
+      - '.github/workflows/docker-server.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/alduinak-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # vcpkg buildtrees are large and the hosted runner image is not
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=byo,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: runtime-byo
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_JOBS=4
+
+      - name: Summary
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### Published"
+            echo ''
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ''
+            echo "Operators must still supply their own Skyrim master files."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,133 @@
+{
+    "_comment": "Alduinak / SkyRP game server. Bring your own Skyrim Special Edition .esm files: upload them to data/ via the file manager or SFTP before starting.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-08-12T00:00:00+00:00",
+    "name": "Alduinak Server",
+    "author": "ezekielj221@gmail.com",
+    "description": "Multiplayer Skyrim roleplay server (SkyRP / Alduinak). Requires operator-supplied Skyrim Special Edition master files.",
+    "features": null,
+    "docker_images": {
+        "Alduinak Server": "ghcr.io\/mesaindigoroleplay\/alduinak-server:latest",
+        "Alduinak Server (pinned)": "ghcr.io\/mesaindigoroleplay\/alduinak-server:byo"
+    },
+    "file_denylist": [],
+    "startup": "\/opt\/alduinak\/entrypoint.sh node dist_back\/skymp5-server.js",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": \"Current process ID is\"\r\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!\/bin\/bash\n# Alduinak server install: prepare the volume layout.\n#\n# The Skyrim master files are NOT downloaded here. They are part of your own\n# Skyrim Special Edition installation and are not redistributable.\n\nset -e\n\nmkdir -p \/mnt\/server\/data\nmkdir -p \/mnt\/server\/world\nmkdir -p \/mnt\/server\/gamemode_extensions\n\ncat > \/mnt\/server\/data\/PUT-ESM-FILES-HERE.txt <<'EOF'\nThis server needs five files from your own Skyrim Special Edition install:\n\n  Skyrim.esm\n  Update.esm\n  Dawnguard.esm\n  HearthFires.esm\n  Dragonborn.esm\n\nCopy them from:\n\n  <Steam>\/steamapps\/common\/Skyrim Special Edition\/Data\/\n\ninto this data\/ directory, using the panel file manager or SFTP.\n\nThe server refuses to start until all five are present. Delete this file\nonce you are done.\nEOF\n\ncat > \/mnt\/server\/gamemode_extensions\/README.txt <<'EOF'\nDrop your gamemode parts here as .js files.\n\nOn every server start they are concatenated in filename order into\ngamemode.js, exactly like the Server Manager's \"Build gamemode only\".\nA part with a syntax error aborts the build and leaves the last good\ngamemode.js in place.\n\nIf you would rather manage one file, delete this directory and upload\ngamemode.js directly instead.\nEOF\n\necho \"Install complete. Upload your .esm files into data\/ before starting.\"\n",
+            "container": "ghcr.io\/pterodactyl\/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server name",
+            "description": "Shown in the launcher and on the master list.",
+            "env_variable": "SERVER_NAME",
+            "default_value": "Alduinak Server",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:64",
+            "field_type": "text"
+        },
+        {
+            "name": "Max players",
+            "description": "Player slot limit.",
+            "env_variable": "MAX_PLAYERS",
+            "default_value": "100",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,1000",
+            "field_type": "text"
+        },
+        {
+            "name": "UI / metrics port",
+            "description": "TCP port for the http endpoints (static data, \/metrics, \/rpc). This must be a SECOND allocation assigned to this server, and must not equal the game port. Add the allocation under the Network tab first.",
+            "env_variable": "UI_PORT",
+            "default_value": "3000",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,65535",
+            "field_type": "text"
+        },
+        {
+            "name": "Offline mode",
+            "description": "1 = any profile id may connect and the master API is ignored. 0 = sessions are validated against the master API.",
+            "env_variable": "OFFLINE_MODE",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "Master API URL",
+            "description": "Backend URL used for session validation when offline mode is 0. Leave blank for a standalone server.",
+            "env_variable": "MASTER_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255",
+            "field_type": "text"
+        },
+        {
+            "name": "Master key",
+            "description": "Shared secret; must match the backend SERVER_MASTER_KEY.",
+            "env_variable": "MASTER_KEY",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string|max:255",
+            "field_type": "text"
+        },
+        {
+            "name": "Database driver",
+            "description": "file = flat changeForms in world\/. mongodb = external MongoDB, needs the URI below.",
+            "env_variable": "DATABASE_DRIVER",
+            "default_value": "file",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:file,mongodb,zip",
+            "field_type": "text"
+        },
+        {
+            "name": "Database name",
+            "description": "Directory name for the file driver, database name for mongodb.",
+            "env_variable": "DATABASE_NAME",
+            "default_value": "world",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:64",
+            "field_type": "text"
+        },
+        {
+            "name": "Database URI",
+            "description": "MongoDB connection string. Only used when the driver is mongodb.",
+            "env_variable": "DATABASE_URI",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string|max:512",
+            "field_type": "text"
+        },
+        {
+            "name": "Language",
+            "description": "Localisation used for game strings loaded from the data directory.",
+            "env_variable": "SERVER_LANG",
+            "default_value": "english",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:english,russian,german,french,spanish,italian,polish,chinese,japanese",
+            "field_type": "text"
+        }
+    ]
+}

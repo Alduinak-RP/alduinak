@@ -1,0 +1,132 @@
+{
+    "_comment": "DEVELOPMENT AND TESTING ONLY. The install script downloads Bethesda-copyrighted Skyrim master files from a third-party mirror. Do not use this egg on a public or commercial node, and do not distribute it. Use egg-alduinak-server.json for anything real.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-08-12T00:00:00+00:00",
+    "name": "Alduinak Server (dev, auto-fetches game files)",
+    "author": "ezekielj221@gmail.com",
+    "description": "DEV ONLY. Identical to the Alduinak Server egg except the install step downloads the Skyrim master files from the mirror this repository's CI uses. Those files are Bethesda's property and this is not a licensed redistribution channel. Internal testing only.",
+    "features": null,
+    "docker_images": {
+        "Alduinak Server": "ghcr.io\/mesaindigoroleplay\/alduinak-server:latest"
+    },
+    "file_denylist": [],
+    "startup": "\/opt\/alduinak\/entrypoint.sh node dist_back\/skymp5-server.js",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": \"Current process ID is\"\r\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!\/bin\/bash\n# DEV ONLY: fetches Bethesda-copyrighted master files from a third-party mirror.\n# This is the same source this repository's CI uses for tests. It is not a\n# licensed redistribution channel. Never run this egg on a public node.\n\nset -e\n\napt-get update\napt-get install -y --no-install-recommends curl ca-certificates\n\nmkdir -p \/mnt\/server\/data\nmkdir -p \/mnt\/server\/world\nmkdir -p \/mnt\/server\/gamemode_extensions\n\nSE_DATA_BASE=\"${SE_DATA_BASE:-https:\/\/gitlab.com\/pospelov\/se-data\/-\/raw\/main}\"\n\ncd \/mnt\/server\/data\nfor esm in Skyrim.esm Update.esm Dawnguard.esm HearthFires.esm Dragonborn.esm; do\n  if [ -f \"$esm\" ]; then\n    echo \"$esm already present, skipping\"\n    continue\n  fi\n  echo \"fetching $esm\"\n  curl -fsSL --retry 3 -o \"$esm\" \"${SE_DATA_BASE}\/${esm}\"\ndone\n\ncat > \/mnt\/server\/data\/DEV-BUILD-DO-NOT-DISTRIBUTE.txt <<'EOF'\nThe .esm files in this directory were downloaded automatically by the\ndevelopment egg. They are Bethesda's copyrighted game files.\n\nThis server is for internal testing only. Do not expose it publicly and do\nnot distribute this volume or any image built from it.\nEOF\n\necho \"Dev install complete.\"\n",
+            "container": "ghcr.io\/pterodactyl\/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server name",
+            "description": "Shown in the launcher and on the master list.",
+            "env_variable": "SERVER_NAME",
+            "default_value": "Alduinak Dev",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:64",
+            "field_type": "text"
+        },
+        {
+            "name": "Max players",
+            "description": "Player slot limit.",
+            "env_variable": "MAX_PLAYERS",
+            "default_value": "10",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,1000",
+            "field_type": "text"
+        },
+        {
+            "name": "UI / metrics port",
+            "description": "TCP port for the http endpoints (static data, \/metrics, \/rpc). This must be a SECOND allocation assigned to this server, and must not equal the game port. Add the allocation under the Network tab first.",
+            "env_variable": "UI_PORT",
+            "default_value": "3000",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,65535",
+            "field_type": "text"
+        },
+        {
+            "name": "Offline mode",
+            "description": "1 = any profile id may connect and the master API is ignored. 0 = sessions are validated against the master API.",
+            "env_variable": "OFFLINE_MODE",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "Master API URL",
+            "description": "Backend URL used for session validation when offline mode is 0. Leave blank for a standalone server.",
+            "env_variable": "MASTER_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255",
+            "field_type": "text"
+        },
+        {
+            "name": "Master key",
+            "description": "Shared secret; must match the backend SERVER_MASTER_KEY.",
+            "env_variable": "MASTER_KEY",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string|max:255",
+            "field_type": "text"
+        },
+        {
+            "name": "Database driver",
+            "description": "file = flat changeForms in world\/. mongodb = external MongoDB, needs the URI below.",
+            "env_variable": "DATABASE_DRIVER",
+            "default_value": "file",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:file,mongodb,zip",
+            "field_type": "text"
+        },
+        {
+            "name": "Database name",
+            "description": "Directory name for the file driver, database name for mongodb.",
+            "env_variable": "DATABASE_NAME",
+            "default_value": "world",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:64",
+            "field_type": "text"
+        },
+        {
+            "name": "Database URI",
+            "description": "MongoDB connection string. Only used when the driver is mongodb.",
+            "env_variable": "DATABASE_URI",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string|max:512",
+            "field_type": "text"
+        },
+        {
+            "name": "Language",
+            "description": "Localisation used for game strings loaded from the data directory.",
+            "env_variable": "SERVER_LANG",
+            "default_value": "english",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:english,russian,german,french,spanish,italian,polish,chinese,japanese",
+            "field_type": "text"
+        }
+    ]
+}

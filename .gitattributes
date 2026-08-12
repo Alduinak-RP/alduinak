@@ -1,0 +1,8 @@
+# Shell scripts and container assets run inside Linux images and are copied
+# straight out of the working tree by Docker, so they must keep LF endings
+# even on Windows checkouts where core.autocrlf is true. A CRLF shebang fails
+# with "bad interpreter: /usr/bin/env bash^M".
+*.sh                     text eol=lf
+deploy/docker/Dockerfile text eol=lf
+deploy/docker/*.js       text eol=lf
+deploy/docker/*.yml      text eol=lf

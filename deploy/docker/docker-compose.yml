@@ -1,0 +1,31 @@
+# Standalone Alduinak server, for local testing without Pterodactyl.
+#
+#   docker compose -f deploy/docker/docker-compose.yml up
+#
+# Run it from the repository root: the build context is the repo, not this
+# directory. Put your Skyrim master files in ./server-data/data/ first.
+
+services:
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: runtime-byo
+    image: alduinak-server:byo
+    restart: unless-stopped
+    stop_signal: SIGINT
+    ports:
+      - "7777:7777/udp"
+      - "3000:3000/tcp"
+    environment:
+      SERVER_NAME: "Local Alduinak"
+      SERVER_PORT: "7777"
+      UI_PORT: "3000"
+      MAX_PLAYERS: "10"
+      OFFLINE_MODE: "1"
+      DATABASE_DRIVER: "file"
+      DATABASE_NAME: "world"
+      SERVER_LANG: "english"
+    volumes:
+      # Everything mutable lives here: data/, world/, gamemode.js, settings
+      - ./server-data:/home/container

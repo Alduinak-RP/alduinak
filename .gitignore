@@ -191,3 +191,6 @@ nssm.zip
 .DS_Store
 
 skyrim_data_files/
+
+# Nexus/API credentials, keep out of the repo
+keys.json
