@@ -13,9 +13,9 @@ contextBridge.exposeInMainWorld('mgr', {
   onBuildLog:      (cb)           => ipcRenderer.on('build:log', (_e, t) => cb(t)),
 
   // Build tab
-  buildServer:        ()   => ipcRenderer.invoke('build:server'),
+  buildServer:        (o)  => ipcRenderer.invoke('build:server', o),
   buildLauncher:      ()   => ipcRenderer.invoke('build:launcher'),
-  buildClient:        ()   => ipcRenderer.invoke('build:client'),
+  buildClient:        (o)  => ipcRenderer.invoke('build:client', o),
   buildNative:        ()   => ipcRenderer.invoke('build:native'),
   buildGamemode:      ()   => ipcRenderer.invoke('build:gamemode'),
   buildCi:            ()   => ipcRenderer.invoke('build:ci'),

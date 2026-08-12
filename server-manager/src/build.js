@@ -237,6 +237,26 @@ class Builder {
     return { ok: true, out: outDir }
   }
 
+  // Copy the native build's outputs into the deploy tree (build/dist), so a
+  // checked "CMake first" box ships the fresh .dlls without a manual copy step.
+  applyNativeArtifacts(nativeOut, which) {
+    if (which === 'server') {
+      const src = path.join(nativeOut, 'server', 'scam_native.node')
+      if (!fs.existsSync(src)) return { ok: false, error: 'native build produced no server/scam_native.node' }
+      const dst = path.join(config.buildDir, 'dist', 'server', 'scam_native.node')
+      try { fs.copyFileSync(src, dst) }
+      catch (err) { return { ok: false, error: `could not copy scam_native.node (${err.message}) - stop the game service first` } }
+      this.line(`[native] applied scam_native.node -> ${dst}`)
+      return { ok: true }
+    }
+    const src = path.join(nativeOut, 'client')
+    if (!fs.existsSync(path.join(src, 'Data'))) return { ok: false, error: 'native build produced no client/Data' }
+    try { fs.cpSync(src, config.paths.clientOut, { recursive: true, force: true }) }
+    catch (err) { return { ok: false, error: `could not copy native client files (${err.message})` } }
+    this.line(`[native] applied client files -> ${config.paths.clientOut}`)
+    return { ok: true }
+  }
+
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
     const deployDir = path.join(config.buildDir, 'dist', 'server')
@@ -300,10 +320,16 @@ class Builder {
   // scam_native.node comes prebuilt from CI (the "server-dist" artifact); drop it
   // next to dist_back and it's preserved by the prune step. Does not restart the
   // service.
-  async buildServer() {
+  async buildServer(opts = {}) {
     this.banner('Game server')
     const pre = await this.ensurePrereqs()
     if (!pre.ok) return pre
+    if (opts.native) {
+      const nat = await this.buildNative()
+      if (!nat.ok) return nat
+      const applied = this.applyNativeArtifacts(nat.out, 'server')
+      if (!applied.ok) return applied
+    }
     const dir = config.paths.server
     const dep = await this.ensureDeps(dir, 'game server')
     if (!dep.ok) return dep
@@ -394,10 +420,17 @@ class Builder {
   // build/dist/client, then package the client files into the launcher's
   // redistributable (skymp-client.zip + data/files-version.json). The native
   // .dll binaries still come prebuilt from CI.
-  async buildClient() {
+  async buildClient(opts = {}) {
     this.banner('Client')
     const pre = await this.ensurePrereqs()
     if (!pre.ok) return pre
+
+    if (opts.native) {
+      const nat = await this.buildNative()
+      if (!nat.ok) return nat
+      const applied = this.applyNativeArtifacts(nat.out, 'client')
+      if (!applied.ok) return applied
+    }
 
     const clientData = path.join(config.paths.clientOut, 'Data')
     if (!fs.existsSync(clientData)) {

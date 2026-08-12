@@ -402,15 +402,15 @@ function builder() { return new Builder(t => send('build:log', t)) }
 
 // One build at a time: console commands and Build tab buttons share this gate.
 let buildBusy = false
-async function runBuild(kind) {
+async function runBuild(kind, opts) {
   if (buildBusy) return { ok: false, error: 'a build is already running' }
   buildBusy = true
   try {
     const b = builder()
     let r
-    if (kind === 'server')        r = await b.buildServer()
+    if (kind === 'server')        r = await b.buildServer(opts)
     else if (kind === 'launcher') r = await b.buildLauncher()
-    else if (kind === 'client')   r = await b.buildClient()
+    else if (kind === 'client')   r = await b.buildClient(opts)
     else if (kind === 'native')   r = await b.buildNative()
     else if (kind === 'gamemode') r = await b.buildGamemode()
     else return { ok: false, error: `unknown build ${kind}` }
@@ -422,9 +422,9 @@ async function runBuild(kind) {
   } finally { buildBusy = false }
 }
 
-ipcMain.handle('build:server',   () => runBuild('server'))
+ipcMain.handle('build:server',   (_e, opts) => runBuild('server', opts))
 ipcMain.handle('build:launcher', () => runBuild('launcher'))
-ipcMain.handle('build:client',   () => runBuild('client'))
+ipcMain.handle('build:client',   (_e, opts) => runBuild('client', opts))
 ipcMain.handle('build:native',   () => runBuild('native'))
 ipcMain.handle('build:gamemode', () => runBuild('gamemode'))
 

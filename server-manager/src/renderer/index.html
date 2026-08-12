@@ -44,8 +44,9 @@
       <div class="build-cols">
         <div class="build-col">
           <h3>Game Server</h3>
-          <small>Bundles the TS server into build/dist/server and rebuilds <code>gamemode.js</code> from <code>gamemode_extensions/</code>. <code>scam_native.node</code> comes from the CI <code>server-dist</code> artifact - drop it in build/dist/server.</small>
+          <small>Bundles the TS server into build/dist/server and rebuilds <code>gamemode.js</code> from <code>gamemode_extensions/</code>. <code>scam_native.node</code> comes from the CI <code>server-dist</code> artifact - drop it in build/dist/server, or tick CMake below.</small>
           <button id="build-gamemode" class="action small">Build gamemode only</button>
+          <label class="chk"><input type="checkbox" id="build-server-native" /> Run CMake first (C++ changed, VS 2022)</label>
           <button id="build-server" class="action go">Build server</button>
         </div>
         <div class="build-col">
@@ -69,7 +70,8 @@
               <button id="client-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Rebuilds the front-end UI and skymp5-client.js into build/dist/client, then zips the client files into skymp-client.zip for the launcher. Drop the CI <code>dist</code> (.dll) into build/dist/client first; set Version first.</small>
+          <small>Rebuilds the front-end UI and skymp5-client.js into build/dist/client, then zips the client files into skymp-client.zip for the launcher. Drop the CI <code>dist</code> (.dll) into build/dist/client first (or tick CMake below); set Version first.</small>
+          <label class="chk"><input type="checkbox" id="build-client-native" /> Run CMake first (C++ changed, VS 2022)</label>
           <button id="build-client" class="action go">Build client</button>
         </div>
         <!-- Native (C++) and CI Rebuild buttons removed; the console still

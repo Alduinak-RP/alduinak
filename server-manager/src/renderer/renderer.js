@@ -308,9 +308,11 @@ function wireBuild(btnId, fn, label) {
     refreshStatus()
   })
 }
-wireBuild('#build-server',   () => window.mgr.buildServer(),   'server')
+// The CMake boxes compile the C++ locally (VS 2022) and apply the fresh
+// binaries into build/dist before the normal JS build runs.
+wireBuild('#build-server',   () => window.mgr.buildServer({ native: $('#build-server-native')?.checked || false }), 'server')
 wireBuild('#build-launcher', () => window.mgr.buildLauncher(), 'launcher')
-wireBuild('#build-client',   () => window.mgr.buildClient(),   'client')
+wireBuild('#build-client',   () => window.mgr.buildClient({ native: $('#build-client-native')?.checked || false }), 'client')
 wireBuild('#build-native',   () => window.mgr.buildNative(),   'native')
 wireBuild('#build-gamemode', () => window.mgr.buildGamemode(), 'gamemode')
 
