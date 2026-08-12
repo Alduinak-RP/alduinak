@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('mgr', {
   launcherSetVersion: (v)  => ipcRenderer.invoke('launcher:setVersion', v),
   clientGetVersion:   ()   => ipcRenderer.invoke('client:getVersion'),
   clientSetVersion:   (v)  => ipcRenderer.invoke('client:setVersion', v),
+  serverGetVersion:   ()   => ipcRenderer.invoke('server:getVersion'),
+  serverSetVersion:   (v)  => ipcRenderer.invoke('server:setVersion', v),
 
   // Players tab
   playersList:    ()              => ipcRenderer.invoke('players:list'),

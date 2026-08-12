@@ -285,6 +285,7 @@ setInterval(refreshOnline, 10000)
 
 window.mgr.launcherGetVersion().then(r => { if (r.version) $('#launcher-version').value = r.version })
 window.mgr.clientGetVersion().then(r => { if (r.version) $('#client-version').value = r.version })
+window.mgr.serverGetVersion().then(r => { if (r.version) $('#server-version').value = r.version })
 
 $('#launcher-save').addEventListener('click', async () => {
   const r = await window.mgr.launcherSetVersion($('#launcher-version').value)
@@ -293,6 +294,10 @@ $('#launcher-save').addEventListener('click', async () => {
 $('#client-save').addEventListener('click', async () => {
   const r = await window.mgr.clientSetVersion($('#client-version').value)
   appendLog($('#build-log'), r.ok ? '\nClient version saved.\n' : '\nError: ' + r.error + '\n')
+})
+$('#server-save').addEventListener('click', async () => {
+  const r = await window.mgr.serverSetVersion($('#server-version').value)
+  appendLog($('#build-log'), r.ok ? '\nServer version saved.\n' : '\nError: ' + r.error + '\n')
 })
 
 function wireBuild(btnId, fn, label) {

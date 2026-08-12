@@ -513,6 +513,7 @@ function registerVersionIpc(name, pkgPath, extraWriteFns) {
 
 registerVersionIpc('launcher', config.paths.launcherPkg, [v => setRouteVersion(config.paths.versionRoute, 'LATEST_VERSION', v)])
 registerVersionIpc('client', config.paths.clientPkg, [v => setRouteVersion(config.paths.versionRoute, 'CLIENT_VERSION', v)])
+registerVersionIpc('server', config.paths.serverPkg, [v => setRouteVersion(config.paths.versionRoute, 'SERVER_VERSION', v)])
 
 function backendModule(name) {
   return require(path.join(config.paths.backend, 'sources', name))

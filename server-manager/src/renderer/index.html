@@ -44,6 +44,13 @@
       <div class="build-cols">
         <div class="build-col">
           <h3>Game Server</h3>
+          <div class="field">
+            <label>Version</label>
+            <div class="row">
+              <input id="server-version" type="text" placeholder="1.0.0" />
+              <button id="server-save" class="action small">Save</button>
+            </div>
+          </div>
           <small>Bundles the TS server into build/dist/server and rebuilds <code>gamemode.js</code> from <code>gamemode_extensions/</code>. <code>scam_native.node</code> comes from the CI <code>server-dist</code> artifact - drop it in build/dist/server, or tick CMake below.</small>
           <button id="build-gamemode" class="action small">Build gamemode only</button>
           <label class="chk"><input type="checkbox" id="build-server-native" /> Run CMake first (C++ changed, VS 2022)</label>
