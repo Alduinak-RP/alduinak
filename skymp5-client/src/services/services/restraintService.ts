@@ -78,6 +78,11 @@ export class RestraintService extends ClientListener {
     });
   }
 
+  // True while a restraint or carry pose owns the player's animation.
+  get isPoseLocked(): boolean {
+    return this.boundHands || this.carried || this.carrying;
+  }
+
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
     let content: Record<string, unknown> = {};
     try {

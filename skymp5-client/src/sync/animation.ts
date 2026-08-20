@@ -310,6 +310,7 @@ const ignoredAnims = new Set<string>([
 const forcedSyncAnims = new Set<string>([
   "OffsetCarryBasketStart",
   "OffsetBoundStandingStart",
+  "OffsetArmsCrossedStart",
   "OffsetStop",
 ]);
 
