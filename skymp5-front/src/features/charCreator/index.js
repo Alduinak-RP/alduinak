@@ -26,7 +26,9 @@ export const send = (key, ...args) => {
 
 const CharCreator = ({ data }) => {
   const config = data.config || {};
-  const statPool = config.statPool || DEFAULT_STAT_POOL;
+  const statPool = Number.isInteger(config.statPool) && config.statPool >= 0
+    ? config.statPool
+    : DEFAULT_STAT_POOL;
 
   const [state, setState] = useState(() => ({
     step: 1,
@@ -71,7 +73,24 @@ const CharCreator = ({ data }) => {
     return state.step < 5;
   };
 
-  const back = () => setState(s => ({ ...s, step: Math.max(1, s.step - 1) }));
+  const [waiting, setWaiting] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const waitingRef = useRef(waiting);
+  waitingRef.current = waiting;
+
+  useEffect(() => {
+    const onError = (e) => {
+      setWaiting(false);
+      setSaveError((e.detail && (e.detail.message || e.detail)) || 'The server rejected this character.');
+    };
+    window.addEventListener('charCreator:error', onError);
+    return () => window.removeEventListener('charCreator:error', onError);
+  }, []);
+
+  const back = () => {
+    if (waitingRef.current) return;
+    setState(s => ({ ...s, step: Math.max(1, s.step - 1) }));
+  };
   const next = () => setState(s => ({ ...s, step: Math.min(5, s.step + 1) }));
 
   const backRef = useRef(back);
@@ -94,14 +113,18 @@ const CharCreator = ({ data }) => {
   }, [state.race, state.sex, state.age, state.look, state.stats, state.step]);
 
   const save = () => {
+    if (waitingRef.current) return;
+    setSaveError(null);
+    setWaiting(true);
+    const name = state.name.trim();
     const payload = {
       race: state.race,
       sex: state.sex,
       age: state.age,
       stats: state.stats,
       bodyExtras: clampedBody(state),
-      appearance: buildAppearance(state),
-      name: state.name,
+      appearance: buildAppearance({ ...state, name }),
+      name,
       backstory: state.backstory,
       description: state.description
     };
@@ -111,7 +134,13 @@ const CharCreator = ({ data }) => {
   const renderScreen = () => {
     switch (state.step) {
       case 1:
-        return <SpeciesScreen selected={state.species} onSelect={setSpecies} />;
+        return (
+          <SpeciesScreen
+            selected={state.species}
+            disabledRaces={config.disabledRaces || []}
+            onSelect={setSpecies}
+          />
+        );
       case 2:
         return (
           <RaceScreen
@@ -152,6 +181,8 @@ const CharCreator = ({ data }) => {
             name={state.name}
             backstory={state.backstory}
             description={state.description}
+            waiting={waiting}
+            error={saveError}
             onChange={update}
             onFinish={save}
           />
@@ -176,7 +207,7 @@ const CharCreator = ({ data }) => {
         </div>
         <div className='charCreator__content'>{renderScreen()}</div>
         <div className='charCreator__footer'>
-          <Button text='Back' width={128} height={40} disabled={state.step === 1} onClick={back} />
+          <Button text='Back' width={128} height={40} disabled={state.step === 1 || waiting} onClick={back} />
           {state.step < 5
             ? <Button text='Next' width={128} height={40} disabled={!canNext()} onClick={next} />
             : null}

@@ -2,7 +2,9 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { BrowserMessageEvent } from "skyrimPlatform";
+import { CreateActorMessage } from "../messages/createActorMessage";
+import { focusEventString } from "./browserService";
+import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { logTrace, logError } from "../../logging";
 import { applyAppearanceToPlayer, Appearance } from "../../sync/appearance";
 
@@ -27,6 +29,27 @@ export class CharCreatorService extends ClientListener {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
+    this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
+  }
+
+  // A character switch respawns the player and authService wipes the widgets;
+  // close locally so controls and state never go stale. If the new character
+  // still has the creator pending, the server re-sends charCreatorOpen.
+  private onCreateActorMessage(e: ConnectionMessage<CreateActorMessage>): void {
+    if (e.message.isMe && this.menuOpen) this.close();
+  }
+
+  // Quitting to the main menu opens character select; the creator must not overlay it.
+  private onMenuOpen(e: MenuOpenEvent): void {
+    if (e.name !== Menu.Main || !this.menuOpen) return;
+    // menuOpen events can arrive late; only act when the menu is really open (stale-event guard).
+    try {
+      if (!this.sp.Ui.isMenuOpen(Menu.Main)) return;
+    } catch {
+      return;
+    }
+    this.close();
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -128,7 +151,18 @@ export class CharCreatorService extends ClientListener {
         this.onPreview(e.arguments[1]);
         break;
       case 'menu:escape':
-        // Swallowed while open: the front handles back-navigation itself.
+        // The front handles back-navigation itself, but BrowserService's key
+        // poll unfocuses the browser on Escape; re-assert focus next update so
+        // the mouse-driven wizard stays usable.
+        this.controller.once("update", () => {
+          if (!this.menuOpen) return;
+          try {
+            this.sp.browser.setFocused(true);
+            this.sp.browser.executeJavaScript(focusEventString);
+          } catch (e2) {
+            logError(this, `failed to refocus browser: ${e2}`);
+          }
+        });
         break;
       default:
         break;

@@ -105,7 +105,9 @@ const NAME_MAX = 30;
 const MAX_BACKSTORY = 4000;
 const MAX_DESCRIPTION = 1000;
 
-const NAME_RE = /^[\p{L}' -]+$/u;
+// At least one real letter; apostrophes, spaces, and hyphens alone are not a name
+const NAME_RE = /^(?=.*\p{L})[\p{L}' -]+$/u;
+const MAX_RAW_NAME = 256;
 
 const stripControl = (s: string): string =>
   s.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
@@ -231,6 +233,9 @@ export function validateResult(data: unknown, config: CharCreatorConfig): Valida
   const hairColor = toInt32(a.hairColor) ?? 0;
 
   const rawName = typeof d.name === "string" ? d.name : "";
+  if (rawName.length > MAX_RAW_NAME) {
+    return fail("Names are 2-30 characters: letters, spaces, apostrophes, and hyphens");
+  }
   const name = stripControl(rawName).trim();
   if (name.length < NAME_MIN || name.length > NAME_MAX || !NAME_RE.test(name)) {
     return fail("Names are 2-30 characters: letters, spaces, apostrophes, and hyphens");

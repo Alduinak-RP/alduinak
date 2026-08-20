@@ -3,15 +3,17 @@ import React, { useState } from 'react';
 
 import { SPECIES } from '../data/races';
 
-const SpeciesScreen = ({ selected, onSelect }) => {
+const SpeciesScreen = ({ selected, disabledRaces, onSelect }) => {
   const [hovered, setHovered] = useState(null);
-  const shown = SPECIES.find(s => s.id === (hovered || selected));
+  // A species with every race disabled would dead-end the wizard at step 2.
+  const visible = SPECIES.filter(s => !s.races.every(r => (disabledRaces || []).includes(r.id)));
+  const shown = visible.find(s => s.id === (hovered || selected));
 
   return (
     <div className='charCreator__screen'>
       <div className='charCreator__title'>Choose your species</div>
       <div className='charCreator__species-grid'>
-        {SPECIES.map(species => (
+        {visible.map(species => (
           <div
             key={species.id}
             className={

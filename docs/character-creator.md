@@ -57,7 +57,8 @@ Browser → Client (`window.skyrimPlatform.sendMessage`):
 
 - `charCreator:save`, arg 1: JSON string of the result (below)
 - `charCreator:preview`, arg 1: JSON string of a full Appearance object
-- `charCreator:cancelPreview` — re-applies the last committed appearance
+  (a stale preview is simply overwritten by the next one; fresh characters
+  have no committed appearance to revert to)
 
 Client → Server:
 

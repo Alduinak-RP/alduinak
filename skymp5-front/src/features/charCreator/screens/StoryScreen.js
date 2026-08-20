@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 import Button from '../../../constructorComponents/button';
 
@@ -8,33 +8,22 @@ const BACKSTORY_MAX = 4000;
 const DESCRIPTION_MAX = 1000;
 const NAME_CHARS = /^[A-Za-z' -]+$/;
 
-const nameError = (name) => {
+// Mirrors the server: it trims first and requires at least one letter.
+const nameError = (rawName) => {
+  const name = rawName.trim();
   if (name.length < 2) return 'Name must be at least 2 characters.';
   if (name.length > NAME_MAX) return 'Name must be at most 30 characters.';
   if (!NAME_CHARS.test(name)) return "Only letters, spaces, ' and - are allowed.";
+  if (!/[A-Za-z]/.test(name)) return 'Name must contain letters.';
   return null;
 };
 
-const StoryScreen = ({ name, backstory, description, onChange, onFinish }) => {
-  const [waiting, setWaiting] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const onError = (e) => {
-      setWaiting(false);
-      setError((e.detail && (e.detail.message || e.detail)) || 'The server rejected this character.');
-    };
-    window.addEventListener('charCreator:error', onError);
-    return () => window.removeEventListener('charCreator:error', onError);
-  }, []);
-
+const StoryScreen = ({ name, backstory, description, waiting, error, onChange, onFinish }) => {
   const nameMsg = nameError(name);
   const valid = !nameMsg && backstory.length <= BACKSTORY_MAX && description.length <= DESCRIPTION_MAX;
 
   const finish = () => {
     if (!valid || waiting) return;
-    setError(null);
-    setWaiting(true);
     onFinish();
   };
 
