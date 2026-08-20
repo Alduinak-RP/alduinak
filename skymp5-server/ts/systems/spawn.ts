@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
+import { validateResult, CharCreatorConfig } from "./charCreatorData";
 
 type Mp = any;
 
@@ -55,6 +56,45 @@ const ASSIGN_GRACE_MS = 10 * 1000;
 // Overridable via the "logoutGraceMs" server setting.
 const DEFAULT_LOGOUT_GRACE_MS = 5 * 60 * 1000;
 
+const DEFAULT_STAT_POOL = 120;
+
+// Character creator settings ("charCreator" server setting); disabled keeps the vanilla race menu
+interface CharCreatorSettings {
+  enabled: boolean;
+  allowChildren: boolean;
+  disabledRaces: string[];
+  paywalledRaces: Record<string, string>;
+  grants: Record<string, string[]>;
+  statPool: number;
+}
+
+function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((e): e is string => typeof e === "string") : [];
+  const paywalledRaces: Record<string, string> = {};
+  if (r.paywalledRaces && typeof r.paywalledRaces === "object") {
+    for (const [race, key] of Object.entries(r.paywalledRaces)) {
+      if (typeof key === "string") paywalledRaces[race] = key;
+    }
+  }
+  const grants: Record<string, string[]> = {};
+  if (r.grants && typeof r.grants === "object") {
+    for (const [profileId, keys] of Object.entries(r.grants)) {
+      grants[profileId] = strings(keys);
+    }
+  }
+  const rawPool = Number(r.statPool);
+  return {
+    enabled: !!r.enabled,
+    allowChildren: r.allowChildren !== false,
+    disabledRaces: strings(r.disabledRaces),
+    paywalledRaces,
+    grants,
+    statPool: Number.isInteger(rawPool) && rawPool >= 0 ? rawPool : DEFAULT_STAT_POOL,
+  };
+}
+
 // Character-select protocol (gated by the "characterSelect" server setting;
 // slot count via "characterSelectMaxCharacters", 1-10, default 3).
 // When enabled the server no longer auto-spawns on connect; it sends the player
@@ -73,6 +113,7 @@ export class Spawn implements System {
   private maxCharacters = DEFAULT_MAX_CHARACTERS;
   private startingItems = DEFAULT_STARTING_ITEMS;
   private logoutGraceMs = DEFAULT_LOGOUT_GRACE_MS;
+  private charCreator = parseCharCreatorSettings(undefined);
   private settingsObject!: Settings;
   // userId -> auth context awaiting a character selection
   private pending = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
@@ -95,6 +136,7 @@ export class Spawn implements System {
     if (parsedItems) this.startingItems = parsedItems;
     const rawGrace = Number(all?.["logoutGraceMs"]);
     if (Number.isInteger(rawGrace) && rawGrace >= 0) this.logoutGraceMs = rawGrace;
+    this.charCreator = parseCharCreatorSettings(all?.["charCreator"]);
 
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
       if (this.characterSelect) {
@@ -111,6 +153,10 @@ export class Spawn implements System {
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
+    if (type === "charCreatorResult") {
+      this.onCharCreatorResult(ctx, userId, content);
+      return;
+    }
     if (!this.characterSelect) return;
     if (type === "characterSelectResult") {
       const slot = Number(content.slot);
@@ -324,7 +370,17 @@ export class Spawn implements System {
     this.cancelPark(actorId);
     ctx.svr.setEnabled(actorId, true);
     ctx.svr.setUserActor(userId, actorId);
-    if (isNew) ctx.svr.setRaceMenuOpen(actorId, true);
+    if (isNew) {
+      if (this.charCreator.enabled) {
+        mp.set(actorId, "private.charCreatorPending", true);
+        this.sendCharCreatorOpen(ctx, userId, auth.profileId);
+      } else {
+        ctx.svr.setRaceMenuOpen(actorId, true);
+      }
+    } else if (this.charCreator.enabled && this.isCharCreatorPending(mp, actorId)) {
+      // Relog protection: an unfinished creator reopens until a submission is accepted
+      this.sendCharCreatorOpen(ctx, userId, auth.profileId);
+    }
 
     this.applyAuthProps(mp, actorId, auth.profileId, auth.roles, auth.discordId,
       filterAccessForSlot(auth.access, slot));
@@ -335,6 +391,90 @@ export class Spawn implements System {
 
     this.lastAssignMs.set(userId, Date.now());
     this.pending.delete(userId);
+  }
+
+  // Character creator (gated by the "charCreator" server setting; see docs/character-creator.md)
+
+  // Paywalled races this profile has not been granted
+  private lockedRacesFor(profileId: number | undefined): string[] {
+    const granted = profileId !== undefined ? this.charCreator.grants[String(profileId)] ?? [] : [];
+    return Object.entries(this.charCreator.paywalledRaces)
+      .filter(([, entitlement]) => !granted.includes(entitlement))
+      .map(([race]) => race);
+  }
+
+  private isCharCreatorPending(mp: Mp, actorId: number): boolean {
+    try { return !!mp.get(actorId, "private.charCreatorPending"); }
+    catch { return false; }
+  }
+
+  private sendCharCreatorOpen(ctx: SystemContext, userId: number, profileId: number): void {
+    ctx.svr.sendCustomPacket(userId, JSON.stringify({
+      customPacketType: "charCreatorOpen",
+      config: {
+        disabledRaces: this.charCreator.disabledRaces,
+        lockedRaces: this.lockedRacesFor(profileId),
+        allowChildren: this.charCreator.allowChildren,
+        statPool: this.charCreator.statPool,
+      },
+    }));
+  }
+
+  private sendCharCreatorError(ctx: SystemContext, userId: number, message: string): void {
+    ctx.svr.sendCustomPacket(userId, JSON.stringify({
+      customPacketType: "charCreatorError", message,
+    }));
+  }
+
+  private onCharCreatorResult(ctx: SystemContext, userId: number, content: Content): void {
+    if (!this.charCreator.enabled) return;
+    let actorId = 0;
+    try { actorId = ctx.svr.getUserActor(userId); } catch { return; }
+    if (actorId === 0) return;
+    const mp = ctx.svr as unknown as Mp;
+    if (!this.isCharCreatorPending(mp, actorId)) return;
+
+    let profileId = this.authCache.get(userId)?.profileId;
+    if (profileId === undefined) {
+      try {
+        const stored = mp.get(actorId, "private.skympProfileId");
+        if (typeof stored === "number") profileId = stored;
+      } catch { /* form vanished */ }
+    }
+
+    const config: CharCreatorConfig = {
+      allowChildren: this.charCreator.allowChildren,
+      disabledRaces: this.charCreator.disabledRaces,
+      statPool: this.charCreator.statPool,
+    };
+    const res = validateResult(content.data, config);
+    if (res.ok === false) {
+      this.sendCharCreatorError(ctx, userId, res.error);
+      return;
+    }
+    if (this.lockedRacesFor(profileId).includes(res.clean.race)) {
+      this.sendCharCreatorError(ctx, userId, "This race is locked for your account");
+      return;
+    }
+
+    try {
+      mp.set(actorId, "appearance", res.clean.appearance);
+      mp.set(actorId, "private.rp", {
+        species: res.clean.species,
+        race: res.clean.race,
+        sex: res.clean.sex,
+        age: res.clean.age,
+        stats: res.clean.stats,
+        bodyExtras: res.clean.bodyExtras,
+        backstory: res.clean.backstory,
+        description: res.clean.description,
+        createdAt: Date.now(),
+      });
+      mp.set(actorId, "private.charCreatorPending", false);
+    } catch { return; /* form vanished */ }
+    ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: "charCreatorClose" }));
+    this.log("Character creator accepted for actor", actorId.toString(16),
+      `(${res.clean.race} "${res.clean.name}")`);
   }
 
   private onDeleteCharacter(ctx: SystemContext, userId: number, slot: number): void {
@@ -365,6 +505,10 @@ export class Spawn implements System {
       this.cancelPark(actorId); // reconnected within the logout grace
       ctx.svr.setEnabled(actorId, true);
       ctx.svr.setUserActor(userId, actorId);
+      if (this.charCreator.enabled && this.isCharCreatorPending(mp, actorId)) {
+        // Relog protection: an unfinished creator reopens until a submission is accepted
+        this.sendCharCreatorOpen(ctx, userId, userProfileId);
+      }
     } else {
       const idx = randomInteger(0, startPoints.length - 1);
       actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
@@ -372,7 +516,12 @@ export class Spawn implements System {
       this.giveStartingItems(mp, actorId, userProfileId, 0);
       this.log("Creating character", actorId.toString(16));
       ctx.svr.setUserActor(userId, actorId);
-      ctx.svr.setRaceMenuOpen(actorId, true);
+      if (this.charCreator.enabled) {
+        mp.set(actorId, "private.charCreatorPending", true);
+        this.sendCharCreatorOpen(ctx, userId, userProfileId);
+      } else {
+        ctx.svr.setRaceMenuOpen(actorId, true);
+      }
     }
 
     this.applyAuthProps(mp, actorId, userProfileId, discordRoleIds, discordId, access);
