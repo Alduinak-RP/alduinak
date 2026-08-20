@@ -132,7 +132,9 @@ export class EmoteService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("gameLoad", () => { this.activeEmote = ""; });
+    this.controller.emitter.on("gameLoad", () => { this.activeEmote = ""; this.chainId++; });
+    // A front reload drops the widget without an emote:close message.
+    this.controller.emitter.on("browserWindowLoaded", () => { this.menuOpen = false; });
 
     this.menuKey = readMenuKeyCode(this.sp, "emoteWheelKeyCode", DxScanCode.B);
 
@@ -161,7 +163,7 @@ export class EmoteService extends ClientListener {
       this.closeMenu();
       return;
     }
-    if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(e.code) && !this.sp.browser.isFocused()) {
+    if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(e.code) && !isMenuHotkeyBlocked(this.sp, this.controller)) {
       this.stopActiveEmote();
     }
     if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
@@ -208,47 +210,74 @@ export class EmoteService extends ClientListener {
   private playEmote(anim: string): void {
     const previous = this.activeEmote;
     this.activeEmote = anim;
+    // Offset overlays live on their own graph layer: crossing between an
+    // overlay and a state idle needs the previous emote exited first, and the
+    // exit event must go out alone so the single-slot animation sync relays it.
+    if (previous && (previous.indexOf("Offset") === 0) !== (anim.indexOf("Offset") === 0)) {
+      this.exitEmote(previous, () => this.sendEmote(anim));
+      return;
+    }
+    this.chainId++;
+    this.sendEmote(anim);
+  }
+
+  private sendEmote(anim: string): void {
     this.controller.once("update", () => {
+      if (this.activeEmote !== anim) return;
       const player = this.sp.Game.getPlayer();
       if (!player) return;
-      // Offset overlays stay on their own graph layer; clear one before a normal idle.
-      if (previous.indexOf("Offset") === 0 && anim.indexOf("Offset") !== 0) {
-        this.sp.Debug.sendAnimationEvent(player, "OffsetStop");
-      }
       this.sp.Debug.sendAnimationEvent(player, anim);
       logTrace(this, `Playing emote`, anim);
     });
   }
 
-  // IdleForceDefaultState breaks most idles; state idles that reject it get
-  // their <base>ExitStart / <base>Exit events, offset overlays need OffsetStop.
   private stopActiveEmote(): void {
     const anim = this.activeEmote;
     this.activeEmote = "";
-    if (!anim) return;
+    if (anim) this.exitEmote(anim);
+  }
+
+  // IdleForceDefaultState breaks most idles; state idles that reject it get
+  // their <base>ExitStart / <base>Exit events, offset overlays need OffsetStop.
+  private exitEmote(anim: string, onDone?: () => void): void {
+    const chain = ++this.chainId;
     if (anim.indexOf("Offset") === 0) {
       this.controller.once("update", () => {
         const player = this.sp.Game.getPlayer();
         if (player) this.sp.Debug.sendAnimationEvent(player, "OffsetStop");
+        // Let the sync poll relay OffsetStop before any follow-up event.
+        this.sp.Utility.wait(0.1).then(() => {
+          if (chain === this.chainId && onDone) onDone();
+        });
       });
       return;
     }
     const base = anim.replace(/(Start|Enter)$/, "");
-    this.tryExitChain(["IdleForceDefaultState", base + "ExitStart", base + "Exit"], 0);
+    this.tryExitChain(["IdleForceDefaultState", base + "ExitStart", base + "Exit"], 0, chain, onDone);
   }
 
-  private tryExitChain(attempts: string[], index: number): void {
-    if (index >= attempts.length) return;
+  private tryExitChain(attempts: string[], index: number, chain: number, onDone?: () => void): void {
+    if (chain !== this.chainId) return;
+    if (index >= attempts.length) {
+      if (onDone) onDone();
+      return;
+    }
     this.controller.once("update", () => {
+      if (chain !== this.chainId) return;
       const player = this.sp.Game.getPlayer();
       if (!player) return;
       this.probeAnim = attempts[index];
       this.probeSucceeded = false;
       this.sp.Debug.sendAnimationEvent(player, attempts[index]);
       this.sp.Utility.wait(0.15).then(() => {
+        if (chain !== this.chainId) return;
         const ok = this.probeSucceeded;
         this.probeAnim = "";
-        if (!ok) this.tryExitChain(attempts, index + 1);
+        if (!ok) {
+          this.tryExitChain(attempts, index + 1, chain, onDone);
+        } else if (onDone) {
+          onDone();
+        }
       });
     });
   }
@@ -289,4 +318,6 @@ export class EmoteService extends ClientListener {
   private allowedAnims: Set<string>;
   private probeAnim = "";
   private probeSucceeded = false;
+  // Generation counter: bumping it abandons any pending exit chain.
+  private chainId = 0;
 }
