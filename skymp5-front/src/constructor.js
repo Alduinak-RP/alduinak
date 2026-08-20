@@ -17,6 +17,7 @@ import TestMenu from './features/testMenu';
 import Trade from './features/trade';
 import AdminPanel from './features/adminPanel';
 import ContextMenu from './features/contextMenu';
+import EmoteWheel from './features/emoteWheel';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -221,6 +222,8 @@ const Constructor = props => {
       return <AdminPanel data={rend} />;
     case 'contextMenu':
       return <ContextMenu data={rend} />;
+    case 'emoteWheel':
+      return <EmoteWheel data={rend} />;
     case 'death':
       return (
         <DeathScreen seconds={rend.seconds} onChoice={rend.onChoice} />
