@@ -1,4 +1,5 @@
 // Species and race catalog for the character creator.
+// Slugs and form ids MUST stay in sync with skymp5-server/ts/systems/charCreatorData.ts; change them together.
 // Form ids were extracted from the live server load order (Skyrim.esm + DLC).
 // `placeholder: true` marks races that reuse a vanilla race until a custom esp
 // lands in AlduinakPatchMerged; swap `raceId` there when the esp is ready.

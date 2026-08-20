@@ -17,6 +17,7 @@ import TestMenu from './features/testMenu';
 import Trade from './features/trade';
 import AdminPanel from './features/adminPanel';
 import ContextMenu from './features/contextMenu';
+import CharCreator from './features/charCreator';
 import EmoteWheel from './features/emoteWheel';
 
 const styles = [
@@ -222,6 +223,8 @@ const Constructor = props => {
       return <AdminPanel data={rend} />;
     case 'contextMenu':
       return <ContextMenu data={rend} />;
+    case 'charCreator':
+      return <CharCreator data={rend} />;
     case 'emoteWheel':
       return <EmoteWheel data={rend} />;
     case 'death':
