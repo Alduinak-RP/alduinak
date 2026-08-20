@@ -190,7 +190,7 @@ const Constructor = props => {
       };
 
       return (
-        <div className={'login'} >
+        <div className={'login login--w' + rend.id} >
           <div className={'login-form'} style={{ width: `${fwidth}px`, height: `${fheight}px` }}>
             <div className={'login-form--content'}>
               {(result.header !== undefined)

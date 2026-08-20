@@ -264,3 +264,59 @@ dothatopcheck {  0% {
   -webkit-animation: dothatopcheck 1s ease 0s forwards;
   animation: dothatopcheck 1s ease 0s forwards;
 }
+
+// Character select (form widget id 7): red/black panel so it reads over the
+// main menu video; other form widgets keep the default frame.
+.login.login--w7 {
+  .frame {
+    display: none;
+  }
+  .login-form {
+    background:
+      linear-gradient(180deg, rgba(8, 4, 4, 0.92), rgba(0, 0, 0, 0.88)),
+      radial-gradient(circle at center 18%, rgba(120, 30, 25, 0.16), transparent 60%);
+    border: 1px solid rgba(120, 35, 30, 0.55);
+    box-shadow:
+      inset 0 0 36px rgba(0, 0, 0, 0.7),
+      0 20px 34px rgba(0, 0, 0, 0.75);
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      height: 1px;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(180, 60, 50, 0.45), transparent);
+    }
+
+    &::before {
+      top: 10px;
+    }
+
+    &::after {
+      bottom: 10px;
+    }
+  }
+  .login-form--content_header {
+    color: #f2e6e3;
+    text-shadow: 0 0 12px rgba(180, 30, 30, 0.4);
+  }
+  .skyrimText {
+    color: rgba(230, 220, 218, 0.88);
+  }
+  .skymp-input-button {
+    border-color: rgba(110, 30, 28, 0.55);
+    background: rgba(10, 8, 8, 0.72);
+    &:hover {
+      border-color: rgba(200, 70, 60, 0.85);
+    }
+    .skymp-input-button_text {
+      color: rgba(230, 220, 218, 0.88);
+    }
+  }
+  .button-middle--text {
+    color: #f2e6e3;
+  }
+}
