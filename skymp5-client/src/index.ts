@@ -37,6 +37,7 @@ import { LoadOrderVerificationService } from "./services/services/loadOrderVerif
 import { BrowserService } from "./services/services/browserService";
 import { AuthService } from "./services/services/authService";
 import { CharacterSelectService } from "./services/services/characterSelectService";
+import { CharCreatorService } from "./services/services/charCreatorService";
 import { HousingService } from "./services/services/housingService";
 import { RefDecorService } from "./services/services/refDecorService";
 import { PlayerActionService } from "./services/services/playerActionService";
@@ -117,6 +118,7 @@ const main = () => {
       new BrowserService(sp, controller),
       new AuthService(sp, controller),
       new CharacterSelectService(sp, controller),
+      new CharCreatorService(sp, controller),
       new HousingService(sp, controller),
       new RefDecorService(sp, controller),
       new PlayerActionService(sp, controller),
