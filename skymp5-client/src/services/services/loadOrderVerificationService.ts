@@ -62,20 +62,8 @@ export class LoadOrderVerificationService extends ClientListener {
         }
       })
       .catch((err) => {
+        // Mismatches only log to console; the master launch-check enforces mods.
         printConsole(err);
-        if (this.sp.settings['skymp5-client']['ignoreLoadOrderMismatch']) {
-          this.updateText(
-            'LOAD ORDER ERROR!\nHowever, ignoring it because of ignoreLoadOrderMismatch being set.' +
-            '\nExpect EVERYTHING BREAK, unless you know what you are doing.\nCheck console for details.' +
-            '\nThis message will disappear after 30 seconds.',
-            [255, 0, 0, 1], 30,
-          );
-          return;
-        }
-        this.updateText(
-          'LOAD ORDER ERROR!\nCheck console for details.\nThis message will disappear after 60 seconds.',
-          [255, 0, 0, 1], 60,
-        );
       });
   };
 
