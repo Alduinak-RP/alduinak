@@ -16,6 +16,7 @@ interface EmoteGroup {
 interface EmoteWheelEvents {
   play: string;
   close: string;
+  stop: string;
   [key: string]: string;
 }
 
@@ -228,7 +229,9 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
             <div className="emote-wheel__center">
               <p className="emote-wheel__center-category">{(previewedGroup ? previewedGroup.label : '').toUpperCase()}</p>
               <h2 className="emote-wheel__center-emote">{previewedEmote ? previewedEmote.label : ''}</h2>
-              <p className="emote-wheel__center-select">SELECT</p>
+              <button className="emote-wheel__center-cancel" onClick={() => send(ev.stop)}>
+                Cancel Emote
+              </button>
             </div>
           </div>
           <p className="emote-wheel__hint">Hover to preview&nbsp;&nbsp;&bull;&nbsp;&nbsp;Click to play&nbsp;&nbsp;&bull;&nbsp;&nbsp;Esc or right-click to close</p>

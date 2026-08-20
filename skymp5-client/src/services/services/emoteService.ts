@@ -109,6 +109,7 @@ const GROUPS: EmoteGroup[] = [
 const events = {
   play: 'emote:play',
   close: 'emote:close',
+  stop: 'emote:stop',
 };
 
 // Movement input breaks an active emote, matching how remote clones exit poses.
@@ -191,6 +192,11 @@ export class EmoteService extends ClientListener {
     }
     if (key === events.close) {
       this.closeMenu();
+      return;
+    }
+    if (key === events.stop) {
+      this.closeMenu();
+      this.stopActiveEmote();
       return;
     }
     if (key === events.play) {

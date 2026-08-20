@@ -164,11 +164,25 @@ $text-muted: rgba(210, 170, 165, 0.65);
     text-shadow: 0 0 12px $red-glow;
   }
 
-  &__center-select {
-    margin: 0;
-    color: rgba(210, 170, 165, 0.5);
+  &__center-cancel {
+    pointer-events: auto;
+    margin: 4px 0 0;
+    padding: 5px 14px;
+    border: 1px solid $red-border-dim;
+    background: rgba(30, 8, 8, 0.75);
+    color: rgba(230, 200, 196, 0.85);
+    font-family: inherit;
     font-size: 11px;
-    letter-spacing: 0.28em;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background $fast, border-color $fast, color $fast;
+
+    &:hover {
+      background: $red-fill-active;
+      border-color: $red-border-bright;
+      color: $text-bright;
+    }
   }
 
   &__hint {
