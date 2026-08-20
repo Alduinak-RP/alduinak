@@ -124,21 +124,34 @@ const Ring = ({ innerR, outerR, segClass, labelClass, activeId, items, onHover, 
   );
 };
 
+// Selection survives close/reopen; the client tears the widget down each time.
+let savedGroupId = '';
+let savedAnim = '';
+
 const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   const groups = data.groups || [];
   const ev = data.events || ({} as EmoteWheelEvents);
 
   const firstGroup = groups[0];
   const firstAnim = firstGroup && firstGroup.emotes[0] ? firstGroup.emotes[0].anim : '';
-  const [activeGroupId, setActiveGroupId] = useState(firstGroup ? firstGroup.id : '');
-  const [activeAnim, setActiveAnim] = useState(firstAnim);
-  const [previewAnim, setPreviewAnim] = useState(firstAnim);
-  const [previewSrc, setPreviewSrc] = useState(previewFor(firstAnim));
+  const savedGroup = groups.find((g) => g.id === savedGroupId && g.emotes.some((e) => e.anim === savedAnim));
+  const initialGroup = savedGroup || firstGroup;
+  const initialAnim = savedGroup ? savedAnim : firstAnim;
+  const [activeGroupId, setActiveGroupId] = useState(initialGroup ? initialGroup.id : '');
+  const [activeAnim, setActiveAnim] = useState(initialAnim);
+  const [previewAnim, setPreviewAnim] = useState(initialAnim);
+  const [previewSrc, setPreviewSrc] = useState(previewFor(initialAnim));
   const [previewChanging, setPreviewChanging] = useState(false);
   const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (swapTimer.current) clearTimeout(swapTimer.current);
+  useEffect(() => {
+    // Losing browser focus (free-cursor key, chat) would strand the overlay.
+    const onUnfocused = () => send(ev.close);
+    window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
+    return () => {
+      window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
+      if (swapTimer.current) clearTimeout(swapTimer.current);
+    };
   }, []);
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) || firstGroup;
@@ -162,12 +175,16 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   const selectGroup = (groupId: string) => {
     const group = groups.find((g) => g.id === groupId);
     if (!group || !group.emotes.length) return;
+    savedGroupId = groupId;
+    savedAnim = group.emotes[0].anim;
     setActiveGroupId(groupId);
     setActiveAnim(group.emotes[0].anim);
     changePreview(group.emotes[0].anim);
   };
 
   const selectEmote = (anim: string) => {
+    savedGroupId = activeGroupId;
+    savedAnim = anim;
     setActiveAnim(anim);
     changePreview(anim);
     send(ev.play, anim);
