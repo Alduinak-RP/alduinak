@@ -12,6 +12,9 @@ declare const window: any;
 
 const WIDGET_ID = 8;
 
+// A hand-over waits for one more housing-key press; it must not wait forever.
+const PENDING_RECIPIENT_MS = 30000;
+
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
   claim: 'housing:claim',
@@ -95,6 +98,10 @@ export class HousingService extends ClientListener {
     if (this.pendingRecipient !== null) {
       const pending = this.pendingRecipient;
       this.pendingRecipient = null;
+      if (Date.now() > pending.expiresAt) {
+        notifyNextUpdate(this.controller, this.sp, "That hand-over expired.");
+        return;
+      }
       const ref = this.sp.Game.getCurrentCrosshairRef();
       const recipient = ref && Actor.from(ref) ? ref : null;
       if (!recipient || recipient.getFormID() === 0x14) {
@@ -142,7 +149,8 @@ export class HousingService extends ClientListener {
           canGrantContainers: content["canGrantContainers"] === true,
           ownerName: typeof content["ownerName"] === "string" ? content["ownerName"] as string : null,
         };
-        this.openMenu();
+        // A pending recipient pick owns the screen; a late reply must not reopen.
+        if (this.pendingRecipient === null) this.openMenu();
         break;
       }
       case "propertyNotice":
@@ -193,6 +201,7 @@ export class HousingService extends ClientListener {
         this.pendingRecipient = {
           action: key === events.transfer ? "transfer" : "grantcontainer",
           target,
+          expiresAt: Date.now() + PENDING_RECIPIENT_MS,
         };
         this.closeMenu();
         notifyNextUpdate(this.controller, this.sp, "Look at the recipient and press the housing key.");
@@ -239,5 +248,5 @@ export class HousingService extends ClientListener {
   private menuKey: DxScanCode = DxScanCode.H;
   private menuOpen = false;
   private target = 0;
-  private pendingRecipient: { action: string; target: number } | null = null;
+  private pendingRecipient: { action: string; target: number; expiresAt: number } | null = null;
 }
