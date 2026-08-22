@@ -219,88 +219,19 @@ export class HousingService extends ClientListener {
   // Runs inside the CEF browser. Only injected vars + window are available.
   // No spread syntax: it breaks after FunctionInfo stringification (8d7c0c05).
   private browsersideWidgetSetter = () => {
-    const displayName = info.name || targetLabel;
-    const widget: any = {
-      type: "form",
+    const widget = {
+      type: "housing",
       id: WIDGET_ID,
-      caption: "Manage: " + displayName,
-      elements: [] as any[],
+      targetLabel: targetLabel,
+      view: info.view,
+      owned: info.owned,
+      name: info.name,
+      locked: info.locked,
+      hasKeys: info.hasKeys,
+      canGrantContainers: info.canGrantContainers,
+      ownerName: info.ownerName,
+      events: events,
     };
-    const pushButton = (text: string, event: string, sameLine: boolean) => {
-      widget.elements.push({
-        type: "button",
-        text,
-        tags: sameLine ? ["ELEMENT_SAME_LINE"] : [],
-        click: () => window.skyrimPlatform.sendMessage(event),
-      });
-    };
-
-    if (info.view === "denied" || info.view === "claimable") {
-      widget.elements.push({ type: "text", text: "You don't own this", tags: [] });
-      if (info.ownerName) {
-        widget.elements.push({ type: "text", text: "Owner: " + info.ownerName, tags: [] });
-      }
-      if (info.view === "claimable") {
-        pushButton("claim", events.claim, false);
-      }
-    } else {
-      widget.elements.push({
-        type: "text",
-        text: (info.view === "owner" ? "Yours" : "Managed") + (info.locked ? " - locked" : " - unlocked"),
-        tags: [],
-      });
-      if (info.ownerName && info.view === "manager") {
-        widget.elements.push({ type: "text", text: "Owner: " + info.ownerName, tags: [] });
-      }
-
-      pushButton(info.locked ? "unlock" : "lock", info.locked ? events.unlock : events.lock, false);
-
-      if (info.view === "owner") {
-        pushButton("create key", events.createKey, true);
-        if (info.hasKeys) {
-          pushButton("void all keys", events.revokeKeys, true);
-        }
-        pushButton("transfer", events.transfer, false);
-        pushButton("abandon", events.abandon, true);
-      } else {
-        if (!info.owned) {
-          pushButton("claim", events.claim, false);
-        }
-        pushButton("grant ownership", events.transfer, !info.owned);
-        pushButton("revoke ownership", events.revoke, true);
-        if (info.hasKeys) {
-          pushButton("void all keys", events.revokeKeys, true);
-        }
-      }
-      if (info.canGrantContainers) {
-        pushButton("grant this container", events.grantContainer, false);
-      }
-
-      // Rename: type a name, then save.
-      let renameValue = info.name || "";
-      widget.elements.push({
-        type: "inputText",
-        placeholder: "name this property",
-        initialValue: renameValue,
-        tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
-        onInput: (e: any) => { renameValue = e && e.target ? e.target.value : renameValue; },
-      });
-      widget.elements.push({
-        type: "button",
-        text: "save name",
-        tags: ["ELEMENT_SAME_LINE"],
-        click: () => window.skyrimPlatform.sendMessage(events.rename, renameValue),
-      });
-    }
-
-    widget.elements.push({
-      type: "button",
-      text: "close",
-      tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
-      click: () => window.skyrimPlatform.sendMessage(events.cancel),
-    });
-
-    // Preserve any other widgets
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
