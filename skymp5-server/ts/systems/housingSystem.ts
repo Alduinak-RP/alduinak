@@ -8,9 +8,9 @@ type Mp = any;
 
 // ── Housing: claims, locks and keys ───────────────────────────────────────────
 //
-// Players claim any unowned door or container by looking at it and pressing the
-// housing key. Owners lock it, name it, cut keys, hand ownership over, or give
-// it up. Locks are enforced here (activation is refused server-side); the
+// Players claim any unowned door or container they are standing at by pressing
+// the housing key. Owners lock it, name it, cut keys, hand ownership over, or
+// give it up. Locks are enforced here (activation is refused server-side); the
 // client's RefDecorService only mirrors them into the engine so the player sees
 // a "Requires Key" door instead of one that silently does nothing.
 //
@@ -29,8 +29,10 @@ type Mp = any;
 // Persistence. The record lives on the reference itself as a `private.` dynamic
 // field, so it rides the engine's changeform into MongoDB and comes back on
 // restart (lazily, the first time the ref is touched). `housing.json` is only an
-// index of claimed ids so the boot pass knows which refs to touch; the
-// changeform stays the source of truth.
+// index of claimed ids so a boot pass knows which refs to touch; the changeform
+// stays the source of truth. Giving a property up leaves an ownerless stub
+// behind rather than deleting the record, so the key serial survives and a
+// re-claim cannot mint a credential that old copies already answer to.
 //
 // Teleport doors are claimed as a pair. The record lives on the lower of the two
 // form ids (the "primary"); the far side stores a pointer to it, so locking a
@@ -38,7 +40,6 @@ type Mp = any;
 
 const HOUSING_PROP = "private.housing";
 const OWNER_INDEX_PROP = "private.indexed.housingOwner";
-const REVOKED_KEYS_PROP = "ff_revoked_keys";
 const REGISTRY_FILE = "./housing.json";
 
 // Vanilla key form; the name extra carries the credential.
@@ -46,8 +47,12 @@ const KEY_BASE_ID = 0x000db0e2;
 
 const MAX_USER_SLOTS = 1024;
 const MAX_NAME_LEN = 32;
+const MAX_KEYS_CARRIED = 64;
+const MAX_ESPM_CACHE = 4096;
 const DEFAULT_MAX_CLAIMS = 8;
+const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
+const REQUEST_COOLDOWN_MS = 500;
 
 // Hold ranks that may manage property in their own hold; ported from the
 // permission matrix in server_guest_lib/HoldClaims.cpp.
@@ -76,7 +81,8 @@ const HOLD_CELLS: Record<number, string> = {
   0x0001e7e2: "winterhold", // Winterhold jail
 };
 
-// One claimed property. Stored on the primary reference.
+// One claimed property. Stored on the primary reference. owner 0 is an
+// ownerless stub kept only to carry `serial` forward.
 interface PropertyRecord {
   owner: number;
   ownerName: string;
@@ -90,6 +96,14 @@ interface PropertyRecord {
 // The far half of a teleport pair just points at the primary.
 interface PrimaryPointer {
   primary: number;
+}
+
+// Everything an access decision needs about one actor, read once per sweep.
+interface ViewerAccess {
+  profileId: number;
+  admin: boolean;
+  ranks: Array<{ hold: string; rank: string }>;
+  keys: Set<string>;
 }
 
 const emptyRecord = (): PropertyRecord => ({
@@ -108,8 +122,10 @@ export class HousingSystem implements System {
 
     const maxClaims = Number(all?.["housingMaxClaims"]);
     if (Number.isFinite(maxClaims) && maxClaims > 0) this.maxClaims = maxClaims;
+    const maxDistance = Number(all?.["housingMaxDistance"]);
+    if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
 
-    const roleIds = all?.["adminDiscordRoleIds"];
+    const roleIds = all?.["adminRoleIds"];
     if (Array.isArray(roleIds)) this.adminRoleIds = roleIds.map((r) => String(r));
     const profileIds = all?.["adminProfileIds"];
     if (Array.isArray(profileIds)) this.adminProfileIds = profileIds.map((p) => Number(p));
@@ -123,7 +139,7 @@ export class HousingSystem implements System {
   // Locks are enforced here: a refused activation never reaches the door.
   private installActivationHook(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
-    const previous = typeof mp.onActivate === "function" ? mp.onActivate.bind(mp) : null;
+    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
     mp.onActivate = (targetId: number, casterId: number): boolean => {
       let allowed = true;
       try {
@@ -132,8 +148,13 @@ export class HousingSystem implements System {
         this.log(`[housing] activation check failed: ${e}`);
       }
       if (!allowed) return false;
-      // Chain, so another system's hook still gets its say.
-      return previous ? previous(targetId, casterId) !== false : true;
+      // Chain, so another handler still gets its say.
+      if (!previous) return true;
+      try {
+        return previous.call(mp, targetId, casterId) !== false;
+      } catch {
+        return true;
+      }
     };
   }
 
@@ -141,11 +162,16 @@ export class HousingSystem implements System {
     const primary = this.primaryOf(ctx, targetId);
     if (!primary) return true;
     const rec = this.read(ctx, primary);
-    if (!rec || !rec.locked) return true;
+    if (!rec || rec.owner === 0 || !rec.locked) return true;
     if (this.hasAccess(ctx, primary, rec, casterId)) return true;
 
+    // One notice per player per second; a held activate key fires repeatedly.
     const userId = this.userOf(ctx, casterId);
-    this.notice(ctx, userId, rec.name ? `${rec.name} is locked.` : "This is locked.");
+    const now = Date.now();
+    if (now - (this.lastDenyMs.get(userId) || 0) > 1000) {
+      this.lastDenyMs.set(userId, now);
+      this.notice(ctx, userId, rec.name ? `${rec.name} is locked.` : "This is locked.");
+    }
     return false;
   }
 
@@ -163,12 +189,12 @@ export class HousingSystem implements System {
     this.lastDecorMs = now;
     if (!this.decorDirty) return;
     this.decorDirty = false;
-    for (const userId of this.onlineUsers(ctx)) this.pushDecor(ctx, userId, true);
+    this.pushDecorToAll(ctx);
   }
 
   // A fresh actor needs the full picture: names and locks for every claim.
   private onActorAssigned(ctx: SystemContext, userId: number): void {
-    this.pushDecor(ctx, userId, true);
+    this.pushDecor(ctx, userId);
   }
 
   // ── Requests ────────────────────────────────────────────────────────────────
@@ -178,6 +204,10 @@ export class HousingSystem implements System {
     if (!target) return;
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
+    if (!this.withinReach(ctx, actorId, target)) {
+      this.notice(ctx, userId, "That is too far away.");
+      return;
+    }
     this.sendMenu(ctx, userId, actorId, target);
   }
 
@@ -185,8 +215,17 @@ export class HousingSystem implements System {
     const target = toFormId(content["target"]);
     const action = String(content["action"] || "");
     if (!target || !action) return;
+
+    const now = Date.now();
+    if (now - (this.lastRequestMs.get(userId) || 0) < REQUEST_COOLDOWN_MS) return;
+    this.lastRequestMs.set(userId, now);
+
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
+    if (!this.withinReach(ctx, actorId, target)) {
+      this.notice(ctx, userId, "That is too far away.");
+      return;
+    }
 
     const primary = this.primaryOf(ctx, target);
     if (!primary) {
@@ -199,8 +238,8 @@ export class HousingSystem implements System {
 
     switch (action) {
       case "claim": this.doClaim(ctx, userId, actorId, primary, rec); break;
-      case "abandon": this.doAbandon(ctx, userId, primary, rec, isOwner, isManager); break;
-      case "revoke": this.doRevoke(ctx, userId, primary, rec, isManager); break;
+      case "abandon": this.doAbandon(ctx, userId, actorId, primary, rec, isOwner, isManager); break;
+      case "revoke": this.doRevoke(ctx, userId, actorId, primary, rec, isManager); break;
       case "lock": this.doLock(ctx, userId, primary, rec, isOwner, isManager, true); break;
       case "unlock": this.doLock(ctx, userId, primary, rec, isOwner, isManager, false); break;
       case "rename": this.doRename(ctx, userId, primary, rec, isOwner, isManager, content["name"]); break;
@@ -234,17 +273,17 @@ export class HousingSystem implements System {
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doAbandon(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean): void {
+  private doAbandon(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean): void {
     if (!isOwner && !isManager) {
       this.notice(ctx, userId, "This is not yours to give up.");
       return;
     }
-    this.stripKeys(ctx, rec, primary);
-    this.erase(ctx, primary, rec);
+    this.release(ctx, primary, rec);
     this.notice(ctx, userId, "Given up.");
+    this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doRevoke(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isManager: boolean): void {
+  private doRevoke(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isManager: boolean): void {
     if (!isManager) {
       this.notice(ctx, userId, "You cannot revoke this.");
       return;
@@ -254,9 +293,9 @@ export class HousingSystem implements System {
       return;
     }
     const formerName = rec.ownerName || "the owner";
-    this.stripKeys(ctx, rec, primary);
-    this.erase(ctx, primary, rec);
+    this.release(ctx, primary, rec);
     this.notice(ctx, userId, `Taken back from ${formerName}.`);
+    this.sendMenu(ctx, userId, actorId, primary);
   }
 
   private doLock(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, locked: boolean): void {
@@ -300,7 +339,7 @@ export class HousingSystem implements System {
       return;
     }
     if (!this.giveKey(ctx, actorId, this.keyNameOf(primary, rec))) {
-      this.notice(ctx, userId, "The key could not be cut.");
+      this.notice(ctx, userId, "You are carrying too many keys.");
       return;
     }
     this.notice(ctx, userId, "A key is in your pack.");
@@ -312,8 +351,7 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "This is not yours to re-key.");
       return;
     }
-    this.stripKeys(ctx, rec, primary);
-    rec.serial += 1;
+    this.reKey(ctx, primary, rec);
     this.write(ctx, primary, rec);
     this.notice(ctx, userId, "Every key turned to scrap.");
     const actorId = this.actorOf(ctx, userId);
@@ -340,8 +378,7 @@ export class HousingSystem implements System {
       return;
     }
     // Old keys must not open a new owner's door.
-    this.stripKeys(ctx, rec, primary);
-    rec.serial += 1;
+    this.reKey(ctx, primary, rec);
     rec.owner = recipientProfile;
     rec.ownerName = this.nameOf(ctx, recipientActor);
     rec.partner = this.partnerOf(ctx, primary);
@@ -351,26 +388,14 @@ export class HousingSystem implements System {
     this.notice(ctx, recipientUser, rec.name ? `${rec.name} is yours now.` : "You have been given a property.");
   }
 
-  // Containers inside a claimed house can be handed to a lodger without giving
-  // up the building; the container becomes its own claim.
+  // The menu only offers this on a container, and a container's claim is just
+  // its own record, so handing one over is exactly a transfer.
   private doGrantContainer(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, rawRecipient: unknown): void {
-    if (!isOwner && !isManager) {
-      this.notice(ctx, userId, "This is not yours to grant.");
+    if (this.baseTypeOf(ctx, primary) !== "CONT") {
+      this.notice(ctx, userId, "That is not a container.");
       return;
     }
-    const recipientActor = toFormId(rawRecipient);
-    const recipientProfile = recipientActor ? this.profileOf(ctx, recipientActor) : 0;
-    if (!recipientProfile) {
-      this.notice(ctx, userId, "That is nobody.");
-      return;
-    }
-    const child = emptyRecord();
-    child.owner = recipientProfile;
-    child.ownerName = this.nameOf(ctx, recipientActor);
-    child.name = rec.name ? `${rec.name} store` : null;
-    this.write(ctx, primary, child);
-    this.notice(ctx, userId, `${child.ownerName} may use it.`);
-    this.notice(ctx, this.userOf(ctx, recipientActor), "You were given a container.");
+    this.doTransfer(ctx, userId, primary, rec, isOwner, isManager, rawRecipient);
   }
 
   // ── Menu ────────────────────────────────────────────────────────────────────
@@ -378,37 +403,62 @@ export class HousingSystem implements System {
   private sendMenu(ctx: SystemContext, userId: number, actorId: number, target: number): void {
     const primary = this.primaryOf(ctx, target);
     const rec = primary ? this.read(ctx, primary) : null;
+    const owned = !!rec && rec.owner !== 0;
     const profileId = this.profileOf(ctx, actorId);
-    const isOwner = !!rec && rec.owner !== 0 && rec.owner === profileId;
+    const isOwner = owned && rec!.owner === profileId;
     const isManager = !!primary && this.isManager(ctx, actorId, primary);
 
     let view: string;
     if (isOwner) view = "owner";
     else if (isManager) view = "manager";
-    else if (primary && (!rec || rec.owner === 0)) view = "claimable";
+    else if (primary && !owned) view = "claimable";
     else view = "denied";
 
     this.send(ctx, userId, {
       customPacketType: "propertyMenu",
       target: primary || target,
       view,
-      owned: !!rec && rec.owner !== 0,
+      owned,
       name: rec ? rec.name : null,
-      locked: !!rec && rec.locked,
-      hasKeys: !!rec && rec.owner !== 0,
-      canGrantContainers: isOwner || isManager,
-      ownerName: rec && rec.owner !== 0 ? (rec.ownerName || "Someone") : null,
+      locked: owned && rec!.locked,
+      hasKeys: owned,
+      canGrantContainers: (isOwner || isManager) && owned && this.baseTypeOf(ctx, primary) === "CONT",
+      ownerName: owned ? (rec!.ownerName || "Someone") : null,
     });
   }
 
   // ── Access ──────────────────────────────────────────────────────────────────
 
   private hasAccess(ctx: SystemContext, primary: number, rec: PropertyRecord, actorId: number): boolean {
+    return this.hasAccessWith(ctx, primary, rec, this.viewerAccess(ctx, actorId));
+  }
+
+  private hasAccessWith(ctx: SystemContext, primary: number, rec: PropertyRecord, v: ViewerAccess): boolean {
     if (rec.owner === 0) return true;
-    const profileId = this.profileOf(ctx, actorId);
-    if (profileId && profileId === rec.owner) return true;
-    if (this.isManager(ctx, actorId, primary)) return true;
-    return this.holdsKey(ctx, actorId, this.keyNameOf(primary, rec));
+    if (v.profileId && v.profileId === rec.owner) return true;
+    if (v.admin) return true;
+    const hold = this.holdOf(ctx, primary);
+    if (hold && v.ranks.some((r) => r.hold === hold && MANAGER_RANKS.indexOf(r.rank) !== -1)) return true;
+    return v.keys.has(this.keyNameOf(primary, rec));
+  }
+
+  // One inventory read and one access read per actor, not per claimed ref.
+  private viewerAccess(ctx: SystemContext, actorId: number): ViewerAccess {
+    const mp = ctx.svr as Mp;
+    const keys = new Set<string>();
+    try {
+      const inv = mp.get(actorId, "inventory");
+      const entries = inv && Array.isArray(inv.entries) ? inv.entries : [];
+      for (const e of entries) {
+        if ((Number(e?.baseId) >>> 0) === KEY_BASE_ID && e?.name) keys.add(String(e.name));
+      }
+    } catch { /* actor gone */ }
+    return {
+      profileId: this.profileOf(ctx, actorId),
+      admin: this.isAdmin(ctx, actorId),
+      ranks: this.holdRanks(ctx, actorId),
+      keys,
+    };
   }
 
   private isManager(ctx: SystemContext, actorId: number, primary: number): boolean {
@@ -445,62 +495,58 @@ export class HousingSystem implements System {
     return out;
   }
 
-  // The hold a property answers to, via the interior cell it belongs to.
+  // The hold a property answers to. Either half of a teleport pair may be the
+  // primary, so check both; only the interior side is in the table.
   private holdOf(ctx: SystemContext, primary: number): string | null {
-    const cellId = this.cellOf(ctx, primary);
-    return cellId ? (HOLD_CELLS[cellId] || null) : null;
+    const own = HOLD_CELLS[this.cellOf(ctx, primary)];
+    if (own) return own;
+    const partner = this.partnerOf(ctx, primary);
+    return partner ? (HOLD_CELLS[this.cellOf(ctx, partner)] || null) : null;
   }
 
+  // The cell this reference itself stands in.
   private cellOf(ctx: SystemContext, refrId: number): number {
     const mp = ctx.svr as Mp;
-    // A teleport door belongs to the cell it opens into, not the one it stands in.
-    const partner = this.partnerOf(ctx, refrId);
-    const subject = partner || refrId;
     try {
-      const desc = mp.get(subject, "worldOrCellDesc");
+      const desc = mp.get(refrId, "worldOrCellDesc");
       return desc ? (mp.getIdFromDesc(desc) >>> 0) : 0;
     } catch {
       return 0;
     }
   }
 
+  // Claiming has to happen at the door, not from a form id typed into a packet.
+  private withinReach(ctx: SystemContext, actorId: number, refrId: number): boolean {
+    const mp = ctx.svr as Mp;
+    let a: any, b: any;
+    try {
+      a = mp.get(actorId, "pos");
+      b = mp.get(refrId, "pos");
+    } catch {
+      return true; // position unavailable: do not block a legitimate action
+    }
+    if (!Array.isArray(a) || !Array.isArray(b)) return true;
+    const dx = Number(a[0]) - Number(b[0]);
+    const dy = Number(a[1]) - Number(b[1]);
+    const dz = Number(a[2]) - Number(b[2]);
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (!Number.isFinite(d2)) return true;
+    return d2 <= this.maxDistance * this.maxDistance;
+  }
+
   // ── Keys ────────────────────────────────────────────────────────────────────
 
-  // Readable, unique per property, and dead once the serial moves on.
+  // The credential is the form id plus the serial, never the player-chosen
+  // label: a rename must not orphan keys, and no label may forge another
+  // property's key. RefDecorService matches this string exactly.
   private keyNameOf(primary: number, rec: PropertyRecord): string {
-    const label = rec.name || "Property";
-    const tag = primary.toString(16).toUpperCase().slice(-4);
-    return rec.serial > 1 ? `${label} Key (${tag}-${rec.serial})` : `${label} Key (${tag})`;
+    const tag = primary.toString(16).toUpperCase();
+    return rec.serial > 1 ? `Property Key (${tag}-${rec.serial})` : `Property Key (${tag})`;
   }
 
-  private giveKey(ctx: SystemContext, actorId: number, keyName: string): boolean {
-    const mp = ctx.svr as Mp;
-    try {
-      const inv = mp.get(actorId, "inventory") || { entries: [] };
-      const entries = Array.isArray(inv.entries) ? inv.entries.slice() : [];
-      entries.push({ baseId: KEY_BASE_ID, count: 1, name: keyName });
-      mp.set(actorId, "inventory", { entries });
-      return true;
-    } catch (e) {
-      this.log(`[housing] could not give key: ${e}`);
-      return false;
-    }
-  }
-
-  private holdsKey(ctx: SystemContext, actorId: number, keyName: string): boolean {
-    const mp = ctx.svr as Mp;
-    try {
-      const inv = mp.get(actorId, "inventory");
-      const entries = inv && Array.isArray(inv.entries) ? inv.entries : [];
-      return entries.some((e: any) => (Number(e?.baseId) >>> 0) === KEY_BASE_ID && String(e?.name || "") === keyName);
-    } catch {
-      return false;
-    }
-  }
-
-  // Pull the property's keys from everyone online; blacklist them for anyone
-  // offline so the copies in their pack die at next login.
-  private stripKeys(ctx: SystemContext, rec: PropertyRecord, primary: number): void {
+  // Pull the current keys from everyone online and move the serial on, so any
+  // copy that was missed (offline, in a container) stops matching.
+  private reKey(ctx: SystemContext, primary: number, rec: PropertyRecord): void {
     const mp = ctx.svr as Mp;
     const keyName = this.keyNameOf(primary, rec);
     for (const userId of this.onlineUsers(ctx)) {
@@ -513,46 +559,61 @@ export class HousingSystem implements System {
         if (kept.length !== entries.length) mp.set(actorId, "inventory", { entries: kept });
       } catch { /* actor gone */ }
     }
-    this.blacklistKey(ctx, keyName);
+    rec.serial += 1;
   }
 
-  private blacklistKey(ctx: SystemContext, keyName: string): void {
+  private giveKey(ctx: SystemContext, actorId: number, keyName: string): boolean {
     const mp = ctx.svr as Mp;
-    for (const userId of this.onlineUsers(ctx)) {
-      const actorId = this.actorOf(ctx, userId);
-      if (!actorId) continue;
-      try {
-        const prev = mp.get(actorId, REVOKED_KEYS_PROP);
-        const list = Array.isArray(prev) ? prev.slice() : [];
-        if (list.indexOf(keyName) === -1) {
-          list.push(keyName);
-          mp.set(actorId, REVOKED_KEYS_PROP, list.slice(-64));
-        }
-      } catch { /* actor gone */ }
+    try {
+      const inv = mp.get(actorId, "inventory") || { entries: [] };
+      const entries = Array.isArray(inv.entries) ? inv.entries.slice() : [];
+      const carried = entries.filter((e: any) => (Number(e?.baseId) >>> 0) === KEY_BASE_ID).length;
+      if (carried >= MAX_KEYS_CARRIED) return false;
+      entries.push({ baseId: KEY_BASE_ID, count: 1, name: keyName });
+      mp.set(actorId, "inventory", { entries });
+      return true;
+    } catch (e) {
+      this.log(`[housing] could not give key: ${e}`);
+      return false;
     }
   }
 
   // ── refDecor ────────────────────────────────────────────────────────────────
 
   // `access` is personalized, so each player gets their own view of the set.
-  private pushDecor(ctx: SystemContext, userId: number, full: boolean): void {
-    const actorId = this.actorOf(ctx, userId);
-    if (!actorId) return;
-    const refs: Array<Record<string, unknown>> = [];
+  // The record list is built once and reused across every recipient.
+  private pushDecorToAll(ctx: SystemContext): void {
+    const claims = this.liveClaims(ctx);
+    for (const userId of this.onlineUsers(ctx)) this.sendDecor(ctx, userId, claims);
+  }
+
+  private pushDecor(ctx: SystemContext, userId: number): void {
+    this.sendDecor(ctx, userId, this.liveClaims(ctx));
+  }
+
+  private liveClaims(ctx: SystemContext): Array<{ primary: number; rec: PropertyRecord }> {
+    const out: Array<{ primary: number; rec: PropertyRecord }> = [];
     for (const primary of this.claimed) {
       const rec = this.read(ctx, primary);
-      if (!rec || rec.owner === 0) continue;
-      const access = this.hasAccess(ctx, primary, rec, actorId);
+      if (rec && rec.owner !== 0) out.push({ primary, rec });
+    }
+    return out;
+  }
+
+  private sendDecor(ctx: SystemContext, userId: number, claims: Array<{ primary: number; rec: PropertyRecord }>): void {
+    const actorId = this.actorOf(ctx, userId);
+    if (!actorId) return;
+    const viewer = this.viewerAccess(ctx, actorId);
+    const refs: Array<Record<string, unknown>> = [];
+    for (const { primary, rec } of claims) {
+      const access = this.hasAccessWith(ctx, primary, rec, viewer);
       const keyName = this.keyNameOf(primary, rec);
       refs.push({ refId: primary, name: rec.name, locked: rec.locked, keyName, access });
       if (rec.partner) {
         refs.push({ refId: rec.partner, name: rec.name, locked: rec.locked, keyName, access });
       }
-      for (const c of rec.containers) {
-        refs.push({ refId: c, name: rec.name, locked: rec.locked, keyName, access });
-      }
     }
-    this.send(ctx, userId, { customPacketType: "refDecor", full, refs });
+    this.send(ctx, userId, { customPacketType: "refDecor", full: true, refs });
   }
 
   // ── Storage ─────────────────────────────────────────────────────────────────
@@ -570,7 +631,10 @@ export class HousingSystem implements System {
     if (raw && typeof raw === "object" && Number(raw.primary)) return Number(raw.primary) >>> 0;
     if (raw && typeof raw === "object") return refrId;
 
-    // Unclaimed: the pair's primary is the lower of the two ids.
+    // Nothing stored yet: only doors and containers can become property.
+    if (!this.isClaimable(ctx, refrId)) return 0;
+
+    // The pair's primary is the lower of the two ids.
     const partner = this.partnerOf(ctx, refrId);
     if (partner && partner < refrId) return partner;
     return refrId;
@@ -584,18 +648,53 @@ export class HousingSystem implements System {
     let partner = 0;
     try {
       const rec = mp.lookupEspmRecordById(refrId);
-      const fields = rec && rec.record && Array.isArray(rec.record.fields) ? rec.record.fields : [];
-      const xtel = fields.filter((f: any) => f && f.type === "XTEL")[0];
-      if (xtel && xtel.data && xtel.data.length >= 4) {
-        const b = xtel.data;
-        const local = ((b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0);
-        if (local && typeof rec.toGlobalRecordId === "function") {
-          partner = rec.toGlobalRecordId(local) >>> 0;
-        }
+      const local = this.readFormIdField(rec, "XTEL");
+      if (local && typeof rec.toGlobalRecordId === "function") {
+        partner = rec.toGlobalRecordId(local) >>> 0;
       }
     } catch { /* not a door, or no espm record */ }
-    this.partnerCache.set(refrId, partner);
+    this.rememberEspm(this.partnerCache, refrId, partner);
     return partner;
+  }
+
+  // "DOOR" / "CONT" / "" - the base object behind a placed reference. Claiming
+  // is limited to these two so a stray form id cannot be turned into property.
+  private baseTypeOf(ctx: SystemContext, refrId: number): string {
+    const cached = this.baseTypeCache.get(refrId);
+    if (cached !== undefined) return cached;
+    const mp = ctx.svr as Mp;
+    let type = "";
+    try {
+      const refr = mp.lookupEspmRecordById(refrId);
+      const local = this.readFormIdField(refr, "NAME");
+      const baseId = local && typeof refr.toGlobalRecordId === "function" ? refr.toGlobalRecordId(local) >>> 0 : 0;
+      if (baseId) {
+        const base = mp.lookupEspmRecordById(baseId);
+        type = String((base && base.record && base.record.type) || "");
+      }
+    } catch { /* not an espm reference */ }
+    this.rememberEspm(this.baseTypeCache, refrId, type);
+    return type;
+  }
+
+  private isClaimable(ctx: SystemContext, refrId: number): boolean {
+    const t = this.baseTypeOf(ctx, refrId);
+    return t === "DOOR" || t === "CONT";
+  }
+
+  // First four bytes of a field, little-endian: a plugin-local form id.
+  private readFormIdField(lookup: any, fieldType: string): number {
+    const fields = lookup && lookup.record && Array.isArray(lookup.record.fields) ? lookup.record.fields : [];
+    const field = fields.filter((f: any) => f && f.type === fieldType)[0];
+    if (!field || !field.data || field.data.length < 4) return 0;
+    const b = field.data;
+    return ((b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0);
+  }
+
+  // ESM data never changes, so overflow can just start the cache over.
+  private rememberEspm<T>(cache: Map<number, T>, refrId: number, value: T): void {
+    if (cache.size >= MAX_ESPM_CACHE) cache.clear();
+    cache.set(refrId, value);
   }
 
   private read(ctx: SystemContext, primary: number): PropertyRecord | null {
@@ -621,31 +720,30 @@ export class HousingSystem implements System {
     const mp = ctx.svr as Mp;
     try {
       mp.set(primary, HOUSING_PROP, rec);
-      mp.set(primary, OWNER_INDEX_PROP, String(rec.owner));
-      if (rec.partner) {
-        const pointer: PrimaryPointer = { primary };
-        mp.set(rec.partner, HOUSING_PROP, pointer);
-      }
     } catch (e) {
       this.log(`[housing] write failed for ${primary.toString(16)}: ${e}`);
       return;
     }
-    this.remember(primary);
+    // The index and the pointer are best-effort; the record itself is stored.
+    try { mp.set(primary, OWNER_INDEX_PROP, String(rec.owner)); } catch { }
+    if (rec.partner) {
+      try {
+        const pointer: PrimaryPointer = { primary };
+        mp.set(rec.partner, HOUSING_PROP, pointer);
+      } catch { }
+    }
+    if (rec.owner !== 0) this.remember(primary); else this.forget(primary);
     this.decorDirty = true;
   }
 
-  private erase(ctx: SystemContext, primary: number, rec: PropertyRecord): void {
-    const mp = ctx.svr as Mp;
-    try {
-      mp.set(primary, HOUSING_PROP, null);
-      mp.set(primary, OWNER_INDEX_PROP, "0");
-      if (rec.partner) mp.set(rec.partner, HOUSING_PROP, null);
-      for (const c of rec.containers) mp.set(c, HOUSING_PROP, null);
-    } catch (e) {
-      this.log(`[housing] erase failed for ${primary.toString(16)}: ${e}`);
-    }
-    this.forget(primary);
-    this.decorDirty = true;
+  // Giving a property up keeps an ownerless stub so the key serial survives;
+  // a later claim then cannot mint a credential old copies already answer to.
+  private release(ctx: SystemContext, primary: number, rec: PropertyRecord): void {
+    this.reKey(ctx, primary, rec);
+    rec.owner = 0;
+    rec.ownerName = "";
+    rec.locked = false;
+    this.write(ctx, primary, rec);
   }
 
   private countClaims(ctx: SystemContext, profileId: number): number {
@@ -662,17 +760,27 @@ export class HousingSystem implements System {
   // Only an index of which refs to touch on boot; the changeform holds the data.
 
   private loadRegistry(): number[] {
+    let raw: string;
     try {
-      const parsed = JSON.parse(fs.readFileSync(REGISTRY_FILE, "utf8"));
-      return Array.isArray(parsed) ? parsed.map((v) => Number(v) >>> 0).filter((v) => v) : [];
+      raw = fs.readFileSync(REGISTRY_FILE, "utf8");
     } catch {
+      return []; // first run
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map((v) => Number(v) >>> 0).filter((v) => v) : [];
+    } catch (e) {
+      this.log(`[housing] ${REGISTRY_FILE} is unreadable, starting empty: ${e}`);
       return [];
     }
   }
 
+  // Write through a temp file so an interrupted write cannot truncate the index.
   private saveRegistry(): void {
+    const tmp = REGISTRY_FILE + ".tmp";
     try {
-      fs.writeFileSync(REGISTRY_FILE, JSON.stringify(this.claimed));
+      fs.writeFileSync(tmp, JSON.stringify(this.claimed));
+      fs.renameSync(tmp, REGISTRY_FILE);
     } catch (e) {
       this.log(`[housing] registry write failed: ${e}`);
     }
@@ -739,9 +847,13 @@ export class HousingSystem implements System {
 
   private claimed: number[] = [];
   private partnerCache = new Map<number, number>();
+  private baseTypeCache = new Map<number, string>();
+  private lastRequestMs = new Map<number, number>();
+  private lastDenyMs = new Map<number, number>();
   private adminRoleIds: string[] = [];
   private adminProfileIds: number[] = [];
   private maxClaims = DEFAULT_MAX_CLAIMS;
+  private maxDistance = DEFAULT_MAX_DISTANCE;
   private decorDirty = false;
   private lastDecorMs = 0;
 }
