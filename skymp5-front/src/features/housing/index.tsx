@@ -30,6 +30,9 @@ export interface HousingData {
   events: HousingEvents;
 }
 
+// Mirrors cleanName in the server's housingSystem.
+const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
+
 const send = (key: string, ...args: unknown[]): void => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,7 +96,7 @@ const Housing = ({ data }: { data: HousingData }) => {
             </button>
           ) : null}
 
-          {manages ? (
+          {manages && data.owned ? (
             <button
               className="housing__button housing__button--primary"
               onClick={() => send(data.locked ? ev.unlock : ev.lock)}
@@ -147,12 +150,16 @@ const Housing = ({ data }: { data: HousingData }) => {
             />
             <button
               className="housing__button"
-              disabled={!rename.trim()}
+              disabled={!rename.trim() || !NAME_CHARS.test(rename.trim())}
               onClick={() => send(ev.rename, rename.trim())}
             >
               Save
             </button>
           </div>
+        ) : null}
+
+        {manages && rename.trim() && !NAME_CHARS.test(rename.trim()) ? (
+          <p className="housing__hint">Letters, numbers, spaces, apostrophes and dashes only.</p>
         ) : null}
 
         <div className="housing__footer">
