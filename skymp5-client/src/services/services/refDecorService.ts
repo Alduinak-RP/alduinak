@@ -1,10 +1,10 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { notifyNextUpdate } from "./customPacketUtil";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { getInventory } from "../../sync/inventory";
 import { ObjectReference } from "skyrimPlatform";
+import { logTrace } from "../../logging";
 
 const KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
 const REQUIRES_KEY_LOCK_LEVEL = 255;
@@ -67,7 +67,7 @@ export class RefDecorService extends ClientListener {
         }
       });
     }
-    notifyNextUpdate(this.controller, this.sp, `[decor] sync: ${(content["refs"] as any[]).length} refs`);
+    logTrace(this, `sync:`, (content["refs"] as any[]).length, `refs`);
     for (const raw of content["refs"] as any[]) {
       const refId = Number(raw?.refId) >>> 0;
       if (!refId) {
@@ -94,7 +94,7 @@ export class RefDecorService extends ClientListener {
     const stats = { names: 0, locks: 0, errors: 0, notLoaded: 0, firstError: "" };
     this.decor.forEach((d) => this.apply(d, heldKeys, stats));
     if (stats.names || stats.locks || stats.errors) {
-      notifyNextUpdate(this.controller, this.sp, `[decor] applied names=${stats.names} locks=${stats.locks} errors=${stats.errors} notloaded=${stats.notLoaded}${stats.firstError ? " | " + stats.firstError : ""}`);
+      logTrace(this, `applied names=${stats.names} locks=${stats.locks} errors=${stats.errors} notloaded=${stats.notLoaded}${stats.firstError ? " | " + stats.firstError : ""}`);
     }
   }
 
