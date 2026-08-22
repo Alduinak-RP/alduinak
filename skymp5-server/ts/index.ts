@@ -20,6 +20,7 @@ import { System } from "./systems/system";
 import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
+import { HousingSystem } from "./systems/housingSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { SearchSystem } from "./systems/searchSystem";
@@ -210,6 +211,7 @@ const main = async () => {
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing
     new AdminSystem(log),
     new CaptureSystem(log),
+    new HousingSystem(log),
     new TradeSystem(log),
     new SearchSystem(log),
     new VoiceSystem(log),
