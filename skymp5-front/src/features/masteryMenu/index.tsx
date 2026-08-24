@@ -80,16 +80,34 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
   // Browsing is free; the chosen craft is what the panel opens on.
   const [viewing, setViewing] = useState(chosen || (professions[0] ? professions[0].id : ''));
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [committing, setCommitting] = useState(false);
 
   useEffect(() => {
-    if (chosen) setViewing(chosen);
+    if (chosen) {
+      setViewing(chosen);
+      setCommitting(false);
+      setConfirming(null);
+    }
   }, [chosen]);
 
   useEffect(() => {
     const onUnfocused = () => send(ev.close);
     window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
-  }, []);
+  }, [ev.close]);
+
+  // index.js fires menu:escape globally; while the commit dialog is up,
+  // Escape should back out of the dialog rather than the whole menu.
+  useEffect(() => {
+    if (!confirming) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      setConfirming(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [confirming]);
 
   const current = professions.filter((p) => p.id === viewing)[0] || professions[0];
   if (!current) return null;
@@ -136,8 +154,12 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
             ) : chosen ? (
               <p className="mastery__played mastery__played--muted">You follow another craft.</p>
             ) : (
-              <button className="mastery__choose" onClick={() => setConfirming(current.id)}>
-                Take up this craft
+              <button
+                className="mastery__choose"
+                disabled={committing}
+                onClick={() => setConfirming(current.id)}
+              >
+                {committing ? 'Taking it up...' : 'Take up this craft'}
               </button>
             )}
           </div>
@@ -175,6 +197,7 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
                   className="mastery__choose"
                   onClick={() => {
                     send(ev.choose, confirming);
+                    setCommitting(true);
                     setConfirming(null);
                   }}
                 >

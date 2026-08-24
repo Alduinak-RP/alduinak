@@ -261,10 +261,15 @@ $text-dim: rgba(232, 224, 208, 0.6);
     cursor: pointer;
     transition: background $fast, border-color $fast, color $fast;
 
-    &:hover {
+    &:hover:not(:disabled) {
       background: rgba(200, 180, 138, 0.22);
       border-color: $gold;
       color: #fff;
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: default;
     }
   }
 
@@ -274,11 +279,13 @@ $text-dim: rgba(232, 224, 208, 0.6);
     color: $text-dim;
   }
 
+  // Inside the frame: anchoring it below pushed it off short viewports.
   &__close {
     position: absolute;
-    right: 14px;
-    bottom: -46px;
-    background: rgba(10, 10, 10, 0.94);
+    right: 16px;
+    bottom: 14px;
+    z-index: 2;
+    background: rgba(10, 10, 10, 0.92);
   }
 
   // ── Commit confirmation ────────────────────────────────────────────────────
@@ -286,6 +293,7 @@ $text-dim: rgba(232, 224, 208, 0.6);
   &__confirm-shade {
     position: absolute;
     inset: 0;
+    z-index: 3;
     display: grid;
     place-items: center;
     background: rgba(0, 0, 0, 0.78);
