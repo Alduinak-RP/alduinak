@@ -72,6 +72,7 @@ export class MasteryService extends ClientListener {
     if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
 
     logTrace(this, `Requesting mastery info`);
+    this.awaitingOpen = true;
     sendCustomPacket(this.controller, { customPacketType: "masteryInfoRequest" });
   }
 
@@ -90,7 +91,12 @@ export class MasteryService extends ClientListener {
           rankHours: rankHours as number[],
           professions: professions as Profession[],
         };
-        this.openMenu();
+        // A reply we did not ask for (a refresh after choosing) updates the
+        // open menu but must never force a closed one open.
+        if (this.awaitingOpen || this.menuOpen) {
+          this.awaitingOpen = false;
+          this.openMenu();
+        }
         break;
       }
       case "masteryNotice":
@@ -131,6 +137,7 @@ export class MasteryService extends ClientListener {
 
   private closeMenu(): void {
     this.menuOpen = false;
+    this.awaitingOpen = false;
     closeFormMenu(this.sp, WIDGET_ID);
   }
 
@@ -153,4 +160,5 @@ export class MasteryService extends ClientListener {
 
   private menuKey: DxScanCode = DxScanCode.K;
   private menuOpen = false;
+  private awaitingOpen = false;
 }
