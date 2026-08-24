@@ -20,6 +20,7 @@ import ContextMenu from './features/contextMenu';
 import CharCreator from './features/charCreator';
 import EmoteWheel from './features/emoteWheel';
 import Housing from './features/housing';
+import MasteryMenu from './features/masteryMenu';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -230,6 +231,8 @@ const Constructor = props => {
       return <EmoteWheel data={rend} />;
     case 'housing':
       return <Housing data={rend} />;
+    case 'mastery':
+      return <MasteryMenu data={rend} />;
     case 'death':
       return (
         <DeathScreen seconds={rend.seconds} onChoice={rend.onChoice} />
