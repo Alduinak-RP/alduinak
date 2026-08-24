@@ -39,6 +39,15 @@ const MASTERY_PROP = "private.mastery";
 const ACCRUE_INTERVAL_MS = 60000;
 const DEFAULT_RANK_HOURS = [10, 40, 100];
 const DEFAULT_IDLE_MINUTES = 5;
+// A stalled tick must not pay out the whole gap, and a backward clock step
+// must not poison the accumulator.
+const MAX_CREDIT_MS = 5 * 60000;
+const CHOOSE_COOLDOWN_MS = 1000;
+// getUserByActor reports failure with Networking::InvalidUserId, not -1.
+const INVALID_USER_ID = 65535;
+// The client wipes and re-applies learnedSpells about a second after spawn;
+// a login backfill has to land after that.
+const LOGIN_GRANT_DELAY_MS = 5000;
 
 export const RANK_NAMES = ["Novice", "Adept", "Expert", "Master"];
 
@@ -66,9 +75,12 @@ interface MasteryRecord {
   profession: string | null;
   seconds: number;
   rank: number;
+  // Marker spells already handed to this character, so a login does not
+  // re-grant them into the client's spawn-time spell wipe.
+  granted: number[];
 }
 
-const emptyRecord = (): MasteryRecord => ({ profession: null, seconds: 0, rank: 0 });
+const emptyRecord = (): MasteryRecord => ({ profession: null, seconds: 0, rank: 0, granted: [] });
 
 export class MasterySystem implements System {
   systemName = "MasterySystem";
@@ -117,9 +129,16 @@ export class MasterySystem implements System {
 
   // Credit a minute of play to everyone who is present and not idle.
   async updateAsync(ctx: SystemContext): Promise<void> {
+    this.flushPendingGrants(ctx);
     const now = Date.now();
-    if (now - this.lastAccrualMs < ACCRUE_INTERVAL_MS) return;
-    const elapsedMs = this.lastAccrualMs === 0 ? 0 : now - this.lastAccrualMs;
+    const sinceLast = now - this.lastAccrualMs;
+    // A clock step backwards leaves sinceLast negative; re-base and skip.
+    if (sinceLast < 0) {
+      this.lastAccrualMs = now;
+      return;
+    }
+    if (sinceLast < ACCRUE_INTERVAL_MS) return;
+    const elapsedMs = this.lastAccrualMs === 0 ? 0 : Math.min(sinceLast, MAX_CREDIT_MS);
     this.lastAccrualMs = now;
     if (!elapsedMs) return;
 
@@ -139,7 +158,6 @@ export class MasterySystem implements System {
       if (rankUp) {
         this.applySpells(ctx, actorId, rec);
         this.notice(ctx, userId, `You are now ${RANK_NAMES[newRank]} of the ${this.labelOf(rec.profession)}.`);
-        this.sendMenu(ctx, userId);
       }
     }
   }
@@ -151,13 +169,34 @@ export class MasterySystem implements System {
     if (!rec || !rec.profession) return;
     const corrected = this.rankFor(rec.seconds);
     if (corrected !== rec.rank) {
+      // Thresholds can be retuned under a character's feet, both ways.
+      if (corrected < rec.rank) this.revokeAbove(ctx, actorId, rec, corrected);
       rec.rank = corrected;
       this.write(ctx, actorId, rec);
     }
-    this.applySpells(ctx, actorId, rec);
+    // Spells already in the changeform ride the spawn message down on their
+    // own; only a gap (new config, retuned rank) needs granting, and it has to
+    // wait out the client's spawn-time removeAllSpells.
+    if (this.missingSpells(rec).length) {
+      this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
+    }
+  }
+
+  private flushPendingGrants(ctx: SystemContext): void {
+    if (!this.pendingGrants.size) return;
+    const now = Date.now();
+    this.pendingGrants.forEach((dueAt, actorId) => {
+      if (now < dueAt) return;
+      this.pendingGrants.delete(actorId);
+      const rec = this.read(ctx, actorId);
+      if (rec && rec.profession) this.applySpells(ctx, actorId, rec);
+    });
   }
 
   private onChoose(ctx: SystemContext, userId: number, content: Content): void {
+    const now = Date.now();
+    if (now - (this.lastChooseMs.get(userId) || 0) < CHOOSE_COOLDOWN_MS) return;
+    this.lastChooseMs.set(userId, now);
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     const professionId = String(content["profession"] || "");
@@ -181,8 +220,11 @@ export class MasterySystem implements System {
   resetCharacter(ctx: SystemContext, actorId: number): boolean {
     const rec = this.read(ctx, actorId);
     if (!rec || !rec.profession) return false;
-    this.revokeSpells(ctx, actorId, rec.profession);
-    this.write(ctx, actorId, emptyRecord());
+    this.revokeSpells(ctx, actorId, rec);
+    // Hours at the keyboard are not the character's fault; only the craft goes.
+    rec.profession = null;
+    rec.rank = 0;
+    this.write(ctx, actorId, rec);
     const userId = this.userOf(ctx, actorId);
     this.notice(ctx, userId, "Your mastery has been set aside. You may choose again.");
     this.sendMenu(ctx, userId);
@@ -216,21 +258,50 @@ export class MasterySystem implements System {
     return rank;
   }
 
+  // Markers the character should hold but does not yet.
+  private missingSpells(rec: MasteryRecord): number[] {
+    if (!rec.profession) return [];
+    const list = this.spells[rec.profession];
+    if (!list) return [];
+    const out: number[] = [];
+    for (let i = 0; i <= rec.rank && i < list.length; i++) {
+      const spellId = list[i];
+      if (spellId && rec.granted.indexOf(spellId) === -1) out.push(spellId);
+    }
+    return out;
+  }
+
   // Every marker up to the current rank; the plugin's recipes condition on the
   // exact rank they belong to, so a Master still needs the Novice marker.
   private applySpells(ctx: SystemContext, actorId: number, rec: MasteryRecord): void {
+    const missing = this.missingSpells(rec);
+    if (!missing.length) return;
+    for (const spellId of missing) {
+      this.addSpell(ctx, actorId, spellId);
+      rec.granted.push(spellId);
+    }
+    this.write(ctx, actorId, rec);
+  }
+
+  // Thresholds can be raised after characters have already ranked up; take back
+  // the markers they no longer qualify for.
+  private revokeAbove(ctx: SystemContext, actorId: number, rec: MasteryRecord, keepRank: number): void {
     if (!rec.profession) return;
     const list = this.spells[rec.profession];
     if (!list) return;
-    for (let i = 0; i <= rec.rank && i < list.length; i++) {
-      this.addSpell(ctx, actorId, list[i]);
+    for (let i = keepRank + 1; i < list.length; i++) {
+      const spellId = list[i];
+      const at = rec.granted.indexOf(spellId);
+      if (spellId && at !== -1) {
+        this.removeSpell(ctx, actorId, spellId);
+        rec.granted.splice(at, 1);
+      }
     }
   }
 
-  private revokeSpells(ctx: SystemContext, actorId: number, professionId: string): void {
-    const list = this.spells[professionId];
-    if (!list) return;
-    for (const spellId of list) this.removeSpell(ctx, actorId, spellId);
+  private revokeSpells(ctx: SystemContext, actorId: number, rec: MasteryRecord): void {
+    for (const spellId of rec.granted.slice()) this.removeSpell(ctx, actorId, spellId);
+    rec.granted = [];
   }
 
   // AddSpell through Papyrus so the server records it in learnedSpells (which
@@ -274,6 +345,7 @@ export class MasterySystem implements System {
         profession,
         seconds: Math.max(0, Number(r.seconds) || 0),
         rank: Math.min(RANK_NAMES.length - 1, Math.max(0, Number(r.rank) || 0)),
+        granted: Array.isArray(r.granted) ? r.granted.map((v) => Number(v) >>> 0).filter((v) => v) : [],
       };
     } catch {
       return null;
@@ -316,7 +388,12 @@ export class MasterySystem implements System {
   }
 
   private userOf(ctx: SystemContext, actorId: number): number {
-    try { return (ctx.svr as Mp).getUserByActor(actorId); } catch { return -1; }
+    try {
+      const userId = (ctx.svr as Mp).getUserByActor(actorId);
+      return userId === INVALID_USER_ID ? -1 : userId;
+    } catch {
+      return -1;
+    }
   }
 
   private send(ctx: SystemContext, userId: number, payload: Record<string, unknown>): void {
@@ -332,4 +409,6 @@ export class MasterySystem implements System {
   private idleMs = DEFAULT_IDLE_MINUTES * 60000;
   private spells: Record<string, number[]> = {};
   private lastAccrualMs = 0;
+  private lastChooseMs = new Map<number, number>();
+  private pendingGrants = new Map<number, number>();
 }

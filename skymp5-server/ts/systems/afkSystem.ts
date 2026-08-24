@@ -66,7 +66,6 @@ export class AfkSystem implements System {
 
   async updateAsync(ctx: SystemContext): Promise<void> {
     await new Promise((r) => setTimeout(r, POLL_MS));
-    if (!this.kickMs) return;
     const mp = ctx.svr as Mp;
     const now = Date.now();
 
@@ -91,6 +90,8 @@ export class AfkSystem implements System {
       }
 
       const idleMs = now - state.lastActivity;
+      // The idle clock keeps running with kicking off: MasterySystem reads it.
+      if (!this.kickMs) continue;
       if (idleMs >= this.kickMs) {
         this.log(`AfkSystem: kicking user ${userId} (actor ${actorId.toString(16)}) after ${Math.round(idleMs / 60000)} min idle`);
         try { mp.kick(userId); } catch (e) { this.log(`AfkSystem: kick failed: ${e}`); }
