@@ -44,6 +44,13 @@ export class AfkSystem implements System {
       : "AfkSystem: disabled (afkKickMinutes is 0)");
   }
 
+  // Milliseconds since this user last did something. Other systems (mastery
+  // playtime) reuse this rather than sampling position a second time.
+  idleMsOf(userId: number): number {
+    const st = this.states.get(userId);
+    return st ? Date.now() - st.lastActivity : 0;
+  }
+
   connect(userId: number): void {
     this.states.set(userId, { lastActivity: Date.now(), lastSample: "", warned: false });
   }

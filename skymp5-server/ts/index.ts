@@ -21,6 +21,7 @@ import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
 import { HousingSystem } from "./systems/housingSystem";
+import { MasterySystem } from "./systems/masterySystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { SearchSystem } from "./systems/searchSystem";
@@ -203,6 +204,8 @@ const main = async () => {
 
   const log = console.log;
   const systems = new Array<System>();
+  // Mastery reads AfkSystem's idle clock rather than sampling positions again.
+  const afkSystem = new AfkSystem(log);
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
@@ -215,7 +218,8 @@ const main = async () => {
     new TradeSystem(log),
     new SearchSystem(log),
     new VoiceSystem(log),
-    new AfkSystem(log),
+    afkSystem,
+    new MasterySystem(log, afkSystem),
     new ZoneSpawnSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
