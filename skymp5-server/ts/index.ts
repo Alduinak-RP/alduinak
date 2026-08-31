@@ -22,6 +22,7 @@ import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
+import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { SearchSystem } from "./systems/searchSystem";
@@ -220,6 +221,7 @@ const main = async () => {
     new VoiceSystem(log),
     afkSystem,
     new MasterySystem(log, afkSystem),
+    new BountyBoardSystem(log),
     new ZoneSpawnSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
