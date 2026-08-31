@@ -140,7 +140,7 @@ async function serviceLogFiles(svc) {
     if (p) files.push(p)
   }
   if (svc.key === 'game') {
-    for (const f of ['chat.log', 'admin.log', 'pvp.log', 'trading.log']) {
+    for (const f of ['chat.log', 'admin.log', 'pvp.log', 'trading.log', 'bounty.log']) {
       files.push(path.join(chatLogDir(), f))
     }
   }
