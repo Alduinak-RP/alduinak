@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
@@ -43,12 +43,15 @@ let info: BoardInfo = {
 };
 
 /**
- * Bounty board menu. There is no hotkey: activating a missive board in the
- * world makes the server push the menu, so it only ever opens at a board.
- * Reading is free; pinning a notice costs gold, taken server-side.
+ * Bounty board menu (default N, at a board). The Missives board activator is
+ * an unnamed primitive the engine will not offer an activate prompt for, so
+ * the key asks the server to open whichever board is within reach; the server
+ * checks proximity and pushes the menu. Reading is free; pinning a notice
+ * costs gold, taken server-side.
  *
  * Protocol - all messages are MsgType.CustomPacket with a JSON dump.
  *
+ *   Client -> Server: { "customPacketType": "bountyBoardOpenRequest" }
  *   Server -> Client: { "customPacketType": "bountyBoardMenu", "board",
  *                       "boardName", "reason", "costGold", "gold",
  *                       "maxTextLen", "maxNotes", "expiryDays", "notes" }
@@ -69,6 +72,8 @@ export class BountyBoardService extends ClientListener {
       this.menuOpen = false;
       sendCustomPacket(this.controller, { customPacketType: "bountyBoardClose" });
     });
+
+    this.menuKey = readMenuKeyCode(this.sp, "bountyBoardMenuKeyCode", DxScanCode.N);
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -76,7 +81,11 @@ export class BountyBoardService extends ClientListener {
     if (e.device !== InputDeviceType.Keyboard) return;
     if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
       this.closeMenu();
+      return;
     }
+    if (e.code !== this.menuKey || !e.isDown || this.menuOpen) return;
+    if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
+    sendCustomPacket(this.controller, { customPacketType: "bountyBoardOpenRequest" });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -168,5 +177,6 @@ export class BountyBoardService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
+  private menuKey: DxScanCode = DxScanCode.N;
   private menuOpen = false;
 }
