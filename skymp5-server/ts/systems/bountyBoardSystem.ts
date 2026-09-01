@@ -43,8 +43,10 @@ type Mp = any;
 
 const BOARD_PROP = "private.bountyBoard";
 
-// The Missives board activator, resolved against the live load order.
-const BOARD_BASE_DESC = "d65:Missives.esp";
+// The board comes as two bases: the named, visible activator players actually
+// hit with the crosshair (_M_MissiveBoard, "Missive Board") and the invisible
+// script primitive singleplayer uses (_M_ActivatorBoard). Both are boards.
+const BOARD_BASE_DESCS = ["12cb:Missives.esp", "d65:Missives.esp"];
 
 const GOLD_BASE_ID = 0x0000000f;
 
@@ -61,18 +63,20 @@ const MAX_ESPM_CACHE = 4096;
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
 
-// The walled cities pair an interior-worldspace board with a Tamriel twin at
-// the same spot; notes live on the first desc listed, the rest are aliases.
+// Each city's board is a cluster of references: the visible mesh activator
+// (what players activate) plus the invisible primitive, and the walled cities
+// carry the whole pair twice (city worldspace and the Tamriel exterior twin).
+// Notes live on the first desc listed; every other ref is an alias of it.
 const BOARDS: Array<{ name: string; descs: string[] }> = [
-  { name: "Whiterun", descs: ["d66:Missives.esp", "21847:Missives.esp"] },
-  { name: "Riften", descs: ["9478:Missives.esp", "2183f:Missives.esp"] },
-  { name: "Windhelm", descs: ["9492:Missives.esp", "21845:Missives.esp"] },
-  { name: "Markarth", descs: ["94a3:Missives.esp", "21841:Missives.esp"] },
-  { name: "Solitude", descs: ["9490:Missives.esp", "21839:Missives.esp"] },
-  { name: "Dawnstar", descs: ["94b1:Missives.esp"] },
-  { name: "Winterhold", descs: ["94b5:Missives.esp"] },
-  { name: "Morthal", descs: ["94ad:Missives.esp"] },
-  { name: "Falkreath", descs: ["94a9:Missives.esp"] },
+  { name: "Whiterun", descs: ["d66:Missives.esp", "12cc:Missives.esp", "21846:Missives.esp", "21847:Missives.esp"] },
+  { name: "Riften", descs: ["9478:Missives.esp", "9491:Missives.esp", "21844:Missives.esp", "2183f:Missives.esp"] },
+  { name: "Windhelm", descs: ["9492:Missives.esp", "9477:Missives.esp", "2183a:Missives.esp", "21845:Missives.esp"] },
+  { name: "Markarth", descs: ["94a3:Missives.esp", "94a2:Missives.esp", "21840:Missives.esp", "21841:Missives.esp"] },
+  { name: "Solitude", descs: ["9490:Missives.esp", "948f:Missives.esp", "21838:Missives.esp", "21839:Missives.esp"] },
+  { name: "Dawnstar", descs: ["94b1:Missives.esp", "94ae:Missives.esp"] },
+  { name: "Winterhold", descs: ["94b5:Missives.esp", "94b2:Missives.esp"] },
+  { name: "Morthal", descs: ["94ad:Missives.esp", "94aa:Missives.esp"] },
+  { name: "Falkreath", descs: ["94a9:Missives.esp", "94a6:Missives.esp"] },
 ];
 
 interface BoardNote {
@@ -123,10 +127,13 @@ export class BountyBoardSystem implements System {
     try { fs.mkdirSync(this.logDir, { recursive: true }); } catch { /* appendFile will complain */ }
 
     const mp = ctx.svr as Mp;
-    try {
-      this.boardBaseId = mp.getIdFromDesc(BOARD_BASE_DESC) >>> 0;
-    } catch {
-      this.log(`[bounty] ${BOARD_BASE_DESC} is not in the load order, boards disabled`);
+    for (const desc of BOARD_BASE_DESCS) {
+      try {
+        this.boardBaseIds.add(mp.getIdFromDesc(desc) >>> 0);
+      } catch { /* base missing from this load order */ }
+    }
+    if (!this.boardBaseIds.size) {
+      this.log(`[bounty] Missives.esp is not in the load order, boards disabled`);
       return;
     }
     for (const board of BOARDS) {
@@ -217,14 +224,14 @@ export class BountyBoardSystem implements System {
 
   // ── Opening ─────────────────────────────────────────────────────────────────
 
-  // The Missives activator is an unnamed primitive whose script never runs
-  // under skymp, so the engine offers no activate prompt. The client (hotkey)
-  // or the gamemode (/board) asks instead, and reach is checked here.
+  // Activating the visible board opens the menu through onActivate; this is
+  // the other road in, for the N hotkey and the /board command. Reach is
+  // checked here.
   private onOpenRequest(ctx: SystemContext, userId: number): void {
     const now = Date.now();
     if (now - (this.lastOpenMs.get(userId) || 0) < OPEN_COOLDOWN_MS) return;
     this.lastOpenMs.set(userId, now);
-    if (!this.boardBaseId) return;
+    if (!this.boardBaseIds.size) return;
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     const board = this.nearestBoard(ctx, actorId);
@@ -476,10 +483,10 @@ export class BountyBoardSystem implements System {
   // Known placements resolve from the table; anything else is checked against
   // the Missives activator base, so a patch may add boards without code work.
   private boardOf(ctx: SystemContext, refrId: number): { primary: number; name: string } | null {
-    if (!this.boardBaseId || !refrId) return null;
+    if (!this.boardBaseIds.size || !refrId) return null;
     const known = this.knownBoards.get(refrId);
     if (known) return known;
-    if (this.baseIdOf(ctx, refrId) !== this.boardBaseId) return null;
+    if (!this.boardBaseIds.has(this.baseIdOf(ctx, refrId))) return null;
     const board = { primary: refrId, name: "Missive" };
     this.knownBoards.set(refrId, board);
     return board;
@@ -659,7 +666,7 @@ export class BountyBoardSystem implements System {
   private maxTextLen = DEFAULT_MAX_TEXT_LEN;
   private maxDistance = DEFAULT_MAX_DISTANCE;
   private logDir = "C:\\logs";
-  private boardBaseId = 0;
+  private boardBaseIds = new Set<number>();
   private knownBoards = new Map<number, { primary: number; name: string }>();
   private baseIdCache = new Map<number, number>();
   private sessions = new Map<number, BoardSession>();
