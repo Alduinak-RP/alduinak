@@ -18,6 +18,7 @@ type Mp = any;
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
+//     { customPacketType: "bountyBoardOpenRequest" }
 //     { customPacketType: "bountyBoardPost", board: <refrId>, text }
 //     { customPacketType: "bountyBoardClose" }
 //   Server -> Client:
@@ -54,6 +55,7 @@ const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
 
 const POST_COOLDOWN_MS = 5000;
+const OPEN_COOLDOWN_MS = 1000;
 const SWEEP_INTERVAL_MS = 60 * 60000;
 const MAX_ESPM_CACHE = 4096;
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
@@ -142,6 +144,12 @@ export class BountyBoardSystem implements System {
     ctx.gm.on("userAssignActor", (userId: number) => {
       this.sessions.delete(userId);
     });
+    // The gamemode's /board chat command opens the menu through this bridge,
+    // same globalThis pattern as the trade log.
+    (globalThis as any).__alduinakBountyOpen = (actorId: number) => {
+      const userId = this.userOf(ctx, Number(actorId) >>> 0);
+      if (userId >= 0) this.onOpenRequest(ctx, userId);
+    };
     this.log(`[bounty] ready, ${BOARDS.length} boards, ${this.costGold} gold a notice, ${this.expiryDays} days on the board`);
   }
 
@@ -180,6 +188,7 @@ export class BountyBoardSystem implements System {
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     switch (type) {
+      case "bountyBoardOpenRequest": this.onOpenRequest(ctx, userId); break;
       case "bountyBoardPost": this.onPost(ctx, userId, content); break;
       case "bountyBoardClose": this.sessions.delete(userId); break;
       default: break;
@@ -203,6 +212,73 @@ export class BountyBoardSystem implements System {
   disconnect(userId: number): void {
     this.sessions.delete(userId);
     this.lastPostMs.delete(userId);
+    this.lastOpenMs.delete(userId);
+  }
+
+  // ── Opening ─────────────────────────────────────────────────────────────────
+
+  // The Missives activator is an unnamed primitive whose script never runs
+  // under skymp, so the engine offers no activate prompt. The client (hotkey)
+  // or the gamemode (/board) asks instead, and reach is checked here.
+  private onOpenRequest(ctx: SystemContext, userId: number): void {
+    const now = Date.now();
+    if (now - (this.lastOpenMs.get(userId) || 0) < OPEN_COOLDOWN_MS) return;
+    this.lastOpenMs.set(userId, now);
+    if (!this.boardBaseId) return;
+    const actorId = this.actorOf(ctx, userId);
+    if (!actorId) return;
+    const board = this.nearestBoard(ctx, actorId);
+    if (!board) {
+      this.notice(ctx, userId, "There is no notice board within reach.");
+      return;
+    }
+    this.sessions.set(userId, { primary: board.primary, refr: board.refr, name: board.name });
+    this.sendMenu(ctx, userId, "open");
+  }
+
+  private nearestBoard(ctx: SystemContext, actorId: number): { primary: number; refr: number; name: string } | null {
+    const mp = ctx.svr as Mp;
+    let pos: any;
+    try { pos = mp.get(actorId, "pos"); } catch { return null; }
+    if (!Array.isArray(pos)) return null;
+    let where = "";
+    try { where = String(mp.get(actorId, "worldOrCellDesc") || ""); } catch { /* distance check only */ }
+    let best: { primary: number; refr: number; name: string } | null = null;
+    let bestD2 = this.maxDistance * this.maxDistance;
+    this.knownBoards.forEach((board, refrId) => {
+      const spot = this.boardSpot(ctx, refrId);
+      // Interiors have their own coordinate origins; only compare inside
+      // the same world or cell.
+      if (!spot || (where && spot.where && spot.where !== where)) return;
+      const dx = Number(pos[0]) - spot.pos[0];
+      const dy = Number(pos[1]) - spot.pos[1];
+      const dz = Number(pos[2]) - spot.pos[2];
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (Number.isFinite(d2) && d2 <= bestD2) {
+        bestD2 = d2;
+        best = { primary: board.primary, refr: refrId, name: board.name };
+      }
+    });
+    return best;
+  }
+
+  // Boards never move, so position and world resolve once per refr.
+  private boardSpot(ctx: SystemContext, refrId: number): { pos: number[]; where: string } | null {
+    const cached = this.spotCache.get(refrId);
+    if (cached !== undefined) return cached;
+    const mp = ctx.svr as Mp;
+    let spot: { pos: number[]; where: string } | null = null;
+    try {
+      const pos = mp.get(refrId, "pos");
+      if (Array.isArray(pos)) {
+        spot = {
+          pos: [Number(pos[0]), Number(pos[1]), Number(pos[2])],
+          where: String(mp.get(refrId, "worldOrCellDesc") || ""),
+        };
+      }
+    } catch { /* reference the server cannot resolve */ }
+    this.spotCache.set(refrId, spot);
+    return spot;
   }
 
   // ── Posting ─────────────────────────────────────────────────────────────────
@@ -588,5 +664,7 @@ export class BountyBoardSystem implements System {
   private baseIdCache = new Map<number, number>();
   private sessions = new Map<number, BoardSession>();
   private lastPostMs = new Map<number, number>();
+  private lastOpenMs = new Map<number, number>();
+  private spotCache = new Map<number, { pos: number[]; where: string } | null>();
   private lastSweepMs = 0;
 }
