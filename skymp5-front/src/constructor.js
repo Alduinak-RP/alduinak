@@ -22,6 +22,7 @@ import EmoteWheel from './features/emoteWheel';
 import Housing from './features/housing';
 import MasteryMenu from './features/masteryMenu';
 import BountyBoard from './features/bountyBoard';
+import InteractPrompt from './features/interactPrompt';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -236,6 +237,8 @@ const Constructor = props => {
       return <MasteryMenu data={rend} />;
     case 'bountyBoard':
       return <BountyBoard data={rend} />;
+    case 'interactPrompt':
+      return <InteractPrompt data={rend} />;
     case 'death':
       return (
         <DeathScreen seconds={rend.seconds} onChoice={rend.onChoice} />

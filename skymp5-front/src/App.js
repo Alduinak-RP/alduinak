@@ -95,7 +95,7 @@ class App extends React.Component {
         <div style={{ position: 'static' }}>
           {this.state.widgets.map((widget, index) =>
             <Constructor
-              key={(widget.type === 'trade') ? ('trade-' + widget.id) : (widget.type === 'adminPanel') ? ('adminPanel-' + widget.id) : (widget.type === 'contextMenu') ? ('contextMenu-' + widget.id) : (widget.type === 'emoteWheel') ? ('emoteWheel-' + widget.id) : (widget.type === 'housing') ? ('housing-' + widget.id) : (widget.type === 'mastery') ? ('mastery-' + widget.id) : (widget.type === 'bountyBoard') ? ('bountyBoard-' + widget.id) : (widget.type === 'charCreator') ? 'charCreator' : (index.toString() + widget.type + ((widget.type === 'form') ? widget.elements + widget.caption : 'chat'))}
+              key={(widget.type === 'trade') ? ('trade-' + widget.id) : (widget.type === 'adminPanel') ? ('adminPanel-' + widget.id) : (widget.type === 'contextMenu') ? ('contextMenu-' + widget.id) : (widget.type === 'emoteWheel') ? ('emoteWheel-' + widget.id) : (widget.type === 'housing') ? ('housing-' + widget.id) : (widget.type === 'mastery') ? ('mastery-' + widget.id) : (widget.type === 'bountyBoard') ? ('bountyBoard-' + widget.id) : (widget.type === 'interactPrompt') ? ('interactPrompt-' + widget.id) : (widget.type === 'charCreator') ? 'charCreator' : (index.toString() + widget.type + ((widget.type === 'form') ? widget.elements + widget.caption : 'chat'))}
               dynamicSize={true}
               elem={widget}
               height={this.props.height || 704}

@@ -40,23 +40,28 @@ base (say, one added by a patch plugin) still works: it gets its own notice
 pool under the generic name "Missive". To pair such a board with an existing
 pool, add its desc to `BOARDS` in `bountyBoardSystem.ts`.
 
-## Why not activation
+## How opening works
 
-`_M_ActivatorBoard` is an **unnamed primitive activator** (no FULL, no model;
-the placement carries the mod's `_M_ActivatorScript` VMAD). In singleplayer
-that script makes the board interactive, but mod Papyrus does not run on the
-skymp client, so the engine never offers an activate prompt and never fires
-an activate event. Opening therefore goes through a proximity request: the
-client (N key) or the gamemode (`/board`, via the `__alduinakBountyOpen`
-global bridge) sends `bountyBoardOpenRequest`, and the server picks the
-nearest board within `bountyBoardMaxDistance` **in the same world or cell**
-(interiors have their own coordinate origins) or answers with a notice.
+Each board is really **two activators**: the visible mesh
+(`_M_MissiveBoard`, "Missive Board", `12cb:Missives.esp`) that the crosshair
+hits and players press E on, and an invisible unnamed primitive
+(`_M_ActivatorBoard`, `d65:Missives.esp`) whose `_M_ActivatorScript` only
+runs in singleplayer. Three roads into the menu:
 
-The `mp.onActivate` hook (chained the same way `HousingSystem` chains it)
-stays armed: if the activator is ever given a FULL name - an xEdit override
-in a patch that masters Missives.esp would do it - E-activation starts
-working through the same menu with no code changes, and the vanilla Missives
-behaviour still never runs.
+1. **E on the board** - the engine activates the visible mesh, the server's
+   chained `mp.onActivate` hook (same chaining as `HousingSystem`) matches
+   either board base, opens the menu and returns false so the vanilla
+   activation never runs.
+2. **N key** (`bountyBoardMenuKeyCode`) - sends `bountyBoardOpenRequest`;
+   the server picks the nearest board within `bountyBoardMaxDistance`
+   **in the same world or cell** (interiors have their own coordinate
+   origins) or answers with a notice.
+3. **`/board`** - the gamemode plugin reaches the same open path through the
+   `__alduinakBountyOpen` global bridge; works on clients that predate the
+   hotkey.
+
+The client's `InteractionPromptService` labels the board **"Read Notice
+Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
 
 ## Posting
 
