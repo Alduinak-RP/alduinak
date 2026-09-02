@@ -46,10 +46,13 @@ let targetName = '';
 let anchor = { x: 0.56, y: 0.5 };
 
 /**
- * Look-at-target interaction menu (default X). Looking at a player opens the
- * player-action / hold-appointment menu. Doors and containers are managed by
- * the housing key (HousingService). Drives the gamemode through its existing
- * contracts.
+ * Look-at-target interaction menu, on the activate key (default E, rebind
+ * via interactMenuKeyCode). Activating a player character opens the
+ * player-action / hold-appointment menu; the InteractionPromptService blocks
+ * the clone's engine activation so no dialogue fires underneath. Everything
+ * that is not a player character passes through to normal activation. Doors
+ * and containers are managed by the housing key (HousingService). Drives the
+ * gamemode through its existing contracts.
  */
 export class PlayerActionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -57,7 +60,7 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
 
-    this.menuKey = readMenuKeyCode(this.sp, "interactMenuKeyCode", DxScanCode.X);
+    this.menuKey = readMenuKeyCode(this.sp, "interactMenuKeyCode", DxScanCode.E);
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -75,28 +78,26 @@ export class PlayerActionService extends ClientListener {
       return;
     }
 
+    // The activate key fires on everything; only player characters are ours,
+    // the rest passes through to normal activation without a word.
     const ref = this.sp.Game.getCurrentCrosshairRef();
-    if (!ref) {
-      notifyNextUpdate(this.controller, this.sp, "Look at a player.");
-      return;
-    }
-
+    if (!ref || ref.getFormID() === 0x14) return;
     const actor = Actor.from(ref);
-    if (actor && ref.getFormID() !== 0x14) {
-      targetName = (ref.getName() || "").trim();
-      this.playerTarget = localIdToRemoteId(ref.getFormID());
-      // Names stay hidden until introduced (ff_knownIds owner prop)
-      if (!targetName || !this.knowsTarget(this.playerTarget)) {
-        targetName = "Stranger";
-      }
-      anchor = this.computeAnchor(ref);
-      logTrace(this, `Opening player-action menu for`, targetName);
-      this.openMenu();
-    } else if (!actor) {
-      notifyNextUpdate(this.controller, this.sp, "Press H to manage doors and containers.");
-    } else {
-      notifyNextUpdate(this.controller, this.sp, "Look at a player.");
+    if (!actor) return;
+    const remoteId = localIdToRemoteId(ref.getFormID());
+    if (!remoteId || remoteId < 0xff000000) return;
+
+    // Belt and braces next to the prompt service's block: no clone dialogue.
+    try { ref.blockActivation(true); } catch { /* unloaded ref */ }
+    targetName = (ref.getName() || "").trim();
+    this.playerTarget = remoteId;
+    // Names stay hidden until introduced (ff_knownIds owner prop)
+    if (!targetName || !this.knowsTarget(this.playerTarget)) {
+      targetName = "Stranger";
     }
+    anchor = this.computeAnchor(ref);
+    logTrace(this, `Opening player-action menu for`, targetName);
+    this.openMenu();
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {

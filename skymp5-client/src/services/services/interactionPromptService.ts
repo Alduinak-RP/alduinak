@@ -1,7 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { closeWidget } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
-import { Actor, CrosshairRefChangedEvent, DxScanCode, Form, FormType, ObjectReference } from "skyrimPlatform";
+import { Actor, CrosshairRefChangedEvent, Form, FormType, ObjectReference } from "skyrimPlatform";
+import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logError } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
@@ -10,41 +11,37 @@ declare const window: any;
 const WIDGET_ID = 27;
 
 const HUD_MENU = "HUD Menu";
-// The engine rewrites the rollover's text and _visible on every crosshair
-// change but leaves _alpha alone, so alpha is the member it will not fight.
+// Only the text is blanked; the vanilla key glyph stays and pairs with our
+// wording. The engine rewrites the rollover's text and _visible on every
+// crosshair change but leaves _alpha alone, so alpha is the member it will
+// not fight.
 const ROLLOVER_ALPHA_PATHS = [
   "_root.HUDMovieBaseInstance.RolloverText._alpha",
-  "_root.HUDMovieBaseInstance.RolloverButton._alpha",
 ];
 
 // The bounty board's visible activator; local id inside Missives.esp.
 const BOARD_BASE_LOCAL_ID = 0x0012cb;
 const BOARD_PLUGIN = "Missives.esp";
 
-// Labels for the common activate binds; anything exotic falls back to E.
-const KEY_LABELS: Partial<Record<number, string>> = {
-  [DxScanCode.E]: "E", [DxScanCode.R]: "R", [DxScanCode.F]: "F", [DxScanCode.Q]: "Q",
-  [DxScanCode.T]: "T", [DxScanCode.G]: "G", [DxScanCode.V]: "V", [DxScanCode.X]: "X",
-  [DxScanCode.Z]: "Z", [DxScanCode.C]: "C", [DxScanCode.Spacebar]: "Space",
-};
-
 interface Prompt {
   verb: string;
   label: string;
-  keyLabel: string;
 }
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
-let prompt: Prompt = { verb: "", label: "", keyLabel: "E" };
+let prompt: Prompt = { verb: "", label: "" };
 
 /**
- * Replaces the vanilla activate rollover with a CEF prompt the server side of
- * the game can phrase however it likes. The vanilla rollover is faded out via
- * the HUD movie's GFx members every frame (skyrim-platform's own cursor-hide
- * technique); the custom prompt follows crosshairRefChanged. The bounty board
- * gets its own wording; everything else keeps its display name with a verb
- * picked by base form type. Purely cosmetic - the engine still performs the
- * actual activation, which the server intercepts where it wants to.
+ * Replaces the vanilla activate rollover text with a CEF prompt the server
+ * side of the game can phrase however it likes; the vanilla key glyph stays.
+ * The rollover text is faded out via the HUD movie's GFx members every frame
+ * (skyrim-platform's own cursor-hide technique); the custom prompt follows
+ * crosshairRefChanged. The bounty board reads "Read Notice Board", player
+ * characters read "Interact" with introduction- and mask-aware names (and
+ * get their engine activation blocked so the interaction menu owns the key),
+ * everything else keeps its display name with a verb picked by base form
+ * type. The engine still performs the actual activation, which the server
+ * intercepts where it wants to.
  *
  * Set customPrompts: false in the skymp5-client settings block to keep the
  * vanilla rollover (also stops the GFx writes, should a HUD swf disagree
@@ -100,8 +97,7 @@ export class InteractionPromptService extends ClientListener {
       this.clearPrompt();
       return;
     }
-    if (this.promptShown
-      && next.verb === prompt.verb && next.label === prompt.label && next.keyLabel === prompt.keyLabel) {
+    if (this.promptShown && next.verb === prompt.verb && next.label === prompt.label) {
       return;
     }
     prompt = next;
@@ -117,21 +113,49 @@ export class InteractionPromptService extends ClientListener {
   }
 
   private promptFor(ref: ObjectReference): Prompt | null {
-    // Actors have nametags; the rollover never named them anyway.
-    if (Actor.from(ref)) return null;
+    const actor = Actor.from(ref);
+    if (actor) return this.actorPromptFor(ref);
     const base = ref.getBaseObject();
     if (!base) return null;
 
-    const keyLabel = this.activateKeyLabel();
     if (this.isBoardBase(base)) {
-      return { verb: "Read", label: "Notice Board", keyLabel };
+      return { verb: "Read", label: "Notice Board" };
     }
 
     const label = (ref.getDisplayName() || base.getName() || "").trim();
     if (!label) return null;
     const verb = this.verbFor(ref, base.getType());
     if (!verb) return null;
-    return { verb, label, keyLabel };
+    return { verb, label };
+  }
+
+  // Player characters get the interaction menu on the activate key; names
+  // follow the introductions system, and a mask already rewrites the
+  // appearance name server-side, so it holds here too.
+  private actorPromptFor(ref: ObjectReference): Prompt | null {
+    if (ref.getFormID() === 0x14) return null;
+    const remoteId = localIdToRemoteId(ref.getFormID());
+    // Server-created characters live in the dynamic id space; everything
+    // below it is a world NPC that keeps its vanilla activation.
+    if (!remoteId || remoteId < 0xff000000) {
+      const name = (ref.getDisplayName() || "").trim();
+      return name ? { verb: "Talk", label: name } : null;
+    }
+    // The engine must not start a dialogue with the clone under our menu.
+    try { ref.blockActivation(true); } catch { /* unloaded ref */ }
+    const raw = (ref.getName() || "").trim();
+    const label = raw && this.knowsTarget(remoteId) ? raw : "Stranger";
+    return { verb: "Interact", label };
+  }
+
+  // True when the local player's ff_knownIds list contains the remote actor
+  // id. A missing list (gamemode without introductions) shows real names.
+  private knowsTarget(remoteId: number): boolean {
+    if (this.sp.storage["ownerModelSet"] !== true) return true;
+    const owner = this.sp.storage["ownerModel"] as Record<string, unknown> | undefined;
+    const known = owner ? owner["ff_knownIds"] : undefined;
+    if (!Array.isArray(known)) return true;
+    return known.includes(remoteId);
   }
 
   private verbFor(ref: ObjectReference, type: number): string | null {
@@ -178,15 +202,6 @@ export class InteractionPromptService extends ClientListener {
     return this.boardBaseId !== 0 && base.getFormID() === this.boardBaseId;
   }
 
-  private activateKeyLabel(): string {
-    try {
-      const code = this.sp.Input.getMappedKey("Activate", 0);
-      return KEY_LABELS[code] || "E";
-    } catch {
-      return "E";
-    }
-  }
-
   private hideVanillaRollover(): void {
     for (const path of ROLLOVER_ALPHA_PATHS) {
       this.sp.Ui.setFloat(HUD_MENU, path, 0);
@@ -217,7 +232,6 @@ export class InteractionPromptService extends ClientListener {
       id: WIDGET_ID,
       verb: prompt.verb,
       label: prompt.label,
-      keyLabel: prompt.keyLabel,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
