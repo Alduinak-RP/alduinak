@@ -18,9 +18,11 @@ interface ContextMenuEvents {
 export interface ContextMenuData {
   targetName: string;
   actions: MenuAction[];
-  anchor: { x: number; y: number }; // normalized CSS coords, snapshot at open
   events: ContextMenuEvents;
 }
+
+// Gap from the screen centre to the panel's top-left corner, in px.
+const GAP = 12;
 
 const send = (key: string, ...args: unknown[]): void => {
   try {
@@ -37,25 +39,24 @@ const ContextMenu = ({ data }: { data: ContextMenuData }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
-  const anchor = data.anchor || { x: 0.56, y: 0.5 };
   const ev = data.events || ({} as ContextMenuEvents);
   const actions = data.actions || [];
 
-  // Clamp the measured panel inside the viewport before first paint.
+  // Panel hangs down-right of the crosshair, clamped inside the viewport before first paint.
   useLayoutEffect(() => {
     const el = panelRef.current;
     if (!el) return;
     const margin = 8;
-    let left = anchor.x * window.innerWidth + 12;
-    let top = anchor.y * window.innerHeight - el.offsetHeight / 2;
+    let left = window.innerWidth / 2 + GAP;
+    let top = window.innerHeight / 2 + GAP;
     left = Math.max(margin, Math.min(left, window.innerWidth - el.offsetWidth - margin));
     top = Math.max(margin, Math.min(top, window.innerHeight - el.offsetHeight - margin));
     setPos({ left, top });
-  }, [anchor.x, anchor.y]);
+  }, [data.targetName, actions.length]);
 
   const style = pos
     ? { left: pos.left + 'px', top: pos.top + 'px' }
-    : { left: 'calc(' + anchor.x * 100 + '% + 12px)', top: anchor.y * 100 + '%', transform: 'translate(0, -50%)' };
+    : { left: 'calc(50% + ' + GAP + 'px)', top: 'calc(50% + ' + GAP + 'px)' };
 
   return (
     <div className="context-menu">

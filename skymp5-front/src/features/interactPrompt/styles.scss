@@ -1,19 +1,17 @@
-// Custom activate prompt at the vanilla rollover spot: lower center. The
-// vanilla key glyph still renders next to it; only the wording is ours.
-// Never interactive.
+// Custom activate prompt beside the vanilla key glyph (about 47% across, 62% down); the glyph stays, only the wording is ours. Never interactive.
 
 $gold: #c8b48a;
 $text: #e8e0d0;
 
 .interactPrompt {
   position: fixed;
-  left: 50%;
-  bottom: 21%;
-  transform: translateX(-50%);
+  left: 49.5%;
+  top: 62%;
+  transform: translateY(-50%);
   z-index: 20;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 2px;
   pointer-events: none;
   font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
