@@ -111,3 +111,18 @@ Mongo).
 - If migration says "newDatabase is not empty, skipping", the `skymp` DB already
   has changeforms - drop the collection (or use a fresh `databaseName`) before
   re-running.
+
+## Cleanup scripts
+
+Both run from the repo root with the game service **stopped** (a running server
+re-upserts every form it holds in memory), read `build/dist/server/server-settings.json`
+at runtime, dry-run by default and write a JSON backup next to the settings file
+before deleting anything with `--apply`.
+
+- `node deploy/mongodb/clean-orphan-changeforms.js [--apply]` removes forms that
+  reference plugins no longer in the load order (aborts on player data).
+- `node deploy/mongodb/delete-changeforms.js <formDesc> ... [--apply]` removes
+  specific forms, e.g. console-spawned NPCs (`62 63` for runtime ids
+  `ff000062`/`ff000063`). Player characters are refused unless `--allow-any`
+  is passed. Restore a deleted form by inserting its backup document back into
+  `changeForms`.

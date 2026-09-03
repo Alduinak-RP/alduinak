@@ -93,4 +93,10 @@ async function main() {
   }
 }
 
-main().catch(err => { console.error('FAILED:', err.message); process.exit(1) })
+// Driver parse errors embed the connection string, so keep credentials out of the console
+main().catch(err => {
+  const uri = settings.databaseUri
+  const msg = typeof uri === 'string' && uri ? String(err.message).split(uri).join('<databaseUri>') : err.message
+  console.error('FAILED:', msg)
+  process.exit(1)
+})
