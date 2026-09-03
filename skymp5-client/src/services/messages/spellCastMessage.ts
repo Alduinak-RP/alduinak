@@ -6,6 +6,8 @@ export interface SpellCastMsgData {
     spell: number
     isDualCasting: boolean
     interruptCast: boolean
+    // Required by the native parser; true only for keep-alive resends of a channeled cast
+    keepAlive: boolean
     castingSource: number
     aimAngle: number,
     aimHeading: number,

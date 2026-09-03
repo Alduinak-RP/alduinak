@@ -1012,13 +1012,9 @@ export class RemoteServer extends ClientListener {
       if (!ac) {
         continue;
       }
-      const stillCasting = ac.getAnimationVariableBool("IsCastingRight")
-        || ac.getAnimationVariableBool("IsCastingLeft")
-        || ac.getAnimationVariableBool("IsCastingDual");
-      if (stillCasting) {
-        logTrace(this, `Clone cast timed out for remote caster`, casterRemoteId.toString(16));
-        interruptCast(ac.getFormID(), watch.castingSource, watch.animVars);
-      }
+      // The clone's IsCasting vars mirror the caster's, so always stop; FinishCast on an idle caster is a no-op
+      logTrace(this, `Clone cast timed out for remote caster`, casterRemoteId.toString(16));
+      interruptCast(ac.getFormID(), watch.castingSource, watch.animVars);
     }
   }
 
