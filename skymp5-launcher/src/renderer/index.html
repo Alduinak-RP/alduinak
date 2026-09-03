@@ -132,7 +132,7 @@
 
   <!-- Settings modal -->
   <div class="modal-overlay" id="modal-settings" hidden>
-    <div class="modal-box">
+    <div class="modal-box modal-box--wide">
       <div class="modal-header">
         <span class="modal-title">&#9881;&nbsp; Settings</span>
         <button class="modal-close" id="modal-close" title="Close">&#10005;</button>
@@ -140,14 +140,14 @@
 
       <!-- Tab bar -->
       <div class="modal-tabs">
-        <button class="modal-tab active" data-tab="install">Installation</button>
+        <button class="modal-tab active" data-tab="install">Repair</button>
         <button class="modal-tab" data-tab="settings">Settings</button>
         <button class="modal-tab" data-tab="trouble">Troubleshooting</button>
       </div>
 
       <div class="modal-body">
 
-        <!-- Installation tab -->
+        <!-- Repair tab -->
         <div class="tab-panel" id="tab-install">
 
           <div class="settings-group">
@@ -171,14 +171,19 @@
           </div>
 
           <div class="settings-group">
-            <label class="setting-label">Installation</label>
+            <label class="setting-label">Repair</label>
             <div class="vortex-status-row install-buttons-row">
-              <button class="btn-detect-vortex" id="btn-create-isolated">Install Game Copy</button>
-              <button class="btn-detect-vortex" id="btn-install-mo2">Install MO2</button>
-              <button class="btn-detect-vortex" id="btn-install-skse">Install SKSE</button>
-              <button class="btn-detect-vortex" id="btn-install-client">Install Client Files</button>
-              <button class="btn-detect-vortex" id="btn-full-install" disabled>Install Modlist</button>
+              <button class="btn-detect-vortex" id="btn-repair-mo2">Repair MO2</button>
+              <button class="btn-detect-vortex" id="btn-repair-game">Repair Game Copy</button>
+              <button class="btn-detect-vortex" id="btn-repair-skse">Repair SKSE</button>
+              <button class="btn-detect-vortex" id="btn-repair-client">Repair Client Files</button>
+              <button class="btn-detect-vortex" id="btn-repair-modlist" disabled>Repair Modlist</button>
             </div>
+            <div class="vortex-status-row install-buttons-row">
+              <button class="btn-detect-vortex" id="btn-repair-all">Repair All</button>
+              <button class="btn-detect-vortex" id="btn-check-files">Check Files</button>
+            </div>
+            <p class="setting-hint">Each button fully reinstalls its part. Check Files scans without changing anything.</p>
             <div class="vortex-status-row" id="isolated-install-group">
               <span class="vortex-status-dot" id="isolated-status-dot"></span>
               <span class="vortex-status-text" id="isolated-status-text">Checking…</span>
@@ -197,6 +202,7 @@
 
           <details class="settings-collapse" open>
             <summary>Graphics</summary>
+            <div class="collapse-grid">
             <div class="settings-group">
               <label class="setting-label">Window Mode</label>
               <select class="setting-input" id="gfx-windowmode">
@@ -257,32 +263,36 @@
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-lensflare" /><span>Lens flare</span></label>
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-ao" /><span>Ambient occlusion</span></label>
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-precip" /><span>Precipitation occlusion</span></label>
+            </div>
           </details>
 
           <details class="settings-collapse">
             <summary>Server Hotkeys</summary>
+            <div class="collapse-grid">
             <div class="settings-group"><label class="setting-label">Activate Chat</label><button type="button" class="setting-input hotkey-btn" id="hk-chat"></button></div>
             <div class="settings-group"><label class="setting-label">Release Mouse</label><button type="button" class="setting-input hotkey-btn" id="hk-cursor"></button></div>
             <div class="settings-group"><label class="setting-label">Housing Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-housing"></button></div>
-            <div class="settings-group"><label class="setting-label">Player Actions Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-interact"></button></div>
             <div class="settings-group"><label class="setting-label">Personal Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-personal"></button></div>
             <div class="settings-group"><label class="setting-label">Faction Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-faction"></button></div>
             <div class="settings-group"><label class="setting-label">Voice Push-to-Talk</label><button type="button" class="setting-input hotkey-btn" id="hk-voice-ptt"></button></div>
             <div class="settings-group"><label class="setting-label">Admin Menu</label><button type="button" class="setting-input hotkey-btn" id="hk-admin"></button></div>
             <div class="settings-group"><label class="setting-label">Hide Interface</label><button type="button" class="setting-input hotkey-btn" id="hk-hide-ui"></button></div>
-            <p class="setting-hint">Click a key, then press the new binding. Esc cancels, Backspace unbinds. Enter always focuses chat. Changes apply after the client reloads.</p>
+            <p class="setting-hint span-2">Click a key, then press the new binding. Esc cancels, Backspace unbinds. Enter always focuses chat. Changes apply after the client reloads. The player interaction menu uses the Activate key from Game Hotkeys.</p>
+            </div>
           </details>
 
           <details class="settings-collapse">
             <summary>Game Hotkeys</summary>
-            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-invert-y" /><span>Invert Y axis</span></label>
+            <div class="collapse-grid">
+            <label class="setting-checkbox-row span-2"><input type="checkbox" id="gfx-invert-y" /><span>Invert Y axis</span></label>
             <div class="settings-group"><label class="setting-label">Activate</label><button type="button" class="setting-input hotkey-btn" id="ghk-activate"></button></div>
             <div class="settings-group"><label class="setting-label">Jump</label><button type="button" class="setting-input hotkey-btn" id="ghk-jump"></button></div>
             <div class="settings-group"><label class="setting-label">Sprint</label><button type="button" class="setting-input hotkey-btn" id="ghk-sprint"></button></div>
             <div class="settings-group"><label class="setting-label">Sneak</label><button type="button" class="setting-input hotkey-btn" id="ghk-sneak"></button></div>
             <div class="settings-group"><label class="setting-label">Shout / Power</label><button type="button" class="setting-input hotkey-btn" id="ghk-shout"></button></div>
             <div class="settings-group"><label class="setting-label">Toggle POV</label><button type="button" class="setting-input hotkey-btn" id="ghk-pov"></button></div>
-            <p class="setting-hint" id="ghk-hint">Written to the game's controlmap. Rows unlock once the game files are installed.</p>
+            <p class="setting-hint span-2" id="ghk-hint">Written to the game's controlmap. Rows unlock once the game files are installed.</p>
+            </div>
           </details>
 
         </div>

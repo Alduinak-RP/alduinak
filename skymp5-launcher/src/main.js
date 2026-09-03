@@ -13,6 +13,7 @@ const path   = require('path')
 const fs     = require('fs')
 const os     = require('os')
 const crypto = require('crypto')
+const zlib   = require('zlib')
 const http   = require('http')
 const https  = require('https')
 const { spawn, execFileSync } = require('child_process')
@@ -452,7 +453,6 @@ ipcMain.handle('hotkeys:load', () => {
       freeCursor: numOrNull(c.freeCursorKeyCode),
       housing:    numOrNull(c.housingMenuKeyCode),
       faction:    numOrNull(c.factionMenuKeyCode),
-      interact:   numOrNull(c.interactMenuKeyCode),
       personal:   numOrNull(c.personalMenuKeyCode),
       voicePtt:   numOrNull(c.voicePushToTalkKeyCode),
       adminMenu:  numOrNull(c.adminMenuKeyCode),
@@ -471,7 +471,6 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
     if (typeof h.freeCursor === 'number')  c.freeCursorKeyCode  = h.freeCursor
     if (typeof h.housing === 'number')     c.housingMenuKeyCode = h.housing
     if (typeof h.faction === 'number')     c.factionMenuKeyCode = h.faction
-    if (typeof h.interact === 'number')    c.interactMenuKeyCode = h.interact
     if (typeof h.personal === 'number')    c.personalMenuKeyCode = h.personal
     if (typeof h.voicePtt === 'number')    c.voicePushToTalkKeyCode = h.voicePtt
     if (typeof h.adminMenu === 'number')   c.adminMenuKeyCode = h.adminMenu
@@ -886,26 +885,28 @@ ipcMain.handle('game:isolatedStatus', () => ({
   base:    store.get('baseDirPath') || '',
 }))
 
-// True if either path is the same as, or nested inside, the other.
+// True if either path is the same as, or nested inside, the other; junctions are followed so a linked folder compares as its target.
 function pathsOverlap(a, b) {
-  const norm = p => path.resolve(p).replace(/[\\/]+$/, '').toLowerCase() + path.sep
+  const real = p => { try { return fs.realpathSync.native(p) } catch { return path.resolve(p) } }
+  const norm = p => real(p).replace(/[\\/]+$/, '').toLowerCase() + path.sep
   const na = norm(a), nb = norm(b)
   return na.startsWith(nb) || nb.startsWith(na)
 }
 
-ipcMain.handle('game:createIsolated', async (_e, baseDirOverride) => {
+ipcMain.handle('game:createIsolated', async (_e, baseDirOverride, opts) => {
   if (installing) {
     return { success: false, error: 'An install is already running - wait for it to finish.' }
   }
   installing = true
   try {
-    return await createIsolatedImpl(baseDirOverride)
+    return await createIsolatedImpl(baseDirOverride, !!(opts && opts.force))
   } finally {
     installing = false
   }
 })
 
-async function createIsolatedImpl(baseDirOverride) {
+// force re-copies every vanilla file; SKSE, client files and the controlmap in the copy are other Repair sections and stay.
+async function createIsolatedImpl(baseDirOverride, force = false) {
   const src = store.get('skyrimPath')
   if (!src || !fs.existsSync(path.join(src, 'SkyrimSE.exe'))) {
     return { success: false, error: 'Set a valid Skyrim path first (SkyrimSE.exe not found).' }
@@ -964,9 +965,18 @@ async function createIsolatedImpl(baseDirOverride) {
     send('isolated:progress', 'Installing Mod Organizer 2…')
     await mo2.ensureInstalled(msg => send('isolated:progress', msg))
 
+    if (force) {
+      // The copy folder could have become a link into the original install since the first check
+      if (pathsOverlap(src, dst)) return { success: false, error: 'The game copy folder resolves into your original Skyrim install - remove the link before repairing.' }
+      send('isolated:progress', 'Removing the old vanilla game files…')
+      try { fs.rmSync(path.join(dst, 'vanilla-copy-complete.json'), { force: true }) } catch {}
+      for (const job of vanillaJobs(src)) {
+        try { fs.rmSync(path.join(dst, job.sub, job.rel), { force: true }) } catch {}
+      }
+    }
     // portable copy setup (re-copies when a previous copy was interrupted:
     // SkyrimSE.exe lands first, so its presence alone proves nothing)
-    if (!gameCopyComplete(dst)) {
+    if (force || !gameCopyComplete(dst)) {
       const copy = await copyGameDir(src, dst)
       if (!copy.success) return copy
     } else {
@@ -1440,7 +1450,7 @@ ipcMain.handle('launch:skse', async () => {
   }
 
   if (mo2Enabled && !mo2.isInstalled()) {
-    return { success: false, error: 'MO2 is not set up - open Settings → Mod Manager and run setup.' }
+    return { success: false, error: 'MO2 is not set up - open Settings → Repair and run Repair MO2.' }
   }
 
   // Shared pre-launch steps: client settings, load order, file validation.
@@ -1469,7 +1479,7 @@ ipcMain.handle('launch:skse', async () => {
 ipcMain.handle('launch:viaMO2', async () => {
   const skyrimPath = effectiveGamePath()
   if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
-  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - use Install MO2 first.' }
+  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - use Repair MO2 first.' }
   const prep = await prepareForLaunch(skyrimPath, true)
   if (!prep.success) return prep
   try { mo2.launchGame(skyrimPath); return { success: true } }
@@ -1515,7 +1525,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   const missingFiles = REQUIRED_FILES.filter(f => !fs.existsSync(path.join(skyrimPath, f)))
   if (missingFiles.length > 0) {
     const names = missingFiles.map(f => path.basename(f)).join(', ')
-    const hint  = viaMO2 ? 'run Install Modlist in Settings' : 'run Install'
+    const hint  = viaMO2 ? 'run Repair Modlist in Settings' : 'run Repair Client Files in Settings'
     problems.push(`Client files missing (${names}); ${hint} first.`)
   }
 
@@ -1545,7 +1555,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
 
   // Fallback if install fails
   if (viaMO2 && store.get('modpackState') === 'failed') {
-    problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run Install Modlist to complete it first.')
+    problems.push('The last modpack install did not finish. Press PLAY (it will show UPDATE) or run Repair Modlist to complete it first.')
   }
 
   // Fallback for engine fixes failure (like with AV software)
@@ -1617,7 +1627,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
         return {
           success: false,
           error: `Missing required plugins: ${missing.join(', ')}. ` +
-                 `Run Install Modlist in Settings first.`,
+                 `Run Repair Modlist in Settings first.`,
         }
       }
       loadOrderFixed = true
@@ -1664,7 +1674,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
         if (check.filesOk === false) {
           return { success: false, error: 'Your client files are out of date. Press the button again to update, then launch.' }
         }
-        return { success: false, error: 'Your plugin load order does not match the server. Run Install Modlist in Settings.' }
+        return { success: false, error: 'Your plugin load order does not match the server. Run Repair Modlist in Settings.' }
       }
       log('[launch] launch-check passed')
     } catch (err) {
@@ -1756,7 +1766,8 @@ function missingPluginsForMO2(skyrimPath, serverLoadOrder) {
 let installing   = false
 let installAbort = null   // AbortController for the running install's waits
 
-ipcMain.on('install:start', (_e, mode) => {
+// opts.force: 'client' re-downloads the zip, 'modlist' rebuilds every mod (Repair buttons).
+ipcMain.on('install:start', (_e, mode, opts) => {
   if (installing) {
     // Never ignore the click silently: the user has no other way to know an
     // earlier install is still running (e.g. parked on a downloads wait).
@@ -1765,18 +1776,20 @@ ipcMain.on('install:start', (_e, mode) => {
       file: 'An install is already running - press Cancel Install to stop it first.',
       index: 0, total: 0, skipped: false,
     })
+    send('install:complete', { success: false, error: 'An install is already running - wait for it to finish.' })
     return
   }
   installing = true
   installAbort = new AbortController()
+  const force = !!(opts && opts.force)
 
   let fn
   if (mode === 'client') {
-    fn = runDirectInstall()
+    fn = runDirectInstall(force)
   } else if (mode === 'mo2') {
     fn = runMO2Install()
   } else if (mode === 'modlist') {
-    fn = runMO2Install({ modlistOnly: true })
+    fn = runMO2Install({ modlistOnly: true, force })
   } else {
     // Auto mode (used by the Play button) - delegate based on mo2Enabled setting
     fn = store.get('mo2Enabled') ? runMO2Install() : runDirectInstall()
@@ -1793,21 +1806,34 @@ ipcMain.on('install:cancel', () => {
   if (installing && installAbort) installAbort.abort()
 })
 
-// Standalone install steps (Installation tab buttons); both stream progress over the shared install:progress channel.
+// Standalone install steps (Repair tab buttons); all stream progress over the shared install:progress channel.
 
-// MO2 only: download/unpack MO2 and refresh the portable instance.
-ipcMain.handle('install:mo2only', async () => {
+// MO2 only: download/unpack MO2 and refresh the portable instance. force reinstalls MO2's own files.
+ipcMain.handle('install:mo2only', async (_e, opts) => {
   if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
   installing = true
   try {
-    await mo2.ensureInstalled(msg =>
-      send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
-    const gamePath = effectiveGamePath()
-    if (gamePath && fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))) {
-      let serverInfo = null
-      try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
-      mo2.ensureInstance(gamePath, serverInfo?.loadOrder)
-      mo2.registerNxmHandler()
+    const skyrimPath = store.get('skyrimPath')
+    if (skyrimPath && pathsOverlap(skyrimPath, mo2.getRoot())) {
+      return { success: false, error: 'The install location is inside your Skyrim folder - pick one outside it in Settings before repairing MO2.' }
+    }
+    if (await isProcessRunning('ModOrganizer.exe')) {
+      return { success: false, error: 'Mod Organizer 2 is running - close it before repairing.' }
+    }
+    const progress = msg => send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false })
+    if (opts && opts.force) await mo2.reinstall(progress)
+    else await mo2.ensureInstalled(progress)
+    if (store.get('isolatedGame') && !isolatedGameReady()) {
+      log('[install] mo2only: game copy not ready, leaving the original install untouched')
+    } else {
+      const gamePath = effectiveGamePath()
+      if (gamePath && fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))) {
+        let serverInfo = null
+        try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+        mo2.ensureInstance(gamePath, serverInfo?.loadOrder)
+        mo2.registerNxmHandler()
+        applyForcedServerDefaults(gamePath)
+      }
     }
     return { success: true }
   } catch (err) {
@@ -1817,8 +1843,8 @@ ipcMain.handle('install:mo2only', async () => {
   }
 })
 
-// SKSE only: download the edition-matched SKSE and install it into the game root.
-ipcMain.handle('install:skse', async () => {
+// SKSE only: download the edition-matched SKSE and install it into the game root. force drops the cached archive so a fresh copy is fetched.
+ipcMain.handle('install:skse', async (_e, opts) => {
   if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
   // With isolation on, SKSE must land in the portable copy, never the original install
   let gamePath
@@ -1835,6 +1861,10 @@ ipcMain.handle('install:skse', async () => {
   }
   installing = true
   try {
+    if (opts && opts.force) {
+      try { fs.rmSync(path.join(mo2.getDownloadsDir(), mo2.skseSourceFor(gamePath).fileName), { force: true }) } catch {}
+      store.set('installedRootHash', '')
+    }
     await installSkseIntoRoot(gamePath)
     return { success: true }
   } catch (err) {
@@ -1843,6 +1873,252 @@ ipcMain.handle('install:skse', async () => {
     installing = false
   }
 })
+
+// Read-only integrity scan over every Repair section; nothing on disk changes.
+ipcMain.handle('install:check', async () => {
+  if (installing) return { ok: false, error: 'An install is already running - wait for it to finish.' }
+  installing = true
+  try {
+    return await checkFilesImpl()
+  } catch (err) {
+    return { ok: false, error: err.message }
+  } finally {
+    installing = false
+  }
+})
+
+const CHECK_PROGRESS_EVERY = 25
+const CHECK_NOTE_SAMPLE    = 10
+// Files under Data/Platform and Data/SKSE/Plugins written by the launcher, Skyrim Platform or SKSE rather than shipped in the client zip.
+const CLIENT_OWN_FILE_RES = [/^data\/platform\/(logs|pluginsnoload|pluginsdev)\//, /skymp5-client-settings\.txt$/, /\.log$/, /^data\/skse\/plugins\/skse64_/]
+
+function crc32File(p) {
+  return new Promise((resolve, reject) => {
+    let crc = 0
+    fs.createReadStream(mo2.lp(p))
+      .on('data', d => { crc = zlib.crc32(d, crc) })
+      .on('end', () => resolve((crc >>> 0).toString(16).toUpperCase().padStart(8, '0')))
+      .on('error', reject)
+  })
+}
+
+// Issues carry { kind: missing|corrupt|extra|outdated, path, fix: mo2|game|skse|client|modlist }; notes explain skipped checks.
+async function checkFilesImpl() {
+  const issues = []
+  const notes  = []
+  const root   = mo2.getRoot()
+  const show   = p => {
+    const r = path.relative(root, p)
+    return r && !r.startsWith('..') && !path.isAbsolute(r) ? r.split(path.sep).join('/') : p
+  }
+  const add = (kind, p, fix) => {
+    issues.push({ kind, path: p, fix })
+    log(`[check] [${kind}] ${p} -> ${fix}`)
+  }
+  const progress = file => send('install:progress', { phase: 'check', file, index: 0, total: 0, skipped: false })
+  const yieldNow = () => new Promise(r => setImmediate(r))
+  const sizeOf   = p => { try { return fs.statSync(mo2.lp(p)).size } catch { return -1 } }
+  // Size first, so multi-GB files are only hashed when they could still match.
+  const verifyFile = async (full, f, label, fix) => {
+    const size = sizeOf(full)
+    if (size === -1) return add('missing', label, fix)
+    if (Number.isFinite(f.size) && size !== f.size) return add('corrupt', `${label} (size ${size}, expected ${f.size})`, fix)
+    if (!f.sha256) return
+    let sha = ''
+    try { sha = await mo2.sha256FileAsync(full) } catch { return add('corrupt', `${label} (unreadable)`, fix) }
+    if (sha.toLowerCase() !== String(f.sha256).toLowerCase()) add('corrupt', `${label} (sha256)`, fix)
+  }
+  const portable = !!store.get('isolatedGame')
+  const gamePath = portable ? isolatedGameDir() : store.get('skyrimPath')
+  const gameOk   = !!gamePath && fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))
+
+  // MO2
+  progress('Checking Mod Organizer 2…')
+  if (!mo2.isInstalled()) {
+    add('missing', 'ModOrganizer.exe', 'mo2')
+  } else {
+    const stamp = mo2.readMo2Stamp()
+    if (!stamp) add('missing', `${mo2.MO2_STAMP} (MO2 binaries unverified)`, 'mo2')
+    else if (stamp.version !== mo2.MO2_VERSION) add('outdated', `ModOrganizer.exe (${stamp.version}, launcher ships ${mo2.MO2_VERSION})`, 'mo2')
+    else {
+      const now = mo2.mo2BinaryStats()
+      if (now.size !== stamp.size || now.count !== stamp.count) {
+        add('corrupt', `MO2 binaries (${now.count} files / ${now.size} bytes, stamp ${stamp.count} / ${stamp.size})`, 'mo2')
+      }
+    }
+    for (const f of ['portable.txt', 'ModOrganizer.ini']) if (!fs.existsSync(path.join(root, f))) add('missing', f, 'mo2')
+    for (const f of ['modlist.txt', 'plugins.txt']) {
+      if (!fs.existsSync(path.join(mo2.getProfileDir(), f))) add('missing', `profiles/${mo2.PROFILE}/${f}`, 'mo2')
+    }
+  }
+  await yieldNow()
+
+  // Game copy (portable only; a real install is verified through Steam/GOG)
+  if (portable) {
+    progress('Checking the game copy…')
+    const src = store.get('skyrimPath')
+    if (!gameOk) {
+      add('missing', show(path.join(gamePath, 'SkyrimSE.exe')), 'game')
+    } else {
+      if (src && fs.existsSync(path.join(src, 'Data', 'Skyrim.esm'))) {
+        for (const job of vanillaMismatches(src, gamePath)) {
+          const full = path.join(gamePath, job.sub, job.rel)
+          add(sizeOf(full) === -1 ? 'missing' : 'corrupt', show(full), 'game')
+        }
+      } else {
+        notes.push('Game copy: the original Skyrim install is unreadable, so the vanilla files were not compared.')
+        if (!gameCopyComplete(gamePath)) add('missing', `${show(path.join(gamePath, 'Data', 'Skyrim.esm'))} (game copy incomplete)`, 'game')
+      }
+      const marker = path.join(gamePath, 'vanilla-copy-complete.json')
+      if (!fs.existsSync(marker)) add('missing', show(marker), 'game')
+      const ccc = sizeOf(path.join(gamePath, 'Skyrim.ccc'))
+      if (ccc !== 0) add(ccc === -1 ? 'missing' : 'corrupt', `${show(path.join(gamePath, 'Skyrim.ccc'))}${ccc > 0 ? ' (must be empty)' : ''}`, 'game')
+    }
+    await yieldNow()
+  }
+
+  if (!gameOk) {
+    notes.push('SKSE and client files: no game folder found, both sections skipped.')
+  } else {
+    // SKSE
+    progress('Checking SKSE…')
+    const skse    = mo2.skseSourceFor(gamePath)
+    const archive = path.join(mo2.getDownloadsDir(), skse.fileName)
+    const entries = fs.existsSync(archive) ? await mo2.listArchiveEntries(archive) : null
+    if (entries) {
+      // installSkse copies every exe/dll from the archive root, one wrapper folder deep at most.
+      for (const e of entries) {
+        const parts = e.path.split('/')
+        const name  = parts[parts.length - 1]
+        if (parts.length > 2 || !/\.(exe|dll)$/i.test(name)) continue
+        const full = path.join(gamePath, name)
+        const size = sizeOf(full)
+        if (size === -1) add('missing', show(full), 'skse')
+        else if (size !== e.size) add('corrupt', `${show(full)} (size ${size}, archive ${e.size})`, 'skse')
+        else if (e.crc && typeof zlib.crc32 === 'function' && await crc32File(full) !== e.crc) add('corrupt', `${show(full)} (crc)`, 'skse')
+      }
+    } else {
+      notes.push(`SKSE: no cached ${skse.fileName} in downloads, so the root files were only checked for presence.`)
+      let names = []
+      try { names = fs.readdirSync(gamePath) } catch {}
+      if (!names.some(n => /^skse64_loader\.exe$/i.test(n))) add('missing', show(path.join(gamePath, 'skse64_loader.exe')), 'skse')
+      if (!names.some(n => /^skse64_.*\.dll$/i.test(n))) add('missing', `${show(path.join(gamePath, 'skse64_*.dll'))} (runtime dll)`, 'skse')
+    }
+    if (!fs.existsSync(path.join(mo2.getModsDir(), 'SKSE', 'meta.ini'))) add('missing', 'mods/SKSE/meta.ini', 'skse')
+    await yieldNow()
+
+    // Client files
+    progress('Checking client files…')
+    let vd = null
+    try { vd = await fetchJSON(`${config.apiUrl}/api/files/version`) }
+    catch (err) { notes.push(`Client files: could not read the server version (${err.message}), version and checksum checks skipped.`) }
+    if (vd) {
+      const installed = store.get('filesVersion') || ''
+      if (vd.version !== installed) add('outdated', `client files (installed ${installed || 'none'}, server ${vd.version})`, 'client')
+    }
+    const files = vd && Array.isArray(vd.files)
+      ? vd.files.filter(f => f && typeof f.path === 'string' && !f.path.split('/').includes('..'))
+      : []
+    if (files.length === 0) {
+      if (vd) notes.push('Client files: the server publishes no per-file list, so only presence and version were checked.')
+      for (const f of REQUIRED_FILES) if (!fs.existsSync(path.join(gamePath, f))) add('missing', show(path.join(gamePath, f)), 'client')
+      if (!preloaderPresent(gamePath)) add('missing', `${show(path.join(gamePath, PRELOADER_DLLS[0]))} (Engine Fixes preloader)`, 'client')
+    } else {
+      const listed = new Set()
+      for (let i = 0; i < files.length; i++) {
+        const f    = files[i]
+        const full = path.join(gamePath, ...f.path.split('/'))
+        const l    = f.path.toLowerCase()
+        listed.add(l)
+        // Launcher-owned files are rewritten on every launch, so the published hash never matches
+        if (CLIENT_OWN_FILE_RES.some(re => re.test(l))) continue
+        await verifyFile(full, f, show(full), 'client')
+        if ((i + 1) % CHECK_PROGRESS_EVERY === 0) { progress(`Checking client files… ${i + 1}/${files.length}`); await yieldNow() }
+      }
+      // Unlisted files are only reported: Repair Client Files re-extracts the zip and never deletes
+      const extras = []
+      for (const sub of ['Data/Platform', 'Data/SKSE/Plugins']) {
+        for (const rel of mo2.listFilesRel(path.join(gamePath, ...sub.split('/')))) {
+          const p = `${sub}/${rel}`
+          const l = p.toLowerCase()
+          if (listed.has(l) || CLIENT_OWN_FILE_RES.some(re => re.test(l))) continue
+          extras.push(show(path.join(gamePath, ...p.split('/'))))
+        }
+      }
+      if (extras.length) {
+        const more = extras.length > CHECK_NOTE_SAMPLE ? ` and ${extras.length - CHECK_NOTE_SAMPLE} more` : ''
+        notes.push(`Client files: ${extras.length} file(s) not in the server package were left alone: ${extras.slice(0, CHECK_NOTE_SAMPLE).join(', ')}${more}.`)
+      }
+    }
+    await yieldNow()
+  }
+
+  // Modlist
+  progress('Fetching the install manifest…')
+  let manifest = null
+  try { manifest = await fetchJSON(`${config.apiUrl}/api/install-manifest`) }
+  catch (err) { notes.push(`Modlist: could not fetch the install manifest (${err.serverError || err.message}), section skipped.`) }
+  if (manifest && Array.isArray(manifest.mods)) {
+    const modsDir  = mo2.getModsDir()
+    const sanitize = n => String(n).replace(/[<>:"/\\|?*]/g, '')
+    const total    = manifest.mods.length
+    for (let i = 0; i < total; i++) {
+      const m      = manifest.mods[i]
+      const folder = sanitize(m.name)
+      const dir    = path.join(modsDir, folder)
+      progress(`Checking mods… ${i + 1}/${total} (${m.name})`)
+      if (!fs.existsSync(mo2.lp(dir))) { add('missing', `mods/${folder}`, 'modlist'); continue }
+      if (m.hash && mo2.readModHash(m.name) !== m.hash) add('outdated', `mods/${folder} (installed from an older manifest)`, 'modlist')
+      const files    = Array.isArray(m.files) ? m.files : []
+      const expected = new Set(files.map(f => String(f.to).toLowerCase()))
+      for (let n = 0; n < files.length; n++) {
+        const f = files[n]
+        await verifyFile(path.join(dir, ...String(f.to).split('/')), f, `mods/${folder}/${f.to}`, 'modlist')
+        if ((n + 1) % CHECK_PROGRESS_EVERY === 0) {
+          progress(`Checking mods… ${i + 1}/${total} (${m.name}: ${n + 1}/${files.length} files)`)
+          await yieldNow()
+        }
+      }
+      for (const rel of mo2.listFilesRel(dir)) {
+        const l = rel.toLowerCase()
+        if (l === 'meta.ini' || expected.has(l)) continue
+        add('extra', `mods/${folder}/${rel}`, 'modlist')
+      }
+      await yieldNow()
+    }
+
+    progress('Checking the MO2 profile…')
+    const order = (Array.isArray(manifest.order) && manifest.order.length) ? manifest.order.slice() : manifest.mods.map(m => m.name)
+    for (const name of mo2.listStaleManagedMods(order)) add('extra', `mods/${name}`, 'modlist')
+
+    const profile   = mo2.getProfileDir()
+    const readLines = p => {
+      try { return fs.readFileSync(p, 'utf8').split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#')) }
+      catch { return null }
+    }
+    const plugins = readLines(path.join(profile, 'plugins.txt'))
+    if (plugins && Array.isArray(manifest.plugins) && manifest.plugins.length) {
+      // Every launch rewrites plugins.txt from the server load order, so that rendering counts as intact too.
+      // MO2 appends disabled entries for plugins it discovers, so only the enabled sequence is compared.
+      let serverInfo = null
+      try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+      const enabled  = lines => lines.filter(l => l.startsWith('*')).join('\n')
+      const accepted = [manifest.plugins, mo2.serverPluginLines(serverInfo?.loadOrder)].filter(a => a.length).map(enabled)
+      if (!accepted.includes(enabled(plugins))) add('corrupt', `profiles/${mo2.PROFILE}/plugins.txt (load order drift)`, 'modlist')
+    }
+    const modlist = readLines(path.join(profile, 'modlist.txt'))
+    if (modlist) {
+      const want = order.slice()
+      if (fs.existsSync(path.join(modsDir, 'SKSE')) && !want.includes('SKSE')) want.push('SKSE')
+      const have = modlist.filter(l => /^[+-]/.test(l)).slice(0, want.length)
+      if (have.join('\n') !== want.map(n => `+${n}`).join('\n')) add('corrupt', `profiles/${mo2.PROFILE}/modlist.txt (mod order drift)`, 'modlist')
+    }
+    for (const name of mo2.listOverwriteJunk()) add('extra', `overwrite/${name}`, 'modlist')
+  }
+
+  log(`[check] done: ${issues.length} issue(s)`)
+  return { ok: true, issues, notes }
+}
 
 // Shared download + extract helpers
 
@@ -1928,7 +2204,7 @@ function extractClientZip(zipPath, destDir, onProgress) {
 // Client files install core
 // Shared by the direct and MO2 installers: version check, download, extract, client settings.
 
-async function installClientFilesCore(skyrimPath, srv, serverInfo) {
+async function installClientFilesCore(skyrimPath, srv, serverInfo, force = false) {
   const tempZip = path.join(os.tmpdir(), 'alduinak-client.zip')
   const clientSettingsPath = path.join(skyrimPath, 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
 
@@ -1942,6 +2218,7 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
       if (err.statusCode === 404) {
         return { success: false, error: 'Client files have not been packaged on the server yet. Ask the server admin to run `npm run build-client`.' }
       }
+      if (force) return { success: false, error: 'Backend unreachable, client files were not reinstalled' }
       // Network error - play on cached files if they exist
       const allPresent = clientFilesPresent(skyrimPath)
       if (!allPresent) return { success: false, error: 'Backend unreachable and client files are not installed. Check your connection.' }
@@ -1951,7 +2228,7 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
     }
 
     const allPresent    = clientFilesPresent(skyrimPath)
-    const needsDownload = serverVersion !== store.get('filesVersion') || !allPresent
+    const needsDownload = force || serverVersion !== store.get('filesVersion') || !allPresent
 
     if (!needsDownload) {
       log('[install] Files up to date, updating settings only')
@@ -1975,6 +2252,8 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
     // The zip's stock skymp5-client-settings.txt would clobber hotkey rebinds; snapshot it so writeClientSettings sees the pre-extract file.
     let settingsSnapshot = null
     try { settingsSnapshot = fs.readFileSync(clientSettingsPath, 'utf8') } catch { /* first install */ }
+    // An interrupted extract must show as an update on the next Play
+    store.set('filesVersion', '')
     const extracted = extractClientZip(tempZip, skyrimPath, (file, i, total) => {
       send('install:progress', { phase: 'extract', file, index: i, total, skipped: false })
     })
@@ -2006,7 +2285,7 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo) {
 
 // Direct install (no mod manager)
 
-async function runDirectInstall() {
+async function runDirectInstall(force = false) {
   const skyrimPath = effectiveGamePath()
   const srv        = activeServer()
 
@@ -2026,7 +2305,7 @@ async function runDirectInstall() {
   let serverInfo = null
   try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
 
-  const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
+  const core = await installClientFilesCore(skyrimPath, srv, serverInfo, force)
   if (core.success) applyForcedServerDefaults(skyrimPath)
   send('install:complete', core.success
     ? { success: true, upToDate: core.upToDate, ...(integrity.warning ? { warning: integrity.warning } : {}) }
@@ -2083,8 +2362,10 @@ async function installSkseIntoRoot(skyrimPath) {
   mo2.installSkse(path.join(mo2.getDownloadsDir(), name), skyrimPath)
 }
 
+// opts.force rebuilds every mod and the SKSE root step from scratch (Repair Modlist).
 async function runMO2Install(opts = {}) {
   const modlistOnly = opts.modlistOnly === true
+  const force       = opts.force === true
   _downloadListOpened = false
   const fail = (msg) => {
     log('[mo2-install] ABORT:', msg)
@@ -2123,7 +2404,7 @@ async function runMO2Install(opts = {}) {
     seedProfilePrefs(store.get('skyrimPath') || skyrimPath)
     applyForcedServerDefaults(skyrimPath)
 
-    // 2. SkyMP client files into the real Data/ (skipped by Install Modlist)
+    // 2. SkyMP client files into the real Data/ (skipped by Repair Modlist)
     let coreUpToDate = false
     if (!modlistOnly) {
       const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
@@ -2181,7 +2462,13 @@ async function runMO2Install(opts = {}) {
     const mb = n => (n / 1024 / 1024).toFixed(1)
     const sanitize       = n => String(n).replace(/[<>:"/\\|?*]/g, '')
     const modFolderPath  = m => path.join(mo2.getModsDir(), sanitize(m.name))
+    if (force) {
+      send('install:progress', { phase: 'mods', file: 'Clearing the build and extraction caches…', index: 0, total: 0, skipped: false })
+      mo2.clearBuildCache()
+      mo2.clearCache()
+    }
     const modChanged = m => {
+      if (force) return true
       if (!fs.existsSync(modFolderPath(m))) return true
       if (!m.hash) return true                     // pre-hash manifest: be safe, reinstall
       if (mo2.readModHash(m.name) !== m.hash) return true
@@ -2206,8 +2493,8 @@ async function runMO2Install(opts = {}) {
     }
     const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
-    const needsRoot      = !rootSetUp || rootChanged
-    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} -> needsRoot=${needsRoot}`)
+    const needsRoot      = force || !rootSetUp || rootChanged
+    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} force=${force} -> needsRoot=${needsRoot}`)
     const modsToInstall  = []
     for (let i = 0; i < manifest.mods.length; i++) {
       if (modChanged(manifest.mods[i])) modsToInstall.push(manifest.mods[i])
@@ -2410,7 +2697,7 @@ function writeClientSettings(destPath, srv, serverInfo) {
   // Exception: user hotkey bindings, owned by the settings UI; a launch must never reset them to defaults.
   const HOTKEY_KEYS = [
     'chatFocusKeyCodes', 'freeCursorKeyCode', 'housingMenuKeyCode',
-    'factionMenuKeyCode', 'interactMenuKeyCode', 'personalMenuKeyCode',
+    'factionMenuKeyCode', 'personalMenuKeyCode',
     'voicePushToTalkKeyCode', 'adminMenuKeyCode', 'hideUiKeyCode',
   ]
   let prev = {}

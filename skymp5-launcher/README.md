@@ -98,6 +98,20 @@ installs (Galaxy64.dll / goggame-* present) are accepted at **1.6.1179.0**, the
 GOG build of the same generation. An unreadable version never blocks, it is
 only logged.
 
+## Repair tab
+
+Settings > Repair replaces the old Installation tab. Every button fully
+reinstalls its section (`{ force: true }` over the same IPC as the Play-button
+install): **Repair MO2** wipes MO2's own files (mods, downloads, profiles, the
+game copy and the instance inis stay) and unpacks it again, **Repair Game Copy**
+re-copies every vanilla file, **Repair SKSE** re-downloads the archive and
+replaces the root files, **Repair Client Files** re-downloads the client zip,
+**Repair Modlist** rebuilds every mod from the install manifest. **Repair All**
+chains them in that order; **Check Files** (`install:check`) is a read-only scan
+that lists every missing/corrupt/extra/outdated file with the button that fixes
+it. It compares client files by size + sha256 when `/api/files/version` carries
+the `files[]` list written by the backend's `npm run merge`.
+
 ## Persistent store keys
 
 | Key | Type | Purpose |

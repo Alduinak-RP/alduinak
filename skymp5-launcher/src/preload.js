@@ -56,12 +56,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Game process state - true while Skyrim / the SKSE loader is running
   gameIsRunning: () => ipcRenderer.invoke('game:isRunning'),
 
-  // File install
-  startInstall: (mode) => ipcRenderer.send('install:start', mode),
+  // File install; opts { force } makes a step fully reinstall its section (Repair tab)
+  startInstall: (mode, opts) => ipcRenderer.send('install:start', mode, opts),
   cancelInstall: () => ipcRenderer.send('install:cancel'),
   // Standalone install steps (progress arrives via install:progress)
-  installMo2Only: () => ipcRenderer.invoke('install:mo2only'),
-  installSkse:    () => ipcRenderer.invoke('install:skse'),
+  installMo2Only: (opts) => ipcRenderer.invoke('install:mo2only', opts),
+  installSkse:    (opts) => ipcRenderer.invoke('install:skse', opts),
+  // Read-only scan of every section - { ok, issues: [{ kind, path, fix }], notes }
+  checkFiles:     () => ipcRenderer.invoke('install:check'),
   onInstallProgress: (cb) =>
     ipcRenderer.on('install:progress', (_e, data) => cb(data)),
   onInstallComplete: (cb) =>
@@ -77,9 +79,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   nexusSsoAvailable: () => ipcRenderer.invoke('nexus:ssoAvailable'),
   nexusSsoLogin:     () => ipcRenderer.invoke('nexus:ssoLogin'),
 
-  // Isolated game copy (baseDir optional; falls back to the stored/default install location)
+  // Isolated game copy (baseDir optional; falls back to the stored/default install location; opts { force } re-copies the vanilla files)
   isolatedStatus: () => ipcRenderer.invoke('game:isolatedStatus'),
-  createIsolated: (baseDir) => ipcRenderer.invoke('game:createIsolated', baseDir),
+  createIsolated: (baseDir, opts) => ipcRenderer.invoke('game:createIsolated', baseDir, opts),
   onIsolatedProgress: (cb) => ipcRenderer.on('isolated:progress', (_e, msg) => cb(msg)),
   removeIsolatedListeners: () => ipcRenderer.removeAllListeners('isolated:progress'),
 

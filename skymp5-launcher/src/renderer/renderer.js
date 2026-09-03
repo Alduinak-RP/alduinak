@@ -93,7 +93,7 @@ function getKey(id) { const el = document.getElementById(id); return el ? (parse
 
 // Press-to-bind capture. Backspace unbinds server hotkeys only: gameHotkeys:save
 // drops code 0, so an unbound game key would silently keep its old binding.
-const SERVER_HOTKEY_IDS = ['hk-chat', 'hk-cursor', 'hk-housing', 'hk-interact', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin', 'hk-hide-ui']
+const SERVER_HOTKEY_IDS = ['hk-chat', 'hk-cursor', 'hk-housing', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin', 'hk-hide-ui']
 const GAME_HOTKEY_IDS = ['ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov']
 
 let activeCapture = null
@@ -198,7 +198,6 @@ async function loadGameSettingsTab() {
       setKey('hk-chat', chat)
       setKey('hk-cursor', h.freeCursor != null ? h.freeCursor : 64)
       setKey('hk-housing', h.housing != null ? h.housing : 35)
-      setKey('hk-interact', h.interact != null ? h.interact : 45)
       setKey('hk-personal', h.personal != null ? h.personal : 22)
       setKey('hk-faction', h.faction != null ? h.faction : 34)
       setKey('hk-voice-ptt', h.voicePtt != null ? h.voicePtt : 47)
@@ -247,7 +246,6 @@ async function saveGameSettingsTab() {
       chatFocus: [28, chatKey].filter(c => c > 0),
       freeCursor: getKey('hk-cursor'),
       housing:    getKey('hk-housing'),
-      interact:   getKey('hk-interact'),
       personal:   getKey('hk-personal'),
       faction:    getKey('hk-faction'),
       voicePtt:   getKey('hk-voice-ptt'),
@@ -524,23 +522,26 @@ window.electronAPI.nexusGetUser().then(user => {
   renderTopbarNexus()
 })
 
-// Isolated game copy UI
-const isolatedDot       = document.getElementById('isolated-status-dot')
-const isolatedText      = document.getElementById('isolated-status-text')
-const fieldIsolated     = document.getElementById('setting-isolated-game')
-const btnCreateIsolated = document.getElementById('btn-create-isolated')
-const btnInstallMo2     = document.getElementById('btn-install-mo2')
-const btnInstallSkse    = document.getElementById('btn-install-skse')
-const btnInstallClient  = document.getElementById('btn-install-client')
-const btnFullInstall    = document.getElementById('btn-full-install')
-const isolatedGroup     = document.getElementById('isolated-install-group')
+// Repair tab
+const isolatedDot      = document.getElementById('isolated-status-dot')
+const isolatedText     = document.getElementById('isolated-status-text')
+const fieldIsolated    = document.getElementById('setting-isolated-game')
+const btnRepairMo2     = document.getElementById('btn-repair-mo2')
+const btnRepairGame    = document.getElementById('btn-repair-game')
+const btnRepairSkse    = document.getElementById('btn-repair-skse')
+const btnRepairClient  = document.getElementById('btn-repair-client')
+const btnRepairModlist = document.getElementById('btn-repair-modlist')
+const btnRepairAll     = document.getElementById('btn-repair-all')
+const btnCheckFiles    = document.getElementById('btn-check-files')
+const REPAIR_BUTTONS   = [btnRepairMo2, btnRepairGame, btnRepairSkse, btnRepairClient, btnRepairModlist, btnRepairAll, btnCheckFiles]
+const isolatedGroup    = document.getElementById('isolated-install-group')
 
-// locks the full install until there's a game to manage
+// locks the modlist repair until there's a game to manage
 function refreshDownloadModsState(st) {
-  if (mo2InstallRunning) return  // button is in Cancel mode; don't fight it
+  if (mo2InstallRunning || repairRunning) return  // button is in Cancel mode or locked; don't fight it
   const ready = !fieldIsolated.checked || st.ready
-  btnFullInstall.disabled = !ready
-  btnFullInstall.title = ready
+  btnRepairModlist.disabled = !ready
+  btnRepairModlist.title = ready
     ? ''
     : 'Install the game files first, or turn off Portable Skyrim Mode in the Troubleshooting tab.'
 }
@@ -549,10 +550,10 @@ async function refreshIsolatedStatus() {
   const st = await window.electronAPI.isolatedStatus()
   // Portable mode off: hide the game-copy button and status instead of explaining them.
   isolatedGroup.hidden = !fieldIsolated.checked
-  btnCreateIsolated.hidden = !fieldIsolated.checked
+  btnRepairGame.hidden = !fieldIsolated.checked
   if (!st.ready) {
     isolatedDot.className    = 'vortex-status-dot'
-    isolatedText.textContent = 'Game copy not installed yet - use Install Game Copy'
+    isolatedText.textContent = 'Game copy not installed yet - use Repair Game Copy'
   } else if (!fieldIsolated.checked) {
     isolatedDot.className    = 'vortex-status-dot dot-warn'
     isolatedText.textContent = 'Alduinak install exists - playing from the original Skyrim'
@@ -563,22 +564,19 @@ async function refreshIsolatedStatus() {
   refreshDownloadModsState(st)
 }
 
-btnCreateIsolated.addEventListener('click', async () => {
-  btnCreateIsolated.disabled = true
-
+// Full re-copy of the vanilla files into the portable game copy.
+async function repairGameCopy() {
   window.electronAPI.removeIsolatedListeners()
   // Game-copy steps stream into the shared install progress log.
   window.electronAPI.onIsolatedProgress(msg => installLive(msg))
-  installLog('Installing game copy…')
+  installLog('Repairing game copy…')
 
-  const result = await window.electronAPI.createIsolated(fieldBaseDir.value.trim())
+  const result = await window.electronAPI.createIsolated(fieldBaseDir.value.trim(), { force: true })
   window.electronAPI.removeIsolatedListeners()
-
-  btnCreateIsolated.disabled = false
 
   if (!result.success) {
     installLog(`Error: ${result.error}`)
-    return
+    return false
   }
   // The base may have been nested under \Alduinak - reflect what was used.
   if (result.dir) fieldBaseDir.value = result.dir
@@ -587,7 +585,8 @@ btnCreateIsolated.addEventListener('click', async () => {
   await window.electronAPI.saveSettings({ isolatedGame: true })
   refreshIsolatedStatus()
   refreshPlayState()
-})
+  return true
+}
 
 fieldIsolated.addEventListener('change', refreshIsolatedStatus)
 
@@ -646,7 +645,7 @@ async function refreshMo2Status() {
 
   if (!status.installed) {
     mo2StatusDot.className    = 'vortex-status-dot'
-    mo2StatusText.textContent = 'MO2 not installed yet - use Install MO2'
+    mo2StatusText.textContent = 'MO2 not installed yet - use Repair MO2'
   } else if (!enabled) {
     mo2StatusDot.className    = 'vortex-status-dot dot-warn'
     mo2StatusText.textContent = `MO2 ${status.version} ready (${status.modCount} mods) - launching without it`
@@ -694,8 +693,8 @@ document.getElementById('btn-launch-direct').addEventListener('click', async () 
   troubleLaunchStatus.textContent = r.success ? 'Launched ✓' : `Error: ${r.error}`
 })
 
-// Installation tab: shared install progress log
-// All five install buttons stream their progress into the one <pre> below them.
+// Repair tab: shared install progress log
+// Every repair button streams its progress into the one <pre> below them.
 const installProgressEl = document.getElementById('install-progress')
 let installLogLines = []
 let installLiveLine = ''
@@ -715,7 +714,7 @@ function installLog(msg) {
 }
 
 function formatInstallProgress({ phase, file, index, total, skipped }) {
-  if (phase === 'download') return file
+  if (phase === 'download' || phase === 'check') return file
   if (phase === 'mods') return total > 0 ? `[mods ${index}/${total}] ${file}` : file
   if (phase === 'verify') return `Verifying installed mods… ${index}/${total}`
   return `${skipped ? '[skip]' : `[${index}/${total}]`} ${file}`
@@ -741,79 +740,134 @@ function installBusy() {
   return false
 }
 
-// Install MO2 (standalone)
-btnInstallMo2.addEventListener('click', async () => {
-  btnInstallMo2.disabled = true
-  installLog('Installing Mod Organizer 2…')
-  const r = await window.electronAPI.installMo2Only()
-  installLog(r.success ? 'MO2 installed ✓' : `Error: ${r.error}`)
-  btnInstallMo2.disabled = false
-  refreshMo2Status()
-})
-
-// Install SKSE (standalone)
-btnInstallSkse.addEventListener('click', async () => {
-  btnInstallSkse.disabled = true
-  installLog('Installing SKSE…')
-  const r = await window.electronAPI.installSkse()
-  installLog(r.success ? 'SKSE installed ✓' : `Error: ${r.error}`)
-  btnInstallSkse.disabled = false
-})
-
-// Install / Update Client Files
-btnInstallClient.addEventListener('click', () => {
-  if (installBusy()) return
-  btnInstallClient.disabled = true
-  installCompleteHandler = (({ success, error, upToDate }) => {
-    btnInstallClient.disabled = false
-    if (!success) {
-      installLog(`Error: ${error}`)
-      return
-    }
-    installLog(upToDate ? 'Client files up to date ✓' : 'Client files installed ✓')
+// Runs one install:start flow and resolves with its completion payload.
+function runInstall(mode, opts) {
+  return new Promise(resolve => {
+    installCompleteHandler = resolve
+    window.electronAPI.startInstall(mode, opts)
   })
-  installLog('Installing client files…')
-  window.electronAPI.startInstall('client')
-})
+}
 
-// Full install (MO2 + client files + modpack manifest)
+// Repair steps: each fully reinstalls its section and resolves true on success so Repair All can chain them.
+async function repairMo2() {
+  installLog('Repairing Mod Organizer 2…')
+  const r = await window.electronAPI.installMo2Only({ force: true })
+  installLog(r.success ? 'MO2 reinstalled ✓' : `Error: ${r.error}`)
+  refreshMo2Status()
+  return r.success
+}
+
+async function repairSkse() {
+  installLog('Repairing SKSE…')
+  const r = await window.electronAPI.installSkse({ force: true })
+  installLog(r.success ? 'SKSE reinstalled ✓' : `Error: ${r.error}`)
+  return r.success
+}
+
+async function repairClientFiles() {
+  if (installBusy()) return false
+  installLog('Repairing client files…')
+  const { success, error, upToDate } = await runInstall('client', { force: true })
+  installLog(!success ? `Error: ${error}` : upToDate ? 'Client files up to date (not reinstalled)' : 'Client files reinstalled ✓')
+  return success
+}
+
+// While the modlist rebuilds the same button cancels it, so a wedged run can
+// always be stopped and retried without restarting the launcher.
 let mo2InstallRunning = false
 
-function startModpackInstall() {
-  // While an install runs the same button cancels it, so a wedged install
-  // can always be stopped and retried without restarting the launcher.
+async function repairModlist() {
+  if (installBusy()) return false
+  mo2InstallRunning = true
+  btnRepairModlist.textContent = 'Cancel Repair'
+  btnRepairModlist.disabled = false
+  installLog('Repairing modlist…')
+  const { success, error, warning, modsTotal } = await runInstall('modlist', { force: true })
+  mo2InstallRunning = false
+  btnRepairModlist.textContent = 'Repair Modlist'
+  // Keep the Play button honest right away instead of waiting for the 10s
+  // poll - otherwise a stale UPDATE label eats the player's next click.
+  refreshPlayState()
+  if (!success) {
+    installLog(`Error: ${error}`)
+    return false
+  }
+  if (warning) installLog(`⚠ ${warning}`)
+  else installLog(`Modlist ready ✓ - ${modsTotal ?? 0} mods`)
+  refreshMo2Status()
+  return true
+}
+
+// Check Files: one line per issue, capped so the 300-line log keeps the summary; main writes every line to install.log.
+const CHECK_FIX_LABELS = { mo2: 'MO2', game: 'Game Copy', skse: 'SKSE', client: 'Client Files', modlist: 'Modlist' }
+const CHECK_LOG_CAP = 250
+
+function formatCheckIssue(issue) {
+  return `[${issue.kind}] ${issue.path}  ->  Repair ${CHECK_FIX_LABELS[issue.fix] || issue.fix}`
+}
+
+async function checkFiles() {
+  installLog('Checking files…')
+  const r = await window.electronAPI.checkFiles()
+  if (!r.ok) {
+    installLog(`Error: ${r.error}`)
+    return false
+  }
+  for (const note of r.notes || []) installLog(`⚠ ${note}`)
+  const lines = r.issues.map(formatCheckIssue)
+  for (const line of lines.slice(0, CHECK_LOG_CAP)) installLog(line)
+  if (lines.length > CHECK_LOG_CAP) installLog(`… and ${lines.length - CHECK_LOG_CAP} more (see install.log in the launcher data folder)`)
+  installLog(lines.length ? `${lines.length} issue(s) found` : 'All files OK ✓')
+  return true
+}
+
+// Every repair button is blocked while a step (or the Repair All chain) runs; the modlist step re-enables its own button as Cancel.
+let repairRunning = false
+
+async function withRepairLock(fn) {
+  if (repairRunning) { installLog('A repair is already running.'); return }
+  repairRunning = true
+  for (const b of REPAIR_BUTTONS) b.disabled = true
+  try {
+    await fn()
+  } finally {
+    repairRunning = false
+    for (const b of REPAIR_BUTTONS) b.disabled = false
+    refreshIsolatedStatus()
+  }
+}
+
+btnRepairMo2.addEventListener('click', () => withRepairLock(repairMo2))
+btnRepairGame.addEventListener('click', () => withRepairLock(repairGameCopy))
+btnRepairSkse.addEventListener('click', () => withRepairLock(repairSkse))
+btnRepairClient.addEventListener('click', () => withRepairLock(repairClientFiles))
+btnRepairModlist.addEventListener('click', () => {
   if (mo2InstallRunning) {
     installLog('Cancelling…')
     window.electronAPI.cancelInstall()
     return
   }
-  if (installBusy()) return
-  mo2InstallRunning = true
-  btnFullInstall.textContent = 'Cancel Install'
-  installLog('Installing modlist…')
+  withRepairLock(repairModlist)
+})
+btnCheckFiles.addEventListener('click', () => withRepairLock(checkFiles))
 
-  installCompleteHandler = (({ success, error, upToDate, warning, modsTotal }) => {
-    mo2InstallRunning = false
-    btnFullInstall.textContent = 'Install Modlist'
-    // Keep the Play button honest right away instead of waiting for the 10s
-    // poll - otherwise a stale UPDATE label eats the player's next click.
-    refreshPlayState()
-    if (!success) {
-      installLog(`Error: ${error}`)
+btnRepairAll.addEventListener('click', () => withRepairLock(async () => {
+  const steps = [
+    ['MO2', repairMo2],
+    ...(fieldIsolated.checked ? [['Game Copy', repairGameCopy]] : []),
+    ['SKSE', repairSkse],
+    ['Client Files', repairClientFiles],
+    ['Modlist', repairModlist],
+  ]
+  installLog(`Repair All: ${steps.map(s => s[0]).join(', ')}`)
+  for (const [name, step] of steps) {
+    if (!(await step())) {
+      installLog(`Repair All stopped at ${name}.`)
       return
     }
-    if (warning) {
-      installLog(`⚠ ${warning}`)
-      refreshMo2Status()
-      return
-    }
-    installLog(upToDate ? `Modlist up to date ✓ - ${modsTotal ?? 0} mods` : `Modlist ready ✓ - ${modsTotal ?? 0} mods`)
-    refreshMo2Status()
-  })
-
-  window.electronAPI.startInstall('modlist')
-}
-btnFullInstall.addEventListener('click', startModpackInstall)
+  }
+  installLog('Repair All finished ✓')
+}))
 
 // PLAY button
 // One click does everything: verify/refresh client files, sync the load
@@ -916,21 +970,19 @@ function clearWarning() {
 // Run the installer (auto mode) and resolve with its completion result,
 // mirroring progress onto the Play button / warning strip.
 function runInstallForPlay() {
-  return new Promise(resolve => {
-    if (installCompleteHandler) {
-      return resolve({ success: false, error: 'An install is already running - wait for it to finish.' })
-    }
-    installProgressMirror = ({ phase, file }) => {
-      btnConnect.textContent = phase === 'download' ? '\u2913 DOWNLOADING\u2026' : '\u2699 INSTALLING\u2026'
-      showWarning(file)
-    }
-    installCompleteHandler = result => resolve(result)
-    window.electronAPI.startInstall('auto')
-  })
+  if (installCompleteHandler) {
+    return Promise.resolve({ success: false, error: 'An install is already running - wait for it to finish.' })
+  }
+  installProgressMirror = ({ phase, file }) => {
+    btnConnect.textContent = phase === 'download' ? '\u2913 DOWNLOADING\u2026' : '\u2699 INSTALLING\u2026'
+    showWarning(file)
+  }
+  return runInstall('auto')
 }
 
 btnConnect.addEventListener('click', async () => {
   if (gameRunning || playBusy) return
+  if (repairRunning) { showWarning('A repair is running, wait for it to finish.'); return }
 
   // Launcher update takes priority over everything: it replaces this process.
   if (launcherUpdateReady) {

@@ -779,7 +779,7 @@ html, body {
 
 .setting-input::placeholder { color: rgba(232,224,208,0.2); }
 .setting-input:focus { border-color: rgba(201,162,39,0.5); }
-.setting-input:disabled, .settings-grid input:disabled {
+.setting-input:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -837,6 +837,8 @@ html, body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+#tab-install .install-progress { height: 200px; }
 
 .btn-install {
   padding: 9px 18px;
@@ -1337,32 +1339,22 @@ html, body {
 .settings-collapse > summary::before { content: '▸ '; color: rgba(201, 162, 39, 0.6); }
 .settings-collapse[open] > summary::before { content: '▾ '; }
 .settings-collapse > summary:hover { color: var(--gold-bright); }
-.settings-collapse > .settings-group,
-.settings-collapse > .setting-checkbox-row,
-.settings-collapse > .setting-hint { padding-left: 14px; padding-right: 14px; }
-.settings-collapse > *:last-child { margin-bottom: 12px; }
 
-.settings-grid {
+/* Two-column body of a collapse; .span-2 (and hints) take the full width */
+.collapse-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+  row-gap: 4px;
+  padding: 2px 14px 12px;
 }
-.settings-grid .grid-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-family: 'Barlow Condensed', sans-serif;
-  color: var(--parchment);
-}
-.settings-grid .grid-field input {
-  width: 90px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--glass-border);
-  border-radius: 4px;
-  color: var(--parchment);
-  padding: 4px 6px;
-}
+.collapse-grid > .settings-group { margin-bottom: 10px; min-width: 0; }
+.collapse-grid > .setting-checkbox-row { margin-top: 2px; align-self: center; }
+.collapse-grid > .setting-hint,
+.collapse-grid > .span-2 { grid-column: 1 / -1; }
+.collapse-grid button.hotkey-btn { max-width: none; }
+.collapse-grid .setting-input { width: 100%; }
+
 button.hotkey-btn {
   max-width: 220px;
   text-align: left;
