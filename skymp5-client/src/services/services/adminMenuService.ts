@@ -21,11 +21,57 @@ const events = {
   tpLoc: "admin::tploc",
   mode: "admin::mode",
   refresh: "admin::refresh",
+  debugRefresh: "admin::debugrefresh",
   close: "admin::close",
+  npcList: "admin::npclist",
+  npcAdd: "admin::npcadd",
+  npcTp: "admin::npctp",
+  npcReset: "admin::npcreset",
+  npcDelete: "admin::npcdelete",
 };
 
+interface DebugServer {
+  name: string;
+  offsetMs: number;
+  tzOffsetMin: number;
+}
+
+interface DebugData {
+  account: string;
+  character: string;
+  formId: string;
+  actorId: string;
+  profileId: number;
+  server: DebugServer | null;
+  pos: number[];
+  cell: { id: string; name: string; interior: boolean; world: string; location: string } | null;
+  heading: { deg: number; compass: string };
+  target: { name: string; id: string; dist: number } | null;
+  av: { health: number[]; magicka: number[]; stamina: number[] };
+  gameTime: { hour: number; day: number; month: number; year: number; weekday: number } | null;
+  hoursOffset: number;
+  localTime: number;
+  effects: Array<{ id: string; name: string; elapsedSec: number }>;
+  updatedAt: number;
+}
+
+type EffectMap = Map<number, { name: string; since: number }>;
+
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { players: [], locations: [], modes: [], caps: { ban: true }, tier: "", events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", events };
+
+function hex(id: number): string {
+  return id.toString(16);
+}
+
+function safe<T>(fn: () => T | null | undefined, fallback: T): T {
+  try {
+    const v = fn();
+    return v === undefined || v === null ? fallback : v;
+  } catch {
+    return fallback;
+  }
+}
 
 export class AdminMenuService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -49,7 +95,26 @@ export class AdminMenuService extends ClientListener {
       return;
     }
     if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
+    this.openMenu();
+  }
+
+  // Admin data is cleared on every open so a demoted admin never sees stale tabs
+  private openMenu(): void {
+    panelData.admin = false;
+    panelData.players = [];
+    panelData.locations = [];
+    panelData.modes = [];
+    panelData.npcZones = [];
+    this.refreshDebug();
+    this.showMenu();
+    sendCustomPacket(this.controller, { customPacketType: "debugInfoRequest" });
     sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+  }
+
+  private onUpdate(): void {
+    if (!this.menuOpen || Date.now() - this.lastDebugAt < DEBUG_REFRESH_MS) return;
+    this.refreshDebug();
+    this.pushData();
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -58,15 +123,40 @@ export class AdminMenuService extends ClientListener {
     if (content["customPacketType"] === "adminMenu") {
       const caps = content["caps"];
       panelData = {
+        admin: true,
+        debug: panelData.debug,
         players: Array.isArray(content["players"]) ? content["players"] : [],
         locations: Array.isArray(content["locations"]) ? content["locations"] : [],
         modes: Array.isArray(content["modes"]) ? content["modes"] : [],
+        npcZones: Array.isArray(content["npcZones"]) ? content["npcZones"] : [],
+        // The front counts readyInSec down from the moment the list arrived
+        npcZonesAt: Date.now(),
         // Older servers send no tier/caps (server and client deploy independently); the server still refuses bans
         caps: caps && typeof caps === "object" ? caps : { ban: true },
         tier: String(content["tier"] ?? ""),
         events,
       };
-      this.showMenu();
+      this.pushData();
+    } else if (content["customPacketType"] === "debugInfo") {
+      // Natives throw in the packet-handler context; only data is stored here and the update loop reads the game
+      const serverTime = Number(content["serverTime"]);
+      this.server = {
+        name: String(content["serverName"] ?? ""),
+        offsetMs: Number.isFinite(serverTime) ? serverTime - Date.now() : 0,
+        tzOffsetMin: Number(content["serverTzOffsetMin"]) || 0,
+      };
+      this.serverActorId = String(content["actorId"] ?? "");
+      this.serverProfileId = Number(content["profileId"]) || 0;
+      if (panelData.debug) {
+        panelData.debug.server = this.server;
+        panelData.debug.actorId = this.serverActorId;
+        panelData.debug.profileId = this.serverProfileId;
+        this.pushData();
+      }
+    } else if (content["customPacketType"] === "npcZones") {
+      panelData.npcZones = Array.isArray(content["zones"]) ? content["zones"] : [];
+      panelData.npcZonesAt = Date.now();
+      this.pushData();
     } else if (content["customPacketType"] === "adminMode") {
       // Keep the Modes tab highlight in sync without a full roster refresh
       const mode = String(content["mode"] ?? "");
@@ -106,6 +196,20 @@ export class AdminMenuService extends ClientListener {
     }
     if (kind === events.mode) {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "toggleMode", mode: String(e.arguments[1] ?? "") });
+      return;
+    }
+    if (kind === events.npcList) {
+      sendCustomPacket(this.controller, { customPacketType: "npcZonesRequest" });
+      return;
+    }
+    if (kind === events.npcAdd) {
+      // The front sends one NPC-Spawns.json entry as a JSON string; the server pushes npcZones after every mutation
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "npcZoneAdd", zone: typeof e.arguments[1] === "string" ? e.arguments[1] : "" });
+      return;
+    }
+    if (kind === events.npcTp || kind === events.npcReset || kind === events.npcDelete) {
+      const zoneAction = kind === events.npcTp ? "npcZoneTp" : kind === events.npcReset ? "npcZoneReset" : "npcZoneDelete";
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: zoneAction, target: String(e.arguments[1] ?? "") });
       return;
     }
     if (kind !== events.tp && kind !== events.summon && kind !== events.kick && kind !== events.ban) return;

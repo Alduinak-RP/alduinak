@@ -1,4 +1,4 @@
-// Tabbed admin panel: Players roster / Teleport locations / Mode toggles. Trade-window chrome.
+// Tabbed admin panel: Debug read-outs / Players roster / Teleport locations / Mode toggles / NPC zones. Trade-window chrome.
 
 $admin-gold: #c8b48a;
 $admin-gold-dim: #8a7a55;
@@ -83,6 +83,16 @@ $admin-row-gutter: 16px;
     display: flex;
     gap: 6px;
     margin-bottom: 12px;
+
+    // Zones / Add switch inside the NPCs tab
+    &--sub {
+      margin: 0 0 4px;
+
+      .admin-panel__tab {
+        font-size: 15px;
+        padding: 5px 2px;
+      }
+    }
   }
 
   &__tab {
@@ -141,6 +151,69 @@ $admin-row-gutter: 16px;
     &::placeholder {
       color: $admin-gold-dim;
     }
+  }
+
+  &__textarea {
+    height: 90px;
+    padding: 6px 8px;
+    resize: vertical;
+  }
+
+  &__form {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px 14px;
+
+    // Debug read-outs: twelve fixed cells, nowrap values must not widen a column
+    &--debug {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      row-gap: 16px;
+      padding: 4px 2px 8px;
+
+      .admin-panel__field {
+        min-width: 0;
+      }
+    }
+  }
+
+  &__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: $admin-gold-dim;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+
+    &--half {
+      grid-column: span 2;
+    }
+
+    &--wide {
+      grid-column: 1 / -1;
+    }
+  }
+
+  &__value {
+    font-size: 16px;
+    color: $admin-gold;
+    text-transform: none;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &--sub {
+      font-size: 14px;
+    }
+  }
+
+  &__hint {
+    font-size: 12px;
+    color: $admin-gold-dim;
+    text-transform: none;
+    letter-spacing: 0;
+    opacity: 0.8;
   }
 
   &__checkbox {
@@ -245,11 +318,27 @@ $admin-row-gutter: 16px;
       opacity: 0.65;
     }
 
-    &--location {
+    &--location,
+    &--zone {
       justify-content: space-between;
       padding: 6px 0;
       font-size: 16px;
     }
+  }
+
+  // Zone name over its status line, buttons on the right
+  &__zone-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__zone-buttons {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
   }
 
   &__dot {
@@ -320,7 +409,8 @@ $admin-row-gutter: 16px;
   // Scale SkyrimButton's default 30px type down to fit the compact 32px-tall buttons.
   &__actions,
   &__header-buttons,
-  &__row--location {
+  &__row--location,
+  &__zone-buttons {
     .skymp-input-button .skymp-input-button_text {
       font-size: 16px;
       line-height: 18px;
