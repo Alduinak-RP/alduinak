@@ -1,19 +1,21 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
+import { AdminTier, AdminRoleConfig, TIER_CAPS, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
 // ── In-game admin (Discord-role gated) ───────────────────────────────────────
-// Admins: players with any Discord role in "adminRoleIds" or a profile id in "adminProfileIds".
-// They get the server console (consoleCommandsAllowed per assign; keep enableConsoleCommandsForAll OFF) and the tabbed admin panel (client AdminMenuService, Insert key).
+// Admins resolve to a tier (senior | developer | gm) via adminRoles.ts from "adminRoles", the legacy "adminRoleIds" and "adminProfileIds".
+// Every tier gets the server console (consoleCommandsAllowed per assign; keep enableConsoleCommandsForAll OFF) and the tabbed admin panel (client AdminMenuService, Insert key).
+// Only tiers with TIER_CAPS.ban may ban; the refusal is enforced here, never in the client.
 // Bans post to the backend (master key + auth token), which snapshots discordId/hwid/ip into bans.json; connection-check then refuses the player permanently.
 //
 // Wire protocol (CustomPacket JSON):
 //   Client -> Server: { customPacketType: "adminMenuRequest" }
 //                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
 //                     { customPacketType: "adminAction", action: "toggleMode", mode }
-//   Server -> Client: { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping}], locations: [{name}], modes: [{id, label, active}] }
+//   Server -> Client: { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping}], locations: [{name}], modes: [{id, label, active}], tier, caps: {ban} }
 //                     { customPacketType: "adminMode", mode, on }
 //                     { customPacketType: "adminActionResult", ok, text }
 // The roster merges online actors with the backend's full player list (GET /:key/players);
@@ -47,8 +49,7 @@ export class AdminSystem implements System {
   systemName = "AdminSystem";
   constructor(private log: Log) { }
 
-  private adminRoleIds: string[] = [];
-  private adminProfileIds: number[] = [];
+  private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private masterUrl = "";
   private masterKey = "";
   private authToken = "";
@@ -63,12 +64,7 @@ export class AdminSystem implements System {
     this.masterUrl = typeof s.master === "string" ? s.master.replace(/\/+$/, "") : "";
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
-    if (Array.isArray(all?.["adminRoleIds"])) {
-      this.adminRoleIds = all["adminRoleIds"].map(String);
-    }
-    if (Array.isArray(all?.["adminProfileIds"])) {
-      this.adminProfileIds = all["adminProfileIds"].map(Number).filter(Number.isFinite);
-    }
+    this.roleCfg = readAdminRoleConfig(all);
     if (Array.isArray(all?.["adminTeleportLocations"])) {
       const mp = ctx.svr as Mp;
       for (const raw of all["adminTeleportLocations"]) {
@@ -83,18 +79,19 @@ export class AdminSystem implements System {
       try {
         const actorId = mp.getUserActor(userId);
         if (!actorId) return;
-        const allowed = this.isAdminActor(mp, actorId);
-        mp.set(actorId, "consoleCommandsAllowed", allowed);
-        if (allowed) this.log(`AdminSystem: console granted to actor ${actorId.toString(16)}`);
+        const tier = this.tierOf(mp, actorId);
+        mp.set(actorId, "consoleCommandsAllowed", tier !== null);
+        if (tier) this.log(`AdminSystem: console granted to actor ${actorId.toString(16)} (${tier})`);
       } catch (e) {
         this.log(`AdminSystem: assign hook failed: ${e}`);
       }
     });
 
-    this.log(`AdminSystem: ${this.adminRoleIds.length} admin role(s), ${this.adminProfileIds.length} admin profile(s), ${this.locations.length} teleport location(s)`);
+    const { tierRoles, adminRoleIds, adminProfileIds } = this.roleCfg;
+    this.log(`AdminSystem: tier roles senior ${tierRoles.senior.length} / developer ${tierRoles.developer.length} / gm ${tierRoles.gm.length}, ${adminRoleIds.length} legacy admin role(s), ${adminProfileIds.length} admin profile(s), ${this.locations.length} teleport location(s)`);
   }
 
-  // Validated like zoneSpawnSystem.parseZone; bad descs are dropped at boot
+  // Validated like npcSpawnSystem zones; bad descs are dropped at boot
   private parseLocation(mp: Mp, raw: any): TeleportLocation | null {
     try {
       const name = String(raw?.name ?? "");
@@ -113,18 +110,12 @@ export class AdminSystem implements System {
     }
   }
 
+  private tierOf(mp: Mp, actorId: number): AdminTier | null {
+    return adminTierOf(mp, actorId, this.roleCfg);
+  }
+
   private isAdminActor(mp: Mp, actorId: number): boolean {
-    try {
-      const roles = mp.get(actorId, "private.discordRoles");
-      if (Array.isArray(roles) && roles.some((r: unknown) => this.adminRoleIds.includes(String(r)))) {
-        return true;
-      }
-    } catch { }
-    try {
-      const profileId = Number(mp.get(actorId, "profileId"));
-      if (this.adminProfileIds.includes(profileId)) return true;
-    } catch { }
-    return false;
+    return this.tierOf(mp, actorId) !== null;
   }
 
   private onlinePlayers(mp: Mp): Array<{ userId: number; actorId: number; profileId: number; name: string }> {
@@ -263,9 +254,11 @@ export class AdminSystem implements System {
       // Log the actor's real roles so a misconfigured adminRoleIds is diagnosable from the game
       let roles: unknown = [];
       try { roles = mp.get(myActorId, "private.discordRoles"); } catch { }
-      this.log(`AdminSystem: refused '${type}' from actor ${myActorId.toString(16)} (not an admin). Their roles: ${JSON.stringify(roles)}. Configured: ${JSON.stringify(this.adminRoleIds)}`);
+      this.log(`AdminSystem: refused '${type}' from actor ${myActorId.toString(16)} (not an admin). Their roles: ${JSON.stringify(roles)}. Configured: ${JSON.stringify({ ...this.roleCfg.tierRoles, legacy: this.roleCfg.adminRoleIds })}`);
       return;
     }
+    const tier = this.tierOf(mp, myActorId) as AdminTier;
+    const caps = TIER_CAPS[tier];
 
     let adminProfile = 0;
     try { adminProfile = Number(mp.get(myActorId, "profileId")) || 0; } catch { }
@@ -280,6 +273,8 @@ export class AdminSystem implements System {
             players: this.buildRoster(mp, myActorId, adminProfile, backendPlayers),
             locations: this.locations.map(l => ({ name: l.name })),
             modes: this.modesFor(adminProfile),
+            tier,
+            caps,
           }));
         } catch (e) {
           this.log(`AdminSystem: adminMenu reply failed: ${e}`);
@@ -337,7 +332,13 @@ export class AdminSystem implements System {
         this.adminLog(`profile ${adminProfile} kicked ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, true, `Kicked ${target.name}`);
       } else if (action === "ban") {
-        this.banViaBackend(mp, ctx, userId, myActorId, target, adminProfile);
+        if (!caps.ban) {
+          this.log(`AdminSystem: profile ${adminProfile} (${tier}) refused a ban on profile ${target.profileId} (${target.name})`);
+          this.adminLog(`profile ${adminProfile} (${tier}) was refused a ban on ${target.name} (profile ${target.profileId})`);
+          this.reply(mp, userId, false, "Your rank cannot ban players");
+        } else {
+          this.banViaBackend(mp, ctx, userId, myActorId, target, adminProfile, tier);
+        }
       } else {
         this.reply(mp, userId, false, `Unknown action '${action}'`);
       }
@@ -378,7 +379,8 @@ export class AdminSystem implements System {
     userId: number,
     adminActorId: number,
     target: { userId: number; actorId: number; profileId: number; name: string },
-    adminProfile: number
+    adminProfile: number,
+    tier: AdminTier
   ): void {
     if (!this.masterUrl || !this.masterKey || !this.authToken) {
       this.reply(mp, userId, false, "Ban unavailable: master api not configured");
@@ -394,15 +396,15 @@ export class AdminSystem implements System {
       body: JSON.stringify({
         profileId: target.profileId,
         reason: "in-game admin ban",
-        bannedBy: `profile ${adminProfile}`,
+        bannedBy: `profile ${adminProfile} (${tier})`,
       }),
     }).then(res => {
       if (res.ok) {
         // Boot AND drop the connection; connection-check refuses the reconnect
         try { ctx.svr.setEnabled(target.actorId, false); } catch { }
         try { (ctx.svr as Mp).kick(target.userId); } catch { }
-        this.log(`AdminSystem: profile ${adminProfile} banned profile ${target.profileId} (${target.name})`);
-        this.adminLog(`profile ${adminProfile} banned ${target.name} (profile ${target.profileId})`);
+        this.log(`AdminSystem: profile ${adminProfile} (${tier}) banned profile ${target.profileId} (${target.name})`);
+        this.adminLog(`profile ${adminProfile} (${tier}) banned ${target.name} (profile ${target.profileId})`);
         this.replyIfSameAdmin(mp, userId, adminActorId, true, `Banned ${target.name}`);
       } else {
         this.log(`AdminSystem: backend ban failed with status ${res.status}`);

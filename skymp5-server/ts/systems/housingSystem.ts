@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
+import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -125,10 +126,7 @@ export class HousingSystem implements System {
     const maxDistance = Number(all?.["housingMaxDistance"]);
     if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
 
-    const roleIds = all?.["adminRoleIds"];
-    if (Array.isArray(roleIds)) this.adminRoleIds = roleIds.map((r) => String(r));
-    const profileIds = all?.["adminProfileIds"];
-    if (Array.isArray(profileIds)) this.adminProfileIds = profileIds.map((p) => Number(p));
+    this.roleCfg = readAdminRoleConfig(all);
 
     this.claimed = this.loadRegistry();
     this.installActivationHook(ctx);
@@ -468,17 +466,9 @@ export class HousingSystem implements System {
     return this.holdRanks(ctx, actorId).some((r) => r.hold === hold && MANAGER_RANKS.indexOf(r.rank) !== -1);
   }
 
+  // Every admin tier overrides housing claims
   private isAdmin(ctx: SystemContext, actorId: number): boolean {
-    const mp = ctx.svr as Mp;
-    try {
-      const roles = mp.get(actorId, "private.discordRoles");
-      if (Array.isArray(roles) && roles.some((r: unknown) => this.adminRoleIds.indexOf(String(r)) !== -1)) return true;
-    } catch { }
-    try {
-      const profileId = Number(mp.get(actorId, "profileId"));
-      if (this.adminProfileIds.indexOf(profileId) !== -1) return true;
-    } catch { }
-    return false;
+    return adminTierOf(ctx.svr as Mp, actorId, this.roleCfg) !== null;
   }
 
   // Backend faction rows are "hold:<slug>:<rank>".
@@ -850,8 +840,7 @@ export class HousingSystem implements System {
   private baseTypeCache = new Map<number, string>();
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();
-  private adminRoleIds: string[] = [];
-  private adminProfileIds: number[] = [];
+  private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxClaims = DEFAULT_MAX_CLAIMS;
   private maxDistance = DEFAULT_MAX_DISTANCE;
   private decorDirty = false;

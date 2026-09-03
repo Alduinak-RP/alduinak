@@ -294,6 +294,74 @@ Enable console commands for all, useful for testing.
 }
 ```
 
+## Admin roles
+
+In-game admins get the server console, the admin chat channel and the admin panel (Insert key: player roster, teleport, summon, kick, ban, admin modes). Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`. Keep `enableConsoleCommandsForAll` off on a live server so only admins get the console.
+
+| Tier | Powers |
+|---|---|
+| `senior` | everything, including Ban |
+| `developer` | everything, including Ban (same as senior) |
+| `gm` | everything except Ban |
+
+Precedence when a player holds roles from several tiers: `senior` > `developer` > `gm`. The tier lists are checked before the legacy `adminRoleIds` list, so a role listed under `adminRoles.gm` resolves to `gm` even if it is also in `adminRoleIds`. Housing claim overrides accept every tier.
+
+Discord roles are fetched once at login (`discordAuth`) and stored on the character, so a role change on Discord only takes effect after the player relogs. The tier is re-evaluated on every admin panel request; console rights are set when the character is assigned.
+
+### adminRoles
+
+Discord role ids (strings) per tier.
+
+```json5
+{
+  // ...
+  "adminRoles": {
+    "senior": ["1521259602061164587"],
+    "developer": ["1521259396481421475"],
+    "gm": ["1521259484859863190"]
+  }
+  // ...
+}
+```
+
+### adminRoleIds
+
+Legacy flat list of Discord role ids. A role listed here that appears in no `adminRoles` tier resolves to `senior` (full rights). Optional once `adminRoles` is set.
+
+```json5
+{
+  // ...
+  "adminRoleIds": ["1521259602061164587"]
+  // ...
+}
+```
+
+### adminProfileIds
+
+Master-api profile ids (numbers) that are always `senior`, regardless of Discord roles. Useful for a server owner without the Discord role.
+
+```json5
+{
+  // ...
+  "adminProfileIds": [1]
+  // ...
+}
+```
+
+### adminTeleportLocations
+
+Named destinations offered in the admin panel's Teleport tab. `cellOrWorldDesc` uses the same `"<localFormId>:<file>"` form as spawn zones; `rot` is optional. Entries with a bad desc are dropped at boot with a log line.
+
+```json5
+{
+  // ...
+  "adminTeleportLocations": [
+    { "name": "Staff hall", "cellOrWorldDesc": "3c:Skyrim.esm", "pos": [22659, -8697, -3594], "rot": [0, 0, 268] }
+  ]
+  // ...
+}
+```
+
 ## sweetPieMinimumPlayersToStart
 
 The minimal amount of players to begin deathmatch. This setting is sweetpie only and does not affect vanilla server. Default is 5.
