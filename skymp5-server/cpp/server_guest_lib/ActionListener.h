@@ -9,6 +9,7 @@
 #include "SpellCastData.h"
 #include "SweetHidePlayerNamesService.h"
 #include "libespm/Loader.h"
+#include <chrono>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -99,9 +100,12 @@ private:
     std::vector<espm::Effects::Effect> effects;
     bool hasSweetpie = false;
     uint32_t ticks = 0;
+    // Timer chains carry the generation they were started for
+    uint32_t generation = 0;
+    std::chrono::steady_clock::time_point lastRefresh;
   };
 
-  void TickRestorationChannel(uint32_t casterId);
+  void TickRestorationChannel(uint32_t casterId, uint32_t generation);
   void FireHitDamageEvent(MpActor* aggressor, MpActor* target,
                           uint32_t sourceId, float damage);
 
@@ -124,6 +128,7 @@ private:
   PartOne& partOne;
 
   std::unordered_map<uint32_t, RestorationChannel> restorationChannels;
+  uint32_t restorationChannelGeneration = 0;
 
   // TODO: inverse dependency
   std::shared_ptr<CraftService> craftService;

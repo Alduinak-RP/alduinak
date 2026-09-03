@@ -1215,6 +1215,17 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
+  // Stops are relayed before the equipment and denylist gates so none is dropped
+  if (spellCastData.interruptCast) {
+    SendToNeighbours(myActor->idx, rawMsgData);
+    const bool hadChannel =
+      restorationChannels.erase(caster->GetFormId()) > 0;
+    spdlog::info("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
+                 "(restoration channel erased: {})",
+                 caster->GetFormId(), spellCastData.spell, hadChannel);
+    return;
+  }
+
   const auto equipment = caster->GetEquipment();
 
   if (equipment.IsSpellEquipped(spellCastData.spell) == false) {
@@ -1233,11 +1244,6 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   }
 
   SendToNeighbours(myActor->idx, rawMsgData);
-
-  if (spellCastData.interruptCast) {
-    restorationChannels.erase(caster->GetFormId());
-    return;
-  }
 
   auto& browser = partOne.worldState.GetEspm().GetBrowser();
 
@@ -1312,12 +1318,12 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
       spellData.spellItem->castType == espm::SPEL::CastType::Concentration;
     const uint32_t casterId = caster->GetFormId();
     auto existing = restorationChannels.find(casterId);
-    const bool isChannelRefresh = isConcentration &&
-      existing != restorationChannels.end() &&
+    const bool hadChannel = existing != restorationChannels.end();
+    const bool isChannelRefresh = isConcentration && hadChannel &&
       existing->second.spellId == spellCastData.spell;
 
-    // Client keep-alives refresh the channel; only fresh casts apply now
-    if (!isChannelRefresh) {
+    // Keep-alives only refresh the channel; a fresh cast applies now
+    if (!isChannelRefresh && !spellCastData.keepAlive) {
       targetActor->ApplyMagicEffects(restoreEffects, hasSweetpie);
       spdlog::info("ActionListener::OnSpellCast - applied {} restorative "
                    "effect(s) of spell {:x} to actor {:x}",
@@ -1325,35 +1331,43 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
                    targetActor->GetFormId());
     }
 
-    // Concentration restoratives heal magnitude PER SECOND while channeled;
-    // tick the channel until the interrupt arrives or validation fails
+    // Concentration restoratives heal per second until a stop, a failed check or a missed keep-alive
     if (isConcentration) {
-      const bool hadChannel = existing != restorationChannels.end();
       RestorationChannel channel;
       channel.spellId = spellCastData.spell;
       channel.targetId = targetActor->GetFormId();
       channel.effects = restoreEffects;
       channel.hasSweetpie = hasSweetpie;
+      channel.lastRefresh = std::chrono::steady_clock::now();
+      // A live channel keeps its generation so its timer chain carries on
+      channel.generation = hadChannel ? existing->second.generation
+                                      : ++restorationChannelGeneration;
+      const uint32_t generation = channel.generation;
       restorationChannels[casterId] = std::move(channel);
       if (!hadChannel) {
         partOne.worldState.SetTimer(std::chrono::milliseconds(1000))
-          .Then([this, casterId](Viet::Void) {
-            TickRestorationChannel(casterId);
+          .Then([this, casterId, generation](Viet::Void) {
+            TickRestorationChannel(casterId, generation);
           });
       }
     }
   }
 }
 
-void ActionListener::TickRestorationChannel(uint32_t casterId)
+void ActionListener::TickRestorationChannel(uint32_t casterId,
+                                            uint32_t generation)
 {
   auto it = restorationChannels.find(casterId);
-  if (it == restorationChannels.end()) {
+  // A different generation means this chain belongs to a replaced channel
+  if (it == restorationChannels.end() ||
+      it->second.generation != generation) {
     return;
   }
   auto& channel = it->second;
 
   constexpr uint32_t kMaxChannelTicks = 30;
+  // Bounds a channel whose stop was lost, matching the observers' clone watch
+  constexpr auto kRefreshTimeout = std::chrono::milliseconds(8000);
 
   auto& worldState = partOne.worldState;
   auto casterForm = worldState.LookupFormById(casterId);
@@ -1361,7 +1375,15 @@ void ActionListener::TickRestorationChannel(uint32_t casterId)
     ? std::dynamic_pointer_cast<MpActor>(casterForm).get()
     : nullptr;
 
-  bool valid = caster && !caster->IsDead() &&
+  const bool refreshed =
+    std::chrono::steady_clock::now() - channel.lastRefresh <= kRefreshTimeout;
+  if (!refreshed) {
+    spdlog::info("ActionListener::TickRestorationChannel - channel of {:x} "
+                 "expired without keep-alive",
+                 casterId);
+  }
+
+  bool valid = refreshed && caster && !caster->IsDead() &&
     partOne.GetUserByActor(casterId) != Networking::InvalidUserId &&
     caster->GetEquipment().IsSpellEquipped(channel.spellId) &&
     ++channel.ticks <= kMaxChannelTicks;
@@ -1389,7 +1411,9 @@ void ActionListener::TickRestorationChannel(uint32_t casterId)
   targetActor->ApplyMagicEffects(channel.effects, channel.hasSweetpie);
 
   worldState.SetTimer(std::chrono::milliseconds(1000))
-    .Then([this, casterId](Viet::Void) { TickRestorationChannel(casterId); });
+    .Then([this, casterId, generation](Viet::Void) {
+      TickRestorationChannel(casterId, generation);
+    });
 }
 
 void ActionListener::OnUnknown(const RawMessageData& rawMsgData)

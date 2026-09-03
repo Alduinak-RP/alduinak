@@ -31,7 +31,9 @@ struct SpellCastMsgData
       .Serialize("castingSource", castingSource)
       .Serialize("aimAngle", aimAngle)
       .Serialize("aimHeading", aimHeading)
-      .Serialize("actorAnimationVariables", actorAnimationVariables);
+      .Serialize("actorAnimationVariables", actorAnimationVariables)
+      // Last so a binary stream from an older client leaves it false
+      .Serialize("keepAlive", keepAlive);
   }
 
   uint32_t caster = 0;
@@ -44,6 +46,8 @@ struct SpellCastMsgData
   float aimHeading = 0.f;
 
   ActorAnimationVariables actorAnimationVariables;
+  // Declared last so positional initializers of the older fields keep their meaning
+  bool keepAlive = false;
 };
 
 struct SpellCastMessage : public MessageBase<SpellCastMessage>
