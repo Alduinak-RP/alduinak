@@ -2,6 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { showUi } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { logTrace, logError } from "../../logging";
@@ -24,6 +25,10 @@ export class DeathScreenService extends ClientListener {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    // The hide UI key drops focus; the buttons must be clickable again once shown
+    this.controller.emitter.on("uiHiddenChanged", (e) => {
+      if (!e.hidden && this.failsafeTimer !== undefined) this.sp.browser.setFocused(true);
+    });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -53,6 +58,7 @@ export class DeathScreenService extends ClientListener {
       "})();";
     try {
       this.sp.browser.executeJavaScript(js);
+      showUi(this.controller);
       this.sp.browser.setVisible(true);
       this.sp.browser.setFocused(true); // let the player click the buttons
     } catch (e) {

@@ -34,6 +34,7 @@ import { NewLocalLagValueCalculatedEvent } from "./newLocalLagValueCalculatedEve
 import { AuthNeededEvent } from "./authNeededEvent";
 import { QueryBlockSetInventoryEvent } from "./queryBlockSetInventoryEvent";
 import { QueryKeyCodeBindings } from "./queryKeyCodeBindings";
+import { UiHiddenChangedEvent } from "./uiHiddenChangedEvent";
 import { SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessage } from "../messages/updateAnimVariablesMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
@@ -86,6 +87,7 @@ type EventTypes = {
     'newLocalLagValueCalculated': [NewLocalLagValueCalculatedEvent],
     'queryBlockSetInventoryEvent': [QueryBlockSetInventoryEvent],
     'queryKeyCodeBindings': [QueryKeyCodeBindings],
+    'uiHiddenChanged': [UiHiddenChangedEvent],
     'nicknameCreate': [NicknameCreateEvent],
     'nicknameDestroy': [NicknameDestroyEvent]
 }

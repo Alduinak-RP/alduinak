@@ -34,6 +34,7 @@ export class AdminMenuService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
   }
 
   private onButtonEvent(e: ButtonEvent) {
@@ -80,7 +81,7 @@ export class AdminMenuService extends ClientListener {
   }
 
   private showMenu(): void {
-    openFormMenu(this.sp, this.browsersideWidgetSetter, { panelData, WIDGET_ID });
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { panelData, WIDGET_ID }, this.controller);
     this.menuOpen = true;
   }
 

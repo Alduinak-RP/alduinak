@@ -75,6 +75,7 @@ export class HousingService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
     this.menuKey = readMenuKeyCode(this.sp, "housingMenuKeyCode", DxScanCode.H);
   }
@@ -217,7 +218,7 @@ export class HousingService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, targetLabel, WIDGET_ID });
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, targetLabel, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {

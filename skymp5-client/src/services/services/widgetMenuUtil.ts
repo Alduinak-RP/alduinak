@@ -13,8 +13,9 @@ export function closeWidget(sp: Sp, widgetId: number): void {
   );
 }
 
-// Injects the setter into CEF and gives it focus.
-export function openFormMenu(sp: Sp, setter: () => void, args: Record<string, unknown>): void {
+// Injects the setter into CEF and gives it focus; a hidden interface comes back first.
+export function openFormMenu(sp: Sp, setter: () => void, args: Record<string, unknown>, controller: CombinedController): void {
+  showUi(controller);
   sp.browser.executeJavaScript(new FunctionInfo(setter).getText(args));
   sp.browser.setVisible(true);
   sp.browser.setFocused(true);
@@ -25,9 +26,25 @@ export function closeFormMenu(sp: Sp, widgetId: number): void {
   sp.browser.setFocused(false);
 }
 
-// True while chat has focus or a menu that swallows gameplay input is open
-// (console, inventory, map): menu hotkeys must not fire from typed text.
-export function isMenuHotkeyBlocked(sp: Sp, controller: CombinedController): boolean {
+// Clears the hide UI toggle before a server-initiated screen is shown.
+export function showUi(controller: CombinedController): void {
+  try {
+    controller.lookupListener(BrowserService).setUiHidden(false);
+  } catch {
+    // no browser service registered
+  }
+}
+
+export function isUiHidden(controller: CombinedController): boolean {
+  try {
+    return controller.lookupListener(BrowserService).isUiHidden();
+  } catch {
+    return false;
+  }
+}
+
+// True while chat has focus or a menu that swallows gameplay input is open (console, inventory, map).
+export function isGameInputBlocked(sp: Sp, controller: CombinedController): boolean {
   if (sp.browser.isFocused()) return true;
   if (isConsoleOpen(sp)) return true;
   try {
@@ -35,6 +52,11 @@ export function isMenuHotkeyBlocked(sp: Sp, controller: CombinedController): boo
   } catch {
     return false;
   }
+}
+
+// Menu hotkeys are also inert while the interface is hidden.
+export function isMenuHotkeyBlocked(sp: Sp, controller: CombinedController): boolean {
+  return isUiHidden(controller) || isGameInputBlocked(sp, controller);
 }
 
 // Live query: the console can swallow input without a tracked menuOpen event

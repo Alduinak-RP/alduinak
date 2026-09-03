@@ -100,6 +100,8 @@ export class CharacterSelectService extends ClientListener {
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     // "update" fires only in-game, so the first one marks the initial spawn.
     this.controller.once("update", () => { this.sawGameplay = true; });
+    // The hide UI key drops focus; the modal must be clickable again once shown
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (!e.hidden && this.menuOpen) this.sp.browser.setFocused(true); });
 
     const lang = readMenuLanguage(this.sp);
     if (lang in translations) {
@@ -119,7 +121,7 @@ export class CharacterSelectService extends ClientListener {
         confirmDeleteSlot = null;
         this.menuOpen = true;
         logTrace(this, `Opening character select menu with`, maxCharacters, `slots`);
-        openFormMenu(this.sp, this.browsersideWidgetSetter, this.menuArgs());
+        openFormMenu(this.sp, this.browsersideWidgetSetter, this.menuArgs(), this.controller);
         break;
       case 'characterSelectMenuClose':
         if (this.menuOpen) this.closeMenu();

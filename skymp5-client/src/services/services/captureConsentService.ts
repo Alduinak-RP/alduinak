@@ -43,6 +43,13 @@ export class CaptureConsentService extends ClientListener {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    // Hiding the interface dismisses the prompt unanswered, like the expiry timer
+    this.controller.emitter.on("uiHiddenChanged", (e) => {
+      if (e.hidden && this.promptOpen) {
+        this.pendingRequestId = null;
+        this.closePrompt();
+      }
+    });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -90,7 +97,7 @@ export class CaptureConsentService extends ClientListener {
   private openPrompt(): void {
     this.controller.once("update", () => {
       this.promptOpen = true;
-      openFormMenu(this.sp, this.browsersideWidgetSetter, { events, promptText, WIDGET_ID });
+      openFormMenu(this.sp, this.browsersideWidgetSetter, { events, promptText, WIDGET_ID }, this.controller);
       const timers = this.controller.lookupListener(TimersService);
       if (this.expiryTimer !== undefined) {
         timers.clearTimeout(this.expiryTimer);

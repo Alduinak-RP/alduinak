@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { closeWidget } from "./widgetMenuUtil";
+import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
 import { getInventory, Entry } from "../../sync/inventory";
@@ -128,6 +128,19 @@ export class TradeService extends ClientListener {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.cancelOnHide(); });
+  }
+
+  // Hiding ends the trade on both sides like the cancel button, else the partner's next move reopens it
+  private cancelOnHide(): void {
+    if (!this.windowOpen && !this.invitePending) return;
+    if (this.windowOpen) {
+      sendCustomPacket(this.controller, { customPacketType: "tradeCancel" });
+    }
+    if (this.invitePending) {
+      sendCustomPacket(this.controller, { customPacketType: "tradeRespond", accept: false });
+    }
+    this.closeAll();
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -434,6 +447,7 @@ export class TradeService extends ClientListener {
     this.sp.browser.executeJavaScript(
       new FunctionInfo(this.tradeWidgetSetter).getText({ tradeData, WIDGET_ID })
     );
+    showUi(this.controller);
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);
     this.windowOpen = true;
@@ -444,7 +458,9 @@ export class TradeService extends ClientListener {
     this.sp.browser.executeJavaScript(
       new FunctionInfo(this.inviteWidgetSetter).getText({ events, inviteFrom, INVITE_WIDGET_ID })
     );
+    showUi(this.controller);
     this.sp.browser.setVisible(true);
+    this.invitePending = true;
     notifyNextUpdate(this.controller, this.sp, inviteFrom + " wants to trade with you.");
   }
 
@@ -453,6 +469,7 @@ export class TradeService extends ClientListener {
   }
 
   private closeInvite(): void {
+    this.invitePending = false;
     closeWidget(this.sp, INVITE_WIDGET_ID);
   }
 
@@ -495,5 +512,6 @@ export class TradeService extends ClientListener {
   private state: TradeState | null = null;
   private lockPending = false;
   private windowOpen = false;
+  private invitePending = false;
   private nameCache = new Map<number, string>();
 }

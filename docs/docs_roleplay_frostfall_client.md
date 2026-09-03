@@ -21,6 +21,7 @@ All menus render as `form` widgets and **preserve SkyMP's chat widget**
 | `U` | PersonalMenuService | `personalMenuKeyCode` | Self hub → help/skills/bounty/property/lecture/training/faction-docs |
 | `F6` | BrowserService | `freeCursorKeyCode` | Free / lock the mouse cursor |
 | `Enter`, `T` | BrowserService | `chatFocusKeyCodes` | Focus the chat box to type |
+| `F1` | BrowserService | `hideUiKeyCode` | Hide every overlay (chat, prompts, nametags, voice banner, open menus); press again to show. Menu hotkeys and chat focus are inert while hidden; server screens (death, trade, consent prompts, character select) bring the interface back |
 
 Chat channel selector (Say / OOC `/ooc` / Me `/me` / Faction `/f`) lives above
 the chat input. Quit-to-desktop button is on the login menu.

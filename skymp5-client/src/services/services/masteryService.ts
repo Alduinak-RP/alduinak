@@ -57,6 +57,7 @@ export class MasteryService extends ClientListener {
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     // A front reload drops the widget without a close message.
     this.controller.emitter.on("browserWindowLoaded", () => { this.menuOpen = false; });
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
     this.menuKey = readMenuKeyCode(this.sp, "masteryMenuKeyCode", DxScanCode.K);
   }
@@ -132,7 +133,7 @@ export class MasteryService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, WIDGET_ID });
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {

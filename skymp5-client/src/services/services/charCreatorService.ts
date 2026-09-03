@@ -4,6 +4,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { CreateActorMessage } from "../messages/createActorMessage";
 import { focusEventString } from "./browserService";
+import { showUi } from "./widgetMenuUtil";
 import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { logTrace, logError } from "../../logging";
 import { applyAppearanceToPlayer, Appearance } from "../../sync/appearance";
@@ -82,6 +83,7 @@ export class CharCreatorService extends ClientListener {
       "window.skyrimPlatform.widgets.set(others.concat([{type:'charCreator',config:" + JSON.stringify(this.config) + "}]));" +
       "})();";
     try {
+      showUi(this.controller);
       this.sp.browser.executeJavaScript(js);
       this.sp.browser.setVisible(true);
       this.sp.browser.setFocused(true);

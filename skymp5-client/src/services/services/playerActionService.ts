@@ -59,6 +59,7 @@ export class PlayerActionService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
     this.menuKey = readMenuKeyCode(this.sp, "interactMenuKeyCode", DxScanCode.E);
   }
@@ -168,7 +169,7 @@ export class PlayerActionService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID, anchor });
+    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID, anchor }, this.controller);
   }
 
   private closeMenu(): void {

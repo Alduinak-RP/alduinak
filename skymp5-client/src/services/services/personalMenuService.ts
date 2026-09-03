@@ -1,5 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { closeWidget, readMenuKeyCode } from "./widgetMenuUtil";
+import { closeWidget, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { MsgType } from "../../messages";
 import { FunctionInfo } from "../../lib/functionInfo";
@@ -37,6 +37,7 @@ export class PersonalMenuService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
     this.menuKey = readMenuKeyCode(this.sp, "personalMenuKeyCode", DxScanCode.U);
   }
@@ -50,7 +51,7 @@ export class PersonalMenuService extends ClientListener {
     if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
     }
-    if (this.sp.browser.isFocused()) {
+    if (isMenuHotkeyBlocked(this.sp, this.controller)) {
       return;
     }
     view = 'main';

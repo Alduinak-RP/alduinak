@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked } from "./widgetMenuUtil";
 import { RestraintService } from "./restraintService";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { logTrace } from "../../logging";
@@ -136,6 +136,7 @@ export class EmoteService extends ClientListener {
     this.controller.emitter.on("gameLoad", () => { this.activeEmote = ""; this.chainId++; });
     // A front reload drops the widget without an emote:close message.
     this.controller.emitter.on("browserWindowLoaded", () => { this.menuOpen = false; });
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
     this.menuKey = readMenuKeyCode(this.sp, "emoteWheelKeyCode", DxScanCode.B);
 
@@ -164,7 +165,8 @@ export class EmoteService extends ClientListener {
       this.closeMenu();
       return;
     }
-    if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(e.code) && !isMenuHotkeyBlocked(this.sp, this.controller)) {
+    // Movement is real gameplay even with the interface hidden
+    if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(e.code) && !isGameInputBlocked(this.sp, this.controller)) {
       this.stopActiveEmote();
     }
     if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
@@ -298,7 +300,7 @@ export class EmoteService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.emoteWidgetSetter, { GROUPS, events, WIDGET_ID });
+    openFormMenu(this.sp, this.emoteWidgetSetter, { GROUPS, events, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {

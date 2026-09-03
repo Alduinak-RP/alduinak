@@ -1,5 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { closeWidget } from "./widgetMenuUtil";
+import { closeWidget, isUiHidden } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, CrosshairRefChangedEvent, Form, FormType, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
@@ -103,7 +103,9 @@ export class InteractionPromptService extends ClientListener {
     prompt = next;
     this.promptShown = true;
     this.sp.browser.executeJavaScript(new FunctionInfo(this.promptWidgetSetter).getText({ prompt, WIDGET_ID }));
-    this.sp.browser.setVisible(true);
+    if (!isUiHidden(this.controller)) {
+      this.sp.browser.setVisible(true);
+    }
   }
 
   private clearPrompt(): void {

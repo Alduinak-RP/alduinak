@@ -72,6 +72,7 @@ export class BountyBoardService extends ClientListener {
       this.menuOpen = false;
       sendCustomPacket(this.controller, { customPacketType: "bountyBoardClose" });
     });
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
     this.menuKey = readMenuKeyCode(this.sp, "bountyBoardMenuKeyCode", DxScanCode.N);
   }
@@ -148,7 +149,7 @@ export class BountyBoardService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, WIDGET_ID });
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {

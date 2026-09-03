@@ -132,6 +132,7 @@ export class FactionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
     this.menuKey = readMenuKeyCode(this.sp, "factionMenuKeyCode", DxScanCode.G);
     const language = readMenuLanguage(this.sp);
@@ -301,7 +302,7 @@ export class FactionService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, strings, title, members, regents, WIDGET_ID });
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, strings, title, members, regents, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {
