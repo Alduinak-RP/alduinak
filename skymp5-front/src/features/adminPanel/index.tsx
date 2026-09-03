@@ -32,6 +32,8 @@ export interface AdminPanelData {
   locations: PanelLocation[];
   modes: PanelMode[];
   events: Record<string, string>;
+  caps?: { ban?: boolean }; // server-resolved tier capabilities, absent on older servers
+  tier?: string; // "senior" | "developer" | "gm", absent on older servers
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -76,6 +78,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const selectedPlayer = players.find((pl) => pl.p === selected) || null;
   // TP/Summon/Kick/Ban all target the live actor; offline rows only display identity
   const actionsEnabled = !!(selectedPlayer && selectedPlayer.online && selectedPlayer.a);
+  // Hidden rather than greyed so a tier without ban never sees a dead button; the server enforces it anyway
+  const canBan = !data.caps || data.caps.ban !== false;
 
   const act = (key: string): void => {
     if (selectedPlayer && selectedPlayer.a) send(key, selectedPlayer.a);
@@ -88,7 +92,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     <div className="admin-panel">
       <div className="admin-panel__window">
         <div className="admin-panel__header">
-          <span className="admin-panel__title">Admin Panel</span>
+          <span className="admin-panel__title">
+            Admin Panel
+            {data.tier ? <span style={{ fontSize: 14, opacity: 0.7, marginLeft: 6 }}>({data.tier})</span> : null}
+          </span>
           <div className="admin-panel__header-buttons">
             <Button text="Refresh" width={104} height={32} onClick={() => send(ev.refresh)} />
             <Button text="Close" width={104} height={32} onClick={() => send(ev.close)} />
@@ -113,7 +120,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               <Button text="TP to" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
               <Button text="Summon" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.summon)} />
               <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} />
-              <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} />
+              {canBan ? <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
             </div>
             <div className="admin-panel__filters">
               <input

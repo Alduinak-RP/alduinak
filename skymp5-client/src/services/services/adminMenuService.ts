@@ -25,7 +25,7 @@ const events = {
 };
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { players: [], locations: [], modes: [], events };
+let panelData: any = { players: [], locations: [], modes: [], caps: { ban: true }, tier: "", events };
 
 export class AdminMenuService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -55,10 +55,14 @@ export class AdminMenuService extends ClientListener {
     const content = parseCustomPacket(event);
     if (!content) return;
     if (content["customPacketType"] === "adminMenu") {
+      const caps = content["caps"];
       panelData = {
         players: Array.isArray(content["players"]) ? content["players"] : [],
         locations: Array.isArray(content["locations"]) ? content["locations"] : [],
         modes: Array.isArray(content["modes"]) ? content["modes"] : [],
+        // Older servers send no tier/caps (server and client deploy independently); the server still refuses bans
+        caps: caps && typeof caps === "object" ? caps : { ban: true },
+        tier: String(content["tier"] ?? ""),
         events,
       };
       this.showMenu();
