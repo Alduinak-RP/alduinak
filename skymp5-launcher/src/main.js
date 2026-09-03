@@ -22,6 +22,7 @@ const config = require('./config')
 const mo2    = require('./mo2')
 const nexus  = require('./nexus')
 const ini    = require('./ini')
+const gameversion = require('./gameversion')
 
 const isDev = process.argv.includes('--dev')
 
@@ -245,7 +246,14 @@ function createWindow() {
   })
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
-  win.once('ready-to-show', () => { win.show(); maybeWarnNeverLaunched() })
+  win.once('ready-to-show', () => {
+    win.show()
+    // Chained so the two startup modals never stack
+    maybeWarnNeverLaunched().then(() => {
+      const gv = gameVersionProblem()
+      if (gv) showGameVersionDialog(gv)
+    })
+  })
 
   if (isDev) win.webContents.openDevTools({ mode: 'detach' })
 }
@@ -903,6 +911,13 @@ async function createIsolatedImpl(baseDirOverride) {
     return { success: false, error: 'Set a valid Skyrim path first (SkyrimSE.exe not found).' }
   }
 
+  // Never copy a wrong-version exe into the portable install
+  const gv = gameversion.checkGameVersion(src, mo2.detectEdition(src))
+  if (!gv.ok) {
+    showGameVersionDialog(gv)
+    return { success: false, error: `Skyrim ${gv.version} found; downgrade to ${gv.required} before installing the game copy.` }
+  }
+
   if (!findOriginalPrefsIni()) {
     return { success: false, error: NEVER_LAUNCHED_ERROR }
   }
@@ -1152,11 +1167,11 @@ const NEVER_LAUNCHED_ERROR =
 // Startup warning, once per launch. Fires only when a Skyrim install was found
 // but the My Games inis are missing; a missing game has its own renderer flow.
 let neverLaunchedWarned = false
-function maybeWarnNeverLaunched() {
+async function maybeWarnNeverLaunched() {
   if (neverLaunchedWarned) return
   neverLaunchedWarned = true
   if (!store.get('skyrimPath') || findOriginalPrefsIni()) return
-  dialog.showMessageBox(win, {
+  return dialog.showMessageBox(win, {
     type: 'warning',
     title: 'Skyrim has never been launched',
     message: "Skyrim's My Documents ini files are missing.",
@@ -1166,6 +1181,45 @@ function maybeWarnNeverLaunched() {
     buttons: ['OK'],
     defaultId: 0,
   })
+}
+
+// Wrong game version popup with a button to the Reliquary downgrade page
+let gameVersionDialogOpen = false
+async function showGameVersionDialog(gv) {
+  if (gameVersionDialogOpen || !win || win.isDestroyed()) return
+  gameVersionDialogOpen = true
+  try {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Wrong Skyrim version',
+      message: `Skyrim is version ${gv.version}, but Alduinak needs ${gv.required}.`,
+      detail:
+        `Checked: ${gv.exe}\n\n` +
+        'Use the Reliquary downgrade tool from Nexus Mods to switch Skyrim Special Edition to build 1.6.1170; it only downloads the files that differ. ' +
+        'Afterwards set Steam to "Only update this game when I launch it" so it stays on that build, then press PLAY again.' +
+        (gv.required === gameversion.GAME_VERSION_GOG
+          ? '\n\nGOG installs: roll back to 1.6.1179 through GOG Galaxy (Manage installation > Configure > Version) instead of Reliquary.'
+          : ''),
+      buttons: ['Open downgrade page', 'Close'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    })
+    if (response === 0) shell.openExternal(gameversion.GAME_DOWNGRADE_URL)
+  } finally {
+    gameVersionDialogOpen = false
+  }
+}
+
+// Checks the original install first (the portable copy is rebuilt from it), then the copy that actually runs
+function gameVersionProblem() {
+  for (const dir of [store.get('skyrimPath'), isolatedGameReady() ? isolatedGameDir() : null]) {
+    if (!dir) continue
+    const gv = gameversion.checkGameVersion(dir, mo2.detectEdition(dir))
+    log(`[version] ${gv.exe} = ${gv.version || 'unreadable'}`)
+    if (!gv.ok) return gv
+  }
+  return null
 }
 
 // Seed the MO2 profile SkyrimPrefs.ini from the player's own prefs, then
@@ -1514,6 +1568,14 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
 
 async function prepareForLaunch(skyrimPath, viaMO2) {
   ensureClientDirs(skyrimPath)
+
+  // Version gate; the dialog is not awaited so the warning strip updates while it is up
+  const gv = gameversion.checkGameVersion(skyrimPath, mo2.detectEdition(skyrimPath))
+  if (!gv.ok) {
+    showGameVersionDialog(gv)
+    return { success: false, error: `Skyrim ${gv.version} found in ${skyrimPath}; Alduinak needs ${gv.required}. Downgrade it (see the popup), then press PLAY again.` }
+  }
+
   const srv = activeServer()
   let serverInfo = null
   if (srv) {

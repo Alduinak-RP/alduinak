@@ -23,6 +23,7 @@ src/
   mo2.js           Mod Organizer 2 portable install + manifest replay
   nexus.js         Nexus Mods API (key validation, premium downloads, SSO)
   ini.js           Minimal INI reader/writer for SkyrimPrefs.ini
+  gameversion.js   SkyrimSE.exe version gate (1.6.1170.0) + Reliquary downgrade popup
   renderer/
     index.html     UI shell: topbar, content grid, modals
     renderer.js    Event listeners, API calls, settings, news/modlist rendering
@@ -83,6 +84,19 @@ Online mode (server `offlineMode: false`):
 In online mode the session credentials are written separately to
 `Data/Platform/PluginsNoLoad/auth-data-no-load.js` so the in-game SkyMP client
 skips its own Discord OAuth dialog.
+
+## Game version
+
+The client is built against Skyrim SE/AE **1.6.1170.0** (Steam). `gameversion.js`
+reads the FileVersion straight out of `SkyrimSE.exe` (pure node PE parser, no
+process spawn) and the launcher checks it at startup, before the portable game
+copy is created, and on every launch path via `prepareForLaunch`. Any other
+build opens a "Wrong Skyrim version" popup with a button to the Reliquary
+downgrade tool (https://www.nexusmods.com/site/mods/2188?tab=description) and
+blocks the launch; the renderer warning strip shows the same message. GOG
+installs (Galaxy64.dll / goggame-* present) are accepted at **1.6.1179.0**, the
+GOG build of the same generation. An unreadable version never blocks, it is
+only logged.
 
 ## Persistent store keys
 

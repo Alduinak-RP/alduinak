@@ -1194,6 +1194,7 @@ module.exports = {
   setRootProvider,
   PROFILE,
   getRoot,
+  detectEdition,
   getDownloadsDir,
   getModsDir,
   getProfileDir,
