@@ -64,10 +64,13 @@ export class AdminSystem implements System {
   private modesByProfile = new Map<number, Record<string, boolean>>();
   private pingCache = new Map<number, number>();
   private pingCacheAt = 0;
+  private serverName = "";
+  private menuRefusalLogged = new Set<number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
     const all = s.allSettings as Record<string, any> | null;
+    this.serverName = typeof s.name === "string" ? s.name : "";
     this.masterUrl = typeof s.master === "string" ? s.master.replace(/\/+$/, "") : "";
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
@@ -273,6 +276,11 @@ export class AdminSystem implements System {
     }
   }
 
+  // Slots are reused, so the next player in this slot gets the refusal diagnostic again
+  disconnect(userId: number): void {
+    this.menuRefusalLogged.delete(userId);
+  }
+
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     if (type === "debugInfoRequest") {
       this.sendDebugInfo(ctx.svr as Mp, userId);
@@ -283,7 +291,7 @@ export class AdminSystem implements System {
     let myActorId = 0;
     try { myActorId = mp.getUserActor(userId); } catch { }
     if (!myActorId || !this.isAdminActor(mp, myActorId)) {
-      if (type === "adminMenuRequest") {
+      if (type === "adminMenuRequest" && myActorId) {
         if (this.menuRefusalLogged.has(userId)) return;
         this.menuRefusalLogged.add(userId);
       }

@@ -21,6 +21,11 @@ export function openFormMenu(sp: Sp, setter: () => void, args: Record<string, un
   sp.browser.setFocused(true);
 }
 
+// Data-only re-push for an already open menu; never touches visibility or focus
+export function refreshFormMenu(sp: Sp, setter: () => void, args: Record<string, unknown>): void {
+  sp.browser.executeJavaScript(new FunctionInfo(setter).getText(args));
+}
+
 export function closeFormMenu(sp: Sp, widgetId: number): void {
   closeWidget(sp, widgetId);
   sp.browser.setFocused(false);

@@ -138,7 +138,9 @@ $admin-row-gutter: 16px;
     gap: 16px;
   }
 
-  &__search {
+  &__search,
+  &__input,
+  &__textarea {
     flex: 1;
     height: 30px;
     padding: 0 8px;
@@ -236,6 +238,11 @@ $admin-row-gutter: 16px;
     border: 1px solid rgba(200, 180, 138, 0.2);
     background: $admin-pane-bg;
     scrollbar-width: thin;
+
+    // Keeps the Debug tab under the grid at a sane height
+    &--effects {
+      max-height: 200px;
+    }
 
     &::-webkit-scrollbar {
       width: 8px;
@@ -367,6 +374,15 @@ $admin-row-gutter: 16px;
     &--discord-id { flex: 0 0 150px; }
     &--ip { flex: 0 0 92px; }
     &--hwid { flex: 1 1 130px; }
+    &--elapsed { flex: 0 0 72px; }
+
+    &--status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: $admin-gold-dim;
+    }
   }
 
   &__empty {

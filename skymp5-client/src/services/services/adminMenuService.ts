@@ -1,17 +1,27 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { RemoteServer } from "./remoteServer";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
+import { ActiveEffectApplyRemoveEvent, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 
 declare const window: any;
 
 // Tabbed admin panel (default Insert, launcher-configurable via adminMenuKeyCode); item spawning is via the server-granted in-game console.
-// The server decides who is admin (Discord roles / profile ids); non-admin requests are ignored server-side.
+// Every player gets the Debug tab at once; the admin tabs appear only when the server answers adminMenuRequest (Discord roles / profile ids).
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
 
 const WIDGET_ID = 23;
+const PLAYER_FORM_ID = 0x14;
+const DEBUG_REFRESH_MS = 5000;
+const EFFECTS_STORAGE_KEY = "adminDebugEffects";
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+const GLOBAL_HOUR = 0x38;
+const GLOBAL_DAY = 0x37;
+const GLOBAL_MONTH = 0x36;
+const GLOBAL_YEAR = 0x35;
 
 const events = {
   tp: "admin::tp",
@@ -79,6 +89,9 @@ export class AdminMenuService extends ClientListener {
     this.menuKey = readMenuKeyCode(sp, "adminMenuKeyCode", DxScanCode.Insert);
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.on("update", () => this.onUpdate());
+    this.controller.on("effectStart", (e) => this.onEffect(e, true));
+    this.controller.on("effectFinish", (e) => this.onEffect(e, false));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
   }
@@ -164,7 +177,7 @@ export class AdminMenuService extends ClientListener {
       for (const m of Array.isArray(panelData.modes) ? panelData.modes : []) {
         if (m && m.id === mode) m.active = on;
       }
-      if (this.menuOpen) this.showMenu();
+      this.pushData();
     } else if (content["customPacketType"] === "adminActionResult") {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
     }
@@ -175,9 +188,103 @@ export class AdminMenuService extends ClientListener {
     this.menuOpen = true;
   }
 
+  // Re-pushes data while open without re-taking focus or re-showing a browser a vanilla menu hid
+  private pushData(): void {
+    if (this.menuOpen) refreshFormMenu(this.sp, this.browsersideWidgetSetter, { panelData, WIDGET_ID });
+  }
+
   private closeMenu(): void {
     closeFormMenu(this.sp, WIDGET_ID);
     this.menuOpen = false;
+  }
+
+  // SP has no active-effect enumeration, so only effects seen starting on the player after this script loaded are tracked
+  private get effects(): EffectMap {
+    let m = this.sp.storage[EFFECTS_STORAGE_KEY] as EffectMap | undefined;
+    if (!(m instanceof Map)) {
+      m = new Map();
+      this.sp.storage[EFFECTS_STORAGE_KEY] = m;
+    }
+    return m;
+  }
+
+  private onEffect(e: ActiveEffectApplyRemoveEvent, started: boolean): void {
+    try {
+      if (!e.effect || !e.target || e.target.getFormID() !== PLAYER_FORM_ID) return;
+      const id = e.effect.getFormID();
+      if (started) this.effects.set(id, { name: e.effect.getName(), since: Date.now() });
+      else this.effects.delete(id);
+    } catch { }
+  }
+
+  // Update context only; every native is guarded so one missing form never blanks the whole tab
+  private refreshDebug(): void {
+    const sp = this.sp;
+    const now = Date.now();
+    this.lastDebugAt = now;
+    const player = safe(() => sp.Game.getPlayer(), null);
+    const auth = sp.storage[authGameDataStorageKey] as AuthGameData | undefined;
+    const hoursOffset = safe(() => sp.settings["skymp5-client"]["hoursOffset"], 0);
+    const d: DebugData = {
+      account: auth?.remote?.discordUsername || (auth?.remote ? `id ${auth.remote.masterApiId}` : auth?.local ? `profile ${auth.local.profileId}` : ""),
+      character: "",
+      formId: safe(() => hex(this.controller.lookupListener(RemoteServer).getMyRemoteRefrId()), ""),
+      actorId: this.serverActorId,
+      profileId: this.serverProfileId,
+      server: this.server,
+      pos: [0, 0, 0],
+      cell: null,
+      heading: { deg: 0, compass: COMPASS[0] },
+      target: null,
+      av: { health: [0, 0], magicka: [0, 0], stamina: [0, 0] },
+      gameTime: null,
+      hoursOffset: typeof hoursOffset === "number" ? hoursOffset : 0,
+      localTime: now,
+      effects: [],
+      updatedAt: now,
+    };
+    if (player) {
+      d.character = safe(() => player.getBaseObject()?.getName(), "");
+      d.pos = [safe(() => player.getPositionX(), 0), safe(() => player.getPositionY(), 0), safe(() => player.getPositionZ(), 0)].map(Math.round);
+      const cell = safe(() => player.getParentCell(), null);
+      if (cell) {
+        d.cell = {
+          id: hex(safe(() => cell.getFormID(), 0)),
+          name: safe(() => cell.getName(), ""),
+          interior: safe(() => cell.isInterior(), false),
+          world: safe(() => player.getWorldSpace()?.getName(), ""),
+          location: safe(() => player.getCurrentLocation()?.getName(), ""),
+        };
+      }
+      const deg = Math.round(((safe(() => player.getAngleZ(), 0) % 360) + 360) % 360) % 360;
+      d.heading = { deg, compass: COMPASS[Math.round(deg / 45) % 8] };
+      const ref = safe(() => sp.Game.getCurrentCrosshairRef(), null);
+      if (ref) {
+        d.target = {
+          name: safe(() => ref.getDisplayName(), "") || safe(() => ref.getBaseObject()?.getName(), ""),
+          id: hex(safe(() => ref.getFormID(), 0)),
+          dist: Math.round(safe(() => player.getDistance(ref), 0)),
+        };
+      }
+      const av = (name: string) => [Math.round(safe(() => player.getActorValue(name), 0)), Math.round(safe(() => player.getActorValueMax(name), 0))];
+      d.av = { health: av("Health"), magicka: av("Magicka"), stamina: av("Stamina") };
+      // Pruned on every refresh so finished effects missed by effectFinish drop out
+      const effects = this.effects;
+      effects.forEach((info, id) => {
+        if (!safe(() => player.hasMagicEffect(sp.MagicEffect.from(sp.Game.getFormEx(id))), true)) {
+          effects.delete(id);
+          return;
+        }
+        d.effects.push({ id: hex(id), name: info.name, elapsedSec: Math.round((now - info.since) / 1000) });
+      });
+    }
+    // timeService mirrors the real UTC calendar shifted by hoursOffset into these globals, so the weekday follows the same clock
+    const global = (id: number) => safe(() => sp.GlobalVariable.from(sp.Game.getFormEx(id))?.getValue(), NaN);
+    const hour = global(GLOBAL_HOUR), day = global(GLOBAL_DAY), month = global(GLOBAL_MONTH), year = global(GLOBAL_YEAR);
+    if ([hour, day, month, year].every(Number.isFinite)) {
+      d.gameTime = { hour, day, month, year, weekday: new Date(now + d.hoursOffset * 3600000).getUTCDay() };
+    }
+    panelData.debug = d;
   }
 
   private onBrowserMessage(e: BrowserMessageEvent) {
@@ -188,6 +295,14 @@ export class AdminMenuService extends ClientListener {
     }
     if (kind === events.refresh) {
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+      return;
+    }
+    if (kind === events.debugRefresh) {
+      this.controller.once("update", () => {
+        this.refreshDebug();
+        this.pushData();
+      });
+      sendCustomPacket(this.controller, { customPacketType: "debugInfoRequest" });
       return;
     }
     if (kind === events.tpLoc) {
@@ -235,4 +350,8 @@ export class AdminMenuService extends ClientListener {
 
   private menuKey: DxScanCode;
   private menuOpen = false;
+  private lastDebugAt = 0;
+  private server: DebugServer | null = null;
+  private serverActorId = "";
+  private serverProfileId = 0;
 }

@@ -296,7 +296,7 @@ Enable console commands for all, useful for testing.
 
 ## Admin roles
 
-In-game admins get the server console, the admin chat channel and the admin panel (Insert key: player roster, teleport, summon, kick, ban, admin modes). Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`. Keep `enableConsoleCommandsForAll` off on a live server so only admins get the console.
+In-game admins get the server console, the admin chat channel and the admin panel (Insert key: player roster, teleport, summon, kick, ban, admin modes, and an NPCs tab to list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`). Every player also gets the panel's Debug tab on Insert: account and character name, server-side FormID, server name, position, cell id and name, heading, crosshair target distance (activatable references only), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start; the admin tabs only appear once the server confirms the tier. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`. Keep `enableConsoleCommandsForAll` off on a live server so only admins get the console.
 
 | Tier | Powers |
 |---|---|
