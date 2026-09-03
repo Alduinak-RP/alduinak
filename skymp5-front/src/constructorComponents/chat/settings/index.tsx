@@ -9,6 +9,10 @@ const Settings = (props: {
   setFontSize: (size: number) => void,
   lockChat: boolean,
   setLockChat: (value: boolean) => void,
+  hidePlayerNames: boolean,
+  setHidePlayerNames: (value: boolean) => void,
+  showFormIds: boolean,
+  setShowFormIds: (value: boolean) => void,
   chatTransparency: number,
   setChatTransparency: (value: number) => void,
   fadeSeconds: number,
@@ -39,6 +43,8 @@ const Settings = (props: {
         <SkyrimSlider text={'transparency'} name={'transparency'} min={0} max={80} setValue={(value) => props.setChatTransparency(value)} sliderValue={props.chatTransparency} marks={[0, 20, 40, 60, 80]}/>
         <SkyrimSlider text={'fade (seconds, 0 = never)'} name={'fadeSeconds'} min={0} max={60} setValue={(value) => props.setFadeSeconds(value)} sliderValue={props.fadeSeconds} marks={[0, 10, 20, 30, 45, 60]}/>
         <CheckBox text={'lock chat'} initialValue={props.lockChat} setChecked={props.setLockChat} disabled={false} />
+        <CheckBox text={'hide player names'} initialValue={props.hidePlayerNames} setChecked={props.setHidePlayerNames} disabled={false} />
+        <CheckBox text={'show form ids'} initialValue={props.showFormIds} setChecked={props.setShowFormIds} disabled={false} />
         <div className='chat-highlights'>
           <span className='chat-highlights-label'>highlight words</span>
           <textarea

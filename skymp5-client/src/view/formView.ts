@@ -565,16 +565,19 @@ export class FormView {
 
         if (!this.textNameId && headScreenPos[2] > 0) {
           this.createdTagName = this.tagName(refr);
+          this.createdActorIdLine = FormView.isDisplayingActorIds;
           this.textNameId = createText(textXPos, textYPos, this.createdTagName, [1, 1, 1, 0.8]);
           setTextSize(this.textNameId, 0.5);
           // Local (ffxxxxxx) actor id on a second line under the name
-          this.textActorIdId = createText(
-            textXPos,
-            textYPos + FormView.actorIdLineOffset,
-            this.refrId.toString(16).toUpperCase().padStart(8, "0"),
-            [1, 1, 1, 0.6]
-          );
-          setTextSize(this.textActorIdId, 0.4);
+          if (this.createdActorIdLine) {
+            this.textActorIdId = createText(
+              textXPos,
+              textYPos + FormView.actorIdLineOffset,
+              this.refrId.toString(16).toUpperCase().padStart(8, "0"),
+              [1, 1, 1, 0.6]
+            );
+            setTextSize(this.textActorIdId, 0.4);
+          }
           SpApiInteractor.getControllerInstance().emitter.emit("nicknameCreate", {
             remoteRefrId: this.getRemoteRefrId(),
             textId: this.textNameId
@@ -584,8 +587,9 @@ export class FormView {
           if (deleteNickname) {
             this.removeNickname();
           }
-          // Rename (/mask) or a fresh introduction: recreate with the new string
-          if (this.textNameId && this.tagName(refr) !== this.createdTagName) {
+          // Rename (/mask), a fresh introduction or a toggled id line: recreate
+          if (this.textNameId
+            && (this.tagName(refr) !== this.createdTagName || this.createdActorIdLine !== FormView.isDisplayingActorIds)) {
             this.removeNickname();
           }
           if (this.textNameId) {
@@ -728,9 +732,11 @@ export class FormView {
   private textNameId: number | undefined = undefined;
   private textActorIdId: number | undefined = undefined;
   private createdTagName = "";
+  private createdActorIdLine = false;
 
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
 
   public static isDisplayingNicknames: boolean = true;
+  public static isDisplayingActorIds: boolean = true;
 }

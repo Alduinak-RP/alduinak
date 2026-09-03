@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { MsgType } from "../../messages";
-import { getScreenResolution } from "../../view/formView";
+import { FormView, getScreenResolution } from "../../view/formView";
 
 declare const window: any;
 
@@ -354,10 +354,17 @@ export class ChatService extends ClientListener {
       if (!data) return "{}";
       const parsed = JSON.parse(data.slice(2));
       if (!parsed || typeof parsed !== "object") return "{}";
+      this.applyNametagSettings(parsed);
       return JSON.stringify(parsed);
     } catch (e) {
       return "{}";
     }
+  }
+
+  // Nametag toggles live in the chat settings JSON; missing keys keep the defaults
+  private applyNametagSettings(parsed: Record<string, unknown>): void {
+    FormView.isDisplayingNicknames = parsed["hidePlayerNames"] !== true;
+    FormView.isDisplayingActorIds = parsed["showFormIds"] !== false;
   }
 
   // Persist settings sent from the chat UI to disk so they survive a relaunch.
@@ -366,6 +373,7 @@ export class ChatService extends ClientListener {
     try {
       const parsed = JSON.parse(json);
       if (!parsed || typeof parsed !== "object") return;
+      this.applyNametagSettings(parsed);
       this.sp.writePlugin(
         this.pluginChatSettingsName,
         "//" + JSON.stringify(parsed),

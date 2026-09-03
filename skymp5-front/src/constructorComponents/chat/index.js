@@ -17,8 +17,7 @@ const MAX_HISTORY_LENGTH = 20;
 
 const SHOUTREGEXP = /№(.*?)№/gi;
 
-// Chat settings (font size, transparency, lock, highlights, window pos/size) persist via window.__skyrpChatSettings:
-// the client injects saved values on mount and writes changes to a file under Data/Platform (localStorage/CEF cache don't survive a relaunch).
+// Chat settings (font size, transparency, lock, highlights, nametag toggles, window pos/size) persist via window.__alduinakChatSettings: the client injects saved values on mount and writes changes under Data/Platform since localStorage/CEF cache do not survive a relaunch
 const loadChatSettings = () => {
   try { return window.__alduinakChatSettings || {}; }
   catch (e) { return {}; }
@@ -49,6 +48,8 @@ const Chat = (props) => {
   const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [fontSize, setFontSize] = useState(saved.fontSize != null ? saved.fontSize : 16);
   const [fadeSeconds, setFadeSeconds] = useState(saved.fadeSeconds != null ? saved.fadeSeconds : 10);
+  const [hidePlayerNames, setHidePlayerNames] = useState(saved.hidePlayerNames != null ? saved.hidePlayerNames : false);
+  const [showFormIds, setShowFormIds] = useState(saved.showFormIds != null ? saved.showFormIds : true);
   const [idle, setIdle] = useState(false);
   const idleTimerRef = useRef();
   const browserFocusedRef = useRef(false);
@@ -292,8 +293,8 @@ const Chat = (props) => {
 
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
-    persistChatSettings({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds });
-  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds]);
+    persistChatSettings({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds });
+  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -446,6 +447,10 @@ const Chat = (props) => {
           setFontSize={setFontSize}
           lockChat={lockChat}
           setLockChat={setLockChat}
+          hidePlayerNames={hidePlayerNames}
+          setHidePlayerNames={setHidePlayerNames}
+          showFormIds={showFormIds}
+          setShowFormIds={setShowFormIds}
           chatTransparency={chatTransparency}
           setChatTransparency={setChatTransparency}
           fadeSeconds={fadeSeconds}

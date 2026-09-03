@@ -45,6 +45,10 @@ Rules:
   selected channel prefix is **not** applied — the typed command wins. So
   `/me waves`, `/roll`, `/looc hi` typed by hand keep working.
 - The selected channel persists between messages.
+- The chat settings popup also has two nametag toggles saved with the other
+  chat settings: **hide player names** (off by default, hides the whole
+  nametag over other players) and **show form ids** (on by default, the
+  `ffxxxxxx` line under the name).
 
 Definition: `skymp5-front/src/constructorComponents/chat/channels/index.tsx`
 (`CHAT_CHANNELS`, `applyChannel`). To add/rename a channel, edit that array.
