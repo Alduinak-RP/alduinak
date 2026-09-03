@@ -35,7 +35,7 @@ type Mp = any;
 // Every post and expiry is appended to bounty.log in the shared log directory.
 //
 // server-settings.json keys (all optional):
-//   bountyBoardCostGold     price of pinning a notice, default 100
+//   bountyBoardCostGold     price of pinning a notice, default 25
 //   bountyBoardExpiryDays   days a notice stays up, default 7
 //   bountyBoardMaxNotes     notices one board holds, default 40
 //   bountyBoardMaxTextLen   characters per notice, default 500
@@ -50,7 +50,7 @@ const BOARD_BASE_DESCS = ["12cb:Missives.esp", "d65:Missives.esp"];
 
 const GOLD_BASE_ID = 0x0000000f;
 
-const DEFAULT_COST_GOLD = 100;
+const DEFAULT_COST_GOLD = 25;
 const DEFAULT_EXPIRY_DAYS = 7;
 const DEFAULT_MAX_NOTES = 40;
 const DEFAULT_MAX_TEXT_LEN = 500;

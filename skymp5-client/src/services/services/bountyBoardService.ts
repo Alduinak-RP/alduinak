@@ -38,7 +38,7 @@ interface BoardInfo {
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
 let info: BoardInfo = {
-  board: 0, boardName: "", costGold: 100, gold: 0,
+  board: 0, boardName: "", costGold: 25, gold: 0,
   maxTextLen: 500, maxNotes: 40, expiryDays: 7, notes: [],
 };
 
