@@ -75,6 +75,7 @@ import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService
 import { NotificationService } from "./services/services/notificationService";
 import { ConnectionWatchdogService } from "./services/services/connectionWatchdogService";
 import { MenuMediaService } from "./services/services/menuMediaService";
+import { CharacterProgressService } from "./services/services/characterProgressService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -145,6 +146,7 @@ const main = () => {
       new GamemodeUpdateService(sp, controller),
       new ChatService(sp, controller),
       new MenuMediaService(sp, controller),
+      new CharacterProgressService(sp, controller),
       new FrontHotReloadService(sp, controller),
       new BlockedAnimationsService(sp, controller),
       new WorldView(sp, controller),

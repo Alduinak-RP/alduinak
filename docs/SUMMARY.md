@@ -45,3 +45,4 @@
 - [Mastery System](docs_roleplay_mastery.md)
 - [Bounty Boards](docs_roleplay_bounty_boards.md)
 - [NPC Spawns](docs_roleplay_npc_spawns.md)
+- [Character Progress (map markers, ingredient effects)](docs_roleplay_character_progress.md)
