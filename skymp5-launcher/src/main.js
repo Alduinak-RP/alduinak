@@ -448,6 +448,7 @@ ipcMain.handle('hotkeys:load', () => {
       personal:   numOrNull(c.personalMenuKeyCode),
       voicePtt:   numOrNull(c.voicePushToTalkKeyCode),
       adminMenu:  numOrNull(c.adminMenuKeyCode),
+      hideUi:     numOrNull(c.hideUiKeyCode),
     }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -466,6 +467,7 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
     if (typeof h.personal === 'number')    c.personalMenuKeyCode = h.personal
     if (typeof h.voicePtt === 'number')    c.voicePushToTalkKeyCode = h.voicePtt
     if (typeof h.adminMenu === 'number')   c.adminMenuKeyCode = h.adminMenu
+    if (typeof h.hideUi === 'number')      c.hideUiKeyCode = h.hideUi
     const p = clientSettingsPath()
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(c, null, 2))
@@ -2347,7 +2349,7 @@ function writeClientSettings(destPath, srv, serverInfo) {
   const HOTKEY_KEYS = [
     'chatFocusKeyCodes', 'freeCursorKeyCode', 'housingMenuKeyCode',
     'factionMenuKeyCode', 'interactMenuKeyCode', 'personalMenuKeyCode',
-    'voicePushToTalkKeyCode', 'adminMenuKeyCode',
+    'voicePushToTalkKeyCode', 'adminMenuKeyCode', 'hideUiKeyCode',
   ]
   let prev = {}
   try { prev = JSON.parse(fs.readFileSync(destPath, 'utf8')) || {} } catch { /* first run */ }
