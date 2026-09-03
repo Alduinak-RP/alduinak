@@ -12,12 +12,12 @@ All menus render as `form` widgets and **preserve SkyMP's chat widget**
 
 ---
 
-## Key bindings (all configurable in client settings)
+## Key bindings (configurable in client settings unless noted)
 
 | Key | Service | Setting | Purpose |
 | --- | --- | --- | --- |
 | `H` | HousingService | `housingMenuKeyCode` | Property panel → `/property …` |
-| `E` | PlayerActionService | `interactMenuKeyCode` | Crosshair a player character → interaction menu (rides the activate key; engine activation of the clone is blocked) |
+| `E` | PlayerActionService | game control `Activate` (Settings > Controls or launcher Game Hotkeys, applies immediately) | Crosshair a player character → interaction menu (follows the game's Activate control on any input device; engine activation of the clone is blocked) |
 | `U` | PersonalMenuService | `personalMenuKeyCode` | Self hub → help/skills/bounty/property/lecture/training/faction-docs |
 | `F6` | BrowserService | `freeCursorKeyCode` | Free / lock the mouse cursor |
 | `Enter`, `T` | BrowserService | `chatFocusKeyCodes` | Focus the chat box to type |

@@ -1,7 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType, ObjectReference } from "skyrimPlatform";
+import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 
@@ -41,17 +41,18 @@ const events = {
   trade: 'pa:trade',
 };
 
-// Module-level so the browser-side widget setter can read them (runtime injection).
+// Module-level so the browser-side widget setter can read it (runtime injection).
 let targetName = '';
-let anchor = { x: 0.56, y: 0.5 };
 
 /**
- * Look-at-target interaction menu, on the activate key (default E, rebind
- * via interactMenuKeyCode). Activating a player character opens the
- * player-action / hold-appointment menu; the InteractionPromptService blocks
- * the clone's engine activation so no dialogue fires underneath. Everything
- * that is not a player character passes through to normal activation. Doors
- * and containers are managed by the housing key (HousingService). Drives the
+ * Look-at-target interaction menu on the game's own Activate control: every
+ * button event carries the user event name the live control map gives it, so
+ * a rebind (Settings > Controls or the launcher's Game Hotkeys) applies at
+ * once, default E. Activating a player character opens the player-action /
+ * hold-appointment menu; the InteractionPromptService blocks the clone's
+ * engine activation so no dialogue fires underneath. Everything that is not
+ * a player character passes through to normal activation. Doors and
+ * containers are managed by the housing key (HousingService). Drives the
  * gamemode through its existing contracts.
  */
 export class PlayerActionService extends ClientListener {
@@ -60,19 +61,17 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
-
-    this.menuKey = readMenuKeyCode(this.sp, "interactMenuKeyCode", DxScanCode.E);
   }
 
   private onButtonEvent(e: ButtonEvent): void {
-    // Gamepad idCodes are bitmasks that alias onto keyboard scancodes
-    if (e.device !== InputDeviceType.Keyboard) return;
-    // Escape closes an open menu.
-    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+    if (!e.isDown) return;
+    // Escape closes an open menu; gamepad idCodes alias onto keyboard scancodes, so only the keyboard counts here
+    if (e.device === InputDeviceType.Keyboard && e.code === DxScanCode.Escape && this.menuOpen) {
       this.closeMenu();
       return;
     }
-    if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
+    // The engine stamps the live control map's event name on every device, so a rebind applies at once
+    if (e.userEventName !== "Activate" || this.menuOpen) {
       return;
     }
     if (isMenuHotkeyBlocked(this.sp, this.controller)) {
@@ -96,7 +95,6 @@ export class PlayerActionService extends ClientListener {
     if (!targetName || !this.knowsTarget(this.playerTarget)) {
       targetName = "Stranger";
     }
-    anchor = this.computeAnchor(ref);
     logTrace(this, `Opening player-action menu for`, targetName);
     this.openMenu();
   }
@@ -149,27 +147,9 @@ export class PlayerActionService extends ClientListener {
     return known.includes(remoteId);
   }
 
-  // Head position projected to normalized CSS coords; right-of-center fallback when off-screen.
-  private computeAnchor(ref: ObjectReference): { x: number; y: number } {
-    try {
-      const head = "NPC Head [Head]";
-      const [p] = this.sp.worldPointToScreenPoint([
-        this.sp.NetImmerse.getNodeWorldPositionX(ref, head, false),
-        this.sp.NetImmerse.getNodeWorldPositionY(ref, head, false),
-        this.sp.NetImmerse.getNodeWorldPositionZ(ref, head, false),
-      ]);
-      if (p[2] > 0 && p[0] > 0 && p[0] < 1 && p[1] > 0 && p[1] < 1) {
-        return { x: p[0], y: 1 - p[1] };
-      }
-    } catch (e) {
-      // node lookup can fail on unloaded refs
-    }
-    return { x: 0.56, y: 0.5 };
-  }
-
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID, anchor }, this.controller);
+    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {
@@ -184,14 +164,12 @@ export class PlayerActionService extends ClientListener {
       id: WIDGET_ID,
       targetName: targetName,
       actions: ACTIONS,
-      anchor: anchor,
       events: events,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
-  private menuKey: DxScanCode = DxScanCode.X;
   private menuOpen = false;
   private playerTarget = 0;
 }
