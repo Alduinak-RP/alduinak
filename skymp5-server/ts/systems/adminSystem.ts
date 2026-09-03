@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { AdminTier, AdminRoleConfig, TIER_CAPS, readAdminRoleConfig, adminTierOf } from "./adminRoles";
+import { NpcSpawnSystem } from "./npcSpawnSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -12,15 +13,21 @@ type Mp = any;
 // Bans post to the backend (master key + auth token), which snapshots discordId/hwid/ip into bans.json; connection-check then refuses the player permanently.
 //
 // Wire protocol (CustomPacket JSON):
-//   Client -> Server: { customPacketType: "adminMenuRequest" }
+//   Client -> Server: { customPacketType: "debugInfoRequest" }  any player, answered before the admin gate
+//                     { customPacketType: "adminMenuRequest" }
+//                     { customPacketType: "npcZonesRequest" }
 //                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
 //                     { customPacketType: "adminAction", action: "toggleMode", mode }
-//   Server -> Client: { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping}], locations: [{name}], modes: [{id, label, active}], tier, caps: {ban} }
+//                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
+//                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete", target }  target: zone name
+//   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping}], locations: [{name}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {ban} }
 //                     { customPacketType: "adminMode", mode, on }
+//                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminActionResult", ok, text }
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
-// Non-admin requests are ignored silently.
+// Non-admin requests are ignored silently; every Insert press sends adminMenuRequest, so that refusal is logged once per user slot.
 
 const MAX_USER_SLOTS = 1024;
 const PING_CACHE_MS = 3000;
@@ -47,7 +54,7 @@ interface TeleportLocation {
 
 export class AdminSystem implements System {
   systemName = "AdminSystem";
-  constructor(private log: Log) { }
+  constructor(private log: Log, private npcSpawns: NpcSpawnSystem) { }
 
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private masterUrl = "";
@@ -245,12 +252,41 @@ export class AdminSystem implements System {
     try { (globalThis as any).__alduinakAdminLog?.(text); } catch { }
   }
 
+  // Any player with an actor may ask; the reply carries nothing about other players
+  private sendDebugInfo(mp: Mp, userId: number): void {
+    let actorId = 0;
+    try { actorId = mp.getUserActor(userId); } catch { }
+    if (!actorId) return;
+    let profileId = 0;
+    try { profileId = Number(mp.get(actorId, "profileId")) || 0; } catch { }
+    try {
+      mp.sendCustomPacket(userId, JSON.stringify({
+        customPacketType: "debugInfo",
+        serverName: this.serverName,
+        serverTime: Date.now(),
+        serverTzOffsetMin: new Date().getTimezoneOffset(),
+        actorId: actorId.toString(16),
+        profileId,
+      }));
+    } catch (e) {
+      this.log(`AdminSystem: debugInfo reply failed: ${e}`);
+    }
+  }
+
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
-    if (type !== "adminMenuRequest" && type !== "adminAction") return;
+    if (type === "debugInfoRequest") {
+      this.sendDebugInfo(ctx.svr as Mp, userId);
+      return;
+    }
+    if (type !== "adminMenuRequest" && type !== "adminAction" && type !== "npcZonesRequest") return;
     const mp = ctx.svr as Mp;
     let myActorId = 0;
     try { myActorId = mp.getUserActor(userId); } catch { }
     if (!myActorId || !this.isAdminActor(mp, myActorId)) {
+      if (type === "adminMenuRequest") {
+        if (this.menuRefusalLogged.has(userId)) return;
+        this.menuRefusalLogged.add(userId);
+      }
       // Log the actor's real roles so a misconfigured adminRoleIds is diagnosable from the game
       let roles: unknown = [];
       try { roles = mp.get(myActorId, "private.discordRoles"); } catch { }
@@ -273,6 +309,7 @@ export class AdminSystem implements System {
             players: this.buildRoster(mp, myActorId, adminProfile, backendPlayers),
             locations: this.locations.map(l => ({ name: l.name })),
             modes: this.modesFor(adminProfile),
+            npcZones: this.npcSpawns.listZones(),
             tier,
             caps,
           }));
@@ -282,11 +319,19 @@ export class AdminSystem implements System {
       });
       return;
     }
+    if (type === "npcZonesRequest") {
+      this.sendZones(mp, userId, myActorId);
+      return;
+    }
 
     const action = String(content["action"] ?? "");
 
     if (action === "toggleMode") {
       this.toggleMode(mp, userId, myActorId, adminProfile, String(content["mode"] ?? ""));
+      return;
+    }
+    if (action.startsWith("npcZone")) {
+      this.npcZoneAction(mp, userId, myActorId, adminProfile, action, content);
       return;
     }
     if (action === "teleportLoc") {
@@ -346,6 +391,73 @@ export class AdminSystem implements System {
       this.log(`AdminSystem: action '${action}' by profile ${adminProfile} failed: ${e}`);
       this.reply(mp, userId, false, "Action failed, see server log");
     }
+  }
+
+  // Every tier may manage NPC zones; the slot must still belong to the admin because add/delete finish asynchronously
+  private sendZones(mp: Mp, userId: number, adminActorId: number): void {
+    try {
+      if (mp.getUserActor(userId) !== adminActorId) return;
+      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "npcZones", zones: this.npcSpawns.listZones() }));
+    } catch (e) {
+      this.log(`AdminSystem: npcZones reply failed: ${e}`);
+    }
+  }
+
+  private npcZoneAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, action: string, content: Content): void {
+    const name = String(content["target"] ?? "");
+    if (action === "npcZoneAdd") {
+      let raw: unknown;
+      try { raw = JSON.parse(String(content["zone"] ?? "")); } catch { raw = null; }
+      if (!raw || typeof raw !== "object") {
+        this.reply(mp, userId, false, "Bad zone data");
+        return;
+      }
+      const zoneName = String((raw as Record<string, unknown>)["Name"] ?? "");
+      this.npcSpawns.addZone(raw).then(err => {
+        if (!err) this.adminLog(`profile ${adminProfile} added npc zone '${zoneName}'`);
+        this.replyIfSameAdmin(mp, userId, myActorId, !err, err ?? `Added zone ${zoneName}`);
+        if (!err) this.sendZones(mp, userId, myActorId);
+      }).catch(e => {
+        this.log(`AdminSystem: npcZoneAdd by profile ${adminProfile} failed: ${e}`);
+        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+      });
+      return;
+    }
+    if (action === "npcZoneDelete") {
+      this.npcSpawns.deleteZone(name).then(ok => {
+        if (ok) this.adminLog(`profile ${adminProfile} deleted npc zone '${name}'`);
+        this.replyIfSameAdmin(mp, userId, myActorId, ok, ok ? `Deleted zone ${name}` : "Unknown zone");
+        if (ok) this.sendZones(mp, userId, myActorId);
+      }).catch(e => {
+        this.log(`AdminSystem: npcZoneDelete '${name}' by profile ${adminProfile} failed: ${e}`);
+        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+      });
+      return;
+    }
+    if (action === "npcZoneReset") {
+      const ok = this.npcSpawns.resetZone(name);
+      if (ok) this.adminLog(`profile ${adminProfile} reset npc zone '${name}'`);
+      this.reply(mp, userId, ok, ok ? `Reset zone ${name}` : "Unknown zone");
+      if (ok) this.sendZones(mp, userId, myActorId);
+      return;
+    }
+    if (action === "npcZoneTp") {
+      const target = this.npcSpawns.teleportTarget(name);
+      if (!target) {
+        this.reply(mp, userId, false, "Unknown zone");
+        return;
+      }
+      try {
+        mp.set(myActorId, "locationalData", { cellOrWorldDesc: target.cellOrWorldDesc, pos: target.pos, rot: [0, 0, 0] });
+        this.adminLog(`profile ${adminProfile} teleported to npc zone '${name}'`);
+        this.reply(mp, userId, true, `Teleported to ${name}`);
+      } catch (e) {
+        this.log(`AdminSystem: npcZoneTp '${name}' by profile ${adminProfile} failed: ${e}`);
+        this.reply(mp, userId, false, "Teleport failed, see server log");
+      }
+      return;
+    }
+    this.reply(mp, userId, false, `Unknown action '${action}'`);
   }
 
   private toggleMode(mp: Mp, userId: number, actorId: number, adminProfile: number, mode: string): void {

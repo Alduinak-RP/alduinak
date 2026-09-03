@@ -7,20 +7,24 @@ worldspace, a trigger radius and the NPCs that belong there. When a player
 walks into the radius the server places the NPCs (a server-side `PlaceAtMe`,
 no plugin edit needed); when the last player has been gone long enough it
 removes them again, corpses included; NPCs killed in between come back after a
-per-zone delay. The file is watched, so edits apply without a restart.
+per-zone delay that keeps running even while the zone is empty. The file is
+watched, so edits apply without a restart, and the admin panel's NPCs tab
+lists, adds, resets and deletes zones in game.
 
-- Server piece: `skymp5-server/ts/systems/npcSpawnSystem.ts` (zones, polling, spawn/despawn/respawn)
+- Server piece: `skymp5-server/ts/systems/npcSpawnSystem.ts` (zones, polling, spawn/despawn/respawn, admin API)
 - Plugin scanner: `skymp5-server/ts/systems/espmEditorIds.ts` (turns cell and worldspace editor ids into form descs)
-- Live file: `build/dist/server/NPC-Spawns.json` (gitignored, edited by hand on the box)
+- Admin panel: `skymp5-server/ts/systems/adminSystem.ts` (packets), `skymp5-client/src/services/services/adminMenuService.ts` (passthrough), `skymp5-front/src/features/adminPanel` (NPCs tab)
+- Live file: `build/dist/server/NPC-Spawns.json` (gitignored, edited by hand on the box or from the panel)
 - Sidecar: `build/dist/server/zone-spawns.json` (ids of the NPCs currently placed, used for crash cleanup on boot)
 
 ---
 
 ## The file
 
-A JSON array of zone entries; `{ "zones": [ ... ] }` is accepted too. Field
-names are matched case-insensitively (`Name`, `name` and `NAME` are the same
-key).
+A JSON array of zone entries; `{ "zones": [ ... ] }` is accepted too, and any
+other top-level key of that wrapper (a `_comment`, say) is left alone when the
+panel rewrites the file. Field names are matched case-insensitively (`Name`,
+`name` and `NAME` are the same key).
 
 ```json
 [
@@ -38,16 +42,20 @@ key).
 
 | Field | Required | Default | Meaning and accepted forms |
 |---|---|---|---|
-| `Name` | yes | | label printed in every log line about the zone |
+| `Name` | yes | | label printed in every log line about the zone; at most 64 characters and unique across the file (case-insensitive) |
 | `ID` | yes | | the cell or worldspace the zone lives in: an editor id (`Kagrenzel01`, `Tamriel`), a form desc (`1a26f:Skyrim.esm`) or a load-order form id (`0x0001A26F`, `0001A26F`) |
 | `POS` | yes | | centre of the zone: `{ "x": .., "y": .., "z": .. }`, `[x, y, z]` or `"x, y, z"` |
 | `Size` | no | 2000 | trigger radius in game units |
-| `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional |
+| `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional; at most 40 NPCs per zone in total |
 | `Despawn` | no | 120 | seconds after the last player left before every NPC of the zone (corpses included) is destroyed; `0` = never |
-| `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy stands at its spot; `0` = never |
+| `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
 
-An entry that fails a check (no `Name`, unknown `ID`, unusable `POS`, no valid
-NPC) is skipped with a log line naming it; the other entries still load.
+An entry that fails a check (no `Name`, a `Name` longer than 64 characters,
+unknown `ID`, unusable `POS`, no valid NPC, more than 40 NPCs in total) is
+skipped with a log line naming it; the other entries still load. Two entries
+sharing a `Name` (case-insensitive) load only once: the first wins, the later
+ones are skipped with `'<Name>' skipped, duplicate zone name`, so a copy-pasted
+entry cannot double a zone.
 
 ### ID resolution
 
@@ -79,22 +87,33 @@ coordinates.
 `"00023A99 4"` is a load-order form id plus a count; `"23a99:Skyrim.esm 4"`
 (desc form, the plugin name may contain spaces) works too, and so does
 `{ "id": "00023A99", "count": 4 }`. The count defaults to 1 and is clamped to
-1..20. Every base is looked up in the loaded plugins when the file loads and
+1..20, and the counts of one zone may add up to 40 at most; a zone asking for
+more is skipped (`'<Name>' skipped, more than 40 NPCs`), since every NPC is a
+`PlaceAtMe` on the game thread the first time a player walks in. Every base
+is looked up in the loaded plugins when the file loads and
 must be an `NPC_` record; anything else (a leveled character, an item, a typo)
 is skipped with a log line. `00023A99` is `EncFalmer01MeleeA`, a Falmer.
 
 ## State machine
 
 ```
-idle      -- a player within Size ------------------>  active   (every NPC placed)
+idle      -- a player within Size ------------------>  active   (every slot off cooldown placed)
 active    -- nobody within 1.5 x Size -------------->  emptying (Despawn timer runs)
 emptying  -- a player back within 1.5 x Size ------->  active   (timer cleared)
-emptying  -- Despawn seconds elapsed --------------->  idle     (everything destroyed, corpses included)
+emptying  -- Despawn seconds elapsed --------------->  idle     (everything destroyed, corpses included; slot cooldowns keep running)
 
-per NPC while the zone is active:
-alive -- killed --> corpse -- Respawn elapsed, zone still occupied --> fresh copy at the same slot
+per slot (one per NPC to place):
+ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a player inside --> placed again at the same slot
 ```
 
+- Every NPC of a zone has a slot with its own cooldown. A kill starts that
+  slot's `Respawn` timer; the slot is only filled again once the timer has run
+  out and a player is inside. The timer survives a despawn: clearing a zone,
+  walking out for `Despawn` seconds and walking back in does not produce a
+  fresh set of NPCs, the zone shows a countdown instead and fills up slot by
+  slot as the timers expire. `Respawn: 0` leaves the corpse until the zone
+  despawns or an admin resets it. Cooldowns live in memory, so a server
+  restart puts every zone back to ready.
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
@@ -106,13 +125,12 @@ alive -- killed --> corpse -- Respawn elapsed, zone still occupied --> fresh cop
   overflow the engine's timer arithmetic and the actor respawns on the next
   tick instead. The live `55_death.js` uses the same `1e9` on NPC death.
 - Death is polled every 2 seconds through `isDead`; a form that has vanished
-  counts as dead. After `Respawn` seconds, if the zone is still occupied, the
-  old actor is destroyed and a new one placed at the same slot. `Respawn: 0`
-  leaves the corpse until the zone despawns.
+  counts as dead. Once the slot's `Respawn` has elapsed and a player is inside,
+  a new actor is placed at the slot and the corpse destroyed.
 - With `Despawn: 0` the NPCs stay until the server restarts; leftovers from a
   crash or a restart are destroyed on boot through `zone-spawns.json`.
-- A failed spawn (no anchor player, `PlaceAtMe` error) is retried 30 seconds
-  later instead of every poll.
+- A failed spawn (`PlaceAtMe` error) puts the slot on a 30 second cooldown
+  instead of retrying every poll.
 
 ### Placement
 
@@ -127,19 +145,58 @@ tell spawner NPCs apart.
 
 The file is watched with chokidar (`awaitWriteFinish`). About two seconds
 after the last write the file is parsed and resolved again; if it is valid,
-every active zone is despawned, the new zones replace the old ones and a load
-summary is logged. Invalid JSON, or a top level that is neither an array nor
-`{ "zones": [...] }`, keeps the previous zones running. A missing file at boot
-logs once and leaves the system idle; deleting the file at runtime despawns
-everything.
+the new zones replace the old ones and a load summary is logged. A zone whose
+`Name` (case-insensitive) and definition (location, `POS`, `Size`, NPC list,
+`Despawn`, `Respawn`) did not change is carried over with its NPCs, cooldowns
+and players intact, so adding or removing one zone leaves the others running;
+the summary counts them as `carried N zone(s)`. Editing any field of a zone
+despawns it and starts it fresh; renaming one does the same. Invalid JSON, or
+a top level that is neither an array nor `{ "zones": [...] }`, keeps the
+previous zones running. A missing file at boot logs once and leaves the system
+idle; deleting the file at runtime despawns everything. Loads run one at a
+time, so a panel change and a hand edit landing together cannot interleave.
+
+## Admin panel
+
+The NPCs tab of the admin panel (Insert key, every admin tier) has two
+sub-tabs:
+
+- **Zones** lists every loaded zone: the name, a green dot while its NPCs are
+  placed (`alive/total alive`) or a grey one while idle, and the cooldown
+  state: `Ready`, `Ready in m:ss` (the time until every slot may spawn again,
+  ticking locally from the last server snapshot) or `No respawn` for a
+  `Respawn: 0` corpse. Opening the tab and every change refresh the list.
+  - **TP** puts the admin on `POS`. That counts as being inside, so a ready
+    zone spawns on the next poll.
+  - **Reset** destroys the zone's NPCs and clears every cooldown; it fills up
+    again on the next poll with a player inside.
+  - **Delete** removes the entry from `NPC-Spawns.json` (single click, no
+    confirmation) and despawns it.
+- **Add** takes Name, ID, X/Y/Z, Size, one NPC entry per line (`00023A99 4`),
+  Despawn and Respawn. The Add button stays disabled until Name, ID, NPC and
+  all three coordinates are filled in and every number field holds a number
+  (Size, Despawn and Respawn may be blank for the defaults). The server then
+  validates exactly like a file load (unknown ID, non-`NPC_` base, duplicate
+  name, more than 40 NPCs, a Name over 64 characters and missing fields are
+  refused with a toast naming the reason) and appends the entry in the field
+  names shown above.
+
+Add and Delete rewrite the whole file (`JSON.stringify(..., null, 2)`, written
+through a temp file and renamed): hand-written entries keep their own field
+names and values, a `{ "zones": [...] }` wrapper keeps its key spelling and its
+other top-level keys, but hand formatting is normalised. A file that is not
+valid JSON blocks both until it is fixed by hand. The reload that follows a
+panel write carries every unchanged zone over.
 
 ## Logs
 
 Everything goes through the server log and the manager console, prefixed
 `NpcSpawnSystem:`:
 
-- `N/M zone(s) loaded from ./NPC-Spawns.json (boot | file changed)` and, when
-  editor ids were involved, `resolved a/b editor id(s) in X ms, unresolved: ...`
+- `N/M zone(s) loaded from ./NPC-Spawns.json (boot | file changed | admin add | admin delete), carried K zone(s)`
+  and, when editor ids were involved, `resolved a/b editor id(s) in X ms, unresolved: ...`
+- `'<Name>' appended to ./NPC-Spawns.json by admin` / `'<Name>' removed from ./NPC-Spawns.json by admin`;
+  the admin log (staff channel) names the profile that added, reset, deleted or teleported to a zone
 - `'<Name>' entered by <player name> (<hex actor id>)` once per player entering
   the zone; there is no line for leaving
 - `'<Name>' spawned 4/4 npc(s): 23a99:Skyrim.esm x4`
@@ -157,5 +214,8 @@ Everything goes through the server log and the manager console, prefixed
   carried by a commit: create and edit it on the live box. The manager's
   deploy prune keeps `npc-spawns.json` and `zone-spawns.json`, so a Build
   server does not delete them.
-- No client, front or gamemode changes: spawned NPCs reach players through the
-  normal actor path.
+- The NPCs tab needs the client and front: manager **Build Client**, players
+  re-download through the launcher. An old client against a new server simply
+  has no tab; a new client against an old server shows an empty one.
+- No gamemode changes: spawned NPCs reach players through the normal actor
+  path.

@@ -207,13 +207,15 @@ const main = async () => {
   const systems = new Array<System>();
   // Mastery reads AfkSystem's idle clock rather than sampling positions again.
   const afkSystem = new AfkSystem(log);
+  // The admin panel's NPCs tab drives the spawner directly.
+  const npcSpawnSystem = new NpcSpawnSystem(log);
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing
-    new AdminSystem(log),
+    new AdminSystem(log, npcSpawnSystem),
     new CaptureSystem(log),
     new HousingSystem(log),
     new TradeSystem(log),
@@ -222,7 +224,7 @@ const main = async () => {
     afkSystem,
     new MasterySystem(log, afkSystem),
     new BountyBoardSystem(log),
-    new NpcSpawnSystem(log),
+    npcSpawnSystem,
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );

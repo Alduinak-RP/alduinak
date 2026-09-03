@@ -9,6 +9,7 @@ type Mp = any;
 
 // File-driven NPC spawner: ./NPC-Spawns.json (server cwd) lists zones that populate when a player walks in and clean up after the last one leaves.
 // Format, id rules and the state machine are documented in docs/docs_roleplay_npc_spawns.md.
+// The admin panel's NPCs tab (adminSystem.ts) lists, adds, resets and deletes zones through the public methods at the end of the class.
 
 const POLL_MS = 2000;
 const ZONES_FILE = "./NPC-Spawns.json";
@@ -18,12 +19,16 @@ const DEFAULT_SIZE = 2000;
 const DEFAULT_DESPAWN = 120;
 const DEFAULT_RESPAWN = 1800;
 const MAX_COUNT = 20;
+const MAX_TOTAL = 40;
+const MAX_NAME = 64;
 const RING_RADIUS = 64;
 const RETRY_MS = 30000;
 const RELOAD_DEBOUNCE_MS = 500;
 // Keeps the engine from reviving spawner NPCs; delays past ~1e9 s overflow its timer and fire at once
 const NEVER_RESPAWN = 1e9;
 const TAG_PROP = "private.npcSpawner";
+// Slot cooldown marker for Respawn 0: the corpse stays until the zone despawns or an admin resets it
+const NEVER_READY = -1;
 
 interface ZoneNpc {
   baseDesc: string;
@@ -32,7 +37,6 @@ interface ZoneNpc {
 
 interface Spawned {
   id: number;
-  npc: ZoneNpc;
   slot: number;
   diedAt: number;
 }
@@ -44,12 +48,17 @@ interface Zone {
   pos: number[];
   radius: number;
   npcs: ZoneNpc[];
+  // One entry per NPC to place; slot i stands at slotPos(i)
+  slots: ZoneNpc[];
   total: number;
   despawnSeconds: number;
   respawnSeconds: number;
+  // Per slot: 0 = may spawn now, epoch ms = cooldown end, NEVER_READY = not until reset
+  slotReadyAt: number[];
+  // Everything that defines the zone; a reload keeps zones whose signature did not change
+  signature: string;
   spawned: Spawned[];
   emptySince: number;
-  retryAt: number;
   inside: Set<number>;
 }
 
@@ -64,10 +73,34 @@ interface Draft {
   respawnSeconds: number;
 }
 
+export interface ZoneSummary {
+  name: string;
+  active: boolean;
+  alive: number;
+  total: number;
+  inside: number;
+  // Seconds until every slot may spawn: 0 = ready, -1 = never until reset
+  readyInSec: number;
+}
+
+type Reject = (msg: string) => void;
+
+// The parsed zone file; root and key are set when the array sits under a wrapper object
+interface ZoneFile {
+  list: unknown[];
+  root: Record<string, unknown> | null;
+  key: string;
+  missing: boolean;
+}
+
 // Field names in the file are matched case-insensitively; key must be lower case
-const pick = (raw: unknown, key: string): unknown => {
+const pickKey = (raw: unknown, key: string): string | undefined => {
   if (!raw || typeof raw !== "object") return undefined;
-  const k = Object.keys(raw).find((x) => x.toLowerCase() === key);
+  return Object.keys(raw).find((x) => x.toLowerCase() === key);
+};
+
+const pick = (raw: unknown, key: string): unknown => {
+  const k = pickKey(raw, key);
   return k === undefined ? undefined : (raw as Record<string, unknown>)[k];
 };
 
@@ -85,55 +118,62 @@ const isHexId = (text: string): boolean => /^0x[0-9a-f]{1,8}$/i.test(text) || /^
 const isEditorId = (locator: string): boolean =>
   !locator.includes(":") && !/^0x[0-9a-f]+$/i.test(locator) && !/^[0-9a-f]{8}$/i.test(locator);
 
+const entryName = (raw: unknown): string => String(pick(raw, "name") ?? "").trim().toLowerCase();
+
 export class NpcSpawnSystem implements System {
   systemName = "NpcSpawnSystem";
   constructor(private log: Log) { }
 
+  private mp: Mp = null;
   private zones: Zone[] = [];
   private ready = false;
   private loading = false;
+  // Loads run one at a time, whether the watcher or the admin panel asks
+  private loadChain: Promise<void> = Promise.resolve();
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
   async initAsync(ctx: SystemContext): Promise<void> {
-    const mp = ctx.svr as Mp;
-    this.cleanupLeftovers(mp);
-    await this.load(mp, "boot");
-    this.watchFile(mp);
+    this.mp = ctx.svr as Mp;
+    this.cleanupLeftovers(this.mp);
+    await this.queueLoad("boot");
+    this.watchFile();
     this.ready = true;
+  }
+
+  private queueLoad(reason: string): Promise<void> {
+    this.loadChain = this.loadChain
+      .then(() => this.load(this.mp, reason))
+      .catch((e) => this.log(`NpcSpawnSystem: load failed (${reason}): ${e}`));
+    return this.loadChain;
   }
 
   private async load(mp: Mp, reason: string): Promise<void> {
     this.loading = true;
     try {
-      let text: string;
-      try {
-        text = fs.readFileSync(ZONES_FILE, "utf8");
-      } catch (e: any) {
-        if (e?.code !== "ENOENT") {
-          this.log(`NpcSpawnSystem: ${ZONES_FILE} unreadable, keeping ${this.zones.length} zone(s): ${e}`);
-          return;
-        }
+      const file = this.readZoneFile();
+      if (typeof file === "string") {
+        this.log(`NpcSpawnSystem: ${file}, keeping ${this.zones.length} zone(s)`);
+        return;
+      }
+      if (file.missing) {
         this.log(`NpcSpawnSystem: ${ZONES_FILE} not found, no zones (${reason})`);
         this.replaceZones(mp, []);
         return;
       }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch (e) {
-        this.log(`NpcSpawnSystem: ${ZONES_FILE} is not valid JSON, keeping ${this.zones.length} zone(s): ${e}`);
-        return;
-      }
-      const list = Array.isArray(parsed) ? parsed : pick(parsed, "zones");
-      if (!Array.isArray(list)) {
-        this.log(`NpcSpawnSystem: ${ZONES_FILE} must be an array or { "zones": [...] }, keeping ${this.zones.length} zone(s)`);
-        return;
-      }
+      const list = file.list;
 
       const drafts: Draft[] = [];
+      const names = new Set<string>();
       for (const raw of list) {
         const draft = this.parseDraft(raw);
-        if (draft) drafts.push(draft);
+        if (!draft) continue;
+        const key = draft.name.toLowerCase();
+        if (names.has(key)) {
+          this.log(`NpcSpawnSystem: '${draft.name}' skipped, duplicate zone name`);
+          continue;
+        }
+        names.add(key);
+        drafts.push(draft);
       }
       const editorIds = drafts.map((d) => d.locator).filter(isEditorId);
       const s = await Settings.get();
@@ -147,24 +187,71 @@ export class NpcSpawnSystem implements System {
         const zone = this.buildZone(mp, draft, scan.resolved);
         if (zone) zones.push(zone);
       }
-      this.replaceZones(mp, zones);
-      this.log(`NpcSpawnSystem: ${zones.length}/${list.length} zone(s) loaded from ${ZONES_FILE} (${reason})`);
+      const carried = this.replaceZones(mp, zones);
+      this.log(`NpcSpawnSystem: ${zones.length}/${list.length} zone(s) loaded from ${ZONES_FILE} (${reason}), carried ${carried} zone(s)`);
     } finally {
       this.loading = false;
     }
   }
 
-  private replaceZones(mp: Mp, zones: Zone[]): void {
-    for (const zone of this.zones) {
-      if (zone.spawned.length) this.despawn(mp, zone);
+  // A missing file reads as an empty list; a string names what is wrong with an existing one
+  private readZoneFile(): ZoneFile | string {
+    let text: string;
+    try {
+      text = fs.readFileSync(ZONES_FILE, "utf8");
+    } catch (e: any) {
+      if (e?.code === "ENOENT") return { list: [], root: null, key: "", missing: true };
+      return `${ZONES_FILE} unreadable: ${e}`;
     }
-    this.zones = zones;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      return `${ZONES_FILE} is not valid JSON: ${e}`;
+    }
+    if (Array.isArray(parsed)) return { list: parsed, root: null, key: "", missing: false };
+    const key = pickKey(parsed, "zones");
+    const list = key === undefined ? undefined : (parsed as Record<string, unknown>)[key];
+    if (key === undefined || !Array.isArray(list)) return `${ZONES_FILE} must be an array or { "zones": [...] }`;
+    return { list, root: parsed as Record<string, unknown>, key, missing: false };
   }
 
-  private parseDraft(raw: unknown): Draft | null {
+  // Temp file plus rename so an interrupted write cannot truncate the zone list; a wrapper object keeps its other keys
+  private writeZoneFile(file: ZoneFile, list: unknown[]): void {
+    const tmp = ZONES_FILE + ".tmp";
+    if (file.root) file.root[file.key] = list;
+    fs.writeFileSync(tmp, JSON.stringify(file.root ?? list, null, 2));
+    fs.renameSync(tmp, ZONES_FILE);
+  }
+
+  // Zones whose name and definition did not change keep their NPCs, timers and players; the rest are despawned
+  private replaceZones(mp: Mp, zones: Zone[]): number {
+    const old = new Map(this.zones.map((z) => [z.name.toLowerCase(), z]));
+    const carried = new Set<Zone>();
+    for (const zone of zones) {
+      const prev = old.get(zone.name.toLowerCase());
+      if (!prev || prev.signature !== zone.signature) continue;
+      zone.spawned = prev.spawned;
+      zone.slotReadyAt = prev.slotReadyAt;
+      zone.emptySince = prev.emptySince;
+      zone.inside = prev.inside;
+      carried.add(prev);
+    }
+    for (const gone of this.zones) {
+      if (!carried.has(gone) && gone.spawned.length) this.despawn(mp, gone);
+    }
+    this.zones = zones;
+    return carried.size;
+  }
+
+  private parseDraft(raw: unknown, reject: Reject = (msg) => this.log(`NpcSpawnSystem: ${msg}`)): Draft | null {
     const name = String(pick(raw, "name") ?? "").trim();
     if (!name) {
-      this.log("NpcSpawnSystem: entry without a Name skipped");
+      reject("entry without a Name skipped");
+      return null;
+    }
+    if (name.length > MAX_NAME) {
+      reject(`'${name.slice(0, MAX_NAME)}...' skipped, Name longer than ${MAX_NAME} characters`);
       return null;
     }
     const locator = String(pick(raw, "id") ?? "").trim();
@@ -172,7 +259,11 @@ export class NpcSpawnSystem implements System {
     const radius = num(pick(raw, "size"), DEFAULT_SIZE);
     const npcs = this.parseNpcs(pick(raw, "npc"));
     if (!locator || !pos || !(radius > 0) || !npcs.length) {
-      this.log(`NpcSpawnSystem: '${name}' skipped, needs ID, POS {x,y,z}, a positive Size and at least one NPC`);
+      reject(`'${name}' skipped, needs ID, POS {x,y,z}, a positive Size and at least one NPC`);
+      return null;
+    }
+    if (npcs.reduce((sum, n) => sum + n.count, 0) > MAX_TOTAL) {
+      reject(`'${name}' skipped, more than ${MAX_TOTAL} NPCs`);
       return null;
     }
     return {
@@ -215,7 +306,7 @@ export class NpcSpawnSystem implements System {
     return out;
   }
 
-  private buildZone(mp: Mp, draft: Draft, editorIds: Map<string, string>): Zone | null {
+  private buildZone(mp: Mp, draft: Draft, editorIds: Map<string, string>, reject: Reject = (msg) => this.log(`NpcSpawnSystem: ${msg}`)): Zone | null {
     let cellOrWorldDesc = "";
     let cellOrWorldId = 0;
     try {
@@ -225,28 +316,31 @@ export class NpcSpawnSystem implements System {
       cellOrWorldDesc = "";
     }
     if (!cellOrWorldDesc) {
-      this.log(`NpcSpawnSystem: '${draft.name}' skipped, ID '${draft.locator}' is not a known cell or worldspace`);
+      reject(`'${draft.name}' skipped, ID '${draft.locator}' is not a known cell or worldspace`);
       return null;
     }
     const npcs: ZoneNpc[] = [];
     for (const n of draft.npcs) {
       const baseDesc = this.toNpcDesc(mp, n.id);
       if (!baseDesc) {
-        this.log(`NpcSpawnSystem: '${draft.name}' NPC '${n.id}' is not an NPC_ record, skipped`);
+        reject(`'${draft.name}' NPC '${n.id}' is not an NPC_ record, skipped`);
         continue;
       }
       npcs.push({ baseDesc, count: n.count });
     }
     if (!npcs.length) {
-      this.log(`NpcSpawnSystem: '${draft.name}' skipped, no valid NPC`);
+      reject(`'${draft.name}' skipped, no valid NPC`);
       return null;
     }
+    const slots = npcs.flatMap((n) => Array<ZoneNpc>(n.count).fill(n));
     return {
-      name: draft.name, cellOrWorldDesc, cellOrWorldId, pos: draft.pos, radius: draft.radius, npcs,
-      total: npcs.reduce((sum, n) => sum + n.count, 0),
+      name: draft.name, cellOrWorldDesc, cellOrWorldId, pos: draft.pos, radius: draft.radius, npcs, slots,
+      total: slots.length,
       despawnSeconds: draft.despawnSeconds,
       respawnSeconds: draft.respawnSeconds,
-      spawned: [], emptySince: 0, retryAt: 0, inside: new Set(),
+      slotReadyAt: slots.map(() => 0),
+      signature: JSON.stringify([cellOrWorldDesc, draft.pos, draft.radius, slots.map((n) => n.baseDesc), draft.despawnSeconds, draft.respawnSeconds]),
+      spawned: [], emptySince: 0, inside: new Set(),
     };
   }
 
@@ -283,10 +377,10 @@ export class NpcSpawnSystem implements System {
     for (const zone of this.zones) {
       this.updateInside(mp, zone, playerIds);
       const occupied = zone.inside.size > 0;
-      if (zone.spawned.length) this.checkDeaths(mp, zone, now, occupied);
+      if (zone.spawned.length) this.checkDeaths(mp, zone, now);
       if (occupied) {
         zone.emptySince = 0;
-        if (!zone.spawned.length && now >= zone.retryAt) this.populate(mp, zone, now);
+        this.fillSlots(mp, zone, now);
       } else if (zone.spawned.length && zone.despawnSeconds > 0) {
         if (!zone.emptySince) zone.emptySince = now;
         if (now - zone.emptySince >= zone.despawnSeconds * 1000) this.despawn(mp, zone);
@@ -326,22 +420,39 @@ export class NpcSpawnSystem implements System {
     return zone.inside.values().next().value;
   }
 
-  private populate(mp: Mp, zone: Zone, now: number): void {
-    const anchor = this.anchorIn(zone);
-    if (anchor === undefined) return;
-    let slot = 0;
-    for (const npc of zone.npcs) {
-      for (let i = 0; i < npc.count; i++, slot++) {
-        const id = this.spawnOne(mp, zone, npc, slot, anchor);
-        if (id !== null) zone.spawned.push({ id, npc, slot, diedAt: 0 });
+  // Places every slot that is empty or holds a corpse once its cooldown has run out
+  private fillSlots(mp: Mp, zone: Zone, now: number): void {
+    const before = zone.spawned.length;
+    let changed = false;
+    for (let slot = 0; slot < zone.total; slot++) {
+      const entry = zone.spawned.find((e) => e.slot === slot);
+      if (entry && !entry.diedAt) continue;
+      const at = zone.slotReadyAt[slot];
+      if (at < 0 || at > now) continue;
+      const anchor = this.anchorIn(zone);
+      if (anchor === undefined) break;
+      const npc = zone.slots[slot];
+      const id = this.spawnOne(mp, zone, npc, slot, anchor);
+      if (id === null) {
+        zone.slotReadyAt[slot] = now + RETRY_MS;
+        continue;
       }
+      if (entry) {
+        try { mp.destroyActor(entry.id); } catch { }
+        this.log(`NpcSpawnSystem: '${zone.name}' respawned ${npc.baseDesc} (${hex(entry.id)} -> ${hex(id)})`);
+        entry.id = id;
+        entry.diedAt = 0;
+      } else {
+        zone.spawned.push({ id, slot, diedAt: 0 });
+      }
+      zone.slotReadyAt[slot] = 0;
+      changed = true;
     }
-    if (!zone.spawned.length) {
-      zone.retryAt = now + RETRY_MS;
-      return;
+    if (!changed) return;
+    if (!before) {
+      const summary = zone.npcs.map((n) => `${n.baseDesc} x${n.count}`).join(", ");
+      this.log(`NpcSpawnSystem: '${zone.name}' spawned ${zone.spawned.length}/${zone.total} npc(s): ${summary}`);
     }
-    const summary = zone.npcs.map((n) => `${n.baseDesc} x${n.count}`).join(", ");
-    this.log(`NpcSpawnSystem: '${zone.name}' spawned ${zone.spawned.length}/${zone.total} npc(s): ${summary}`);
     this.saveSpawns();
   }
 
@@ -371,46 +482,35 @@ export class NpcSpawnSystem implements System {
     return [zone.pos[0] + RING_RADIUS * Math.cos(angle), zone.pos[1] + RING_RADIUS * Math.sin(angle), zone.pos[2]];
   }
 
-  private checkDeaths(mp: Mp, zone: Zone, now: number, occupied: boolean): void {
-    let changed = false;
+  // A death starts the slot's Respawn cooldown; the corpse stays until the slot is refilled or the zone despawns
+  private checkDeaths(mp: Mp, zone: Zone, now: number): void {
     for (const entry of zone.spawned) {
-      if (!entry.diedAt) {
-        let dead = false;
-        // A throw means the form is gone, which counts as dead
-        try { dead = mp.get(entry.id, "isDead") === true; } catch { dead = true; }
-        if (dead) entry.diedAt = now;
-        continue;
-      }
-      if (!occupied || zone.respawnSeconds <= 0 || now - entry.diedAt < zone.respawnSeconds * 1000) continue;
-      const anchor = this.anchorIn(zone);
-      if (anchor === undefined) continue;
-      try { mp.destroyActor(entry.id); } catch { }
-      const id = this.spawnOne(mp, zone, entry.npc, entry.slot, anchor);
-      if (id === null) {
-        entry.diedAt += RETRY_MS;
-        continue;
-      }
-      this.log(`NpcSpawnSystem: '${zone.name}' respawned ${entry.npc.baseDesc} (${hex(entry.id)} -> ${hex(id)})`);
-      entry.id = id;
-      entry.diedAt = 0;
-      changed = true;
+      if (entry.diedAt) continue;
+      let dead = false;
+      // A throw means the form is gone, which counts as dead
+      try { dead = mp.get(entry.id, "isDead") === true; } catch { dead = true; }
+      if (!dead) continue;
+      entry.diedAt = now;
+      zone.slotReadyAt[entry.slot] = zone.respawnSeconds > 0 ? now + zone.respawnSeconds * 1000 : NEVER_READY;
     }
-    if (changed) this.saveSpawns();
   }
 
-  private despawn(mp: Mp, zone: Zone): void {
+  // Cooldowns still running survive the despawn so leaving and coming back cannot skip Respawn; reset clears them
+  private despawn(mp: Mp, zone: Zone, reset = false): void {
     for (const entry of zone.spawned) {
       try { mp.destroyActor(entry.id); } catch { }
     }
     this.log(`NpcSpawnSystem: '${zone.name}' despawned ${zone.spawned.length} npc(s)`);
     zone.spawned = [];
     zone.emptySince = 0;
+    const now = Date.now();
+    zone.slotReadyAt = zone.slotReadyAt.map((at) => reset || at < 0 || at <= now ? 0 : at);
     this.saveSpawns();
   }
 
-  private watchFile(mp: Mp): void {
+  private watchFile(): void {
     const watcher = chokidar.watch(ZONES_FILE, { persistent: true, ignoreInitial: true, awaitWriteFinish: true });
-    const schedule = () => this.scheduleReload(mp);
+    const schedule = () => this.scheduleReload();
     watcher.on("add", schedule);
     watcher.on("change", schedule);
     watcher.on("unlink", schedule);
@@ -418,12 +518,11 @@ export class NpcSpawnSystem implements System {
   }
 
   // Coalesces the burst of events one save produces into a single reload
-  private scheduleReload(mp: Mp): void {
+  private scheduleReload(): void {
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = setTimeout(() => {
       this.reloadTimer = null;
-      if (this.loading) return this.scheduleReload(mp);
-      this.load(mp, "file changed").catch((e) => this.log(`NpcSpawnSystem: reload failed: ${e}`));
+      this.queueLoad("file changed");
     }, RELOAD_DEBOUNCE_MS);
   }
 
@@ -444,5 +543,100 @@ export class NpcSpawnSystem implements System {
     const ids = this.zones.flatMap((z) => z.spawned.map((e) => e.id));
     try { fs.writeFileSync(SPAWNS_FILE, JSON.stringify(ids)); }
     catch (e) { this.log(`NpcSpawnSystem: spawns file write failed: ${e}`); }
+  }
+
+  private findZone(name: string): Zone | undefined {
+    const key = name.trim().toLowerCase();
+    return this.zones.find((z) => z.name.toLowerCase() === key);
+  }
+
+  private readyInSec(zone: Zone, now: number): number {
+    let wait = 0;
+    for (const at of zone.slotReadyAt) {
+      if (at < 0) return NEVER_READY;
+      wait = Math.max(wait, at - now);
+    }
+    return Math.ceil(wait / 1000);
+  }
+
+  // ── Admin panel API ──────────────────────────────────────────────────────────
+
+  listZones(): ZoneSummary[] {
+    const now = Date.now();
+    return this.zones.map((z) => ({
+      name: z.name,
+      active: z.spawned.length > 0,
+      alive: z.spawned.filter((e) => !e.diedAt).length,
+      total: z.total,
+      inside: z.inside.size,
+      readyInSec: this.readyInSec(z, now),
+    }));
+  }
+
+  // Validates like a file load, then appends the entry in the documented field names; null on success, else the reason
+  async addZone(raw: unknown): Promise<string | null> {
+    const reasons: string[] = [];
+    const reject: Reject = (msg) => reasons.push(msg);
+    const draft = this.parseDraft(raw, reject);
+    if (!draft) return reasons[0];
+    const s = await Settings.get();
+    const scan = await resolveEditorIds(isEditorId(draft.locator) ? [draft.locator] : [], s.dataDir, s.loadOrder, this.log);
+    this.buildZone(this.mp, draft, scan.resolved, reject);
+    if (reasons.length) return reasons[0];
+    const file = this.readZoneFile();
+    if (typeof file === "string") return file;
+    if (file.list.some((e) => entryName(e) === draft.name.toLowerCase())) return `'${draft.name}' already exists`;
+    file.list.push({
+      Name: draft.name,
+      ID: draft.locator,
+      POS: { x: draft.pos[0], y: draft.pos[1], z: draft.pos[2] },
+      Size: draft.radius,
+      NPC: draft.npcs.map((n) => n.count > 1 ? `${n.id} ${n.count}` : n.id),
+      Despawn: draft.despawnSeconds,
+      Respawn: draft.respawnSeconds,
+    });
+    try {
+      this.writeZoneFile(file, file.list);
+    } catch (e) {
+      this.log(`NpcSpawnSystem: ${ZONES_FILE} write failed: ${e}`);
+      return `${ZONES_FILE} write failed, see server log`;
+    }
+    this.log(`NpcSpawnSystem: '${draft.name}' appended to ${ZONES_FILE} by admin`);
+    await this.queueLoad("admin add");
+    return null;
+  }
+
+  // Rewrites the file without the entry; the reload that follows despawns it
+  async deleteZone(name: string): Promise<boolean> {
+    const file = this.readZoneFile();
+    if (typeof file === "string") {
+      this.log(`NpcSpawnSystem: ${file}, delete refused`);
+      return false;
+    }
+    const key = name.trim().toLowerCase();
+    const kept = file.list.filter((e) => entryName(e) !== key);
+    if (kept.length === file.list.length) return false;
+    try {
+      this.writeZoneFile(file, kept);
+    } catch (e) {
+      this.log(`NpcSpawnSystem: ${ZONES_FILE} write failed: ${e}`);
+      return false;
+    }
+    this.log(`NpcSpawnSystem: '${name}' removed from ${ZONES_FILE} by admin`);
+    await this.queueLoad("admin delete");
+    return true;
+  }
+
+  // Destroys the zone's NPCs and clears every cooldown; it repopulates on the next poll with a player inside
+  resetZone(name: string): boolean {
+    const zone = this.findZone(name);
+    if (!zone) return false;
+    this.despawn(this.mp, zone, true);
+    return true;
+  }
+
+  teleportTarget(name: string): { cellOrWorldDesc: string; pos: number[] } | null {
+    const zone = this.findZone(name);
+    return zone ? { cellOrWorldDesc: zone.cellOrWorldDesc, pos: zone.pos } : null;
   }
 }
