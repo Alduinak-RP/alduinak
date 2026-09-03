@@ -35,7 +35,6 @@ const serverSettings = [
   { key: 'respawnSeconds',          label: 'Respawn seconds',       type: 'number', group: 'Gameplay', help: 'Bleedout/respawn timer applied to players (gamemode). Default 15.' },
   { key: 'afkKickMinutes',          label: 'AFK kick (minutes)',    type: 'number', group: 'Gameplay', help: 'Minutes without movement, chat, or voice before an idle player is kicked. 0 disables. Default 20.' },
   { key: 'afkWarnMinutes',          label: 'AFK warning (minutes)', type: 'number', group: 'Gameplay', help: 'Minutes before the AFK kick to warn the player in chat. Default 2.' },
-  { key: 'npcSpawnZones',           label: 'NPC spawn zones',       type: 'json',   group: 'Gameplay', help: 'Zones that spawn NPCs when a player enters: [{ name, cellOrWorldDesc, pos:[x,y,z], radius, npcs:[{ base, count, pos, rot }], respawnSeconds, despawnSeconds }]. base = "hexId:Plugin.esp" or a load-order hex id.' },
   { key: 'regenerationMultiplier',  label: 'Regen multiplier',      type: 'number', group: 'Gameplay', help: 'Scales the health/magicka/stamina regen the server accepts from clients. 1 = race-record rates, 0 = no natural regen. Needs a native rebuild to change engine behavior; the setting itself is read at boot.' },
   { key: 'chatRanges',              label: 'Chat ranges',           type: 'json',   group: 'Gameplay', help: 'Audible ranges in game units: { whisper, low, say, wide, shout }. Provided keys override the defaults.' },
   { key: 'voiceChat',               label: 'Voice chat',            type: 'json',   group: 'Gameplay', help: 'LiveKit proximity voice: { enabled, url, apiKey, apiSecret, room, rangeUnits }. rangeUnits = MAX talk range (defaults to chatRanges.shout); speakers pick their range between chatRanges.whisper and this with V + mousewheel.' },
@@ -53,6 +52,7 @@ const serverSettings = [
   { key: 'searchKeepMaxDistance',      label: 'Search keep range',             type: 'number', group: 'Interactions', help: 'The search window closes once the pair drift further apart than this. Default 512.' },
   { key: 'searchConsentTimeoutMs',     label: 'Search consent timeout (ms)',   type: 'number', group: 'Interactions', help: 'How long a search consent prompt waits for an answer. Default 20000.' },
   { key: 'searchConsentCooldownMs',    label: 'Search consent cooldown (ms)',  type: 'number', group: 'Interactions', help: 'Min gap before prompting the same target again. Default 15000.' },
+  { key: 'bountyBoardCostGold',        label: 'Bounty board post cost',        type: 'number', group: 'Interactions', help: 'Gold taken for pinning a notice on a Missives board. 0 = free. Default 25.' },
 
   // Data & storage
   { key: 'dataDir',        label: 'Data directory', type: 'text',   group: 'Data & storage', placeholder: 'data', help: 'ESMs / ESPs / UI / scripts.' },
@@ -70,7 +70,8 @@ const serverSettings = [
   { key: 'forbiddenReloot', label: 'Forbidden reloot', type: 'json', group: 'Advanced', help: 'Record types that never respawn.' },
   { key: 'blockedSpells',  label: 'Blocked spells',  type: 'json', group: 'Advanced', help: 'Spell form ids players may not cast (numbers or "0x..." strings), e.g. racial powers.' },
   { key: 'adminProfileIds', label: 'Admin profile IDs', type: 'json', group: 'Advanced', help: 'Master-api profile ids granted in-game admin chat commands. Array of numbers.' },
-  { key: 'adminRoleIds',    label: 'Admin Discord roles', type: 'json', group: 'Advanced', help: 'Discord role ids (strings) whose holders get the in-game admin menu (Insert) and the server console. Example: ["1521259484859863190"].' },
+  { key: 'adminRoleIds',    label: 'Admin Discord roles', type: 'json', group: 'Advanced', help: 'Legacy flat list of Discord role ids (strings) that get the in-game admin menu (Insert) and the server console. Roles here but in no adminRoles tier get full (senior) rights. Example: ["1521259484859863190"].' },
+  { key: 'adminRoles',      label: 'Admin role tiers',    type: 'json', group: 'Advanced', help: 'Discord role ids per tier: { senior:[...], developer:[...], gm:[...] }. senior and developer have every power; gm has everything except Ban. Tier lists win over adminRoleIds; precedence senior > developer > gm.' },
   { key: 'adminTeleportLocations', label: 'Admin teleport locations', type: 'json', group: 'Advanced', help: 'Admin panel Teleport tab: [{ name, cellOrWorldDesc: "hexId:Plugin.esm", pos:[x,y,z], rot:[x,y,z] }]. Bad entries are dropped at boot.' },
   { key: 'npcSettings',   label: 'NPC settings',   type: 'json', group: 'Advanced' },
   { key: 'metricsAuth',   label: 'Metrics auth',   type: 'json', group: 'Advanced', help: '{ user, password } for /metrics basic auth.' },

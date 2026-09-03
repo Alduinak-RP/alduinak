@@ -290,14 +290,15 @@ class Builder {
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
     const deployDir = path.join(config.buildDir, 'dist', 'server')
-    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'starter-grants.json', 'zone-spawns.json', 'housing.json'])
+    const keep = new Set(['world', 'server-settings.json', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'starter-grants.json', 'zone-spawns.json', 'housing.json', 'npc-spawns.json'])
     for (const extra of (process.env.ALDUINAK_SERVER_KEEP || '').split(',')) {
       const n = extra.trim().toLowerCase(); if (n) keep.add(n)
     }
     let entries
     try { entries = fs.readdirSync(deployDir) } catch { return }
     for (const name of entries) {
-      if (keep.has(name.toLowerCase())) continue
+      // Mongo cleanup backups (deploy/mongodb scripts) stay next to the settings file
+      if (keep.has(name.toLowerCase()) || /changeforms-\d+\.json$/i.test(name)) continue
       try {
         fs.rmSync(path.join(deployDir, name), { recursive: true, force: true })
         this.line(`[deploy] removed stale ${name}`)
