@@ -12,6 +12,27 @@
     "source": "url"
   },
   {
+    "name": "The Great Town of Karthwasten SSE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 33032
+  },
+  {
+    "name": "The Great City of Dragon Bridge SSE Edition",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 19962
+  },
+  {
+    "name": "Markarth Outskirts Lite",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 148405
+  },
+  {
     "name": "JK's Riften Outskirts",
     "required": true,
     "enabled": true,
@@ -208,6 +229,27 @@
     "nexusId": 75264
   },
   {
+    "name": "Argonian Funerary Masks",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 143402
+  },
+  {
+    "name": "Armor and Clothing Extension",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 19002
+  },
+  {
+    "name": "Argonian (Saxhleel) Weapon pack",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 67137
+  },
+  {
     "name": "Redoran Tombwarden Armors",
     "required": true,
     "enabled": true,
@@ -353,6 +395,20 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 142655
+  },
+  {
+    "name": "HammerHair V1.18",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 156562
+  },
+  {
+    "name": "Vanilla hair remake",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 63979
   },
   {
     "name": "Faster HDT-SMP",
