@@ -44,6 +44,7 @@ module.exports = {
   services: [
     { key: 'nginx',   name: 'AlduinakNginx',      legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx'    },
     { key: 'backend', name: 'AlduinakBackend',    legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend'  },
+    { key: 'livekit', name: 'AlduinakLiveKit',    legacyNames: [],                                label: 'LiveKit'  },
     { key: 'game',    name: 'AlduinakGameServer', legacyNames: ['SkyrpGameServer'],               label: 'Game'     },
   ],
 

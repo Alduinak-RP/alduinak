@@ -99,21 +99,8 @@ async function act(svc, verb) {
   }
   await nssm(verb, name)
   const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
-  if (r.ok) {
-    let extra = ''
-    if (svc.key === 'game' && verb === 'start') extra = await startLiveKitAlongside()
-    return { ok: true, text: (verb === 'stop' ? 'stopped' : 'started') + extra }
-  }
+  if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
   return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
-}
-
-// Best-effort LiveKit (voice media server) start alongside the game server; boxes without the AlduinakLiveKit service skip silently.
-async function startLiveKitAlongside() {
-  const status = await nssm('status', 'AlduinakLiveKit')
-  if (!/^SERVICE_/.test(status) || status === 'SERVICE_RUNNING') return ''
-  await nssm('start', 'AlduinakLiveKit')
-  const r = await awaitStatus('AlduinakLiveKit', 'SERVICE_RUNNING')
-  return r.ok ? ' (+LiveKit)' : ` (LiveKit start failed: ${r.status || 'unknown'})`
 }
 
 // ── Log rotation: datestamp on restart, archived into <dir>\YYYY-MM ────────────

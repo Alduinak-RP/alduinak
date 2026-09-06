@@ -22,14 +22,16 @@ fails it prints a direct download URL - save that zip as
 
 ## Tabs
 
-- **Console** - three drop-downs to individually **start / stop / restart** the
-  `nginx`, `backend`, and `game` services, a live tail of the **actual server run
-  logs**, and a command box that runs commands against the live server.
+- **Console** - four drop-downs to individually **start / stop / restart** the
+  `nginx`, `backend`, `livekit` (voice media server), and `game` services, plus
+  an **All** row that starts them in that order (and stops in reverse), a live
+  tail of the **actual server run logs**, and a command box that runs commands
+  against the live server.
   - The log tail asks nssm where each service writes its stdout/stderr
     (`nssm get <svc> AppStdout`) instead of guessing a fixed folder, so it always
     shows the real run output regardless of where the install script put the logs.
   - The command box first checks for **manager commands** and runs them locally:
-    `help`, `status`, `start|stop|restart <nginx|backend|game|all>`, and
+    `help`, `status`, `start|stop|restart <nginx|backend|livekit|game|all>`, and
     `build <server|launcher|client>` (build output streams into the
     console log; one build at a time).
   - Anything else goes to the game server over the backend WS relay (admin

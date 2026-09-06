@@ -57,6 +57,7 @@ window.mgr.onBuildLog(t => appendLog($('.panel.active')?.querySelector('.log') |
 const SERVICES = [
   { key: 'nginx',   label: 'Nginx'   },
   { key: 'backend', label: 'Backend' },
+  { key: 'livekit', label: 'LiveKit' },
   { key: 'game',    label: 'Game'    },
 ]
 const logNode = $('#log')
