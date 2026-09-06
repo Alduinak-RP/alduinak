@@ -293,17 +293,25 @@ async function selectPlayer(discordId) {
   })
 }
 
-// Destructive buttons ask for a second click within 4s instead of a dialog;
-// disabled while the action runs so a double-click cannot fire it twice.
-function armConfirm(btn, label, fn) {
+// Destructive buttons ask for a second click instead of a dialog; disabled while
+// the action runs so a double-click cannot fire it twice. An optional preview
+// (a dry run) runs on the first click and only a truthy result arms the button.
+const armTimers = new WeakMap()
+function armConfirm(btn, label, fn, { preview = null, armMs = 4000, armedLabel = 'Click again to confirm' } = {}) {
   if (!btn) return
   btn.dataset.label = label
   btn.addEventListener('click', async () => {
     if (btn.disabled) return
     if (!btn.dataset.armed) {
+      if (preview) {
+        btn.disabled = true
+        let go = false
+        try { go = await preview() } finally { btn.disabled = false }
+        if (!go) return
+      }
       btn.dataset.armed = '1'
-      btn.textContent = 'Click again to confirm'
-      setTimeout(() => disarmConfirm(btn), 4000)
+      btn.textContent = armedLabel
+      armTimers.set(btn, setTimeout(() => disarmConfirm(btn), armMs))
       return
     }
     disarmConfirm(btn)
@@ -313,7 +321,10 @@ function armConfirm(btn, label, fn) {
 }
 
 function disarmConfirm(btn) {
-  if (btn && btn.dataset.label) { delete btn.dataset.armed; btn.textContent = btn.dataset.label }
+  if (!btn || !btn.dataset.label) return
+  clearTimeout(armTimers.get(btn))
+  delete btn.dataset.armed
+  btn.textContent = btn.dataset.label
 }
 
 // ── Character modal: appearance + inventory editing straight in the store ──────
@@ -611,7 +622,10 @@ $('#modlist-refresh').addEventListener('click', async () => {
 const DIFF_LIST_CAP = 200
 const fmtWhen = iso => iso ? String(iso).replace('T', ' ').slice(0, 19) : '?'
 
-function modlistButtons(disabled) { $$('#modlist .action').forEach(b => b.disabled = disabled) }
+// An armed apply must not survive another action: the plan it previewed may be stale
+function modlistButtons(disabled) {
+  $$('#modlist .action').forEach(b => { b.disabled = disabled; if (disabled) disarmConfirm(b) })
+}
 
 function diffCard(n, label, items, cls) {
   const c = el('div', { className: 'card' + (cls ? ' ' + cls : '') })
@@ -688,6 +702,28 @@ $('#modlist-sync-settings').addEventListener('click', async () => {
   modlistButtons(false)
   loadDiff()
 })
+
+// First click previews (dry run), the second within 15 s applies
+async function runDataSync(dryRun) {
+  const log = $('#modlist-log')
+  modlistButtons(true)
+  appendLog(log, `\n######## Sync data folder${dryRun ? ' (dry run)' : ''} ########\n`)
+  try {
+    const r = await window.mgr.modlistSyncData({ dryRun })
+    if (!r.ok && !r.plan) { appendLog(log, `\n✗ ${r.error}\n`); return false }
+    if (dryRun) { appendLog(log, '\nDry run complete. Review the plan above, then click again within 15 s to apply it.\n'); return true }
+    const a = r.applied || {}
+    appendLog(log, r.ok
+      ? `\n✓ Data folder synced: ${a.copied} copied, ${a.deleted} deleted. Restart the game server; players must re-run the launcher.\n`
+      : `\n✗ Sync finished with problems: ${r.error}\n`)
+    return r.ok
+  } finally {
+    modlistButtons(false)
+    loadDiff()
+  }
+}
+armConfirm($('#modlist-sync-data'), 'Sync data folder', () => runDataSync(false),
+  { preview: () => runDataSync(true), armMs: 15000, armedLabel: 'Click again to apply' })
 loadDiff()
 
 let SCHEMA = { serverSettings: [], backendEnv: [] }

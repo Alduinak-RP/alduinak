@@ -64,6 +64,19 @@ fails it prints a direct download URL - save that zip as
     `server-settings.json.prev` (preserved by the Game Server build's prune
     step), never touches `archives`, and warns about plugins not yet in the Data
     folder. The game server reads the order at boot, so restart it afterwards.
+  - **Sync data folder** mirrors the manifest into the game `Data` folder
+    (`dataDir` from `server-settings.json`) from the MO2 mod folders. The first
+    click is a **dry run** that prints the plan (every delete, every missing
+    source, the first 100 copies); a second click within 15 s applies it.
+    Only files the previous deployed manifest or the last sync stamp
+    (`data-sync.json`) put there are deleted, and only when unmodified (plugins
+    and archives are removed even if modified); vanilla masters, `manifest.json`
+    and anything else in `Data` are never touched. Copies go through a temp
+    file and are sha256-verified. Empty folders left behind are removed.
+  - **Deploy flow:** Build manifest -> Sync server settings -> Sync data folder
+    -> Purge MongoDB (coming) -> restart the game server (and the backend so it
+    serves the new manifest). Players then re-run the launcher to pick up the
+    changes.
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
   masked secrets) for both `server-settings.json` and the backend `.env`, instead
   of raw text. Unknown `server-settings.json` keys round-trip through an

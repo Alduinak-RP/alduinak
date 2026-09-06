@@ -1064,3 +1064,21 @@ ipcMain.handle('modlist:syncSettings', () => exclusive(async () => {
   if (r.ok) stampDiff({ syncedSettingsAt: new Date().toISOString() }, t => b.line(t))
   return r
 }))
+
+ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
+  const dryRun = Boolean(opts && opts.dryRun)
+  const b = builder()
+  const manifest = readManifestOrFail()
+  const prev = modsync.readManifestLight(modsync.paths.prevManifest)
+  const stamp = readJsonOrNull(modsync.paths.stamp)
+  const settings = readServerSettings()
+  if (!settings.dataDir) return { ok: false, error: 'server-settings.json has no dataDir' }
+  // Plugins are read at boot, so a running server keeps the old set until restarted
+  if (await nssm('status', await serviceName(serviceByKey.game)) === 'SERVICE_RUNNING') {
+    b.line('[data] WARNING: the game server is running, restart it after the sync so it loads the new plugins')
+  }
+  const r = await modsync.syncData({ manifest, prev, stamp, dataDir: settings.dataDir, mo2Root: config.mo2Root, log: t => b.line(t), dryRun })
+  // syncData persists data-sync.json itself after a real run
+  if (!dryRun && r.ok) stampDiff({ syncedDataAt: new Date().toISOString() }, t => b.line(t))
+  return r
+}))
