@@ -606,13 +606,79 @@ $('#modlist-refresh').addEventListener('click', async () => {
   list.appendChild(ul)
   box.appendChild(list)
 })
-$('#modlist-update').addEventListener('click', async e => {
-  e.target.disabled = true
+// ── Modlist: manifest diff panel ──────────────────────────────────────────────
+
+const DIFF_LIST_CAP = 200
+const fmtWhen = iso => iso ? String(iso).replace('T', ' ').slice(0, 19) : '?'
+
+function modlistButtons(disabled) { $$('#modlist .action').forEach(b => b.disabled = disabled) }
+
+function diffCard(n, label, items, cls) {
+  const c = el('div', { className: 'card' + (cls ? ' ' + cls : '') })
+  c.appendChild(el('div', { className: 'n' }, esc(n)))
+  c.appendChild(el('div', { className: 'l' }, esc(label)))
+  if (items && items.length) {
+    const d = el('details')
+    d.appendChild(el('summary', {}, `${items.length} item${items.length === 1 ? '' : 's'}`))
+    const ul = el('ul')
+    items.slice(0, DIFF_LIST_CAP).forEach(t => ul.appendChild(el('li', {}, esc(t))))
+    if (items.length > DIFF_LIST_CAP) ul.appendChild(el('li', { className: 'more' }, `and ${items.length - DIFF_LIST_CAP} more`))
+    d.appendChild(ul)
+    c.appendChild(d)
+  }
+  return c
+}
+
+function renderDiff(diff) {
+  const box = $('#modlist-diff')
+  const st = $('#modlist-status')
+  box.innerHTML = ''
+  if (!diff) {
+    st.textContent = ''
+    box.appendChild(el('div', { className: 'card muted' }, 'Build the manifest to see what changed'))
+    return
+  }
+  const bits = [`manifest ${fmtWhen(diff.builtAt)}`, diff.prevBuiltAt ? `deployed ${fmtWhen(diff.prevBuiltAt)}` : 'no previous manifest']
+  if (diff.syncedSettingsAt) bits.push(`settings synced ${fmtWhen(diff.syncedSettingsAt)}`)
+  if (diff.syncedDataAt) bits.push(`data synced ${fmtWhen(diff.syncedDataAt)}`)
+  if (diff.purgedAt) bits.push(`db purged ${fmtWhen(diff.purgedAt)}`)
+  st.textContent = bits.join(' | ')
+  const m = diff.mods || {}, p = diff.plugins || {}, f = diff.files || {}
+  const names = list => Array.isArray(list) ? list : []
+  const files = list => names(list).map(x => `${x.to} (${x.mod})`)
+  const changed = names(m.changed).map(c => `${c.name} (+${c.filesAdded} -${c.filesRemoved} ~${c.filesChanged})`)
+  const groups = [
+    [names(m.added), 'mods added', 'added'],
+    [names(m.removed), 'mods removed', 'removed'],
+    [changed, 'mods changed', 'changed'],
+    [names(p.added), 'plugins added', 'added'],
+    [names(p.removed), 'plugins removed', 'removed'],
+    [files(f.addedList), 'files added', 'added'],
+    [files(f.removedList), 'files removed', 'removed'],
+    [files(f.changedList), 'files changed', 'changed'],
+  ].filter(g => g[0].length)
+  if (!groups.length && !p.reordered) {
+    box.appendChild(el('div', { className: 'card muted' }, 'No changes since the last deployed manifest'))
+    return
+  }
+  for (const [items, label, cls] of groups) box.appendChild(diffCard(items.length, label, items, cls))
+  if (p.reordered) box.appendChild(diffCard('yes', 'plugins reordered', null, 'changed'))
+}
+
+async function loadDiff() {
+  try { renderDiff(await window.mgr.modlistDiff()) }
+  catch (err) { $('#modlist-status').textContent = `diff unavailable: ${err.message}` }
+}
+
+$('#modlist-update').addEventListener('click', async () => {
+  modlistButtons(true)
   $('#modlist-log').textContent = ''
   const r = await window.mgr.modlistUpdateManifest()
-  appendLog($('#modlist-log'), r.ok ? '\nManifest updated. Restart the backend to serve it.\n' : `\nFailed: ${r.error}\n`)
-  e.target.disabled = false
+  appendLog($('#modlist-log'), r.ok ? '\n✓ Manifest built. Restart the backend to serve it; sync the settings and Data folder next.\n' : `\n✗ ${r.error}\n`)
+  if (r.ok) renderDiff(r.diff)
+  modlistButtons(false)
 })
+loadDiff()
 
 let SCHEMA = { serverSettings: [], backendEnv: [] }
 let settingsKey = 'serverSettings'

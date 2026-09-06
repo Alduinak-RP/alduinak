@@ -44,4 +44,5 @@ contextBridge.exposeInMainWorld('mgr', {
   // Modlist tab
   modlistRead:           () => ipcRenderer.invoke('modlist:read'),
   modlistUpdateManifest: () => ipcRenderer.invoke('modlist:updateManifest'),
+  modlistDiff:           () => ipcRenderer.invoke('modlist:diff'),
 })

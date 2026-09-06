@@ -10,6 +10,7 @@ const WebSocket = require('ws')
 const config = require('./config')
 const { Builder } = require('./build')
 const schema = require('./settingsSchema')
+const modsync = require('./modsync')
 
 let win = null
 
@@ -374,7 +375,7 @@ async function tryLocalCommand(cmd) {
   }
   if (verb === 'build') {
     if (!BUILD_KINDS.includes(arg)) { consoleOut(`usage: build <${BUILD_KINDS.join('|')}>`); return { ok: true } }
-    if (buildBusy) { consoleOut('a build is already running - wait for it to finish'); return { ok: true } }
+    if (busy) { consoleOut('a build or sync is already running - wait for it to finish'); return { ok: true } }
     consoleOut(`starting ${arg} build…`)
     // Not awaited: builds take minutes; progress streams via build:log and the
     // outcome is reported here when it lands.
@@ -394,26 +395,31 @@ ipcMain.handle('console:command', async (_e, text) => {
 
 function builder() { return new Builder(t => send('build:log', t)) }
 
-// One build at a time: console commands and Build tab buttons share this gate.
-let buildBusy = false
-async function runBuild(kind, opts) {
-  if (buildBusy) return { ok: false, error: 'a build is already running' }
-  buildBusy = true
+// One build or sync at a time: console commands, the Build tab and the Modlist tab share this gate.
+let busy = false
+async function exclusive(fn) {
+  if (busy) return { ok: false, error: 'a build or sync is already running' }
+  busy = true
   try {
-    const b = builder()
-    let r
-    if (kind === 'server')        r = await b.buildServer(opts)
-    else if (kind === 'launcher') r = await b.buildLauncher()
-    else if (kind === 'client')   r = await b.buildClient(opts)
-    else if (kind === 'native')   r = await b.buildNative()
-    else if (kind === 'gamemode') r = await b.buildGamemode()
-    else return { ok: false, error: `unknown build ${kind}` }
+    const r = await fn()
     // Let queued build:log messages land before the renderer prints the outcome, else the failure line appears above its error.
     await new Promise(res => setTimeout(res, 100))
     return r
   } catch (err) {
     return { ok: false, error: err.message }
-  } finally { buildBusy = false }
+  } finally { busy = false }
+}
+
+function runBuild(kind, opts) {
+  return exclusive(async () => {
+    const b = builder()
+    if (kind === 'server')   return b.buildServer(opts)
+    if (kind === 'launcher') return b.buildLauncher()
+    if (kind === 'client')   return b.buildClient(opts)
+    if (kind === 'native')   return b.buildNative()
+    if (kind === 'gamemode') return b.buildGamemode()
+    return { ok: false, error: `unknown build ${kind}` }
+  })
 }
 
 ipcMain.handle('build:server',   (_e, opts) => runBuild('server', opts))
@@ -541,8 +547,12 @@ function charFromCf(cf) {
   }
 }
 
+function readJsonOrNull(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null }
+}
+
 function readServerSettings() {
-  try { return JSON.parse(fs.readFileSync(config.paths.serverSettings, 'utf8')) } catch { return {} }
+  return readJsonOrNull(config.paths.serverSettings) || {}
 }
 
 // Run fn against the mongo changeForms collection, closing the client either way.
@@ -994,14 +1004,43 @@ ipcMain.handle('modlist:read', () => {
   return { ok: true, profileDir, mods, separators, plugins: pluginList }
 })
 
-ipcMain.handle('modlist:updateManifest', async () => {
+// Compile the manifest, then diff it against the last deployed one (.prev).
+async function updateManifest() {
   const b = builder()
+  const previousDiff = modsync.readDiff()
   const dep = await b.ensureDeps(config.paths.backend, 'backend', 'npm')   // compile-manifest needs 7zip-bin
   if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
+  const snapshot = modsync.shouldRotatePrev(previousDiff) && fs.existsSync(modsync.paths.manifest)
+  if (snapshot) {
+    fs.copyFileSync(modsync.paths.manifest, modsync.paths.prevManifest)
+    b.line(`[manifest] current manifest snapshotted to ${path.basename(modsync.paths.prevManifest)}`)
+  }
   const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile]
   if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
   // Spawn node.exe directly (shell=false): no cmd.exe means config-derived paths
   // with spaces or shell metacharacters cannot split args or be interpreted.
   const r = await b.run('node', args, config.paths.backend, 'compile-manifest', null, false)
-  return r.ok ? { ok: true } : { ok: false, error: 'compile-manifest failed' }
-})
+  if (!r.ok) {
+    // A failed compile leaves a truncated manifest behind
+    if (snapshot) {
+      fs.copyFileSync(modsync.paths.prevManifest, modsync.paths.manifest)
+      b.line('[manifest] compile failed, previous manifest restored')
+    } else {
+      b.line('[manifest] WARNING: compile failed and install-manifest.json may be truncated, rebuild before restarting the backend')
+    }
+    return { ok: false, error: 'compile-manifest failed' }
+  }
+  const prev = modsync.readManifestLight(modsync.paths.prevManifest)
+  const next = modsync.readManifestLight(modsync.paths.manifest)
+  if (!next) return { ok: false, error: 'compile-manifest wrote no install-manifest.json' }
+  const settings = readServerSettings()
+  const diff = modsync.writeDiff(modsync.computeDiff({ prev, next, settings, previousDiff }))
+  const { mods, plugins, files } = diff
+  b.line(`[manifest] diff vs ${prev ? prev.builtAt : 'nothing'}: mods +${mods.added.length} -${mods.removed.length} ~${mods.changed.length}, ` +
+    `plugins +${plugins.added.length} -${plugins.removed.length}${plugins.reordered ? ' (reordered)' : ''}, ` +
+    `files +${files.added} -${files.removed} ~${files.changed}`)
+  return { ok: true, diff }
+}
+
+ipcMain.handle('modlist:updateManifest', () => exclusive(updateManifest))
+ipcMain.handle('modlist:diff', () => modsync.readDiff())

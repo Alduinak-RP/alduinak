@@ -48,8 +48,15 @@ fails it prints a direct download URL - save that zip as
   GitHub **PR Windows Flatrim** workflow and downloaded as the `dist` artifact;
   these buttons bundle TypeScript, build the Electron launcher, and zip the
   CI-produced client files for the launcher to serve.
-- **Modlist** - read the reference MO2 profile and **Update manifest** (runs
-  `compile-manifest.js`).
+- **Modlist** - read the reference MO2 profile and **Build manifest** (runs
+  `compile-manifest.js`). Before compiling, the manager snapshots the last
+  *deployed* manifest as `install-manifest.json.prev` and afterwards shows a
+  **diff panel**: mods added / removed / changed, plugins added / removed (and
+  whether the order changed), files added / removed / changed, each card with an
+  expandable list. The diff is stored in `skymp5-backend/data/manifest-diff.json`
+  and reloaded on startup; the status line shows the manifest and deployed build
+  times. A failed compile restores the snapshot (compile-manifest leaves a
+  truncated file behind).
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
   masked secrets) for both `server-settings.json` and the backend `.env`, instead
   of raw text. Unknown `server-settings.json` keys round-trip through an
