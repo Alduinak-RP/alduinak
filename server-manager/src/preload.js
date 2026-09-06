@@ -45,4 +45,5 @@ contextBridge.exposeInMainWorld('mgr', {
   modlistRead:           () => ipcRenderer.invoke('modlist:read'),
   modlistUpdateManifest: () => ipcRenderer.invoke('modlist:updateManifest'),
   modlistDiff:           () => ipcRenderer.invoke('modlist:diff'),
+  modlistSyncSettings:   () => ipcRenderer.invoke('modlist:syncSettings'),
 })

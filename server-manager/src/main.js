@@ -1044,3 +1044,23 @@ async function updateManifest() {
 
 ipcMain.handle('modlist:updateManifest', () => exclusive(updateManifest))
 ipcMain.handle('modlist:diff', () => modsync.readDiff())
+
+function readManifestOrFail() {
+  const manifest = modsync.readManifestLight(modsync.paths.manifest)
+  if (!manifest) throw new Error('no install-manifest.json, build the manifest first')
+  return manifest
+}
+
+// Record a sync step on the stored diff; a missing or unreadable diff only logs
+function stampDiff(patch, log) {
+  try { if (modsync.readDiff()) modsync.updateDiff(patch) }
+  catch (err) { log(`[diff] not updated: ${err.message}`) }
+}
+
+ipcMain.handle('modlist:syncSettings', () => exclusive(async () => {
+  const b = builder()
+  const manifest = readManifestOrFail()
+  const r = modsync.syncSettings({ manifest, settingsPath: config.paths.serverSettings, log: t => b.line(t), dryRun: false })
+  if (r.ok) stampDiff({ syncedSettingsAt: new Date().toISOString() }, t => b.line(t))
+  return r
+}))

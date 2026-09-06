@@ -678,6 +678,16 @@ $('#modlist-update').addEventListener('click', async () => {
   if (r.ok) renderDiff(r.diff)
   modlistButtons(false)
 })
+$('#modlist-sync-settings').addEventListener('click', async () => {
+  modlistButtons(true)
+  appendLog($('#modlist-log'), '\n######## Sync server settings ########\n')
+  const r = await window.mgr.modlistSyncSettings()
+  appendLog($('#modlist-log'), !r.ok ? `\n✗ ${r.error}\n`
+    : r.changed ? '\n✓ server-settings.json loadOrder updated. Restart the game server after syncing the Data folder.\n'
+    : '\n✓ loadOrder already matches the manifest.\n')
+  modlistButtons(false)
+  loadDiff()
+})
 loadDiff()
 
 let SCHEMA = { serverSettings: [], backendEnv: [] }

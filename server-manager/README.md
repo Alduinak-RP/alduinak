@@ -57,6 +57,13 @@ fails it prints a direct download URL - save that zip as
   and reloaded on startup; the status line shows the manifest and deployed build
   times. A failed compile restores the snapshot (compile-manifest leaves a
   truncated file behind).
+  - **Sync server settings** rewrites `loadOrder` in `server-settings.json` to
+    the five vanilla masters followed by the manifest's enabled plugins (each as
+    `<dataDir>/<plugin>`). It refuses when the file is invalid JSON or the
+    manifest has no enabled plugins, keeps the previous file as
+    `server-settings.json.prev` (preserved by the Game Server build's prune
+    step), never touches `archives`, and warns about plugins not yet in the Data
+    folder. The game server reads the order at boot, so restart it afterwards.
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
   masked secrets) for both `server-settings.json` and the backend `.env`, instead
   of raw text. Unknown `server-settings.json` keys round-trip through an
