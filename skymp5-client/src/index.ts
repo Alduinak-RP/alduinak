@@ -77,6 +77,7 @@ import { ConnectionWatchdogService } from "./services/services/connectionWatchdo
 import { MenuMediaService } from "./services/services/menuMediaService";
 import { CharacterProgressService } from "./services/services/characterProgressService";
 import { StaticRefsService } from "./services/services/staticRefsService";
+import { LipSyncService } from "./services/services/lipSyncService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -135,6 +136,7 @@ const main = () => {
       new CaptureConsentService(sp, controller),
       new SearchService(sp, controller),
       new VoiceService(sp, controller),
+      new LipSyncService(sp, controller),
       new StaticRefsService(sp, controller),
       new AdminMenuService(sp, controller),
       new AdminModeService(sp, controller),

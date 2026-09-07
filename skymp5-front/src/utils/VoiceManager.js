@@ -7,7 +7,8 @@
 //   setMode(key)              Alt+V cycles whisper/talk/shout; the range goes out on the data channel so listeners attenuate by the SPEAKER's loudness
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
 // Events back to the game (window.skyrimPlatform.sendMessage):
-//   'voice::ready', 'voice::micDenied', 'voice::error' <text>, 'voice::speaking' <json array of audible speaking identities>
+//   'voice::ready', 'voice::micDenied', 'voice::error' <text>,
+//   'voice::speaking' <json array of {id, level}: own voice plus audible speakers, every 150 ms while anyone talks, [] once when quiet>
 
 import { Room, RoomEvent, Track } from 'livekit-client';
 
@@ -17,6 +18,7 @@ import shoutImg from '../img/voice/Shout.png';
 
 const UNSUB_HYSTERESIS = 1.15;   // unsubscribe only past range*this (no flapping)
 const BANNER_MS = 1400;          // how long the mode banner stays up
+const SPEAKING_TICK_MS = 150;    // lip sync report cadence while someone talks
 const MODE_IMG = { whisper: whisperImg, talk: talkImg, shout: shoutImg };
 // Fallbacks; the server sends the real list in connect()
 const DEFAULT_MODES = [
@@ -43,6 +45,7 @@ class VoiceManager {
     this.bannerEl = null;
     this.bannerTimer = null;
     this.lastPeersAt = 0;
+    this.lastSpeaking = '[]';
   }
 
   applyCfg(cfg) {
@@ -113,6 +116,7 @@ class VoiceManager {
         this.audioEls.forEach((el) => el.remove());
         this.audioEls.clear();
         this.peerRanges = {};
+        this.emitSpeaking();
         // Intentional teardowns null this.room first; report only real drops or the game re-requests tokens forever
         if (this.room === room) {
           this.room = null;
@@ -120,12 +124,7 @@ class VoiceManager {
           sendToGame('voice::error', 'disconnected');
         }
       });
-      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-        const audible = speakers
-          .map((p) => p.identity)
-          .filter((id) => this.gainFor(id) > 0);
-        sendToGame('voice::speaking', JSON.stringify(audible));
-      });
+      room.on(RoomEvent.ActiveSpeakersChanged, () => this.emitSpeaking());
 
       await room.connect(url, token, { autoSubscribe: true });
       try { await room.startAudio(); } catch (e) { /* autoplay policy: unlocked by CEF switch */ }
@@ -162,6 +161,22 @@ class VoiceManager {
     this.audioEls.forEach((el) => el.remove());
     this.audioEls.clear();
     this.peerRanges = {};
+    this.emitSpeaking();
+  }
+
+  // Lip sync feed: own voice always, remote voices while in range, each with its audio level.
+  // Non-empty lists repeat every tick (the game expires mouths when they stop), the empty one goes out once.
+  emitSpeaking() {
+    let list = [];
+    if (this.room) {
+      list = this.room.activeSpeakers
+        .filter((p) => p.isLocal || this.gainFor(p.identity) > 0)
+        .map((p) => ({ id: p.identity, level: Math.round((p.audioLevel || 0) * 100) / 100 }));
+    }
+    const json = JSON.stringify(list);
+    if (list.length === 0 && this.lastSpeaking === json) return;
+    this.lastSpeaking = json;
+    sendToGame('voice::speaking', json);
   }
 
   async setPtt(down) {
@@ -277,5 +292,8 @@ setInterval(() => {
     vm.publishRange();
   }
 }, 2000);
+
+// Lip sync clock: LiveKit's speaker event is edge-triggered, range and loudness change between edges
+setInterval(() => window.__alduinakVoice.emitSpeaking(), SPEAKING_TICK_MS);
 
 export default window.__alduinakVoice;

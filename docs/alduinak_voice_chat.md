@@ -49,8 +49,11 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
 - **Voice is inherently identifying.** Nothing in the UI ties a LiveKit
   identity to a character name (identities are actor ids, never rendered), but
   a recognizable voice defeats /mask on its own - an RP-rules matter. The
-  front emits `voice::speaking` (actor ids); any future speaking-indicator UI
-  built on it must gate names through ff_knownIds or it will leak masks.
+  front emits `voice::speaking` (`[{id, level}]` of actor ids, own id
+  included while the mic is live, every 150 ms while anyone talks); the
+  client's `LipSyncService` turns it into face phonemes on those actors, and
+  any future speaking-indicator UI built on it must gate names through
+  ff_knownIds or it will leak masks.
 - **Dead players can talk and hear.** No isDead gate on PTT or listening yet.
 - **~200 concurrent voice users max**: the UDP media range is 50000-50200 (one
   port per participant). Widen the range or switch LiveKit to single-port UDP
