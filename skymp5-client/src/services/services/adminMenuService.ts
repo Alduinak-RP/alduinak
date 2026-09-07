@@ -12,6 +12,7 @@ declare const window: any;
 // Tabbed admin panel (default Insert, launcher-configurable via adminMenuKeyCode); item spawning is via the server-granted in-game console.
 // Every player gets the Debug tab at once; the admin tabs appear only when the server answers adminMenuRequest (Discord roles / profile ids).
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
+// The Players tab also grants mastery hours (admin::masterygrant target amount / admin::masteryreset target -> adminAction masteryGrant / masteryReset).
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -38,6 +39,8 @@ const events = {
   npcTp: "admin::npctp",
   npcReset: "admin::npcreset",
   npcDelete: "admin::npcdelete",
+  masteryGrant: "admin::masterygrant",
+  masteryReset: "admin::masteryreset",
 };
 
 interface DebugServer {
@@ -68,7 +71,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, events };
 
 function hex(id: number): string {
   return id.toString(16);
@@ -118,6 +121,7 @@ export class AdminMenuService extends ClientListener {
     panelData.locations = [];
     panelData.modes = [];
     panelData.npcZones = [];
+    panelData.mastery = null;
     this.refreshDebug();
     this.showMenu();
     sendCustomPacket(this.controller, { customPacketType: "debugInfoRequest" });
@@ -147,6 +151,8 @@ export class AdminMenuService extends ClientListener {
         // Older servers send no tier/caps (server and client deploy independently); the server still refuses bans
         caps: caps && typeof caps === "object" ? caps : { ban: true },
         tier: String(content["tier"] ?? ""),
+        // The admin's own standing; absent on older servers
+        mastery: content["mastery"] && typeof content["mastery"] === "object" ? content["mastery"] : null,
         events,
       };
       this.pushData();
@@ -320,6 +326,17 @@ export class AdminMenuService extends ClientListener {
     if (kind === events.npcAdd) {
       // The front sends one NPC-Spawns.json entry as a JSON string; the server pushes npcZones after every mutation
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "npcZoneAdd", zone: typeof e.arguments[1] === "string" ? e.arguments[1] : "" });
+      return;
+    }
+    if (kind === events.masteryGrant || kind === events.masteryReset) {
+      const target = String(e.arguments[1] ?? "");
+      if (kind === events.masteryGrant) {
+        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryGrant", target, amount: Number(e.arguments[2]) });
+      } else {
+        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryReset", target });
+      }
+      // The roster carries the standing; ask for a fresh one
+      sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
       return;
     }
     if (kind === events.npcTp || kind === events.npcReset || kind === events.npcDelete) {
