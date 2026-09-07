@@ -21,6 +21,12 @@
 #include "TextApi.h"
 #include "TextsCollection.h"
 
+#include <atomic>
+#include <cstring>
+#include <cwchar>
+#include <string>
+#include <thread>
+
 extern CallNativeApi::NativeCallRequirements g_nativeCallRequirements;
 
 void GetTextsToDraw(TextToDrawCallback callback)
@@ -439,6 +445,189 @@ private:
   bool switchLayoutDownWas = false;
 };
 
+// Keeps the game window in front. At startup the window may never receive
+// activation (a launcher chain without foreground rights), and later an own
+// window (Chromium helpers, the CEF subprocess) can take it; DirectInput then
+// stays unacquired until an alt-tab. Once the game has been in front, a switch
+// to another program is left alone. Runs on its own thread so a paused game
+// loop cannot stall it.
+class ForegroundGuard
+{
+public:
+  ForegroundGuard()
+    : thread([this] { Run(); })
+  {
+  }
+
+  ~ForegroundGuard()
+  {
+    stop = true;
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  // Deactivation diagnostics on the game window; every message is forwarded
+  static LRESULT CALLBACK WndProc(HWND, UINT uMsg, WPARAM wParam,
+                                  LPARAM lParam)
+  {
+    if (uMsg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
+      LogWindow("deactivated by", reinterpret_cast<HWND>(lParam));
+    } else if (uMsg == WM_KILLFOCUS) {
+      LogWindow("focus taken by", reinterpret_cast<HWND>(wParam));
+    }
+    return 0;
+  }
+
+private:
+  static constexpr int kStartupAttempts = 100;
+  static constexpr int kOwnWindowAttempts = 30;
+
+  struct WindowInfo
+  {
+    char className[128] = { 0 };
+    wchar_t image[MAX_PATH] = { 0 };
+    DWORD pid = 0;
+  };
+
+  static WindowInfo Describe(HWND window)
+  {
+    WindowInfo info;
+    if (!window) {
+      return info;
+    }
+    GetWindowThreadProcessId(window, &info.pid);
+    GetClassNameA(window, info.className, sizeof(info.className) - 1);
+    if (HANDLE process =
+          OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, info.pid)) {
+      DWORD length = MAX_PATH;
+      QueryFullProcessImageNameW(process, 0, info.image, &length);
+      CloseHandle(process);
+    }
+    return info;
+  }
+
+  static std::string ImageName(const WindowInfo& info)
+  {
+    const wchar_t* slash = std::wcsrchr(info.image, L'\\');
+    const wchar_t* name = slash ? slash + 1 : info.image;
+    std::string result;
+    for (const wchar_t* p = name; *p; ++p) {
+      result += static_cast<char>(*p < 128 ? *p : '?');
+    }
+    return result;
+  }
+
+  static void LogWindow(const char* what, HWND window)
+  {
+    static ULONGLONG lastLog = 0;
+    const ULONGLONG now = GetTickCount64();
+    if (now - lastLog < 500) {
+      return;
+    }
+    lastLog = now;
+    const WindowInfo info = Describe(window);
+    spdlog::info("ForegroundGuard: game window {} class '{}' pid {} ({})", what,
+                 info.className, info.pid, ImageName(info));
+  }
+
+  static bool IsOwnWindow(const WindowInfo& info)
+  {
+    return info.pid == GetCurrentProcessId() ||
+      std::strncmp(info.className, "Chrome_", 7) == 0 ||
+      std::wcsstr(info.image, L"SkyrimPlatformCEF") != nullptr;
+  }
+
+  // The only visible top-level window of this process is the game's
+  static BOOL CALLBACK FindGameWindow(HWND window, LPARAM out)
+  {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(window, &pid);
+    if (pid != GetCurrentProcessId() || !IsWindowVisible(window) ||
+        GetWindow(window, GW_OWNER) != nullptr) {
+      return TRUE;
+    }
+    *reinterpret_cast<HWND*>(out) = window;
+    return FALSE;
+  }
+
+  void Run()
+  {
+    while (!stop) {
+      Sleep(100);
+      try {
+        Tick();
+      } catch (...) {
+      }
+    }
+  }
+
+  void Tick()
+  {
+    if (!game) {
+      EnumWindows(FindGameWindow, reinterpret_cast<LPARAM>(&game));
+      if (!game) {
+        return;
+      }
+    }
+    const HWND foreground = GetForegroundWindow();
+    if (foreground == game) {
+      if (thief) {
+        spdlog::info("ForegroundGuard: game window is in front again after "
+                     "{} attempts",
+                     attempts);
+      }
+      everForeground = true;
+      thief = nullptr;
+      return;
+    }
+    if (!foreground || !IsWindowVisible(game) || IsIconic(game)) {
+      return;
+    }
+    const WindowInfo info = Describe(foreground);
+    // Message boxes and windows the game owns stay clickable
+    if (std::strcmp(info.className, "#32770") == 0 ||
+        GetWindow(foreground, GW_OWNER) == game) {
+      return;
+    }
+    const bool own = IsOwnWindow(info);
+    if (!own && everForeground) {
+      // A real switch to another program
+      thief = nullptr;
+      return;
+    }
+    if (foreground != thief) {
+      thief = foreground;
+      attempts = 0;
+      spdlog::info("ForegroundGuard: {} class '{}' pid {} ({}) is in front of "
+                   "the game, reclaiming",
+                   own ? "own window" : "startup window", info.className,
+                   info.pid, ImageName(info));
+    }
+    if (attempts >= (everForeground ? kOwnWindowAttempts : kStartupAttempts)) {
+      return;
+    }
+    ++attempts;
+    // Sharing the front window's input queue lets SetForegroundWindow succeed from the background
+    const DWORD frontThread = GetWindowThreadProcessId(foreground, nullptr);
+    const DWORD ownThread = GetCurrentThreadId();
+    const bool attached =
+      frontThread != ownThread && AttachThreadInput(frontThread, ownThread, TRUE);
+    SetForegroundWindow(game);
+    BringWindowToTop(game);
+    if (attached) {
+      AttachThreadInput(frontThread, ownThread, FALSE);
+    }
+  }
+
+  std::atomic<bool> stop{ false };
+  HWND game = nullptr;
+  HWND thief = nullptr;
+  int attempts = 0;
+  bool everForeground = false;
+  std::thread thread;
+};
+
 class SkyrimPlatformApp : public CEFUtils::SKSEPluginBase
 {
 public:
@@ -471,6 +660,8 @@ public:
     CEFUtils::D3D11Hook::Install();
     CEFUtils::DInputHook::Install(myInputListener);
     CEFUtils::WindowsHook::Install();
+    CEFUtils::WindowsHook::Get().SetCallback(&ForegroundGuard::WndProc);
+    foregroundGuard = std::make_unique<ForegroundGuard>();
 
     CEFUtils::DInputHook::Get().SetToggleKeys({ VK_F6 });
     CEFUtils::DInputHook::Get().SetEnabled(true);
@@ -584,6 +775,8 @@ public:
 
   bool EndMain() override
   {
+    foregroundGuard.reset();
+    CEFUtils::WindowsHook::Get().SetCallback(nullptr);
     renderSystem.reset();
     overlayService.reset();
     return true;
@@ -595,6 +788,7 @@ public:
   std::shared_ptr<RenderSystemD3D11> renderSystem;
   std::shared_ptr<MyInputListener> myInputListener;
   std::shared_ptr<InputConverter> inputConverter;
+  std::unique_ptr<ForegroundGuard> foregroundGuard;
 };
 
 DEFINE_DLL_ENTRY_INITIALIZER(SkyrimPlatformApp);

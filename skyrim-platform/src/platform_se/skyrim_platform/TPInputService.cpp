@@ -1,6 +1,5 @@
 #include "TPInputService.h"
 #include "TPOverlayService.h"
-#include <spdlog/spdlog.h>
 
 static OverlayService* s_pOverlay = nullptr;
 
@@ -236,98 +235,9 @@ void ProcessMouseWheel(uint16_t aX, uint16_t aY, int16_t aZ)
   }
 }
 
-static constexpr UINT_PTR kReforegroundTimerId = 0x54503FA;
-static constexpr int kReforegroundMaxAttempts = 8;
-static int s_reforegroundAttempts = 0;
-static bool s_reforegroundArmed = false;
-
-static bool IsSameProcessWindow(HWND aWindow)
-{
-  if (!aWindow) {
-    return false;
-  }
-  DWORD pid = 0;
-  GetWindowThreadProcessId(aWindow, &pid);
-  return pid == GetCurrentProcessId();
-}
-
-static void ArmReforeground(HWND hwnd)
-{
-  if (!s_reforegroundArmed) {
-    s_reforegroundArmed = true;
-    s_reforegroundAttempts = 0;
-  }
-  SetTimer(hwnd, kReforegroundTimerId, 30, nullptr);
-}
-
-static void StopReforeground(HWND hwnd)
-{
-  KillTimer(hwnd, kReforegroundTimerId);
-  s_reforegroundArmed = false;
-}
-
 static LRESULT CALLBACK InputServiceWndProc(HWND hwnd, UINT uMsg,
                                             WPARAM wParam, LPARAM lParam)
 {
-  if (uMsg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
-    const HWND other = reinterpret_cast<HWND>(lParam);
-    if (IsSameProcessWindow(other)) {
-      char className[128] = { 0 };
-      GetClassNameA(other, className, sizeof(className) - 1);
-      spdlog::info("InputServiceWndProc - blocked same-process activation "
-                   "theft by window class '{}'",
-                   className);
-      ArmReforeground(hwnd);
-      return 1;
-    }
-    if (!other) {
-      ArmReforeground(hwnd);
-    }
-  }
-  if (uMsg == WM_KILLFOCUS) {
-    const HWND other = reinterpret_cast<HWND>(wParam);
-    if (IsSameProcessWindow(other)) {
-      ArmReforeground(hwnd);
-      return 1;
-    }
-    if (!other) {
-      ArmReforeground(hwnd);
-    }
-  }
-  if (uMsg == WM_TIMER && wParam == kReforegroundTimerId &&
-      s_reforegroundArmed) {
-    const HWND foreground = GetForegroundWindow();
-    if (foreground == hwnd) {
-      // Reclaimed (or never fully lost): a real WA_ACTIVE has reached the
-      // game, so DirectInput reacquires; just make sure focus followed
-      if (GetFocus() != hwnd) {
-        SetFocus(hwnd);
-      }
-      StopReforeground(hwnd);
-    } else if (s_reforegroundAttempts >= kReforegroundMaxAttempts) {
-      spdlog::warn("InputServiceWndProc - gave up reclaiming the foreground "
-                   "after {} attempts",
-                   s_reforegroundAttempts);
-      StopReforeground(hwnd);
-    } else if (foreground == nullptr) {
-      // The activation switch is still in flight; wait another tick
-      ++s_reforegroundAttempts;
-    } else if (IsSameProcessWindow(foreground)) {
-      ++s_reforegroundAttempts;
-      char className[128] = { 0 };
-      GetClassNameA(foreground, className, sizeof(className) - 1);
-      spdlog::info("InputServiceWndProc - reclaiming foreground from "
-                   "same-process window class '{}' (attempt {})",
-                   className, s_reforegroundAttempts);
-      SetForegroundWindow(hwnd);
-      SetFocus(hwnd);
-    } else {
-      // Another process is legitimately foreground: a real alt-tab, stop
-      StopReforeground(hwnd);
-    }
-    return 1;
-  }
-
   const auto pApp = s_pOverlay->GetMyChromiumApp();
   if (!pApp)
     return 0;
