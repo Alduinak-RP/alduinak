@@ -44,13 +44,6 @@ export class AfkSystem implements System {
       : "AfkSystem: disabled (afkKickMinutes is 0)");
   }
 
-  // Milliseconds since this user last did something. Other systems (mastery
-  // playtime) reuse this rather than sampling position a second time.
-  idleMsOf(userId: number): number {
-    const st = this.states.get(userId);
-    return st ? Date.now() - st.lastActivity : 0;
-  }
-
   connect(userId: number): void {
     this.states.set(userId, { lastActivity: Date.now(), lastSample: "", warned: false });
   }
@@ -89,9 +82,8 @@ export class AfkSystem implements System {
         continue;
       }
 
-      const idleMs = now - state.lastActivity;
-      // The idle clock keeps running with kicking off: MasterySystem reads it.
       if (!this.kickMs) continue;
+      const idleMs = now - state.lastActivity;
       if (idleMs >= this.kickMs) {
         this.log(`AfkSystem: kicking user ${userId} (actor ${actorId.toString(16)}) after ${Math.round(idleMs / 60000)} min idle`);
         try { mp.kick(userId); } catch (e) { this.log(`AfkSystem: kick failed: ${e}`); }

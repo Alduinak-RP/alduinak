@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { AdminTier, AdminRoleConfig, TIER_CAPS, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { NpcSpawnSystem } from "./npcSpawnSystem";
+import { MasterySystem, MAX_GRANT } from "./masterySystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -20,8 +21,11 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "toggleMode", mode }
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
 //                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete", target }  target: zone name
+//                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
+//                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping}], locations: [{name}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {ban} }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {ban}, mastery }
+//                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
 //                     { customPacketType: "adminMode", mode, on }
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminActionResult", ok, text }
@@ -54,7 +58,7 @@ interface TeleportLocation {
 
 export class AdminSystem implements System {
   systemName = "AdminSystem";
-  constructor(private log: Log, private npcSpawns: NpcSpawnSystem) { }
+  constructor(private log: Log, private npcSpawns: NpcSpawnSystem, private mastery: MasterySystem) { }
 
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private masterUrl = "";
@@ -189,7 +193,8 @@ export class AdminSystem implements System {
   }
 
   // Offline backend records merged with live actors; online rows win their profile slot
-  private buildRoster(mp: Mp, myActorId: number, adminProfile: number, backendPlayers: any[]): any[] {
+  private buildRoster(ctx: SystemContext, myActorId: number, adminProfile: number, backendPlayers: any[]): any[] {
+    const mp = ctx.svr as Mp;
     const pings = this.pings(mp);
     const byProfile = new Map<number, any>();
     for (const raw of backendPlayers) {
@@ -229,6 +234,7 @@ export class AdminSystem implements System {
         hwid: (base && base.hwid) ? base.hwid : guid,
         online: true,
         ping: pings.get(p.userId) ?? null,
+        m: this.mastery.summaryOf(ctx, p.actorId),
       };
       if (p.profileId > 0) byProfile.set(p.profileId, row);
       else extra.push(row);
@@ -314,12 +320,13 @@ export class AdminSystem implements System {
           if (mp.getUserActor(userId) !== myActorId) return;
           mp.sendCustomPacket(userId, JSON.stringify({
             customPacketType: "adminMenu",
-            players: this.buildRoster(mp, myActorId, adminProfile, backendPlayers),
+            players: this.buildRoster(ctx, myActorId, adminProfile, backendPlayers),
             locations: this.locations.map(l => ({ name: l.name })),
             modes: this.modesFor(adminProfile),
             npcZones: this.npcSpawns.listZones(),
             tier,
             caps,
+            mastery: this.mastery.summaryOf(ctx, myActorId),
           }));
         } catch (e) {
           this.log(`AdminSystem: adminMenu reply failed: ${e}`);
@@ -361,7 +368,7 @@ export class AdminSystem implements System {
     }
 
     const targetId = parseInt(String(content["target"] ?? ""), 16);
-    // Only currently-online player actors are valid targets
+    // Only currently-online player actors are valid targets; the admin's own row is absent from the roster, but mastery testing may target self
     const target = this.onlinePlayers(mp).find(p => p.actorId === targetId);
     if (!target) {
       this.reply(mp, userId, false, "Target is no longer online");
@@ -392,6 +399,20 @@ export class AdminSystem implements System {
         } else {
           this.banViaBackend(mp, ctx, userId, myActorId, target, adminProfile, tier);
         }
+      } else if (action === "masteryGrant") {
+        const amount = Number(content["amount"]);
+        const summary = this.mastery.grantPoints(ctx, target.actorId, amount);
+        if (!summary) {
+          this.reply(mp, userId, false, `Hours must be a whole number between -${MAX_GRANT} and ${MAX_GRANT}`);
+        } else {
+          const standing = summary.label ? `${summary.rankName} ${summary.label}` : "no craft chosen";
+          this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name} (profile ${target.profileId}), now ${summary.hours}h, ${standing}`);
+          this.reply(mp, userId, true, `${target.name}: ${summary.hours}h, ${standing}`);
+        }
+      } else if (action === "masteryReset") {
+        const ok = this.mastery.resetCharacter(ctx, target.actorId);
+        if (ok) this.adminLog(`profile ${adminProfile} reset the craft and hours of ${target.name} (profile ${target.profileId})`);
+        this.reply(mp, userId, ok, ok ? `Reset the craft and hours of ${target.name}` : `${target.name} has no craft to reset`);
       } else {
         this.reply(mp, userId, false, `Unknown action '${action}'`);
       }

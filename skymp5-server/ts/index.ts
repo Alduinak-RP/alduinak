@@ -206,24 +206,23 @@ const main = async () => {
 
   const log = console.log;
   const systems = new Array<System>();
-  // Mastery reads AfkSystem's idle clock rather than sampling positions again.
-  const afkSystem = new AfkSystem(log);
-  // The admin panel's NPCs tab drives the spawner directly.
+  // The admin panel's NPCs tab drives the spawner and its Players tab grants mastery hours.
   const npcSpawnSystem = new NpcSpawnSystem(log);
+  const masterySystem = new MasterySystem(log);
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing
-    new AdminSystem(log, npcSpawnSystem),
+    new AdminSystem(log, npcSpawnSystem, masterySystem),
     new CaptureSystem(log),
     new HousingSystem(log),
     new TradeSystem(log),
     new SearchSystem(log),
     new VoiceSystem(log),
-    afkSystem,
-    new MasterySystem(log, afkSystem),
+    new AfkSystem(log),
+    masterySystem,
     new BountyBoardSystem(log),
     new UntouchableSystem(log),
     npcSpawnSystem,
