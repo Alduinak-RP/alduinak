@@ -880,8 +880,19 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
     const auto npcData = espm::GetData<espm::NPC_>(GetBaseId(), worldState);
     const auto npc = worldState->GetEspm().GetBrowser().LookupById(GetBaseId());
 
+    // playersInheritBaseSpells=false drops castable Player spells (Flames, Healing), abilities and race spells stay
+    const bool skipCastable = !worldState->PlayersInheritBaseSpells() &&
+      ChangeForm().profileId != -1;
     for (auto npcSpellRaw : npcData.spells) {
-      result.push_back(npc.ToGlobalId(npcSpellRaw));
+      const uint32_t spellId = npc.ToGlobalId(npcSpellRaw);
+      if (skipCastable) {
+        const auto spellData = espm::GetData<espm::SPEL>(spellId, worldState);
+        if (spellData.spellItem &&
+            spellData.spellItem->type == espm::SPEL::SpellType::Spell) {
+          continue;
+        }
+      }
+      result.push_back(spellId);
     }
 
     // Players carry their chosen race in appearance, not in the NPC_ record

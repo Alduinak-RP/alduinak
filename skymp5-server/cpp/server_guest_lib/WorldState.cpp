@@ -55,6 +55,7 @@ struct WorldState::Impl
   std::vector<RelootTimeForTypesEntry> relootTimeForTypes;
   std::set<std::string> forbiddenRelootTypes;
   std::set<uint32_t> blockedSpells;
+  bool playersInheritBaseSpells = true;
   std::vector<std::unique_ptr<IPapyrusClassBase>> classes;
   std::array<std::shared_ptr<std::vector<uint32_t>>, 0x100>
     allFormsByModIndexCache;
@@ -1216,6 +1217,16 @@ void WorldState::SetBlockedSpells(const std::set<uint32_t>& spells)
 bool WorldState::IsSpellBlocked(uint32_t spellId) const noexcept
 {
   return pImpl->blockedSpells.find(spellId) != pImpl->blockedSpells.end();
+}
+
+void WorldState::SetPlayersInheritBaseSpells(bool enable)
+{
+  pImpl->playersInheritBaseSpells = enable;
+}
+
+bool WorldState::PlayersInheritBaseSpells() const noexcept
+{
+  return pImpl->playersInheritBaseSpells;
 }
 
 bool WorldState::HasEspmFile(std::string_view filename) const noexcept

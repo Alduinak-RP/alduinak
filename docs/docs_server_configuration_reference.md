@@ -227,6 +227,21 @@ The option that allows you to forbid reloot for a specific item or a group of it
 }
 ```
 
+## playersInheritBaseSpells
+
+`true` (default) keeps the Player record's castable spells (Flames, Healing) on
+every player character. `false` makes characters start without them; abilities
+such as the combat heal rate and every race spell stay. Read by the native
+server at boot.
+
+```json5
+{
+  // ...
+  "playersInheritBaseSpells": false
+  // ...
+}
+```
+
 ## gamemodePath
 
 Contains a relative or an absolute path to a file or directory with a gamemode.

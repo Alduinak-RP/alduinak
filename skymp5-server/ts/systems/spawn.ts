@@ -58,6 +58,11 @@ const DEFAULT_LOGOUT_GRACE_MS = 5 * 60 * 1000;
 
 const DEFAULT_STAT_POOL = 120;
 
+// Wearable kit items are equipped through Papyrus snippets shortly after the inventory update lands
+const EQUIP_KIT_DELAY_MS = 1500;
+// A fresh spawn strips the player (empty equipment changeForm), so the kit is dressed again once the client settled
+const EQUIP_KIT_SPAWN_DELAY_MS = 5000;
+
 // Character creator settings ("charCreator" server setting); disabled keeps the vanilla race menu
 interface CharCreatorSettings {
   enabled: boolean;
@@ -137,6 +142,8 @@ export class Spawn implements System {
     const rawGrace = Number(all?.["logoutGraceMs"]);
     if (Number.isInteger(rawGrace) && rawGrace >= 0) this.logoutGraceMs = rawGrace;
     this.charCreator = parseCharCreatorSettings(all?.["charCreator"]);
+    this.installAppearanceHook(ctx);
+    this.installEquipmentHook(ctx);
 
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
       if (this.characterSelect) {
@@ -352,10 +359,12 @@ export class Spawn implements System {
         +startPoints[idx].worldOrCell, auth.profileId);
       mp.set(actorId, "private.charSlot", slot);
       this.giveStartingItems(mp, actorId, auth.profileId, slot);
+      mp.set(actorId, "private.kitPending", true);
       this.log("Creating character", actorId.toString(16), "in slot", slot);
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
     }
+    this.scheduleKit(ctx, actorId, EQUIP_KIT_SPAWN_DELAY_MS);
 
     // Other slots despawn via logout grace too (switching must not vanish the previous body instantly); bodies already under a running grace keep their timer
     for (const other of slots) {
@@ -406,6 +415,108 @@ export class Spawn implements System {
   private isCharCreatorPending(mp: Mp, actorId: number): boolean {
     try { return !!mp.get(actorId, "private.charCreatorPending"); }
     catch { return false; }
+  }
+
+  // private.kitPending: set at creation, cleared once the client reports a worn kit item
+  private isKitPending(mp: Mp, actorId: number): boolean {
+    try { return mp.get(actorId, "private.kitPending") === true; }
+    catch { return false; }
+  }
+
+  // Vanilla race menu path: an accepted appearance (isRaceMenuOpen) is the creation-finished moment
+  private installAppearanceHook(ctx: SystemContext): void {
+    const mp = ctx.svr as unknown as Mp;
+    const previous = typeof mp.onUpdateAppearanceAttempt === "function" ? mp.onUpdateAppearanceAttempt : null;
+    mp.onUpdateAppearanceAttempt = (actorId: number, appearance: unknown, isAllowed: boolean): boolean => {
+      if (isAllowed && this.isKitPending(mp, actorId >>> 0)) {
+        try { this.finishCreation(ctx, actorId >>> 0); }
+        catch (e) { this.log(`[spawn] finishCreation failed: ${e}`); }
+      }
+      if (!previous) return true;
+      try { return previous.call(mp, actorId, appearance, isAllowed) !== false; }
+      catch { return true; }
+    };
+  }
+
+  // The worn state only persists through the client's equipment report, so the kit stays pending until one shows it
+  private installEquipmentHook(ctx: SystemContext): void {
+    const mp = ctx.svr as unknown as Mp;
+    const previous = typeof mp.onUpdateEquipmentAttempt === "function" ? mp.onUpdateEquipmentAttempt : null;
+    mp.onUpdateEquipmentAttempt = (actorId: number, equipment: unknown, isAllowed: boolean): boolean => {
+      try {
+        if (isAllowed && this.isKitPending(mp, actorId >>> 0) && this.wearsKit(equipment)) {
+          mp.set(actorId >>> 0, "private.kitPending", false);
+        }
+      } catch (e) { this.log(`[spawn] kit check failed: ${e}`); }
+      if (!previous) return true;
+      try { return previous.call(mp, actorId, equipment, isAllowed) !== false; }
+      catch { return true; }
+    };
+  }
+
+  private wearsKit(equipment: unknown): boolean {
+    const kitIds = new Set(this.startingItems.map((e) => e.baseId));
+    const entries = (equipment as { inv?: { entries?: unknown } })?.inv?.entries;
+    if (!Array.isArray(entries)) return false;
+    return entries.some((e: { baseId?: unknown; worn?: unknown; wornLeft?: unknown }) =>
+      (e?.worn === true || e?.wornLeft === true) && kitIds.has(toBaseId(e?.baseId) ?? -1));
+  }
+
+  // A fresh character keeps only the starter kit and wears it; spells are governed by playersInheritBaseSpells
+  private finishCreation(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as unknown as Mp;
+    const kitIds = new Set(this.startingItems.map((e) => e.baseId));
+    try {
+      const inv = mp.get(actorId, "inventory");
+      const entries = Array.isArray(inv?.entries)
+        ? inv.entries.filter((e: { baseId?: unknown }) => kitIds.has(toBaseId(e?.baseId) ?? -1))
+        : [];
+      // Re-sent even when unchanged so the client reconciles its save-game default gear against it
+      mp.set(actorId, "inventory", { entries });
+      mp.set(actorId, "private.charCreatorPending", false);
+    } catch { return; /* form vanished */ }
+    this.scheduleKit(ctx, actorId, EQUIP_KIT_DELAY_MS);
+    this.log("Character creation finished for actor", actorId.toString(16));
+  }
+
+  private scheduleKit(ctx: SystemContext, actorId: number, delayMs: number): void {
+    const mp = ctx.svr as unknown as Mp;
+    if (!this.isKitPending(mp, actorId)) return;
+    setTimeout(() => this.equipKit(ctx, actorId), delayMs);
+  }
+
+  // EquipItem(akItem, abPreventRemoval, abSilent): the snippet runs on the owner's client, whose equip event syncs back
+  private equipKit(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as unknown as Mp;
+    if (!this.isKitPending(mp, actorId)) return;
+    const wearable = this.startingItems.filter((e) => this.isWearable(mp, e.baseId));
+    if (wearable.length === 0) {
+      try { mp.set(actorId, "private.kitPending", false); } catch { /* form vanished */ }
+      return;
+    }
+    for (const e of wearable) {
+      try {
+        const self = { type: "form", desc: mp.getDescFromId(actorId) };
+        const item = { type: "espm", desc: mp.getDescFromId(e.baseId) };
+        mp.callPapyrusFunction("method", "Actor", "EquipItem", self, [item, false, true]);
+      } catch (err) {
+        this.log(`[spawn] equip kit item ${e.baseId.toString(16)} failed: ${err}`);
+      }
+    }
+  }
+
+  private wearableCache = new Map<number, boolean>();
+  private isWearable(mp: Mp, baseId: number): boolean {
+    const cached = this.wearableCache.get(baseId);
+    if (cached !== undefined) return cached;
+    let wearable = false;
+    try {
+      const rec = mp.lookupEspmRecordById(baseId);
+      const type = String(rec?.record?.type ?? "");
+      wearable = type === "ARMO" || type === "WEAP";
+    } catch { /* not an espm record */ }
+    this.wearableCache.set(baseId, wearable);
+    return wearable;
   }
 
   private sendCharCreatorOpen(ctx: SystemContext, userId: number, profileId: number): void {
@@ -470,8 +581,8 @@ export class Spawn implements System {
         description: res.clean.description,
         createdAt: Date.now(),
       });
-      mp.set(actorId, "private.charCreatorPending", false);
     } catch { return; /* form vanished */ }
+    this.finishCreation(ctx, actorId);
     ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: "charCreatorClose" }));
     this.log("Character creator accepted for actor", actorId.toString(16),
       `(${res.clean.race} "${res.clean.name}")`);
@@ -514,6 +625,7 @@ export class Spawn implements System {
       actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
         +startPoints[idx].worldOrCell, userProfileId);
       this.giveStartingItems(mp, actorId, userProfileId, 0);
+      mp.set(actorId, "private.kitPending", true);
       this.log("Creating character", actorId.toString(16));
       ctx.svr.setUserActor(userId, actorId);
       if (this.charCreator.enabled) {
@@ -523,6 +635,7 @@ export class Spawn implements System {
         ctx.svr.setRaceMenuOpen(actorId, true);
       }
     }
+    this.scheduleKit(ctx, actorId, EQUIP_KIT_SPAWN_DELAY_MS);
 
     this.applyAuthProps(mp, actorId, userProfileId, discordRoleIds, discordId, access);
 

@@ -450,6 +450,12 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       partOne->worldState.SetBlockedSpells(blockedSpells);
     }
 
+    // playersInheritBaseSpells: false strips the Player record's castable spells (Flames, Healing) from player characters
+    auto inheritIt = serverSettings.find("playersInheritBaseSpells");
+    if (inheritIt != serverSettings.end() && (*inheritIt).is_boolean()) {
+      partOne->worldState.SetPlayersInheritBaseSpells((*inheritIt).get<bool>());
+    }
+
     if (auto it = serverSettings.find("serverKey");
         it != serverSettings.end()) {
       auto serverKey = it.value();
