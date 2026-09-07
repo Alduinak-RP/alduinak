@@ -188,6 +188,13 @@ $text-dim: rgba(232, 224, 208, 0.6);
     &--muted {
       color: $text-dim;
     }
+
+    // One quiet sentence under the hour count
+    &--hint {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: none;
+    }
   }
 
   // ── Rank ladder ────────────────────────────────────────────────────────────

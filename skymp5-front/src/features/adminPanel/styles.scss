@@ -422,11 +422,53 @@ $admin-row-gutter: 16px;
     }
   }
 
+  // Players tab: worked-hours grant strip for yourself and the selected row
+  &__mastery {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 1px solid rgba(200, 180, 138, 0.2);
+    background: $admin-pane-bg;
+  }
+
+  &__mastery-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+  }
+
+  &__mastery-who {
+    flex: 0 0 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: $admin-gold-dim;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  &__mastery-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__mastery-amount {
+    flex: 0 0 64px;
+    text-align: center;
+  }
+
   // Scale SkyrimButton's default 30px type down to fit the compact 32px-tall buttons.
   &__actions,
   &__header-buttons,
   &__row--location,
-  &__zone-buttons {
+  &__zone-buttons,
+  &__mastery-row {
     .skymp-input-button .skymp-input-button_text {
       font-size: 16px;
       line-height: 18px;

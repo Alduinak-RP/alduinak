@@ -14,6 +14,16 @@ interface PanelPlayer {
   hwid: string;
   online: boolean;
   ping: number | null;
+  m?: PanelMastery; // online rows only, absent on older servers
+}
+
+// One character's profession standing (masterySystem.ts MasterySummary).
+interface PanelMastery {
+  profession: string | null;
+  label: string;
+  rank: number;
+  rankName: string;
+  hours: number;
 }
 
 interface PanelLocation {
@@ -75,6 +85,7 @@ export interface AdminPanelData {
   npcZonesAt?: number; // Date.now() when npcZones arrived, the countdown base
   caps?: { ban?: boolean }; // server-resolved tier capabilities, absent on older servers
   tier?: string; // "senior" | "developer" | "gm", absent on older servers
+  mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -122,6 +133,18 @@ const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: stri
 ];
 
 const isNum = (text: string): boolean => text.trim() !== '' && Number.isFinite(Number(text));
+
+// Same bounds the server enforces for a mastery grant
+const MAX_GRANT_HOURS = 1000;
+
+const isGrantAmount = (text: string): boolean =>
+  isNum(text) && Number.isInteger(Number(text)) && Number(text) !== 0 && Math.abs(Number(text)) <= MAX_GRANT_HOURS;
+
+const masteryText = (m: PanelMastery | null | undefined): string => {
+  if (!m) return 'unknown';
+  if (!m.profession) return 'No craft chosen' + (m.hours ? ' (' + m.hours + ' h banked)' : '');
+  return m.label + ' \u00b7 ' + m.rankName + ' \u00b7 ' + m.hours + (m.hours === 1 ? ' hour' : ' hours');
+};
 
 const isBlankOrNum = (text: string): boolean => text.trim() === '' || isNum(text);
 
@@ -211,6 +234,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [selected, setSelected] = useState<number | null>(null);
   const [npcSub, setNpcSub] = useState<NpcSub>('list');
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
+  const [grantHours, setGrantHours] = useState('1');
   const [now, setNow] = useState(Date.now());
 
   // The zone countdown and the debug clocks tick locally between server pushes
@@ -258,6 +282,12 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const act = (key: string): void => {
     if (selectedPlayer && selectedPlayer.a) send(key, selectedPlayer.a);
   };
+
+  // Mastery rows: the admin's own character (actor id from the debug packet) and the selected online row
+  const masteryRows: Array<{ key: string; who: string; target: string; m: PanelMastery | null | undefined }> = [];
+  if (data.mastery && debug && debug.actorId) masteryRows.push({ key: 'me', who: 'You', target: debug.actorId, m: data.mastery });
+  if (actionsEnabled && selectedPlayer && selectedPlayer.a) masteryRows.push({ key: 'sel', who: selectedPlayer.n || '(no name)', target: selectedPlayer.a, m: selectedPlayer.m });
+  const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
 
   const locFilter = locSearch.trim().toLowerCase();
   const shownLocations = locations.filter((l) => !locFilter || l.name.toLowerCase().indexOf(locFilter) !== -1);
@@ -375,6 +405,31 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} />
               {canBan ? <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
             </div>
+            {ev.masteryGrant && data.mastery ? (
+              <div className="admin-panel__mastery">
+                <div className="admin-panel__mastery-row">
+                  <span className="admin-panel__mastery-who">Mastery hours</span>
+                  <input
+                    className="admin-panel__input admin-panel__mastery-amount"
+                    value={grantHours}
+                    onChange={(e) => setGrantHours(e.target.value)}
+                  />
+                  <span className="admin-panel__hint">Whole hours to grant; negative takes them back, rank and recipes follow</span>
+                </div>
+                {masteryRows.length === 0 ? (
+                  <span className="admin-panel__hint">Select an online player to grant mastery hours</span>
+                ) : (
+                  masteryRows.map((r) => (
+                    <div key={r.key} className="admin-panel__mastery-row">
+                      <span className="admin-panel__mastery-who" title={r.who}>{r.who}</span>
+                      <span className="admin-panel__mastery-info" title={masteryText(r.m)}>{masteryText(r.m)}</span>
+                      <Button text="Grant" width={96} height={30} disabled={!canGrant} onClick={() => send(ev.masteryGrant, r.target, Number(grantHours))} />
+                      <Button text="Reset craft" width={116} height={30} disabled={!(r.m && r.m.profession)} onClick={() => send(ev.masteryReset, r.target)} />
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : null}
             <div className="admin-panel__filters">
               <input
                 className="admin-panel__search"

@@ -75,7 +75,7 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
   const ev = data.events || ({} as MasteryEvents);
   const professions = data.professions || [];
   const chosen = data.profession;
-  const thresholds = data.rankHours && data.rankHours.length ? data.rankHours : [0, 10, 40, 100];
+  const thresholds = data.rankHours && data.rankHours.length ? data.rankHours : [0, 40, 100, 180];
 
   // Browsing is free; the chosen craft is what the panel opens on.
   const [viewing, setViewing] = useState(chosen || (professions[0] ? professions[0].id : ''));
@@ -150,6 +150,8 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
             {isChosen ? (
               <p className="mastery__played">
                 {data.hours} {data.hours === 1 ? 'hour' : 'hours'} at the craft
+                <br />
+                <span className="mastery__played--muted mastery__played--hint">Working your craft earns an hour; the next counts an hour later.</span>
               </p>
             ) : chosen ? (
               <p className="mastery__played mastery__played--muted">You follow another craft.</p>
