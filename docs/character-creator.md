@@ -36,9 +36,10 @@ for fresh characters. Species → Race → Identity (sex/age/stats) → Appearan
    through the `onUpdateAppearanceAttempt` gamemode event): the inventory is
    cut back to the `startingItems` kit, which also makes the client drop its
    save-game default gear, and the kit is dressed through Papyrus `EquipItem`
-   snippets (`equipKit`). A fresh actor carries `private.kitPending`; the kit
-   is equipped 5 s after every spawn and 1.5 s after creation finish until
-   the client's equipment report shows a kit item worn (the spawn-time
+   snippets (`equipKit`). A fresh actor carries `private.creationPending`
+   (cleared by the creation finish) and `private.kitPending`; the kit is
+   equipped 5 s after every spawn and 1.5 s after creation finish until the
+   client's equipment report shows a kit item worn (the spawn-time
    `applyEquipment` strips the player, so nothing else ever dressed it).
    Spells follow the `playersInheritBaseSpells` server setting.
 
