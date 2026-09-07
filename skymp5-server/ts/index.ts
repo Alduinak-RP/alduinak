@@ -32,6 +32,7 @@ import { AfkSystem } from "./systems/afkSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
+import { UntouchableSystem } from "./systems/untouchableSystem";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -224,6 +225,7 @@ const main = async () => {
     afkSystem,
     new MasterySystem(log, afkSystem),
     new BountyBoardSystem(log),
+    new UntouchableSystem(log),
     npcSpawnSystem,
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),

@@ -3,6 +3,7 @@ import { closeWidget, isUiHidden } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, CrosshairRefChangedEvent, Form, FormType, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
@@ -173,7 +174,12 @@ export class InteractionPromptService extends ClientListener {
         return "Use";
       case FormType.Book:
         return "Read";
-      case FormType.Flora:
+      case FormType.Flora: {
+        // Coin purses are untouchable decor (server untouchableBaseIds)
+        const base = ref.getBaseObject();
+        if (base && ObjectReferenceEx.isLeveledFlora(base)) return null;
+        return ref.isHarvested() ? null : "Harvest";
+      }
       case FormType.Tree:
         return ref.isHarvested() ? null : "Harvest";
       case FormType.Weapon:

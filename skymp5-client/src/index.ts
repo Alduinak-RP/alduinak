@@ -76,6 +76,7 @@ import { NotificationService } from "./services/services/notificationService";
 import { ConnectionWatchdogService } from "./services/services/connectionWatchdogService";
 import { MenuMediaService } from "./services/services/menuMediaService";
 import { CharacterProgressService } from "./services/services/characterProgressService";
+import { StaticRefsService } from "./services/services/staticRefsService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -134,6 +135,7 @@ const main = () => {
       new CaptureConsentService(sp, controller),
       new SearchService(sp, controller),
       new VoiceService(sp, controller),
+      new StaticRefsService(sp, controller),
       new AdminMenuService(sp, controller),
       new AdminModeService(sp, controller),
       new FactionService(sp, controller),
