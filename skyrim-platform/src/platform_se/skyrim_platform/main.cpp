@@ -24,6 +24,7 @@
 #include <atomic>
 #include <cstring>
 #include <cwchar>
+#include <functional>
 #include <string>
 #include <thread>
 
@@ -445,17 +446,13 @@ private:
   bool switchLayoutDownWas = false;
 };
 
-// Keeps the game window in front. At startup the window may never receive
-// activation (a launcher chain without foreground rights), and later an own
-// window (Chromium helpers, the CEF subprocess) can take it; DirectInput then
-// stays unacquired until an alt-tab. Once the game has been in front, a switch
-// to another program is left alone. Runs on its own thread so a paused game
-// loop cannot stall it.
+// Keeps the game window in front so DirectInput stays acquired; own thread, so a paused game loop cannot stall it
 class ForegroundGuard
 {
 public:
-  ForegroundGuard()
-    : thread([this] { Run(); })
+  explicit ForegroundGuard(std::function<HWND()> gameWindowGetter)
+    : getGameWindow(std::move(gameWindowGetter))
+    , thread([this] { Run(); })
   {
   }
 
@@ -531,20 +528,22 @@ private:
                  info.className, info.pid, ImageName(info));
   }
 
+  // Other Chromium apps (Discord, browsers) use the same window classes, so only the pid and the CEF subprocess count
   static bool IsOwnWindow(const WindowInfo& info)
   {
     return info.pid == GetCurrentProcessId() ||
-      std::strncmp(info.className, "Chrome_", 7) == 0 ||
       std::wcsstr(info.image, L"SkyrimPlatformCEF") != nullptr;
   }
 
-  // The only visible top-level window of this process is the game's
+  // Fallback for the swap chain window: the game's own top-level window by class
   static BOOL CALLBACK FindGameWindow(HWND window, LPARAM out)
   {
     DWORD pid = 0;
     GetWindowThreadProcessId(window, &pid);
+    char className[64] = { 0 };
+    GetClassNameA(window, className, sizeof(className) - 1);
     if (pid != GetCurrentProcessId() || !IsWindowVisible(window) ||
-        GetWindow(window, GW_OWNER) != nullptr) {
+        std::strcmp(className, "Skyrim Special Edition") != 0) {
       return TRUE;
     }
     *reinterpret_cast<HWND*>(out) = window;
@@ -564,8 +563,11 @@ private:
 
   void Tick()
   {
-    if (!game) {
-      EnumWindows(FindGameWindow, reinterpret_cast<LPARAM>(&game));
+    if (!game || !IsWindow(game)) {
+      game = getGameWindow ? getGameWindow() : nullptr;
+      if (!game) {
+        EnumWindows(FindGameWindow, reinterpret_cast<LPARAM>(&game));
+      }
       if (!game) {
         return;
       }
@@ -620,6 +622,7 @@ private:
     }
   }
 
+  std::function<HWND()> getGameWindow;
   std::atomic<bool> stop{ false };
   HWND game = nullptr;
   HWND thief = nullptr;
@@ -661,7 +664,6 @@ public:
     CEFUtils::DInputHook::Install(myInputListener);
     CEFUtils::WindowsHook::Install();
     CEFUtils::WindowsHook::Get().SetCallback(&ForegroundGuard::WndProc);
-    foregroundGuard = std::make_unique<ForegroundGuard>();
 
     CEFUtils::DInputHook::Get().SetToggleKeys({ VK_F6 });
     CEFUtils::DInputHook::Get().SetEnabled(true);
@@ -761,6 +763,10 @@ public:
     myInputListener->Init(overlayService, inputConverter);
 
     renderSystem = std::make_shared<RenderSystemD3D11>(*overlayService);
+    // The swap chain window is null until the first Present; the guard retries
+    foregroundGuard = std::make_unique<ForegroundGuard>([this]() -> HWND {
+      return renderSystem ? renderSystem->GetWindow() : nullptr;
+    });
 
     auto manager = RE::BSRenderManager::GetSingleton();
     if (!manager) {

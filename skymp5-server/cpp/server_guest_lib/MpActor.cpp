@@ -886,10 +886,14 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
     for (auto npcSpellRaw : npcData.spells) {
       const uint32_t spellId = npc.ToGlobalId(npcSpellRaw);
       if (skipCastable) {
-        const auto spellData = espm::GetData<espm::SPEL>(spellId, worldState);
-        if (spellData.spellItem &&
-            spellData.spellItem->type == espm::SPEL::SpellType::Spell) {
-          continue;
+        // SPLO may also list shouts or leveled spells, GetData would throw on those
+        const auto spell = worldState->GetEspm().GetBrowser().LookupById(spellId);
+        if (spell.rec && spell.rec->GetType() == espm::SPEL::kType) {
+          const auto spellData = espm::GetData<espm::SPEL>(spellId, worldState);
+          if (spellData.spellItem &&
+              spellData.spellItem->type == espm::SPEL::SpellType::Spell) {
+            continue;
+          }
         }
       }
       result.push_back(spellId);
