@@ -1,33 +1,41 @@
-import { Cell, CellFullyLoadedEvent, FormType, MotionType, ObjectReference } from "skyrimPlatform";
+import { Cell, CellFullyLoadedEvent, FormType, MotionType, ObjectLoadedEvent, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CreateActorMessage } from "../messages/createActorMessage";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError, logTrace } from "../../logging";
 
-// Movable statics (cart wheels, wagon parts, hanging clutter) run on local havok and the server never syncs them;
-// coin purses are flora with havok that the server may stream before their 3D exists. Both are frozen per cell as
-// it attaches, so nobody kicks them around and every client sees the same scene. Refs a script enables later
-// (collapse sequences) are not covered, those sequences do not run in multiplayer.
+// Movable statics and flora are frozen per cell so local havok cannot move them; script-enabled refs are not covered
 const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora];
 
 export class StaticRefsService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.on("cellFullyLoaded", (e) => this.onCellFullyLoaded(e));
+    this.controller.on("objectLoaded", (e) => this.onObjectLoaded(e));
     this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
   }
 
   private onCellFullyLoaded(e: CellFullyLoadedEvent): void {
-    const cell = e.cell;
-    if (!cell) return;
-    // Natives throw outside the update context
-    this.controller.once("update", () => this.freezeCell(cell));
+    if (e.cell) this.freezeCell(e.cell);
+  }
+
+  // Refs whose 3D streams in after the cell attached
+  private onObjectLoaded(e: ObjectLoadedEvent): void {
+    if (!e.isLoaded) return;
+    try {
+      const ref = ObjectReference.from(e.object);
+      const type = ref?.getBaseObject()?.getType();
+      if (ref && type !== undefined && FROZEN_TYPES.includes(type)) this.freeze(ref);
+    } catch (err) {
+      logError(this, `onObjectLoaded failed: ${err}`);
+    }
   }
 
   // The cell the player spawns into may have attached before the service saw a cellFullyLoaded event
   private onCreateActorMessage(e: ConnectionMessage<CreateActorMessage>): void {
     if (!e.message.isMe) return;
+    // Natives throw in the packet context
     this.controller.once("update", () => {
       const cell = this.sp.Game.getPlayer()?.getParentCell();
       if (cell) this.freezeCell(cell);
@@ -41,10 +49,7 @@ export class StaticRefsService extends ClientListener {
         const count = cell.getNumRefs(type);
         for (let i = 0; i < count; i++) {
           const ref = cell.getNthRef(i, type);
-          if (ref) {
-            this.freeze(ref);
-            frozen++;
-          }
+          if (ref && this.freeze(ref)) frozen++;
         }
       }
       if (frozen > 0) logTrace(this, `froze ${frozen} refs in cell ${cell.getFormID().toString(16)}`);
@@ -53,10 +58,13 @@ export class StaticRefsService extends ClientListener {
     }
   }
 
-  private freeze(ref: ObjectReference): void {
+  // Nothing to keyframe without 3D; objectLoaded brings such refs back later
+  private freeze(ref: ObjectReference): boolean {
+    if (!ref.is3DLoaded()) return false;
     ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
     const base = ref.getBaseObject();
     // Coin purses must not harvest locally either; the server refuses them and the client would desync
     if (base && ObjectReferenceEx.isLeveledFlora(base)) ref.blockActivation(true);
+    return true;
   }
 }

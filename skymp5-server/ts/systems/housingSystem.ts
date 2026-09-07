@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { toFormId } from "./formIdUtil";
+import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -634,15 +634,7 @@ export class HousingSystem implements System {
   private partnerOf(ctx: SystemContext, refrId: number): number {
     const cached = this.partnerCache.get(refrId);
     if (cached !== undefined) return cached;
-    const mp = ctx.svr as Mp;
-    let partner = 0;
-    try {
-      const rec = mp.lookupEspmRecordById(refrId);
-      const local = this.readFormIdField(rec, "XTEL");
-      if (local && typeof rec.toGlobalRecordId === "function") {
-        partner = rec.toGlobalRecordId(local) >>> 0;
-      }
-    } catch { /* not a door, or no espm record */ }
+    const partner = espmRefrFieldId(ctx.svr as Mp, refrId, "XTEL");
     this.rememberEspm(this.partnerCache, refrId, partner);
     return partner;
   }
@@ -655,9 +647,7 @@ export class HousingSystem implements System {
     const mp = ctx.svr as Mp;
     let type = "";
     try {
-      const refr = mp.lookupEspmRecordById(refrId);
-      const local = this.readFormIdField(refr, "NAME");
-      const baseId = local && typeof refr.toGlobalRecordId === "function" ? refr.toGlobalRecordId(local) >>> 0 : 0;
+      const baseId = espmRefrFieldId(mp, refrId, "NAME");
       if (baseId) {
         const base = mp.lookupEspmRecordById(baseId);
         type = String((base && base.record && base.record.type) || "");
@@ -670,15 +660,6 @@ export class HousingSystem implements System {
   private isClaimable(ctx: SystemContext, refrId: number): boolean {
     const t = this.baseTypeOf(ctx, refrId);
     return t === "DOOR" || t === "CONT";
-  }
-
-  // First four bytes of a field, little-endian: a plugin-local form id.
-  private readFormIdField(lookup: any, fieldType: string): number {
-    const fields = lookup && lookup.record && Array.isArray(lookup.record.fields) ? lookup.record.fields : [];
-    const field = fields.filter((f: any) => f && f.type === fieldType)[0];
-    if (!field || !field.data || field.data.length < 4) return 0;
-    const b = field.data;
-    return ((b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0);
   }
 
   // ESM data never changes, so overflow can just start the cache over.

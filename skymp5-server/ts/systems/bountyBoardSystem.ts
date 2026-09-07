@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { toFormId } from "./formIdUtil";
+import { espmRefrFieldId, toFormId } from "./formIdUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -496,28 +496,11 @@ export class BountyBoardSystem implements System {
   private baseIdOf(ctx: SystemContext, refrId: number): number {
     const cached = this.baseIdCache.get(refrId);
     if (cached !== undefined) return cached;
-    const mp = ctx.svr as Mp;
-    let baseId = 0;
-    try {
-      const refr = mp.lookupEspmRecordById(refrId);
-      const local = this.readFormIdField(refr, "NAME");
-      if (local && typeof refr.toGlobalRecordId === "function") {
-        baseId = refr.toGlobalRecordId(local) >>> 0;
-      }
-    } catch { /* not an espm reference */ }
+    const baseId = espmRefrFieldId(ctx.svr as Mp, refrId, "NAME");
     // ESM data never changes, so overflow can just start the cache over.
     if (this.baseIdCache.size >= MAX_ESPM_CACHE) this.baseIdCache.clear();
     this.baseIdCache.set(refrId, baseId);
     return baseId;
-  }
-
-  // First four bytes of a field, little-endian: a plugin-local form id.
-  private readFormIdField(lookup: any, fieldType: string): number {
-    const fields = lookup && lookup.record && Array.isArray(lookup.record.fields) ? lookup.record.fields : [];
-    const field = fields.filter((f: any) => f && f.type === fieldType)[0];
-    if (!field || !field.data || field.data.length < 4) return 0;
-    const b = field.data;
-    return ((b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0);
   }
 
   // Posting has to happen at the board, not from a form id typed into a packet.
