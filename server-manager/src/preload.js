@@ -48,4 +48,6 @@ contextBridge.exposeInMainWorld('mgr', {
   modlistDiff:           () => ipcRenderer.invoke('modlist:diff'),
   modlistSyncSettings:   () => ipcRenderer.invoke('modlist:syncSettings'),
   modlistSyncData:       (o) => ipcRenderer.invoke('modlist:syncData', o),
+  modlistPurge:          (o) => ipcRenderer.invoke('modlist:purge', o),
+  modlistPurgeRestore:   () => ipcRenderer.invoke('modlist:purgeRestore'),
 })

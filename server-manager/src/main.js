@@ -11,6 +11,7 @@ const config = require('./config')
 const { Builder } = require('./build')
 const schema = require('./settingsSchema')
 const modsync = require('./modsync')
+const mongoPurge = require('./mongoPurge')
 
 let win = null
 
@@ -90,6 +91,8 @@ async function probeService(svc) {
 }
 
 async function serviceName(svc) { return (await probeService(svc)).name }
+
+async function gameStatus() { return nssm('status', await serviceName(serviceByKey.game)) }
 
 async function act(svc, verb) {
   const name = await serviceName(svc)
@@ -1091,11 +1094,56 @@ ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
   const settings = readServerSettings()
   if (!settings.dataDir) return { ok: false, error: 'server-settings.json has no dataDir' }
   // Plugins are read at boot, so a running server keeps the old set until restarted
-  if (await nssm('status', await serviceName(serviceByKey.game)) === 'SERVICE_RUNNING') {
+  if (await gameStatus() === 'SERVICE_RUNNING') {
     b.line('[data] WARNING: the game server is running, restart it after the sync so it loads the new plugins')
   }
   const r = await modsync.syncData({ manifest, prev, stamp, dataDir: settings.dataDir, mo2Root: config.mo2Root, log: t => b.line(t), dryRun })
   // syncData persists data-sync.json itself after a real run
   if (!dryRun && r.ok) stampDiff({ syncedDataAt: new Date().toISOString() }, t => b.line(t))
+  return r
+}))
+
+// A running game server re-upserts every loaded form, so database writes need it stopped; a dry run only warns
+async function requireGameStopped(log, dryRun) {
+  const status = await gameStatus()
+  if (status === 'SERVICE_STOPPED') return null
+  const error = `the game server is ${status || 'in an unknown state'}, stop it first`
+  if (dryRun) { log(`WARNING: ${error} (a dry run needs no stop)`); return null }
+  return { ok: false, error }
+}
+
+ipcMain.handle('modlist:purge', (_e, opts) => exclusive(async () => {
+  const dryRun = Boolean(opts && opts.dryRun)
+  const b = builder('modlist:log')
+  const log = t => b.line(`[purge] ${t}`)
+  const manifest = readManifestOrFail()
+  const diff = modsync.readDiff()
+  if (!diff) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
+  const settings = readServerSettings()
+  const blocked = await requireGameStopped(log, dryRun)
+  if (blocked) return blocked
+  const r = await mongoPurge.purgeRemovedMods({
+    settings, diff, dryRun, log,
+    newLoadOrder: [...modsync.VANILLA_PLUGINS, ...modsync.enabledPlugins(manifest)],
+    currentLoadOrder: (Array.isArray(settings.loadOrder) ? settings.loadOrder : []).map(modsync.basename),
+    startPoints: settings.startPoints,
+    backupDir: config.paths.serverDir,
+    // Throwing here aborts the purge before its first write, so no write ever happens without a recorded backup
+    onWriteStart: ({ backupFile }) => { modsync.updateDiff({ purgeStartedAt: new Date().toISOString(), purgeBackup: backupFile }) },
+  })
+  if (!dryRun && r.ok) stampDiff({ purgedAt: new Date().toISOString(), purgeStartedAt: null }, log)
+  return r
+}))
+
+// Puts the last purge backup back and reopens the diff for another purge
+ipcMain.handle('modlist:purgeRestore', () => exclusive(async () => {
+  const b = builder('modlist:log')
+  const log = t => b.line(`[restore] ${t}`)
+  const diff = modsync.readDiff()
+  if (!diff || !diff.purgeBackup) return { ok: false, error: 'no purge backup recorded in manifest-diff.json' }
+  const blocked = await requireGameStopped(log, false)
+  if (blocked) return blocked
+  const r = await mongoPurge.restorePurge({ settings: readServerSettings(), backupFile: diff.purgeBackup, log })
+  if (r.ok) stampDiff({ purgeStartedAt: null, purgeBackup: null, purgedAt: null }, log)
   return r
 }))

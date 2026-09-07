@@ -662,6 +662,7 @@ function renderDiff(diff) {
   const st = $('#modlist-status')
   box.innerHTML = ''
   $('#modlist-stamps').innerHTML = ''
+  $('#modlist-purge-restore').hidden = !(diff && diff.purgeStartedAt && !diff.purgedAt)
   if (!diff) {
     st.textContent = ''
     box.appendChild(el('div', { className: 'card muted' }, 'Build the manifest to see what changed'))
@@ -750,6 +751,49 @@ function armModlist(btn, label, apply, preview) {
     onArm: () => appendLog($('#modlist-log'), `Armed: click ${label} again to apply\n`) })
 }
 armModlist($('#modlist-sync-data'), 'Sync data folder', () => runDataSync(false), () => runDataSync(true))
+
+// First click previews (dry run) and arms even when nothing needs purging, since applying still records the diff as purged
+async function runPurge(dryRun) {
+  const log = $('#modlist-log')
+  const count = list => Array.isArray(list) ? list.length : 0
+  modlistButtons(true)
+  appendLog(log, `\n######## Purge MongoDB${dryRun ? ' (dry run)' : ''} ########\n`)
+  try {
+    const r = await window.mgr.modlistPurge({ dryRun })
+    const rep = r.report || {}
+    if (!r.ok) {
+      appendLog(log, `\n✗ ${r.error}\n`)
+      if (!dryRun && rep.backupFile) appendLog(log, `The purge did not finish. Restore last purge (game server stopped) puts ${rep.backupFile} back.\n`)
+      return false
+    }
+    const summary = `${count(rep.deletes)} delete(s), ${count(rep.updates)} update(s), ${count(rep.warnings)} warning(s)`
+    if (dryRun) {
+      appendLog(log, rep.nothingToDo ? '\nNothing to purge. Apply anyway to record this diff as purged.\n' : `\nDry run complete: ${summary}. Review the plan above.\n`)
+      return true
+    }
+    appendLog(log, rep.nothingToDo
+      ? '\n✓ Nothing to purge, recorded as done. Start the game server.\n'
+      : `\n✓ MongoDB purged: ${summary}, backup at ${rep.backupFile}. Start the game server.\n`)
+    return true
+  } finally {
+    modlistButtons(false)
+    loadDiff()
+  }
+}
+armModlist($('#modlist-purge'), 'Purge MongoDB', () => runPurge(false), () => runPurge(true))
+
+armConfirm($('#modlist-purge-restore'), 'Restore last purge', async () => {
+  const log = $('#modlist-log')
+  modlistButtons(true)
+  appendLog(log, '\n######## Restore last purge ########\n')
+  try {
+    const r = await window.mgr.modlistPurgeRestore()
+    appendLog(log, r.ok ? `\n✓ Restored ${r.inserted + r.replaced} document(s): ${r.inserted} re-inserted, ${r.replaced} replaced. Purge again once the cause is fixed.\n` : `\n✗ ${r.error}\n`)
+  } finally {
+    modlistButtons(false)
+    loadDiff()
+  }
+})
 loadDiff()
 
 let SCHEMA = { serverSettings: [], backendEnv: [] }

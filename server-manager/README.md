@@ -82,10 +82,27 @@ fails it prints a direct download URL - save that zip as
     and archives are removed even if modified); vanilla masters, `manifest.json`
     and anything else in `Data` are never touched. Copies go through a temp
     file and are sha256-verified. Empty folders left behind are removed.
-  - **Purge MongoDB** (game server stopped) removes the world changeForms that
-    reference plugins dropped from the load order and re-encodes the numeric
-    ids of plugins whose slot shifted; same two-click flow (dry run, then
-    apply), with an EJSON backup next to `server-settings.json` first.
+  - **Purge MongoDB** removes the world changeForms that reference plugins
+    dropped from the load order, relocates actors whose cell went with them,
+    strips dropped items / spells / headparts / factions from the survivors and
+    re-encodes the numeric ids of plugins whose slot shifted (light flags are
+    read per load order). Same two-click flow: the first click is a **dry run**
+    that lists every delete and update plus the warnings and arms the button
+    (even when nothing needs purging, since applying still records the diff as
+    purged so the recorded load order stops carrying forward). The second click
+    applies only while the `game` service reports **stopped** (a running server
+    re-upserts every loaded form) and only after **Sync server settings** (the
+    file's `loadOrder` must already equal the target order); a purge that
+    already ran, an unfinished one, an unreadable light flag or a **player
+    character** that references a removed plugin (never deleted) refuses too.
+    The apply first writes an EJSON backup `purged-changeforms-<ms>.json` next
+    to `server-settings.json` (kept by the Game Server build's prune step),
+    records it in the diff (`purgeStartedAt` / `purgeBackup`), then applies
+    the updates, the deletes and a verification pass, and stamps `purgedAt`.
+    If it stops half way the diff shows the unfinished purge and a **Restore
+    last purge** button appears (game server stopped): it puts every backed-up
+    document back by `_id`, touches nothing else and reopens the diff for
+    another purge.
   - **Deploy flow:** Build manifest -> Sync server settings -> Sync data folder
     -> Purge MongoDB (game server stopped) -> start the game server. Players
     then re-run the launcher to pick up the changes; the backend needs no
