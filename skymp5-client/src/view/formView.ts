@@ -122,12 +122,15 @@ export class FormView {
         this.destroy();
         this.refrId = model.refrId as number;
         this.ready = true;
+        this.dealtWithRef = false;
+      }
+      // Temporary refs of a cell the game has not attached yet resolve to null (spawn, teleport), so keep trying until the ref exists
+      if (!this.dealtWithRef) {
         const refr = ObjectReference.from(Game.getFormEx(this.refrId));
-        if (refr) {
-          const base = refr.getBaseObject();
-          if (base) {
-            ObjectReferenceEx.dealWithRef(refr, base);
-          }
+        const base = refr?.getBaseObject();
+        if (refr && base) {
+          ObjectReferenceEx.dealWithRef(refr, base);
+          this.dealtWithRef = true;
         }
       }
     } else {
@@ -315,6 +318,7 @@ export class FormView {
   destroy(): void {
     this.isOnScreen = false;
     this.spawnMoment = 0;
+    this.dealtWithRef = false;
     const refrId = this.refrId;
     once("update", () => {
       if (refrId >= 0xff000000) {
@@ -336,6 +340,7 @@ export class FormView {
 
   private lastHarvestedApply = 0;
   private lastOpenApply = 0;
+  private dealtWithRef = false;
   private isSetNodeTextureSetApplied = false;
   private isSetNodeScaleApplied = false;
 
@@ -354,6 +359,13 @@ export class FormView {
     if (now - this.lastOpenApply > 133) {
       this.lastOpenApply = now;
       ModelApplyUtils.applyModelIsOpen(refr, !!model.isOpen);
+      // A reloaded cell recreates the ref without its activation block, so doors would open locally again
+      if (!refr.isActivationBlocked()) {
+        const base = refr.getBaseObject();
+        if (base && ObjectReferenceEx.wantsActivationBlock(base)) {
+          ObjectReferenceEx.dealWithRef(refr, base);
+        }
+      }
     }
     if (!this.isSetNodeScaleApplied) {
       this.isSetNodeScaleApplied = true;
