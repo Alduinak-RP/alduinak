@@ -2,7 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as zlib from "zlib";
 
-// Pure TS scan of the TES5 plugins for CELL and WRLD editor ids, so a spawn file can name "Kagrenzel01" without a native lookup.
+// Pure TS scan of the TES5 plugins for editor ids of the requested record types (CELL and WRLD by default, KYWD for the mastery
+// keyword lists), so a config file can name "Kagrenzel01" or "CraftingSmithingForge" without a native lookup.
 // Records resolve to "hex:Plugin.esm" descs (the form the server's getIdFromDesc understands); the first plugin in the load order defining an id wins.
 
 const HEADER_SIZE = 24;
@@ -11,8 +12,6 @@ const FLAG_COMPRESSED = 0x00040000;
 const tag = (s: string): number => Buffer.from(s, "latin1").readUInt32LE(0);
 const TAG_TES4 = tag("TES4");
 const TAG_GRUP = tag("GRUP");
-const TAG_CELL = tag("CELL");
-const TAG_WRLD = tag("WRLD");
 const TAG_EDID = tag("EDID");
 const TAG_MAST = tag("MAST");
 const TAG_XXXX = tag("XXXX");
@@ -29,8 +28,15 @@ export interface EditorIdScan {
   scannedMs: number;
 }
 
+const DEFAULT_TYPES = ["CELL", "WRLD"];
+
+// A locator that is neither a "hex:Plugin" desc nor a bare form id
+export const isEditorId = (locator: string): boolean =>
+  !locator.includes(":") && !/^0x[0-9a-f]+$/i.test(locator) && !/^[0-9a-f]{8}$/i.test(locator);
+
 // Plugins only change with a restart, so results survive spawn file reloads
 const cache = new Map<string, string>();
+// Keyed by record types too: an id missing from the CELL tree may still be a KYWD
 const knownMissing = new Set<string>();
 
 // Returns true from the visitor to stop the scan
@@ -85,7 +91,7 @@ function readMasters(buf: Buffer): string[] {
   return masters;
 }
 
-function* walkGroup(buf: Buffer, start: number, end: number, depth: number, visit: Visit): Generator<void, boolean, void> {
+function* walkGroup(buf: Buffer, start: number, end: number, depth: number, tags: Set<number>, visit: Visit): Generator<void, boolean, void> {
   let off = start;
   while (off + HEADER_SIZE <= end) {
     const type = buf.readUInt32LE(off);
@@ -93,15 +99,15 @@ function* walkGroup(buf: Buffer, start: number, end: number, depth: number, visi
       const size = buf.readUInt32LE(off + 4);
       if (size < HEADER_SIZE) return false;
       const label = buf.readUInt32LE(off + 8);
-      // Top-level groups are labelled by record type; only the CELL and WRLD trees matter
-      if (depth > 0 || label === TAG_CELL || label === TAG_WRLD) {
-        if (yield* walkGroup(buf, off + HEADER_SIZE, Math.min(off + size, end), depth + 1, visit)) return true;
+      // Top-level groups are labelled by record type; only the requested trees matter
+      if (depth > 0 || tags.has(label)) {
+        if (yield* walkGroup(buf, off + HEADER_SIZE, Math.min(off + size, end), depth + 1, tags, visit)) return true;
         if (depth < YIELD_DEPTH) yield;
       }
       off += size;
     } else {
       const dataSize = buf.readUInt32LE(off + 4);
-      if (type === TAG_CELL || type === TAG_WRLD) {
+      if (tags.has(type)) {
         const flags = buf.readUInt32LE(off + 8);
         const formId = buf.readUInt32LE(off + 12);
         if (visit(formId, readEditorId(buf, off + HEADER_SIZE, dataSize, flags))) return true;
@@ -112,9 +118,9 @@ function* walkGroup(buf: Buffer, start: number, end: number, depth: number, visi
   return false;
 }
 
-async function scanPlugin(buf: Buffer, visit: Visit): Promise<boolean> {
+async function scanPlugin(buf: Buffer, tags: Set<number>, visit: Visit): Promise<boolean> {
   if (buf.length < HEADER_SIZE) return false;
-  const it = walkGroup(buf, HEADER_SIZE + buf.readUInt32LE(4), buf.length, 0, visit);
+  const it = walkGroup(buf, HEADER_SIZE + buf.readUInt32LE(4), buf.length, 0, tags, visit);
   let lastYield = Date.now();
   for (;;) {
     const step = it.next();
@@ -126,14 +132,16 @@ async function scanPlugin(buf: Buffer, visit: Visit): Promise<boolean> {
   }
 }
 
-export async function resolveEditorIds(editorIds: string[], dataDir: string, loadOrder: string[], log: LogFn): Promise<EditorIdScan> {
+export async function resolveEditorIds(editorIds: string[], dataDir: string, loadOrder: string[], log: LogFn, types: string[] = DEFAULT_TYPES): Promise<EditorIdScan> {
+  const tags = new Set(types.map(tag));
+  const missingKey = (key: string) => types.join(",") + "|" + key;
   const resolved = new Map<string, string>();
   const pending = new Set<string>();
   for (const id of editorIds) {
     const key = id.toLowerCase();
     const hit = cache.get(key);
     if (hit) resolved.set(key, hit);
-    else if (!knownMissing.has(key)) pending.add(key);
+    else if (!knownMissing.has(missingKey(key))) pending.add(key);
   }
   const started = Date.now();
   for (const entry of loadOrder) {
@@ -144,7 +152,7 @@ export async function resolveEditorIds(editorIds: string[], dataDir: string, loa
     try { buf = await fs.promises.readFile(file); }
     catch { log(`espm scan: plugin '${owner}' not readable at ${file}, skipped`); continue; }
     const masters = readMasters(buf);
-    await scanPlugin(buf, (formId, editorId) => {
+    await scanPlugin(buf, tags, (formId, editorId) => {
       const key = editorId.toLowerCase();
       if (!key || !pending.has(key)) return false;
       const high = formId >>> 24;
@@ -155,7 +163,7 @@ export async function resolveEditorIds(editorIds: string[], dataDir: string, loa
       return !pending.size;
     });
   }
-  for (const key of pending) knownMissing.add(key);
+  for (const key of pending) knownMissing.add(missingKey(key));
   const unresolved = editorIds.filter((id) => !resolved.has(id.toLowerCase()));
   return { resolved, unresolved, scannedMs: Date.now() - started };
 }

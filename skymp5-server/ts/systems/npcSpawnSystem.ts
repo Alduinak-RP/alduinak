@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as chokidar from "chokidar";
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
-import { resolveEditorIds } from "./espmEditorIds";
+import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -115,8 +115,6 @@ const hex = (id: number): string => id.toString(16);
 const isHexId = (text: string): boolean => /^0x[0-9a-f]{1,8}$/i.test(text) || /^[0-9a-f]{1,8}$/i.test(text);
 
 // ID forms: "1a26f:Skyrim.esm" desc, "0x0001A26F" / "0001A26F" load-order id, anything else an editor id
-const isEditorId = (locator: string): boolean =>
-  !locator.includes(":") && !/^0x[0-9a-f]+$/i.test(locator) && !/^[0-9a-f]{8}$/i.test(locator);
 
 const entryName = (raw: unknown): string => String(pick(raw, "name") ?? "").trim().toLowerCase();
 
