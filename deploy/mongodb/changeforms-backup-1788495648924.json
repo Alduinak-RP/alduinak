@@ -1,0 +1,78 @@
+[
+  {
+    "_id": "6a6e6047e69f5fc535e8d4ca",
+    "formDesc": "aa03:Test 1.esp",
+    "angle": [
+      0,
+      0,
+      91.6737289428711
+    ],
+    "appearanceDump": null,
+    "baseContainerAdded": true,
+    "baseDesc": "10cd5b:Skyrim.esm",
+    "consoleCommandsAllowed": false,
+    "count": 0,
+    "dynamicFields": {},
+    "effects": [],
+    "equipmentDump": {
+      "inv": {
+        "entries": []
+      },
+      "numChanges": 0
+    },
+    "healthPercentage": 1,
+    "healthRespawnPercentage": 1,
+    "inv": {
+      "entries": [
+        {
+          "baseId": 216287,
+          "count": 3
+        },
+        {
+          "baseId": 416927,
+          "count": 4
+        },
+        {
+          "baseId": 965123,
+          "count": 2
+        },
+        {
+          "baseId": 1076762,
+          "count": 1
+        }
+      ]
+    },
+    "isDead": false,
+    "isDeleted": false,
+    "isDisabled": false,
+    "isHarvested": false,
+    "isOpen": false,
+    "isRaceMenuOpen": false,
+    "learnedSpells": [],
+    "magickaPercentage": 1,
+    "magickaRespawnPercentage": 1,
+    "nextRelootDatetime": 0,
+    "position": [
+      -835.84814453125,
+      -1171.4239501953125,
+      68
+    ],
+    "profileId": -1,
+    "recType": 0,
+    "spawnDelay": 15,
+    "spawnPoint_cellOrWorldDesc": "3c:Skyrim.esm",
+    "spawnPoint_pos": [
+      133857,
+      -61130,
+      14662
+    ],
+    "spawnPoint_rot": [
+      0,
+      0,
+      72
+    ],
+    "staminaPercentage": 1,
+    "staminaRespawnPercentage": 1,
+    "worldOrCellDesc": "165b7:Skyrim.esm"
+  }
+]
