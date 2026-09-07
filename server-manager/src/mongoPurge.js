@@ -13,11 +13,16 @@ const DESC_RE = /^([0-9a-fA-F]{1,8}):(.+\.es[pml])$/i
 const PROGRESS_EVERY = 250
 // Inventory extras that only mean something next to the id they describe
 const EXTRA_IDS = [['enchantmentId', ['enchantmentId', 'maxCharge', 'chargePercent', 'removeEnchantmentOnUnequip']], ['poisonId', ['poisonId', 'poisonCount']]]
+// Equipped spell slots on equipmentDump (0 = none)
+const SPELL_SLOTS = ['leftSpell', 'rightSpell', 'voiceSpell', 'instantSpell']
+// Reference ids on dynamicFields["private.housing"] (0 = none)
+const HOUSING_REFS = ['primary', 'partner']
 
 function hex8(n) { return '0x' + (n >>> 0).toString(16).toUpperCase().padStart(8, '0') }
 function typed(v) { return v > INT32_MAX ? Long.fromNumber(v) : new Int32(v) }
 function arr(v) { return Array.isArray(v) ? v : [] }
 function has(v) { return v !== undefined && v !== null }
+function isPlainObject(v) { return Boolean(v) && typeof v === 'object' && !Array.isArray(v) && !v._bsontype }
 
 function parseDesc(value) {
   const m = typeof value === 'string' && DESC_RE.exec(value)
@@ -48,14 +53,16 @@ function nameOf(doc) {
 function resolveStartPoint(startPoints, newSlots) {
   const sp = arr(startPoints)[0]
   if (!sp) return null
-  const raw = String(sp.worldOrCell || '')
+  const raw = String(has(sp.worldOrCell) ? sp.worldOrCell : '').trim()
   let desc = null
   const parsed = parseDesc(raw)
   if (parsed) {
     if (!newSlots.has(parsed.key)) throw new Error(`startPoints[0].worldOrCell ${raw} is not in the new load order`)
     desc = raw
   } else {
-    const id = parseInt(raw.replace(/^0x/i, ''), 16)
+    // The server reads it with a unary plus: "0x..." is hex, a plain digit string is decimal
+    const id = raw === '' ? NaN : Number(raw)
+    if (!Number.isInteger(id) || id < 0) throw new Error(`startPoints[0].worldOrCell "${raw}" is neither a number nor a <hex>:<Plugin> descriptor`)
     desc = descOf(id, newSlots)
     if (!desc || !desc.includes(':')) throw new Error(`startPoints[0].worldOrCell ${raw} cannot be resolved in the new load order`)
   }
@@ -77,9 +84,8 @@ function mapId(id, ctx, out, label) {
   if (!ctx.shifted.has(d.key)) return { kind: 'keep', value: v, plugin: d.plugin }
   let next
   try { next = encodeId(d.plugin, d.local, ctx.newSlots) } catch (err) {
-    ctx.unresolvedIds++
-    out.warnings.push(`${label}: ${hex8(v)} left unchanged, ${err.message}`)
-    return { kind: 'unresolved', value: v }
+    out.warnings.push(`${label}: ${hex8(v)} cannot be re-encoded (${err.message}), treated as removed`)
+    return { kind: 'drop', value: v, plugin: d.plugin }
   }
   return next === v ? { kind: 'keep', value: v, plugin: d.plugin } : { kind: 'remap', value: v, next, plugin: d.plugin }
 }
@@ -166,10 +172,20 @@ function scanDynamicFields(value, removed, keyPath, hits) {
 
 // ctx.startPoint() resolves startPoints[0] on first use and may throw on a bad configuration
 function classifyDoc(doc, ctx) {
-  const out = { action: 'none', reason: '', set: {}, pull: {}, changes: [], warnings: [], playerHit: null, error: null }
+  const out = { action: 'none', reason: '', set: {}, unset: {}, pull: {}, changes: [], warnings: [], playerHit: null, error: null }
   const player = isPlayer(doc)
   const who = player ? `${doc.formDesc} "${nameOf(doc)}" (profile ${num(doc.profileId)})` : String(doc.formDesc)
-  const removedIn = value => { const d = parseDesc(value); return d && ctx.removed.has(d.key) ? d.plugin : null }
+  // A descriptor naming a plugin outside the new order is treated as removed; one in neither order is warned about once
+  const foreign = ctx.foreign || (ctx.foreign = new Map())
+  const removedIn = value => {
+    const d = parseDesc(value)
+    if (!d || ctx.newSlots.has(d.key)) return null
+    if (!ctx.oldSlots.has(d.key) && !foreign.has(d.key)) {
+      foreign.set(d.key, d.plugin)
+      out.warnings.push(`${d.plugin} is not in the old or new load order`)
+    }
+    return d.plugin
+  }
   let start
   const startPoint = () => (start === undefined ? (start = ctx.startPoint()) : start)
 
@@ -235,10 +251,36 @@ function classifyDoc(doc, ctx) {
   }
 
   if (doc.inv) applyPlan(planEntries(arr(doc.inv.entries), ctx, out, 'inv'), out, 'inv.entries')
-  if (doc.equipmentDump && doc.equipmentDump.inv) {
-    applyPlan(planEntries(arr(doc.equipmentDump.inv.entries), ctx, out, 'equipment'), out, 'equipmentDump.inv.entries')
+  const eq = doc.equipmentDump
+  if (isPlainObject(eq)) {
+    if (eq.inv) applyPlan(planEntries(arr(eq.inv.entries), ctx, out, 'equipment'), out, 'equipmentDump.inv.entries')
+    for (const slot of SPELL_SLOTS) {
+      if (!has(eq[slot]) || num(eq[slot]) === 0) continue
+      const m = mapId(eq[slot], ctx, out, `equipment ${slot}`)
+      if (m.kind === 'drop') {
+        out.set[`equipmentDump.${slot}`] = new Int32(0)
+        out.changes.push(`equipment: cleared ${slot} ${hex8(m.value)} (${m.plugin})`)
+      } else if (m.kind === 'remap') {
+        out.set[`equipmentDump.${slot}`] = typed(m.next)
+        out.changes.push(`equipment: remapped ${slot} ${hex8(m.value)} -> ${hex8(m.next)} (${m.plugin})`)
+      }
+    }
   }
   applyPlan(planIds(arr(doc.learnedSpells), ctx, out, 'learnedSpells'), out, 'learnedSpells')
+
+  // Texture set overrides are descriptors, so shifted plugins need no rewrite; dropped ones leave the object or unset it
+  const nodes = doc.setNodeTextureSet
+  if (isPlainObject(nodes)) {
+    const kept = {}
+    let dropped = 0
+    for (const node of Object.keys(nodes)) {
+      const p = removedIn(nodes[node])
+      if (p) { dropped++; out.changes.push(`setNodeTextureSet: dropped ${node} ${nodes[node]} (${p})`) }
+      else kept[node] = nodes[node]
+    }
+    if (dropped && Object.keys(kept).length) out.set.setNodeTextureSet = kept
+    else if (dropped) out.unset.setNodeTextureSet = ''
+  }
 
   const ap = doc.appearanceDump
   if (ap && typeof ap === 'object') {
@@ -277,29 +319,47 @@ function classifyDoc(doc, ctx) {
   scanDynamicFields(doc.dynamicFields, ctx.removed, 'dynamicFields', dyn)
   for (const hit of dyn) out.warnings.push(`${who}: ${hit} (left unchanged)`)
 
-  if (Object.keys(out.set).length || Object.keys(out.pull).length) out.action = 'update'
+  // "private.housing" is a literal dotted key, so a remap rewrites the whole dynamicFields object (other values keep their BSON types)
+  const housing = isPlainObject(doc.dynamicFields) ? doc.dynamicFields['private.housing'] : null
+  if (isPlainObject(housing)) {
+    let rewritten = null
+    for (const ref of HOUSING_REFS) {
+      if (!has(housing[ref]) || num(housing[ref]) === 0) continue
+      const m = mapId(housing[ref], ctx, out, `housing ${ref}`)
+      if (m.kind === 'drop') out.warnings.push(`${who}: housing ${ref} ${hex8(m.value)} belongs to removed plugin ${m.plugin} (left unchanged)`)
+      else if (m.kind === 'remap') {
+        rewritten = rewritten || { ...housing }
+        rewritten[ref] = typed(m.next)
+        out.changes.push(`housing: remapped ${ref} ${hex8(m.value)} -> ${hex8(m.next)} (${m.plugin})`)
+      }
+    }
+    if (rewritten) out.set.dynamicFields = { ...doc.dynamicFields, 'private.housing': rewritten }
+  }
+
+  if (Object.keys(out.set).length || Object.keys(out.unset).length || Object.keys(out.pull).length) out.action = 'update'
   return out
 }
 
 function updateOps(out) {
   const ops = {}
   if (Object.keys(out.set).length) ops.$set = out.set
+  if (Object.keys(out.unset).length) ops.$unset = out.unset
   if (Object.keys(out.pull).length) ops.$pull = out.pull
   return ops
 }
 
-// Descriptors of removed plugins anywhere outside dynamicFields
-function removedDescriptors(value, removed, keyPath, hits) {
+// Descriptors naming a plugin outside the new order anywhere outside dynamicFields (setNodeTextureSet included)
+function foreignDescriptors(value, newSlots, keyPath, hits) {
   if (typeof value === 'string') {
     const d = parseDesc(value)
-    if (d && removed.has(d.key)) hits.push(`${keyPath}=${value}`)
+    if (d && !newSlots.has(d.key)) hits.push(`${keyPath}=${value}`)
     return
   }
-  if (Array.isArray(value)) value.forEach((v, i) => removedDescriptors(v, removed, `${keyPath}[${i}]`, hits))
+  if (Array.isArray(value)) value.forEach((v, i) => foreignDescriptors(v, newSlots, `${keyPath}[${i}]`, hits))
   else if (value && typeof value === 'object' && !value._bsontype) {
     for (const k of Object.keys(value)) {
       if (keyPath === '' && k === 'dynamicFields') continue
-      removedDescriptors(value[k], removed, keyPath ? `${keyPath}.${k}` : k, hits)
+      foreignDescriptors(value[k], newSlots, keyPath ? `${keyPath}.${k}` : k, hits)
     }
   }
 }
@@ -325,7 +385,7 @@ async function purgeRemovedMods(opts) {
   const report = {
     removedPlugins: [], addedPlugins: [], shiftedPlugins: [], scanned: 0,
     deletes: [], updates: [], warnings: [], unresolvedIds: 0, dynamicIds: 0,
-    dryRun, nothingToDo: false, backupFile: null, verified: false,
+    dryRun, nothingToDo: false, backupFile: null, writesStarted: false, verified: false,
   }
   const fail = error => ({ ok: false, error, report })
   const warn = w => { report.warnings.push(w); log(`warning: ${w}`) }
@@ -374,7 +434,7 @@ async function purgeRemovedMods(opts) {
 
     let startPoint
     const ctx = {
-      removed, shifted, oldSlots, newSlots, unresolvedIds: 0, dynamicIds: 0,
+      removed, shifted, oldSlots, newSlots, foreign: new Map(), unresolvedIds: 0, dynamicIds: 0,
       startPoint: () => {
         if (startPoint === undefined) {
           startPoint = resolveStartPoint(opts.startPoints || settings.startPoints, newSlots)
@@ -443,6 +503,7 @@ async function purgeRemovedMods(opts) {
     log(`backed up ${deletes.length + updates.length} document(s) to ${backupFile}`)
     if (typeof opts.onWriteStart === 'function') await opts.onWriteStart({ backupFile })
 
+    report.writesStarted = true
     let updated = 0
     for (const u of updates) {
       const res = await col.updateOne({ _id: u.doc._id }, u.ops)
@@ -468,13 +529,13 @@ async function purgeRemovedMods(opts) {
       if (after.length !== updates.length) problems.push(`re-read ${after.length} of ${updates.length} updated document(s)`)
       for (const doc of after) {
         const hits = []
-        removedDescriptors(doc, removed, '', hits)
+        foreignDescriptors(doc, newSlots, '', hits)
         if (hits.length) problems.push(`${doc.formDesc}: ${hits.join(', ')}`)
       }
     }
     if (problems.length) throw new Error(`verification failed: ${problems.join(' | ')}`)
     report.verified = true
-    log(`verified: no descriptor of a removed plugin remains in the ${updates.length} updated document(s)`)
+    log(`verified: no descriptor outside the new load order remains in the ${updates.length} updated document(s)`)
     return { ok: true, report }
   } catch (err) {
     const error = sanitize(err, settings)

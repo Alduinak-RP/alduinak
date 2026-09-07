@@ -94,7 +94,19 @@ async function serviceName(svc) { return (await probeService(svc)).name }
 
 async function gameStatus() { return nssm('status', await serviceName(serviceByKey.game)) }
 
+// Until the purge ran, the database still holds ids encoded under the old load order
+function purgePending() {
+  let diff = null
+  try { diff = modsync.readDiff() } catch {}
+  if (!diff || !diff.syncedSettingsAt || !diff.purgeNeeded || diff.purgedAt) return null
+  return 'refused: a MongoDB purge is pending for the new load order, run Purge MongoDB (or Restore last purge) first'
+}
+
 async function act(svc, verb) {
+  if (svc.key === 'game' && verb === 'start') {
+    const pending = purgePending()
+    if (pending) return { ok: false, text: pending }
+  }
   const name = await serviceName(svc)
   // Archive logs while the service is stopped (nssm frees the file handle),
   // so a restart (stop then start) always begins a fresh log file.
@@ -555,8 +567,22 @@ function readJsonOrNull(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null }
 }
 
+// Lenient read for the players and log tabs: {} when the file is missing or invalid
 function readServerSettings() {
-  return readJsonOrNull(config.paths.serverSettings) || {}
+  try { return modsync.readSettingsFile(config.paths.serverSettings).settings } catch { return {} }
+}
+
+const LOCK_CODES = ['EBUSY', 'EPERM', 'EACCES']
+
+// Rename with retries: the backend may be streaming the target to a launcher at that moment
+async function replaceFile(from, to, attempts = 10) {
+  for (let i = 1; ; i++) {
+    try { fs.renameSync(from, to); return null }
+    catch (err) {
+      if (!LOCK_CODES.includes(err.code) || i >= attempts) return err
+      await new Promise(r => setTimeout(r, 500))
+    }
+  }
 }
 
 // Run fn against the mongo changeForms collection, closing the client either way.
@@ -907,13 +933,27 @@ function readEnvValues(file) {
   return values
 }
 
-// { settings, mtimeMs } of server-settings.json; a missing file reads as {} with mtimeMs null
+// { settings, mtimeMs } of server-settings.json; a missing file reads as {} with mtimeMs null, invalid JSON throws
 function readSettingsOrEmpty(file) {
   try { return modsync.readSettingsFile(file) }
   catch (err) {
     if (err.code === 'ENOENT') return { settings: {}, mtimeMs: null }
-    throw err instanceof SyntaxError ? new Error(`Invalid JSON: ${err.message}`) : err
+    if (err instanceof SyntaxError) throw new Error(`${path.basename(file)} is not valid JSON: ${err.message}`)
+    throw err.code ? new Error(`${path.basename(file)} cannot be read: ${err.message}`) : err
   }
+}
+
+// null when the file is missing, throws on invalid JSON
+function readSettingsOrNull() {
+  const { settings, mtimeMs } = readSettingsOrEmpty(config.paths.serverSettings)
+  return mtimeMs === null ? null : settings
+}
+
+// The Modlist sync and purge actions refuse to run without the live settings
+function requireSettings() {
+  const settings = readSettingsOrNull()
+  if (!settings) throw new Error(`server-settings.json not found at ${config.paths.serverSettings}`)
+  return settings
 }
 
 ipcMain.handle('settings:read', (_e, key) => {
@@ -1015,10 +1055,12 @@ ipcMain.handle('modlist:read', () => {
   return { ok: true, profileDir, mods, separators, plugins: pluginList }
 })
 
-// Compile the manifest into a .building file, rotate it into place on success, then diff it against the last deployed one (.prev).
+// Compile the manifest into a .building file and diff it against the last deployed one; only a successful diff rotates it into place
 async function updateManifest() {
   const b = builder('modlist:log')
   const previousDiff = modsync.readDiff()
+  const settings = readSettingsOrNull()
+  if (!settings) b.line('[manifest] WARNING: server-settings.json not found, the load order the database was written under is recorded as empty')
   const dep = await b.ensureDeps(config.paths.backend, 'backend', 'npm')   // compile-manifest needs 7zip-bin
   if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
   const live = modsync.paths.manifest
@@ -1027,26 +1069,28 @@ async function updateManifest() {
   if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
   // shell=false: config-derived paths with spaces or shell metacharacters cannot split args
   const r = await b.run('node', args, config.paths.backend, 'compile-manifest', null, false)
-  let next = null
-  try { if (r.ok) next = modsync.readManifestLight(building) }
-  catch (err) { b.line(`[manifest] ${err.message}`) }
-  if (!next) {
+  const rotate = modsync.shouldRotatePrev(previousDiff)
+  let prev, diff
+  try {
+    if (!r.ok) throw new Error('compile-manifest failed')
+    const next = modsync.readManifestLight(building)
+    if (!next) throw new Error('compile-manifest wrote no usable manifest')
+    prev = modsync.readManifestLight(rotate ? live : modsync.paths.prevManifest)
+    diff = modsync.computeDiff({ prev, next, settings: settings || {}, previousDiff })
+  } catch (err) {
     fs.rmSync(building, { force: true })
-    b.line(`[manifest] compile failed, ${path.basename(live)} is untouched`)
-    return { ok: false, error: r.ok ? 'compile-manifest wrote no usable manifest' : 'compile-manifest failed' }
+    b.line(`[manifest] ${err.message}; ${path.basename(live)} and the previous diff are untouched`)
+    return { ok: false, error: err.message }
   }
-  if (modsync.shouldRotatePrev(previousDiff) && fs.existsSync(live)) {
+  if (rotate && prev) {
     fs.copyFileSync(live, modsync.paths.prevManifest)
     b.line(`[manifest] deployed manifest snapshotted to ${path.basename(modsync.paths.prevManifest)}`)
   }
-  try { fs.renameSync(building, live) }
-  catch (err) {
-    fs.rmSync(building, { force: true })
-    return { ok: false, error: `could not replace ${path.basename(live)}: ${err.message}` }
+  const renameErr = await replaceFile(building, live)
+  if (renameErr) {
+    return { ok: false, error: `could not replace ${path.basename(live)}: ${renameErr.message}; the compiled manifest is waiting in ${path.basename(building)} and the next Build manifest overwrites it` }
   }
-  const prev = modsync.readManifestLight(modsync.paths.prevManifest)
-  const settings = readServerSettings()
-  const diff = modsync.writeDiff(modsync.computeDiff({ prev, next, settings, previousDiff }))
+  modsync.writeDiff(diff)
   const { mods, plugins, files } = diff
   b.line(`[manifest] diff vs ${prev ? prev.builtAt : 'nothing'}: mods +${mods.added.length} -${mods.removed.length} ~${mods.changed.length}, ` +
     `plugins +${plugins.added.length} -${plugins.removed.length}${plugins.reordered ? ' (reordered)' : ''}, ` +
@@ -1080,6 +1124,7 @@ ipcMain.handle('modlist:syncSettings', () => exclusive(async () => {
   const b = builder('modlist:log')
   const manifest = readManifestOrFail()
   if (!modsync.readDiff()) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
+  requireSettings()
   const r = modsync.syncSettings({ manifest, settingsPath: config.paths.serverSettings, log: t => b.line(t), dryRun: false })
   if (r.ok) stampDiff({ syncedSettingsAt: new Date().toISOString() }, t => b.line(t))
   return r
@@ -1091,7 +1136,7 @@ ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
   const manifest = readManifestOrFail()
   const prev = modsync.readManifestLight(modsync.paths.prevManifest)
   const stamp = readJsonOrNull(modsync.paths.stamp)
-  const settings = readServerSettings()
+  const settings = requireSettings()
   if (!settings.dataDir) return { ok: false, error: 'server-settings.json has no dataDir' }
   // Plugins are read at boot, so a running server keeps the old set until restarted
   if (await gameStatus() === 'SERVICE_RUNNING') {
@@ -1103,11 +1148,19 @@ ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
   return r
 }))
 
+// nssm reports stopped for a server started by hand, but its process still holds the native module open
+function nativeModuleLocked() {
+  const file = path.join(config.paths.serverDir, 'scam_native.node')
+  if (!fs.existsSync(file)) return null
+  try { fs.closeSync(fs.openSync(file, 'r+')); return null }
+  catch (err) { return LOCK_CODES.includes(err.code) ? 'a game server process still holds scam_native.node (started outside nssm?), stop it first' : null }
+}
+
 // A running game server re-upserts every loaded form, so database writes need it stopped; a dry run only warns
 async function requireGameStopped(log, dryRun) {
   const status = await gameStatus()
-  if (status === 'SERVICE_STOPPED') return null
-  const error = `the game server is ${status || 'in an unknown state'}, stop it first`
+  const error = status === 'SERVICE_STOPPED' ? nativeModuleLocked() : `the game server is ${status || 'in an unknown state'}, stop it first`
+  if (!error) return null
   if (dryRun) { log(`WARNING: ${error} (a dry run needs no stop)`); return null }
   return { ok: false, error }
 }
@@ -1119,7 +1172,7 @@ ipcMain.handle('modlist:purge', (_e, opts) => exclusive(async () => {
   const manifest = readManifestOrFail()
   const diff = modsync.readDiff()
   if (!diff) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
-  const settings = readServerSettings()
+  const settings = requireSettings()
   const blocked = await requireGameStopped(log, dryRun)
   if (blocked) return blocked
   const r = await mongoPurge.purgeRemovedMods({
@@ -1141,9 +1194,10 @@ ipcMain.handle('modlist:purgeRestore', () => exclusive(async () => {
   const log = t => b.line(`[restore] ${t}`)
   const diff = modsync.readDiff()
   if (!diff || !diff.purgeBackup) return { ok: false, error: 'no purge backup recorded in manifest-diff.json' }
+  const settings = requireSettings()
   const blocked = await requireGameStopped(log, false)
   if (blocked) return blocked
-  const r = await mongoPurge.restorePurge({ settings: readServerSettings(), backupFile: diff.purgeBackup, log })
+  const r = await mongoPurge.restorePurge({ settings, backupFile: diff.purgeBackup, log })
   if (r.ok) stampDiff({ purgeStartedAt: null, purgeBackup: null, purgedAt: null }, log)
   return r
 }))

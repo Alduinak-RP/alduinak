@@ -34,11 +34,12 @@ const yieldLoop = () => new Promise(r => setImmediate(r))
 
 function basename(p) { return String(p).split(/[\\/]/).pop() }
 
-// Windows caps paths at MAX_PATH unless prefixed with \\?\ (hair meshes exceed it)
+// Windows caps paths at MAX_PATH unless prefixed with \\?\ (hair meshes exceed it); UNC paths take \\?\UNC\server\share
 function longPath(p) {
-  if (process.platform !== 'win32') return p
-  const abs = path.resolve(p)
-  return abs.startsWith('\\\\?\\') ? abs : '\\\\?\\' + abs
+  const s = String(p)
+  if (process.platform !== 'win32' || s.startsWith('\\\\?\\') || !path.isAbsolute(s)) return s
+  const abs = path.resolve(s)
+  return abs.startsWith('\\\\') ? '\\\\?\\UNC\\' + abs.slice(2) : '\\\\?\\' + abs
 }
 
 function sha256File(p) {
@@ -317,15 +318,19 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
 
   const newOrder = uniqueNames([...VANILLA_PLUGINS, ...nextEnabled])
   const newSet = new Set(newOrder.map(lower))
-  const names = uniqueNames([...settingsLoadOrder, ...newOrder, ...prevEnabled])
+  // Names may differ only by case between the settings, the manifests and the previous diff; the manifest spelling is reported
+  const names = uniqueNames([...newOrder, ...settingsLoadOrder, ...prevEnabled])
+  const spelling = new Map(names.map(n => [lower(n), n]))
+  const spell = n => spelling.get(lower(n)) || n
   const pluginFlags = readPluginFlags(names, { dataDir, mo2Root, manifests: [next, prev].filter(Boolean), previous: previousDiff, carry })
-  const surviving = settingsLoadOrder.filter(n => newSet.has(lower(n)))
+  const flagOf = n => pluginFlags[spell(n)] || {}
+  const surviving = settingsLoadOrder.filter(n => newSet.has(lower(n))).map(spell)
   const removedFromOrder = settingsLoadOrder.filter(n => !newSet.has(lower(n)))
-  const flagChanges = surviving.filter(n => typeof pluginFlags[n].light === 'boolean' && typeof pluginFlags[n].lightNext === 'boolean' && pluginFlags[n].light !== pluginFlags[n].lightNext)
+  const flagChanges = surviving.filter(n => typeof flagOf(n).light === 'boolean' && typeof flagOf(n).lightNext === 'boolean' && flagOf(n).light !== flagOf(n).lightNext)
   const unknown = uniqueNames([
-    ...settingsLoadOrder.filter(n => typeof pluginFlags[n].light !== 'boolean'),
-    ...newOrder.filter(n => typeof pluginFlags[n].lightNext !== 'boolean'),
-  ])
+    ...settingsLoadOrder.filter(n => typeof flagOf(n).light !== 'boolean'),
+    ...newOrder.filter(n => typeof flagOf(n).lightNext !== 'boolean'),
+  ].map(spell))
   let shiftedPlugins = []
   if (unknown.length) warnings.push(`light flag unknown for ${unknown.join(', ')}: the MongoDB purge will refuse until the plugin file can be read`)
   else {
@@ -475,7 +480,13 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
   const expectedNext = resolveExpected(manifest)
   const deployedBefore = new Map()
   if (prev) for (const [key, f] of resolveExpected(prev)) deployedBefore.set(key, f)
-  for (const f of (stamp && Array.isArray(stamp.files) ? stamp.files : [])) {
+  // A stamp written for another Data folder describes files this one never received
+  let stampFiles = stamp && Array.isArray(stamp.files) ? stamp.files : []
+  if (stamp && stamp.dataDir && fileKey(path.resolve(String(stamp.dataDir))) !== fileKey(dataRoot)) {
+    line(`[data] ${basename(paths.stamp)} was written for ${stamp.dataDir}, not ${dataRoot}: ignored`)
+    stampFiles = []
+  }
+  for (const f of stampFiles) {
     if (f && f.to) deployedBefore.set(fileKey(f.to), { to: f.to, mod: f.mod, sha256: lower(f.sha256 || ''), size: f.size })
   }
   line(`[data] manifest ${manifest.builtAt || '?'}: ${expectedNext.size} files expected, ${deployedBefore.size} known from the last deploy`)
@@ -567,7 +578,7 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
     if (!rel || VANILLA_SET.has(lower(rel)) || RESERVED.has(lower(rel)) || !statFile(path.join(dataRoot, rel))) continue
     files.push({ to: rec.to, sha256: rec.sha256, size: rec.size, mod: rec.mod })
   }
-  const newStamp = { syncedAt: new Date().toISOString(), manifestBuiltAt: manifest.builtAt || null, files }
+  const newStamp = { syncedAt: new Date().toISOString(), manifestBuiltAt: manifest.builtAt || null, dataDir: dataRoot, files }
   writeJsonAtomic(paths.stamp, newStamp)
 
   line(`[data] done: ${applied.copied} copied, ${applied.deleted} deleted, ${plan.upToDate} already up to date, ${applied.errors.length} error(s), ${plan.missingSources.length} missing source(s)`)

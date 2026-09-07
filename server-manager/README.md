@@ -140,8 +140,9 @@ Each Build button then does the JS/packaging work:
 **Missing prerequisites are installed automatically.** On Windows each build
 button checks for **Node.js** and **Git** and installs anything missing with
 `winget` (the manager runs elevated), refreshing PATH from the registry so the
-new tools work without restarting the manager. That's the whole toolchain now,
-no CMake, MSVC, vcpkg, or yarn, since nothing is compiled locally. Set
+new tools work without restarting the manager. That's the whole toolchain for
+the JS builds; only the **Run CMake first** boxes and the console `build native`
+compile the C++ locally, with VS 2022 (CMake, MSVC, vcpkg and yarn). Set
 `ALDUINAK_NO_AUTO_INSTALL=1` to opt out (you'll get a manual-install hint with links
 instead). If `winget` itself isn't available, the build stops with links to
 install the tools by hand.

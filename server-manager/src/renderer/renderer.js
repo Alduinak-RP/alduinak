@@ -763,7 +763,7 @@ async function runPurge(dryRun) {
     const rep = r.report || {}
     if (!r.ok) {
       appendLog(log, `\n✗ ${r.error}\n`)
-      if (!dryRun && rep.backupFile) appendLog(log, `The purge did not finish. Restore last purge (game server stopped) puts ${rep.backupFile} back.\n`)
+      if (!dryRun && rep.writesStarted) appendLog(log, `The purge did not finish. Restore last purge (game server stopped) puts ${rep.backupFile} back.\n`)
       return false
     }
     const summary = `${count(rep.deletes)} delete(s), ${count(rep.updates)} update(s), ${count(rep.warnings)} warning(s)`
