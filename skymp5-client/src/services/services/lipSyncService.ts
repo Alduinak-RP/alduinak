@@ -4,9 +4,7 @@ import { RemoteServer } from "./remoteServer";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { logError, logTrace } from "../../logging";
 
-// Voice chat lip sync. VoiceManager (skymp5-front) reports who LiveKit hears speaking, own voice included, as
-// 'voice::speaking' <json array of {id: actor id hex, level: 0..1}> every 150 ms while anyone talks and once as
-// [] when it goes quiet; mouths also expire on their own when the reports stop (room drop, page reload).
+// Drives Actor.setExpressionPhoneme from the front's voice::speaking reports, contract in docs/alduinak_voice_chat.md
 
 const TICK_MS = 90;
 const REPORT_TTL_MS = 600;
@@ -115,6 +113,7 @@ export class LipSyncService extends ClientListener {
       this.mouths.delete(remoteId);
       return;
     }
+    if (mouth.phoneme >= 0) actor.setExpressionPhoneme(mouth.phoneme, 0);
     // A clone can respawn under a new local id while still speaking
     const localId = this.localIdFor(remoteId);
     if (localId && localId !== mouth.localId) {
@@ -122,7 +121,6 @@ export class LipSyncService extends ClientListener {
       mouth.phoneme = -1;
       return;
     }
-    if (mouth.phoneme >= 0) actor.setExpressionPhoneme(mouth.phoneme, 0);
     // Own mouth is invisible in first person
     if (mouth.localId === PLAYER_FORM_ID && this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA) {
       mouth.phoneme = -1;

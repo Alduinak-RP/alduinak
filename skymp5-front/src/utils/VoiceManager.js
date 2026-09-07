@@ -164,8 +164,7 @@ class VoiceManager {
     this.emitSpeaking();
   }
 
-  // Lip sync feed: own voice always, remote voices while in range, each with its audio level.
-  // Non-empty lists repeat every tick (the game expires mouths when they stop), the empty one goes out once.
+  // Lip sync feed: own voice always, remote voices while in range; repeats while non-empty, the empty list goes out once
   emitSpeaking() {
     let list = [];
     if (this.room) {
