@@ -122,16 +122,8 @@ export class FormView {
         this.destroy();
         this.refrId = model.refrId as number;
         this.ready = true;
+        // dealWithRef waits in applyAll until the ref exists (spawn, teleport: cells attach after the server streams them)
         this.dealtWithRef = false;
-      }
-      // Temporary refs of a cell the game has not attached yet resolve to null (spawn, teleport), so keep trying until the ref exists
-      if (!this.dealtWithRef) {
-        const refr = ObjectReference.from(Game.getFormEx(this.refrId));
-        const base = refr?.getBaseObject();
-        if (refr && base) {
-          ObjectReferenceEx.dealWithRef(refr, base);
-          this.dealtWithRef = true;
-        }
       }
     } else {
       let templateChain = model.templateChain;
@@ -356,6 +348,13 @@ export class FormView {
       this.lastHarvestedApply = now;
       ModelApplyUtils.applyModelIsHarvested(refr, !!model.isHarvested);
     }
+    if (!this.dealtWithRef) {
+      const base = refr.getBaseObject();
+      if (base) {
+        ObjectReferenceEx.dealWithRef(refr, base);
+        this.dealtWithRef = true;
+      }
+    }
     if (now - this.lastOpenApply > 133) {
       this.lastOpenApply = now;
       ModelApplyUtils.applyModelIsOpen(refr, !!model.isOpen);
@@ -363,7 +362,7 @@ export class FormView {
       if (!refr.isActivationBlocked()) {
         const base = refr.getBaseObject();
         if (base && ObjectReferenceEx.wantsActivationBlock(base)) {
-          ObjectReferenceEx.dealWithRef(refr, base);
+          refr.blockActivation(true);
         }
       }
     }
