@@ -32,8 +32,8 @@ fails it prints a direct download URL - save that zip as
     shows the real run output regardless of where the install script put the logs.
   - The command box first checks for **manager commands** and runs them locally:
     `help`, `status`, `start|stop|restart <nginx|backend|livekit|game|all>`, and
-    `build <server|launcher|client>` (build output streams into the
-    console log; one build at a time).
+    `build <server|launcher|client|native|gamemode>` (build output streams into
+    the console log; one build or sync at a time).
   - Anything else goes to the game server over the backend WS relay (admin
     `console` role) and the gamemode's command output streams back into the
     console. See **Wiring the console** below.
@@ -49,38 +49,54 @@ fails it prints a direct download URL - save that zip as
   these buttons bundle TypeScript, build the Electron launcher, and zip the
   CI-produced client files for the launcher to serve.
 - **Modlist** - read the reference MO2 profile and **Build manifest** (runs
-  `compile-manifest.js`). Before compiling, the manager snapshots the last
-  *deployed* manifest as `install-manifest.json.prev` and afterwards shows a
-  **diff panel**: mods added / removed / changed, plugins added / removed (and
-  whether the order changed), files added / removed / changed, each card with an
-  expandable list. The diff is stored in `skymp5-backend/data/manifest-diff.json`
-  and reloaded on startup; the status line shows the manifest and deployed build
-  times. A failed compile restores the snapshot (compile-manifest leaves a
-  truncated file behind).
+  `compile-manifest.js`). The compile writes `install-manifest.json.building`
+  and leaves the live manifest untouched; once it succeeds the last *deployed*
+  manifest is kept as `install-manifest.json.prev` and the new file is renamed
+  into place (a failed compile only deletes the `.building` file). The backend
+  streams the manifest per request, so it needs no restart. Afterwards the
+  **diff panel** shows: mods added / removed / changed, plugins added / removed
+  (and whether the order changed), plugins whose form-id slot **shifted** and
+  light-flag changes (both need the MongoDB purge), files added / removed /
+  changed, warnings (red card), a **MongoDB purge needed** card and the applied
+  stamps (settings synced / data synced / purged, with times). The diff is
+  stored in `skymp5-backend/data/manifest-diff.json` and reloaded on startup;
+  it also records the `loadOrder` the database was last written under, which
+  the purge re-encodes ids from, and keeps carrying it until that purge ran.
+  Modlist output goes to the tab's own log.
   - **Sync server settings** rewrites `loadOrder` in `server-settings.json` to
     the five vanilla masters followed by the manifest's enabled plugins (each as
-    `<dataDir>/<plugin>`). It refuses when the file is invalid JSON or the
-    manifest has no enabled plugins, keeps the previous file as
-    `server-settings.json.prev` (preserved by the Game Server build's prune
-    step), never touches `archives`, and warns about plugins not yet in the Data
-    folder. The game server reads the order at boot, so restart it afterwards.
+    `<dataDir>/<plugin>`). It refuses when no manifest diff exists yet (build
+    the manifest first so the current load order is recorded for the purge),
+    when the file is invalid JSON or the manifest has no enabled plugins; it
+    keeps the previous file as `server-settings.json.prev` (preserved by the
+    Game Server build's prune step), never touches `archives`, and warns about
+    plugins not yet in the Data folder or enabled but provided by no mod. The
+    Settings tab reloads afterwards. The game server reads the order at boot.
   - **Sync data folder** mirrors the manifest into the game `Data` folder
     (`dataDir` from `server-settings.json`) from the MO2 mod folders. The first
     click is a **dry run** that prints the plan (every delete, every missing
-    source, the first 100 copies); a second click within 15 s applies it.
+    source, the first 100 copies) and arms the button; it stays armed until the
+    second click applies the plan or any other Modlist action disarms it.
     Only files the previous deployed manifest or the last sync stamp
     (`data-sync.json`) put there are deleted, and only when unmodified (plugins
     and archives are removed even if modified); vanilla masters, `manifest.json`
     and anything else in `Data` are never touched. Copies go through a temp
     file and are sha256-verified. Empty folders left behind are removed.
+  - **Purge MongoDB** (game server stopped) removes the world changeForms that
+    reference plugins dropped from the load order and re-encodes the numeric
+    ids of plugins whose slot shifted; same two-click flow (dry run, then
+    apply), with an EJSON backup next to `server-settings.json` first.
   - **Deploy flow:** Build manifest -> Sync server settings -> Sync data folder
-    -> Purge MongoDB (coming) -> restart the game server (and the backend so it
-    serves the new manifest). Players then re-run the launcher to pick up the
-    changes.
+    -> Purge MongoDB (game server stopped) -> start the game server. Players
+    then re-run the launcher to pick up the changes; the backend needs no
+    restart.
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
   masked secrets) for both `server-settings.json` and the backend `.env`, instead
   of raw text. Unknown `server-settings.json` keys round-trip through an
-  *Other (raw JSON)* box so nothing is silently dropped.
+  *Other (raw JSON)* box so nothing is silently dropped. Saving
+  `server-settings.json` keeps the previous file as `server-settings.json.prev`
+  and refuses when the file changed on disk since the tab was loaded (a Sync
+  server settings run, a hand edit): reload the tab first.
 
 ### Builds (packaging - native code comes from CI)
 

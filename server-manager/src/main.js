@@ -393,7 +393,8 @@ ipcMain.handle('console:command', async (_e, text) => {
   return consoleRelay.command(cmd)
 })
 
-function builder() { return new Builder(t => send('build:log', t)) }
+// Builds stream to build:log, the Modlist tab's operations to modlist:log
+function builder(channel = 'build:log') { return new Builder(t => send(channel, t)) }
 
 // One build or sync at a time: console commands, the Build tab and the Modlist tab share this gate.
 let busy = false
@@ -903,17 +904,25 @@ function readEnvValues(file) {
   return values
 }
 
+// { settings, mtimeMs } of server-settings.json; a missing file reads as {} with mtimeMs null
+function readSettingsOrEmpty(file) {
+  try { return modsync.readSettingsFile(file) }
+  catch (err) {
+    if (err.code === 'ENOENT') return { settings: {}, mtimeMs: null }
+    throw err instanceof SyntaxError ? new Error(`Invalid JSON: ${err.message}`) : err
+  }
+}
+
 ipcMain.handle('settings:read', (_e, key) => {
   if (key === 'serverSettings') {
     const file = config.paths.serverSettings
-    let values = {}
-    try { values = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (err) {
-      if (fs.existsSync(file)) return { ok: false, path: file, error: `Invalid JSON: ${err.message}` }
-    }
+    let values, mtimeMs
+    try { ({ settings: values, mtimeMs } = readSettingsOrEmpty(file)) }
+    catch (err) { return { ok: false, path: file, error: err.message } }
     const known = new Set(schema.serverSettings.map(f => f.key))
     const extra = {}
     for (const k of Object.keys(values)) if (!known.has(k)) extra[k] = values[k]
-    return { ok: true, path: file, values, extra }
+    return { ok: true, path: file, values, extra, mtimeMs }
   }
   if (key === 'backendEnv') {
     const file = config.paths.backendEnv
@@ -924,16 +933,16 @@ ipcMain.handle('settings:read', (_e, key) => {
   return { ok: false, error: 'unknown config' }
 })
 
-ipcMain.handle('settings:write', (_e, key, values, extraRaw) => {
+// mtimeMs is the value settings:read returned; a file edited since then (Sync server settings, a hand edit) is never overwritten
+ipcMain.handle('settings:write', (_e, key, values, extraRaw, mtimeMs) => {
   try {
     if (key === 'serverSettings') {
       const file = config.paths.serverSettings
-      let current = {}
-      if (fs.existsSync(file)) {
-        // A corrupt file must block the save, or this write replaces the live config with {}.
-        try { current = JSON.parse(fs.readFileSync(file, 'utf8')) }
-        catch (err) { throw new Error(`refusing to save: ${path.basename(file)} is invalid JSON (${err.message}) - fix the file first`) }
-      }
+      // A corrupt file must block the save, or this write replaces the live config with {}.
+      let current, now
+      try { ({ settings: current, mtimeMs: now } = readSettingsOrEmpty(file)) }
+      catch (err) { throw new Error(`refusing to save: ${path.basename(file)} is unreadable (${err.message}) - fix the file first`) }
+      if (now !== (mtimeMs ?? null)) throw new Error('server-settings.json changed on disk, reload the Settings tab first')
       for (const field of schema.serverSettings) {
         const v = values[field.key]
         if (v === undefined) continue
@@ -956,9 +965,8 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw) => {
         for (const k of Object.keys(current)) if (!known.has(k)) delete current[k] // replace the bucket wholesale
         Object.assign(current, extra)
       }
-      fs.mkdirSync(path.dirname(file), { recursive: true })
-      fs.writeFileSync(file, JSON.stringify(current, null, 2) + '\n')
-      return { ok: true, path: file }
+      modsync.writeSettingsFile(file, current)
+      return { ok: true, path: file, mtimeMs: fs.statSync(file).mtimeMs }
     }
     if (key === 'backendEnv') {
       const file = config.paths.backendEnv
@@ -1004,41 +1012,49 @@ ipcMain.handle('modlist:read', () => {
   return { ok: true, profileDir, mods, separators, plugins: pluginList }
 })
 
-// Compile the manifest, then diff it against the last deployed one (.prev).
+// Compile the manifest into a .building file, rotate it into place on success, then diff it against the last deployed one (.prev).
 async function updateManifest() {
-  const b = builder()
+  const b = builder('modlist:log')
   const previousDiff = modsync.readDiff()
   const dep = await b.ensureDeps(config.paths.backend, 'backend', 'npm')   // compile-manifest needs 7zip-bin
   if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
-  const snapshot = modsync.shouldRotatePrev(previousDiff) && fs.existsSync(modsync.paths.manifest)
-  if (snapshot) {
-    fs.copyFileSync(modsync.paths.manifest, modsync.paths.prevManifest)
-    b.line(`[manifest] current manifest snapshotted to ${path.basename(modsync.paths.prevManifest)}`)
-  }
-  const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile]
+  const live = modsync.paths.manifest
+  const building = live + '.building'
+  const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile, '--out', building]
   if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
-  // Spawn node.exe directly (shell=false): no cmd.exe means config-derived paths
-  // with spaces or shell metacharacters cannot split args or be interpreted.
+  // shell=false: config-derived paths with spaces or shell metacharacters cannot split args
   const r = await b.run('node', args, config.paths.backend, 'compile-manifest', null, false)
-  if (!r.ok) {
-    // A failed compile leaves a truncated manifest behind
-    if (snapshot) {
-      fs.copyFileSync(modsync.paths.prevManifest, modsync.paths.manifest)
-      b.line('[manifest] compile failed, previous manifest restored')
-    } else {
-      b.line('[manifest] WARNING: compile failed and install-manifest.json may be truncated, rebuild before restarting the backend')
-    }
-    return { ok: false, error: 'compile-manifest failed' }
+  let next = null
+  try { if (r.ok) next = modsync.readManifestLight(building) }
+  catch (err) { b.line(`[manifest] ${err.message}`) }
+  if (!next) {
+    fs.rmSync(building, { force: true })
+    b.line(`[manifest] compile failed, ${path.basename(live)} is untouched`)
+    return { ok: false, error: r.ok ? 'compile-manifest wrote no usable manifest' : 'compile-manifest failed' }
+  }
+  if (modsync.shouldRotatePrev(previousDiff) && fs.existsSync(live)) {
+    fs.copyFileSync(live, modsync.paths.prevManifest)
+    b.line(`[manifest] deployed manifest snapshotted to ${path.basename(modsync.paths.prevManifest)}`)
+  }
+  try { fs.renameSync(building, live) }
+  catch (err) {
+    fs.rmSync(building, { force: true })
+    return { ok: false, error: `could not replace ${path.basename(live)}: ${err.message}` }
   }
   const prev = modsync.readManifestLight(modsync.paths.prevManifest)
-  const next = modsync.readManifestLight(modsync.paths.manifest)
-  if (!next) return { ok: false, error: 'compile-manifest wrote no install-manifest.json' }
   const settings = readServerSettings()
   const diff = modsync.writeDiff(modsync.computeDiff({ prev, next, settings, previousDiff }))
   const { mods, plugins, files } = diff
   b.line(`[manifest] diff vs ${prev ? prev.builtAt : 'nothing'}: mods +${mods.added.length} -${mods.removed.length} ~${mods.changed.length}, ` +
     `plugins +${plugins.added.length} -${plugins.removed.length}${plugins.reordered ? ' (reordered)' : ''}, ` +
     `files +${files.added} -${files.removed} ~${files.changed}`)
+  const shifted = Array.isArray(diff.shiftedPlugins) ? diff.shiftedPlugins : []
+  const flagChanges = Array.isArray(diff.flagChanges) ? diff.flagChanges : []
+  if (diff.purgeNeeded) {
+    b.line(`[manifest] MongoDB purge needed before the game server starts: ${plugins.removed.length} removed, ${shifted.length} shifted, ${flagChanges.length} light flag change(s)`)
+    for (const s of shifted) b.line(`[manifest] shift ${s.name}: ${s.from} -> ${s.to}`)
+  }
+  for (const w of (Array.isArray(diff.warnings) ? diff.warnings : [])) b.line(`[manifest] WARNING: ${w}`)
   return { ok: true, diff }
 }
 
@@ -1058,8 +1074,9 @@ function stampDiff(patch, log) {
 }
 
 ipcMain.handle('modlist:syncSettings', () => exclusive(async () => {
-  const b = builder()
+  const b = builder('modlist:log')
   const manifest = readManifestOrFail()
+  if (!modsync.readDiff()) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
   const r = modsync.syncSettings({ manifest, settingsPath: config.paths.serverSettings, log: t => b.line(t), dryRun: false })
   if (r.ok) stampDiff({ syncedSettingsAt: new Date().toISOString() }, t => b.line(t))
   return r
@@ -1067,7 +1084,7 @@ ipcMain.handle('modlist:syncSettings', () => exclusive(async () => {
 
 ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
   const dryRun = Boolean(opts && opts.dryRun)
-  const b = builder()
+  const b = builder('modlist:log')
   const manifest = readManifestOrFail()
   const prev = modsync.readManifestLight(modsync.paths.prevManifest)
   const stamp = readJsonOrNull(modsync.paths.stamp)

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('mgr', {
   onLog:           (cb)           => ipcRenderer.on('log:data', (_e, d) => cb(d)),
   onConsoleRelay:  (cb)           => ipcRenderer.on('console:relay', (_e, d) => cb(d)),
   onBuildLog:      (cb)           => ipcRenderer.on('build:log', (_e, t) => cb(t)),
+  onModlistLog:    (cb)           => ipcRenderer.on('modlist:log', (_e, t) => cb(t)),
 
   // Build tab
   buildServer:        (o)  => ipcRenderer.invoke('build:server', o),
@@ -39,7 +40,7 @@ contextBridge.exposeInMainWorld('mgr', {
   // Settings tab
   settingsSchema: ()                   => ipcRenderer.invoke('settings:schema'),
   settingsRead:   (key)                => ipcRenderer.invoke('settings:read', key),
-  settingsWrite:  (key, values, extra) => ipcRenderer.invoke('settings:write', key, values, extra),
+  settingsWrite:  (key, values, extra, mtimeMs) => ipcRenderer.invoke('settings:write', key, values, extra, mtimeMs),
 
   // Modlist tab
   modlistRead:           () => ipcRenderer.invoke('modlist:read'),

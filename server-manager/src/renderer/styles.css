@@ -149,8 +149,14 @@ ul.mini { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: #c8bca6; 
 .card.added .n, .card.added li { color: #bfe08b; }
 .card.removed .n, .card.removed li { color: #e08b8b; }
 .card li.more { color: #8a7c66; list-style: none; }
+.card.warn { border-color: #7a3a3a; }
+.card.warn .n, .card.warn li { color: #e08b8b; }
 #modlist .cards { flex-shrink: 0; max-height: 40vh; overflow-y: auto; }
 #modlist-log { min-height: 160px; }
+.stamps { flex-shrink: 0; font-size: 12px; color: #a99a82; margin-bottom: 10px; }
+.stamps div { line-height: 1.6; }
+.stamps .ok { color: #bfe08b; }
+.stamps .bad { color: #e08b8b; }
 
 .subtabs { display: flex; gap: 4px; margin-bottom: 12px; }
 .subtab { background: #1d1813; border: 1px solid #322a20; color: #a99a82; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }

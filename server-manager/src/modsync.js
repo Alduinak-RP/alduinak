@@ -1,13 +1,12 @@
 'use strict'
 
-// Keeps the live game server in step with the compiled MO2 manifest: diffs
-// manifest builds, rewrites the server-settings loadOrder and mirrors the
-// reference MO2 mod folders into the game Data folder.
+// Keeps the live game server in step with the compiled MO2 manifest: diffs builds, rewrites the settings loadOrder, mirrors MO2 mods into Data
 
 const fs     = require('fs')
 const path   = require('path')
 const crypto = require('crypto')
 const config = require('./config')
+const formIds = require('./formIds')
 
 const VANILLA_PLUGINS = ['Skyrim.esm', 'Update.esm', 'Dawnguard.esm', 'HearthFires.esm', 'Dragonborn.esm']
 const VANILLA_SET = new Set(VANILLA_PLUGINS.map(n => n.toLowerCase()))
@@ -79,6 +78,22 @@ function writeJsonAtomic(file, obj) {
   const tmp = file + '.tmp'
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n')
   fs.renameSync(tmp, file)
+}
+
+// server-settings.json is BOM-free 2-space JSON; the previous copy is kept as .prev
+function writeSettingsFile(settingsPath, obj) {
+  const prevCopy = settingsPath + '.prev'
+  const existed = Boolean(statFile(settingsPath))
+  if (existed) fs.copyFileSync(settingsPath, prevCopy)
+  writeJsonAtomic(settingsPath, obj)
+  return { prevCopy: existed ? prevCopy : null }
+}
+
+function readSettingsFile(settingsPath) {
+  const st = fs.statSync(settingsPath)
+  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8').replace(/^\uFEFF/, ''))
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('server-settings.json is not a JSON object')
+  return { settings, mtimeMs: st.mtimeMs }
 }
 
 // A manifest 'to' is only ever written below Data: no drive, no root, no '..'
@@ -166,6 +181,11 @@ function resolveExpected(manifest) {
   return out
 }
 
+// Enabled in plugins.txt while no mod in the manifest provides the file (a stale MO2 profile)
+function unprovidedPlugins(manifest, expected = resolveExpected(manifest)) {
+  return enabledPlugins(manifest).filter(n => !expected.has(fileKey(n)))
+}
+
 // ── Plugin flags ─────────────────────────────────────────────────────────────
 
 // TES4 record header: bytes 0-3 magic, bytes 8-11 flags (uint32 LE); null when not a plugin
@@ -181,7 +201,8 @@ function readTes4Flags(file) {
   finally { if (fd !== undefined) fs.closeSync(fd) }
 }
 
-function readPluginFlags(names, { dataDir, mo2Root, manifests = [], previous = null } = {}) {
+// light is the deployed copy (Data, else the previous diff, else MO2); lightNext is what manifests[0] will deploy (its MO2 winner, else Data, else light)
+function readPluginFlags(names, { dataDir, mo2Root, manifests = [], previous = null, carry = false } = {}) {
   const modsDir = mo2Root ? path.join(mo2Root, 'mods') : null
   const expected = manifests.filter(Boolean).map(resolveExpected)
   const prevFlags = (previous && previous.pluginFlags) || {}
@@ -198,28 +219,29 @@ function readPluginFlags(names, { dataDir, mo2Root, manifests = [], previous = n
     const flags = readTes4Flags(file)
     return flags === null ? null : { light: (flags & TES4_LIGHT_FLAG) !== 0, from }
   }
+  const fromData = name => (dataDir ? probe(path.join(dataDir, name), 'data') : null)
+  const fromPrevious = name => {
+    const p = prevFlags[name] || prevLower.get(lower(name))
+    return p && typeof p.light === 'boolean' ? { light: p.light, from: 'previous' } : null
+  }
+  const fromWinner = (map, name) => {
+    const hit = map && map.get(lower(name))
+    return hit && modsDir && safeRel(hit.to) && safeName(hit.mod) ? probe(path.join(modsDir, hit.mod, safeRel(hit.to)), 'mo2') : null
+  }
+  const fromMo2 = name => {
+    if (!modsDir) return null
+    for (const map of expected) { const f = fromWinner(map, name); if (f) return f }
+    if (!safeName(name)) return null
+    for (const dir of listModDirs()) { const f = probe(path.join(modsDir, dir, name), 'mo2'); if (f) return f }
+    return null
+  }
 
   const out = {}
   for (const name of names) {
-    let found = dataDir ? probe(path.join(dataDir, name), 'data') : null
-    if (!found && modsDir) {
-      for (const map of expected) {
-        const hit = map.get(lower(name))
-        if (hit && safeRel(hit.to) && safeName(hit.mod)) found = probe(path.join(modsDir, hit.mod, safeRel(hit.to)), 'mo2')
-        if (found) break
-      }
-    }
-    if (!found && modsDir && safeName(name)) {
-      for (const dir of listModDirs()) {
-        found = probe(path.join(modsDir, dir, name), 'mo2')
-        if (found) break
-      }
-    }
-    if (!found) {
-      const p = prevFlags[name] || prevLower.get(lower(name))
-      if (p && typeof p.light === 'boolean') found = { light: p.light, from: 'previous' }
-    }
-    out[name] = found || { light: null, from: null }
+    const data = fromData(name)
+    const deployed = (carry && fromPrevious(name)) || data || fromPrevious(name) || fromMo2(name) || { light: null, from: null }
+    const next = fromWinner(expected[0], name) || data || deployed
+    out[name] = { light: deployed.light, from: deployed.from, lightNext: next.light, fromNext: next.from }
   }
   return out
 }
@@ -282,19 +304,35 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
   files.removed = files.removedList.length
   files.changed = files.changedList.length
 
-  // An unpurged previous diff still owns the load order the database was written under
-  const carry = Boolean(previousDiff && !previousDiff.purgedAt && Array.isArray(previousDiff.settingsLoadOrder) && previousDiff.settingsLoadOrder.length)
+  const warnings = []
+  const unprovided = unprovidedPlugins(next, nextExp)
+  if (unprovided.length) warnings.push(`enabled in plugins.txt but provided by no mod in the manifest: ${unprovided.join(', ')}; fix the MO2 profile and rebuild the manifest`)
+
+  // A previous diff that still needs its purge owns the load order the database was written under
+  const carry = Boolean(previousDiff && !previousDiff.purgedAt && previousDiff.purgeNeeded && Array.isArray(previousDiff.settingsLoadOrder) && previousDiff.settingsLoadOrder.length)
   const currentOrder = Array.isArray(settings.loadOrder) ? settings.loadOrder.map(basename) : []
   const settingsLoadOrder = carry ? previousDiff.settingsLoadOrder.slice() : currentOrder
   const settingsLoadOrderFrom = carry ? (previousDiff.settingsLoadOrderFrom || previousDiff.builtAt || null) : (next.builtAt || null)
+  if (carry && previousDiff.syncedSettingsAt) warnings.push('server settings were synced before the MongoDB purge ran; if the game server was restarted in between, restore the last purge backup or expect inconsistent ids')
 
-  const names = uniqueNames([...settingsLoadOrder, ...VANILLA_PLUGINS, ...nextEnabled, ...prevEnabled])
-  const fresh = readPluginFlags(names, { dataDir, mo2Root, manifests: [next, prev].filter(Boolean), previous: previousDiff })
-  const pluginFlags = {}
-  if (carry && previousDiff.pluginFlags) {
-    for (const [name, f] of Object.entries(previousDiff.pluginFlags)) pluginFlags[name] = { light: f ? f.light : null, from: f ? f.from || null : null }
+  const newOrder = uniqueNames([...VANILLA_PLUGINS, ...nextEnabled])
+  const newSet = new Set(newOrder.map(lower))
+  const names = uniqueNames([...settingsLoadOrder, ...newOrder, ...prevEnabled])
+  const pluginFlags = readPluginFlags(names, { dataDir, mo2Root, manifests: [next, prev].filter(Boolean), previous: previousDiff, carry })
+  const surviving = settingsLoadOrder.filter(n => newSet.has(lower(n)))
+  const removedFromOrder = settingsLoadOrder.filter(n => !newSet.has(lower(n)))
+  const flagChanges = surviving.filter(n => typeof pluginFlags[n].light === 'boolean' && typeof pluginFlags[n].lightNext === 'boolean' && pluginFlags[n].light !== pluginFlags[n].lightNext)
+  const unknown = uniqueNames([
+    ...settingsLoadOrder.filter(n => typeof pluginFlags[n].light !== 'boolean'),
+    ...newOrder.filter(n => typeof pluginFlags[n].lightNext !== 'boolean'),
+  ])
+  let shiftedPlugins = []
+  if (unknown.length) warnings.push(`light flag unknown for ${unknown.join(', ')}: the MongoDB purge will refuse until the plugin file can be read`)
+  else {
+    try { shiftedPlugins = formIds.shiftedBetween(settingsLoadOrder, formIds.flagsOf(pluginFlags, 'light'), newOrder, formIds.flagsOf(pluginFlags, 'lightNext')) }
+    catch (err) { warnings.push(`shifted plugins not computed: ${err.message}`) }
   }
-  for (const [name, f] of Object.entries(fresh)) pluginFlags[name] = { light: f.light, from: f.from }
+  const purgeNeeded = plugins.removed.length > 0 || removedFromOrder.length > 0 || shiftedPlugins.length > 0 || flagChanges.length > 0 || unknown.length > 0
 
   return {
     builtAt: next.builtAt || null,
@@ -303,9 +341,11 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
     profileDir,
     mods, plugins, files,
     settingsLoadOrder, settingsLoadOrderFrom,
-    pluginFlags,
+    pluginFlags, flagChanges, shiftedPlugins, removedFromOrder, purgeNeeded, warnings,
     syncedSettingsAt: null,
     syncedDataAt: null,
+    purgeStartedAt: null,
+    purgeBackup: null,
     purgedAt: null,
   }
 }
@@ -340,12 +380,12 @@ function shouldRotatePrev(previousDiff) {
 function syncSettings({ manifest, settingsPath = config.paths.serverSettings, log, dryRun = false } = {}) {
   const line = lineLogger(log)
   const fail = error => ({ ok: false, error, changed: false, added: [], removed: [], reordered: false, loadOrder: [] })
-  let text, settings
-  try { text = fs.readFileSync(settingsPath, 'utf8') }
-  catch (err) { return fail(`cannot read ${settingsPath}: ${err.message}`) }
-  try { settings = JSON.parse(text.replace(/^\uFEFF/, '')) }
-  catch (err) { return fail(`server-settings.json is not valid JSON, refusing to write it: ${err.message}`) }
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return fail('server-settings.json is not a JSON object')
+  let settings
+  try { ({ settings } = readSettingsFile(settingsPath)) }
+  catch (err) {
+    if (err instanceof SyntaxError) return fail(`server-settings.json is not valid JSON, refusing to write it: ${err.message}`)
+    return fail(err.code ? `cannot read ${settingsPath}: ${err.message}` : err.message)
+  }
   if (!settings.dataDir) return fail('server-settings.json has no dataDir')
   const enabled = enabledPlugins(manifest)
   if (!enabled.length) return fail('the manifest lists no enabled plugins, refusing to empty the loadOrder')
@@ -372,21 +412,16 @@ function syncSettings({ manifest, settingsPath = config.paths.serverSettings, lo
   for (const n of added) {
     if (!statFile(path.join(settings.dataDir, n))) line(`[settings] WARNING: ${n} is not in ${settings.dataDir} yet, run Sync Data before restarting the game server`)
   }
-  const provided = resolveExpected(manifest)
-  for (const n of enabled) {
-    if (!provided.has(fileKey(n))) line(`[settings] WARNING: ${n} is enabled in plugins.txt but no mod in the manifest provides it, fix the MO2 profile and rebuild the manifest`)
+  for (const n of unprovidedPlugins(manifest)) {
+    line(`[settings] WARNING: ${n} is enabled in plugins.txt but no mod in the manifest provides it, fix the MO2 profile and rebuild the manifest`)
   }
   if (dryRun) {
     line('[settings] dry run: server-settings.json not written')
     return result
   }
 
-  const prevCopy = settingsPath + '.prev'
-  fs.copyFileSync(settingsPath, prevCopy)
   settings.loadOrder = loadOrder
-  const tmp = settingsPath + '.tmp'
-  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n')
-  fs.renameSync(tmp, settingsPath)
+  const { prevCopy } = writeSettingsFile(settingsPath, settings)
   line(`[settings] wrote ${basename(settingsPath)} (${loadOrder.length} plugins), previous copy at ${basename(prevCopy)}`)
   line('[settings] restart the game server to load the new order; players must re-run the launcher')
   return result
@@ -525,6 +560,13 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
   for (const [key, f] of expectedNext) {
     if (upToDateKeys.has(key) || copiedKeys.has(key)) files.push({ to: f.to, sha256: f.sha256, size: f.size, mod: f.mod })
   }
+  // Dropped files still on disk stay tracked so a later sync can delete them once nothing holds them back
+  for (const [key, rec] of deployedBefore) {
+    if (expectedNext.has(key)) continue
+    const rel = safeRel(rec.to)
+    if (!rel || VANILLA_SET.has(lower(rel)) || RESERVED.has(lower(rel)) || !statFile(path.join(dataRoot, rel))) continue
+    files.push({ to: rec.to, sha256: rec.sha256, size: rec.size, mod: rec.mod })
+  }
   const newStamp = { syncedAt: new Date().toISOString(), manifestBuiltAt: manifest.builtAt || null, files }
   writeJsonAtomic(paths.stamp, newStamp)
 
@@ -543,12 +585,15 @@ module.exports = {
   readManifestLight,
   enabledPlugins,
   resolveExpected,
+  unprovidedPlugins,
   readPluginFlags,
   computeDiff,
   writeDiff,
   readDiff,
   updateDiff,
   shouldRotatePrev,
+  readSettingsFile,
+  writeSettingsFile,
   syncSettings,
   syncData,
   basename,

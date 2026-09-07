@@ -48,8 +48,9 @@ $$('.tab').forEach(tab => {
   })
 })
 
-// Build output streams to the active panel's log (Build → #build-log, Modlist → #modlist-log).
+// Build output streams to the active panel's log (console "build" → #log, Build tab → #build-log); Modlist operations have their own channel.
 window.mgr.onBuildLog(t => appendLog($('.panel.active')?.querySelector('.log') || $('#build-log'), t))
+window.mgr.onModlistLog(t => appendLog($('#modlist-log'), t))
 
 // Keep in sync with `services` in src/config.js (the main process owns the
 // nssm service names; this is the renderer's copy of key/label). If the two
@@ -293,11 +294,9 @@ async function selectPlayer(discordId) {
   })
 }
 
-// Destructive buttons ask for a second click instead of a dialog; disabled while
-// the action runs so a double-click cannot fire it twice. An optional preview
-// (a dry run) runs on the first click and only a truthy result arms the button.
+// Destructive buttons ask for a second click instead of a dialog; a preview (dry run) must return truthy to arm, armMs 0 stays armed until disarmConfirm, onArm runs once armed.
 const armTimers = new WeakMap()
-function armConfirm(btn, label, fn, { preview = null, armMs = 4000, armedLabel = 'Click again to confirm' } = {}) {
+function armConfirm(btn, label, fn, { preview = null, armMs = 4000, armedLabel = 'Click again to confirm', onArm = null } = {}) {
   if (!btn) return
   btn.dataset.label = label
   btn.addEventListener('click', async () => {
@@ -311,7 +310,8 @@ function armConfirm(btn, label, fn, { preview = null, armMs = 4000, armedLabel =
       }
       btn.dataset.armed = '1'
       btn.textContent = armedLabel
-      armTimers.set(btn, setTimeout(() => disarmConfirm(btn), armMs))
+      if (armMs > 0) armTimers.set(btn, setTimeout(() => disarmConfirm(btn), armMs))
+      if (onArm) onArm()
       return
     }
     disarmConfirm(btn)
@@ -602,7 +602,9 @@ $('#build-ci')?.addEventListener('click', async e => {
 })
 
 $('#modlist-refresh').addEventListener('click', async () => {
+  modlistButtons(true)
   const r = await window.mgr.modlistRead()
+  modlistButtons(false)
   const box = $('#modlist-summary')
   box.innerHTML = ''
   if (!r.ok) { box.appendChild(el('div', { className: 'card' }, esc(r.error))); return }
@@ -643,40 +645,58 @@ function diffCard(n, label, items, cls) {
   return c
 }
 
+// Which deploy steps already ran against this diff
+function renderStamps(diff) {
+  const box = $('#modlist-stamps')
+  box.innerHTML = ''
+  const line = (text, cls) => box.appendChild(el('div', { className: cls || '' }, esc(text)))
+  line(diff.syncedSettingsAt ? `settings synced ${fmtWhen(diff.syncedSettingsAt)}` : 'settings not synced yet', diff.syncedSettingsAt ? 'ok' : '')
+  line(diff.syncedDataAt ? `data synced ${fmtWhen(diff.syncedDataAt)}` : 'data folder not synced yet', diff.syncedDataAt ? 'ok' : '')
+  if (diff.purgedAt) line(`db purged ${fmtWhen(diff.purgedAt)}`, 'ok')
+  else if (diff.purgeStartedAt) line(`db purge started ${fmtWhen(diff.purgeStartedAt)} and did not finish, restore ${diff.purgeBackup || 'the last purge backup'} first`, 'bad')
+  else line(diff.purgeNeeded === false ? 'db purge not needed' : 'db not purged yet')
+}
+
 function renderDiff(diff) {
   const box = $('#modlist-diff')
   const st = $('#modlist-status')
   box.innerHTML = ''
+  $('#modlist-stamps').innerHTML = ''
   if (!diff) {
     st.textContent = ''
     box.appendChild(el('div', { className: 'card muted' }, 'Build the manifest to see what changed'))
     return
   }
-  const bits = [`manifest ${fmtWhen(diff.builtAt)}`, diff.prevBuiltAt ? `deployed ${fmtWhen(diff.prevBuiltAt)}` : 'no previous manifest']
-  if (diff.syncedSettingsAt) bits.push(`settings synced ${fmtWhen(diff.syncedSettingsAt)}`)
-  if (diff.syncedDataAt) bits.push(`data synced ${fmtWhen(diff.syncedDataAt)}`)
-  if (diff.purgedAt) bits.push(`db purged ${fmtWhen(diff.purgedAt)}`)
-  st.textContent = bits.join(' | ')
-  const m = diff.mods || {}, p = diff.plugins || {}, f = diff.files || {}
+  st.textContent = `manifest ${fmtWhen(diff.builtAt)} | ${diff.prevBuiltAt ? `deployed ${fmtWhen(diff.prevBuiltAt)}` : 'no previous manifest'}`
+  const m = diff.mods || {}, p = diff.plugins || {}, f = diff.files || {}, flags = diff.pluginFlags || {}
   const names = list => Array.isArray(list) ? list : []
   const files = list => names(list).map(x => `${x.to} (${x.mod})`)
   const changed = names(m.changed).map(c => `${c.name} (+${c.filesAdded} -${c.filesRemoved} ~${c.filesChanged})`)
+  const kind = light => light === true ? 'light' : light === false ? 'full' : '?'
+  const flagChanges = names(diff.flagChanges).map(n => { const fl = flags[n] || {}; return `${n}: ${kind(fl.light)} -> ${kind(fl.lightNext)}` })
+  const shifted = names(diff.shiftedPlugins).map(s => `${s.name}: ${s.from} -> ${s.to}`)
   const groups = [
+    [names(diff.warnings), 'warnings', 'warn'],
     [names(m.added), 'mods added', 'added'],
     [names(m.removed), 'mods removed', 'removed'],
     [changed, 'mods changed', 'changed'],
     [names(p.added), 'plugins added', 'added'],
     [names(p.removed), 'plugins removed', 'removed'],
+    [shifted, 'plugins shifted (form ids change)', 'changed'],
+    [flagChanges, 'light flag changed', 'changed'],
     [files(f.addedList), 'files added', 'added'],
     [files(f.removedList), 'files removed', 'removed'],
     [files(f.changedList), 'files changed', 'changed'],
   ].filter(g => g[0].length)
   if (!groups.length && !p.reordered) {
     box.appendChild(el('div', { className: 'card muted' }, 'No changes since the last deployed manifest'))
-    return
+  } else {
+    for (const [items, label, cls] of groups) box.appendChild(diffCard(items.length, label, items, cls))
+    if (p.reordered) box.appendChild(diffCard('yes', 'plugins reordered', null, 'changed'))
   }
-  for (const [items, label, cls] of groups) box.appendChild(diffCard(items.length, label, items, cls))
-  if (p.reordered) box.appendChild(diffCard('yes', 'plugins reordered', null, 'changed'))
+  const purge = diff.purgeNeeded === undefined ? '?' : diff.purgeNeeded ? 'yes' : 'no'
+  box.appendChild(diffCard(purge, 'MongoDB purge needed', null, diff.purgeNeeded ? 'removed' : ''))
+  renderStamps(diff)
 }
 
 async function loadDiff() {
@@ -688,7 +708,8 @@ $('#modlist-update').addEventListener('click', async () => {
   modlistButtons(true)
   $('#modlist-log').textContent = ''
   const r = await window.mgr.modlistUpdateManifest()
-  appendLog($('#modlist-log'), r.ok ? '\n✓ Manifest built. Restart the backend to serve it; sync the settings and Data folder next.\n' : `\n✗ ${r.error}\n`)
+  const purge = r.ok && r.diff && r.diff.purgeNeeded ? ', then Purge MongoDB with the game server stopped' : ''
+  appendLog($('#modlist-log'), r.ok ? `\n✓ Manifest built. Next: Sync server settings, Sync data folder${purge}.\n` : `\n✗ ${r.error}\n`)
   if (r.ok) renderDiff(r.diff)
   modlistButtons(false)
 })
@@ -697,13 +718,14 @@ $('#modlist-sync-settings').addEventListener('click', async () => {
   appendLog($('#modlist-log'), '\n######## Sync server settings ########\n')
   const r = await window.mgr.modlistSyncSettings()
   appendLog($('#modlist-log'), !r.ok ? `\n✗ ${r.error}\n`
-    : r.changed ? '\n✓ server-settings.json loadOrder updated. Restart the game server after syncing the Data folder.\n'
+    : r.changed ? '\n✓ server-settings.json loadOrder updated. Sync the Data folder next; the game server reads the order at boot.\n'
     : '\n✓ loadOrder already matches the manifest.\n')
   modlistButtons(false)
   loadDiff()
+  if (r.ok) loadSettings()
 })
 
-// First click previews (dry run), the second within 15 s applies
+// First click previews (dry run), the second applies
 async function runDataSync(dryRun) {
   const log = $('#modlist-log')
   modlistButtons(true)
@@ -711,7 +733,7 @@ async function runDataSync(dryRun) {
   try {
     const r = await window.mgr.modlistSyncData({ dryRun })
     if (!r.ok && !r.plan) { appendLog(log, `\n✗ ${r.error}\n`); return false }
-    if (dryRun) { appendLog(log, '\nDry run complete. Review the plan above, then click again within 15 s to apply it.\n'); return true }
+    if (dryRun) { appendLog(log, '\nDry run complete. Review the plan above.\n'); return true }
     const a = r.applied || {}
     appendLog(log, r.ok
       ? `\n✓ Data folder synced: ${a.copied} copied, ${a.deleted} deleted. Restart the game server; players must re-run the launcher.\n`
@@ -722,13 +744,18 @@ async function runDataSync(dryRun) {
     loadDiff()
   }
 }
-armConfirm($('#modlist-sync-data'), 'Sync data folder', () => runDataSync(false),
-  { preview: () => runDataSync(true), armMs: 15000, armedLabel: 'Click again to apply' })
+// Modlist two-click buttons: the preview arms without a timer and any other modlist action disarms (modlistButtons)
+function armModlist(btn, label, apply, preview) {
+  armConfirm(btn, label, apply, { preview, armMs: 0, armedLabel: 'Click again to apply',
+    onArm: () => appendLog($('#modlist-log'), `Armed: click ${label} again to apply\n`) })
+}
+armModlist($('#modlist-sync-data'), 'Sync data folder', () => runDataSync(false), () => runDataSync(true))
 loadDiff()
 
 let SCHEMA = { serverSettings: [], backendEnv: [] }
 let settingsKey = 'serverSettings'
 let currentValues = {}
+let settingsMtimeMs = null   // server-settings.json mtime at load; the save refuses when it changed since
 
 window.mgr.settingsSchema().then(s => { SCHEMA = s; loadSettings() })
 
@@ -749,6 +776,7 @@ async function loadSettings() {
   const r = await window.mgr.settingsRead(settingsKey)
   if (!r.ok) { st.textContent = `Error: ${r.error}` + (r.path ? ` (${r.path})` : ''); return }
   currentValues = r.values || {}
+  settingsMtimeMs = r.mtimeMs ?? null
   st.textContent = r.path + (r.seeded ? '  (new — seeded from .env.example)' : '')
   renderSettingsForm(r.extra)
 }
@@ -854,6 +882,7 @@ $('#settings-save').addEventListener('click', async () => {
   const values = collectSettings()
   const extra = settingsKey === 'serverSettings' ? ($('#settings-extra')?.value || '') : undefined
   $('#settings-status').textContent = 'saving…'
-  const r = await window.mgr.settingsWrite(settingsKey, values, extra)
+  const r = await window.mgr.settingsWrite(settingsKey, values, extra, settingsMtimeMs)
+  if (r.ok && r.mtimeMs !== undefined) settingsMtimeMs = r.mtimeMs
   $('#settings-status').textContent = r.ok ? `Saved ${r.path}` : `Error: ${r.error}`
 })
