@@ -33,7 +33,7 @@ New-Item -ItemType Directory -Force -Path "$Root\data", "$Root\log", "$Root\bin"
 # Verify the version at https://www.mongodb.com/try/download/community if this 404s.
 $msi = "$env:TEMP\mongodb-$MongoVersion.msi"
 $url = "https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-$MongoVersion-signed.msi"
-$installed = (Get-Command mongod -ErrorAction SilentlyContinue) -or (Get-ChildItem "C:\Program Files\MongoDB\Server\*in\mongod.exe" -ErrorAction SilentlyContinue)
+$installed = (Get-Command mongod -ErrorAction SilentlyContinue) -or (Get-ChildItem "C:\Program Files\MongoDB\Server\*\bin\mongod.exe" -ErrorAction SilentlyContinue)
 if (-not $installed) {
   if (-not (Test-Path $msi)) {
     Write-Host "[mongo] downloading $url"
@@ -58,7 +58,7 @@ if (-not $mongosh) {
   if ($p.ExitCode -ne 0) { Write-Warning "mongosh MSI failed (exit $($p.ExitCode)); the app user will not be created" }
   if (Test-Path "C:\Program Files\mongosh\mongosh.exe") { $mongosh = "C:\Program Files\mongosh\mongosh.exe" }
 }
-$tools = (Get-Command mongodump -ErrorAction SilentlyContinue) -or (Get-ChildItem "C:\Program Files\MongoDB\Tools\*in\mongodump.exe" -ErrorAction SilentlyContinue)
+$tools = (Get-Command mongodump -ErrorAction SilentlyContinue) -or (Get-ChildItem "C:\Program Files\MongoDB\Tools\*\bin\mongodump.exe" -ErrorAction SilentlyContinue)
 if (-not $tools) {
   $tMsi = "$env:TEMP\mongodb-database-tools-$ToolsVersion.msi"
   if (-not (Test-Path $tMsi)) {
