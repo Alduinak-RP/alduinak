@@ -9,7 +9,8 @@ one-shot migration.
 - `mongod.cfg` - mongod config (loopback only, auth enabled, data under `C:\Alduinak\mongodb`).
 - `setup-mongodb.ps1` - **run yourself, elevated.** Installs MongoDB, registers
   the `AlduinakMongo` service against `mongod.cfg`, and creates the `skympuser`
-  app user. Claude does not run installers or register services.
+  app user. Installs mongosh and the Database Tools (mongodump/mongorestore)
+  when they are missing. Claude does not run installers or register services.
 
 ## Steps
 
