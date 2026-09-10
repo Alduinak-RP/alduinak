@@ -46,17 +46,23 @@ if (-not $installed) {
 }
 
 # mongosh (needed below to create the user) and the Database Tools (mongodump/mongorestore) are separate MSIs
-$mongosh = (Get-Command mongosh -ErrorAction SilentlyContinue).Source
-if (-not $mongosh -and (Test-Path "C:\Program Files\mongosh\mongosh.exe")) { $mongosh = "C:\Program Files\mongosh\mongosh.exe" }
+# The mongosh MSI installs per user unless ALLUSERS=1; the shell that ran it does not see the PATH change yet
+function Find-Mongosh {
+  $c = (Get-Command mongosh -ErrorAction SilentlyContinue).Source
+  if ($c) { return $c }
+  foreach ($cand in @("$env:LOCALAPPDATA\Programs\mongosh\mongosh.exe", "C:\Program Files\mongosh\mongosh.exe")) { if (Test-Path $cand) { return $cand } }
+  return $null
+}
+$mongosh = Find-Mongosh
 if (-not $mongosh) {
   $shMsi = "$env:TEMP\mongosh-$MongoshVersion.msi"
   if (-not (Test-Path $shMsi)) {
     Write-Host "[mongo] downloading mongosh $MongoshVersion"
     Invoke-WebRequest -Uri "https://downloads.mongodb.com/compass/mongosh-$MongoshVersion-x64.msi" -OutFile $shMsi
   }
-  $p = Start-Process msiexec.exe -ArgumentList "/i `"$shMsi`" /quiet" -Wait -PassThru
+  $p = Start-Process msiexec.exe -ArgumentList "/i `"$shMsi`" /quiet ALLUSERS=1" -Wait -PassThru
   if ($p.ExitCode -ne 0) { Write-Warning "mongosh MSI failed (exit $($p.ExitCode)); the app user will not be created" }
-  if (Test-Path "C:\Program Files\mongosh\mongosh.exe") { $mongosh = "C:\Program Files\mongosh\mongosh.exe" }
+  $mongosh = Find-Mongosh
 }
 $tools = (Get-Command mongodump -ErrorAction SilentlyContinue) -or (Get-ChildItem "C:\Program Files\MongoDB\Tools\*\bin\mongodump.exe" -ErrorAction SilentlyContinue)
 if (-not $tools) {
@@ -71,9 +77,8 @@ if (-not $tools) {
 
 # Resolve the mongod / mongosh paths (installed under Program Files by default).
 $mongod  = (Get-ChildItem "C:\Program Files\MongoDB\Server\*\bin\mongod.exe"  -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-if (-not $mongosh) { $mongosh = (Get-Command mongosh -ErrorAction SilentlyContinue).Source }
 if (-not $mongod)  { throw "mongod.exe not found after install; check the MongoDB install." }
-if (-not $mongosh) { Write-Warning "mongosh not found on PATH; install the MongoDB Shell to create the user, or do it manually per the migration doc." }
+if (-not $mongosh) { throw "mongosh not found; install the MongoDB Shell and re-run, the app user has not been created" }
 
 # 2. Register the service against our config (nssm if present, else sc/mongod).
 $nssm = Join-Path $repoRoot "server-manager\tools\nssm.exe"
