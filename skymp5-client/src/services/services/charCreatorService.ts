@@ -152,10 +152,9 @@ export class CharCreatorService extends ClientListener {
       case 'charCreator:preview':
         this.onPreview(e.arguments[1]);
         break;
+      case 'cef::browser:unfocus':
       case 'menu:escape':
-        // The front handles back-navigation itself, but BrowserService's key
-        // poll unfocuses the browser on Escape; re-assert focus next update so
-        // the mouse-driven wizard stays usable.
+        // Chat Escape/Enter and BrowserService's Escape poll drop focus; re-assert it next update so the wizard stays usable
         this.controller.once("update", () => {
           if (!this.menuOpen) return;
           try {
