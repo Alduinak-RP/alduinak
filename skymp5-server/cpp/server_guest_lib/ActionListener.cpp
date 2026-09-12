@@ -1203,15 +1203,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     spellCastData.target = myActor->GetFormId();
   }
 
-  if (caster->IsDead()) {
-    spdlog::info(fmt::format("{:x} actor is dead and can't spell cast. "
-                             "requesting respawn in order to fix death state",
-                             caster->GetFormId()));
-    caster->RespawnWithDelay(true);
-    return;
-  }
-
-  // Stops are relayed before the equipment and denylist gates so none is dropped
+  // Stops are relayed before the death, equipment and denylist gates so none is dropped
   // Relays are reliable so observers get casts, keep-alives and stops in order
   if (spellCastData.interruptCast) {
     SendToNeighbours(myActor->idx, rawMsgData, true);
@@ -1227,6 +1219,14 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     spdlog::info("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
                  "(restoration channel erased: {})",
                  caster->GetFormId(), spellCastData.spell, hadChannel);
+    return;
+  }
+
+  if (caster->IsDead()) {
+    spdlog::info(fmt::format("{:x} actor is dead and can't spell cast. "
+                             "requesting respawn in order to fix death state",
+                             caster->GetFormId()));
+    caster->RespawnWithDelay(true);
     return;
   }
 
