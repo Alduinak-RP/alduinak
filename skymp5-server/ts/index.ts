@@ -27,6 +27,7 @@ import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { SearchSystem } from "./systems/searchSystem";
+import { SoulTrapSystem } from "./systems/soulTrapSystem";
 import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
@@ -221,6 +222,7 @@ const main = async () => {
     new HousingSystem(log),
     new TradeSystem(log),
     new SearchSystem(log),
+    new SoulTrapSystem(log),
     new VoiceSystem(log),
     new AfkSystem(log),
     masterySystem,

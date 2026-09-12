@@ -300,7 +300,8 @@ export const removeSimpleItemsAsManyAsPossible = (
 export const getDiff = (
   lhs: Inventory,
   rhs: Inventory,
-  ignoreWorn: boolean
+  ignoreWorn: boolean,
+  applySouls = false
 ): Inventory => {
   const lhsCopy: Inventory = JSON.parse(JSON.stringify(lhs));
   const rhsCopy: Inventory = JSON.parse(JSON.stringify(rhs));
@@ -315,8 +316,9 @@ export const getDiff = (
     }
     // Server entries lack extras (enchantment, charge, soul), so enchanted items never match them
     // Falling through would delete the player's real item, so match on baseId alone
+    // When applying, a soul the local gem lacks (a server-filled soul gem) must still reach it
     const plainFromLeft = lhsCopy.entries.find(
-      (x) => x.baseId === e.baseId && hasExtras(x) && !hasExtras(e)
+      (x) => x.baseId === e.baseId && hasExtras(x) && !hasExtras(e) && !(applySouls && x.soul)
     );
     if (plainFromLeft) {
       plainFromLeft.count -= e.count;
@@ -364,7 +366,7 @@ export const applyInventory = (
   ignoreWorn = false
 ): boolean => {
   resetBase(refr);
-  const diff = getDiff(newInventory, getInventory(refr), ignoreWorn).entries;
+  const diff = getDiff(newInventory, getInventory(refr), ignoreWorn, true).entries;
 
   let res = true;
 

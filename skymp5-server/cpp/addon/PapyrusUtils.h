@@ -21,6 +21,9 @@ public:
     }
 
     if (auto concrete = dynamic_cast<EspmGameObject*>(ptr)) {
+      if (!concrete->record.rec) {
+        return env.Null();
+      }
       auto rawId = concrete->record.rec->GetId();
       auto id = concrete->record.ToGlobalId(rawId);
 
