@@ -8,6 +8,15 @@ import { bodyRangesFor, toVanillaWeight } from './data/stats';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+// Mod headparts the client resolved from the server's load order scan (config.modParts / config.modExtras)
+let modParts = [];
+let modExtras = {};
+
+export function setModHeadparts (parts, extras) {
+  modParts = Array.isArray(parts) ? parts : [];
+  modExtras = extras && typeof extras === 'object' ? extras : {};
+}
+
 export function editorIdFor (race, age) {
   if (age === 'child' && race.childRaceId) return race.raceEditorId + 'Child';
   return race.raceEditorId;
@@ -20,7 +29,7 @@ export function raceDefaultsFor (race, age, sex) {
 
 export function partsFor (kind, race, age, sex) {
   const editorId = editorIdFor(race, age);
-  return headparts.parts.filter(p => p.kind === kind && p[sex] && p.races.includes(editorId));
+  return headparts.parts.concat(modParts).filter(p => p.kind === kind && p[sex] && p.races.includes(editorId));
 }
 
 export function tintsFor (race, age, sex, type) {
@@ -105,7 +114,7 @@ export function buildAppearance (state) {
     if (typeof look.parts[kind] === 'number') ids.push(look.parts[kind]);
   }
   for (const id of [...ids]) {
-    for (const extra of headparts.extras[String(id)] || []) ids.push(extra);
+    for (const extra of headparts.extras[String(id)] || modExtras[String(id)] || []) ids.push(extra);
   }
   base.headpartIds = [...new Set(ids)];
 

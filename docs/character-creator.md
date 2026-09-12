@@ -63,6 +63,23 @@ Server → Client (custom packets):
 Disabled races are hidden by the UI; locked races render with a lock and
 cannot be picked.
 
+The config also carries `modHair` once the server's background load order scan
+(`skymp5-server/ts/systems/hairCatalog.ts`) has finished:
+
+```json
+"modHair": {
+  "raceSets": [["NordRace", "ImperialRace", "..."]],
+  "hairs": [{ "desc": "801:HammerHair.esp", "label": "RedSpongeHair",
+              "male": true, "female": false, "races": 0,
+              "extras": ["800:HammerHair.esp"] }]
+}
+```
+
+`charCreatorService.ts` resolves each `desc` with `Game.getFormFromFile`
+(so ESL plugins land in the client's own 0xFE slots), drops hair from plugins
+the client does not have, and hands the front `modParts` (same shape as
+`headparts.json` parts) plus `modExtras` (hair id -> extra part ids).
+
 Browser → Client (`window.skyrimPlatform.sendMessage`):
 
 - `charCreator:save`, arg 1: JSON string of the result (below)
@@ -134,7 +151,10 @@ Accepted data lands in `private.rp`:
 were extracted from the live load order's `Skyrim.esm`/DLC RACE, HDPT, FLST and
 CLFM records (playable headparts with per-race validity; per-race tint layers
 with preset palettes). Regenerate with the scripts in the PR description when
-the load order gains new races. Race form ids in `data/races.js` were verified
+the load order gains new races. Hair from mod plugins (HammerHair, ApachiiSkyHair
+and the like) is not in the json: it comes from the server's `modHair` scan
+above, so a new hair mod only needs to be in the server `loadOrder` and the
+client distribution, filtered per race by the mod's own RNAM FormList. Race form ids in `data/races.js` were verified
 against the same esm dump. Custom races (Colovian, Reachfolk, Akaviri, Maormer,
 furstocks, daedra variants) are `placeholder: true` entries that reuse vanilla
 races until their esp lands in AlduinakPatchMerged — update `raceId` +

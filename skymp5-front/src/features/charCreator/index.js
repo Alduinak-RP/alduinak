@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Button from '../../constructorComponents/button';
 import { findRace } from './data/races';
 import { defaultStats, DEFAULT_STAT_POOL } from './data/stats';
-import { buildAppearance, defaultLook, defaultParts, clampedBody } from './appearanceBuilder';
+import { buildAppearance, defaultLook, defaultParts, clampedBody, setModHeadparts } from './appearanceBuilder';
 import SpeciesScreen from './screens/SpeciesScreen';
 import RaceScreen from './screens/RaceScreen';
 import IdentityScreen from './screens/IdentityScreen';
@@ -26,6 +26,7 @@ export const send = (key, ...args) => {
 
 const CharCreator = ({ data }) => {
   const config = data.config || {};
+  setModHeadparts(config.modParts, config.modExtras);
   const statPool = Number.isInteger(config.statPool) && config.statPool >= 0
     ? config.statPool
     : DEFAULT_STAT_POOL;

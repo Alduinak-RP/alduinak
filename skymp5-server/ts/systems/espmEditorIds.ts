@@ -8,8 +8,10 @@ import * as zlib from "zlib";
 
 const HEADER_SIZE = 24;
 const FLAG_COMPRESSED = 0x00040000;
+const FLAG_LOCALIZED = 0x00000080;
 // Four-char record tags read as little-endian uint32, cheaper than a string per record
 const tag = (s: string): number => Buffer.from(s, "latin1").readUInt32LE(0);
+const tagName = (t: number): string => Buffer.from([t & 0xff, (t >>> 8) & 0xff, (t >>> 16) & 0xff, t >>> 24]).toString("latin1");
 const TAG_TES4 = tag("TES4");
 const TAG_GRUP = tag("GRUP");
 const TAG_EDID = tag("EDID");
@@ -28,6 +30,16 @@ export interface EditorIdScan {
   scannedMs: number;
 }
 
+// Field buffers may alias the whole plugin file, so visitors copy out what they keep
+export interface EspmRecord {
+  owner: string;
+  masters: string[];
+  localized: boolean;
+  type: string;
+  formId: number;
+  fields: { type: string; data: Buffer }[];
+}
+
 const DEFAULT_TYPES = ["CELL", "WRLD"];
 
 // A locator that is neither a "hex:Plugin" desc nor a bare form id
@@ -40,9 +52,15 @@ const cache = new Map<string, string>();
 const knownMissing = new Set<string>();
 
 // Returns true from the visitor to stop the scan
-type Visit = (formId: number, editorId: string) => boolean;
+type Visit = (type: number, formId: number, data: Buffer | null) => boolean;
 
-const cstr = (b: Buffer): string => b.toString("latin1").replace(/\0+$/, "");
+export const cstr = (b: Buffer): string => b.toString("latin1").replace(/\0+$/, "");
+
+// Plugin-local form id to "hex:Plugin" using the masters of the plugin it was read from
+export const espmDesc = (formId: number, masters: string[], owner: string): string => {
+  const high = formId >>> 24;
+  return (formId & 0xffffff).toString(16) + ":" + (high < masters.length ? masters[high] : owner);
+};
 
 // Walks the subrecords of one record body; the callback returns true to stop early
 function eachSubrecord(data: Buffer, cb: (type: number, body: Buffer) => boolean): void {
@@ -66,13 +84,16 @@ function eachSubrecord(data: Buffer, cb: (type: number, body: Buffer) => boolean
   }
 }
 
+function recordData(buf: Buffer, dataOff: number, dataSize: number, flags: number): Buffer | null {
+  const data = buf.subarray(dataOff, dataOff + dataSize);
+  if (!(flags & FLAG_COMPRESSED)) return data;
+  try { return zlib.inflateSync(data.subarray(4)); } catch { return null; }
+}
+
 // EDID is the first subrecord when present, so the walk ends almost immediately
-function readEditorId(buf: Buffer, dataOff: number, dataSize: number, flags: number): string {
-  let data = buf.subarray(dataOff, dataOff + dataSize);
-  if (flags & FLAG_COMPRESSED) {
-    try { data = zlib.inflateSync(data.subarray(4)); } catch { return ""; }
-  }
+function readEditorId(data: Buffer | null): string {
   let edid = "";
+  if (!data) return edid;
   eachSubrecord(data, (type, body) => {
     if (type === TAG_EDID) edid = cstr(body);
     return true;
@@ -110,7 +131,7 @@ function* walkGroup(buf: Buffer, start: number, end: number, depth: number, tags
       if (tags.has(type)) {
         const flags = buf.readUInt32LE(off + 8);
         const formId = buf.readUInt32LE(off + 12);
-        if (visit(formId, readEditorId(buf, off + HEADER_SIZE, dataSize, flags))) return true;
+        if (visit(type, formId, recordData(buf, off + HEADER_SIZE, dataSize, flags))) return true;
       }
       off += HEADER_SIZE + dataSize;
     }
@@ -132,6 +153,32 @@ async function scanPlugin(buf: Buffer, tags: Set<number>, visit: Visit): Promise
   }
 }
 
+async function readPlugin(entry: string, dataDir: string, log: LogFn): Promise<{ buf: Buffer; owner: string } | null> {
+  const file = path.isAbsolute(entry) ? entry : path.join(dataDir, entry);
+  const owner = path.basename(entry);
+  try { return { buf: await fs.promises.readFile(file), owner }; }
+  catch { log(`espm scan: plugin '${owner}' not readable at ${file}, skipped`); return null; }
+}
+
+// Visits every record of the given types, plugin by plugin in load order, so later overrides arrive last
+export async function scanRecords(dataDir: string, loadOrder: string[], types: string[], log: LogFn, visit: (rec: EspmRecord) => void): Promise<void> {
+  const tags = new Set(types.map(tag));
+  for (const entry of loadOrder) {
+    const plugin = await readPlugin(entry, dataDir, log);
+    if (!plugin) continue;
+    const { buf, owner } = plugin;
+    const masters = readMasters(buf);
+    const localized = buf.length >= HEADER_SIZE && (buf.readUInt32LE(8) & FLAG_LOCALIZED) !== 0;
+    await scanPlugin(buf, tags, (type, formId, data) => {
+      if (!data) return false;
+      const fields: EspmRecord["fields"] = [];
+      eachSubrecord(data, (t, body) => { fields.push({ type: tagName(t), data: body }); return false; });
+      visit({ owner, masters, localized, type: tagName(type), formId, fields });
+      return false;
+    });
+  }
+}
+
 export async function resolveEditorIds(editorIds: string[], dataDir: string, loadOrder: string[], log: LogFn, types: string[] = DEFAULT_TYPES): Promise<EditorIdScan> {
   const tags = new Set(types.map(tag));
   const missingKey = (key: string) => types.join(",") + "|" + key;
@@ -146,17 +193,13 @@ export async function resolveEditorIds(editorIds: string[], dataDir: string, loa
   const started = Date.now();
   for (const entry of loadOrder) {
     if (!pending.size) break;
-    const file = path.isAbsolute(entry) ? entry : path.join(dataDir, entry);
-    const owner = path.basename(entry);
-    let buf: Buffer;
-    try { buf = await fs.promises.readFile(file); }
-    catch { log(`espm scan: plugin '${owner}' not readable at ${file}, skipped`); continue; }
-    const masters = readMasters(buf);
-    await scanPlugin(buf, tags, (formId, editorId) => {
-      const key = editorId.toLowerCase();
+    const plugin = await readPlugin(entry, dataDir, log);
+    if (!plugin) continue;
+    const masters = readMasters(plugin.buf);
+    await scanPlugin(plugin.buf, tags, (_type, formId, data) => {
+      const key = readEditorId(data).toLowerCase();
       if (!key || !pending.has(key)) return false;
-      const high = formId >>> 24;
-      const desc = (formId & 0xffffff).toString(16) + ":" + (high < masters.length ? masters[high] : owner);
+      const desc = espmDesc(formId, masters, plugin.owner);
       cache.set(key, desc);
       resolved.set(key, desc);
       pending.delete(key);
