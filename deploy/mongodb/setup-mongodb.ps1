@@ -92,16 +92,17 @@ if ((Get-Service AlduinakMongo -ErrorAction SilentlyContinue).Status -ne 'Runnin
 # 3. Create the app user. authorization is enabled, but the localhost
 #    exception lets the FIRST user be created without auth.
 if ($mongosh) {
-  $userJs = $User | ConvertTo-Json -Compress
-  $pwJs = $Password | ConvertTo-Json -Compress
+  # PowerShell 5.1 strips double quotes from native args, so this JS uses none and reads the password from the environment
   $js = @"
 try {
   db = db.getSiblingDB('admin');
-  db.createUser({ user: $userJs, pwd: $pwJs, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] });
-  print('[mongo] created user ' + $userJs);
+  db.createUser({ user: '$User', pwd: process.env.ALDUINAK_MONGO_PWD, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] });
+  print('[mongo] created user $User');
 } catch (e) { print('[mongo] createUser: ' + e.message); }
 "@
-  & $mongosh "mongodb://127.0.0.1:27017/admin" --eval $js
+  $env:ALDUINAK_MONGO_PWD = $Password
+  try { & $mongosh "mongodb://127.0.0.1:27017/admin" --eval $js }
+  finally { Remove-Item Env:ALDUINAK_MONGO_PWD -ErrorAction SilentlyContinue }
 }
 
 Write-Host ""
