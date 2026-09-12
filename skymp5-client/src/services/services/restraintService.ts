@@ -83,6 +83,10 @@ export class RestraintService extends ClientListener {
     return this.boundHands || this.carried || this.carrying;
   }
 
+  get isCarried(): boolean {
+    return this.carried;
+  }
+
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
     let content: Record<string, unknown> = {};
     try {

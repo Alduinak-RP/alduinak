@@ -1,11 +1,18 @@
 import { Game, Utility, printConsole, createText, setTextSize } from "skyrimPlatform";
 import { getScreenResolution } from "../../view/formView";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { Mod } from "../messages_http/serverManifest";
+import { ServerManifest } from "../messages_http/serverManifest";
 import { logTrace } from "../../logging";
 import { SettingsService } from "./settingsService";
 
 const STATE_KEY = 'loadOrderCheckState';
+
+// Game.getModName reads light plugins from this index on (CallNativeApi.cpp)
+const LIGHT_MOD_OFFSET = 0x100;
+const MAX_LIGHT_MODS = 0x1000;
+
+// Steam and GOG copies of these may differ, and Skyrim.esm is too big to hash on every connect
+const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm']);
 
 interface State {
   statusTextId?: number;
@@ -25,47 +32,89 @@ export class LoadOrderVerificationService extends ClientListener {
     const settingsService = this.controller.lookupListener(SettingsService);
 
     this.resetText();
-    const clientMods = this.getClientMods();
-    this.printModOrder('Client load order:', clientMods);
-    return settingsService.getServerMods()
-      .then((serverMods) => {
-        this.printModOrder('Server load order:', serverMods);
-        if (clientMods.length < serverMods.length) {
-          throw new Error(`Missing some server mods. Server has ${serverMods.length}, we have ${clientMods.length}`);
+    const full = this.getFullPlugins();
+    const light = this.getLightPlugins();
+    printConsole(`Client full plugins: ${JSON.stringify(full)}`);
+    printConsole(`Client light plugins: ${JSON.stringify(light)}`);
+    return settingsService.getServerManifest()
+      .then((manifest) => {
+        if (!manifest || !Array.isArray(manifest.loadOrder)) {
+          printConsole('Could not receive the server load order');
+          return;
         }
-        if (clientMods.length > serverMods.length) {
-          this.updateText(
-            'LOAD ORDER WARNING: you have more mods than server!\n(or could not receive server mod list)\nCheck console for details.',
-            [255, 255, 0, 1], 5,
-          );
+        printConsole(`Server load order: ${JSON.stringify(manifest.loadOrder)}`);
+        const problems = this.findProblems(manifest, full, light);
+        if (problems.length === 0) {
+          return;
         }
-        let fail = [];
-        for (let i = 0; i < serverMods.length; ++i) {
-          // Need case-insensitive check for 1.6+
-          const nameMismatch = clientMods[i].filename.toLowerCase() !== serverMods[i].filename.toLowerCase();
-          // Older SkyrimPlatform builds reject plugin names with spaces from
-          // getFileInfo, so the client cannot hash them (crc32/size come back
-          // as the 0/0 sentinel). Don't treat that as a content mismatch - the
-          // name still has to match; the native fix restores real hashing.
-          const unhashable = clientMods[i].crc32 === 0 && clientMods[i].size === 0;
-          const contentMismatch = !unhashable &&
-            (clientMods[i].size !== serverMods[i].size || clientMods[i].crc32 !== serverMods[i].crc32);
-          if (nameMismatch || contentMismatch) {
-            fail.push(i);
-            printConsole(`${i}-th mod (numbered from 0) does not match.`);
-            printConsole(`Server has ${JSON.stringify(serverMods[i])}`);
-            printConsole(`We have ${JSON.stringify(clientMods[i])}`);
-          }
-        }
-        if (fail.length !== 0) {
-          throw new Error('Load order check failed! Indices: ' + JSON.stringify(fail));
-        }
+        problems.forEach((problem) => printConsole(problem));
+        // Plugins out of step with the server get other form ids, so modded doors bounce the player back
+        this.updateText(
+          'LOAD ORDER MISMATCH: your plugins differ from the server.\nModded buildings, doors and items will not work.\nRe-run the Alduinak launcher (Repair Modlist). Details are in the console.',
+          [255, 64, 64, 1], 30,
+        );
       })
       .catch((err) => {
-        // Mismatches only log to console; the master launch-check enforces mods.
         printConsole(err);
       });
   };
+
+  // Full and light plugins have separate form id spaces, so each must follow the server order on its own
+  private findProblems(manifest: ServerManifest, full: string[], light: string[]): string[] {
+    const lower = (name: string) => name.toLowerCase();
+    const lightSet = new Set(light.map(lower));
+    const problems = [
+      ...this.orderProblems('Full', manifest.loadOrder.filter((name) => !lightSet.has(lower(name))), full),
+      ...this.orderProblems('Light', manifest.loadOrder.filter((name) => lightSet.has(lower(name))), light),
+    ];
+
+    const serverMods = new Map((manifest.mods || []).map((mod) => [lower(mod.filename), mod]));
+    for (const name of [...full, ...light]) {
+      const serverMod = serverMods.get(lower(name));
+      if (!serverMod || VANILLA_MASTERS.has(lower(name))) {
+        continue;
+      }
+      const { crc32, size } = this.getFileInfoSafe(name);
+      // Older SkyrimPlatform builds cannot hash names with spaces and return 0/0; the name check still applies
+      if (crc32 === 0 && size === 0) {
+        continue;
+      }
+      if ((crc32 >>> 0) !== (serverMod.crc32 >>> 0) || size !== serverMod.size) {
+        problems.push(`${name} differs from the server copy. Server has ${JSON.stringify(serverMod)}, we have ${JSON.stringify({ crc32, size })}`);
+      }
+    }
+    return problems;
+  }
+
+  private orderProblems(kind: string, server: string[], client: string[]): string[] {
+    const count = Math.max(server.length, client.length);
+    for (let i = 0; i < count; ++i) {
+      if ((server[i] || '').toLowerCase() !== (client[i] || '').toLowerCase()) {
+        return [`${kind} plugin #${i} does not match. Server has ${server[i] || '(nothing)'}, we have ${client[i] || '(nothing)'}`];
+      }
+    }
+    return [];
+  }
+
+  private getFullPlugins(): string[] {
+    const names: string[] = [];
+    for (let i = 0; i < Game.getModCount(); ++i) {
+      names.push(Game.getModName(i));
+    }
+    return names;
+  }
+
+  private getLightPlugins(): string[] {
+    const names: string[] = [];
+    for (let i = 0; i < MAX_LIGHT_MODS; ++i) {
+      const name = Game.getModName(LIGHT_MOD_OFFSET + i);
+      if (!name) {
+        break;
+      }
+      names.push(name);
+    }
+    return names;
+  }
 
   private getState(): State {
     if (typeof this.sp.storage[STATE_KEY] !== 'object') {
@@ -103,27 +152,6 @@ export class LoadOrderVerificationService extends ClientListener {
       });
     }
   }
-
-  private enumerateClientMods(getCount: (() => number), getAt: ((idx: number) => string)) {
-    const result = [];
-    for (let i = 0; i < getCount(); ++i) {
-      const filename = getAt(i);
-      const { crc32, size } = this.getFileInfoSafe(filename);
-      result.push({ filename, crc32, size });
-    }
-    return result;
-  }
-
-  private getClientMods() {
-    return this.enumerateClientMods(Game.getModCount, Game.getModName);
-  };
-
-  private printModOrder(header: string, order: Mod[]) {
-    printConsole(header);
-    for (const [i, mod] of Object.entries(order)) {
-      printConsole(`#${i} ${JSON.stringify(mod)}`);
-    }
-  };
 
   private getFileInfoSafe(filename: string) {
     try {
