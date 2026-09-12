@@ -78,7 +78,8 @@ struct MpActor::Impl
   std::optional<AnimationData> animationData;
 
   // this is a hot fix attempt to make permanent restoration potions work
-  std::chrono::system_clock::time_point nextRestorationTime{};
+  std::unordered_map<espm::ActorValue, std::chrono::system_clock::time_point>
+    nextRestorationTimes;
 };
 
 namespace {
@@ -87,19 +88,23 @@ void RestoreActorValuePatched(MpActor* actor, espm::ActorValue actorValue,
                               float value)
 {
   actor->RestoreActorValue(actorValue, value);
-  actor->UpdateNextRestorationTime(std::chrono::seconds{ 5 });
+  actor->UpdateNextRestorationTime(actorValue, std::chrono::seconds{ 5 });
 }
 
 }
 
-void MpActor::UpdateNextRestorationTime(std::chrono::seconds duration) noexcept
+void MpActor::UpdateNextRestorationTime(espm::ActorValue av,
+                                        std::chrono::seconds duration)
 {
-  pImpl->nextRestorationTime = std::chrono::system_clock::now() + duration;
+  pImpl->nextRestorationTimes[av] =
+    std::chrono::system_clock::now() + duration;
 }
 
-bool MpActor::ShouldSkipRestoration() const noexcept
+bool MpActor::ShouldSkipRestoration(espm::ActorValue av) const noexcept
 {
-  return pImpl->nextRestorationTime > std::chrono::system_clock::now();
+  auto it = pImpl->nextRestorationTimes.find(av);
+  return it != pImpl->nextRestorationTimes.end() &&
+    it->second > std::chrono::system_clock::now();
 }
 
 MpActor::MpActor(const LocationalData& locationalData_,

@@ -815,20 +815,6 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
       rawMsgData.userId);
   }
 
-  if (actor->ShouldSkipRestoration()) {
-    // Echo the server values instead of dropping silently: the client's
-    // dedup never re-sends an unchanged report, so a bare return here
-    // desyncs the bar until the next damage event
-    const auto& serverValues = actor->GetActorValues();
-    ChangeValuesMessage correction;
-    correction.idx = actor->GetIdx();
-    correction.data.health = serverValues.healthPercentage;
-    correction.data.magicka = serverValues.magickaPercentage;
-    correction.data.stamina = serverValues.staminaPercentage;
-    actor->SendToUser(correction, true);
-    return;
-  }
-
   const auto now = std::chrono::steady_clock::now();
   const float timeAfterRegeneration = CropPeriodAfterLastRegen(
     actor->GetDurationOfAttributesPercentagesUpdate(now).count());
@@ -846,6 +832,13 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
     }
 
     if (MathUtils::IsNearlyEqual(currentVal, *inputVal)) {
+      return;
+    }
+
+    // Echo a freshly restored value, the client's report predates it
+    if (actor->ShouldSkipRestoration(av)) {
+      outVal = currentVal;
+      sendOutMsg = true;
       return;
     }
 
