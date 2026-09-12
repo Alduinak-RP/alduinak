@@ -5,7 +5,7 @@ import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
-import { getInventory, Entry, isBoundItem } from "../../sync/inventory";
+import { getInventory, Entry, isBoundItem, PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setters (executed inside the CEF browser)
@@ -17,62 +17,57 @@ const INVITE_WIDGET_ID = 15; // the small "X wants to trade" prompt
 // Stacks larger than this prompt for a count when added/removed (vanilla-style); smaller stacks move whole.
 const STACK_PROMPT_THRESHOLD = 5;
 
-// Mirror of the server's EXTRA_KEYS (tradeSystem.ts) minus worn flags, which the server inventory never stores
-const EXTRA_KEYS: (keyof Entry)[] = [
-  'health', 'enchantmentId', 'maxCharge', 'chargePercent', 'name',
-  'soul', 'poisonId', 'poisonCount', 'removeEnchantmentOnUnequip',
-];
+// Extras that tell copies apart, same as the server's IDENTITY_KEYS (tradeSystem.ts)
+const IDENTITY_KEYS = [
+  'health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip',
+  'soul', 'poisonId', 'poisonCount',
+] as const;
+
+const OFFER_KEYS: (keyof Entry)[] = [...IDENTITY_KEYS, 'chargePercent', 'name'];
+
+const TEMPER_LABELS = ['Fine', 'Superior', 'Exquisite', 'Flawless', 'Epic', 'Legendary'];
+const SOUL_LABELS = ['Petty', 'Lesser', 'Common', 'Greater', 'Grand'];
 
 const isWorn = (e: Entry): boolean => !!e.worn || !!e.wornLeft;
 
-// Property keys (housing system) are the one named item allowed through.
-const KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
+// Same rule as the server's isSet (tradeSystem.ts)
+const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false && v !== 0 && v !== '';
 
-const isSimpleEntry = (e: Entry): boolean => {
-  for (const k of EXTRA_KEYS) {
-    const v = e[k];
-    if (v !== undefined && v !== null && v !== false) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const isKeyEntry = (e: Entry): boolean => {
-  if ((e.baseId >>> 0) !== KEY_BASE_ID || typeof e.name !== 'string' || !e.name) {
-    return false;
-  }
-  for (const k of EXTRA_KEYS) {
-    if (k === 'name') {
-      continue;
-    }
-    const v = e[k];
-    if (v !== undefined && v !== null && v !== false) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const isTradeableEntry = (e: Entry): boolean => isSimpleEntry(e) || isKeyEntry(e);
-
-interface Item {
-  baseId: number;
-  count: number;
-  name?: string; // property keys only
-}
+// One inventory entry minus worn flags; the server sets plain when it holds no copy with these extras
+type Item = Omit<Entry, 'worn' | 'wornLeft'> & { plain?: boolean };
 
 interface UiItem {
+  lineId: string; // rides trade:add/remove events
   baseId: number;
   count: number;
   name: string;
-  keyName?: string; // set on property keys; rides trade:add/remove events
+  tags?: string[];
   equipped?: boolean;
 }
 
-// Identity of an offer line: plain stacks by baseId, keys by baseId + name.
-const lineKey = (baseId: number, name?: string): string =>
-  baseId + '|' + (typeof name === 'string' ? name : '');
+// Property keys (housing): the name is the credential
+const keyName = (i: Item): string =>
+  (i.baseId >>> 0) === PROPERTY_KEY_BASE_ID && typeof i.name === 'string' ? i.name : '';
+
+// Same shape as the server's lineKey
+const lineKey = (i: Item): string =>
+  [i.baseId >>> 0, keyName(i), ...IDENTITY_KEYS.map((k) => (isSet(i[k]) ? String(i[k]) : ''))].join('|');
+
+// Keeps only extras the server accepts (copyValidExtras in tradeSystem.ts), so both sides build the same lineKey
+const toItem = (raw: any, count: number): Item => {
+  const item: Item = { baseId: Number(raw?.baseId), count };
+  for (const k of OFFER_KEYS) {
+    const v = raw?.[k];
+    if (typeof v === 'number' && Number.isFinite(v) && (v > 0 || (k === 'chargePercent' && v === 0))) {
+      (item as any)[k] = v;
+    } else if (typeof v === 'string' && v) {
+      (item as any)[k] = v.slice(0, 256);
+    } else if (v === true) {
+      (item as any)[k] = true;
+    }
+  }
+  return item;
+};
 
 // Mirror of the server's tradeState packet (this player's point of view).
 interface TradeState {
@@ -88,8 +83,8 @@ interface TradeState {
 
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
-  add: 'trade:add', // (baseId, count) move from inventory -> my offer
-  remove: 'trade:remove', // (baseId, count) move from my offer -> inventory
+  add: 'trade:add', // (lineId, count) move from inventory -> my offer
+  remove: 'trade:remove', // (lineId, count) move from my offer -> inventory
   lock: 'trade:lock',
   unlock: 'trade:unlock',
   accept: 'trade:accept',
@@ -117,7 +112,7 @@ let inviteFrom = '';
  *
  *   Client -> Server
  *     { customPacketType: "tradeRespond", accept }
- *     { customPacketType: "tradeSetOffer", items: [{ baseId, count }] }
+ *     { customPacketType: "tradeSetOffer", items: [{ baseId, count, ...extras }] }
  *     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
  *
  * The window shows the player's own (offerable) inventory on the left and two
@@ -204,9 +199,9 @@ export class TradeService extends ClientListener {
       Array.isArray(v)
         ? (v as any[])
             .map((x) => {
-              const item: Item = { baseId: Number(x?.baseId), count: Number(x?.count) };
-              if (typeof x?.name === "string" && x.name) {
-                item.name = x.name;
+              const item = toItem(x, Number(x?.count));
+              if (x?.plain === true) {
+                item.plain = true;
               }
               return item;
             })
@@ -241,13 +236,13 @@ export class TradeService extends ClientListener {
         break;
       case events.add: {
         // Browser messages arrive in tick context; inventory natives need update
-        const [baseId, count, keyRaw] = [Number(e.arguments[1]), Number(e.arguments[2]), this.keyNameArg(e.arguments[3])];
-        this.controller.once("update", () => this.changeOffer(baseId, count, +1, keyRaw));
+        const [lineId, count] = [String(e.arguments[1]), Number(e.arguments[2])];
+        this.controller.once("update", () => this.changeOffer(lineId, count, +1));
         break;
       }
       case events.remove: {
-        const [baseId, count, keyRaw] = [Number(e.arguments[1]), Number(e.arguments[2]), this.keyNameArg(e.arguments[3])];
-        this.controller.once("update", () => this.changeOffer(baseId, count, -1, keyRaw));
+        const [lineId, count] = [String(e.arguments[1]), Number(e.arguments[2])];
+        this.controller.once("update", () => this.changeOffer(lineId, count, -1));
         break;
       }
       case events.lock:
@@ -269,24 +264,19 @@ export class TradeService extends ClientListener {
     }
   }
 
-  private keyNameArg(raw: unknown): string | undefined {
-    return typeof raw === "string" && raw ? raw : undefined;
-  }
-
   // Move `count` of one line between inventory and offer, then send it; clamped to what I actually hold.
-  private changeOffer(baseId: number, count: number, dir: 1 | -1, keyName?: string): void {
-    if (!this.state || !Number.isFinite(baseId) || !Number.isFinite(count) || count <= 0) {
+  private changeOffer(lineId: string, count: number, dir: 1 | -1): void {
+    if (!this.state || !Number.isFinite(count) || count <= 0) {
       return;
     }
-    const id = lineKey(baseId, keyName);
-    const offer = this.state.myOffer.map((i) => ({ ...i }));
-    const offered = offer.find((i) => lineKey(i.baseId, i.name) === id);
+    const offer = this.state.myOffer.map((i) => toItem(i, i.count));
+    const offered = offer.find((i) => lineKey(i) === lineId);
     const offeredCount = offered ? offered.count : 0;
+    const owned = this.localLines().get(lineId);
 
     let delta: number;
     if (dir > 0) {
-      const free = this.ownedCount(baseId, keyName) - offeredCount;
-      delta = Math.min(count, free);
+      delta = Math.min(count, (owned ? owned.item.count : 0) - offeredCount);
     } else {
       delta = -Math.min(count, offeredCount);
     }
@@ -296,12 +286,8 @@ export class TradeService extends ClientListener {
 
     if (offered) {
       offered.count += delta;
-    } else if (delta > 0) {
-      const line: Item = { baseId, count: delta };
-      if (keyName) {
-        line.name = keyName;
-      }
-      offer.push(line);
+    } else if (delta > 0 && owned) {
+      offer.push(toItem(owned.item, delta));
     }
 
     const next = offer.filter((i) => i.count > 0);
@@ -311,15 +297,13 @@ export class TradeService extends ClientListener {
 
   // Re-send a wiped offer clamped to what the player still holds.
   private restoreOffer(offer: Item[]): void {
+    const lines = this.localLines();
     const items: Item[] = [];
     for (const item of offer) {
-      const count = Math.min(item.count, this.ownedCount(item.baseId, item.name));
+      const owned = lines.get(lineKey(item));
+      const count = Math.min(item.count, owned ? owned.item.count : 0);
       if (count > 0) {
-        const line: Item = { baseId: item.baseId, count };
-        if (item.name) {
-          line.name = item.name;
-        }
-        items.push(line);
+        items.push(toItem(item, count));
       }
     }
     if (items.length > 0) {
@@ -329,16 +313,24 @@ export class TradeService extends ClientListener {
 
   // ── Inventory reading ──────────────────────────────────────────────────────
 
-  // How many tradeable copies of one line the player currently holds.
-  private ownedCount(baseId: number, keyName?: string): number {
-    const id = lineKey(baseId, keyName);
-    let total = 0;
+  // Offerable lines by lineKey; equipped and loose copies count together
+  private localLines(): Map<string, { item: Item; equipped: boolean }> {
+    const lines = new Map<string, { item: Item; equipped: boolean }>();
     for (const e of this.localTradeableEntries()) {
-      if (lineKey(e.baseId, isKeyEntry(e) ? (e.name as string) : undefined) === id) {
-        total += e.count;
+      const item = toItem(e, e.count);
+      const id = lineKey(item);
+      let line = lines.get(id);
+      if (line) {
+        line.item.count += e.count;
+      } else {
+        line = { item, equipped: false };
+        lines.set(id, line);
+      }
+      if (isWorn(e)) {
+        line.equipped = true;
       }
     }
-    return total;
+    return lines;
   }
 
   private localTradeableEntries(): Entry[] {
@@ -355,7 +347,7 @@ export class TradeService extends ClientListener {
     // Summoned bound weapons and arrows are worn but never held by the server inventory
     return entries
       .map((e) => this.withoutDefaultName(e))
-      .filter((e) => e.count > 0 && isTradeableEntry(e) && !this.isSummonedBoundItem(e.baseId));
+      .filter((e) => e.count > 0 && !this.isSummonedBoundItem(e.baseId));
   }
 
   private isSummonedBoundItem(baseId: number): boolean {
@@ -393,16 +385,54 @@ export class TradeService extends ClientListener {
     return "0x" + (baseId >>> 0).toString(16);
   }
 
-  private toUiItem(i: Item): UiItem {
+  private toUiItem(i: Item, count = i.count): UiItem {
     const ui: UiItem = {
+      lineId: lineKey(i),
       baseId: i.baseId,
-      count: i.count,
+      count,
       name: i.name ? i.name : this.resolveName(i.baseId),
     };
-    if (i.name) {
-      ui.keyName = i.name;
+    const tags = this.extraTags(i);
+    if (tags.length > 0) {
+      ui.tags = tags;
     }
     return ui;
+  }
+
+  // Vanilla-style labels for tempering, enchantment, charge, soul and poison
+  private extraTags(i: Item): string[] {
+    const tags: string[] = [];
+    const tier = i.health ? Math.floor((i.health - 1) * 10 + 1e-3) : 0;
+    if (tier >= 1) {
+      tags.push(TEMPER_LABELS[Math.min(tier, TEMPER_LABELS.length) - 1]);
+    }
+    if (i.enchantmentId) {
+      tags.push("enchanted");
+    }
+    const maxCharge = i.chargePercent !== undefined ? i.maxCharge || this.baseCharge(i.baseId) : 0;
+    if (maxCharge > 0) {
+      tags.push("charge " + Math.round(Math.min(100, ((i.chargePercent as number) / maxCharge) * 100)) + "%");
+    }
+    if (i.soul && SOUL_LABELS[i.soul - 1]) {
+      tags.push(SOUL_LABELS[i.soul - 1] + " soul");
+    }
+    if (i.poisonId) {
+      tags.push("poisoned");
+    }
+    if (i.plain) {
+      tags.push("trades as plain");
+    }
+    return tags;
+  }
+
+  // Charge capacity of a weapon enchanted in its base record
+  private baseCharge(baseId: number): number {
+    try {
+      const weapon = this.sp.Weapon.from(this.sp.Game.getFormEx(baseId));
+      return weapon ? weapon.getEnchantmentValue() : 0;
+    } catch (e) {
+      return 0;
+    }
   }
 
   private withNames(items: Item[]): UiItem[] {
@@ -416,33 +446,15 @@ export class TradeService extends ClientListener {
     }
     const offered = new Map<string, number>();
     for (const i of this.state.myOffer) {
-      const id = lineKey(i.baseId, i.name);
+      const id = lineKey(i);
       offered.set(id, (offered.get(id) || 0) + i.count);
     }
-    const owned = new Map<string, Item & { equipped?: boolean }>();
-    for (const e of this.localTradeableEntries()) {
-      const keyName = isKeyEntry(e) ? (e.name as string) : undefined;
-      const id = lineKey(e.baseId, keyName);
-      let line = owned.get(id);
-      if (line) {
-        line.count += e.count;
-      } else {
-        line = { baseId: e.baseId, count: e.count };
-        if (keyName) {
-          line.name = keyName;
-        }
-        owned.set(id, line);
-      }
-      if (isWorn(e)) {
-        line.equipped = true;
-      }
-    }
     const out: UiItem[] = [];
-    owned.forEach((line, id) => {
-      const available = line.count - (offered.get(id) || 0);
+    this.localLines().forEach(({ item, equipped }, id) => {
+      const available = item.count - (offered.get(id) || 0);
       if (available > 0) {
-        const ui = this.toUiItem({ baseId: line.baseId, count: available, name: line.name });
-        if (line.equipped) {
+        const ui = this.toUiItem(item, available);
+        if (equipped) {
           ui.equipped = true;
         }
         out.push(ui);
