@@ -352,7 +352,19 @@ export class TradeService extends ClientListener {
     } catch (e) {
       return [];
     }
-    return entries.filter((e) => e.count > 0 && isTradeableEntry(e));
+    return entries
+      .map((e) => this.withoutDefaultName(e))
+      .filter((e) => e.count > 0 && isTradeableEntry(e));
+  }
+
+  // applyInventory stamps server items with their form name as TextDisplayData; same rule as containersService
+  private withoutDefaultName(e: Entry): Entry {
+    if (typeof e.name !== "string" || e.name !== this.resolveName(e.baseId)) {
+      return e;
+    }
+    const copy = { ...e };
+    delete copy.name;
+    return copy;
   }
 
   private resolveName(baseId: number): string {
