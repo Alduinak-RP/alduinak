@@ -17,12 +17,13 @@ const INVITE_WIDGET_ID = 15; // the small "X wants to trade" prompt
 // Stacks larger than this prompt for a count when added/removed (vanilla-style); smaller stacks move whole.
 const STACK_PROMPT_THRESHOLD = 5;
 
-// Mirror of the server's EXTRA_KEYS (trade.ts): a stack carrying any of these is not simple, can't be offered.
+// Mirror of the server's EXTRA_KEYS (tradeSystem.ts) minus worn flags, which the server inventory never stores
 const EXTRA_KEYS: (keyof Entry)[] = [
   'health', 'enchantmentId', 'maxCharge', 'chargePercent', 'name',
-  'soul', 'poisonId', 'poisonCount', 'worn', 'wornLeft',
-  'removeEnchantmentOnUnequip',
+  'soul', 'poisonId', 'poisonCount', 'removeEnchantmentOnUnequip',
 ];
+
+const isWorn = (e: Entry): boolean => !!e.worn || !!e.wornLeft;
 
 // Property keys (housing system) are the one named item allowed through.
 const KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
@@ -66,6 +67,7 @@ interface UiItem {
   count: number;
   name: string;
   keyName?: string; // set on property keys; rides trade:add/remove events
+  equipped?: boolean;
 }
 
 // Identity of an offer line: plain stacks by baseId, keys by baseId + name.
@@ -350,7 +352,19 @@ export class TradeService extends ClientListener {
     } catch (e) {
       return [];
     }
-    return entries.filter((e) => e.count > 0 && isTradeableEntry(e));
+    return entries
+      .map((e) => this.withoutDefaultName(e))
+      .filter((e) => e.count > 0 && isTradeableEntry(e));
+  }
+
+  // applyInventory stamps server items with their form name as TextDisplayData; same rule as containersService
+  private withoutDefaultName(e: Entry): Entry {
+    if (typeof e.name !== "string" || e.name !== this.resolveName(e.baseId)) {
+      return e;
+    }
+    const copy = { ...e };
+    delete copy.name;
+    return copy;
   }
 
   private resolveName(baseId: number): string {
@@ -399,26 +413,33 @@ export class TradeService extends ClientListener {
       const id = lineKey(i.baseId, i.name);
       offered.set(id, (offered.get(id) || 0) + i.count);
     }
-    const owned = new Map<string, Item>();
+    const owned = new Map<string, Item & { equipped?: boolean }>();
     for (const e of this.localTradeableEntries()) {
       const keyName = isKeyEntry(e) ? (e.name as string) : undefined;
       const id = lineKey(e.baseId, keyName);
-      const prev = owned.get(id);
-      if (prev) {
-        prev.count += e.count;
+      let line = owned.get(id);
+      if (line) {
+        line.count += e.count;
       } else {
-        const line: Item = { baseId: e.baseId, count: e.count };
+        line = { baseId: e.baseId, count: e.count };
         if (keyName) {
           line.name = keyName;
         }
         owned.set(id, line);
+      }
+      if (isWorn(e)) {
+        line.equipped = true;
       }
     }
     const out: UiItem[] = [];
     owned.forEach((line, id) => {
       const available = line.count - (offered.get(id) || 0);
       if (available > 0) {
-        out.push(this.toUiItem({ baseId: line.baseId, count: available, name: line.name }));
+        const ui = this.toUiItem({ baseId: line.baseId, count: available, name: line.name });
+        if (line.equipped) {
+          ui.equipped = true;
+        }
+        out.push(ui);
       }
     });
     out.sort((a, b) => a.name.localeCompare(b.name));
