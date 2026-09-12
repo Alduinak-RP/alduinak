@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
+import { espmFieldFormIds } from "./formIdUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -726,18 +727,8 @@ export class MasterySystem implements System {
     }
   }
 
-  // Form ids stored in a field are local to the record's plugin.
   private fieldFormIds(res: any, fieldType: string): number[] {
-    const out: number[] = [];
-    if (!res || typeof res.toGlobalRecordId !== "function") return out;
-    for (const f of res.record.fields || []) {
-      if (f.type !== fieldType || !(f.data instanceof Uint8Array)) continue;
-      const view = new DataView(f.data.buffer, f.data.byteOffset, f.data.byteLength);
-      for (let off = 0; off + 4 <= f.data.byteLength; off += 4) {
-        try { out.push(res.toGlobalRecordId(view.getUint32(off, true)) >>> 0); } catch { /* unmapped master */ }
-      }
-    }
-    return out;
+    return espmFieldFormIds(res, fieldType);
   }
 
   private recordType(ctx: SystemContext, formId: number): string {
