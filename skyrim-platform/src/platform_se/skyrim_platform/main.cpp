@@ -584,6 +584,7 @@ private:
       }
       everForeground = true;
       thief = nullptr;
+      foreign = nullptr;
       nullTicks = 0;
       return;
     }
@@ -603,7 +604,16 @@ private:
     }
     const bool own = IsOwnWindow(info);
     if (!own && everForeground) {
-      // A real switch to another program
+      // A real switch to another program; the input idle time tells an alt-tab from a theft
+      if (foreground != foreign) {
+        foreign = foreground;
+        LASTINPUTINFO lastInput = { sizeof(LASTINPUTINFO), 0 };
+        const DWORD idleMs =
+          GetLastInputInfo(&lastInput) ? GetTickCount() - lastInput.dwTime : 0;
+        spdlog::info("ForegroundGuard: window class '{}' pid {} ({}) is in "
+                     "front of the game, last input {} ms ago, leaving it",
+                     info.className, info.pid, ImageName(info), idleMs);
+      }
       thief = nullptr;
       return;
     }
@@ -655,6 +665,7 @@ private:
   std::atomic<bool> stop{ false };
   HWND game = nullptr;
   HWND thief = nullptr;
+  HWND foreign = nullptr;
   int attempts = 0;
   int nullTicks = 0;
   bool everForeground = false;
