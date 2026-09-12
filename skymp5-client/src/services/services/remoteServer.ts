@@ -23,7 +23,7 @@ import { nameof } from '../../lib/nameof';
 import { setActorValuePercentage } from '../../sync/actorvalues';
 import { applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown } from '../../sync/equipment';
-import { Inventory, applyInventory, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
+import { Inventory, applyInventory, getDiff, getInventory, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement } from '../../sync/movement';
 import { learnSpells, removeAllSpells } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
@@ -77,15 +77,24 @@ const setPcInventory = (inv: Inventory): void => {
 };
 
 let pcInvLastApply = 0;
+let encumbranceRefreshPending = false;
 on('update', () => {
   if (isBadMenuShown()) {
     return;
+  }
+  const player = Game.getPlayer()!;
+  if (encumbranceRefreshPending) {
+    encumbranceRefreshPending = false;
+    // Any CarryWeight change makes the engine re-check encumbrance
+    player.modActorValue("CarryWeight", 1);
+    player.modActorValue("CarryWeight", -1);
   }
   if (Date.now() - pcInvLastApply > 5000) {
     pcInvLastApply = Date.now();
     const pcInv = getPcInventory();
     if (pcInv) {
-      applyInventory(Game.getPlayer()!, pcInv, false, true);
+      encumbranceRefreshPending = getDiff(pcInv, getInventory(player), true).entries.length > 0;
+      applyInventory(player, pcInv, false, true);
     }
   }
 });
