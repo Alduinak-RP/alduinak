@@ -311,6 +311,25 @@ TEST_CASE("Loads Furniture", "[espm]")
               "isBlacksmithForge", "RaceToScale", "WICraftingSmithing" }));
 }
 
+TEST_CASE("Loads Furniture marker count", "[espm]")
+{
+  auto& br = GetEspmLoader().GetBrowser();
+  espm::CompressedFieldsCache cache;
+
+  auto bench = espm::Convert<espm::FURN>(br.LookupById(0x2e6cf).rec);
+  REQUIRE(bench);
+  REQUIRE(std::string(bench->GetData(cache).editorId) == "CommonBench01");
+  REQUIRE(bench->GetData(cache).numMarkers == 3);
+
+  auto table = espm::Convert<espm::FURN>(br.LookupById(0xf5b98).rec);
+  REQUIRE(table);
+  REQUIRE(table->GetData(cache).numMarkers == 4);
+
+  auto chair = espm::Convert<espm::FURN>(br.LookupById(0x102733).rec);
+  REQUIRE(chair);
+  REQUIRE(chair->GetData(cache).numMarkers == 1);
+}
+
 TEST_CASE("Loads Outfit", "[espm]")
 {
   auto& br = GetEspmLoader().GetBrowser();
