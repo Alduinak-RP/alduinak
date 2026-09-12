@@ -56,11 +56,9 @@ export class FormView {
 
 
 
-    // Don't spawn dead actors if not already
-    if (model.isDead) {
-      if (this.refrId === 0) {
-        return;
-      }
+    // Dead players stay hidden until they respawn; NPC corpses spawn and are killed on the first apply
+    if (model.isDead && this.refrId === 0 && model.appearance) {
+      return;
     }
 
     // Players with different worldOrCell should be invisible
@@ -437,8 +435,13 @@ export class FormView {
         this.movState.lastApply = Date.now();
         if (model.isHostedByOther || !this.movState.everApplied) {
           const backup = model.movement.isWeapDrawn;
+          const isDeadBackup = model.movement.isDead;
           if (forcedWeapDrawn === true || forcedWeapDrawn === false) {
             model.movement.isWeapDrawn = forcedWeapDrawn;
+          }
+          // The server's death state wins over a host that never saw the death
+          if (model.isDead) {
+            model.movement.isDead = true;
           }
           try {
             applyMovement(refr, model.movement, !!model.isMyClone);
@@ -454,6 +457,7 @@ export class FormView {
             }
           }
           model.movement.isWeapDrawn = backup;
+          model.movement.isDead = isDeadBackup;
 
           this.movState.lastNumChanges = +(model.numMovementChanges as number);
           this.movState.everApplied = true;
@@ -482,6 +486,14 @@ export class FormView {
             }
           }
         }
+      }
+    }
+
+    // Hosts skip applyMovement, so a copy still standing after the server's death is killed here
+    if (model.isDead) {
+      const ac = Actor.from(refr);
+      if (ac && !ac.isDead()) {
+        SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: true });
       }
     }
 
