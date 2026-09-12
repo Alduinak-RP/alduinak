@@ -1337,12 +1337,12 @@ async function gameProcessRunning() {
 // Refuses a launch while another is being prepared, starting, or the game already runs
 async function guardLaunch(launch) {
   if (launchInFlight) return { success: false, error: 'The game is already launching.' }
-  if (await gameProcessRunning()) return { success: false, error: 'Skyrim is already running.' }
-  if (Date.now() - launchStartedAt < LAUNCH_GRACE_MS) {
-    return { success: false, error: 'Skyrim is still starting - give MO2 a moment.' }
-  }
   launchInFlight = true
   try {
+    if (await gameProcessRunning()) return { success: false, error: 'Skyrim is already running.' }
+    if (Date.now() - launchStartedAt < LAUNCH_GRACE_MS) {
+      return { success: false, error: 'Skyrim is still starting - give MO2 a moment.' }
+    }
     const result = await launch()
     if (result.success) launchStartedAt = Date.now()
     return result
