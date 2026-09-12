@@ -5,9 +5,7 @@ import { espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Chopping blocks and ore veins are driven by vanilla Papyrus (ResourceFurnitureScript,
-// MineOreScript, MineOreFurnitureScript) that the client blocks and the server does not
-// ship, so their tool check, yield and depletion are enforced here instead.
+// Tool check, yield and depletion of chopping blocks and ore veins; their vanilla scripts wait on animation events the server never receives.
 //
 // server-settings.json keys (all optional):
 //   gatheringStrikeSeconds       seconds of work per chop or pickaxe strike, default 5
@@ -258,14 +256,22 @@ export class GatheringSystem implements System {
   private finish(ctx: SystemContext, s: Session, text: string): void {
     this.sessions.delete(s.actorId);
     if (text) this.notice(ctx, this.userOf(ctx, s.actorId), text);
-    if (!s.exitIdle) return;
+    const anim = this.idleEvent(ctx, s.exitIdle);
+    if (!anim) return;
     const mp = ctx.svr as Mp;
     try {
-      const self = { type: "form", desc: mp.getDescFromId(s.actorId) };
-      mp.callPapyrusFunction("method", "Actor", "PlayIdle", self, [{ type: "espm", desc: mp.getDescFromId(s.exitIdle) }]);
+      const actor = { type: "form", desc: mp.getDescFromId(s.actorId) };
+      mp.callPapyrusFunction("global", "Debug", "SendAnimationEvent", null, [actor, anim]);
     } catch (e) {
       this.log(`[gathering] exit idle failed for ${s.actorId.toString(16)}: ${e}`);
     }
+  }
+
+  // Actor.PlayIdle needs a Papyrus stack that calls from JS lack, so the idle's animation event (ENAM) is sent instead.
+  private idleEvent(ctx: SystemContext, idleId: number): string {
+    const fields = this.lookup(ctx, idleId)?.record.fields || [];
+    const f = fields.find((x: any) => x && x.type === "ENAM" && x.data instanceof Uint8Array);
+    return f ? String.fromCharCode(...f.data).split("\0")[0] : "";
   }
 
   private stillWorking(ctx: SystemContext, s: Session, now: number): boolean {
@@ -324,7 +330,8 @@ export class GatheringSystem implements System {
         break;
       }
     }
-    this.markerVein.set(markerId, found);
+    // A miss is not cached: the vein may sit in a grid cell that is not loaded yet.
+    if (found) this.markerVein.set(markerId, found);
     return found;
   }
 
