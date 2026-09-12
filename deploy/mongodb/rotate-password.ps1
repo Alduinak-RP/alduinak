@@ -15,8 +15,8 @@ param(
   [Parameter(Mandatory = $true)][string]$NewPassword,
   [string]$CreateAdmin = '',
   [string]$User = 'skympuser',
-  [string]$MongoCfg = 'C:\Program Files\MongoDB\Server\8.0\bin\mongod.cfg',
-  [string]$ServiceName = 'MongoDB',
+  [string]$MongoCfg = 'C:\Users\Administrator\Desktop\alduinak\deploy\mongodb\mongod.cfg',
+  [string]$ServiceName = 'AlduinakMongo',
   [string]$Settings = 'C:\Users\Administrator\Desktop\alduinak\build\dist\server\server-settings.json'
 )
 
@@ -68,7 +68,7 @@ if (-not $rotated) {
   try {
     # Disable auth, restart, rotate on the localhost connection
     ($original -replace 'authorization:\s*enabled', 'authorization: disabled') |
-      Set-Content $MongoCfg -Encoding ascii
+      Set-Content $MongoCfg -Encoding ascii -NoNewline
     Restart-Service $ServiceName
     Start-Sleep -Seconds 3
     $res = Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' $updateJs
@@ -81,7 +81,7 @@ if (-not $rotated) {
     $rotated = $true
   } finally {
     # Always restore authorization, even if the rotation threw
-    Set-Content $MongoCfg -Value $original -Encoding ascii
+    Set-Content $MongoCfg -Value $original -Encoding ascii -NoNewline
     Restart-Service $ServiceName
     Start-Sleep -Seconds 3
     Write-Host '[rotate] authorization restored and service restarted'
