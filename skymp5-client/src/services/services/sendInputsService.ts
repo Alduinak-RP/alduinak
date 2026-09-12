@@ -85,7 +85,7 @@ export class SendInputsService extends ClientListener {
         // Send OnEquip for all equips, else the server won't trigger spell learn, potion drink, eating, Papyrus
         this.controller.emitter.emit("sendMessage", {
             message: { t: MsgType.OnEquip, baseId: event.baseObj.getFormID() },
-            reliability: "unreliable"
+            reliability: "reliable"
         });
     }
 
