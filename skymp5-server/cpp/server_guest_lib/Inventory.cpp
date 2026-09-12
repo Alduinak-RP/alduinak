@@ -2,6 +2,7 @@
 #include "archives/JsonInputArchive.h"
 #include "archives/JsonOutputArchive.h"
 #include "archives/SimdJsonInputArchive.h"
+#include <algorithm>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 #include <tuple>
@@ -92,13 +93,15 @@ Inventory& Inventory::AddItem(uint32_t baseId, uint32_t count)
 Inventory& Inventory::AddItems(const std::vector<Entry>& toAdd)
 {
   for (auto& entryToAdd : toAdd) {
-    for (auto& entry : entries) {
-      if (entry.EqualExceptCount(entryToAdd)) {
-        entry.count += entryToAdd.count;
-        return *this; // TODO: It seems there is a bug
-      }
+    auto it = std::find_if(entries.begin(), entries.end(),
+                           [&](const Entry& entry) {
+                             return entry.EqualExceptCount(entryToAdd);
+                           });
+    if (it != entries.end()) {
+      it->count += entryToAdd.count;
+    } else {
+      entries.push_back(entryToAdd);
     }
-    entries.push_back(entryToAdd);
   }
   return *this;
 }
