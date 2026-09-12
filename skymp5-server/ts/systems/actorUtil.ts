@@ -55,3 +55,23 @@ export const isNear = (mp: Mp, aId: number, bId: number, range: number): boolean
 };
 
 export const hex = (id: number): string => (id >>> 0).toString(16);
+
+// Removes a server-placed actor or object for every client; throws when the form does not exist
+export const destroyRef = (mp: Mp, id: number): void => {
+  if (mp.get(id, "type") === "MpActor") {
+    mp.destroyActor(id);
+    return;
+  }
+  mp.callPapyrusFunction("method", "ObjectReference", "Delete", { type: "form", desc: mp.getDescFromId(id) }, []);
+};
+
+// Forms of a previous run exist only after the world DB loads (WORLD_LOADED_EVENT); returns how many were removed
+export const destroyLeftovers = (mp: Mp, ids: number[]): number =>
+  ids.filter((id) => {
+    try {
+      destroyRef(mp, id);
+      return true;
+    } catch {
+      return false;
+    }
+  }).length;
