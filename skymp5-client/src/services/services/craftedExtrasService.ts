@@ -10,9 +10,7 @@ import { logTrace } from "../../logging";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 
-// Reports the extras the player made locally (enchanting, tempering, recharging, poisoning a weapon) and the charge and
-// poison that hits used up, so the server records them (craftedExtrasSystem.ts). Soul gems the engine fills are left to
-// the server's soul trap system.
+// Reports extras the player made locally and the charge and poison hits used up, for craftedExtrasSystem.ts; souls are soul trap's
 //
 // Client -> Server: { customPacketType: "craftedExtras", workbench, gained: Entry[], lost: Entry[] }
 // Server -> Client: { customPacketType: "craftedExtrasRefused", baseIds: number[] }

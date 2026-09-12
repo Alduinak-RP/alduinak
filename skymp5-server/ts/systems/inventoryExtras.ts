@@ -1,8 +1,7 @@
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Inventory entries as the inventory binding returns them (Inventory::Entry, server_guest_lib/Inventory.h), and the
-// item identity every system that moves or edits them shares with the client's extrasEqual (sync/inventory.ts).
+// Inventory entries as the binding returns them (Inventory.h) and the item identity shared with the client's extrasEqual
 
 // One effect of a player-made enchantment (Inventory::EnchantmentEffect)
 export interface EnchantmentEffect {

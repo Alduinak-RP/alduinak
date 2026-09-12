@@ -8,11 +8,7 @@ import {
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Crafted extras: what players make on their own items in vanilla (enchanting, tempering, recharging, poisoning a
-// weapon, and the charge and poison that hits use up) becomes part of the server inventory, so it persists and moves
-// with the item. The client reports how its inventory differs from the server's; the server accepts a change only when
-// it can pay for it from its own copies (the item, a filled soul gem, the temper materials, the poison), clamps it to
-// vanilla limits and never creates an extra from nothing. Soul gems filling up is left to the soul trap system.
+// Records extras players make in vanilla, paid for from the server's own copies and clamped to vanilla limits; souls are soul trap's
 //
 // Client -> Server: { customPacketType: "craftedExtras", workbench, gained: Entry[], lost: Entry[] }
 //   gained: local copies the server lacks; lost: server copies the player no longer has (the sources and inputs)
