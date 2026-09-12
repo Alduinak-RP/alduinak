@@ -64,7 +64,7 @@ export class NetworkingService extends ClientListener {
     this.sp.mpClientPlugin.destroyClient();
   }
 
-  // Server kick: stay offline until the player asks to reconnect
+  // Server kick: stay offline until the game closes
   closeAfterKick() {
     this.autoReconnectBlocked = true;
     this.close();
