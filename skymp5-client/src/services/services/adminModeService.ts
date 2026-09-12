@@ -5,6 +5,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 
 const INVIS_REAPPLY_MS = 2000;
+const LOCAL_MODES = ["god", "noclip", "ghost", "invis"];
 
 /**
  * Applies admin mode toggles pushed by the server's AdminSystem:
@@ -19,6 +20,12 @@ export class AdminModeService extends ClientListener {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("update", () => this.onUpdate());
+    this.controller.emitter.on("connectionAccepted", () => this.controller.once("update", () => this.resetLocalModes()));
+  }
+
+  // A new session starts with every mode off; the server re-sends the active ones after login
+  private resetLocalModes(): void {
+    for (const mode of Array.from(this.localModes)) this.apply(mode, false);
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -32,6 +39,10 @@ export class AdminModeService extends ClientListener {
 
   private apply(mode: string, on: boolean): void {
     const player = this.sp.Game.getPlayer();
+    if (LOCAL_MODES.includes(mode)) {
+      if (on) this.localModes.add(mode);
+      else this.localModes.delete(mode);
+    }
     switch (mode) {
       case "god":
         this.sp.Debug.setGodMode(on);
@@ -77,4 +88,5 @@ export class AdminModeService extends ClientListener {
   private collisionsDisabled = false;
   private invisible = false;
   private lastInvisApply = 0;
+  private localModes = new Set<string>();
 }
