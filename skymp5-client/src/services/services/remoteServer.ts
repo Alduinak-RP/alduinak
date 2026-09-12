@@ -220,6 +220,7 @@ export class RemoteServer extends ClientListener {
     }
     const baseId = Number(content["baseId"]);
     const acceptedBaseId = Number(content["acceptedBaseId"]);
+    const acceptedSecondsAgo = Number(content["acceptedSecondsAgo"]);
     this.controller.once("update", () => {
       const player = Game.getPlayer();
       const potion = Game.getFormEx(baseId);
@@ -231,10 +232,15 @@ export class RemoteServer extends ClientListener {
       if (!held.length || held.some((e) => !e.name)) {
         player.addItem(potion, 1, true);
       }
-      // A repeat of the accepted potion shares its active effects, so dispelling would cancel both
-      const dispel = (this.sp as unknown as { dispelPotionEffects?: (actorFormId: number, potionFormId: number) => void }).dispelPotionEffects;
-      if (baseId !== acceptedBaseId && typeof dispel === "function") {
-        dispel(player.getFormID(), baseId);
+      const natives = this.sp as unknown as {
+        dispelPotionEffects?: (actorFormId: number, potionFormId: number) => void;
+        agePotionEffects?: (actorFormId: number, potionFormId: number, seconds: number) => void;
+      };
+      if (baseId !== acceptedBaseId) {
+        natives.dispelPotionEffects?.(player.getFormID(), baseId);
+      } else if (acceptedSecondsAgo > 0) {
+        // A repeat of the accepted potion refreshed its effects, so roll them back to the first drink
+        natives.agePotionEffects?.(player.getFormID(), baseId, acceptedSecondsAgo);
       }
       Debug.notification("You must wait before drinking another potion.");
     });
