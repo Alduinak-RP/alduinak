@@ -403,39 +403,8 @@ public:
       }
   }
 
-  // Keyboard messages follow the focus window, which can stay elsewhere after the game comes to the front
-  static void RepairFocus()
-  {
-    const HWND foreground = GetForegroundWindow();
-    if (!foreground ||
-        GetWindowThreadProcessId(foreground, nullptr) != GetCurrentThreadId()) {
-      return;
-    }
-    static bool reported = false;
-    const HWND focus = GetFocus();
-    if (focus == foreground || (focus && IsChild(foreground, focus))) {
-      reported = false;
-      return;
-    }
-    static ULONGLONG lastAttempt = 0;
-    const ULONGLONG now = GetTickCount64();
-    if (now - lastAttempt < 500) {
-      return;
-    }
-    lastAttempt = now;
-    if (!reported) {
-      reported = true;
-      spdlog::info("FocusRepair: window {} is in front but focus is on {}, "
-                   "refocusing",
-                   static_cast<void*>(foreground), static_cast<void*>(focus));
-    }
-    SetFocus(foreground);
-  }
-
   void OnUpdate() noexcept override
   {
-    RepairFocus();
-
     auto ui = RE::UI::GetSingleton();
     if (!ui)
       return;
@@ -510,6 +479,9 @@ public:
 private:
   static constexpr int kStartupAttempts = 100;
   static constexpr int kOwnWindowAttempts = 30;
+  static constexpr int kSlowRetryTicks = 20;
+  static constexpr int kNullGraceTicks = 5;
+  static constexpr int kNullRetryTicks = 10;
 
   struct WindowInfo
   {
@@ -612,11 +584,17 @@ private:
       }
       everForeground = true;
       thief = nullptr;
+      nullTicks = 0;
       return;
     }
-    if (!foreground || !IsWindowVisible(game) || IsIconic(game)) {
+    if (!IsWindowVisible(game) || IsIconic(game)) {
       return;
     }
+    if (!foreground) {
+      ReclaimFromNothing();
+      return;
+    }
+    nullTicks = 0;
     const WindowInfo info = Describe(foreground);
     // Message boxes and windows the game owns stay clickable
     if (std::strcmp(info.className, "#32770") == 0 ||
@@ -637,10 +615,15 @@ private:
                    own ? "own window" : "startup window", info.className,
                    info.pid, ImageName(info));
     }
-    if (attempts >= (everForeground ? kOwnWindowAttempts : kStartupAttempts)) {
-      return;
+    const int cap = everForeground ? kOwnWindowAttempts : kStartupAttempts;
+    if (attempts >= cap) {
+      // Own windows never belong in front, so past the burst they are retried every couple of seconds
+      if (!own || (attempts++ - cap) % kSlowRetryTicks != 0) {
+        return;
+      }
+    } else {
+      ++attempts;
     }
-    ++attempts;
     // Sharing the front window's input queue lets SetForegroundWindow succeed from the background
     const DWORD frontThread = GetWindowThreadProcessId(foreground, nullptr);
     const DWORD ownThread = GetCurrentThreadId();
@@ -653,11 +636,27 @@ private:
     }
   }
 
+  // No window in front (e.g. after the launcher chain exits) lets the game take the foreground; the grace lets alt-tab pass
+  void ReclaimFromNothing()
+  {
+    ++nullTicks;
+    if (nullTicks < kNullGraceTicks ||
+        (nullTicks - kNullGraceTicks) % kNullRetryTicks != 0) {
+      return;
+    }
+    if (nullTicks == kNullGraceTicks) {
+      spdlog::info("ForegroundGuard: no window is in front of the game, "
+                   "reclaiming");
+    }
+    SetForegroundWindow(game);
+  }
+
   std::function<HWND()> getGameWindow;
   std::atomic<bool> stop{ false };
   HWND game = nullptr;
   HWND thief = nullptr;
   int attempts = 0;
+  int nullTicks = 0;
   bool everForeground = false;
   std::thread thread;
 };

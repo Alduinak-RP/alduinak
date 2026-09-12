@@ -19,26 +19,30 @@ std::array<uint8_t, 256> g_pressedWas = ([] {
 })();
 std::array<bool, 4> g_mousePressedWas = { 0, 0, 0, 0 };
 
-// The engine only reacquires on WM_ACTIVATE, so a device lost while in front stays dead until alt-tab
-bool ReacquireIfForeground(IDirectInputDevice8A* device, HRESULT hr)
+// The engine acquires before every read, so a failing Acquire is what a dead keyboard looks like; log who is in front
+void LogAcquireFailure(IDirectInputDevice8A* device, HRESULT hr)
 {
-  if (hr != DIERR_NOTACQUIRED && hr != DIERR_INPUTLOST) {
-    return false;
-  }
-  DWORD pid = 0;
-  GetWindowThreadProcessId(GetForegroundWindow(), &pid);
-  if (pid != GetCurrentProcessId() ||
-      FAILED(IDirectInputDevice8_Acquire(device))) {
-    return false;
-  }
   static ULONGLONG lastLog = 0;
   const ULONGLONG now = GetTickCount64();
-  if (now - lastLog > 2000) {
-    lastLog = now;
-    spdlog::info("DInputHook: reacquired an input device after error {:#x}",
-                 static_cast<uint32_t>(hr));
+  if (now - lastLog < 10000) {
+    return;
   }
-  return true;
+  lastLog = now;
+  DIDEVICEINSTANCEA instanceInfo;
+  instanceInfo.dwSize = sizeof(instanceInfo);
+  const bool keyboard =
+    IDirectInputDevice8_GetDeviceInfo(device, &instanceInfo) == DI_OK &&
+    instanceInfo.guidInstance == GUID_SysKeyboard;
+  const HWND foreground = GetForegroundWindow();
+  DWORD pid = 0;
+  GetWindowThreadProcessId(foreground, &pid);
+  char className[128] = { 0 };
+  GetClassNameA(foreground, className, sizeof(className) - 1);
+  spdlog::info("DInputHook: {} acquire failed {:#x}, in front: window {} "
+               "class '{}' pid {}{}",
+               keyboard ? "keyboard" : "mouse", static_cast<uint32_t>(hr),
+               static_cast<void*>(foreground), className, pid,
+               pid == GetCurrentProcessId() ? " (this process)" : "");
 }
 
 void ProcessKeyboardData(uint8_t* apData)
@@ -130,7 +134,11 @@ struct FakeIDirectInputDevice8A
   }
   virtual HRESULT STDMETHODCALLTYPE Acquire() PURE
   {
-    return IDirectInputDevice8_Acquire(m_pDevice);
+    const HRESULT hr = IDirectInputDevice8_Acquire(m_pDevice);
+    if (FAILED(hr)) {
+      LogAcquireFailure(m_pDevice, hr);
+    }
+    return hr;
   }
   virtual HRESULT STDMETHODCALLTYPE Unacquire() PURE
   {
@@ -273,9 +281,6 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceState(DWORD outDataLen,
 
   HRESULT ret =
     IDirectInputDevice8_GetDeviceState(m_pDevice, outDataLen, outData);
-  if (ReacquireIfForeground(m_pDevice, ret)) {
-    ret = IDirectInputDevice8_GetDeviceState(m_pDevice, outDataLen, outData);
-  }
 
   bool isMouseButtonsEnabled = true;
   if (isMouseButtonsEnabled == false) {
@@ -315,14 +320,8 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
 
   auto& input = DInputHook::Get();
 
-  const DWORD requested = outDataLen ? *outDataLen : 0;
-  auto result = IDirectInputDevice8_GetDeviceData(m_pDevice, dataSize, outData,
-                                                  outDataLen, flags);
-  if (outDataLen && ReacquireIfForeground(m_pDevice, result)) {
-    *outDataLen = requested;
-    result = IDirectInputDevice8_GetDeviceData(m_pDevice, dataSize, outData,
-                                               outDataLen, flags);
-  }
+  const auto result = IDirectInputDevice8_GetDeviceData(
+    m_pDevice, dataSize, outData, outDataLen, flags);
 
   DIDEVICEINSTANCEA instanceInfo;
   instanceInfo.dwSize = sizeof(instanceInfo);
