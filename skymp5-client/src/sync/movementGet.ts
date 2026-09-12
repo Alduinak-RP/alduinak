@@ -116,7 +116,7 @@ const getRunMode = (ac: Actor): RunMode => {
 
   let isRunning = true;
   if (ac.getFormID() == 0x14) {
-    // The always-run toggle misses a held Run key, the engine run state does not
+    // Engine run state is a fallback for the PlayerControls run flag
     const runEnabled = TESModPlatform.isPlayerRunningEnabled() || ac.isRunning();
     if (!runEnabled || speed < minRunSpeed)
       isRunning = false;
