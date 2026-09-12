@@ -6,13 +6,18 @@ The server manager's Build tab has a **Native (C++)** button that runs this whol
 flow for you (`server-manager/src/build.js` -> `buildNative`), or `build native`
 in the manager console. It uses the same flags as the flatrim CI workflow.
 
-Toolchain state: VS 2022 Community lives at
-`X:\Program Files\Microsoft Visual Studio\2022\Community`, and the C++ workload
-was added on 2026-07-28 (MSVC 14.44, Windows SDK 10.0.26100, CMake 3.31.6).
-If it ever needs reinstalling, run elevated:
+Toolchain state: VS 2022 Community 17.14 lives at
+`C:\Program Files\Microsoft Visual Studio\2022\Community` with the C++ workload
+(MSVC 14.44, Windows SDK 10.0.26100, CMake 3.31.6), installed on the new box on
+2026-09-11. The old box kept it on `X:`, and CMake pins a build tree to the VS
+install it was first configured with, so `build/` kept asking for `X:`. The
+manager now passes CMake the install vswhere finds, and when `build/` points at
+a different one it deletes `build/CMakeCache.txt` and `build/CMakeFiles` before
+configuring (`build/dist` and `build/vcpkg_installed` stay). If the workload
+ever needs reinstalling, run elevated:
 
 ```
-"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "X:\Program Files\Microsoft Visual Studio\2022\Community" --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --norestart
+"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Community" --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --norestart
 ```
 
 Do not add `--wait`; `vs_installer.exe` rejects it with exit code 87 (it is a
