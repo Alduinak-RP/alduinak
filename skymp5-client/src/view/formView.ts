@@ -217,8 +217,8 @@ export class FormView {
           );
         } else {
           const actor = Actor.from(refr);
-          if (actor && FormView.attacksEveryone(actor, model)) {
-            actor.setActorValue("Aggression", 2);
+          if (actor) {
+            this.applyHostility(actor, model);
           }
         }
 
@@ -271,6 +271,9 @@ export class FormView {
         actor.setActorValue("magicka", 1000000);
         this.localImmortal = true;
       }
+      if (actor && !refId) {
+        this.applyHostility(actor, model);
+      }
       this.applyAll(refr, model);
 
       const gamemodeUpdateService = SpApiInteractor.getControllerInstance().lookupListener(GamemodeUpdateService);
@@ -299,6 +302,7 @@ export class FormView {
     })
 
     this.localImmortal = false;
+    this.hostilityApplied = false;
     this.adminView = "visible";
     this.adminShaderOn = false;
     this.adminShaderReplayAt = 0;
@@ -643,6 +647,19 @@ export class FormView {
     return actor.wornHasKeyword(keyword);
   }
 
+  // ff_hostile can arrive in an UpdateProperty after the copy spawned, so a changed flag is checked again
+  private applyHostility(actor: Actor, model: FormModel): void {
+    const flag = (model as Record<string, unknown>)["ff_hostile"];
+    if (this.hostilityApplied && flag === this.hostileFlagSeen) {
+      return;
+    }
+    this.hostilityApplied = true;
+    this.hostileFlagSeen = flag;
+    if (FormView.attacksEveryone(actor, model)) {
+      actor.setActorValue("Aggression", 2);
+    }
+  }
+
   // Remote players' copies are neutral to every NPC, so NPCs that attack players on sight are raised to attack neutrals too
   private static attacksEveryone(actor: Actor, model: FormModel): boolean {
     if (FormView.ambushRaces.includes(actor.getRace()?.getFormID() ?? 0)) {
@@ -810,6 +827,8 @@ export class FormView {
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   private localImmortal = false;
+  private hostilityApplied = false;
+  private hostileFlagSeen: unknown = undefined;
   private adminView: AdminView = "visible";
   private adminShaderOn = false;
   private adminShaderReplayAt = 0;
