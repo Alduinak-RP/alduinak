@@ -54,6 +54,7 @@ const DEFAULT_MAX_CLAIMS = 8;
 const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
+const CHANGE_FAILED = "That cannot be changed right now.";
 
 // Hold ranks that may manage property in their own hold; ported from the
 // permission matrix in server_guest_lib/HoldClaims.cpp.
@@ -266,7 +267,7 @@ export class HousingSystem implements System {
     rec.owner = profileId;
     rec.ownerName = this.nameOf(ctx, actorId);
     rec.partner = this.partnerOf(ctx, primary);
-    this.write(ctx, primary, rec);
+    if (!this.commit(ctx, userId, primary, rec)) return;
     this.notice(ctx, userId, "This is yours now.");
     this.sendMenu(ctx, userId, actorId, primary);
   }
@@ -276,7 +277,10 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "This is not yours to give up.");
       return;
     }
-    this.release(ctx, primary, rec);
+    if (!this.release(ctx, primary, rec)) {
+      this.notice(ctx, userId, CHANGE_FAILED);
+      return;
+    }
     this.notice(ctx, userId, "Given up.");
     this.sendMenu(ctx, userId, actorId, primary);
   }
@@ -291,7 +295,10 @@ export class HousingSystem implements System {
       return;
     }
     const formerName = rec.ownerName || "the owner";
-    this.release(ctx, primary, rec);
+    if (!this.release(ctx, primary, rec)) {
+      this.notice(ctx, userId, CHANGE_FAILED);
+      return;
+    }
     this.notice(ctx, userId, `Taken back from ${formerName}.`);
     this.sendMenu(ctx, userId, actorId, primary);
   }
@@ -306,7 +313,7 @@ export class HousingSystem implements System {
       return;
     }
     rec.locked = locked;
-    this.write(ctx, primary, rec);
+    if (!this.commit(ctx, userId, primary, rec)) return;
     this.notice(ctx, userId, locked ? "Locked." : "Unlocked.");
     const actorId = this.actorOf(ctx, userId);
     if (actorId) this.sendMenu(ctx, userId, actorId, primary);
@@ -323,7 +330,7 @@ export class HousingSystem implements System {
       return;
     }
     rec.name = name;
-    this.write(ctx, primary, rec);
+    if (!this.commit(ctx, userId, primary, rec)) return;
     this.notice(ctx, userId, `Now called ${name}.`);
     const actorId = this.actorOf(ctx, userId);
     if (actorId) this.sendMenu(ctx, userId, actorId, primary);
@@ -336,11 +343,12 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "Only the owner cuts keys.");
       return;
     }
-    if (!this.giveKey(ctx, actorId, this.keyNameOf(primary, rec))) {
+    const keyName = this.keyNameOf(primary, rec);
+    if (!this.giveKey(ctx, actorId, keyName)) {
       this.notice(ctx, userId, "You are carrying too many keys.");
       return;
     }
-    this.notice(ctx, userId, "A key is in your pack.");
+    this.notice(ctx, userId, `${keyName} is in your pack.`);
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -350,7 +358,7 @@ export class HousingSystem implements System {
       return;
     }
     this.reKey(ctx, primary, rec);
-    this.write(ctx, primary, rec);
+    if (!this.commit(ctx, userId, primary, rec)) return;
     this.notice(ctx, userId, "Every key turned to scrap.");
     const actorId = this.actorOf(ctx, userId);
     if (actorId) this.sendMenu(ctx, userId, actorId, primary);
@@ -380,7 +388,7 @@ export class HousingSystem implements System {
     rec.owner = recipientProfile;
     rec.ownerName = this.nameOf(ctx, recipientActor);
     rec.partner = this.partnerOf(ctx, primary);
-    this.write(ctx, primary, rec);
+    if (!this.commit(ctx, userId, primary, rec)) return;
     this.notice(ctx, userId, `Handed to ${rec.ownerName}.`);
     const recipientUser = this.userOf(ctx, recipientActor);
     this.notice(ctx, recipientUser, rec.name ? `${rec.name} is yours now.` : "You have been given a property.");
@@ -557,9 +565,12 @@ export class HousingSystem implements System {
     try {
       const inv = mp.get(actorId, "inventory") || { entries: [] };
       const entries = Array.isArray(inv.entries) ? inv.entries.slice() : [];
-      const carried = entries.filter((e: any) => (Number(e?.baseId) >>> 0) === KEY_BASE_ID).length;
+      const keys = entries.filter((e: any) => (Number(e?.baseId) >>> 0) === KEY_BASE_ID);
+      const carried = keys.reduce((n: number, e: any) => n + (Number(e?.count) || 0), 0);
       if (carried >= MAX_KEYS_CARRIED) return false;
-      entries.push({ baseId: KEY_BASE_ID, count: 1, name: keyName });
+      const stack = keys.find((e: any) => e?.name === keyName);
+      if (stack) stack.count = (Number(stack.count) || 0) + 1;
+      else entries.push({ baseId: KEY_BASE_ID, count: 1, name: keyName });
       mp.set(actorId, "inventory", { entries });
       return true;
     } catch (e) {
@@ -581,11 +592,19 @@ export class HousingSystem implements System {
     this.sendDecor(ctx, userId, this.liveClaims(ctx));
   }
 
+  // Registry ids without a live record (lost changeforms, older load orders) are dropped from the index
   private liveClaims(ctx: SystemContext): Array<{ primary: number; rec: PropertyRecord }> {
     const out: Array<{ primary: number; rec: PropertyRecord }> = [];
+    const dead: number[] = [];
     for (const primary of this.claimed) {
       const rec = this.read(ctx, primary);
       if (rec && rec.owner !== 0) out.push({ primary, rec });
+      else dead.push(primary);
+    }
+    if (dead.length) {
+      this.claimed = this.claimed.filter((id) => dead.indexOf(id) === -1);
+      this.saveRegistry();
+      this.log(`[housing] dropped ${dead.length} registry entries without a claim record: ${dead.map((id) => id.toString(16)).join(", ")}`);
     }
     return out;
   }
@@ -615,8 +634,9 @@ export class HousingSystem implements System {
     let raw: any = null;
     try {
       raw = mp.get(refrId, HOUSING_PROP);
-    } catch {
-      return 0; // not a reference the server can hold state on
+    } catch (e) {
+      this.logUnclaimable(refrId, e);
+      return 0;
     }
     if (raw && typeof raw === "object" && Number(raw.primary)) return Number(raw.primary) >>> 0;
     if (raw && typeof raw === "object") return refrId;
@@ -634,9 +654,28 @@ export class HousingSystem implements System {
   private partnerOf(ctx: SystemContext, refrId: number): number {
     const cached = this.partnerCache.get(refrId);
     if (cached !== undefined) return cached;
-    const partner = espmRefrFieldId(ctx.svr as Mp, refrId, "XTEL");
+    const far = espmRefrFieldId(ctx.svr as Mp, refrId, "XTEL");
+    // A far side the server cannot load would fail every write, so the near side is claimed alone
+    const partner = far && this.loadable(ctx, far) ? far : 0;
     this.rememberEspm(this.partnerCache, refrId, partner);
     return partner;
+  }
+
+  private loadable(ctx: SystemContext, refrId: number): boolean {
+    try {
+      (ctx.svr as Mp).get(refrId, HOUSING_PROP);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Once per ref, so the log names doors the server never loads without a held key flooding it
+  private logUnclaimable(refrId: number, reason: unknown): void {
+    if (this.unclaimableLogged.has(refrId)) return;
+    if (this.unclaimableLogged.size >= MAX_ESPM_CACHE) this.unclaimableLogged.clear();
+    this.unclaimableLogged.add(refrId);
+    this.log(`[housing] ${refrId.toString(16)} cannot hold a claim: ${reason}`);
   }
 
   // "DOOR" / "CONT" / "" - the base object behind a placed reference. Claiming
@@ -687,13 +726,13 @@ export class HousingSystem implements System {
     }
   }
 
-  private write(ctx: SystemContext, primary: number, rec: PropertyRecord): void {
+  private write(ctx: SystemContext, primary: number, rec: PropertyRecord): boolean {
     const mp = ctx.svr as Mp;
     try {
       mp.set(primary, HOUSING_PROP, rec);
     } catch (e) {
       this.log(`[housing] write failed for ${primary.toString(16)}: ${e}`);
-      return;
+      return false;
     }
     // The index and the pointer are best-effort; the record itself is stored.
     try { mp.set(primary, OWNER_INDEX_PROP, String(rec.owner)); } catch { }
@@ -705,16 +744,25 @@ export class HousingSystem implements System {
     }
     if (rec.owner !== 0) this.remember(primary); else this.forget(primary);
     this.decorDirty = true;
+    return true;
+  }
+
+  // A failed write must never read as success to the player
+  private commit(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord): boolean {
+    if (this.write(ctx, primary, rec)) return true;
+    this.notice(ctx, userId, CHANGE_FAILED);
+    return false;
   }
 
   // Giving a property up keeps an ownerless stub so the key serial survives;
   // a later claim then cannot mint a credential old copies already answer to.
-  private release(ctx: SystemContext, primary: number, rec: PropertyRecord): void {
+  private release(ctx: SystemContext, primary: number, rec: PropertyRecord): boolean {
     this.reKey(ctx, primary, rec);
     rec.owner = 0;
     rec.ownerName = "";
+    rec.name = null;
     rec.locked = false;
-    this.write(ctx, primary, rec);
+    return this.write(ctx, primary, rec);
   }
 
   private countClaims(ctx: SystemContext, profileId: number): number {
@@ -819,6 +867,7 @@ export class HousingSystem implements System {
   private claimed: number[] = [];
   private partnerCache = new Map<number, number>();
   private baseTypeCache = new Map<number, string>();
+  private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);

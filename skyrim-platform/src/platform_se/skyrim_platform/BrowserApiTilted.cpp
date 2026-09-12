@@ -46,6 +46,7 @@ Napi::Value BrowserApiTilted::SetFocused(const Napi::CallbackInfo& info)
   bool& v = CEFUtils::DInputHook::ChromeFocus();
   bool newFocus = NapiHelper::ExtractBoolean(info[0], "focused");
   if (v != newFocus) {
+    spdlog::info("Browser focus {} -> {}", v, newFocus);
     v = newFocus;
 
     auto ui = RE::UI::GetSingleton();

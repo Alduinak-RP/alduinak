@@ -5,6 +5,8 @@ import { MsgType } from "../../messages";
 import { SweetTaffySweetCantDropService } from "./sweetTaffySweetCantDropService";
 import { WorldCleanerService } from "./worldCleanerService";
 import { logTrace } from "../../logging";
+import { notifyNextUpdate } from "./customPacketUtil";
+import { PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
 
 export class DropItemService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -73,6 +75,12 @@ export class DropItemService extends ClientListener {
 
             if (!numFound) {
                 return logTrace(this, "Ignoring item drop as false positive");
+            }
+
+            // The server keeps a dropped property key in the pack; keys move by trade or chest
+            if ((baseId >>> 0) === PROPERTY_KEY_BASE_ID) {
+                notifyNextUpdate(this.controller, this.sp, "Keys cannot be dropped. Trade them or leave them in a chest.");
+                return;
             }
 
             const t = MsgType.DropItem;

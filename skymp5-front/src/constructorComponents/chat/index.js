@@ -113,6 +113,14 @@ const Chat = (props) => {
     writtenMessage.current = '';
   };
 
+  // Returns the keyboard to the game
+  const releaseFocus = () => {
+    inputRef.current?.blur();
+    if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) {
+      window.skyrimPlatform.sendMessage('cef::browser:unfocus');
+    }
+  };
+
   const sendMessage = useCallback((text) => {
     if (channel === SYSTEM_CHANNEL) return;
     const shout = text.match(SHOUTREGEXP);
@@ -135,11 +143,7 @@ const Chat = (props) => {
       isReset.current = false;
       updateInput('');
       inputRef.current.textContent = '';
-      // Returns mouse to look after hitting send
-      inputRef.current.blur();
-      if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) {
-        window.skyrimPlatform.sendMessage('cef::browser:unfocus');
-      }
+      releaseFocus();
       if (shout) {
         shoutReset.current = false;
         setTimeout(() => {
@@ -162,11 +166,13 @@ const Chat = (props) => {
   useEffect(() => {
     const node = inputRef.current;
     const listener = (event) => {
-      // Imitate message sending on Enter press
+      // Imitate message sending on Enter press; an empty line hands the keyboard back
       if (event.code === 'Enter' && !event.shiftKey && inputRef.current) {
         event.preventDefault();
-        sendMessage(input);
+        if ((input || '').trim() === '') releaseFocus();
+        else sendMessage(input);
       }
+      if (event.key === 'Escape') releaseFocus();
       if (event.key === 'ArrowUp' && event.ctrlKey) {
         if (currentMessageInHistory.current === -1) {
           writtenMessage.current = input;
@@ -196,7 +202,7 @@ const Chat = (props) => {
     };
     node?.addEventListener('keydown', listener);
     return () => node?.removeEventListener('keydown', listener);
-  }, [inputRef.current, input]);
+  }, [inputRef.current, input, sendMessage]);
 
   useEffect(() => {
     if (inputRef !== undefined && inputRef.current !== undefined && !isInputHidden) {

@@ -128,6 +128,10 @@ export class HousingService extends ClientListener {
       return;
     }
     this.target = localIdToRemoteId(ref.getFormID());
+    if (!this.target) {
+      notifyNextUpdate(this.controller, this.sp, "That cannot be claimed.");
+      return;
+    }
     targetLabel = (ref.getName() || "Property").trim() || "Property";
     logTrace(this, `Requesting property info for`, targetLabel, `(${this.target})`);
     sendCustomPacket(this.controller, { customPacketType: "propertyInfoRequest", target: this.target });

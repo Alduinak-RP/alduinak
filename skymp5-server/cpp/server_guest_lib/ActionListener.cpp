@@ -402,9 +402,7 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
   } else {
     actor->SendInventoryUpdate();
 
-    // Calculate diff between current (server) equipment and new (rejected)
-    // equipment. Items worn in the new set but not in the current set need
-    // to be unequipped on the client to revert the unauthorized change.
+    // Worn items the server equipment lacks or the inventory lacks are unequipped
     {
       const auto& currentEquip = actor->GetEquipment().inv;
 
@@ -416,12 +414,17 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
       }
 
       for (const auto& entry : equipmentInv.entries) {
-        if (entry.GetWorn() != Inventory::Worn::None &&
-            currentWornIds.find(entry.baseId) == currentWornIds.end()) {
+        if (entry.GetWorn() == Inventory::Worn::None) {
+          continue;
+        }
+        const bool notEquipped =
+          currentWornIds.find(entry.baseId) == currentWornIds.end();
+        if (notEquipped || !inventory.HasItem(entry.baseId)) {
           spdlog::info(
             "ActionListener::OnUpdateEquipment {:x} - unequipping item {:x} "
-            "(not in current equipment, unauthorized change)",
-            actorFormId, entry.baseId);
+            "({})",
+            actorFormId, entry.baseId,
+            notEquipped ? "not in current equipment" : "not in inventory");
           itemIdsToUnequip.push_back(entry.baseId);
         }
       }

@@ -2,13 +2,12 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
-import { getInventory } from "../../sync/inventory";
+import { getInventory, PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
 import { ObjectReference } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
-const KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
-const REQUIRES_KEY_LOCK_LEVEL = 255;
-const APPLY_EVERY_N_UPDATES = 90;
+const MASTER_LOCK_LEVEL = 100;
+const APPLY_EVERY_N_UPDATES = 30;
 
 // One claimed reference's presentation, as sent by the server. `access` is
 // personalized: true when this player passes by rank/ownership; key holders
@@ -29,8 +28,8 @@ interface RefDecor {
  *     { "refId", "name", "locked", "keyName", "access" } ] }
  *
  * - name: setDisplayName so the crosshair shows the claim's name.
- * - locked && !access && !holding key: vanilla "Requires Key" lock via
- *   setLockLevel(255) + lock(true).
+ * - locked && !access && !holding key: Master lock via
+ *   setLockLevel(100) + lock(true).
  * Entries re-apply on a slow tick so refs that load later (cell changes) and
  * key pickups/losses converge without extra packets.
  */
@@ -39,6 +38,13 @@ export class RefDecorService extends ClientListener {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("update", () => this.onUpdate());
+    this.controller.emitter.on("gameLoad", () => this.onGameLoad());
+  }
+
+  // A save load resets every engine lock and display name
+  private onGameLoad(): void {
+    this.applied.clear();
+    this.updateCounter = APPLY_EVERY_N_UPDATES;
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -55,12 +61,6 @@ export class RefDecorService extends ClientListener {
     // sync (abandoned claims) get a synthetic unlock entry so they revert.
     if (content["full"] === true) {
       const incoming = new Set((content["refs"] as any[]).map((r) => Number(r?.refId) >>> 0));
-      this.applied.forEach((state, refId) => {
-        if (!incoming.has(refId) && state.engineLocked) {
-          this.decor.set(refId, { refId, name: null, locked: false, keyName: null, access: true });
-          this.applied.delete(refId);
-        }
-      });
       this.decor.forEach((_d, refId) => {
         if (!incoming.has(refId)) {
           this.decor.set(refId, { refId, name: null, locked: false, keyName: null, access: true });
@@ -125,21 +125,33 @@ export class RefDecorService extends ClientListener {
         if (!stats.firstError) stats.firstError = "name: " + (e && e.message);
       }
     }
-    const shouldLock = d.locked && !d.access && !(d.keyName !== null && heldKeys.has(d.keyName));
-    if (prev.engineLocked !== shouldLock) {
+    // A released claim hands the crosshair back to the base object's name
+    if (!d.name && prev.name) {
       try {
+        refr.setDisplayName(refr.getBaseObject()?.getName() || "", true);
+        delete prev.name;
+        stats.names++;
+      } catch (e: any) {
+        stats.errors++;
+        if (!stats.firstError) stats.firstError = "name: " + (e && e.message);
+      }
+    }
+    const shouldLock = d.locked && !d.access && !(d.keyName !== null && heldKeys.has(d.keyName));
+    try {
+      // Compared with the engine every pass, since a re-created view unlocks the ref behind this service's back
+      if (refr.isLocked() !== shouldLock) {
         if (shouldLock) {
-          refr.setLockLevel(REQUIRES_KEY_LOCK_LEVEL);
+          refr.setLockLevel(MASTER_LOCK_LEVEL);
           refr.lock(true, false);
         } else {
           refr.lock(false, false);
         }
-        prev.engineLocked = shouldLock;
         stats.locks++;
-      } catch (e: any) {
-        stats.errors++;
-        if (!stats.firstError) stats.firstError = "lock: " + (e && e.message);
       }
+      if (!d.locked && !d.name) this.decor.delete(d.refId);
+    } catch (e: any) {
+      stats.errors++;
+      if (!stats.firstError) stats.firstError = "lock: " + (e && e.message);
     }
     this.applied.set(d.refId, prev);
   }
@@ -153,7 +165,7 @@ export class RefDecorService extends ClientListener {
         return held;
       }
       for (const e of getInventory(player).entries) {
-        if ((e.baseId >>> 0) === KEY_BASE_ID && typeof e.name === "string" && e.name && e.count > 0) {
+        if ((e.baseId >>> 0) === PROPERTY_KEY_BASE_ID && typeof e.name === "string" && e.name && e.count > 0) {
           held.add(e.name);
         }
       }
@@ -164,6 +176,6 @@ export class RefDecorService extends ClientListener {
   }
 
   private decor = new Map<number, RefDecor>();
-  private applied = new Map<number, { name?: string; engineLocked?: boolean }>();
+  private applied = new Map<number, { name?: string }>();
   private updateCounter = 0;
 }

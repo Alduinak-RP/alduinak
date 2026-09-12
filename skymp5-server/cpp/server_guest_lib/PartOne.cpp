@@ -167,6 +167,8 @@ uint32_t PartOne::CreateActor(uint32_t formId, const NiPoint3& pos,
   if (profileId >= 0) {
     auto& ac = worldState.GetFormAt<MpActor>(formId);
     ac.RegisterProfileId(profileId);
+    // Player characters start unequipped, not in the Player record's outfit
+    ac.SetEquipment(Equipment());
   }
 
   return formId;

@@ -299,7 +299,7 @@ export class Spawn implements System {
     catch { return false; }
   }
 
-  // New actors are created with an empty inventory, so a wholesale set is safe.
+  // Replaces the Player record's default inventory every new actor is seeded with.
   // One kit per profile+slot: recreating a deleted character reuses the slot and gets clothes but no repeat gold faucet.
   private giveStartingItems(mp: Mp, actorId: number, profileId: number, slot: number): void {
     const key = `${profileId}:${slot}`;

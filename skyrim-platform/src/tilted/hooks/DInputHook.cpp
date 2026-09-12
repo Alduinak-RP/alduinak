@@ -8,6 +8,7 @@
 #include <FunctionHook.hpp>
 #include <array>
 #include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace {
 std::shared_ptr<IInputListener> g_listener;
@@ -17,6 +18,32 @@ std::array<uint8_t, 256> g_pressedWas = ([] {
   return r;
 })();
 std::array<bool, 4> g_mousePressedWas = { 0, 0, 0, 0 };
+
+// The engine acquires before every read, so a failing Acquire is what a dead keyboard looks like; log who is in front
+void LogAcquireFailure(IDirectInputDevice8A* device, HRESULT hr)
+{
+  static ULONGLONG lastLog = 0;
+  const ULONGLONG now = GetTickCount64();
+  if (now - lastLog < 10000) {
+    return;
+  }
+  lastLog = now;
+  DIDEVICEINSTANCEA instanceInfo;
+  instanceInfo.dwSize = sizeof(instanceInfo);
+  const bool keyboard =
+    IDirectInputDevice8_GetDeviceInfo(device, &instanceInfo) == DI_OK &&
+    instanceInfo.guidInstance == GUID_SysKeyboard;
+  const HWND foreground = GetForegroundWindow();
+  DWORD pid = 0;
+  GetWindowThreadProcessId(foreground, &pid);
+  char className[128] = { 0 };
+  GetClassNameA(foreground, className, sizeof(className) - 1);
+  spdlog::info("DInputHook: {} acquire failed {:#x}, in front: window {} "
+               "class '{}' pid {}{}",
+               keyboard ? "keyboard" : "mouse", static_cast<uint32_t>(hr),
+               static_cast<void*>(foreground), className, pid,
+               pid == GetCurrentProcessId() ? " (this process)" : "");
+}
 
 void ProcessKeyboardData(uint8_t* apData)
 {
@@ -107,7 +134,11 @@ struct FakeIDirectInputDevice8A
   }
   virtual HRESULT STDMETHODCALLTYPE Acquire() PURE
   {
-    return IDirectInputDevice8_Acquire(m_pDevice);
+    const HRESULT hr = IDirectInputDevice8_Acquire(m_pDevice);
+    if (FAILED(hr)) {
+      LogAcquireFailure(m_pDevice, hr);
+    }
+    return hr;
   }
   virtual HRESULT STDMETHODCALLTYPE Unacquire() PURE
   {
