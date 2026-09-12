@@ -769,3 +769,36 @@ TEST_CASE("Forbidden-reloot CONT keeps an emptied container empty",
   DoDisconnect(partOne, 0);
   partOne.DestroyActor(0xff000000);
 }
+
+TEST_CASE("Player-dropped keys can be picked up even with KEYM forbidden",
+          "[PartOne][espm]")
+{
+  auto& partOne = GetPartOne();
+  constexpr uint32_t keyBaseId = 0xdb0e2; // KEYM
+  constexpr uint32_t keyRefId = 0xff000100;
+
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 21272.0000, -7816.0000, -3608.0000 }, 0,
+                      0x1a26f);
+  partOne.SetUserActor(0, 0xff000000);
+  auto& actor = partOne.worldState.GetFormAt<MpActor>(0xff000000);
+  actor.RemoveAllItems();
+
+  partOne.worldState.AddForm(
+    std::make_unique<MpObjectReference>(
+      LocationalData{ actor.GetPos(), NiPoint3(), actor.GetCellOrWorld() },
+      partOne.CreateFormCallbacks(), keyBaseId, "KEYM"),
+    keyRefId);
+  auto& key = partOne.worldState.GetFormAt<MpObjectReference>(keyRefId);
+
+  partOne.worldState.SetForbiddenRelootTypes({ "KEYM" });
+  key.Activate(actor);
+  partOne.worldState.SetForbiddenRelootTypes({});
+
+  REQUIRE(actor.GetInventory().GetItemCount(keyBaseId) == 1);
+  REQUIRE(key.IsDeleted());
+
+  partOne.worldState.DestroyForm(keyRefId);
+  DoDisconnect(partOne, 0);
+  partOne.DestroyActor(0xff000000);
+}
