@@ -195,7 +195,7 @@ const playerEnchantments = (): Map<string, number> => {
   return storage["playerEnchantments"] as Map<string, number>;
 };
 
-export const canCreateEnchantments = (): boolean => typeof createEnchantment === "function";
+const canCreateEnchantments = (): boolean => typeof createEnchantment === "function";
 
 // This session's runtime enchantment for a player-made definition, made once and reused
 export const getPlayerEnchantment = (effects: EnchantmentEffect[], item: Form): Enchantment | null => {
@@ -220,7 +220,8 @@ export const getPlayerEnchantment = (effects: EnchantmentEffect[], item: Form): 
 // Copies with a player enchantment this client cannot rebuild are treated as plain, so they do not churn
 const withoutPlayerEnchantments = (inv: Inventory): Inventory => ({
   entries: inv.entries.map((e) => {
-    if (!e.enchantmentEffects) {
+    const form = e.enchantmentEffects ? Game.getFormEx(e.baseId) : null;
+    if (!e.enchantmentEffects || (form && getPlayerEnchantment(e.enchantmentEffects, form))) {
       return e;
     }
     const copy: Entry = { ...e };
@@ -474,7 +475,7 @@ export const applyInventory = (
   ignoreWorn = false
 ): boolean => {
   resetBase(refr);
-  const target = canCreateEnchantments() ? newInventory : withoutPlayerEnchantments(newInventory);
+  const target = withoutPlayerEnchantments(newInventory);
   const diff = getDiff(target, getInventory(refr), ignoreWorn, "apply").entries;
 
   let res = true;
