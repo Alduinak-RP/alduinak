@@ -34,6 +34,7 @@ import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
+import { CompanionSystem } from "./systems/companionSystem";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -210,6 +211,7 @@ const main = async () => {
   // The admin panel's NPCs tab drives the spawner and its Players tab grants mastery hours.
   const npcSpawnSystem = new NpcSpawnSystem(log);
   const masterySystem = new MasterySystem(log);
+  const companionSystem = new CompanionSystem(log);
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
@@ -229,6 +231,8 @@ const main = async () => {
     new BountyBoardSystem(log),
     new UntouchableSystem(log),
     npcSpawnSystem,
+    // After AdminSystem: its onHitDamageAttempt hook wraps the god-mode one
+    companionSystem,
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );
