@@ -1090,6 +1090,12 @@ void MpActor::SendAndSetDeathState(bool isDead, bool shouldTeleport)
   auto respawnMsg = GetDeathStateMsg(position, isDead, shouldTeleport);
   GetActorToSendTo().SendToUser(respawnMsg, true);
 
+  // The container only reaches the hoster; NPC viewers need the death too
+  if (isDead && GetUserId() == Networking::InvalidUserId) {
+    SendMessageToActorListeners(CreatePropertyMessage_(this, "isDead", "true"),
+                                true);
+  }
+
   EditChangeForm([&](MpChangeForm& changeForm) {
     changeForm.isDead = isDead;
     changeForm.actorValues.healthPercentage =

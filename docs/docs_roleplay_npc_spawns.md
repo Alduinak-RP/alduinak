@@ -134,12 +134,16 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
 
 ### Placement
 
-A single NPC stands exactly on `POS`. When a zone places more than one they
-are spread evenly on a ring of radius 64 units around `POS` (slot `i` of `n`
-at angle `2πi/n`), so four Falmer do not spawn inside each other; a respawn
-reuses the dead NPC's slot. Every spawned actor is tagged
-`private.npcSpawner = <Name>` (best effort) for gamemode scripts that want to
-tell spawner NPCs apart.
+The first NPC stands on `POS`; the others fill rings around it: 6 on a ring
+96 units out, 12 at 192, 18 at 288 and so on, with a partly filled outer ring
+spread evenly. Neighbours stand about 96 units apart, so a pack of trolls or
+spiders does not spawn inside each other and get shoved through the floor.
+Every slot is placed 64 units above `POS`, so the NPC drops onto a sloped or
+bumpy floor instead of starting inside it. Record `POS` standing on open floor
+with room around it: up to 7 NPCs need about 96 units of clear floor around
+`POS`, 8 to 19 about 192. A respawn reuses the dead NPC's slot. Every spawned
+actor is tagged `private.npcSpawner = <Name>` (best effort) for gamemode
+scripts that want to tell spawner NPCs apart.
 
 ## Hot reload
 
