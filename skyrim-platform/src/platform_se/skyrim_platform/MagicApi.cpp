@@ -284,8 +284,46 @@ Napi::Value MagicApi::ApplyAnimationVariablesToActor(
   return Napi::Boolean::New(info.Env(), isAnimationVariablesApplied);
 }
 
+Napi::Value MagicApi::DispelPotionEffects(const Napi::CallbackInfo& info)
+{
+  const auto actorFormId = NapiHelper::ExtractUInt32(info[0], "actorFormId");
+  const auto potionFormId = NapiHelper::ExtractUInt32(info[1], "potionFormId");
+
+  g_nativeCallRequirements.gameThrQ->AddTask(
+    [actorFormId, potionFormId](Viet::Void) {
+      auto* pActor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+      auto* pPotion = RE::TESForm::LookupByID<RE::AlchemyItem>(potionFormId);
+      if (!pActor || !pPotion) {
+        return;
+      }
+
+      auto* activeEffects = pActor->AsMagicTarget()->GetActiveEffectList();
+      if (!activeEffects) {
+        return;
+      }
+
+      // Collected first because dispelling can unlink list nodes
+      std::vector<RE::ActiveEffect*> toDispel;
+      for (auto* activeEffect : *activeEffects) {
+        if (activeEffect && activeEffect->spell == pPotion) {
+          toDispel.push_back(activeEffect);
+        }
+      }
+
+      for (auto* activeEffect : toDispel) {
+        activeEffect->Dispel(true);
+      }
+    });
+
+  return info.Env().Undefined();
+}
+
 void MagicApi::Register(Napi::Env env, Napi::Object& exports)
 {
+  exports.Set("dispelPotionEffects",
+              Napi::Function::New(
+                env, NapiHelper::WrapCppExceptions(DispelPotionEffects)));
+
   exports.Set("castSpellImmediate",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(CastSpellImmediate)));
