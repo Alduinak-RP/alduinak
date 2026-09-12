@@ -57,7 +57,7 @@ Commanded companions (`summon`, `reanimated`) also end when the owner dies.
 
 ## Conjuration (conjurationSystem.ts)
 
-The C++ server fires `onSpellCast(caster, spell)` and `onSpellHit(aggressor, target, spell)` for accepted casts and hits. Only player casters are handled.
+The C++ server fires `onSpellCast(caster, spell)` and `onSpellHit(aggressor, target, spell)` for accepted casts and hits. A paralysed caster's cast fires no `onSpellCast`. A hit refused by `onHitDamageAttempt` (God Mode, a companion hitting its owner) or blocked by a ward fires no `onSpellHit`. Only player casters are handled.
 
 - **Summons:** a spell whose effect is the SummonCreature archetype places a `summon` of the effect's associated NPC_. This covers the Conjure Atronach spells, Familiar, Dremora Lord, Ash Spawn and the Flame/Frost/Storm Thralls.
   - It appears 160 units in front of the caster and lasts the effect duration.

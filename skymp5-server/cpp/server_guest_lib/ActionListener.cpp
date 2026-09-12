@@ -1795,17 +1795,11 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
                                 MpObjectReference* targetRef,
                                 const HitData& hitData)
 {
-  SendPapyrusOnHitEvent(aggressor, targetRef, hitData);
-
   auto* targetActorPtr = targetRef ? targetRef->AsActor() : nullptr;
   if (!targetActorPtr) {
+    SendPapyrusOnHitEvent(aggressor, targetRef, hitData);
     return; // Not an actor, damage calculation is not needed
   }
-
-  // Fires for dead targets and zero damage too (Reanimate, Banish)
-  FireGamemodeEvent(
-    partOne.worldState, aggressor->GetFormId(), "onSpellHit",
-    nlohmann::json::array({ targetActorPtr->GetFormId(), hitData.source }));
 
   auto targetActorValues = targetActorPtr->GetChangeForm().actorValues;
 
@@ -1833,6 +1827,17 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, targetActorPtr,
                           hitData.source, damage, blockedAttack)) {
     return;
+  }
+
+  // A refused hit fires no events, a ward-blocked one reaches scripts as blocked and triggers no spell effect
+  HitData firedHitData = hitData;
+  firedHitData.isHitBlocked = wardBlocked;
+  SendPapyrusOnHitEvent(aggressor, targetRef, firedHitData);
+  if (!wardBlocked) {
+    // Fires for dead targets and zero damage too (Reanimate, Banish)
+    FireGamemodeEvent(
+      partOne.worldState, aggressor->GetFormId(), "onSpellHit",
+      nlohmann::json::array({ targetActorPtr->GetFormId(), hitData.source }));
   }
 
   targetActorValues.healthPercentage = CalculateCurrentHealthPercentage(
@@ -1887,10 +1892,9 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 {
   const auto currentHitTime = std::chrono::steady_clock::now();
 
-  SendPapyrusOnHitEvent(aggressor, targetRef, hitData);
-
   auto* targetActorPtr = targetRef ? targetRef->AsActor() : nullptr;
   if (!targetActorPtr) {
+    SendPapyrusOnHitEvent(aggressor, targetRef, hitData);
     return; // Not an actor, damage calculation is not needed
   }
 
@@ -2025,6 +2029,10 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
                           hitData.source, damage, hitData.isHitBlocked)) {
     return;
   }
+
+  // A refused hit fires no events, a blocked one reaches scripts as blocked
+  SendPapyrusOnHitEvent(aggressor, targetRef, hitData);
+
   float outBaseHealth = 0.f;
   currentActorValues.healthPercentage = CalculateCurrentHealthPercentage(
     targetActor, damage, healthPercentage, &outBaseHealth);

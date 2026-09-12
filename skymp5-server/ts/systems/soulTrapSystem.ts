@@ -83,7 +83,8 @@ export class SoulTrapSystem implements System {
     const previousHit = typeof mp[HIT_EVENT] === "function" ? mp[HIT_EVENT] : null;
     mp[HIT_EVENT] = (...args: unknown[]) => {
       try {
-        this.onHit(ctx, Number(args[0]) >>> 0, args[1], args[2]);
+        // A blocked hit (abHitBlocked) applies no soul trap
+        if (args[7] !== true) this.onHit(ctx, Number(args[0]) >>> 0, args[1], args[2]);
       } catch (e) {
         this.log(`[soultrap] hit check failed: ${e}`);
       }
