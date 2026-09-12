@@ -14,7 +14,7 @@ WHAT IT DOES (all-or-nothing, with backups):
   1. Backs up each .esl (game Data dir + MO2 mod dir) to a dated Desktop folder.
   2. Clears TES4 header flag 0x200 and renames the file to .esp in both places.
   3. Rewrites the loadOrder entries in build/dist/server/server-settings.json.
-  4. Rewrites X:\\MO2\\profiles\\<profile>\\plugins.txt entries.
+  4. Rewrites C:\\MO2\\profiles\\<profile>\\plugins.txt entries.
 
 AFTER RUNNING, still required (Server Manager):
   - Modlist tab -> "Update manifest" (regenerates data/manifest.json crc/size).
@@ -34,8 +34,11 @@ from datetime import date
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SETTINGS = os.path.join(REPO, 'build', 'dist', 'server', 'server-settings.json')
-MO2_PROFILE = os.environ.get('ALDUINAK_MO2_PROFILE_DIR', r'X:\MO2\profiles\Default')
-MO2_MODS = os.environ.get('ALDUINAK_MO2_MODS_DIR', r'X:\MO2\mods')
+# Same env vars and fallbacks as server-manager/src/config.js
+MO2_ROOT = os.environ.get('ALDUINAK_MO2_ROOT', r'C:\MO2')
+MO2_PROFILE_NAME = os.environ.get('ALDUINAK_MO2_PROFILE', 'Default')
+MO2_PROFILE = os.environ.get('ALDUINAK_MO2_PROFILE_DIR', os.path.join(MO2_ROOT, 'profiles', MO2_PROFILE_NAME))
+MO2_MODS = os.environ.get('ALDUINAK_MO2_MODS_DIR', os.path.join(MO2_ROOT, 'mods'))
 BACKUP = os.path.join(os.path.expanduser('~'), 'Desktop', f'plugin-backups-{date.today().isoformat()}')
 
 APPLY = '--apply' in sys.argv
