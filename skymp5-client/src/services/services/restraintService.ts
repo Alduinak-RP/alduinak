@@ -6,7 +6,7 @@ import { logTrace } from "../../logging";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement, NiPoint3 } from "../../sync/movement";
-import { setRefrCollision } from "../../sync/animation";
+import { isInSitPose, setRefrCollision } from "../../sync/animation";
 
 // Vanilla behaviour-graph "offset" overlay events (no ESP required), cleared with OffsetStop.
 // All three are whitelisted in sync/animation.ts (forcedSyncAnims) so the poses sync to other players.
@@ -255,7 +255,8 @@ export class RestraintService extends ClientListener {
   private restoreCarrierCollision(): void {
     const id = this.collisionOffId;
     this.collisionOffId = 0;
-    if (!id || !this.sp.Game.getFormEx(id)) {
+    // A carrier clone that sat down meanwhile keeps the sit sync's collision off
+    if (!id || !this.sp.Game.getFormEx(id) || isInSitPose(id)) {
       return;
     }
     try {
@@ -297,11 +298,9 @@ export class RestraintService extends ClientListener {
     // Recompute the control lock each time. Argument order:
     // (movement, fighting, camSwitch, looking, sneaking, menu, activate, journalTabs, disablePOVType).
     if (this.carried) {
-      // First person would sit inside the pose and fight the forced heading, so third person is locked
-      if (!this.carriedControlsApplied) {
-        this.sp.Game.forceThirdPerson();
-        this.carriedControlsApplied = true;
-      }
+      // First person would sit inside the pose and fight the forced heading, so third person is locked; re-forced after a reload
+      this.sp.Game.forceThirdPerson();
+      this.carriedControlsApplied = true;
       this.sp.Game.disablePlayerControls(true, true, true, false, true, false, true, false, 0);
       player.setDontMove(true);
       return;
