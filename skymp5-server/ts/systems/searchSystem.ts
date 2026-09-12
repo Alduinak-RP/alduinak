@@ -10,6 +10,7 @@ type Mp = any;
 // Consent-gated search of another player's inventory via the VANILLA container window: on accept the server marks the searcher as the target's inventory occupant (setInventoryOccupant native), which authorizes the engine's PutItem/TakeItem, and tells the searcher's client to open the target's inventory.
 // Item moves ride the normal server-validated container-sync path; if the pair separates, the session ends and the client closes the window.
 // Dead bodies (players or spawned NPCs) open at once without consent; the searcher may take and put items like vanilla looting.
+// A dead player's body gives up a limited number of distinct items (a stack counts once); the take that reaches the limit closes the window and respawns the player, which removes the body.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -32,6 +33,10 @@ const DEFAULT_START_MAX_DISTANCE = 256;
 const DEFAULT_KEEP_MAX_DISTANCE = 512;
 // Distance re-check cadence.
 const WATCH_INTERVAL_MS = 500;
+// Distinct items a dead player's body gives up before it is removed. Overridable via "searchPlayerBodyTakeLimit" (0 = no limit).
+const DEFAULT_PLAYER_BODY_TAKE_LIMIT = 2;
+// Refused takes within this window share one inventory resync
+const RESYNC_DELAY_MS = 200;
 
 interface PendingConsent {
   searcherActorId: number;
@@ -43,6 +48,8 @@ interface SearchSession {
   searcherActorId: number;
   targetActorId: number;
   body: boolean;
+  // Base forms taken from a limited body, shared by every session on it
+  taken?: Set<number>;
 }
 
 export class SearchSystem implements System {
@@ -57,15 +64,21 @@ export class SearchSystem implements System {
   private pending = new Map<number, PendingConsent>();
   // "searcherActorId:targetActorId" -> last prompt timestamp (spam guard)
   private consentCooldown = new Map<string, number>();
+  // dead player actorId -> base forms taken from the current body
+  private bodyTakes = new Map<number, Set<number>>();
+  // searchers whose inventory resync is already scheduled
+  private resyncing = new Set<number>();
   private nextRequestId = 1;
   private lastWatchMs = 0;
   private warnedNoNative = false;
+  private warnedNoRespawn = false;
   private consentTimeoutMs = DEFAULT_CONSENT_TIMEOUT_MS;
   private consentCooldownMs = DEFAULT_CONSENT_COOLDOWN_MS;
   private startMaxDistance = DEFAULT_START_MAX_DISTANCE;
   private keepMaxDistance = DEFAULT_KEEP_MAX_DISTANCE;
+  private playerBodyTakeLimit = DEFAULT_PLAYER_BODY_TAKE_LIMIT;
 
-  async initAsync(_ctx: SystemContext): Promise<void> {
+  async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
     const all = s.allSettings as Record<string, unknown> | null;
     const rawStart = Number(all?.["searchStartMaxDistance"]);
@@ -76,6 +89,30 @@ export class SearchSystem implements System {
     if (Number.isInteger(rawTimeout) && rawTimeout > 0) this.consentTimeoutMs = rawTimeout;
     const rawCooldown = Number(all?.["searchConsentCooldownMs"]);
     if (Number.isInteger(rawCooldown) && rawCooldown >= 0) this.consentCooldownMs = rawCooldown;
+    const rawLimit = Number(all?.["searchPlayerBodyTakeLimit"]);
+    if (Number.isInteger(rawLimit) && rawLimit >= 0) this.playerBodyTakeLimit = rawLimit;
+    this.installTakeHook(ctx);
+  }
+
+  // Chains mp.onTakeItem like the other systems' activation hooks; a refused take never leaves the body
+  private installTakeHook(ctx: SystemContext): void {
+    const mp = ctx.svr as Mp;
+    const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
+    mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
+      const s = this.limitedSession(sourceId >>> 0, actorId >>> 0);
+      if (s?.taken && s.taken.size >= this.playerBodyTakeLimit) {
+        this.resyncInventory(ctx, actorId >>> 0);
+        return false;
+      }
+      let allowed = true;
+      if (previous) {
+        try { allowed = previous.call(mp, sourceId, actorId, baseId, count) !== false; } catch { /* keep allowed */ }
+      }
+      if (allowed && s) {
+        this.recordTake(ctx, s, baseId >>> 0);
+      }
+      return allowed;
+    };
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -89,7 +126,7 @@ export class SearchSystem implements System {
 
   // Watch every active pair; end the search when they drift apart.
   async updateAsync(ctx: SystemContext): Promise<void> {
-    if (this.sessions.size === 0) {
+    if (this.sessions.size === 0 && this.bodyTakes.size === 0) {
       return;
     }
     const now = Date.now();
@@ -97,6 +134,10 @@ export class SearchSystem implements System {
       return;
     }
     this.lastWatchMs = now;
+    // A respawned player's next death is a fresh body
+    for (const id of Array.from(this.bodyTakes.keys())) {
+      if (!this.isDead(ctx, id)) this.bodyTakes.delete(id);
+    }
     for (const s of Array.from(this.sessions.values())) {
       // A side that lost its user (character switch, logout-grace park) ends the search
       if (this.userOf(ctx, s.searcherActorId) < 0 || (!s.body && this.userOf(ctx, s.targetActorId) < 0)) {
@@ -261,11 +302,20 @@ export class SearchSystem implements System {
 
   private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): void {
     const searcherUser = this.userOf(ctx, searcherActorId);
+    let taken: Set<number> | undefined;
+    if (body && this.playerBodyTakeLimit > 0 && this.isPlayerCharacter(ctx, targetActorId)) {
+      taken = this.bodyTakes.get(targetActorId) ?? new Set<number>();
+      if (taken.size >= this.playerBodyTakeLimit) {
+        this.notice(ctx, searcherUser, "There is nothing left to take from this body.");
+        return;
+      }
+      this.bodyTakes.set(targetActorId, taken);
+    }
     if (!this.setOccupant(ctx, targetActorId, searcherActorId)) {
       this.notice(ctx, searcherUser, "The search could not start.");
       return;
     }
-    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body });
+    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, taken });
     this.searching.set(searcherActorId, targetActorId);
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
@@ -296,7 +346,73 @@ export class SearchSystem implements System {
     }
   }
 
+  // ── Player body looting limit ───────────────────────────────────────────────
+
+  private limitedSession(sourceId: number, actorId: number): SearchSession | undefined {
+    const s = this.sessions.get(sourceId);
+    return s && s.taken && s.searcherActorId === actorId ? s : undefined;
+  }
+
+  // One entry per base form, so more of an already taken stack is free
+  private recordTake(ctx: SystemContext, s: SearchSession, baseId: number): void {
+    if (!s.taken || s.taken.has(baseId)) {
+      return;
+    }
+    s.taken.add(baseId);
+    if (s.taken.size >= this.playerBodyTakeLimit) {
+      // Deferred so the engine finishes moving this item first
+      setTimeout(() => this.finishBody(ctx, s), 0);
+    }
+  }
+
+  private finishBody(ctx: SystemContext, s: SearchSession): void {
+    if (this.sessions.get(s.targetActorId) === s) {
+      this.endSession(ctx, s, "You cannot take anything else from this body.");
+    }
+    if (!this.isDead(ctx, s.targetActorId)) {
+      return;
+    }
+    const mp = ctx.svr as Mp;
+    if (typeof mp.respawnActor !== "function") {
+      if (!this.warnedNoRespawn) {
+        this.warnedNoRespawn = true;
+        this.log("[search] respawnActor native missing - looted player bodies stay until respawnSeconds; rebuild the server (CI)");
+      }
+      return;
+    }
+    try {
+      mp.respawnActor(s.targetActorId);
+      this.log(`[search] body ${s.targetActorId.toString(16)} looted by ${s.searcherActorId.toString(16)}, respawned`);
+    } catch (e) {
+      this.log(`[search] respawnActor failed: ${e}`);
+    }
+  }
+
+  // The vanilla window already moved a refused item on the searcher's screen; the server's copy of their inventory puts it back
+  private resyncInventory(ctx: SystemContext, actorId: number): void {
+    if (this.resyncing.has(actorId)) {
+      return;
+    }
+    this.resyncing.add(actorId);
+    setTimeout(() => {
+      this.resyncing.delete(actorId);
+      const mp = ctx.svr as Mp;
+      try {
+        mp.set(actorId, "inventory", mp.get(actorId, "inventory"));
+      } catch { /* form gone */ }
+    }, RESYNC_DELAY_MS);
+  }
+
   // ── Small helpers ───────────────────────────────────────────────────────────
+
+  // Player characters carry a profile id; NPCs keep the default -1
+  private isPlayerCharacter(ctx: SystemContext, actorId: number): boolean {
+    try {
+      return Number((ctx.svr as Mp).get(actorId, "profileId")) >= 0;
+    } catch {
+      return false;
+    }
+  }
 
   private hasOccupantNative(ctx: SystemContext): boolean {
     return typeof (ctx.svr as Mp).setInventoryOccupant === "function";
