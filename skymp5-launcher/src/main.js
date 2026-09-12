@@ -506,9 +506,11 @@ function controlmapEventRe(ev) {
   return new RegExp('^(' + escaped + '[ \\t]+)(0x[0-9a-fA-F]+)', 'm')
 }
 
-// Pre-AE launcher copies lack the Creations Menu input context, which shifts every later context on 1.6.1130+
+// Stale launcher copies lack the AE Creations Menu context or still bind Wait on the gamepad
 function isStaleLauncherControlmap(text) {
-  return /launcher controlmap override/.test(text) && !/^PurchaseCredits[ \t]/m.test(text)
+  if (!/launcher controlmap override/.test(text)) return false
+  const wait = text.match(/^Wait[ \t]+\S+[ \t]+\S+[ \t]+(\S+)/m)
+  return !/^PurchaseCredits[ \t]/m.test(text) || (!!wait && wait[1].toLowerCase() !== '0xff')
 }
 
 // Rebuilds a stale launcher copy from the seed, keeping the keyboard rebinds the Settings tab manages
@@ -520,6 +522,28 @@ function upgradeControlmapText(text) {
     if (m) upgraded = upgraded.replace(controlmapEventRe(ev), (_m, head) => head + m[2])
   }
   return upgraded
+}
+
+// Seeds the Wait-unbound controlmap when the game has none and upgrades a stale launcher copy; a player's own map is never touched
+function applyControlmapOverride(gamePath) {
+  try {
+    if (!gamePath) return
+    const dest = path.join(gamePath, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt')
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.copyFileSync(CONTROLMAP_SEED, dest)
+      log('[defaults] wrote controlmap override (Wait unbound on keyboard and gamepad) to ' + dest)
+      return
+    }
+    const text = fs.readFileSync(dest, 'utf8')
+    const upgraded = upgradeControlmapText(text)
+    if (upgraded !== text) {
+      fs.writeFileSync(dest, upgraded)
+      log('[defaults] rebuilt the stale controlmap override from the current seed at ' + dest)
+    }
+  } catch (err) {
+    log('[defaults] could not write controlmap override:', err.message)
+  }
 }
 
 ipcMain.handle('gameHotkeys:load', () => {
@@ -561,7 +585,7 @@ ipcMain.handle('gameHotkeys:save', (_e, keys) => {
 //   • borderless window mode → MO2 profile's SkyrimPrefs.ini [Display]
 //     (resolution is player-owned: it comes from the seeded ini, or the
 //      Settings tab default when the ini doesn't specify one)
-//   • Wait key (T) unbound   → controlmap override (waiting is disabled here)
+//   • Wait unbound (T, pad Back) → controlmap override (waiting is disabled here)
 function applyForcedServerDefaults(gamePath) {
   // One-time repair for profiles created before resolution became
   // player-owned: earlier builds force-stamped 1920x1080 into the profile
@@ -598,27 +622,7 @@ function applyForcedServerDefaults(gamePath) {
     }
   }
 
-  // Controls: drop in a controlmap with the Wait key unbound. Only seed it when
-  // the game has no controlmap yet, so we never clobber a player's own rebinds.
-  try {
-    if (gamePath) {
-      const dest = path.join(gamePath, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt')
-      if (!fs.existsSync(dest)) {
-        fs.mkdirSync(path.dirname(dest), { recursive: true })
-        fs.copyFileSync(CONTROLMAP_SEED, dest)
-        log('[defaults] wrote controlmap override (Wait/T unbound) to ' + dest)
-      } else {
-        const text = fs.readFileSync(dest, 'utf8')
-        const upgraded = upgradeControlmapText(text)
-        if (upgraded !== text) {
-          fs.writeFileSync(dest, upgraded)
-          log('[defaults] rebuilt the pre-AE controlmap override with the Creations Menu context at ' + dest)
-        }
-      }
-    }
-  } catch (err) {
-    log('[defaults] could not write controlmap override:', err.message)
-  }
+  applyControlmapOverride(gamePath)
 
   // AE popup suppression, re-applied on every install pass so existing installs pick it up.
   try {
@@ -1665,6 +1669,8 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
       return { success: false, error: err.message }
     }
   }
+
+  applyControlmapOverride(skyrimPath)
 
   // Load order sync
   let loadOrderFixed = false

@@ -298,6 +298,21 @@ function instanceDirLines() {
   ]
 }
 
+// lock_gui=false makes MO2 2.5 wait on a moshortcut launch without showing its lock window.
+const FORCED_SETTINGS = ['lock_gui=false']
+
+// Replace each key=value line in place or add it under [Settings], leaving every other line alone.
+function upsertSettings(txt, lines) {
+  for (const line of lines) {
+    const key = line.slice(0, line.indexOf('='))
+    const re = new RegExp(`^${key}=.*$`, 'm')
+    if (re.test(txt)) txt = txt.replace(re, () => line)
+    else if (/^\[Settings\][ \t]*$/m.test(txt)) txt = txt.replace(/^\[Settings\][ \t]*$/m, m => `${m}\r\n${line}`)
+    else txt += `\r\n[Settings]\r\n${line}\r\n`
+  }
+  return txt
+}
+
 // The custom-executable entry (array slot n) that moshortcut://:SKSE resolves against.
 function skseExecutableLines(skyrimPath, n) {
   return [
@@ -325,6 +340,7 @@ function buildInstanceIni(skyrimPath, style) {
     '[Settings]',
     'check_for_updates=false',
     ...instanceDirLines(),
+    ...FORCED_SETTINGS,
     ...(style ? [`style=${style}`] : []),
     '',
     '[customExecutables]',
@@ -375,14 +391,7 @@ function healInstancePaths(iniPath, skyrimPath) {
     txt = ensureSkseEntry(txt, skyrimPath)
   }
 
-  // Upsert each directory pin: replace an existing key or append under [Settings].
-  for (const line of instanceDirLines()) {
-    const key = line.slice(0, line.indexOf('='))
-    const re = new RegExp(`^${key}=.*$`, 'm')
-    if (re.test(txt)) txt = txt.replace(re, () => line)
-    else if (/^\[Settings\]\s*$/m.test(txt)) txt = txt.replace(/^\[Settings\]\s*$/m, m => `${m}\r\n${line}`)
-    else txt += `\r\n[Settings]\r\n${line}\r\n`
-  }
+  txt = upsertSettings(txt, [...instanceDirLines(), ...FORCED_SETTINGS])
   fs.writeFileSync(iniPath, txt)
 }
 
