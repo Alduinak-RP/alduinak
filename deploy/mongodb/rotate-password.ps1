@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 
 function Get-Mongosh {
   $candidates = @(
-    'X:\Program Files\mongosh\mongosh.exe',
+    "$env:LOCALAPPDATA\Programs\mongosh\mongosh.exe",
     'C:\Program Files\mongosh\mongosh.exe'
   )
   foreach ($c in $candidates) { if (Test-Path $c) { return $c } }
