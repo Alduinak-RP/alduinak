@@ -166,6 +166,24 @@ class Builder {
     return { vsDir, cmake, vcpkgDir, problems }
   }
 
+  // CMake pins a build tree to the VS install it was first configured with, so a moved install needs a fresh cache.
+  resetStaleCmakeCache(buildDir, vsDir) {
+    const cacheFile = path.join(buildDir, 'CMakeCache.txt')
+    let cached = null
+    try { cached = fs.readFileSync(cacheFile, 'utf8').match(/^CMAKE_GENERATOR_INSTANCE:\w+=(.*)$/m) } catch {}
+    const norm = p => p.split(',')[0].trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    if (!cached || norm(cached[1]) === norm(vsDir)) return { ok: true }
+    this.line(`[native] build/ was configured with Visual Studio at ${cached[1].trim()}; resetting CMakeCache.txt and CMakeFiles (dist and vcpkg_installed are kept)`)
+    try {
+      // CMakeFiles first, so a failure leaves the stale cache entry that triggers the retry
+      fs.rmSync(path.join(buildDir, 'CMakeFiles'), { recursive: true, force: true })
+      fs.rmSync(cacheFile, { force: true })
+    } catch (err) {
+      return { ok: false, error: `could not reset the stale CMake cache: ${err.message}` }
+    }
+    return { ok: true }
+  }
+
   // Configure + build the C++ with CMake/MSVC, same flags as the "Dist Windows Flatrim" CI workflow (.github/actions/pr_base).
   // The repo pins the CMake binary dir to <repo>/build - the same tree the live
   // deploy uses - so artifacts land in build/dist directly, no copy step.
@@ -223,6 +241,7 @@ class Builder {
       '-B', buildDir,
       '-G', 'Visual Studio 17 2022',
       '-A', 'x64',
+      `-DCMAKE_GENERATOR_INSTANCE=${tc.vsDir.replace(/\\/g, '/')}`,
       `-DVCPKG_ROOT=${tc.vcpkgDir.replace(/\\/g, '/')}`,
       '-DCMAKE_BUILD_TYPE=Release',
       '-DBUILD_NODEJS=OFF',
@@ -243,6 +262,9 @@ class Builder {
       if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
     }
 
+    const reset = this.resetStaleCmakeCache(buildDir, tc.vsDir)
+    if (!reset.ok) return reset
+
     // shell:false: cmake.exe and several args contain spaces a shell command line would split.
     this.line('\n[native] configuring (first run compiles all vcpkg dependencies - expect 1-3 hours)…')
     const cfg = await this.run(tc.cmake, args, config.repoRoot, 'cmake configure', { VCPKG_FEATURE_FLAGS: 'manifests' }, false)
@@ -251,7 +273,8 @@ class Builder {
     // The server post-build step regenerates server-settings.json with
     // upstream defaults (it force-sets offlineMode and master), so snapshot
     // the live files and put them back afterwards.
-    const guarded = ['server-settings.json', 'launch_server.bat'].map(name => {
+    // With BUILD_GAMEMODE off, the ALL build also empties gamemode.js through skymp5-functions-lib.
+    const guarded = ['server-settings.json', 'launch_server.bat', 'gamemode.js'].map(name => {
       const file = path.join(buildDir, 'dist', 'server', name)
       let before = null
       try { before = fs.readFileSync(file) } catch {}

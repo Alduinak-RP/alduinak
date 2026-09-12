@@ -210,6 +210,10 @@ if(MSVC)
   target_link_libraries(core_library PUBLIC mhook)
   target_link_libraries(reverse PUBLIC mhook)
 
+  # hooks vcpkg deps
+
+  target_link_libraries(hooks PUBLIC spdlog::spdlog)
+
   # ui vcpkg deps
   find_package(directxtk CONFIG REQUIRED)
   find_package(directxmath CONFIG REQUIRED)
