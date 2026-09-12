@@ -389,10 +389,7 @@ export const removeSimpleItemsAsManyAsPossible = (
   return res;
 };
 
-// apply: lhs is the server's inventory; a local copy with extras the server has not recorded yet keeps a plain server copy,
-// while extras only the server holds reach the local copy
-// snapshot: two views of one inventory where either side may lack extras nobody recorded
-// exact: no fallback, every difference in extras shows
+// apply: lhs is the server's; unrecorded local extras except souls keep a plain server copy; snapshot: either way; exact: no fallback
 export type DiffMode = "apply" | "snapshot" | "exact";
 
 // lhs minus rhs, item by item
@@ -422,7 +419,7 @@ export const getDiff = (
   pending.forEach((e) => draw(e, (x) => extrasEqual(x, e, ignoreWorn)));
   if (mode !== "exact") {
     pending.forEach((e) => draw(e, (x) =>
-      mode === "apply" ? !hasItemExtras(x) && hasItemExtras(e) : hasItemExtras(x) !== hasItemExtras(e)));
+      mode === "apply" ? !hasItemExtras(x) && hasItemExtras(e) && !e.soul : hasItemExtras(x) !== hasItemExtras(e)));
   }
 
   pending.forEach((e) => {
