@@ -1,4 +1,4 @@
-import { Actor, Game, HitEvent, Spell } from "skyrimPlatform";
+import { Actor, Game, HitEvent, ObjectReference, Spell } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { DeathService } from "./deathService";
 import { setActorValuePercentage } from "../../sync/actorvalues";
@@ -61,9 +61,8 @@ export class CloneSpellGuardService extends ClientListener {
     }
 
     private onHit(e: HitEvent) {
-        const aggressorId = e.aggressor?.getFormID();
         const targetId = e.target?.getFormID();
-        if (aggressorId === undefined || targetId === undefined || !this.guardedClones.has(aggressorId)) {
+        if (targetId === undefined || !this.isGuardedReplayHit(e.aggressor)) {
             return;
         }
         if (targetId !== this.playerId && !isHostedByMe(targetId)) {
@@ -79,6 +78,14 @@ export class CloneSpellGuardService extends ClientListener {
             }
             this.enforce();
         });
+    }
+
+    // Hazard ticks may be blamed on the hazard reference or on no one instead of the clone
+    private isGuardedReplayHit(aggressor: ObjectReference | null | undefined): boolean {
+        if (this.guardedClones.size === 0) {
+            return false;
+        }
+        return !aggressor || this.guardedClones.has(aggressor.getFormID()) || !Actor.from(aggressor);
     }
 
     // Longest effect (Blizzard's hazard inherits it) plus a margin for the last ticks
