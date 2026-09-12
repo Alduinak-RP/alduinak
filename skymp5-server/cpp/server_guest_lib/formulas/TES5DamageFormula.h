@@ -2,6 +2,9 @@
 
 #include "IDamageFormula.h"
 
+// Share of the damage a blocked hit keeps, for shields and wards alike
+inline constexpr float kBlockedHitDamageMult = 0.1f;
+
 // Implements vanilla Skyrim damage formula.
 // Some parts may be missing. If they are, there should be a TODO regarding it.
 // If there's no corresponding TODO, consider adding it and/or filing an issue.

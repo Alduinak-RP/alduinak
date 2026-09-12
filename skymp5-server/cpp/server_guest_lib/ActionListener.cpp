@@ -16,6 +16,7 @@
 #include "gamemode_events/EatItemEvent.h"
 #include "gamemode_events/UpdateAppearanceAttemptEvent.h"
 #include "gamemode_events/UpdateEquipmentAttemptEvent.h"
+#include "formulas/TES5DamageFormula.h"
 #include "script_objects/EspmGameObject.h"
 #include <fmt/format.h>
 #include <fmt/ranges.h>
@@ -38,6 +39,9 @@ uint32_t LongToNormal(uint64_t longFormId)
 }
 
 namespace {
+// Bounds a channel whose stop was lost, matching the observers' clone watch
+constexpr auto kCastRefreshTimeout = std::chrono::milliseconds(8000);
+
 bool HasSweetPie(const WorldState& worldState)
 {
   const auto& files = worldState.espmFiles;
@@ -101,10 +105,10 @@ std::vector<uint32_t> GetKnownSpells(const MpActor& actor)
   return spells;
 }
 
-// Calls callback(effectType, associatedItem, projectile) with global ids for each effect of a SPEL
+// Calls callback(effectItem, mgefData, mgefLookup) for each effect of a SPEL, effectItem may be null
 template <class Callback>
-void ForEachSpellEffect(WorldState* worldState, uint32_t spellId,
-                        const Callback& callback)
+void ForEachSpellEffectData(WorldState* worldState, uint32_t spellId,
+                            const Callback& callback)
 {
   auto& browser = worldState->GetEspm().GetBrowser();
   const auto spellLookup = browser.LookupById(spellId);
@@ -123,12 +127,39 @@ void ForEachSpellEffect(WorldState* worldState, uint32_t spellId,
     if (!mgef) {
       continue;
     }
-    const auto data = mgef->GetData(worldState->GetEspmCache()).data;
-    callback(data.effectType,
-             data.associatedItem ? mgefLookup.ToGlobalId(data.associatedItem)
-                                 : 0,
-             data.projectile ? mgefLookup.ToGlobalId(data.projectile) : 0);
+    callback(effect.effectItem, mgef->GetData(worldState->GetEspmCache()).data,
+             mgefLookup);
   }
+}
+
+// Calls callback(effectType, associatedItem, projectile) with global ids for each effect of a SPEL
+template <class Callback>
+void ForEachSpellEffect(WorldState* worldState, uint32_t spellId,
+                        const Callback& callback)
+{
+  ForEachSpellEffectData(
+    worldState, spellId,
+    [&](const espm::SPEL::EFIT*, const espm::MGEF::DATA& data,
+        const espm::LookupResult& mgefLookup) {
+      callback(data.effectType,
+               data.associatedItem ? mgefLookup.ToGlobalId(data.associatedItem)
+                                   : 0,
+               data.projectile ? mgefLookup.ToGlobalId(data.projectile) : 0);
+    });
+}
+
+bool IsWardSpell(WorldState* worldState, uint32_t spellId)
+{
+  bool isWard = false;
+  ForEachSpellEffectData(
+    worldState, spellId,
+    [&](const espm::SPEL::EFIT*, const espm::MGEF::DATA& data,
+        const espm::LookupResult&) {
+      isWard = isWard ||
+        (data.effectType == espm::MGEF::EffectType::AccumulateMagnitude &&
+         data.primaryAV == espm::ActorValue::WardPower);
+    });
+  return isWard;
 }
 
 // Bound weapon spells equip a weapon (and the bound arrow) the inventory never holds
@@ -1455,6 +1486,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   // Relays are reliable so observers get casts, keep-alives and stops in order
   if (spellCastData.interruptCast) {
     SendToNeighbours(myActor->idx, rawMsgData, true);
+    UpdateWardChannel(caster->GetFormId(), spellCastData);
     // Only the stopped spell's channel ends, the other hand may still heal
     auto channelIt = restorationChannels.find(caster->GetFormId());
     const bool hadChannel = channelIt != restorationChannels.end() &&
@@ -1494,6 +1526,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   }
 
   SendToNeighbours(myActor->idx, rawMsgData, true);
+  UpdateWardChannel(caster->GetFormId(), spellCastData);
 
   auto& browser = partOne.worldState.GetEspm().GetBrowser();
 
@@ -1602,11 +1635,9 @@ void ActionListener::TickRestorationChannel(uint32_t casterId,
   auto& channel = it->second;
 
   constexpr uint32_t kMaxChannelTicks = 30;
-  // Bounds a channel whose stop was lost, matching the observers' clone watch
-  constexpr auto kRefreshTimeout = std::chrono::milliseconds(8000);
 
   const auto now = std::chrono::steady_clock::now();
-  const bool refreshed = now - channel.lastRefresh <= kRefreshTimeout;
+  const bool refreshed = now - channel.lastRefresh <= kCastRefreshTimeout;
   if (!refreshed) {
     spdlog::info("ActionListener::TickRestorationChannel - channel of {:x} "
                  "expired without keep-alive",
@@ -1711,6 +1742,14 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   float damage =
     partOne.CalculateDamage(*aggressor, *targetActorPtr, spellCastData);
   damage = damage <= 0.f ? 0.f : damage;
+
+  const bool wardBlocked = IsWardBlocking(*aggressor, *targetActorPtr);
+  if (wardBlocked) {
+    damage *= kBlockedHitDamageMult;
+    spdlog::info("OnSpellHit - ward of {:x} blocked spell {:x} of {:x}",
+                 targetActorPtr->GetFormId(), hitData.source,
+                 aggressor->GetFormId());
+  }
 
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, targetActorPtr,
                           hitData.source, damage)) {
@@ -1956,4 +1995,43 @@ void ActionListener::SendPapyrusOnHitEvent(MpActor* aggressor,
   args[5] = VarValue(hitData.isBashAttack);  // abBashAttack
   args[6] = VarValue(hitData.isHitBlocked);  // abHitBlocked
   target->SendPapyrusEvent("OnHit", args.data(), args.size());
+}
+
+// Ward casts and keep-alives refresh the caster's ward, its stop ends it
+void ActionListener::UpdateWardChannel(uint32_t casterId,
+                                       const SpellCastData& spellCastData)
+{
+  if (spellCastData.interruptCast) {
+    auto it = wardChannels.find(casterId);
+    if (it != wardChannels.end() &&
+        it->second.spellId == spellCastData.spell) {
+      wardChannels.erase(it);
+    }
+    return;
+  }
+  if (!IsWardSpell(&partOne.worldState, spellCastData.spell)) {
+    return;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  std::erase_if(wardChannels, [&](const auto& entry) {
+    return now - entry.second.lastRefresh > kCastRefreshTimeout;
+  });
+  wardChannels[casterId] = WardChannel{ spellCastData.spell, now };
+}
+
+// A ward covers the same frontal arc as a raised shield
+bool ActionListener::IsWardBlocking(const MpActor& aggressor,
+                                    const MpActor& target)
+{
+  auto it = wardChannels.find(target.GetFormId());
+  if (it == wardChannels.end()) {
+    return false;
+  }
+  if (target.IsDead() ||
+      std::chrono::steady_clock::now() - it->second.lastRefresh >
+        kCastRefreshTimeout) {
+    wardChannels.erase(it);
+    return false;
+  }
+  return &aggressor != &target && ShouldBeBlocked(aggressor, target);
 }
