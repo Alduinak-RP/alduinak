@@ -76,22 +76,23 @@ export class CharCreatorService extends ClientListener {
     this.config = config && typeof config === 'object' ? config : {};
     this.menuOpen = true;
     logTrace(this, 'opening character creator');
-    const js =
-      "(function(){" +
-      "if(!window.skyrimPlatform||!window.skyrimPlatform.widgets)return;" +
-      "var others=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w&&w.type!=='charCreator';});" +
-      "window.skyrimPlatform.widgets.set(others.concat([{type:'charCreator',config:" + JSON.stringify(this.config) + "}]));" +
-      "})();";
-    try {
-      showUi(this.controller);
-      this.sp.browser.executeJavaScript(js);
-      this.sp.browser.setVisible(true);
-      this.sp.browser.setFocused(true);
-    } catch (e) {
-      logError(this, `failed to show character creator: ${e}`);
-    }
     // Native game-thread calls throw from the packet handler; defer to update.
     this.controller.once("update", () => {
+      if (!this.menuOpen) return;
+      const js =
+        "(function(){" +
+        "if(!window.skyrimPlatform||!window.skyrimPlatform.widgets)return;" +
+        "var others=(window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w&&w.type!=='charCreator';});" +
+        "window.skyrimPlatform.widgets.set(others.concat([{type:'charCreator',config:" + JSON.stringify(this.withModHair(this.config ?? {})) + "}]));" +
+        "})();";
+      try {
+        showUi(this.controller);
+        this.sp.browser.executeJavaScript(js);
+        this.sp.browser.setVisible(true);
+        this.sp.browser.setFocused(true);
+      } catch (e) {
+        logError(this, `failed to show character creator: ${e}`);
+      }
       try {
         this.sp.Game.forceThirdPerson();
         // (movement, fighting, camSwitch, looking, sneaking, menu, activate, journalTabs, disablePOVType)
@@ -210,6 +211,37 @@ export class CharCreatorService extends ClientListener {
         logError(this, `failed to apply preview appearance: ${e}`);
       }
     });
+  }
+
+  // Swaps the server's mod hair descs for runtime ids; hair from plugins this client lacks is dropped
+  private withModHair(config: object): object {
+    const { modHair, ...rest } = config as { modHair?: { raceSets?: unknown; hairs?: unknown } };
+    if (!modHair || !Array.isArray(modHair.raceSets) || !Array.isArray(modHair.hairs)) return rest;
+    const raceSets = modHair.raceSets as unknown[];
+    const modParts: object[] = [];
+    const modExtras: Record<string, number[]> = {};
+    for (const h of modHair.hairs as { desc?: unknown; label?: unknown; male?: unknown; female?: unknown; races?: unknown; extras?: unknown }[]) {
+      const id = this.formIdOf(h?.desc);
+      const races = typeof h?.races === 'number' ? raceSets[h.races] : undefined;
+      if (!id || !Array.isArray(races)) continue;
+      modParts.push({ id, label: String(h.label ?? ''), kind: 'hair', male: h.male === true, female: h.female === true, races });
+      const extras = (Array.isArray(h.extras) ? h.extras : []).map((d) => this.formIdOf(d)).filter((x) => x !== 0);
+      if (extras.length) modExtras[String(id)] = extras;
+    }
+    logTrace(this, `resolved ${modParts.length}/${modHair.hairs.length} mod hairs`);
+    return { ...rest, modParts, modExtras };
+  }
+
+  private formIdOf(desc: unknown): number {
+    if (typeof desc !== 'string') return 0;
+    const sep = desc.indexOf(':');
+    if (sep <= 0) return 0;
+    try {
+      const form = this.sp.Game.getFormFromFile(parseInt(desc.slice(0, sep), 16), desc.slice(sep + 1));
+      return form ? form.getFormID() : 0;
+    } catch {
+      return 0;
+    }
   }
 
   private menuOpen = false;
