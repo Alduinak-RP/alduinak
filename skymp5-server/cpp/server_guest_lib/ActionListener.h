@@ -106,8 +106,9 @@ private:
   };
 
   void TickRestorationChannel(uint32_t casterId, uint32_t generation);
-  void FireHitDamageEvent(MpActor* aggressor, MpActor* target,
-                          uint32_t sourceId, float damage);
+  // Returns false when a gamemode handler blocked the event
+  bool FireHitDamageEvent(const char* eventName, MpActor* aggressor,
+                          MpActor* target, uint32_t sourceId, float damage);
 
   void OnSpellHit(MpActor* aggressor, MpObjectReference* targetRef,
                   const HitData& hitData);
