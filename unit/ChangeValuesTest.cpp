@@ -281,3 +281,50 @@ TEST_CASE("OnChangeValues crops stamina gains to regeneration but accepts "
   partOne.DestroyActor(0xff000000);
   DoDisconnect(partOne, 0);
 }
+
+TEST_CASE("Stamina the server sends to the client restarts the stamina "
+          "allowance",
+          "[ChangeValues]")
+{
+  PartOne& partOne = GetPartOne();
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  partOne.SetUserActor(0, 0xff000000);
+  auto& ac = partOne.worldState.GetFormAt<MpActor>(0xff000000);
+
+  ac.SetPercentages({ 1.0f, 1.0f, 0.2f });
+  ac.SetLastAttributesPercentagesUpdate(std::chrono::steady_clock::now() -
+                                        10s);
+
+  // An echo during a restoration window resets the client to 0.2
+  ac.UpdateNextRestorationTime(espm::ActorValue::Stamina, 5s);
+  nlohmann::json j = nlohmann::json{ { "t", MsgType::ChangeValues },
+                                     { "data", { { "stamina", 0.9f } } } };
+  partOne.Messages().clear();
+  DoMessage(partOne, 0, j);
+  REQUIRE(partOne.Messages().size() == 1);
+  REQUIRE(partOne.Messages()[0].j["data"]["stamina"] == 0.2f);
+
+  ac.UpdateNextRestorationTime(espm::ActorValue::Stamina, 0s);
+  partOne.Messages().clear();
+  DoMessage(partOne, 0, j);
+  REQUIRE_THAT(ac.GetChangeForm().actorValues.staminaPercentage,
+               Catch::Matchers::WithinAbs(0.2f, 0.01f));
+  REQUIRE(partOne.Messages().size() == 1);
+
+  // So does a server push such as a refused potion's rollback
+  ac.SetPercentages({ 1.0f, 1.0f, 0.2f });
+  ac.SetLastAttributesPercentagesUpdate(std::chrono::steady_clock::now() -
+                                        10s);
+  ac.NetSendChangeValues(
+    ac.GetActorValues(),
+    std::vector<espm::ActorValue>{ espm::ActorValue::Stamina });
+  partOne.Messages().clear();
+  DoMessage(partOne, 0, j);
+  REQUIRE_THAT(ac.GetChangeForm().actorValues.staminaPercentage,
+               Catch::Matchers::WithinAbs(0.2f, 0.01f));
+  REQUIRE(partOne.Messages().size() == 1);
+
+  partOne.DestroyActor(0xff000000);
+  DoDisconnect(partOne, 0);
+}
