@@ -2,22 +2,17 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
-import { getInventory, PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
 import { ObjectReference } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 const MASTER_LOCK_LEVEL = 100;
 const APPLY_EVERY_N_UPDATES = 30;
 
-// One claimed reference's presentation, as sent by the server. `access` is
-// personalized: true when this player passes by rank/ownership; key holders
-// are detected locally so a traded key works immediately.
+// One claimed reference's presentation, as sent by the server.
 interface RefDecor {
   refId: number;
   name: string | null;
   locked: boolean;
-  keyName: string | null;
-  access: boolean;
 }
 
 /**
@@ -25,13 +20,13 @@ interface RefDecor {
  * regardless; this service makes them visible and physical on each client:
  *
  *   Server -> Client: { "customPacketType": "refDecor", "refs": [
- *     { "refId", "name", "locked", "keyName", "access" } ] }
+ *     { "refId", "name", "locked" } ] }
  *
  * - name: setDisplayName so the crosshair shows the claim's name.
- * - locked && !access && !holding key: Master lock via
- *   setLockLevel(100) + lock(true).
- * Entries re-apply on a slow tick so refs that load later (cell changes) and
- * key pickups/losses converge without extra packets.
+ * - locked: Master lock via setLockLevel(100) + lock(true) for every player;
+ *   the server refuses activation until someone with access unlocks it.
+ * Entries re-apply on a slow tick so refs that load later (cell changes)
+ * converge without extra packets.
  */
 export class RefDecorService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -63,7 +58,7 @@ export class RefDecorService extends ClientListener {
       const incoming = new Set((content["refs"] as any[]).map((r) => Number(r?.refId) >>> 0));
       this.decor.forEach((_d, refId) => {
         if (!incoming.has(refId)) {
-          this.decor.set(refId, { refId, name: null, locked: false, keyName: null, access: true });
+          this.decor.set(refId, { refId, name: null, locked: false });
         }
       });
     }
@@ -77,12 +72,11 @@ export class RefDecorService extends ClientListener {
         refId,
         name: typeof raw.name === "string" && raw.name ? raw.name : null,
         locked: raw.locked === true,
-        keyName: typeof raw.keyName === "string" && raw.keyName ? raw.keyName : null,
-        access: raw.access === true,
       });
-      // Force re-evaluation on the next tick.
       this.applied.delete(refId);
     }
+    // Apply on the next update rather than the next slow tick
+    this.updateCounter = APPLY_EVERY_N_UPDATES;
   }
 
   private onUpdate(): void {
@@ -90,15 +84,14 @@ export class RefDecorService extends ClientListener {
       return;
     }
     this.updateCounter = 0;
-    const heldKeys = this.heldKeyNames();
     const stats = { names: 0, locks: 0, errors: 0, notLoaded: 0, firstError: "" };
-    this.decor.forEach((d) => this.apply(d, heldKeys, stats));
+    this.decor.forEach((d) => this.apply(d, stats));
     if (stats.names || stats.locks || stats.errors) {
       logTrace(this, `applied names=${stats.names} locks=${stats.locks} errors=${stats.errors} notloaded=${stats.notLoaded}${stats.firstError ? " | " + stats.firstError : ""}`);
     }
   }
 
-  private apply(d: RefDecor, heldKeys: Set<string>, stats: { names: number; locks: number; errors: number; notLoaded: number; firstError: string }): void {
+  private apply(d: RefDecor, stats: { names: number; locks: number; errors: number; notLoaded: number; firstError: string }): void {
     let refr: ObjectReference | null = null;
     try {
       const localId = remoteIdToLocalId(d.refId);
@@ -136,11 +129,10 @@ export class RefDecorService extends ClientListener {
         if (!stats.firstError) stats.firstError = "name: " + (e && e.message);
       }
     }
-    const shouldLock = d.locked && !d.access && !(d.keyName !== null && heldKeys.has(d.keyName));
     try {
       // Compared with the engine every pass, since a re-created view unlocks the ref behind this service's back
-      if (refr.isLocked() !== shouldLock) {
-        if (shouldLock) {
+      if (refr.isLocked() !== d.locked) {
+        if (d.locked) {
           refr.setLockLevel(MASTER_LOCK_LEVEL);
           refr.lock(true, false);
         } else {
@@ -154,25 +146,6 @@ export class RefDecorService extends ClientListener {
       if (!stats.firstError) stats.firstError = "lock: " + (e && e.message);
     }
     this.applied.set(d.refId, prev);
-  }
-
-  // Names of all property keys currently in the player's inventory.
-  private heldKeyNames(): Set<string> {
-    const held = new Set<string>();
-    try {
-      const player = this.sp.Game.getPlayer() as ObjectReference | null;
-      if (!player) {
-        return held;
-      }
-      for (const e of getInventory(player).entries) {
-        if ((e.baseId >>> 0) === PROPERTY_KEY_BASE_ID && typeof e.name === "string" && e.name && e.count > 0) {
-          held.add(e.name);
-        }
-      }
-    } catch (e) {
-      // inventory unavailable during loads; keys re-check next tick
-    }
-    return held;
   }
 
   private decor = new Map<number, RefDecor>();
