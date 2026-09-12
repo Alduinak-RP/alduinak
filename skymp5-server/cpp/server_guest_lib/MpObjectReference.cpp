@@ -29,6 +29,7 @@
 #include <ScopedTask.h>
 #include <TimeUtils.h>
 #include <antigo/Context.h>
+#include <algorithm>
 #include <antigo/ResolvedContext.h>
 #include <map>
 #include <numeric>
@@ -1576,25 +1577,10 @@ void MpObjectReference::ProcessActivateNormal(
 
     constexpr float kOccupationReach = 256.f;
 
-    if (CheckIfObjectCanStartOccupyThis(activationSource, kOccupationReach)) {
-      if (this->occupant) {
-        this->occupant->RemoveEventSink(this->occupantDestroySink);
-        this->occupant->RemoveEventSink(this->occupantDisableSink);
-      }
-
+    if (TryOccupyFurniture(*actorActivator, kOccupationReach)) {
       // SendOpenContainer being used to activate the object
       // TODO: rename SendOpenContainer to SendActivate
       activationSource.SendOpenContainer(GetFormId());
-
-      this->occupant = actorActivator;
-
-      this->occupantDestroySink.reset(
-        new OccupantDestroyEventSink(*GetParent(), this));
-      this->occupant->AddEventSink(this->occupantDestroySink);
-
-      this->occupantDisableSink.reset(
-        new OccupantDisableEventSink(*GetParent(), this));
-      this->occupant->AddEventSink(this->occupantDisableSink);
     }
   }
 }
@@ -1626,9 +1612,11 @@ bool MpObjectReference::ProcessActivateSecond(
       return true;
     }
   } else if (t == "FURN" && actorActivator) {
-    if (this->occupant == &activationSource) {
-      this->occupant->RemoveEventSink(this->occupantDestroySink);
-      this->occupant = nullptr;
+    auto it =
+      std::find(furnitureOccupantIds.begin(), furnitureOccupantIds.end(),
+                actorActivator->GetFormId());
+    if (it != furnitureOccupantIds.end()) {
+      furnitureOccupantIds.erase(it);
       return true;
     }
   }
@@ -1704,28 +1692,64 @@ bool MpObjectReference::CheckIfObjectCanStartOccupyThis(
   }
 
   if (this->occupant == &activationSource) {
-    auto& loader = GetParent()->GetEspm();
-    auto base = loader.GetBrowser().LookupById(GetBaseId());
-    auto t = base.rec->GetType();
-    auto actorActivator = activationSource.AsActor();
-    if (t == "FURN" && actorActivator) {
-      spdlog::info("MpObjectReference::ProcessActivate {:x} - occupant is "
-                   "already this object (activationSource = {:x}). Blocking "
-                   "because it's FURN",
-                   GetFormId(), activationSource.GetFormId());
-      return false;
-    } else {
-      spdlog::info("MpObjectReference::ProcessActivate {:x} - occupant is "
-                   "already this object (activationSource = {:x})",
-                   GetFormId(), activationSource.GetFormId());
-      return true;
-    }
+    spdlog::info("MpObjectReference::ProcessActivate {:x} - occupant is "
+                 "already this object (activationSource = {:x})",
+                 GetFormId(), activationSource.GetFormId());
+    return true;
   }
 
   spdlog::info("MpObjectReference::ProcessActivate {:x} - occupant is "
                "another object and is nearby (activationSource = {:x})",
                GetFormId(), activationSource.GetFormId());
   return false;
+}
+
+bool MpObjectReference::TryOccupyFurniture(MpActor& actor,
+                                           float occupationReach)
+{
+  auto worldState = GetParent();
+  auto& occupants = furnitureOccupantIds;
+
+  // Seats freed without a closing activation (walked off, disabled, destroyed)
+  occupants.erase(
+    std::remove_if(
+      occupants.begin(), occupants.end(),
+      [&](uint32_t occupantId) {
+        auto& form = worldState->LookupFormById(occupantId);
+        MpActor* occupantActor = form ? form->AsActor() : nullptr;
+        return !occupantActor || occupantActor->IsDisabled() ||
+          occupantActor->GetCellOrWorld() != GetCellOrWorld() ||
+          (occupantActor->GetPos() - GetPos()).SqrLength() >
+          occupationReach * occupationReach;
+      }),
+    occupants.end());
+
+  if (std::find(occupants.begin(), occupants.end(), actor.GetFormId()) !=
+      occupants.end()) {
+    spdlog::info("MpObjectReference::TryOccupyFurniture {:x} - {:x} already "
+                 "occupies it, blocking",
+                 GetFormId(), actor.GetFormId());
+    return false;
+  }
+
+  auto base = worldState->GetEspm().GetBrowser().LookupById(GetBaseId());
+  auto furn = espm::Convert<espm::FURN>(base.rec);
+  uint32_t numMarkers =
+    furn ? furn->GetData(worldState->GetEspmCache()).numMarkers : 0;
+  size_t capacity = std::max<uint32_t>(numMarkers, 1);
+
+  if (occupants.size() >= capacity) {
+    spdlog::info("MpObjectReference::TryOccupyFurniture {:x} - all {} "
+                 "markers are occupied (activationSource = {:x})",
+                 GetFormId(), capacity, actor.GetFormId());
+    return false;
+  }
+
+  occupants.push_back(actor.GetFormId());
+  spdlog::info("MpObjectReference::TryOccupyFurniture {:x} - {:x} seated, "
+               "{}/{} markers used",
+               GetFormId(), actor.GetFormId(), occupants.size(), capacity);
+  return true;
 }
 
 void MpObjectReference::RemoveFromGridAndUnsubscribeAll()

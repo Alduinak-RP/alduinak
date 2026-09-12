@@ -237,6 +237,7 @@ private:
   void ActivateChilds();
   bool CheckIfObjectCanStartOccupyThis(MpObjectReference& activationSource,
                                        float occupationReach);
+  bool TryOccupyFurniture(MpActor& actor, float occupationReach);
 
   bool everSubscribedOrListened = false;
   std::unique_ptr<std::set<MpObjectReference*>> listeners;
@@ -258,6 +259,8 @@ private:
   MpActor* occupant = nullptr;
   std::shared_ptr<OccupantDestroyEventSink> occupantDestroySink;
   std::shared_ptr<OccupantDisableEventSink> occupantDisableSink;
+  // Form ids, not pointers: a seated actor can be destroyed without a second activation
+  std::vector<uint32_t> furnitureOccupantIds;
   std::optional<std::chrono::system_clock::duration> relootTimeOverride;
   std::unique_ptr<uint8_t> chanceNoneOverride;
   bool activationBlocked = false;
