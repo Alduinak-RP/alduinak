@@ -2,6 +2,7 @@
 import { Actor, Form, FormType, Menu, interruptCast, castSpellImmediate, printConsole, applyAnimationVariablesToActor, ActorAnimationVariables } from 'skyrimPlatform';
 import {
   Cell,
+  EquipEvent,
   Game,
   ObjectReference,
   TESModPlatform,
@@ -22,7 +23,7 @@ import { nameof } from '../../lib/nameof';
 import { setActorValuePercentage } from '../../sync/actorvalues';
 import { applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown } from '../../sync/equipment';
-import { Inventory, applyInventory } from '../../sync/inventory';
+import { Inventory, applyInventory, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement } from '../../sync/movement';
 import { learnSpells, removeAllSpells } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
@@ -121,6 +122,7 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("updateAnimVariablesMessage", (e) => this.onUpdateAnimVariablesMessage(e));
 
     this.controller.on("update", () => this.sweepCloneCasts());
+    this.controller.on("equip", (e) => this.onPlayerConsume(e));
   }
 
   private onHostStartMessage(event: ConnectionMessage<HostStartMessage>) {
@@ -167,6 +169,21 @@ export class RemoteServer extends ClientListener {
         pcInvLastApply = 0;
       }
     });
+  }
+
+  // Mirror the server's removal so an apply before its SetInventory arrives can't re-add the item
+  private onPlayerConsume(e: EquipEvent): void {
+    if (!e.actor || !e.baseObj || e.actor.getFormID() !== 0x14) {
+      return;
+    }
+    const type = e.baseObj.getType();
+    if (type !== FormType.Potion && type !== FormType.Ingredient) {
+      return;
+    }
+    const pcInv = getPcInventory();
+    if (pcInv) {
+      setPcInventory(removeSimpleItemsAsManyAsPossible(pcInv, e.baseObj.getFormID(), 1));
+    }
   }
 
   private onOpenContainerMessage(event: ConnectionMessage<OpenContainerMessage>): void {
