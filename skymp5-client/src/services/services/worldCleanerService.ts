@@ -20,6 +20,11 @@ export class WorldCleanerService extends ClientListener {
     return this.protection.get(actorId) || 0;
   }
 
+  // Faster sweeps for a while, so an engine summon replaced by a server companion goes at once
+  sweepBurst(durationMs: number): void {
+    this.burstUntil = Math.max(this.burstUntil, Date.now() + durationMs);
+  }
+
   private onGameLoad() {
     let player = this.sp.Game.getPlayer();
     if (!player) {
@@ -31,7 +36,10 @@ export class WorldCleanerService extends ClientListener {
   }
 
   private onUpdate() {
-    this.processOneActor();
+    const count = Date.now() < this.burstUntil ? WorldCleanerService.burstActorsPerUpdate : 1;
+    for (let i = 0; i < count; i++) {
+      this.processOneActor();
+    }
   }
 
   private processOneActor() {
@@ -110,6 +118,8 @@ export class WorldCleanerService extends ClientListener {
   }
 
   private protection = new Map<number, number>();
+  private burstUntil = 0;
+  private static readonly burstActorsPerUpdate = 8;
   private initialPos?: NiPoint3;
   private initialCellOrWorld?: number;
 }

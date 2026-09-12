@@ -4,6 +4,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
+import { placeNpc } from "./npcPlacement";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -27,8 +28,6 @@ const SLOT_SPACING = 96;
 const SPAWN_LIFT = 64;
 const RETRY_MS = 30000;
 const RELOAD_DEBOUNCE_MS = 500;
-// Keeps the engine from reviving spawner NPCs; delays past ~1e9 s overflow its timer and fire at once
-const NEVER_RESPAWN = 1e9;
 const TAG_PROP = "private.npcSpawner";
 // Neighbor-visible flag (registered in the gamemode) telling clients the NPC attacks players on sight
 const HOSTILE_PROP = "ff_hostile";
@@ -474,15 +473,8 @@ export class NpcSpawnSystem implements System {
 
   private spawnOne(mp: Mp, zone: Zone, npc: ZoneNpc, slot: number, anchorId: number): number | null {
     try {
-      const self = { type: "form", desc: mp.getDescFromId(anchorId) };
-      const res = mp.callPapyrusFunction("method", "ObjectReference", "PlaceAtMe",
-        self, [{ type: "espm", desc: npc.baseDesc }, 1, false, false]);
-      if (!res?.desc) throw new Error("PlaceAtMe returned no reference");
-      const id = mp.getIdFromDesc(res.desc);
       const loc = { cellOrWorldDesc: zone.cellOrWorldDesc, pos: this.slotPos(zone, slot), rot: [0, 0, 0] };
-      mp.set(id, "locationalData", loc);
-      mp.set(id, "spawnPoint", loc);
-      mp.set(id, "spawnDelay", NEVER_RESPAWN);
+      const id = placeNpc(mp, anchorId, npc.baseDesc, loc);
       try { mp.set(id, TAG_PROP, zone.name); } catch { }
       try { mp.set(id, HOSTILE_PROP, this.isHostileBase(mp, npc.baseDesc)); } catch { }
       return id;

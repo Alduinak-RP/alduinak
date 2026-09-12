@@ -42,6 +42,14 @@ namespace {
 // Bounds a channel whose stop was lost, matching the observers' clone watch
 constexpr auto kCastRefreshTimeout = std::chrono::milliseconds(8000);
 
+// mp[eventName](refrId, ...args); false when a handler refuses
+bool FireGamemodeEvent(WorldState& worldState, uint32_t refrId,
+                       const char* eventName, const nlohmann::json& args)
+{
+  CustomEvent event(refrId, eventName, args.dump());
+  return event.Fire(&worldState);
+}
+
 bool HasSweetPie(const WorldState& worldState)
 {
   const auto& files = worldState.espmFiles;
@@ -1024,6 +1032,12 @@ void ActionListener::OnHostAttempt(const RawMessageData& rawMsgData,
     return;
   }
 
+  // The gamemode can reserve an actor for one hoster (companions)
+  if (!FireGamemodeEvent(partOne.worldState, me->GetFormId(), "onHostAttempt",
+                         nlohmann::json::array({ remoteId }))) {
+    return;
+  }
+
   auto& hoster = partOne.worldState.hosters[remoteId];
   const uint32_t prevHoster = hoster;
 
@@ -1589,6 +1603,11 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
 
   caster->SendPapyrusEvent("OnSpellCast", args.data(), args.size());
 
+  if (!spellCastData.keepAlive) {
+    FireGamemodeEvent(partOne.worldState, caster->GetFormId(), "onSpellCast",
+                      nlohmann::json::array({ spellCastData.spell }));
+  }
+
   const auto targetRef = std::dynamic_pointer_cast<MpObjectReference>(
     partOne.worldState.LookupFormById(spellCastData.target));
 
@@ -1782,6 +1801,11 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   if (!targetActorPtr) {
     return; // Not an actor, damage calculation is not needed
   }
+
+  // Fires for dead targets and zero damage too (Reanimate, Banish)
+  FireGamemodeEvent(
+    partOne.worldState, aggressor->GetFormId(), "onSpellHit",
+    nlohmann::json::array({ targetActorPtr->GetFormId(), hitData.source }));
 
   auto targetActorValues = targetActorPtr->GetChangeForm().actorValues;
 
