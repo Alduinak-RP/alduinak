@@ -70,7 +70,8 @@ export class BlockedAnimationsService extends ClientListener {
 
     private standUp(): void {
         const player = this.sp.Game.getPlayer();
-        if (!player || !player.getFurnitureReference()) {
+        // Sit state 4 is already getting up; a second exit idle would restart or cancel it
+        if (!player || !player.getFurnitureReference() || player.getSitState() === 4) {
             this.standUpRequested = false;
             return;
         }
