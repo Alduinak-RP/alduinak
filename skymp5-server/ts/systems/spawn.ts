@@ -3,6 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
+import { scanModHair, ModHairCatalog } from "./hairCatalog";
 
 type Mp = any;
 
@@ -119,6 +120,7 @@ export class Spawn implements System {
   private startingItems = DEFAULT_STARTING_ITEMS;
   private logoutGraceMs = DEFAULT_LOGOUT_GRACE_MS;
   private charCreator = parseCharCreatorSettings(undefined);
+  private modHair: ModHairCatalog | null = null;
   private settingsObject!: Settings;
   // userId -> auth context awaiting a character selection
   private pending = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
@@ -142,6 +144,7 @@ export class Spawn implements System {
     const rawGrace = Number(all?.["logoutGraceMs"]);
     if (Number.isInteger(rawGrace) && rawGrace >= 0) this.logoutGraceMs = rawGrace;
     this.charCreator = parseCharCreatorSettings(all?.["charCreator"]);
+    if (this.charCreator.enabled) this.loadModHair();
     this.installAppearanceHook(ctx);
     this.installEquipmentHook(ctx);
 
@@ -529,6 +532,17 @@ export class Spawn implements System {
     return wearable;
   }
 
+  // Background scan; creators opened before it finishes offer vanilla hair only
+  private loadModHair(): void {
+    const s = this.settingsObject;
+    scanModHair(s.dataDir, s.loadOrder, (line) => this.log(line))
+      .then((catalog) => {
+        this.modHair = catalog;
+        this.log(`[spawn] charCreator: ${catalog.hairs.length} mod hairs from the load order`);
+      })
+      .catch((e) => this.log(`[spawn] charCreator: mod hair scan failed: ${e}`));
+  }
+
   private sendCharCreatorOpen(ctx: SystemContext, userId: number, profileId: number): void {
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
       customPacketType: "charCreatorOpen",
@@ -537,6 +551,7 @@ export class Spawn implements System {
         lockedRaces: this.lockedRacesFor(profileId),
         allowChildren: this.charCreator.allowChildren,
         statPool: this.charCreator.statPool,
+        modHair: this.modHair ?? undefined,
       },
     }));
   }
