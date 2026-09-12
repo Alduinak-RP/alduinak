@@ -5,10 +5,11 @@ import './styles.scss';
 
 // One stack as resolved by the client (name already looked up from the baseId).
 interface UiItem {
+  lineId: string; // identifies the exact entry, extras included; rides add/remove events
   baseId: number;
   count: number;
   name: string;
-  keyName?: string; // property keys: the credential that rides add/remove events
+  tags?: string[];
   equipped?: boolean;
 }
 
@@ -63,12 +64,15 @@ const ItemList = ({ items, emptyText, onItemClick }: ItemListProps) => {
     <div className="trade__list">
       {items.map((item) => (
         <div
-          key={item.baseId + '|' + (item.keyName || '')}
+          key={item.lineId}
           className={'trade__item' + (onItemClick ? ' trade__item--clickable' : '')}
           onClick={onItemClick ? () => onItemClick(item) : undefined}
         >
           <span className="trade__item-name">
             {item.name}
+            {(item.tags || []).map((tag) => (
+              <span key={tag} className="trade__item-tag">{tag}</span>
+            ))}
             {item.equipped ? <span className="trade__item-tag">equipped</span> : null}
           </span>
           {item.count > 1 ? <span className="trade__item-count">{item.count}</span> : null}
@@ -91,7 +95,7 @@ const Trade = ({ data }: { data: TradeData }) => {
   const threshold = data.stackPromptThreshold || 5;
 
   const sendMove = (dir: 'add' | 'remove', item: UiItem, count: number): void => {
-    send(dir === 'add' ? ev.add : ev.remove, item.baseId, count, item.keyName || '');
+    send(dir === 'add' ? ev.add : ev.remove, item.lineId, count);
   };
 
   // Small stacks move whole; large stacks ask "how many?" first (like vanilla).
