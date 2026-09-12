@@ -56,6 +56,9 @@ struct MpActor::Impl
   bool isRespawning = false;
   bool isBlockActive = false;
   std::chrono::steady_clock::time_point lastAttributesUpdateTimePoint;
+  // Only stamina writes move it, so health hits do not eat stamina regen
+  std::chrono::steady_clock::time_point lastStaminaUpdateTimePoint =
+    std::chrono::steady_clock::now();
   std::vector<std::pair<uint32_t, std::chrono::steady_clock::time_point>>
     lastHitTimesLRU;
   using RestorationTimePoints =
@@ -749,7 +752,11 @@ void MpActor::SetPercentage(espm::ActorValue av, float percentage)
 
   // Updating timestamp. Note: calling this multiple times for different AVs
   // is fine but might be slightly inefficient if batched.
-  SetLastAttributesPercentagesUpdate(std::chrono::steady_clock::now());
+  const auto now = std::chrono::steady_clock::now();
+  pImpl->lastAttributesUpdateTimePoint = now;
+  if (av == espm::ActorValue::Stamina) {
+    pImpl->lastStaminaUpdateTimePoint = now;
+  }
 }
 
 void MpActor::SetPercentages(const ActorValues& actorValues,
@@ -762,12 +769,19 @@ void MpActor::SetPercentages(const ActorValues& actorValues,
     Kill(aggressor);
     return;
   }
+  const bool staminaChanged =
+    !MathUtils::IsNearlyEqual(ChangeForm().actorValues.staminaPercentage,
+                              actorValues.staminaPercentage);
   EditChangeForm([&](MpChangeForm& changeForm) {
     changeForm.actorValues.healthPercentage = actorValues.healthPercentage;
     changeForm.actorValues.magickaPercentage = actorValues.magickaPercentage;
     changeForm.actorValues.staminaPercentage = actorValues.staminaPercentage;
   });
-  SetLastAttributesPercentagesUpdate(std::chrono::steady_clock::now());
+  const auto now = std::chrono::steady_clock::now();
+  pImpl->lastAttributesUpdateTimePoint = now;
+  if (staminaChanged) {
+    pImpl->lastStaminaUpdateTimePoint = now;
+  }
 }
 
 void MpActor::NetSendChangeValues(
@@ -816,6 +830,10 @@ void MpActor::NetSendChangeValues(
 
   if (numUpdatedValues > 0) {
     GetActorToSendTo().SendToUser(message, true);
+    // The client adopts the sent stamina, so regen counts from now
+    if (message.data.stamina.has_value()) {
+      SetLastStaminaPercentageUpdate(std::chrono::steady_clock::now());
+    }
   }
 }
 
@@ -855,6 +873,13 @@ void MpActor::SetLastAttributesPercentagesUpdate(
   std::chrono::steady_clock::time_point timePoint)
 {
   pImpl->lastAttributesUpdateTimePoint = timePoint;
+  pImpl->lastStaminaUpdateTimePoint = timePoint;
+}
+
+void MpActor::SetLastStaminaPercentageUpdate(
+  std::chrono::steady_clock::time_point timePoint)
+{
+  pImpl->lastStaminaUpdateTimePoint = timePoint;
 }
 
 void MpActor::SetLastHitTime(uint32_t targetId,
@@ -903,6 +928,12 @@ std::chrono::duration<float> MpActor::GetDurationOfAttributesPercentagesUpdate(
   std::chrono::duration<float> timeAfterRegeneration =
     now - pImpl->lastAttributesUpdateTimePoint;
   return timeAfterRegeneration;
+}
+
+std::chrono::duration<float> MpActor::GetDurationOfStaminaPercentageUpdate(
+  std::chrono::steady_clock::time_point now) const
+{
+  return now - pImpl->lastStaminaUpdateTimePoint;
 }
 
 const bool& MpActor::IsRaceMenuOpen() const

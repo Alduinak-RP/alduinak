@@ -141,11 +141,15 @@ public:
   void SetLastAttributesPercentagesUpdate(
     std::chrono::steady_clock::time_point timePoint =
       std::chrono::steady_clock::now());
+  void SetLastStaminaPercentageUpdate(
+    std::chrono::steady_clock::time_point timePoint);
   void SetLastHitTime(uint32_t targetId,
                       std::chrono::steady_clock::time_point timePoint);
 
   std::chrono::duration<float> GetDurationOfAttributesPercentagesUpdate(
     std::chrono::steady_clock::time_point now);
+  std::chrono::duration<float> GetDurationOfStaminaPercentageUpdate(
+    std::chrono::steady_clock::time_point now) const;
 
   void Kill(MpActor* killer = nullptr, bool shouldTeleport = false);
   void Respawn(bool shouldTeleport = true);
