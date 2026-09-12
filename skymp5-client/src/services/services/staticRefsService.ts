@@ -75,10 +75,13 @@ export class StaticRefsService extends ClientListener {
     const base = ref.getBaseObject();
     if (!base) return false;
     const type = base.getType();
+    const isItem = FormTypeEx.isItem(type);
+    // Runtime items are server-streamed (dealWithRef) or engine drops like a disarmed weapon, which must stay pickable
+    if (isItem && ref.getFormID() >= 0xff000000) return false;
     if (!this.isFrozenBase(base, type) || !ref.is3DLoaded()) return false;
     ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
     // Pickups and untouchable decor only go through the server, which syncs or refuses them
-    if (FormTypeEx.isItem(type) || ObjectReferenceEx.isUntouchable(base)) ref.blockActivation(true);
+    if (isItem || ObjectReferenceEx.isUntouchable(base)) ref.blockActivation(true);
     return true;
   }
 
