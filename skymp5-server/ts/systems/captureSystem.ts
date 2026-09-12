@@ -12,8 +12,8 @@ type Mp = any;
 // server-driven RestraintService:
 //   - boundHands ("arrest"): Helgen bound-hands pose; can walk and chat, cannot
 //     fight, sneak or use hands.
-//   - carried: fully immobilised; the server snaps the body onto the carrier
-//     every tick (like a horse passenger). Camera stays free.
+//   - carried: fully immobilised; the captive's client follows the carrier's
+//     clone and the server snaps the body back when it drifts. Camera stays free.
 // Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
 // in the captor's inventory, carrying needs no item. A conscious target must
 // accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
@@ -28,7 +28,7 @@ type Mp = any;
 //     { customPacketType: "releaseRequest",  target: <actorFormId> }   // fully free
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
 //   Server -> Client:
-//     { customPacketType: "restraintState",  boundHands, carried, anim }   // -> captive's RestraintService
+//     { customPacketType: "restraintState",  boundHands, carried, carrier, anim } // -> captive's RestraintService (carrier = actor id or 0)
 //     { customPacketType: "carryState",      carrying, anim }              // -> carrier's RestraintService (pose only)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
 //     { customPacketType: "captureNotice",   text }                        // -> corner notification
@@ -567,6 +567,7 @@ export class CaptureSystem implements System {
       customPacketType: RESTRAINT_PACKET,
       boundHands: info.boundHands,
       carried: info.carried,
+      carrier: this.carriedBy.get(targetActorId) ?? 0,
       anim: this.captiveAnim,
     }));
   }
