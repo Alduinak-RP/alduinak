@@ -13,6 +13,8 @@ public:
   struct Data
   {
     float weight;
+    // Raw (file-local) PROJ id
+    uint32_t projectile = 0;
   };
 
   Data GetData(CompressedFieldsCache& compressedFieldsCache) const;

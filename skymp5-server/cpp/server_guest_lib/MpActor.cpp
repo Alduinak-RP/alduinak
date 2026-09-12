@@ -872,8 +872,6 @@ bool MpActor::IsSpellLearnedFromBase(const uint32_t spellId) const
 
 std::vector<uint32_t> MpActor::GetBaseSpells() const
 {
-  // TODO: support npc templates here?
-
   std::vector<uint32_t> result;
 
   auto worldState = GetParent();
@@ -884,12 +882,45 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
   try {
     const auto npcData = espm::GetData<espm::NPC_>(GetBaseId(), worldState);
     const auto npc = worldState->GetEspm().GetBrowser().LookupById(GetBaseId());
+    auto& browser = worldState->GetEspm().GetBrowser();
+
+    // Templated NPCs (leveled draugr, skeleton mages) take SPLO from the template chain
+    auto npcSpells = EvaluateTemplateNoThrow<espm::NPC_::UseSpelllist>(
+      worldState, GetBaseId(), GetTemplateChain(),
+      [](const auto& npcLookupResult, const auto& templateNpcData) {
+        std::vector<uint32_t> ids;
+        for (auto raw : templateNpcData.spells) {
+          ids.push_back(npcLookupResult.ToGlobalId(raw));
+        }
+        return ids;
+      },
+      nullptr);
+    if (!npcSpells) {
+      npcSpells.emplace();
+      for (auto raw : npcData.spells) {
+        npcSpells->push_back(npc.ToGlobalId(raw));
+      }
+    }
+
+    // Leveled spell lists count as every spell they can roll
+    std::vector<uint32_t> spells;
+    for (uint32_t spellId : *npcSpells) {
+      const auto lookup = browser.LookupById(spellId);
+      const auto lvsp = espm::Convert<espm::LVSP>(lookup.rec);
+      if (!lvsp) {
+        spells.push_back(spellId);
+        continue;
+      }
+      const auto lvspData = lvsp->GetData(worldState->GetEspmCache());
+      for (uint8_t i = 0; i < lvspData.numEntries; ++i) {
+        spells.push_back(lookup.ToGlobalId(lvspData.entries[i].formId));
+      }
+    }
 
     // playersInheritBaseSpells=false drops castable Player spells (Flames, Healing), abilities and race spells stay
     const bool skipCastable = !worldState->PlayersInheritBaseSpells() &&
       ChangeForm().profileId != -1;
-    for (auto npcSpellRaw : npcData.spells) {
-      const uint32_t spellId = npc.ToGlobalId(npcSpellRaw);
+    for (uint32_t spellId : spells) {
       if (skipCastable) {
         // SPLO may also list shouts or leveled spells, GetData would throw on those
         const auto spell = worldState->GetEspm().GetBrowser().LookupById(spellId);

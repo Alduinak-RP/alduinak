@@ -12,6 +12,7 @@ AMMO::Data AMMO::GetData(CompressedFieldsCache& cache) const
       if (!std::memcmp(type, "DATA", 4)) {
         // NOTE: 0x10 offset is for SSE version only
         res.weight = *reinterpret_cast<const float*>(data + 0x10);
+        res.projectile = *reinterpret_cast<const uint32_t*>(data);
       }
     },
     cache);

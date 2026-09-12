@@ -37,6 +37,246 @@ uint32_t LongToNormal(uint64_t longFormId)
 }
 }
 
+namespace {
+bool HasSweetPie(const WorldState& worldState)
+{
+  const auto& files = worldState.espmFiles;
+  return std::find(files.begin(), files.end(), "SweetPie.esp") != files.end();
+}
+
+// Non-hostile Health/Magicka/Stamina effects; areaOnly keeps those a self cast spreads to others
+std::vector<espm::Effects::Effect> GetRestorativeEffects(WorldState* worldState,
+                                                         uint32_t spellId,
+                                                         bool areaOnly)
+{
+  std::vector<espm::Effects::Effect> result;
+  const auto spellLookup =
+    worldState->GetEspm().GetBrowser().LookupById(spellId);
+  const auto spell = espm::Convert<espm::SPEL>(spellLookup.rec);
+  if (!spell) {
+    return result;
+  }
+  const auto spellData = spell->GetData(worldState->GetEspmCache());
+  for (const auto& effect : spellData.effects) {
+    if (!effect.effectItem || effect.effectFormId == 0) {
+      continue;
+    }
+    if (areaOnly && effect.effectItem->areaOfEffect == 0) {
+      continue;
+    }
+    const uint32_t effectId = spellLookup.ToGlobalId(effect.effectFormId);
+    const auto magicEffect = espm::GetData<espm::MGEF>(effectId, worldState);
+    if (magicEffect.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
+        magicEffect.data.IsFlagSet(espm::MGEF::Flags::Detrimental)) {
+      continue;
+    }
+    const auto av = magicEffect.data.primaryAV;
+    if (av != espm::ActorValue::Health && av != espm::ActorValue::Magicka &&
+        av != espm::ActorValue::Stamina) {
+      continue;
+    }
+    espm::Effects::Effect converted;
+    converted.effectId = effectId;
+    converted.magnitude = effect.effectItem->magnitude;
+    converted.areaOfEffect = effect.effectItem->areaOfEffect;
+    converted.duration = effect.effectItem->duration;
+    result.push_back(converted);
+  }
+  return result;
+}
+
+// Learned, NPC_/template/race and currently equipped spells
+std::vector<uint32_t> GetKnownSpells(const MpActor& actor)
+{
+  std::vector<uint32_t> spells = actor.GetSpellList();
+  const auto baseSpells = actor.GetBaseSpells();
+  spells.insert(spells.end(), baseSpells.begin(), baseSpells.end());
+  const auto& equipment = actor.GetEquipment();
+  for (const auto& slot : { equipment.leftSpell, equipment.rightSpell,
+                            equipment.voiceSpell, equipment.instantSpell }) {
+    if (slot) {
+      spells.push_back(*slot);
+    }
+  }
+  return spells;
+}
+
+// Calls callback(effectType, associatedItem, projectile) with global ids for each effect of a SPEL
+template <class Callback>
+void ForEachSpellEffect(WorldState* worldState, uint32_t spellId,
+                        const Callback& callback)
+{
+  auto& browser = worldState->GetEspm().GetBrowser();
+  const auto spellLookup = browser.LookupById(spellId);
+  const auto spell = espm::Convert<espm::SPEL>(spellLookup.rec);
+  if (!spell) {
+    return;
+  }
+  const auto spellData = spell->GetData(worldState->GetEspmCache());
+  for (const auto& effect : spellData.effects) {
+    if (effect.effectFormId == 0) {
+      continue;
+    }
+    const auto mgefLookup =
+      browser.LookupById(spellLookup.ToGlobalId(effect.effectFormId));
+    const auto mgef = espm::Convert<espm::MGEF>(mgefLookup.rec);
+    if (!mgef) {
+      continue;
+    }
+    const auto data = mgef->GetData(worldState->GetEspmCache()).data;
+    callback(data.effectType,
+             data.associatedItem ? mgefLookup.ToGlobalId(data.associatedItem)
+                                 : 0,
+             data.projectile ? mgefLookup.ToGlobalId(data.projectile) : 0);
+  }
+}
+
+// Bound weapon spells equip a weapon (and the bound arrow) the inventory never holds
+bool IsGrantedBoundItem(const MpActor& actor, uint32_t itemId)
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  const auto itemLookup = worldState->GetEspm().GetBrowser().LookupById(itemId);
+  const auto ammo = espm::Convert<espm::AMMO>(itemLookup.rec);
+  if (!ammo && !espm::Convert<espm::WEAP>(itemLookup.rec)) {
+    return false;
+  }
+  uint32_t ammoProjectile = 0;
+  if (ammo) {
+    const uint32_t raw = ammo->GetData(worldState->GetEspmCache()).projectile;
+    if (raw == 0) {
+      return false;
+    }
+    ammoProjectile = itemLookup.ToGlobalId(raw);
+  }
+  for (uint32_t spellId : GetKnownSpells(actor)) {
+    bool granted = false;
+    ForEachSpellEffect(worldState, spellId,
+                       [&](espm::MGEF::EffectType type,
+                           uint32_t associatedItem, uint32_t projectile) {
+                         if (type != espm::MGEF::EffectType::BoundWeapon) {
+                           return;
+                         }
+                         granted = granted ||
+                           (ammo ? projectile == ammoProjectile
+                                 : associatedItem == itemId);
+                       });
+    if (granted) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The host's engine rolls leveled templates on its own, so any spell in the base's template tree is valid
+bool IsSpellInTemplateTree(const MpActor& actor, uint32_t spellId)
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  auto& browser = worldState->GetEspm().GetBrowser();
+  std::vector<uint32_t> pending = { actor.GetBaseId() };
+  std::unordered_set<uint32_t> visited;
+  constexpr size_t kMaxVisited = 512;
+  while (!pending.empty() && visited.size() < kMaxVisited) {
+    const uint32_t formId = pending.back();
+    pending.pop_back();
+    if (formId == spellId) {
+      return true;
+    }
+    if (!visited.insert(formId).second) {
+      continue;
+    }
+    const auto lookup = browser.LookupById(formId);
+    if (const auto npc = espm::Convert<espm::NPC_>(lookup.rec)) {
+      const auto npcData = npc->GetData(worldState->GetEspmCache());
+      for (uint32_t rawSpellId : npcData.spells) {
+        pending.push_back(lookup.ToGlobalId(rawSpellId));
+      }
+      if (npcData.baseTemplate != 0 &&
+          (npcData.templateDataFlags & espm::NPC_::UseSpelllist)) {
+        pending.push_back(lookup.ToGlobalId(npcData.baseTemplate));
+      }
+      continue;
+    }
+    const espm::LeveledListBase* list = espm::Convert<espm::LVLN>(lookup.rec);
+    if (!list) {
+      list = espm::Convert<espm::LVSP>(lookup.rec);
+    }
+    if (list) {
+      const auto listData = list->GetData(worldState->GetEspmCache());
+      for (uint8_t i = 0; i < listData.numEntries; ++i) {
+        pending.push_back(lookup.ToGlobalId(listData.entries[i].formId));
+      }
+    }
+  }
+  return false;
+}
+
+// Hosted NPCs keep no spell equipment on the server, their spell list is the gate
+bool CanCastSpell(const MpActor& actor, uint32_t spellId)
+{
+  if (actor.GetEquipment().IsSpellEquipped(spellId)) {
+    return true;
+  }
+  return actor.GetProfileId() == -1 &&
+    (actor.IsSpellLearned(spellId) || IsSpellInTemplateTree(actor, spellId));
+}
+
+// Cloaks and hazards (Blizzard) hit with a spell they grant, not the spell that was cast
+bool IsSpellGrantedBy(WorldState* worldState, uint32_t parentSpellId,
+                      uint32_t sourceId)
+{
+  bool granted = false;
+  ForEachSpellEffect(
+    worldState, parentSpellId,
+    [&](espm::MGEF::EffectType type, uint32_t associatedItem, uint32_t) {
+      if (granted || associatedItem == 0) {
+        return;
+      }
+      if (type == espm::MGEF::EffectType::Cloak) {
+        granted = associatedItem == sourceId;
+        return;
+      }
+      if (type != espm::MGEF::EffectType::SpawnHazard) {
+        return;
+      }
+      const auto hazardLookup =
+        worldState->GetEspm().GetBrowser().LookupById(associatedItem);
+      const auto hazard = espm::Convert<espm::HAZD>(hazardLookup.rec);
+      if (!hazard) {
+        return;
+      }
+      const uint32_t hazardSpell =
+        hazard->GetData(worldState->GetEspmCache()).spell;
+      granted =
+        hazardSpell != 0 && hazardLookup.ToGlobalId(hazardSpell) == sourceId;
+    });
+  return granted;
+}
+
+// Projectiles, cloaks and hazards may land after the spell left the hand
+bool CanHitWithSpell(const MpActor& actor, uint32_t spellId)
+{
+  if (actor.GetEquipment().IsSpellEquipped(spellId) ||
+      actor.IsSpellLearned(spellId)) {
+    return true;
+  }
+  if (actor.GetProfileId() == -1 && IsSpellInTemplateTree(actor, spellId)) {
+    return true;
+  }
+  for (uint32_t knownSpellId : GetKnownSpells(actor)) {
+    if (IsSpellGrantedBy(actor.GetParent(), knownSpellId, spellId)) {
+      return true;
+    }
+  }
+  return false;
+}
+}
+
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
                                           Networking::UserId userId,
                                           Networking::PacketData data,
@@ -293,7 +533,8 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     if (entry.GetWorn() == Inventory::Worn::None) {
       continue;
     }
-    if (!inventory.HasItem(entry.baseId)) {
+    if (!inventory.HasItem(entry.baseId) &&
+        !IsGrantedBoundItem(*actor, entry.baseId)) {
       spdlog::warn(
         "ActionListener::OnUpdateEquipment {:x} - rejected equipment "
         "update: inventory does not contain item {:x}",
@@ -419,7 +660,9 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
         }
         const bool notEquipped =
           currentWornIds.find(entry.baseId) == currentWornIds.end();
-        if (notEquipped || !inventory.HasItem(entry.baseId)) {
+        const bool notInInventory = !inventory.HasItem(entry.baseId) &&
+          !IsGrantedBoundItem(*actor, entry.baseId);
+        if (notEquipped || notInInventory) {
           spdlog::info(
             "ActionListener::OnUpdateEquipment {:x} - unequipping item {:x} "
             "({})",
@@ -1136,8 +1379,13 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
 
   const auto equipment = aggressor->GetEquipment();
 
-  if (isSourceSpell && equipment.IsSpellEquipped(hitData.source)) {
-    OnSpellHit(aggressor, targetRef, hitData);
+  if (isSourceSpell) {
+    if (CanHitWithSpell(*aggressor, hitData.source)) {
+      OnSpellHit(aggressor, targetRef, hitData);
+    } else {
+      spdlog::info("ActionListener::OnHit - {:x} cannot hit with spell {:x}",
+                   hitData.aggressor, hitData.source);
+    }
     return;
   }
 
@@ -1230,12 +1478,10 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
-  const auto equipment = caster->GetEquipment();
-
-  if (equipment.IsSpellEquipped(spellCastData.spell) == false) {
+  if (!CanCastSpell(*caster, spellCastData.spell)) {
     spdlog::info("ActionListener::OnSpellCast - spell {0:x} not "
-                 "found in equipment",
-                 spellCastData.spell);
+                 "found in equipment of {1:x}",
+                 spellCastData.spell, caster->GetFormId());
     return;
   }
 
@@ -1267,6 +1513,13 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   MpActor* targetActor = nullptr;
   const bool selfDelivery = spellData.spellItem &&
     spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
+
+  // The cast event's target is always the caster, fire-and-forget heals on others land in OnSpellHit
+  if (!selfDelivery && spellData.spellItem &&
+      spellData.spellItem->castType == espm::SPEL::CastType::FireAndForget) {
+    return;
+  }
+
   if (selfDelivery) {
     targetActor = caster;
   } else if (targetRef) {
@@ -1288,35 +1541,11 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     }
   }
 
-  std::vector<espm::Effects::Effect> restoreEffects;
-  for (const auto& effect : spellData.effects) {
-    if (!effect.effectItem || effect.effectFormId == 0) {
-      continue;
-    }
-    const auto magicEffect =
-      espm::GetData<espm::MGEF>(effect.effectFormId, &partOne.worldState);
-    if (magicEffect.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
-        magicEffect.data.IsFlagSet(espm::MGEF::Flags::Detrimental)) {
-      continue;
-    }
-    const auto av = magicEffect.data.primaryAV;
-    if (av != espm::ActorValue::Health && av != espm::ActorValue::Magicka &&
-        av != espm::ActorValue::Stamina) {
-      continue;
-    }
-    espm::Effects::Effect converted;
-    converted.effectId = effect.effectFormId;
-    converted.magnitude = effect.effectItem->magnitude;
-    converted.areaOfEffect = effect.effectItem->areaOfEffect;
-    converted.duration = effect.effectItem->duration;
-    restoreEffects.push_back(converted);
-  }
+  auto restoreEffects =
+    GetRestorativeEffects(&partOne.worldState, spellCastData.spell, false);
 
   if (!restoreEffects.empty()) {
-    std::unordered_set<std::string> modFiles = {
-      partOne.worldState.espmFiles.begin(), partOne.worldState.espmFiles.end()
-    };
-    const bool hasSweetpie = modFiles.count("SweetPie.esp") > 0;
+    const bool hasSweetpie = HasSweetPie(partOne.worldState);
 
     const bool isConcentration = spellData.spellItem &&
       spellData.spellItem->castType == espm::SPEL::CastType::Concentration;
@@ -1498,6 +1727,30 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
                spellCastData.caster);
 
   FireHitDamageEvent(aggressor, targetActorPtr, hitData.source, damage);
+
+  // Heal Other and the area share of self heals (Grand Healing) restore their target here, the caster heals on cast
+  if (targetActorPtr == aggressor || targetActorPtr->IsDead()) {
+    return;
+  }
+  const auto spellData =
+    espm::GetData<espm::SPEL>(hitData.source, &partOne.worldState);
+  if (!spellData.spellItem ||
+      spellData.spellItem->castType != espm::SPEL::CastType::FireAndForget) {
+    return;
+  }
+  const bool selfDelivery =
+    spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
+  auto restoreEffects =
+    GetRestorativeEffects(&partOne.worldState, hitData.source, selfDelivery);
+  if (restoreEffects.empty()) {
+    return;
+  }
+  targetActorPtr->ApplyMagicEffects(restoreEffects,
+                                    HasSweetPie(partOne.worldState));
+  spdlog::info("OnSpellHit - applied {} restorative effect(s) of spell {:x} "
+               "to actor {:x}",
+               restoreEffects.size(), hitData.source,
+               targetActorPtr->GetFormId());
 }
 
 void ActionListener::OnWeaponHit(MpActor* aggressor,

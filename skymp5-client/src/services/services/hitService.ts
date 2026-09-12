@@ -50,16 +50,18 @@ export class HitService extends ClientListener {
         }
 
         // prevent double hit that happens for some reason with magic projectiles
+        // Keyed per target: area spells hit every target in the same frame
         if (isSpell || isScroll) {
-            const aggressorId = e.aggressor.getFormID();
+            const key = `${e.aggressor.getFormID()}:${e.target.getFormID()}`;
             const now = Date.now();
 
-            const lastHitTime = this.recentMagicHits.get(aggressorId);
-            if (lastHitTime && now - lastHitTime < 100) {
+            const lastHitTime = this.recentMagicHits.get(key);
+            if (lastHitTime && now - lastHitTime < this.magicHitDedupMs) {
                 return;
             }
 
-            this.recentMagicHits.set(aggressorId, now);
+            this.recentMagicHits.set(key, now);
+            this.pruneRecentMagicHits(now);
         }
 
         this.controller.emitter.emit("sendMessage", {
@@ -82,5 +84,17 @@ export class HitService extends ClientListener {
         return hitData;
     }
 
-    private recentMagicHits: Map<number, number> = new Map();
+    private pruneRecentMagicHits(now: number) {
+        if (this.recentMagicHits.size <= 64) {
+            return;
+        }
+        this.recentMagicHits.forEach((time, key) => {
+            if (now - time >= this.magicHitDedupMs) {
+                this.recentMagicHits.delete(key);
+            }
+        });
+    }
+
+    private readonly magicHitDedupMs = 100;
+    private recentMagicHits: Map<string, number> = new Map();
 }

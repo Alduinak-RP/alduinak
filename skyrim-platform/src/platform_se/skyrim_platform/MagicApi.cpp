@@ -44,6 +44,36 @@ GetAnimationVariablesFromJSArg(const Napi::Object& argObj)
   return variables;
 }
 
+// Self buffs safe on a clone (Candlelight, Invisibility, Muffle): nothing hostile, spawned, equipped or area
+bool IsReplayableSelfBuff(const RE::SpellItem& spell)
+{
+  using Archetype = RE::EffectArchetypes::ArchetypeID;
+
+  if (spell.effects.empty()) {
+    return false;
+  }
+
+  for (auto* effect : spell.effects) {
+    auto* baseEffect = effect ? effect->baseEffect : nullptr;
+    if (!baseEffect || baseEffect->IsHostile() ||
+        baseEffect->IsDetrimental() || effect->effectItem.area > 0) {
+      return false;
+    }
+    switch (baseEffect->GetArchetype()) {
+      case Archetype::kValueModifier:
+      case Archetype::kPeakValueModifier:
+      case Archetype::kDualValueModifier:
+      case Archetype::kLight:
+      case Archetype::kInvisibility:
+        break;
+      default:
+        return false;
+    }
+  }
+
+  return true;
+}
+
 } // namespace skymp::magic::details
 
 Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
@@ -110,6 +140,14 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
         magicCaster->CastSpellImmediate(pSpell, false, magicTarget, 1.0f,
                                         false, 0.0f, pActor);
 
+        return;
+      }
+
+      // Self spells launch no projectile, so a buff is applied to the clone directly
+      if (pSpell->data.delivery == RE::MagicSystem::Delivery::kSelf &&
+          skymp::magic::details::IsReplayableSelfBuff(*pSpell)) {
+        magicCaster->CastSpellImmediate(pSpell, false, pActor, 1.0f, false,
+                                        0.0f, pActor);
         return;
       }
 
