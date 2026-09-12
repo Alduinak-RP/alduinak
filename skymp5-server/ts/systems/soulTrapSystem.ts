@@ -5,9 +5,10 @@ import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
 type Mp = any;
 
 // Soul Trap: a hit carrying a soul trap effect marks its target, and a death before the effect ends fills one of the caster's soul gems.
-// Players have black souls, so only an empty black soul gem takes them.
+// Players have black souls, so only an empty black soul gem takes them, and a player whose soul was taken respawns once in the Soul Cairn.
 
 const HIT_EVENT = "onPapyrusEvent:OnHit";
+const TRAPPED_PROP = "private.soulTrapped";
 const NOTICE_PACKET = "notification";
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
@@ -38,6 +39,12 @@ const FILLED_GEMS = new Map<number, number>([
   [0x0002e4fc, 0x0002e4ff], // Grand
   [0x0002e500, 0x0002e504], // Black
 ]);
+// Where the Castle Volkihar portal (Dawnguard.esm door 0200289B) sets the player down in DLC01SoulCairn.
+const SOUL_CAIRN_ARRIVAL = {
+  cellOrWorldDesc: "1408:Dawnguard.esm",
+  pos: [-19965.66, -15986.51, 2079.48],
+  rot: [0, 0, 77.35],
+};
 
 interface Trap {
   casterId: number;
@@ -81,6 +88,19 @@ export class SoulTrapSystem implements System {
         this.log(`[soultrap] hit check failed: ${e}`);
       }
       return previousHit ? previousHit.apply(mp, args) : undefined;
+    };
+
+    const previousRespawn = typeof mp.onRespawn === "function" ? mp.onRespawn : null;
+    mp.onRespawn = (...args: unknown[]) => {
+      const result = previousRespawn ? previousRespawn.apply(mp, args) : undefined;
+      if (result !== false) {
+        try {
+          this.routeToSoulCairn(ctx, Number(args[0]) >>> 0);
+        } catch (e) {
+          this.log(`[soultrap] Soul Cairn respawn failed: ${e}`);
+        }
+      }
+      return result;
     };
   }
 
@@ -133,8 +153,28 @@ export class SoulTrapSystem implements System {
       return;
     }
     this.notify(ctx, casterId, "Soul captured!");
-    if (player) this.notify(ctx, targetId, "Your soul was trapped in a black soul gem.");
+    if (player) {
+      mp.set(targetId, TRAPPED_PROP, true);
+      this.notify(ctx, targetId, "Your soul was trapped in a black soul gem.");
+    }
     this.log(`[soultrap] ${hex(casterId)} trapped the ${kind} soul of ${hex(targetId)} in gem ${hex(gemId)}`);
+  }
+
+  // The engine reads the respawn point right after this hook, so the Soul Cairn stands in for this one respawn only
+  private routeToSoulCairn(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as Mp;
+    if (mp.get(actorId, TRAPPED_PROP) !== true) return;
+    mp.set(actorId, TRAPPED_PROP, false);
+    const home = mp.get(actorId, "spawnPoint");
+    mp.set(actorId, "spawnPoint", SOUL_CAIRN_ARRIVAL);
+    setTimeout(() => {
+      try {
+        mp.set(actorId, "spawnPoint", home);
+      } catch (e) {
+        this.log(`[soultrap] restoring the spawn point of ${hex(actorId)} failed: ${e}`);
+      }
+    }, 0);
+    this.log(`[soultrap] ${hex(actorId)} respawns in the Soul Cairn`);
   }
 
   // Smallest empty gem that holds the soul: black souls need a gem that can hold NPC souls, white souls a regular one
