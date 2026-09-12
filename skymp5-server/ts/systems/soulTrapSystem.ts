@@ -76,7 +76,7 @@ const viewOf = (d: Uint8Array): DataView => new DataView(d.buffer, d.byteOffset,
 export class SoulTrapSystem implements System {
   systemName = "SoulTrapSystem";
 
-  constructor(private log: Log) { }
+  constructor(private log: Log, private companions?: { isCompanionActor(actorId: number): boolean }) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
@@ -137,6 +137,8 @@ export class SoulTrapSystem implements System {
     if (!seconds) return;
     const casterId = this.idOf(mp, aggressor);
     if (!casterId || casterId === targetId) return;
+    // Summons and reanimated corpses give no soul, so none can be farmed or taken twice
+    if (this.companions?.isCompanionActor(targetId)) return;
     if (mp.get(targetId, "type") !== "MpActor" || mp.get(targetId, "isDead") === true) return;
     if (!this.isPlayer(mp, targetId) && this.npcKeywords(ctx, targetId).has(KEYWORD_NO_SOUL_TRAP)) return;
     // The latest soul trap on a target decides whose gem its soul goes to

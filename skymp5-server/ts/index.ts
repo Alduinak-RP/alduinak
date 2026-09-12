@@ -225,7 +225,7 @@ const main = async () => {
     new HousingSystem(log),
     new TradeSystem(log),
     new SearchSystem(log),
-    new SoulTrapSystem(log),
+    new SoulTrapSystem(log, companionSystem),
     new VoiceSystem(log),
     new AfkSystem(log),
     masterySystem,
