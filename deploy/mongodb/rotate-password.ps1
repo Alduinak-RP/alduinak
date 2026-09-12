@@ -34,7 +34,9 @@ function Get-Mongosh {
 }
 
 function Invoke-Mongo($uri, $js) {
-  $out = & $mongosh $uri --quiet --eval $js 2>&1
+  foreach ($k in $secrets.Keys) { Set-Item "Env:$k" $secrets[$k] }
+  try { $out = & $mongosh $uri --quiet --eval $js 2>&1 }
+  finally { foreach ($k in $secrets.Keys) { Remove-Item "Env:$k" -ErrorAction SilentlyContinue } }
   if ($LASTEXITCODE -ne 0) { throw "mongosh failed: $out" }
   return ($out | Out-String).Trim()
 }
@@ -42,10 +44,13 @@ function Invoke-Mongo($uri, $js) {
 $mongosh = Get-Mongosh
 Write-Host "[rotate] mongosh: $mongosh"
 
-# JSON string escape so quotes or backslashes in the password cannot break the eval
-$pwJs = ($NewPassword | ConvertTo-Json)
+# Passwords reach mongosh as env vars, off its command line, where PowerShell 5.1 would strip JS string quotes
+$secrets = @{
+  ALDUINAK_MONGO_PWD = $NewPassword
+  ALDUINAK_MONGO_NEW_ADMIN_PWD = $CreateAdmin
+}
 
-$updateJs = "db.getSiblingDB('admin').updateUser('$User', { pwd: $pwJs }); print('UPDATED');"
+$updateJs = "db.getSiblingDB('admin').updateUser('$User', { pwd: process.env.ALDUINAK_MONGO_PWD }); print('UPDATED');"
 $rotated = $false
 
 # Fast path: works when an admin account exists or changeOwnPassword was granted
@@ -74,8 +79,7 @@ if (-not $rotated) {
     $res = Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' $updateJs
     if ($res -notmatch 'UPDATED') { throw "updateUser did not confirm: $res" }
     if ($CreateAdmin) {
-      $adminPwJs = ($CreateAdmin | ConvertTo-Json)
-      $adminJs = "try { db.getSiblingDB('admin').createUser({ user: 'alduinakAdmin', pwd: $adminPwJs, roles: [ { role: 'root', db: 'admin' } ] }); print('ADMIN_CREATED'); } catch (e) { print('ADMIN_SKIPPED: ' + e.message); }"
+      $adminJs = "try { db.getSiblingDB('admin').createUser({ user: 'alduinakAdmin', pwd: process.env.ALDUINAK_MONGO_NEW_ADMIN_PWD, roles: [ { role: 'root', db: 'admin' } ] }); print('ADMIN_CREATED'); } catch (e) { print('ADMIN_SKIPPED: ' + e.message); }"
       Write-Host ('[rotate] ' + (Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' $adminJs))
     }
     $rotated = $true
