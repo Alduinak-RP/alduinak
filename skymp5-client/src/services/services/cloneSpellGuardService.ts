@@ -1,10 +1,8 @@
-import { Actor, Enchantment, Game, HitEvent, ObjectReference, Scroll, Spell } from "skyrimPlatform";
+import { Actor, Game, HitEvent, ObjectReference, Spell } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { DeathService } from "./deathService";
 import { setActorValuePercentage } from "../../sync/actorvalues";
 import { isHostedByMe } from "../../view/worldViewMisc";
-
-type MagicItem = Spell | Scroll | Enchantment;
 
 interface CloneGuard {
     floorUntil: number;
@@ -21,34 +19,40 @@ export class CloneSpellGuardService extends ClientListener {
 
     // Must run before the queued replay executes, so the floor is the health before the clone's hits
     public guardClone(cloneLocalId: number, spellId: number) {
-        this.addGuard(cloneLocalId, this.getGuardMs(this.getMagicItem(spellId)), true);
+        this.addGuard(cloneLocalId, this.getGuardMs(spellId), true);
     }
 
     // Aimed, rune and concentration replays keep their slows and paralysis, only the health floor applies
     public guardHostileReplay(cloneLocalId: number, spellId: number, channelTimeoutMs: number) {
-        const item = this.getMagicItem(spellId);
-        if (!item) {
+        // Only spell hits reach the server's OnSpellHit, scroll and staff replays stay the victim's only damage
+        const spell = Spell.from(Game.getFormEx(spellId));
+        if (!spell) {
             return;
         }
-        let hostile = false;
+        let damageSec = -1;
         let launchedFromClone = false;
         let concentration = false;
-        const numEffects = item.getNumEffects();
+        const numEffects = spell.getNumEffects();
         for (let i = 0; i < numEffects; i++) {
-            const effect = item.getNthEffectMagicEffect(i);
+            const effect = spell.getNthEffectMagicEffect(i);
             if (!effect) {
                 continue;
             }
-            hostile = hostile || effect.isEffectFlagSet(this.hostileFlag) || effect.isEffectFlagSet(this.detrimentalFlag);
             launchedFromClone = launchedFromClone || effect.getDeliveryType() !== this.selfDelivery;
             concentration = concentration || effect.getCastingType() === this.concentrationCasting;
+            // Slows, fear and paralysis restore their value when they end and never lower health
+            const harmful = effect.isEffectFlagSet(this.hostileFlag) || effect.isEffectFlagSet(this.detrimentalFlag);
+            if (harmful && !effect.isEffectFlagSet(this.recoverFlag)) {
+                damageSec = Math.max(damageSec, spell.getNthEffectDuration(i));
+            }
         }
-        if (!hostile || !launchedFromClone) {
+        // The server applies a hit's magnitude once, so damage over time (Ignite, Chaurus spit) only lands through the replay
+        if (damageSec < 0 || damageSec > 1 || !launchedFromClone) {
             return;
         }
         // A channel whose stop got lost keeps streaming until remoteServer sweeps it
         const channelMs = concentration ? channelTimeoutMs + this.guardMarginSec * 1000 : 0;
-        this.addGuard(cloneLocalId, Math.max(this.getGuardMs(item), channelMs), false);
+        this.addGuard(cloneLocalId, Math.max((damageSec + this.guardMarginSec) * 1000, channelMs), false);
     }
 
     // Server health is authoritative while a replay may still hit the player
@@ -135,17 +139,13 @@ export class CloneSpellGuardService extends ClientListener {
         return (this.guardedClones.get(aggressor.getFormID())?.dispelUntil ?? 0) > now;
     }
 
-    private getMagicItem(spellId: number): MagicItem | null {
-        const form = Game.getFormEx(spellId);
-        return Spell.from(form) ?? Scroll.from(form) ?? Enchantment.from(form);
-    }
-
-    // Longest effect (Blizzard's hazard inherits it) plus a margin for the last ticks and projectile flight
-    private getGuardMs(item: MagicItem | null): number {
+    // Longest effect (Blizzard's hazard inherits it) plus a margin for the last ticks
+    private getGuardMs(spellId: number): number {
+        const spell = Spell.from(Game.getFormEx(spellId));
         let seconds = 0;
-        const numEffects = item ? item.getNumEffects() : 0;
+        const numEffects = spell ? spell.getNumEffects() : 0;
         for (let i = 0; i < numEffects; i++) {
-            seconds = Math.max(seconds, item!.getNthEffectDuration(i));
+            seconds = Math.max(seconds, spell!.getNthEffectDuration(i));
         }
         return (seconds + this.guardMarginSec) * 1000;
     }
@@ -154,6 +154,7 @@ export class CloneSpellGuardService extends ClientListener {
     // Covers the longest vanilla damage projectile flight, 4 s for Firebolt and Ice Spike at full range
     private readonly guardMarginSec = 5;
     private readonly hostileFlag = 0x1;
+    private readonly recoverFlag = 0x2;
     private readonly detrimentalFlag = 0x4;
     private readonly selfDelivery = 0;
     private readonly concentrationCasting = 2;
