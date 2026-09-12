@@ -1,5 +1,5 @@
 import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
-import { setDefaultAnimsDisabled, applyAnimation } from "../sync/animation";
+import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment } from "../sync/equipment";
 import { RespawnNeededError } from "../lib/errors";
@@ -9,7 +9,6 @@ import { Movement } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
-import { getMovement } from "../sync/movementGet";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
 import { localIdToRemoteId } from "./worldViewMisc";
@@ -445,6 +444,7 @@ export class FormView {
               ? model.movement
               : { ...model.movement, runMode: "Standing", isInJumpState: false };
             applyMovement(refr, movement, !!model.isMyClone);
+            restoreSitCollisionIfMoving(refr, movement);
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;
@@ -729,8 +729,8 @@ export class FormView {
       lastTryHost[remoteId] = Date.now();
 
       if (
-        getMovement(ac).worldOrCell ===
-        getMovement(Game.getPlayer() as Actor).worldOrCell
+        ObjectReferenceEx.getWorldOrCell(ac) ===
+        ObjectReferenceEx.getWorldOrCell(Game.getPlayer() as Actor)
       ) {
         tryHost(remoteId);
         return true;
