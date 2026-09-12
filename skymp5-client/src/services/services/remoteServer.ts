@@ -608,6 +608,9 @@ export class RemoteServer extends ClientListener {
                   const subValue = baseActorValues.get(subKey);
                   if (typeof subValue === 'number') {
                     setActorValuePercentage(player, subKey, value);
+                    if (subKey === 'health') {
+                      this.controller.lookupListener(CloneSpellGuardService).onServerHealth(value);
+                    }
                   }
                 } else {
                   player.setActorValue(key, value);
