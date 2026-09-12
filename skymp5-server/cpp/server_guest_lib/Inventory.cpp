@@ -181,6 +181,7 @@ std::vector<Inventory::Entry> Inventory::FindEntriesFor(
     }
   };
 
+  draw([&](const Entry& e) { return e.EqualExceptCount(described); });
   Entry unworn = described;
   unworn.SetWorn(Worn::None);
   draw([&](const Entry& e) {
