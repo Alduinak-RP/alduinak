@@ -51,6 +51,7 @@ export class NetworkingService extends ClientListener {
 
   connect(hostName: string, port: number) {
     this.serverAddress = { hostName, port };
+    this.autoReconnectBlocked = false;
     this.createClientSafe();
   }
 
@@ -67,6 +68,8 @@ export class NetworkingService extends ClientListener {
   closeAfterKick() {
     this.autoReconnectBlocked = true;
     this.close();
+    // The destroyed client never delivers its own disconnect
+    this.controller.emitter.emit("connectionDisconnect", {});
   }
 
   isAutoReconnectBlocked() {
