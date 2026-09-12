@@ -117,6 +117,8 @@ export class ConjurationSystem implements System {
     let dead = false;
     try { dead = mp.get(corpseId, "isDead") === true; } catch { return "not an actor"; }
     if (!dead) return "not dead";
+    // A plugin-placed actor cannot be destroyed (the world loads it again with its items), so only server-placed corpses rise
+    if (corpseId < 0xff000000) return "a plugin-placed NPC";
     if (isPlayerActor(mp, corpseId)) return "a player body";
     if (this.companions.isCompanionActor(corpseId)) return "a companion";
     if (!isNear(mp, casterId, corpseId, REANIMATE_RANGE)) return "out of range";

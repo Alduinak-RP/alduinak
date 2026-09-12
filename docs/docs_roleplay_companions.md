@@ -65,6 +65,7 @@ The C++ server fires `onSpellCast(caster, spell)` and `onSpellHit(aggressor, tar
   - The first summon effect is used. Perk-conditioned variants (Elemental Potency) and duration perks are not evaluated.
 - **Reanimate:** Reanimate Corpse, Revenant, Dread Zombie and Dead Thrall raise a dead NPC as a `reanimated` companion.
   - The corpse must be within 4096 units and must not be a player body or a companion.
+  - Only server-placed corpses (ids FF......, such as zone NPCs) can rise. A plugin-placed actor cannot be destroyed, because the world would load it again with its items.
   - Its level must be at most the effect magnitude.
   - It must pass the effect's HasKeyword conditions: no MagicNoReanimate, and ActorTypeNPC for Dead Thrall.
   - A new actor of the corpse's base takes its place and inventory, and the corpse is removed.
