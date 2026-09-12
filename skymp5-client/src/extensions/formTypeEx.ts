@@ -1,16 +1,20 @@
 import { FormType } from "skyrimPlatform";
 
 export class FormTypeEx {
+  static readonly itemTypes: readonly FormType[] = [
+    FormType.Ammo,
+    FormType.Armor,
+    FormType.Book,
+    FormType.Ingredient,
+    FormType.Light,
+    FormType.Potion,
+    FormType.ScrollItem,
+    FormType.SoulGem,
+    FormType.Weapon,
+    FormType.Misc,
+  ];
+
   static isItem(type: FormType) {
-    return type === FormType.Ammo ||
-      type === FormType.Armor ||
-      type === FormType.Book ||
-      type === FormType.Ingredient ||
-      type === FormType.Light ||
-      type === FormType.Potion ||
-      type === FormType.ScrollItem ||
-      type === FormType.SoulGem ||
-      type === FormType.Weapon ||
-      type === FormType.Misc;
+    return FormTypeEx.itemTypes.includes(type);
   }
 }
