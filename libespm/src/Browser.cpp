@@ -4,6 +4,7 @@
 #include "libespm/COBJ.h"
 #include "libespm/CellOrGridPos.h"
 #include "libespm/CompressedFieldsCache.h"
+#include "libespm/ENCH.h"
 #include "libespm/FACT.h"
 #include "libespm/GroupDataInternal.h"
 #include "libespm/GroupUtils.h"
@@ -43,6 +44,7 @@ struct Browser::Impl
     groupStackByRecordPtr;
   std::vector<const RecordHeader*> objectReferences;
   std::vector<const RecordHeader*> constructibleObjects;
+  std::vector<const RecordHeader*> enchantments;
   std::vector<const RecordHeader*> keywords;
   std::vector<const RecordHeader*> factions;
   std::vector<const RecordHeader*> quests;
@@ -119,6 +121,9 @@ const std::vector<const RecordHeader*>& Browser::GetRecordsByType(
   if (!std::strcmp(type, espm::COBJ::kType)) {
     return pImpl->constructibleObjects;
   }
+  if (!std::strcmp(type, espm::ENCH::kType)) {
+    return pImpl->enchantments;
+  }
   if (!std::strcmp(type, espm::KYWD::kType)) {
     return pImpl->keywords;
   }
@@ -135,7 +140,8 @@ const std::vector<const RecordHeader*>& Browser::GetRecordsByType(
     return pImpl->cells;
   }
   throw std::runtime_error("GetRecordsByType currently supports only REFR, "
-                           "COBJ, KYWD, FACT, QUST, WRLD and CELL records");
+                           "COBJ, ENCH, KYWD, FACT, QUST, WRLD and CELL "
+                           "records");
 }
 
 const std::vector<const RecordHeader*>& Browser::GetRecordsAtPos(
@@ -244,6 +250,10 @@ bool Browser::ReadAny(const GroupStack* parentGrStack)
 
     if (utils::Is<espm::COBJ>(t)) {
       pImpl->constructibleObjects.push_back(recHeader);
+    }
+
+    if (utils::Is<espm::ENCH>(t)) {
+      pImpl->enchantments.push_back(recHeader);
     }
 
     if (utils::Is<espm::KYWD>(t)) {

@@ -8,7 +8,7 @@ import {
   setInventory,
 } from 'skyrimPlatform';
 
-import { Entry, Inventory, getInventory, isBoundItem } from './inventory';
+import { Entry, Inventory, getInventory, getPlayerEnchantment, isBoundItem } from './inventory';
 
 export const enum SpellType {
   Left,
@@ -68,6 +68,13 @@ const removeUnnecessaryExtra = (inv: Inventory, ignoreAmmo: boolean): Inventory 
     entries: inv.entries.map((x) => {
       const r: Entry = JSON.parse(JSON.stringify(x));
       r.chargePercent = r.maxCharge;
+      if (r.enchantmentEffects) {
+        // Worn player enchantments are rebuilt in this session so the copy looks right
+        const form = Game.getFormEx(x.baseId);
+        const enchantment = form ? getPlayerEnchantment(r.enchantmentEffects, form) : null;
+        r.enchantmentId = enchantment ? enchantment.getFormID() : undefined;
+        delete r.enchantmentEffects;
+      }
       if (ignoreAmmo) {
         r.count = Ammo.from(Game.getFormEx(x.baseId)) ? r.count : 1;
       } else {

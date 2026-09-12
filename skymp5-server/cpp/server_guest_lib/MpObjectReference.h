@@ -161,6 +161,8 @@ public:
   void RemoveItems(const std::vector<Inventory::Entry>& entries,
                    MpObjectReference* target = nullptr);
   void RemoveAllItems(MpObjectReference* target = nullptr);
+  // A dropped item hands these back with itself when picked up
+  void SetPickupExtras(const Inventory::ExtraData& extras);
   void RelootContainer();
   void RegisterProfileId(int32_t profileId);
   void RegisterPrivateIndexedProperty(

@@ -117,6 +117,8 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("place", &ScampServer::Place),
       InstanceMethod("lookupEspmRecordById",
                      &ScampServer::LookupEspmRecordById),
+      InstanceMethod("getEspmRecordIdsByType",
+                     &ScampServer::GetEspmRecordIdsByType),
       InstanceMethod("getEspmLoadOrder", &ScampServer::GetEspmLoadOrder),
       InstanceMethod("getNeighborsByPosition",
                      &ScampServer::GetNeighborsByPosition),
@@ -1310,6 +1312,25 @@ Napi::Value ScampServer::GetAllForms(const Napi::CallbackInfo& info)
 
     return typedArray;
 
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), std::string(e.what()));
+  }
+}
+
+// Global ids of the winning records of one type (COBJ, ENCH and the other types libespm indexes)
+Napi::Value ScampServer::GetEspmRecordIdsByType(const Napi::CallbackInfo& info)
+{
+  try {
+    auto type = NapiHelper::ExtractString(info[0], "type");
+    auto records =
+      partOne->GetEspm().GetBrowser().GetDistinctRecordsByType(type.c_str());
+    auto arr = Napi::Array::New(info.Env(), records.size());
+    for (size_t i = 0; i < records.size(); ++i) {
+      arr.Set(static_cast<uint32_t>(i),
+              Napi::Number::New(info.Env(), records[i].ToGlobalId(
+                                              records[i].rec->GetId())));
+    }
+    return arr;
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), std::string(e.what()));
   }

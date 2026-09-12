@@ -69,9 +69,11 @@ export class ContainersService extends ClientListener {
                         reliability: "reliable"
                     }));
 
-                    // Turn 1,2,3,4,5 changes into 1,1,1,1,1 when moving items one by one; extra-less items only
+                    // Turn 1,2,3,4,5 changes into 1,1,1,1,1 when moving items one by one
                     diff.entries.forEach((entry) => {
-                        if (lastInvService.lastInv && !hasExtras(entry)) {
+                        if (lastInvService.lastInv && hasExtras(entry)) {
+                            lastInvService.lastInv = getDiff(lastInvService.lastInv, { entries: [entry] }, ignoreWorn);
+                        } else if (lastInvService.lastInv) {
                             const put = entry.count > 0;
                             const take = entry.count < 0;
                             if (put) {

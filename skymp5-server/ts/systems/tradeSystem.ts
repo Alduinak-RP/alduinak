@@ -1,5 +1,9 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
+import {
+  Item, InventoryEntry, Inventory, isKeyItem, sameBase, hasIdentityExtras, sameItem, lineKey,
+  readInventory, copyValidExtras, withCount, addEntries, describeExtras,
+} from "./inventoryExtras";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -16,7 +20,7 @@ type Mp = any;
 //     { customPacketType: "tradeRequest", recipient: <remoteActorFormId> }
 //     { customPacketType: "tradeRespond", accept: <bool> }
 //     { customPacketType: "tradeSetOffer", items: [{ baseId, count, name?, health?, enchantmentId?, maxCharge?,
-//         removeEnchantmentOnUnequip?, chargePercent?, soul?, poisonId?, poisonCount? }] }
+//         removeEnchantmentOnUnequip?, chargePercent?, soul?, poisonId?, poisonCount?, enchantmentEffects? }] }
 //     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
 //   Server -> Client
 //     { customPacketType: "tradeInvite", fromName }
@@ -31,33 +35,6 @@ type Mp = any;
 const DEFAULT_MAX_TRADE_DISTANCE = 1024;      // game units; both must stay within this range
 const DEFAULT_INVITE_TTL_MS = 60 * 1000;      // pending invites auto-cancel after this
 const DEFAULT_INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per initiator->target
-
-// Mirror of Inventory::ExtraData (server_guest_lib/Inventory.h) minus the worn flags
-interface Extras {
-  health?: number;
-  enchantmentId?: number;
-  maxCharge?: number;
-  removeEnchantmentOnUnequip?: boolean;
-  chargePercent?: number;
-  name?: string;
-  soul?: number;
-  poisonId?: number;
-  poisonCount?: number;
-}
-
-interface Item extends Extras {
-  baseId: number;
-  count: number;
-}
-
-interface InventoryEntry extends Item {
-  worn?: boolean;
-  wornLeft?: boolean;
-}
-
-interface Inventory {
-  entries: InventoryEntry[];
-}
 
 // Which server entries an offer draws on; plain[i] marks a line the server only holds without its extras
 interface Resolution {
@@ -80,81 +57,7 @@ interface Session {
   inviteSeq: number; // bumped per (re-)invite so stale TTL timers no-op
 }
 
-// ── Pure inventory helpers (operate on the JSON shape of the inventory binding) ─
-
-// Extras that tell copies apart; charge drifts with use and names only matter on property keys (the client's extrasEqual rule)
-const IDENTITY_KEYS = [
-  'health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip',
-  'soul', 'poisonId', 'poisonCount',
-] as const;
-
-const EXTRA_KEYS: (keyof Extras)[] = [...IDENTITY_KEYS, 'chargePercent', 'name'];
-
-// Property keys (housing): the name is the credential.
-const KEY_BASE_ID = 0x000db0e2;
-
-// Zero and empty extras mean nothing (armor enchantments carry maxCharge 0) and offers never keep them
-const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false && v !== 0 && v !== '';
-
-const sameBase = (a: Item, b: Item): boolean => (a.baseId >>> 0) === (b.baseId >>> 0);
-
-const isKeyItem = (i: Item): boolean => (i.baseId >>> 0) === KEY_BASE_ID;
-
-const keyName = (i: Item): string => (isKeyItem(i) && typeof i.name === 'string' ? i.name : '');
-
-const hasIdentityExtras = (i: Item): boolean => IDENTITY_KEYS.some((k) => isSet(i[k]));
-
-// Floats pass through C++ float storage, so compare them loosely
-function sameValue(a: unknown, b: unknown): boolean {
-  if (!isSet(a) || !isSet(b)) {
-    return !isSet(a) && !isSet(b);
-  }
-  if (typeof a === 'number' && typeof b === 'number') {
-    return Math.abs(a - b) <= 1e-3 * Math.max(1, Math.abs(a));
-  }
-  return a === b;
-}
-
-function sameItem(e: Item, item: Item): boolean {
-  return sameBase(e, item) && keyName(e) === keyName(item) && IDENTITY_KEYS.every((k) => sameValue(e[k], item[k]));
-}
-
-// Same shape as the client's lineKey in tradeService.ts
-function lineKey(i: Item): string {
-  return [i.baseId >>> 0, keyName(i), ...IDENTITY_KEYS.map((k) => (isSet(i[k]) ? String(i[k]) : ''))].join('|');
-}
-
-function readInventory(mp: Mp, actorId: number): Inventory {
-  const inv = mp.get(actorId, 'inventory');
-  if (inv && Array.isArray(inv.entries)) {
-    return inv as Inventory;
-  }
-  return { entries: [] };
-}
-
-function copyValidExtras(raw: any, item: Item): void {
-  // Same acceptance rule as the client's toItem, so both sides build the same lineKey
-  const num = (v: unknown, allowZero = false): number | undefined =>
-    (typeof v === 'number' && Number.isFinite(v) && (v > 0 || (allowZero && v === 0)) ? v : undefined);
-  const id = (v: unknown, max: number): number | undefined =>
-    (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= max ? v : undefined);
-  const extras: Extras = {
-    health: num(raw?.health),
-    enchantmentId: id(raw?.enchantmentId, 0xffffffff),
-    maxCharge: num(raw?.maxCharge),
-    removeEnchantmentOnUnequip: raw?.removeEnchantmentOnUnequip === true ? true : undefined,
-    chargePercent: num(raw?.chargePercent, true),
-    name: typeof raw?.name === 'string' && raw.name ? raw.name.slice(0, 256) : undefined,
-    soul: id(raw?.soul, 5),
-    poisonId: id(raw?.poisonId, 0xffffffff),
-    poisonCount: id(raw?.poisonCount, 0xffffffff),
-  };
-  for (const k of EXTRA_KEYS) {
-    if (extras[k] !== undefined) {
-      (item as any)[k] = extras[k];
-    }
-  }
-}
+// ── Pure inventory helpers (operate on the JSON shape of the inventory binding; identity lives in inventoryExtras.ts) ─
 
 // Collapse an offer to positive, integer, de-duplicated lines with validated extras.
 function normalizeOffer(items: unknown): Item[] {
@@ -179,13 +82,6 @@ function normalizeOffer(items: unknown): Item[] {
     }
   }
   return Array.from(byLine.values());
-}
-
-function withCount(e: InventoryEntry, count: number): InventoryEntry {
-  const copy: InventoryEntry = { ...e, count };
-  delete copy.worn;
-  delete copy.wornLeft;
-  return copy;
 }
 
 // Draw each line from the actor's own entries: exact extras first, then a plain copy for extras the server never saved
@@ -222,21 +118,6 @@ function resolveOffer(inv: Inventory, offer: Item[]): Resolution {
 }
 
 const offerIsAffordable = (inv: Inventory, offer: Item[]): boolean => resolveOffer(inv, offer).ok;
-
-// Stack entries onto a working inventory copy, only onto copies with identical extras
-function addEntries(inv: Inventory, entries: InventoryEntry[]): Inventory {
-  const out = inv.entries.map((e) => ({ ...e }));
-  const norm = (v: unknown): unknown => (isSet(v) ? v : undefined);
-  for (const add of entries) {
-    const stack = out.find((e) => sameBase(e, add) && EXTRA_KEYS.every((k) => norm(e[k]) === norm(add[k])));
-    if (stack) {
-      stack.count += add.count;
-    } else {
-      out.push({ ...add });
-    }
-  }
-  return { entries: out };
-}
 
 export class TradeSystem implements System {
   systemName = "TradeSystem";
@@ -746,8 +627,7 @@ export class TradeSystem implements System {
           if (n) label += ' ' + JSON.stringify(n);
         } catch { /* hex id is enough */ }
       }
-      const extras = EXTRA_KEYS.filter((k) => k !== 'name' && isSet(i[k]))
-        .map((k) => k + '=' + (k === 'enchantmentId' || k === 'poisonId' ? hex(i[k]) : String(i[k])));
+      const extras = describeExtras(i);
       return extras.length ? label + ' {' + extras.join(', ') + '}' : label;
     }).join(', ');
   }

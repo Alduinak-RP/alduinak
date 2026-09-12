@@ -6,7 +6,8 @@ import { SweetTaffySweetCantDropService } from "./sweetTaffySweetCantDropService
 import { WorldCleanerService } from "./worldCleanerService";
 import { logTrace } from "../../logging";
 import { notifyNextUpdate } from "./customPacketUtil";
-import { PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
+import { PROPERTY_KEY_BASE_ID, getDiff, getInventory, hasItemExtras } from "../../sync/inventory";
+import { getPcInventory } from "./remoteServer";
 
 export class DropItemService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -87,10 +88,29 @@ export class DropItemService extends ClientListener {
             const count = e.numItems;
             this.controller.emitter.emit("sendMessage", {
                 message: {
-                    t, baseId, count,
+                    ...this.droppedExtras(baseId), t, baseId, count,
                 },
                 reliability: "reliable"
             });
         }
+    }
+
+    // The copy the server still holds but the player no longer has is the one on the ground
+    private droppedExtras(baseId: number): Record<string, unknown> {
+        const pcInv = getPcInventory();
+        if (!pcInv) {
+            return {};
+        }
+        const dropped = getDiff(pcInv, getInventory(this.sp.Game.getPlayer() as Actor), true, "exact").entries
+            .find((x) => x.baseId === baseId && x.count > 0 && hasItemExtras(x));
+        if (!dropped) {
+            return {};
+        }
+        const extras: Record<string, unknown> = { ...dropped };
+        delete extras.baseId;
+        delete extras.count;
+        delete extras.worn;
+        delete extras.wornLeft;
+        return extras;
     }
 }

@@ -691,10 +691,30 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     std::any_of(spellIdsToRemove.begin(), spellIdsToRemove.end(),
                 [](uint32_t id) { return id != 0; });
 
+  // Worn items show the extras the server holds, never ones a client made up
+  UpdateEquipmentMessage sanitizedMsg = msg;
+  bool extrasReplaced = false;
+  for (auto& entry : sanitizedMsg.data.inv.entries) {
+    if (entry.GetWorn() == Inventory::Worn::None) {
+      continue;
+    }
+    Inventory::Entry one = entry;
+    one.count = 1;
+    const auto owned = inventory.FindEntriesFor(one);
+    if (owned.empty() || owned[0].SameItemAs(entry)) {
+      continue;
+    }
+    const auto worn = entry.GetWorn();
+    const auto count = entry.count;
+    entry = owned[0];
+    entry.count = count;
+    entry.SetWorn(worn);
+    extrasReplaced = true;
+  }
+
   if (isAllowed) {
     // An unlearned spell strips just that slot; weapons/armor still reach neighbours (avoids silent desync)
-    if (anySpellStripped) {
-      UpdateEquipmentMessage sanitizedMsg = msg;
+    if (anySpellStripped || extrasReplaced) {
       if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Left)]) {
         sanitizedMsg.data.leftSpell = std::nullopt;
       }
@@ -863,7 +883,13 @@ void ActionListener::OnPutItem(const RawMessageData& rawMsgData,
     static_cast<const Inventory::ExtraData&>(msg);
   entry.SetWorn(Inventory::Worn::None);
 
-  ref.PutItem(*actor, entry);
+  const auto owned = actor->GetInventory().FindEntriesFor(entry);
+  if (owned.empty()) {
+    return ref.PutItem(*actor, entry);
+  }
+  for (const auto& e : owned) {
+    ref.PutItem(*actor, e);
+  }
 }
 
 void ActionListener::OnTakeItem(const RawMessageData& rawMsgData,
@@ -892,7 +918,13 @@ void ActionListener::OnTakeItem(const RawMessageData& rawMsgData,
   static_cast<Inventory::ExtraData&>(entry) =
     static_cast<const Inventory::ExtraData&>(msg);
 
-  ref.TakeItem(*actor, entry);
+  const auto stored = ref.GetInventory().FindEntriesFor(entry);
+  if (stored.empty()) {
+    return ref.TakeItem(*actor, entry);
+  }
+  for (const auto& e : stored) {
+    ref.TakeItem(*actor, e);
+  }
 }
 
 void ActionListener::OnDropItem(const RawMessageData& rawMsgData,
@@ -918,8 +950,17 @@ void ActionListener::OnDropItem(const RawMessageData& rawMsgData,
   Inventory::Entry entry;
   entry.baseId = baseId;
   entry.count = msg.count;
+  static_cast<Inventory::ExtraData&>(entry) =
+    static_cast<const Inventory::ExtraData&>(msg);
+  entry.SetWorn(Inventory::Worn::None);
 
-  ac->DropItem(baseId, entry);
+  const auto owned = ac->GetInventory().FindEntriesFor(entry);
+  if (owned.empty()) {
+    return ac->DropItem(baseId, Inventory::Entry(baseId, msg.count));
+  }
+  for (const auto& e : owned) {
+    ac->DropItem(baseId, e);
+  }
 }
 
 void ActionListener::OnPlayerBowShot(const RawMessageData& rawMsgData,
