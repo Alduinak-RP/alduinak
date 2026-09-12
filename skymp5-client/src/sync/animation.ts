@@ -32,6 +32,8 @@ export interface AnimationApplyState {
 const allowedIdles = new Array<[number, string]>();
 const refsWithDefaultAnimsDisabled = new Set<number>();
 const allowedAnims = new Set<string>();
+// Refs whose collision a sit animation turned off, with the time it happened
+const sitCollisionDisabledAt = new Map<number, number>();
 
 const actorSitAnimsLowerCase = [
   'idlestoolenterplayer',
@@ -191,10 +193,25 @@ export const applyAnimation = (
 
   if (actorSitAnimsLowerCase.find((x) => x === animEventNameLowerCase) !== undefined) {
     setCollision(refr.getFormID(), false);
+    sitCollisionDisabledAt.set(refr.getFormID(), Date.now());
   }
 
   if (actorGetUpAnimsLowerCase.find((x) => x === animEventNameLowerCase) !== undefined) {
     setCollision(refr.getFormID(), true);
+    sitCollisionDisabledAt.delete(refr.getFormID());
+  }
+};
+
+// Animation sync is unreliable and single-slot, so a lost get-up must not leave a walking clone without collision
+export const restoreSitCollisionIfMoving = (refr: ObjectReference, m: Movement): void => {
+  if (m.runMode === "Standing") {
+    return;
+  }
+  const refrId = refr.getFormID();
+  const disabledAt = sitCollisionDisabledAt.get(refrId);
+  if (disabledAt !== undefined && Date.now() - disabledAt > 2000) {
+    sitCollisionDisabledAt.delete(refrId);
+    setCollision(refrId, true);
   }
 };
 

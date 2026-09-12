@@ -1,5 +1,5 @@
 import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
-import { setDefaultAnimsDisabled, applyAnimation } from "../sync/animation";
+import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment } from "../sync/equipment";
 import { RespawnNeededError } from "../lib/errors";
@@ -441,6 +441,7 @@ export class FormView {
           }
           try {
             applyMovement(refr, model.movement, !!model.isMyClone);
+            restoreSitCollisionIfMoving(refr, model.movement);
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;
