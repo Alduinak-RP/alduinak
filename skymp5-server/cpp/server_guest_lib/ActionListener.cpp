@@ -162,6 +162,31 @@ bool IsWardSpell(WorldState* worldState, uint32_t spellId)
   return isWard;
 }
 
+// Longest visible Paralysis effect in seconds, hidden perk riders need conditions the server does not evaluate
+uint32_t GetParalysisSeconds(WorldState* worldState, uint32_t spellId)
+{
+  uint32_t seconds = 0;
+  bool damagesHealth = false;
+  ForEachSpellEffectData(
+    worldState, spellId,
+    [&](const espm::SPEL::EFIT* effectItem, const espm::MGEF::DATA& data,
+        const espm::LookupResult&) {
+      if (!effectItem) {
+        return;
+      }
+      damagesHealth = damagesHealth ||
+        ((data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
+          data.IsFlagSet(espm::MGEF::Flags::Detrimental)) &&
+         data.primaryAV == espm::ActorValue::Health);
+      if (data.effectType == espm::MGEF::EffectType::Paralysis &&
+          !data.IsFlagSet(espm::MGEF::Flags::HideInUI)) {
+        seconds = std::max(seconds, effectItem->duration);
+      }
+    });
+  // Replaying a damaging spell on the target's client would damage it twice
+  return damagesHealth ? 0 : seconds;
+}
+
 // Bound weapon spells equip a weapon (and the bound arrow) the inventory never holds
 bool IsGrantedBoundItem(const MpActor& actor, uint32_t itemId)
 {
@@ -1773,6 +1798,10 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   FireHitDamageEvent("onHitDamage", aggressor, targetActorPtr, hitData.source,
                      damage);
 
+  if (!wardBlocked) {
+    ApplyParalysis(*aggressor, *targetActorPtr, hitData.source);
+  }
+
   // Heal Other and the area share of self heals (Grand Healing) restore their target here, the caster heals on cast
   if (targetActorPtr == aggressor || targetActorPtr->IsDead()) {
     return;
@@ -1967,9 +1996,10 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 
 bool ActionListener::FireHitDamageEvent(const char* eventName,
                                         MpActor* aggressor, MpActor* target,
-                                        uint32_t sourceId, float damage)
+                                        uint32_t sourceId, float damage,
+                                        bool fireOnZeroDamage)
 {
-  if (!aggressor || !target || damage <= 0.f) {
+  if (!aggressor || !target || (damage <= 0.f && !fireOnZeroDamage)) {
     return true;
   }
   nlohmann::json argsJson = nlohmann::json::array();
@@ -2034,4 +2064,64 @@ bool ActionListener::IsWardBlocking(const MpActor& aggressor,
     return false;
   }
   return &aggressor != &target && ShouldBeBlocked(aggressor, target);
+}
+
+// The caster's engine paralyses only its own copy of the target, so the target's client applies the spell too
+void ActionListener::ApplyParalysis(MpActor& aggressor, MpActor& target,
+                                    uint32_t spellId)
+{
+  if (&aggressor == &target || target.IsDead() || IsParalyzed(target)) {
+    return;
+  }
+  const uint32_t seconds = GetParalysisSeconds(&partOne.worldState, spellId);
+  // God mode refuses paralysis like it refuses damage
+  if (seconds == 0 ||
+      !FireHitDamageEvent("onHitDamageAttempt", &aggressor, &target, spellId,
+                          0.f, true)) {
+    return;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  std::erase_if(paralyzedUntil,
+                [&](const auto& entry) { return entry.second <= now; });
+  paralyzedUntil[target.GetFormId()] = now + std::chrono::seconds(seconds);
+  // Paralysis lowers a raised shield and ends a ward
+  target.SetIsBlockActive(false);
+  wardChannels.erase(target.GetFormId());
+  spdlog::info("OnSpellHit - spell {:x} of {:x} paralyses {:x} for {} s",
+               spellId, aggressor.GetFormId(), target.GetFormId(), seconds);
+
+  // A player's own client, or the host of an NPC
+  MpActor& executor = target.GetActorToSendTo();
+  if (&executor == &aggressor) {
+    return;
+  }
+  SpSnippetObjectArgument spellArg;
+  spellArg.formId = spellId;
+  spellArg.type = "Spell";
+  SpSnippetObjectArgument targetArg;
+  targetArg.formId = &executor == &target
+    ? 0x14
+    : SpSnippet::MakeLongFormId(&partOne.worldState, target.GetFormId());
+  targetArg.type = "Actor";
+  std::vector<std::optional<
+    std::variant<bool, double, std::string, SpSnippetObjectArgument>>>
+    args;
+  args.push_back(spellArg);
+  args.push_back(targetArg);
+  SpSnippet("Actor", "DoCombatSpellApply", args, aggressor.GetFormId())
+    .Execute(&executor, SpSnippetMode::kNoReturnResult);
+}
+
+bool ActionListener::IsParalyzed(const MpActor& actor)
+{
+  auto it = paralyzedUntil.find(actor.GetFormId());
+  if (it == paralyzedUntil.end()) {
+    return false;
+  }
+  if (actor.IsDead() || std::chrono::steady_clock::now() >= it->second) {
+    paralyzedUntil.erase(it);
+    return false;
+  }
+  return true;
 }
