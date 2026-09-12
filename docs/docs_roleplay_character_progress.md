@@ -91,7 +91,7 @@ Overrides of a vanilla marker keep the vanilla `hex:Skyrim.esm` id.
 ```
 cd skymp5-client
 node scripts/gen-map-markers.js
-node scripts/gen-map-markers.js --data "X:/Skyrim/Data" --load-order "Skyrim.esm,Update.esm,Dawnguard.esm"
+node scripts/gen-map-markers.js --data "C:/GOG Games/Skyrim Anniversary Edition/Data" --load-order "Skyrim.esm,Update.esm,Dawnguard.esm"
 ```
 
 Without arguments it reads `loadOrder` and `dataDir` from
