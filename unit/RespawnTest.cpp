@@ -35,6 +35,34 @@ TEST_CASE("DeathState packed is correct if actor was killed", "[Respawn]")
   REQUIRE(ac.GetChangeForm().actorValues.healthPercentage == 0.f);
 }
 
+TEST_CASE("An NPC's death reaches every player who sees it, not only its "
+          "hoster",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+  p.CreateActor(0xff000001, { 0, 0, 0 }, 0, 0x3c);
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& npc = p.worldState.GetFormAt<MpActor>(0xff000001);
+
+  p.Messages().clear();
+  npc.Kill();
+
+  bool foundIsDeadBroadcast = false;
+  for (auto& msg : p.Messages()) {
+    nlohmann::json j = msg.j; // copy: operator[] auto-inserts null for absentees
+    if (msg.userId == 0 && j["t"] == MsgType::UpdateProperty &&
+        j["propName"] == "isDead" && j["dataDump"] == "true" &&
+        j["refrId"] == npc.GetFormId()) {
+      foundIsDeadBroadcast = true;
+      break;
+    }
+  }
+  REQUIRE(foundIsDeadBroadcast);
+  REQUIRE(npc.IsDead());
+}
+
 TEST_CASE("DeathState packed is correct if actor is respawning", "[Respawn]")
 {
   PartOne& p = GetPartOne();
