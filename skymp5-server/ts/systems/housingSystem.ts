@@ -760,6 +760,7 @@ export class HousingSystem implements System {
     this.reKey(ctx, primary, rec);
     rec.owner = 0;
     rec.ownerName = "";
+    rec.name = null;
     rec.locked = false;
     return this.write(ctx, primary, rec);
   }

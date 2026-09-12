@@ -125,6 +125,17 @@ export class RefDecorService extends ClientListener {
         if (!stats.firstError) stats.firstError = "name: " + (e && e.message);
       }
     }
+    // A released claim hands the crosshair back to the base object's name
+    if (!d.name && prev.name) {
+      try {
+        refr.setDisplayName(refr.getBaseObject()?.getName() || "", true);
+        delete prev.name;
+        stats.names++;
+      } catch (e: any) {
+        stats.errors++;
+        if (!stats.firstError) stats.firstError = "name: " + (e && e.message);
+      }
+    }
     const shouldLock = d.locked && !d.access && !(d.keyName !== null && heldKeys.has(d.keyName));
     try {
       // Compared with the engine every pass, since a re-created view unlocks the ref behind this service's back
