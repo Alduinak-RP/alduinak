@@ -1,7 +1,10 @@
+import { Actor } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { logTrace } from "../../logging";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
+import { remoteIdToLocalId } from "../../view/worldViewMisc";
 
 // Vanilla behaviour-graph "offset" overlay events (no ESP required), cleared with OffsetStop.
 // All three are whitelisted in sync/animation.ts (forcedSyncAnims) so the poses sync to other players.
@@ -17,6 +20,11 @@ const JUMP_START_EVENTS = new Set(["jumpstandingstart", "jumpdirectionalstart"])
 const TICK_MS = 100;
 const POSE_REAPPLY_MIN_MS = 500;
 
+// Carried body chases the carrier's clone locally; the server's drift snap is only a backstop
+const CARRY_FOLLOW_TIME_S = 0.2;
+const CARRY_FOLLOW_DEADZONE = 16;
+const CARRY_FOLLOW_MAX_DIST = 2048;
+
 /**
  * Applies the local player's restraint state (bound hands, being carried, and
  * the captor's carry-hold pose) to controls and animation.
@@ -27,10 +35,10 @@ const POSE_REAPPLY_MIN_MS = 500;
  * Protocol: Server -> Client, {@link MsgType.CustomPacket} with a JSON dump.
  * Fields are optional; only the ones present are changed:
  *
- *   // The restrained player (captive):
+ *   // The restrained player (captive); carrier is the carrier's server actor id, 0 when not carried:
  *   { "customPacketType": "restraintState", "boundHands": true }
- *   { "customPacketType": "restraintState", "carried": true, "anim": "OffsetBoundStandingStart" }
- *   { "customPacketType": "restraintState", "boundHands": false, "carried": false }
+ *   { "customPacketType": "restraintState", "carried": true, "carrier": 4278190090, "anim": "OffsetBoundStandingStart" }
+ *   { "customPacketType": "restraintState", "boundHands": false, "carried": false, "carrier": 0 }
  *
  *   // The carrier (pose only, no control change):
  *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart" }
@@ -39,8 +47,8 @@ const POSE_REAPPLY_MIN_MS = 500;
  * Effects on the local player:
  *   - boundHands: plays the bound-hands pose and disables fighting/sneaking/
  *     activation. Movement stays enabled so the prisoner can be marched/walked.
- *   - carried: fully immobilises the player (so the server can move the body)
- *     while leaving the camera free to look around.
+ *   - carried: fully immobilises the player and keeps them on the carrier's
+ *     clone, while leaving the camera free to look around.
  *   - carrying: plays the carry-hold pose; controls are untouched so the carrier
  *     can walk the captive around.
  *   - any of the above: jumping is blocked and the pose is re-applied after a fall.
@@ -95,10 +103,16 @@ export class RestraintService extends ClientListener {
       if (typeof content["carried"] === "boolean") {
         this.carried = content["carried"];
       }
+      if (typeof content["carrier"] === "number") {
+        this.carrierId = content["carrier"];
+      }
+      if (!this.carried) {
+        this.carrierId = 0;
+      }
       if (typeof content["anim"] === "string" && content["anim"]) {
         this.captiveAnim = content["anim"] as string;
       }
-      logTrace(this, `restraintState boundHands=${this.boundHands} carried=${this.carried}`);
+      logTrace(this, `restraintState boundHands=${this.boundHands} carried=${this.carried} carrier=${this.carrierId.toString(16)}`);
       this.applyState();
     } else if (type === "carryState") {
       if (typeof content["carrying"] === "boolean") {
@@ -112,7 +126,7 @@ export class RestraintService extends ClientListener {
     }
   }
 
-  // Throttled landing detection, independent of the engine's landing event names
+  // Throttled: landing detection (event-name independent) and the carried follow
   private onUpdate(): void {
     if (!this.isPoseLocked) {
       this.wasInJump = false;
@@ -140,6 +154,28 @@ export class RestraintService extends ClientListener {
       this.nextPoseReapplyMs = now + POSE_REAPPLY_MIN_MS;
       this.reapplyPoses();
     }
+
+    if (this.carried && this.carrierId) {
+      this.followCarrier(player);
+    }
+  }
+
+  private followCarrier(player: Actor): void {
+    const carrier = this.sp.ObjectReference.from(this.sp.Game.getFormEx(remoteIdToLocalId(this.carrierId)));
+    if (!carrier || !carrier.is3DLoaded() ||
+      ObjectReferenceEx.getWorldOrCell(carrier) !== ObjectReferenceEx.getWorldOrCell(player)) {
+      return;
+    }
+    const target = ObjectReferenceEx.getPos(carrier);
+    const dist = ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(player), target);
+    if (dist < CARRY_FOLLOW_DEADZONE || dist > CARRY_FOLLOW_MAX_DIST) {
+      return;
+    }
+    player.translateTo(
+      target[0], target[1], target[2],
+      player.getAngleX(), player.getAngleY(), player.getAngleZ(),
+      dist / CARRY_FOLLOW_TIME_S, 0,
+    );
   }
 
   // Must run on update; forces every held pose to be sent again
@@ -216,6 +252,7 @@ export class RestraintService extends ClientListener {
 
   private boundHands = false;
   private carried = false;
+  private carrierId = 0;
   private captiveAnim = BOUND_HANDS_ANIM_START;
   private appliedPose = "";
 
