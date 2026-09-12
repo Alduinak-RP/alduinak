@@ -9,6 +9,7 @@ interface UiItem {
   count: number;
   name: string;
   keyName?: string; // property keys: the credential that rides add/remove events
+  equipped?: boolean;
 }
 
 interface TradeEvents {
@@ -66,7 +67,10 @@ const ItemList = ({ items, emptyText, onItemClick }: ItemListProps) => {
           className={'trade__item' + (onItemClick ? ' trade__item--clickable' : '')}
           onClick={onItemClick ? () => onItemClick(item) : undefined}
         >
-          <span className="trade__item-name">{item.name}</span>
+          <span className="trade__item-name">
+            {item.name}
+            {item.equipped ? <span className="trade__item-tag">equipped</span> : null}
+          </span>
           {item.count > 1 ? <span className="trade__item-count">{item.count}</span> : null}
         </div>
       ))}
@@ -131,7 +135,9 @@ const Trade = ({ data }: { data: TradeData }) => {
         <div className="trade__body">
           {/* Left: my offerable inventory */}
           <div className="trade__pane trade__pane--inventory">
-            <div className="trade__pane-title">Your Inventory</div>
+            <div className="trade__pane-title">
+              Your Inventory <span className="trade__lock">({(data.inventory || []).length})</span>
+            </div>
             <ItemList
               items={data.inventory}
               emptyText="Nothing to trade"
