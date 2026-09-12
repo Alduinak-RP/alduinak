@@ -42,9 +42,9 @@ type Mp = any;
 //   masterySpells                { "<professionId>": [noviceSpell, adept, expert, master] }
 //                                form ids from the Alduinak plugin; professions absent
 //                                from the map simply grant no spell.
-//   masteryActivities            { "<professionId>": { craftKeywords, activatePrefixes,
-//                                activateTypes, eatIngredient, killKeywords,
-//                                hitKeywords } } overriding
+//   masteryActivities            { "<professionId>": { craftKeywords, craftStations,
+//                                activatePrefixes, activateTypes, eatIngredient,
+//                                killKeywords, hitKeywords } } overriding
 //                                DEFAULT_ACTIVITIES key by key. Keywords take an
 //                                editor id ("CraftingSmithingForge"), a hex id
 //                                ("0x88105") or a desc ("88105:Skyrim.esm").
@@ -104,6 +104,8 @@ const PROFESSION_IDS = PROFESSIONS.map((p) => p.id);
 interface ActivityRules {
   // Recipe (COBJ) workbench keyword of a server-validated craft.
   craftKeywords: string[];
+  // Keyword on the station itself (isBlacksmithForge...): every craft made there counts, whatever the recipe.
+  craftStations: string[];
   // Editor id prefix of the activated reference's base object.
   activatePrefixes: string[];
   // Record type of the activated reference's base object (FLOR, TREE...).
@@ -126,8 +128,11 @@ const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
   // the lab, the herbs and the tasting are what count.
   alchemist: { activateTypes: ["FLOR", "TREE"], activatePrefixes: ["CraftingAlchemyWorkbench"], eatIngredient: true },
   // Tempering never reaches the server as a craft, so the grindstone and the
-  // workbench cannot count.
-  blacksmith: { craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge"] },
+  // workbench cannot count. Anything made at a forge, anvil or smelter counts, clothing included.
+  blacksmith: {
+    craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge", "DLC1CraftingDawnguard", "DLC1LD_CraftingForgeAetherium"],
+    craftStations: ["isBlacksmithForge", "isBlacksmithAnvil", "isSmelter"],
+  },
   cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"] },
   hunter: { killKeywords: ["ActorTypeAnimal"] },
   // Veins hand the swing to a linked PickaxeMining*Marker furniture.
@@ -151,6 +156,7 @@ interface ActivityEvent {
 // Rules with every keyword resolved to a global form id and types upper-cased.
 interface ResolvedRules {
   craftKeywords: Set<number>;
+  craftStations: Set<number>;
   activatePrefixes: string[];
   activateTypes: Set<string>;
   eatIngredient: boolean;
@@ -317,7 +323,11 @@ export class MasterySystem implements System {
     switch (ev.kind) {
       case "craft": {
         const bench = this.recipeBench(ctx, ev.detail["recipeId"]);
-        return !!ev.detail["held"] && !!bench && rules.craftKeywords.has(bench) && this.benchInReach(ctx, ev.actorId, bench);
+        if (!ev.detail["held"] || !bench) return false;
+        const byKeyword = rules.craftKeywords.has(bench);
+        if (!byKeyword && !rules.craftStations.size) return false;
+        return this.benchInReach(ctx, ev.actorId, bench, (keywords) =>
+          byKeyword || Array.from(rules.craftStations).some((k) => keywords.has(k)));
       }
       case "activate": {
         const refrId = ev.detail["refrId"];
@@ -568,6 +578,7 @@ export class MasterySystem implements System {
       const pick = (key: keyof ActivityRules): string[] => stringList(key in o ? o[key] : def[key]);
       const rules: ActivityRules = {
         craftKeywords: pick("craftKeywords"),
+        craftStations: pick("craftStations"),
         activatePrefixes: pick("activatePrefixes"),
         activateTypes: pick("activateTypes"),
         eatIngredient: "eatIngredient" in o ? !!o["eatIngredient"] : !!def.eatIngredient,
@@ -575,7 +586,7 @@ export class MasterySystem implements System {
         hitKeywords: pick("hitKeywords"),
       };
       merged[id] = rules;
-      for (const k of rules.craftKeywords.concat(rules.killKeywords, rules.hitKeywords)) wanted.add(k);
+      for (const k of rules.craftKeywords.concat(rules.craftStations, rules.killKeywords, rules.hitKeywords)) wanted.add(k);
     }
 
     const ids = new Map<string, number>();
@@ -605,6 +616,7 @@ export class MasterySystem implements System {
       const r = merged[id];
       this.rules[id] = {
         craftKeywords: toIds(r.craftKeywords),
+        craftStations: toIds(r.craftStations),
         activatePrefixes: r.activatePrefixes.map((p) => p.toLowerCase()),
         activateTypes: toTypes(r.activateTypes),
         eatIngredient: r.eatIngredient,
@@ -693,7 +705,7 @@ export class MasterySystem implements System {
 
   // The craft packet names no workbench, so look for a station carrying the
   // recipe's keyword next to the crafter; a craft from the wilderness earns nothing.
-  private benchInReach(ctx: SystemContext, actorId: number, bench: number): boolean {
+  private benchInReach(ctx: SystemContext, actorId: number, bench: number, accept: (stationKeywords: Set<number>) => boolean): boolean {
     const loc = this.locationOf(ctx, actorId);
     if (!loc) return false;
     let near: unknown;
@@ -710,7 +722,8 @@ export class MasterySystem implements System {
       if (!refrId || !this.inReach(ctx, loc, refrId)) continue;
       const base = this.baseOf(ctx, refrId);
       if (!base || (base.type !== "FURN" && base.type !== "ACTI")) continue;
-      if (this.baseKeywords(ctx, base.id).has(bench)) return true;
+      const keywords = this.baseKeywords(ctx, base.id);
+      if (keywords.has(bench) && accept(keywords)) return true;
     }
     return false;
   }

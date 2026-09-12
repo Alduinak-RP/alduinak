@@ -1,4 +1,4 @@
-import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
+import { Actor, ActorBase, createText, destroyText, EffectShader, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment } from "../sync/equipment";
@@ -20,6 +20,8 @@ export interface ScreenResolution {
   width: number;
   height: number;
 }
+
+type AdminView = "visible" | "hidden" | "ghost";
 
 let _screenResolution: ScreenResolution | undefined;
 export const getScreenResolution = (): ScreenResolution => {
@@ -214,38 +216,9 @@ export class FormView {
             model.movement?.rot[2] || 0
           );
         } else {
-          const race = Actor.from(refr)?.getRace()?.getFormID();
-          const draugrRace = 0xd53;
-          const falmerRace = 0x131f4;
-          const chaurusRace = 0x131eb;
-          const frostbiteSpiderRaceGiant = 0x4e507;
-          const frostbiteSpiderRaceLarge = 0x53477;
-          const dwarvenCenturionRace = 0x131f1;
-          const dwarvenSphereRace = 0x131f2;
-          const dwarvenSpiderRace = 0x131f3;
-          const sprigganRace = 0x2013b77;
-          const sprigganRace2 = 0xf3903;
-          const sprigganRace3 = 0x13204;
-          const sprigganRace4 = 0x401b644;
-          const sprigganRace5 = 0x9aa44;
-          const wolfRace = 0x1320a;
-
-          // potential masterambushscript
-          if (race === draugrRace
-            || race === falmerRace
-            || race === chaurusRace
-            || race === frostbiteSpiderRaceGiant
-            || race === frostbiteSpiderRaceLarge
-            || race === dwarvenCenturionRace
-            || race === dwarvenSphereRace
-            || race === dwarvenSpiderRace
-            || race === sprigganRace
-            || race === sprigganRace2
-            || race === sprigganRace3
-            || race === sprigganRace4
-            || race === sprigganRace5
-            || race === wolfRace) {
-            Actor.from(refr)?.setActorValue("Aggression", 2);
+          const actor = Actor.from(refr);
+          if (actor) {
+            this.applyHostility(actor, model);
           }
         }
 
@@ -298,6 +271,9 @@ export class FormView {
         actor.setActorValue("magicka", 1000000);
         this.localImmortal = true;
       }
+      if (actor && !refId) {
+        this.applyHostility(actor, model);
+      }
       this.applyAll(refr, model);
 
       const gamemodeUpdateService = SpApiInteractor.getControllerInstance().lookupListener(GamemodeUpdateService);
@@ -326,7 +302,10 @@ export class FormView {
     })
 
     this.localImmortal = false;
-    this.adminHidden = false;
+    this.hostilityApplied = false;
+    this.adminView = "visible";
+    this.adminShaderOn = false;
+    this.adminShaderReplayAt = 0;
     this.removeNickname();
   }
 
@@ -546,6 +525,10 @@ export class FormView {
           if (isOnScreen && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs) {
             this.lastNiNodeUpdateMs = Date.now();
             actor.queueNiNodeUpdate();
+            // The rebuilt 3D drops effect shaders
+            if (this.adminShaderOn) {
+              this.adminShaderReplayAt = this.lastNiNodeUpdateMs + FormView.adminShaderReplayDelayMs;
+            }
           }
         }
       }
@@ -585,7 +568,7 @@ export class FormView {
         && playerActor.getDistance(refr) <= maxNicknameDrawDistance
         && playerActor.hasLOS(refr)
         && !this.isSweetHidePerson(refr)
-        && !FormView.isAdminInvisible(model);
+        && FormView.adminViewOf(model) !== "hidden";
       if (isVisibleByPlayer) {
         const headScreenPos = worldPointToScreenPoint([
           NetImmerse.getNodeWorldPositionX(refr, headPart, false),
@@ -664,25 +647,83 @@ export class FormView {
     return actor.wornHasKeyword(keyword);
   }
 
-  // Admin Invisible rides the neighbor-visible ff_adminModes prop; alpha resets when the 3D reloads, so it is reapplied
+  // ff_hostile can arrive in an UpdateProperty after the copy spawned, so a changed flag is checked again
+  private applyHostility(actor: Actor, model: FormModel): void {
+    const flag = (model as Record<string, unknown>)["ff_hostile"];
+    if (this.hostilityApplied && flag === this.hostileFlagSeen) {
+      return;
+    }
+    this.hostilityApplied = true;
+    this.hostileFlagSeen = flag;
+    if (FormView.attacksEveryone(actor, model)) {
+      actor.setActorValue("Aggression", 2);
+    }
+  }
+
+  // Remote players' copies are neutral to every NPC, so NPCs that attack players on sight are raised to attack neutrals too
+  private static attacksEveryone(actor: Actor, model: FormModel): boolean {
+    if (FormView.ambushRaces.includes(actor.getRace()?.getFormID() ?? 0)) {
+      return true;
+    }
+    if (model.appearance || actor.getActorValue("Aggression") >= 2) {
+      return false;
+    }
+    // Allies and friends of the player (followers, housecarls) never turn on anyone
+    const player = Game.getPlayer();
+    if (player && actor.getFactionReaction(player) >= 2) {
+      return false;
+    }
+    const hostile = (model as Record<string, unknown>)["ff_hostile"];
+    // Without the server's flag, fall back to the plugin's own aggression
+    return typeof hostile === "boolean" ? hostile : actor.getActorValue("Aggression") >= 1;
+  }
+
+  // Admin Invisible rides the neighbor-visible ff_adminModes prop; 3D reloads reset alpha and shaders, so both are reapplied
   private applyAdminInvisibility(refr: ObjectReference, model: FormModel): void {
-    const hidden = FormView.isAdminInvisible(model);
-    const now = Date.now();
-    if (hidden === this.adminHidden && (!hidden || now - this.lastAdminHideApply < FormView.adminHideReapplyMs)) {
+    const view = FormView.adminViewOf(model);
+    if (view === "visible" && this.adminView === "visible") {
       return;
     }
     const actor = Actor.from(refr);
     if (!actor || !actor.is3DLoaded()) {
+      this.adminShaderOn = false;
       return;
     }
-    actor.setAlpha(hidden ? 0 : 1, false);
-    this.adminHidden = hidden;
-    this.lastAdminHideApply = now;
+    const now = Date.now();
+    const leavingGhost = this.adminView === "ghost" && view !== "ghost";
+    const playShader = view === "ghost"
+      && (!this.adminShaderOn || (this.adminShaderReplayAt > 0 && now >= this.adminShaderReplayAt));
+    if (leavingGhost || playShader) {
+      const shader = EffectShader.from(Game.getFormEx(FormView.adminGhostShaderId));
+      shader?.stop(actor);
+      if (playShader) {
+        shader?.play(actor, -1);
+      }
+      this.adminShaderOn = playShader;
+      this.adminShaderReplayAt = 0;
+    }
+    if (view !== this.adminView || now - this.lastAdminHideApply >= FormView.adminHideReapplyMs) {
+      actor.setAlpha(view === "hidden" ? 0 : view === "ghost" ? FormView.adminGhostAlpha : 1, false);
+      this.adminView = view;
+      this.lastAdminHideApply = now;
+    }
   }
 
-  private static isAdminInvisible(model: FormModel): boolean {
+  // Invisible admins are hidden from players and shown to admins as ghosts
+  private static adminViewOf(model: FormModel): AdminView {
     const modes = (model as Record<string, unknown>)["ff_adminModes"];
-    return !!modes && typeof modes === "object" && !!(modes as Record<string, unknown>)["invis"];
+    if (!modes || typeof modes !== "object" || !(modes as Record<string, unknown>)["invis"]) {
+      return "visible";
+    }
+    return FormView.viewerIsAdmin() ? "ghost" : "hidden";
+  }
+
+  private static viewerIsAdmin(): boolean {
+    if (storage["ownerModelSet"] !== true) {
+      return false;
+    }
+    const owner = storage["ownerModel"] as Record<string, unknown> | undefined;
+    return !!owner && owner["isAdmin"] === true;
   }
 
   private removeNickname() {
@@ -786,7 +827,11 @@ export class FormView {
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   private localImmortal = false;
-  private adminHidden = false;
+  private hostilityApplied = false;
+  private hostileFlagSeen: unknown = undefined;
+  private adminView: AdminView = "visible";
+  private adminShaderOn = false;
+  private adminShaderReplayAt = 0;
   private lastAdminHideApply = 0;
   private textNameId: number | undefined = undefined;
   private textActorIdId: number | undefined = undefined;
@@ -796,6 +841,12 @@ export class FormView {
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
   private static readonly adminHideReapplyMs = 1000;
+  // Skyrim.esm GhostEtherealFXShader, the Become Ethereal look
+  private static readonly adminGhostShaderId = 0x64d67;
+  private static readonly adminGhostAlpha = 0.5;
+  private static readonly adminShaderReplayDelayMs = 1000;
+  // Draugr, falmer, chaurus, frostbite spiders, dwarven automatons, spriggans and wolves: ambush AI can start them passive
+  private static readonly ambushRaces = [0xd53, 0x131f4, 0x131eb, 0x4e507, 0x53477, 0x131f1, 0x131f2, 0x131f3, 0x2013b77, 0xf3903, 0x13204, 0x401b644, 0x9aa44, 0x1320a];
 
   public static isDisplayingNicknames: boolean = true;
   public static isDisplayingActorIds: boolean = true;

@@ -1,6 +1,7 @@
 import { scanRecords, espmDesc, cstr, LogFn, EspmRecord } from "./espmEditorIds";
 
 // Playable hair from mod plugins for the character creator; vanilla hair already ships in skymp5-front's headparts.json.
+// Every mod hair is offered to all playable races on top of the races its own RNAM FormList names.
 
 const VANILLA_PLUGINS = new Set(["skyrim.esm", "update.esm", "dawnguard.esm", "hearthfires.esm", "dragonborn.esm"]);
 const HDPT_TYPE_HAIR = 3;
@@ -8,6 +9,9 @@ const HDPT_PLAYABLE = 0x01;
 const HDPT_MALE = 0x02;
 const HDPT_FEMALE = 0x04;
 const HDPT_EXTRA = 0x08;
+// RACE DATA flags follow the skill boosts, heights and weights
+const RACE_FLAGS_OFFSET = 32;
+const RACE_PLAYABLE = 0x01;
 
 export interface ModHair {
   // "hex:Plugin"; the client resolves it against its own load order
@@ -42,6 +46,7 @@ const pluginOf = (desc: string): string => desc.slice(desc.indexOf(":") + 1).toL
 export async function scanModHair(dataDir: string, loadOrder: string[], log: LogFn): Promise<ModHairCatalog> {
   // Keyed by lower-case desc; later plugins overwrite, matching engine override order
   const raceEditorIds = new Map<string, string>();
+  const playable = new Map<string, boolean>();
   const formLists = new Map<string, string[]>();
   const drafts = new Map<string, HairDraft>();
 
@@ -51,6 +56,8 @@ export async function scanModHair(dataDir: string, loadOrder: string[], log: Log
     if (rec.type === "RACE") {
       const edid = fieldOf(rec, "EDID");
       if (edid) raceEditorIds.set(key, cstr(edid));
+      const data = fieldOf(rec, "DATA");
+      playable.set(key, !!data && data.length >= RACE_FLAGS_OFFSET + 4 && (data.readUInt32LE(RACE_FLAGS_OFFSET) & RACE_PLAYABLE) !== 0);
     } else if (rec.type === "FLST") {
       formLists.set(key, rec.fields.filter((f) => f.type === "LNAM").map((f) => descOf(rec, u32(f.data)).toLowerCase()));
     } else {
@@ -73,14 +80,20 @@ export async function scanModHair(dataDir: string, loadOrder: string[], log: Log
     }
   });
 
+  const playableRaces = Array.from(playable.entries())
+    .filter(([, isPlayable]) => isPlayable)
+    .map(([key]) => raceEditorIds.get(key))
+    .filter((r): r is string => !!r);
+
   const raceSets: string[][] = [];
   const raceSetIndex = new Map<string, number>();
   const hairs: ModHair[] = [];
   for (const d of drafts.values()) {
     if (!(d.flags & HDPT_PLAYABLE) || (d.flags & HDPT_EXTRA)) continue;
-    const races = (formLists.get(d.racesDesc) ?? [])
+    const listed = (formLists.get(d.racesDesc) ?? [])
       .map((r) => raceEditorIds.get(r))
       .filter((r): r is string => !!r);
+    const races = Array.from(new Set(listed.concat(playableRaces)));
     if (!races.length) continue;
     const setKey = races.join("|");
     let setIndex = raceSetIndex.get(setKey);
