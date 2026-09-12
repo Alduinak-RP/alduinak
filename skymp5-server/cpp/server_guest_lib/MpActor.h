@@ -146,6 +146,8 @@ public:
 
   std::chrono::duration<float> GetDurationOfAttributesPercentagesUpdate(
     std::chrono::steady_clock::time_point now);
+  std::chrono::duration<float> GetDurationOfStaminaPercentageUpdate(
+    std::chrono::steady_clock::time_point now) const;
 
   void Kill(MpActor* killer = nullptr, bool shouldTeleport = false);
   void Respawn(bool shouldTeleport = true);
