@@ -110,12 +110,18 @@ const getRunMode = (ac: Actor): RunMode => {
   const furniture = ac.getFurnitureReference();
   if (furniture !== null) return "Standing"; // TODO: Sitting?
 
+  // Slow effects lower the jog speed, so the jog threshold follows SpeedMult
+  const speedMult = Math.min(Math.max(ac.getActorValue("SpeedMult"), 10), 100);
+  const minRunSpeed = 150 * speedMult / 100;
+
   let isRunning = true;
   if (ac.getFormID() == 0x14) {
-    if (!TESModPlatform.isPlayerRunningEnabled() || speed < 150)
+    // The always-run toggle misses a held Run key, the engine run state does not
+    const runEnabled = TESModPlatform.isPlayerRunningEnabled() || ac.isRunning();
+    if (!runEnabled || speed < minRunSpeed)
       isRunning = false;
   } else {
-    if (!ac.isRunning() || speed < 150) {
+    if (!ac.isRunning() || speed < minRunSpeed) {
       isRunning = false;
     }
   }
