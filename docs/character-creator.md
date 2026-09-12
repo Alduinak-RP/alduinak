@@ -154,7 +154,9 @@ with preset palettes). Regenerate with the scripts in the PR description when
 the load order gains new races. Hair from mod plugins (HammerHair, ApachiiSkyHair
 and the like) is not in the json: it comes from the server's `modHair` scan
 above, so a new hair mod only needs to be in the server `loadOrder` and the
-client distribution, filtered per race by the mod's own RNAM FormList. Race form ids in `data/races.js` were verified
+client distribution. Each mod hair is offered to every playable race (RACE DATA
+playable flag) on top of the races its own RNAM FormList names; the sex filter
+still applies. Race form ids in `data/races.js` were verified
 against the same esm dump. Custom races (Colovian, Reachfolk, Akaviri, Maormer,
 furstocks, daedra variants) are `placeholder: true` entries that reuse vanilla
 races until their esp lands in AlduinakPatchMerged — update `raceId` +
