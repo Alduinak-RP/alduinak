@@ -5,6 +5,7 @@
 #include "GetBaseActorValues.h"
 #include "HitMessage.h"
 #include "PacketParser.h"
+#include "formulas/TES5DamageFormula.h"
 #include "libespm/Loader.h"
 
 PartOne& GetPartOne();
@@ -312,7 +313,8 @@ TEST_CASE("An active ward blocks a frontal spell hit like a shield", "[Hit]")
   REQUIRE(unwarded > 0.f);
 
   DoMessage(p, 1, MakeSpellCastMessage(kGreaterWard, false));
-  REQUIRE(healthLostToHit() == Catch::Approx(unwarded * 0.1f));
+  REQUIRE(healthLostToHit() ==
+          Catch::Approx(unwarded * kBlockedHitDamageMult).margin(1e-6));
 
   target.SetAngle({ 0.f, 0.f, 180.f });
   REQUIRE(healthLostToHit() == Catch::Approx(unwarded));
