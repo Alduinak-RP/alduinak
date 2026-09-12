@@ -524,6 +524,28 @@ function upgradeControlmapText(text) {
   return upgraded
 }
 
+// Seeds the Wait-unbound controlmap when the game has none and upgrades a stale launcher copy; a player's own map is never touched
+function applyControlmapOverride(gamePath) {
+  try {
+    if (!gamePath) return
+    const dest = path.join(gamePath, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt')
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.copyFileSync(CONTROLMAP_SEED, dest)
+      log('[defaults] wrote controlmap override (Wait unbound on keyboard and gamepad) to ' + dest)
+      return
+    }
+    const text = fs.readFileSync(dest, 'utf8')
+    const upgraded = upgradeControlmapText(text)
+    if (upgraded !== text) {
+      fs.writeFileSync(dest, upgraded)
+      log('[defaults] rebuilt the stale controlmap override from the current seed at ' + dest)
+    }
+  } catch (err) {
+    log('[defaults] could not write controlmap override:', err.message)
+  }
+}
+
 ipcMain.handle('gameHotkeys:load', () => {
   try {
     const cm = readControlmapText()
@@ -600,27 +622,7 @@ function applyForcedServerDefaults(gamePath) {
     }
   }
 
-  // Controls: drop in a controlmap with Wait unbound. Only seed it when the game
-  // has no controlmap yet, so we never clobber a player's own rebinds.
-  try {
-    if (gamePath) {
-      const dest = path.join(gamePath, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt')
-      if (!fs.existsSync(dest)) {
-        fs.mkdirSync(path.dirname(dest), { recursive: true })
-        fs.copyFileSync(CONTROLMAP_SEED, dest)
-        log('[defaults] wrote controlmap override (Wait unbound on keyboard and gamepad) to ' + dest)
-      } else {
-        const text = fs.readFileSync(dest, 'utf8')
-        const upgraded = upgradeControlmapText(text)
-        if (upgraded !== text) {
-          fs.writeFileSync(dest, upgraded)
-          log('[defaults] rebuilt the stale controlmap override from the current seed at ' + dest)
-        }
-      }
-    }
-  } catch (err) {
-    log('[defaults] could not write controlmap override:', err.message)
-  }
+  applyControlmapOverride(gamePath)
 
   // AE popup suppression, re-applied on every install pass so existing installs pick it up.
   try {
@@ -1667,6 +1669,8 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
       return { success: false, error: err.message }
     }
   }
+
+  applyControlmapOverride(skyrimPath)
 
   // Load order sync
   let loadOrderFixed = false
