@@ -1,8 +1,9 @@
 import * as fs from "fs";
+import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
-import { placeNpc, NpcLocation } from "./npcPlacement";
+import { placeNpc, placeAtMe, NpcLocation } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, hex, destroyLeftovers } from "./actorUtil";
+import { userOf, isAlive, isNear, hex, destroyLeftovers, destroyRef } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -23,6 +24,8 @@ export interface CompanionOptions {
   persistent?: boolean;
   // Spell or other form that created it, for logs
   source?: number;
+  // Ends or dies as a lootable ash pile holding its items instead of a body (vanilla Reanimate)
+  ashPile?: boolean;
 }
 
 export interface CompanionInfo {
@@ -38,6 +41,7 @@ export interface CompanionInfo {
 
 interface Companion extends CompanionInfo {
   baseDesc: string;
+  ashPile: boolean;
   createdAt: number;
   lastRetargetAt: number;
   ownerAwaySince: number;
@@ -54,12 +58,19 @@ interface Saved extends Stored {
   persistent: boolean;
 }
 
-// commanded: counts toward the owner's command limit; dieOnEnd: expiry and dismissal kill it instead of removing it
-const KIND_RULES: Record<CompanionKind, { commanded: boolean; dieOnEnd: boolean; corpseSec: number; lootable: boolean }> = {
+// commanded: counts toward the owner's command limit; dieOnEnd: expiry and dismissal kill it instead of removing it; corpseSec null: NPC corpse rule
+const KIND_RULES: Record<CompanionKind, { commanded: boolean; dieOnEnd: boolean; corpseSec: number | null; lootable: boolean }> = {
   summon: { commanded: true, dieOnEnd: false, corpseSec: 3, lootable: false },
-  reanimated: { commanded: true, dieOnEnd: true, corpseSec: 120, lootable: true },
+  reanimated: { commanded: true, dieOnEnd: true, corpseSec: null, lootable: true },
   companion: { commanded: false, dieOnEnd: false, corpseSec: 120, lootable: true },
 };
+
+// NPC corpses and ash piles last this long; overridable via "npcCorpseSeconds", the zone NPC setting
+const DEFAULT_CORPSE_SEC = 300;
+// Vanilla ReanimateAshPile fDelay: the body lies this long before it turns to ash
+const ASH_DELAY_MS = 1250;
+// defaultGhostCorpse, the vanilla ash pile container; overridable via "reanimateAshPileBase"
+const DEFAULT_ASH_PILE_BASE = 0xc674b;
 
 const REGISTRY_FILE = "./companions.json";
 const UPDATE_MS = 500;
@@ -76,14 +87,33 @@ const OWNER_GONE_MS = 5000;
 const COMMAND_LIMIT = 1;
 const TWIN_SOULS_LIMIT = 2;
 
+// A container holds nothing worn: worn flags are dropped and stacks that become equal are merged, so every stack stays takeable
+const looseEntries = (inventory: any): Record<string, unknown>[] => {
+  const merged = new Map<string, Record<string, unknown>>();
+  const entries: any[] = Array.isArray(inventory?.entries) ? inventory.entries : [];
+  for (const e of entries) {
+    if (!e || typeof e.baseId !== "number" || !(e.count > 0)) continue;
+    const { count, worn, wornLeft, ...rest } = e;
+    const key = JSON.stringify(rest);
+    const m = merged.get(key);
+    if (m) m.count = Number(m.count) + count;
+    else merged.set(key, { ...rest, count });
+  }
+  return Array.from(merged.values());
+};
+
 export class CompanionSystem implements System {
   systemName = "CompanionSystem";
   constructor(private log: Log) { }
 
   private mp: Mp = null;
   private companions = new Map<number, Companion>();
-  // Bodies of ended companions and when they are removed
+  // Bodies of ended companions and ash piles, and when they are removed or turn to ash
   private corpses = new Map<number, number>();
+  // Bodies that turn to ash when their corpses entry is due
+  private ashing = new Set<number>();
+  private corpseSec = DEFAULT_CORPSE_SEC;
+  private ashPileDesc = "";
   private stored: Stored[] = [];
   private twinSouls = new Set<number>();
   // Actor ids of the previous run still to destroy
@@ -91,6 +121,10 @@ export class CompanionSystem implements System {
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
+    const all = (await Settings.get()).allSettings as Record<string, unknown> | null;
+    const corpseSec = Number(all?.["npcCorpseSeconds"]);
+    if (Number.isFinite(corpseSec) && corpseSec > 0) this.corpseSec = corpseSec;
+    this.ashPileDesc = this.containerDesc(all?.["reanimateAshPileBase"] ?? DEFAULT_ASH_PILE_BASE);
     this.loadRegistry();
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
     this.installHooks();
@@ -177,6 +211,7 @@ export class CompanionSystem implements System {
     const durationSec = opts.durationSec ?? 0;
     this.companions.set(id, {
       id, ownerId, baseId, baseDesc, kind,
+      ashPile: !!opts.ashPile,
       targetId: 0,
       expiresAt: durationSec > 0 ? now + durationSec * 1000 : 0,
       persistent: !!opts.persistent,
@@ -331,7 +366,8 @@ export class CompanionSystem implements System {
       if (!died) {
         try { mp.set(c.id, "isDead", true); } catch { }
       }
-      this.corpses.set(c.id, Date.now() + rules.corpseSec * 1000);
+      if (c.ashPile) this.ashing.add(c.id);
+      this.corpses.set(c.id, Date.now() + (c.ashPile ? ASH_DELAY_MS : (rules.corpseSec ?? this.corpseSec) * 1000));
     } else {
       try { mp.destroyActor(c.id); } catch { }
     }
@@ -367,11 +403,50 @@ export class CompanionSystem implements System {
     let changed = false;
     for (const [id, at] of Array.from(this.corpses)) {
       if (now < at) continue;
-      try { this.mp.destroyActor(id); } catch { }
       this.corpses.delete(id);
       changed = true;
+      if (this.ashing.delete(id)) {
+        // The ash pile, or the body when no pile could be placed, lasts as long as an NPC corpse
+        this.corpses.set(this.turnToAsh(id) || id, now + this.corpseSec * 1000);
+        continue;
+      }
+      try { destroyRef(this.mp, id); } catch { }
     }
     if (changed) this.save();
+  }
+
+  // The body becomes an ash pile container at its spot holding every item, so nothing is duplicated or lost; 0 when none was placed
+  private turnToAsh(bodyId: number): number {
+    const mp = this.mp;
+    if (!this.ashPileDesc) return 0;
+    let entries: Record<string, unknown>[];
+    try { entries = looseEntries(mp.get(bodyId, "inventory")); } catch { return 0; }
+    let pileId = 0;
+    try {
+      pileId = placeAtMe(mp, bodyId, this.ashPileDesc) >>> 0;
+      mp.set(pileId, "inventory", { entries });
+    } catch (e) {
+      this.log(`CompanionSystem: ash pile for ${hex(bodyId)} failed, the body stays: ${e}`);
+      if (pileId) {
+        try { destroyRef(mp, pileId); } catch { }
+      }
+      return 0;
+    }
+    try { mp.set(bodyId, "inventory", { entries: [] }); } catch { }
+    try { mp.destroyActor(bodyId); } catch { }
+    this.log(`CompanionSystem: ${hex(bodyId)} turned to ash pile ${hex(pileId)} with ${entries.length} stack(s)`);
+    return pileId;
+  }
+
+  // A CONT base as a desc ("c674b:Skyrim.esm") or a load-order id; empty when it is none, and reanimated bodies then stay
+  private containerDesc(raw: unknown): string {
+    const mp = this.mp;
+    try {
+      const desc = typeof raw === "string" && raw.includes(":") ? raw : mp.getDescFromId(toFormId(raw));
+      if (mp.lookupEspmRecordById(mp.getIdFromDesc(desc))?.record?.type === "CONT") return desc;
+    } catch { }
+    this.log(`CompanionSystem: ash pile base ${String(raw)} is not a CONT record, reanimated bodies stay as corpses`);
+    return "";
   }
 
   private sendState(ownerId: number): void {
