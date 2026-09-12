@@ -162,7 +162,7 @@ export class SendInputsService extends ClientListener {
           return;
         }
 
-        // A clone's replayed Fire Storm or Blizzard must not lower the reported health
+        // A clone's replayed hostile spell must not lower the reported health
         this.controller.lookupListener(CloneSpellGuardService).enforce();
 
         const av = getActorValues(this.sp.Game.getPlayer() as Actor);

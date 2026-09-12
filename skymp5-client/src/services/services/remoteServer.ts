@@ -646,6 +646,9 @@ export class RemoteServer extends ClientListener {
                   const subValue = baseActorValues.get(subKey);
                   if (typeof subValue === 'number') {
                     setActorValuePercentage(player, subKey, value);
+                    if (subKey === 'health') {
+                      this.controller.lookupListener(CloneSpellGuardService).onServerHealth(value);
+                    }
                   }
                 } else {
                   player.setActorValue(key, value);
@@ -1061,10 +1064,18 @@ export class RemoteServer extends ClientListener {
         return;
       }
 
+      // Prefer the spell id in the message; the clone's equipped spell can be stale (spell swaps fire no equip event)
+      const transmitted = msg.data.spell ? Game.getFormEx(msg.data.spell) : null;
+      const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
+      const cloneSpellGuard = this.controller.lookupListener(CloneSpellGuardService);
+
       // Keep-alives only refresh a running clone, recasting would stack concentration casts
       const watch = this.cloneCastWatch.get(key);
       if (msg.data.keepAlive && watch) {
         watch.expiresAt = now + this.cloneCastTimeoutMs;
+        if (spellId) {
+          cloneSpellGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
+        }
         return;
       }
       // A keep-alive overtaking its own stop must not restart the clone
@@ -1083,15 +1094,14 @@ export class RemoteServer extends ClientListener {
         wasDrawn: ac.isWeaponDrawn(),
       });
 
-      // Prefer the spell id in the message; the clone's equipped spell can be stale (spell swaps fire no equip event)
-      const transmitted = msg.data.spell ? Game.getFormEx(msg.data.spell) : null;
-      const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
       if (spellId) {
         // The platform only casts Fire Storm or Blizzard on the clone when told the observer is guarded
         const replayedHostileSelf = castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
           msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables, true) === true;
         if (replayedHostileSelf) {
-          this.controller.lookupListener(CloneSpellGuardService).guardClone(ac.getFormID(), spellId);
+          cloneSpellGuard.guardClone(ac.getFormID(), spellId);
+        } else {
+          cloneSpellGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
         }
       }
     });
