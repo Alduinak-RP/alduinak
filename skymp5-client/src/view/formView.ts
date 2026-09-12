@@ -327,6 +327,7 @@ export class FormView {
     })
 
     this.localImmortal = false;
+    this.adminHidden = false;
     this.removeNickname();
   }
 
@@ -493,6 +494,8 @@ export class FormView {
       this.animState.useAnimOverrides = false;
     }
 
+    this.applyAdminInvisibility(refr, model);
+
 
     if (model.appearance) {
       const actor = Actor.from(refr);
@@ -563,7 +566,8 @@ export class FormView {
       const isVisibleByPlayer = !model.movement?.isSneaking
         && playerActor.getDistance(refr) <= maxNicknameDrawDistance
         && playerActor.hasLOS(refr)
-        && !this.isSweetHidePerson(refr);
+        && !this.isSweetHidePerson(refr)
+        && !FormView.isAdminInvisible(model);
       if (isVisibleByPlayer) {
         const headScreenPos = worldPointToScreenPoint([
           NetImmerse.getNodeWorldPositionX(refr, headPart, false),
@@ -640,6 +644,27 @@ export class FormView {
     }
     const keyword = Keyword.getKeyword('SweetHidePerson');
     return actor.wornHasKeyword(keyword);
+  }
+
+  // Admin Invisible rides the neighbor-visible ff_adminModes prop; alpha resets when the 3D reloads, so it is reapplied
+  private applyAdminInvisibility(refr: ObjectReference, model: FormModel): void {
+    const hidden = FormView.isAdminInvisible(model);
+    const now = Date.now();
+    if (hidden === this.adminHidden && (!hidden || now - this.lastAdminHideApply < FormView.adminHideReapplyMs)) {
+      return;
+    }
+    const actor = Actor.from(refr);
+    if (!actor || !actor.is3DLoaded()) {
+      return;
+    }
+    actor.setAlpha(hidden ? 0 : 1, false);
+    this.adminHidden = hidden;
+    this.lastAdminHideApply = now;
+  }
+
+  private static isAdminInvisible(model: FormModel): boolean {
+    const modes = (model as Record<string, unknown>)["ff_adminModes"];
+    return !!modes && typeof modes === "object" && !!(modes as Record<string, unknown>)["invis"];
   }
 
   private removeNickname() {
@@ -740,6 +765,8 @@ export class FormView {
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   private localImmortal = false;
+  private adminHidden = false;
+  private lastAdminHideApply = 0;
   private textNameId: number | undefined = undefined;
   private textActorIdId: number | undefined = undefined;
   private createdTagName = "";
@@ -747,6 +774,7 @@ export class FormView {
 
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
+  private static readonly adminHideReapplyMs = 1000;
 
   public static isDisplayingNicknames: boolean = true;
   public static isDisplayingActorIds: boolean = true;
