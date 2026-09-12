@@ -443,10 +443,10 @@ export class FormView {
             model.movement.isDead = true;
           }
           try {
-            // A sender silent for 2 s (paused game, Steam overlay) settles instead of running in place or hanging mid-air
+            // A sender silent for 2 s (paused game, Steam overlay) settles at the copy's own height instead of running in place or hanging mid-air
             const movement: Movement = isNewMovement || !this.movState.everApplied || !ac
               ? model.movement
-              : { ...model.movement, runMode: "Standing", isInJumpState: false };
+              : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
             applyMovement(refr, movement, !!model.isMyClone);
             restoreSitCollisionIfMoving(refr, movement);
           } catch (e) {
