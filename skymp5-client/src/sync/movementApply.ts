@@ -12,6 +12,9 @@ import { SpApiInteractor } from "../services/spApiInteractor";
 
 const sqr = (x: number) => x * x;
 
+// A standing actor this far above or below the reported height sank or floated locally
+const standingMaxDeltaZ = 64;
+
 export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: boolean): void => {
   if (teleportIfNeed(refr, m)) {
     return;
@@ -185,6 +188,7 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
     m.runMode !== "Standing" ||
     m.isInJumpState ||
     ObjectReferenceEx.getDistanceNoZ(refrRealPos, gTempTargetPos) > 8 ||
+    Math.abs(refrRealPos[2] - gTempTargetPos[2]) > standingMaxDeltaZ ||
     angleDiff > 80 ||
     Actor.from(refr)?.getSitState() === 3
   ) {
