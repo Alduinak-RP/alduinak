@@ -32,9 +32,10 @@ export class SearchService extends ClientListener {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("menuClose", (e) => {
-      // The player closed the window themselves: a later searchClose must not tap Tab
-      if (e.name === "ContainerMenu") {
+      // The player closed the window themselves: a later searchClose must not tap Tab, and the target frees up for others
+      if (e.name === "ContainerMenu" && this.searchWindowOpen) {
         this.searchWindowOpen = false;
+        sendCustomPacket(this.controller, { customPacketType: "searchEnd" });
       }
     });
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
@@ -68,7 +69,7 @@ export class SearchService extends ClientListener {
         if (typeof content["target"] === "number") {
           const entries = Array.isArray(content["entries"])
             ? (content["entries"] as { baseId: number, count: number }[]) : [];
-          this.openTargetInventory(content["target"] as number, entries);
+          this.openTargetInventory(content["target"] as number, entries, content["body"] === true);
         }
         break;
       case "searchClose":
@@ -102,8 +103,8 @@ export class SearchService extends ClientListener {
   }
 
   // Vanilla container window on the target's synced body; item moves ride the normal ContainersService PutItem/TakeItem sync the server just authorized for this pair.
-  // The local clone only mirrors equipment, so the server-sent entries top up the clone's bag before the window opens.
-  private openTargetInventory(remoteId: number, entries: { baseId: number, count: number }[]): void {
+  // The local clone's bag is not the real one (players mirror equipment, NPC clones roll their own leveled items): missing stacks are topped up, and on bodies local-only extras are removed.
+  private openTargetInventory(remoteId: number, entries: { baseId: number, count: number }[], body: boolean): void {
     this.searchWindowOpen = true;
     this.controller.once("update", () => {
       if (!this.searchWindowOpen) {
@@ -116,17 +117,25 @@ export class SearchService extends ClientListener {
         logError(this, `searchApproved - target actor not found`, remoteId.toString(16));
         return;
       }
-      const local = new Map<number, number>();
-      for (const e of getInventory(actor).entries) {
-        local.set(e.baseId, (local.get(e.baseId) || 0) + e.count);
-      }
+      // Server count minus local count per base form
+      const delta = new Map<number, number>();
       for (const e of entries) {
-        const missing = e.count - (local.get(e.baseId) || 0);
-        const form = missing > 0 ? this.sp.Game.getFormEx(e.baseId) : null;
-        if (form) {
-          actor.addItem(form, missing, true);
-        }
+        delta.set(e.baseId, (delta.get(e.baseId) || 0) + e.count);
       }
+      for (const e of getInventory(actor).entries) {
+        delta.set(e.baseId, (delta.get(e.baseId) || 0) - e.count);
+      }
+      delta.forEach((d, baseId) => {
+        const form = d !== 0 ? this.sp.Game.getFormEx(baseId) : null;
+        if (!form) {
+          return;
+        }
+        if (d > 0) {
+          actor.addItem(form, d, true);
+        } else if (body) {
+          actor.removeItem(form, -d, true, null);
+        }
+      });
       actor.openInventory(true);
     });
   }
