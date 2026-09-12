@@ -32,6 +32,8 @@ std::string PutItemEvent::GetArgumentsJsonArray() const
 
 void PutItemEvent::OnFireSuccess(WorldState*)
 {
-  std::vector<Inventory::Entry> entries = { entry };
-  actor->RemoveItems(entries, sourceRefr);
+  actor->RemoveItems({ entry });
+  auto stored = entry;
+  stored.SetWorn(Inventory::Worn::None);
+  sourceRefr->AddItems({ stored });
 }

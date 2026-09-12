@@ -188,6 +188,7 @@ public:
   std::optional<PrimitiveData> primitive;
   bool teleportFlag = false;
   bool setPropertyCalled = false;
+  std::optional<Inventory::ExtraData> pickupExtras;
 };
 
 namespace {
@@ -1440,8 +1441,18 @@ void MpObjectReference::GivePickupItemsToActivationSource(
     uint32_t resultingCount =
       std::max(kCountDefault, std::max(countRecord, countChangeForm));
 
-    activationSource.AddItem(resultItem, resultingCount);
+    if (pImpl->pickupExtras) {
+      activationSource.AddItems(
+        { Inventory::Entry(resultItem, resultingCount, *pImpl->pickupExtras) });
+    } else {
+      activationSource.AddItem(resultItem, resultingCount);
+    }
   }
+}
+
+void MpObjectReference::SetPickupExtras(const Inventory::ExtraData& extras)
+{
+  pImpl->pickupExtras = extras;
 }
 
 void MpObjectReference::ProcessActivateNormal(
