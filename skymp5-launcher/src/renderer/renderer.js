@@ -889,6 +889,7 @@ let gamePollInFlight = false
 const PLAY_LABEL = '\u25BA PLAY'
 const LAUNCHING_LABEL = '\u25BA LAUNCHING\u2026'
 const LAUNCH_TIMEOUT_MS = 90_000
+const LAUNCH_TIMEOUT_WARNING = 'Skyrim did not start. Check MO2 for an error, then press Play again.'
 const updatePill = document.getElementById('update-pill')
 
 function updatePlayButton() {
@@ -967,7 +968,8 @@ async function pollGameRunning() {
     const running = await window.electronAPI.gameIsRunning()
     const timedOut = !running && launchStartedAt > 0 && Date.now() - launchStartedAt > LAUNCH_TIMEOUT_MS
     if (running || timedOut) endLaunchWatch()
-    if (timedOut) showWarning('Skyrim did not start. Check MO2 for an error, then press Play again.')
+    if (timedOut) showWarning(LAUNCH_TIMEOUT_WARNING)
+    if (running && connectWarning.textContent === LAUNCH_TIMEOUT_WARNING) clearWarning()
     if (running !== gameRunning || timedOut) {
       gameRunning = running
       updatePlayButton()
