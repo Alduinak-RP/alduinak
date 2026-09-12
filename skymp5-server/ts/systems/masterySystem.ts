@@ -129,10 +129,13 @@ const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
   blacksmith: { craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge"] },
   cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"] },
   hunter: { killKeywords: ["ActorTypeAnimal"] },
-  miner: { activatePrefixes: ["MineOre"] },
-  tailor: { craftKeywords: ["CraftingTanningRack"] },
+  // Veins hand the swing to a linked PickaxeMining*Marker furniture.
+  miner: { activatePrefixes: ["MineOre", "PickaxeMining"] },
+  // MoreCraftableEquipment clothes and cloaks are woven at its loom.
+  tailor: { craftKeywords: ["CraftingTanningRack", "MCE_CraftingLoom"] },
   warrior: { hitKeywords: ACTOR_TYPES },
-  woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable"] },
+  // Hearthfire recipes name BYOHBuildingCarpenter; the bench also carries BYOHCarpenterTable.
+  woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter"] },
 };
 
 const ACTIVITY_KINDS = ["craft", "activate", "eat", "kill", "hit"] as const;
