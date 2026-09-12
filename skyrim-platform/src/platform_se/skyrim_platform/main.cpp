@@ -403,8 +403,39 @@ public:
       }
   }
 
+  // Keyboard messages follow the focus window, which can stay elsewhere after the game comes to the front
+  static void RepairFocus()
+  {
+    const HWND foreground = GetForegroundWindow();
+    if (!foreground ||
+        GetWindowThreadProcessId(foreground, nullptr) != GetCurrentThreadId()) {
+      return;
+    }
+    static bool reported = false;
+    const HWND focus = GetFocus();
+    if (focus == foreground || (focus && IsChild(foreground, focus))) {
+      reported = false;
+      return;
+    }
+    static ULONGLONG lastAttempt = 0;
+    const ULONGLONG now = GetTickCount64();
+    if (now - lastAttempt < 500) {
+      return;
+    }
+    lastAttempt = now;
+    if (!reported) {
+      reported = true;
+      spdlog::info("FocusRepair: window {} is in front but focus is on {}, "
+                   "refocusing",
+                   static_cast<void*>(foreground), static_cast<void*>(focus));
+    }
+    SetFocus(foreground);
+  }
+
   void OnUpdate() noexcept override
   {
+    RepairFocus();
+
     auto ui = RE::UI::GetSingleton();
     if (!ui)
       return;

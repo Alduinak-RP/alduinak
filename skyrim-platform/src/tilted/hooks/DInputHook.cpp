@@ -8,6 +8,7 @@
 #include <FunctionHook.hpp>
 #include <array>
 #include <iostream>
+#include <spdlog/spdlog.h>
 
 namespace {
 std::shared_ptr<IInputListener> g_listener;
@@ -17,6 +18,28 @@ std::array<uint8_t, 256> g_pressedWas = ([] {
   return r;
 })();
 std::array<bool, 4> g_mousePressedWas = { 0, 0, 0, 0 };
+
+// The engine only reacquires on WM_ACTIVATE, so a device lost while in front stays dead until alt-tab
+bool ReacquireIfForeground(IDirectInputDevice8A* device, HRESULT hr)
+{
+  if (hr != DIERR_NOTACQUIRED && hr != DIERR_INPUTLOST) {
+    return false;
+  }
+  DWORD pid = 0;
+  GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+  if (pid != GetCurrentProcessId() ||
+      FAILED(IDirectInputDevice8_Acquire(device))) {
+    return false;
+  }
+  static ULONGLONG lastLog = 0;
+  const ULONGLONG now = GetTickCount64();
+  if (now - lastLog > 2000) {
+    lastLog = now;
+    spdlog::info("DInputHook: reacquired an input device after error {:#x}",
+                 static_cast<uint32_t>(hr));
+  }
+  return true;
+}
 
 void ProcessKeyboardData(uint8_t* apData)
 {
@@ -250,6 +273,9 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceState(DWORD outDataLen,
 
   HRESULT ret =
     IDirectInputDevice8_GetDeviceState(m_pDevice, outDataLen, outData);
+  if (ReacquireIfForeground(m_pDevice, ret)) {
+    ret = IDirectInputDevice8_GetDeviceState(m_pDevice, outDataLen, outData);
+  }
 
   bool isMouseButtonsEnabled = true;
   if (isMouseButtonsEnabled == false) {
@@ -289,8 +315,14 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
 
   auto& input = DInputHook::Get();
 
-  const auto result = IDirectInputDevice8_GetDeviceData(
-    m_pDevice, dataSize, outData, outDataLen, flags);
+  const DWORD requested = outDataLen ? *outDataLen : 0;
+  auto result = IDirectInputDevice8_GetDeviceData(m_pDevice, dataSize, outData,
+                                                  outDataLen, flags);
+  if (outDataLen && ReacquireIfForeground(m_pDevice, result)) {
+    *outDataLen = requested;
+    result = IDirectInputDevice8_GetDeviceData(m_pDevice, dataSize, outData,
+                                               outDataLen, flags);
+  }
 
   DIDEVICEINSTANCEA instanceInfo;
   instanceInfo.dwSize = sizeof(instanceInfo);
