@@ -132,11 +132,51 @@ bool CanCastSpell(const MpActor& actor, uint32_t spellId)
   return actor.GetProfileId() == -1 && actor.IsSpellLearned(spellId);
 }
 
-// Projectiles may land after the spell left the hand
+// Cloaks and hazards (Blizzard) hit with a spell they grant, not the spell that was cast
+bool IsSpellGrantedBy(WorldState* worldState, uint32_t parentSpellId,
+                      uint32_t sourceId)
+{
+  bool granted = false;
+  ForEachSpellEffect(
+    worldState, parentSpellId,
+    [&](espm::MGEF::EffectType type, uint32_t associatedItem, uint32_t) {
+      if (granted || associatedItem == 0) {
+        return;
+      }
+      if (type == espm::MGEF::EffectType::Cloak) {
+        granted = associatedItem == sourceId;
+        return;
+      }
+      if (type != espm::MGEF::EffectType::SpawnHazard) {
+        return;
+      }
+      const auto hazardLookup =
+        worldState->GetEspm().GetBrowser().LookupById(associatedItem);
+      const auto hazard = espm::Convert<espm::HAZD>(hazardLookup.rec);
+      if (!hazard) {
+        return;
+      }
+      const uint32_t hazardSpell =
+        hazard->GetData(worldState->GetEspmCache()).spell;
+      granted =
+        hazardSpell != 0 && hazardLookup.ToGlobalId(hazardSpell) == sourceId;
+    });
+  return granted;
+}
+
+// Projectiles, cloaks and hazards may land after the spell left the hand
 bool CanHitWithSpell(const MpActor& actor, uint32_t spellId)
 {
-  return actor.GetEquipment().IsSpellEquipped(spellId) ||
-    actor.IsSpellLearned(spellId);
+  if (actor.GetEquipment().IsSpellEquipped(spellId) ||
+      actor.IsSpellLearned(spellId)) {
+    return true;
+  }
+  for (uint32_t knownSpellId : GetKnownSpells(actor)) {
+    if (IsSpellGrantedBy(actor.GetParent(), knownSpellId, spellId)) {
+      return true;
+    }
+  }
+  return false;
 }
 }
 
