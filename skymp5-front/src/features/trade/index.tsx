@@ -62,9 +62,9 @@ const ItemList = ({ items, emptyText, onItemClick }: ItemListProps) => {
   }
   return (
     <div className="trade__list">
-      {items.map((item) => (
+      {items.map((item, n) => (
         <div
-          key={item.lineId}
+          key={n + ':' + item.lineId}
           className={'trade__item' + (onItemClick ? ' trade__item--clickable' : '')}
           onClick={onItemClick ? () => onItemClick(item) : undefined}
         >
