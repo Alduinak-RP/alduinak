@@ -309,6 +309,7 @@ export class FormView {
 
   destroy(): void {
     this.isOnScreen = false;
+    this.lastNiNodeUpdateMs = 0;
     this.spawnMoment = 0;
     this.dealtWithRef = false;
     const refrId = this.refrId;
@@ -504,6 +505,7 @@ export class FormView {
           ) {
             // Redraw tints if PC world/cell changed
             this.isOnScreen = false;
+            this.lastNiNodeUpdateMs = 0;
           }
           this.lastPcWorldOrCell = PlayerCharacterDataHolder.getWorldOrCell();
         }
@@ -523,7 +525,8 @@ export class FormView {
           screenPoint[2] < 1;
         if (isOnScreen != this.isOnScreen) {
           this.isOnScreen = isOnScreen;
-          if (isOnScreen) {
+          if (isOnScreen && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs) {
+            this.lastNiNodeUpdateMs = Date.now();
             actor.queueNiNodeUpdate();
           }
         }
@@ -734,6 +737,9 @@ export class FormView {
   private appearanceBasedBaseId = 0;
   private leveledBaseId = 0;
   private isOnScreen = false;
+  private lastNiNodeUpdateMs = 0;
+  // A head at the camera (a carried player inside their carrier) flickers on and off screen; each rebuild is a hitch
+  private static readonly niNodeUpdateMinIntervalMs = 5000;
   private lastPcWorldOrCell = 0;
   private lastWorldOrCell = 0;
   private spawnMoment = 0;
