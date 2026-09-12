@@ -1061,6 +1061,8 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
   const auto now = std::chrono::steady_clock::now();
   const float timeAfterRegeneration = CropPeriodAfterLastRegen(
     actor->GetDurationOfAttributesPercentagesUpdate(now).count());
+  const float timeAfterStaminaRegeneration =
+    actor->GetDurationOfStaminaPercentageUpdate(now).count();
 
   const auto& currentValues = actor->GetActorValues();
 
@@ -1091,6 +1093,9 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
       newVal = CropHealthRegeneration(newVal, timeAfterRegeneration, actor);
     } else if (av == espm::ActorValue::Magicka) {
       newVal = CropMagickaRegeneration(newVal, timeAfterRegeneration, actor);
+    } else if (av == espm::ActorValue::Stamina) {
+      newVal =
+        CropStaminaRegeneration(newVal, timeAfterStaminaRegeneration, actor);
     }
 
     if (!MathUtils::IsNearlyEqual(newVal, *inputVal)) {
