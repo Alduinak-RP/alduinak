@@ -223,6 +223,7 @@ class Builder {
       '-B', buildDir,
       '-G', 'Visual Studio 17 2022',
       '-A', 'x64',
+      `-DCMAKE_GENERATOR_INSTANCE=${tc.vsDir.replace(/\\/g, '/')}`,
       `-DVCPKG_ROOT=${tc.vcpkgDir.replace(/\\/g, '/')}`,
       '-DCMAKE_BUILD_TYPE=Release',
       '-DBUILD_NODEJS=OFF',
