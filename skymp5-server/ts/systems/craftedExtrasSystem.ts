@@ -18,9 +18,11 @@ type Mp = any;
 //   gained: local copies the server lacks; lost: server copies the player no longer has (the sources and inputs)
 //   workbench: remote id of the crafting furniture the player used last, 0 if none
 // Server -> Client: { customPacketType: "notification", text } when a crafted change is refused
+// Server -> Client: { customPacketType: "craftedExtrasRefused", baseIds } so the client reverts those items to the server copy
 
 const PACKET = "craftedExtras";
 const NOTICE_PACKET = "notification";
+const REFUSED_PACKET = "craftedExtrasRefused";
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
 const MAX_GAINED = 32;
@@ -164,13 +166,13 @@ export class CraftedExtrasSystem implements System {
     const emptiedGems = this.pairEmptiedGems(ctx, gained, souls);
 
     const added: InventoryEntry[] = [];
-    let refused = false;
+    const refused = new Set<number>();
     for (const g of gained) {
       if (emptiedGems.has(g)) continue;
       for (let unit = 0; unit < Math.min(g.count, MAX_UNITS); unit++) {
         const plan = this.findPlan(ctx, g, pool, souls, station);
         if (!plan) {
-          refused = refused || this.isCraftClaim(g, pool);
+          if (this.isCraftClaim(g, pool)) refused.add(g.baseId >>> 0);
           break;
         }
         this.commit(plan, added);
@@ -184,7 +186,8 @@ export class CraftedExtrasSystem implements System {
       const rest: Inventory = { entries: inv.entries.map((e, j) => ({ ...e, count: counts[j] })).filter((e) => e.count > 0) };
       mp.set(actorId, "inventory", addEntries(rest, added));
     }
-    if (refused) {
+    if (refused.size) {
+      this.send(ctx, userId, { customPacketType: REFUSED_PACKET, baseIds: Array.from(refused) });
       this.notify(ctx, userId, "The server did not accept that change to your item, so it keeps its previous state.");
     }
   }
@@ -585,9 +588,13 @@ export class CraftedExtrasSystem implements System {
     const now = Date.now();
     if (now - (this.lastNoticeAt.get(userId) || 0) < NOTICE_GAP_MS) return;
     this.lastNoticeAt.set(userId, now);
+    this.send(ctx, userId, { customPacketType: NOTICE_PACKET, text });
+  }
+
+  private send(ctx: SystemContext, userId: number, content: Record<string, unknown>): void {
     try {
       if (userId >= 0 && userId < INVALID_USER_ID) {
-        ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: NOTICE_PACKET, text }));
+        ctx.svr.sendCustomPacket(userId, JSON.stringify(content));
       }
     } catch { /* offline */ }
   }

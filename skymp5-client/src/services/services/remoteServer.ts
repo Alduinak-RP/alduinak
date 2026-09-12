@@ -87,6 +87,10 @@ let encumbranceRefreshPending = false;
 export const holdPcInventoryApply = (ms: number): void => {
   pcInvHoldUntil = Math.max(pcInvHoldUntil, Date.now() + ms);
 };
+
+export const requestPcInventoryApply = (): void => {
+  pcInvLastApply = 0;
+};
 on('update', () => {
   if (isBadMenuShown()) {
     return;

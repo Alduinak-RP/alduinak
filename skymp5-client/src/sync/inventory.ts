@@ -390,6 +390,13 @@ export const removeSimpleItemsAsManyAsPossible = (
   return res;
 };
 
+// Base ids the server refused a craft for; the player's next apply drops their unrecorded local extras
+const revertBaseIds = new Set<number>();
+
+export const revertLocalExtras = (baseIds: number[]): void => {
+  baseIds.forEach((id) => revertBaseIds.add(id >>> 0));
+};
+
 // apply: lhs is the server's; unrecorded local extras except souls keep a plain server copy; snapshot: either way; exact: no fallback
 export type DiffMode = "apply" | "snapshot" | "exact";
 
@@ -398,7 +405,8 @@ export const getDiff = (
   lhs: Inventory,
   rhs: Inventory,
   ignoreWorn: boolean,
-  mode: DiffMode = "snapshot"
+  mode: DiffMode = "snapshot",
+  noFallbackIds?: Set<number>
 ): Inventory => {
   const lhsCopy: Inventory = JSON.parse(JSON.stringify(lhs));
   const pending: Entry[] = JSON.parse(JSON.stringify(rhs.entries));
@@ -419,7 +427,7 @@ export const getDiff = (
 
   pending.forEach((e) => draw(e, (x) => extrasEqual(x, e, ignoreWorn)));
   if (mode !== "exact") {
-    pending.forEach((e) => draw(e, (x) =>
+    pending.filter((e) => !noFallbackIds || !noFallbackIds.has(e.baseId >>> 0)).forEach((e) => draw(e, (x) =>
       mode === "apply" ? !hasItemExtras(x) && hasItemExtras(e) && !e.soul : hasItemExtras(x) !== hasItemExtras(e)));
   }
 
@@ -476,7 +484,11 @@ export const applyInventory = (
 ): boolean => {
   resetBase(refr);
   const target = withoutPlayerEnchantments(newInventory);
-  const diff = getDiff(target, getInventory(refr), ignoreWorn, "apply").entries;
+  const reverted = refr.getFormID() === 0x14 && revertBaseIds.size ? new Set(revertBaseIds) : undefined;
+  if (reverted) {
+    revertBaseIds.clear();
+  }
+  const diff = getDiff(target, getInventory(refr), ignoreWorn, "apply", reverted).entries;
 
   let res = true;
 

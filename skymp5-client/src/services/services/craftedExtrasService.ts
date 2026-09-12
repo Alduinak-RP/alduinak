@@ -1,16 +1,21 @@
 import { Actor, ContainerChangedEvent, Game } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket } from "./customPacketUtil";
-import { getPcInventory, holdPcInventoryApply } from "./remoteServer";
-import { Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, sameEffects, sameItem } from "../../sync/inventory";
+import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { getPcInventory, holdPcInventoryApply, requestPcInventoryApply } from "./remoteServer";
+import {
+  Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, revertLocalExtras, sameEffects, sameItem,
+} from "../../sync/inventory";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
+import { ConnectionMessage } from "../events/connectionMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
 
 // Reports the extras the player made locally (enchanting, tempering, recharging, poisoning a weapon) and the charge and
 // poison that hits used up, so the server records them (craftedExtrasSystem.ts). Soul gems the engine fills are left to
 // the server's soul trap system.
 //
 // Client -> Server: { customPacketType: "craftedExtras", workbench, gained: Entry[], lost: Entry[] }
+// Server -> Client: { customPacketType: "craftedExtrasRefused", baseIds: number[] }
 
 const CHECK_MS = 1000;
 const AFTER_CHANGE_MS = 300;
@@ -93,6 +98,22 @@ export class CraftedExtrasService extends ClientListener {
     this.controller.emitter.on("setInventoryMessage", () => {
       this.awaitingUntil = 0;
       this.nextCheckAt = Date.now() + AFTER_CHANGE_MS;
+    });
+    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+  }
+
+  // The server kept its own copies of these items, so their unrecorded local extras go back to them
+  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (!content || content["customPacketType"] !== "craftedExtrasRefused" || !Array.isArray(content["baseIds"])) {
+      return;
+    }
+    const baseIds = (content["baseIds"] as unknown[]).map(Number).filter((id) => Number.isInteger(id) && id > 0);
+    // After the SetInventory sent before it has stored its snapshot
+    this.controller.once("update", () => {
+      this.awaitingUntil = 0;
+      revertLocalExtras(baseIds);
+      requestPcInventoryApply();
     });
   }
 
