@@ -682,7 +682,6 @@ export class FormView {
     if (player && actor.getFactionReaction(player) >= 2) {
       return false;
     }
-    const hostile = (model as Record<string, unknown>)["ff_hostile"];
     // Without the server's flag, fall back to the plugin's own aggression
     return typeof hostile === "boolean" ? hostile : actor.getActorValue("Aggression") >= 1;
   }
