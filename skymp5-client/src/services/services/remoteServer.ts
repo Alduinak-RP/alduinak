@@ -76,7 +76,10 @@ const setPcInventory = (inv: Inventory): void => {
   storage['pcInv'] = inv;
 };
 
+const CONSUME_APPLY_HOLD_MS = 1500;
+
 let pcInvLastApply = 0;
+let pcInvHoldUntil = 0;
 let encumbranceRefreshPending = false;
 on('update', () => {
   if (isBadMenuShown()) {
@@ -88,6 +91,10 @@ on('update', () => {
     // Any CarryWeight change makes the engine re-check encumbrance
     player.modActorValue("CarryWeight", 1);
     player.modActorValue("CarryWeight", -1);
+  }
+  // Snapshots sent before the server saw a quick run of consumes would re-add them
+  if (Date.now() < pcInvHoldUntil) {
+    return;
   }
   if (Date.now() - pcInvLastApply > 5000) {
     pcInvLastApply = Date.now();
@@ -189,6 +196,7 @@ export class RemoteServer extends ClientListener {
     if (type !== FormType.Potion && type !== FormType.Ingredient) {
       return;
     }
+    pcInvHoldUntil = Date.now() + CONSUME_APPLY_HOLD_MS;
     const pcInv = getPcInventory();
     if (pcInv) {
       setPcInventory(removeSimpleItemsAsManyAsPossible(pcInv, e.baseObj.getFormID(), 1));
