@@ -5,6 +5,7 @@ import { isBadMenuShown, applyEquipment } from "../sync/equipment";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement } from "../sync/movementApply";
+import { Movement } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
@@ -430,11 +431,8 @@ export class FormView {
         }
       }
 
-      if (
-        +(model.numMovementChanges as number) !==
-        this.movState.lastNumChanges ||
-        Date.now() - this.movState.lastApply > 2000
-      ) {
+      const isNewMovement = +(model.numMovementChanges as number) !== this.movState.lastNumChanges;
+      if (isNewMovement || Date.now() - this.movState.lastApply > 2000) {
         this.movState.lastApply = Date.now();
         if (model.isHostedByOther || !this.movState.everApplied) {
           const backup = model.movement.isWeapDrawn;
@@ -442,7 +440,11 @@ export class FormView {
             model.movement.isWeapDrawn = forcedWeapDrawn;
           }
           try {
-            applyMovement(refr, model.movement, !!model.isMyClone);
+            // A sender silent for 2 s (paused game, Steam overlay) settles instead of running in place or hanging mid-air
+            const movement: Movement = isNewMovement || !this.movState.everApplied || !ac
+              ? model.movement
+              : { ...model.movement, runMode: "Standing", isInJumpState: false };
+            applyMovement(refr, movement, !!model.isMyClone);
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;

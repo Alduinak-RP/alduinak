@@ -493,16 +493,33 @@ function controlmapPath() {
   return gp ? path.join(gp, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt') : ''
 }
 
+const CONTROLMAP_SEED = path.join(__dirname, '..', 'assets', 'controlmap.txt')
+
 function readControlmapText() {
   const p = controlmapPath()
-  if (p && fs.existsSync(p)) return { path: p, text: fs.readFileSync(p, 'utf8'), exists: true }
-  const seed = fs.readFileSync(path.join(__dirname, '..', 'assets', 'controlmap.txt'), 'utf8')
-  return { path: p, text: seed, exists: false }
+  if (p && fs.existsSync(p)) return { path: p, text: upgradeControlmapText(fs.readFileSync(p, 'utf8')), exists: true }
+  return { path: p, text: fs.readFileSync(CONTROLMAP_SEED, 'utf8'), exists: false }
 }
 
 function controlmapEventRe(ev) {
   const escaped = ev.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   return new RegExp('^(' + escaped + '[ \\t]+)(0x[0-9a-fA-F]+)', 'm')
+}
+
+// Pre-AE launcher copies lack the Creations Menu input context, which shifts every later context on 1.6.1130+
+function isStaleLauncherControlmap(text) {
+  return /launcher controlmap override/.test(text) && !/^PurchaseCredits[ \t]/m.test(text)
+}
+
+// Rebuilds a stale launcher copy from the seed, keeping the keyboard rebinds the Settings tab manages
+function upgradeControlmapText(text) {
+  if (!isStaleLauncherControlmap(text)) return text
+  let upgraded = fs.readFileSync(CONTROLMAP_SEED, 'utf8')
+  for (const ev of GAME_HOTKEY_EVENTS) {
+    const m = text.match(controlmapEventRe(ev))
+    if (m) upgraded = upgraded.replace(controlmapEventRe(ev), (_m, head) => head + m[2])
+  }
+  return upgraded
 }
 
 ipcMain.handle('gameHotkeys:load', () => {
@@ -588,8 +605,15 @@ function applyForcedServerDefaults(gamePath) {
       const dest = path.join(gamePath, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt')
       if (!fs.existsSync(dest)) {
         fs.mkdirSync(path.dirname(dest), { recursive: true })
-        fs.copyFileSync(path.join(__dirname, '..', 'assets', 'controlmap.txt'), dest)
+        fs.copyFileSync(CONTROLMAP_SEED, dest)
         log('[defaults] wrote controlmap override (Wait/T unbound) to ' + dest)
+      } else {
+        const text = fs.readFileSync(dest, 'utf8')
+        const upgraded = upgradeControlmapText(text)
+        if (upgraded !== text) {
+          fs.writeFileSync(dest, upgraded)
+          log('[defaults] rebuilt the pre-AE controlmap override with the Creations Menu context at ' + dest)
+        }
       }
     }
   } catch (err) {
