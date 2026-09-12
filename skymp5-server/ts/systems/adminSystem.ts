@@ -26,7 +26,7 @@ type Mp = any;
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {ban}, mastery }
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
-//                     { customPacketType: "adminMode", mode, on }
+//                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminActionResult", ok, text }
 // The roster merges online actors with the backend's full player list (GET /:key/players);
@@ -87,7 +87,9 @@ export class AdminSystem implements System {
       }
     }
 
-    // Console rights follow the admin check on every actor assignment
+    this.installGodModeHook(ctx.svr as Mp);
+
+    // Console rights and admin modes follow the admin check on every actor assignment
     ctx.gm.on("userAssignActor", (userId: number) => {
       const mp = ctx.svr as Mp;
       try {
@@ -96,6 +98,7 @@ export class AdminSystem implements System {
         const tier = this.tierOf(mp, actorId);
         mp.set(actorId, "consoleCommandsAllowed", tier !== null);
         if (tier) this.log(`AdminSystem: console granted to actor ${actorId.toString(16)} (${tier})`);
+        this.resyncModes(mp, userId, actorId, tier !== null);
       } catch (e) {
         this.log(`AdminSystem: assign hook failed: ${e}`);
       }
@@ -498,20 +501,63 @@ export class AdminSystem implements System {
     state[mode] = !state[mode];
     this.modesByProfile.set(adminProfile, state);
     const on = !!state[mode];
-    if (MIRRORED_MODES.includes(mode)) {
-      // Registration lives in gamemode.js; a missing property must not break the toggle
-      try {
-        const mirror: Record<string, boolean> = {};
-        for (const m of MIRRORED_MODES) mirror[m] = !!state[m];
-        mp.set(actorId, "ff_adminModes", mirror);
-      } catch (e) {
-        this.log(`AdminSystem: ff_adminModes mirror failed (property registered in gamemode.js?): ${e}`);
-      }
+    if (MIRRORED_MODES.includes(mode)) this.writeModeMirror(mp, actorId, state);
+    this.sendMode(mp, userId, mode, on);
+    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}`);
+  }
+
+  // Registration lives in gamemode.js; a missing property must not break the toggle
+  private writeModeMirror(mp: Mp, actorId: number, state: Record<string, boolean>): void {
+    try {
+      const mirror: Record<string, boolean> = {};
+      for (const m of MIRRORED_MODES) mirror[m] = !!state[m];
+      mp.set(actorId, "ff_adminModes", mirror);
+    } catch (e) {
+      this.log(`AdminSystem: ff_adminModes mirror failed (property registered in gamemode.js?): ${e}`);
     }
+  }
+
+  private sendMode(mp: Mp, userId: number, mode: string, on: boolean): void {
     try {
       mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminMode", mode, on }));
     } catch { }
-    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}`);
+  }
+
+  private profileOf(mp: Mp, actorId: number): number {
+    try { return Number(mp.get(actorId, "profileId")) || 0; } catch { return 0; }
+  }
+
+  // Modes live in memory per profile but the mirror persists on the actor; re-push them on reconnect and clear a stale mirror
+  private resyncModes(mp: Mp, userId: number, actorId: number, isAdmin: boolean): void {
+    const profileId = this.profileOf(mp, actorId);
+    if (!isAdmin) this.modesByProfile.delete(profileId);
+    const state = this.modesByProfile.get(profileId) ?? {};
+    let mirror: Record<string, unknown> | null = null;
+    try { mirror = mp.get(actorId, "ff_adminModes") ?? null; } catch { }
+    if (MIRRORED_MODES.some(m => !!mirror?.[m] !== !!state[m])) this.writeModeMirror(mp, actorId, state);
+    for (const m of ADMIN_MODES) {
+      if (state[m.id]) this.sendMode(mp, userId, m.id, true);
+    }
+  }
+
+  // C++ fires onHitDamageAttempt before applying weapon and spell damage; returning false refuses it
+  private installGodModeHook(mp: Mp): void {
+    const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
+    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
+      if (this.hasMode(mp, targetId, "god")) return false;
+      if (!previous) return true;
+      try {
+        return previous.call(mp, aggressorId, targetId, sourceId, damage) !== false;
+      } catch {
+        return true;
+      }
+    };
+  }
+
+  private hasMode(mp: Mp, actorId: number, mode: string): boolean {
+    if (this.modesByProfile.size === 0) return false;
+    const profileId = this.profileOf(mp, actorId);
+    return profileId > 0 && !!this.modesByProfile.get(profileId)?.[mode];
   }
 
   private banViaBackend(
