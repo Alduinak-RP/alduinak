@@ -21,7 +21,19 @@ import {
   ActorBase,
   FormType,
   Form,
+  Weapon,
 } from "skyrimPlatform";
+
+// Vanilla boundArrow, added by bound bow effects
+const BOUND_ARROW_ID = 0x10b0a7;
+
+// Bound weapon spells add items the server inventory never holds, removing them ends the spell
+const isBoundItem = (form: Form): boolean => {
+  if (form.getFormID() === BOUND_ARROW_ID) {
+    return true;
+  }
+  return !!Weapon.from(form) && !form.isPlayable();
+};
 
 export interface Extra {
   health?: number;
@@ -374,6 +386,9 @@ export const applyInventory = (
     const f = Game.getFormEx(e.baseId);
     if (!f) {
       return printConsole(`Bad form ID ${e.baseId.toString(16)}`);
+    }
+    if (e.count < 0 && refr.getFormID() === 0x14 && isBoundItem(f)) {
+      return;
     }
     const type = f.getType();
     // For misc items, potions and ingredients we don't want to split them into multiple items

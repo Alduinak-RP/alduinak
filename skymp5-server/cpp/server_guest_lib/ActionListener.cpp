@@ -37,6 +37,93 @@ uint32_t LongToNormal(uint64_t longFormId)
 }
 }
 
+namespace {
+// Learned, NPC_/template/race and currently equipped spells
+std::vector<uint32_t> GetKnownSpells(const MpActor& actor)
+{
+  std::vector<uint32_t> spells = actor.GetSpellList();
+  const auto baseSpells = actor.GetBaseSpells();
+  spells.insert(spells.end(), baseSpells.begin(), baseSpells.end());
+  const auto& equipment = actor.GetEquipment();
+  for (const auto& slot : { equipment.leftSpell, equipment.rightSpell,
+                            equipment.voiceSpell, equipment.instantSpell }) {
+    if (slot) {
+      spells.push_back(*slot);
+    }
+  }
+  return spells;
+}
+
+// Calls callback(effectType, associatedItem, projectile) with global ids for each effect of a SPEL
+template <class Callback>
+void ForEachSpellEffect(WorldState* worldState, uint32_t spellId,
+                        const Callback& callback)
+{
+  auto& browser = worldState->GetEspm().GetBrowser();
+  const auto spellLookup = browser.LookupById(spellId);
+  const auto spell = espm::Convert<espm::SPEL>(spellLookup.rec);
+  if (!spell) {
+    return;
+  }
+  const auto spellData = spell->GetData(worldState->GetEspmCache());
+  for (const auto& effect : spellData.effects) {
+    if (effect.effectFormId == 0) {
+      continue;
+    }
+    const auto mgefLookup =
+      browser.LookupById(spellLookup.ToGlobalId(effect.effectFormId));
+    const auto mgef = espm::Convert<espm::MGEF>(mgefLookup.rec);
+    if (!mgef) {
+      continue;
+    }
+    const auto data = mgef->GetData(worldState->GetEspmCache()).data;
+    callback(data.effectType,
+             data.associatedItem ? mgefLookup.ToGlobalId(data.associatedItem)
+                                 : 0,
+             data.projectile ? mgefLookup.ToGlobalId(data.projectile) : 0);
+  }
+}
+
+// Bound weapon spells equip a weapon (and the bound arrow) the inventory never holds
+bool IsGrantedBoundItem(const MpActor& actor, uint32_t itemId)
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  const auto itemLookup = worldState->GetEspm().GetBrowser().LookupById(itemId);
+  const auto ammo = espm::Convert<espm::AMMO>(itemLookup.rec);
+  if (!ammo && !espm::Convert<espm::WEAP>(itemLookup.rec)) {
+    return false;
+  }
+  uint32_t ammoProjectile = 0;
+  if (ammo) {
+    const uint32_t raw = ammo->GetData(worldState->GetEspmCache()).projectile;
+    if (raw == 0) {
+      return false;
+    }
+    ammoProjectile = itemLookup.ToGlobalId(raw);
+  }
+  for (uint32_t spellId : GetKnownSpells(actor)) {
+    bool granted = false;
+    ForEachSpellEffect(worldState, spellId,
+                       [&](espm::MGEF::EffectType type,
+                           uint32_t associatedItem, uint32_t projectile) {
+                         if (type != espm::MGEF::EffectType::BoundWeapon) {
+                           return;
+                         }
+                         granted = granted ||
+                           (ammo ? projectile == ammoProjectile
+                                 : associatedItem == itemId);
+                       });
+    if (granted) {
+      return true;
+    }
+  }
+  return false;
+}
+}
+
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
                                           Networking::UserId userId,
                                           Networking::PacketData data,
@@ -293,7 +380,8 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     if (entry.GetWorn() == Inventory::Worn::None) {
       continue;
     }
-    if (!inventory.HasItem(entry.baseId)) {
+    if (!inventory.HasItem(entry.baseId) &&
+        !IsGrantedBoundItem(*actor, entry.baseId)) {
       spdlog::warn(
         "ActionListener::OnUpdateEquipment {:x} - rejected equipment "
         "update: inventory does not contain item {:x}",
@@ -419,7 +507,9 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
         }
         const bool notEquipped =
           currentWornIds.find(entry.baseId) == currentWornIds.end();
-        if (notEquipped || !inventory.HasItem(entry.baseId)) {
+        const bool notInInventory = !inventory.HasItem(entry.baseId) &&
+          !IsGrantedBoundItem(*actor, entry.baseId);
+        if (notEquipped || notInInventory) {
           spdlog::info(
             "ActionListener::OnUpdateEquipment {:x} - unequipping item {:x} "
             "({})",
