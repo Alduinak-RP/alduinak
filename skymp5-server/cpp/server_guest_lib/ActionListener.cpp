@@ -170,13 +170,60 @@ bool IsGrantedBoundItem(const MpActor& actor, uint32_t itemId)
   return false;
 }
 
+// The host's engine rolls leveled templates on its own, so any spell in the base's template tree is valid
+bool IsSpellInTemplateTree(const MpActor& actor, uint32_t spellId)
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  auto& browser = worldState->GetEspm().GetBrowser();
+  std::vector<uint32_t> pending = { actor.GetBaseId() };
+  std::unordered_set<uint32_t> visited;
+  constexpr size_t kMaxVisited = 512;
+  while (!pending.empty() && visited.size() < kMaxVisited) {
+    const uint32_t formId = pending.back();
+    pending.pop_back();
+    if (formId == spellId) {
+      return true;
+    }
+    if (!visited.insert(formId).second) {
+      continue;
+    }
+    const auto lookup = browser.LookupById(formId);
+    if (const auto npc = espm::Convert<espm::NPC_>(lookup.rec)) {
+      const auto npcData = npc->GetData(worldState->GetEspmCache());
+      for (uint32_t rawSpellId : npcData.spells) {
+        pending.push_back(lookup.ToGlobalId(rawSpellId));
+      }
+      if (npcData.baseTemplate != 0 &&
+          (npcData.templateDataFlags & espm::NPC_::UseSpelllist)) {
+        pending.push_back(lookup.ToGlobalId(npcData.baseTemplate));
+      }
+      continue;
+    }
+    const espm::LeveledListBase* list = espm::Convert<espm::LVLN>(lookup.rec);
+    if (!list) {
+      list = espm::Convert<espm::LVSP>(lookup.rec);
+    }
+    if (list) {
+      const auto listData = list->GetData(worldState->GetEspmCache());
+      for (uint8_t i = 0; i < listData.numEntries; ++i) {
+        pending.push_back(lookup.ToGlobalId(listData.entries[i].formId));
+      }
+    }
+  }
+  return false;
+}
+
 // Hosted NPCs keep no spell equipment on the server, their spell list is the gate
 bool CanCastSpell(const MpActor& actor, uint32_t spellId)
 {
   if (actor.GetEquipment().IsSpellEquipped(spellId)) {
     return true;
   }
-  return actor.GetProfileId() == -1 && actor.IsSpellLearned(spellId);
+  return actor.GetProfileId() == -1 &&
+    (actor.IsSpellLearned(spellId) || IsSpellInTemplateTree(actor, spellId));
 }
 
 // Cloaks and hazards (Blizzard) hit with a spell they grant, not the spell that was cast
@@ -216,6 +263,9 @@ bool CanHitWithSpell(const MpActor& actor, uint32_t spellId)
 {
   if (actor.GetEquipment().IsSpellEquipped(spellId) ||
       actor.IsSpellLearned(spellId)) {
+    return true;
+  }
+  if (actor.GetProfileId() == -1 && IsSpellInTemplateTree(actor, spellId)) {
     return true;
   }
   for (uint32_t knownSpellId : GetKnownSpells(actor)) {
