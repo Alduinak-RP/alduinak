@@ -2,6 +2,7 @@ import { System, Log, Content, SystemContext } from "./system";
 import { Settings } from "../settings";
 import * as fetchRetry from "fetch-retry";
 import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
+import { hasDiscordBanRole } from "./discordBanSystem";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
@@ -209,7 +210,7 @@ export class Login implements System {
               const guildRoles: string[] = responseData.roles || [];
               fetchedRoles = [...fetchedRoles, ...guildRoles];
 
-              if (guildConfig.banRoleId && guildRoles.indexOf(guildConfig.banRoleId) !== -1) {
+              if (hasDiscordBanRole(guildConfig, guildRoles)) {
                 isBanned = true;
               }
               if (guildConfig.hideIpRoleId && guildRoles.indexOf(guildConfig.hideIpRoleId) !== -1) {
