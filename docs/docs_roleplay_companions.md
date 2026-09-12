@@ -35,10 +35,10 @@ A companion is an NPC ally owned by one player. The server keeps the list; the o
 - `persistent`: see below.
 - `source`: the spell or form that created it, used in logs.
 
-Example, a dog that stays with its owner:
+Example, a pet that stays with its owner (`petBaseId` is the global form id of an NPC_ record):
 
 ```ts
-companionSystem.spawn(ownerActorId, 0x00023a92, { kind: "companion", persistent: true });
+companionSystem.spawn(ownerActorId, petBaseId, { kind: "companion", persistent: true });
 ```
 
 ## Kinds
@@ -52,6 +52,22 @@ companionSystem.spawn(ownerActorId, 0x00023a92, { kind: "companion", persistent:
 **Command limit:** the vanilla limit is one commanded actor per player, two with the Twin Souls perk (0xD5F1C), which the client reports. The newest one replaces the oldest.
 
 Commanded companions (`summon`, `reanimated`) also end when the owner dies.
+
+## Conjuration (conjurationSystem.ts)
+
+The C++ server fires `onSpellCast(caster, spell)` and `onSpellHit(aggressor, target, spell)` for accepted casts and hits. Only player casters are handled.
+
+- **Summons:** a spell whose effect is the SummonCreature archetype places a `summon` of the effect's associated NPC_. This covers the Conjure Atronach spells, Familiar, Dremora Lord, Ash Spawn and the Flame/Frost/Storm Thralls.
+  - It appears 160 units in front of the caster and lasts the effect duration.
+  - A duration of 10,000,000 s or more (the Thralls) lasts until the summon is killed or replaced.
+  - The first summon effect is used. Perk-conditioned variants (Elemental Potency) and duration perks are not evaluated.
+- **Reanimate:** Reanimate Corpse, Revenant, Dread Zombie and Dead Thrall raise a dead NPC as a `reanimated` companion.
+  - The corpse must be within 4096 units and must not be a player body or a companion.
+  - Its level must be at most the effect magnitude.
+  - It must pass the effect's HasKeyword conditions: no MagicNoReanimate, and ActorTypeNPC for Dead Thrall.
+  - A new actor of the corpse's base takes its place and inventory, and the corpse is removed.
+  - The target is the corpse the spell hit. If no hit arrives within 1.5 s, the nearest valid corpse within 20 degrees in front of the caster (up to 2048 units) is used.
+- **Banish:** a Banish effect on a `summon` that passes its conditions (ActorTypeDaedra) and whose level is within the magnitude dismisses it.
 
 ## Lifetime
 

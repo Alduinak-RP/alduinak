@@ -241,6 +241,11 @@ export class CompanionSystem implements System {
     return c ? this.toInfo(c) : undefined;
   }
 
+  // A live companion or the body of one that ended
+  isCompanionActor(actorId: number): boolean {
+    return this.companions.has(actorId >>> 0) || this.corpses.has(actorId >>> 0);
+  }
+
   // ── Internals ────────────────────────────────────────────────────────────────
 
   private toInfo(c: Companion): CompanionInfo {
