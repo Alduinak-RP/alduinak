@@ -2,6 +2,7 @@
 import { Actor, Form, FormType, Menu, interruptCast, castSpellImmediate, printConsole, applyAnimationVariablesToActor, ActorAnimationVariables } from 'skyrimPlatform';
 import {
   Cell,
+  Debug,
   EquipEvent,
   Game,
   ObjectReference,
@@ -64,6 +65,8 @@ import { logTrace, logError } from '../../logging';
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
 import { MsgType } from '../../messages';
+import { CustomPacketMessage } from '../messages/customPacketMessage';
+import { parseCustomPacket } from './customPacketUtil';
 
 export const getPcInventory = (): Inventory | undefined => {
   const res = storage['pcInv'];
@@ -144,6 +147,7 @@ export class RemoteServer extends ClientListener {
 
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
   }
 
   private onHostStartMessage(event: ConnectionMessage<HostStartMessage>) {
@@ -206,6 +210,34 @@ export class RemoteServer extends ClientListener {
     if (pcInv) {
       setPcInventory(removeSimpleItemsAsManyAsPossible(pcInv, e.baseObj.getFormID(), 1));
     }
+  }
+
+  // The server refunds a potion drunk within 10 s of the last one and blocks its effects
+  private onPotionRefused(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (!content || content["customPacketType"] !== "potionRefused") {
+      return;
+    }
+    const baseId = Number(content["baseId"]);
+    const acceptedBaseId = Number(content["acceptedBaseId"]);
+    this.controller.once("update", () => {
+      const player = Game.getPlayer();
+      const potion = Game.getFormEx(baseId);
+      if (!player || !potion) {
+        return;
+      }
+      // A named-only stack gets its refund from the next inventory apply, the way it was created
+      const held = getInventory(player).entries.filter((e) => e.baseId === baseId);
+      if (!held.length || held.some((e) => !e.name)) {
+        player.addItem(potion, 1, true);
+      }
+      // A repeat of the accepted potion shares its active effects, so dispelling would cancel both
+      const dispel = (this.sp as unknown as { dispelPotionEffects?: (actorFormId: number, potionFormId: number) => void }).dispelPotionEffects;
+      if (baseId !== acceptedBaseId && typeof dispel === "function") {
+        dispel(player.getFormID(), baseId);
+      }
+      Debug.notification("You must wait before drinking another potion.");
+    });
   }
 
   private onOpenContainerMessage(event: ConnectionMessage<OpenContainerMessage>): void {
