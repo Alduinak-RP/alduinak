@@ -28,7 +28,7 @@ type Mp = any;
 //     { customPacketType: "releaseRequest",  target: <actorFormId> }   // fully free
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
 //   Server -> Client:
-//     { customPacketType: "restraintState",  boundHands, carried, carrier, anim } // -> captive's RestraintService (carrier = actor id or 0)
+//     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
 //     { customPacketType: "carryState",      carrying, anim }              // -> carrier's RestraintService (pose only)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
 //     { customPacketType: "captureNotice",   text }                        // -> corner notification
@@ -50,6 +50,12 @@ const DEFAULT_MANACLES = 0;
 const CARRY_FOLLOW_INTERVAL_MS = 350;
 const CARRY_FOLLOW_MIN_MOVE_SQ = 96 * 96;
 const CARRY_MAX_DRIFT_SQ = 256 * 256;
+
+// Carried pose: a vanilla chair sit idle held across the carrier's arms. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
+const DEFAULT_CARRIED_ANIM = "IdleChairEnterInstant";
+const DEFAULT_CARRY_FORWARD = 30;
+const DEFAULT_CARRY_UP = 40;
+const DEFAULT_CARRY_YAW = 90;
 
 // A consent prompt lapses if the target doesn't answer in time. Overridable via "captureConsentTimeoutMs".
 const DEFAULT_CONSENT_TIMEOUT_MS = 20000;
@@ -82,6 +88,10 @@ export class CaptureSystem implements System {
   private manaclesFormId = DEFAULT_MANACLES;
   private captiveAnim = "OffsetBoundStandingStart";
   private carrierAnim = "OffsetCarryBasketStart";
+  private carriedAnim = DEFAULT_CARRIED_ANIM;
+  private carryForward = DEFAULT_CARRY_FORWARD;
+  private carryUp = DEFAULT_CARRY_UP;
+  private carryYaw = DEFAULT_CARRY_YAW;
   private interactMaxDistance = DEFAULT_INTERACT_MAX_DISTANCE;
   private consentTimeoutMs = DEFAULT_CONSENT_TIMEOUT_MS;
   private consentCooldownMs = DEFAULT_CONSENT_COOLDOWN_MS;
@@ -124,6 +134,11 @@ export class CaptureSystem implements System {
     if (Number.isInteger(rawTimeout) && rawTimeout > 0) this.consentTimeoutMs = rawTimeout;
     const rawCooldown = Number(all?.["captureConsentCooldownMs"]);
     if (Number.isInteger(rawCooldown) && rawCooldown >= 0) this.consentCooldownMs = rawCooldown;
+    const rawCarriedAnim = all?.["carriedAnimEvent"];
+    if (typeof rawCarriedAnim === "string" && rawCarriedAnim) this.carriedAnim = rawCarriedAnim;
+    this.carryForward = this.finiteSetting(all, "carryOffsetForward", DEFAULT_CARRY_FORWARD);
+    this.carryUp = this.finiteSetting(all, "carryOffsetUp", DEFAULT_CARRY_UP);
+    this.carryYaw = this.finiteSetting(all, "carryYawOffset", DEFAULT_CARRY_YAW);
     if (this.manaclesFormId === 0) {
       this.log(`[capture] manaclesFormId not configured — arrests need no item`);
     } else {
@@ -173,7 +188,8 @@ export class CaptureSystem implements System {
         if (!loc || !Array.isArray(loc.pos)) {
           continue;
         }
-        const [x, y, z] = loc.pos as number[];
+        const carrierYaw = Array.isArray(loc.rot) ? Number(loc.rot[2]) || 0 : 0;
+        const [x, y, z] = this.carryTarget(loc.pos as number[], carrierYaw);
         // Each snap is a full engine teleport on the carried client; only
         // resend when the body actually drifted or changed cell
         const carriedLoc = mp.get(carriedActorId, "locationalData");
@@ -194,8 +210,8 @@ export class CaptureSystem implements System {
         }
         mp.set(carriedActorId, "locationalData", {
           cellOrWorldDesc: loc.cellOrWorldDesc,
-          pos: loc.pos,
-          rot: loc.rot,
+          pos: [x, y, z],
+          rot: [0, 0, carrierYaw + this.carryYaw],
         });
         this.lastCarryPos.set(carriedActorId, [x, y, z]);
       } catch (e) {
@@ -569,7 +585,28 @@ export class CaptureSystem implements System {
       carried: info.carried,
       carrier: this.carriedBy.get(targetActorId) ?? 0,
       anim: this.captiveAnim,
+      carriedAnim: this.carriedAnim,
+      carryForward: this.carryForward,
+      carryUp: this.carryUp,
+      carryYaw: this.carryYaw,
     }));
+  }
+
+  // Where the carried body is held: ahead of and above the carrier, matching the captive client's follow
+  private carryTarget(carrierPos: number[], carrierYawDeg: number): [number, number, number] {
+    const yaw = carrierYawDeg * Math.PI / 180;
+    return [
+      carrierPos[0] + Math.sin(yaw) * this.carryForward,
+      carrierPos[1] + Math.cos(yaw) * this.carryForward,
+      carrierPos[2] + this.carryUp,
+    ];
+  }
+
+  private finiteSetting(all: Record<string, unknown> | null, key: string, fallback: number): number {
+    const raw = all?.[key];
+    if (raw === undefined || raw === null || raw === "") return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : fallback;
   }
 
   private sendCarryState(ctx: SystemContext, carrierActorId: number, carrying: boolean): void {

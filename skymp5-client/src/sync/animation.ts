@@ -64,7 +64,8 @@ const actorGetUpAnimsLowerCase = [
   'idlechairfrontquickexit',
   'idlechairchildfrontexit',
   'idlechairchildleftexit',
-  'idlechairchildrightexit'
+  'idlechairchildrightexit',
+  'idleforcedefaultstate'
 ];
 
 // It's critical for values to be the correct case, not just lowercase, otherwise 'allowedIdles' check will break
@@ -200,6 +201,12 @@ export const applyAnimation = (
     setCollision(refr.getFormID(), true);
     sitCollisionDisabledAt.delete(refr.getFormID());
   }
+};
+
+export const isInSitPose = (refrId: number): boolean => sitCollisionDisabledAt.has(refrId);
+
+export const setRefrCollision = (refrId: number, collision: boolean): void => {
+  setCollision(refrId, collision);
 };
 
 // Animation sync is unreliable and single-slot, so a lost get-up must not leave a walking clone without collision

@@ -9,6 +9,7 @@ import { RespawnNeededError } from "../lib/errors";
 import { Movement, RunMode, AnimationVariables, Transform, NiPoint3 } from "./movement";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { SpApiInteractor } from "../services/spApiInteractor";
+import { isInSitPose } from "./animation";
 
 const sqr = (x: number) => x * x;
 
@@ -224,7 +225,8 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
     ObjectReferenceEx.getDistanceNoZ(refrRealPos, gTempTargetPos) > 8 ||
     Math.abs(refrRealPos[2] - gTempTargetPos[2]) > standingMaxDeltaZ ||
     angleDiff > 80 ||
-    Actor.from(refr)?.getSitState() === 3
+    Actor.from(refr)?.getSitState() === 3 ||
+    (isInSitPose(refr.getFormID()) && distance > 1)
   ) {
     const actor = Actor.from(refr);
     if (actor && actor.getActorValue("Variable10") < -999) {

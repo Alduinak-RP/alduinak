@@ -22,6 +22,7 @@ import { UpdateEquipmentMessage } from "../messages/updateEquipmentMessage";
 import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
 import { RemoteServer } from "./remoteServer";
 import { DeathService } from "./deathService";
+import { RestraintService } from "./restraintService";
 import { logTrace } from "../../logging";
 
 const playerFormId = 0x14;
@@ -135,9 +136,10 @@ export class SendInputsService extends ClientListener {
         const now = Date.now();
         const last = this.lastSendMovementMoment.get(refrIdStr);
         if (!last || now - last > sendMovementRateMs) {
+            const movement = getMovement(owner, form);
             const message: MessageWithRefrId<UpdateMovementMessage> = {
                 t: MsgType.UpdateMovement,
-                data: getMovement(owner, form),
+                data: _refrId ? movement : this.controller.lookupListener(RestraintService).filterOwnMovement(movement),
                 _refrId
             };
             this.controller.emitter.emit("sendMessageWithRefrId", {
