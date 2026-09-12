@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { placeNpc, placeAtMe, NpcLocation } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, hex, destroyLeftovers, destroyRef } from "./actorUtil";
+import { userOf, isAlive, isNear, hex, baseIdOf, destroyLeftovers, destroyRef } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -514,7 +514,9 @@ export class CompanionSystem implements System {
     const ids = this.leftovers;
     if (!ids.length) return;
     this.leftovers = [];
-    const removed = destroyLeftovers(this.mp, ids);
+    // Companions are actors and ash piles are containers; anything else under a stale id is not ours
+    const removed = destroyLeftovers(this.mp, ids, (id) =>
+      this.mp.get(id, "type") === "MpActor" || this.mp.lookupEspmRecordById(baseIdOf(this.mp, id))?.record?.type === "CONT");
     this.log(`CompanionSystem: removed ${removed}/${ids.length} companion(s) from the previous run`);
     this.save();
   }

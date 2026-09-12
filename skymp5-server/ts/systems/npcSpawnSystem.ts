@@ -543,7 +543,7 @@ export class NpcSpawnSystem implements System {
     const ids = this.leftovers.filter((id) => !current.has(id));
     this.leftovers = [];
     if (ids.length) {
-      const removed = destroyLeftovers(this.mp, ids);
+      const removed = destroyLeftovers(this.mp, ids, (id) => !!this.mp.get(id, TAG_PROP));
       this.log(`NpcSpawnSystem: removed ${removed}/${ids.length} leftover npc(s) from the previous run`);
     }
     this.saveSpawns();

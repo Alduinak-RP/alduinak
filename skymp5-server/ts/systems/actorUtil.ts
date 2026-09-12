@@ -65,10 +65,11 @@ export const destroyRef = (mp: Mp, id: number): void => {
   mp.callPapyrusFunction("method", "ObjectReference", "Delete", { type: "form", desc: mp.getDescFromId(id) }, []);
 };
 
-// Forms of a previous run exist only after the world DB loads (WORLD_LOADED_EVENT); returns how many were removed
-export const destroyLeftovers = (mp: Mp, ids: number[]): number =>
+// Forms of a previous run exist only after the world DB loads (WORLD_LOADED_EVENT); plugin refs, player characters and ids failing isOurs are kept
+export const destroyLeftovers = (mp: Mp, ids: number[], isOurs: (id: number) => boolean): number =>
   ids.filter((id) => {
     try {
+      if (id >>> 0 < 0xff000000 || isPlayerActor(mp, id) || !isOurs(id)) return false;
       destroyRef(mp, id);
       return true;
     } catch {
