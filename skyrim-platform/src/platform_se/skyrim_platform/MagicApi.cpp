@@ -74,6 +74,54 @@ bool IsReplayableSelfBuff(const RE::SpellItem& spell)
   return true;
 }
 
+// Self area destruction spells (Fire Storm, Blizzard) whose clone cast is only visual once the client guards the observer
+bool IsReplayableSelfArea(const RE::SpellItem& spell)
+{
+  using Archetype = RE::EffectArchetypes::ArchetypeID;
+
+  if (spell.data.delivery != RE::MagicSystem::Delivery::kSelf ||
+      spell.GetCastingType() ==
+        RE::MagicSystem::CastingType::kConcentration) {
+    return false;
+  }
+
+  bool hasHarmfulArea = false;
+
+  for (auto* effect : spell.effects) {
+    auto* baseEffect = effect ? effect->baseEffect : nullptr;
+    if (!baseEffect) {
+      return false;
+    }
+    const auto archetype = baseEffect->GetArchetype();
+    switch (archetype) {
+      case Archetype::kValueModifier:
+      case Archetype::kDualValueModifier:
+      case Archetype::kPeakValueModifier:
+      case Archetype::kSpawnHazard:
+        if (baseEffect->GetMagickSkill() != RE::ActorValue::kDestruction) {
+          return false;
+        }
+        break;
+      // Perk riders are conditioned on the caster's perks, which a clone never has
+      case Archetype::kParalysis:
+      case Archetype::kDemoralize:
+        if (!baseEffect->conditions.head) {
+          return false;
+        }
+        break;
+      default:
+        return false;
+    }
+    const bool harmful = baseEffect->IsHostile() || baseEffect->IsDetrimental();
+    if ((harmful && effect->effectItem.area > 0) ||
+        archetype == Archetype::kSpawnHazard) {
+      hasHarmfulArea = true;
+    }
+  }
+
+  return hasHarmfulArea;
+}
+
 } // namespace skymp::magic::details
 
 Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
@@ -93,9 +141,17 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
   const auto aimHeading = NapiHelper::ExtractFloat(info[5], "aimHeading");
   const RE::Projectile::ProjectileRot projectileAngles{ aimAngle, aimHeading };
 
+  // Only clients that guard the observer opt in, older ones never pass the flag
+  const bool allowHostileSelf =
+    info[7].IsBoolean() && static_cast<bool>(info[7].As<Napi::Boolean>());
+  const auto* spellToReplay =
+    RE::TESForm::LookupByID<RE::SpellItem>(spellFormId);
+  const bool replayHostileSelf = allowHostileSelf && spellToReplay &&
+    skymp::magic::details::IsReplayableSelfArea(*spellToReplay);
+
   g_nativeCallRequirements.gameThrQ->AddTask(
     [spellFormId, actorFormId, castingSource, magicTargetFormId,
-     projectileAngles,
+     projectileAngles, replayHostileSelf,
 
      animVars = skymp::magic::details::GetAnimationVariablesFromJSArg(
        NapiHelper::ExtractObject(info[6], "animationVariables"))](Viet::Void) {
@@ -143,9 +199,10 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
         return;
       }
 
-      // Self spells launch no projectile, so a buff is applied to the clone directly
+      // Self spells launch no projectile, so buffs and guarded area spells are cast on the clone
       if (pSpell->data.delivery == RE::MagicSystem::Delivery::kSelf &&
-          skymp::magic::details::IsReplayableSelfBuff(*pSpell)) {
+          (replayHostileSelf ||
+           skymp::magic::details::IsReplayableSelfBuff(*pSpell))) {
         magicCaster->CastSpellImmediate(pSpell, false, pActor, 1.0f, false,
                                         0.0f, pActor);
         return;
@@ -189,7 +246,7 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
       RE::Projectile::Launch(&pProjectile, launchData);
     });
 
-  return info.Env().Undefined();
+  return Napi::Boolean::New(info.Env(), replayHostileSelf);
 }
 
 Napi::Value MagicApi::InterruptCast(const Napi::CallbackInfo& info)

@@ -36,6 +36,7 @@ import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
 import { UpdateEquipmentMessage } from '../messages/updateEquipmentMessage';
 import { RagdollService } from './ragdollService';
 import { RestraintService } from './restraintService';
+import { CloneSpellGuardService } from './cloneSpellGuardService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
 import { TeleportMessage } from '../messages/teleportMessage';
 import { DeathStateContainerMessage } from '../messages/deathStateContainerMessage';
@@ -57,6 +58,7 @@ import { TeleportMessage2 } from '../messages/teleportMessage2';
 import {
   getObjectReference,
   getViewFromStorage,
+  isHostedByMe,
   remoteIdToLocalId,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
@@ -915,7 +917,8 @@ export class RemoteServer extends ClientListener {
 
     once('update', () => {
       const id = this.getIdManager().getId(msg.idx);
-      const refr = id === this.getMyActorIndex() ? Game.getPlayer() : getObjectReference(id);
+      const isMe = id === this.getMyActorIndex();
+      const refr = isMe ? Game.getPlayer() : getObjectReference(id);
       const ac = Actor.from(refr);
       if (!ac) {
         return;
@@ -924,6 +927,9 @@ export class RemoteServer extends ClientListener {
       const { health, stamina, magicka } = msg.data;
       if (typeof health === "number") {
         setActorValuePercentage(ac, 'health', health);
+        if (isMe) {
+          this.controller.lookupListener(CloneSpellGuardService).onServerHealth(health);
+        }
       }
       if (typeof stamina === "number") {
         setActorValuePercentage(ac, 'stamina', stamina);
@@ -1034,7 +1040,8 @@ export class RemoteServer extends ClientListener {
 
     once('update', () => {
       const ac = Actor.from(Game.getFormEx(remoteIdToLocalId(msg.data.caster)));
-      if (!ac) {
+      // The host runs its own NPC's real cast, a replay of the relayed copy would cast and hit twice
+      if (!ac || isHostedByMe(ac.getFormID())) {
         return;
       }
 
@@ -1080,8 +1087,12 @@ export class RemoteServer extends ClientListener {
       const transmitted = msg.data.spell ? Game.getFormEx(msg.data.spell) : null;
       const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
       if (spellId) {
-        castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
-          msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables);
+        // The platform only casts Fire Storm or Blizzard on the clone when told the observer is guarded
+        const replayedHostileSelf = castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
+          msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables, true) === true;
+        if (replayedHostileSelf) {
+          this.controller.lookupListener(CloneSpellGuardService).guardClone(ac.getFormID(), spellId);
+        }
       }
     });
   }

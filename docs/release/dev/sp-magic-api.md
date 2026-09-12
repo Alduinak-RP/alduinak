@@ -7,8 +7,13 @@ function castSpellImmediate(
   castingSource: SpellType, 
   formIdSpell: number, 
   formIdTarget: number, 
-  animationVariables: ActorAnimationVariables
-): void;
+  aimAngle: number,
+  aimHeading: number,
+  animationVariables: ActorAnimationVariables,
+  replayHostileSelf?: boolean
+): boolean;
+// replayHostileSelf lets a Self area Destruction spell (Fire Storm, Blizzard) be cast on the caster's clone.
+// Returns true when such a replay was queued, so the caller can guard its own player against the clone's hits.
 
 function interruptCast(
   actorCasterFormId: number, 
