@@ -202,7 +202,7 @@ const Chat = (props) => {
     };
     node?.addEventListener('keydown', listener);
     return () => node?.removeEventListener('keydown', listener);
-  }, [inputRef.current, input]);
+  }, [inputRef.current, input, sendMessage]);
 
   useEffect(() => {
     if (inputRef !== undefined && inputRef.current !== undefined && !isInputHidden) {
