@@ -6,6 +6,7 @@ export class FormTypeEx {
     FormType.Armor,
     FormType.Book,
     FormType.Ingredient,
+    FormType.Key,
     FormType.Light,
     FormType.Potion,
     FormType.ScrollItem,

@@ -9,7 +9,7 @@ import { FormTypeEx } from "../../extensions/formTypeEx";
 import { logError, logTrace } from "../../logging";
 
 // World clutter is frozen as its cell or 3D loads so local havok cannot move it
-const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora, FormType.Activator, FormType.Static, ...FormTypeEx.itemTypes];
+const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora, FormType.Activator, FormType.Furniture, FormType.Static, ...FormTypeEx.itemTypes];
 
 // Mods often place havok-enabled item meshes as statics; only those model folders are worth a native call
 const HAVOK_STATIC_MODEL = /(^|[\\/])clutter[\\/]|^(meshes[\\/])?plants[\\/]/i;

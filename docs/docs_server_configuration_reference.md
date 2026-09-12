@@ -215,14 +215,16 @@ A time before a game object restores its original state in milliseconds. Unlike 
 ```
 
 ## forbiddenReloot
-The option that allows you to forbid reloot for a specific item or a group of items based on its/their espm record type. Take a look at [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format).
+Record types (see [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format)) that never reloot. A listed type wins over its `reloot` timer:
 
+- Item types (`MISC`, `WEAP`, `BOOK`, ...) and `FLOR`/`TREE`: plugin-placed refs of that type can't be picked up or harvested at all. Player-dropped items stay lootable.
+- `CONT`: containers get their base loot once, on the first open, and never again. Players can use any container as storage without it refilling with loot once emptied. A container reloot already pending in the database is dropped when the container loads.
+- `KEYM`: plugin-placed keys are never loaded by the server, so they are untouchable either way. Listing it documents that.
 
 ```json5
 {
   // ...
-  // here your record types go
-  "forbiddenReloot": ["FLOR", "TREE", "BOOK", ... ]
+  "forbiddenReloot": ["MISC", "WEAP", "SLGM", "SCRL", "ALCH", "INGR", "BOOK", "ARMO", "AMMO", "KEYM", "CONT"]
   // ...
 }
 ```
