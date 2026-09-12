@@ -8,6 +8,9 @@ export interface SystemContext {
   gm: EventEmitter;
 }
 
+// Emitted on SystemContext.gm once attachSaveStorage has loaded the world DB, after every system's initAsync
+export const WORLD_LOADED_EVENT = "worldLoaded";
+
 export interface System {
   systemName: string;
   initAsync?: (ctx: SystemContext) => Promise<void>;

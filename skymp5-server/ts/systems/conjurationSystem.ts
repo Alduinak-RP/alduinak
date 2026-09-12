@@ -1,6 +1,6 @@
 import { System, Log, SystemContext } from "./system";
 import { CompanionSystem } from "./companionSystem";
-import { spellEffects, SpellEffect, MgefArchetype, npcLevel, keywordConditionsPass } from "./espmMagic";
+import { spellEffects, SpellEffect, MgefArchetype, npcLevel, keywordConditionsPass, turnsToAsh } from "./espmMagic";
 import { isPlayerActor, isNear, baseIdOf, hex } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -141,7 +141,7 @@ export class ConjurationSystem implements System {
     }
     const pos = [loc.pos[0], loc.pos[1], loc.pos[2] + REANIMATE_LIFT];
     const id = this.companions.spawn(casterId, baseIdOf(mp, corpseId),
-      { kind: "reanimated", pos, rot: loc.rot, durationSec: this.duration(effect), source: spellId });
+      { kind: "reanimated", pos, rot: loc.rot, durationSec: this.duration(effect), source: spellId, ashPile: turnsToAsh(mp, spellId) });
     if (id === null) return;
     try { mp.set(id, "inventory", inventory); } catch (e) { this.log(`ConjurationSystem: inventory copy to ${hex(id)} failed: ${e}`); }
     try { mp.destroyActor(corpseId); } catch { }

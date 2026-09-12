@@ -16,7 +16,7 @@ sourceMapSupport.install({
 
 import * as scampNative from "./scampNative";
 import { Settings } from "./settings";
-import { System } from "./systems/system";
+import { System, WORLD_LOADED_EVENT } from "./systems/system";
 import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
@@ -347,6 +347,12 @@ const main = async () => {
     console.error(e);
     console.error(`Stopping the server due to the previous error`);
     process.exit(-1);
+  }
+
+  try {
+    ctx.gm.emit(WORLD_LOADED_EVENT);
+  } catch (e) {
+    console.error(e);
   }
 
   // Attach before gamemode load (it probes mp.assignBackendFaction etc); a failed attach must degrade, never block the load

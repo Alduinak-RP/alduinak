@@ -1,10 +1,11 @@
 import * as fs from "fs";
 import * as chokidar from "chokidar";
 import { Settings } from "../settings";
-import { System, Log, SystemContext } from "./system";
+import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
 import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
+import { destroyLeftovers } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -131,6 +132,8 @@ export class NpcSpawnSystem implements System {
 
   private mp: Mp = null;
   private zones: Zone[] = [];
+  // Ids placed by the previous run, destroyed once the world DB has loaded
+  private leftovers: number[] = [];
   private ready = false;
   private loading = false;
   // Loads run one at a time, whether the watcher or the admin panel asks
@@ -146,6 +149,7 @@ export class NpcSpawnSystem implements System {
     const rawCorpse = Number(all?.["npcCorpseSeconds"]);
     if (Number.isFinite(rawCorpse) && rawCorpse > 0) this.corpseMs = rawCorpse * 1000;
     this.cleanupLeftovers(this.mp);
+    ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
     await this.queueLoad("boot");
     this.watchFile();
     this.ready = true;
@@ -614,16 +618,22 @@ export class NpcSpawnSystem implements System {
     }, RELOAD_DEBOUNCE_MS);
   }
 
-  // Spawned NPCs persist in the world DB, so ids from a previous run are destroyed on boot instead of leaking forever
-  private cleanupLeftovers(mp: Mp): void {
-    let ids: number[] = [];
+  // Spawned NPCs persist in the world DB, so ids from a previous run are read on boot and destroyed instead of leaking forever
+  private cleanupLeftovers(_mp: Mp): void {
+    let ids: unknown = [];
     try { ids = JSON.parse(fs.readFileSync(SPAWNS_FILE, "utf8")); } catch { }
-    if (!Array.isArray(ids) || !ids.length) return;
-    let removed = 0;
-    for (const id of ids) {
-      try { mp.destroyActor(Number(id)); removed++; } catch { }
+    this.leftovers = Array.isArray(ids) ? ids.map((id) => Number(id) >>> 0).filter((id) => id > 0) : [];
+  }
+
+  // Saved forms load in attachSaveStorage after every system's init; NPCs this run placed are never touched
+  private removeLeftovers(): void {
+    const current = new Set(this.zones.flatMap((z) => z.spawned.map((e) => e.id)));
+    const ids = this.leftovers.filter((id) => !current.has(id));
+    this.leftovers = [];
+    if (ids.length) {
+      const removed = destroyLeftovers(this.mp, ids, (id) => !!this.mp.get(id, TAG_PROP));
+      this.log(`NpcSpawnSystem: removed ${removed}/${ids.length} leftover npc(s) from the previous run`);
     }
-    this.log(`NpcSpawnSystem: removed ${removed}/${ids.length} leftover npc(s) from the previous run`);
     this.saveSpawns();
   }
 

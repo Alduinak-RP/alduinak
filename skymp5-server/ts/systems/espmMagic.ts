@@ -1,4 +1,4 @@
-import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
+import { espmFieldFormIds, readFormIdField, readVmadScripts } from "./formIdUtil";
 import { baseIdOf } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -27,6 +27,8 @@ interface KeywordCondition {
   value: number;
 }
 
+// Script effect of Reanimate Corpse, Revenant and Dread Zombie that turns the zombie to ash; Dead Thrall has none
+const ASH_PILE_SCRIPT = "reanimateashpile";
 const CTDA_HAS_KEYWORD = 560;
 const CTDA_USE_GLOBAL = 0x04;
 const ACBS_PC_LEVEL_MULT = 0x80;
@@ -37,6 +39,7 @@ const MAX_TEMPLATE_DEPTH = 16;
 
 const effectCache = new Map<number, SpellEffect[]>();
 const conditionCache = new Map<number, KeywordCondition[]>();
+const ashCache = new Map<number, boolean>();
 
 const fieldData = (lookup: any, type: string): Uint8Array | null => {
   const fields = lookup?.record?.fields;
@@ -96,6 +99,15 @@ export const spellEffects = (mp: Mp, spellId: number): SpellEffect[] => {
   }
   effectCache.set(spellId, out);
   return out;
+};
+
+// True when an effect of the spell runs the vanilla ReanimateAshPile script (MGEF VMAD)
+export const turnsToAsh = (mp: Mp, spellId: number): boolean => {
+  const cached = ashCache.get(spellId);
+  if (cached !== undefined) return cached;
+  const result = spellEffects(mp, spellId).some((e) => readVmadScripts(lookup(mp, e.mgefId)).has(ASH_PILE_SCRIPT));
+  ashCache.set(spellId, result);
+  return result;
 };
 
 // The NPC_ record that supplies a template-controlled part, walking the actor's template chain like EvaluateTemplate.h
