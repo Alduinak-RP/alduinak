@@ -45,6 +45,18 @@ export class ObjectReferenceEx {
       && Flora.from(base)?.getIngredient()?.getType() === FormType.LeveledItem;
   }
 
+  // Sent by the server's UntouchableSystem on connect
+  static setUntouchableBaseIds(ids: number[]): void {
+    ObjectReferenceEx.untouchableBaseIds = new Set(ids.map((id) => id >>> 0));
+  }
+
+  static isUntouchable(base: Form): boolean {
+    return ObjectReferenceEx.untouchableBaseIds.has(base.getFormID() >>> 0)
+      || ObjectReferenceEx.isLeveledFlora(base);
+  }
+
+  private static untouchableBaseIds = new Set<number>();
+
   // Engine activation stays off for everything the server processes; the SP activate event still fires
   static wantsActivationBlock(base: Form): boolean {
     const t = base.getType();
@@ -55,7 +67,7 @@ export class ObjectReferenceEx {
       || FormTypeEx.isItem(t)
       || t === FormType.NPC
       || (t === FormType.Door && base.getFormID() !== caveGSecretDoor01)
-      || ObjectReferenceEx.isLeveledFlora(base);
+      || ObjectReferenceEx.isUntouchable(base);
   }
 
   static dealWithRef(self: ObjectReference, base: Form): void {

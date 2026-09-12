@@ -2,6 +2,7 @@ import { Cell, CellFullyLoadedEvent, Form, FormType, MotionType, ObjectLoadedEve
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CreateActorMessage } from "../messages/createActorMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { FormTypeEx } from "../../extensions/formTypeEx";
 import { logError, logTrace } from "../../logging";
@@ -18,6 +19,18 @@ export class StaticRefsService extends ClientListener {
     this.controller.on("cellFullyLoaded", (e) => this.onCellFullyLoaded(e));
     this.controller.on("objectLoaded", (e) => this.onObjectLoaded(e));
     this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+  }
+
+  private onCustomPacketMessage(e: ConnectionMessage<CustomPacketMessage>): void {
+    let content: Record<string, unknown>;
+    try {
+      content = JSON.parse(e.message.contentJsonDump);
+    } catch {
+      return;
+    }
+    if (content["customPacketType"] !== "untouchableBaseIds" || !Array.isArray(content["ids"])) return;
+    ObjectReferenceEx.setUntouchableBaseIds((content["ids"] as unknown[]).map(Number).filter((id) => id > 0));
   }
 
   private onCellFullyLoaded(e: CellFullyLoadedEvent): void {
@@ -69,7 +82,7 @@ export class StaticRefsService extends ClientListener {
     if (!this.isFrozenBase(base, type) || !ref.is3DLoaded()) return false;
     ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
     // Pickups and untouchable decor only go through the server, which syncs or refuses them
-    if (FormTypeEx.isItem(type) || ObjectReferenceEx.isLeveledFlora(base)) ref.blockActivation(true);
+    if (FormTypeEx.isItem(type) || ObjectReferenceEx.isUntouchable(base)) ref.blockActivation(true);
     return true;
   }
 

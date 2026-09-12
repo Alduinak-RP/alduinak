@@ -175,9 +175,9 @@ export class InteractionPromptService extends ClientListener {
       case FormType.Book:
         return "Read";
       case FormType.Flora: {
-        // Coin purses are untouchable decor (server untouchableBaseIds)
+        // Coin purses and loose salmon are untouchable decor (server untouchableBaseIds)
         const base = ref.getBaseObject();
-        if (base && ObjectReferenceEx.isLeveledFlora(base)) return null;
+        if (base && ObjectReferenceEx.isUntouchable(base)) return null;
         return ref.isHarvested() ? null : "Harvest";
       }
       case FormType.Tree:
