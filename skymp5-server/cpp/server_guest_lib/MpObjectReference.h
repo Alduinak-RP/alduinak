@@ -259,8 +259,9 @@ private:
   MpActor* occupant = nullptr;
   std::shared_ptr<OccupantDestroyEventSink> occupantDestroySink;
   std::shared_ptr<OccupantDisableEventSink> occupantDisableSink;
-  // Form ids, not pointers: a seated actor can be destroyed without a second activation
+  // Form ids so a destroyed occupant can't dangle
   std::vector<uint32_t> furnitureOccupantIds;
+  std::shared_ptr<OccupantDisableEventSink> furnitureDisableSink;
   std::optional<std::chrono::system_clock::duration> relootTimeOverride;
   std::unique_ptr<uint8_t> chanceNoneOverride;
   bool activationBlocked = false;

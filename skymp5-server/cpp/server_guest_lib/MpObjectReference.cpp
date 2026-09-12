@@ -28,8 +28,8 @@
 #include "script_storages/IScriptStorage.h"
 #include <ScopedTask.h>
 #include <TimeUtils.h>
-#include <antigo/Context.h>
 #include <algorithm>
+#include <antigo/Context.h>
 #include <antigo/ResolvedContext.h>
 #include <map>
 #include <numeric>
@@ -135,6 +135,10 @@ public:
       untrustedRefPtr->SetOpen(false);
       untrustedRefPtr->occupant = nullptr;
     }
+
+    auto& seats = untrustedRefPtr->furnitureOccupantIds;
+    seats.erase(std::remove(seats.begin(), seats.end(), actor.GetFormId()),
+                seats.end());
   }
 
 private:
@@ -1617,6 +1621,7 @@ bool MpObjectReference::ProcessActivateSecond(
                 actorActivator->GetFormId());
     if (it != furnitureOccupantIds.end()) {
       furnitureOccupantIds.erase(it);
+      actorActivator->RemoveEventSink(furnitureDisableSink);
       return true;
     }
   }
@@ -1711,18 +1716,23 @@ bool MpObjectReference::TryOccupyFurniture(MpActor& actor,
   auto& occupants = furnitureOccupantIds;
 
   // Seats freed without a closing activation (walked off, disabled, destroyed)
-  occupants.erase(
-    std::remove_if(
-      occupants.begin(), occupants.end(),
-      [&](uint32_t occupantId) {
-        auto& form = worldState->LookupFormById(occupantId);
-        MpActor* occupantActor = form ? form->AsActor() : nullptr;
-        return !occupantActor || occupantActor->IsDisabled() ||
-          occupantActor->GetCellOrWorld() != GetCellOrWorld() ||
-          (occupantActor->GetPos() - GetPos()).SqrLength() >
-          occupationReach * occupationReach;
-      }),
-    occupants.end());
+  auto isStale = [&](uint32_t occupantId) {
+    auto& form = worldState->LookupFormById(occupantId);
+    MpActor* occupantActor = form ? form->AsActor() : nullptr;
+    if (!occupantActor) {
+      return true;
+    }
+    bool stale = occupantActor->IsDisabled() ||
+      occupantActor->GetCellOrWorld() != GetCellOrWorld() ||
+      (occupantActor->GetPos() - GetPos()).SqrLength() >
+        occupationReach * occupationReach;
+    if (stale) {
+      occupantActor->RemoveEventSink(furnitureDisableSink);
+    }
+    return stale;
+  };
+  occupants.erase(std::remove_if(occupants.begin(), occupants.end(), isStale),
+                  occupants.end());
 
   if (std::find(occupants.begin(), occupants.end(), actor.GetFormId()) !=
       occupants.end()) {
@@ -1746,6 +1756,11 @@ bool MpObjectReference::TryOccupyFurniture(MpActor& actor,
   }
 
   occupants.push_back(actor.GetFormId());
+  if (!furnitureDisableSink) {
+    furnitureDisableSink.reset(
+      new OccupantDisableEventSink(*worldState, this));
+  }
+  actor.AddEventSink(furnitureDisableSink);
   spdlog::info("MpObjectReference::TryOccupyFurniture {:x} - {:x} seated, "
                "{}/{} markers used",
                GetFormId(), actor.GetFormId(), occupants.size(), capacity);
