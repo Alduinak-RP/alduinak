@@ -77,7 +77,7 @@ const setPcInventory = (inv: Inventory): void => {
   storage['pcInv'] = inv;
 };
 
-const CONSUME_APPLY_HOLD_MS = 1500;
+const CONSUME_APPLY_HOLD_MS = 10000;
 
 let pcInvLastApply = 0;
 let pcInvHoldUntil = 0;
