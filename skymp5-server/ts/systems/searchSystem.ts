@@ -98,7 +98,8 @@ export class SearchSystem implements System {
     const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
     mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
       const taken = this.limitedTakes(ctx, sourceId >>> 0, actorId >>> 0);
-      if (taken && taken.size >= this.playerBodyTakeLimit) {
+      // More of a counted base form is free, so a take the server splits over several copies moves whole
+      if (taken && taken.size >= this.playerBodyTakeLimit && !taken.has(baseId >>> 0)) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
