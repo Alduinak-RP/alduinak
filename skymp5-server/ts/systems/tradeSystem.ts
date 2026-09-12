@@ -9,13 +9,13 @@ type Mp = any;
 // Server-authoritative barter between two players; lives in server core so it survives gamemode hot reloads. The shipped client TradeService speaks exactly this protocol.
 //
 // Flow: tradeRequest -> tradeInvite accept/decline -> both edit offers (tradeSetOffer resets locks) -> both tradeLock -> both tradeAccept, then the server swaps the items atomically.
-// Only "simple" stacks trade (no enchanted/named/worn extras).
+// Only simple stacks and property keys trade (no enchanted/named/worn extras).
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server
 //     { customPacketType: "tradeRequest", recipient: <remoteActorFormId> }
 //     { customPacketType: "tradeRespond", accept: <bool> }
-//     { customPacketType: "tradeSetOffer", items: [{ baseId, count }] }
+//     { customPacketType: "tradeSetOffer", items: [{ baseId, count, name? }] }
 //     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
 //   Server -> Client
 //     { customPacketType: "tradeInvite", fromName }
@@ -32,6 +32,7 @@ const DEFAULT_INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per ini
 interface Item {
   baseId: number;
   count: number;
+  name?: string; // property keys only
 }
 
 interface InventoryEntry extends Item {
@@ -74,14 +75,26 @@ const EXTRA_KEYS: (keyof InventoryEntry)[] = [
   'removeEnchantmentOnUnequip',
 ];
 
+// Property keys (housing) are the one named item that trades; the name is the credential.
+const KEY_BASE_ID = 0x000db0e2;
+
+const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false;
+
 function hasExtras(e: InventoryEntry): boolean {
-  for (const k of EXTRA_KEYS) {
-    const v = e[k];
-    if (v !== undefined && v !== null && v !== false) {
-      return true;
-    }
+  return EXTRA_KEYS.some((k) => isSet(e[k]));
+}
+
+function isKeyEntry(e: InventoryEntry): boolean {
+  return (e.baseId >>> 0) === KEY_BASE_ID && typeof e.name === 'string' && !!e.name &&
+    EXTRA_KEYS.every((k) => k === 'name' || !isSet(e[k]));
+}
+
+// Plain stacks match by baseId, keys by baseId plus the exact name.
+function matchesLine(e: InventoryEntry, item: Item): boolean {
+  if (e.baseId !== item.baseId) {
+    return false;
   }
-  return false;
+  return item.name ? isKeyEntry(e) && e.name === item.name : !hasExtras(e);
 }
 
 function readInventory(mp: Mp, actorId: number): Inventory {
@@ -92,45 +105,53 @@ function readInventory(mp: Mp, actorId: number): Inventory {
   return { entries: [] };
 }
 
-// How many of `baseId` the actor owns as plain, tradeable stacks.
-function simpleCount(inv: Inventory, baseId: number): number {
+// How many copies of one offer line the actor owns as tradeable stacks.
+function ownedCount(inv: Inventory, item: Item): number {
   let total = 0;
   for (const e of inv.entries) {
-    if (e.baseId === baseId && !hasExtras(e)) {
+    if (matchesLine(e, item)) {
       total += e.count;
     }
   }
   return total;
 }
 
-// Collapse an offer to positive, integer, de-duplicated stacks.
+// Collapse an offer to positive, integer, de-duplicated lines; only keys keep a name.
 function normalizeOffer(items: unknown): Item[] {
   if (!Array.isArray(items)) {
     return [];
   }
-  const byBase = new Map<number, number>();
+  const byLine = new Map<string, Item>();
   for (const raw of items) {
     const baseId = Number((raw as Item)?.baseId);
     const count = Math.floor(Number((raw as Item)?.count));
     if (!Number.isFinite(baseId) || !Number.isInteger(count) || count <= 0) {
       continue;
     }
-    byBase.set(baseId, (byBase.get(baseId) || 0) + count);
+    const rawName = (raw as Item)?.name;
+    const name = (baseId >>> 0) === KEY_BASE_ID && typeof rawName === 'string' && rawName ? rawName : undefined;
+    const key = baseId + '|' + (name || '');
+    const line = byLine.get(key);
+    if (line) {
+      line.count += count;
+    } else {
+      byLine.set(key, name ? { baseId, count, name } : { baseId, count });
+    }
   }
-  return Array.from(byBase, ([baseId, count]) => ({ baseId, count }));
+  return Array.from(byLine.values());
 }
 
 // True only if every offered stack is fully backed by simple inventory.
 function offerIsAffordable(inv: Inventory, offer: Item[]): boolean {
   for (const item of offer) {
-    if (simpleCount(inv, item.baseId) < item.count) {
+    if (ownedCount(inv, item) < item.count) {
       return false;
     }
   }
   return true;
 }
 
-// Remove an offer from a working inventory copy (simple stacks only).
+// Remove an offer from a working inventory copy.
 function removeOffer(inv: Inventory, offer: Item[]): void {
   for (const item of offer) {
     let remaining = item.count;
@@ -138,7 +159,7 @@ function removeOffer(inv: Inventory, offer: Item[]): void {
       if (remaining <= 0) {
         break;
       }
-      if (e.baseId === item.baseId && !hasExtras(e)) {
+      if (matchesLine(e, item)) {
         const take = Math.min(e.count, remaining);
         e.count -= take;
         remaining -= take;
@@ -151,11 +172,11 @@ function removeOffer(inv: Inventory, offer: Item[]): void {
 // Add an offer into a working inventory copy, merging onto an existing stack.
 function addOffer(inv: Inventory, offer: Item[]): void {
   for (const item of offer) {
-    const stack = inv.entries.find((e) => e.baseId === item.baseId && !hasExtras(e));
+    const stack = inv.entries.find((e) => matchesLine(e, item));
     if (stack) {
       stack.count += item.count;
     } else {
-      inv.entries.push({ baseId: item.baseId, count: item.count });
+      inv.entries.push(item.name ? { baseId: item.baseId, count: item.count, name: item.name } : { baseId: item.baseId, count: item.count });
     }
   }
 }
@@ -648,6 +669,9 @@ export class TradeSystem implements System {
     const nameOf = (globalThis as any).__alduinakItemName;
     return offer.map((i) => {
       let label = i.count + 'x 0x' + (i.baseId >>> 0).toString(16);
+      if (i.name) {
+        return label + ' ' + JSON.stringify(i.name);
+      }
       try {
         const n = nameOf?.(i.baseId);
         if (n) label += ' ' + JSON.stringify(n);
@@ -659,5 +683,5 @@ export class TradeSystem implements System {
 
 // Exported for unit/manual testing of the pure inventory math.
 export const __test = {
-  hasExtras, simpleCount, normalizeOffer, offerIsAffordable, removeOffer, addOffer,
+  hasExtras, ownedCount, normalizeOffer, offerIsAffordable, removeOffer, addOffer,
 };
