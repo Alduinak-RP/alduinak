@@ -8,7 +8,6 @@ import { applyMovement } from "../sync/movementApply";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
-import { getMovement } from "../sync/movementGet";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
 import { localIdToRemoteId } from "./worldViewMisc";
@@ -702,8 +701,8 @@ export class FormView {
       lastTryHost[remoteId] = Date.now();
 
       if (
-        getMovement(ac).worldOrCell ===
-        getMovement(Game.getPlayer() as Actor).worldOrCell
+        ObjectReferenceEx.getWorldOrCell(ac) ===
+        ObjectReferenceEx.getWorldOrCell(Game.getPlayer() as Actor)
       ) {
         tryHost(remoteId);
         return true;
