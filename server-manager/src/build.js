@@ -166,6 +166,24 @@ class Builder {
     return { vsDir, cmake, vcpkgDir, problems }
   }
 
+  // CMake pins a build tree to the VS install it was first configured with, so a moved install needs a fresh cache.
+  resetStaleCmakeCache(buildDir, vsDir) {
+    const cacheFile = path.join(buildDir, 'CMakeCache.txt')
+    let cached = null
+    try { cached = fs.readFileSync(cacheFile, 'utf8').match(/^CMAKE_GENERATOR_INSTANCE:\w+=(.*)$/m) } catch {}
+    const norm = p => p.split(',')[0].trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    if (!cached || norm(cached[1]) === norm(vsDir)) return { ok: true }
+    this.line(`[native] build/ was configured with Visual Studio at ${cached[1].trim()}; resetting CMakeCache.txt and CMakeFiles (dist and vcpkg_installed are kept)`)
+    try {
+      // CMakeFiles first, so a failure leaves the stale cache entry that triggers the retry
+      fs.rmSync(path.join(buildDir, 'CMakeFiles'), { recursive: true, force: true })
+      fs.rmSync(cacheFile, { force: true })
+    } catch (err) {
+      return { ok: false, error: `could not reset the stale CMake cache: ${err.message}` }
+    }
+    return { ok: true }
+  }
+
   // Configure + build the C++ with CMake/MSVC, same flags as the "Dist Windows Flatrim" CI workflow (.github/actions/pr_base).
   // The repo pins the CMake binary dir to <repo>/build - the same tree the live
   // deploy uses - so artifacts land in build/dist directly, no copy step.
@@ -243,6 +261,9 @@ class Builder {
       const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle')
       if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
     }
+
+    const reset = this.resetStaleCmakeCache(buildDir, tc.vsDir)
+    if (!reset.ok) return reset
 
     // shell:false: cmake.exe and several args contain spaces a shell command line would split.
     this.line('\n[native] configuring (first run compiles all vcpkg dependencies - expect 1-3 hours)…')
