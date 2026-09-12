@@ -3,11 +3,12 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CreateActorMessage } from "../messages/createActorMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { parseCustomPacket } from "./customPacketUtil";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { FormTypeEx } from "../../extensions/formTypeEx";
 import { logError, logTrace } from "../../logging";
 
-// World clutter is frozen per cell so local havok cannot move it; script-enabled refs are not covered
+// World clutter is frozen as its cell or 3D loads so local havok cannot move it
 const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora, FormType.Activator, FormType.Static, ...FormTypeEx.itemTypes];
 
 // Mods often place havok-enabled item meshes as statics; only those model folders are worth a native call
@@ -23,13 +24,8 @@ export class StaticRefsService extends ClientListener {
   }
 
   private onCustomPacketMessage(e: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown>;
-    try {
-      content = JSON.parse(e.message.contentJsonDump);
-    } catch {
-      return;
-    }
-    if (content["customPacketType"] !== "untouchableBaseIds" || !Array.isArray(content["ids"])) return;
+    const content = parseCustomPacket(e);
+    if (!content || content["customPacketType"] !== "untouchableBaseIds" || !Array.isArray(content["ids"])) return;
     ObjectReferenceEx.setUntouchableBaseIds((content["ids"] as unknown[]).map(Number).filter((id) => id > 0));
   }
 
