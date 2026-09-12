@@ -12,7 +12,7 @@ import { logError, logTrace } from "../../logging";
 const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora, FormType.Activator, FormType.Static, ...FormTypeEx.itemTypes];
 
 // Mods often place havok-enabled item meshes as statics; only those model folders are worth a native call
-const HAVOK_STATIC_MODEL = /(^|[\\/])(clutter|plants)[\\/]/i;
+const HAVOK_STATIC_MODEL = /(^|[\\/])clutter[\\/]|^(meshes[\\/])?plants[\\/]/i;
 
 export class StaticRefsService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
