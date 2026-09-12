@@ -123,6 +123,7 @@ export class CraftedExtrasService extends ClientListener {
     const newId = e.newContainer ? e.newContainer.getFormID() : 0;
     if ((oldId === 0x14 && newId === 0) || (oldId === 0 && newId === 0x14)) {
       this.nextCheckAt = Math.min(this.nextCheckAt, Date.now() + AFTER_CHANGE_MS);
+      holdPcInventoryApply(HOLD_MS);
     }
   }
 
