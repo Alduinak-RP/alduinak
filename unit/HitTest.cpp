@@ -245,3 +245,148 @@ TEST_CASE("checking weapon cooldown", "[Hit]")
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
 }
+
+namespace {
+nlohmann::json MakeSpellCastMessage(uint32_t spell, bool interruptCast)
+{
+  return nlohmann::json{
+    { "t", MsgType::SpellCast },
+    { "data",
+      { { "caster", 0x14 },
+        { "target", 0x14 },
+        { "spell", spell },
+        { "isDualCasting", false },
+        { "interruptCast", interruptCast },
+        { "castingSource", 0 },
+        { "aimAngle", 0.f },
+        { "aimHeading", 0.f },
+        { "actorAnimationVariables",
+          { { "booleans", nlohmann::json::array() },
+            { "floats", nlohmann::json::array() },
+            { "integers", nlohmann::json::array() } } },
+        { "keepAlive", false } } }
+  };
+}
+}
+
+TEST_CASE("An active ward blocks a frontal spell hit like a shield", "[Hit]")
+{
+  PartOne& p = GetPartOne();
+  constexpr uint32_t kAggressor = 0xff000000;
+  constexpr uint32_t kTarget = 0xff000001;
+  constexpr uint32_t kFlames = 0x00012fcd;
+  constexpr uint32_t kGreaterWard = 0x000211f0;
+
+  DoConnect(p, 0);
+  DoConnect(p, 1);
+  p.CreateActor(kAggressor, { 30, 100, 0 }, 0, 0x3c);
+  p.CreateActor(kTarget, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, kAggressor);
+  p.SetUserActor(1, kTarget);
+  auto& aggressor = p.worldState.GetFormAt<MpActor>(kAggressor);
+  auto& target = p.worldState.GetFormAt<MpActor>(kTarget);
+
+  Equipment aggressorEquipment;
+  aggressorEquipment.leftSpell = kFlames;
+  aggressor.SetEquipment(aggressorEquipment);
+  Equipment targetEquipment;
+  targetEquipment.leftSpell = kGreaterWard;
+  target.SetEquipment(targetEquipment);
+
+  RawMessageData rawMsgData;
+  rawMsgData.userId = 0;
+  HitMessage hitMsg;
+  hitMsg.data.aggressor = 0x14;
+  hitMsg.data.target = kTarget;
+  hitMsg.data.source = kFlames;
+
+  auto healthLostToHit = [&] {
+    target.SetPercentages({ 1.f, 1.f, 1.f });
+    p.GetActionListener().OnHit(rawMsgData, hitMsg);
+    return 1.f - target.GetChangeForm().actorValues.healthPercentage;
+  };
+
+  // Angle 0 faces +y, towards the aggressor
+  target.SetAngle({ 0.f, 0.f, 0.f });
+  const float unwarded = healthLostToHit();
+  REQUIRE(unwarded > 0.f);
+
+  DoMessage(p, 1, MakeSpellCastMessage(kGreaterWard, false));
+  REQUIRE(healthLostToHit() == Catch::Approx(unwarded * 0.1f));
+
+  target.SetAngle({ 0.f, 0.f, 180.f });
+  REQUIRE(healthLostToHit() == Catch::Approx(unwarded));
+
+  target.SetAngle({ 0.f, 0.f, 0.f });
+  DoMessage(p, 1, MakeSpellCastMessage(kGreaterWard, true));
+  REQUIRE(healthLostToHit() == Catch::Approx(unwarded));
+
+  p.DestroyActor(kAggressor);
+  p.DestroyActor(kTarget);
+  DoDisconnect(p, 0);
+  DoDisconnect(p, 1);
+}
+
+TEST_CASE("A paralysed actor cannot attack or move", "[Hit]")
+{
+  PartOne& p = GetPartOne();
+  constexpr uint32_t kCaster = 0xff000000;
+  constexpr uint32_t kVictim = 0xff000001;
+  constexpr uint32_t kParalyze = 0x0005ad5f;
+  constexpr uint32_t kIronDagger = 0x0001397e;
+
+  DoConnect(p, 0);
+  DoConnect(p, 1);
+  p.CreateActor(kCaster, { 0, 100, 0 }, 0, 0x3c);
+  p.CreateActor(kVictim, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, kCaster);
+  p.SetUserActor(1, kVictim);
+  auto& caster = p.worldState.GetFormAt<MpActor>(kCaster);
+  auto& victim = p.worldState.GetFormAt<MpActor>(kVictim);
+
+  Equipment casterEquipment;
+  casterEquipment.leftSpell = kParalyze;
+  caster.SetEquipment(casterEquipment);
+  victim.AddItem(kIronDagger, 1);
+  Equipment victimEquipment;
+  victimEquipment.inv.entries.push_back(
+    Inventory::Entry(kIronDagger, 1, kExtraWornTrue));
+  victim.SetEquipment(victimEquipment);
+
+  RawMessageData victimMsgData;
+  victimMsgData.userId = 1;
+  HitMessage stab;
+  stab.data.aggressor = 0x14;
+  stab.data.target = kCaster;
+  stab.data.source = kIronDagger;
+
+  auto casterHealthAfterStab = [&] {
+    caster.SetPercentages({ 1.f, 1.f, 1.f });
+    victim.SetLastHitTime(kCaster, std::chrono::steady_clock::now() - 10s);
+    p.GetActionListener().OnHit(victimMsgData, stab);
+    return caster.GetChangeForm().actorValues.healthPercentage;
+  };
+
+  REQUIRE(casterHealthAfterStab() < 1.f);
+
+  RawMessageData casterMsgData;
+  casterMsgData.userId = 0;
+  HitMessage paralyze;
+  paralyze.data.aggressor = 0x14;
+  paralyze.data.target = kVictim;
+  paralyze.data.source = kParalyze;
+  p.GetActionListener().OnHit(casterMsgData, paralyze);
+
+  REQUIRE(casterHealthAfterStab() == 1.f);
+
+  auto movement = jMovement;
+  movement["idx"] = victim.GetIdx();
+  movement["data"]["pos"] = { 300.f, 0.f, 0.f };
+  DoMessage(p, 1, movement);
+  REQUIRE(victim.GetPos() == NiPoint3{ 0.f, 0.f, 0.f });
+
+  p.DestroyActor(kCaster);
+  p.DestroyActor(kVictim);
+  DoDisconnect(p, 0);
+  DoDisconnect(p, 1);
+}
