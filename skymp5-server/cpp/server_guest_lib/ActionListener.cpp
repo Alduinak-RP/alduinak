@@ -2121,7 +2121,8 @@ void ActionListener::ApplyParalysis(MpActor& aggressor, MpActor& target,
 
   // A player's own client, or the host of an NPC
   MpActor& executor = target.GetActorToSendTo();
-  if (&executor == &aggressor) {
+  // The client that reported the hit already paralysed its real actor
+  if (&executor == &aggressor.GetActorToSendTo()) {
     return;
   }
   SpSnippetObjectArgument spellArg;
