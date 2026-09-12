@@ -122,6 +122,22 @@ bool IsGrantedBoundItem(const MpActor& actor, uint32_t itemId)
   }
   return false;
 }
+
+// Hosted NPCs keep no spell equipment on the server, their spell list is the gate
+bool CanCastSpell(const MpActor& actor, uint32_t spellId)
+{
+  if (actor.GetEquipment().IsSpellEquipped(spellId)) {
+    return true;
+  }
+  return actor.GetProfileId() == -1 && actor.IsSpellLearned(spellId);
+}
+
+// Projectiles may land after the spell left the hand
+bool CanHitWithSpell(const MpActor& actor, uint32_t spellId)
+{
+  return actor.GetEquipment().IsSpellEquipped(spellId) ||
+    actor.IsSpellLearned(spellId);
+}
 }
 
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
@@ -1233,8 +1249,13 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
 
   const auto equipment = aggressor->GetEquipment();
 
-  if (isSourceSpell && equipment.IsSpellEquipped(hitData.source)) {
-    OnSpellHit(aggressor, targetRef, hitData);
+  if (isSourceSpell) {
+    if (CanHitWithSpell(*aggressor, hitData.source)) {
+      OnSpellHit(aggressor, targetRef, hitData);
+    } else {
+      spdlog::info("ActionListener::OnHit - {:x} cannot hit with spell {:x}",
+                   hitData.aggressor, hitData.source);
+    }
     return;
   }
 
@@ -1319,12 +1340,10 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
-  const auto equipment = caster->GetEquipment();
-
-  if (equipment.IsSpellEquipped(spellCastData.spell) == false) {
+  if (!CanCastSpell(*caster, spellCastData.spell)) {
     spdlog::info("ActionListener::OnSpellCast - spell {0:x} not "
-                 "found in equipment",
-                 spellCastData.spell);
+                 "found in equipment of {1:x}",
+                 spellCastData.spell, caster->GetFormId());
     return;
   }
 
