@@ -38,6 +38,53 @@ uint32_t LongToNormal(uint64_t longFormId)
 }
 
 namespace {
+bool HasSweetPie(const WorldState& worldState)
+{
+  const auto& files = worldState.espmFiles;
+  return std::find(files.begin(), files.end(), "SweetPie.esp") != files.end();
+}
+
+// Non-hostile Health/Magicka/Stamina effects; areaOnly keeps those a self cast spreads to others
+std::vector<espm::Effects::Effect> GetRestorativeEffects(WorldState* worldState,
+                                                         uint32_t spellId,
+                                                         bool areaOnly)
+{
+  std::vector<espm::Effects::Effect> result;
+  const auto spellLookup =
+    worldState->GetEspm().GetBrowser().LookupById(spellId);
+  const auto spell = espm::Convert<espm::SPEL>(spellLookup.rec);
+  if (!spell) {
+    return result;
+  }
+  const auto spellData = spell->GetData(worldState->GetEspmCache());
+  for (const auto& effect : spellData.effects) {
+    if (!effect.effectItem || effect.effectFormId == 0) {
+      continue;
+    }
+    if (areaOnly && effect.effectItem->areaOfEffect == 0) {
+      continue;
+    }
+    const uint32_t effectId = spellLookup.ToGlobalId(effect.effectFormId);
+    const auto magicEffect = espm::GetData<espm::MGEF>(effectId, worldState);
+    if (magicEffect.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
+        magicEffect.data.IsFlagSet(espm::MGEF::Flags::Detrimental)) {
+      continue;
+    }
+    const auto av = magicEffect.data.primaryAV;
+    if (av != espm::ActorValue::Health && av != espm::ActorValue::Magicka &&
+        av != espm::ActorValue::Stamina) {
+      continue;
+    }
+    espm::Effects::Effect converted;
+    converted.effectId = effectId;
+    converted.magnitude = effect.effectItem->magnitude;
+    converted.areaOfEffect = effect.effectItem->areaOfEffect;
+    converted.duration = effect.effectItem->duration;
+    result.push_back(converted);
+  }
+  return result;
+}
+
 // Learned, NPC_/template/race and currently equipped spells
 std::vector<uint32_t> GetKnownSpells(const MpActor& actor)
 {
@@ -1415,6 +1462,13 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   MpActor* targetActor = nullptr;
   const bool selfDelivery = spellData.spellItem &&
     spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
+
+  // The cast event's target is always the caster, fire-and-forget heals on others land in OnSpellHit
+  if (!selfDelivery && spellData.spellItem &&
+      spellData.spellItem->castType == espm::SPEL::CastType::FireAndForget) {
+    return;
+  }
+
   if (selfDelivery) {
     targetActor = caster;
   } else if (targetRef) {
@@ -1436,35 +1490,11 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     }
   }
 
-  std::vector<espm::Effects::Effect> restoreEffects;
-  for (const auto& effect : spellData.effects) {
-    if (!effect.effectItem || effect.effectFormId == 0) {
-      continue;
-    }
-    const auto magicEffect =
-      espm::GetData<espm::MGEF>(effect.effectFormId, &partOne.worldState);
-    if (magicEffect.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
-        magicEffect.data.IsFlagSet(espm::MGEF::Flags::Detrimental)) {
-      continue;
-    }
-    const auto av = magicEffect.data.primaryAV;
-    if (av != espm::ActorValue::Health && av != espm::ActorValue::Magicka &&
-        av != espm::ActorValue::Stamina) {
-      continue;
-    }
-    espm::Effects::Effect converted;
-    converted.effectId = effect.effectFormId;
-    converted.magnitude = effect.effectItem->magnitude;
-    converted.areaOfEffect = effect.effectItem->areaOfEffect;
-    converted.duration = effect.effectItem->duration;
-    restoreEffects.push_back(converted);
-  }
+  auto restoreEffects =
+    GetRestorativeEffects(&partOne.worldState, spellCastData.spell, false);
 
   if (!restoreEffects.empty()) {
-    std::unordered_set<std::string> modFiles = {
-      partOne.worldState.espmFiles.begin(), partOne.worldState.espmFiles.end()
-    };
-    const bool hasSweetpie = modFiles.count("SweetPie.esp") > 0;
+    const bool hasSweetpie = HasSweetPie(partOne.worldState);
 
     const bool isConcentration = spellData.spellItem &&
       spellData.spellItem->castType == espm::SPEL::CastType::Concentration;
@@ -1612,6 +1642,30 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
                spellCastData.caster);
 
   FireHitDamageEvent(aggressor, targetActorPtr, hitData.source, damage);
+
+  // Heal Other and the area share of self heals (Grand Healing) restore their target here, the caster heals on cast
+  if (targetActorPtr == aggressor || targetActorPtr->IsDead()) {
+    return;
+  }
+  const auto spellData =
+    espm::GetData<espm::SPEL>(hitData.source, &partOne.worldState);
+  if (!spellData.spellItem ||
+      spellData.spellItem->castType != espm::SPEL::CastType::FireAndForget) {
+    return;
+  }
+  const bool selfDelivery =
+    spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
+  auto restoreEffects =
+    GetRestorativeEffects(&partOne.worldState, hitData.source, selfDelivery);
+  if (restoreEffects.empty()) {
+    return;
+  }
+  targetActorPtr->ApplyMagicEffects(restoreEffects,
+                                    HasSweetPie(partOne.worldState));
+  spdlog::info("OnSpellHit - applied {} restorative effect(s) of spell {:x} "
+               "to actor {:x}",
+               restoreEffects.size(), hitData.source,
+               targetActorPtr->GetFormId());
 }
 
 void ActionListener::OnWeaponHit(MpActor* aggressor,
