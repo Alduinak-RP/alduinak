@@ -659,13 +659,18 @@ export class FormView {
     }
     this.hostilityApplied = true;
     this.hostileFlagSeen = flag;
-    if (FormView.attacksEveryone(actor, model)) {
+    if (FormView.attacksEveryone(actor, model, this.remoteRefrId)) {
       actor.setActorValue("Aggression", 2);
     }
   }
 
   // Remote players' copies are neutral to every NPC, so NPCs that attack players on sight are raised to attack neutrals too
-  private static attacksEveryone(actor: Actor, model: FormModel): boolean {
+  private static attacksEveryone(actor: Actor, model: FormModel, remoteId: number | undefined): boolean {
+    const hostile = (model as Record<string, unknown>)["ff_hostile"];
+    // Companions are flagged false by the server, and CompanionService sets up the player's own ones
+    if (hostile === false || isOwnCompanion(remoteId)) {
+      return false;
+    }
     if (FormView.ambushRaces.includes(actor.getRace()?.getFormID() ?? 0)) {
       return true;
     }

@@ -10,6 +10,9 @@ export interface NpcLocation {
 // Keeps the engine from reviving placed NPCs; delays past ~1e9 s overflow its timer and fire at once
 export const NEVER_RESPAWN = 1e9;
 
+// Neighbor-visible flag (registered in the gamemode) telling clients the NPC attacks players on sight
+export const HOSTILE_PROP = "ff_hostile";
+
 // PlaceAtMe needs a self ref (anchorId, usually a player nearby); the new actor then moves to loc; throws on failure
 export const placeNpc = (mp: Mp, anchorId: number, baseDesc: string, loc: NpcLocation): number => {
   const self = { type: "form", desc: mp.getDescFromId(anchorId) };

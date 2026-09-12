@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { System, Log, SystemContext, Content } from "./system";
-import { placeNpc, NpcLocation } from "./npcPlacement";
+import { placeNpc, NpcLocation, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, hex } from "./actorUtil";
 
@@ -171,6 +171,8 @@ export class CompanionSystem implements System {
       if (opts.pos) loc.pos = opts.pos;
       if (opts.rot) loc.rot = opts.rot;
       id = placeNpc(mp, ownerId, baseDesc, loc) >>> 0;
+      // Clients never raise a companion to attack everyone
+      try { mp.set(id, HOSTILE_PROP, false); } catch { }
     } catch (e) {
       this.log(`CompanionSystem: failed to spawn ${baseDesc} for ${hex(ownerId)}: ${e}`);
       return null;

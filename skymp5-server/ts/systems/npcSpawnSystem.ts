@@ -4,7 +4,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
-import { placeNpc } from "./npcPlacement";
+import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -29,8 +29,6 @@ const SPAWN_LIFT = 64;
 const RETRY_MS = 30000;
 const RELOAD_DEBOUNCE_MS = 500;
 const TAG_PROP = "private.npcSpawner";
-// Neighbor-visible flag (registered in the gamemode) telling clients the NPC attacks players on sight
-const HOSTILE_PROP = "ff_hostile";
 // ACBS template flag: the AI data comes from the TPLT template
 const TEMPLATE_USE_AI_DATA = 0x10;
 const MAX_TEMPLATE_DEPTH = 8;
