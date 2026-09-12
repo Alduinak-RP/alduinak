@@ -539,6 +539,59 @@ TEST_CASE("Activate BarrelFood01 in Whiterun (open/close)", "[PartOne][espm]")
   REQUIRE(!ref.IsOpen());
 }
 
+TEST_CASE("Bench seats one actor per sit marker", "[PartOne][espm]")
+{
+  auto& partOne = GetPartOne();
+
+  // CommonBench01 (3 sit markers) in Tamriel
+  const uint32_t benchId = 0x1b831;
+  const NiPoint3 benchPos = { 101853.55f, -57427.04f, 11104.f };
+  const uint32_t actorIds[] = { 0xff000000, 0xff000001, 0xff000002,
+                                0xff000003 };
+
+  for (Networking::UserId i = 0; i < 4; ++i) {
+    DoConnect(partOne, i);
+    partOne.CreateActor(actorIds[i], benchPos, 0, 0x3c);
+    partOne.SetUserActor(i, actorIds[i]);
+  }
+
+  auto& bench = partOne.worldState.GetFormAt<MpObjectReference>(benchId);
+
+  auto sit = [&](int i) {
+    partOne.Messages().clear();
+    bench.Activate(partOne.worldState.GetFormAt<MpActor>(actorIds[i]));
+    for (auto& m : partOne.Messages()) {
+      if (m.j["t"] == MsgType::OpenContainer && m.j["target"] == benchId) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto stand = [&](int i) {
+    bench.Activate(partOne.worldState.GetFormAt<MpActor>(actorIds[i]), false,
+                   true);
+  };
+
+  REQUIRE(sit(0));
+  REQUIRE(sit(1));
+  REQUIRE(sit(2));
+  REQUIRE(!sit(3));
+  REQUIRE(!sit(0));
+
+  stand(0);
+  REQUIRE(sit(3));
+
+  // Disabling an occupant frees the seat even if re-enabled before any use
+  partOne.SetEnabled(actorIds[1], false);
+  partOne.SetEnabled(actorIds[1], true);
+  REQUIRE(sit(1));
+
+  for (Networking::UserId i = 0; i < 4; ++i) {
+    DoDisconnect(partOne, i);
+    partOne.DestroyActor(actorIds[i]);
+  }
+}
+
 TEST_CASE("Activate torch", "[espm][PartOne]")
 {
   auto& partOne = GetPartOne();
