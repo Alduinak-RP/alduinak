@@ -455,9 +455,10 @@ export class FormView {
             } else {
               throw e;
             }
+          } finally {
+            model.movement.isWeapDrawn = backup;
+            model.movement.isDead = isDeadBackup;
           }
-          model.movement.isWeapDrawn = backup;
-          model.movement.isDead = isDeadBackup;
 
           this.movState.lastNumChanges = +(model.numMovementChanges as number);
           this.movState.everApplied = true;
