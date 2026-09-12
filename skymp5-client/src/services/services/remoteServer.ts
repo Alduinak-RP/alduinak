@@ -23,7 +23,7 @@ import { nameof } from '../../lib/nameof';
 import { setActorValuePercentage } from '../../sync/actorvalues';
 import { applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown } from '../../sync/equipment';
-import { Inventory, applyInventory, getDiff, getInventory, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
+import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement } from '../../sync/movement';
 import { learnSpells, removeAllSpells } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
@@ -101,7 +101,11 @@ on('update', () => {
     pcInvLastApply = Date.now();
     const pcInv = getPcInventory();
     if (pcInv) {
-      encumbranceRefreshPending = getDiff(pcInv, getInventory(player), true).entries.length > 0;
+      // applyInventory keeps summoned bound items, so their pending removal is not a change
+      encumbranceRefreshPending = getDiff(pcInv, getInventory(player), true).entries.some((e) => {
+        const f = e.count < 0 ? Game.getFormEx(e.baseId) : null;
+        return !f || !isBoundItem(f);
+      });
       applyInventory(player, pcInv, false, true);
     }
   }
