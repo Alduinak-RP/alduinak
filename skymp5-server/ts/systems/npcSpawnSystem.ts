@@ -515,8 +515,14 @@ export class NpcSpawnSystem implements System {
     }
   }
 
-  // A corpse is left to its timer unless forced (admin reset)
+  // A corpse is left to its timer unless forced (admin reset); a death the poll has not seen yet starts its timer here
   private removeNpc(mp: Mp, id: number, force = false): void {
+    if (!id) return;
+    if (!force && !this.corpses.has(id)) {
+      let dead = false;
+      try { dead = mp.get(id, "isDead") === true; } catch { }
+      if (dead) this.corpses.set(id, Date.now() + this.corpseMs);
+    }
     if (!force && this.corpses.has(id)) return;
     this.corpses.delete(id);
     try { mp.destroyActor(id); } catch { }
