@@ -1212,8 +1212,9 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   }
 
   // Stops are relayed before the equipment and denylist gates so none is dropped
+  // Relays are reliable so observers get casts, keep-alives and stops in order
   if (spellCastData.interruptCast) {
-    SendToNeighbours(myActor->idx, rawMsgData);
+    SendToNeighbours(myActor->idx, rawMsgData, true);
     const bool hadChannel =
       restorationChannels.erase(caster->GetFormId()) > 0;
     spdlog::info("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
@@ -1239,7 +1240,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
-  SendToNeighbours(myActor->idx, rawMsgData);
+  SendToNeighbours(myActor->idx, rawMsgData, true);
 
   auto& browser = partOne.worldState.GetEspm().GetBrowser();
 
