@@ -22,6 +22,7 @@ import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
+import { GatheringSystem } from "./systems/gatheringSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
@@ -223,6 +224,8 @@ const main = async () => {
     new VoiceSystem(log),
     new AfkSystem(log),
     masterySystem,
+    // After mastery so a refused tool check is never credited as work.
+    new GatheringSystem(log),
     new BountyBoardSystem(log),
     new UntouchableSystem(log),
     npcSpawnSystem,
