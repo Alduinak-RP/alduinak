@@ -100,6 +100,11 @@ RE::TESObjectREFR* CreateReferenceAtLocation(
   RE::TESObjectCELL* cell, RE::TESWorldSpace* world, float posX, float posY,
   float posZ, float rotX, float rotY, float rotZ, bool persist);
 
+// Layout that suits every Skyrim edition; AddExtraData links an extra into it
+RE::ExtraDataList* CreateExtraDataList();
+bool AddExtraData(RE::ExtraDataList* extraList, uint32_t extraType,
+                  RE::BSExtraData* toAdd);
+
 // Threadsafe
 void BlockMoveRefrToPosition(bool blocked);
 int GetWeapDrawnMode(uint32_t actorId);

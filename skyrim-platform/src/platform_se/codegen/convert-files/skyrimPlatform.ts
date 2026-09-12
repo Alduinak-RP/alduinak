@@ -97,11 +97,19 @@ export interface ExtraCount extends ExtraData {
   type: 'Count'
   count: number
 }
+export interface EnchantmentEffect {
+  effectId: number
+  magnitude: number
+  area: number
+  duration: number
+  cost: number
+}
 export interface ExtraEnchantment extends ExtraData {
   type: 'Enchantment'
   enchantmentId: number
   maxCharge: number
   removeOnUnequip: boolean
+  effects?: EnchantmentEffect[]
 }
 export interface ExtraCharge extends ExtraData {
   type: 'Charge'
@@ -1598,6 +1606,7 @@ export interface Extra {
   soul?: 0 | 1 | 2 | 3 | 4 | 5;
   poisonId?: number;
   poisonCount?: number;
+  enchantmentEffects?: EnchantmentEffect[];
   worn?: boolean;
   wornLeft?: boolean;
 }
@@ -1620,6 +1629,7 @@ export interface ActorAnimationVariables {
 }
 
 export declare function setInventory(formId: number, inventory: Inventory): void;
+export declare function createEnchantment(isWeapon: boolean, effects: EnchantmentEffect[]): number;
 
 export declare function castSpellImmediate(actorCasterFormId: number, castingSource: SpellType, formIdSpell: number, formIdTarget: number, aimAngle: number, aimHeading: number, animationVariables: ActorAnimationVariables): void;
 export declare function interruptCast(actorCasterFormId: number, castingSource: SpellType, animationVariables: ActorAnimationVariables): void;

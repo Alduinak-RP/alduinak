@@ -1,10 +1,34 @@
 #include "InventoryApi.h"
 #include "CallNativeApi.h"
 #include "NullPointerException.h"
+#include "PapyrusTESModPlatform.h"
 
 extern CallNativeApi::NativeCallRequirements g_nativeCallRequirements;
 
 namespace {
+
+// Effects of a player-made enchantment, which only exists in this game session
+Napi::Value EffectsToJsValue(Napi::Env env, RE::EnchantmentItem& enchantment)
+{
+  auto res = Napi::Array::New(env);
+  uint32_t n = 0;
+  for (auto* effect : enchantment.effects) {
+    if (!effect || !effect->baseEffect) {
+      continue;
+    }
+    auto jEffect = Napi::Object::New(env);
+    jEffect.Set("effectId",
+                Napi::Number::New(env, effect->baseEffect->GetFormID()));
+    jEffect.Set("magnitude",
+                Napi::Number::New(env, effect->effectItem.magnitude));
+    jEffect.Set("area", Napi::Number::New(env, effect->effectItem.area));
+    jEffect.Set("duration",
+                Napi::Number::New(env, effect->effectItem.duration));
+    jEffect.Set("cost", Napi::Number::New(env, effect->cost));
+    res.Set(n++, jEffect);
+  }
+  return res;
+}
 
 Napi::Value ToJsValue(Napi::Env env, RE::ExtraHealth& extra)
 {
@@ -29,6 +53,9 @@ Napi::Value ToJsValue(Napi::Env env, RE::ExtraEnchantment& extra)
           Napi::Number::New(
             env, (extra.enchantment ? extra.enchantment->formID : 0)));
   res.Set("maxCharge", extra.charge);
+  if (extra.enchantment && extra.enchantment->IsDynamicForm()) {
+    res.Set("effects", EffectsToJsValue(env, *extra.enchantment));
+  }
   res.Set("type", Napi::String::New(env, "Enchantment"));
   return res;
 }
@@ -244,6 +271,8 @@ struct BoundObject
   double baseId;
   int count;
   RE::BGSEquipSlot* slot;
+  uint32_t enchantmentId;
+  uint16_t charge;
 };
 enum EquipSlot
 {
@@ -310,7 +339,17 @@ Napi::Value InventoryApi::SetInventory(const Napi::CallbackInfo& info)
                       RE::TESForm::LookupByID(EquipSlot::LeftHand));
     }
 
-    objects.push_back({ baseId, count, slot });
+    const auto enchantmentValue = entry.Get("enchantmentId");
+    const uint32_t enchantmentId = enchantmentValue.IsNumber()
+      ? enchantmentValue.As<Napi::Number>().Uint32Value()
+      : 0;
+    const auto chargeValue = entry.Get("maxCharge");
+    const auto charge = static_cast<uint16_t>(
+      chargeValue.IsNumber()
+        ? std::clamp(chargeValue.As<Napi::Number>().DoubleValue(), 0.0, 65535.0)
+        : 0.0);
+
+    objects.push_back({ baseId, count, slot, enchantmentId, charge });
   }
 
   g_nativeCallRequirements.gameThrQ->AddTask([formId, objects](Viet::Void) {
@@ -328,12 +367,27 @@ Napi::Value InventoryApi::SetInventory(const Napi::CallbackInfo& info)
         continue;
       }
 
-      pActor->AddObjectToContainer(pBoundObject, nullptr, object.count,
+      RE::ExtraDataList* extraList = nullptr;
+      auto enchantment = object.enchantmentId
+        ? RE::TESForm::LookupByID<RE::EnchantmentItem>(object.enchantmentId)
+        : nullptr;
+      if (enchantment) {
+        if (auto extra = RE::malloc<RE::ExtraEnchantment>()) {
+          ::new (extra) RE::ExtraEnchantment(enchantment, object.charge);
+          extraList = TESModPlatform::CreateExtraDataList();
+          TESModPlatform::AddExtraData(
+            extraList, static_cast<uint32_t>(RE::ExtraDataType::kEnchantment),
+            extra);
+          RetainCreatedEnchantment(enchantment);
+        }
+      }
+
+      pActor->AddObjectToContainer(pBoundObject, extraList, object.count,
                                    nullptr);
       if (object.slot) {
         RE::ActorEquipManager* manager = RE::ActorEquipManager::GetSingleton();
         bool forceEquip = pActor->GetFormID() != 0x14;
-        manager->EquipObject(pActor, pBoundObject, nullptr, 1, object.slot,
+        manager->EquipObject(pActor, pBoundObject, extraList, 1, object.slot,
                              false, forceEquip, false, false);
       }
     }
@@ -341,8 +395,67 @@ Napi::Value InventoryApi::SetInventory(const Napi::CallbackInfo& info)
   return info.Env().Undefined();
 }
 
+void InventoryApi::RetainCreatedEnchantment(RE::EnchantmentItem* enchantment)
+{
+  auto manager = RE::BGSCreatedObjectManager::GetSingleton();
+  if (!enchantment || !enchantment->IsDynamicForm() || !manager) {
+    return;
+  }
+  RE::BSSpinLockGuard locker(manager->lock);
+  for (auto* list :
+       { &manager->weaponEnchantments, &manager->armorEnchantments }) {
+    for (auto& data : *list) {
+      if (data.magicItem == enchantment) {
+        data.refCount = data.refCount + 1;
+        return;
+      }
+    }
+  }
+}
+
+// Same runtime enchantment the enchanting table would make from these effects
+Napi::Value InventoryApi::CreateEnchantment(const Napi::CallbackInfo& info)
+{
+  const bool isWeapon = NapiHelper::ExtractBoolean(info[0], "isWeapon");
+  auto jEffects = NapiHelper::ExtractArray(info[1], "effects");
+
+  RE::BSTArray<RE::Effect> effects;
+  for (uint32_t i = 0; i < jEffects.Length(); ++i) {
+    auto jEffect = NapiHelper::ExtractObject(jEffects.Get(i), "effects[i]");
+    auto baseEffect = RE::TESForm::LookupByID<RE::EffectSetting>(
+      NapiHelper::ExtractUInt32(jEffect.Get("effectId"), "effectId"));
+    if (!baseEffect) {
+      return Napi::Number::New(info.Env(), 0);
+    }
+    RE::Effect effect;
+    effect.effectItem.magnitude =
+      NapiHelper::ExtractFloat(jEffect.Get("magnitude"), "magnitude");
+    effect.effectItem.area =
+      NapiHelper::ExtractUInt32(jEffect.Get("area"), "area");
+    effect.effectItem.duration =
+      NapiHelper::ExtractUInt32(jEffect.Get("duration"), "duration");
+    effect.baseEffect = baseEffect;
+    effect.cost = NapiHelper::ExtractFloat(jEffect.Get("cost"), "cost");
+    effects.push_back(effect);
+  }
+
+  auto manager = RE::BGSCreatedObjectManager::GetSingleton();
+  if (effects.empty() || !manager) {
+    return Napi::Number::New(info.Env(), 0);
+  }
+
+  auto enchantment = isWeapon ? manager->AddWeaponEnchantment(effects)
+                              : manager->AddArmorEnchantment(effects);
+  RetainCreatedEnchantment(enchantment);
+  return Napi::Number::New(info.Env(),
+                           enchantment ? enchantment->GetFormID() : 0);
+}
+
 void InventoryApi::Register(Napi::Env env, Napi::Object& exports)
 {
+  exports.Set("createEnchantment",
+              Napi::Function::New(
+                env, NapiHelper::WrapCppExceptions(CreateEnchantment)));
   exports.Set("getExtraContainerChanges",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(GetExtraContainerChanges)));

@@ -2,6 +2,7 @@
 #include "CallNativeApi.h"
 #include "ConsoleApi.h"
 #include "ExceptionPrinter.h"
+#include "InventoryApi.h"
 #include "NullPointerException.h"
 
 #include <RE/B/BSPointerHandle.h>
@@ -580,8 +581,7 @@ void TESModPlatform::PushWornState(IVM* vm, StackID stackId,
   g_wornLeft = wornLeft;
 }
 
-namespace {
-RE::ExtraDataList* CreateExtraDataList()
+RE::ExtraDataList* TESModPlatform::CreateExtraDataList()
 {
   constexpr size_t kBaseExtraListSizeMax = 24;
   constexpr size_t kSpinLockSizeMax = 8;
@@ -609,6 +609,23 @@ RE::ExtraDataList* CreateExtraDataList()
 
   return extraList;
 }
+
+bool TESModPlatform::AddExtraData(RE::ExtraDataList* extraList,
+                                  uint32_t extraType, RE::BSExtraData* toAdd)
+{
+  if (!extraList || !toAdd ||
+      extraList->HasType(static_cast<RE::ExtraDataType>(extraType))) {
+    return false;
+  }
+
+  RE::BSWriteLockGuard locker(extraList->GetLock());
+  auto* next = extraList->_extraData.GetData();
+  extraList->_extraData.GetData() = toAdd;
+  toAdd->next = next;
+
+  auto presence = extraList->_extraData.GetPresence();
+  presence->bits[extraType >> 3] |= static_cast<uint8_t>(1 << (extraType % 8));
+  return true;
 }
 
 void TESModPlatform::AddItemEx(
@@ -619,32 +636,10 @@ void TESModPlatform::AddItemEx(
   FixedString textDisplayData, int32_t soul, RE::AlchemyItem* poison,
   int32_t poisonCount)
 {
-  auto markType = [](RE::BaseExtraList::PresenceBitfield* presence,
-                     uint32_t type, bool bCleared) {
-    uint32_t index = (type >> 3);
-    uint8_t bitMask = 1 << (type % 8);
-    uint8_t& flag = presence->bits[index];
-    if (bCleared) {
-      flag &= ~bitMask;
-    } else {
-      flag |= bitMask;
-    }
-  };
-
-  auto addExtra = [markType](void* this__, uint32_t extraType,
-                             RE::BSExtraData* toAdd) {
-    auto this_ = reinterpret_cast<RE::ExtraDataList*>(this__);
-
-    if (!toAdd || this_->HasType(static_cast<RE::ExtraDataType>(extraType))) {
-      return false;
-    }
-
-    RE::BSWriteLockGuard locker(this_->GetLock());
-    auto* next = this_->_extraData.GetData();
-    this_->_extraData.GetData() = toAdd;
-    toAdd->next = next;
-    markType(this_->_extraData.GetPresence(), extraType, false);
-    return true;
+  auto addExtra = [](void* this__, uint32_t extraType,
+                     RE::BSExtraData* toAdd) {
+    return AddExtraData(reinterpret_cast<RE::ExtraDataList*>(this__),
+                        extraType, toAdd);
   };
 
   auto ui = RE::UI::GetSingleton();
@@ -691,6 +686,7 @@ void TESModPlatform::AddItemEx(
       if (extra) {
         ::new (extra) RE::ExtraEnchantment(enchantment, maxCharge,
                                            removeEnchantmentOnUnequip);
+        InventoryApi::RetainCreatedEnchantment(enchantment);
         addExtra(extraList_,
                  static_cast<uint32_t>(RE::ExtraDataType::kEnchantment),
                  extra);
