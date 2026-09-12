@@ -1,7 +1,7 @@
 // Alduinak launcher controlmap override.
-// Based on the vanilla Skyrim SE controlmap.txt. The only change from vanilla
-// is the "Wait" action keyboard binding (T / 0x14) set to 0xff (unbound),
-// because waiting is disabled on the server. All other bindings are vanilla.
+// Based on the vanilla Skyrim AE (1.6.1130+) PC controlmap.txt, which adds the Creations Menu
+// input context. The only change from vanilla is the "Wait" action keyboard binding (T / 0x14)
+// set to 0xff (unbound), because waiting is disabled on the server. All other bindings are vanilla.
 // Written automatically by the launcher on install; do not edit by hand.
 // 1st field: User event name.  DO NOT ALTER!  This field is used to ID events in the code							
 // 2nd: Keyboard key ID that will proc this event.  A value of 0xff means the event is unmapped for this device.							
@@ -193,6 +193,30 @@ RotatePick			0xff													0xa														0x000b			0	0	0	0x8
 RotateLock			!0,Forward,!0,Back,!0,Strafe Left,!0,Strafe Right		!0,Forward,!0,Back,!0,Strafe Left,!0,Strafe Right		0x000c			0	0	0	0x8
 DebugMode			0x35													0xff													0x4000			0	0	0	0x8
 Cancel				!0,Tween Menu,!0,Pause									!0,Tween Menu,!0,Pause									0x2000			0	0	0	0x8
+
+// Creations Menu							
+Accept					0x12,0x1c				0xff					0x1000			0	0	0	0x8
+Cancel					0x0f,0x1				0xff					0x2000			0	0	0	0x8
+Up						0x11,0xc8				0xff					0x0001			0	0	0	0x8
+Down					0x1f,0xd0				0xff					0x0002			0	0	0	0x8
+Left					0x1e,0xcb				0xff					0x0004			0	0	0	0x8
+Right					0x20,0xcd				0xff					0x0008			0	0	0	0x8
+HomeKey					0xc7					0xff					0xff			0	0	0	0x8
+EndKey					0xcf					0xff					0xff			0	0	0	0x8
+DeleteKey				0xd3					0xff					0xff			0	0	0	0x8
+MouseClickAccept		0xff					0x0						0xff			0	0	0	0x8
+Options					0x18					0xff					0x0010			0	0	0	0x8
+Left Stick				0xff					0xff					0x000b			0	0	0	0x8
+Console					0x29					0xff					0xff			0	0	0	0x10
+MouseScrollDown			0xff					0x9						0xff			0	0	0	0x8
+MouseScrollUp			0xff					0x8						0xff			0	0	0	0x8
+LoadOrderAndDelete		0x14					0xff					0x8000			0	0	0	0x8
+CategorySideBar			0x2a					0xff					0x0009			0	0	0	0x8
+LikeUnlike				0x26					0xff					0x0200			0	0	0	0x8
+SearchEdit				0x2d					0xff					0x0100			0	0	0	0x8
+Filter					0x2f					0xff					0x000a			0	0	0	0x8
+F1						0x3b					0xff					0xff			0	0	0	0x8
+PurchaseCredits			0x19					0xff					0x4000			0	0	0	0x8
 
 // Favor
 Cancel		!0,Tween Menu,!0,Pause	!0,Tween Menu,!0,Pause	0x2000	0	0	0	0x108
