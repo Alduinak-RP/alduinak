@@ -413,6 +413,17 @@ void ActionListener::OnCustomPacket(const RawMessageData& rawMsgData,
 void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
                                       const UpdateMovementMessage& msg)
 {
+  // A paralysed player stays put until it ends or the server teleports them
+  if (!paralyzedUntil.empty()) {
+    MpActor* myActor = partOne.serverState.ActorByUser(rawMsgData.userId);
+    if (myActor && myActor->GetIdx() == msg.idx && IsParalyzed(*myActor)) {
+      if (!myActor->GetTeleportFlag()) {
+        return;
+      }
+      paralyzedUntil.erase(myActor->GetFormId());
+    }
+  }
+
   auto actor = SendToNeighbours(msg.idx, rawMsgData);
   if (actor) {
     bool teleportFlag = actor->GetTeleportFlag();
@@ -790,6 +801,10 @@ void ActionListener::OnActivate(const RawMessageData& rawMsgData,
          << ", but found 0x" << hosterId;
       throw std::runtime_error(ss.str());
     }
+  }
+
+  if (msg.data.caster == 0x14 && IsParalyzed(*ac)) {
+    return;
   }
 
   auto targetPtr = std::dynamic_pointer_cast<MpObjectReference>(
@@ -1377,6 +1392,12 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     }
   }
 
+  if (IsParalyzed(*aggressor)) {
+    spdlog::info("ActionListener::OnHit - {:x} is paralysed and cannot hit",
+                 aggressor->GetFormId());
+    return;
+  }
+
   if (hitData.target == 0x14) {
     hitData.target = myActor->GetFormId();
   }
@@ -1524,6 +1545,13 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     spdlog::info("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
                  "(restoration channel erased: {})",
                  caster->GetFormId(), spellCastData.spell, hadChannel);
+    return;
+  }
+
+  if (IsParalyzed(*caster)) {
+    spdlog::info("ActionListener::OnSpellCast - {:x} is paralysed and cannot "
+                 "cast",
+                 caster->GetFormId());
     return;
   }
 
