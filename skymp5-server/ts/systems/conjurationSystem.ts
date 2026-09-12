@@ -47,15 +47,19 @@ export class ConjurationSystem implements System {
     this.lastReanimateHit.delete(actorId);
   }
 
+  // Handlers run after the native event returns: they may destroy the hit target, which the C++ hit path still uses
   private hook(event: string, handler: (...ids: number[]) => void): void {
     const mp = this.mp;
     const previous = typeof mp[event] === "function" ? mp[event] : null;
     mp[event] = (...args: unknown[]) => {
-      try {
-        handler(...args.map((x) => Number(x) >>> 0));
-      } catch (e) {
-        this.log(`ConjurationSystem: ${event} failed: ${e}`);
-      }
+      const ids = args.map((x) => Number(x) >>> 0);
+      setImmediate(() => {
+        try {
+          handler(...ids);
+        } catch (e) {
+          this.log(`ConjurationSystem: ${event} failed: ${e}`);
+        }
+      });
       if (!previous) return true;
       try {
         return previous.apply(mp, args) !== false;

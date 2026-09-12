@@ -27,6 +27,8 @@ A companion is an NPC ally owned by one player. The server keeps the list; the o
 | `defend(ownerId, aggressorId)` | Every companion of the owner targets the aggressor. Already runs on every damaging hit on an owner. |
 | `list(ownerId)` / `info(companionId)` | `{ id, ownerId, baseId, kind, targetId, expiresAt, persistent, source }` |
 
+Do not call `spawn` or `dismiss` synchronously inside a native gamemode event about the same actor (`mp.onSpellHit`, `mp.onHitDamageAttempt` and the like). The C++ caller keeps using that actor after the handler returns, so destroying it there crashes the server. Defer the call with `setImmediate`, as `conjurationSystem.ts` does.
+
 `opts` fields:
 
 - `kind`: `"summon"`, `"reanimated"` or `"companion"` (the default).
