@@ -55,6 +55,9 @@ const ENCH_TYPE_ENCHANTMENT = 6;
 // ALCH ENIT flag
 const FLAG_POISON = 0x20000;
 const TEMPER_SUFFIX = /\s\((Fine|Superior|Exquisite|Flawless|Epic|Legendary)\)$/;
+// A poison OnEquip consumed stays claimable this long, since the report can wait for the inventory menu to close
+const POISON_CREDIT_MS = 10 * 60 * 1000;
+const MAX_POISON_CREDITS = 8;
 
 interface Cap {
   magnitude: number;
@@ -100,10 +103,18 @@ interface Reservation {
   count: number;
 }
 
+// A poison the server already removed when the player applied it (OnEquip of a poison ALCH)
+interface PoisonCredit {
+  baseId: number;
+  at: number;
+  used: boolean;
+}
+
 interface Plan {
   entry: InventoryEntry;
   reserve: Reservation[];
   soul: SoulSource | null;
+  credit: PoisonCredit | null;
   notes: string[];
 }
 
@@ -126,6 +137,21 @@ export class CraftedExtrasSystem implements System {
   systemName = "CraftedExtrasSystem";
 
   constructor(private log: Log) { }
+
+  // Applying a poison sends OnEquip, which eats and removes the poison before the craft report arrives
+  async initAsync(ctx: SystemContext): Promise<void> {
+    const mp = ctx.svr as Mp;
+    const previous = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
+    mp.onEatItem = (...args: unknown[]) => {
+      try {
+        const baseId = Number(args[1]) >>> 0;
+        if (this.isPoison(ctx, baseId)) this.addPoisonCredit(Number(args[0]) >>> 0, baseId);
+      } catch (e) {
+        this.log(`[crafted] poison credit failed: ${e}`);
+      }
+      return previous ? previous.apply(mp, args) : undefined;
+    };
+  }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     if (type !== PACKET) return;
@@ -160,13 +186,14 @@ export class CraftedExtrasSystem implements System {
     const station = this.stationOf(ctx, actorId, toFormId(content.workbench));
     const souls = this.soulSources(ctx, pool);
     const emptiedGems = this.pairEmptiedGems(ctx, gained, souls);
+    const credits = this.creditsOf(actorId);
 
     const added: InventoryEntry[] = [];
     const refused = new Set<number>();
     for (const g of gained) {
       if (emptiedGems.has(g)) continue;
       for (let unit = 0; unit < Math.min(g.count, MAX_UNITS); unit++) {
-        const plan = this.findPlan(ctx, g, pool, souls, station);
+        const plan = this.findPlan(ctx, g, pool, souls, station, credits);
         if (!plan) {
           if (this.isCraftClaim(g, pool)) refused.add(g.baseId >>> 0);
           break;
@@ -175,6 +202,7 @@ export class CraftedExtrasSystem implements System {
         this.log(`[crafted] ${hex(actorId)} ${hex(plan.entry.baseId)}: ${plan.notes.join(", ")} {${describeExtras(plan.entry).join(", ")}}`);
       }
     }
+    this.creditsOf(actorId);
 
     if (added.length) {
       const counts = inv.entries.map((e) => e.count);
@@ -251,10 +279,10 @@ export class CraftedExtrasSystem implements System {
     return paired;
   }
 
-  private findPlan(ctx: SystemContext, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station): Plan | null {
+  private findPlan(ctx: SystemContext, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station, credits: PoisonCredit[]): Plan | null {
     for (const p of pool) {
       if (p.left <= 0 || !sameBase(p.entry, g)) continue;
-      const plan = this.plan(ctx, p, g, pool, souls, station);
+      const plan = this.plan(ctx, p, g, pool, souls, station, credits);
       if (plan) return plan;
     }
     return null;
@@ -262,6 +290,7 @@ export class CraftedExtrasSystem implements System {
 
   private commit(plan: Plan, added: InventoryEntry[]): void {
     for (const r of plan.reserve) r.pool.left -= r.count;
+    if (plan.credit) plan.credit.used = true;
     if (plan.soul) {
       plan.soul.used = true;
       plan.soul.from.left -= 1;
@@ -271,13 +300,14 @@ export class CraftedExtrasSystem implements System {
   }
 
   // The server copy source becoming g, paid for from the pool; null when vanilla could not have made it
-  private plan(ctx: SystemContext, source: PoolEntry, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station): Plan | null {
+  private plan(ctx: SystemContext, source: PoolEntry, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station, credits: PoisonCredit[]): Plan | null {
     const s = source.entry;
     const info = this.itemInfo(ctx, s.baseId);
     const out = withCount(s, 1);
     const reserve: Reservation[] = [{ pool: source, count: 1 }];
     const notes: string[] = [];
     let soul: SoulSource | null = null;
+    let credit: PoisonCredit | null = null;
 
     // Souls only arrive through the soul trap system, and plugin enchantments never change
     if ((g.soul || 0) !== (s.soul || 0) || (g.enchantmentId || 0) !== (s.enchantmentId || 0)) return null;
@@ -321,10 +351,10 @@ export class CraftedExtrasSystem implements System {
     const toUses = g.poisonCount || 0;
     if (fromPoison !== toPoison || fromUses !== toUses) {
       if (!fromPoison && toPoison) {
-        const poison = info.type === "WEAP" && this.isPoison(ctx, toPoison)
-          ? this.reserveUnit(pool, reserve, (e) => (e.baseId >>> 0) === toPoison && !isSet(e.poisonId))
-          : false;
-        if (!poison) return null;
+        if (info.type !== "WEAP" || !this.isPoison(ctx, toPoison)) return null;
+        // A poison OnEquip already consumed pays first, so a stale lost line never costs a second one
+        credit = credits.find((c) => !c.used && c.baseId === toPoison) || null;
+        if (!credit && !this.reserveUnit(pool, reserve, (e) => (e.baseId >>> 0) === toPoison && !isSet(e.poisonId))) return null;
         out.poisonId = toPoison;
         out.poisonCount = Math.max(1, Math.min(toUses || 1, MAX_POISON_USES));
         notes.push(`poisoned with ${hex(toPoison)}`);
@@ -356,7 +386,7 @@ export class CraftedExtrasSystem implements System {
       }
     }
 
-    return notes.length ? { entry: out, reserve, soul, notes } : null;
+    return notes.length ? { entry: out, reserve, soul, credit, notes } : null;
   }
 
   // Something vanilla pays for (an enchantment, tempering, a new poison) rather than wear from use or Soul Siphon charge
@@ -580,6 +610,21 @@ export class CraftedExtrasSystem implements System {
     return recipes;
   }
 
+  // Unused, unexpired credits; the live list, so a committed plan marks its credit used
+  private creditsOf(actorId: number): PoisonCredit[] {
+    const now = Date.now();
+    const list = (this.poisonCredits.get(actorId) || []).filter((c) => !c.used && now - c.at < POISON_CREDIT_MS);
+    if (list.length) this.poisonCredits.set(actorId, list);
+    else this.poisonCredits.delete(actorId);
+    return list;
+  }
+
+  private addPoisonCredit(actorId: number, baseId: number): void {
+    const list = this.creditsOf(actorId);
+    list.push({ baseId, at: Date.now(), used: false });
+    this.poisonCredits.set(actorId, list.slice(-MAX_POISON_CREDITS));
+  }
+
   private notify(ctx: SystemContext, userId: number, text: string): void {
     const now = Date.now();
     if (now - (this.lastNoticeAt.get(userId) || 0) < NOTICE_GAP_MS) return;
@@ -613,6 +658,7 @@ export class CraftedExtrasSystem implements System {
 
   private lastReportAt = new Map<number, number>();
   private lastNoticeAt = new Map<number, number>();
+  private poisonCredits = new Map<number, PoisonCredit[]>();
   private itemCache = new Map<number, ItemInfo>();
   private keywordCache = new Map<number, number[]>();
   private caps: Map<string, Cap> | null = null;
