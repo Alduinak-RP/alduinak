@@ -304,6 +304,7 @@ export class FormView {
 
     this.localImmortal = false;
     this.hostilityApplied = false;
+    this.aggressionBeforeRaise = undefined;
     this.adminView = "visible";
     this.adminShaderOn = false;
     this.adminShaderReplayAt = 0;
@@ -660,7 +661,14 @@ export class FormView {
     this.hostilityApplied = true;
     this.hostileFlagSeen = flag;
     if (FormView.attacksEveryone(actor, model, this.remoteRefrId)) {
+      if (this.aggressionBeforeRaise === undefined) {
+        this.aggressionBeforeRaise = actor.getActorValue("Aggression");
+      }
       actor.setActorValue("Aggression", 2);
+    } else if (this.aggressionBeforeRaise !== undefined && flag === false && !isOwnCompanion(this.remoteRefrId)) {
+      // Raised before the server's false flag arrived (PlaceAtMe sends the copy first), so it goes back; CompanionService sets up own companions
+      actor.setActorValue("Aggression", this.aggressionBeforeRaise);
+      this.aggressionBeforeRaise = undefined;
     }
   }
 
@@ -837,6 +845,7 @@ export class FormView {
   private localImmortal = false;
   private hostilityApplied = false;
   private hostileFlagSeen: unknown = undefined;
+  private aggressionBeforeRaise: number | undefined = undefined;
   private adminView: AdminView = "visible";
   private adminShaderOn = false;
   private adminShaderReplayAt = 0;
