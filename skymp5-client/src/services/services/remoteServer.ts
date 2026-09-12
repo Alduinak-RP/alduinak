@@ -2,6 +2,7 @@
 import { Actor, Form, FormType, Menu, interruptCast, castSpellImmediate, printConsole, applyAnimationVariablesToActor, ActorAnimationVariables } from 'skyrimPlatform';
 import {
   Cell,
+  Debug,
   EquipEvent,
   Game,
   ObjectReference,
@@ -64,6 +65,8 @@ import { logTrace, logError } from '../../logging';
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
 import { MsgType } from '../../messages';
+import { CustomPacketMessage } from '../messages/customPacketMessage';
+import { parseCustomPacket } from './customPacketUtil';
 
 export const getPcInventory = (): Inventory | undefined => {
   const res = storage['pcInv'];
@@ -77,7 +80,7 @@ const setPcInventory = (inv: Inventory): void => {
   storage['pcInv'] = inv;
 };
 
-const CONSUME_APPLY_HOLD_MS = 1500;
+const CONSUME_APPLY_HOLD_MS = 10000;
 
 let pcInvLastApply = 0;
 let pcInvHoldUntil = 0;
@@ -144,6 +147,7 @@ export class RemoteServer extends ClientListener {
 
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
   }
 
   private onHostStartMessage(event: ConnectionMessage<HostStartMessage>) {
@@ -206,6 +210,40 @@ export class RemoteServer extends ClientListener {
     if (pcInv) {
       setPcInventory(removeSimpleItemsAsManyAsPossible(pcInv, e.baseObj.getFormID(), 1));
     }
+  }
+
+  // The server refunds a potion drunk within 10 s of the last one and blocks its effects
+  private onPotionRefused(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (!content || content["customPacketType"] !== "potionRefused") {
+      return;
+    }
+    const baseId = Number(content["baseId"]);
+    const acceptedBaseId = Number(content["acceptedBaseId"]);
+    const acceptedSecondsAgo = Number(content["acceptedSecondsAgo"]);
+    this.controller.once("update", () => {
+      const player = Game.getPlayer();
+      const potion = Game.getFormEx(baseId);
+      if (!player || !potion) {
+        return;
+      }
+      // A named-only stack gets its refund from the next inventory apply, the way it was created
+      const held = getInventory(player).entries.filter((e) => e.baseId === baseId);
+      if (!held.length || held.some((e) => !e.name)) {
+        player.addItem(potion, 1, true);
+      }
+      const natives = this.sp as unknown as {
+        dispelPotionEffects?: (actorFormId: number, potionFormId: number) => void;
+        agePotionEffects?: (actorFormId: number, potionFormId: number, seconds: number) => void;
+      };
+      if (baseId !== acceptedBaseId) {
+        natives.dispelPotionEffects?.(player.getFormID(), baseId);
+      } else if (acceptedSecondsAgo > 0) {
+        // A repeat of the accepted potion refreshed its effects, so roll them back to the first drink
+        natives.agePotionEffects?.(player.getFormID(), baseId, acceptedSecondsAgo);
+      }
+      Debug.notification("You must wait before drinking another potion.");
+    });
   }
 
   private onOpenContainerMessage(event: ConnectionMessage<OpenContainerMessage>): void {

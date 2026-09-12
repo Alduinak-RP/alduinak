@@ -213,6 +213,10 @@ private:
 
   void EatItem(uint32_t baseId, espm::Type t);
 
+  // Refunds a potion drunk within 10 s of the last accepted one
+  bool RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
+                              uint32_t baseId);
+
   bool ReadBook(uint32_t baseId);
 
   void ModifyActorValuePercentage(espm::ActorValue av, float percentageDelta);
