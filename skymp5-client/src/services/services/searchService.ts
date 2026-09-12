@@ -26,7 +26,7 @@ const events = {
 let promptText = "";
 
 // Player-search plumbing: searchConsentRequest pops a Yes/No widget on the target; searchApproved opens the target's inventory for the searcher in the vanilla container window (TakeItem/PutItem server-authorized); searchClose force-closes it.
-// Protocol (MsgType.CustomPacket JSON): server sends searchConsentRequest{requestId,text}, searchApproved{target}, searchClose, searchNotice{text}; client replies searchConsentResult{requestId,accepted}.
+// Protocol (MsgType.CustomPacket JSON): server sends searchConsentRequest{requestId,text}, searchApproved{target,body,entries}, searchClose, searchNotice{text}; client sends searchConsentResult{requestId,accepted} and searchEnd when the window closes.
 export class SearchService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -115,6 +115,7 @@ export class SearchService extends ClientListener {
       if (!actor) {
         this.searchWindowOpen = false;
         logError(this, `searchApproved - target actor not found`, remoteId.toString(16));
+        sendCustomPacket(this.controller, { customPacketType: "searchEnd" });
         return;
       }
       // Server count minus local count per base form
