@@ -214,38 +214,9 @@ export class FormView {
             model.movement?.rot[2] || 0
           );
         } else {
-          const race = Actor.from(refr)?.getRace()?.getFormID();
-          const draugrRace = 0xd53;
-          const falmerRace = 0x131f4;
-          const chaurusRace = 0x131eb;
-          const frostbiteSpiderRaceGiant = 0x4e507;
-          const frostbiteSpiderRaceLarge = 0x53477;
-          const dwarvenCenturionRace = 0x131f1;
-          const dwarvenSphereRace = 0x131f2;
-          const dwarvenSpiderRace = 0x131f3;
-          const sprigganRace = 0x2013b77;
-          const sprigganRace2 = 0xf3903;
-          const sprigganRace3 = 0x13204;
-          const sprigganRace4 = 0x401b644;
-          const sprigganRace5 = 0x9aa44;
-          const wolfRace = 0x1320a;
-
-          // potential masterambushscript
-          if (race === draugrRace
-            || race === falmerRace
-            || race === chaurusRace
-            || race === frostbiteSpiderRaceGiant
-            || race === frostbiteSpiderRaceLarge
-            || race === dwarvenCenturionRace
-            || race === dwarvenSphereRace
-            || race === dwarvenSpiderRace
-            || race === sprigganRace
-            || race === sprigganRace2
-            || race === sprigganRace3
-            || race === sprigganRace4
-            || race === sprigganRace5
-            || race === wolfRace) {
-            Actor.from(refr)?.setActorValue("Aggression", 2);
+          const actor = Actor.from(refr);
+          if (actor && FormView.attacksEveryone(actor, model)) {
+            actor.setActorValue("Aggression", 2);
           }
         }
 
@@ -664,6 +635,24 @@ export class FormView {
     return actor.wornHasKeyword(keyword);
   }
 
+  // Remote players' copies are neutral to every NPC, so NPCs that attack players on sight are raised to attack neutrals too
+  private static attacksEveryone(actor: Actor, model: FormModel): boolean {
+    if (FormView.ambushRaces.includes(actor.getRace()?.getFormID() ?? 0)) {
+      return true;
+    }
+    if (model.appearance || actor.getActorValue("Aggression") >= 2) {
+      return false;
+    }
+    // Allies and friends of the player (followers, housecarls) never turn on anyone
+    const player = Game.getPlayer();
+    if (player && actor.getFactionReaction(player) >= 2) {
+      return false;
+    }
+    const hostile = (model as Record<string, unknown>)["ff_hostile"];
+    // Without the server's flag, fall back to the plugin's own aggression
+    return typeof hostile === "boolean" ? hostile : actor.getActorValue("Aggression") >= 1;
+  }
+
   // Admin Invisible rides the neighbor-visible ff_adminModes prop; alpha resets when the 3D reloads, so it is reapplied
   private applyAdminInvisibility(refr: ObjectReference, model: FormModel): void {
     const hidden = FormView.isAdminInvisible(model);
@@ -796,6 +785,8 @@ export class FormView {
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
   private static readonly adminHideReapplyMs = 1000;
+  // Draugr, falmer, chaurus, frostbite spiders, dwarven automatons, spriggans and wolves: ambush AI can start them passive
+  private static readonly ambushRaces = [0xd53, 0x131f4, 0x131eb, 0x4e507, 0x53477, 0x131f1, 0x131f2, 0x131f3, 0x2013b77, 0xf3903, 0x13204, 0x401b644, 0x9aa44, 0x1320a];
 
   public static isDisplayingNicknames: boolean = true;
   public static isDisplayingActorIds: boolean = true;
