@@ -8,7 +8,7 @@ import {
   setInventory,
 } from 'skyrimPlatform';
 
-import { Entry, Inventory, getInventory } from './inventory';
+import { Entry, Inventory, getInventory, isBoundItem } from './inventory';
 
 export const enum SpellType {
   Left,
@@ -113,7 +113,16 @@ export const applyEquipment = (ac: Actor, eq: Equipment): boolean => {
 
   ac.removeAllItems(null, false, true);
 
-  const newInventory = removeUnnecessaryExtra(filterWorn(eq.inv), ac.getFormID() === 0x14);
+  const isPlayer = ac.getFormID() === 0x14;
+  const worn = filterWorn(eq.inv);
+  // Saved bound items have no spell behind them after a reconnect and would never expire
+  if (isPlayer) {
+    worn.entries = worn.entries.filter((x) => {
+      const form = Game.getFormEx(x.baseId);
+      return !form || !isBoundItem(form);
+    });
+  }
+  const newInventory = removeUnnecessaryExtra(worn, isPlayer);
 
   setInventory(ac.getFormID(), newInventory);
 

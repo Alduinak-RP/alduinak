@@ -28,7 +28,7 @@ import {
 const BOUND_ARROW_ID = 0x10b0a7;
 
 // Bound weapon spells add items the server inventory never holds, removing them ends the spell
-const isBoundItem = (form: Form): boolean => {
+export const isBoundItem = (form: Form): boolean => {
   if (form.getFormID() === BOUND_ARROW_ID) {
     return true;
   }
