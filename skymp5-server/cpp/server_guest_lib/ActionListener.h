@@ -103,9 +103,14 @@ private:
     // Timer chains carry the generation they were started for
     uint32_t generation = 0;
     std::chrono::steady_clock::time_point lastRefresh;
+    std::chrono::steady_clock::time_point lastApplied;
   };
 
   void TickRestorationChannel(uint32_t casterId, uint32_t generation);
+  MpActor* GetRestorationChannelTarget(uint32_t casterId,
+                                       const RestorationChannel& channel);
+  void ApplyRestorationChannelRemainder(uint32_t casterId,
+                                        const RestorationChannel& channel);
   void FireHitDamageEvent(MpActor* aggressor, MpActor* target,
                           uint32_t sourceId, float damage);
 
