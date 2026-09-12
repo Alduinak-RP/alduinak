@@ -293,7 +293,7 @@ let serverAllowed       = true
 function updateLockState() {
   // While the game runs (or a play sequence is in flight) the button is
   // managed by updatePlayButton() - don't fight over it here.
-  if (gameRunning || playBusy) return
+  if (gameRunning || launchStartedAt || playBusy) return
 
   if (serverLocked && discordUser && !serverAllowed) {
     // Logged in but not on the server lock allow-list
@@ -685,12 +685,14 @@ document.getElementById('btn-launch-mo2').addEventListener('click', async () => 
   troubleLaunchStatus.textContent = 'Launching via MO2…'
   const r = await window.electronAPI.launchViaMO2()
   troubleLaunchStatus.textContent = r.success ? 'Launched via MO2 ✓' : `Error: ${r.error}`
+  if (r.success) startLaunchWatch()
 })
 
 document.getElementById('btn-launch-direct').addEventListener('click', async () => {
   troubleLaunchStatus.textContent = 'Launching SKSE…'
   const r = await window.electronAPI.launchDirect()
   troubleLaunchStatus.textContent = r.success ? 'Launched ✓' : `Error: ${r.error}`
+  if (r.success) startLaunchWatch()
 })
 
 // Repair tab: shared install progress log
@@ -880,17 +882,28 @@ let playBusy        = false
 let isoReady        = true   // isolation disabled, or the game copy exists
 let updateAvailable = false  // server has newer client files than installed
 let launcherUpdateReady = false  // a newer launcher build is published
+let launchStartedAt = 0  // set after a successful launch until Skyrim shows up or the launch times out
+let launchPollTimer = null
+let gamePollInFlight = false
 
 const PLAY_LABEL = '\u25BA PLAY'
+const LAUNCHING_LABEL = '\u25BA LAUNCHING\u2026'
+const LAUNCH_TIMEOUT_MS = 90_000
 const updatePill = document.getElementById('update-pill')
 
 function updatePlayButton() {
-  updatePill.hidden = !((launcherUpdateReady || (updateAvailable && isoReady)) && !gameRunning)
+  updatePill.hidden = !((launcherUpdateReady || (updateAvailable && isoReady)) && !gameRunning && !launchStartedAt)
 
   if (gameRunning) {
     btnConnect.disabled    = true
     btnConnect.textContent = '\u23F3 GAME RUNNING'
     btnConnect.title       = 'Skyrim is currently running.'
+    return
+  }
+  if (launchStartedAt) {
+    btnConnect.disabled    = true
+    btnConnect.textContent = LAUNCHING_LABEL
+    btnConnect.title       = 'Skyrim is starting. MO2 can take a moment to boot it.'
     return
   }
   if (playBusy) return  // label managed by the play/update sequence
@@ -948,14 +961,37 @@ async function refreshPlayState() {
 setInterval(refreshPlayState, 10_000)
 
 async function pollGameRunning() {
-  const running = await window.electronAPI.gameIsRunning()
-  if (running !== gameRunning) {
-    gameRunning = running
-    updatePlayButton()
+  if (gamePollInFlight) return
+  gamePollInFlight = true
+  try {
+    const running = await window.electronAPI.gameIsRunning()
+    const timedOut = !running && launchStartedAt > 0 && Date.now() - launchStartedAt > LAUNCH_TIMEOUT_MS
+    if (running || timedOut) endLaunchWatch()
+    if (timedOut) showWarning('Skyrim did not start. Check MO2 for an error, then press Play again.')
+    if (running !== gameRunning || timedOut) {
+      gameRunning = running
+      updatePlayButton()
+    }
+  } finally {
+    gamePollInFlight = false
   }
 }
 setInterval(pollGameRunning, 10_000)
 pollGameRunning()
+
+// Keeps Play locked and polls fast until the launched game process appears
+function startLaunchWatch() {
+  launchStartedAt = Date.now()
+  clearInterval(launchPollTimer)
+  launchPollTimer = setInterval(pollGameRunning, 2000)
+  updatePlayButton()
+}
+
+function endLaunchWatch() {
+  launchStartedAt = 0
+  clearInterval(launchPollTimer)
+  launchPollTimer = null
+}
 
 function showWarning(text) {
   connectWarning.textContent = text
@@ -981,7 +1017,7 @@ function runInstallForPlay() {
 }
 
 btnConnect.addEventListener('click', async () => {
-  if (gameRunning || playBusy) return
+  if (gameRunning || launchStartedAt || playBusy) return
   if (repairRunning) { showWarning('A repair is running, wait for it to finish.'); return }
 
   // Launcher update takes priority over everything: it replaces this process.
@@ -990,35 +1026,39 @@ btnConnect.addEventListener('click', async () => {
     return
   }
 
-  // settings:load re-runs the registry auto-detect, so an empty path here means Skyrim really could not be found.
-  const s = await window.electronAPI.loadSettings()
-  if (!s.skyrimPath) {
-    showWarning('Could not auto-detect Skyrim - set the path manually in Settings.')
-    openModal()
-    return
-  }
-
-  // Launch prerequisites. A pending update or first-run install still runs and refreshes the files.
-  // The warning explains what is missing before the game can start.
-  const blockers = []
-  if (discordUser && !serverAllowed) {
-    blockers.push(serverLocked
-      ? 'Server is currently locked - you are not on the allow list.'
-      : 'You are not on the server whitelist.')
-  }
-  if (!discordUser) blockers.push('Login with Discord first - use the button in the toolbar.')
-
+  // Lock the button before the first await so a second click cannot start another launch.
   const needsGameCopy = !isoReady
-  if (blockers.length > 0 && !updateAvailable && !needsGameCopy) {
-    showWarning(blockers[0])
-    return
-  }
-
-  playBusy            = true
-  btnConnect.disabled = true
-  clearWarning()
+  playBusy               = true
+  btnConnect.disabled    = true
+  btnConnect.textContent = needsGameCopy ? '⚙ INSTALLING…'
+    : (updateAvailable ? '⤓ UPDATING…' : '⚙ CHECKING FILES…')
 
   try {
+    // settings:load re-runs the registry auto-detect, so an empty path here means Skyrim really could not be found.
+    const s = await window.electronAPI.loadSettings()
+    if (!s.skyrimPath) {
+      showWarning('Could not auto-detect Skyrim - set the path manually in Settings.')
+      openModal()
+      return
+    }
+
+    // Launch prerequisites. A pending update or first-run install still runs and refreshes the files.
+    // The warning explains what is missing before the game can start.
+    const blockers = []
+    if (discordUser && !serverAllowed) {
+      blockers.push(serverLocked
+        ? 'Server is currently locked - you are not on the allow list.'
+        : 'You are not on the server whitelist.')
+    }
+    if (!discordUser) blockers.push('Login with Discord first - use the button in the toolbar.')
+
+    if (blockers.length > 0 && !updateAvailable && !needsGameCopy) {
+      showWarning(blockers[0])
+      return
+    }
+
+    clearWarning()
+
     // 0. First run: create the game copy + MO2 at the default install location instead of bouncing the player into Settings.
     if (needsGameCopy) {
       btnConnect.textContent = '\u2699 INSTALLING\u2026'
@@ -1039,8 +1079,6 @@ btnConnect.addEventListener('click', async () => {
 
     // 1. Make sure client files are present and current (fast no-op when up
     // to date; a pending update or fresh install runs the full pipeline here).
-    btnConnect.textContent = needsGameCopy ? '\u2699 INSTALLING\u2026'
-      : (updateAvailable ? '\u2913 UPDATING\u2026' : '\u2699 CHECKING FILES\u2026')
     const install = await runInstallForPlay()
     if (!install.success) {
       showWarning(install.error || 'Update failed.')
@@ -1056,7 +1094,7 @@ btnConnect.addEventListener('click', async () => {
 
     // 2. Launch - main also re-syncs plugins.txt against the server load order.
     // One click both updates and launches; no second press needed.
-    btnConnect.textContent = '\u25BA LAUNCHING\u2026'
+    btnConnect.textContent = LAUNCHING_LABEL
     if (!install.warning) clearWarning()
     const result = await window.electronAPI.launchSkse()
 
@@ -1066,7 +1104,7 @@ btnConnect.addEventListener('click', async () => {
     }
 
     if (!install.warning) clearWarning()
-    gameRunning = true  // optimistic; the 10s poll keeps it honest
+    startLaunchWatch()
   } finally {
     playBusy = false
     await refreshPlayState()
