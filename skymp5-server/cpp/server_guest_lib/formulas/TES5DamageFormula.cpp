@@ -154,7 +154,7 @@ float TES5DamageFormulaImpl::CalculateDamage() const
 
   if (hitData.isHitBlocked) {
     // TODO(#460): implement correct block formula
-    damage *= 0.1f;
+    damage *= kBlockedHitDamageMult;
   }
 
   if (hitData.isSneakAttack) {

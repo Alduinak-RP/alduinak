@@ -106,6 +106,19 @@ private:
     std::chrono::steady_clock::time_point lastApplied;
   };
 
+  struct WardChannel
+  {
+    uint32_t spellId = 0;
+    std::chrono::steady_clock::time_point lastRefresh;
+  };
+
+  void UpdateWardChannel(uint32_t casterId,
+                         const SpellCastData& spellCastData);
+  bool IsWardBlocking(const MpActor& aggressor, const MpActor& target);
+
+  void ApplyParalysis(MpActor& aggressor, MpActor& target, uint32_t spellId);
+  bool IsParalyzed(const MpActor& actor);
+
   void TickRestorationChannel(uint32_t casterId, uint32_t generation);
   MpActor* GetRestorationChannelTarget(uint32_t casterId,
                                        const RestorationChannel& channel);
@@ -113,7 +126,8 @@ private:
                                         const RestorationChannel& channel);
   // Returns false when a gamemode handler blocked the event
   bool FireHitDamageEvent(const char* eventName, MpActor* aggressor,
-                          MpActor* target, uint32_t sourceId, float damage);
+                          MpActor* target, uint32_t sourceId, float damage,
+                          bool fireOnZeroDamage = false);
 
   void OnSpellHit(MpActor* aggressor, MpObjectReference* targetRef,
                   const HitData& hitData);
@@ -135,6 +149,9 @@ private:
 
   std::unordered_map<uint32_t, RestorationChannel> restorationChannels;
   uint32_t restorationChannelGeneration = 0;
+  std::unordered_map<uint32_t, WardChannel> wardChannels;
+  std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
+    paralyzedUntil;
 
   // TODO: inverse dependency
   std::shared_ptr<CraftService> craftService;
