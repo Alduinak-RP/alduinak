@@ -101,6 +101,7 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
                      &ScampServer::GetActorsByProfileId),
       InstanceMethod("setEnabled", &ScampServer::SetEnabled),
       InstanceMethod("setInventoryOccupant", &ScampServer::SetInventoryOccupant),
+      InstanceMethod("respawnActor", &ScampServer::RespawnActor),
       InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
@@ -735,6 +736,19 @@ Napi::Value ScampServer::SetInventoryOccupant(const Napi::CallbackInfo& info)
       auto& occupant = partOne->worldState.GetFormAt<MpActor>(occupantFormId);
       target.SetOccupant(&occupant);
     }
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// respawnActor(actorFormId) - respawns a dead actor now instead of after its spawnDelay.
+Napi::Value ScampServer::RespawnActor(const Napi::CallbackInfo& info)
+{
+  auto actorFormId = info[0].As<Napi::Number>().Uint32Value();
+  try {
+    auto& actor = partOne->worldState.GetFormAt<MpActor>(actorFormId);
+    actor.Respawn(true);
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }

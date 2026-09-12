@@ -29,8 +29,10 @@ const RELOAD_DEBOUNCE_MS = 500;
 // Keeps the engine from reviving spawner NPCs; delays past ~1e9 s overflow its timer and fire at once
 const NEVER_RESPAWN = 1e9;
 const TAG_PROP = "private.npcSpawner";
-// Slot cooldown marker for Respawn 0: the corpse stays until the zone despawns or an admin resets it
+// Slot cooldown marker for Respawn 0: the slot stays empty until the zone despawns or an admin resets it
 const NEVER_READY = -1;
+// A corpse is removed this long after death, whatever its zone does. Overridable via "npcCorpseSeconds".
+const DEFAULT_CORPSE_SECONDS = 300;
 
 interface ZoneNpc {
   baseDesc: string;
@@ -131,9 +133,15 @@ export class NpcSpawnSystem implements System {
   // Loads run one at a time, whether the watcher or the admin panel asks
   private loadChain: Promise<void> = Promise.resolve();
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  // Dead NPC actorId -> epoch ms when its corpse is destroyed
+  private corpses = new Map<number, number>();
+  private corpseMs = DEFAULT_CORPSE_SECONDS * 1000;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
+    const all = (await Settings.get()).allSettings as Record<string, unknown> | null;
+    const rawCorpse = Number(all?.["npcCorpseSeconds"]);
+    if (Number.isFinite(rawCorpse) && rawCorpse > 0) this.corpseMs = rawCorpse * 1000;
     this.cleanupLeftovers(this.mp);
     await this.queueLoad("boot");
     this.watchFile();
@@ -367,12 +375,14 @@ export class NpcSpawnSystem implements System {
 
   async updateAsync(ctx: SystemContext): Promise<void> {
     await new Promise((r) => setTimeout(r, POLL_MS));
-    if (!this.ready || this.loading || !this.zones.length) return;
+    if (!this.ready) return;
     const mp = ctx.svr as Mp;
+    const now = Date.now();
+    this.sweepCorpses(mp, now);
+    if (this.loading || !this.zones.length) return;
 
     let playerIds: number[] = [];
     try { playerIds = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
-    const now = Date.now();
 
     for (const zone of this.zones) {
       this.updateInside(mp, zone, playerIds);
@@ -438,7 +448,7 @@ export class NpcSpawnSystem implements System {
         continue;
       }
       if (entry) {
-        try { mp.destroyActor(entry.id); } catch { }
+        this.removeNpc(mp, entry.id);
         this.log(`NpcSpawnSystem: '${zone.name}' respawned ${npc.baseDesc} (${hex(entry.id)} -> ${hex(id)})`);
         entry.id = id;
         entry.diedAt = 0;
@@ -490,23 +500,57 @@ export class NpcSpawnSystem implements System {
     return [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
   }
 
-  // A death starts the slot's Respawn cooldown; the corpse stays until the slot is refilled or the zone despawns
+  // A death starts the slot's Respawn cooldown and the corpse's own removal timer
   private checkDeaths(mp: Mp, zone: Zone, now: number): void {
     for (const entry of zone.spawned) {
       if (entry.diedAt) continue;
       let dead = false;
+      let gone = false;
       // A throw means the form is gone, which counts as dead
-      try { dead = mp.get(entry.id, "isDead") === true; } catch { dead = true; }
+      try { dead = mp.get(entry.id, "isDead") === true; } catch { dead = gone = true; }
       if (!dead) continue;
       entry.diedAt = now;
       zone.slotReadyAt[entry.slot] = zone.respawnSeconds > 0 ? now + zone.respawnSeconds * 1000 : NEVER_READY;
+      if (!gone) this.corpses.set(entry.id, now + this.corpseMs);
     }
   }
 
-  // Cooldowns still running survive the despawn so leaving and coming back cannot skip Respawn; reset clears them
+  // A corpse is left to its timer unless forced (admin reset); a death the poll has not seen yet starts its timer here
+  private removeNpc(mp: Mp, id: number, force = false): void {
+    if (!id) return;
+    if (!force && !this.corpses.has(id)) {
+      let dead = false;
+      try { dead = mp.get(id, "isDead") === true; } catch { }
+      if (dead) this.corpses.set(id, Date.now() + this.corpseMs);
+    }
+    if (!force && this.corpses.has(id)) return;
+    this.corpses.delete(id);
+    try { mp.destroyActor(id); } catch { }
+  }
+
+  private sweepCorpses(mp: Mp, now: number): void {
+    let removed = 0;
+    for (const [id, at] of Array.from(this.corpses)) {
+      if (at > now) continue;
+      this.corpses.delete(id);
+      try { mp.destroyActor(id); } catch { }
+      // The slot keeps its entry and cooldown; id 0 marks its corpse as gone
+      for (const zone of this.zones) {
+        for (const entry of zone.spawned) {
+          if (entry.id === id) entry.id = 0;
+        }
+      }
+      removed++;
+    }
+    if (!removed) return;
+    this.log(`NpcSpawnSystem: removed ${removed} corpse(s) ${this.corpseMs / 1000} s after death`);
+    this.saveSpawns();
+  }
+
+  // Cooldowns still running survive the despawn so leaving and coming back cannot skip Respawn; reset clears them and the corpses
   private despawn(mp: Mp, zone: Zone, reset = false): void {
     for (const entry of zone.spawned) {
-      try { mp.destroyActor(entry.id); } catch { }
+      this.removeNpc(mp, entry.id, reset);
     }
     this.log(`NpcSpawnSystem: '${zone.name}' despawned ${zone.spawned.length} npc(s)`);
     zone.spawned = [];
@@ -548,7 +592,8 @@ export class NpcSpawnSystem implements System {
   }
 
   private saveSpawns(): void {
-    const ids = this.zones.flatMap((z) => z.spawned.map((e) => e.id));
+    const placed = this.zones.flatMap((z) => z.spawned.map((e) => e.id));
+    const ids = Array.from(new Set([...placed, ...this.corpses.keys()])).filter((id) => id > 0);
     try { fs.writeFileSync(SPAWNS_FILE, JSON.stringify(ids)); }
     catch (e) { this.log(`NpcSpawnSystem: spawns file write failed: ${e}`); }
   }

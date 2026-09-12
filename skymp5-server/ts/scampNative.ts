@@ -39,6 +39,7 @@ export interface ScampServer {
   setRaceMenuOpen(formId: number, open: boolean): void;
   sendCustomPacket(userId: number, jsonContent: string): void;
   setEnabled(actorId: number, enabled: boolean): void;
+  respawnActor(actorId: number): void;
   getActorsByProfileId(profileId: number): number[];
   createBot(): Bot;
   getUserByActor(formId: number): number;
