@@ -597,7 +597,7 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
     return false;
   }
 
-  // The client already applied the potion locally, so echo the server values
+  // Undo the local gain without an echo window, which would freeze values
   std::vector<espm::ActorValue> restoredValues;
   for (const auto& effect : data.effects) {
     const espm::ActorValue av =
@@ -608,7 +608,6 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
         std::find(restoredValues.begin(), restoredValues.end(), av) ==
           restoredValues.end()) {
       restoredValues.push_back(av);
-      UpdateNextRestorationTime(av, std::chrono::seconds{ 5 });
     }
   }
   if (!restoredValues.empty()) {
@@ -617,11 +616,15 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
 
   SendInventoryUpdate();
 
+  const std::chrono::duration<float> acceptedAgo =
+    now - *pImpl->potionCooldownStart;
+
   CustomPacketMessage message;
   message.contentJsonDump =
     nlohmann::json{ { "customPacketType", "potionRefused" },
                     { "baseId", baseId },
-                    { "acceptedBaseId", pImpl->potionCooldownBaseId } }
+                    { "acceptedBaseId", pImpl->potionCooldownBaseId },
+                    { "acceptedSecondsAgo", acceptedAgo.count() } }
       .dump();
   SendToUser(message, true);
   return true;
