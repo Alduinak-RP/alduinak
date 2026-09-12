@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <simdjson.h>
 #include <string>
 #include <tuple>
@@ -28,6 +29,30 @@ public:
   static Inventory FromJson(const simdjson::dom::element& element);
   static Inventory FromJson(const nlohmann::json& j);
 
+  // One effect of a player-made enchantment; clients rebuild the enchantment from these
+  class EnchantmentEffect
+  {
+  public:
+    template <class Archive>
+    void Serialize(Archive& archive)
+    {
+      archive.Serialize("effectId", effectId)
+        .Serialize("magnitude", magnitude)
+        .Serialize("area", area)
+        .Serialize("duration", duration)
+        .Serialize("cost", cost);
+    }
+
+    friend bool operator==(const EnchantmentEffect& lhs,
+                           const EnchantmentEffect& rhs) = default;
+
+    uint32_t effectId = 0;
+    float magnitude = 0.f;
+    uint32_t area = 0;
+    uint32_t duration = 0;
+    float cost = 0.f;
+  };
+
   class ExtraData
   {
   public:
@@ -43,6 +68,7 @@ public:
         .Serialize("soul", soul)
         .Serialize("poisonId", poisonId)
         .Serialize("poisonCount", poisonCount)
+        .Serialize("enchantmentEffects", enchantmentEffects)
         .Serialize("worn", worn_)
         .Serialize("wornLeft", wornLeft);
     }
@@ -56,6 +82,8 @@ public:
     std::optional<uint8_t> soul;
     std::optional<uint32_t> poisonId;
     std::optional<uint32_t> poisonCount;
+    // A player-made enchantment, by definition instead of a runtime form id
+    std::optional<std::vector<EnchantmentEffect>> enchantmentEffects;
     std::optional<bool> worn_;
     std::optional<bool> wornLeft;
   };
@@ -85,6 +113,10 @@ public:
     void SetWorn(Worn worn);
     bool EqualExceptCount(const Entry& other) const;
 
+    // Same item as clients see it: charge, worn state, float noise and names (except on property keys) drift
+    bool SameItemAs(const Entry& other) const;
+    bool HasIdentityExtras() const;
+
     friend bool operator==(const Entry& lhs, const Entry& rhs)
     {
       return lhs.EqualExceptCount(rhs) && lhs.count == rhs.count;
@@ -99,6 +131,10 @@ public:
   Inventory& AddItem(uint32_t baseId, uint32_t count);
   Inventory& AddItems(const std::vector<Entry>& entries);
   Inventory& RemoveItems(const std::vector<Entry>& entries);
+
+  // Own entries a client-described one stands for: exact extras, then the same item, then a plain copy for extras never recorded; empty if short
+  std::vector<Entry> FindEntriesFor(const Entry& described) const;
+
   bool HasItem(uint32_t baseId) const;
   uint32_t GetItemCount(uint32_t baseId) const;
   uint32_t GetTotalItemCount() const;
