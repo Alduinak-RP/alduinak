@@ -736,3 +736,36 @@ TEST_CASE("Forbidden-reloot base types are static and can't be picked up",
   DoDisconnect(partOne, 0);
   partOne.DestroyActor(0xff000000);
 }
+
+TEST_CASE("Forbidden-reloot CONT keeps an emptied container empty",
+          "[PartOne][espm]")
+{
+  auto& partOne = GetPartOne();
+  auto& ref = partOne.worldState.GetFormAt<MpObjectReference>(0x20570);
+  ref.SetRelootTime(std::chrono::milliseconds(25));
+  ref.SetChanceNoneOverride(0);
+
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 21272.0000, -7816.0000, -3608.0000 }, 0,
+                      0x1a26f);
+  partOne.SetUserActor(0, 0xff000000);
+  auto& actor = partOne.worldState.GetFormAt<MpActor>(0xff000000);
+  actor.RemoveAllItems();
+
+  partOne.worldState.SetForbiddenRelootTypes({ "CONT" });
+  ref.Activate(actor);
+  REQUIRE(ref.GetInventory().GetTotalItemCount() > 0);
+
+  for (auto e : ref.GetInventory().entries)
+    ref.TakeItem(actor, e);
+  REQUIRE(ref.GetInventory().IsEmpty());
+  REQUIRE(!ref.GetNextRelootMoment());
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  partOne.Tick();
+  REQUIRE(ref.GetInventory().IsEmpty());
+
+  partOne.worldState.SetForbiddenRelootTypes({});
+  DoDisconnect(partOne, 0);
+  partOne.DestroyActor(0xff000000);
+}

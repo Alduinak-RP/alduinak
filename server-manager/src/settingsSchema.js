@@ -68,7 +68,7 @@ const serverSettings = [
   { key: 'archives',      label: 'BSA archives',   type: 'json', group: 'Advanced', help: 'Array of BSA filenames to load.' },
   { key: 'startPoints',   label: 'Start points',   type: 'json', group: 'Advanced', help: 'Spawn points: [{ pos:[x,y,z], worldOrCell, angleZ }].' },
   { key: 'reloot',        label: 'Reloot timers',  type: 'json', group: 'Advanced', help: 'Record type → ms before respawn.' },
-  { key: 'forbiddenReloot', label: 'Forbidden reloot', type: 'json', group: 'Advanced', help: 'Record types that never respawn.' },
+  { key: 'forbiddenReloot', label: 'Forbidden reloot', type: 'json', group: 'Advanced', help: 'Record types that never respawn; wins over Reloot timers. Item types (MISC, WEAP, ...) and FLOR/TREE: plugin-placed refs cannot be taken at all. "CONT": containers get their base loot once and never refill once emptied, so storage chests stay player-only. Native server, read at boot.' },
   { key: 'untouchableBaseIds', label: 'Untouchable objects', type: 'json', group: 'Advanced', help: 'Base form ids nobody can activate (numbers or "0x..." strings). Default: the vanilla coin purses and loose salmon. [] disables.' },
   { key: 'exteriorScriptAllowlist', label: 'Exterior scripts', type: 'json', group: 'Advanced', help: 'Vanilla Papyrus scripts that still run on exterior objects; every other vanilla script is stripped there. Default: ["default2StateActivator", "NorLever01SCRIPT"] so lever-driven exterior gates open. [] strips them too. Native server, read at boot.' },
   { key: 'blockedSpells',  label: 'Blocked spells',  type: 'json', group: 'Advanced', help: 'Spell form ids players may not cast (numbers or "0x..." strings), e.g. racial powers.' },
