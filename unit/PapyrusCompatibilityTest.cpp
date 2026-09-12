@@ -32,6 +32,24 @@ TEST_CASE("Should be able to harvest a Nirnroot", "[Papyrus][espm]")
   partOne.worldState.DestroyForm(0xff000000);
 }
 
+TEST_CASE("Exterior gates and levers keep their vanilla scripts",
+          "[Papyrus][espm]")
+{
+  auto& partOne = GetPartOne();
+  partOne.worldState.disableVanillaScriptsInExterior = true;
+
+  // Treva's Watch gate lever and the portcullis it opens
+  auto& lever = partOne.worldState.GetFormAt<MpObjectReference>(0xc629d);
+  auto& gate = partOne.worldState.GetFormAt<MpObjectReference>(0x47693);
+
+  lever.SendPapyrusEvent("SkympTestNoop");
+  gate.SendPapyrusEvent("SkympTestNoop");
+
+  REQUIRE(lever.HasScript("NorLever01SCRIPT"));
+  REQUIRE(!lever.HasScript("TrapLever"));
+  REQUIRE(gate.HasScript("default2StateActivator"));
+}
+
 TEST_CASE("Server crash in CallMethod", "[Papyrus][espm]")
 {
   auto& partOne = GetPartOne();

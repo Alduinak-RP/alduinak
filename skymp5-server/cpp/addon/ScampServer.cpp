@@ -435,6 +435,14 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         (*it).get<std::set<std::string>>());
     }
 
+    // exteriorScriptAllowlist: vanilla scripts that still run on exterior refs (two-state gates and levers by default)
+    auto exteriorScriptsIt = serverSettings.find("exteriorScriptAllowlist");
+    if (exteriorScriptsIt != serverSettings.end() &&
+        (*exteriorScriptsIt).is_array()) {
+      partOne->worldState.exteriorScriptAllowlist =
+        (*exteriorScriptsIt).get<std::vector<std::string>>();
+    }
+
     // blockedSpells: spell form ids (numbers or "0x..." strings) players may not cast (racial powers etc)
     auto blockedIt = serverSettings.find("blockedSpells");
     if (blockedIt != serverSettings.end() && (*blockedIt).is_array()) {

@@ -1825,14 +1825,21 @@ void MpObjectReference::InitScripts()
     if (lookupRes.rec && lookupRes.rec->GetType() == "WRLD") {
       spdlog::trace("Skipping non-Sweet scripts for exterior form {:x}",
                     cellOrWorld);
-      scriptNames.erase(std::remove_if(scriptNames.begin(), scriptNames.end(),
-                                       [](const std::string& val) {
-                                         auto kPrefix = "Sweet";
-                                         bool startsWith = val.size() >= 5 &&
-                                           !memcmp(kPrefix, val.data(), 5);
-                                         return !startsWith;
-                                       }),
-                        scriptNames.end());
+      const auto& allowlist = GetParent()->exteriorScriptAllowlist;
+      scriptNames.erase(
+        std::remove_if(scriptNames.begin(), scriptNames.end(),
+                       [&allowlist](const std::string& val) {
+                         auto kPrefix = "Sweet";
+                         bool startsWith =
+                           val.size() >= 5 && !memcmp(kPrefix, val.data(), 5);
+                         bool allowed = std::any_of(
+                           allowlist.begin(), allowlist.end(),
+                           [&val](const std::string& name) {
+                             return !Utils::stricmp(val.data(), name.data());
+                           });
+                         return !startsWith && !allowed;
+                       }),
+        scriptNames.end());
     }
   }
 
