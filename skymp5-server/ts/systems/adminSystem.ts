@@ -3,6 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { AdminTier, AdminRoleConfig, TIER_CAPS, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
+import { kickWithReason } from "./kickUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -390,7 +391,7 @@ export class AdminSystem implements System {
       } else if (action === "kick") {
         // Disable boots to the menu; kick drops the connection so they can't re-enter from character select
         ctx.svr.setEnabled(target.actorId, false);
-        try { (ctx.svr as Mp).kick(target.userId); } catch { }
+        try { kickWithReason(mp, target.userId, "You were kicked from the server by an admin."); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} kicked profile ${target.profileId} (${target.name})`);
         this.adminLog(`profile ${adminProfile} kicked ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, true, `Kicked ${target.name}`);
@@ -589,7 +590,7 @@ export class AdminSystem implements System {
       if (res.ok) {
         // Boot AND drop the connection; connection-check refuses the reconnect
         try { ctx.svr.setEnabled(target.actorId, false); } catch { }
-        try { (ctx.svr as Mp).kick(target.userId); } catch { }
+        try { kickWithReason(mp, target.userId, "You were banned from the server."); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} (${tier}) banned profile ${target.profileId} (${target.name})`);
         this.adminLog(`profile ${adminProfile} (${tier}) banned ${target.name} (profile ${target.profileId})`);
         this.replyIfSameAdmin(mp, userId, adminActorId, true, `Banned ${target.name}`);

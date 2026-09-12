@@ -1,11 +1,12 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
+import { kickWithReason } from "./kickUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
 // AFK autokick. Active = locationalData changed or any player-driven CustomPacket; movement packets never reach TS, so position polling stands in.
-// Kick uses svr.kick alone so the normal logout grace parks the body.
+// Kick leaves the body enabled so the normal logout grace parks it.
 //
 // server-settings.json keys:
 //   afkKickMinutes  minutes of inactivity before the kick, 0 disables (default 20)
@@ -86,7 +87,9 @@ export class AfkSystem implements System {
       const idleMs = now - state.lastActivity;
       if (idleMs >= this.kickMs) {
         this.log(`AfkSystem: kicking user ${userId} (actor ${actorId.toString(16)}) after ${Math.round(idleMs / 60000)} min idle`);
-        try { mp.kick(userId); } catch (e) { this.log(`AfkSystem: kick failed: ${e}`); }
+        try {
+          kickWithReason(mp, userId, `You were disconnected after ${Math.round(this.kickMs / 60000)} minutes of inactivity.`);
+        } catch (e) { this.log(`AfkSystem: kick failed: ${e}`); }
       } else if (!state.warned && idleMs >= this.kickMs - this.warnMs) {
         state.warned = true;
         const minutesLeft = Math.max(1, Math.round((this.kickMs - idleMs) / 60000));
