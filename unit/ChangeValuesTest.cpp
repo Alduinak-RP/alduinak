@@ -194,3 +194,37 @@ TEST_CASE("OnChangeValues function doesn't sends ChangeValues message if "
   partOne.DestroyActor(0xff000000);
   DoDisconnect(partOne, 0);
 }
+
+TEST_CASE("OnChangeValues echoes a freshly restored value but accepts the "
+          "others",
+          "[ChangeValues]")
+{
+  PartOne& partOne = GetPartOne();
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  partOne.SetUserActor(0, 0xff000000);
+  auto& ac = partOne.worldState.GetFormAt<MpActor>(0xff000000);
+
+  ac.SetPercentages({ 0.5f, 1.0f, 1.0f });
+  ac.UpdateNextRestorationTime(espm::ActorValue::Health, 5s);
+  partOne.Messages().clear();
+
+  nlohmann::json j = nlohmann::json{
+    { "t", MsgType::ChangeValues },
+    { "data",
+      { { "health", 0.25f }, { "magicka", 0.5f }, { "stamina", 1.0f } } }
+  };
+  DoMessage(partOne, 0, j);
+
+  auto changeForm = ac.GetChangeForm();
+  REQUIRE(changeForm.actorValues.healthPercentage == 0.5f);
+  REQUIRE(changeForm.actorValues.magickaPercentage == 0.5f);
+
+  REQUIRE(partOne.Messages().size() == 1);
+  nlohmann::json message = partOne.Messages()[0].j;
+  REQUIRE(message["data"]["health"] == 0.5f);
+  REQUIRE(message["data"]["magicka"].is_null());
+
+  partOne.DestroyActor(0xff000000);
+  DoDisconnect(partOne, 0);
+}

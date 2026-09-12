@@ -58,8 +58,9 @@ public:
   float GetMagickaRespawnPercentage() const;
   float GetStaminaRespawnPercentage() const;
 
-  bool ShouldSkipRestoration() const noexcept;
-  void UpdateNextRestorationTime(std::chrono::seconds duration) noexcept;
+  bool ShouldSkipRestoration(espm::ActorValue av) const noexcept;
+  void UpdateNextRestorationTime(espm::ActorValue av,
+                                 std::chrono::seconds duration);
 
   void SetRaceMenuOpen(bool isOpen);
   void SetAppearance(const Appearance* newAppearance);

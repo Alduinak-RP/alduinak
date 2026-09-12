@@ -815,20 +815,6 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
       rawMsgData.userId);
   }
 
-  if (actor->ShouldSkipRestoration()) {
-    // Echo the server values instead of dropping silently: the client's
-    // dedup never re-sends an unchanged report, so a bare return here
-    // desyncs the bar until the next damage event
-    const auto& serverValues = actor->GetActorValues();
-    ChangeValuesMessage correction;
-    correction.idx = actor->GetIdx();
-    correction.data.health = serverValues.healthPercentage;
-    correction.data.magicka = serverValues.magickaPercentage;
-    correction.data.stamina = serverValues.staminaPercentage;
-    actor->SendToUser(correction, true);
-    return;
-  }
-
   const auto now = std::chrono::steady_clock::now();
   const float timeAfterRegeneration = CropPeriodAfterLastRegen(
     actor->GetDurationOfAttributesPercentagesUpdate(now).count());
@@ -846,6 +832,13 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
     }
 
     if (MathUtils::IsNearlyEqual(currentVal, *inputVal)) {
+      return;
+    }
+
+    // Echo a freshly restored value, the client's report predates it
+    if (actor->ShouldSkipRestoration(av)) {
+      outVal = currentVal;
+      sendOutMsg = true;
       return;
     }
 
@@ -1210,22 +1203,30 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     spellCastData.target = myActor->GetFormId();
   }
 
+  // Stops are relayed before the death, equipment and denylist gates so none is dropped
+  // Relays are reliable so observers get casts, keep-alives and stops in order
+  if (spellCastData.interruptCast) {
+    SendToNeighbours(myActor->idx, rawMsgData, true);
+    // Only the stopped spell's channel ends, the other hand may still heal
+    auto channelIt = restorationChannels.find(caster->GetFormId());
+    const bool hadChannel = channelIt != restorationChannels.end() &&
+      channelIt->second.spellId == spellCastData.spell;
+    if (hadChannel) {
+      const RestorationChannel channel = std::move(channelIt->second);
+      restorationChannels.erase(channelIt);
+      ApplyRestorationChannelRemainder(caster->GetFormId(), channel);
+    }
+    spdlog::info("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
+                 "(restoration channel erased: {})",
+                 caster->GetFormId(), spellCastData.spell, hadChannel);
+    return;
+  }
+
   if (caster->IsDead()) {
     spdlog::info(fmt::format("{:x} actor is dead and can't spell cast. "
                              "requesting respawn in order to fix death state",
                              caster->GetFormId()));
     caster->RespawnWithDelay(true);
-    return;
-  }
-
-  // Stops are relayed before the equipment and denylist gates so none is dropped
-  if (spellCastData.interruptCast) {
-    SendToNeighbours(myActor->idx, rawMsgData);
-    const bool hadChannel =
-      restorationChannels.erase(caster->GetFormId()) > 0;
-    spdlog::info("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
-                 "(restoration channel erased: {})",
-                 caster->GetFormId(), spellCastData.spell, hadChannel);
     return;
   }
 
@@ -1246,7 +1247,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
-  SendToNeighbours(myActor->idx, rawMsgData);
+  SendToNeighbours(myActor->idx, rawMsgData, true);
 
   auto& browser = partOne.worldState.GetEspm().GetBrowser();
 
@@ -1322,11 +1323,9 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     const uint32_t casterId = caster->GetFormId();
     auto existing = restorationChannels.find(casterId);
     const bool hadChannel = existing != restorationChannels.end();
-    const bool isChannelRefresh = isConcentration && hadChannel &&
-      existing->second.spellId == spellCastData.spell;
 
-    // Keep-alives only refresh the channel; a fresh cast applies now
-    if (!isChannelRefresh && !spellCastData.keepAlive) {
+    // Concentration heals accrue per second of channel so a tap heals a tap's worth
+    if (!isConcentration && !spellCastData.keepAlive) {
       targetActor->ApplyMagicEffects(restoreEffects, hasSweetpie);
       spdlog::info("ActionListener::OnSpellCast - applied {} restorative "
                    "effect(s) of spell {:x} to actor {:x}",
@@ -1336,18 +1335,23 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
 
     // Concentration restoratives heal per second until a stop, a failed check or a missed keep-alive
     if (isConcentration) {
+      const auto now = std::chrono::steady_clock::now();
       RestorationChannel channel;
       channel.spellId = spellCastData.spell;
       channel.targetId = targetActor->GetFormId();
       channel.effects = restoreEffects;
       channel.hasSweetpie = hasSweetpie;
-      channel.lastRefresh = std::chrono::steady_clock::now();
-      // A live channel keeps its generation so its timer chain carries on
+      channel.lastRefresh = now;
+      // A live channel keeps its generation and accrual so its timer chain carries on
       channel.generation = hadChannel ? existing->second.generation
                                       : ++restorationChannelGeneration;
+      channel.lastApplied = hadChannel ? existing->second.lastApplied : now;
       const uint32_t generation = channel.generation;
       restorationChannels[casterId] = std::move(channel);
       if (!hadChannel) {
+        spdlog::info("ActionListener::OnSpellCast - opened restoration "
+                     "channel of spell {:x} on actor {:x}",
+                     spellCastData.spell, targetActor->GetFormId());
         partOne.worldState.SetTimer(std::chrono::milliseconds(1000))
           .Then([this, casterId, generation](Viet::Void) {
             TickRestorationChannel(casterId, generation);
@@ -1372,51 +1376,82 @@ void ActionListener::TickRestorationChannel(uint32_t casterId,
   // Bounds a channel whose stop was lost, matching the observers' clone watch
   constexpr auto kRefreshTimeout = std::chrono::milliseconds(8000);
 
-  auto& worldState = partOne.worldState;
-  auto casterForm = worldState.LookupFormById(casterId);
-  MpActor* caster = casterForm
-    ? std::dynamic_pointer_cast<MpActor>(casterForm).get()
-    : nullptr;
-
-  const bool refreshed =
-    std::chrono::steady_clock::now() - channel.lastRefresh <= kRefreshTimeout;
+  const auto now = std::chrono::steady_clock::now();
+  const bool refreshed = now - channel.lastRefresh <= kRefreshTimeout;
   if (!refreshed) {
     spdlog::info("ActionListener::TickRestorationChannel - channel of {:x} "
                  "expired without keep-alive",
                  casterId);
   }
 
-  bool valid = refreshed && caster && !caster->IsDead() &&
-    partOne.GetUserByActor(casterId) != Networking::InvalidUserId &&
-    caster->GetEquipment().IsSpellEquipped(channel.spellId) &&
-    ++channel.ticks <= kMaxChannelTicks;
-
-  MpActor* targetActor = nullptr;
-  if (valid) {
-    auto targetForm = worldState.LookupFormById(channel.targetId);
-    targetActor = targetForm
-      ? std::dynamic_pointer_cast<MpActor>(targetForm).get()
-      : nullptr;
-    valid = targetActor && !targetActor->IsDead();
-  }
-  if (valid && targetActor != caster) {
-    constexpr float kMaxHealDistance = 4096.f;
-    valid = targetActor->GetCellOrWorld() == caster->GetCellOrWorld() &&
-      (targetActor->GetPos() - caster->GetPos()).SqrLength() <=
-        kMaxHealDistance * kMaxHealDistance;
-  }
-
-  if (!valid) {
+  MpActor* targetActor = refreshed && ++channel.ticks <= kMaxChannelTicks
+    ? GetRestorationChannelTarget(casterId, channel)
+    : nullptr;
+  if (!targetActor) {
     restorationChannels.erase(it);
     return;
   }
 
+  channel.lastApplied = now;
   targetActor->ApplyMagicEffects(channel.effects, channel.hasSweetpie);
 
-  worldState.SetTimer(std::chrono::milliseconds(1000))
+  partOne.worldState.SetTimer(std::chrono::milliseconds(1000))
     .Then([this, casterId, generation](Viet::Void) {
       TickRestorationChannel(casterId, generation);
     });
+}
+
+MpActor* ActionListener::GetRestorationChannelTarget(
+  uint32_t casterId, const RestorationChannel& channel)
+{
+  auto& worldState = partOne.worldState;
+  auto casterForm = worldState.LookupFormById(casterId);
+  MpActor* caster = casterForm
+    ? std::dynamic_pointer_cast<MpActor>(casterForm).get()
+    : nullptr;
+  if (!caster || caster->IsDead() ||
+      partOne.GetUserByActor(casterId) == Networking::InvalidUserId ||
+      !caster->GetEquipment().IsSpellEquipped(channel.spellId)) {
+    return nullptr;
+  }
+
+  auto targetForm = worldState.LookupFormById(channel.targetId);
+  MpActor* targetActor = targetForm
+    ? std::dynamic_pointer_cast<MpActor>(targetForm).get()
+    : nullptr;
+  if (!targetActor || targetActor->IsDead()) {
+    return nullptr;
+  }
+
+  if (targetActor != caster) {
+    constexpr float kMaxHealDistance = 4096.f;
+    if (targetActor->GetCellOrWorld() != caster->GetCellOrWorld() ||
+        (targetActor->GetPos() - caster->GetPos()).SqrLength() >
+          kMaxHealDistance * kMaxHealDistance) {
+      return nullptr;
+    }
+  }
+  return targetActor;
+}
+
+// A stopped channel still owes the part of a second since its last tick
+void ActionListener::ApplyRestorationChannelRemainder(
+  uint32_t casterId, const RestorationChannel& channel)
+{
+  const std::chrono::duration<float> sinceApplied =
+    std::chrono::steady_clock::now() - channel.lastApplied;
+  const float fraction = std::clamp(sinceApplied.count(), 0.f, 1.f);
+  MpActor* targetActor =
+    fraction > 0.f ? GetRestorationChannelTarget(casterId, channel) : nullptr;
+  if (!targetActor) {
+    return;
+  }
+
+  auto effects = channel.effects;
+  for (auto& effect : effects) {
+    effect.magnitude *= fraction;
+  }
+  targetActor->ApplyMagicEffects(effects, channel.hasSweetpie);
 }
 
 void ActionListener::OnUnknown(const RawMessageData& rawMsgData)
