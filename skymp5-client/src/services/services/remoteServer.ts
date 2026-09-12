@@ -1,7 +1,6 @@
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { Actor, Form, FormType, Menu, interruptCast, castSpellImmediate, printConsole, applyAnimationVariablesToActor, ActorAnimationVariables } from 'skyrimPlatform';
 import {
-  Armor,
   Cell,
   Game,
   ObjectReference,
@@ -90,12 +89,9 @@ on('update', () => {
   }
 });
 
-const unequipIronHelmet = () => {
-  const ironHelment = Armor.from(Game.getFormEx(0x00012e4d));
-  const pl = Game.getPlayer();
-  if (pl) {
-    pl.unequipItem(ironHelment, false, true);
-  }
+// The spawn save dresses the player in the Player record's default outfit
+const unequipDefaultOutfit = () => {
+  Game.getPlayer()?.unequipAll();
 };
 
 export class RemoteServer extends ClientListener {
@@ -870,7 +866,7 @@ export class RemoteServer extends ClientListener {
       // wait 0.3s to avoid visual bugs when teleporting and showing this menu at the same time in onConnect
       once('update', () =>
         Utility.wait(0.3).then(() => {
-          unequipIronHelmet();
+          unequipDefaultOutfit();
           Game.showRaceMenu();
         }),
       );
