@@ -19,6 +19,7 @@ import { ConsoleCommandsService } from "./services/services/consoleCommandsServi
 import { LastInvService } from "./services/services/lastInvService";
 import { ActivationService } from "./services/services/activationService";
 import { CraftService } from "./services/services/craftService";
+import { CraftedExtrasService } from "./services/services/craftedExtrasService";
 import { DropItemService } from "./services/services/dropItemService";
 import { HitService } from "./services/services/hitService";
 import { RagdollService } from "./services/services/ragdollService";
@@ -103,6 +104,7 @@ const main = () => {
       new LastInvService(sp, controller),
       new ActivationService(sp, controller),
       new CraftService(sp, controller),
+      new CraftedExtrasService(sp, controller),
       new DropItemService(sp, controller),
       new HitService(sp, controller),
       new RagdollService(sp, controller),

@@ -145,7 +145,7 @@ export const PROPERTY_KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key wh
 const sameFloat = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-3 * Math.max(1, Math.abs(a));
 
 // Tempering in tenths, the precision extractExtraData reads it with
-const healthStep = (health?: number): number => (health && health > 1 ? Math.round(health * 10) : 10);
+export const healthStep = (health?: number): number => (health && health > 1 ? Math.round(health * 10) : 10);
 
 export const sameEffects = (a?: EnchantmentEffect[], b?: EnchantmentEffect[]): boolean => {
   const x = a || [];
