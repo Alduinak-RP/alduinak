@@ -63,6 +63,7 @@ const KIND_RULES: Record<CompanionKind, { commanded: boolean; dieOnEnd: boolean;
 
 const REGISTRY_FILE = "./companions.json";
 const UPDATE_MS = 500;
+const LEFTOVER_RETRY_MS = 120000;
 const SPAWN_DISTANCE = 160;
 const SPAWN_LIFT = 32;
 const FOLLOW_OFFSET = -128;
@@ -86,6 +87,9 @@ export class CompanionSystem implements System {
   private corpses = new Map<number, number>();
   private stored: Stored[] = [];
   private twinSouls = new Set<number>();
+  // Actor ids of the previous run still to destroy
+  private leftovers: number[] = [];
+  private bootAt = 0;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
@@ -104,6 +108,7 @@ export class CompanionSystem implements System {
     await new Promise((r) => setTimeout(r, UPDATE_MS));
     if (!this.mp) return;
     const now = Date.now();
+    if (this.leftovers.length) this.removeLeftovers(now);
     this.removeCorpses(now);
     for (const c of Array.from(this.companions.values())) {
       try {
@@ -411,7 +416,7 @@ export class CompanionSystem implements System {
     };
   }
 
-  // Companions from the previous run are removed; persistent ones wait for their owner's next login
+  // Companions from the previous run are removed once the world loads; persistent ones wait for their owner's next login
   private loadRegistry(): void {
     let saved: { active?: unknown; corpses?: unknown; stored?: unknown } = {};
     try { saved = JSON.parse(fs.readFileSync(REGISTRY_FILE, "utf8")) ?? {}; } catch { }
@@ -421,24 +426,37 @@ export class CompanionSystem implements System {
     const corpses = Array.isArray(saved.corpses) ? saved.corpses as number[] : [];
     this.stored = (Array.isArray(saved.stored) ? saved.stored : []).filter(isStored)
       .map((s: Stored) => ({ ownerId: Number(s.ownerId) >>> 0, baseDesc: s.baseDesc, kind: s.kind }));
-    let removed = 0;
     for (const a of active) {
       if (a?.persistent && isStored(a)) this.stored.push({ ownerId: Number(a.ownerId) >>> 0, baseDesc: a.baseDesc, kind: a.kind });
-      try { this.mp.destroyActor(Number(a?.id)); removed++; } catch { }
     }
-    for (const id of corpses) {
-      try { this.mp.destroyActor(Number(id)); removed++; } catch { }
-    }
-    if (active.length || corpses.length) {
-      this.log(`CompanionSystem: removed ${removed} companion(s) from the previous run, ${this.stored.length} persistent waiting for their owner`);
+    this.leftovers = active.map((a) => Number(a?.id) >>> 0).concat(corpses.map((id) => Number(id) >>> 0)).filter((id) => id > 0);
+    this.bootAt = Date.now();
+    if (this.leftovers.length || this.stored.length) {
+      this.log(`CompanionSystem: ${this.leftovers.length} companion(s) from the previous run to remove, ${this.stored.length} persistent waiting for their owner`);
     }
     this.save();
+  }
+
+  // The world DB loads after every system's init (attachSaveStorage in index.ts), so leftovers are retried from the update loop
+  private removeLeftovers(now: number): void {
+    const remaining = this.leftovers.filter((id) => {
+      try {
+        this.mp.destroyActor(id);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    const removed = this.leftovers.length - remaining.length;
+    this.leftovers = now - this.bootAt < LEFTOVER_RETRY_MS ? remaining : [];
+    if (removed) this.log(`CompanionSystem: removed ${removed} companion(s) from the previous run`);
+    if (removed || !this.leftovers.length) this.save();
   }
 
   private save(): void {
     const active: Saved[] = Array.from(this.companions.values())
       .map((c) => ({ id: c.id, ownerId: c.ownerId, baseDesc: c.baseDesc, kind: c.kind, persistent: c.persistent }));
-    const registry = { active, corpses: Array.from(this.corpses.keys()), stored: this.stored };
+    const registry = { active, corpses: Array.from(this.corpses.keys()).concat(this.leftovers), stored: this.stored };
     try { fs.writeFileSync(REGISTRY_FILE, JSON.stringify(registry)); }
     catch (e) { this.log(`CompanionSystem: ${REGISTRY_FILE} write failed: ${e}`); }
   }
