@@ -1,7 +1,8 @@
 // Alduinak launcher controlmap override.
 // Based on the vanilla Skyrim AE (1.6.1130+) PC controlmap.txt, which adds the Creations Menu
-// input context. The only change from vanilla is the "Wait" action keyboard binding (T / 0x14)
-// set to 0xff (unbound), because waiting is disabled on the server. All other bindings are vanilla.
+// input context. The only change from vanilla is the "Wait" action: its keyboard (T / 0x14) and
+// gamepad (Back / 0x0020) bindings are set to 0xff (unbound), because waiting is disabled on the
+// server. All other bindings are vanilla.
 // Written automatically by the launcher on install; do not edit by hand.
 // 1st field: User event name.  DO NOT ALTER!  This field is used to ID events in the code							
 // 2nd: Keyboard key ID that will proc this event.  A value of 0xff means the event is unmapped for this device.							
@@ -49,7 +50,7 @@ Hotkey7				0x08,0x47			0xff	0xff				0	0	0	0x908
 Hotkey8				0x09,0x48			0xff	0xff				0	0	0	0x908
 Quicksave			0x3f				0xff	0xff				1	0	0	
 Quickload			0x43				0xff	0xff				1	0	0	
-Wait				0xff				0xff	0x0020				1	1	1	0x808
+Wait				0xff				0xff	0xff				1	1	1	0x808
 Journal				0x24				0xff	0x0010				1	1	1	0x808
 Pause				0x1					0xff	0xff				1	1	0	0x8
 Screenshot			0xb7				0xff	0xff				0	0	0
