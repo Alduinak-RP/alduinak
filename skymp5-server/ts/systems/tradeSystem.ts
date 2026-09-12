@@ -9,18 +9,21 @@ type Mp = any;
 // Server-authoritative barter between two players; lives in server core so it survives gamemode hot reloads. The shipped client TradeService speaks exactly this protocol.
 //
 // Flow: tradeRequest -> tradeInvite accept/decline -> both edit offers (tradeSetOffer resets locks) -> both tradeLock -> both tradeAccept, then the server swaps the items atomically.
-// Only simple stacks and property keys trade (no enchanted/named/worn extras).
+// Every item trades; an offer line names one inventory entry by baseId plus its extras, and the swap moves the server's own entries with their extras intact.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server
 //     { customPacketType: "tradeRequest", recipient: <remoteActorFormId> }
 //     { customPacketType: "tradeRespond", accept: <bool> }
-//     { customPacketType: "tradeSetOffer", items: [{ baseId, count, name? }] }
+//     { customPacketType: "tradeSetOffer", items: [{ baseId, count, name?, health?, enchantmentId?, maxCharge?,
+//         removeEnchantmentOnUnequip?, chargePercent?, soul?, poisonId?, poisonCount? }] }
 //     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
 //   Server -> Client
 //     { customPacketType: "tradeInvite", fromName }
 //     { customPacketType: "tradeState", partnerName, myOffer, theirOffer,
 //         myLocked, theirLocked, bothLocked, iAccepted, theyAccepted }
+//       myOffer echoes my lines (plain: true when the server holds no copy with those extras);
+//       theirOffer lists the server entries that will actually arrive
 //     { customPacketType: "tradeCompleted" } | { customPacketType: "tradeCancelled", reason }
 //     { customPacketType: "tradeNotice", text }
 
@@ -29,29 +32,39 @@ const DEFAULT_MAX_TRADE_DISTANCE = 1024;      // game units; both must stay with
 const DEFAULT_INVITE_TTL_MS = 60 * 1000;      // pending invites auto-cancel after this
 const DEFAULT_INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per initiator->target
 
-interface Item {
-  baseId: number;
-  count: number;
-  name?: string; // property keys only
-}
-
-interface InventoryEntry extends Item {
-  // Any of these present => the entry is "non-simple" and cannot be traded.
+// Mirror of Inventory::ExtraData (server_guest_lib/Inventory.h) minus the worn flags
+interface Extras {
   health?: number;
   enchantmentId?: number;
   maxCharge?: number;
+  removeEnchantmentOnUnequip?: boolean;
   chargePercent?: number;
   name?: string;
   soul?: number;
   poisonId?: number;
   poisonCount?: number;
+}
+
+interface Item extends Extras {
+  baseId: number;
+  count: number;
+}
+
+interface InventoryEntry extends Item {
   worn?: boolean;
   wornLeft?: boolean;
-  removeEnchantmentOnUnequip?: boolean;
 }
 
 interface Inventory {
   entries: InventoryEntry[];
+}
+
+// Which server entries an offer draws on; plain[i] marks a line the server only holds without its extras
+interface Resolution {
+  ok: boolean;
+  moved: InventoryEntry[];
+  rest: Inventory;
+  plain: boolean[];
 }
 
 interface Session {
@@ -69,32 +82,45 @@ interface Session {
 
 // ── Pure inventory helpers (operate on the JSON shape of the inventory binding) ─
 
-const EXTRA_KEYS: (keyof InventoryEntry)[] = [
-  'health', 'enchantmentId', 'maxCharge', 'chargePercent', 'name',
-  'soul', 'poisonId', 'poisonCount', 'worn', 'wornLeft',
-  'removeEnchantmentOnUnequip',
-];
+// Extras that tell copies apart; charge drifts with use and names only matter on property keys (the client's extrasEqual rule)
+const IDENTITY_KEYS = [
+  'health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip',
+  'soul', 'poisonId', 'poisonCount',
+] as const;
 
-// Property keys (housing) are the one named item that trades; the name is the credential.
+const EXTRA_KEYS: (keyof Extras)[] = [...IDENTITY_KEYS, 'chargePercent', 'name'];
+
+// Property keys (housing): the name is the credential.
 const KEY_BASE_ID = 0x000db0e2;
 
 const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false;
 
-function hasExtras(e: InventoryEntry): boolean {
-  return EXTRA_KEYS.some((k) => isSet(e[k]));
-}
+const sameBase = (a: Item, b: Item): boolean => (a.baseId >>> 0) === (b.baseId >>> 0);
 
-function isKeyEntry(e: InventoryEntry): boolean {
-  return (e.baseId >>> 0) === KEY_BASE_ID && typeof e.name === 'string' && !!e.name &&
-    EXTRA_KEYS.every((k) => k === 'name' || !isSet(e[k]));
-}
+const isKeyItem = (i: Item): boolean => (i.baseId >>> 0) === KEY_BASE_ID;
 
-// Plain stacks match by baseId, keys by baseId plus the exact name.
-function matchesLine(e: InventoryEntry, item: Item): boolean {
-  if (e.baseId !== item.baseId) {
-    return false;
+const keyName = (i: Item): string => (isKeyItem(i) && typeof i.name === 'string' ? i.name : '');
+
+const hasIdentityExtras = (i: Item): boolean => IDENTITY_KEYS.some((k) => isSet(i[k]));
+
+// Floats pass through C++ float storage, so compare them loosely
+function sameValue(a: unknown, b: unknown): boolean {
+  if (!isSet(a) || !isSet(b)) {
+    return !isSet(a) && !isSet(b);
   }
-  return item.name ? isKeyEntry(e) && e.name === item.name : !hasExtras(e);
+  if (typeof a === 'number' && typeof b === 'number') {
+    return Math.abs(a - b) <= 1e-3 * Math.max(1, Math.abs(a));
+  }
+  return a === b;
+}
+
+function sameItem(e: Item, item: Item): boolean {
+  return sameBase(e, item) && keyName(e) === keyName(item) && IDENTITY_KEYS.every((k) => sameValue(e[k], item[k]));
+}
+
+// Same shape as the client's lineKey in tradeService.ts
+function lineKey(i: Item): string {
+  return [i.baseId >>> 0, keyName(i), ...IDENTITY_KEYS.map((k) => (isSet(i[k]) ? String(i[k]) : ''))].join('|');
 }
 
 function readInventory(mp: Mp, actorId: number): Inventory {
@@ -105,18 +131,31 @@ function readInventory(mp: Mp, actorId: number): Inventory {
   return { entries: [] };
 }
 
-// How many copies of one offer line the actor owns as tradeable stacks.
-function ownedCount(inv: Inventory, item: Item): number {
-  let total = 0;
-  for (const e of inv.entries) {
-    if (matchesLine(e, item)) {
-      total += e.count;
+function copyValidExtras(raw: any, item: Item): void {
+  // Same acceptance rule as the client's toItem, so both sides build the same lineKey
+  const num = (v: unknown, allowZero = false): number | undefined =>
+    (typeof v === 'number' && Number.isFinite(v) && (v > 0 || (allowZero && v === 0)) ? v : undefined);
+  const id = (v: unknown, max: number): number | undefined =>
+    (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= max ? v : undefined);
+  const extras: Extras = {
+    health: num(raw?.health),
+    enchantmentId: id(raw?.enchantmentId, 0xffffffff),
+    maxCharge: num(raw?.maxCharge),
+    removeEnchantmentOnUnequip: raw?.removeEnchantmentOnUnequip === true ? true : undefined,
+    chargePercent: num(raw?.chargePercent, true),
+    name: typeof raw?.name === 'string' && raw.name ? raw.name.slice(0, 256) : undefined,
+    soul: id(raw?.soul, 5),
+    poisonId: id(raw?.poisonId, 0xffffffff),
+    poisonCount: id(raw?.poisonCount, 0xffffffff),
+  };
+  for (const k of EXTRA_KEYS) {
+    if (extras[k] !== undefined) {
+      (item as any)[k] = extras[k];
     }
   }
-  return total;
 }
 
-// Collapse an offer to positive, integer, de-duplicated lines; only keys keep a name.
+// Collapse an offer to positive, integer, de-duplicated lines with validated extras.
 function normalizeOffer(items: unknown): Item[] {
   if (!Array.isArray(items)) {
     return [];
@@ -125,60 +164,77 @@ function normalizeOffer(items: unknown): Item[] {
   for (const raw of items) {
     const baseId = Number((raw as Item)?.baseId);
     const count = Math.floor(Number((raw as Item)?.count));
-    if (!Number.isFinite(baseId) || !Number.isInteger(count) || count <= 0) {
+    if (!Number.isInteger(baseId) || !Number.isInteger(count) || count <= 0) {
       continue;
     }
-    const rawName = (raw as Item)?.name;
-    const name = (baseId >>> 0) === KEY_BASE_ID && typeof rawName === 'string' && rawName ? rawName : undefined;
-    const key = baseId + '|' + (name || '');
+    const item: Item = { baseId: baseId >>> 0, count };
+    copyValidExtras(raw, item);
+    const key = lineKey(item);
     const line = byLine.get(key);
     if (line) {
       line.count += count;
     } else {
-      byLine.set(key, name ? { baseId, count, name } : { baseId, count });
+      byLine.set(key, item);
     }
   }
   return Array.from(byLine.values());
 }
 
-// True only if every offered stack is fully backed by simple inventory.
-function offerIsAffordable(inv: Inventory, offer: Item[]): boolean {
-  for (const item of offer) {
-    if (ownedCount(inv, item) < item.count) {
+function withCount(e: InventoryEntry, count: number): InventoryEntry {
+  const copy: InventoryEntry = { ...e, count };
+  delete copy.worn;
+  delete copy.wornLeft;
+  return copy;
+}
+
+// Draw each line from the actor's own entries: exact extras first, then a plain copy for extras the server never saved
+function resolveOffer(inv: Inventory, offer: Item[]): Resolution {
+  const left = inv.entries.map((e) => e.count);
+  const need = offer.map((i) => i.count);
+  const moved: InventoryEntry[] = [];
+  const draw = (i: number, fits: (e: InventoryEntry) => boolean): void => {
+    inv.entries.forEach((e, j) => {
+      if (need[i] <= 0 || left[j] <= 0 || !fits(e)) {
+        return;
+      }
+      const n = Math.min(need[i], left[j]);
+      left[j] -= n;
+      need[i] -= n;
+      moved.push(withCount(e, n));
+    });
+  };
+  offer.forEach((item, i) => draw(i, (e) => sameItem(e, item)));
+  const plain = offer.map((item, i) => {
+    if (need[i] <= 0 || !hasIdentityExtras(item) || isKeyItem(item)) {
       return false;
     }
-  }
-  return true;
+    const before = need[i];
+    draw(i, (e) => sameBase(e, item) && !hasIdentityExtras(e));
+    return need[i] < before;
+  });
+  return {
+    ok: need.every((n) => n <= 0),
+    moved,
+    rest: { entries: inv.entries.map((e, j) => ({ ...e, count: left[j] })).filter((e) => e.count > 0) },
+    plain,
+  };
 }
 
-// Remove an offer from a working inventory copy.
-function removeOffer(inv: Inventory, offer: Item[]): void {
-  for (const item of offer) {
-    let remaining = item.count;
-    for (const e of inv.entries) {
-      if (remaining <= 0) {
-        break;
-      }
-      if (matchesLine(e, item)) {
-        const take = Math.min(e.count, remaining);
-        e.count -= take;
-        remaining -= take;
-      }
-    }
-  }
-  inv.entries = inv.entries.filter((e) => e.count > 0);
-}
+const offerIsAffordable = (inv: Inventory, offer: Item[]): boolean => resolveOffer(inv, offer).ok;
 
-// Add an offer into a working inventory copy, merging onto an existing stack.
-function addOffer(inv: Inventory, offer: Item[]): void {
-  for (const item of offer) {
-    const stack = inv.entries.find((e) => matchesLine(e, item));
+// Stack entries onto a working inventory copy, only onto copies with identical extras
+function addEntries(inv: Inventory, entries: InventoryEntry[]): Inventory {
+  const out = inv.entries.map((e) => ({ ...e }));
+  const norm = (v: unknown): unknown => (isSet(v) ? v : undefined);
+  for (const add of entries) {
+    const stack = out.find((e) => sameBase(e, add) && EXTRA_KEYS.every((k) => norm(e[k]) === norm(add[k])));
     if (stack) {
-      stack.count += item.count;
+      stack.count += add.count;
     } else {
-      inv.entries.push(item.name ? { baseId: item.baseId, count: item.count, name: item.name } : { baseId: item.baseId, count: item.count });
+      out.push({ ...add });
     }
   }
+  return { entries: out };
 }
 
 export class TradeSystem implements System {
@@ -284,12 +340,16 @@ export class TradeSystem implements System {
   // Push the current deal to one participant, framed from their point of view.
   private sendStateTo(mp: Mp, s: Session, userId: number): void {
     const me = s.a === userId;
+    const partner = me ? s.b : s.a;
     const bothLocked = s.lockedA && s.lockedB;
+    const myOffer = me ? s.offerA : s.offerB;
+    const mine = resolveOffer(readInventory(mp, this.actorOf(mp, userId)), myOffer);
+    const theirs = resolveOffer(readInventory(mp, this.actorOf(mp, partner)), me ? s.offerB : s.offerA);
     this.send(mp, userId, {
       customPacketType: 'tradeState',
-      partnerName: this.nameShownTo(mp, userId, me ? s.b : s.a),
-      myOffer: me ? s.offerA : s.offerB,
-      theirOffer: me ? s.offerB : s.offerA,
+      partnerName: this.nameShownTo(mp, userId, partner),
+      myOffer: myOffer.map((i, n) => (mine.plain[n] ? { ...i, plain: true } : i)),
+      theirOffer: addEntries({ entries: [] }, theirs.moved).entries,
       myLocked: me ? s.lockedA : s.lockedB,
       theirLocked: me ? s.lockedB : s.lockedA,
       bothLocked,
@@ -515,11 +575,18 @@ export class TradeSystem implements System {
     }
     const offer = normalizeOffer(content.items);
     const inv = readInventory(mp, this.actorOf(mp, userId));
-    if (!offerIsAffordable(inv, offer)) {
+    const res = resolveOffer(inv, offer);
+    if (!res.ok) {
       // Client and server disagree on holdings - resync rather than trust it.
       this.notice(mp, userId, 'You no longer have all of those items.');
       this.sendStateTo(mp, s, userId);
       return;
+    }
+    const oldOffer = s.a === userId ? s.offerA : s.offerB;
+    const oldPlain = resolveOffer(inv, oldOffer).plain;
+    const wasPlain = new Set(oldOffer.filter((_, n) => oldPlain[n]).map(lineKey));
+    if (offer.some((i, n) => res.plain[n] && !wasPlain.has(lineKey(i)))) {
+      this.notice(mp, userId, 'The server has no saved enchantment, tempering, soul or poison on that item, so it will trade as a plain copy.');
     }
     if (s.a === userId) { s.offerA = offer; } else { s.offerB = offer; }
     this.resetCommitments(s); // the terms changed; everyone must re-lock
@@ -609,25 +676,24 @@ export class TradeSystem implements System {
     const invA = readInventory(mp, aId);
     const invB = readInventory(mp, bId);
 
-    // Final authority check: re-validate both offers against live inventories.
-    if (!offerIsAffordable(invA, s.offerA) || !offerIsAffordable(invB, s.offerB)) {
+    // Final authority check: re-resolve both offers against live inventories.
+    const resA = resolveOffer(invA, s.offerA);
+    const resB = resolveOffer(invB, s.offerB);
+    if (!resA.ok || !resB.ok) {
       this.cancel(mp, s, 'The trade failed - an item was no longer available.');
       return;
     }
 
-    // Snapshot A's pre-swap inventory BEFORE mutating, so a failure of the second write can restore the first
-    const preSwapA: Inventory = JSON.parse(JSON.stringify(invA));
-
-    removeOffer(invA, s.offerA);
-    addOffer(invA, s.offerB);
-    removeOffer(invB, s.offerB);
-    addOffer(invB, s.offerA);
+    // invA stays untouched, so a failure of the second write can restore the first
+    const preSwapA = invA;
+    const newA = addEntries(resA.rest, resB.moved);
+    const newB = addEntries(resB.rest, resA.moved);
 
     let wroteA = false;
     try {
-      mp.set(aId, 'inventory', invA);
+      mp.set(aId, 'inventory', newA);
       wroteA = true;
-      mp.set(bId, 'inventory', invB);
+      mp.set(bId, 'inventory', newB);
     } catch (err: any) {
       this.log('[trade] swap write failed: ' + (err && err.message));
       if (wroteA) {
@@ -646,8 +712,8 @@ export class TradeSystem implements System {
     this.endSession(s);
     this.send(mp, s.a, { customPacketType: 'tradeCompleted' });
     this.send(mp, s.b, { customPacketType: 'tradeCompleted' });
-    const summary = '[trade] ' + this.describeParty(mp, s.a) + ' gave [' + this.describeOffer(s.offerA)
-      + '] to ' + this.describeParty(mp, s.b) + ' for [' + this.describeOffer(s.offerB) + ']';
+    const summary = '[trade] ' + this.describeParty(mp, s.a) + ' gave [' + this.describeOffer(resA.moved)
+      + '] to ' + this.describeParty(mp, s.b) + ' for [' + this.describeOffer(resB.moved) + ']';
     this.log(summary);
     // trading.log via the gamemode's shared appender (same pattern as adminLog)
     try { (globalThis as any).__alduinakTradeLog?.(summary); } catch { /* log only */ }
@@ -662,26 +728,31 @@ export class TradeSystem implements System {
     return JSON.stringify(this.nameOf(mp, userId)) + ' (profile ' + profileId + ', actor ' + actorId.toString(16) + ')';
   }
 
-  private describeOffer(offer: Item[]): string {
+  private describeOffer(moved: InventoryEntry[]): string {
+    const offer = addEntries({ entries: [] }, moved).entries;
     if (!offer.length) {
       return 'nothing';
     }
     const nameOf = (globalThis as any).__alduinakItemName;
+    const hex = (v: unknown): string => '0x' + (Number(v) >>> 0).toString(16);
     return offer.map((i) => {
-      let label = i.count + 'x 0x' + (i.baseId >>> 0).toString(16);
+      let label = i.count + 'x ' + hex(i.baseId);
       if (i.name) {
-        return label + ' ' + JSON.stringify(i.name);
+        label += ' ' + JSON.stringify(i.name);
+      } else {
+        try {
+          const n = nameOf?.(i.baseId);
+          if (n) label += ' ' + JSON.stringify(n);
+        } catch { /* hex id is enough */ }
       }
-      try {
-        const n = nameOf?.(i.baseId);
-        if (n) label += ' ' + JSON.stringify(n);
-      } catch { /* hex id is enough */ }
-      return label;
+      const extras = EXTRA_KEYS.filter((k) => k !== 'name' && isSet(i[k]))
+        .map((k) => k + '=' + (k === 'enchantmentId' || k === 'poisonId' ? hex(i[k]) : String(i[k])));
+      return extras.length ? label + ' {' + extras.join(', ') + '}' : label;
     }).join(', ');
   }
 }
 
 // Exported for unit/manual testing of the pure inventory math.
 export const __test = {
-  hasExtras, ownedCount, normalizeOffer, offerIsAffordable, removeOffer, addOffer,
+  lineKey, normalizeOffer, resolveOffer, offerIsAffordable, addEntries,
 };
