@@ -1474,8 +1474,10 @@ void MpObjectReference::ProcessActivateNormal(
 
   auto t = base.rec->GetType();
 
-  bool pickable = espm::utils::Is<espm::TREE>(t) ||
-    espm::utils::Is<espm::FLOR>(t) || espm::utils::IsItem(t);
+  // Placed keys are never loaded, so only player-dropped keys reach here
+  bool isItem = espm::utils::IsItem(t) || t == "KEYM";
+  bool pickable =
+    espm::utils::Is<espm::TREE>(t) || espm::utils::Is<espm::FLOR>(t) || isItem;
   if (pickable && !IsHarvested()) {
     // forbiddenReloot types are static world decor: never handed out at all.
     // Runtime (0xff) refs stay lootable so player-dropped items keep working.
@@ -1495,7 +1497,7 @@ void MpObjectReference::ProcessActivateNormal(
       activationSource.SendOpenContainer(GetFormId());
     }
 
-    if (espm::utils::IsItem(t) && !IsEspmForm()) {
+    if (isItem && !IsEspmForm()) {
       spdlog::info("MpObjectReference::ProcessActivate - Deleting 0xff item");
       Delete();
     }
