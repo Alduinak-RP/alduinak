@@ -1712,6 +1712,11 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
     partOne.CalculateDamage(*aggressor, *targetActorPtr, spellCastData);
   damage = damage <= 0.f ? 0.f : damage;
 
+  if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, targetActorPtr,
+                          hitData.source, damage)) {
+    return;
+  }
+
   targetActorValues.healthPercentage = CalculateCurrentHealthPercentage(
     *targetActorPtr, damage, targetActorValues.healthPercentage, nullptr);
 
@@ -1726,7 +1731,8 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
                spellCastData.target, spellCastData.spell, damage,
                spellCastData.caster);
 
-  FireHitDamageEvent(aggressor, targetActorPtr, hitData.source, damage);
+  FireHitDamageEvent("onHitDamage", aggressor, targetActorPtr, hitData.source,
+                     damage);
 
   // Heal Other and the area share of self heals (Grand Healing) restore their target here, the caster heals on cast
   if (targetActorPtr == aggressor || targetActorPtr->IsDead()) {
@@ -1892,6 +1898,10 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 
   float damage = partOne.CalculateDamage(*aggressor, targetActor, hitData);
   damage = damage < 0.f ? 0.f : damage;
+  if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, &targetActor,
+                          hitData.source, damage)) {
+    return;
+  }
   float outBaseHealth = 0.f;
   currentActorValues.healthPercentage = CalculateCurrentHealthPercentage(
     targetActor, damage, healthPercentage, &outBaseHealth);
@@ -1912,22 +1922,23 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     hitData.target, damage, currentActorValues.healthPercentage,
     healthPercentage, outBaseHealth);
 
-  FireHitDamageEvent(aggressor, &targetActor, hitData.source, damage);
+  FireHitDamageEvent("onHitDamage", aggressor, &targetActor, hitData.source,
+                     damage);
 }
 
-void ActionListener::FireHitDamageEvent(MpActor* aggressor, MpActor* target,
+bool ActionListener::FireHitDamageEvent(const char* eventName,
+                                        MpActor* aggressor, MpActor* target,
                                         uint32_t sourceId, float damage)
 {
   if (!aggressor || !target || damage <= 0.f) {
-    return;
+    return true;
   }
   nlohmann::json argsJson = nlohmann::json::array();
   argsJson.push_back(target->GetFormId());
   argsJson.push_back(sourceId);
   argsJson.push_back(damage);
-  CustomEvent hitEvent(aggressor->GetFormId(), "onHitDamage",
-                       argsJson.dump());
-  hitEvent.Fire(&partOne.worldState);
+  CustomEvent hitEvent(aggressor->GetFormId(), eventName, argsJson.dump());
+  return hitEvent.Fire(&partOne.worldState);
 }
 
 void ActionListener::SendPapyrusOnHitEvent(MpActor* aggressor,
