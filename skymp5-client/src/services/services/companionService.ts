@@ -4,8 +4,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { WorldCleanerService } from "./worldCleanerService";
-import { localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
-import { isHostedByMe } from "../../view/hostAttempts";
+import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 
 // Owner side of the server companion library (companionSystem.ts, docs/docs_roleplay_companions.md).
 // The owner hosts its companions, so this engine's AI drives them: teammate setup, following, and combat with the server's target.
@@ -127,7 +126,7 @@ export class CompanionService extends ClientListener {
       return;
     }
     for (const c of this.companions) {
-      if (!isHostedByMe(c.id)) {
+      if (!isRemoteHostedByMe(c.id)) {
         continue;
       }
       const actor = this.sp.Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(c.id)));

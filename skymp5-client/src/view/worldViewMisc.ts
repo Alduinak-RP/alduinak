@@ -49,14 +49,12 @@ export const remoteIdToLocalId = (remoteFormId: number): number => {
 };
 
 // Hosted ids are remote ids, some stored with the 64-bit server offset
-export const isHostedByMe = (localFormId: number): boolean => {
+export const isRemoteHostedByMe = (remoteId: number): boolean => {
   const hosted = storage["hosted"];
-  if (!Array.isArray(hosted)) {
-    return false;
-  }
-  const remoteId = localIdToRemoteId(localFormId);
-  return remoteId !== 0 && (hosted.includes(remoteId) || hosted.includes(remoteId + 0x100000000));
+  return remoteId !== 0 && Array.isArray(hosted) && (hosted.includes(remoteId) || hosted.includes(remoteId + 0x100000000));
 };
+
+export const isHostedByMe = (localFormId: number): boolean => isRemoteHostedByMe(localIdToRemoteId(localFormId));
 
 export const getObjectReference = (i: number): ObjectReference | null => {
   const view = getViewFromStorage();
