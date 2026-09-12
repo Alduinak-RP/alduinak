@@ -1,5 +1,5 @@
 // TODO: refactor this out
-import { localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { localIdToRemoteId } from "../../view/worldViewMisc";
 
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
@@ -24,6 +24,17 @@ const BLOCKED_POWER_IDS = new Set([
     0x000AA026, // RaceOrcBerserk (Berserker Rage)
 ]);
 
+// A relayed cast, tracked per caster and hand until its stop and echoes are sent
+interface RelayedCast {
+    msg: SpellCastMsgData;
+    // The player's remote id has no form view, so the caster is never mapped back from msg.caster
+    casterLocalId: number;
+    startedMs: number;
+    lastKeepAliveMs: number;
+    seenCasting: boolean;
+    stopEchoAt: number[];
+}
+
 export class MagicSyncService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
@@ -42,7 +53,7 @@ export class MagicSyncService extends ClientListener {
     }
 
     private onUpdate() {
-        this.detectCastStop();
+        this.syncRelayedCasts();
 
         if (this.isAnyMagicStuffEquiped() === false) {
             return;
@@ -90,41 +101,48 @@ export class MagicSyncService extends ClientListener {
         const msg: SpellCastMsgData = this.getSpellCastEventData(event, false);
         this.sendSpellCast(msg);
 
-        this.lastSpellCastEventMsg = msg;
-        this.lastCastKeepAliveMs = Date.now();
-        this.castStopEchoAt = [];
-
-        // Short taps release before this event arrives; checked next update so the casting vars have settled
-        this.controller.once('update', () => {
-            if (this.lastSpellCastEventMsg === msg && !this.isPlayerCasting()) {
-                this.sendCastStop();
-            }
+        const casterLocalId = event.caster.getFormID();
+        const now = Date.now();
+        this.relayedCasts.set(this.getCastKey(casterLocalId, msg.castingSource), {
+            msg,
+            casterLocalId,
+            startedMs: now,
+            lastKeepAliveMs: now,
+            seenCasting: false,
+            stopEchoAt: [],
         });
     }
 
     private onSendAnimationEventLeave(ctx: { animEventName: string, animationSucceeded: boolean }) {
-
-        if (!this.lastSpellCastEventMsg || !this.isInteraptSpellCastAnim(ctx.animEventName)) {
+        const source = this.getEquippedAnimSource(ctx.animEventName);
+        if (source === undefined) {
             return;
         }
 
         // Hook context cannot touch game state, so the stop waits for the next update
-        this.controller.once('update', () => this.sendCastStop());
+        this.controller.once('update', () => {
+            const cast = this.relayedCasts.get(this.getCastKey(this.playerId, source));
+            if (cast && !this.isCastSourceCasting(cast)) {
+                this.sendCastStop(cast);
+            }
+        });
     }
 
-    // Shared stop path: marks the last cast, sends it and arms the echoes
-    private sendCastStop() {
-        const msg = this.lastSpellCastEventMsg;
-        if (!msg || msg.interruptCast) {
+    // Shared stop path: marks the cast, sends it and arms the echoes
+    private sendCastStop(cast: RelayedCast) {
+        const msg = cast.msg;
+        if (msg.interruptCast) {
             return;
         }
         msg.interruptCast = true;
         msg.keepAlive = false;
-        msg.actorAnimationVariables = this.getAnimationVariablesFromActorConverted(remoteIdToLocalId(msg.caster));
+        if (Actor.from(Game.getFormEx(cast.casterLocalId))) {
+            msg.actorAnimationVariables = this.getAnimationVariablesFromActorConverted(cast.casterLocalId);
+        }
         this.sendSpellCast(msg);
         // Echoes cover a keep-alive or cast landing after the stop, client to server reliable is unordered
         const now = Date.now();
-        this.castStopEchoAt = this.castStopEchoDelaysMs.map(delay => now + delay);
+        cast.stopEchoAt = this.castStopEchoDelaysMs.map(delay => now + delay);
     }
 
     private sendSpellCast(msg: SpellCastMsgData) {
@@ -134,14 +152,26 @@ export class MagicSyncService extends ClientListener {
         });
     }
 
-    private isPlayerCasting(): boolean {
-        const player = Game.getPlayer();
-        if (!player) {
+    private isCastSourceCasting(cast: RelayedCast): boolean {
+        const ac = Actor.from(Game.getFormEx(cast.casterLocalId));
+        // Stowed magic cannot be casting, whatever the anim vars say
+        if (!ac || !ac.isWeaponDrawn()) {
             return false;
         }
-        return player.getAnimationVariableBool("IsCastingRight")
-            || player.getAnimationVariableBool("IsCastingLeft")
-            || player.getAnimationVariableBool("IsCastingDual");
+        const left = ac.getAnimationVariableBool("IsCastingLeft");
+        const right = ac.getAnimationVariableBool("IsCastingRight");
+        const dual = ac.getAnimationVariableBool("IsCastingDual");
+        const spellId = cast.msg.spell;
+        // The platform reports a spell held in both hands as right-handed, so either hand counts
+        const inBothHands = ac.getEquippedSpell(SpellType.Left)?.getFormID() === spellId
+            && ac.getEquippedSpell(SpellType.Right)?.getFormID() === spellId;
+        if (dual || inBothHands) {
+            return left || right || dual;
+        }
+        if (cast.msg.castingSource === SpellType.Left) {
+            return left;
+        }
+        return cast.msg.castingSource === SpellType.Right && right;
     }
 
     private getSpellCastEventData(e: SpellCastEvent, isInterruptCast: boolean): SpellCastMsgData {
@@ -185,43 +215,52 @@ export class MagicSyncService extends ClientListener {
         return animVarsData;
     }
 
-    // Concentration cast release fires no anim equip event; poll casting vars and sync the stop, else clones stream Flames until stow (S4)
-    private detectCastStop() {
-        if (!Game.getPlayer()) {
-            return;
-        }
-        const casting = this.isPlayerCasting();
-        const stopped = this.prevIsCasting && !casting;
-        this.prevIsCasting = casting;
-        const msg = this.lastSpellCastEventMsg;
+    // Concentration release fires no event, so each relayed cast polls its hand for the stop and keep-alives
+    private syncRelayedCasts() {
         const now = Date.now();
-        if (casting) {
-            this.castStopEchoAt = [];
-            // Keep-alive while channeling so the server channel and observer clones can time out a lost stop
-            if (msg && !msg.interruptCast && now - this.lastCastKeepAliveMs > this.castKeepAliveRateMs) {
-                this.lastCastKeepAliveMs = now;
-                msg.keepAlive = true;
+        for (const [key, cast] of Array.from(this.relayedCasts)) {
+            const msg = cast.msg;
+            const casting = this.isCastSourceCasting(cast);
+            if (!msg.interruptCast) {
+                cast.seenCasting = cast.seenCasting || casting;
+                // Casting vars can lag the cast event, so a hand never seen casting gets a grace period
+                if (!casting && (cast.seenCasting || now - cast.startedMs > this.castStartGraceMs)) {
+                    this.sendCastStop(cast);
+                } else if (casting && now - cast.lastKeepAliveMs > this.castKeepAliveRateMs) {
+                    // Keep-alive while channeling so the server channel and observer clones can time out a lost stop
+                    cast.lastKeepAliveMs = now;
+                    msg.keepAlive = true;
+                    this.sendSpellCast(msg);
+                }
+                continue;
+            }
+            if (casting) {
+                // The hand is casting again and its next cast event replaces this record
+                cast.stopEchoAt = [];
+            } else if (cast.stopEchoAt.length > 0 && now >= cast.stopEchoAt[0]) {
+                cast.stopEchoAt.shift();
                 this.sendSpellCast(msg);
             }
-            return;
-        }
-        if (stopped) {
-            // Without a live message the spellCast event has not arrived yet; onSpellCast sends that stop
-            if (msg && !msg.interruptCast) {
-                this.sendCastStop();
+            if (cast.stopEchoAt.length === 0) {
+                this.relayedCasts.delete(key);
             }
-            return;
-        }
-        if (msg && msg.interruptCast && this.castStopEchoAt.length > 0 && now >= this.castStopEchoAt[0]) {
-            this.castStopEchoAt.shift();
-            this.sendSpellCast(msg);
         }
     }
 
-    private isInteraptSpellCastAnim(animEventName: string): boolean {
+    private getCastKey(casterLocalId: number, castingSource: number): string {
+        return `${casterLocalId}:${castingSource}`;
+    }
+
+    private getEquippedAnimSource(animEventName: string): number | undefined {
         const eventName = animEventName.toLowerCase();
-        return eventName === "mlh_equipped_event" || eventName === "mrh_equipped_event";
-    };
+        if (eventName === "mlh_equipped_event") {
+            return SpellType.Left;
+        }
+        if (eventName === "mrh_equipped_event") {
+            return SpellType.Right;
+        }
+        return undefined;
+    }
 
     private isSpellCastAnim(animEventName: string): boolean {
         const eventName = animEventName.toLowerCase();
@@ -264,10 +303,8 @@ export class MagicSyncService extends ClientListener {
     private playerId = 0x14;
     private sendUpdateAnimationVariablesRateMs = 500;
     private castKeepAliveRateMs = 3000;
+    private castStartGraceMs = 250;
     private readonly castStopEchoDelaysMs = [1000, 3500];
-    private lastSpellCastEventMsg: SpellCastMsgData | null = null;
+    private relayedCasts = new Map<string, RelayedCast>();
     private lastSendUpdateAnimationVariables: number = 0;
-    private lastCastKeepAliveMs = 0;
-    private prevIsCasting = false;
-    private castStopEchoAt: number[] = [];
 }
