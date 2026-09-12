@@ -969,18 +969,36 @@ export class RemoteServer extends ClientListener {
         integers: new Uint8Array(msg.data.actorAnimationVariables.integers)
       };
 
+      const key = `${msg.data.caster}:${msg.data.castingSource}`;
+      const now = Date.now();
+
       if (msg.data.interruptCast) {
-        this.cloneCastWatch.delete(msg.data.caster);
-        interruptCast(ac.getFormID(), msg.data.castingSource, actorAnimationVariables);
+        this.cloneCastWatch.delete(key);
+        this.cloneCastStoppedAt.set(key, now);
+        this.stopCloneCast(ac, msg.data.caster, msg.data.castingSource, actorAnimationVariables);
         return;
       }
 
+      // Keep-alives only refresh a running clone, recasting would stack concentration casts
+      const watch = this.cloneCastWatch.get(key);
+      if (msg.data.keepAlive && watch) {
+        watch.expiresAt = now + this.cloneCastTimeoutMs;
+        return;
+      }
+      // A keep-alive overtaking its own stop must not restart the clone
+      if (msg.data.keepAlive && now - (this.cloneCastStoppedAt.get(key) ?? 0) < this.cloneCastStopMemoryMs) {
+        return;
+      }
+      this.cloneCastStoppedAt.delete(key);
+
       // Casters refresh channeled casts every ~3s; a clone whose refresh and
       // stop both got lost is interrupted by sweepCloneCasts
-      this.cloneCastWatch.set(msg.data.caster, {
-        expiresAt: Date.now() + 8000,
+      this.cloneCastWatch.set(key, {
+        casterRemoteId: msg.data.caster,
+        expiresAt: now + this.cloneCastTimeoutMs,
         castingSource: msg.data.castingSource,
         animVars: actorAnimationVariables,
+        wasDrawn: ac.isWeaponDrawn(),
       });
 
       // Prefer the spell id in the message; the clone's equipped spell can be stale (spell swaps fire no equip event)
@@ -993,24 +1011,41 @@ export class RemoteServer extends ClientListener {
     });
   }
 
+  // Papyrus InterruptCast ends castSpellImmediate concentration casts FinishCast may miss, but stops every hand
+  private stopCloneCast(ac: Actor, casterRemoteId: number, castingSource: number, animVars: ActorAnimationVariables): void {
+    interruptCast(ac.getFormID(), castingSource, animVars);
+    const otherHandCasting = Array.from(this.cloneCastWatch.values()).some((watch) => watch.casterRemoteId === casterRemoteId);
+    if (!otherHandCasting) {
+      ac.interruptCast();
+    }
+  }
+
   private sweepCloneCasts(): void {
     const now = Date.now();
-    if (now - this.lastCloneCastSweep < 2000 || this.cloneCastWatch.size === 0) {
+    if (now - this.lastCloneCastSweep < 250) {
       return;
     }
     this.lastCloneCastSweep = now;
-    for (const [casterRemoteId, watch] of Array.from(this.cloneCastWatch)) {
-      if (now < watch.expiresAt) {
-        continue;
+    for (const [key, stoppedAt] of Array.from(this.cloneCastStoppedAt)) {
+      if (now - stoppedAt > this.cloneCastStopMemoryMs) {
+        this.cloneCastStoppedAt.delete(key);
       }
-      this.cloneCastWatch.delete(casterRemoteId);
-      const ac = Actor.from(Game.getFormEx(remoteIdToLocalId(casterRemoteId)));
+    }
+    for (const [key, watch] of Array.from(this.cloneCastWatch)) {
+      const ac = Actor.from(Game.getFormEx(remoteIdToLocalId(watch.casterRemoteId)));
       if (!ac) {
+        this.cloneCastWatch.delete(key);
         continue;
       }
-      // The clone's IsCasting vars mirror the caster's, so always stop; FinishCast on an idle caster is a no-op
-      logTrace(this, `Clone cast timed out for remote caster`, casterRemoteId.toString(16));
-      interruptCast(ac.getFormID(), watch.castingSource, watch.animVars);
+      const drawn = ac.isWeaponDrawn();
+      watch.wasDrawn = watch.wasDrawn || drawn;
+      // Stowed magic cannot keep casting, so a sheathe after the draw ends the clone cast like a timeout
+      if (now < watch.expiresAt && (drawn || !watch.wasDrawn)) {
+        continue;
+      }
+      this.cloneCastWatch.delete(key);
+      logTrace(this, `Clone cast swept for remote caster`, watch.casterRemoteId.toString(16));
+      this.stopCloneCast(ac, watch.casterRemoteId, watch.castingSource, watch.animVars);
     }
   }
 
@@ -1037,7 +1072,10 @@ export class RemoteServer extends ClientListener {
     });
   }
 
-  private cloneCastWatch = new Map<number, { expiresAt: number, castingSource: number, animVars: ActorAnimationVariables }>();
+  private cloneCastWatch = new Map<string, { casterRemoteId: number, expiresAt: number, castingSource: number, animVars: ActorAnimationVariables, wasDrawn: boolean }>();
+  private cloneCastStoppedAt = new Map<string, number>();
+  private readonly cloneCastTimeoutMs = 8000;
+  private readonly cloneCastStopMemoryMs = 2000;
   private lastCloneCastSweep = 0;
   private numSetInventory = 0;
 }
