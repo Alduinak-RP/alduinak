@@ -10,24 +10,23 @@ mongo-cxx driver statically linked in (verified: `mongocxx`/`mongoc`/`bsoncxx`
 symbols present, the `NO_MONGO` "not supported" path is absent). You only need
 MongoDB installed and running on the box.
 
-## Quickstart for the live box (state as of 2026-07-27)
+## Quickstart for the live box (state as of 2026-09-11)
 
-MongoDB 8.0 is now installed via the MSI with its bundled **`MongoDB`** Windows
-service (not the `AlduinakMongo` plan below). Its config is
-`C:\Program Files\MongoDB\Server\8.0\bin\mongod.cfg` and data/log already live
-on `X:\Program Files\MongoDB\Server\8.0\`. Auth starts disabled and `mongosh`
-is not installed by that MSI (get it:
-https://downloads.mongodb.com/compass/mongosh-2.9.2-x64.msi).
+MongoDB 8.0 runs as the **`AlduinakMongo`** Windows service that
+`deploy\mongodb\setup-mongodb.ps1` registers against `deploy\mongodb\mongod.cfg`:
+data and log live under `C:\Alduinak\mongodb`, auth is enabled, and `mongosh`
+is installed per user in `%LOCALAPPDATA%\Programs\mongosh`. The live server is
+already configured for the `mongodb` driver.
 
-`deploy\mongodb\finish-mongodb-x.ps1` automates steps 0-3 of this doc for that
-layout: world backup to `X:\Alduinak\backups`, user creation, enabling auth,
-patching `server-settings.json` (run once plain, start the game server once to
-migrate, then re-run with `-Finalize`). The manual steps below remain the
-reference for what it does.
+`deploy\mongodb\finish-mongodb.ps1` automates steps 0-3 of this doc for that
+layout: world backup to `C:\Alduinak\backups`, user creation and enabling auth
+if `mongod.cfg` still has auth off, patching `server-settings.json` (run once
+plain, start the game server once to migrate, then re-run with `-Finalize`).
+The manual steps below remain the reference for what it does.
 
 ## 0. Prerequisites (operator steps)
 
-MongoDB is **not** installed on the live box yet. Install MongoDB Community
+If MongoDB is not installed yet, install MongoDB Community
 Server for Windows and start `mongod` (default `127.0.0.1:27017`). The server
 does **not** create Mongo auth users - you create the `skymp` user manually
 with `mongosh` (below). Back up the current world first:
