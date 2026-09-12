@@ -48,8 +48,6 @@ interface SearchSession {
   searcherActorId: number;
   targetActorId: number;
   body: boolean;
-  // Base forms taken from a limited body, shared by every session on it
-  taken?: Set<number>;
 }
 
 export class SearchSystem implements System {
@@ -99,8 +97,8 @@ export class SearchSystem implements System {
     const mp = ctx.svr as Mp;
     const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
     mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
-      const s = this.limitedSession(sourceId >>> 0, actorId >>> 0);
-      if (s?.taken && s.taken.size >= this.playerBodyTakeLimit) {
+      const taken = this.limitedTakes(ctx, sourceId >>> 0, actorId >>> 0);
+      if (taken && taken.size >= this.playerBodyTakeLimit) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
@@ -108,8 +106,8 @@ export class SearchSystem implements System {
       if (previous) {
         try { allowed = previous.call(mp, sourceId, actorId, baseId, count) !== false; } catch { /* keep allowed */ }
       }
-      if (allowed && s) {
-        this.recordTake(ctx, s, baseId >>> 0);
+      if (allowed && taken) {
+        this.recordTake(ctx, sourceId >>> 0, actorId >>> 0, taken, baseId >>> 0, count);
       }
       return allowed;
     };
@@ -302,20 +300,16 @@ export class SearchSystem implements System {
 
   private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): void {
     const searcherUser = this.userOf(ctx, searcherActorId);
-    let taken: Set<number> | undefined;
-    if (body && this.playerBodyTakeLimit > 0 && this.isPlayerCharacter(ctx, targetActorId)) {
-      taken = this.bodyTakes.get(targetActorId) ?? new Set<number>();
-      if (taken.size >= this.playerBodyTakeLimit) {
-        this.notice(ctx, searcherUser, "There is nothing left to take from this body.");
-        return;
-      }
-      this.bodyTakes.set(targetActorId, taken);
+    const taken = body ? this.bodyTakesOf(ctx, targetActorId) : undefined;
+    if (taken && taken.size >= this.playerBodyTakeLimit) {
+      this.notice(ctx, searcherUser, "There is nothing left to take from this body.");
+      return;
     }
     if (!this.setOccupant(ctx, targetActorId, searcherActorId)) {
       this.notice(ctx, searcherUser, "The search could not start.");
       return;
     }
-    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, taken });
+    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body });
     this.searching.set(searcherActorId, targetActorId);
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
@@ -348,28 +342,47 @@ export class SearchSystem implements System {
 
   // ── Player body looting limit ───────────────────────────────────────────────
 
-  private limitedSession(sourceId: number, actorId: number): SearchSession | undefined {
-    const s = this.sessions.get(sourceId);
-    return s && s.taken && s.searcherActorId === actorId ? s : undefined;
+  // Checked per take, so a consented search whose target died mid-session is limited too
+  private limitedTakes(ctx: SystemContext, targetActorId: number, actorId: number): Set<number> | undefined {
+    const s = this.sessions.get(targetActorId);
+    return s && s.searcherActorId === actorId ? this.bodyTakesOf(ctx, targetActorId) : undefined;
   }
 
-  // One entry per base form, so more of an already taken stack is free
-  private recordTake(ctx: SystemContext, s: SearchSession, baseId: number): void {
-    if (!s.taken || s.taken.has(baseId)) {
+  // Base forms taken from a dead player's current body, shared by every session on it; undefined when unlimited
+  private bodyTakesOf(ctx: SystemContext, targetActorId: number): Set<number> | undefined {
+    if (this.playerBodyTakeLimit <= 0 || !this.isDead(ctx, targetActorId) || !this.isPlayerCharacter(ctx, targetActorId)) {
+      return undefined;
+    }
+    let taken = this.bodyTakes.get(targetActorId);
+    if (!taken) {
+      taken = new Set<number>();
+      this.bodyTakes.set(targetActorId, taken);
+    }
+    return taken;
+  }
+
+  // One entry per base form, so more of an already taken stack is free; a take the body cannot cover moves nothing and is not counted
+  private recordTake(ctx: SystemContext, targetActorId: number, searcherActorId: number, taken: Set<number>, baseId: number, count: number): void {
+    if (taken.has(baseId)) {
       return;
     }
-    s.taken.add(baseId);
-    if (s.taken.size >= this.playerBodyTakeLimit) {
+    const held = this.simpleEntriesOf(ctx, targetActorId).reduce((sum, e) => sum + (e.baseId === baseId ? e.count : 0), 0);
+    if (held < count) {
+      return;
+    }
+    taken.add(baseId);
+    if (taken.size >= this.playerBodyTakeLimit) {
       // Deferred so the engine finishes moving this item first
-      setTimeout(() => this.finishBody(ctx, s), 0);
+      setTimeout(() => this.finishBody(ctx, targetActorId, searcherActorId), 0);
     }
   }
 
-  private finishBody(ctx: SystemContext, s: SearchSession): void {
-    if (this.sessions.get(s.targetActorId) === s) {
+  private finishBody(ctx: SystemContext, targetActorId: number, searcherActorId: number): void {
+    const s = this.sessions.get(targetActorId);
+    if (s) {
       this.endSession(ctx, s, "You cannot take anything else from this body.");
     }
-    if (!this.isDead(ctx, s.targetActorId)) {
+    if (!this.isDead(ctx, targetActorId)) {
       return;
     }
     const mp = ctx.svr as Mp;
@@ -381,8 +394,8 @@ export class SearchSystem implements System {
       return;
     }
     try {
-      mp.respawnActor(s.targetActorId);
-      this.log(`[search] body ${s.targetActorId.toString(16)} looted by ${s.searcherActorId.toString(16)}, respawned`);
+      mp.respawnActor(targetActorId);
+      this.log(`[search] body ${targetActorId.toString(16)} looted by ${searcherActorId.toString(16)}, respawned`);
     } catch (e) {
       this.log(`[search] respawnActor failed: ${e}`);
     }
