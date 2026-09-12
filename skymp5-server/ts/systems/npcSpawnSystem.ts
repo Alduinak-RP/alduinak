@@ -3,6 +3,7 @@ import * as chokidar from "chokidar";
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
+import { espmFieldFormIds } from "./formIdUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -29,6 +30,11 @@ const RELOAD_DEBOUNCE_MS = 500;
 // Keeps the engine from reviving spawner NPCs; delays past ~1e9 s overflow its timer and fire at once
 const NEVER_RESPAWN = 1e9;
 const TAG_PROP = "private.npcSpawner";
+// Neighbor-visible flag (registered in the gamemode) telling clients the NPC attacks players on sight
+const HOSTILE_PROP = "ff_hostile";
+// ACBS template flag: the AI data comes from the TPLT template
+const TEMPLATE_USE_AI_DATA = 0x10;
+const MAX_TEMPLATE_DEPTH = 8;
 // Slot cooldown marker for Respawn 0: the corpse stays until the zone despawns or an admin resets it
 const NEVER_READY = -1;
 
@@ -468,11 +474,51 @@ export class NpcSpawnSystem implements System {
       mp.set(id, "spawnPoint", loc);
       mp.set(id, "spawnDelay", NEVER_RESPAWN);
       try { mp.set(id, TAG_PROP, zone.name); } catch { }
+      try { mp.set(id, HOSTILE_PROP, this.isHostileBase(mp, npc.baseDesc)); } catch { }
       return id;
     } catch (e) {
       this.log(`NpcSpawnSystem: '${zone.name}' failed to spawn ${npc.baseDesc}: ${e}`);
       return null;
     }
+  }
+
+  private hostileByBase = new Map<string, boolean>();
+
+  private isHostileBase(mp: Mp, baseDesc: string): boolean {
+    let hostile = this.hostileByBase.get(baseDesc);
+    if (hostile === undefined) {
+      try { hostile = this.aiDataHostile(mp, mp.getIdFromDesc(baseDesc) >>> 0, 0); } catch { hostile = false; }
+      this.hostileByBase.set(baseDesc, hostile);
+    }
+    return hostile;
+  }
+
+  // Vanilla attacks-on-sight test from AIDT: aggressive, or an aggro radius on a creature that is not cowardly
+  private aiDataHostile(mp: Mp, formId: number, depth: number): boolean {
+    const res = mp.lookupEspmRecordById(formId);
+    const rec = res?.record;
+    if (!rec || depth > MAX_TEMPLATE_DEPTH) return false;
+    const fields: { type: string; data: Uint8Array }[] = (rec.fields || []).filter((f: any) => f && f.data instanceof Uint8Array);
+    const view = (data: Uint8Array) => new DataView(data.buffer, data.byteOffset, data.byteLength);
+    if (rec.type === "LVLN") {
+      // LVLO: level, padding, then the entry's form id
+      const entries: number[] = [];
+      for (const f of fields) {
+        if (f.type !== "LVLO" || f.data.byteLength < 8) continue;
+        try { entries.push(res.toGlobalRecordId(view(f.data).getUint32(4, true)) >>> 0); } catch { }
+      }
+      return entries.some((id) => this.aiDataHostile(mp, id, depth + 1));
+    }
+    if (rec.type !== "NPC_") return false;
+    const acbs = fields.find((f) => f.type === "ACBS")?.data;
+    const templateFlags = acbs && acbs.byteLength >= 20 ? view(acbs).getUint16(18, true) : 0;
+    const template = templateFlags & TEMPLATE_USE_AI_DATA ? espmFieldFormIds(res, "TPLT")[0] : 0;
+    if (template) return this.aiDataHostile(mp, template, depth + 1);
+    const aidt = fields.find((f) => f.type === "AIDT")?.data;
+    if (!aidt || aidt.byteLength < 20) return false;
+    const [aggression, confidence] = [aidt[0], aidt[1]];
+    const aggroRadius = aidt[6] !== 0 && view(aidt).getUint32(16, true) > 0;
+    return aggression >= 1 || (aggroRadius && confidence >= 1);
   }
 
   // Slot 0 stands on POS, the rest fill rings of 6, 12, 18... SLOT_SPACING apart so no two spawn inside each other

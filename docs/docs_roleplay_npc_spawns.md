@@ -145,6 +145,15 @@ with room around it: up to 7 NPCs need about 96 units of clear floor around
 actor is tagged `private.npcSpawner = <Name>` (best effort) for gamemode
 scripts that want to tell spawner NPCs apart.
 
+Every spawned actor also gets `ff_hostile` (true or false, neighbor-visible;
+the gamemode's `50_properties.js` registers it). It is true when the base's
+AI data (following TPLT templates and leveled lists) is Aggressive or higher,
+or has an aggro radius on a creature that is not Cowardly: bandits, draugr,
+trolls, wolves, bears, sabre cats, spriggans, mudcrabs. Deer, elk, goats and
+other prey stay false. Clients raise flagged NPCs to Aggression 2 (Very
+Aggressive), because remote players' copies are neutral to every NPC and would
+otherwise be attacked only by the hosting player's NPCs.
+
 ## Hot reload
 
 The file is watched with chokidar (`awaitWriteFinish`). About two seconds
