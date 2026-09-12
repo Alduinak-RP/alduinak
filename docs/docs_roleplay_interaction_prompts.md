@@ -41,8 +41,8 @@ keeps its display name with a verb picked from its base form type.
   World NPCs keep vanilla activation and read "Talk" over their name.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
-  when harvested; coin purses, flora whose produce is a leveled gold list,
-  get no prompt at all and are activation-blocked), item types Take. The board base (`12cb:Missives.esp`,
+  when harvested; coin purses, loose salmon and any other `untouchableBaseIds`
+  form get no prompt at all and are activation-blocked), item types Take. The board base (`12cb:Missives.esp`,
   resolved through `Game.getFormFromFile` so load order cannot break it)
   gets Read + "Notice Board".
 - Apart from the blocked player clones, the engine still performs the real

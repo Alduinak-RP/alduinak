@@ -5,8 +5,12 @@ import { espmRefrFieldId, toFormId } from "./formIdUtil";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Vetoes activation of untouchableBaseIds (default: the vanilla coin purses); docs in docs_server_configuration_reference.md
-const DEFAULT_UNTOUCHABLE_BASE_IDS = [0x000d790c, 0x000d8e7f, 0x000d8e80, 0x000d8e8a, 0x000d8e8b, 0x000d8e8c];
+// Vetoes activation of untouchableBaseIds (default: the vanilla coin purses and loose salmon); docs in docs_server_configuration_reference.md
+const DEFAULT_UNTOUCHABLE_BASE_IDS = [
+  0x000d790c, 0x000d8e7f, 0x000d8e80, 0x000d8e8a, 0x000d8e8b, 0x000d8e8c,
+  // DeadSalmon01NoNail, DeadSalmon02NoNail
+  0x000f5eca, 0x000f5ecb,
+];
 const MAX_ESPM_CACHE = 4096;
 
 export class UntouchableSystem implements System {
@@ -28,6 +32,12 @@ export class UntouchableSystem implements System {
     }
     this.installActivationHook(ctx);
     this.log(`UntouchableSystem: ${this.baseIds.size} untouchable base forms`);
+  }
+
+  // The client blocks engine activation and the prompt for these, so a local harvest cannot ghost
+  connect(userId: number, ctx: SystemContext): void {
+    const payload = { customPacketType: "untouchableBaseIds", ids: [...this.baseIds] };
+    try { (ctx.svr as Mp).sendCustomPacket(userId, JSON.stringify(payload)); } catch { /* user gone */ }
   }
 
   private installActivationHook(ctx: SystemContext): void {

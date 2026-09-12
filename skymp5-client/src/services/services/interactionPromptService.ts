@@ -127,7 +127,7 @@ export class InteractionPromptService extends ClientListener {
     const actor = Actor.from(ref);
     if (actor) return this.actorPromptFor(ref);
     const base = ref.getBaseObject();
-    if (!base) return null;
+    if (!base || ObjectReferenceEx.isUntouchable(base)) return null;
 
     if (this.isBoardBase(base)) {
       return { verb: "Read", label: "Notice Board" };
@@ -186,12 +186,7 @@ export class InteractionPromptService extends ClientListener {
         return "Use";
       case FormType.Book:
         return "Read";
-      case FormType.Flora: {
-        // Coin purses are untouchable decor (server untouchableBaseIds)
-        const base = ref.getBaseObject();
-        if (base && ObjectReferenceEx.isLeveledFlora(base)) return null;
-        return ref.isHarvested() ? null : "Harvest";
-      }
+      case FormType.Flora:
       case FormType.Tree:
         return ref.isHarvested() ? null : "Harvest";
       case FormType.Weapon:
