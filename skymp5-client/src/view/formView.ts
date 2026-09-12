@@ -471,7 +471,9 @@ export class FormView {
         } else {
           const remoteId = this.remoteRefrId;
           if (ac && remoteId && ac.is3DLoaded()) {
-            ac.clearKeepOffsetFromActor();
+            if (!isOwnCompanion(remoteId)) {
+              ac.clearKeepOffsetFromActor();
+            }
 
             // TODO: make host service
             const hosted = storage['hosted'];
