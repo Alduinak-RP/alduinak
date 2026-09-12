@@ -18,6 +18,7 @@
   --glass-border-bright: rgba(201, 162, 39, 0.45);
   --topbar-h:     52px;
   --bottombar-h:  66px;
+  --text-scale:  1.12;
 }
 
 /* Base */
@@ -27,7 +28,7 @@ html, body {
   user-select: none;
   color: var(--parchment);
   font-family: 'Barlow Condensed', 'Segoe UI', system-ui, sans-serif;
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
 }
 
 /* Background */
@@ -109,7 +110,7 @@ html, body {
 
 .logo-name {
   font-family: 'Cinzel', serif;
-  font-size: 16px;
+  font-size: calc(16px * var(--text-scale));
   font-weight: 700;
   letter-spacing: 4px;
   color: #ff2222;
@@ -118,7 +119,7 @@ html, body {
 
 .logo-tagline {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   letter-spacing: 3px;
   text-transform: uppercase;
   color: rgba(228, 210, 168, 0.4);
@@ -136,7 +137,7 @@ html, body {
 .topnav-link {
   padding: 5px 16px;
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2px;
   color: rgba(232, 224, 208, 0.5);
@@ -246,7 +247,7 @@ html, body {
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(160, 40, 30, 0.4);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 2px;
   color: rgba(220, 100, 90, 0.9);
@@ -277,7 +278,7 @@ html, body {
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2px;
   color: rgba(232, 224, 208, 0.55);
@@ -285,7 +286,7 @@ html, body {
 
 .read-more {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2.5px;
   color: rgba(201, 162, 39, 0.55);
@@ -306,7 +307,7 @@ html, body {
 
 .section-title {
   font-family: 'Cinzel', serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 5px;
   color: var(--parchment);
@@ -316,7 +317,7 @@ html, body {
 
 .modlist-count {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 1.5px;
   color: rgba(232, 224, 208, 0.28);
@@ -360,7 +361,7 @@ html, body {
 
 .mod-name {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   letter-spacing: 0.3px;
   color: var(--parchment);
   flex: 1;
@@ -376,7 +377,7 @@ html, body {
 
 .mod-badge {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 8px;
+  font-size: calc(8px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -399,7 +400,7 @@ html, body {
 
 .mod-nexus-link {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   letter-spacing: 0.5px;
   text-transform: uppercase;
   padding: 1px 5px;
@@ -419,7 +420,7 @@ html, body {
 
 .mod-version {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   letter-spacing: 0.5px;
   color: rgba(232, 224, 208, 0.28);
   flex-shrink: 0;
@@ -516,7 +517,7 @@ html, body {
 
 .news-card-tag {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 2.5px;
   text-transform: uppercase;
@@ -526,7 +527,7 @@ html, body {
 
 .news-card-title {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 0.5px;
   color: var(--parchment);
@@ -536,7 +537,7 @@ html, body {
 
 .news-card-desc {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 400;
   letter-spacing: 0.3px;
   color: rgba(232, 224, 208, 0.6);
@@ -545,7 +546,7 @@ html, body {
 
 .news-card-date {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   letter-spacing: 0.5px;
   color: rgba(232, 224, 208, 0.35);
   margin-top: auto;
@@ -588,7 +589,7 @@ html, body {
 
 .info-label {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2.5px;
   color: rgba(232, 224, 208, 0.28);
@@ -597,7 +598,7 @@ html, body {
 
 .info-value {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   transition: color 0.2s;
   font-weight: 500;
   letter-spacing: 1.5px;
@@ -631,7 +632,7 @@ html, body {
 
 .connect-warning {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   letter-spacing: 0.5px;
   color: rgba(210, 80, 70, 0.9);
   display: none;
@@ -649,7 +650,7 @@ html, body {
   border-left: 1px solid rgba(255,255,255,0.1);
   color: rgba(30, 6, 6, 0.95);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 18px;
+  font-size: calc(18px * var(--text-scale));
   font-weight: 700;
   letter-spacing: 5px;
   text-transform: uppercase;
@@ -713,7 +714,7 @@ html, body {
 
 .modal-title {
   font-family: 'Cinzel', serif;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   letter-spacing: 3.5px;
   text-transform: uppercase;
   color: var(--gold);
@@ -750,7 +751,7 @@ html, body {
 
 .setting-label {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2.5px;
   text-transform: uppercase;
@@ -770,7 +771,7 @@ html, body {
   border: 1px solid var(--glass-border);
   color: var(--parchment);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
   padding: 9px 12px;
   outline: none;
   width: 100%;
@@ -790,7 +791,7 @@ html, body {
   border: 1px solid var(--glass-border);
   color: rgba(232, 224, 208, 0.5);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s;
@@ -811,7 +812,7 @@ html, body {
 
 .install-status {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   color: rgba(232,224,208,0.45);
   flex: 1;
   min-width: 0;
@@ -826,7 +827,7 @@ html, body {
 
 .install-progress {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   color: rgba(232,224,208,0.45);
   background: rgba(6, 4, 2, 0.5);
   border: 1px solid var(--glass-border);
@@ -846,7 +847,7 @@ html, body {
   border: 1px solid var(--glass-border);
   color: rgba(201,162,39,0.6);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2px;
   text-transform: uppercase;
@@ -863,7 +864,7 @@ html, body {
   border: none;
   color: rgba(20, 12, 2, 0.9);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 700;
   letter-spacing: 2.5px;
   text-transform: uppercase;
@@ -885,7 +886,7 @@ html, body {
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
@@ -929,7 +930,7 @@ html, body {
   text-align: center;
   color: rgba(232,224,208,0.3);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   letter-spacing: 2px;
   padding: 24px 0;
 }
@@ -952,7 +953,7 @@ html, body {
 
 .metric-label {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2.5px;
   text-transform: uppercase;
@@ -961,7 +962,7 @@ html, body {
 
 .metric-value {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 26px;
+  font-size: calc(26px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 1px;
   color: var(--parchment);
@@ -970,7 +971,7 @@ html, body {
 
 .metric-sub {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   letter-spacing: 1px;
   color: rgba(232, 224, 208, 0.3);
 }
@@ -988,7 +989,7 @@ html, body {
   border: 1px solid rgba(88, 101, 242, 0.35);
   color: rgba(150, 160, 255, 0.85);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -1041,7 +1042,7 @@ html, body {
 
 .discord-topbar-name {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 0.3px;
   color: rgba(200, 210, 255, 0.85);
@@ -1080,7 +1081,7 @@ html, body {
   border-bottom: 1px solid rgba(201, 162, 39, 0.3);
   color: rgba(232, 224, 208, 0.65);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 1.5px;
   cursor: pointer;
@@ -1116,7 +1117,7 @@ html, body {
   border-bottom: 2px solid transparent;
   color: rgba(232, 224, 208, 0.35);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 2.5px;
   text-transform: uppercase;
@@ -1154,7 +1155,7 @@ html, body {
 
 .vortex-status-text {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   letter-spacing: 0.5px;
   color: rgba(232, 224, 208, 0.45);
 }
@@ -1166,7 +1167,7 @@ html, body {
   border: 1px solid var(--glass-border);
   color: rgba(201, 162, 39, 0.6);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--text-scale));
   font-weight: 500;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -1196,7 +1197,7 @@ html, body {
 
 .setting-checkbox-row span {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 12px;
+  font-size: calc(12px * var(--text-scale));
   letter-spacing: 0.5px;
   color: rgba(232, 224, 208, 0.6);
   user-select: none;
@@ -1222,7 +1223,7 @@ html, body {
 
 .panel-error-text {
   color: #c9a96a;
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
   letter-spacing: 0.4px;
 }
 
@@ -1233,7 +1234,7 @@ html, body {
   border-radius: 4px;
   color: #c9a96a;
   font-family: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   letter-spacing: 1px;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -1251,7 +1252,7 @@ html, body {
 .panel-empty {
   padding: 28px 16px;
   color: rgba(255, 255, 255, 0.45);
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale));
   text-align: center;
   letter-spacing: 0.4px;
 }
@@ -1260,7 +1261,7 @@ html, body {
 /* Update pill (bottombar, next to Play) */
 .update-pill {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 1.2px;
   color: #e8b33c;
@@ -1286,7 +1287,7 @@ html, body {
   border: 1px solid rgba(180, 134, 24, 0.45);
   color: rgba(196, 152, 40, 0.9);
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: calc(10px * var(--text-scale));
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;

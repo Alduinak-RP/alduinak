@@ -1346,10 +1346,36 @@ ipcMain.handle('files:updateCheck', async () => {
   }
 })
 
-ipcMain.handle('game:isRunning', async () => {
+// MO2 can take a while to boot Skyrim, so a fresh launch blocks relaunching until the game shows up or this runs out
+const LAUNCH_GRACE_MS = 90_000
+let launchInFlight = false
+let launchStartedAt = 0
+
+async function gameProcessRunning() {
   if (process.platform !== 'win32') return false
-  return (await isProcessRunning('SkyrimSE.exe')) || (await isProcessRunning('skse64_loader.exe'))
-})
+  const running = (await isProcessRunning('SkyrimSE.exe')) || (await isProcessRunning('skse64_loader.exe'))
+  if (running) launchStartedAt = 0
+  return running
+}
+
+// Refuses a launch while another is being prepared, starting, or the game already runs
+async function guardLaunch(launch) {
+  if (launchInFlight) return { success: false, error: 'The game is already launching.' }
+  launchInFlight = true
+  try {
+    if (await gameProcessRunning()) return { success: false, error: 'Skyrim is already running.' }
+    if (Date.now() - launchStartedAt < LAUNCH_GRACE_MS) {
+      return { success: false, error: 'Skyrim is still starting - give MO2 a moment.' }
+    }
+    const result = await launch()
+    if (result.success) launchStartedAt = Date.now()
+    return result
+  } finally {
+    launchInFlight = false
+  }
+}
+
+ipcMain.handle('game:isRunning', gameProcessRunning)
 
 // Launcher update check
 ipcMain.handle('app:checkUpdate', async () => {
@@ -1465,7 +1491,7 @@ const clientFilesPresent = (gamePath) =>
   REQUIRED_FILES.every(f => fs.existsSync(path.join(gamePath, f))) &&
   preloaderPresent(gamePath)
 
-ipcMain.handle('launch:skse', async () => {
+ipcMain.handle('launch:skse', () => guardLaunch(async () => {
   const skyrimPath = effectiveGamePath()
   const mo2Enabled = store.get('mo2Enabled')
 
@@ -1497,10 +1523,10 @@ ipcMain.handle('launch:skse', async () => {
   } catch (err) {
     return { success: false, error: err.message }
   }
-})
+}))
 
 // Troubleshooting: force a launch path regardless of the mo2Enabled setting.
-ipcMain.handle('launch:viaMO2', async () => {
+ipcMain.handle('launch:viaMO2', () => guardLaunch(async () => {
   const skyrimPath = effectiveGamePath()
   if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
   if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - use Repair MO2 first.' }
@@ -1508,9 +1534,9 @@ ipcMain.handle('launch:viaMO2', async () => {
   if (!prep.success) return prep
   try { mo2.launchGame(skyrimPath); return { success: true } }
   catch (err) { return { success: false, error: err.message } }
-})
+}))
 
-ipcMain.handle('launch:direct', async () => {
+ipcMain.handle('launch:direct', () => guardLaunch(async () => {
   const skyrimPath = effectiveGamePath()
   if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
   const prep = await prepareForLaunch(skyrimPath, false)
@@ -1523,7 +1549,7 @@ ipcMain.handle('launch:direct', async () => {
     spawn(exe, [], { detached: true, stdio: 'ignore', cwd: skyrimPath }).unref()
     return { success: true }
   } catch (err) { return { success: false, error: err.message } }
-})
+}))
 
 /**
  * Common pre-launch pipeline:
