@@ -1,8 +1,8 @@
 import * as fs from "fs";
-import { System, Log, SystemContext, Content } from "./system";
+import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { placeNpc, NpcLocation } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, hex } from "./actorUtil";
+import { userOf, isAlive, isNear, hex, destroyLeftovers } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -63,7 +63,6 @@ const KIND_RULES: Record<CompanionKind, { commanded: boolean; dieOnEnd: boolean;
 
 const REGISTRY_FILE = "./companions.json";
 const UPDATE_MS = 500;
-const LEFTOVER_RETRY_MS = 120000;
 const SPAWN_DISTANCE = 160;
 const SPAWN_LIFT = 32;
 const FOLLOW_OFFSET = -128;
@@ -89,11 +88,11 @@ export class CompanionSystem implements System {
   private twinSouls = new Set<number>();
   // Actor ids of the previous run still to destroy
   private leftovers: number[] = [];
-  private bootAt = 0;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
     this.loadRegistry();
+    ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
     this.installHooks();
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       try {
@@ -108,7 +107,6 @@ export class CompanionSystem implements System {
     await new Promise((r) => setTimeout(r, UPDATE_MS));
     if (!this.mp) return;
     const now = Date.now();
-    if (this.leftovers.length) this.removeLeftovers(now);
     this.removeCorpses(now);
     for (const c of Array.from(this.companions.values())) {
       try {
@@ -430,27 +428,20 @@ export class CompanionSystem implements System {
       if (a?.persistent && isStored(a)) this.stored.push({ ownerId: Number(a.ownerId) >>> 0, baseDesc: a.baseDesc, kind: a.kind });
     }
     this.leftovers = active.map((a) => Number(a?.id) >>> 0).concat(corpses.map((id) => Number(id) >>> 0)).filter((id) => id > 0);
-    this.bootAt = Date.now();
     if (this.leftovers.length || this.stored.length) {
       this.log(`CompanionSystem: ${this.leftovers.length} companion(s) from the previous run to remove, ${this.stored.length} persistent waiting for their owner`);
     }
     this.save();
   }
 
-  // The world DB loads after every system's init (attachSaveStorage in index.ts), so leftovers are retried from the update loop
-  private removeLeftovers(now: number): void {
-    const remaining = this.leftovers.filter((id) => {
-      try {
-        this.mp.destroyActor(id);
-        return false;
-      } catch {
-        return true;
-      }
-    });
-    const removed = this.leftovers.length - remaining.length;
-    this.leftovers = now - this.bootAt < LEFTOVER_RETRY_MS ? remaining : [];
-    if (removed) this.log(`CompanionSystem: removed ${removed} companion(s) from the previous run`);
-    if (removed || !this.leftovers.length) this.save();
+  // The world DB loads after every system's init (attachSaveStorage in index.ts), before anyone can place a form
+  private removeLeftovers(): void {
+    const ids = this.leftovers;
+    if (!ids.length) return;
+    this.leftovers = [];
+    const removed = destroyLeftovers(this.mp, ids);
+    this.log(`CompanionSystem: removed ${removed}/${ids.length} companion(s) from the previous run`);
+    this.save();
   }
 
   private save(): void {
