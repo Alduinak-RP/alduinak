@@ -13,6 +13,8 @@ const WIDGET_ID = 24;
 interface EmoteDef {
   anim: string;
   label: string;
+  // Idle loads an anim object (hoe, book, instrument) into the hand
+  prop?: boolean;
 }
 
 interface EmoteGroup {
@@ -81,13 +83,13 @@ const GROUPS: EmoteGroup[] = [
     id: 'activities',
     label: 'Activities',
     emotes: [
-      { anim: 'IdleDrink', label: 'Drink' },
-      { anim: 'IdleEatingStandingStart', label: 'Eating' },
-      { anim: 'IdleLooseSweepingStart', label: 'Sweeping' },
-      { anim: 'IdleHoe', label: 'Use Hoe' },
+      { anim: 'IdleDrink', label: 'Drink', prop: true },
+      { anim: 'IdleEatingStandingStart', label: 'Eating', prop: true },
+      { anim: 'IdleLooseSweepingStart', label: 'Sweeping', prop: true },
+      { anim: 'IdleHoe', label: 'Use Hoe', prop: true },
       { anim: 'IdleRitualStart', label: 'Ritual' },
-      { anim: 'IdleNoteRead', label: 'Read Note' },
-      { anim: 'IdleBook_PageTurn', label: 'Read Book' },
+      { anim: 'IdleNoteRead', label: 'Read Note', prop: true },
+      { anim: 'IdleBook_PageTurn', label: 'Read Book', prop: true },
     ],
   },
   {
@@ -97,11 +99,11 @@ const GROUPS: EmoteGroup[] = [
       { anim: 'IdleCiceroDance1', label: 'Cicero Dance 1' },
       { anim: 'IdleCiceroDance2', label: 'Cicero Dance 2' },
       { anim: 'IdleCiceroDance3', label: 'Cicero Dance 3' },
-      { anim: 'IdleDrumStart', label: 'Play Drum' },
-      { anim: 'IdleFluteStart', label: 'Play Flute' },
-      { anim: 'IdleLuteStart', label: 'Play Lute' },
-      { anim: 'IdleBlowHornImperial', label: 'Horn (Imper.)' },
-      { anim: 'IdleBlowHornStormcloak', label: 'Horn (Stormcl.)' },
+      { anim: 'IdleDrumStart', label: 'Play Drum', prop: true },
+      { anim: 'IdleFluteStart', label: 'Play Flute', prop: true },
+      { anim: 'IdleLuteStart', label: 'Play Lute', prop: true },
+      { anim: 'IdleBlowHornImperial', label: 'Horn (Imper.)', prop: true },
+      { anim: 'IdleBlowHornStormcloak', label: 'Horn (Stormcl.)', prop: true },
     ],
   },
 ];
@@ -141,9 +143,11 @@ export class EmoteService extends ClientListener {
     this.menuKey = readMenuKeyCode(this.sp, "emoteWheelKeyCode", DxScanCode.B);
 
     this.allowedAnims = new Set<string>();
+    this.propAnims = new Set<string>();
     for (const group of GROUPS) {
       for (const emote of group.emotes) {
         this.allowedAnims.add(emote.anim);
+        if (emote.prop) this.propAnims.add(emote.anim);
       }
     }
 
@@ -221,7 +225,8 @@ export class EmoteService extends ClientListener {
     // Offset overlays live on their own graph layer: crossing between an
     // overlay and a state idle needs the previous emote exited first, and the
     // exit event must go out alone so the single-slot animation sync relays it.
-    if (previous && (previous.indexOf("Offset") === 0) !== (anim.indexOf("Offset") === 0)) {
+    // Prop idles are exited first too, otherwise the next idle keeps the prop.
+    if (previous && ((previous.indexOf("Offset") === 0) !== (anim.indexOf("Offset") === 0) || this.propAnims.has(previous))) {
       this.exitEmote(previous, () => this.sendEmote(anim));
       return;
     }
@@ -261,7 +266,28 @@ export class EmoteService extends ClientListener {
       return;
     }
     const base = anim.replace(/(Start|Enter)$/, "");
-    this.tryExitChain(["IdleForceDefaultState", base + "ExitStart", base + "Exit"], 0, chain, onDone);
+    const attempts = ["IdleForceDefaultState", base + "ExitStart", base + "Exit"];
+    if (!this.propAnims.has(anim)) {
+      this.tryExitChain(attempts, 0, chain, onDone);
+      return;
+    }
+    // IdleForceDefaultState skips the graph's unequip state and leaves the prop in hand
+    this.tryExitChain(["IdleStop", ...attempts], 0, chain, onDone && (() => this.waitPropUnload(chain, 0, onDone)));
+  }
+
+  // Holds a follow-up emote until the IdleStop exit has dropped the prop.
+  private waitPropUnload(chain: number, tries: number, onDone: () => void): void {
+    this.sp.Utility.wait(0.2).then(() => {
+      this.controller.once("update", () => {
+        if (chain !== this.chainId) return;
+        const player = this.sp.Game.getPlayer();
+        if (player && player.getAnimationVariableBool("bAnimObjectLoaded") && tries < 8) {
+          this.waitPropUnload(chain, tries + 1, onDone);
+          return;
+        }
+        onDone();
+      });
+    });
   }
 
   private tryExitChain(attempts: string[], index: number, chain: number, onDone?: () => void): void {
@@ -324,6 +350,7 @@ export class EmoteService extends ClientListener {
   private menuOpen = false;
   private activeEmote = "";
   private allowedAnims: Set<string>;
+  private propAnims: Set<string>;
   private probeAnim = "";
   private probeSucceeded = false;
   // Generation counter: bumping it abandons any pending exit chain.
