@@ -33,6 +33,7 @@ import { ChangeValuesMessage } from '../messages/changeValuesMessage';
 import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
 import { UpdateEquipmentMessage } from '../messages/updateEquipmentMessage';
 import { RagdollService } from './ragdollService';
+import { RestraintService } from './restraintService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
 import { TeleportMessage } from '../messages/teleportMessage';
 import { DeathStateContainerMessage } from '../messages/deathStateContainerMessage';
@@ -252,10 +253,8 @@ export class RemoteServer extends ClientListener {
 
       const refrId = refr?.getFormID();
 
-      // Same-cell short hops (carry follow) ride the cheap havok translate;
-      // the ragdoll purge + moveRefrToPosition path costs the local player a
-      // full reference reattach per message
-      if (refr && refrId === 0x14 &&
+      // Carry follow rides the cheap havok translate; doors and every other teleport need a real move
+      if (refr && refrId === 0x14 && this.controller.lookupListener(RestraintService).isCarried &&
         ObjectReferenceEx.getWorldOrCell(refr) === msg.worldOrCell) {
         const dist = ObjectReferenceEx.getDistance(
           ObjectReferenceEx.getPos(refr), [msg.pos[0], msg.pos[1], msg.pos[2]]);
