@@ -37,3 +37,37 @@ TEST_CASE("Potions restore health", "[Restoration]")
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
 }
+
+TEST_CASE("A second potion within 10 seconds is refunded", "[Restoration]")
+{
+  using namespace std::chrono_literals;
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+  ac.SetLastAttributesPercentagesUpdate(std::chrono::steady_clock::now() -
+                                        10s);
+  ac.AddItem(0x3EAE3, 2);
+  ac.SetPercentages({ 0.1f, 0.f, 0.f });
+
+  RawMessageData rawMsgData;
+  rawMsgData.userId = 0;
+
+  OnEquipMessage msg;
+  msg.baseId = 0x3EAE3;
+  p.GetActionListener().OnEquip(rawMsgData, msg);
+
+  REQUIRE(ac.GetInventory().GetItemCount(0x3EAE3) == 1);
+  REQUIRE(ac.GetChangeForm().actorValues.healthPercentage == 1.0f);
+
+  ac.SetPercentages({ 0.1f, 0.f, 0.f });
+  p.GetActionListener().OnEquip(rawMsgData, msg);
+
+  REQUIRE(ac.GetInventory().GetItemCount(0x3EAE3) == 1);
+  REQUIRE(ac.GetChangeForm().actorValues.healthPercentage == 0.1f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}

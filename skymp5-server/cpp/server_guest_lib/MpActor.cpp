@@ -35,8 +35,10 @@
 #include <string>
 
 #include "ChangeValuesMessage.h"
+#include "CustomPacketMessage.h"
 #include "TeleportMessage.h"
 #include "UpdateEquipmentMessage.h"
+#include <nlohmann/json.hpp>
 
 // for PlaceAtMe used in MpActor::DropItem
 #include "script_classes/PapyrusObjectReference.h"
@@ -80,9 +82,14 @@ struct MpActor::Impl
   // this is a hot fix attempt to make permanent restoration potions work
   std::unordered_map<espm::ActorValue, std::chrono::system_clock::time_point>
     nextRestorationTimes;
+
+  std::optional<std::chrono::steady_clock::time_point> potionCooldownStart;
+  uint32_t potionCooldownBaseId = 0;
 };
 
 namespace {
+
+constexpr auto kPotionCooldown = std::chrono::seconds{ 10 };
 
 void RestoreActorValuePatched(MpActor* actor, espm::ActorValue actorValue,
                               float value)
@@ -529,6 +536,10 @@ bool MpActor::OnEquip(uint32_t baseId)
     return false;
   }
 
+  if (isPotion && RefusePotionOnCooldown(lookupRes, baseId)) {
+    return false;
+  }
+
   bool spellLearned = false;
   if (isIngredient || isPotion) {
     EatItem(baseId, recordType);
@@ -565,6 +576,54 @@ bool MpActor::OnEquip(uint32_t baseId)
 
   SendPapyrusEvent("OnObjectEquipped", args, std::size(args));
 
+  return true;
+}
+
+bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
+                                     uint32_t baseId)
+{
+  WorldState* worldState = GetParent();
+  const auto data = espm::Convert<espm::ALCH>(lookupRes.rec)
+                      ->GetData(worldState->GetEspmCache());
+  if (data.isFood || data.isPoison) {
+    return false;
+  }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (!pImpl->potionCooldownStart ||
+      now - *pImpl->potionCooldownStart >= kPotionCooldown) {
+    pImpl->potionCooldownStart = now;
+    pImpl->potionCooldownBaseId = baseId;
+    return false;
+  }
+
+  // The client already applied the potion locally, so echo the server values
+  std::vector<espm::ActorValue> restoredValues;
+  for (const auto& effect : data.effects) {
+    const espm::ActorValue av =
+      espm::GetData<espm::MGEF>(effect.effectId, worldState).data.primaryAV;
+    const bool isValue = av == espm::ActorValue::Health ||
+      av == espm::ActorValue::Stamina || av == espm::ActorValue::Magicka;
+    if (isValue &&
+        std::find(restoredValues.begin(), restoredValues.end(), av) ==
+          restoredValues.end()) {
+      restoredValues.push_back(av);
+      UpdateNextRestorationTime(av, std::chrono::seconds{ 5 });
+    }
+  }
+  if (!restoredValues.empty()) {
+    NetSendChangeValues(GetActorValues(), restoredValues);
+  }
+
+  SendInventoryUpdate();
+
+  CustomPacketMessage message;
+  message.contentJsonDump =
+    nlohmann::json{ { "customPacketType", "potionRefused" },
+                    { "baseId", baseId },
+                    { "acceptedBaseId", pImpl->potionCooldownBaseId } }
+      .dump();
+  SendToUser(message, true);
   return true;
 }
 
