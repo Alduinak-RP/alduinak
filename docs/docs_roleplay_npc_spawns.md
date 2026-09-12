@@ -206,7 +206,7 @@ Everything goes through the server log and the manager console, prefixed
 - `'<Name>' spawned 4/4 npc(s): 23a99:Skyrim.esm x4`
 - `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456)`
 - `'<Name>' despawned 4 npc(s)`
-- `removed a/b leftover npc(s) from the previous run` on boot
+- `removed a/b leftover npc(s) from the previous run` on boot, once the world DB has loaded (the ids come from `zone-spawns.json`)
 - skipped entries, unreadable plugins and spawn failures, each naming the zone
 
 ## Deployment
