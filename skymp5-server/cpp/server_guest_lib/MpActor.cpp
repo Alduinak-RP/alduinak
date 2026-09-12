@@ -830,6 +830,10 @@ void MpActor::NetSendChangeValues(
 
   if (numUpdatedValues > 0) {
     GetActorToSendTo().SendToUser(message, true);
+    // The client adopts the sent stamina, so regen counts from now
+    if (message.data.stamina.has_value()) {
+      SetLastStaminaPercentageUpdate(std::chrono::steady_clock::now());
+    }
   }
 }
 
@@ -869,6 +873,12 @@ void MpActor::SetLastAttributesPercentagesUpdate(
   std::chrono::steady_clock::time_point timePoint)
 {
   pImpl->lastAttributesUpdateTimePoint = timePoint;
+  pImpl->lastStaminaUpdateTimePoint = timePoint;
+}
+
+void MpActor::SetLastStaminaPercentageUpdate(
+  std::chrono::steady_clock::time_point timePoint)
+{
   pImpl->lastStaminaUpdateTimePoint = timePoint;
 }
 

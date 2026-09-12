@@ -141,6 +141,8 @@ public:
   void SetLastAttributesPercentagesUpdate(
     std::chrono::steady_clock::time_point timePoint =
       std::chrono::steady_clock::now());
+  void SetLastStaminaPercentageUpdate(
+    std::chrono::steady_clock::time_point timePoint);
   void SetLastHitTime(uint32_t targetId,
                       std::chrono::steady_clock::time_point timePoint);
 

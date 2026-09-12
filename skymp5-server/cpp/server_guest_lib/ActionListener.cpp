@@ -1084,6 +1084,9 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
     if (actor->ShouldSkipRestoration(av)) {
       outVal = currentVal;
       sendOutMsg = true;
+      if (av == espm::ActorValue::Stamina) {
+        actor->SetLastStaminaPercentageUpdate(now);
+      }
       return;
     }
 
