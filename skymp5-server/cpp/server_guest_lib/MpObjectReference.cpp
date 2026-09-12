@@ -1841,7 +1841,7 @@ void MpObjectReference::InitScripts()
   auto isScriptEraseNeeded = [](const std::string& val) {
     // 1. GetStage in OnTrigger
     // 2. Unable to determine Actor for 'Game.GetPlayer' in 'OnLoad'
-    // 3. OnActivate empties the shelf into the activator on every open
+    // 3. USSEP OnActivate empties the shelf into the activator
     const bool isRemoveNeeded =
       !Utils::stricmp(val.data(), "DA06PreRitualSceneTriggerScript") ||
       !Utils::stricmp(val.data(), "CritterSpawn") ||
