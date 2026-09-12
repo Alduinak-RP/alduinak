@@ -242,6 +242,23 @@ check.
 }
 ```
 
+## exteriorScriptAllowlist
+
+Vanilla Papyrus scripts that still run on exterior references. The server
+strips every other vanilla script from exterior refs, and clients run no
+Papyrus of their own, so an exterior gate opened by a lever only moves when its
+scripts are listed here. Names are case-insensitive. Defaults to the two-state
+gate and lever scripts; `[]` strips them too. Read by the native server at
+boot.
+
+```json5
+{
+  // ...
+  "exteriorScriptAllowlist": ["default2StateActivator", "NorLever01SCRIPT"]
+  // ...
+}
+```
+
 ## playersInheritBaseSpells
 
 `true` (default) keeps the Player record's castable spells (Flames, Healing) on

@@ -70,6 +70,7 @@ const serverSettings = [
   { key: 'reloot',        label: 'Reloot timers',  type: 'json', group: 'Advanced', help: 'Record type → ms before respawn.' },
   { key: 'forbiddenReloot', label: 'Forbidden reloot', type: 'json', group: 'Advanced', help: 'Record types that never respawn.' },
   { key: 'untouchableBaseIds', label: 'Untouchable objects', type: 'json', group: 'Advanced', help: 'Base form ids nobody can activate (numbers or "0x..." strings). Default: the vanilla coin purses. [] disables.' },
+  { key: 'exteriorScriptAllowlist', label: 'Exterior scripts', type: 'json', group: 'Advanced', help: 'Vanilla Papyrus scripts that still run on exterior objects; every other vanilla script is stripped there. Default: ["default2StateActivator", "NorLever01SCRIPT"] so lever-driven exterior gates open. [] strips them too. Native server, read at boot.' },
   { key: 'blockedSpells',  label: 'Blocked spells',  type: 'json', group: 'Advanced', help: 'Spell form ids players may not cast (numbers or "0x..." strings), e.g. racial powers.' },
   { key: 'adminProfileIds', label: 'Admin profile IDs', type: 'json', group: 'Advanced', help: 'Master-api profile ids granted in-game admin chat commands. Array of numbers.' },
   { key: 'adminRoleIds',    label: 'Admin Discord roles', type: 'json', group: 'Advanced', help: 'Legacy flat list of Discord role ids (strings) that get the in-game admin menu (Insert) and the server console. Roles here but in no adminRoles tier get full (senior) rights. Example: ["1521259484859863190"].' },
