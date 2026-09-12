@@ -55,11 +55,26 @@ export class NetworkingService extends ClientListener {
   }
 
   reconnect() {
+    this.autoReconnectBlocked = false;
     this.createClientSafe();
   }
 
   close() {
     this.sp.mpClientPlugin.destroyClient();
+  }
+
+  // Server kick: stay offline until the player asks to reconnect
+  closeAfterKick() {
+    this.autoReconnectBlocked = true;
+    this.close();
+  }
+
+  isAutoReconnectBlocked() {
+    return this.autoReconnectBlocked;
+  }
+
+  private autoReconnect() {
+    if (!this.autoReconnectBlocked) this.createClientSafe();
   }
 
   isConnected() {
@@ -74,15 +89,15 @@ export class NetworkingService extends ClientListener {
           break;
         case "connectionDenied":
           this.controller.emitter.emit("connectionDenied", { error });
-          this.reconnect();
+          this.autoReconnect();
           break;
         case "connectionFailed":
           this.controller.emitter.emit("connectionFailed", {});
-          this.reconnect();
+          this.autoReconnect();
           break;
         case "disconnect":
           this.controller.emitter.emit("connectionDisconnect", {});
-          this.reconnect();
+          this.autoReconnect();
           break;
         case "message":
           // TODO: in theory can be empty jsonContent and non-empty error
@@ -220,6 +235,8 @@ export class NetworkingService extends ClientListener {
   private set serverAddress(newValue: { hostName: string, port: number }) {
     this.sp.storage["serverAddress"] = newValue;
   }
+
+  private autoReconnectBlocked = false;
 
   private isReliable(reliability: "reliable" | "unreliable") {
     switch (reliability) {

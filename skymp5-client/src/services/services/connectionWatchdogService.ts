@@ -27,6 +27,7 @@ export class ConnectionWatchdogService extends ClientListener {
 
   private onConnectionLost() {
     if (this.downSince) return;
+    if (this.controller.lookupListener(NetworkingService).isAutoReconnectBlocked()) return;
     this.downSince = Date.now();
     logTrace(this, "Connection lost, watchdog armed");
     showSystemNotification(this.sp, "Connection to the server lost, reconnecting...");
