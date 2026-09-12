@@ -126,13 +126,13 @@ export class NpcSpawnSystem implements System {
 
   private mp: Mp = null;
   private zones: Zone[] = [];
+  // Ids placed by the previous run, destroyed once the world DB has loaded
+  private leftovers: number[] = [];
   private ready = false;
   private loading = false;
   // Loads run one at a time, whether the watcher or the admin panel asks
   private loadChain: Promise<void> = Promise.resolve();
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
-  // Ids placed by the previous run, destroyed once the world DB has loaded
-  private leftovers: number[] = [];
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
