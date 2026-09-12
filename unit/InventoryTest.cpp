@@ -50,6 +50,20 @@ TEST_CASE("Remove all items from a single entry", "[Inventory]")
   REQUIRE(inv.entries.size() == 0);
 }
 
+TEST_CASE("AddItems keeps adding after an entry merges into a stack",
+          "[Inventory]")
+{
+  Inventory inv;
+  inv.AddItem(0xf, 10);
+
+  inv.AddItems({ Inventory::Entry(0xf, 5), Inventory::Entry(0x12eb7, 2),
+                 Inventory::Entry(0x12eb7, 1) });
+
+  REQUIRE(inv.entries.size() == 2);
+  REQUIRE(inv.GetItemCount(0xf) == 15);
+  REQUIRE(inv.GetItemCount(0x12eb7) == 3);
+}
+
 TEST_CASE("Not enough items to remove", "[Inventory]")
 {
   Inventory inv;
