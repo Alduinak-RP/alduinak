@@ -30,7 +30,8 @@ const SOUL_LABELS = ['Petty', 'Lesser', 'Common', 'Greater', 'Grand'];
 
 const isWorn = (e: Entry): boolean => !!e.worn || !!e.wornLeft;
 
-const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false;
+// Same rule as the server's isSet (tradeSystem.ts)
+const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false && v !== 0 && v !== '';
 
 // One inventory entry minus worn flags; the server sets plain when it holds no copy with these extras
 type Item = Omit<Entry, 'worn' | 'wornLeft'> & { plain?: boolean };

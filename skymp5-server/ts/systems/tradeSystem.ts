@@ -93,7 +93,8 @@ const EXTRA_KEYS: (keyof Extras)[] = [...IDENTITY_KEYS, 'chargePercent', 'name']
 // Property keys (housing): the name is the credential.
 const KEY_BASE_ID = 0x000db0e2;
 
-const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false;
+// Zero and empty extras mean nothing (armor enchantments carry maxCharge 0) and offers never keep them
+const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false && v !== 0 && v !== '';
 
 const sameBase = (a: Item, b: Item): boolean => (a.baseId >>> 0) === (b.baseId >>> 0);
 
