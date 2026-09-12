@@ -273,7 +273,8 @@ class Builder {
     // The server post-build step regenerates server-settings.json with
     // upstream defaults (it force-sets offlineMode and master), so snapshot
     // the live files and put them back afterwards.
-    const guarded = ['server-settings.json', 'launch_server.bat'].map(name => {
+    // With BUILD_GAMEMODE off, the ALL build also empties gamemode.js through skymp5-functions-lib.
+    const guarded = ['server-settings.json', 'launch_server.bat', 'gamemode.js'].map(name => {
       const file = path.join(buildDir, 'dist', 'server', name)
       let before = null
       try { before = fs.readFileSync(file) } catch {}
