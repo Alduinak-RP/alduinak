@@ -5,7 +5,7 @@ import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
-import { getInventory, Entry } from "../../sync/inventory";
+import { getInventory, Entry, isBoundItem } from "../../sync/inventory";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setters (executed inside the CEF browser)
@@ -352,9 +352,15 @@ export class TradeService extends ClientListener {
     } catch (e) {
       return [];
     }
+    // Summoned bound weapons and arrows are worn but never held by the server inventory
     return entries
       .map((e) => this.withoutDefaultName(e))
-      .filter((e) => e.count > 0 && isTradeableEntry(e));
+      .filter((e) => e.count > 0 && isTradeableEntry(e) && !this.isSummonedBoundItem(e.baseId));
+  }
+
+  private isSummonedBoundItem(baseId: number): boolean {
+    const form = this.sp.Game.getFormEx(baseId);
+    return !!form && isBoundItem(form);
   }
 
   // applyInventory stamps server items with their form name as TextDisplayData; same rule as containersService
