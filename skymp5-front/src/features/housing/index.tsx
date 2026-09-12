@@ -138,6 +138,10 @@ const Housing = ({ data }: { data: HousingData }) => {
           ) : null}
         </div>
 
+        {isOwner ? (
+          <p className="housing__hint">Keys are items in your pack. Trade one or leave it in a chest to share access; Void all keys cancels every copy.</p>
+        ) : null}
+
         {manages ? (
           <div className="housing__rename">
             <input
