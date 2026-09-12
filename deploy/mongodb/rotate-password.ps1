@@ -14,6 +14,8 @@
 param(
   [Parameter(Mandatory = $true)][string]$NewPassword,
   [string]$CreateAdmin = '',
+  [string]$AdminPassword = '',
+  [string]$AdminUser = 'alduinakAdmin',
   [string]$User = 'skympuser',
   [string]$MongoCfg = 'C:\Users\Administrator\Desktop\alduinak\deploy\mongodb\mongod.cfg',
   [string]$ServiceName = 'AlduinakMongo',
@@ -47,21 +49,21 @@ Write-Host "[rotate] mongosh: $mongosh"
 # Passwords reach mongosh as env vars, off its command line, where PowerShell 5.1 would strip JS string quotes
 $secrets = @{
   ALDUINAK_MONGO_PWD = $NewPassword
+  ALDUINAK_MONGO_ADMIN_PWD = $AdminPassword
   ALDUINAK_MONGO_NEW_ADMIN_PWD = $CreateAdmin
 }
 
 $updateJs = "db.getSiblingDB('admin').updateUser('$User', { pwd: process.env.ALDUINAK_MONGO_PWD }); print('UPDATED');"
 $rotated = $false
 
-# Fast path: works when an admin account exists or changeOwnPassword was granted
-try {
-  $settingsJson = Get-Content $Settings -Raw | ConvertFrom-Json
-  $currentUri = $settingsJson.databaseUri
-  Write-Host '[rotate] trying rotation with the current credentials'
-  $res = Invoke-Mongo $currentUri $updateJs
-  if ($res -match 'UPDATED') { $rotated = $true; Write-Host '[rotate] rotated without downtime' }
-} catch {
-  Write-Host "[rotate] authenticated rotation not permitted: $($_.Exception.Message)"
+# Fast path: log in as the admin user and rotate without restarting MongoDB
+if ($AdminPassword) {
+  if ($CreateAdmin) { throw '-CreateAdmin needs the auth-disabled window, run it without -AdminPassword' }
+  Write-Host "[rotate] rotating as $AdminUser"
+  $res = Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' "db.getSiblingDB('admin').auth('$AdminUser', process.env.ALDUINAK_MONGO_ADMIN_PWD); $updateJs"
+  if ($res -notmatch 'UPDATED') { throw "updateUser did not confirm: $res" }
+  $rotated = $true
+  Write-Host '[rotate] rotated without downtime'
 }
 
 if (-not $rotated) {
@@ -79,7 +81,7 @@ if (-not $rotated) {
     $res = Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' $updateJs
     if ($res -notmatch 'UPDATED') { throw "updateUser did not confirm: $res" }
     if ($CreateAdmin) {
-      $adminJs = "try { db.getSiblingDB('admin').createUser({ user: 'alduinakAdmin', pwd: process.env.ALDUINAK_MONGO_NEW_ADMIN_PWD, roles: [ { role: 'root', db: 'admin' } ] }); print('ADMIN_CREATED'); } catch (e) { print('ADMIN_SKIPPED: ' + e.message); }"
+      $adminJs = "try { db.getSiblingDB('admin').createUser({ user: '$AdminUser', pwd: process.env.ALDUINAK_MONGO_NEW_ADMIN_PWD, roles: [ { role: 'root', db: 'admin' } ] }); print('ADMIN_CREATED'); } catch (e) { print('ADMIN_SKIPPED: ' + e.message); }"
       Write-Host ('[rotate] ' + (Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' $adminJs))
     }
     $rotated = $true
