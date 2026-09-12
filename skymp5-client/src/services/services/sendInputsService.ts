@@ -17,6 +17,7 @@ import { SkympClient } from "./skympClient";
 import { MessageWithRefrId } from "../events/sendMessageWithRefrIdEvent";
 import { UpdateMovementMessage } from "../messages/updateMovementMessage";
 import { ChangeValuesMessage } from "../messages/changeValuesMessage";
+import { CloneSpellGuardService } from "./cloneSpellGuardService";
 import { UpdateAnimationMessage } from "../messages/updateAnimationMessage";
 import { UpdateEquipmentMessage } from "../messages/updateEquipmentMessage";
 import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
@@ -158,6 +159,9 @@ export class SendInputsService extends ClientListener {
         if (!owner) {
           return;
         }
+
+        // A clone's replayed Fire Storm or Blizzard must not lower the reported health
+        this.controller.lookupListener(CloneSpellGuardService).enforce();
 
         const av = getActorValues(this.sp.Game.getPlayer() as Actor);
         const currentTime = Date.now();
