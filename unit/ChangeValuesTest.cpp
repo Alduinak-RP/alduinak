@@ -90,8 +90,8 @@ TEST_CASE("OnChangeValues call is cropping percentage values",
 
   REQUIRE_THAT(changeForm.actorValues.healthPercentage,
                Catch::Matchers::WithinAbs(expectedHealth + 0.1f, 0.001f));
-  // REQUIRE_THAT(changeForm.actorValues.staminaPercentage,
-  //              Catch::Matchers::WithinAbs(expectedStamina, 0.001f));
+  REQUIRE_THAT(changeForm.actorValues.staminaPercentage,
+               Catch::Matchers::WithinAbs(expectedStamina, 0.001f));
   REQUIRE_THAT(changeForm.actorValues.magickaPercentage,
                Catch::Matchers::WithinAbs(expectedMagicka, 0.001f));
 
@@ -159,7 +159,7 @@ TEST_CASE("OnChangeValues function sends ChangeValues message with new "
   REQUIRE(message["data"]["magicka"] != 0.0f);
   REQUIRE(message["data"]["magicka"] != 1.0f);
   REQUIRE(message["data"]["stamina"] != 0.0f);
-  // REQUIRE(message["data"]["stamina"] != 1.0f);
+  REQUIRE(message["data"]["stamina"] != 1.0f);
 
   partOne.DestroyActor(0xff000000);
   DoDisconnect(partOne, 0);
@@ -224,6 +224,59 @@ TEST_CASE("OnChangeValues echoes a freshly restored value but accepts the "
   nlohmann::json message = partOne.Messages()[0].j;
   REQUIRE(message["data"]["health"] == 0.5f);
   REQUIRE(message["data"]["magicka"].is_null());
+
+  partOne.DestroyActor(0xff000000);
+  DoDisconnect(partOne, 0);
+}
+
+TEST_CASE("OnChangeValues crops stamina gains to regeneration but accepts "
+          "stamina spending",
+          "[ChangeValues]")
+{
+  PartOne& partOne = GetPartOne();
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  partOne.SetUserActor(0, 0xff000000);
+  auto& ac = partOne.worldState.GetFormAt<MpActor>(0xff000000);
+
+  auto appearance = ac.GetAppearance();
+  BaseActorValues baseValues = GetBaseActorValues(
+    &partOne.worldState, ac.GetBaseId(), appearance ? appearance->raceId : 0,
+    {});
+
+  ac.SetPercentages({ 1.0f, 1.0f, 0.2f });
+  auto past = std::chrono::steady_clock::now() - 1s;
+  ac.SetLastAttributesPercentagesUpdate(past);
+
+  // A health-only hit must not shrink the stamina allowance
+  ActorValues hit = ac.GetChangeForm().actorValues;
+  hit.healthPercentage = 0.5f;
+  ac.NetSetPercentages(
+    hit, nullptr, std::vector<espm::ActorValue>{ espm::ActorValue::Health });
+  partOne.Messages().clear();
+
+  nlohmann::json j = nlohmann::json{ { "t", MsgType::ChangeValues },
+                                     { "data", { { "stamina", 0.9f } } } };
+  DoMessage(partOne, 0, j);
+
+  std::chrono::duration<float> elapsedTime =
+    std::chrono::steady_clock::now() - past;
+  float expectedStamina = 0.2f +
+    baseValues.staminaRate * baseValues.staminaRateMult *
+      elapsedTime.count() / 10000.0f;
+
+  float stamina = ac.GetChangeForm().actorValues.staminaPercentage;
+  REQUIRE_THAT(stamina, Catch::Matchers::WithinAbs(expectedStamina, 0.001f));
+  REQUIRE(stamina < 0.9f);
+  REQUIRE(partOne.Messages().size() == 1);
+  REQUIRE(partOne.Messages()[0].j["data"]["stamina"] == stamina);
+
+  partOne.Messages().clear();
+  j["data"]["stamina"] = 0.1f;
+  DoMessage(partOne, 0, j);
+
+  REQUIRE(ac.GetChangeForm().actorValues.staminaPercentage == 0.1f);
+  REQUIRE(partOne.Messages().size() == 0);
 
   partOne.DestroyActor(0xff000000);
   DoDisconnect(partOne, 0);
