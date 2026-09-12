@@ -15,6 +15,7 @@ import { localIdToRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
+import { isOwnCompanion } from "../services/services/companionService";
 
 export interface ScreenResolution {
   width: number;
@@ -409,7 +410,8 @@ export class FormView {
     }
     setDefaultAnimsDisabled(this.refrId, alreadyHosted ? false : true);
 
-    if (alreadyHosted) {
+    // Own companions keep the follow offset CompanionService gives them
+    if (alreadyHosted && !isOwnCompanion(this.remoteRefrId)) {
       Actor.from(refr)?.clearKeepOffsetFromActor();
     }
 
