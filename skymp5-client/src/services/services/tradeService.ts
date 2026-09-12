@@ -5,7 +5,7 @@ import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
-import { getInventory, Entry, isBoundItem, PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
+import { getInventory, Entry, EnchantmentEffect, effectsKey, isBoundItem, PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setters (executed inside the CEF browser)
@@ -20,7 +20,7 @@ const STACK_PROMPT_THRESHOLD = 5;
 // Extras that tell copies apart, same as the server's IDENTITY_KEYS (tradeSystem.ts)
 const IDENTITY_KEYS = [
   'health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip',
-  'soul', 'poisonId', 'poisonCount',
+  'soul', 'poisonId', 'poisonCount', 'enchantmentEffects',
 ] as const;
 
 const OFFER_KEYS: (keyof Entry)[] = [...IDENTITY_KEYS, 'chargePercent', 'name'];
@@ -30,8 +30,9 @@ const SOUL_LABELS = ['Petty', 'Lesser', 'Common', 'Greater', 'Grand'];
 
 const isWorn = (e: Entry): boolean => !!e.worn || !!e.wornLeft;
 
-// Same rule as the server's isSet (tradeSystem.ts)
-const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== false && v !== 0 && v !== '';
+// Same rule as the server's isSet (inventoryExtras.ts)
+const isSet = (v: unknown): boolean =>
+  v !== undefined && v !== null && v !== false && v !== 0 && v !== '' && !(Array.isArray(v) && v.length === 0);
 
 // One inventory entry minus worn flags; the server sets plain when it holds no copy with these extras
 type Item = Omit<Entry, 'worn' | 'wornLeft'> & { plain?: boolean };
@@ -49,16 +50,34 @@ interface UiItem {
 const keyName = (i: Item): string =>
   (i.baseId >>> 0) === PROPERTY_KEY_BASE_ID && typeof i.name === 'string' ? i.name : '';
 
+// Tempering in tenths and enchantments by definition, same as the server's identityText
+const identityText = (k: typeof IDENTITY_KEYS[number], v: unknown): string => {
+  if (k === 'health') {
+    const step = typeof v === 'number' && v > 1 ? Math.round(v * 10) : 10;
+    return step > 10 ? String(step) : '';
+  }
+  if (k === 'enchantmentEffects') {
+    return effectsKey(v as EnchantmentEffect[] | undefined);
+  }
+  return isSet(v) ? String(v) : '';
+};
+
 // Same shape as the server's lineKey
 const lineKey = (i: Item): string =>
-  [i.baseId >>> 0, keyName(i), ...IDENTITY_KEYS.map((k) => (isSet(i[k]) ? String(i[k]) : ''))].join('|');
+  [i.baseId >>> 0, keyName(i), ...IDENTITY_KEYS.map((k) => identityText(k, i[k]))].join('|');
 
-// Keeps only extras the server accepts (copyValidExtras in tradeSystem.ts), so both sides build the same lineKey
+// Keeps only extras the server accepts (copyValidExtras in inventoryExtras.ts), so both sides build the same lineKey
 const toItem = (raw: any, count: number): Item => {
   const item: Item = { baseId: Number(raw?.baseId), count };
   for (const k of OFFER_KEYS) {
     const v = raw?.[k];
-    if (typeof v === 'number' && Number.isFinite(v) && (v > 0 || (k === 'chargePercent' && v === 0))) {
+    if (k === 'enchantmentEffects') {
+      if (Array.isArray(v) && v.length) {
+        item.enchantmentEffects = v.map((e: EnchantmentEffect) => ({
+          effectId: e.effectId, magnitude: e.magnitude, area: e.area, duration: e.duration, cost: e.cost,
+        }));
+      }
+    } else if (typeof v === 'number' && Number.isFinite(v) && (v > 0 || (k === 'chargePercent' && v === 0))) {
       (item as any)[k] = v;
     } else if (typeof v === 'string' && v) {
       (item as any)[k] = v.slice(0, 256);
@@ -406,7 +425,7 @@ export class TradeService extends ClientListener {
     if (tier >= 1) {
       tags.push(TEMPER_LABELS[Math.min(tier, TEMPER_LABELS.length) - 1]);
     }
-    if (i.enchantmentId) {
+    if (i.enchantmentId || (i.enchantmentEffects && i.enchantmentEffects.length)) {
       tags.push("enchanted");
     }
     const maxCharge = i.chargePercent !== undefined ? i.maxCharge || this.baseCharge(i.baseId) : 0;
