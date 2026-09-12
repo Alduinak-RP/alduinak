@@ -26,6 +26,7 @@ import { GatheringSystem } from "./systems/gatheringSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
+import { CraftedExtrasSystem } from "./systems/craftedExtrasSystem";
 import { SearchSystem } from "./systems/searchSystem";
 import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
@@ -220,6 +221,7 @@ const main = async () => {
     new CaptureSystem(log),
     new HousingSystem(log),
     new TradeSystem(log),
+    new CraftedExtrasSystem(log),
     new SearchSystem(log),
     new VoiceSystem(log),
     new AfkSystem(log),
