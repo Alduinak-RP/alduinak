@@ -17,7 +17,7 @@
 #>
 param(
   [string] $Version = "1.13.4",
-  [string] $Root = "X:\Alduinak\livekit"
+  [string] $Root = "C:\Alduinak\livekit"
 )
 
 $ErrorActionPreference = "Stop"
