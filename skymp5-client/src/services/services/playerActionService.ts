@@ -89,6 +89,11 @@ export class PlayerActionService extends ClientListener {
 
     // Belt and braces next to the prompt service's block: no clone dialogue.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
+    // Bodies skip the menu and open their inventory through the server search
+    if (actor.isDead()) {
+      sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+      return;
+    }
     targetName = (ref.getName() || "").trim();
     this.playerTarget = remoteId;
     // Names stay hidden until introduced (ff_knownIds owner prop)

@@ -9,14 +9,16 @@ type Mp = any;
 //
 // Consent-gated search of another player's inventory via the VANILLA container window: on accept the server marks the searcher as the target's inventory occupant (setInventoryOccupant native), which authorizes the engine's PutItem/TakeItem, and tells the searcher's client to open the target's inventory.
 // Item moves ride the normal server-validated container-sync path; if the pair separates, the session ends and the client closes the window.
+// Dead bodies (players or spawned NPCs) open at once without consent; the searcher may take and put items like vanilla looting.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
 //     { customPacketType: "searchRequest", target: <actorFormId> }
 //     { customPacketType: "searchConsentResult", requestId, accepted }
+//     { customPacketType: "searchEnd" }                              // searcher closed the window
 //   Server -> Client:
 //     { customPacketType: "searchConsentRequest", requestId, text }  // -> target
-//     { customPacketType: "searchApproved", target }                 // -> searcher: open the window
+//     { customPacketType: "searchApproved", target, body, entries }  // -> searcher: open the window
 //     { customPacketType: "searchClose" }                            // -> searcher: close it
 //     { customPacketType: "searchNotice", text }                     // corner toast
 
@@ -40,6 +42,7 @@ interface PendingConsent {
 interface SearchSession {
   searcherActorId: number;
   targetActorId: number;
+  body: boolean;
 }
 
 export class SearchSystem implements System {
@@ -79,6 +82,7 @@ export class SearchSystem implements System {
     switch (type) {
       case "searchRequest": this.onSearchRequest(ctx, userId, content); break;
       case "searchConsentResult": this.onConsentResult(ctx, userId, content); break;
+      case "searchEnd": this.onSearchEnd(ctx, userId); break;
       default: break;
     }
   }
@@ -95,8 +99,13 @@ export class SearchSystem implements System {
     this.lastWatchMs = now;
     for (const s of Array.from(this.sessions.values())) {
       // A side that lost its user (character switch, logout-grace park) ends the search
-      if (this.userOf(ctx, s.searcherActorId) < 0 || this.userOf(ctx, s.targetActorId) < 0) {
+      if (this.userOf(ctx, s.searcherActorId) < 0 || (!s.body && this.userOf(ctx, s.targetActorId) < 0)) {
         this.endSession(ctx, s, "");
+        continue;
+      }
+      // Respawned, revived or despawned
+      if (s.body && !this.isDead(ctx, s.targetActorId)) {
+        this.endSession(ctx, s, "The body is gone.");
         continue;
       }
       if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, this.keepMaxDistance)) {
@@ -145,9 +154,12 @@ export class SearchSystem implements System {
       }
       return;
     }
+    if (this.isDead(ctx, searcherActorId)) {
+      return;
+    }
     const targetActorId = toFormId(content.target);
     if (!this.validTarget(ctx, searcherActorId, targetActorId)) {
-      this.notice(ctx, userId, "Look at another player to search them.");
+      this.notice(ctx, userId, "Look at a player or a body to search.");
       return;
     }
     if (this.sessions.has(targetActorId)) {
@@ -163,6 +175,10 @@ export class SearchSystem implements System {
         this.notice(ctx, userId, "A search request is already pending.");
         return;
       }
+    }
+    if (this.isDead(ctx, targetActorId)) {
+      this.startSession(ctx, searcherActorId, targetActorId, true);
+      return;
     }
     const now = Date.now();
     const cooldownKey = `${searcherActorId}:${targetActorId}`;
@@ -231,25 +247,36 @@ export class SearchSystem implements System {
     if (this.sessions.has(pend.targetActorId) || this.searching.has(pend.searcherActorId)) {
       return; // state changed while waiting
     }
-    if (!this.setOccupant(ctx, pend.targetActorId, pend.searcherActorId)) {
+    this.startSession(ctx, pend.searcherActorId, pend.targetActorId, this.isDead(ctx, pend.targetActorId));
+  }
+
+  private onSearchEnd(ctx: SystemContext, userId: number): void {
+    const searcherActorId = this.resolveActor(ctx, userId);
+    const targetActorId = searcherActorId === null ? undefined : this.searching.get(searcherActorId);
+    const s = targetActorId === undefined ? undefined : this.sessions.get(targetActorId);
+    if (s) {
+      this.endSession(ctx, s, "");
+    }
+  }
+
+  private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): void {
+    const searcherUser = this.userOf(ctx, searcherActorId);
+    if (!this.setOccupant(ctx, targetActorId, searcherActorId)) {
       this.notice(ctx, searcherUser, "The search could not start.");
       return;
     }
-    const session: SearchSession = {
-      searcherActorId: pend.searcherActorId,
-      targetActorId: pend.targetActorId,
-    };
-    this.sessions.set(pend.targetActorId, session);
-    this.searching.set(pend.searcherActorId, pend.targetActorId);
+    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body });
+    this.searching.set(searcherActorId, targetActorId);
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
-      target: pend.targetActorId,
-      // Simple stacks of the real inventory: the searcher's local clone only mirrors equipment, so the client tops it up before opening the window
-      entries: this.simpleEntriesOf(ctx, pend.targetActorId),
+      target: targetActorId,
+      body,
+      // Simple stacks of the real inventory: the searcher's local clone never holds it, so the client syncs the clone before opening the window
+      entries: this.simpleEntriesOf(ctx, targetActorId),
     }));
-    this.notice(ctx, this.userOf(ctx, pend.targetActorId),
-      `${this.nameShownTo(ctx, pend.targetActorId, pend.searcherActorId)} is searching you.`);
-    this.log(`[search] ${pend.searcherActorId.toString(16)} searches ${pend.targetActorId.toString(16)}`);
+    this.notice(ctx, this.userOf(ctx, targetActorId),
+      `${this.nameShownTo(ctx, targetActorId, searcherActorId)} is searching ${body ? "your body" : "you"}.`);
+    this.log(`[search] ${searcherActorId.toString(16)} searches ${body ? "body " : ""}${targetActorId.toString(16)}`);
   }
 
   // ── Session teardown ────────────────────────────────────────────────────────
@@ -289,8 +316,9 @@ export class SearchSystem implements System {
     if (!targetActorId || targetActorId === selfActorId) {
       return false;
     }
-    if (this.userOf(ctx, targetActorId) < 0) {
-      return false; // must be a connected player, not an NPC
+    // Living targets must be connected players; any dead actor is a searchable body
+    if (this.userOf(ctx, targetActorId) < 0 && !this.isDead(ctx, targetActorId)) {
+      return false;
     }
     if (this.isPermaDead(ctx.svr as Mp, targetActorId)) {
       return false;
@@ -307,6 +335,14 @@ export class SearchSystem implements System {
       const b = ctx.svr.getActorPos(bActorId);
       const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
       return dx * dx + dy * dy + dz * dz <= max * max;
+    } catch {
+      return false;
+    }
+  }
+
+  private isDead(ctx: SystemContext, actorId: number): boolean {
+    try {
+      return (ctx.svr as Mp).get(actorId, "isDead") === true;
     } catch {
       return false;
     }

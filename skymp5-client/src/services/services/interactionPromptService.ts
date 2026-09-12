@@ -24,6 +24,8 @@ const ROLLOVER_ALPHA_PATHS = [
 const BOARD_BASE_LOCAL_ID = 0x0012cb;
 const BOARD_PLUGIN = "Missives.esp";
 
+const PROMPT_POLL_MS = 500;
+
 interface Prompt {
   verb: string;
   label: string;
@@ -71,6 +73,12 @@ export class InteractionPromptService extends ClientListener {
         this.browserFocused = focused;
         if (focused) this.clearPrompt();
         else this.refresh();
+      }
+      // A death or respawn under the crosshair fires no crosshair event
+      const now = Date.now();
+      if (!focused && this.promptShown && now - this.lastPollMs >= PROMPT_POLL_MS) {
+        this.lastPollMs = now;
+        this.refresh();
       }
     } catch (e) {
       this.logOnce(`update failed: ${e}`);
@@ -137,18 +145,22 @@ export class InteractionPromptService extends ClientListener {
   // appearance name server-side, so it holds here too.
   private actorPromptFor(ref: ObjectReference): Prompt | null {
     if (ref.getFormID() === 0x14) return null;
+    const dead = Actor.from(ref)?.isDead() === true;
     const remoteId = localIdToRemoteId(ref.getFormID());
     // Server-created characters live in the dynamic id space; everything
     // below it is a world NPC that keeps its vanilla activation.
     if (!remoteId || remoteId < 0xff000000) {
+      // Local-only bodies have activation blocked by WorldCleanerService
+      if (dead) return null;
       const name = (ref.getDisplayName() || "").trim();
       return name ? { verb: "Talk", label: name } : null;
     }
-    // The engine must not start a dialogue with the clone under our menu.
+    // The engine must not start a dialogue or a local loot window on the clone under our menu.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
     const raw = (ref.getName() || "").trim();
-    const label = raw && this.knowsTarget(remoteId) ? raw : "Stranger";
-    return { verb: "Interact", label };
+    const known = raw && this.knowsTarget(remoteId);
+    if (dead) return { verb: "Search", label: known ? raw : "Body" };
+    return { verb: "Interact", label: known ? raw : "Stranger" };
   }
 
   // True when the local player's ff_knownIds list contains the remote actor
@@ -250,4 +262,5 @@ export class InteractionPromptService extends ClientListener {
   private browserFocused = false;
   private boardBaseId: number | undefined = undefined;
   private errorLogged = false;
+  private lastPollMs = 0;
 }
