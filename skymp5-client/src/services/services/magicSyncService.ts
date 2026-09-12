@@ -1,5 +1,5 @@
 // TODO: refactor this out
-import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
@@ -98,10 +98,15 @@ export class MagicSyncService extends ClientListener {
             return;
         }
 
+        // Clone replays fire this event too, but the server only accepts our own and hosted casters
+        const casterLocalId = event.caster.getFormID();
+        if (casterLocalId !== this.playerId && !isHostedByMe(casterLocalId)) {
+            return;
+        }
+
         const msg: SpellCastMsgData = this.getSpellCastEventData(event, false);
         this.sendSpellCast(msg);
 
-        const casterLocalId = event.caster.getFormID();
         const now = Date.now();
         this.relayedCasts.set(this.getCastKey(casterLocalId, msg.castingSource), {
             msg,

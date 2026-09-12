@@ -56,6 +56,7 @@ import { TeleportMessage2 } from '../messages/teleportMessage2';
 import {
   getObjectReference,
   getViewFromStorage,
+  isHostedByMe,
   remoteIdToLocalId,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
@@ -996,7 +997,8 @@ export class RemoteServer extends ClientListener {
 
     once('update', () => {
       const ac = Actor.from(Game.getFormEx(remoteIdToLocalId(msg.data.caster)));
-      if (!ac) {
+      // The host runs its own NPC's real cast, a replay of the relayed copy would cast and hit twice
+      if (!ac || isHostedByMe(ac.getFormID())) {
         return;
       }
 
