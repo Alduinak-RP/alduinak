@@ -1821,6 +1821,8 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   damage = damage <= 0.f ? 0.f : damage;
 
   const bool wardBlocked = IsWardBlocking(*aggressor, *targetActorPtr);
+  // A fully blocked attack still asks the gamemode, so god mode and companions see it
+  const bool blockedAttack = wardBlocked && damage > 0.f;
   if (wardBlocked) {
     damage *= kBlockedHitDamageMult;
     spdlog::info("OnSpellHit - ward of {:x} blocked spell {:x} of {:x}",
@@ -1829,7 +1831,7 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   }
 
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, targetActorPtr,
-                          hitData.source, damage)) {
+                          hitData.source, damage, blockedAttack)) {
     return;
   }
 
@@ -2018,8 +2020,9 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 
   float damage = partOne.CalculateDamage(*aggressor, targetActor, hitData);
   damage = damage < 0.f ? 0.f : damage;
+  // A fully blocked attack still asks the gamemode, so god mode and companions see it
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, &targetActor,
-                          hitData.source, damage)) {
+                          hitData.source, damage, hitData.isHitBlocked)) {
     return;
   }
   float outBaseHealth = 0.f;
