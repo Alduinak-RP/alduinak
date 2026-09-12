@@ -4,17 +4,21 @@ import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 
+const INVIS_REAPPLY_MS = 2000;
+
 /**
  * Applies admin mode toggles pushed by the server's AdminSystem:
  *   { customPacketType: "adminMode", mode, on }
  * god/noclip/ghost/invis map to local natives; smite/healhit are fully
  * server-side; freecam has no SkyrimPlatform native (tfc stays a console
  * command for admins, who already hold consoleCommandsAllowed).
+ * God also holds server-side (AdminSystem refuses hit damage); FormView hides remote invis admins via ff_adminModes.
  */
 export class AdminModeService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.on("update", () => this.onUpdate());
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -43,6 +47,8 @@ export class AdminModeService extends ClientListener {
         player?.setGhost(on);
         break;
       case "invis":
+        this.invisible = on;
+        this.lastInvisApply = Date.now();
         player?.setAlpha(on ? 0 : 1, true);
         break;
       case "freecam":
@@ -61,5 +67,14 @@ export class AdminModeService extends ClientListener {
     }
   }
 
+  // Respawn and 3D reloads reset the player's alpha
+  private onUpdate(): void {
+    if (!this.invisible || Date.now() - this.lastInvisApply < INVIS_REAPPLY_MS) return;
+    this.lastInvisApply = Date.now();
+    this.sp.Game.getPlayer()?.setAlpha(0, false);
+  }
+
   private collisionsDisabled = false;
+  private invisible = false;
+  private lastInvisApply = 0;
 }
