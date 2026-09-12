@@ -21,7 +21,9 @@ const DEFAULT_RESPAWN = 1800;
 const MAX_COUNT = 20;
 const MAX_TOTAL = 40;
 const MAX_NAME = 64;
-const RING_RADIUS = 64;
+const SLOT_SPACING = 96;
+// Spawn height above POS so an NPC drops onto an uneven floor instead of starting inside it
+const SPAWN_LIFT = 64;
 const RETRY_MS = 30000;
 const RELOAD_DEBOUNCE_MS = 500;
 // Keeps the engine from reviving spawner NPCs; delays past ~1e9 s overflow its timer and fire at once
@@ -473,11 +475,19 @@ export class NpcSpawnSystem implements System {
     }
   }
 
-  // One NPC stands on POS; more are spread evenly on a ring so they do not stack
+  // Slot 0 stands on POS, the rest fill rings of 6, 12, 18... SLOT_SPACING apart so no two spawn inside each other
   private slotPos(zone: Zone, slot: number): number[] {
-    if (zone.total < 2) return zone.pos;
-    const angle = (2 * Math.PI * slot) / zone.total;
-    return [zone.pos[0] + RING_RADIUS * Math.cos(angle), zone.pos[1] + RING_RADIUS * Math.sin(angle), zone.pos[2]];
+    let ring = 0;
+    let first = 0;
+    const ringSize = (r: number) => Math.max(1, 6 * r);
+    while (slot >= first + ringSize(ring)) {
+      first += ringSize(ring);
+      ring++;
+    }
+    const size = Math.min(ringSize(ring), zone.total - first);
+    const angle = (2 * Math.PI * (slot - first)) / size;
+    const radius = ring * SLOT_SPACING;
+    return [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
   }
 
   // A death starts the slot's Respawn cooldown; the corpse stays until the slot is refilled or the zone despawns
