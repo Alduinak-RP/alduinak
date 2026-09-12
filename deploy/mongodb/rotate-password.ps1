@@ -1,7 +1,7 @@
 # Rotates the skympuser MongoDB password and updates the live server-settings.json.
 #
 # setup-mongodb.ps1 creates only skympuser (readWrite + dbAdmin on skymp). That
-# account cannot change its own password, so with no admin user the rotation
+# account cannot change its own password, so without -AdminPassword the rotation
 # needs a brief auth-disabled window. The script restores authorization and
 # restarts the service even if a step fails.
 #
@@ -9,7 +9,8 @@
 #   powershell -ExecutionPolicy Bypass -File deploy\mongodb\rotate-password.ps1 -NewPassword '<password>'
 #
 # Optional: -CreateAdmin '<adminPassword>' also creates a root user
-# (alduinakAdmin) so later rotations need no downtime at all.
+# (alduinakAdmin) in that window. Later rotations that pass
+# -AdminPassword '<adminPassword>' log in as it and need no downtime at all.
 
 param(
   [Parameter(Mandatory = $true)][string]$NewPassword,
