@@ -82,6 +82,11 @@ const CONSUME_APPLY_HOLD_MS = 1500;
 let pcInvLastApply = 0;
 let pcInvHoldUntil = 0;
 let encumbranceRefreshPending = false;
+
+// Holds the periodic re-apply while the server has not seen a local change yet
+export const holdPcInventoryApply = (ms: number): void => {
+  pcInvHoldUntil = Math.max(pcInvHoldUntil, Date.now() + ms);
+};
 on('update', () => {
   if (isBadMenuShown()) {
     return;
@@ -102,7 +107,7 @@ on('update', () => {
     const pcInv = getPcInventory();
     if (pcInv) {
       // applyInventory keeps summoned bound items, so their pending removal is not a change
-      encumbranceRefreshPending = getDiff(pcInv, getInventory(player), true).entries.some((e) => {
+      encumbranceRefreshPending = getDiff(pcInv, getInventory(player), true, "apply").entries.some((e) => {
         const f = e.count < 0 ? Game.getFormEx(e.baseId) : null;
         return !f || !isBoundItem(f);
       });

@@ -23,6 +23,8 @@ import {
   Form,
   Weapon,
 } from "skyrimPlatform";
+// @ts-expect-error (TODO: Remove in 2.10.0)
+import { createEnchantment } from "skyrimPlatform";
 
 // Vanilla boundArrow, added by bound bow effects
 const BOUND_ARROW_ID = 0x10b0a7;
@@ -35,6 +37,15 @@ export const isBoundItem = (form: Form): boolean => {
   return !!Weapon.from(form) && !form.isPlayable();
 };
 
+// One effect of a player-made enchantment (Inventory::EnchantmentEffect on the server)
+export interface EnchantmentEffect {
+  effectId: number;
+  magnitude: number;
+  area: number;
+  duration: number;
+  cost: number;
+}
+
 export interface Extra {
   health?: number;
   enchantmentId?: number;
@@ -45,6 +56,7 @@ export interface Extra {
   soul?: 0 | 1 | 2 | 3 | 4 | 5;
   poisonId?: number;
   poisonCount?: number;
+  enchantmentEffects?: EnchantmentEffect[];
   worn?: boolean;
   wornLeft?: boolean;
 }
@@ -129,18 +141,37 @@ const namesEqual = (a: Entry, b: Entry): boolean => {
 // blindness would merge distinct keys and desync against the server.
 export const PROPERTY_KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
 
+// Server floats pass through C++ float storage
+const sameFloat = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-3 * Math.max(1, Math.abs(a));
+
+// Tempering in tenths, the precision extractExtraData reads it with
+const healthStep = (health?: number): number => (health && health > 1 ? Math.round(health * 10) : 10);
+
+export const sameEffects = (a?: EnchantmentEffect[], b?: EnchantmentEffect[]): boolean => {
+  const x = a || [];
+  const y = b || [];
+  return x.length === y.length && x.every((e, i) =>
+    e.effectId === y[i].effectId && e.area === y[i].area && e.duration === y[i].duration &&
+    sameFloat(e.magnitude, y[i].magnitude));
+};
+
+// Same text as the server's effectsKey (inventoryExtras.ts)
+export const effectsKey = (effects?: EnchantmentEffect[]): string =>
+  (effects || []).map((e) => `${e.effectId >>> 0}:${Math.round(e.magnitude * 1000) / 1000}:${e.area}:${e.duration}`).join(',');
+
 const extrasEqual = (a: Entry, b: Entry, ignoreWorn = false) => {
   return (
-    a.health === b.health &&
-    a.enchantmentId === b.enchantmentId &&
-    a.maxCharge === b.maxCharge &&
+    healthStep(a.health) === healthStep(b.health) &&
+    (a.enchantmentId || 0) === (b.enchantmentId || 0) &&
+    sameEffects(a.enchantmentEffects, b.enchantmentEffects) &&
+    sameFloat(a.maxCharge || 0, b.maxCharge || 0) &&
     !!a.removeEnchantmentOnUnequip === !!b.removeEnchantmentOnUnequip &&
     //a.chargePercent === b.chargePercent &&
     //namesEqual(a, b) &&
     ((a.baseId >>> 0) !== PROPERTY_KEY_BASE_ID || (a.name || '') === (b.name || '')) &&
-    a.soul === b.soul &&
-    a.poisonId === b.poisonId &&
-    a.poisonCount === b.poisonCount &&
+    (a.soul || 0) === (b.soul || 0) &&
+    (a.poisonId || 0) === (b.poisonId || 0) &&
+    (a.poisonCount || 0) === (b.poisonCount || 0) &&
     ((!!a.worn === !!b.worn && !!a.wornLeft === !!b.wornLeft) || ignoreWorn)
   );
 };
@@ -148,6 +179,58 @@ const extrasEqual = (a: Entry, b: Entry, ignoreWorn = false) => {
 export const hasExtras = (e: Entry): boolean => {
   return !extrasEqual(e, { baseId: 0, count: 0 });
 };
+
+// Extras the server records; worn state is not one of them
+export const hasItemExtras = (e: Entry): boolean => {
+  return !extrasEqual(e, { baseId: 0, count: 0 }, true);
+};
+
+export const sameItem = (a: Entry, b: Entry): boolean => a.baseId === b.baseId && extrasEqual(a, b, true);
+
+const playerEnchantments = (): Map<string, number> => {
+  if (storage["playerEnchantmentsExists"] !== true) {
+    storage["playerEnchantmentsExists"] = true;
+    storage["playerEnchantments"] = new Map<string, number>();
+  }
+  return storage["playerEnchantments"] as Map<string, number>;
+};
+
+export const canCreateEnchantments = (): boolean => typeof createEnchantment === "function";
+
+// This session's runtime enchantment for a player-made definition, made once and reused
+export const getPlayerEnchantment = (effects: EnchantmentEffect[], item: Form): Enchantment | null => {
+  if (!canCreateEnchantments() || !effects.length) {
+    return null;
+  }
+  const isWeapon = item.getType() === FormType.Weapon;
+  const key = (isWeapon ? "w" : "a") + effectsKey(effects);
+  const known = playerEnchantments().get(key);
+  const cached = known ? Enchantment.from(Game.getFormEx(known)) : null;
+  if (cached) {
+    return cached;
+  }
+  const id = Number(createEnchantment(isWeapon, effects)) >>> 0;
+  if (!id) {
+    return null;
+  }
+  playerEnchantments().set(key, id);
+  return Enchantment.from(Game.getFormEx(id));
+};
+
+// Copies with a player enchantment this client cannot rebuild are treated as plain, so they do not churn
+const withoutPlayerEnchantments = (inv: Inventory): Inventory => ({
+  entries: inv.entries.map((e) => {
+    if (!e.enchantmentEffects) {
+      return e;
+    }
+    const copy: Entry = { ...e };
+    delete copy.enchantmentEffects;
+    delete copy.maxCharge;
+    delete copy.chargePercent;
+    delete copy.removeEnchantmentOnUnequip;
+    return copy;
+  }),
+});
 
 const extractExtraData = (
   refr: ObjectReference,
@@ -176,13 +259,22 @@ const extractExtraData = (
       case "Count":
         out.count = (extra as ExtraCount).count;
         break;
-      case "Enchantment":
-        out.enchantmentId = (extra as ExtraEnchantment).enchantmentId;
+      case "Enchantment": {
+        // A player-made enchantment is a runtime form of this session only, so it travels as its effects
+        const effects = (extra as ExtraEnchantment & { effects?: EnchantmentEffect[] }).effects;
+        if (effects && effects.length) {
+          out.enchantmentEffects = effects.map((e) => ({
+            effectId: e.effectId, magnitude: e.magnitude, area: e.area, duration: e.duration, cost: e.cost,
+          }));
+        } else {
+          out.enchantmentId = (extra as ExtraEnchantment).enchantmentId;
+        }
         out.maxCharge = (extra as ExtraEnchantment).maxCharge;
         out.removeEnchantmentOnUnequip = (
           extra as ExtraEnchantment
         ).removeOnUnequip;
         break;
+      }
       case "Charge":
         out.chargePercent = (extra as ExtraCharge).charge;
         break;
@@ -297,33 +389,54 @@ export const removeSimpleItemsAsManyAsPossible = (
   return res;
 };
 
+// apply: lhs is the server's inventory; a local copy with extras the server has not recorded yet keeps a plain server copy,
+// while extras only the server holds reach the local copy
+// snapshot: two views of one inventory where either side may lack extras nobody recorded
+// exact: no fallback, every difference in extras shows
+export type DiffMode = "apply" | "snapshot" | "exact";
+
+// lhs minus rhs, item by item
 export const getDiff = (
   lhs: Inventory,
   rhs: Inventory,
-  ignoreWorn: boolean
+  ignoreWorn: boolean,
+  mode: DiffMode = "snapshot"
 ): Inventory => {
   const lhsCopy: Inventory = JSON.parse(JSON.stringify(lhs));
-  const rhsCopy: Inventory = JSON.parse(JSON.stringify(rhs));
+  const pending: Entry[] = JSON.parse(JSON.stringify(rhs.entries));
 
-  rhsCopy.entries.forEach((e) => {
-    const sameFromLeft = lhsCopy.entries.find(
-      (x) => x.baseId === e.baseId && extrasEqual(x, e, ignoreWorn)
-    );
+  // Draws from every fitting lhs copy, so copies that differ only by charge still pair up
+  const draw = (e: Entry, fits: (x: Entry) => boolean): void => {
+    for (const x of lhsCopy.entries) {
+      if (e.count <= 0) {
+        return;
+      }
+      if (x.count > 0 && x.baseId === e.baseId && fits(x)) {
+        const n = Math.min(x.count, e.count);
+        x.count -= n;
+        e.count -= n;
+      }
+    }
+  };
+
+  pending.forEach((e) => draw(e, (x) => extrasEqual(x, e, ignoreWorn)));
+  if (mode !== "exact") {
+    pending.forEach((e) => draw(e, (x) =>
+      mode === "apply" ? !hasItemExtras(x) && hasItemExtras(e) : hasItemExtras(x) !== hasItemExtras(e)));
+  }
+
+  pending.forEach((e) => {
+    if (e.count === 0) {
+      return;
+    }
+    const sameFromLeft = e.count < 0
+      ? lhsCopy.entries.find((x) => x.baseId === e.baseId && extrasEqual(x, e, ignoreWorn))
+      : undefined;
     if (sameFromLeft) {
       sameFromLeft.count -= e.count;
       return;
     }
-    // Server entries lack extras (enchantment, charge, soul), so enchanted items never match them
-    // Falling through would delete the player's real item, so match on baseId alone
-    const plainFromLeft = lhsCopy.entries.find(
-      (x) => x.baseId === e.baseId && hasExtras(x) && !hasExtras(e)
-    );
-    if (plainFromLeft) {
-      plainFromLeft.count -= e.count;
-      return;
-    }
-    lhsCopy.entries.push(e);
-    lhsCopy.entries[lhsCopy.entries.length - 1].count *= -1;
+    lhsCopy.entries.push({ ...e, count: -e.count });
   });
 
   return { entries: lhsCopy.entries.filter((x) => x.count !== 0) };
@@ -364,7 +477,8 @@ export const applyInventory = (
   ignoreWorn = false
 ): boolean => {
   resetBase(refr);
-  const diff = getDiff(newInventory, getInventory(refr), ignoreWorn).entries;
+  const target = canCreateEnchantments() ? newInventory : withoutPlayerEnchantments(newInventory);
+  const diff = getDiff(target, getInventory(refr), ignoreWorn, "apply").entries;
 
   let res = true;
 
@@ -447,9 +561,11 @@ export const applyInventory = (
         f,
         oneStepCount,
         e.health ? e.health : 1,
-        e.enchantmentId
-          ? Enchantment.from(Game.getFormEx(e.enchantmentId))
-          : null,
+        e.enchantmentEffects && e.enchantmentEffects.length
+          ? getPlayerEnchantment(e.enchantmentEffects, f)
+          : e.enchantmentId
+            ? Enchantment.from(Game.getFormEx(e.enchantmentId))
+            : null,
         e.maxCharge ? e.maxCharge : 0,
         !!e.removeEnchantmentOnUnequip,
         e.chargePercent ? e.chargePercent : 0,
