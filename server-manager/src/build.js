@@ -313,7 +313,7 @@ class Builder {
   // Purges build/dist/server except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
     const deployDir = path.join(config.buildDir, 'dist', 'server')
-    const keep = new Set(['world', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'starter-grants.json', 'zone-spawns.json', 'housing.json', 'npc-spawns.json'])
+    const keep = new Set(['world', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'starter-grants.json', 'zone-spawns.json', 'companions.json', 'housing.json', 'npc-spawns.json'])
     for (const extra of (process.env.ALDUINAK_SERVER_KEEP || '').split(',')) {
       const n = extra.trim().toLowerCase(); if (n) keep.add(n)
     }
