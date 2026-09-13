@@ -918,7 +918,8 @@ void ActionListener::OnTakeItem(const RawMessageData& rawMsgData,
   static_cast<Inventory::ExtraData&>(entry) =
     static_cast<const Inventory::ExtraData&>(msg);
 
-  const auto stored = ref.GetInventory().FindEntriesFor(entry);
+  // A searched body's local copy holds plain stacks, so a take may stand for copies with extras
+  const auto stored = ref.GetInventory().FindEntriesFor(entry, true);
   if (stored.empty()) {
     return ref.TakeItem(*actor, entry);
   }

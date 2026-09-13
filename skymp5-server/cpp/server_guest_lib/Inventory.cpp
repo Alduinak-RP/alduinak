@@ -150,8 +150,8 @@ bool Inventory::Entry::HasIdentityExtras() const
   return !SameItemAs(Entry(baseId, 0));
 }
 
-std::vector<Inventory::Entry> Inventory::FindEntriesFor(
-  const Entry& described) const
+std::vector<Inventory::Entry> Inventory::FindEntriesFor(const Entry& described,
+                                                       bool anyExtras) const
 {
   std::vector<Entry> res;
   std::vector<uint32_t> left;
@@ -194,6 +194,9 @@ std::vector<Inventory::Entry> Inventory::FindEntriesFor(
     draw([&](const Entry& e) {
       return e.baseId == described.baseId && !e.HasIdentityExtras();
     });
+  }
+  if (anyExtras && described.baseId != kPropertyKeyBaseId) {
+    draw([&](const Entry& e) { return e.baseId == described.baseId; });
   }
 
   if (need > 0) {

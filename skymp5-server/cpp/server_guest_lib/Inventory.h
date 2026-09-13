@@ -132,8 +132,9 @@ public:
   Inventory& AddItems(const std::vector<Entry>& entries);
   Inventory& RemoveItems(const std::vector<Entry>& entries);
 
-  // Own entries a client-described one stands for: exact extras (same worn state first), then the same item, then a plain copy for extras never recorded; empty if short
-  std::vector<Entry> FindEntriesFor(const Entry& described) const;
+  // Own entries a client-described one stands for: exact extras (same worn state first), then the same item, then a plain copy for extras never recorded, then with anyExtras any copy of the base except property keys; empty if short
+  std::vector<Entry> FindEntriesFor(const Entry& described,
+                                    bool anyExtras = false) const;
 
   bool HasItem(uint32_t baseId) const;
   uint32_t GetItemCount(uint32_t baseId) const;
