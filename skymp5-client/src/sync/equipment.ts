@@ -87,8 +87,10 @@ const removeUnnecessaryExtra = (inv: Inventory, ignoreAmmo: boolean): Inventory 
 };
 
 export const getEquipment = (ac: Actor, numChanges: number): Equipment => {
+  // Removed base container items read as negative counts the server's uint32 count refuses
+  const inv = getInventory(ac);
   return {
-    inv: getInventory(ac),
+    inv: { entries: inv.entries.filter((e) => e.count > 0) },
     leftSpell: getEquipedSpell(ac, SpellType.Left),
     rightSpell: getEquipedSpell(ac, SpellType.Right),
     voiceSpell: getEquipedSpell(ac, SpellType.Voice),
