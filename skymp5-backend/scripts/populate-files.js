@@ -23,6 +23,10 @@ if (!fs.existsSync(SKYMP_DATA)) {
   process.exit(1)
 }
 
+// Plugins ship only through the MO2 install manifest; a zip copy lands in the real Data folder and drifts
+const PLUGIN_RE = /\.(esp|esm|esl)$/i
+const skippedPlugins = []
+
 // Copy the whole Data/ tree
 let copied = 0
 function copyTree(src, dest) {
@@ -31,6 +35,7 @@ function copyTree(src, dest) {
     const s = path.join(src, entry.name)
     const d = path.join(dest, entry.name)
     if (entry.isDirectory()) copyTree(s, d)
+    else if (src === SKYMP_DATA && PLUGIN_RE.test(entry.name)) skippedPlugins.push(entry.name)
     else { fs.copyFileSync(s, d); copied++ }
   }
 }
@@ -38,6 +43,9 @@ function copyTree(src, dest) {
 console.log(`\nCopying client Data from\n  ${SKYMP_DATA}\nto\n  ${DATA_DEST}`)
 fs.rmSync(DATA_DEST, { recursive: true, force: true })
 copyTree(SKYMP_DATA, DATA_DEST)
+if (skippedPlugins.length > 0) {
+  console.log(`Skipped plugin(s) ${skippedPlugins.join(', ')}: the MO2 install manifest delivers plugins, not the client zip.`)
+}
 
 // Completeness check
 const REQUIRED = [
