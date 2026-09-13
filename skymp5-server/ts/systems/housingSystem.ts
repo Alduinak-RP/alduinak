@@ -101,7 +101,7 @@ interface PrimaryPointer {
   primary: number;
 }
 
-// Everything an access decision needs about one actor, read once per sweep.
+// Everything an access decision needs about one actor.
 interface ViewerAccess {
   profileId: number;
   admin: boolean;
@@ -549,7 +549,7 @@ export class HousingSystem implements System {
 
   // The credential is the form id plus the serial, never the player-chosen
   // label: a rename must not orphan keys, and no label may forge another
-  // property's key. RefDecorService matches this string exactly.
+  // property's key. hasAccess matches the key item's name against it exactly.
   private keyNameOf(primary: number, rec: PropertyRecord): string {
     const tag = primary.toString(16).toUpperCase();
     return rec.serial > 1 ? `Property Key (${tag}-${rec.serial})` : `Property Key (${tag})`;
