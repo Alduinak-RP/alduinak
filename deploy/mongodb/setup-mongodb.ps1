@@ -105,8 +105,15 @@ try {
 }
 "@
   $env:ALDUINAK_MONGO_PWD = $Password
-  try { & $mongosh "mongodb://127.0.0.1:27017/admin" --eval $js }
+  try { $out = & $mongosh "mongodb://127.0.0.1:27017/admin" --quiet --eval $js }
   finally { Remove-Item Env:ALDUINAK_MONGO_PWD -ErrorAction SilentlyContinue }
+  if ($LASTEXITCODE -ne 0) { throw "mongosh failed during 'createUser' (exit $LASTEXITCODE): $out" }
+  switch ("$out".Trim()) {
+    'CREATED' { Write-Host "[mongo] created user $User" }
+    'EXISTS' { Write-Host "[mongo] user $User already exists" }
+    'SKIPPED' { Write-Host "[mongo] skipped creating ${User}: auth is on and a user already exists (localhost exception closed)" }
+    default { throw "createUser did not succeed: $_" }
+  }
 }
 
 Write-Host ""
