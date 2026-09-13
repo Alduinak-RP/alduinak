@@ -97,8 +97,12 @@ if ($mongosh) {
 try {
   db = db.getSiblingDB('admin');
   db.createUser({ user: '$User', pwd: process.env.ALDUINAK_MONGO_PWD, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] });
-  print('[mongo] created user $User');
-} catch (e) { print('[mongo] createUser: ' + e.message); }
+  print('CREATED');
+} catch (e) {
+  if (/already exists/.test(e.message)) { print('EXISTS'); }
+  else if (/requires authentication/.test(e.message)) { print('SKIPPED'); }
+  else { print('FAILED: ' + e.message); quit(1); }
+}
 "@
   $env:ALDUINAK_MONGO_PWD = $Password
   try { & $mongosh "mongodb://127.0.0.1:27017/admin" --eval $js }
