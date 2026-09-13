@@ -397,6 +397,13 @@
     "nexusId": 142655
   },
   {
+    "name": "Apachii Sky Hair SSE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 2014
+  },
+  {
     "name": "HammerHair V1.18",
     "required": true,
     "enabled": true,
@@ -507,5 +514,11 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 32444
+  },
+  {
+    "name": "SKSE",
+    "required": true,
+    "enabled": true,
+    "source": "url"
   }
 ]
