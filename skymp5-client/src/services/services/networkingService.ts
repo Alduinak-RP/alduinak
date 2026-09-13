@@ -2,7 +2,7 @@ import { logTrace, logError } from "../../logging";
 import { NeverError } from "../../lib/errors";
 import { MsgType } from "../../messages";
 import { SendMessageEvent } from "../events/sendMessageEvent";
-import { SendMessageWithRefrIdEvent } from "../events/sendMessageWithRefrIdEvent";
+import { MessageWithRefrId, SendMessageWithRefrIdEvent } from "../events/sendMessageWithRefrIdEvent";
 import { AnyMessage } from "../messages/anyMessage";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RemoteServer } from "./remoteServer";
@@ -19,7 +19,16 @@ export class NetworkingService extends ClientListener {
   }
 
   private onSendMessage(e: SendMessageEvent<AnyMessage>) {
-    this.sp.mpClientPlugin.send(JSON.stringify(e.message), this.isReliable(e.reliability));
+    this.send(e.message, e.reliability);
+  }
+
+  // A message the native serializer refuses is dropped and logged, not thrown into the caller's update
+  private send(message: AnyMessage | MessageWithRefrId<AnyMessage>, reliability: "reliable" | "unreliable") {
+    try {
+      this.sp.mpClientPlugin.send(JSON.stringify(message), this.isReliable(reliability));
+    } catch (err) {
+      logError(this, "send failed for message type", message.t, err);
+    }
   }
 
   private onSendRawMessage(e: SendRawMessageEvent) {
@@ -46,7 +55,7 @@ export class NetworkingService extends ClientListener {
 
     delete e.message._refrId;
 
-    this.sp.mpClientPlugin.send(JSON.stringify(e.message), this.isReliable(e.reliability));
+    this.send(e.message, e.reliability);
   }
 
   connect(hostName: string, port: number) {
