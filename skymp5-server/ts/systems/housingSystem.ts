@@ -225,7 +225,7 @@ export class HousingSystem implements System {
 
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
-    if (!this.withinReach(ctx, actorId, target)) {
+    if (!this.nearProperty(ctx, actorId, target)) {
       this.notice(ctx, userId, "That is too far away.");
       return;
     }
@@ -536,6 +536,13 @@ export class HousingSystem implements System {
     const d2 = dx * dx + dy * dy + dz * dz;
     if (!Number.isFinite(d2)) return true;
     return d2 <= this.maxDistance * this.maxDistance;
+  }
+
+  // Either half of a teleport pair counts, since the menu answers with the primary even from the far side
+  private nearProperty(ctx: SystemContext, actorId: number, refrId: number): boolean {
+    if (this.withinReach(ctx, actorId, refrId)) return true;
+    const partner = this.partnerOf(ctx, refrId);
+    return !!partner && this.withinReach(ctx, actorId, partner);
   }
 
   // ── Keys ────────────────────────────────────────────────────────────────────
