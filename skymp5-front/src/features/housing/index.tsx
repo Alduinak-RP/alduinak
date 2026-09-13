@@ -20,7 +20,7 @@ interface HousingEvents {
 // The widget object the client pushes through window.skyrimPlatform.widgets.
 export interface HousingData {
   targetLabel: string;
-  view: 'owner' | 'manager' | 'claimable' | 'denied';
+  view: 'owner' | 'manager' | 'keyholder' | 'claimable' | 'denied';
   owned: boolean;
   name: string | null;
   locked: boolean;
@@ -51,6 +51,7 @@ const Housing = ({ data }: { data: HousingData }) => {
   const isOwner = view === 'owner';
   const isManager = view === 'manager';
   const manages = isOwner || isManager;
+  const canLock = manages || view === 'keyholder';
 
   const [rename, setRename] = useState(data.name || '');
 
@@ -66,8 +67,8 @@ const Housing = ({ data }: { data: HousingData }) => {
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
   }, []);
 
-  const status = manages
-    ? (isOwner ? 'Yours' : 'Managed') + (data.locked ? ' · locked' : ' · unlocked')
+  const status = canLock
+    ? (isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder') + (data.locked ? ' · locked' : ' · unlocked')
     : (data.owned ? 'Owned by another' : 'Unclaimed');
 
   return (
@@ -83,7 +84,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           <p className="housing__owner">Owner: {data.ownerName}</p>
         ) : null}
 
-        {!manages ? (
+        {!canLock ? (
           <p className="housing__empty">
             {view === 'claimable' ? 'Nobody has claimed this yet.' : "This isn't yours."}
           </p>
@@ -96,7 +97,7 @@ const Housing = ({ data }: { data: HousingData }) => {
             </button>
           ) : null}
 
-          {manages && data.owned ? (
+          {canLock && data.owned ? (
             <button
               className="housing__button housing__button--primary"
               onClick={() => send(data.locked ? ev.unlock : ev.lock)}
@@ -139,7 +140,7 @@ const Housing = ({ data }: { data: HousingData }) => {
         </div>
 
         {isOwner ? (
-          <p className="housing__hint">Keys are items in your pack. Trade one or leave it in a chest to share access; Void all keys cancels every copy.</p>
+          <p className="housing__hint">A locked door stops everyone, you included, until it is unlocked here. A key lets its holder lock and unlock it too: trade it or leave it in a chest. Void all keys cancels every copy.</p>
         ) : null}
 
         {manages ? (

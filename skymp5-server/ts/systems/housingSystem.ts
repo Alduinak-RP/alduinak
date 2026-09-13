@@ -11,9 +11,10 @@ type Mp = any;
 //
 // Players claim any unowned door or container they are standing at by pressing
 // the housing key. Owners lock it, name it, cut keys, hand ownership over, or
-// give it up. Locks are enforced here (activation is refused server-side); the
-// client's RefDecorService only mirrors them into the engine so the player sees
-// a "Requires Key" door instead of one that silently does nothing.
+// give it up. A locked property refuses activation for everyone, owner included,
+// until someone with access (owner, hold official, admin or key holder) unlocks
+// it from the menu; RefDecorService mirrors the lock into the engine as a Master
+// lock so every player sees a locked door.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -25,7 +26,7 @@ type Mp = any;
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked,
 //       hasKeys, canGrantContainers, ownerName }
 //     { customPacketType: "propertyNotice", text }
-//     { customPacketType: "refDecor", full?, refs: [{refId,name,locked,keyName,access}] }
+//     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
 // Persistence. The record lives on the reference itself as a `private.` dynamic
 // field, so it rides the engine's changeform into MongoDB and comes back on
@@ -100,7 +101,7 @@ interface PrimaryPointer {
   primary: number;
 }
 
-// Everything an access decision needs about one actor, read once per sweep.
+// Everything an access decision needs about one actor.
 interface ViewerAccess {
   profileId: number;
   admin: boolean;
@@ -157,19 +158,22 @@ export class HousingSystem implements System {
     };
   }
 
+  // Locked means locked for everyone; access only lets a player unlock it from the menu
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): boolean {
     const primary = this.primaryOf(ctx, targetId);
     if (!primary) return true;
     const rec = this.read(ctx, primary);
     if (!rec || rec.owner === 0 || !rec.locked) return true;
-    if (this.hasAccess(ctx, primary, rec, casterId)) return true;
 
     // One notice per player per second; a held activate key fires repeatedly.
     const userId = this.userOf(ctx, casterId);
     const now = Date.now();
     if (now - (this.lastDenyMs.get(userId) || 0) > 1000) {
       this.lastDenyMs.set(userId, now);
-      this.notice(ctx, userId, rec.name ? `${rec.name} is locked.` : "This is locked.");
+      const label = rec.name || "This";
+      this.notice(ctx, userId, this.hasAccess(ctx, primary, rec, casterId)
+        ? `${label} is locked. Unlock it from the housing menu.`
+        : `${label} is locked.`);
     }
     return false;
   }
@@ -221,7 +225,7 @@ export class HousingSystem implements System {
 
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
-    if (!this.withinReach(ctx, actorId, target)) {
+    if (!this.nearProperty(ctx, actorId, target)) {
       this.notice(ctx, userId, "That is too far away.");
       return;
     }
@@ -239,8 +243,8 @@ export class HousingSystem implements System {
       case "claim": this.doClaim(ctx, userId, actorId, primary, rec); break;
       case "abandon": this.doAbandon(ctx, userId, actorId, primary, rec, isOwner, isManager); break;
       case "revoke": this.doRevoke(ctx, userId, actorId, primary, rec, isManager); break;
-      case "lock": this.doLock(ctx, userId, primary, rec, isOwner, isManager, true); break;
-      case "unlock": this.doLock(ctx, userId, primary, rec, isOwner, isManager, false); break;
+      case "lock": this.doLock(ctx, userId, actorId, primary, rec, true); break;
+      case "unlock": this.doLock(ctx, userId, actorId, primary, rec, false); break;
       case "rename": this.doRename(ctx, userId, primary, rec, isOwner, isManager, content["name"]); break;
       case "createkey": this.doCreateKey(ctx, userId, actorId, primary, rec, isOwner); break;
       case "revokekeys": this.doRevokeKeys(ctx, userId, primary, rec, isOwner, isManager); break;
@@ -303,20 +307,19 @@ export class HousingSystem implements System {
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doLock(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, locked: boolean): void {
-    if (!isOwner && !isManager) {
-      this.notice(ctx, userId, "This is not yours to lock.");
-      return;
-    }
+  private doLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, locked: boolean): void {
     if (rec.owner === 0) {
       this.notice(ctx, userId, "Claim it first.");
+      return;
+    }
+    if (!this.hasAccess(ctx, primary, rec, actorId)) {
+      this.notice(ctx, userId, "You have no key to this.");
       return;
     }
     rec.locked = locked;
     if (!this.commit(ctx, userId, primary, rec)) return;
     this.notice(ctx, userId, locked ? "Locked." : "Unlocked.");
-    const actorId = this.actorOf(ctx, userId);
-    if (actorId) this.sendMenu(ctx, userId, actorId, primary);
+    this.sendMenu(ctx, userId, actorId, primary);
   }
 
   private doRename(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, raw: unknown): void {
@@ -414,9 +417,12 @@ export class HousingSystem implements System {
     const isOwner = owned && rec!.owner === profileId;
     const isManager = !!primary && this.isManager(ctx, actorId, primary);
 
+    const holdsKey = owned && !isOwner && !isManager && this.hasAccess(ctx, primary, rec!, actorId);
+
     let view: string;
     if (isOwner) view = "owner";
     else if (isManager) view = "manager";
+    else if (holdsKey) view = "keyholder";
     else if (primary && !owned) view = "claimable";
     else view = "denied";
 
@@ -532,11 +538,18 @@ export class HousingSystem implements System {
     return d2 <= this.maxDistance * this.maxDistance;
   }
 
+  // Either half of a teleport pair counts, since the menu answers with the primary even from the far side
+  private nearProperty(ctx: SystemContext, actorId: number, refrId: number): boolean {
+    if (this.withinReach(ctx, actorId, refrId)) return true;
+    const partner = this.partnerOf(ctx, refrId);
+    return !!partner && this.withinReach(ctx, actorId, partner);
+  }
+
   // ── Keys ────────────────────────────────────────────────────────────────────
 
   // The credential is the form id plus the serial, never the player-chosen
   // label: a rename must not orphan keys, and no label may forge another
-  // property's key. RefDecorService matches this string exactly.
+  // property's key. hasAccess matches the key item's name against it exactly.
   private keyNameOf(primary: number, rec: PropertyRecord): string {
     const tag = primary.toString(16).toUpperCase();
     return rec.serial > 1 ? `Property Key (${tag}-${rec.serial})` : `Property Key (${tag})`;
@@ -581,15 +594,23 @@ export class HousingSystem implements System {
 
   // ── refDecor ────────────────────────────────────────────────────────────────
 
-  // `access` is personalized, so each player gets their own view of the set.
-  // The record list is built once and reused across every recipient.
   private pushDecorToAll(ctx: SystemContext): void {
-    const claims = this.liveClaims(ctx);
-    for (const userId of this.onlineUsers(ctx)) this.sendDecor(ctx, userId, claims);
+    const refs = this.decorRefs(ctx);
+    for (const userId of this.onlineUsers(ctx)) this.sendDecor(ctx, userId, refs);
   }
 
   private pushDecor(ctx: SystemContext, userId: number): void {
-    this.sendDecor(ctx, userId, this.liveClaims(ctx));
+    this.sendDecor(ctx, userId, this.decorRefs(ctx));
+  }
+
+  // A locked claim is locked for every viewer, so one list serves everyone
+  private decorRefs(ctx: SystemContext): Array<Record<string, unknown>> {
+    const refs: Array<Record<string, unknown>> = [];
+    for (const { primary, rec } of this.liveClaims(ctx)) {
+      refs.push({ refId: primary, name: rec.name, locked: rec.locked });
+      if (rec.partner) refs.push({ refId: rec.partner, name: rec.name, locked: rec.locked });
+    }
+    return refs;
   }
 
   // Registry ids without a live record (lost changeforms, older load orders) are dropped from the index
@@ -609,19 +630,8 @@ export class HousingSystem implements System {
     return out;
   }
 
-  private sendDecor(ctx: SystemContext, userId: number, claims: Array<{ primary: number; rec: PropertyRecord }>): void {
-    const actorId = this.actorOf(ctx, userId);
-    if (!actorId) return;
-    const viewer = this.viewerAccess(ctx, actorId);
-    const refs: Array<Record<string, unknown>> = [];
-    for (const { primary, rec } of claims) {
-      const access = this.hasAccessWith(ctx, primary, rec, viewer);
-      const keyName = this.keyNameOf(primary, rec);
-      refs.push({ refId: primary, name: rec.name, locked: rec.locked, keyName, access });
-      if (rec.partner) {
-        refs.push({ refId: rec.partner, name: rec.name, locked: rec.locked, keyName, access });
-      }
-    }
+  private sendDecor(ctx: SystemContext, userId: number, refs: Array<Record<string, unknown>>): void {
+    if (!this.actorOf(ctx, userId)) return;
     this.send(ctx, userId, { customPacketType: "refDecor", full: true, refs });
   }
 
@@ -743,7 +753,9 @@ export class HousingSystem implements System {
       } catch { }
     }
     if (rec.owner !== 0) this.remember(primary); else this.forget(primary);
+    // Lock changes reach every client on the next tick, not the next decor interval
     this.decorDirty = true;
+    this.lastDecorMs = 0;
     return true;
   }
 

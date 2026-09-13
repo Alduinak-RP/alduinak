@@ -33,7 +33,7 @@ const events = {
 // The server's propertyMenu reply that drives which menu we render.
 interface PropertyMenuInfo {
   target: number;
-  view: 'owner' | 'manager' | 'claimable' | 'denied';
+  view: 'owner' | 'manager' | 'keyholder' | 'claimable' | 'denied';
   owned: boolean;
   name: string | null;
   locked: boolean;
@@ -66,8 +66,9 @@ let targetLabel = '';
  * Views: 'denied' shows only "You don't own this"; 'claimable' adds a claim
  * button; 'owner' offers rename/keys/lock/transfer/abandon; 'manager'
  * (steward, jarl, regent, or the surrounding house's owner) offers
- * grant/revoke/lock/rename. Transfer and grant-container are two-step: pick
- * the action, then look at the recipient and press the housing key again.
+ * grant/revoke/lock/rename; 'keyholder' offers lock/unlock. Transfer and
+ * grant-container are two-step: pick the action, then look at the recipient
+ * and press the housing key again.
  */
 export class HousingService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -146,7 +147,7 @@ export class HousingService extends ClientListener {
         const view = content["view"];
         info = {
           target: Number(content["target"]) || this.target,
-          view: view === 'owner' || view === 'manager' || view === 'claimable' ? view : 'denied',
+          view: view === 'owner' || view === 'manager' || view === 'keyholder' || view === 'claimable' ? view : 'denied',
           owned: content["owned"] === true,
           name: typeof content["name"] === "string" ? content["name"] as string : null,
           locked: content["locked"] === true,
