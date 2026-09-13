@@ -28,6 +28,8 @@ export class NetworkingService extends ClientListener {
       this.sp.mpClientPlugin.send(JSON.stringify(message), this.isReliable(reliability));
     } catch (err) {
       logError(this, "send failed for message type", message.t, err);
+      // printConsole never reaches skyrim-platform.log, a throw from its own update does
+      this.controller.once("update", () => { throw err; });
     }
   }
 
