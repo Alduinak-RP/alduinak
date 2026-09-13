@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
+import { KEY_BASE_ID } from "./housingSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -97,6 +98,11 @@ export class SearchSystem implements System {
     const mp = ctx.svr as Mp;
     const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
     mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
+      // A property key's name is the housing credential, so a search never moves one and it never counts
+      if ((baseId >>> 0) === KEY_BASE_ID && this.isSearching(sourceId >>> 0, actorId >>> 0)) {
+        this.resyncInventory(ctx, actorId >>> 0);
+        return false;
+      }
       const taken = this.limitedTakes(ctx, sourceId >>> 0, actorId >>> 0);
       // More of a counted base form is free, so a take the server splits over several copies moves whole
       if (taken && taken.size >= this.playerBodyTakeLimit && !taken.has(baseId >>> 0)) {
@@ -345,8 +351,12 @@ export class SearchSystem implements System {
 
   // Checked per take, so a consented search whose target died mid-session is limited too
   private limitedTakes(ctx: SystemContext, targetActorId: number, actorId: number): Set<number> | undefined {
+    return this.isSearching(targetActorId, actorId) ? this.bodyTakesOf(ctx, targetActorId) : undefined;
+  }
+
+  private isSearching(targetActorId: number, actorId: number): boolean {
     const s = this.sessions.get(targetActorId);
-    return s && s.searcherActorId === actorId ? this.bodyTakesOf(ctx, targetActorId) : undefined;
+    return !!s && s.searcherActorId === actorId;
   }
 
   // Base forms taken from a dead player's current body, shared by every session on it; undefined when unlimited

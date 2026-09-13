@@ -44,7 +44,7 @@ const OWNER_INDEX_PROP = "private.indexed.housingOwner";
 const REGISTRY_FILE = "./housing.json";
 
 // Vanilla key form; the name extra carries the credential.
-const KEY_BASE_ID = 0x000db0e2;
+export const KEY_BASE_ID = 0x000db0e2;
 
 const MAX_USER_SLOTS = 1024;
 const MAX_NAME_LEN = 32;
