@@ -336,7 +336,7 @@ The name of a localizaiton file in `data/localization` that would be used by `M.
 
 ## enableConsoleCommandsForAll
 
-Lets every player run server console commands (`additem`, `placeatme` and the rest), whatever their character's console flag says. Keep it off, which is the default. Console commands are disabled for everyone on this server, admins included, and AdminSystem logs a warning at boot when this key is on. Admins spawn items with the Item Spawner (see Admin roles) instead.
+Lets every player run the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete` and `mp`), whatever their character's console flag says. Keep it off, which is the default. These server console commands are disabled for everyone on this server, admins included, and AdminSystem logs a warning at boot when this key is on. Admins spawn items with the Item Spawner (see Admin roles) instead. Local game console commands (`tgm`, `tcl`, `coc`, `tfc`, `player.setav` and the like) never reach the server, so they still run on every client.
 
 ```json5
 {
@@ -360,7 +360,7 @@ Every player opens the Personal Menu with the interact key (X by default) while 
 - **Skills**: the mastery (craft) menu.
 - **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, crosshair target distance (activatable references only), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
 
-Admins also get the admin chat channel. Nobody gets the server console, admins included: AdminSystem clears `consoleCommandsAllowed` whenever a character is assigned, so keep `enableConsoleCommandsForAll` off. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`.
+Admins also get the admin chat channel. Nobody gets the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete`, `mp`), admins included: AdminSystem clears `consoleCommandsAllowed` whenever a character is assigned, so keep `enableConsoleCommandsForAll` off. Local game console commands still run on every client. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`.
 
 Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, and the server refuses every request the tier lacks the cap for, with an admin.log line.
 
