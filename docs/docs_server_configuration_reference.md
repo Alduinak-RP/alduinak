@@ -218,13 +218,44 @@ A time before a game object restores its original state in milliseconds. Unlike 
 Record types (see [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format)) that never reloot. A listed type wins over its `reloot` timer:
 
 - Item types (`MISC`, `WEAP`, `BOOK`, ...) and `FLOR`/`TREE`: plugin-placed refs of that type can't be picked up or harvested at all. Player-dropped items stay lootable.
-- `CONT`: containers get their base loot once, on the first open, and never again. Players can use any container as storage without it refilling with loot once emptied. A container reloot already pending in the database is dropped when the container loads.
+- `CONT`: an emptied container never refills. Players can use any container as storage. A container reloot already pending in the database is dropped when the container loads. What a container holds on its first open is set by [`emptyContainers`](#emptycontainers).
 - `KEYM`: plugin-placed keys are never loaded by the server, so they are untouchable either way. Listing it documents that.
 
 ```json5
 {
   // ...
   "forbiddenReloot": ["MISC", "WEAP", "SLGM", "SCRL", "ALCH", "INGR", "BOOK", "ARMO", "AMMO", "KEYM", "CONT"]
+  // ...
+}
+```
+
+## emptyContainers
+
+`true` (the default, also when the key is missing): placed containers (`CONT` references from any plugin, chests, barrels, sacks, dressers, safes) open empty.
+
+- The server skips the container's plugin items and leveled lists, on the first open and on any reloot.
+- Items players put in stay, and so do items a script or the gamemode adds.
+- A container that already got its plugin loot keeps it. Nothing is removed from the database.
+- NPCs, NPC corpses and player bodies are actors, not containers, and keep their inventories. Flora, trees and hanging food are harvested, not opened, and are unchanged.
+
+`false` restores the plugin loot. A container that has never received anything then gets it on its next open. The native server reads the key at boot.
+
+```json5
+{
+  // ...
+  "emptyContainers": true
+  // ...
+}
+```
+
+## containerLootBaseIds
+
+Container base records that keep their plugin loot while `emptyContainers` is on. Give the `CONT` record, not the placed reference, as a number, a `"0x..."` string or a `"hex:File.esp"` descriptor. Empty by default. An entry that doesn't resolve is skipped and logged at boot.
+
+```json5
+{
+  // ...
+  "containerLootBaseIds": ["18e991:Warbirds Whiterun Metropolis.esp"]
   // ...
 }
 ```
