@@ -1,10 +1,11 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, buttonEventKeyCode } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
@@ -12,8 +13,10 @@ declare const window: any;
 
 const WIDGET_ID = 8;
 
-// A hand-over waits for one more housing-key press; it must not wait forever.
+// A hand-over waits for one more interact-key press; it must not wait forever.
 const PENDING_RECIPIENT_MS = 30000;
+
+const NOT_PROPERTY_TEXT = "That cannot be claimed.";
 
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
@@ -50,26 +53,36 @@ let info: PropertyMenuInfo = {
 };
 let targetLabel = '';
 
+// Doors and containers are the bases the server can claim
+export function isPropertyRef(ref: ObjectReference): boolean {
+  if (Actor.from(ref)) return false;
+  const base = ref.getBaseObject();
+  if (!base || ObjectReferenceEx.isUntouchable(base)) return false;
+  const type = base.getType();
+  return type === FormType.Door || type === FormType.Container;
+}
+
 /**
- * Property menu on the housing key (default H). Aim at a door or container and
- * press the key: the client asks the server what it may do there and renders
- * the matching menu.
+ * Property menu on the interact key (default X, routed by PlayerActionService).
+ * Aim at a door or container and press the key: the client asks the server
+ * what it may do there and renders the matching menu. Anything the server does
+ * not treat as property gets a "That cannot be claimed." notice instead.
  *
  * Protocol - all messages are MsgType.CustomPacket with a JSON dump.
  *
  *   Client -> Server: { "customPacketType": "propertyInfoRequest", "target": <id> }
- *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view",
+ *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view", "owned",
  *                       "name", "locked", "canLock", "hasKeys", "canGrantContainers", "ownerName" }
  *   Client -> Server: { "customPacketType": "propertyRequest", "action", "target",
  *                       "recipient"?, "name"? }
  *   Server -> Client: { "customPacketType": "propertyNotice", "text" }
  *
- * Views: 'denied' shows only "You don't own this"; 'claimable' adds a claim
- * button; 'owner' offers rename/keys/lock/transfer/abandon; 'manager'
- * (admin, jarl or steward) offers grant/revoke/rename, and lock only when
- * canLock is set; 'keyholder' offers lock/unlock. Transfer and
- * grant-container are two-step: pick the action, then look at the recipient
- * and press the housing key again.
+ * Views: 'denied' shows only "You don't own this" ('denied' with owned false
+ * means not property); 'claimable' adds a claim button; 'owner' offers
+ * rename/keys/lock/transfer/abandon; 'manager' (admin, jarl or steward) offers
+ * grant/revoke/rename, and lock only when canLock is set; 'keyholder' offers
+ * lock/unlock. Transfer and grant-container are two-step: pick the action,
+ * then look at the recipient and press the interact key again.
  */
 export class HousingService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -78,64 +91,51 @@ export class HousingService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
-
-    this.menuKey = readMenuKeyCode(this.sp, "housingMenuKeyCode", DxScanCode.H);
   }
 
-  private onButtonEvent(e: ButtonEvent): void {
-    const code = buttonEventKeyCode(e);
-    // Escape closes an open menu.
-    if (code === DxScanCode.Escape && e.isDown && this.menuOpen) {
-      this.closeMenu();
-      return;
-    }
-    if (code !== this.menuKey || !e.isDown) {
-      return;
-    }
-    if (isMenuHotkeyBlocked(this.sp, this.controller)) {
-      return;
-    }
+  get isOpen(): boolean {
+    return this.menuOpen;
+  }
 
-    // Second step of transfer / grant-container: this press picks the player.
-    if (this.pendingRecipient !== null) {
-      const pending = this.pendingRecipient;
-      this.pendingRecipient = null;
-      if (Date.now() > pending.expiresAt) {
-        notifyNextUpdate(this.controller, this.sp, "That hand-over expired.");
-        return;
-      }
-      const ref = this.sp.Game.getCurrentCrosshairRef();
-      const recipient = ref && Actor.from(ref) ? ref : null;
-      if (!recipient || recipient.getFormID() === 0x14) {
-        notifyNextUpdate(this.controller, this.sp, "Cancelled - that is not a person.");
-        return;
-      }
-      sendCustomPacket(this.controller, {
-        customPacketType: "propertyRequest",
-        action: pending.action,
-        target: pending.target,
-        recipient: localIdToRemoteId(recipient.getFormID()),
-      });
-      return;
+  // Second step of transfer / grant-container: consumes the pending pick with the crosshair's player
+  takePendingPick(): boolean {
+    if (this.pendingRecipient === null) return false;
+    const pending = this.pendingRecipient;
+    this.pendingRecipient = null;
+    if (Date.now() > pending.expiresAt) {
+      notifyNextUpdate(this.controller, this.sp, "That hand-over expired.");
+      return true;
     }
-
-    if (this.menuOpen) {
-      return;
-    }
-
     const ref = this.sp.Game.getCurrentCrosshairRef();
-    if (!ref || Actor.from(ref)) {
-      notifyNextUpdate(this.controller, this.sp, "Look at a door or container.");
-      return;
+    const recipient = ref && Actor.from(ref) ? ref : null;
+    if (!recipient || recipient.getFormID() === 0x14) {
+      notifyNextUpdate(this.controller, this.sp, "Cancelled - that is not a person.");
+      return true;
     }
+    sendCustomPacket(this.controller, {
+      customPacketType: "propertyRequest",
+      action: pending.action,
+      target: pending.target,
+      recipient: localIdToRemoteId(recipient.getFormID()),
+    });
+    return true;
+  }
+
+  requestMenuFor(ref: ObjectReference): void {
     this.target = localIdToRemoteId(ref.getFormID());
     if (!this.target) {
-      notifyNextUpdate(this.controller, this.sp, "That cannot be claimed.");
+      notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
       return;
     }
     targetLabel = (ref.getName() || "Property").trim() || "Property";
     logTrace(this, `Requesting property info for`, targetLabel, `(${this.target})`);
     sendCustomPacket(this.controller, { customPacketType: "propertyInfoRequest", target: this.target });
+  }
+
+  private onButtonEvent(e: ButtonEvent): void {
+    if (e.isDown && this.menuOpen && buttonEventKeyCode(e) === DxScanCode.Escape) {
+      this.closeMenu();
+    }
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -145,10 +145,16 @@ export class HousingService extends ClientListener {
     switch (content["customPacketType"]) {
       case "propertyMenu": {
         const view = content["view"];
+        const owned = content["owned"] === true;
+        if (view === 'denied' && !owned) {
+          if (this.menuOpen) this.closeMenu();
+          if (this.pendingRecipient === null) notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
+          break;
+        }
         info = {
           target: Number(content["target"]) || this.target,
           view: view === 'owner' || view === 'manager' || view === 'keyholder' || view === 'claimable' ? view : 'denied',
-          owned: content["owned"] === true,
+          owned,
           name: typeof content["name"] === "string" ? content["name"] as string : null,
           locked: content["locked"] === true,
           // An older server sends no canLock; its view alone decides then
@@ -212,7 +218,7 @@ export class HousingService extends ClientListener {
           expiresAt: Date.now() + PENDING_RECIPIENT_MS,
         };
         this.closeMenu();
-        notifyNextUpdate(this.controller, this.sp, "Look at the recipient and press the housing key.");
+        notifyNextUpdate(this.controller, this.sp, "Look at the recipient and press the interact key.");
         break;
       }
       case events.cancel:
@@ -254,7 +260,6 @@ export class HousingService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
-  private menuKey: DxScanCode = DxScanCode.H;
   private menuOpen = false;
   private target = 0;
   private pendingRecipient: { action: string; target: number; expiresAt: number } | null = null;
