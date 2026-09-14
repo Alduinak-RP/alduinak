@@ -177,7 +177,7 @@ def temples(places, doors):
     for cell, (_rank, door, src) in sorted(best.items(), key=lambda kv: kv[1][0]):
         where = (places[cell]['name'], src)
         if where in kept:
-            print(f'duplicate temple {where[0]} {desc(cell)} skipped, same entrance as {desc(kept[where][0])}', file=sys.stderr)
+            print(f'duplicate temple {where[0]} {desc(cell)} skipped: {desc(kept[where][0])} has the same name and is also entered from {src}', file=sys.stderr)
             continue
         kept[where] = (cell, door)
     names = Counter(name for name, _ in kept)
