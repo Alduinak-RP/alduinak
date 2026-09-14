@@ -179,6 +179,7 @@ export class ConjurationSystem implements System {
       bestDistance = distance;
     }
     if (best) this.reanimate(casterId, best, p.spellId, p.effect);
+    else this.log(`ConjurationSystem: ${hex(casterId)} cast ${hex(p.spellId)}, no corpse hit and no valid corpse in front`);
   }
 
   // Vanilla Banish: a summoned daedra whose level is within the magnitude returns to Oblivion
