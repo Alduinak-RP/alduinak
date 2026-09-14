@@ -1355,6 +1355,9 @@ html, body {
 .collapse-grid > .span-2 { grid-column: 1 / -1; }
 .collapse-grid button.hotkey-btn { max-width: none; }
 .collapse-grid .setting-input { width: 100%; }
+.setting-label--range { display: flex; justify-content: space-between; }
+.setting-label--range output { color: var(--parchment); letter-spacing: 1px; }
+.setting-range { accent-color: var(--gold); cursor: pointer; margin: 0; }
 
 button.hotkey-btn {
   max-width: 220px;
