@@ -59,6 +59,10 @@ export class MagicSyncService extends ClientListener {
             return;
         }
 
+        // Sampled here because the spellCast event names no target
+        const crosshairRef = Game.getCurrentCrosshairRef();
+        this.crosshairActorId = crosshairRef && Actor.from(crosshairRef) ? crosshairRef.getFormID() : 0;
+
         if (Date.now() - this.lastSendUpdateAnimationVariables <= this.sendUpdateAnimationVariablesRateMs) {
             return;
         }
@@ -183,7 +187,7 @@ export class MagicSyncService extends ClientListener {
         const spellCastData: SpellCastMsgData = {
             caster: localIdToRemoteId(e.caster.getFormID(), true),
             // @ts-expect-error (TODO: Remove in 2.10.0)
-            target: e.target ? localIdToRemoteId(e.target.getFormID(), true) : 0,
+            target: localIdToRemoteId(this.getReplayTargetId(e.caster.getFormID(), e.target ? e.target.getFormID() : 0, e.spell), true),
             spell: e.spell ? e.spell.getFormID() : 0,
             interruptCast: isInterruptCast,
             keepAlive: false,
@@ -198,6 +202,15 @@ export class MagicSyncService extends ClientListener {
             actorAnimationVariables: this.getAnimationVariablesFromActorConverted(e.caster.getFormID()),
         }
         return spellCastData;
+    }
+
+    // The platform names the caster as every cast's target, so the player's non-self casts name the crosshair actor
+    private getReplayTargetId(casterId: number, targetId: number, spell: Spell | null | undefined): number {
+        if (casterId !== this.playerId || targetId !== casterId || !this.crosshairActorId) {
+            return targetId;
+        }
+        const isSelf = spell?.getNthEffectMagicEffect(0)?.getDeliveryType() === this.selfDelivery;
+        return isSelf ? targetId : this.crosshairActorId;
     }
 
     private getAnimationVariablesFromActorConverted(actorId: number) {
@@ -306,6 +319,8 @@ export class MagicSyncService extends ClientListener {
     }
 
     private playerId = 0x14;
+    private readonly selfDelivery = 0;
+    private crosshairActorId = 0;
     private sendUpdateAnimationVariablesRateMs = 500;
     private castKeepAliveRateMs = 3000;
     private castStartGraceMs = 250;
