@@ -18,7 +18,7 @@ const serverSettings = [
   { key: 'master',      label: 'Master URL',    type: 'text', group: 'Mode & auth', help: 'Master API URL for online-mode session validation. Empty = offline.' },
   { key: 'masterKey',   label: 'Master key',    type: 'secret', group: 'Mode & auth', help: 'Shared secret; must match the backend SERVER_MASTER_KEY.' },
   { key: 'masterApiAuthToken', label: 'Master API auth token', type: 'secret', group: 'Mode & auth', help: 'Must match the backend MASTER_API_AUTH_TOKEN.' },
-  { key: 'enableConsoleCommandsForAll', label: 'Console commands for all', type: 'bool', group: 'Mode & auth', help: 'Allow every player to run console commands (testing only - dangerous).' },
+  { key: 'enableConsoleCommandsForAll', label: 'Console commands for all (keep off)', type: 'bool', group: 'Mode & auth', help: 'Must stay off. The console is disabled on this server; turning this on skips the admin check and gives every player additem, placeatme and the other server console commands.' },
 
   // Gameplay
   { key: 'characterSelect',         label: 'Character select',      type: 'bool',   group: 'Gameplay', help: 'Show the character-select screen on join.' },
