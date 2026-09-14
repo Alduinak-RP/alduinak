@@ -147,6 +147,23 @@ export class CaptureSystem implements System {
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       this.onActorAssigned(ctx, actorId);
     });
+    this.installCarrierFightBlock(ctx.svr as Mp);
+  }
+
+  // A carrier cannot fight; onHitAttempt and onSpellCastAttempt need the native build, onHitDamageAttempt works on any
+  private installCarrierFightBlock(mp: Mp): void {
+    for (const event of ["onHitAttempt", "onHitDamageAttempt", "onSpellCastAttempt"]) {
+      const previous = typeof mp[event] === "function" ? mp[event] : null;
+      mp[event] = (actorId: number, ...rest: unknown[]): boolean => {
+        if (this.carrying.has(actorId >>> 0)) return false;
+        if (!previous) return true;
+        try {
+          return previous.call(mp, actorId, ...rest) !== false;
+        } catch {
+          return true;
+        }
+      };
+    }
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
