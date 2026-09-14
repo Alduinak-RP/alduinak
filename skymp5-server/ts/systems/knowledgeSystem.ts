@@ -19,8 +19,9 @@ const MARKER_FLAG_BITS = 2;
 const MAX_ITEMS_PER_PACKET = 256;
 const MAX_DESC_LENGTH = 128;
 const MAX_EFFECTS = 4;
-const MAX_CACHED_VERDICTS = 20000;
-const REQUEST_COOLDOWN_MS = 1000;
+const RATE_WINDOW_MS = 1000;
+// A client sends adds every 1.5 s and drains a backlog in a few packets
+const MAX_ADDS_PER_WINDOW = 5;
 
 type Kind = "marker" | "ingredient";
 type Pairs = [string, number][];
@@ -41,12 +42,14 @@ export class KnowledgeSystem implements System {
   systemName = "KnowledgeSystem";
   constructor(private log: Log) { }
 
-  // Keyed by kind + raw desc; plugins never change at runtime
-  private verdicts = new Map<string, Resolved | null>();
-  private lastRequest = new Map<number, number>();
+  // Real forms only, keyed by kind + form id, so the load order bounds it
+  private verdicts = new Map<string, Resolved>();
+  // Per packet type and user: start of the current window and packets seen in it
+  private windows = new Map<string, { at: number; n: number }>();
 
   disconnect(userId: number): void {
-    this.lastRequest.delete(userId);
+    this.windows.delete(`knowledgeRequest|${userId}`);
+    this.windows.delete(`knowledgeAdd|${userId}`);
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -54,12 +57,9 @@ export class KnowledgeSystem implements System {
     const mp = ctx.svr as Mp;
     let actorId = 0;
     try { actorId = mp.getUserActor(userId) >>> 0; } catch { }
-    if (!actorId) return;
+    if (!actorId || !this.allow(userId, type)) return;
 
     if (type === "knowledgeRequest") {
-      const now = Date.now();
-      if (now - (this.lastRequest.get(userId) ?? 0) < REQUEST_COOLDOWN_MS) return;
-      this.lastRequest.set(userId, now);
       const state = { markers: this.read(mp, actorId, "marker"), ingredients: this.read(mp, actorId, "ingredient") };
       mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "knowledgeState", actorId, ...state }));
       return;
@@ -71,6 +71,16 @@ export class KnowledgeSystem implements System {
     const markers = this.merge(mp, target, "marker", content.markers);
     const ingredients = this.merge(mp, target, "ingredient", content.ingredients);
     if (markers || ingredients) this.log(`KnowledgeSystem: ${hex(target)} +${markers} marker update(s), +${ingredients} ingredient update(s)`);
+  }
+
+  // One request and MAX_ADDS_PER_WINDOW adds per user per window
+  private allow(userId: number, type: string): boolean {
+    const now = Date.now();
+    const key = `${type}|${userId}`;
+    const w = this.windows.get(key);
+    if (w && now - w.at < RATE_WINDOW_MS) return ++w.n <= (type === "knowledgeAdd" ? MAX_ADDS_PER_WINDOW : 1);
+    this.windows.set(key, { at: now, n: 1 });
+    return true;
   }
 
   // Merges the new bits of every valid [desc, bits] pair into the stored field; returns how many entries changed
@@ -112,12 +122,12 @@ export class KnowledgeSystem implements System {
   // Canonical desc of a real map marker REFR or ingredient, with the number of flag bits it can carry
   private resolve(mp: Mp, kind: Kind, raw: unknown): Resolved | null {
     if (typeof raw !== "string" || raw.length > MAX_DESC_LENGTH || raw.indexOf(":") <= 0) return null;
-    const key = kind + "|" + raw;
-    const hit = this.verdicts.get(key);
-    if (hit !== undefined) return hit;
-    let res: Resolved | null = null;
     try {
       const id = mp.getIdFromDesc(raw) >>> 0;
+      const key = kind + id;
+      const hit = this.verdicts.get(key);
+      if (hit) return hit;
+      let res: Resolved | null = null;
       if (kind === "marker") {
         if (espmRefrFieldId(mp, id, "NAME") === MAP_MARKER_BASE) res = { desc: mp.getDescFromId(id), bits: MARKER_FLAG_BITS };
       } else {
@@ -125,9 +135,11 @@ export class KnowledgeSystem implements System {
         const effects = Math.min(MAX_EFFECTS, espmFieldFormIds(rec, "EFID").length);
         if (rec?.record?.type === "INGR" && effects) res = { desc: mp.getDescFromId(id), bits: effects };
       }
-    } catch { /* plugin not loaded or not an espm record */ }
-    if (this.verdicts.size < MAX_CACHED_VERDICTS) this.verdicts.set(key, res);
-    return res;
+      if (res) this.verdicts.set(key, res);
+      return res;
+    } catch {
+      return null; // plugin not loaded or not an espm record
+    }
   }
 
   private sameProfile(mp: Mp, a: number, b: number): boolean {
