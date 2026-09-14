@@ -336,7 +336,7 @@ The name of a localizaiton file in `data/localization` that would be used by `M.
 
 ## enableConsoleCommandsForAll
 
-Lets every player run the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete` and `mp`), whatever their character's console flag says. Keep it off, which is the default. These server console commands are disabled for everyone on this server, admins included, and AdminSystem logs a warning at boot when this key is on. Admins spawn items with the Item Spawner (see Admin roles) instead. Local game console commands (`tgm`, `tcl`, `coc`, `tfc`, `player.setav` and the like) never reach the server; they are unreachable too, because the client closes the local ~ console the moment it opens, for every player, admins included.
+Lets every player run the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete` and `mp`), whatever their character's console flag says. Keep it off, which is the default. These server console commands are disabled for everyone on this server, admins included, and AdminSystem logs a warning at boot when this key is on. Admins spawn items with the Item Spawner (see Admin roles) instead. Local game console commands (`tgm`, `tcl`, `coc`, `tfc`, `player.setav` and the like) never reach the server. The client (`ConsoleBlockService`) closes the local ~ console the moment it opens and refuses the local cheat commands when they run, for every player, admins included. That is client-side enforcement a modified client can remove, so the server checks stay the authority.
 
 ```json5
 {
@@ -353,14 +353,14 @@ Every player opens the Personal Menu with the interact key (X by default) while 
 - **Admin**, shown only once the server confirms the player's admin tier, with the sub-tabs:
   - Players: roster, teleport to, summon, kick, ban, mastery grant and reset;
   - Teleport: named locations and map markers;
-  - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed), Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
+  - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`;
   - Item Spawner, see below.
 - **Faction**: a work-in-progress placeholder.
 - **Skills**: the mastery (craft) menu.
 - **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, crosshair target distance (activatable references only), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
 
-Admins also get the admin chat channel. Nobody gets the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete`, `mp`), admins included: AdminSystem clears `consoleCommandsAllowed` whenever a character is assigned, so keep `enableConsoleCommandsForAll` off. The local ~ console is closed for everyone, admins included (client `ConsoleBlockService`), so every admin mode, Freecam included, is toggled from Admin > Modes. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`.
+Admins also get the admin chat channel. Nobody gets the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete`, `mp`), admins included: AdminSystem clears `consoleCommandsAllowed` whenever a character is assigned, so keep `enableConsoleCommandsForAll` off. The client closes the local ~ console and refuses the local cheat commands for everyone, admins included (`ConsoleBlockService`), so every admin mode, Freecam included, is toggled from Admin > Modes. This is client-side enforcement; the server checks stay the authority. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`.
 
 Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, and the server refuses every request the tier lacks the cap for, with an admin.log line.
 
