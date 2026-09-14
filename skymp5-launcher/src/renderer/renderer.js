@@ -97,8 +97,7 @@ function getKey(id) { const el = document.getElementById(id); return el ? (parse
 // drops code 0, so an unbound game key would silently keep its old binding.
 // Server hotkey button -> [hotkeys:load/save field, default DIK]; hk-chat is separate because it pairs with Enter
 const SERVER_HOTKEYS = {
-  'hk-cursor': ['freeCursor', 64], 'hk-housing': ['housing', 35], 'hk-personal': ['personal', 22],
-  'hk-faction': ['faction', 34], 'hk-voice-ptt': ['voicePtt', 47], 'hk-admin': ['adminMenu', 210],
+  'hk-cursor': ['freeCursor', 64], 'hk-voice-ptt': ['voicePtt', 47],
   'hk-hide-ui': ['hideUi', 59], 'hk-alt-interact': ['altInteract', 45],
 }
 const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]

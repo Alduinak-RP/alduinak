@@ -444,8 +444,7 @@ ipcMain.handle('graphics:save', (_e, g) => {
 
 // hotkeys:load/save field -> skymp5-client settings key; chatFocusKeyCodes is the one list-valued hotkey
 const CLIENT_HOTKEY_KEYS = {
-  freeCursor: 'freeCursorKeyCode', housing: 'housingMenuKeyCode', faction: 'factionMenuKeyCode',
-  personal: 'personalMenuKeyCode', voicePtt: 'voicePushToTalkKeyCode', adminMenu: 'adminMenuKeyCode',
+  freeCursor: 'freeCursorKeyCode', voicePtt: 'voicePushToTalkKeyCode',
   hideUi: 'hideUiKeyCode', altInteract: 'altInteractKeyCode',
 }
 
