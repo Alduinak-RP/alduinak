@@ -31,6 +31,12 @@ export function closeFormMenu(sp: Sp, widgetId: number): void {
   sp.browser.setFocused(false);
 }
 
+// A front reload or the login widget reset (authService) drops every widget without a close message
+export function onWidgetsCleared(controller: CombinedController, fn: () => void): void {
+  controller.emitter.on("browserWindowLoaded", fn);
+  controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) fn(); });
+}
+
 // Clears the hide UI toggle before a server-initiated screen is shown.
 export function showUi(controller: CombinedController): void {
   try {

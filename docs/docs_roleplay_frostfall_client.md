@@ -16,16 +16,30 @@ All menus render as `form` widgets and **preserve SkyMP's chat widget**
 
 | Key | Service | Setting | Purpose |
 | --- | --- | --- | --- |
-| `H` | HousingService | `housingMenuKeyCode` | Property panel → `/property …` |
-| `E` | PlayerActionService | game control `Activate` (Settings > Controls or launcher Game Hotkeys, applies immediately) | Crosshair a player character → interaction menu (follows the game's Activate control on any input device; engine activation of the clone is blocked) |
-| `X` | PlayerActionService | `altInteractKeyCode` (launcher Server Hotkeys > Alt Interact) | Second key for the same player interaction menu; `0` unbinds it |
-| `U` | PersonalMenuService | `personalMenuKeyCode` | Self hub → help/skills/bounty/property/lecture/training/faction-docs |
+| `E` | PlayerActionService | game control `Activate` (Settings > Controls or launcher Game Hotkeys, applies immediately) | Crosshair a player character → interaction menu (follows the game's Activate control on any input device; engine activation of the clone is blocked). Everything else keeps normal activation, so doors still open |
+| `X` | PlayerActionService | `altInteractKeyCode` (launcher Server Hotkeys > Interact / Menus; `0` or missing reads as `X`) | Interact / Menus: the one menu key, routed by what the crosshair is on (see below) |
 | `F6` | BrowserService | `freeCursorKeyCode` | Free / lock the mouse cursor |
 | `Enter`, `T` | BrowserService | `chatFocusKeyCodes` | Focus the chat box to type |
 | `F1` | BrowserService | `hideUiKeyCode` | Hide every overlay (chat, prompts, nametags, voice banner, open menus); press again to show. Menu hotkeys and chat focus are inert while hidden; server screens (death, trade, consent prompts, character select) bring the interface back |
 
 Every `...KeyCode` setting also takes a mouse button as DxScanCode 256 + n
 (258 middle, 259 Mouse 4, 260 Mouse 5); the launcher's Settings tab captures them.
+
+The interact key replaced the Housing (`H`, `housingMenuKeyCode`), Faction
+(`G`, `factionMenuKeyCode`), Personal (`U`, `personalMenuKeyCode`), Admin
+(`Insert`, `adminMenuKeyCode`) and Mastery (`K`, `masteryMenuKeyCode`) keys;
+those settings are no longer read. `PlayerActionService` routes one press:
+
+| Crosshair on | Interact key (`X`) |
+| --- | --- |
+| anything, while a housing hand-over or faction add-member pick is pending | completes the pick with the player under the crosshair (anything else cancels it); nothing opens |
+| a living player character | player interaction menu (same as `E`) |
+| a dead player character | the body's inventory through the server search (same as `E`) |
+| a door or container | property menu (HousingService); a reference the server does not treat as property shows "That cannot be claimed." |
+| anything else or nothing (world NPC, furniture, an item, empty air) | Personal Menu |
+
+When `X` is also the Activate key, the Activate rules win. Menus close with
+Escape or their Close button, not with a second `X`.
 
 Chat channel selector (Say / OOC `/ooc` / Me `/me` / Faction `/f`) lives above
 the chat input. Quit-to-desktop button is on the login menu.
@@ -34,12 +48,14 @@ the chat input. Quit-to-desktop button is on the login menu.
 
 ## What each menu fires
 
-### Housing (`H`)
-Hold picker → property picker (SkyMP's 16-property registry is embedded so
-the list is real). Buttons:
-- `request` → `/property request <id>`
-- `approve` / `deny` / `revoke` → `/property <action> <id>` (leader/staff)
-- "show my hold" → `/property list`
+### Housing (`X` on a door or container)
+The `housing` widget (HousingService). `X` sends `propertyInfoRequest` and
+renders the server's `propertyMenu` view: `claimable` (claim), `owner` (rename,
+keys, lock, transfer, abandon), `manager` (grant, revoke, rename, and lock when
+`canLock`), `keyholder` (lock / unlock), or "You don't own this". A reference
+the server does not treat as property shows "That cannot be claimed." instead.
+Transfer and grant-container finish with a second `X` on the recipient. See
+`docs_roleplay_property_factions.md` for the packets.
 
 ### Player actions (`Y`) — look at a player first
 | Group | Buttons → command |
@@ -53,13 +69,15 @@ the list is real). Buttons:
 `<n>` is the targeted actor's name. (SkyMP matches a player by the **first
 whitespace token**, so only single-word character names resolve.)
 
-### Personal hub (`U`)
-- `/help`, `/skill`, `/bounty`, `/property list`
-- Lectures: `/lecture start|end`
-- Training: `/train start <skill>` (destruction, restoration, alteration,
-  conjuration, illusion, smithing, enchanting, alchemy), `/train end`
-- Faction docs: `/faction bbb <factionId>` (collegeOfWinterhold, companions,
-  eastEmpireCompany, thievesGuild, bardsCollege)
+### Personal Menu (`X` on nothing)
+The `adminPanel` widget (AdminMenuService), four tabs in this order:
+- **Admin**: staff only, once the server confirms a tier. Sub-tabs Players,
+  Teleport, Modes, NPCs and Item Spawner, each shown only when the server
+  grants its cap; the server enforces the same caps on every action.
+- **Faction**: a placeholder for hold management.
+- **Skills**: the mastery menu (take up a profession, see rank and hours).
+- **Debug**: account, character, ids, position, cell, target, actor values,
+  game time and tracked effects, refreshed every 5 s while it is the visible tab.
 
 Permissions are enforced **server-side** — unauthorized buttons just reply
 "No permission" in chat.

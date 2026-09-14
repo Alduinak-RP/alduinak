@@ -1,7 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { RemoteServer } from "./remoteServer";
+import { parseMasteryMenu } from "./masteryService";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
@@ -9,10 +10,10 @@ import { ActiveEffectApplyRemoveEvent, BrowserMessageEvent, ButtonEvent, DxScanC
 
 declare const window: any;
 
-// Tabbed admin panel (default Insert, launcher-configurable via adminMenuKeyCode); item spawning is via the server-granted in-game console.
-// Every player gets the Debug tab at once; the admin tabs appear only when the server answers adminMenuRequest (Discord roles / profile ids).
+// Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
+// Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// The Players tab also grants mastery hours (admin::masterygrant target amount / admin::masteryreset target -> adminAction masteryGrant / masteryReset).
+// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs and the Item Spawner (adminAction itemSearch / itemSpawn); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -23,6 +24,7 @@ const GLOBAL_HOUR = 0x38;
 const GLOBAL_DAY = 0x37;
 const GLOBAL_MONTH = 0x36;
 const GLOBAL_YEAR = 0x35;
+const ITEM_QUERY_MAX = 64;
 
 const events = {
   tp: "admin::tp",
@@ -44,6 +46,11 @@ const events = {
   npcPos: "admin::npcpos",
   masteryGrant: "admin::masterygrant",
   masteryReset: "admin::masteryreset",
+  tab: "admin::tab",
+  skills: "admin::skills",
+  skillChoose: "admin::skillchoose",
+  itemSearch: "admin::itemsearch",
+  itemSpawn: "admin::itemspawn",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -83,7 +90,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, events };
 
 function hex(id: number): string {
   return id.toString(16);
@@ -98,10 +105,27 @@ function safe<T>(fn: () => T | null | undefined, fallback: T): T {
   }
 }
 
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+// The server's adminItems reply, reduced to the strings and numbers the Item Spawner renders
+function parseItems(content: Record<string, unknown>) {
+  const rows = Array.isArray(content["items"]) ? content["items"] : [];
+  return {
+    query: str(content["query"]),
+    kind: str(content["kind"]),
+    ready: content["ready"] !== false,
+    total: Number(content["total"]) || 0,
+    rows: rows
+      .filter((r) => r && typeof r === "object")
+      .map((r: any) => ({ desc: str(r.desc), name: str(r.name), edid: str(r.edid), type: str(r.type), plugin: str(r.plugin) })),
+  };
+}
+
 export class AdminMenuService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.menuKey = readMenuKeyCode(sp, "adminMenuKeyCode", DxScanCode.Insert);
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("update", () => this.onUpdate());
@@ -109,26 +133,15 @@ export class AdminMenuService extends ClientListener {
     this.controller.on("effectFinish", (e) => this.onEffect(e, false));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
+    onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.activeTab = ""; });
   }
 
-  private onButtonEvent(e: ButtonEvent) {
-    if (!e.isDown) return;
-    const code = buttonEventKeyCode(e);
-    if (code === DxScanCode.Escape && this.menuOpen) {
-      this.closeMenu();
-      return;
-    }
-    if (code !== this.menuKey) return;
-    if (this.menuOpen) {
-      this.closeMenu();
-      return;
-    }
-    if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
-    this.openMenu();
+  get isOpen(): boolean {
+    return this.menuOpen;
   }
 
-  // Admin data is cleared on every open so a demoted admin never sees stale tabs
-  private openMenu(): void {
+  // Admin data is cleared on every open so a demoted admin never sees stale tabs; skills stay cached until the reply
+  open(): void {
     panelData.admin = false;
     panelData.players = [];
     panelData.locations = [];
@@ -136,14 +149,24 @@ export class AdminMenuService extends ClientListener {
     panelData.npcZones = [];
     panelData.mastery = null;
     panelData.npcPos = null;
+    panelData.items = null;
+    this.activeTab = "";
     this.refreshDebug();
     this.showMenu();
     sendCustomPacket(this.controller, { customPacketType: "debugInfoRequest" });
     sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+    sendCustomPacket(this.controller, { customPacketType: "masteryInfoRequest" });
   }
 
+  private onButtonEvent(e: ButtonEvent) {
+    if (e.isDown && this.menuOpen && buttonEventKeyCode(e) === DxScanCode.Escape) {
+      this.closeMenu();
+    }
+  }
+
+  // The Debug tab reads the game every 5 s only while it is the visible tab
   private onUpdate(): void {
-    if (!this.menuOpen || Date.now() - this.lastDebugAt < DEBUG_REFRESH_MS) return;
+    if (!this.menuOpen || this.activeTab !== "debug" || Date.now() - this.lastDebugAt < DEBUG_REFRESH_MS) return;
     this.refreshDebug();
     this.pushData();
   }
@@ -167,8 +190,17 @@ export class AdminMenuService extends ClientListener {
         tier: String(content["tier"] ?? ""),
         // The admin's own standing; absent on older servers
         mastery: content["mastery"] && typeof content["mastery"] === "object" ? content["mastery"] : null,
+        skills: panelData.skills,
+        items: panelData.items,
         events,
       };
+      this.pushData();
+    } else if (content["customPacketType"] === "masteryMenu") {
+      if (!this.menuOpen) return;
+      panelData.skills = parseMasteryMenu(content);
+      this.pushData();
+    } else if (content["customPacketType"] === "adminItems") {
+      panelData.items = parseItems(content);
       this.pushData();
     } else if (content["customPacketType"] === "debugInfo") {
       // Natives throw in the packet-handler context; only data is stored here and the update loop reads the game
@@ -317,6 +349,27 @@ export class AdminMenuService extends ClientListener {
       this.closeMenu();
       return;
     }
+    if (kind === events.tab) {
+      this.activeTab = String(e.arguments[1] ?? "");
+      return;
+    }
+    if (kind === events.skills) {
+      sendCustomPacket(this.controller, { customPacketType: "masteryInfoRequest" });
+      return;
+    }
+    if (kind === events.skillChoose) {
+      const profession = str(e.arguments[1]);
+      if (profession) sendCustomPacket(this.controller, { customPacketType: "masteryChoose", profession });
+      return;
+    }
+    if (kind === events.itemSearch) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "itemSearch", query: String(e.arguments[1] ?? "").slice(0, ITEM_QUERY_MAX), kind: String(e.arguments[2] ?? "") });
+      return;
+    }
+    if (kind === events.itemSpawn) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "itemSpawn", item: String(e.arguments[1] ?? ""), count: Number(e.arguments[2]), target: String(e.arguments[3] ?? "") });
+      return;
+    }
     if (kind === events.refresh) {
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
       return;
@@ -387,8 +440,8 @@ export class AdminMenuService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
-  private menuKey: DxScanCode;
   private menuOpen = false;
+  private activeTab = "";
   private lastDebugAt = 0;
   private server: DebugServer | null = null;
   private serverActorId = "";

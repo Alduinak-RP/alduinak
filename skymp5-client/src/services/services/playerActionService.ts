@@ -1,7 +1,10 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode } from "./widgetMenuUtil";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
+import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { HousingService, isPropertyRef } from "./housingService";
+import { FactionService } from "./factionService";
+import { AdminMenuService } from "./adminMenuService";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 
@@ -9,6 +12,8 @@ import { logTrace } from "../../logging";
 declare const window: any;
 
 const WIDGET_ID = 10;
+const PLAYER_FORM_ID = 0x14;
+const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
 
 interface PlayerAction {
   id: string;
@@ -45,16 +50,17 @@ const events = {
 let targetName = '';
 
 /**
- * Look-at-target interaction menu on the game's own Activate control: every
- * button event carries the user event name the live control map gives it, so
- * a rebind (Settings > Controls or the launcher's Game Hotkeys) applies at
- * once, default E. The alt interact key (altInteractKeyCode, default X) opens
- * the same menu. Activating a player character opens the player-action /
- * hold-appointment menu; the InteractionPromptService blocks the clone's
- * engine activation so no dialogue fires underneath. Everything that is not
- * a player character passes through to normal activation. Doors and
- * containers are managed by the housing key (HousingService). Drives the
- * gamemode through its existing contracts.
+ * The one interact router. Both the game's own Activate control (default E;
+ * every button event carries the live control map's user event name, so a
+ * rebind applies at once on any device) and the interact key
+ * (altInteractKeyCode, default X, launcher "Interact / Menus") open the
+ * player interaction menu on a living player character and search a body;
+ * the InteractionPromptService blocks the clone's engine activation so no
+ * dialogue fires underneath. Activate leaves everything else to normal
+ * activation. The interact key also completes a pending housing hand-over or
+ * faction add-member pick first, asks HousingService for the property menu on
+ * a door or container, and opens the Personal Menu (AdminMenuService) on
+ * anything else or nothing. Drives the gamemode through its existing contracts.
  */
 export class PlayerActionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -62,7 +68,8 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
-    this.altInteractKey = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X);
+    onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
+    this.interactKey = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -72,23 +79,34 @@ export class PlayerActionService extends ClientListener {
       this.closeMenu();
       return;
     }
-    // The engine stamps the live control map's event name on every device, so a rebind applies at once
-    if ((e.userEventName !== "Activate" && code !== this.altInteractKey) || this.menuOpen) {
-      return;
-    }
-    if (isMenuHotkeyBlocked(this.sp, this.controller)) {
-      return;
-    }
+    // When one key is both, the Activate rules win
+    const isActivate = e.userEventName === "Activate";
+    const isInteract = !isActivate && code === this.interactKey;
+    if ((!isActivate && !isInteract) || this.menuOpen) return;
+    if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
 
-    // The activate key fires on everything; only player characters are ours,
-    // the rest passes through to normal activation without a word.
+    const housing = this.controller.lookupListener(HousingService);
+    const personal = this.controller.lookupListener(AdminMenuService);
+    if (isInteract && (housing.takePendingPick() || this.controller.lookupListener(FactionService).takePendingPick())) return;
+
     const ref = this.sp.Game.getCurrentCrosshairRef();
-    if (!ref || ref.getFormID() === 0x14) return;
-    const actor = Actor.from(ref);
-    if (!actor) return;
-    const remoteId = localIdToRemoteId(ref.getFormID());
-    if (!remoteId || remoteId < 0xff000000) return;
+    const actor = ref && ref.getFormID() !== PLAYER_FORM_ID ? Actor.from(ref) : null;
+    const remoteId = ref && actor ? localIdToRemoteId(ref.getFormID()) : 0;
+    if (ref && actor && remoteId >= FIRST_DYNAMIC_REMOTE_ID) {
+      this.interactWithPlayer(ref, actor, remoteId);
+      return;
+    }
+    if (isActivate) return;
+    // A menu left open without focus (F6) is still on screen
+    if (housing.isOpen || personal.isOpen) return;
+    if (ref && isPropertyRef(ref)) {
+      housing.requestMenuFor(ref);
+      return;
+    }
+    personal.open();
+  }
 
+  private interactWithPlayer(ref: ObjectReference, actor: Actor, remoteId: number): void {
     // Belt and braces next to the prompt service's block: no clone dialogue.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
     // Bodies skip the menu and open their inventory through the server search
@@ -179,5 +197,5 @@ export class PlayerActionService extends ClientListener {
 
   private menuOpen = false;
   private playerTarget = 0;
-  private altInteractKey: number;
+  private interactKey: number;
 }

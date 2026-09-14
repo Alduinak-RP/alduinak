@@ -8,14 +8,17 @@ import { adminGhostAlpha, setAdminGhostShader } from "../../view/adminGhostLook"
 
 const LOOK_REAPPLY_MS = 2000;
 const SHADER_REPLAY_DELAY_MS = 1000;
-const LOCAL_MODES = ["god", "noclip", "ghost", "invis"];
+const LOCAL_MODES = ["god", "noclip", "ghost", "invis", "speed"];
+const SPEED_MULT = 300;
+const PLAYER_FORM_ID = 0x14;
 
 /**
  * Applies admin mode toggles pushed by the server's AdminSystem:
  *   { customPacketType: "adminMode", mode, on }
- * god/noclip/ghost/invis map to local natives; smite/healhit are fully
- * server-side; freecam has no SkyrimPlatform native (tfc stays a console
- * command for admins, who already hold consoleCommandsAllowed).
+ * god/noclip/ghost/invis/speed map to local natives; smite/healhit are fully
+ * server-side; freecam has no SkyrimPlatform native (tfc stays a local
+ * console command).
+ * Speed raises the base SpeedMult to 300 and puts the saved base back when turned off, on disconnect and on death.
  * God and Ghost also hold server-side (AdminSystem refuses hit damage); FormView hides remote invis admins via ff_adminModes, shows them to admins as ghosts, and shows Ghost admins to everyone as ghosts.
  */
 export class AdminModeService extends ClientListener {
@@ -25,6 +28,7 @@ export class AdminModeService extends ClientListener {
     this.controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
     this.controller.on("update", () => this.onUpdate());
     this.controller.emitter.on("connectionAccepted", () => this.controller.once("update", () => this.resetLocalModes()));
+    this.controller.emitter.on("connectionDisconnect", () => this.controller.once("update", () => this.apply("speed", false, false)));
   }
 
   // A new session starts with every mode off; the server re-sends the active ones after login
@@ -70,6 +74,10 @@ export class AdminModeService extends ClientListener {
         this.applyAlpha(true);
         if (notify) showSystemNotification(this.sp, on ? "Invisible: players cannot see you, other admins see you as a ghost" : "Invisible off");
         break;
+      case "speed":
+        this.setSpeed(on);
+        if (notify) showSystemNotification(this.sp, on ? "Speed: you move three times as fast" : "Speed off");
+        break;
       case "freecam":
         showSystemNotification(this.sp, on
           ? "Freecam has no hotkey: open the console (~) and type tfc"
@@ -86,9 +94,30 @@ export class AdminModeService extends ClientListener {
     }
   }
 
-  // A respawned player drops effect shaders
+  // SetActorValue writes the base value, so slow effects keep applying on top and the saved base comes back exactly
+  private setSpeed(on: boolean): void {
+    const player = this.sp.Game.getPlayer();
+    if (!player) return;
+    if (on && this.speedBase === null) {
+      this.speedBase = player.getBaseActorValue("SpeedMult");
+      player.setActorValue("SpeedMult", SPEED_MULT);
+    } else if (!on && this.speedBase !== null) {
+      player.setActorValue("SpeedMult", this.speedBase);
+      this.speedBase = null;
+    } else {
+      return;
+    }
+    // Any CarryWeight change makes the engine re-read the movement speed
+    player.modActorValue("CarryWeight", 1);
+    player.modActorValue("CarryWeight", -1);
+  }
+
+  // A respawned player drops effect shaders; speed ends with death
   private onApplyDeathState(e: ApplyDeathStateEvent): void {
-    if (this.ghost && !e.isDead && e.actor.getFormID() === 0x14) this.shaderReplayAt = Date.now() + SHADER_REPLAY_DELAY_MS;
+    if (!this.ghost && this.speedBase === null) return;
+    if (e.actor.getFormID() !== PLAYER_FORM_ID) return;
+    if (e.isDead && this.speedBase !== null) this.controller.once("update", () => this.apply("speed", false, false));
+    if (this.ghost && !e.isDead) this.shaderReplayAt = Date.now() + SHADER_REPLAY_DELAY_MS;
   }
 
   private applyAlpha(fade: boolean): void {
@@ -112,5 +141,6 @@ export class AdminModeService extends ClientListener {
   private ghost = false;
   private lastLookApply = 0;
   private shaderReplayAt = 0;
+  private speedBase: number | null = null;
   private localModes = new Set<string>();
 }

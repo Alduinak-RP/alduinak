@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, readMenuLanguage, isMenuHotkeyBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuLanguage, buttonEventKeyCode } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
@@ -51,7 +51,7 @@ const translations = {
     demote: 'понизить',
     close: 'закрыть',
     empty: 'Нет членов',
-    lookAtNewMember: 'Наведитесь на нового члена и нажмите клавишу',
+    lookAtNewMember: 'Наведитесь на нового члена и нажмите клавишу взаимодействия',
     addCancelled: 'Добавление отменено',
     offline: 'оффлайн',
     actingLeader: 'Действующий лидер',
@@ -70,7 +70,7 @@ const translations = {
     demote: 'demote',
     close: 'close',
     empty: 'No members',
-    lookAtNewMember: 'Look at the new member and press the faction key',
+    lookAtNewMember: 'Look at the new member and press the interact key',
     addCancelled: 'Add cancelled',
     offline: 'offline',
     actingLeader: 'Acting leader',
@@ -92,13 +92,14 @@ let members: FactionMember[] = [];
 let regents: RegentInfo = { line: [], activeProfileId: null, actingName: null, canManage: false };
 
 /**
- * Hold (faction) management for the fixed-holds model. Press the faction key
- * (default G) to ask the server for your hold's roster; the server validates
- * that you may manage a hold and replies with the member list plus regent info.
+ * Hold (faction) management for the fixed-holds model. No key opens it: the
+ * menu stays dormant until a server handler sends "factionMenu" (the Personal
+ * Menu's Faction tab is a placeholder for now). The server validates that you
+ * may manage a hold and replies with the member list plus regent info.
  *
  * Protocol - all messages are {@link MsgType.CustomPacket} with a JSON dump.
  *
- *   Client -> Server, open my hold roster:
+ *   Client -> Server, open my hold roster (no client path sends it at present):
  *     { "customPacketType": "factionMenuRequest" }
  *
  *   Server -> Client, the roster (server validated permission):
@@ -123,7 +124,8 @@ let regents: RegentInfo = { line: [], activeProfileId: null, actingName: null, c
  *     { "customPacketType": "factionNotice", "text": "Lydia is now a guard." }
  *
  * After a change, the server re-sends "factionMenu" to refresh the list.
- * Inert until the player presses the key.
+ * Add member is two-step: pick add, then look at the new member and press the
+ * interact key (PlayerActionService calls takePendingPick).
  */
 export class FactionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -134,49 +136,30 @@ export class FactionService extends ClientListener {
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
-    this.menuKey = readMenuKeyCode(this.sp, "factionMenuKeyCode", DxScanCode.G);
     const language = readMenuLanguage(this.sp);
     if (language in translations) {
       strings = translations[language as keyof typeof translations];
     }
   }
 
+  // Second step of add member: consumes the pending pick with the crosshair's player
+  takePendingPick(): boolean {
+    if (!this.pendingAdd) return false;
+    this.pendingAdd = false;
+    const ref = this.sp.Game.getCurrentCrosshairRef();
+    const recipient = ref && Actor.from(ref) ? ref : null;
+    if (!recipient || recipient.getFormID() === 0x14) {
+      notifyNextUpdate(this.controller, this.sp, strings.addCancelled);
+      return true;
+    }
+    this.sendRequest({ action: "add", recipient: localIdToRemoteId(recipient.getFormID()) });
+    return true;
+  }
+
   private onButtonEvent(e: ButtonEvent): void {
-    const code = buttonEventKeyCode(e);
-    // Escape closes an open menu.
-    if (code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+    if (e.isDown && this.menuOpen && buttonEventKeyCode(e) === DxScanCode.Escape) {
       this.closeMenu();
-      return;
     }
-    if (code !== this.menuKey || !e.isDown) {
-      return;
-    }
-    if (isMenuHotkeyBlocked(this.sp, this.controller)) {
-      if (this.sp.browser.isFocused()) {
-        notifyNextUpdate(this.controller, this.sp, "Faction menu: press Escape to leave the chat box, then G.");
-      }
-      return;
-    }
-
-    // If an "add member" is pending, this press picks the player to add.
-    if (this.pendingAdd) {
-      this.pendingAdd = false;
-      const ref = this.sp.Game.getCurrentCrosshairRef();
-      const recipient = ref && Actor.from(ref) ? ref : null;
-      if (!recipient || recipient.getFormID() === 0x14) {
-        notifyNextUpdate(this.controller, this.sp, strings.addCancelled);
-        return;
-      }
-      this.sendRequest({ action: "add", recipient: localIdToRemoteId(recipient.getFormID()) });
-      return;
-    }
-
-    if (this.menuOpen) {
-      return;
-    }
-    // Ask the server for the roster; it decides whether we may manage a hold.
-    notifyNextUpdate(this.controller, this.sp, "Requesting your hold roster…");
-    sendCustomPacket(this.controller, { customPacketType: "factionMenuRequest" });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -409,7 +392,6 @@ export class FactionService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
-  private menuKey: DxScanCode = DxScanCode.G;
   private menuOpen = false;
   private pendingAdd = false;
 }
