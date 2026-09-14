@@ -335,6 +335,34 @@ TEST_CASE("A revive before the respawn delay leaves the living actor alone",
   REQUIRE(ac.IsDead() == false);
 }
 
+TEST_CASE("A player's leftover creature template chain is dropped and gives "
+          "no death item",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+
+  // EncTrollFrost: its chain on a Player-based actor made every death wipe the inventory
+  constexpr uint32_t kPlayerBase = 0x7;
+  const FormDesc kEncTrollFrost = FormDesc::FromString("23abb:Skyrim.esm");
+
+  p.worldState.AddForm(
+    std::make_unique<MpActor>(
+      LocationalData{ { 0.f, 0.f, 0.f }, NiPoint3(), FormDesc::Tamriel() },
+      p.CreateFormCallbacks(), kPlayerBase),
+    0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  auto changeForm = ac.GetChangeForm();
+  changeForm.templateChain = { kEncTrollFrost };
+  ac.ApplyChangeForm(changeForm);
+  REQUIRE(ac.GetTemplateChain().empty());
+
+  const auto countBefore = ac.GetInventory().GetTotalItemCount();
+  ac.Kill();
+  REQUIRE(ac.IsDead());
+  REQUIRE(ac.GetInventory().GetTotalItemCount() == countBefore);
+}
+
 TEST_CASE("A healed player gets up where they fell, not at a temple",
           "[Respawn]")
 {
