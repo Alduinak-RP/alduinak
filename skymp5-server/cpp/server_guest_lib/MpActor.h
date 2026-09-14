@@ -219,7 +219,7 @@ private:
 
   void EatItem(uint32_t baseId, espm::Type t);
 
-  // Refunds a potion or food within 10 s of the last accepted one of its kind
+  // Refunds a potion, food or ingredient within 10 s of the last of its kind
   bool RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
                               uint32_t baseId);
 
