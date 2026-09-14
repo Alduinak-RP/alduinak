@@ -86,7 +86,7 @@ export interface AdminPanelData {
   debug?: DebugData | null;
   npcZones?: PanelNpcZone[]; // absent on older clients
   npcZonesAt?: number; // Date.now() when npcZones arrived, the countdown base
-  caps?: Partial<Record<AdminSub | 'ban', boolean>>; // server-resolved tier capabilities, absent on older servers
+  caps?: Partial<Record<AdminSub | 'kick' | 'ban', boolean>>; // server-resolved tier capabilities, absent on older servers
   tier?: string; // "senior" | "developer" | "gm", absent on older servers
   mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
   npcPos?: { id: string; pos: number[]; at: number } | null; // the admin's server-side location for the Add form
@@ -340,7 +340,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const selectedPlayer = players.find((pl) => pl.p === selected) || null;
   // TP/Summon/Kick/Ban all target the live actor; offline rows only display identity
   const actionsEnabled = !!(selectedPlayer && selectedPlayer.online && selectedPlayer.a);
-  // Hidden rather than greyed so a tier without ban never sees a dead button; the server enforces it anyway
+  // Hidden rather than greyed so a tier without kick or ban never sees a dead button; the server enforces it anyway
+  const canKick = caps.kick !== false;
   const canBan = caps.ban !== false;
 
   const act = (key: string): void => {
@@ -489,7 +490,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             <div className="admin-panel__actions">
               <Button text="TP to" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
               <Button text="Summon" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.summon)} />
-              <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} />
+              {canKick ? <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} /> : null}
               {canBan ? <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
             </div>
             {ev.masteryGrant && data.mastery ? (
