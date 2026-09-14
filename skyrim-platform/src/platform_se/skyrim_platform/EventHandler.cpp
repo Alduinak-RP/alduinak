@@ -78,6 +78,9 @@ void EventHandler::HandleSKSEMessage(SKSE::MessagingInterface::Message* msg)
       SendSimpleEventOnTick("preLoadGame");
       break;
     case SKSE::MessagingInterface::kPostLoadGame:
+      // Connecting loads the world, so this is the input state on entering the game
+      spdlog::info("postLoadGame, {}",
+                   CEFUtils::DInputHook::DescribeInputState());
       SendSimpleEventOnTick("postLoadGame");
       break;
     case SKSE::MessagingInterface::kSaveGame:
