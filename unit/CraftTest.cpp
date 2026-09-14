@@ -3,6 +3,8 @@
 
 #include "CraftItemMessage.h"
 #include "PacketParser.h"
+#include "condition_functions/ConditionFunctionFactory.h"
+#include <cstring>
 
 using Catch::Matchers::ContainsSubstring;
 
@@ -186,4 +188,43 @@ TEST_CASE("DLC Hearthfires recipes are working", "[Craft][espm]")
     Inventory().AddItem(0x0005ACE4, 1), 0x300300F);
   REQUIRE(form.size() > 0);
   REQUIRE(form[0].rec->GetId() == 0x0200306d);
+}
+
+TEST_CASE("Recipe conditions read form ids through the recipe plugin's master list",
+          "[Craft][espm]")
+{
+  PartOne& p = GetPartOne();
+  auto craftService = p.GetActionListener().GetCraftService();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+
+  // Dragonborn.esm loads third, but its own records carry index 02 inside the plugin
+  const uint32_t rawSpellId = 0x0201e2a6;
+  const uint32_t globalSpellId = 0x0401e2a6;
+  auto recipe = p.GetEspm().GetBrowser().LookupById(0x0401e111);
+  REQUIRE(recipe.rec);
+
+  espm::CTDA ctda;
+  std::memset(&ctda, 0, sizeof(ctda));
+  ctda.comparisonValue = 1.f;
+  ctda.functionIndex = 264; // HasSpell
+  std::memcpy(ctda.functionData, &rawSpellId, sizeof(rawSpellId));
+  ctda.runOnType = espm::CTDA::RunOnTypeFlags::Subject;
+  espm::COBJ::Data recipeData;
+  recipeData.conditions.push_back(ctda);
+
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0.f, 0.f, 0.f }, 0.f, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  REQUIRE(craftService->EvaluateCraftRecipeConditions(&ac, recipeData,
+                                                      recipe) == false);
+  ac.AddSpell(globalSpellId);
+  REQUIRE(craftService->EvaluateCraftRecipeConditions(&ac, recipeData,
+                                                      recipe) == true);
+
+  p.worldState.conditionFunctionMap = ConditionFunctionMap();
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
 }

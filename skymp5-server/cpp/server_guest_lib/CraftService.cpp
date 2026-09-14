@@ -1,4 +1,6 @@
 #include "CraftService.h"
+#include "libespm/IdMapping.h"
+#include <fmt/format.h>
 
 #include "ConditionsEvaluator.h"
 #include "MpActor.h"
@@ -7,7 +9,6 @@
 #include "WorldState.h"
 #include "gamemode_events/CraftEvent.h"
 #include <algorithm>
-#include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 #include <vector>
@@ -150,7 +151,7 @@ bool CraftService::ConsiderRecipeCandidate(
   bool finalConsiderationResult = true;
 
   if (me.has_value()) {
-    bool evalRes = EvaluateCraftRecipeConditions(*me, cobjData);
+    bool evalRes = EvaluateCraftRecipeConditions(*me, cobjData, lookupRes);
     if (!evalRes) {
       spdlog::info("CraftService::ConsiderRecipeCandidate - Craft recipe "
                    "conditions are not met");
@@ -229,13 +230,32 @@ void CraftService::UseCraftRecipe(MpActor* me, const espm::COBJ* recipeUsed,
   craftEvent.Fire(me->GetParent());
 }
 
+namespace {
+// A raw id whose master index the recipe plugin does not declare stays as it is, so plain numbers pass through
+std::string GlobalParameter(const espm::LookupResult& recipe, uint32_t rawId)
+{
+  const uint32_t mapped = recipe.ToGlobalId(rawId);
+  return fmt::format("0x{:X}",
+                     mapped == espm::IdMapping::kInvalid ? rawId : mapped);
+}
+}
+
 bool CraftService::EvaluateCraftRecipeConditions(
-  MpActor* me, const espm::COBJ::Data& recipeData)
+  MpActor* me, const espm::COBJ::Data& recipeData,
+  const espm::LookupResult& recipe)
 {
   std::vector<Condition> conditions;
   std::transform(recipeData.conditions.begin(), recipeData.conditions.end(),
-                 std::back_inserter(conditions),
-                 [&](const auto& ctda) { return Condition::FromCtda(ctda); });
+                 std::back_inserter(conditions), [&](const auto& ctda) {
+                   auto condition = Condition::FromCtda(ctda);
+                   // CTDA parameters are ids in the recipe plugin's own master list, actors hold combined ids
+                   const auto data = ctda.GetDefaultData();
+                   condition.parameter1 =
+                     GlobalParameter(recipe, data.firstParameter);
+                   condition.parameter2 =
+                     GlobalParameter(recipe, data.secondParameter);
+                   return condition;
+                 });
 
   // TODO: aggressor and target terms are not relevant for crafting
   const MpActor& aggressor = *me;

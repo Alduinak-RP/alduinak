@@ -30,6 +30,11 @@ public:
     const espm::CombineBrowser& br, const Inventory& inputObjects,
     uint32_t resultObjectId);
 
+  // public for CraftTest.cpp
+  bool EvaluateCraftRecipeConditions(MpActor* me,
+                                     const espm::COBJ::Data& recipeData,
+                                     const espm::LookupResult& recipe);
+
 private:
   bool ConsiderRecipeCandidate(
     std::optional<MpActor*> me,
@@ -39,9 +44,6 @@ private:
   void UseCraftRecipe(MpActor* me, const espm::COBJ* recipeUsed,
                       espm::CompressedFieldsCache& cache,
                       const espm::CombineBrowser& br, int espmIdx);
-
-  bool EvaluateCraftRecipeConditions(MpActor* me,
-                                     const espm::COBJ::Data& recipeData);
 
   PartOne& partOne;
   std::vector<espm::LookupResult> allRecipes;
