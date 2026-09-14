@@ -28,7 +28,7 @@ export function logTrace(service: ClientListener | string, ...rest: unknown[]) {
     printConsole(`Trace in ${typeof service !== "string" ? service.constructor.name : service}:`, ...restProcessed);
 }
 
-// printConsole never reaches skyrim-platform.log, a throw from its own update does and still prints
+// printConsole never reaches a file and writeLogs needs a Data/Platform/Logs folder we do not ship, a throw from its own update reaches skyrim-platform.log
 export function logToPlatformLog(service: ClientListener | string, ...rest: unknown[]) {
     const name = typeof service !== "string" ? service.constructor.name : service;
     const text = rest.map(String).join(" ");
