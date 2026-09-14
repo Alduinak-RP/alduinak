@@ -32,6 +32,7 @@ import { SoulTrapSystem } from "./systems/soulTrapSystem";
 import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
+import { TimeSystem } from "./systems/timeSystem";
 import { FurnitureSeatSystem } from "./systems/furnitureSeatSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
@@ -231,6 +232,7 @@ const main = async () => {
     new SoulTrapSystem(log, companionSystem),
     new VoiceSystem(log),
     new AfkSystem(log),
+    new TimeSystem(log),
     new FurnitureSeatSystem(log),
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
