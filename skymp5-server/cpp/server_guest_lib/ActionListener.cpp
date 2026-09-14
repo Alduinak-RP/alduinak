@@ -42,6 +42,9 @@ namespace {
 // Bounds a channel whose stop was lost, matching the observers' clone watch
 constexpr auto kCastRefreshTimeout = std::chrono::milliseconds(8000);
 
+// Concentration hits arrive several times a second, a longer gap means the caster aims away
+constexpr auto kRestorationHitTimeout = std::chrono::milliseconds(1500);
+
 // mp[eventName](refrId, ...args); false when a handler refuses
 bool FireGamemodeEvent(WorldState& worldState, uint32_t refrId,
                        const char* eventName, const nlohmann::json& args)
@@ -1729,14 +1732,18 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   MpActor* targetActor = nullptr;
   const bool selfDelivery = spellData.spellItem &&
     spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
+  const bool isConcentration = spellData.spellItem &&
+    spellData.spellItem->castType == espm::SPEL::CastType::Concentration;
+  // The cast event's target is always the caster, so an aimed channel takes its target from hits
+  const bool aimed = !selfDelivery && isConcentration;
 
-  // The cast event's target is always the caster, fire-and-forget heals on others land in OnSpellHit
+  // Fire-and-forget heals on others land in OnSpellHit
   if (!selfDelivery && spellData.spellItem &&
       spellData.spellItem->castType == espm::SPEL::CastType::FireAndForget) {
     return;
   }
 
-  if (selfDelivery) {
+  if (selfDelivery || aimed) {
     targetActor = caster;
   } else if (targetRef) {
     targetActor = targetRef->AsActor();
@@ -1763,8 +1770,6 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   if (!restoreEffects.empty()) {
     const bool hasSweetpie = HasSweetPie(partOne.worldState);
 
-    const bool isConcentration = spellData.spellItem &&
-      spellData.spellItem->castType == espm::SPEL::CastType::Concentration;
     const uint32_t casterId = caster->GetFormId();
     auto existing = restorationChannels.find(casterId);
     const bool hadChannel = existing != restorationChannels.end();
@@ -1783,7 +1788,14 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
       const auto now = std::chrono::steady_clock::now();
       RestorationChannel channel;
       channel.spellId = spellCastData.spell;
-      channel.targetId = targetActor->GetFormId();
+      channel.aimed = aimed;
+      if (!aimed) {
+        channel.targetId = targetActor->GetFormId();
+      } else if (hadChannel && existing->second.spellId == channel.spellId) {
+        // A recast or keep-alive keeps the target the hits picked
+        channel.targetId = existing->second.targetId;
+        channel.lastHitAt = existing->second.lastHitAt;
+      }
       channel.effects = restoreEffects;
       channel.hasSweetpie = hasSweetpie;
       channel.lastRefresh = now;
@@ -1795,8 +1807,8 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
       restorationChannels[casterId] = std::move(channel);
       if (!hadChannel) {
         spdlog::info("ActionListener::OnSpellCast - opened restoration "
-                     "channel of spell {:x} on actor {:x}",
-                     spellCastData.spell, targetActor->GetFormId());
+                     "channel of spell {:x} on actor {:x} (aimed: {})",
+                     spellCastData.spell, targetActor->GetFormId(), aimed);
         partOne.worldState.SetTimer(std::chrono::milliseconds(1000))
           .Then([this, casterId, generation](Viet::Void) {
             TickRestorationChannel(casterId, generation);
@@ -1827,16 +1839,19 @@ void ActionListener::TickRestorationChannel(uint32_t casterId,
                  casterId);
   }
 
-  MpActor* targetActor = refreshed && ++channel.ticks <= kMaxChannelTicks
-    ? GetRestorationChannelTarget(casterId, channel)
-    : nullptr;
-  if (!targetActor) {
+  const bool live = refreshed && ++channel.ticks <= kMaxChannelTicks;
+  MpActor* targetActor =
+    live ? GetRestorationChannelTarget(casterId, channel) : nullptr;
+  // An aimed channel waits for hits while its caster keeps it alive
+  if (!targetActor && !(live && channel.aimed)) {
     restorationChannels.erase(it);
     return;
   }
 
   channel.lastApplied = now;
-  targetActor->ApplyMagicEffects(channel.effects, channel.hasSweetpie);
+  if (targetActor) {
+    targetActor->ApplyMagicEffects(channel.effects, channel.hasSweetpie);
+  }
 
   partOne.worldState.SetTimer(std::chrono::milliseconds(1000))
     .Then([this, casterId, generation](Viet::Void) {
@@ -1855,6 +1870,12 @@ MpActor* ActionListener::GetRestorationChannelTarget(
   if (!caster || caster->IsDead() ||
       partOne.GetUserByActor(casterId) == Networking::InvalidUserId ||
       !caster->GetEquipment().IsSpellEquipped(channel.spellId)) {
+    return nullptr;
+  }
+
+  if (channel.aimed &&
+      std::chrono::steady_clock::now() - channel.lastHitAt >
+        kRestorationHitTimeout) {
     return nullptr;
   }
 
@@ -1976,6 +1997,22 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   if (targetActorPtr == aggressor || targetActorPtr->IsDead()) {
     return;
   }
+
+  // An aimed concentration heal follows its hits, its channel tick heals
+  auto channelIt = restorationChannels.find(aggressor->GetFormId());
+  if (channelIt != restorationChannels.end() && channelIt->second.aimed &&
+      channelIt->second.spellId == hitData.source) {
+    auto& channel = channelIt->second;
+    channel.lastHitAt = std::chrono::steady_clock::now();
+    if (channel.targetId != targetActorPtr->GetFormId()) {
+      channel.targetId = targetActorPtr->GetFormId();
+      spdlog::info("OnSpellHit - restoration channel of spell {:x} of {:x} "
+                   "heals {:x}",
+                   hitData.source, aggressor->GetFormId(), channel.targetId);
+    }
+    return;
+  }
+
   const auto spellData =
     espm::GetData<espm::SPEL>(hitData.source, &partOne.worldState);
   if (!spellData.spellItem ||

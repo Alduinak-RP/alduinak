@@ -1,6 +1,7 @@
 #include "TestUtils.hpp"
 #include <catch2/catch_all.hpp>
 #include <chrono>
+#include <thread>
 
 #include "GetBaseActorValues.h"
 #include "HitMessage.h"
@@ -444,6 +445,85 @@ TEST_CASE("A paralysed actor cannot attack or move", "[Hit]")
 
   p.DestroyActor(kCaster);
   p.DestroyActor(kVictim);
+  DoDisconnect(p, 0);
+  DoDisconnect(p, 1);
+}
+
+TEST_CASE("Healing Hands heals the actor its hits land on, not the caster",
+          "[Hit][SpellCast][Restoration]")
+{
+  PartOne& p = GetPartOne();
+  constexpr uint32_t kCaster = 0xff000000;
+  constexpr uint32_t kTarget = 0xff000001;
+  constexpr uint32_t kHealingHands = 0x0004d3f2;
+  constexpr uint32_t kHealing = 0x00012fcc;
+
+  DoConnect(p, 0);
+  DoConnect(p, 1);
+  p.CreateActor(kCaster, { 0, 100, 0 }, 0, 0x3c);
+  p.CreateActor(kTarget, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, kCaster);
+  p.SetUserActor(1, kTarget);
+  auto& caster = p.worldState.GetFormAt<MpActor>(kCaster);
+  auto& target = p.worldState.GetFormAt<MpActor>(kTarget);
+
+  Equipment casterEquipment;
+  casterEquipment.leftSpell = kHealingHands;
+  caster.SetEquipment(casterEquipment);
+  caster.SetPercentages({ 0.5f, 1.f, 1.f });
+  target.SetPercentages({ 0.5f, 1.f, 1.f });
+
+  RawMessageData casterMsgData;
+  casterMsgData.userId = 0;
+  HitMessage hit;
+  hit.data.aggressor = 0x14;
+  hit.data.target = kTarget;
+  hit.data.source = kHealingHands;
+
+  auto health = [](MpActor& actor) {
+    return actor.GetChangeForm().actorValues.healthPercentage;
+  };
+  // Channel ticks run on the real clock
+  auto tickAfter = [&](std::chrono::milliseconds delay) {
+    std::this_thread::sleep_for(delay);
+    p.Tick();
+  };
+
+  // Each heal is measured from the health just before it, a hit recomputes health too
+  constexpr float kMinHeal = 0.02f;
+
+  // The cast names the caster as its target, the hit names the healed actor
+  DoMessage(p, 0, MakeSpellCastMessage(kHealingHands, false));
+  p.GetActionListener().OnHit(casterMsgData, hit);
+  const float beforeTick = health(target);
+  tickAfter(1050ms);
+  const float healed = health(target);
+  REQUIRE(healed > beforeTick + kMinHeal);
+  REQUIRE(health(caster) == 0.5f);
+
+  // No hit within the timeout, so the next tick heals nobody
+  tickAfter(1100ms);
+  REQUIRE(health(target) == healed);
+  REQUIRE(health(caster) == 0.5f);
+
+  // A stop heals the part of a second since the last tick
+  p.GetActionListener().OnHit(casterMsgData, hit);
+  const float beforeStop = health(target);
+  std::this_thread::sleep_for(300ms);
+  DoMessage(p, 0, MakeSpellCastMessage(kHealingHands, true));
+  REQUIRE(health(target) > beforeStop);
+  REQUIRE(health(caster) == 0.5f);
+
+  // Self concentration still heals the caster
+  casterEquipment.leftSpell = kHealing;
+  caster.SetEquipment(casterEquipment);
+  DoMessage(p, 0, MakeSpellCastMessage(kHealing, false));
+  tickAfter(1050ms);
+  REQUIRE(health(caster) > 0.5f + kMinHeal);
+  DoMessage(p, 0, MakeSpellCastMessage(kHealing, true));
+
+  p.DestroyActor(kCaster);
+  p.DestroyActor(kTarget);
   DoDisconnect(p, 0);
   DoDisconnect(p, 1);
 }
