@@ -1,5 +1,6 @@
 import { logError } from "../../logging";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { keepMenusClosed } from "./menuBlockUtil";
 import { CONSOLE_MENUS } from "./widgetMenuUtil";
 
 // Refused when they run, which also covers a console open for a frame, the main menu, bat files, sStartingConsoleCommand and ConsoleUtil
@@ -17,12 +18,7 @@ export class ConsoleBlockService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.blockCommands();
-    // menuOpen arrives as an update task, so Papyrus natives are allowed here
-    this.controller.on("menuOpen", (e) => this.close(e.name));
-    // Backstop for a console opened before this listener existed or reopened between events
-    this.controller.on("update", () => CONSOLE_MENUS.forEach((menu) => {
-      if (this.sp.Ui.isMenuOpen(menu)) this.close(menu);
-    }));
+    keepMenusClosed(this.sp, this.controller, CONSOLE_MENUS);
   }
 
   // Papyrus natives never dispatch through these entries, so admin God and NoClip keep working
@@ -32,10 +28,5 @@ export class ConsoleBlockService extends ClientListener {
       if (command) command.execute = () => false;
       else logError(this, `command`, name, `was null in blockCommands`);
     }
-  }
-
-  private close(menu: string): void {
-    if (!CONSOLE_MENUS.includes(menu)) return;
-    this.sp.callNative("TESModPlatform", "CloseMenu", undefined, menu);
   }
 }

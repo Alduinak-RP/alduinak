@@ -16,7 +16,7 @@ const POLL_MS = 30000;
 const MAX_USER_SLOTS = 1024;
 
 // Automatic client packets that fire without player input
-const IDLE_PACKET_TYPES = new Set(["voiceTokenRequest"]);
+const IDLE_PACKET_TYPES = new Set(["voiceTokenRequest", "gameTimeRequest"]);
 
 interface AfkState {
   lastActivity: number;

@@ -24,6 +24,7 @@ const GLOBAL_HOUR = 0x38;
 const GLOBAL_DAY = 0x37;
 const GLOBAL_MONTH = 0x36;
 const GLOBAL_YEAR = 0x35;
+const GLOBAL_DAYS_PASSED = 0x39;
 const ITEM_QUERY_MAX = 64;
 
 const events = {
@@ -334,11 +335,12 @@ export class AdminMenuService extends ClientListener {
         d.effects.push({ id: hex(id), name: info.name, elapsedSec: Math.round((now - info.since) / 1000) });
       });
     }
-    // timeService mirrors the real UTC calendar shifted by hoursOffset into these globals, so the weekday follows the same clock
+    // The engine's weekday is floor(GameDaysPassed) % 7 with Sundas as 0, so this shows what the game shows
     const global = (id: number) => safe(() => sp.GlobalVariable.from(sp.Game.getFormEx(id))?.getValue(), NaN);
     const hour = global(GLOBAL_HOUR), day = global(GLOBAL_DAY), month = global(GLOBAL_MONTH), year = global(GLOBAL_YEAR);
-    if ([hour, day, month, year].every(Number.isFinite)) {
-      d.gameTime = { hour, day, month, year, weekday: new Date(now + d.hoursOffset * 3600000).getUTCDay() };
+    const daysPassed = global(GLOBAL_DAYS_PASSED);
+    if ([hour, day, month, year, daysPassed].every(Number.isFinite)) {
+      d.gameTime = { hour, day, month, year, weekday: Math.floor(daysPassed) % 7 };
     }
     panelData.debug = d;
   }
