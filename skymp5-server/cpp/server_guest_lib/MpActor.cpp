@@ -1356,6 +1356,12 @@ void MpActor::EnsureTemplateChainEvaluated(espm::Loader& loader,
       GetFormId());
   }
 
+  if (GetProfileId() >= 0) {
+    spdlog::warn("MpActor::EnsureTemplateChainEvaluated {:x} - player "
+                 "(profileId {}) gets the template chain of base {:x}",
+                 GetFormId(), GetProfileId(), baseId);
+  }
+
   EditChangeForm(
     [&](MpChangeFormREFR& changeForm) {
       auto headNpc = loader.GetBrowser().LookupById(baseId);
