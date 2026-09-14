@@ -17,19 +17,31 @@ const events = {
   close: 'mastery:close',
 };
 
-interface Profession {
+export interface Profession {
   id: string;
   label: string;
   title: string;
 }
 
-// The server's masteryMenu reply, mirrored into the widget.
-interface MasteryInfo {
+// The server's masteryMenu reply, mirrored into the widget and the Personal Menu's Skills tab.
+export interface MasteryInfo {
   profession: string | null;
   rank: number;
   hours: number;
   rankHours: number[];
   professions: Profession[];
+}
+
+export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo {
+  const professions = Array.isArray(content["professions"]) ? content["professions"] : [];
+  const rankHours = Array.isArray(content["rankHours"]) ? content["rankHours"] : [];
+  return {
+    profession: typeof content["profession"] === "string" ? content["profession"] as string : null,
+    rank: Number(content["rank"]) || 0,
+    hours: Number(content["hours"]) || 0,
+    rankHours: rankHours as number[],
+    professions: professions as Profession[],
+  };
 }
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
@@ -82,15 +94,7 @@ export class MasteryService extends ClientListener {
 
     switch (content["customPacketType"]) {
       case "masteryMenu": {
-        const professions = Array.isArray(content["professions"]) ? content["professions"] : [];
-        const rankHours = Array.isArray(content["rankHours"]) ? content["rankHours"] : [];
-        info = {
-          profession: typeof content["profession"] === "string" ? content["profession"] as string : null,
-          rank: Number(content["rank"]) || 0,
-          hours: Number(content["hours"]) || 0,
-          rankHours: rankHours as number[],
-          professions: professions as Profession[],
-        };
+        info = parseMasteryMenu(content);
         // A reply we did not ask for (a refresh after choosing) updates the
         // open menu but must never force a closed one open.
         if (this.awaitingOpen || this.menuOpen) {
