@@ -75,7 +75,7 @@ const serverSettings = [
   { key: 'adminProfileIds', label: 'Admin profile IDs', type: 'json', group: 'Advanced', help: 'Master-api profile ids granted in-game admin chat commands. Array of numbers.' },
   { key: 'adminRoleIds',    label: 'Admin Discord roles', type: 'json', group: 'Advanced', help: 'Legacy flat list of Discord role ids (strings) that get the in-game admin menu (Insert) and the server console. Roles here but in no adminRoles tier get full (senior) rights. Example: ["1521259484859863190"].' },
   { key: 'adminRoles',      label: 'Admin role tiers',    type: 'json', group: 'Advanced', help: 'Discord role ids per tier: { senior:[...], developer:[...], gm:[...] }. senior and developer have every power; gm has everything except Ban. Tier lists win over adminRoleIds; precedence senior > developer > gm.' },
-  { key: 'adminTeleportLocations', label: 'Admin teleport locations', type: 'json', group: 'Advanced', help: 'Admin panel Teleport tab: [{ name, cellOrWorldDesc: "hexId:Plugin.esm", pos:[x,y,z], rot:[x,y,z] }]. Bad entries are dropped at boot.' },
+  { key: 'adminTeleportLocations', label: 'Admin teleport locations', type: 'json', group: 'Advanced', help: 'Admin panel Teleport tab: [{ name, cellOrWorldDesc: "hexId:Plugin.esm", pos:[x,y,z], rot:[x,y,z], kind? }]. Listed before the built-in map-marker locations; bad entries are dropped at boot.' },
   { key: 'npcSettings',   label: 'NPC settings',   type: 'json', group: 'Advanced' },
   { key: 'metricsAuth',   label: 'Metrics auth',   type: 'json', group: 'Advanced', help: '{ user, password } for /metrics basic auth.' },
   { key: 'damageMultFormulaSettings', label: 'Damage formula', type: 'json', group: 'Advanced' },

@@ -186,14 +186,30 @@ sub-tabs:
   state: `Ready`, `Ready in m:ss` (the time until every slot may spawn again,
   ticking locally from the last server snapshot) or `No respawn` for a
   `Respawn: 0` corpse. Opening the tab and every change refresh the list.
+  Radio buttons beside the sub-tabs filter it: **On cooldown** (any slot
+  still waiting to respawn, `No respawn` included), **Active** (NPCs
+  placed) or **None** (every zone, the default). A partly killed zone
+  matches both of the first two.
   - **TP** puts the admin on `POS`. That counts as being inside, so a ready
     zone spawns on the next poll.
+  - **Activate** places every NPC of the zone that is not alive right now,
+    cooldowns ignored. With nobody inside, the admin's own actor anchors the
+    `PlaceAtMe` and the zone's `Despawn` timer runs as usual, so the NPCs go
+    again after `Despawn` seconds unless a player walks in.
+  - **Deactivate** despawns the zone like an empty zone timing out (living
+    NPCs destroyed, corpses keep their own timer) and puts every slot on its
+    `Respawn` cooldown as if its NPC had just been killed; `Respawn: 0`
+    leaves the zone empty until Activate or Reset.
   - **Reset** destroys the zone's NPCs and clears every cooldown; it fills up
     again on the next poll with a player inside.
   - **Delete** removes the entry from `NPC-Spawns.json` (single click, no
     confirmation) and despawns it.
 - **Add** takes Name, ID, X/Y/Z, Size, one NPC entry per line (`00023A99 4`),
-  Despawn and Respawn. The Add button stays disabled until Name, ID, NPC and
+  Despawn and Respawn. **Get current pos** fills ID and X/Y/Z with where the
+  server has the admin right now: the ID as the form desc of the worldspace
+  outdoors or the cell indoors (`3c:Skyrim.esm`), the same location the
+  zone check compares players against, and the position to two decimals.
+  The Add button stays disabled until Name, ID, NPC and
   all three coordinates are filled in and every number field holds a number
   (Size, Despawn and Respawn may be blank for the defaults). The server then
   validates exactly like a file load (unknown ID, non-`NPC_` base, duplicate

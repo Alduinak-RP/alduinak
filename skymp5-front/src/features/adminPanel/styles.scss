@@ -136,6 +136,11 @@ $admin-row-gutter: 16px;
     display: flex;
     align-items: center;
     gap: 16px;
+
+    // Right-aligned inside a tab row
+    &--end {
+      margin-left: auto;
+    }
   }
 
   &__search,
@@ -325,11 +330,18 @@ $admin-row-gutter: 16px;
       opacity: 0.65;
     }
 
-    &--location,
-    &--zone {
+    &--location {
       justify-content: space-between;
       padding: 6px 0;
       font-size: 16px;
+    }
+
+    // Two text lines tall: the buttons fit beside the name and status
+    &--zone {
+      justify-content: space-between;
+      padding: 2px 0;
+      font-size: 15px;
+      line-height: 18px;
     }
   }
 
@@ -339,13 +351,32 @@ $admin-row-gutter: 16px;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+
+    // The cell's 130px row basis would be a height in this column
+    .admin-panel__cell--name {
+      flex: 0 0 auto;
+    }
+
+    .admin-panel__cell--status {
+      font-size: 13px;
+      line-height: 16px;
+    }
   }
 
   &__zone-buttons {
     display: flex;
     flex: 0 0 auto;
-    gap: 6px;
+    gap: 4px;
+
+    .skymp-input-button {
+      border-width: 2px;
+      border-radius: 6px;
+
+      .skymp-input-button_text {
+        font-size: 14px;
+        line-height: 16px;
+      }
+    }
   }
 
   &__dot {
@@ -375,6 +406,12 @@ $admin-row-gutter: 16px;
     &--ip { flex: 0 0 92px; }
     &--hwid { flex: 1 1 130px; }
     &--elapsed { flex: 0 0 72px; }
+
+    &--kind {
+      flex: 0 0 130px;
+      font-size: 14px;
+      color: $admin-gold-dim;
+    }
 
     &--status {
       display: flex;
@@ -467,7 +504,6 @@ $admin-row-gutter: 16px;
   &__actions,
   &__header-buttons,
   &__row--location,
-  &__zone-buttons,
   &__mastery-row {
     .skymp-input-button .skymp-input-button_text {
       font-size: 16px;

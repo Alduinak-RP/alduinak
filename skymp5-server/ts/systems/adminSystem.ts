@@ -4,6 +4,7 @@ import { AdminTier, AdminRoleConfig, TIER_CAPS, readAdminRoleConfig, adminTierOf
 import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { kickWithReason } from "./kickUtil";
+import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -21,14 +22,16 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
 //                     { customPacketType: "adminAction", action: "toggleMode", mode }
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
-//                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete", target }  target: zone name
+//                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
+//                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {ban}, mastery }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {ban}, mastery }
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
+//                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
 //                     { customPacketType: "adminActionResult", ok, text }
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
@@ -52,6 +55,7 @@ const MIRRORED_MODES = ["god", "smite", "healhit", "invis", "ghost"];
 
 interface TeleportLocation {
   name: string;
+  kind: string; // map marker type label, blank for settings entries without one
   cellOrWorldDesc: string;
   pos: number[];
   rot: number[];
@@ -80,12 +84,11 @@ export class AdminSystem implements System {
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
     this.roleCfg = readAdminRoleConfig(all);
-    if (Array.isArray(all?.["adminTeleportLocations"])) {
-      const mp = ctx.svr as Mp;
-      for (const raw of all["adminTeleportLocations"]) {
-        const loc = this.parseLocation(mp, raw);
-        if (loc) this.locations.push(loc);
-      }
+    // Configured entries first; a generated map marker never shadows a name already listed
+    const configured = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
+    for (const raw of [...configured, ...MAP_MARKER_LOCATIONS]) {
+      const loc = this.parseLocation(ctx.svr as Mp, raw);
+      if (loc && !this.locations.some(l => l.name.toLowerCase() === loc.name.toLowerCase())) this.locations.push(loc);
     }
 
     this.installHitRefusalHook(ctx.svr as Mp);
@@ -113,6 +116,7 @@ export class AdminSystem implements System {
   private parseLocation(mp: Mp, raw: any): TeleportLocation | null {
     try {
       const name = String(raw?.name ?? "");
+      const kind = String(raw?.kind ?? "");
       const cellOrWorldDesc = String(raw?.cellOrWorldDesc ?? "");
       const pos = Array.isArray(raw?.pos) ? raw.pos.map(Number) : null;
       const rot = Array.isArray(raw?.rot) && raw.rot.length === 3 ? raw.rot.map(Number) : [0, 0, 0];
@@ -121,7 +125,7 @@ export class AdminSystem implements System {
         return null;
       }
       mp.getIdFromDesc(cellOrWorldDesc);
-      return { name, cellOrWorldDesc, pos, rot };
+      return { name, kind, cellOrWorldDesc, pos, rot };
     } catch (e) {
       this.log(`AdminSystem: bad teleport location skipped: ${e}`);
       return null;
@@ -325,7 +329,7 @@ export class AdminSystem implements System {
           mp.sendCustomPacket(userId, JSON.stringify({
             customPacketType: "adminMenu",
             players: this.buildRoster(ctx, myActorId, adminProfile, backendPlayers),
-            locations: this.locations.map(l => ({ name: l.name })),
+            locations: this.locations.map(l => ({ name: l.name, kind: l.kind })),
             modes: this.modesFor(adminProfile),
             npcZones: this.npcSpawns.listZones(),
             tier,
@@ -467,11 +471,34 @@ export class AdminSystem implements System {
       });
       return;
     }
-    if (action === "npcZoneReset") {
-      const ok = this.npcSpawns.resetZone(name);
-      if (ok) this.adminLog(`profile ${adminProfile} reset npc zone '${name}'`);
-      this.reply(mp, userId, ok, ok ? `Reset zone ${name}` : "Unknown zone");
+    if (action === "npcZoneReset" || action === "npcZoneDeactivate") {
+      const reset = action === "npcZoneReset";
+      const ok = reset ? this.npcSpawns.resetZone(name) : this.npcSpawns.deactivateZone(name);
+      if (ok) this.adminLog(`profile ${adminProfile} ${reset ? "reset" : "deactivated"} npc zone '${name}'`);
+      this.reply(mp, userId, ok, !ok ? "Unknown zone" : reset ? `Reset zone ${name}` : `Deactivated zone ${name}, respawn timer started`);
       if (ok) this.sendZones(mp, userId, myActorId);
+      return;
+    }
+    if (action === "npcZoneActivate") {
+      const placed = this.npcSpawns.activateZone(name, myActorId);
+      if (placed === null) {
+        this.reply(mp, userId, false, "Unknown zone");
+        return;
+      }
+      this.adminLog(`profile ${adminProfile} activated npc zone '${name}', ${placed} npc(s) placed`);
+      this.reply(mp, userId, placed > 0, placed ? `Activated zone ${name}, ${placed} NPC(s) placed` : `Nothing placed in ${name}: every NPC is alive or the spawn failed (server log)`);
+      this.sendZones(mp, userId, myActorId);
+      return;
+    }
+    if (action === "npcZonePos") {
+      try {
+        const loc = mp.get(myActorId, "locationalData");
+        const pos = (loc.pos as number[]).map(v => Math.round(v * 100) / 100);
+        mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminPos", cellOrWorldDesc: loc.cellOrWorldDesc, pos }));
+      } catch (e) {
+        this.log(`AdminSystem: npcZonePos by profile ${adminProfile} failed: ${e}`);
+        this.reply(mp, userId, false, "Position unavailable, see server log");
+      }
       return;
     }
     if (action === "npcZoneTp") {

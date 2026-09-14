@@ -437,16 +437,16 @@ export class NpcSpawnSystem implements System {
     return zone.inside.values().next().value;
   }
 
-  // Places every slot that is empty or holds a corpse once its cooldown has run out
-  private fillSlots(mp: Mp, zone: Zone, now: number): void {
+  // Places every slot that is empty or holds a corpse once its cooldown has run out; force skips the cooldown and falls back to the given anchor
+  private fillSlots(mp: Mp, zone: Zone, now: number, force = false, fallbackAnchor?: number): number {
     const before = zone.spawned.length;
-    let changed = false;
+    let placed = 0;
     for (let slot = 0; slot < zone.total; slot++) {
       const entry = zone.spawned.find((e) => e.slot === slot);
       if (entry && !entry.diedAt) continue;
       const at = zone.slotReadyAt[slot];
-      if (at < 0 || at > now) continue;
-      const anchor = this.anchorIn(zone);
+      if (!force && (at < 0 || at > now)) continue;
+      const anchor = this.anchorIn(zone) ?? fallbackAnchor;
       if (anchor === undefined) break;
       const npc = zone.slots[slot];
       const id = this.spawnOne(mp, zone, npc, slot, anchor);
@@ -463,14 +463,15 @@ export class NpcSpawnSystem implements System {
         zone.spawned.push({ id, slot, diedAt: 0 });
       }
       zone.slotReadyAt[slot] = 0;
-      changed = true;
+      placed++;
     }
-    if (!changed) return;
+    if (!placed) return 0;
     if (!before) {
       const summary = zone.npcs.map((n) => `${n.baseDesc} x${n.count}`).join(", ");
       this.log(`NpcSpawnSystem: '${zone.name}' spawned ${zone.spawned.length}/${zone.total} npc(s): ${summary}`);
     }
     this.saveSpawns();
+    return placed;
   }
 
   private spawnOne(mp: Mp, zone: Zone, npc: ZoneNpc, slot: number, anchorId: number): number | null {
@@ -731,6 +732,22 @@ export class NpcSpawnSystem implements System {
     const zone = this.findZone(name);
     if (!zone) return false;
     this.despawn(this.mp, zone, true);
+    return true;
+  }
+
+  // Places every slot without a living NPC now, cooldowns ignored; with nobody inside the admin anchors PlaceAtMe and the Despawn timer applies
+  activateZone(name: string, adminActorId: number): number | null {
+    const zone = this.findZone(name);
+    return zone ? this.fillSlots(this.mp, zone, Date.now(), true, adminActorId) : null;
+  }
+
+  // Despawns the zone and starts every slot's Respawn cooldown as if its NPC had just been killed
+  deactivateZone(name: string): boolean {
+    const zone = this.findZone(name);
+    if (!zone) return false;
+    this.despawn(this.mp, zone);
+    const until = zone.respawnSeconds > 0 ? Date.now() + zone.respawnSeconds * 1000 : NEVER_READY;
+    zone.slotReadyAt = zone.slotReadyAt.map((at) => (until < 0 ? NEVER_READY : Math.max(at, until)));
     return true;
   }
 

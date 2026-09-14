@@ -28,6 +28,7 @@ interface PanelMastery {
 
 interface PanelLocation {
   name: string;
+  kind?: string; // map marker type label, absent on older servers
 }
 
 interface PanelMode {
@@ -86,6 +87,7 @@ export interface AdminPanelData {
   caps?: { ban?: boolean }; // server-resolved tier capabilities, absent on older servers
   tier?: string; // "senior" | "developer" | "gm", absent on older servers
   mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
+  npcPos?: { id: string; pos: number[]; at: number } | null; // the admin's server-side location for the Add form
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -115,6 +117,14 @@ type NpcSub = 'list' | 'add';
 const NPC_SUBS: Array<{ id: NpcSub; label: string }> = [
   { id: 'list', label: 'Zones' },
   { id: 'add', label: 'Add' },
+];
+
+type ZoneFilter = 'cooldown' | 'active' | 'none';
+
+const ZONE_FILTERS: Array<{ id: ZoneFilter; label: string }> = [
+  { id: 'cooldown', label: 'On cooldown' },
+  { id: 'active', label: 'Active' },
+  { id: 'none', label: 'None' },
 ];
 
 // Field names follow NPC-Spawns.json; the server applies its own defaults to a blank Size, Despawn or Respawn.
@@ -233,6 +243,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [locSearch, setLocSearch] = useState('');
   const [selected, setSelected] = useState<number | null>(null);
   const [npcSub, setNpcSub] = useState<NpcSub>('list');
+  const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('none');
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
   const [now, setNow] = useState(Date.now());
@@ -244,6 +255,14 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [tab]);
+
+  // Get current pos: the server's answer overwrites ID and X/Y/Z, the other fields stay
+  const npcPosAt = data.npcPos ? data.npcPos.at : 0;
+  useEffect(() => {
+    const p = data.npcPos;
+    if (!p || !p.id || !p.pos || p.pos.length !== 3) return;
+    setZoneForm((f) => ({ ...f, id: p.id, x: String(p.pos[0]), y: String(p.pos[1]), z: String(p.pos[2]) }));
+  }, [npcPosAt]);
 
   // A demoted or not yet confirmed admin never stays on a hidden tab
   useEffect(() => {
@@ -290,7 +309,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
 
   const locFilter = locSearch.trim().toLowerCase();
-  const shownLocations = locations.filter((l) => !locFilter || l.name.toLowerCase().indexOf(locFilter) !== -1);
+  const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
 
   const openTab = (id: Tab): void => {
     setTab(id);
@@ -311,6 +330,9 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     const alive = z.alive + '/' + z.total + ' alive';
     return left === 0 ? alive : alive + ', ' + ready.toLowerCase();
   };
+
+  // On cooldown: any slot still waiting to respawn, "No respawn" included
+  const shownZones = npcZones.filter((z) => zoneFilter === 'none' || (zoneFilter === 'active' ? z.active : zoneLeft(z) !== 0));
 
   const setField = (key: keyof ZoneForm, value: string): void => setZoneForm({ ...zoneForm, [key]: value });
 
@@ -506,6 +528,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 shownLocations.map((l) => (
                   <div key={l.name} className="admin-panel__row admin-panel__row--location">
                     <span className="admin-panel__cell admin-panel__cell--name">{l.name}</span>
+                    {l.kind ? <span className="admin-panel__cell admin-panel__cell--kind">{l.kind}</span> : null}
                     <Button text="Teleport" width={112} height={30} onClick={() => send(ev.tpLoc, l.name)} />
                   </div>
                 ))
@@ -540,14 +563,24 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   {t.label}
                 </button>
               ))}
+              {npcSub === 'list' ? (
+                <div className="admin-panel__filters admin-panel__filters--end">
+                  {ZONE_FILTERS.map((f) => (
+                    <label key={f.id} className="admin-panel__checkbox">
+                      <input type="radio" name="npc-zone-filter" checked={zoneFilter === f.id} onChange={() => setZoneFilter(f.id)} />
+                      {f.label}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             {npcSub === 'list' ? (
               <div className="admin-panel__list">
-                {npcZones.length === 0 ? (
-                  <div className="admin-panel__empty">No zones configured</div>
+                {shownZones.length === 0 ? (
+                  <div className="admin-panel__empty">{npcZones.length === 0 ? 'No zones configured' : 'No zones match the filter'}</div>
                 ) : (
-                  npcZones.map((z) => (
+                  shownZones.map((z) => (
                     <div key={z.name} className="admin-panel__row admin-panel__row--zone">
                       <div className="admin-panel__zone-info">
                         <span className="admin-panel__cell admin-panel__cell--name">{z.name}</span>
@@ -557,9 +590,11 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                         </span>
                       </div>
                       <div className="admin-panel__zone-buttons">
-                        <Button text="TP" width={72} height={30} onClick={() => send(ev.npcTp, z.name)} />
-                        <Button text="Reset" width={84} height={30} onClick={() => send(ev.npcReset, z.name)} />
-                        <Button text="Delete" width={92} height={30} onClick={() => send(ev.npcDelete, z.name)} />
+                        <Button text="TP" width={48} height={24} onClick={() => send(ev.npcTp, z.name)} />
+                        {ev.npcActivate ? <Button text="Activate" width={84} height={24} onClick={() => send(ev.npcActivate, z.name)} /> : null}
+                        {ev.npcDeactivate ? <Button text="Deactivate" width={100} height={24} onClick={() => send(ev.npcDeactivate, z.name)} /> : null}
+                        <Button text="Reset" width={64} height={24} onClick={() => send(ev.npcReset, z.name)} />
+                        <Button text="Delete" width={68} height={24} onClick={() => send(ev.npcDelete, z.name)} />
                       </div>
                     </div>
                   ))
@@ -590,6 +625,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   </label>
                 </div>
                 <div className="admin-panel__actions">
+                  {ev.npcPos ? <Button text="Get current pos" width={168} height={32} onClick={() => send(ev.npcPos)} /> : null}
                   <Button text="Add" width={104} height={32} disabled={!canAddZone} onClick={addZone} />
                 </div>
               </div>

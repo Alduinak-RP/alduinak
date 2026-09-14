@@ -39,8 +39,20 @@ const events = {
   npcTp: "admin::npctp",
   npcReset: "admin::npcreset",
   npcDelete: "admin::npcdelete",
+  npcActivate: "admin::npcactivate",
+  npcDeactivate: "admin::npcdeactivate",
+  npcPos: "admin::npcpos",
   masteryGrant: "admin::masterygrant",
   masteryReset: "admin::masteryreset",
+};
+
+// Per-zone buttons -> adminAction; the target is the zone name
+const ZONE_ACTIONS: Record<string, string> = {
+  [events.npcTp]: "npcZoneTp",
+  [events.npcReset]: "npcZoneReset",
+  [events.npcDelete]: "npcZoneDelete",
+  [events.npcActivate]: "npcZoneActivate",
+  [events.npcDeactivate]: "npcZoneDeactivate",
 };
 
 interface DebugServer {
@@ -71,7 +83,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, events };
 
 function hex(id: number): string {
   return id.toString(16);
@@ -123,6 +135,7 @@ export class AdminMenuService extends ClientListener {
     panelData.modes = [];
     panelData.npcZones = [];
     panelData.mastery = null;
+    panelData.npcPos = null;
     this.refreshDebug();
     this.showMenu();
     sendCustomPacket(this.controller, { customPacketType: "debugInfoRequest" });
@@ -176,6 +189,10 @@ export class AdminMenuService extends ClientListener {
     } else if (content["customPacketType"] === "npcZones") {
       panelData.npcZones = Array.isArray(content["zones"]) ? content["zones"] : [];
       panelData.npcZonesAt = Date.now();
+      this.pushData();
+    } else if (content["customPacketType"] === "adminPos") {
+      // at lets a second press on the same spot refill a form edited in between
+      panelData.npcPos = { id: String(content["cellOrWorldDesc"] ?? ""), pos: Array.isArray(content["pos"]) ? content["pos"] : [], at: Date.now() };
       this.pushData();
     } else if (content["customPacketType"] === "adminMode") {
       // Keep the Modes tab highlight in sync without a full roster refresh
@@ -324,6 +341,10 @@ export class AdminMenuService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "npcZonesRequest" });
       return;
     }
+    if (kind === events.npcPos) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "npcZonePos" });
+      return;
+    }
     if (kind === events.npcAdd) {
       // The front sends one NPC-Spawns.json entry as a JSON string; the server pushes npcZones after every mutation
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "npcZoneAdd", zone: typeof e.arguments[1] === "string" ? e.arguments[1] : "" });
@@ -340,8 +361,8 @@ export class AdminMenuService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
       return;
     }
-    if (kind === events.npcTp || kind === events.npcReset || kind === events.npcDelete) {
-      const zoneAction = kind === events.npcTp ? "npcZoneTp" : kind === events.npcReset ? "npcZoneReset" : "npcZoneDelete";
+    const zoneAction = ZONE_ACTIONS[String(kind)];
+    if (zoneAction) {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: zoneAction, target: String(e.arguments[1] ?? "") });
       return;
     }
