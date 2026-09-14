@@ -130,6 +130,7 @@ function startCapture(btn, canUnbind) {
     e.stopPropagation()
     if (e.code === 'Escape') { endCapture(true); return }
     if (canUnbind && e.code === 'Backspace') { endCapture(false); setKey(btn.id, 0); return }
+    if (e.code === 'Backspace' && btn.id === 'hk-alt-interact') { endCapture(true); return }
     const entry = KEY_TABLE[e.code]
     if (!entry) {
       if (activeCapture.timer) clearTimeout(activeCapture.timer)
