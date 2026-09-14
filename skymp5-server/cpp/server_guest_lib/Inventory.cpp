@@ -299,6 +299,13 @@ uint32_t Inventory::GetTotalItemCount() const
   return sum;
 }
 
+size_t Inventory::CountWorn() const
+{
+  return std::count_if(entries.begin(), entries.end(), [](const Entry& e) {
+    return e.GetWorn() != Worn::None;
+  });
+}
+
 bool Inventory::IsEmpty() const
 {
   return entries.empty();

@@ -205,6 +205,10 @@ void PartOne::SetUserActor(Networking::UserId userId, uint32_t actorFormId)
 
     serverState.actorsMap.Set(userId, &actor);
 
+    auto& userInfo = *serverState.userInfo[userId];
+    userInfo.actorAssignedAt = std::chrono::steady_clock::now();
+    userInfo.firstEquipmentReportAt.reset();
+
     actor.ForceSubscriptionsUpdate();
 
     // We do the same in MpActor::ApplyChangeForm for non-player characters

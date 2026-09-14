@@ -42,6 +42,19 @@ namespace {
 // Bounds a channel whose stop was lost, matching the observers' clone watch
 constexpr auto kCastRefreshTimeout = std::chrono::milliseconds(8000);
 
+// Counted from a user's first equipment report after getting its actor
+constexpr auto kSpawnEquipmentGrace = std::chrono::seconds(10);
+
+bool HoldsSavedOutfit(const MpActor& actor)
+{
+  const auto& inventory = actor.GetInventory();
+  const auto& saved = actor.GetEquipment().inv.entries;
+  return std::any_of(saved.begin(), saved.end(), [&](const auto& entry) {
+    return entry.GetWorn() != Inventory::Worn::None &&
+      inventory.HasItem(entry.baseId);
+  });
+}
+
 // mp[eventName](refrId, ...args); false when a handler refuses
 bool FireGamemodeEvent(WorldState& worldState, uint32_t refrId,
                        const char* eventName, const nlohmann::json& args)
@@ -563,6 +576,29 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
 {
   MpActor* actor = partOne.serverState.ActorByUser(rawMsgData.userId);
   if (!actor) {
+    return;
+  }
+
+  // The client's spawn apply strips the player before re-dressing, so a naked report then is not a real change
+  const auto& userInfo = partOne.serverState.userInfo[rawMsgData.userId];
+  const auto now = std::chrono::steady_clock::now();
+  if (userInfo && !userInfo->firstEquipmentReportAt) {
+    userInfo->firstEquipmentReportAt = now;
+  }
+  const bool inSpawnGrace = userInfo &&
+    now - *userInfo->firstEquipmentReportAt < kSpawnEquipmentGrace;
+  if (inSpawnGrace && msg.data.inv.CountWorn() == 0 &&
+      actor->GetProfileId() >= 0 && !actor->IsRaceMenuOpen() &&
+      HoldsSavedOutfit(*actor)) {
+    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - kept saved outfit, "
+                 "zero-worn report {} ms after assign (numChanges {})",
+                 actor->GetFormId(),
+                 std::chrono::duration_cast<std::chrono::milliseconds>(
+                   now - userInfo->actorAssignedAt)
+                   .count(),
+                 msg.data.numChanges);
+    UpdateEquipmentAttemptEvent refusedEvent(actor, msg.data, false);
+    refusedEvent.Fire(actor->GetParent());
     return;
   }
 
