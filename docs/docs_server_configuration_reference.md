@@ -354,7 +354,8 @@ Every player opens the Personal Menu with the interact key (X by default) while 
   - Players: roster, teleport to, summon, kick, ban, mastery grant and reset;
   - Teleport: named locations and map markers;
   - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
-  - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`;  - Item Spawner, see below.
+  - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`;
+  - Item Spawner, see below.
 - **Faction**: a work-in-progress placeholder.
 - **Skills**: the mastery (craft) menu.
 - **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, crosshair target distance (activatable references only), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
