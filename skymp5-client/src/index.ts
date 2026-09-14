@@ -67,6 +67,7 @@ import { GamemodeEventSourceService } from "./services/services/gamemodeEventSou
 import { GamemodeUpdateService } from "./services/services/gamemodeUpdateService";
 import { FrontHotReloadService } from "./services/services/frontHotReloadService";
 import { BlockedAnimationsService } from "./services/services/blockedAnimationsService";
+import { FurnitureSeatService } from "./services/services/furnitureSeatService";
 import { WorldView } from "./view/worldView";
 import { KeyboardEventsService } from "./services/services/keyboardEventsService";
 import { MagicSyncService } from "./services/services/magicSyncService";
@@ -161,6 +162,7 @@ const main = () => {
       new CharacterProgressService(sp, controller),
       new FrontHotReloadService(sp, controller),
       new BlockedAnimationsService(sp, controller),
+      new FurnitureSeatService(sp, controller),
       new WorldView(sp, controller),
       new KeyboardEventsService(sp, controller),
       new MagicSyncService(sp, controller),
