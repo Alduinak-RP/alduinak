@@ -65,6 +65,10 @@ export const destroyRef = (mp: Mp, id: number): void => {
   mp.callPapyrusFunction("method", "ObjectReference", "Delete", { type: "form", desc: mp.getDescFromId(id) }, []);
 };
 
+export const addItemTo = (mp: Mp, actorId: number, itemId: number, count: number, silent = false): void => {
+  mp.callPapyrusFunction("method", "ObjectReference", "AddItem", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(itemId) }, count, silent]);
+};
+
 // Forms of a previous run exist only after the world DB loads (WORLD_LOADED_EVENT); plugin refs, player characters and ids failing isOurs are kept
 export const destroyLeftovers = (mp: Mp, ids: number[], isOurs: (id: number) => boolean): number =>
   ids.filter((id) => {
