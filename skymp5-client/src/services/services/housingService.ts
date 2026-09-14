@@ -37,6 +37,7 @@ interface PropertyMenuInfo {
   owned: boolean;
   name: string | null;
   locked: boolean;
+  canLock: boolean;
   hasKeys: boolean;
   canGrantContainers: boolean;
   ownerName: string | null;
@@ -45,7 +46,7 @@ interface PropertyMenuInfo {
 // Module-level state shared with the browser-side widget setter via runtime injection
 let info: PropertyMenuInfo = {
   target: 0, view: 'denied', owned: false, name: null, locked: false,
-  hasKeys: false, canGrantContainers: false, ownerName: null,
+  canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null,
 };
 let targetLabel = '';
 
@@ -58,15 +59,15 @@ let targetLabel = '';
  *
  *   Client -> Server: { "customPacketType": "propertyInfoRequest", "target": <id> }
  *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view",
- *                       "name", "locked", "hasKeys", "canGrantContainers", "ownerName" }
+ *                       "name", "locked", "canLock", "hasKeys", "canGrantContainers", "ownerName" }
  *   Client -> Server: { "customPacketType": "propertyRequest", "action", "target",
  *                       "recipient"?, "name"? }
  *   Server -> Client: { "customPacketType": "propertyNotice", "text" }
  *
  * Views: 'denied' shows only "You don't own this"; 'claimable' adds a claim
  * button; 'owner' offers rename/keys/lock/transfer/abandon; 'manager'
- * (steward, jarl, regent, or the surrounding house's owner) offers
- * grant/revoke/lock/rename; 'keyholder' offers lock/unlock. Transfer and
+ * (admin, jarl or steward) offers grant/revoke/rename, and lock only when
+ * canLock is set; 'keyholder' offers lock/unlock. Transfer and
  * grant-container are two-step: pick the action, then look at the recipient
  * and press the housing key again.
  */
@@ -150,6 +151,8 @@ export class HousingService extends ClientListener {
           owned: content["owned"] === true,
           name: typeof content["name"] === "string" ? content["name"] as string : null,
           locked: content["locked"] === true,
+          // An older server sends no canLock; its view alone decides then
+          canLock: content["canLock"] !== false,
           hasKeys: content["hasKeys"] === true,
           canGrantContainers: content["canGrantContainers"] === true,
           ownerName: typeof content["ownerName"] === "string" ? content["ownerName"] as string : null,
@@ -241,6 +244,7 @@ export class HousingService extends ClientListener {
       owned: info.owned,
       name: info.name,
       locked: info.locked,
+      canLock: info.canLock,
       hasKeys: info.hasKeys,
       canGrantContainers: info.canGrantContainers,
       ownerName: info.ownerName,

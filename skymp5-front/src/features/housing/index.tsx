@@ -24,6 +24,7 @@ export interface HousingData {
   owned: boolean;
   name: string | null;
   locked: boolean;
+  canLock?: boolean;
   hasKeys: boolean;
   canGrantContainers: boolean;
   ownerName: string | null;
@@ -51,7 +52,8 @@ const Housing = ({ data }: { data: HousingData }) => {
   const isOwner = view === 'owner';
   const isManager = view === 'manager';
   const manages = isOwner || isManager;
-  const canLock = manages || view === 'keyholder';
+  const hasAccess = manages || view === 'keyholder';
+  const canLock = hasAccess && data.canLock !== false;
 
   const [rename, setRename] = useState(data.name || '');
 
@@ -67,7 +69,7 @@ const Housing = ({ data }: { data: HousingData }) => {
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
   }, []);
 
-  const status = canLock
+  const status = hasAccess
     ? (isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder') + (data.locked ? ' · locked' : ' · unlocked')
     : (data.owned ? 'Owned by another' : 'Unclaimed');
 
@@ -84,7 +86,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           <p className="housing__owner">Owner: {data.ownerName}</p>
         ) : null}
 
-        {!canLock ? (
+        {!hasAccess ? (
           <p className="housing__empty">
             {view === 'claimable' ? 'Nobody has claimed this yet.' : "This isn't yours."}
           </p>

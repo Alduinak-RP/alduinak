@@ -12,7 +12,7 @@ type Mp = any;
 // Players claim any unowned door or container they are standing at by pressing
 // the housing key. Owners lock it, name it, cut keys, hand ownership over, or
 // give it up. A locked property refuses activation for everyone, owner included,
-// until someone with access (owner, hold official, admin or key holder) unlocks
+// until the owner, an admin or a key holder unlocks
 // it from the menu; RefDecorService mirrors the lock into the engine as a Master
 // lock so every player sees a locked door.
 //
@@ -24,7 +24,7 @@ type Mp = any;
 //             | revoke | createkey | revokekeys | grantcontainer
 //   Server -> Client:
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked,
-//       hasKeys, canGrantContainers, ownerName }
+//       canLock, hasKeys, canGrantContainers, ownerName }
 //     { customPacketType: "propertyNotice", text }
 //     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
@@ -105,7 +105,6 @@ interface PrimaryPointer {
 interface ViewerAccess {
   profileId: number;
   admin: boolean;
-  ranks: Array<{ hold: string; rank: string }>;
   keys: Set<string>;
 }
 
@@ -165,16 +164,15 @@ export class HousingSystem implements System {
     const rec = this.read(ctx, primary);
     if (!rec || rec.owner === 0 || !rec.locked) return true;
 
-    // One notice per player per second; a held activate key fires repeatedly.
+    // One notice and log line per player per second; a held activate key fires repeatedly.
     const userId = this.userOf(ctx, casterId);
     const now = Date.now();
-    if (now - (this.lastDenyMs.get(userId) || 0) > 1000) {
-      this.lastDenyMs.set(userId, now);
-      const label = rec.name || "This";
-      this.notice(ctx, userId, this.hasAccess(ctx, primary, rec, casterId)
-        ? `${label} is locked. Unlock it from the housing menu.`
-        : `${label} is locked.`);
-    }
+    if (now - (this.lastDenyMs.get(userId) || 0) <= 1000) return false;
+    this.lastDenyMs.set(userId, now);
+    const role = this.accessRole(ctx, primary, rec, casterId);
+    const label = rec.name || "This";
+    this.notice(ctx, userId, role ? `${label} is locked. Unlock it from the housing menu.` : `${label} is locked.`);
+    this.log(`[housing] door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)} denied to ${this.who(ctx, casterId)}: locked${role ? `, may unlock as ${role}` : ""}`);
     return false;
   }
 
@@ -208,7 +206,7 @@ export class HousingSystem implements System {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     if (!this.withinReach(ctx, actorId, target)) {
-      this.notice(ctx, userId, "That is too far away.");
+      this.refuse(ctx, userId, actorId, "menu", target, "That is too far away.");
       return;
     }
     this.sendMenu(ctx, userId, actorId, target);
@@ -226,13 +224,13 @@ export class HousingSystem implements System {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     if (!this.nearProperty(ctx, actorId, target)) {
-      this.notice(ctx, userId, "That is too far away.");
+      this.refuse(ctx, userId, actorId, action, target, "That is too far away.");
       return;
     }
 
     const primary = this.primaryOf(ctx, target);
     if (!primary) {
-      this.notice(ctx, userId, "You cannot claim that.");
+      this.refuse(ctx, userId, actorId, action, target, "You cannot claim that.");
       return;
     }
     const rec = this.read(ctx, primary) || emptyRecord();
@@ -308,16 +306,19 @@ export class HousingSystem implements System {
   }
 
   private doLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, locked: boolean): void {
+    const action = locked ? "lock" : "unlock";
     if (rec.owner === 0) {
-      this.notice(ctx, userId, "Claim it first.");
+      this.refuse(ctx, userId, actorId, action, primary, "Claim it first.");
       return;
     }
-    if (!this.hasAccess(ctx, primary, rec, actorId)) {
-      this.notice(ctx, userId, "You have no key to this.");
+    const role = this.accessRole(ctx, primary, rec, actorId);
+    if (!role) {
+      this.refuse(ctx, userId, actorId, action, primary, "You have no key to this.");
       return;
     }
     rec.locked = locked;
     if (!this.commit(ctx, userId, primary, rec)) return;
+    this.log(`[housing] ${this.claimLabel(primary, rec)} ${locked ? "locked" : "unlocked"} by ${this.who(ctx, actorId)} as ${role}`);
     this.notice(ctx, userId, locked ? "Locked." : "Unlocked.");
     this.sendMenu(ctx, userId, actorId, primary);
   }
@@ -416,8 +417,8 @@ export class HousingSystem implements System {
     const profileId = this.profileOf(ctx, actorId);
     const isOwner = owned && rec!.owner === profileId;
     const isManager = !!primary && this.isManager(ctx, actorId, primary);
-
-    const holdsKey = owned && !isOwner && !isManager && this.hasAccess(ctx, primary, rec!, actorId);
+    const canLock = owned && this.hasAccess(ctx, primary, rec!, actorId);
+    const holdsKey = canLock && !isOwner && !isManager;
 
     let view: string;
     if (isOwner) view = "owner";
@@ -433,6 +434,7 @@ export class HousingSystem implements System {
       owned,
       name: rec ? rec.name : null,
       locked: owned && rec!.locked,
+      canLock,
       hasKeys: owned,
       canGrantContainers: (isOwner || isManager) && owned && this.baseTypeOf(ctx, primary) === "CONT",
       ownerName: owned ? (rec!.ownerName || "Someone") : null,
@@ -442,16 +444,16 @@ export class HousingSystem implements System {
   // ── Access ──────────────────────────────────────────────────────────────────
 
   private hasAccess(ctx: SystemContext, primary: number, rec: PropertyRecord, actorId: number): boolean {
-    return this.hasAccessWith(ctx, primary, rec, this.viewerAccess(ctx, actorId));
+    return this.accessRole(ctx, primary, rec, actorId) !== "";
   }
 
-  private hasAccessWith(ctx: SystemContext, primary: number, rec: PropertyRecord, v: ViewerAccess): boolean {
-    if (rec.owner === 0) return true;
-    if (v.profileId && v.profileId === rec.owner) return true;
-    if (v.admin) return true;
-    const hold = this.holdOf(ctx, primary);
-    if (hold && v.ranks.some((r) => r.hold === hold && MANAGER_RANKS.indexOf(r.rank) !== -1)) return true;
-    return v.keys.has(this.keyNameOf(primary, rec));
+  // What lets an actor lock or unlock this: owner, admin or key; hold officials only manage the claim
+  private accessRole(ctx: SystemContext, primary: number, rec: PropertyRecord, actorId: number): string {
+    if (rec.owner === 0) return "unclaimed";
+    const v = this.viewerAccess(ctx, actorId);
+    if (v.profileId && v.profileId === rec.owner) return "owner";
+    if (v.admin) return "admin";
+    return v.keys.has(this.keyNameOf(primary, rec)) ? "key" : "";
   }
 
   // One inventory read and one access read per actor, not per claimed ref.
@@ -468,7 +470,6 @@ export class HousingSystem implements System {
     return {
       profileId: this.profileOf(ctx, actorId),
       admin: this.isAdmin(ctx, actorId),
-      ranks: this.holdRanks(ctx, actorId),
       keys,
     };
   }
@@ -874,6 +875,20 @@ export class HousingSystem implements System {
 
   private notice(ctx: SystemContext, userId: number, text: string): void {
     this.send(ctx, userId, { customPacketType: "propertyNotice", text });
+  }
+
+  // Logged as well as told, so a failed test shows where the request stopped
+  private refuse(ctx: SystemContext, userId: number, actorId: number, action: string, refrId: number, text: string): void {
+    this.notice(ctx, userId, text);
+    this.log(`[housing] ${action} ${refrId.toString(16)} refused for ${this.who(ctx, actorId)}: ${text}`);
+  }
+
+  private who(ctx: SystemContext, actorId: number): string {
+    return `${this.nameOf(ctx, actorId)} (profile ${this.profileOf(ctx, actorId)})`;
+  }
+
+  private claimLabel(primary: number, rec: PropertyRecord): string {
+    return `claim ${primary.toString(16)}${rec.name ? ` "${rec.name}"` : ""}`;
   }
 
   private claimed: number[] = [];
