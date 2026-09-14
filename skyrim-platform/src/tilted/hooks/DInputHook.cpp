@@ -525,6 +525,7 @@ void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
                  DInputHook::DescribeInputState());
     g_awaitingDelivery = true;
   }
+  g_lastKick = now;
   Kick();
 }
 
@@ -533,7 +534,6 @@ void FakeIDirectInputDevice8A::Kick()
 {
   IDirectInputDevice8_Unacquire(m_pDevice);
   m_kicked = true;
-  g_lastKick = GetTickCount64();
   ++g_kickTotal;
   ++g_keyboard.kicks;
   g_seenUp.fill(false);
