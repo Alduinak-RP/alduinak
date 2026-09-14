@@ -23,6 +23,8 @@ const MAX_DRIFT_DAYS = MAX_DRIFT_HOURS / 24;
 const SUNDAY_OFFSET_DAYS = 4;
 // About 30 s of passes
 const DAYS_PASSED_SAMPLES = 15;
+// A smaller offset sample is queueing delay unless it is this far off (the player changed their PC clock)
+const CLOCK_JUMP_MS = 30000;
 
 interface ServerClock {
   offsetMs: number;
@@ -57,8 +59,12 @@ export class TimeService extends ClientListener {
     if (!content || content["customPacketType"] !== "gameTime") return;
     const serverTime = Number(content["serverTime"]);
     if (!Number.isFinite(serverTime)) return;
+    // Sampled when the packet is drained on tick, so queueing only ever makes it smaller
+    const sample = serverTime - Date.now();
+    const keep = this.hasServerClock && sample <= this.clock.offsetMs && this.clock.offsetMs - sample < CLOCK_JUMP_MS;
+    this.hasServerClock = true;
     this.clock = {
-      offsetMs: serverTime - Date.now(),
+      offsetMs: keep ? this.clock.offsetMs : sample,
       tzOffsetMin: Number(content["tzOffsetMin"]) || 0,
       year: Number(content["year"]) || DEFAULT_YEAR,
       timeScale: Number(content["timeScale"]) || 1,
@@ -136,6 +142,7 @@ export class TimeService extends ClientListener {
 
   // Until the server answers, the client's own local clock stands in
   private clock: ServerClock = { offsetMs: 0, tzOffsetMin: new Date().getTimezoneOffset(), year: DEFAULT_YEAR, timeScale: 1 };
+  private hasServerClock = false;
   private nextSyncAt = 0;
   private weeks: number | undefined;
   private written: number | undefined;
