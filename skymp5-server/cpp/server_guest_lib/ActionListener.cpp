@@ -290,6 +290,18 @@ bool CanCastSpell(const MpActor& actor, uint32_t spellId)
     (actor.IsSpellLearned(spellId) || IsSpellInTemplateTree(actor, spellId));
 }
 
+// Scrolls sit in the inventory, not in a spell slot
+bool IsHeldScroll(const MpActor& actor, uint32_t scrollId)
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  const auto lookup = worldState->GetEspm().GetBrowser().LookupById(scrollId);
+  return lookup.rec && lookup.rec->GetType() == "SCRL" &&
+    actor.GetInventory().GetItemCount(scrollId) > 0;
+}
+
 // Cloaks and hazards (Blizzard) hit with a spell they grant, not the spell that was cast
 bool IsSpellGrantedBy(WorldState* worldState, uint32_t parentSpellId,
                       uint32_t sourceId)
@@ -1627,7 +1639,8 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
-  if (!CanCastSpell(*caster, spellCastData.spell)) {
+  const bool isScroll = IsHeldScroll(*caster, spellCastData.spell);
+  if (!isScroll && !CanCastSpell(*caster, spellCastData.spell)) {
     spdlog::info("ActionListener::OnSpellCast - spell {0:x} not "
                  "found in equipment of {1:x}",
                  spellCastData.spell, caster->GetFormId());
@@ -1642,8 +1655,16 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
-  SendToNeighbours(myActor->idx, rawMsgData, true);
-  UpdateWardChannel(caster->GetFormId(), spellCastData);
+  // A clone replay would cast the scroll again on every observer
+  if (!isScroll) {
+    SendToNeighbours(myActor->idx, rawMsgData, true);
+    UpdateWardChannel(caster->GetFormId(), spellCastData);
+  } else if (!spellCastData.keepAlive) {
+    // The caster's engine used one up
+    caster->RemoveItem(spellCastData.spell, 1, nullptr);
+    spdlog::info("ActionListener::OnSpellCast - {:x} used scroll {:x}",
+                 caster->GetFormId(), spellCastData.spell);
+  }
 
   auto& browser = partOne.worldState.GetEspm().GetBrowser();
 
@@ -1656,6 +1677,11 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   if (!spellCastData.keepAlive) {
     FireGamemodeEvent(partOne.worldState, caster->GetFormId(), "onSpellCast",
                       nlohmann::json::array({ spellCastData.spell }));
+  }
+
+  // GetData<SPEL> below throws for a SCRL record
+  if (isScroll) {
+    return;
   }
 
   const auto targetRef = std::dynamic_pointer_cast<MpObjectReference>(
