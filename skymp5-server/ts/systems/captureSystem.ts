@@ -443,6 +443,7 @@ export class CaptureSystem implements System {
       const refusal = this.carryRefusal(ctx, pend.captorActorId, pend.targetActorId);
       if (refusal) {
         this.notice(ctx, captorUser, refusal);
+        this.notice(ctx, userId, `${this.nameOf(ctx, pend.captorActorId) || "They"} can no longer carry you.`);
         return;
       }
       this.applyCarry(ctx, pend.targetActorId, pend.captorActorId);
