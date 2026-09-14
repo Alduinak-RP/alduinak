@@ -170,6 +170,21 @@ TEST_CASE("ChangeForm is saved correctly", "[save]")
   }
 }
 
+TEST_CASE("An empty template chain is still written, so a save replaces a "
+          "stale one",
+          "[save]")
+{
+  MpChangeForm changeForm;
+  changeForm.formDesc = { 0x1d, "" };
+
+  auto j = MpChangeForm::ToJson(changeForm);
+  REQUIRE(j.contains("templateChain"));
+  REQUIRE(j["templateChain"].empty());
+
+  changeForm.templateChain = { FormDesc::FromString("23abb:Skyrim.esm") };
+  REQUIRE(MpChangeForm::ToJson(changeForm)["templateChain"].size() == 1);
+}
+
 TEST_CASE("Upsert affects the number of change forms in the database in the "
           "correct way",
           "[save]")

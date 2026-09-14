@@ -77,9 +77,8 @@ nlohmann::json MpChangeForm::ToJson(const MpChangeForm& changeForm)
   res["spawnDelay"] = changeForm.spawnDelay;
   res["effects"] = changeForm.activeMagicEffects.ToJson();
 
-  if (!changeForm.templateChain.empty()) {
-    res["templateChain"] = ToStringArray(changeForm.templateChain);
-  }
+  // Always written: saves $set onto the doc, so an omitted key keeps a previous owner's chain
+  res["templateChain"] = ToStringArray(changeForm.templateChain);
 
   // TODO: uncomment when add script vars save feature
   // if (changeForm.lastAnimation.has_value()) {

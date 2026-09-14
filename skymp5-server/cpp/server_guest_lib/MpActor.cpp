@@ -1263,6 +1263,20 @@ void MpActor::EnsureTemplateChainEvaluated(espm::Loader& loader,
   }
 
   auto baseId = GetBaseId();
+
+  // A chain evaluated for another base would feed that NPC's data to this one
+  const auto& storedChain = ChangeForm().templateChain;
+  if (!storedChain.empty() &&
+      storedChain.front().ToFormId(worldState->espmFiles) != baseId) {
+    spdlog::warn("MpActor::EnsureTemplateChainEvaluated {:x} - dropping "
+                 "template chain of {} (profileId {}, base {:x})",
+                 GetFormId(), storedChain.front().ToString(), GetProfileId(),
+                 baseId);
+    EditChangeForm(
+      [&](MpChangeFormREFR& changeForm) { changeForm.templateChain.clear(); },
+      mode);
+  }
+
   if (baseId == 0x7 || baseId == 0) {
     return;
   }
@@ -1340,6 +1354,12 @@ void MpActor::EnsureTemplateChainEvaluated(espm::Loader& loader,
       "errored, forgetting previous template chain. Likely, an update on "
       "esp/esm side.",
       GetFormId());
+  }
+
+  if (GetProfileId() >= 0) {
+    spdlog::warn("MpActor::EnsureTemplateChainEvaluated {:x} - player "
+                 "(profileId {}) gets the template chain of base {:x}",
+                 GetFormId(), GetProfileId(), baseId);
   }
 
   EditChangeForm(
@@ -1604,9 +1624,14 @@ void MpActor::RespawnWithDelay(bool shouldTeleport)
                 },
                 Mode::NoRequestSave);
               EnsureBaseContainerAdded(worldState->GetEspm());
-              spdlog::info("MpActor::RespawnWithDelay {:x} - {} inventory "
-                           "entries with keyword kept",
-                           GetFormId(), inventoryToKeep.entries.size());
+              // An empty base container adds nothing, so AddItems never tells the owner
+              SendInventoryUpdate();
+              spdlog::info("MpActor::RespawnWithDelay {:x} - {} of {} "
+                           "inventory entries with keyword kept (profileId "
+                           "{}, base {:x})",
+                           GetFormId(), inventoryToKeep.entries.size(),
+                           inventory.entries.size(), GetProfileId(),
+                           GetBaseId());
             }
           }
 
