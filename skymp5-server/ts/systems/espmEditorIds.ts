@@ -37,6 +37,8 @@ export interface EspmRecord {
   localized: boolean;
   type: string;
   formId: number;
+  // Record header flags (0x20 deleted)
+  flags: number;
   fields: { type: string; data: Buffer }[];
 }
 
@@ -52,7 +54,7 @@ const cache = new Map<string, string>();
 const knownMissing = new Set<string>();
 
 // Returns true from the visitor to stop the scan
-type Visit = (type: number, formId: number, data: Buffer | null) => boolean;
+type Visit = (type: number, formId: number, data: Buffer | null, flags: number) => boolean;
 
 export const cstr = (b: Buffer): string => b.toString("latin1").replace(/\0+$/, "");
 
@@ -131,7 +133,7 @@ function* walkGroup(buf: Buffer, start: number, end: number, depth: number, tags
       if (tags.has(type)) {
         const flags = buf.readUInt32LE(off + 8);
         const formId = buf.readUInt32LE(off + 12);
-        if (visit(type, formId, recordData(buf, off + HEADER_SIZE, dataSize, flags))) return true;
+        if (visit(type, formId, recordData(buf, off + HEADER_SIZE, dataSize, flags), flags)) return true;
       }
       off += HEADER_SIZE + dataSize;
     }
@@ -169,11 +171,11 @@ export async function scanRecords(dataDir: string, loadOrder: string[], types: s
     const { buf, owner } = plugin;
     const masters = readMasters(buf);
     const localized = buf.length >= HEADER_SIZE && (buf.readUInt32LE(8) & FLAG_LOCALIZED) !== 0;
-    await scanPlugin(buf, tags, (type, formId, data) => {
+    await scanPlugin(buf, tags, (type, formId, data, flags) => {
       if (!data) return false;
       const fields: EspmRecord["fields"] = [];
       eachSubrecord(data, (t, body) => { fields.push({ type: tagName(t), data: body }); return false; });
-      visit({ owner, masters, localized, type: tagName(type), formId, fields });
+      visit({ owner, masters, localized, type: tagName(type), formId, flags, fields });
       return false;
     });
   }
