@@ -17,8 +17,16 @@ struct DInputHook
     return chromeFocus;
   }
 
-  // Foreground window, browser focus and raw input targets, for focus bug logs
+  // Foreground window, browser focus, raw input targets and keyboard counters, for focus bug logs
   static std::string DescribeInputState();
+  static std::string DescribeRawInput();
+  static void ResetKeyboardCounters();
+  // Called at postLoadGame; resets the counters, arms the first key logs and a keyboard re-acquire if no key gets through
+  static void OnEnteredGame();
+  // True for the first few key downs after entering the game
+  static bool TakeEnteredGameKeyLog();
+  // True once for a Tab press whose GetAsyncKeyState pressed bit a keyboard watchdog read took
+  static bool TakeTabPress();
 
   struct
   {

@@ -7,6 +7,7 @@
 
 #include <FunctionHook.hpp>
 #include <array>
+#include <atomic>
 #include <iostream>
 #include <spdlog/spdlog.h>
 
@@ -18,6 +19,57 @@ std::array<uint8_t, 256> g_pressedWas = ([] {
   return r;
 })();
 std::array<bool, 4> g_mousePressedWas = { 0, 0, 0, 0 };
+
+// Keyboard counters since the last reset, written on the input thread and read from any
+struct KeyboardCounters
+{
+  std::atomic<uint32_t> polls, eventsRead, eventsDelivered, stateDowns,
+    deliveredDowns, kicks, lastFailedHr;
+};
+KeyboardCounters g_keyboard;
+std::atomic<int> g_enteredGameKeyLogs = 0;
+std::atomic<ULONGLONG> g_enteredGameAt = 0;
+std::atomic<bool> g_tabPressed = false;
+
+// Keyboard watchdog state, touched only on the engine's input thread
+std::array<bool, 256> g_deliveredDown = {};
+std::array<uint8_t, 0x3A> g_starvedChecks = {};
+std::array<bool, 0x3A> g_seenUp = {};
+ULONGLONG g_lastWatch = 0;
+ULONGLONG g_lastKick = 0;
+uint32_t g_kickTotal = 0;
+bool g_awaitingDelivery = false;
+
+bool ThisProcessInFront()
+{
+  DWORD pid = 0;
+  GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+  return pid == GetCurrentProcessId();
+}
+
+// ProbeAltTab reads the same pressed-since-last-call bit, so a Tab press taken here is passed on
+bool KeyDownInWindows(UINT vk)
+{
+  const SHORT state = GetAsyncKeyState(static_cast<int>(vk));
+  if (vk == VK_TAB && (state & 0x0001)) {
+    g_tabPressed = true;
+  }
+  return (state & 0x8000) != 0;
+}
+
+// Its release could be lost while the keyboard is unacquired, leaving the key stuck down in the engine
+bool EngineHoldsHeldKey()
+{
+  for (UINT dik = 1; dik < g_deliveredDown.size(); ++dik) {
+    const UINT scan = dik < 0x80 ? dik : 0xE000 | (dik & 0x7F);
+    const UINT vk =
+      g_deliveredDown[dik] ? MapVirtualKeyA(scan, MAPVK_VSC_TO_VK_EX) : 0;
+    if (vk && KeyDownInWindows(vk)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const char* DeviceName(IDirectInputDevice8A* device)
 {
@@ -48,6 +100,9 @@ void ProcessKeyboardData(uint8_t* apData)
   for (uint32_t idx = 0; idx < 256; idx++) {
     if (g_pressedWas[idx] != apData[idx]) {
       g_pressedWas[idx] = apData[idx];
+      if (apData[idx]) {
+        ++g_keyboard.stateDowns;
+      }
       g_listener->OnKeyStateChange(idx, apData[idx] != 0);
       // Alt+Tab reached the game; no "deactivated" line after it means Windows never switched
       if (idx == DIK_TAB && apData[idx] &&
@@ -55,6 +110,42 @@ void ProcessKeyboardData(uint8_t* apData)
         spdlog::info("DInputHook: Alt+Tab pressed in the game, {}",
                      CEFUtils::DInputHook::DescribeInputState());
       }
+    }
+  }
+}
+
+// Tallies what DirectInput returned and what the engine receives from this layer
+void CountKeyboardRead(HRESULT result, DWORD dataSize,
+                       const DIDEVICEOBJECTDATA* data, const DWORD* count,
+                       bool delivered)
+{
+  ++g_keyboard.polls;
+  if (FAILED(result)) {
+    g_keyboard.lastFailedHr = static_cast<uint32_t>(result);
+    return;
+  }
+  if (!data || !count || dataSize < 2 * sizeof(DWORD)) {
+    return;
+  }
+  g_keyboard.eventsRead += *count;
+  if (!delivered) {
+    return;
+  }
+  g_keyboard.eventsDelivered += *count;
+  const auto* bytes = reinterpret_cast<const uint8_t*>(data);
+  for (DWORD i = 0; i < *count; ++i) {
+    const auto* event =
+      reinterpret_cast<const DIDEVICEOBJECTDATA*>(bytes + i * dataSize);
+    const bool down = (event->dwData & 0x80) != 0;
+    g_deliveredDown[event->dwOfs & 0xFF] = down;
+    if (!down) {
+      continue;
+    }
+    ++g_keyboard.deliveredDowns;
+    if (g_awaitingDelivery) {
+      g_awaitingDelivery = false;
+      spdlog::info("DInputHook: keyboard delivering again after kick {}",
+                   g_kickTotal);
     }
   }
 }
@@ -264,8 +355,12 @@ struct FakeIDirectInputDevice8A
   }
 
 private:
+  void WatchKeyboard(const uint8_t* state);
+  void Kick();
+
   IDirectInputDevice8A* m_pDevice;
   uint32_t m_failedAcquires = 0;
+  bool m_kicked = false;
 };
 
 using TIDirectInputA_CreateDevice =
@@ -336,6 +431,12 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
 
   auto& input = DInputHook::Get();
 
+  // The re-acquire after a kick does not depend on the engine acquiring before this read
+  if (m_kicked) {
+    m_kicked = false;
+    Acquire();
+  }
+
   const auto result = IDirectInputDevice8_GetDeviceData(
     m_pDevice, dataSize, outData, outDataLen, flags);
 
@@ -346,13 +447,35 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
   }
 
   if (instanceInfo.guidInstance == GUID_SysKeyboard) {
+    const bool browserFocus = DInputHook::ChromeFocus();
+    CountKeyboardRead(result, dataSize, outData, outDataLen, !browserFocus);
     uint8_t rawData[256];
     HRESULT hr = IDirectInputDevice8_GetDeviceState(m_pDevice, 256, rawData);
+    WatchKeyboard(hr == DI_OK ? rawData : nullptr);
+    const ULONGLONG enteredAt = g_enteredGameAt;
+    if (enteredAt && GetTickCount64() - enteredAt >= 2000 && !browserFocus &&
+        ThisProcessInFront()) {
+      // A keyboard that got a key through needs no kick, and a held key waits for its release
+      if (g_keyboard.deliveredDowns) {
+        g_enteredGameAt = 0;
+        spdlog::info("DInputHook: keyboard delivered keys after entering the "
+                     "game, no re-acquire, {}",
+                     DInputHook::DescribeInputState());
+      } else if (!EngineHoldsHeldKey()) {
+        g_enteredGameAt = 0;
+        spdlog::info(
+          "DInputHook: keyboard re-acquired after entering the game, {}",
+          DInputHook::DescribeInputState());
+        Kick();
+      }
+    }
     if (hr == DI_OK) {
       ProcessKeyboardData(rawData);
       memset(rawData, 0, 256);
+    } else {
+      g_keyboard.lastFailedHr = static_cast<uint32_t>(hr);
     }
-    if (DInputHook::ChromeFocus()) {
+    if (browserFocus) {
       *outDataLen = 0;
 
       return result;
@@ -360,6 +483,76 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
   }
 
   return result;
+}
+
+// Windows has a key down that DirectInput or the engine never got; re-acquiring repeats DirectInput's half of an Alt+Tab
+void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
+{
+  const ULONGLONG now = GetTickCount64();
+  if (now - g_lastWatch < 100) {
+    return;
+  }
+  const bool gap = now - g_lastWatch > 1000;
+  g_lastWatch = now;
+  // After a gap, in chat or behind another program, a held key must be released before it counts
+  if (!state || gap || DInputHook::ChromeFocus() || !ThisProcessInFront()) {
+    g_seenUp.fill(false);
+    g_starvedChecks.fill(0);
+    return;
+  }
+  // Numpad Enter shares VK_RETURN with Enter, so an extended twin counts as the key
+  const auto got = [state](UINT dik) {
+    return state[dik] && g_deliveredDown[dik];
+  };
+  int starved = -1;
+  for (UINT sc = 1; sc < g_seenUp.size(); ++sc) {
+    // AltGr fakes a left Ctrl, so modifiers are left out
+    if (sc == DIK_LCONTROL || sc == DIK_LSHIFT || sc == DIK_RSHIFT ||
+        sc == DIK_LMENU) {
+      continue;
+    }
+    const UINT vk = MapVirtualKeyA(sc, MAPVK_VSC_TO_VK);
+    if (!vk || !KeyDownInWindows(vk)) {
+      g_seenUp[sc] = true;
+      g_starvedChecks[sc] = 0;
+      continue;
+    }
+    if (!g_seenUp[sc] || got(sc) || got(sc | 0x80)) {
+      g_starvedChecks[sc] = 0;
+      continue;
+    }
+    if (g_starvedChecks[sc] < 3) {
+      ++g_starvedChecks[sc];
+    }
+    if (g_starvedChecks[sc] == 3 && starved < 0) {
+      starved = static_cast<int>(sc);
+    }
+  }
+  if (starved < 0 || now - g_lastKick < 5000 || EngineHoldsHeldKey()) {
+    return;
+  }
+  if (!g_awaitingDelivery) {
+    spdlog::info("DInputHook: keyboard starved, Windows has key {:#x} down, "
+                 "DirectInput state {}, delivered {}, re-acquiring (kick {}), "
+                 "{}",
+                 starved, state[starved] ? 1 : 0,
+                 g_deliveredDown[starved] ? 1 : 0, g_kickTotal + 1,
+                 DInputHook::DescribeInputState());
+    g_awaitingDelivery = true;
+  }
+  g_lastKick = now;
+  Kick();
+}
+
+// Keyboard only; the next Acquire re-registers DirectInput's raw input
+void FakeIDirectInputDevice8A::Kick()
+{
+  IDirectInputDevice8_Unacquire(m_pDevice);
+  m_kicked = true;
+  ++g_kickTotal;
+  ++g_keyboard.kicks;
+  g_seenUp.fill(false);
+  g_starvedChecks.fill(0);
 }
 
 ULONG _stdcall FakeIDirectInputDevice8A::Release()
@@ -460,17 +653,63 @@ DInputHook& DInputHook::Get() noexcept
 
 std::string DInputHook::DescribeInputState()
 {
-  std::string result =
-    fmt::format("in front: {}, browser focus {}",
-                DescribeWindow(GetForegroundWindow()), ChromeFocus());
+  // The foreground thread's focus, so this works from any thread
+  GUITHREADINFO gui = { sizeof(GUITHREADINFO) };
+  const HWND focus = GetGUIThreadInfo(0, &gui) ? gui.hwndFocus : nullptr;
+  return fmt::format(
+    "in front: {}, browser focus {}{}, focus {}, keyboard since reset: polls "
+    "{}, events from DirectInput {}, events delivered {}, key downs in DI "
+    "state {}, key downs delivered {}, kicks {}, last failed hr {:#x}",
+    DescribeWindow(GetForegroundWindow()), ChromeFocus(), DescribeRawInput(),
+    DescribeWindow(focus), g_keyboard.polls.load(),
+    g_keyboard.eventsRead.load(), g_keyboard.eventsDelivered.load(),
+    g_keyboard.stateDowns.load(), g_keyboard.deliveredDowns.load(),
+    g_keyboard.kicks.load(), g_keyboard.lastFailedHr.load());
+}
+
+void DInputHook::ResetKeyboardCounters()
+{
+  for (std::atomic<uint32_t>* counter :
+       { &g_keyboard.polls, &g_keyboard.eventsRead,
+         &g_keyboard.eventsDelivered, &g_keyboard.stateDowns,
+         &g_keyboard.deliveredDowns, &g_keyboard.kicks,
+         &g_keyboard.lastFailedHr }) {
+    *counter = 0;
+  }
+}
+
+void DInputHook::OnEnteredGame()
+{
+  ResetKeyboardCounters();
+  g_enteredGameKeyLogs = 3;
+  g_enteredGameAt = GetTickCount64();
+}
+
+bool DInputHook::TakeEnteredGameKeyLog()
+{
+  if (g_enteredGameKeyLogs <= 0) {
+    return false;
+  }
+  --g_enteredGameKeyLogs;
+  return true;
+}
+
+bool DInputHook::TakeTabPress()
+{
+  return g_tabPressed.exchange(false);
+}
+
+std::string DInputHook::DescribeRawInput()
+{
   // DirectInput reads through raw input, so another registration for these usages silences it
   RAWINPUTDEVICE devices[16];
   UINT count = static_cast<UINT>(std::size(devices));
   const UINT n =
     GetRegisteredRawInputDevices(devices, &count, sizeof(RAWINPUTDEVICE));
   if (n == static_cast<UINT>(-1)) {
-    return result + ", raw input unknown";
+    return ", raw input unknown";
   }
+  std::string result;
   for (UINT i = 0; i < n; ++i) {
     const USHORT usage = devices[i].usUsage;
     if (devices[i].usUsagePage == 0x01 && (usage == 0x02 || usage == 0x06)) {
