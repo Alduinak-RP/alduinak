@@ -114,6 +114,10 @@ export class RestraintService extends ClientListener {
     return this.carried;
   }
 
+  get isCarrying(): boolean {
+    return this.carrying;
+  }
+
   // Observers must see a held pose: no locomotion, and the server keeps the last animation only for Standing
   filterOwnMovement(movement: Movement): Movement {
     if (this.carried) {
