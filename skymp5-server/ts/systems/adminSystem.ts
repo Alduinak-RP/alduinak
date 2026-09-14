@@ -5,7 +5,7 @@ import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
-import { addItemTo } from "./actorUtil";
+import { addItemTo, userOf } from "./actorUtil";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -36,7 +36,7 @@ type Mp = any;
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
-//                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned
+//                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned (speed is dropped there instead) and sent off for speed on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
 //                     { customPacketType: "adminItems", query, kind, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
@@ -58,6 +58,7 @@ const ADMIN_MODES: Array<{ id: string; label: string }> = [
   { id: "freecam", label: "Freecam" },
   { id: "smite", label: "Smite" },
   { id: "healhit", label: "Heal on Hit" },
+  { id: "speed", label: "Speed" }, // the client raises SpeedMult; ends on respawn and with the session
 ];
 
 // Modes mirrored onto the neighbors-visible ff_adminModes actor property (registered in gamemode.js)
@@ -119,6 +120,7 @@ export class AdminSystem implements System {
     }
 
     this.installHitRefusalHook(ctx.svr as Mp);
+    this.installRespawnHook(ctx.svr as Mp);
     (globalThis as any).__alduinakIsAdmin = (actorId: number) => this.isAdminActor(ctx.svr as Mp, actorId);
     if (all?.["enableConsoleCommandsForAll"] === true) this.log("AdminSystem: enableConsoleCommandsForAll is on, so every player can run console commands; turn it off");
 
@@ -681,6 +683,7 @@ export class AdminSystem implements System {
     const profileId = this.profileOf(mp, actorId);
     if (!isAdmin) this.modesByProfile.delete(profileId);
     const state = this.modesByProfile.get(profileId) ?? {};
+    delete state.speed;
     let mirror: Record<string, unknown> | null = null;
     try { mirror = mp.get(actorId, "ff_adminModes") ?? null; } catch { }
     if (MIRRORED_MODES.some(m => !!mirror?.[m] !== !!state[m])) this.writeModeMirror(mp, actorId, state);
@@ -700,6 +703,28 @@ export class AdminSystem implements System {
       } catch {
         return true;
       }
+    };
+  }
+
+  // The off packet makes the client restore the SpeedMult it had before speed mode
+  private installRespawnHook(mp: Mp): void {
+    const previous = typeof mp.onRespawn === "function" ? mp.onRespawn : null;
+    mp.onRespawn = (...args: unknown[]) => {
+      const result = previous ? previous.apply(mp, args) : undefined;
+      try {
+        const actorId = Number(args[0]) >>> 0;
+        const profileId = this.profileOf(mp, actorId);
+        const state = this.modesByProfile.get(profileId);
+        if (state?.speed) {
+          state.speed = false;
+          const userId = userOf(mp, actorId);
+          if (userId >= 0) this.sendMode(mp, userId, "speed", false);
+          this.log(`AdminSystem: profile ${profileId} mode speed off on respawn`);
+        }
+      } catch (e) {
+        this.log(`AdminSystem: speed reset on respawn failed: ${e}`);
+      }
+      return result;
     };
   }
 
