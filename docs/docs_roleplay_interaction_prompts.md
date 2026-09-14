@@ -37,8 +37,11 @@ keeps its display name with a verb picked from its base form type.
   live control map gives it (`ButtonEvent.userEventName`), so the menu follows
   whatever Activate is bound to (default E) on keyboard, mouse or gamepad, and
   a rebind in Settings > Controls or the launcher's Game Hotkeys applies
-  immediately. Anything that is not a player character is silently ignored.
-  World NPCs keep vanilla activation and read "Talk" over their name.
+  immediately. Activate ignores anything that is not a player character, so
+  doors, containers and world NPCs keep vanilla activation; NPCs read "Talk"
+  over their name. The interact key (`X`, `altInteractKeyCode`) opens the same
+  menu on a player; on a door or container it opens the housing menu, and on
+  anything else, a world NPC included, the Personal Menu.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
   when harvested; coin purses, loose salmon and any other `untouchableBaseIds`

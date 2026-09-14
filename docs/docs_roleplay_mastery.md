@@ -7,8 +7,12 @@ time actually played on that character, not by XP and not by repeating an
 action. Each rank unlocks recipes, which live in the Alduinak plugin and are
 gated on a marker spell the server grants.
 
-- Client piece: `skymp5-client/src/services/services/masteryService.ts` (default **K**)
-- Front piece: `skymp5-front/src/features/masteryMenu/`
+- Client piece: `skymp5-client/src/services/services/masteryService.ts` (shared
+  `parseMasteryMenu` and `masteryNotice` toasts) and `adminMenuService.ts`, which
+  requests and shows the menu. There is no mastery key any more (the old **K**
+  and `masteryMenuKeyCode` are gone): the menu is the **Skills** tab of the
+  Personal Menu, opened with the interact key (`X`) on nothing.
+- Front piece: `skymp5-front/src/features/masteryMenu/`, embedded in `features/adminPanel`
 - Server piece: `skymp5-server/ts/systems/masterySystem.ts`
 
 ---
@@ -159,4 +163,3 @@ Server -> Client: { "customPacketType": "masteryNotice", "text" }
 | `masteryRankHours` | `[10, 40, 100]` | Hours for Adept, Expert, Master |
 | `masteryIdleMinutes` | `5` | Idle minutes that stop accrual |
 | `masterySpells` | `{}` | Profession id to `[novice, adept, expert, master]` form ids |
-| `masteryMenuKeyCode` | `K` | DirectInput scan code, in the `skymp5-client` block |
