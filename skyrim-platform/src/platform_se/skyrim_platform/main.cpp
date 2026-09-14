@@ -650,8 +650,8 @@ private:
       return;
     }
     if (!foreground) {
-      // Startup only, so nothing pulls the game back once it has been in front
-      if (!everForeground) {
+      // Not after a switch to another program, so nothing pulls the game back from there
+      if (!foreign) {
         ReclaimFromNothing();
       }
       return;
