@@ -1,10 +1,14 @@
-"""Generates the admin panel's map-marker teleports (skymp5-server/ts/systems/adminMapMarkers.ts).
+"""Generates the admin panel's map-marker and temple teleports (skymp5-server/ts/systems/adminMapMarkers.ts).
 
 Walks every plugin of the server loadOrder in order, collects the map marker
-references (REFR of the MapMarker static 0x10:Skyrim.esm carrying XMRK) and
+references (REFR of the MapMarker static 0x10:Skyrim.esm carrying XMRK), the
+load doors (REFR carrying XTEL) and the interior cell and worldspace names, and
 keeps the last override of each, so a mod that moves or deletes a marker wins
 like it does in game. Markers whose TNAM type is in KINDS become teleports at
 the marker's worldspace, position and heading (the fast travel arrival spot).
+Interior cells named "Temple" become teleports at the arrival point (XTEL) of
+the load door leading in from another place; test cells and cells only reached
+from test cells are left out. Every entry carries its panel section (GROUPS).
 Localized names come from Strings/ or the "Skyrim - Interface.bsa" strings.
 
 Run:  python misc/gen-map-marker-teleports.py            (writes the .ts)
@@ -14,8 +18,10 @@ Options: --settings <server-settings.json> (default build/dist/server, read-only
 import json
 import math
 import os
+import re
 import struct
 import sys
+from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from esplib import Plugin, Group, parse_subs, zstr  # noqa: E402
@@ -25,6 +31,7 @@ OUT = os.path.join(REPO, 'skymp5-server', 'ts', 'systems', 'adminMapMarkers.ts')
 
 MAP_MARKER_BASE = ('skyrim.esm', 0x10)
 DELETED = 0x20
+INITIALLY_DISABLED = 0x800
 LOCALIZED = 0x80
 GROUP_WORLD_CHILDREN = 1
 GROUP_CELL_GROUPS = (6, 8, 9, 10)
@@ -51,6 +58,17 @@ KINDS = {
     **{t: 'City' for t in range(36, 53, 2)},
     **{t: 'Castle' for t in range(35, 52, 2)},
 }
+
+TEMPLE = 'Temple'
+
+# Kind label -> Teleport tab section; the panel files anything else under Other
+GROUPS = {
+    'City': 'settlements', 'Town': 'settlements', 'Settlement': 'settlements', 'Orc Stronghold': 'settlements',
+    'Fort': 'forts', 'Castle': 'forts', 'Imperial Camp': 'forts', 'Stormcloak Camp': 'forts',
+    TEMPLE: 'temples',
+}
+
+TEST_CELL = re.compile(r'test|^qa|^zz', re.I)
 
 
 def arg(name, default):
@@ -140,6 +158,32 @@ def num(v):
     return '0' if s == '-0' else s
 
 
+def temples(places, doors):
+    """(label, cell key, entry door) per temple cell; outdoor, enabled doors win, the entrance names same-named cells apart."""
+    best = {}
+    for key, door in doors.items():
+        far = doors.get(door['dest'])
+        cell = places.get(far['place']) if far and not far['exterior'] else None
+        src = places.get(door['place'])
+        if not cell or not src or TEMPLE.lower() not in cell['name'].lower() or src['name'] == cell['name']:
+            continue
+        if TEST_CELL.search(cell['edid']) or TEST_CELL.search(src['edid']):
+            print(f'test cell skipped: door {desc(key)} {src["edid"]} -> {cell["edid"]}', file=sys.stderr)
+            continue
+        rank = (not door['exterior'], door['disabled'], key)
+        if far['place'] not in best or rank < best[far['place']][0]:
+            best[far['place']] = (rank, door, src['name'] or src['edid'])
+    kept = {}
+    for cell, (_rank, door, src) in sorted(best.items(), key=lambda kv: kv[1][0]):
+        where = (places[cell]['name'], src)
+        if where in kept:
+            print(f'duplicate temple {where[0]} {desc(cell)} skipped, same entrance as {desc(kept[where][0])}', file=sys.stderr)
+            continue
+        kept[where] = (cell, door)
+    names = Counter(name for name, _ in kept)
+    return [(f'{name} ({src})' if names[name] > 1 else name, cell, door) for (name, src), (cell, door) in kept.items()]
+
+
 def main():
     dump = '--dump' in sys.argv
     settings_path = arg('--settings', os.path.join(REPO, 'build', 'dist', 'server', 'server-settings.json'))
@@ -150,6 +194,8 @@ def main():
     strings = Strings(data_dir)
     markers = {}
     moved_by = {}
+    places = {}
+    doors = {}
 
     for plugin in load_order:
         path = os.path.join(data_dir, plugin)
@@ -165,30 +211,51 @@ def main():
             idx = fid >> 24
             return (masters[idx] if idx < len(masters) else own, fid & 0xFFFFFF)
 
+        def full_name(subs):
+            if 'FULL' not in subs:
+                return ''
+            return strings.table(plugin).get(struct.unpack('<I', subs['FULL'][:4])[0], '') if localized else zstr(subs['FULL'])
+
         for n, parents in p.walk():
-            if isinstance(n, Group) or n.type != 'REFR':
+            if isinstance(n, Group):
+                continue
+            if n.type in ('CELL', 'WRLD'):
+                key = gkey(n.fid)
+                if n.flags & DELETED:
+                    places.pop(key, None)
+                    continue
+                subs = dict(reversed(parse_subs(n.data())))
+                if n.type == 'CELL' and not subs.get('DATA', b'\0')[0] & 1:
+                    continue
+                places[key] = {'name': full_name(subs) or places.get(key, {}).get('name', ''), 'edid': zstr(subs.get('EDID', b'\0'))}
+                continue
+            if n.type != 'REFR':
                 continue
             key = gkey(n.fid)
             known = key in markers
-            if not known and not n.compressed and b'XMRK' not in n.raw:
+            if not known and key not in doors and not n.compressed and b'XMRK' not in n.raw and b'XTEL' not in n.raw:
                 continue
             if n.flags & DELETED:
+                doors.pop(key, None)
                 if known:
                     markers.pop(key)
                     moved_by.setdefault(key, []).append(plugin + ' (deleted)')
                 continue
             subs = dict(reversed(parse_subs(n.data())))
-            if not known and ('XMRK' not in subs or gkey(struct.unpack('<I', subs.get('NAME', b'\0' * 4))[0]) != MAP_MARKER_BASE):
-                continue
             world = next((g for g in reversed(parents) if g.gtype == GROUP_WORLD_CHILDREN), None)
             cell = next((g for g in reversed(parents) if g.gtype in GROUP_CELL_GROUPS), None)
             place = gkey(world.label if world else cell.label)
+            if 'XTEL' in subs:
+                dest, x, y, z, _rx, _ry, rz = struct.unpack_from('<I6f', subs['XTEL'])
+                doors[key] = {'place': place, 'exterior': world is not None, 'dest': gkey(dest), 'pos': [x, y, z], 'rz': rz,
+                              'disabled': bool(n.flags & INITIALLY_DISABLED), 'plugin': plugin}
+            else:
+                doors.pop(key, None)
+            if not known and ('XMRK' not in subs or gkey(struct.unpack('<I', subs.get('NAME', b'\0' * 4))[0]) != MAP_MARKER_BASE):
+                continue
             x, y, z, _rx, _ry, rz = struct.unpack('<6f', subs['DATA'][:24])
-            name = ''
-            if 'FULL' in subs:
-                name = strings.table(plugin).get(struct.unpack('<I', subs['FULL'][:4])[0], '') if localized else zstr(subs['FULL'])
             tnam = subs['TNAM'][0] if 'TNAM' in subs else 0
-            entry = {'name': name, 'type': tnam, 'place': place, 'pos': [x, y, z], 'rz': rz, 'plugin': plugin,
+            entry = {'name': full_name(subs), 'type': tnam, 'place': place, 'pos': [x, y, z], 'rz': rz, 'plugin': plugin,
                      'flags': subs['FNAM'][0] if 'FNAM' in subs else 0}
             if known:
                 prev = markers[key]
@@ -197,7 +264,7 @@ def main():
                     moved_by.setdefault(key, []).append(plugin)
                 entry['origin'] = prev.get('origin', prev['plugin'])
             markers[key] = entry
-        print(f'{plugin}: {len(markers)} marker(s) so far', file=sys.stderr)
+        print(f'{plugin}: {len(markers)} marker(s), {len(doors)} load door(s) so far', file=sys.stderr)
 
     for key, who in sorted(moved_by.items()):
         m = markers.get(key)
@@ -209,6 +276,9 @@ def main():
                   f'{" ".join(f"{v:.0f}" for v in m["pos"])} {math.degrees(m["rz"]) % 360:.1f} {m["plugin"]}')
         return
 
+    def proper(key):
+        return desc((names.get(key[0], key[0]), key[1]))
+
     rows = {}
     for key, m in sorted(markers.items()):
         if m['type'] not in KINDS or not m['name']:
@@ -217,8 +287,10 @@ def main():
         if (m['name'], kind) in rows:
             print(f'duplicate {kind} {m["name"]} {desc(key)} skipped', file=sys.stderr)
             continue
-        place = (names.get(m['place'][0], m['place'][0]), m['place'][1])
-        rows[(m['name'], kind)] = (m['name'], kind, desc(place), [num(v) for v in m['pos']], num(math.degrees(m['rz']) % 360), m['plugin'])
+        rows[(m['name'], kind)] = (m['name'], kind, proper(m['place']), [num(v) for v in m['pos']], num(math.degrees(m['rz']) % 360), m['plugin'])
+    for label, cell, door in temples(places, doors):
+        rows[(label, TEMPLE)] = (label, TEMPLE, proper(cell), [num(v) for v in door['pos']], num(math.degrees(door['rz']) % 360), door['plugin'])
+        print(f'temple {label:40} {places[cell]["edid"]:32} {proper(cell):26} via door {proper(door["dest"])} <- {desc(door["place"])}', file=sys.stderr)
     rows = sorted(rows.values(), key=lambda r: (r[0].lower(), r[1]))
     seen = {}
     for r in rows:
@@ -227,14 +299,15 @@ def main():
     for name, kind, place, pos, deg, plugin in rows:
         label = f'{name} ({kind})' if seen[name] > 1 else name
         print(f'{kind:16} {label:40} {place:24} {plugin}', file=sys.stderr)
-        lines.append(f'  {{ name: {json.dumps(label)}, kind: "{kind}", cellOrWorldDesc: "{place}", pos: [{pos[0]}, {pos[1]}, {pos[2]}], rot: [0, 0, {deg}] }},')
-    groups = {}
+        lines.append(f'  {{ name: {json.dumps(label)}, kind: "{kind}", group: "{GROUPS[kind]}", cellOrWorldDesc: "{place}", '
+                     f'pos: [{pos[0]}, {pos[1]}, {pos[2]}], rot: [0, 0, {deg}] }},')
+    kinds = {}
     for t, kind in sorted(KINDS.items()):
-        groups.setdefault(kind, []).append(str(t))
-    kinds = ', '.join(f'{kind} ({"/".join(ts)})' for kind, ts in groups.items())
+        kinds.setdefault(kind, []).append(str(t))
     body = (
-        '// Generated by misc/gen-map-marker-teleports.py from the map markers of the server load order; rerun it instead of editing.\n'
-        f'// Marker types included: {kinds}.\n'
+        '// Generated by misc/gen-map-marker-teleports.py from the map markers, load doors and cells of the server load order; rerun it instead of editing.\n'
+        f'// Marker types included: {", ".join(f"{kind} ({chr(47).join(ts)})" for kind, ts in kinds.items())}.\n'
+        '// Temples: interior cells named "Temple", at the arrival point of the load door leading in.\n'
         'export const MAP_MARKER_LOCATIONS = [\n' + '\n'.join(lines) + '\n];\n'
     )
     with open(OUT, 'w', encoding='utf-8', newline='\n') as f:
