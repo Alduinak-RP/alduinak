@@ -587,7 +587,11 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
   bool isFood = true;
   std::vector<espm::Effects::Effect> effects;
   if (auto ingredient = espm::Convert<espm::INGR>(lookupRes.rec)) {
-    effects = ingredient->GetData(cache).effects;
+    // Eating applies only the first listed effect
+    const auto all = ingredient->GetData(cache).effects;
+    if (!all.empty()) {
+      effects.push_back(all.front());
+    }
   } else {
     auto data = espm::Convert<espm::ALCH>(lookupRes.rec)->GetData(cache);
     if (data.isPoison) {
