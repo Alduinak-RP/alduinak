@@ -2,6 +2,7 @@ import { System, Log } from "./system";
 import Axios from "axios";
 import { SystemContext } from "./system";
 import { ScampServer } from "../scampNative";
+import { Settings } from "../settings";
 
 export class MasterClient implements System {
   systemName = "MasterClient";
@@ -27,6 +28,12 @@ export class MasterClient implements System {
 
     this.endpoint = `${this.masterUrl}/api/servers/${this.masterKey}`;
     this.log(`Our endpoint on master is ${this.endpoint}`);
+
+    const token = (await Settings.get()).allSettings?.["masterApiAuthToken"];
+    this.authToken = typeof token === "string" ? token : "";
+    if (!this.authToken) {
+      this.log("masterApiAuthToken missing, the master will refuse heartbeats");
+    }
   }
 
   update(): void {
@@ -44,7 +51,7 @@ export class MasterClient implements System {
       const { name, maxPlayers } = this;
       const online = this.getCurrentOnline(ctx.svr);
       try {
-        await Axios.post(this.endpoint, { name, maxPlayers, online });
+        await Axios.post(this.endpoint, { name, maxPlayers, online }, { headers: { "X-Auth-Token": this.authToken } });
       } catch (e) {
         console.error(`Error updating info on master server: ${e}`);
       }
@@ -61,4 +68,5 @@ export class MasterClient implements System {
   }
 
   private endpoint: string;
+  private authToken = "";
 }
