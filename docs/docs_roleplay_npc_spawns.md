@@ -186,6 +186,10 @@ sub-tabs:
   state: `Ready`, `Ready in m:ss` (the time until every slot may spawn again,
   ticking locally from the last server snapshot) or `No respawn` for a
   `Respawn: 0` corpse. Opening the tab and every change refresh the list.
+  Radio buttons beside the sub-tabs filter it: **On cooldown** (any slot
+  still waiting to respawn, `No respawn` included), **Active** (NPCs
+  placed) or **None** (every zone, the default). A partly killed zone
+  matches both of the first two.
   - **TP** puts the admin on `POS`. That counts as being inside, so a ready
     zone spawns on the next poll.
   - **Activate** places every NPC of the zone that is not alive right now,

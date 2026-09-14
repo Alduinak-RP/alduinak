@@ -136,6 +136,11 @@ $admin-row-gutter: 16px;
     display: flex;
     align-items: center;
     gap: 16px;
+
+    // Right-aligned inside a tab row
+    &--end {
+      margin-left: auto;
+    }
   }
 
   &__search,

@@ -117,6 +117,14 @@ const NPC_SUBS: Array<{ id: NpcSub; label: string }> = [
   { id: 'add', label: 'Add' },
 ];
 
+type ZoneFilter = 'cooldown' | 'active' | 'none';
+
+const ZONE_FILTERS: Array<{ id: ZoneFilter; label: string }> = [
+  { id: 'cooldown', label: 'On cooldown' },
+  { id: 'active', label: 'Active' },
+  { id: 'none', label: 'None' },
+];
+
 // Field names follow NPC-Spawns.json; the server applies its own defaults to a blank Size, Despawn or Respawn.
 const EMPTY_ZONE_FORM = { name: '', id: '', x: '', y: '', z: '', size: '2000', npc: '', despawn: '120', respawn: '1800' };
 type ZoneForm = typeof EMPTY_ZONE_FORM;
@@ -233,6 +241,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [locSearch, setLocSearch] = useState('');
   const [selected, setSelected] = useState<number | null>(null);
   const [npcSub, setNpcSub] = useState<NpcSub>('list');
+  const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('none');
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
   const [now, setNow] = useState(Date.now());
@@ -311,6 +320,9 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     const alive = z.alive + '/' + z.total + ' alive';
     return left === 0 ? alive : alive + ', ' + ready.toLowerCase();
   };
+
+  // On cooldown: any slot still waiting to respawn, "No respawn" included
+  const shownZones = npcZones.filter((z) => zoneFilter === 'none' || (zoneFilter === 'active' ? z.active : zoneLeft(z) !== 0));
 
   const setField = (key: keyof ZoneForm, value: string): void => setZoneForm({ ...zoneForm, [key]: value });
 
@@ -540,14 +552,24 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   {t.label}
                 </button>
               ))}
+              {npcSub === 'list' ? (
+                <div className="admin-panel__filters admin-panel__filters--end">
+                  {ZONE_FILTERS.map((f) => (
+                    <label key={f.id} className="admin-panel__checkbox">
+                      <input type="radio" name="npc-zone-filter" checked={zoneFilter === f.id} onChange={() => setZoneFilter(f.id)} />
+                      {f.label}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             {npcSub === 'list' ? (
               <div className="admin-panel__list">
-                {npcZones.length === 0 ? (
-                  <div className="admin-panel__empty">No zones configured</div>
+                {shownZones.length === 0 ? (
+                  <div className="admin-panel__empty">{npcZones.length === 0 ? 'No zones configured' : 'No zones match the filter'}</div>
                 ) : (
-                  npcZones.map((z) => (
+                  shownZones.map((z) => (
                     <div key={z.name} className="admin-panel__row admin-panel__row--zone">
                       <div className="admin-panel__zone-info">
                         <span className="admin-panel__cell admin-panel__cell--name">{z.name}</span>
