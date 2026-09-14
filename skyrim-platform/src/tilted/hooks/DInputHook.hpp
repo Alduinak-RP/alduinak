@@ -25,6 +25,8 @@ struct DInputHook
   static void OnEnteredGame();
   // True for the first few key downs after entering the game
   static bool TakeEnteredGameKeyLog();
+  // True once for a Tab press whose GetAsyncKeyState pressed bit a keyboard watchdog read took
+  static bool TakeTabPress();
 
   struct
   {

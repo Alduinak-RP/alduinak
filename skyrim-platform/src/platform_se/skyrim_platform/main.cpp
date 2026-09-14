@@ -744,7 +744,9 @@ private:
       spdlog::info("ForegroundGuard: Alt+Tab did not leave the game, {}",
                    CEFUtils::DInputHook::DescribeInputState());
     }
-    const bool tab = (GetAsyncKeyState(VK_TAB) & 0x8001) != 0;
+    // The keyboard watchdog's key reads can take the pressed-since-last-call bit first
+    const bool tabTaken = CEFUtils::DInputHook::TakeTabPress();
+    const bool tab = (GetAsyncKeyState(VK_TAB) & 0x8001) != 0 || tabTaken;
     const bool pressed =
       inFront && tab && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
     if (pressed && !altTabWas && diagBudget.Take()) {

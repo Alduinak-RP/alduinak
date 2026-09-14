@@ -29,6 +29,7 @@ struct KeyboardCounters
 KeyboardCounters g_keyboard;
 std::atomic<int> g_enteredGameKeyLogs = 0;
 std::atomic<ULONGLONG> g_enteredGameAt = 0;
+std::atomic<bool> g_tabPressed = false;
 
 // Keyboard watchdog state, touched only on the engine's input thread
 std::array<bool, 256> g_deliveredDown = {};
@@ -46,6 +47,16 @@ bool ThisProcessInFront()
   return pid == GetCurrentProcessId();
 }
 
+// ProbeAltTab reads the same pressed-since-last-call bit, so a Tab press taken here is passed on
+bool KeyDownInWindows(UINT vk)
+{
+  const SHORT state = GetAsyncKeyState(static_cast<int>(vk));
+  if (vk == VK_TAB && (state & 0x0001)) {
+    g_tabPressed = true;
+  }
+  return (state & 0x8000) != 0;
+}
+
 // Its release could be lost while the keyboard is unacquired, leaving the key stuck down in the engine
 bool EngineHoldsHeldKey()
 {
@@ -53,7 +64,7 @@ bool EngineHoldsHeldKey()
     const UINT scan = dik < 0x80 ? dik : 0xE000 | (dik & 0x7F);
     const UINT vk =
       g_deliveredDown[dik] ? MapVirtualKeyA(scan, MAPVK_VSC_TO_VK_EX) : 0;
-    if (vk && (GetAsyncKeyState(static_cast<int>(vk)) & 0x8000)) {
+    if (vk && KeyDownInWindows(vk)) {
       return true;
     }
   }
@@ -501,7 +512,7 @@ void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
       continue;
     }
     const UINT vk = MapVirtualKeyA(sc, MAPVK_VSC_TO_VK);
-    if (!vk || !(GetAsyncKeyState(static_cast<int>(vk)) & 0x8000)) {
+    if (!vk || !KeyDownInWindows(vk)) {
       g_seenUp[sc] = true;
       g_starvedChecks[sc] = 0;
       continue;
@@ -681,6 +692,11 @@ bool DInputHook::TakeEnteredGameKeyLog()
   }
   --g_enteredGameKeyLogs;
   return true;
+}
+
+bool DInputHook::TakeTabPress()
+{
+  return g_tabPressed.exchange(false);
 }
 
 std::string DInputHook::DescribeRawInput()
