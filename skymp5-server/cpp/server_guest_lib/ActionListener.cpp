@@ -536,6 +536,8 @@ void ActionListener::OnUpdateAppearance(const RawMessageData& rawMsgData,
     actor->SetRaceMenuOpen(false);
     actor->SetAppearance(&msg.data.value());
     SendToNeighbours(msg.idx, rawMsgData, true);
+    // The race menu's race switch brought the new race's spells to the client
+    actor->SendLearnedSpells();
   }
 
   UpdateAppearanceAttemptEvent updateAppearanceAttemptEvent(

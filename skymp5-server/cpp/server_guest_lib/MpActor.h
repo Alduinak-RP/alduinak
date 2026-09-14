@@ -36,6 +36,8 @@ public:
   bool IsSpellLearnedFromBase(uint32_t spellId) const;
   std::vector<uint32_t> GetSpellList() const;
   std::vector<uint32_t> GetBaseSpells() const; // NPC_ record + race spells
+  std::vector<uint32_t> GetLearnedAndBaseSpells() const;
+  void SendLearnedSpells();
 
   std::unique_ptr<const Appearance> GetAppearance() const;
   const std::string& GetAppearanceAsJson();

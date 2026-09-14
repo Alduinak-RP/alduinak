@@ -391,17 +391,7 @@ void MpActor::VisitProperties(CreateActorMessage& message,
                                                        changeForm, message);
   }
 
-  // Base NPC_/race spells ride along so the client's spell reconciliation does not wipe Flames/Healing
-  auto learnedSpells = changeForm.learnedSpells.GetLearnedSpells();
-  if (worldState && worldState->HasEspm()) {
-    for (uint32_t spellId : GetBaseSpells()) {
-      if (std::find(learnedSpells.begin(), learnedSpells.end(), spellId) ==
-          learnedSpells.end()) {
-        learnedSpells.push_back(spellId);
-      }
-    }
-  }
-  message.props.learnedSpells = std::move(learnedSpells);
+  message.props.learnedSpells = GetLearnedAndBaseSpells();
 
   if (!changeForm.templateChain.empty()) {
     std::vector<uint32_t> templateChain;
@@ -1065,6 +1055,26 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
 std::vector<uint32_t> MpActor::GetSpellList() const
 {
   return ChangeForm().learnedSpells.GetLearnedSpells();
+}
+
+// The owner's client keeps exactly these and drops every other NPC_ or race spell
+std::vector<uint32_t> MpActor::GetLearnedAndBaseSpells() const
+{
+  auto spells = GetSpellList();
+  for (uint32_t spellId : GetBaseSpells()) {
+    if (std::find(spells.begin(), spells.end(), spellId) == spells.end()) {
+      spells.push_back(spellId);
+    }
+  }
+  return spells;
+}
+
+void MpActor::SendLearnedSpells()
+{
+  SendToUser(CreatePropertyMessage_(
+               this, "learnedSpells",
+               nlohmann::json(GetLearnedAndBaseSpells()).dump()),
+             true);
 }
 
 std::unique_ptr<const Appearance> MpActor::GetAppearance() const
