@@ -1,4 +1,4 @@
-import { Menu, MenuOpenEvent } from "skyrimPlatform";
+import { GlobalVariable, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
 import { showSystemNotification } from "./systemNotification";
@@ -18,8 +18,9 @@ const DAY_MS = 86400000;
 const DEFAULT_YEAR = 226;
 // About five real seconds
 const MAX_DRIFT_HOURS = 5 / 3600;
-// A Sunday, so floor(GameDaysPassed) % 7 is the real weekday (the engine counts Sundas as 0)
-const DAYS_PASSED_EPOCH = Date.UTC(2026, 0, 4) / DAY_MS;
+const MAX_DRIFT_DAYS = MAX_DRIFT_HOURS / 24;
+// 1 Jan 1970 was a Thursday, so this counts days from a Sunday midnight (the engine's Sundas is weekday 0)
+const SUNDAY_OFFSET_DAYS = 4;
 
 interface ServerClock {
   offsetMs: number;
@@ -65,7 +66,7 @@ export class TimeService extends ClientListener {
 
   // The template save carries its own calendar, so the first pass after a load replaces all of it
   private onLoadGame(): void {
-    this.rebaseDaysPassed = true;
+    this.weeks = undefined;
     this.nextSyncAt = 0;
     sendCustomPacket(this.controller, { customPacketType: "gameTimeRequest" });
   }
@@ -97,16 +98,22 @@ export class TimeService extends ClientListener {
     if (month.getValue() !== date.getUTCMonth()) month.setValue(date.getUTCMonth());
     if (year.getValue() !== this.clock.year) year.setValue(this.clock.year);
 
-    // Only ever raised so game-time timers never run backwards
-    const target = date.getTime() / DAY_MS - DAYS_PASSED_EPOCH;
-    if (this.rebaseDaysPassed || target - daysPassed.getValue() >= MAX_DRIFT_HOURS / 24) {
-      daysPassed.setValue(target);
-      this.rebaseDaysPassed = false;
-    }
+    this.syncDaysPassed(daysPassed, date);
+  }
+
+  // Whole weeks from a Sunday keep floor(GameDaysPassed) % 7 on the real weekday and the float32 value small
+  private syncDaysPassed(daysPassed: GlobalVariable, date: Date): void {
+    const days = date.getTime() / DAY_MS + SUNDAY_OFFSET_DAYS;
+    const current = daysPassed.getValue();
+    // Rebased per load to within a week above the template save's value, so a load never moves it back
+    if (this.weeks === undefined) this.weeks = Math.floor((days - current) / 7);
+    const target = days - 7 * this.weeks;
+    // Both ways, so training, jail or the DST fall back never leave it ahead
+    if (Math.abs(target - current) >= MAX_DRIFT_DAYS) daysPassed.setValue(target);
   }
 
   // Until the server answers, the client's own local clock stands in
   private clock: ServerClock = { offsetMs: 0, tzOffsetMin: new Date().getTimezoneOffset(), year: DEFAULT_YEAR, timeScale: 1 };
   private nextSyncAt = 0;
-  private rebaseDaysPassed = true;
+  private weeks: number | undefined;
 }
