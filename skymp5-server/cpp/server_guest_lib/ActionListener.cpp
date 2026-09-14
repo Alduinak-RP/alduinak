@@ -1664,9 +1664,11 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   if (!FireGamemodeEvent(partOne.worldState, caster->GetFormId(),
                          "onSpellCastAttempt",
                          nlohmann::json::array({ spellCastData.spell }))) {
-    spdlog::info("ActionListener::OnSpellCast - gamemode refused spell {:x} "
-                 "of {:x}",
-                 spellCastData.spell, caster->GetFormId());
+    if (!spellCastData.keepAlive) {
+      spdlog::info("ActionListener::OnSpellCast - gamemode refused spell {:x} "
+                   "of {:x}",
+                   spellCastData.spell, caster->GetFormId());
+    }
     return;
   }
 
