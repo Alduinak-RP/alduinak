@@ -23,6 +23,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "toggleMode", mode }
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
 //                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
+//                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
@@ -30,6 +31,7 @@ type Mp = any;
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
+//                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
 //                     { customPacketType: "adminActionResult", ok, text }
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
@@ -486,6 +488,17 @@ export class AdminSystem implements System {
       this.adminLog(`profile ${adminProfile} activated npc zone '${name}', ${placed} npc(s) placed`);
       this.reply(mp, userId, placed > 0, placed ? `Activated zone ${name}, ${placed} NPC(s) placed` : `Nothing placed in ${name}: every NPC is alive or the spawn failed (server log)`);
       this.sendZones(mp, userId, myActorId);
+      return;
+    }
+    if (action === "npcZonePos") {
+      try {
+        const loc = mp.get(myActorId, "locationalData");
+        const pos = (loc.pos as number[]).map(v => Math.round(v * 100) / 100);
+        mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminPos", cellOrWorldDesc: loc.cellOrWorldDesc, pos }));
+      } catch (e) {
+        this.log(`AdminSystem: npcZonePos by profile ${adminProfile} failed: ${e}`);
+        this.reply(mp, userId, false, "Position unavailable, see server log");
+      }
       return;
     }
     if (action === "npcZoneTp") {

@@ -205,7 +205,11 @@ sub-tabs:
   - **Delete** removes the entry from `NPC-Spawns.json` (single click, no
     confirmation) and despawns it.
 - **Add** takes Name, ID, X/Y/Z, Size, one NPC entry per line (`00023A99 4`),
-  Despawn and Respawn. The Add button stays disabled until Name, ID, NPC and
+  Despawn and Respawn. **Get current pos** fills ID and X/Y/Z with where the
+  server has the admin right now: the ID as the form desc of the worldspace
+  outdoors or the cell indoors (`3c:Skyrim.esm`), the same location the
+  zone check compares players against, and the position to two decimals.
+  The Add button stays disabled until Name, ID, NPC and
   all three coordinates are filled in and every number field holds a number
   (Size, Despawn and Respawn may be blank for the defaults). The server then
   validates exactly like a file load (unknown ID, non-`NPC_` base, duplicate
