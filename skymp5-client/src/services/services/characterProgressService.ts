@@ -26,23 +26,28 @@ const MAX_SEND = 200;
 const MAX_EFFECTS = 4;
 const PLAYER_FORM_ID = 0x14;
 const LIGHT_MOD_HIGH = 0xfe;
+const MARKER_SHOWN = 1;
+const MARKER_DISCOVERED = 2;
+
+// Desc to bits: MARKER_SHOWN and MARKER_DISCOVERED for markers, bit i for a known effect i of an ingredient
+type Masks = Record<string, number>;
 
 // Lives in sp.storage so a client hot reload keeps it; the seen sets span every character played since the last game load
 interface State {
   actorId: number;
-  markers: Record<string, true>;
-  ingredients: Record<string, number>;
-  pendingMarkers: string[];
-  pendingIngredients: Record<string, number>;
+  markers: Masks;
+  ingredients: Masks;
+  pendingMarkers: Masks;
+  pendingIngredients: Masks;
   // Engine state a character or the plugins already explain, so it is never recorded as a new discovery
-  seenMarkers: Record<string, true>;
-  seenIngredients: Record<string, number>;
+  seenMarkers: Masks;
+  seenIngredients: Masks;
   baselineDone: boolean;
 }
 
-// Server pairs of [desc, effect bitmask]
-const toMasks = (raw: unknown): Record<string, number> => {
-  const out: Record<string, number> = {};
+// Server pairs of [desc, bits]
+const toMasks = (raw: unknown): Masks => {
+  const out: Masks = {};
   if (Array.isArray(raw)) {
     raw.forEach((p) => {
       if (Array.isArray(p) && typeof p[0] === "string") out[p[0]] = Number(p[1]) >>> 0;
@@ -50,6 +55,32 @@ const toMasks = (raw: unknown): Record<string, number> => {
   }
   return out;
 };
+
+const addBits = (masks: Masks, desc: string, bits: number): void => {
+  masks[desc] = (masks[desc] || 0) | bits;
+};
+
+// Adds the bits `known` lacks to it, to `seen` and to `pending`; true when any bit was new
+const mergeMasks = (known: Masks, seen: Masks, pending: Masks | null, masks: Masks): boolean => {
+  let added = false;
+  for (const desc in masks) {
+    const bits = masks[desc] & ~(known[desc] || 0);
+    if (!bits) continue;
+    addBits(known, desc, bits);
+    addBits(seen, desc, bits);
+    if (pending) addBits(pending, desc, bits);
+    added = true;
+  }
+  return added;
+};
+
+// Removes up to MAX_SEND entries as [desc, bits] pairs
+const take = (pending: Masks): [string, number][] =>
+  Object.keys(pending).slice(0, MAX_SEND).map((desc) => {
+    const bits = pending[desc];
+    delete pending[desc];
+    return [desc, bits];
+  });
 
 export class CharacterProgressService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -89,7 +120,7 @@ export class CharacterProgressService extends ClientListener {
   private get state(): State {
     let s = this.sp.storage[STORAGE_KEY] as State | undefined;
     if (!s || typeof s !== "object") {
-      s = { actorId: 0, markers: {}, ingredients: {}, pendingMarkers: [], pendingIngredients: {}, seenMarkers: {}, seenIngredients: {}, baselineDone: false };
+      s = { actorId: 0, markers: {}, ingredients: {}, pendingMarkers: {}, pendingIngredients: {}, seenMarkers: {}, seenIngredients: {}, baselineDone: false };
       this.sp.storage[STORAGE_KEY] = s;
     }
     return s;
@@ -129,16 +160,16 @@ export class CharacterProgressService extends ClientListener {
     if (!actorId || actorId !== this.remoteId()) return;
     const s = this.state;
     // A reconnect of the same character resends whatever the server never got
-    const prev = s.actorId === actorId ? { markers: Object.keys(s.markers), masks: s.ingredients } : null;
+    const prev = s.actorId === actorId ? { markers: s.markers, ingredients: s.ingredients } : null;
     s.actorId = actorId;
     s.markers = {};
     s.ingredients = {};
-    s.pendingMarkers = [];
+    s.pendingMarkers = {};
     s.pendingIngredients = {};
-    this.learn(Array.isArray(content.markers) ? content.markers : [], toMasks(content.ingredients), false);
-    if (prev) this.learn(prev.markers, prev.masks, true);
+    this.learn(toMasks(content.markers), toMasks(content.ingredients), false);
+    if (prev) this.learn(prev.markers, prev.ingredients, true);
     const legacy = this.legacyEntry(actorId);
-    if (legacy) this.learn(legacy.markers, legacy.masks, true);
+    if (legacy) this.learn(legacy.markers, legacy.ingredients, true);
     this.awaiting = false;
     this.scanSoon();
     this.ingrPollAt = 0;
@@ -187,42 +218,25 @@ export class CharacterProgressService extends ClientListener {
   }
 
   // Adds to the current character's sets; pending ones also go to the server
-  private learn(markers: unknown[], masks: Record<string, number>, pending: boolean): void {
+  private learn(markers: Masks, ingredients: Masks, pending: boolean): void {
     const s = this.state;
-    let added = false;
-    markers.forEach((desc) => {
-      if (typeof desc !== "string" || s.markers[desc]) return;
-      s.markers[desc] = s.seenMarkers[desc] = true;
-      if (pending) s.pendingMarkers.push(desc);
-      added = true;
-    });
-    for (const desc in masks) {
-      const bits = masks[desc] & ~(s.ingredients[desc] || 0);
-      if (!bits) continue;
-      s.ingredients[desc] = (s.ingredients[desc] || 0) | bits;
-      s.seenIngredients[desc] = (s.seenIngredients[desc] || 0) | bits;
-      if (pending) s.pendingIngredients[desc] = (s.pendingIngredients[desc] || 0) | bits;
-      added = true;
-    }
-    if (pending && added && !this.sendAt) this.sendAt = Date.now() + SEND_DEBOUNCE_MS;
+    const newMarkers = mergeMasks(s.markers, s.seenMarkers, pending ? s.pendingMarkers : null, markers);
+    const newIngredients = mergeMasks(s.ingredients, s.seenIngredients, pending ? s.pendingIngredients : null, ingredients);
+    if (pending && (newMarkers || newIngredients) && !this.sendAt) this.sendAt = Date.now() + SEND_DEBOUNCE_MS;
   }
 
   private send(): void {
     const s = this.state;
     this.sendAt = 0;
     if (!s.actorId) return;
-    const markers = s.pendingMarkers.splice(0, MAX_SEND);
-    const ingredients = Object.keys(s.pendingIngredients).slice(0, MAX_SEND).map((desc) => {
-      const mask = s.pendingIngredients[desc];
-      delete s.pendingIngredients[desc];
-      return [desc, mask];
-    });
+    const markers = take(s.pendingMarkers);
+    const ingredients = take(s.pendingIngredients);
     if (!markers.length && !ingredients.length) return;
     sendCustomPacket(this.controller, { customPacketType: "knowledgeAdd", actorId: s.actorId, markers, ingredients });
-    if (s.pendingMarkers.length || Object.keys(s.pendingIngredients).length) this.sendAt = Date.now() + SEND_DEBOUNCE_MS;
+    if (Object.keys(s.pendingMarkers).length || Object.keys(s.pendingIngredients).length) this.sendAt = Date.now() + SEND_DEBOUNCE_MS;
   }
 
-  // One pass re-shows every known marker the engine lost and records newly visible ones; the session's first pass is the baseline
+  // One pass re-applies every known marker flag the engine lost and records new ones; the first pass after a load is the baseline
   private scanMarkers(now: number): void {
     const s = this.state;
     if (this.scanCursor >= MAP_MARKER_REFS.length) {
@@ -237,14 +251,16 @@ export class CharacterProgressService extends ClientListener {
       try {
         const ref = this.sp.ObjectReference.from(this.formFromDesc(desc));
         if (!ref) continue;
-        const visible = ref.isMapMarkerVisible();
-        if (s.markers[desc]) {
-          if (!visible) ref.addToMap(true);
-          s.seenMarkers[desc] = true;
-        } else if (visible && !s.seenMarkers[desc]) {
-          if (s.baselineDone) this.learn([desc], {}, true);
-          else s.seenMarkers[desc] = true;
-        }
+        const engine = ref.isMapMarkerVisible() ? MARKER_SHOWN | (ref.canFastTravelToMarker() ? MARKER_DISCOVERED : 0) : 0;
+        const known = s.markers[desc] || 0;
+        const missing = known & ~engine;
+        // Revealed markers stay undiscovered, so a first visit still discovers them
+        if (missing) ref.addToMap((missing & MARKER_DISCOVERED) !== 0);
+        if (known) addBits(s.seenMarkers, desc, known);
+        const fresh = engine & ~(s.seenMarkers[desc] || 0);
+        if (!fresh) continue;
+        if (s.baselineDone) this.learn({ [desc]: fresh }, {}, true);
+        else addBits(s.seenMarkers, desc, fresh);
       } catch (err) { /* form not loaded on this client */ }
     }
     if (this.scanCursor >= MAP_MARKER_REFS.length) s.baselineDone = true;
@@ -297,7 +313,7 @@ export class CharacterProgressService extends ClientListener {
         }
       }
       if (known) s.seenIngredients[desc] = seen | known;
-      if (learned) this.learn([], { [desc]: learned }, true);
+      if (learned) this.learn({}, { [desc]: learned }, true);
     } catch (err) { /* form not loaded on this client */ }
   }
 
@@ -328,19 +344,22 @@ export class CharacterProgressService extends ClientListener {
   }
 
   // The previous client's local save for this character, merged on login so nothing it kept is lost
-  private legacyEntry(actorId: number): { markers: unknown[]; masks: Record<string, number> } | null {
+  private legacyEntry(actorId: number): { markers: Masks; ingredients: Masks } | null {
     try {
       const cfg = this.sp.settings["skymp5-client"] || {};
       // @ts-expect-error (TODO: Remove in 2.10.0)
       const data = this.sp.getPluginSourceCode(LEGACY_PLUGIN_NAME, "PluginsNoLoad");
       const entry = data ? JSON.parse(data.slice(2)).characters[`${cfg["server-ip"]}:${cfg["server-port"]}/${actorId.toString(16)}`] : null;
       if (!entry) return null;
-      const masks: Record<string, number> = {};
+      // The old file kept every visible marker without telling whether it was visited
+      const markers: Masks = {};
+      if (Array.isArray(entry.markers)) entry.markers.forEach((desc: unknown) => { if (typeof desc === "string") markers[desc] = MARKER_SHOWN; });
+      const ingredients: Masks = {};
       for (const desc in entry.ingredients || {}) {
         const flags = entry.ingredients[desc];
-        if (Array.isArray(flags)) masks[desc] = flags.reduce((m: number, f: unknown, i: number) => (f === true && i < MAX_EFFECTS ? m | (1 << i) : m), 0);
+        if (Array.isArray(flags)) ingredients[desc] = flags.reduce((m: number, f: unknown, i: number) => (f === true && i < MAX_EFFECTS ? m | (1 << i) : m), 0);
       }
-      return { markers: Array.isArray(entry.markers) ? entry.markers : [], masks };
+      return { markers, ingredients };
     } catch (err) {
       return null;
     }

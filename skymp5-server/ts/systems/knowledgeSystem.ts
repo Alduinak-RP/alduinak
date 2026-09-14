@@ -5,34 +5,34 @@ import { hex } from "./actorUtil";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Per-character discovered map markers and learned ingredient effects; the client's CharacterProgressService captures and replays them.
+// Per-character map markers and learned ingredient effects; the client's CharacterProgressService captures and replays them.
 //
 //   Client -> Server: { customPacketType: "knowledgeRequest" }
-//                     { customPacketType: "knowledgeAdd", actorId, markers: [desc], ingredients: [[desc, effectMask]] }
-//   Server -> Client: { customPacketType: "knowledgeState", actorId, markers: [desc], ingredients: [[desc, effectMask]] }
+//                     { customPacketType: "knowledgeAdd", actorId, markers: [[desc, flags]], ingredients: [[desc, effectMask]] }
+//   Server -> Client: { customPacketType: "knowledgeState", actorId, markers: [[desc, flags]], ingredients: [[desc, effectMask]] }
 //
-// Stored as "hex:Plugin" descs so a load order change never points a saved id at another form.
+// Marker flags: 1 shown on the map, 2 discovered. Stored as "hex:Plugin" descs so a load order change never points a saved id at another form.
 
-const MARKERS_PROP = "private.knownMarkers";
-const INGREDIENTS_PROP = "private.knownIngredients";
 // Skyrim.esm MapMarker STAT, the base of every map marker REFR
 const MAP_MARKER_BASE = 0x10;
-const MAX_MARKERS = 2000;
-const MAX_INGREDIENTS = 1000;
+const MARKER_FLAG_BITS = 2;
 const MAX_ITEMS_PER_PACKET = 256;
 const MAX_DESC_LENGTH = 128;
 const MAX_EFFECTS = 4;
 const MAX_CACHED_VERDICTS = 20000;
 const REQUEST_COOLDOWN_MS = 1000;
 
+type Kind = "marker" | "ingredient";
+type Pairs = [string, number][];
+
+const STORES: Record<Kind, { prop: string; max: number }> = {
+  marker: { prop: "private.knownMarkers", max: 2000 },
+  ingredient: { prop: "private.knownIngredients", max: 1000 },
+};
+
 interface Resolved {
   desc: string;
-  effects: number;
-}
-
-interface Knowledge {
-  markers: string[];
-  ingredients: [string, number][];
+  bits: number;
 }
 
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v.slice(0, MAX_ITEMS_PER_PACKET) : []);
@@ -60,7 +60,7 @@ export class KnowledgeSystem implements System {
       const now = Date.now();
       if (now - (this.lastRequest.get(userId) ?? 0) < REQUEST_COOLDOWN_MS) return;
       this.lastRequest.set(userId, now);
-      const state = this.read(mp, actorId);
+      const state = { markers: this.read(mp, actorId, "marker"), ingredients: this.read(mp, actorId, "ingredient") };
       mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "knowledgeState", actorId, ...state }));
       return;
     }
@@ -68,62 +68,49 @@ export class KnowledgeSystem implements System {
     // A flush right after a character switch still names the previous character of the same profile
     const target = Number(content.actorId) >>> 0;
     if (target !== actorId && !this.sameProfile(mp, actorId, target)) return;
-    this.add(mp, target, content);
+    const markers = this.merge(mp, target, "marker", content.markers);
+    const ingredients = this.merge(mp, target, "ingredient", content.ingredients);
+    if (markers || ingredients) this.log(`KnowledgeSystem: ${hex(target)} +${markers} marker update(s), +${ingredients} ingredient update(s)`);
   }
 
-  private add(mp: Mp, actorId: number, content: Content): void {
-    const state = this.read(mp, actorId);
-    const markers = new Set(state.markers);
-    const masks = new Map(state.ingredients);
-    let newMarkers = 0;
-    let newEffects = 0;
-
-    for (const raw of list(content.markers)) {
-      if (markers.size >= MAX_MARKERS) break;
-      const r = this.resolve(mp, "marker", raw);
-      if (!r || markers.has(r.desc)) continue;
-      markers.add(r.desc);
-      newMarkers++;
-    }
-
-    for (const pair of list(content.ingredients)) {
+  // Merges the new bits of every valid [desc, bits] pair into the stored field; returns how many entries changed
+  private merge(mp: Mp, actorId: number, kind: Kind, raw: unknown): number {
+    const valid: Pairs = [];
+    for (const pair of list(raw)) {
       if (!Array.isArray(pair)) continue;
-      const r = this.resolve(mp, "ingredient", pair[0]);
-      if (!r) continue;
-      const old = masks.get(r.desc) ?? 0;
-      const bits = (Number(pair[1]) >>> 0) & ((1 << r.effects) - 1) & ~old;
-      if (!bits || (!old && masks.size >= MAX_INGREDIENTS)) continue;
-      masks.set(r.desc, old | bits);
-      newEffects++;
+      const r = this.resolve(mp, kind, pair[0]);
+      const bits = r ? (Number(pair[1]) >>> 0) & ((1 << r.bits) - 1) : 0;
+      if (r && bits) valid.push([r.desc, bits]);
     }
+    if (!valid.length) return 0;
 
+    const { prop, max } = STORES[kind];
+    const masks = new Map(this.read(mp, actorId, kind));
+    let changed = 0;
+    for (const [desc, bits] of valid) {
+      const old = masks.get(desc) ?? 0;
+      if (!(bits & ~old) || (!old && masks.size >= max)) continue;
+      masks.set(desc, old | bits);
+      changed++;
+    }
+    if (!changed) return 0;
     try {
-      if (newMarkers) mp.set(actorId, MARKERS_PROP, Array.from(markers));
-      if (newEffects) mp.set(actorId, INGREDIENTS_PROP, Array.from(masks));
+      mp.set(actorId, prop, Array.from(masks));
     } catch (e) {
       this.log(`KnowledgeSystem: write failed for ${hex(actorId)}: ${e}`);
-      return;
+      return 0;
     }
-    if (newMarkers || newEffects) this.log(`KnowledgeSystem: ${hex(actorId)} +${newMarkers} marker(s), +${newEffects} ingredient update(s)`);
+    return changed;
   }
 
-  private read(mp: Mp, actorId: number): Knowledge {
-    let markers: unknown;
-    let ingredients: unknown;
-    try {
-      markers = mp.get(actorId, MARKERS_PROP);
-      ingredients = mp.get(actorId, INGREDIENTS_PROP);
-    } catch { }
-    return {
-      markers: Array.isArray(markers) ? markers.filter((d) => typeof d === "string") : [],
-      ingredients: Array.isArray(ingredients)
-        ? ingredients.filter((p) => Array.isArray(p) && typeof p[0] === "string" && Number.isInteger(p[1]))
-        : [],
-    };
+  private read(mp: Mp, actorId: number, kind: Kind): Pairs {
+    let v: unknown;
+    try { v = mp.get(actorId, STORES[kind].prop); } catch { }
+    return Array.isArray(v) ? v.filter((p) => Array.isArray(p) && typeof p[0] === "string" && Number.isInteger(p[1])) : [];
   }
 
-  // Canonical desc of a real map marker REFR or ingredient, with the ingredient's effect count
-  private resolve(mp: Mp, kind: "marker" | "ingredient", raw: unknown): Resolved | null {
+  // Canonical desc of a real map marker REFR or ingredient, with the number of flag bits it can carry
+  private resolve(mp: Mp, kind: Kind, raw: unknown): Resolved | null {
     if (typeof raw !== "string" || raw.length > MAX_DESC_LENGTH || raw.indexOf(":") <= 0) return null;
     const key = kind + "|" + raw;
     const hit = this.verdicts.get(key);
@@ -132,11 +119,11 @@ export class KnowledgeSystem implements System {
     try {
       const id = mp.getIdFromDesc(raw) >>> 0;
       if (kind === "marker") {
-        if (espmRefrFieldId(mp, id, "NAME") === MAP_MARKER_BASE) res = { desc: mp.getDescFromId(id), effects: 0 };
+        if (espmRefrFieldId(mp, id, "NAME") === MAP_MARKER_BASE) res = { desc: mp.getDescFromId(id), bits: MARKER_FLAG_BITS };
       } else {
         const rec = mp.lookupEspmRecordById(id);
         const effects = Math.min(MAX_EFFECTS, espmFieldFormIds(rec, "EFID").length);
-        if (rec?.record?.type === "INGR" && effects) res = { desc: mp.getDescFromId(id), effects };
+        if (rec?.record?.type === "INGR" && effects) res = { desc: mp.getDescFromId(id), bits: effects };
       }
     } catch { /* plugin not loaded or not an espm record */ }
     if (this.verdicts.size < MAX_CACHED_VERDICTS) this.verdicts.set(key, res);
