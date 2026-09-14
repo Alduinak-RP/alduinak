@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
+import { addItemTo } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -386,9 +387,7 @@ export class GatheringSystem implements System {
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   private addItem(ctx: SystemContext, actorId: number, itemId: number, count: number): void {
-    const mp = ctx.svr as Mp;
-    const self = { type: "form", desc: mp.getDescFromId(actorId) };
-    mp.callPapyrusFunction("method", "ObjectReference", "AddItem", self, [{ type: "espm", desc: mp.getDescFromId(itemId) }, count, false]);
+    addItemTo(ctx.svr as Mp, actorId, itemId, count);
   }
 
   // Seats the player through the engine's own furniture path, which also records the occupant.

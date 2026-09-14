@@ -336,29 +336,45 @@ The name of a localizaiton file in `data/localization` that would be used by `M.
 
 ## enableConsoleCommandsForAll
 
-Enable console commands for all, useful for testing.
+Lets every player run the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete` and `mp`), whatever their character's console flag says. Keep it off, which is the default. These server console commands are disabled for everyone on this server, admins included, and AdminSystem logs a warning at boot when this key is on. Admins spawn items with the Item Spawner (see Admin roles) instead. Local game console commands (`tgm`, `tcl`, `coc`, `tfc`, `player.setav` and the like) never reach the server, so they still run on every client.
 
 ```json5
 {
   // ...
-  "enableConsoleCommandsForAll": true
+  "enableConsoleCommandsForAll": false
   // ...
 }
 ```
 
 ## Admin roles
 
-In-game admins get the server console, the admin chat channel and the admin panel (Insert key: player roster, teleport, summon, kick, ban, admin modes, and an NPCs tab to list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`). Every player also gets the panel's Debug tab on Insert: account and character name, server-side FormID, server name, position, cell id and name, heading, crosshair target distance (activatable references only), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start; the admin tabs only appear once the server confirms the tier. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`. Keep `enableConsoleCommandsForAll` off on a live server so only admins get the console.
+Every player opens the Personal Menu with the interact key (X by default) while looking at nothing, a world NPC or anything else that is not a player, door or container. It has four tabs, in this order:
 
-| Tier | Powers |
-|---|---|
-| `senior` | everything, including Ban |
-| `developer` | everything, including Ban (same as senior) |
-| `gm` | everything except Ban |
+- **Admin**, shown only once the server confirms the player's admin tier, with the sub-tabs:
+  - Players: roster, teleport to, summon, kick, ban, mastery grant and reset;
+  - Teleport: named locations and map markers;
+  - Modes: God, NoClip, Invisible, Ghost, Freecam, Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
+  - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`;
+  - Item Spawner, see below.
+- **Faction**: a work-in-progress placeholder.
+- **Skills**: the mastery (craft) menu.
+- **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, crosshair target distance (activatable references only), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
+
+Admins also get the admin chat channel. Nobody gets the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete`, `mp`), admins included: AdminSystem clears `consoleCommandsAllowed` whenever a character is assigned, so keep `enableConsoleCommandsForAll` off. Local game console commands still run on every client. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`.
+
+Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, and the server refuses every request the tier lacks the cap for, with an admin.log line.
+
+| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `ban` |
+|---|---|---|---|---|---|---|
+| `senior` | yes | yes | yes | yes | yes | yes |
+| `developer` | yes | yes | yes | yes | yes | yes |
+| `gm` | yes | yes | yes | yes | yes | no |
+
+`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab and `items` the Item Spawner. `ban` is the Ban button, which also needs `players`. `adminTierCaps` changes the defaults per tier.
 
 Precedence when a player holds roles from several tiers: `senior` > `developer` > `gm`. The tier lists are checked before the legacy `adminRoleIds` list, so a role listed under `adminRoles.gm` resolves to `gm` even if it is also in `adminRoleIds`. Housing claim overrides accept every tier.
 
-Discord roles are fetched once at login (`discordAuth`) and stored on the character, so a role change on Discord only takes effect after the player relogs. The tier is re-evaluated on every admin panel request; console rights are set when the character is assigned.
+Discord roles are fetched once at login (`discordAuth`) and stored on the character, so a role change on Discord only takes effect after the player relogs. The tier and its caps are re-evaluated on every Personal Menu request.
 
 ### adminRoles
 
@@ -400,9 +416,33 @@ Master-api profile ids (numbers) that are always `senior`, regardless of Discord
 }
 ```
 
+### adminTierCaps
+
+Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `ban` for `gm`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items` and `ban` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
+
+```json5
+{
+  // ...
+  "adminTierCaps": {
+    "gm": { "items": false, "npcs": false }
+  }
+  // ...
+}
+```
+
+### Item Spawner
+
+The Admin tab's Item Spawner searches every weapon, armor, ammo, potion, ingredient, book, misc item, key, scroll, soul gem and carryable light of the server load order. The last override of each record wins; deleted records and non-playable armor are left out. The list is built in the background the first time an admin with the `items` cap opens the Personal Menu, which logs `AdminSystem: item catalog N item(s) in X ms`. Names of localized plugins come from `Data/Strings` or `Skyrim - Interface.bsa`, and fall back to the editor id.
+
+A spawn gives 1 to 1000 of the chosen item to the admin or to any online player, at most once per 250 ms. Every spawn is written to the server log, admin.log and the staff channel:
+
+```
+profile 12 (gm) spawned 5x "Iron Sword" [12eb7:Skyrim.esm WEAP] for "Hrolf" (profile 34)
+```
+
 ### adminTeleportLocations
 
-Named destinations offered in the admin panel's Teleport tab. `cellOrWorldDesc` uses the same `"<localFormId>:<file>"` form as spawn zones; `rot` is optional, and so is `kind` (a label shown next to the name and matched by the search). Entries with a bad desc are dropped at boot with a log line.
+Named destinations offered in the Teleport sub-tab of the Personal Menu's Admin tab. `cellOrWorldDesc` uses the same `"<localFormId>:<file>"` form as spawn zones; `rot` is optional, and so is `kind` (a label shown next to the name and matched by the search). Entries with a bad desc are dropped at boot with a log line.
 
 The tab also lists every city, town, settlement, fort, civil war camp, orc stronghold and hold castle map marker of the load order, from `skymp5-server/ts/systems/adminMapMarkers.ts`. That file is generated by `python misc/gen-map-marker-teleports.py` (rerun it after a load order change, then Build server); a configured entry wins over a marker of the same name.
 
