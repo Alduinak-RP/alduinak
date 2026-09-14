@@ -48,7 +48,7 @@ const ADMIN_MODES: Array<{ id: string; label: string }> = [
 ];
 
 // Modes mirrored onto the neighbors-visible ff_adminModes actor property (registered in gamemode.js)
-const MIRRORED_MODES = ["god", "smite", "healhit", "invis"];
+const MIRRORED_MODES = ["god", "smite", "healhit", "invis", "ghost"];
 
 interface TeleportLocation {
   name: string;
@@ -88,7 +88,7 @@ export class AdminSystem implements System {
       }
     }
 
-    this.installGodModeHook(ctx.svr as Mp);
+    this.installHitRefusalHook(ctx.svr as Mp);
 
     // Console rights and admin modes follow the admin check on every actor assignment
     ctx.gm.on("userAssignActor", (userId: number) => {
@@ -542,10 +542,10 @@ export class AdminSystem implements System {
   }
 
   // C++ fires onHitDamageAttempt before applying weapon and spell damage; returning false refuses it
-  private installGodModeHook(mp: Mp): void {
+  private installHitRefusalHook(mp: Mp): void {
     const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
     mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      if (this.hasMode(mp, targetId, "god")) return false;
+      if (this.hasMode(mp, targetId, "god") || this.hasMode(mp, targetId, "ghost")) return false;
       if (!previous) return true;
       try {
         return previous.call(mp, aggressorId, targetId, sourceId, damage) !== false;
