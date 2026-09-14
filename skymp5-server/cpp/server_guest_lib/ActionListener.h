@@ -96,7 +96,10 @@ private:
   struct RestorationChannel
   {
     uint32_t spellId = 0;
+    // An aimed channel heals whoever its hits land on, 0 until the first hit
     uint32_t targetId = 0;
+    bool aimed = false;
+    std::chrono::steady_clock::time_point lastHitAt;
     std::vector<espm::Effects::Effect> effects;
     bool hasSweetpie = false;
     uint32_t ticks = 0;
