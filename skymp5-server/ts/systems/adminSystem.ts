@@ -24,7 +24,7 @@ type Mp = any;
 //                     { customPacketType: "adminMenuRequest" }
 //                     { customPacketType: "npcZonesRequest" }
 //                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
-//                     { customPacketType: "adminAction", action: "toggleMode", mode }
+//                     { customPacketType: "adminAction", action: "toggleMode", mode, on? }  on: the client reports a mode it already left, recorded without an echo
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
 //                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
 //                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
@@ -36,7 +36,7 @@ type Mp = any;
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
-//                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed is sent off there and on respawn
+//                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
 //                     { customPacketType: "adminItems", query, kind, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
@@ -58,11 +58,14 @@ const ADMIN_MODES: Array<{ id: string; label: string }> = [
   { id: "freecam", label: "Freecam" },
   { id: "smite", label: "Smite" },
   { id: "healhit", label: "Heal on Hit" },
-  { id: "speed", label: "Speed" }, // the client raises SpeedMult; ends on respawn and at every actor assign
+  { id: "speed", label: "Speed" }, // the client raises SpeedMult
 ];
 
 // Modes mirrored onto the neighbors-visible ff_adminModes actor property (registered in gamemode.js)
 const MIRRORED_MODES = ["god", "smite", "healhit", "invis", "ghost"];
+
+// Modes that end on respawn and at every actor assign; the off packet makes the client undo them
+const SESSION_MODES = ["speed", "freecam"];
 
 interface TeleportLocation {
   name: string;
@@ -397,7 +400,7 @@ export class AdminSystem implements System {
     const action = String(content["action"] ?? "");
 
     if (action === "toggleMode") {
-      this.toggleMode(mp, userId, myActorId, adminProfile, String(content["mode"] ?? ""));
+      this.toggleMode(mp, userId, myActorId, adminProfile, String(content["mode"] ?? ""), content["on"]);
       return;
     }
     if (action.startsWith("npcZone")) {
@@ -643,18 +646,18 @@ export class AdminSystem implements System {
     this.reply(mp, userId, false, `Unknown action '${action}'`);
   }
 
-  private toggleMode(mp: Mp, userId: number, actorId: number, adminProfile: number, mode: string): void {
+  private toggleMode(mp: Mp, userId: number, actorId: number, adminProfile: number, mode: string, reported: unknown): void {
     if (!ADMIN_MODES.some(m => m.id === mode)) {
       this.reply(mp, userId, false, `Unknown mode '${mode}'`);
       return;
     }
     const state = this.modesByProfile.get(adminProfile) ?? {};
-    state[mode] = !state[mode];
+    state[mode] = typeof reported === "boolean" ? reported : !state[mode];
     this.modesByProfile.set(adminProfile, state);
     const on = !!state[mode];
     if (MIRRORED_MODES.includes(mode)) this.writeModeMirror(mp, actorId, state);
-    this.sendMode(mp, userId, mode, on);
-    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}`);
+    if (typeof reported !== "boolean") this.sendMode(mp, userId, mode, on);
+    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}${typeof reported === "boolean" ? " (client report)" : ""}`);
   }
 
   // Registration lives in gamemode.js; a missing property must not break the toggle
@@ -681,14 +684,10 @@ export class AdminSystem implements System {
   // Modes live in memory per profile but the mirror persists on the actor; re-push them on assign and clear a stale mirror
   private resyncModes(mp: Mp, userId: number, actorId: number, isAdmin: boolean): void {
     const profileId = this.profileOf(mp, actorId);
-    // A character switch keeps the connection, so only this off packet makes the client restore its SpeedMult
-    if (this.modesByProfile.get(profileId)?.speed) {
-      this.sendMode(mp, userId, "speed", false);
-      this.log(`AdminSystem: profile ${profileId} mode speed off on actor assign`);
-    }
+    // A character switch keeps the connection, so only these off packets make the client undo speed and freecam
+    this.endSessionModes(mp, userId, profileId, "actor assign");
     if (!isAdmin) this.modesByProfile.delete(profileId);
     const state = this.modesByProfile.get(profileId) ?? {};
-    delete state.speed;
     let mirror: Record<string, unknown> | null = null;
     try { mirror = mp.get(actorId, "ff_adminModes") ?? null; } catch { }
     if (MIRRORED_MODES.some(m => !!mirror?.[m] !== !!state[m])) this.writeModeMirror(mp, actorId, state);
@@ -711,26 +710,28 @@ export class AdminSystem implements System {
     };
   }
 
-  // The off packet makes the client restore the SpeedMult it had before speed mode
   private installRespawnHook(mp: Mp): void {
     const previous = typeof mp.onRespawn === "function" ? mp.onRespawn : null;
     mp.onRespawn = (...args: unknown[]) => {
       const result = previous ? previous.apply(mp, args) : undefined;
       try {
         const actorId = Number(args[0]) >>> 0;
-        const profileId = this.profileOf(mp, actorId);
-        const state = this.modesByProfile.get(profileId);
-        if (state?.speed) {
-          state.speed = false;
-          const userId = userOf(mp, actorId);
-          if (userId >= 0) this.sendMode(mp, userId, "speed", false);
-          this.log(`AdminSystem: profile ${profileId} mode speed off on respawn`);
-        }
+        this.endSessionModes(mp, userOf(mp, actorId), this.profileOf(mp, actorId), "respawn");
       } catch (e) {
-        this.log(`AdminSystem: speed reset on respawn failed: ${e}`);
+        this.log(`AdminSystem: mode reset on respawn failed: ${e}`);
       }
       return result;
     };
+  }
+
+  private endSessionModes(mp: Mp, userId: number, profileId: number, reason: string): void {
+    const state = this.modesByProfile.get(profileId);
+    for (const mode of SESSION_MODES) {
+      if (!state?.[mode]) continue;
+      delete state[mode];
+      if (userId >= 0) this.sendMode(mp, userId, mode, false);
+      this.log(`AdminSystem: profile ${profileId} mode ${mode} off on ${reason}`);
+    }
   }
 
   private hasMode(mp: Mp, actorId: number, mode: string): boolean {
