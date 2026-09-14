@@ -130,6 +130,7 @@ export class HousingService extends ClientListener {
     }
     targetLabel = (ref.getName() || "Property").trim() || "Property";
     logTrace(this, `Requesting property info for`, targetLabel, `(${this.target})`);
+    this.awaitingTarget = this.target;
     sendCustomPacket(this.controller, { customPacketType: "propertyInfoRequest", target: this.target });
   }
 
@@ -145,15 +146,20 @@ export class HousingService extends ClientListener {
 
     switch (content["customPacketType"]) {
       case "propertyMenu": {
+        const target = Number(content["target"]) || this.target;
+        const requested = target === this.awaitingTarget;
+        if (requested) this.awaitingTarget = 0;
+        // Only a refresh of the open menu or the reply to the last request shows, never over a screen that took focus meanwhile
+        if (!this.menuOpen && (!requested || this.sp.browser.isFocused())) break;
         const view = content["view"];
         const owned = content["owned"] === true;
         if (view === 'denied' && !owned) {
           if (this.menuOpen) this.closeMenu();
-          if (this.pendingRecipient === null) notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
+          notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
           break;
         }
         info = {
-          target: Number(content["target"]) || this.target,
+          target,
           view: view === 'owner' || view === 'manager' || view === 'keyholder' || view === 'claimable' ? view : 'denied',
           owned,
           name: typeof content["name"] === "string" ? content["name"] as string : null,
@@ -164,8 +170,7 @@ export class HousingService extends ClientListener {
           canGrantContainers: content["canGrantContainers"] === true,
           ownerName: typeof content["ownerName"] === "string" ? content["ownerName"] as string : null,
         };
-        // A pending recipient pick owns the screen; a late reply must not reopen.
-        if (this.pendingRecipient === null) this.openMenu();
+        this.openMenu();
         break;
       }
       case "propertyNotice":
@@ -263,5 +268,6 @@ export class HousingService extends ClientListener {
 
   private menuOpen = false;
   private target = 0;
+  private awaitingTarget = 0;
   private pendingRecipient: { action: string; target: number; expiresAt: number } | null = null;
 }
