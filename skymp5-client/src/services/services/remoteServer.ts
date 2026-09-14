@@ -283,7 +283,7 @@ export class RemoteServer extends ClientListener {
     }
   }
 
-  // The server refunds a potion drunk within 10 s of the last one and blocks its effects
+  // The server refunds a potion or food within 10 s of the last one of its kind and blocks its effects
   private onPotionRefused(event: ConnectionMessage<CustomPacketMessage>): void {
     const content = parseCustomPacket(event);
     if (!content || content["customPacketType"] !== "potionRefused") {
@@ -292,6 +292,7 @@ export class RemoteServer extends ClientListener {
     const baseId = Number(content["baseId"]);
     const acceptedBaseId = Number(content["acceptedBaseId"]);
     const acceptedSecondsAgo = Number(content["acceptedSecondsAgo"]);
+    const isFood = content["isFood"] === true;
     this.controller.once("update", () => {
       const player = Game.getPlayer();
       const potion = Game.getFormEx(baseId);
@@ -313,7 +314,7 @@ export class RemoteServer extends ClientListener {
         // A repeat of the accepted potion refreshed its effects, so roll them back to the first drink
         natives.agePotionEffects?.(player.getFormID(), baseId, acceptedSecondsAgo);
       }
-      Debug.notification("You must wait before drinking another potion.");
+      Debug.notification(isFood ? "You must wait before having more food or drink." : "You must wait before drinking another potion.");
     });
   }
 
