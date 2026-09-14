@@ -7,6 +7,7 @@ import { AdminMenuService } from "./adminMenuService";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
+import { RemoteServer } from "./remoteServer";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -14,6 +15,10 @@ declare const window: any;
 const WIDGET_ID = 10;
 const PLAYER_FORM_ID = 0x14;
 const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
+
+// Server-spawned NPCs share the dynamic id space; only player characters carry an appearance
+export const isPlayerCharacterId = (controller: CombinedController, remoteId: number): boolean =>
+  remoteId >= FIRST_DYNAMIC_REMOTE_ID && !!controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId)?.appearance;
 
 interface PlayerAction {
   id: string;
@@ -92,7 +97,7 @@ export class PlayerActionService extends ClientListener {
     const ref = this.sp.Game.getCurrentCrosshairRef();
     const actor = ref && ref.getFormID() !== PLAYER_FORM_ID ? Actor.from(ref) : null;
     const remoteId = ref && actor ? localIdToRemoteId(ref.getFormID()) : 0;
-    if (ref && actor && remoteId >= FIRST_DYNAMIC_REMOTE_ID) {
+    if (ref && actor && (actor.isDead() ? remoteId >= FIRST_DYNAMIC_REMOTE_ID : isPlayerCharacterId(this.controller, remoteId))) {
       this.interactWithPlayer(ref, actor, remoteId);
       return;
     }

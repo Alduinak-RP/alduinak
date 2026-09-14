@@ -5,6 +5,7 @@ import { Actor, CrosshairRefChangedEvent, Form, FormType, ObjectReference } from
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
+import { isPlayerCharacterId } from "./playerActionService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -147,9 +148,8 @@ export class InteractionPromptService extends ClientListener {
     if (ref.getFormID() === 0x14) return null;
     const dead = Actor.from(ref)?.isDead() === true;
     const remoteId = localIdToRemoteId(ref.getFormID());
-    // Server-created characters live in the dynamic id space; everything
-    // below it is a world NPC that keeps its vanilla activation.
-    if (!remoteId || remoteId < 0xff000000) {
+    // Player characters and server-side bodies are ours; world and server-spawned NPCs keep their vanilla activation
+    if (!remoteId || remoteId < 0xff000000 || (!dead && !isPlayerCharacterId(this.controller, remoteId))) {
       // Local-only bodies have activation blocked by WorldCleanerService
       if (dead) return null;
       const name = (ref.getDisplayName() || "").trim();
