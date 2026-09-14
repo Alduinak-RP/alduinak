@@ -429,6 +429,13 @@ $admin-row-gutter: 16px;
     min-height: 100px;
     color: $admin-gold-dim;
     font-style: italic;
+
+    // Faction tab stand-in
+    &--placeholder {
+      min-height: 240px;
+      padding: 0 40px;
+      text-align: center;
+    }
   }
 
   &__modes {
