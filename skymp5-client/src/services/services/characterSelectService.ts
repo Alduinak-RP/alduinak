@@ -274,7 +274,7 @@ export class CharacterSelectService extends ClientListener {
     widget.elements.push({
       type: "button",
       text: strings.play,
-      tags: ["BUTTON_STYLE_FRAME", "ELEMENT_SAME_LINE"],
+      tags: ["ELEMENT_SAME_LINE"],
       isDisabled: selectedSlot === null || selectedDead,
       click: () => window.skyrimPlatform.sendMessage(events.play),
     });
