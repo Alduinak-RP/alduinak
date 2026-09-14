@@ -1052,8 +1052,15 @@ export class RemoteServer extends ClientListener {
 
     once('update', () => {
       const ac = Actor.from(Game.getFormEx(remoteIdToLocalId(msg.data.caster)));
+      if (!ac) {
+        // A throw from this callback reaches skyrim-platform.log, printConsole does not
+        if (!msg.data.interruptCast && !msg.data.keepAlive) {
+          throw new Error(`spell ${msg.data.spell.toString(16)} of ${msg.data.caster.toString(16)} not replayed, caster not loaded`);
+        }
+        return;
+      }
       // The host runs its own NPC's real cast, a replay of the relayed copy would cast and hit twice
-      if (!ac || isHostedByMe(ac.getFormID())) {
+      if (isHostedByMe(ac.getFormID())) {
         return;
       }
 
