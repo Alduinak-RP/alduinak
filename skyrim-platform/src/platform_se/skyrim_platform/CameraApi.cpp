@@ -1,6 +1,18 @@
 #include "CameraApi.h"
 #include "NullPointerException.h"
 
+// Same toggle as the tfc console command, without freezing time; returns the resulting state
+Napi::Value CameraApi::SetFreeCameraMode(const Napi::CallbackInfo& info)
+{
+  bool enable = NapiHelper::ExtractBoolean(info[0], "enable");
+  auto camera = RE::PlayerCamera::GetSingleton();
+  if (!camera)
+    throw NullPointerException("camera");
+  if (camera->IsInFreeCameraMode() != enable)
+    camera->ToggleFreeCameraMode(false);
+  return Napi::Boolean::New(info.Env(), camera->IsInFreeCameraMode());
+}
+
 Napi::Value CameraApi::WorldPointToScreenPoint(const Napi::CallbackInfo& info)
 {
   auto camera = RE::PlayerCamera::GetSingleton();

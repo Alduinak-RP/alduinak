@@ -51,6 +51,8 @@ export declare function loadGame(pos: number[], angle: number[], worldOrCell: nu
 
 export declare function worldPointToScreenPoint(...args: number[][]): number[][]
 
+export declare function setFreeCameraMode(enable: boolean): boolean
+
 export type PacketType = 'message' | 'disconnect' | 'connectionAccepted' | 'connectionFailed' | 'connectionDenied'
 
 // Available only if multiplayer is installed on user's machine

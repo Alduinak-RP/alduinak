@@ -1,0 +1,1 @@
+Added a `setFreeCameraMode` method to enter or leave the free camera (the `tfc` console command without freezing time), serving as a binding for a method from CommonLibSSE. It returns whether the free camera is active.
