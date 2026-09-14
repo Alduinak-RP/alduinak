@@ -63,7 +63,7 @@ import {
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
 import { logTrace, logError, logToPlatformLog } from '../../logging';
-import { countWorn, Equipment } from '../../sync/equipment';
+import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved } from '../../sync/equipment';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
@@ -102,11 +102,13 @@ const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
 let spawnEquipment: Equipment | undefined;
 let spawnEquipmentSettleUntil = 0;
 let spawnEquipmentRedressed = false;
+let spawnEquipmentMenuUsed = false;
 
-const applySpawnEquipment = (player: Actor, eq: Equipment, redressed: boolean): void => {
+const applySpawnEquipment = (player: Actor, eq: Equipment): void => {
   spawnEquipment = eq;
   spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
-  spawnEquipmentRedressed = redressed;
+  spawnEquipmentRedressed = false;
+  spawnEquipmentMenuUsed = false;
   applyEquipment(player, eq);
 };
 
@@ -115,20 +117,26 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
   if (!spawnEquipment) {
     return false;
   }
-  if (Date.now() < spawnEquipmentSettleUntil) {
+  // In these menus the player picks their own outfit
+  if (isBadMenuShown()) {
+    spawnEquipmentMenuUsed = true;
     return true;
   }
-  const worn = countWorn(getInventory(player));
-  const saved = countWorn(spawnEquipment.inv);
-  const redress = !spawnEquipmentRedressed && worn === 0 && saved > 0;
-  logToPlatformLog("RemoteServer", `spawn outfit settled: worn ${worn} of ${saved} saved,`, redress ? "re-dressing" : "done");
+  // The race menu undresses the player on purpose until it closes
+  if (Date.now() < spawnEquipmentSettleUntil || Ui.isMenuOpen('RaceSex Menu')) {
+    return true;
+  }
+  const unworn = getUnwornSaved(player, spawnEquipment);
+  const redress = !spawnEquipmentRedressed && !spawnEquipmentMenuUsed && unworn.length > 0;
+  logToPlatformLog("RemoteServer", `spawn outfit settled: ${unworn.length} of ${getPlayerWorn(spawnEquipment).length} saved not worn, worn ${countWorn(getInventory(player))}, menu used ${spawnEquipmentMenuUsed},`, redress ? "re-dressing" : "done");
   if (!redress) {
     spawnEquipment = undefined;
     return false;
   }
-  // The engine dropped the queued re-dress, so the saved outfit is applied once more
-  applySpawnEquipment(player, spawnEquipment, true);
-  requestPcInventoryApply();
+  // The engine dropped some of the queued equips
+  equipEntries(player, unworn);
+  spawnEquipmentRedressed = true;
+  spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
   return true;
 };
 
@@ -570,8 +578,8 @@ export class RemoteServer extends ClientListener {
     const applyPcInv = () => {
       const skipInventory = numSetInventory !== this.numSetInventory;
       if (msg.equipment) {
-        applySpawnEquipment(Game.getPlayer()!, msg.equipment, false);
-        logToPlatformLog(this, `spawn outfit applied: worn ${countWorn(msg.equipment.inv)} of ${msg.equipment.inv.entries.length} saved (numChanges ${msg.equipment.numChanges}), inventory apply skipped:`, skipInventory);
+        applySpawnEquipment(Game.getPlayer()!, msg.equipment);
+        logToPlatformLog(this, `spawn outfit applied: worn ${getPlayerWorn(msg.equipment).length} of ${msg.equipment.inv.entries.length} saved (numChanges ${msg.equipment.numChanges}), inventory apply skipped:`, skipInventory);
       }
 
       if (skipInventory) {

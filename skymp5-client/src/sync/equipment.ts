@@ -65,6 +65,29 @@ const filterWorn = (inv: Inventory): Inventory => {
 
 export const countWorn = (inv: Inventory): number => filterWorn(inv).entries.length;
 
+// Saved bound items have no spell behind them after a reconnect and would never expire
+const withoutBoundItems = (inv: Inventory): Inventory => ({
+  entries: inv.entries.filter((x) => {
+    const form = Game.getFormEx(x.baseId);
+    return !form || !isBoundItem(form);
+  }),
+});
+
+// The saved worn items the player's spawn apply dresses in
+export const getPlayerWorn = (eq: Equipment): Entry[] => withoutBoundItems(filterWorn(eq.inv)).entries;
+
+export const getUnwornSaved = (ac: Actor, eq: Equipment): Entry[] => {
+  const local = getInventory(ac).entries;
+  return getPlayerWorn(eq).filter((s) =>
+    local.some((l) => l.baseId === s.baseId && l.count > 0) &&
+    !local.some((l) => l.baseId === s.baseId && (s.wornLeft ? l.wornLeft : l.worn)));
+};
+
+// Equips without the strip applyEquipment does, so nothing leaves the inventory
+export const equipEntries = (ac: Actor, entries: Entry[]): void => {
+  entries.forEach((e) => ac.equipItemEx(Game.getFormEx(e.baseId), e.wornLeft ? 2 : 0, false, false));
+};
+
 const removeUnnecessaryExtra = (inv: Inventory, ignoreAmmo: boolean): Inventory => {
   return {
     entries: inv.entries.map((x) => {
@@ -125,14 +148,7 @@ export const applyEquipment = (ac: Actor, eq: Equipment): boolean => {
   ac.removeAllItems(null, false, true);
 
   const isPlayer = ac.getFormID() === 0x14;
-  const worn = filterWorn(eq.inv);
-  // Saved bound items have no spell behind them after a reconnect and would never expire
-  if (isPlayer) {
-    worn.entries = worn.entries.filter((x) => {
-      const form = Game.getFormEx(x.baseId);
-      return !form || !isBoundItem(form);
-    });
-  }
+  const worn = isPlayer ? { entries: getPlayerWorn(eq) } : filterWorn(eq.inv);
   const newInventory = removeUnnecessaryExtra(worn, isPlayer);
 
   setInventory(ac.getFormID(), newInventory);
