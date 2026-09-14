@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 
 class IInputListener;
 
@@ -15,6 +16,9 @@ struct DInputHook
     static bool chromeFocus;
     return chromeFocus;
   }
+
+  // Foreground window, browser focus and raw input targets, for focus bug logs
+  static std::string DescribeInputState();
 
   struct
   {

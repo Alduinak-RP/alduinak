@@ -19,30 +19,25 @@ std::array<uint8_t, 256> g_pressedWas = ([] {
 })();
 std::array<bool, 4> g_mousePressedWas = { 0, 0, 0, 0 };
 
-// The engine acquires before every read, so a failing Acquire is what a dead keyboard looks like; log who is in front
-void LogAcquireFailure(IDirectInputDevice8A* device, HRESULT hr)
+const char* DeviceName(IDirectInputDevice8A* device)
 {
-  static ULONGLONG lastLog = 0;
-  const ULONGLONG now = GetTickCount64();
-  if (now - lastLog < 10000) {
-    return;
-  }
-  lastLog = now;
   DIDEVICEINSTANCEA instanceInfo;
   instanceInfo.dwSize = sizeof(instanceInfo);
   const bool keyboard =
     IDirectInputDevice8_GetDeviceInfo(device, &instanceInfo) == DI_OK &&
     instanceInfo.guidInstance == GUID_SysKeyboard;
-  const HWND foreground = GetForegroundWindow();
+  return keyboard ? "keyboard" : "mouse";
+}
+
+std::string DescribeWindow(HWND window)
+{
   DWORD pid = 0;
-  GetWindowThreadProcessId(foreground, &pid);
+  GetWindowThreadProcessId(window, &pid);
   char className[128] = { 0 };
-  GetClassNameA(foreground, className, sizeof(className) - 1);
-  spdlog::info("DInputHook: {} acquire failed {:#x}, in front: window {} "
-               "class '{}' pid {}{}",
-               keyboard ? "keyboard" : "mouse", static_cast<uint32_t>(hr),
-               static_cast<void*>(foreground), className, pid,
-               pid == GetCurrentProcessId() ? " (this process)" : "");
+  GetClassNameA(window, className, sizeof(className) - 1);
+  return fmt::format("window {} class '{}' pid {}{}",
+                     static_cast<void*>(window), className, pid,
+                     pid == GetCurrentProcessId() ? " (this process)" : "");
 }
 
 void ProcessKeyboardData(uint8_t* apData)
@@ -54,6 +49,12 @@ void ProcessKeyboardData(uint8_t* apData)
     if (g_pressedWas[idx] != apData[idx]) {
       g_pressedWas[idx] = apData[idx];
       g_listener->OnKeyStateChange(idx, apData[idx] != 0);
+      // Alt+Tab reached the game; no "deactivated" line after it means Windows never switched
+      if (idx == DIK_TAB && apData[idx] &&
+          (apData[DIK_LMENU] || apData[DIK_RMENU])) {
+        spdlog::info("DInputHook: Alt+Tab pressed in the game, {}",
+                     CEFUtils::DInputHook::DescribeInputState());
+      }
     }
   }
 }
@@ -132,11 +133,21 @@ struct FakeIDirectInputDevice8A
   {
     return IDirectInputDevice8_SetProperty(m_pDevice, a, b);
   }
+  // The engine acquires before every read, so a failure streak is exactly when this device was dead
   virtual HRESULT STDMETHODCALLTYPE Acquire() PURE
   {
     const HRESULT hr = IDirectInputDevice8_Acquire(m_pDevice);
     if (FAILED(hr)) {
-      LogAcquireFailure(m_pDevice, hr);
+      if (m_failedAcquires++ == 0) {
+        spdlog::info("DInputHook: {} acquire failed {:#x}, {}",
+                     DeviceName(m_pDevice), static_cast<uint32_t>(hr),
+                     DInputHook::DescribeInputState());
+      }
+    } else if (m_failedAcquires) {
+      spdlog::info("DInputHook: {} acquired again after {} failed acquires, {}",
+                   DeviceName(m_pDevice), m_failedAcquires,
+                   DInputHook::DescribeInputState());
+      m_failedAcquires = 0;
     }
     return hr;
   }
@@ -158,7 +169,11 @@ struct FakeIDirectInputDevice8A
   }
   virtual HRESULT STDMETHODCALLTYPE SetCooperativeLevel(HWND a, DWORD b) PURE
   {
-    return IDirectInputDevice8_SetCooperativeLevel(m_pDevice, a, b);
+    const HRESULT hr = IDirectInputDevice8_SetCooperativeLevel(m_pDevice, a, b);
+    spdlog::info("DInputHook: {} cooperative level {:#x} on {} returned {:#x}",
+                 DeviceName(m_pDevice), b, DescribeWindow(a),
+                 static_cast<uint32_t>(hr));
+    return hr;
   }
   virtual HRESULT STDMETHODCALLTYPE GetObjectInfo(LPDIDEVICEOBJECTINSTANCEA a,
                                                   DWORD b, DWORD c) PURE
@@ -250,6 +265,7 @@ struct FakeIDirectInputDevice8A
 
 private:
   IDirectInputDevice8A* m_pDevice;
+  uint32_t m_failedAcquires = 0;
 };
 
 using TIDirectInputA_CreateDevice =
@@ -440,6 +456,31 @@ DInputHook& DInputHook::Get() noexcept
 {
   static DInputHook s_instance;
   return s_instance;
+}
+
+std::string DInputHook::DescribeInputState()
+{
+  std::string result =
+    fmt::format("in front: {}, browser focus {}",
+                DescribeWindow(GetForegroundWindow()), ChromeFocus());
+  // DirectInput reads through raw input, so another registration for these usages silences it
+  RAWINPUTDEVICE devices[16];
+  UINT count = static_cast<UINT>(std::size(devices));
+  const UINT n =
+    GetRegisteredRawInputDevices(devices, &count, sizeof(RAWINPUTDEVICE));
+  if (n == static_cast<UINT>(-1)) {
+    return result + ", raw input unknown";
+  }
+  for (UINT i = 0; i < n; ++i) {
+    const USHORT usage = devices[i].usUsage;
+    if (devices[i].usUsagePage == 0x01 && (usage == 0x02 || usage == 0x06)) {
+      result += fmt::format(", raw {} to {} flags {:#x}",
+                            usage == 0x06 ? "keyboard" : "mouse",
+                            DescribeWindow(devices[i].hwndTarget),
+                            devices[i].dwFlags);
+    }
+  }
+  return result;
 }
 
 void DInputHook::Update() const noexcept
