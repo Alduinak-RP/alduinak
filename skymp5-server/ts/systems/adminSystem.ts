@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest } from "./adminRoles";
+import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest, missingCap } from "./adminRoles";
 import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { kickWithReason } from "./kickUtil";
@@ -33,14 +33,14 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..1000, self allowed
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, ban}, mastery }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
 //                     { customPacketType: "adminItems", query, kind, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
-//                     { customPacketType: "adminActionResult", ok, text }
+//                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp), which closes the menu
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
 // Non-admin requests are ignored silently; every Personal Menu open sends adminMenuRequest, so that refusal is logged once per user slot.
@@ -290,9 +290,9 @@ export class AdminSystem implements System {
     return ADMIN_MODES.map(m => ({ id: m.id, label: m.label, active: !!state[m.id] }));
   }
 
-  private reply(mp: Mp, userId: number, ok: boolean, text: string): void {
+  private reply(mp: Mp, userId: number, ok: boolean, text: string, action?: string): void {
     try {
-      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminActionResult", ok, text }));
+      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminActionResult", ok, text, action }));
     } catch { }
   }
 
@@ -360,7 +360,7 @@ export class AdminSystem implements System {
       this.reply(mp, userId, false, `Unknown action '${key}'`);
       return;
     }
-    const missing = need && !caps[need] ? need : key === "ban" && !caps.players ? "players" : null;
+    const missing = missingCap(need, caps);
     if (missing) {
       this.log(`AdminSystem: profile ${adminProfile} (${tier}) refused '${key}': no ${missing} permission`);
       this.adminLog(`profile ${adminProfile} (${tier}) was refused ${key}: no ${missing} permission`);
@@ -421,7 +421,7 @@ export class AdminSystem implements System {
       try {
         mp.set(myActorId, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: loc.pos, rot: loc.rot });
         this.adminLog(`profile ${adminProfile} teleported to location '${loc.name}'`);
-        this.reply(mp, userId, true, `Teleported to ${loc.name}`);
+        this.reply(mp, userId, true, `Teleported to ${loc.name}`, action);
       } catch (e) {
         this.log(`AdminSystem: teleportLoc '${name}' by profile ${adminProfile} failed: ${e}`);
         this.reply(mp, userId, false, "Teleport failed, see server log");
@@ -441,7 +441,7 @@ export class AdminSystem implements System {
       if (action === "teleportTo") {
         mp.set(myActorId, "locationalData", mp.get(target.actorId, "locationalData"));
         this.adminLog(`profile ${adminProfile} teleported to ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, true, `Teleported to ${target.name}`);
+        this.reply(mp, userId, true, `Teleported to ${target.name}`, action);
       } else if (action === "summon") {
         mp.set(target.actorId, "locationalData", mp.get(myActorId, "locationalData"));
         this.adminLog(`profile ${adminProfile} summoned ${target.name} (profile ${target.profileId})`);
@@ -636,7 +636,7 @@ export class AdminSystem implements System {
       try {
         mp.set(myActorId, "locationalData", { cellOrWorldDesc: target.cellOrWorldDesc, pos: target.pos, rot: [0, 0, 0] });
         this.adminLog(`profile ${adminProfile} teleported to npc zone '${name}'`);
-        this.reply(mp, userId, true, `Teleported to ${name}`);
+        this.reply(mp, userId, true, `Teleported to ${name}`, action);
       } catch (e) {
         this.log(`AdminSystem: npcZoneTp '${name}' by profile ${adminProfile} failed: ${e}`);
         this.reply(mp, userId, false, "Teleport failed, see server log");

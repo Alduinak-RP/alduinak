@@ -364,13 +364,15 @@ Admins also get the admin chat channel. Nobody gets the server console commands 
 
 Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, and the server refuses every request the tier lacks the cap for, with an admin.log line.
 
-| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `ban` |
-|---|---|---|---|---|---|---|
-| `senior` | yes | yes | yes | yes | yes | yes |
-| `developer` | yes | yes | yes | yes | yes | yes |
-| `gm` | yes | yes | yes | yes | yes | no |
+| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` |
+|---|---|---|---|---|---|---|---|
+| `senior` | yes | yes | yes | yes | yes | yes | yes |
+| `developer` | yes | yes | yes | yes | yes | no | no |
+| `gm` | yes | yes | yes | yes | yes | yes | yes |
 
-`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab and `items` the Item Spawner. `ban` is the Ban button, which also needs `players`. `adminTierCaps` changes the defaults per tier.
+`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab and `items` the Item Spawner. `kick` is the Kick button and `ban` the Ban button; both also need `players`. `adminTierCaps` changes the defaults per tier.
+
+Teleporting yourself (TP to on a player, a Teleport location or an NPC zone's TP) closes the Personal Menu once the server confirms it. A refused teleport, Summon and every other action leave it open.
 
 Precedence when a player holds roles from several tiers: `senior` > `developer` > `gm`. The tier lists are checked before the legacy `adminRoleIds` list, so a role listed under `adminRoles.gm` resolves to `gm` even if it is also in `adminRoleIds`. Housing claim overrides accept every tier.
 
@@ -418,7 +420,7 @@ Master-api profile ids (numbers) that are always `senior`, regardless of Discord
 
 ### adminTierCaps
 
-Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `ban` for `gm`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items` and `ban` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
+Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `kick` and `ban` for `developer`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items`, `kick` and `ban` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
 
 ```json5
 {

@@ -5,17 +5,20 @@ export type AdminTier = "senior" | "developer" | "gm";
 // Precedence when a player holds roles from several tiers
 const TIER_ORDER: AdminTier[] = ["senior", "developer", "gm"];
 
-export type AdminCap = "players" | "teleport" | "modes" | "npcs" | "items" | "ban";
-export const ADMIN_CAPS: AdminCap[] = ["players", "teleport", "modes", "npcs", "items", "ban"];
+export type AdminCap = "players" | "teleport" | "modes" | "npcs" | "items" | "kick" | "ban";
+export const ADMIN_CAPS: AdminCap[] = ["players", "teleport", "modes", "npcs", "items", "kick", "ban"];
 export type AdminCaps = Record<AdminCap, boolean>;
 
-const allCaps = (ban: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, ban });
+const allCaps = (kickBan: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, kick: kickBan, ban: kickBan });
 
 export const TIER_CAPS: Record<AdminTier, AdminCaps> = {
   senior: allCaps(true),
-  developer: allCaps(true),
-  gm: allCaps(false),
+  developer: allCaps(false),
+  gm: allCaps(true),
 };
+
+// Kick and Ban are Players sub-tab buttons, so they also need players
+const NEEDS_PLAYERS: AdminCap[] = ["kick", "ban"];
 
 // Cap each admin request needs (adminAction by its action); null needs none, a key missing here is refused
 export const REQUEST_CAP: Record<string, AdminCap | null> = {
@@ -23,7 +26,7 @@ export const REQUEST_CAP: Record<string, AdminCap | null> = {
   npcZonesRequest: "npcs",
   teleportTo: "players",
   summon: "players",
-  kick: "players",
+  kick: "kick",
   masteryGrant: "players",
   masteryReset: "players",
   ban: "ban",
@@ -43,6 +46,13 @@ export const REQUEST_CAP: Record<string, AdminCap | null> = {
 // Undefined for an unknown request
 export function capForRequest(key: string): AdminCap | null | undefined {
   return Object.prototype.hasOwnProperty.call(REQUEST_CAP, key) ? REQUEST_CAP[key] : undefined;
+}
+
+// The cap the tier lacks for a request needing `need`, null when allowed
+export function missingCap(need: AdminCap | null, caps: AdminCaps): AdminCap | null {
+  if (!need) return null;
+  if (!caps[need]) return need;
+  return NEEDS_PLAYERS.includes(need) && !caps.players ? "players" : null;
 }
 
 export interface AdminRoleConfig {
