@@ -9,7 +9,7 @@ no plugin edit needed); when the last player has been gone long enough it
 removes them again; NPCs killed in between come back after a per-zone delay
 that keeps running even while the zone is empty. Every corpse disappears 5
 minutes after the kill, whatever the zone does in the meantime. The file is
-watched, so edits apply without a restart, and the admin panel's NPCs tab
+watched, so edits apply without a restart, and the NPCs sub-tab of the Personal Menu's Admin tab
 lists, adds, resets and deletes zones in game.
 
 - Server piece: `skymp5-server/ts/systems/npcSpawnSystem.ts` (zones, polling, spawn/despawn/respawn, admin API)
@@ -178,8 +178,9 @@ time, so a panel change and a hand edit landing together cannot interleave.
 
 ## Admin panel
 
-The NPCs tab of the admin panel (Insert key, every admin tier) has two
-sub-tabs:
+The NPCs sub-tab sits under Personal Menu > Admin (interact key X while
+looking at nothing, every admin tier with the `npcs` cap) and has two
+views:
 
 - **Zones** lists every loaded zone: the name, a green dot while its NPCs are
   placed (`alive/total alive`) or a grey one while idle, and the cooldown
