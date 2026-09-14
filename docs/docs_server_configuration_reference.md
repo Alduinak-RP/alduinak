@@ -353,7 +353,7 @@ Every player opens the Personal Menu with the interact key (X by default) while 
 - **Admin**, shown only once the server confirms the player's admin tier, with the sub-tabs:
   - Players: roster, teleport to, summon, kick, ban, mastery grant and reset;
   - Teleport: named locations and map markers;
-  - Modes: God, NoClip, Invisible, Ghost, Freecam, Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, at the next login or on respawn);
+  - Modes: God, NoClip, Invisible, Ghost, Freecam, Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`;
   - Item Spawner, see below.
 - **Faction**: a work-in-progress placeholder.

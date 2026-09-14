@@ -36,7 +36,7 @@ type Mp = any;
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
-//                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned (speed is dropped there instead) and sent off for speed on respawn
+//                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed is sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
 //                     { customPacketType: "adminItems", query, kind, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
@@ -58,7 +58,7 @@ const ADMIN_MODES: Array<{ id: string; label: string }> = [
   { id: "freecam", label: "Freecam" },
   { id: "smite", label: "Smite" },
   { id: "healhit", label: "Heal on Hit" },
-  { id: "speed", label: "Speed" }, // the client raises SpeedMult; ends on respawn and with the session
+  { id: "speed", label: "Speed" }, // the client raises SpeedMult; ends on respawn and at every actor assign
 ];
 
 // Modes mirrored onto the neighbors-visible ff_adminModes actor property (registered in gamemode.js)
@@ -678,9 +678,14 @@ export class AdminSystem implements System {
     try { return Number(mp.get(actorId, "profileId")) || 0; } catch { return 0; }
   }
 
-  // Modes live in memory per profile but the mirror persists on the actor; re-push them on reconnect and clear a stale mirror
+  // Modes live in memory per profile but the mirror persists on the actor; re-push them on assign and clear a stale mirror
   private resyncModes(mp: Mp, userId: number, actorId: number, isAdmin: boolean): void {
     const profileId = this.profileOf(mp, actorId);
+    // A character switch keeps the connection, so only this off packet makes the client restore its SpeedMult
+    if (this.modesByProfile.get(profileId)?.speed) {
+      this.sendMode(mp, userId, "speed", false);
+      this.log(`AdminSystem: profile ${profileId} mode speed off on actor assign`);
+    }
     if (!isAdmin) this.modesByProfile.delete(profileId);
     const state = this.modesByProfile.get(profileId) ?? {};
     delete state.speed;
