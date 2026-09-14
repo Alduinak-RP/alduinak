@@ -347,7 +347,8 @@ public:
       vkCodeDownDur[virtualKeyCode] = 0;
     }
 
-    if (down && CEFUtils::DInputHook::TakeEnteredGameKeyLog()) {
+    if (down && !IsBrowserFocused() &&
+        CEFUtils::DInputHook::TakeEnteredGameKeyLog()) {
       LogEngineInputGates(code);
     }
 
