@@ -453,6 +453,8 @@ ipcMain.handle('hotkeys:load', () => {
     const c = readClientSettings()
     const out = { ok: true, path: clientSettingsPath(), chatFocus: Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null }
     for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) out[field] = typeof c[key] === 'number' ? c[key] : null
+    // Interact / Menus cannot be unbound, so a stored 0 shows and saves the X default
+    if (out.altInteract === 0) out.altInteract = null
     return out
   } catch (err) {
     return { ok: false, error: err.message }

@@ -90,10 +90,16 @@ function setKey(id, code) {
   const c = typeof code === 'number' ? code : 0
   el.dataset.code = String(c)
   el.textContent = labelForCode(c)
+  showHotkeyConflict()
 }
 function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.dataset.code, 10) || 0) : 0 }
+function showHotkeyConflict() {
+  const el = document.getElementById('hk-conflict')
+  const code = getKey('hk-alt-interact')
+  if (el) el.hidden = !code || code !== getKey('ghk-activate')
+}
 
-// Press-to-bind capture. Backspace unbinds server hotkeys only: gameHotkeys:save
+// Press-to-bind capture. Backspace unbinds server hotkeys other than Interact / Menus: gameHotkeys:save
 // drops code 0, so an unbound game key would silently keep its old binding.
 // Server hotkey button -> [hotkeys:load/save field, default DIK]; hk-chat is separate because it pairs with Enter
 const SERVER_HOTKEYS = {
@@ -155,7 +161,7 @@ function startCapture(btn, canUnbind) {
   const btn = document.getElementById(id)
   if (!btn) return
   setKey(id, 0)
-  btn.addEventListener('click', () => startCapture(btn, SERVER_HOTKEY_IDS.includes(id)))
+  btn.addEventListener('click', () => startCapture(btn, SERVER_HOTKEY_IDS.includes(id) && id !== 'hk-alt-interact'))
 })
 window.addEventListener('blur', () => endCapture(true))
 
