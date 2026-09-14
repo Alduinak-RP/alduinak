@@ -24,7 +24,7 @@ type Mp = any;
 //             | revoke | createkey | revokekeys | grantcontainer
 //   Server -> Client:
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked,
-//       hasKeys, canGrantContainers, ownerName }
+//       canLock, hasKeys, canGrantContainers, ownerName }
 //     { customPacketType: "propertyNotice", text }
 //     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
@@ -422,8 +422,8 @@ export class HousingSystem implements System {
     const profileId = this.profileOf(ctx, actorId);
     const isOwner = owned && rec!.owner === profileId;
     const isManager = !!primary && this.isManager(ctx, actorId, primary);
-
-    const holdsKey = owned && !isOwner && !isManager && this.hasAccess(ctx, primary, rec!, actorId);
+    const canLock = owned && this.hasAccess(ctx, primary, rec!, actorId);
+    const holdsKey = canLock && !isOwner && !isManager;
 
     let view: string;
     if (isOwner) view = "owner";
@@ -439,6 +439,7 @@ export class HousingSystem implements System {
       owned,
       name: rec ? rec.name : null,
       locked: owned && rec!.locked,
+      canLock,
       hasKeys: owned,
       canGrantContainers: (isOwner || isManager) && owned && this.baseTypeOf(ctx, primary) === "CONT",
       ownerName: owned ? (rec!.ownerName || "Someone") : null,
