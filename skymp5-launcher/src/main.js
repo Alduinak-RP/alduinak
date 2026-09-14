@@ -322,16 +322,25 @@ ipcMain.handle('settings:save', (_e, data) => {
 function skyrimPrefsPath() {
   return path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
 }
-// Seeds the profile Skyrim.ini from the player's own so a minimal profile ini never hides their settings (language, archives, etc)
-function ensureProfileSkyrimIni() {
-  const dest = path.join(mo2.getProfileDir(), 'skyrim.ini')
-  if (!fs.existsSync(dest)) {
-    const prefs = findOriginalPrefsIni()
-    const src = prefs ? path.join(path.dirname(prefs), 'Skyrim.ini') : null
-    if (src && fs.existsSync(src)) {
-      fs.mkdirSync(path.dirname(dest), { recursive: true })
-      fs.copyFileSync(src, dest)
-    }
+const profileIni = name => path.join(mo2.getProfileDir(), name)
+// The file MO2 seeds a missing profile ini from: the player's own, and for Skyrim.ini else the game's default
+function profileIniSeed(name) {
+  const prefs = findOriginalPrefsIni()
+  const game = effectiveGamePath()
+  return [prefs && path.join(path.dirname(prefs), name), name === 'skyrim.ini' && game && path.join(game, 'Skyrim_Default.ini')]
+    .find(f => f && fs.existsSync(f)) || null
+}
+// The profile ini, or while it is missing the file MO2 will seed it from
+function profileIniInEffect(name) {
+  return fs.existsSync(profileIni(name)) ? profileIni(name) : profileIniSeed(name)
+}
+// Seeds a missing profile ini so a minimal one never hides the player's settings (language, archives, etc)
+function ensureProfileIni(name) {
+  const dest = profileIni(name)
+  const src = fs.existsSync(dest) ? null : profileIniSeed(name)
+  if (src) {
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.copyFileSync(src, dest)
   }
   return dest
 }
@@ -342,6 +351,11 @@ const FOV_DEFAULT = 80
 function clampFov(v) {
   const n = Math.round(parseFloat(v))
   return Number.isFinite(n) ? Math.min(170, Math.max(70, n)) : null
+}
+function fovInEffect() {
+  const d = FOV_INIS.map(profileIniInEffect).map(f => (f && ini.read(f).Display) || {}).find(x => FOV_KEYS[0] in x) || {}
+  const n = parseFloat(d[FOV_KEYS[0]])
+  return Number.isFinite(n) ? n : FOV_DEFAULT
 }
 // Server hotkeys live in the Skyrim Platform client settings (the object exposed
 // to the client as settings["skymp5-client"] - the file content is that object).
@@ -389,7 +403,6 @@ ipcMain.handle('graphics:load', () => {
     const shadowRes = num('Display', 'iShadowMapResolution', 2048)
     const reflH = num('Water', 'iWaterReflectHeight', 512)
     const maxDecals = num('Decals', 'uMaxDecals', 250)
-    const fovDisp = FOV_INIS.map(f => ini.read(path.join(mo2.getProfileDir(), f))['Display'] || {}).find(d => FOV_KEYS[0] in d) || {}
     return {
       ok: true,
       path: p,
@@ -407,7 +420,7 @@ ipcMain.handle('graphics:load', () => {
       reflections: reflH >= 1024
         ? (val('Water', 'bReflectLODTrees', '0') === '1' ? 'ultra' : 'high')
         : (val('Water', 'bReflectLODLand', '0') === '1' ? 'medium' : 'low'),
-      fov:       clampFov(fovDisp[FOV_KEYS[0]]) ?? FOV_DEFAULT,
+      fov:       clampFov(fovInEffect()),
       godrays:   val('Display', 'bVolumetricLightingEnable', '1') === '1',
       lensFlare: val('Imagespace', 'bLensFlare', '1') === '1',
       ao:        val('Display', 'bSAOEnable', '1') === '1',
@@ -462,9 +475,9 @@ ipcMain.handle('graphics:save', (_e, g) => {
     const fov = clampFov(g.fov)
     if (fov !== null) {
       const fovEdit = { Display: Object.fromEntries(FOV_KEYS.map(k => [k, fov.toFixed(4)])) }
-      ini.write(ensureProfileSkyrimIni(), fovEdit)
-      const custom = path.join(mo2.getProfileDir(), FOV_INIS[0])
-      if (FOV_KEYS.some(k => k in (ini.read(custom)['Display'] || {}))) ini.write(custom, fovEdit)
+      ini.write(ensureProfileIni(FOV_INIS[1]), fovEdit)
+      const custom = profileIniInEffect(FOV_INIS[0])
+      if (custom && FOV_KEYS.some(k => k in (ini.read(custom).Display || {}))) ini.write(ensureProfileIni(FOV_INIS[0]), fovEdit)
     }
     return { ok: true, path: skyrimPrefsPath() }
   } catch (err) {
@@ -676,7 +689,7 @@ function applyForcedServerDefaults(gamePath) {
   }
   // Profile ini: kill the Bethesda.net platform, which drives the "AE content available for download" prompt and the CC news.
   try {
-    const dest = ensureProfileSkyrimIni()
+    const dest = ensureProfileIni('skyrim.ini')
     const cur = ini.read(dest)['Bethesda.net'] || {}
     if (String(cur['bEnablePlatform'] || '') !== '0') {
       ini.write(dest, { 'Bethesda.net': { bEnablePlatform: '0' } })
