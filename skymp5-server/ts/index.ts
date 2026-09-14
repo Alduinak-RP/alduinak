@@ -40,6 +40,7 @@ import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
 import { CompanionSystem } from "./systems/companionSystem";
 import { ConjurationSystem } from "./systems/conjurationSystem";
+import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -243,6 +244,7 @@ const main = async () => {
     // After AdminSystem: its onHitDamageAttempt hook wraps the god-mode one
     companionSystem,
     new ConjurationSystem(log, companionSystem),
+    new KnowledgeSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
   );
