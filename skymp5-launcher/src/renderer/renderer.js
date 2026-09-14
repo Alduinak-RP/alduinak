@@ -99,7 +99,7 @@ function getKey(id) { const el = document.getElementById(id); return el ? (parse
 const SERVER_HOTKEYS = {
   'hk-cursor': ['freeCursor', 64], 'hk-housing': ['housing', 35], 'hk-personal': ['personal', 22],
   'hk-faction': ['faction', 34], 'hk-voice-ptt': ['voicePtt', 47], 'hk-admin': ['adminMenu', 210],
-  'hk-hide-ui': ['hideUi', 59],
+  'hk-hide-ui': ['hideUi', 59], 'hk-alt-interact': ['altInteract', 45],
 }
 const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]
 const GAME_HOTKEY_IDS = ['ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov']

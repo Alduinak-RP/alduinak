@@ -446,7 +446,7 @@ ipcMain.handle('graphics:save', (_e, g) => {
 const CLIENT_HOTKEY_KEYS = {
   freeCursor: 'freeCursorKeyCode', housing: 'housingMenuKeyCode', faction: 'factionMenuKeyCode',
   personal: 'personalMenuKeyCode', voicePtt: 'voicePushToTalkKeyCode', adminMenu: 'adminMenuKeyCode',
-  hideUi: 'hideUiKeyCode',
+  hideUi: 'hideUiKeyCode', altInteract: 'altInteractKeyCode',
 }
 
 ipcMain.handle('hotkeys:load', () => {
