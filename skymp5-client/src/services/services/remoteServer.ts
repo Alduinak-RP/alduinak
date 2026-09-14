@@ -158,15 +158,15 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("updateAnimVariablesMessage", (e) => this.onUpdateAnimVariablesMessage(e));
 
     this.controller.on("update", () => this.sweepCloneCasts());
-    // Diagnostic: whether a clone's graph took the replayed cast event
+    // Diagnostic: whether the diagnosed clone's graph took the replayed cast event
     this.sp.hooks.sendAnimationEvent.add({
       enter: () => { },
       leave: (ctx) => {
-        if (this.cloneCastReport && ctx.animEventName.startsWith("BeginCast")) {
+        if (this.cloneCastReport && ctx.selfId === this.cloneCastReport.cloneId) {
           this.cloneCastReport.text += ` ${ctx.animEventName}=${ctx.animationSucceeded}`;
         }
       },
-    }, 0xff000000, 0xffffffff);
+    }, 0xff000000, 0xffffffff, "BeginCast*");
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
   }
