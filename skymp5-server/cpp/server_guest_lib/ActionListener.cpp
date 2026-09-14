@@ -587,16 +587,18 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
   }
   const bool inSpawnGrace = userInfo &&
     now - *userInfo->firstEquipmentReportAt < kSpawnEquipmentGrace;
+  const auto msSinceAssign = [&]() -> int64_t {
+    return userInfo ? std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - userInfo->actorAssignedAt)
+                        .count()
+                    : -1;
+  };
   if (inSpawnGrace && msg.data.inv.CountWorn() == 0 &&
       actor->GetProfileId() >= 0 && !actor->IsRaceMenuOpen() &&
       HoldsSavedOutfit(*actor)) {
     spdlog::warn("ActionListener::OnUpdateEquipment {:x} - kept saved outfit, "
                  "zero-worn report {} ms after assign (numChanges {})",
-                 actor->GetFormId(),
-                 std::chrono::duration_cast<std::chrono::milliseconds>(
-                   now - userInfo->actorAssignedAt)
-                   .count(),
-                 msg.data.numChanges);
+                 actor->GetFormId(), msSinceAssign(), msg.data.numChanges);
     UpdateEquipmentAttemptEvent refusedEvent(actor, msg.data, false);
     refusedEvent.Fire(actor->GetParent());
     return;
@@ -761,6 +763,14 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     entry.count = count;
     entry.SetWorn(worn);
     extrasReplaced = true;
+  }
+
+  if (isAllowed && actor->GetProfileId() >= 0 && data.inv.CountWorn() == 0 &&
+      actor->GetEquipment().inv.CountWorn() > 0) {
+    spdlog::info("ActionListener::OnUpdateEquipment {:x} - worn {} -> 0 "
+                 "(numChanges {}, {} entries, {} ms after assign)",
+                 actorFormId, actor->GetEquipment().inv.CountWorn(),
+                 data.numChanges, data.inv.entries.size(), msSinceAssign());
   }
 
   if (isAllowed) {

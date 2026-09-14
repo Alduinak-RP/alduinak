@@ -11,7 +11,7 @@ import { Animation, AnimationSource } from "../../sync/animation";
 import { Actor, EquipEvent, FormType } from "skyrimPlatform";
 import { getAppearance } from "../../sync/appearance";
 import { ActorValues, getActorValues } from "../../sync/actorvalues";
-import { getEquipment } from "../../sync/equipment";
+import { countWorn, getEquipment } from "../../sync/equipment";
 import { nextHostAttempt } from "../../view/hostAttempts";
 import { SkympClient } from "./skympClient";
 import { MessageWithRefrId } from "../events/sendMessageWithRefrIdEvent";
@@ -24,7 +24,7 @@ import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
 import { RemoteServer, settleSpawnEquipment } from "./remoteServer";
 import { DeathService } from "./deathService";
 import { RestraintService } from "./restraintService";
-import { logTrace } from "../../logging";
+import { logTrace, logToPlatformLog } from "../../logging";
 
 const playerFormId = 0x14;
 
@@ -284,6 +284,7 @@ export class SendInputsService extends ClientListener {
         // A report waits out the spawn outfit apply, and one follows it even when no equip event fires
         if (settleSpawnEquipment(this.sp.Game.getPlayer() as Actor)) {
             this.equipmentChanged = true;
+            this.spawnReportsToLog = 5;
             return;
         }
         // Coalesce bursts: rapid re-equips flood the server with reliable updates whose forced-revert snippets can freeze the client (S2)
@@ -297,6 +298,10 @@ export class SendInputsService extends ClientListener {
                 this.sp.Game.getPlayer() as Actor,
                 this.numEquipmentChanges,
             );
+            if (this.spawnReportsToLog > 0) {
+                this.spawnReportsToLog--;
+                logToPlatformLog(this, `equipment report #${eq.numChanges} after spawn: worn ${countWorn(eq.inv)} of ${eq.inv.entries.length}`);
+            }
             const message: MessageWithRefrId<UpdateEquipmentMessage> = {
                 t: MsgType.UpdateEquipment,
                 data: eq,
@@ -361,6 +366,7 @@ export class SendInputsService extends ClientListener {
     private lastSpellSignature?: string;
     private lastEquipmentSentMs = 0;
     private numEquipmentChanges = 0;
+    private spawnReportsToLog = 0;
     private prevValues: ActorValues = { health: 0, stamina: 0, magicka: 0 };
     private prevActorValuesUpdateTime = 0;
     private prevCastingDetectedTime = 0;

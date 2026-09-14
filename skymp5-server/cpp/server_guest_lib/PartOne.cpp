@@ -208,6 +208,13 @@ void PartOne::SetUserActor(Networking::UserId userId, uint32_t actorFormId)
     auto& userInfo = *serverState.userInfo[userId];
     userInfo.actorAssignedAt = std::chrono::steady_clock::now();
     userInfo.firstEquipmentReportAt.reset();
+    if (actor.GetProfileId() >= 0) {
+      const auto& saved = actor.GetEquipment();
+      spdlog::info("PartOne::SetUserActor {} {:x} - saved outfit {} worn of "
+                   "{} (numChanges {})",
+                   userId, actorFormId, saved.inv.CountWorn(),
+                   saved.inv.entries.size(), saved.numChanges);
+    }
 
     actor.ForceSubscriptionsUpdate();
 

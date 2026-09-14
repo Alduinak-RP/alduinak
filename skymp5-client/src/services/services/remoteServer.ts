@@ -62,7 +62,7 @@ import {
   remoteIdToLocalId,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
-import { logTrace, logError } from '../../logging';
+import { logTrace, logError, logToPlatformLog } from '../../logging';
 import { countWorn, Equipment } from '../../sync/equipment';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
@@ -118,7 +118,11 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
   if (Date.now() < spawnEquipmentSettleUntil) {
     return true;
   }
-  if (spawnEquipmentRedressed || countWorn(getInventory(player)) > 0 || countWorn(spawnEquipment.inv) === 0) {
+  const worn = countWorn(getInventory(player));
+  const saved = countWorn(spawnEquipment.inv);
+  const redress = !spawnEquipmentRedressed && worn === 0 && saved > 0;
+  logToPlatformLog("RemoteServer", `spawn outfit settled: worn ${worn} of ${saved} saved,`, redress ? "re-dressing" : "done");
+  if (!redress) {
     spawnEquipment = undefined;
     return false;
   }
@@ -564,11 +568,13 @@ export class RemoteServer extends ClientListener {
     const numSetInventory = this.numSetInventory;
 
     const applyPcInv = () => {
+      const skipInventory = numSetInventory !== this.numSetInventory;
       if (msg.equipment) {
         applySpawnEquipment(Game.getPlayer()!, msg.equipment, false);
+        logToPlatformLog(this, `spawn outfit applied: worn ${countWorn(msg.equipment.inv)} of ${msg.equipment.inv.entries.length} saved (numChanges ${msg.equipment.numChanges}), inventory apply skipped:`, skipInventory);
       }
 
-      if (numSetInventory !== this.numSetInventory) {
+      if (skipInventory) {
         logTrace(this, 'Skipping inventory apply due to newer setInventory message');
         return;
       }
