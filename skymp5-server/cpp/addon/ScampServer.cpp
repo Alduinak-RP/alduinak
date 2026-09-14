@@ -75,6 +75,43 @@ bool StartsWith(const std::string& str, const char* prefix)
   return str.compare(0, strlen(prefix), prefix) == 0;
 }
 
+// Parses the whole id, so "-1", "12zz" or "zz:File.esp" throw instead of resolving to a wrong form
+uint32_t ParseFormId(const nlohmann::json& v, const EspmFileTable& files)
+{
+  if (v.is_number_unsigned() && v.get<uint64_t>() <= UINT32_MAX) {
+    return v.get<uint32_t>();
+  }
+  if (!v.is_string()) {
+    throw std::invalid_argument("not a 32-bit form id");
+  }
+  auto s = v.get<std::string>();
+  auto colon = s.find(':');
+  auto id = s.substr(0, colon);
+  size_t pos = 0;
+  auto n = std::stoull(id, &pos, colon == std::string::npos ? 0 : 16);
+  if (pos != id.size() || n > UINT32_MAX) {
+    throw std::invalid_argument("not a 32-bit form id");
+  }
+  return colon == std::string::npos
+    ? static_cast<uint32_t>(n)
+    : FormDesc(static_cast<uint32_t>(n), s.substr(colon + 1)).ToFormId(files);
+}
+
+// Numbers, "0x..." strings or "hex:File.esp" descriptors; bad entries are skipped and logged
+std::set<uint32_t> ParseFormIds(const nlohmann::json& list,
+                                const EspmFileTable& files)
+{
+  std::set<uint32_t> res;
+  for (auto& v : list) {
+    try {
+      res.insert(ParseFormId(v, files));
+    } catch (std::exception& e) {
+      GetLogger()->warn("Skipping form id {}: {}", v.dump(), e.what());
+    }
+  }
+  return res;
+}
+
 }
 
 Napi::FunctionReference ScampServer::constructor;
@@ -449,16 +486,8 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     // blockedSpells: spell form ids (numbers or "0x..." strings) players may not cast (racial powers etc)
     auto blockedIt = serverSettings.find("blockedSpells");
     if (blockedIt != serverSettings.end() && (*blockedIt).is_array()) {
-      std::set<uint32_t> blockedSpells;
-      for (auto& v : *blockedIt) {
-        if (v.is_number_unsigned()) {
-          blockedSpells.insert(v.get<uint32_t>());
-        } else if (v.is_string()) {
-          blockedSpells.insert(static_cast<uint32_t>(
-            std::stoul(v.get<std::string>(), nullptr, 0)));
-        }
-      }
-      partOne->worldState.SetBlockedSpells(blockedSpells);
+      partOne->worldState.SetBlockedSpells(
+        ParseFormIds(*blockedIt, partOne->worldState.espmFiles));
     }
 
     // playersInheritBaseSpells: false strips the Player record's castable spells (Flames, Healing) from player characters
@@ -466,6 +495,28 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     if (inheritIt != serverSettings.end() && (*inheritIt).is_boolean()) {
       partOne->worldState.SetPlayersInheritBaseSpells((*inheritIt).get<bool>());
     }
+
+    // emptyContainers: placed containers open without their plugin loot unless set to false
+    auto emptyIt = serverSettings.find("emptyContainers");
+    partOne->worldState.emptyContainers = true;
+    if (emptyIt != serverSettings.end()) {
+      if ((*emptyIt).is_boolean()) {
+        partOne->worldState.emptyContainers = (*emptyIt).get<bool>();
+      } else {
+        spdlog::error(
+          "Unexpected value of emptyContainers, should be true or false");
+      }
+    }
+
+    // containerLootBaseIds: CONT bases that keep their plugin loot anyway
+    auto lootIt = serverSettings.find("containerLootBaseIds");
+    if (lootIt != serverSettings.end() && (*lootIt).is_array()) {
+      partOne->worldState.containerLootBaseIds =
+        ParseFormIds(*lootIt, partOne->worldState.espmFiles);
+    }
+    logger->info("emptyContainers is {}, {} container base(s) keep their loot",
+                 partOne->worldState.emptyContainers,
+                 partOne->worldState.containerLootBaseIds.size());
 
     if (auto it = serverSettings.find("serverKey");
         it != serverSettings.end()) {

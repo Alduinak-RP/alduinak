@@ -2048,6 +2048,11 @@ void MpObjectReference::EnsureBaseContainerAdded(espm::Loader& espm)
     return;
   }
 
+  if (worldState->emptyContainers && GetBaseType() == "CONT" &&
+      !worldState->containerLootBaseIds.count(GetBaseId())) {
+    return;
+  }
+
   auto actor = AsActor();
   const std::vector<FormDesc> kEmptyTemplateChain;
   const std::vector<FormDesc>& templateChain =
