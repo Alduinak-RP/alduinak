@@ -442,16 +442,18 @@ export class HousingSystem implements System {
   // ── Access ──────────────────────────────────────────────────────────────────
 
   private hasAccess(ctx: SystemContext, primary: number, rec: PropertyRecord, actorId: number): boolean {
-    return this.hasAccessWith(ctx, primary, rec, this.viewerAccess(ctx, actorId));
+    return this.accessRole(ctx, primary, rec, actorId) !== "";
   }
 
-  private hasAccessWith(ctx: SystemContext, primary: number, rec: PropertyRecord, v: ViewerAccess): boolean {
-    if (rec.owner === 0) return true;
-    if (v.profileId && v.profileId === rec.owner) return true;
-    if (v.admin) return true;
+  // What lets an actor unlock this: owner, admin, official or key; "" when nothing does
+  private accessRole(ctx: SystemContext, primary: number, rec: PropertyRecord, actorId: number): string {
+    if (rec.owner === 0) return "unclaimed";
+    const v = this.viewerAccess(ctx, actorId);
+    if (v.profileId && v.profileId === rec.owner) return "owner";
+    if (v.admin) return "admin";
     const hold = this.holdOf(ctx, primary);
-    if (hold && v.ranks.some((r) => r.hold === hold && MANAGER_RANKS.indexOf(r.rank) !== -1)) return true;
-    return v.keys.has(this.keyNameOf(primary, rec));
+    if (hold && v.ranks.some((r) => r.hold === hold && MANAGER_RANKS.indexOf(r.rank) !== -1)) return "official";
+    return v.keys.has(this.keyNameOf(primary, rec)) ? "key" : "";
   }
 
   // One inventory read and one access read per actor, not per claimed ref.
