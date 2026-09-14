@@ -144,8 +144,18 @@ TEST_CASE("Ingredients share the food cooldown", "[Restoration]")
   p.GetActionListener().OnEquip(rawMsgData, ingredient);
   REQUIRE(ac.GetInventory().GetItemCount(0x4B0BA) == 1);
 
+  p.Messages().clear();
   p.GetActionListener().OnEquip(rawMsgData, ingredient);
   REQUIRE(ac.GetInventory().GetItemCount(0x4B0BA) == 1);
+
+  // Only Wheat's first effect (Restore Health) is rolled back, not its Magicka
+  auto changeValues =
+    std::find_if(p.Messages().begin(), p.Messages().end(),
+                 [](const auto& m) { return m.j.value("t", 0) == 16; });
+  REQUIRE(changeValues != p.Messages().end());
+  nlohmann::json message = changeValues->j;
+  REQUIRE(message["data"]["health"] != nlohmann::json{});
+  REQUIRE(message["data"]["magicka"] == nlohmann::json{});
 
   ac.SetPercentages({ 0.1f, 0.f, 0.f });
   p.GetActionListener().OnEquip(rawMsgData, food);
