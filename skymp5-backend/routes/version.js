@@ -4,9 +4,9 @@ const fs = require('fs')
 // Written by the manager Build tab. LATEST_VERSION = launcher app release (GET /api/version, update prompt)
 // CLIENT_VERSION = client files release (baked into data/files-version.json by merge-files.js)
 // SERVER_VERSION = game server release label (informational)
-const LATEST_VERSION = '2.1.14'
-const CLIENT_VERSION = '0.3.1'
-const SERVER_VERSION = '0.3.1'
+const LATEST_VERSION = '2.1.15'
+const CLIENT_VERSION = '0.3.2'
+const SERVER_VERSION = '0.3.2'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 
 router.get('/', (_req, res) => {
