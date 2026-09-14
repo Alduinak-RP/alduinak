@@ -16,13 +16,19 @@ client replays them after every spawn.
 
 ## What is saved
 
-| Kind | Read with | Restored with |
-|---|---|---|
-| Discovered map markers | `ObjectReference.isMapMarkerVisible()` on every REFR of the marker table | `addToMap(true)` when the marker is not visible |
-| Learned ingredient effects | `Ingredient.getIsNthEffectKnown(i)` for the first four effects | `learnEffect(i)` for every saved bit the engine does not know |
+| Kind | Bits | Read with | Restored with |
+|---|---|---|---|
+| Map markers | 1 shown on the map, 2 discovered | `ObjectReference.isMapMarkerVisible()` and `canFastTravelToMarker()` on every REFR of the marker table | `addToMap(true)` when a discovered flag is missing, `addToMap(false)` when only the shown flag is missing |
+| Learned ingredient effects | bit `i` = effect `i` | `Ingredient.getIsNthEffectKnown(i)` for the first four effects | `learnEffect(i)` for every saved bit the engine does not know |
 
-Nothing is ever cleared: a marker or effect that vanished from the engine
-(relog, game load, hot reload) comes back on the next pass.
+A marker revealed by a quest, book, map or dialogue is saved as shown only and
+restored without its fast travel flag, so the first real visit still shows the
+"Discovered" message and saves the discovered flag. Walking into a marker that
+the plugins already show (the hold capitals, FNAM 0x01 without 0x02) saves the
+discovered flag.
+
+Nothing is ever cleared: a flag that vanished from the engine (relog, game
+load, hot reload) comes back on the next pass.
 
 ## Wire protocol
 
@@ -32,10 +38,9 @@ Custom packets, JSON:
 |---|---|---|
 | Client to server | `{ customPacketType: "knowledgeRequest" }` | every own `createActor`, retried every 15 s until answered |
 | Server to client | `{ customPacketType: "knowledgeState", actorId, markers, ingredients }` | answer for the user's current actor |
-| Client to server | `{ customPacketType: "knowledgeAdd", actorId, markers, ingredients }` | new discoveries, 1.5 s debounce, at most 200 of each per packet |
+| Client to server | `{ customPacketType: "knowledgeAdd", actorId, markers, ingredients }` | new flags, 1.5 s debounce, at most 200 of each per packet |
 
-`markers` is a list of descs, `ingredients` a list of `[desc, effectMask]`
-pairs (bit `i` = effect `i` is known).
+`markers` and `ingredients` are lists of `[desc, bits]` pairs.
 
 ## Server storage
 
@@ -43,7 +48,7 @@ Two private dynamic fields on the player actor, riding the changeform into
 MongoDB (never sent to other clients):
 
 ```json
-"private.knownMarkers": ["162ce:Skyrim.esm", "13f21:Dawnguard.esm"],
+"private.knownMarkers": [["162ce:Skyrim.esm", 3], ["13f21:Dawnguard.esm", 1]],
 "private.knownIngredients": [["34d22:Skyrim.esm", 9]]
 ```
 
@@ -54,20 +59,23 @@ object keyed by desc because plugin names contain dots.
 Validation in `knowledgeAdd`:
 
 - A marker desc must resolve (`getIdFromDesc`) to a REFR whose `NAME` is the
-  `MapMarker` STAT (`Skyrim.esm` `0x10`). It is stored as the canonical
-  `getDescFromId` spelling.
+  `MapMarker` STAT (`Skyrim.esm` `0x10`); its bits are cut to the two flags.
 - An ingredient desc must resolve to an `INGR` record; the mask is cut to its
-  `EFID` count (at most 4 effects) and only new bits are merged.
+  `EFID` count (at most 4 effects).
+- Both are stored as the canonical `getDescFromId` spelling and only new bits
+  are merged. The packet is validated before the stored fields are read, so a
+  packet with nothing valid costs no read or write.
 - Caps: 2000 markers and 1000 ingredients per character, 256 items per
-  packet, descs up to 128 characters. Verdicts are cached (plugins never
-  change at runtime).
+  packet, descs up to 128 characters.
+- Only real forms are cached, keyed by form id, so junk cannot fill the cache.
 - `actorId` must be the user's current actor or another actor of the same
   profile, so the flush that follows a character switch still lands on the
   character that made the discovery.
-- `knowledgeRequest` is answered at most once per second per user.
+- Each user gets one `knowledgeRequest` and five `knowledgeAdd` packets per
+  second; the rest are dropped.
 
 Each accepted change logs one line, e.g.
-`KnowledgeSystem: ff000abc +2 marker(s), +1 ingredient update(s)`.
+`KnowledgeSystem: ff000abc +2 marker update(s), +1 ingredient update(s)`.
 
 ## Client timing
 
@@ -75,31 +83,38 @@ Each accepted change logs one line, e.g.
   restored or recorded until the answer for the current actor arrives and the
   world has run 3 s after the spawn or the last `loadGame` event.
 - Markers: one pass over the table every 10 s (60 per frame), plus a pass
-  right after `locationDiscovery` or `cellFullyLoaded`. A known marker that
-  is not visible is re-added; a visible marker nobody explains is recorded.
+  right after `locationDiscovery` or `cellFullyLoaded`. A missing known flag is
+  re-added; a flag nobody explains is recorded.
 - Ingredients: a poll every 5 s, 0.7 s after the player eats an ingredient and
   when the Crafting menu closes, read at 5 ingredients per frame. The poll
   covers every ingredient carried, eaten or brought into a crafting menu this
   session plus every known one, so eating or brewing the last one of a stack
   still records its effects.
-- Pending discoveries are flushed on the next own spawn and when the Main
+- Opening the Journal (pause) menu runs one full marker pass and reads every
+  polled ingredient at once, then sends everything. Both quits (to the Main
+  Menu and to the desktop) pass through it while the world is still loaded.
+- The whole pending backlog is sent on the next own spawn and when the Main
   Menu opens. After a reconnect of the same character, whatever the server
   lacks is sent again.
 - Single player mode skips the whole service.
 
 ## Baseline and character switches
 
-Map marker visibility and known effects are global engine state. The client
-keeps session-wide "seen" sets in `sp.storage`:
+Map marker flags and known effects are global engine state. The client keeps
+"seen" sets in `sp.storage`, reset by every game load:
 
-- The first full marker pass of a game session only records the plugin-default
-  visible markers (FNAM flag 0x01, 29 in the current load order) as seen; they
-  are visible for everyone anyway.
-- Every marker or effect restored or recorded for any character is added to
-  the seen sets, so a second character in the same game process does not
-  record what the first one knew. The second character still sees it on the
-  map and in the alchemy menu until the game is relaunched; there is no
-  Papyrus call to forget a marker or effect.
+- The first full marker pass after a load only marks what the engine shows
+  (the plugin-default markers, 29 in the current load order) as seen.
+- Every entry learned for a character, or re-applied by the restore pass, is
+  added to the seen sets.
+- A character switch through character select opens the Main Menu, so the new
+  character spawns through a game load. The load resets the engine and the
+  seen sets, so the new character records anything it finds, including what
+  the previous character knew.
+- A switch without a load (a reconnect while the world stays loaded) keeps the
+  seen sets: the new character does not record what the previous one knew and
+  still sees it on the map and in the alchemy menu until the next load; there
+  is no Papyrus call to forget a marker or effect.
 
 ## Local file of the previous client
 
@@ -107,7 +122,8 @@ Before this change the client kept the same data in
 `Data/Platform/PluginsNoLoad/character-progress-no-load.js`, keyed by
 `<server-ip>:<server-port>/<actor id hex>`. The file is no longer written. On
 every login the entry for the current character, if any, is merged into the
-upload; the server keeps only what it lacks.
+upload; its markers count as shown only, since the file did not tell visited
+from revealed. The server keeps only what it lacks.
 
 ## The marker table
 
@@ -139,12 +155,14 @@ when `Skyrim.esm` (or the first plugin) is unreadable or no marker was found.
 
 ## Limitations
 
-- `addToMap(true)` also sets the per-marker fast travel flag, like natural
+- A discovered marker gets the per-marker fast travel flag back, like natural
   discovery. Fast travel stays blocked by the global
   `Game.enableFastTravel(false)` in `disableFastTravelService.ts`.
 - Regenerate the table after adding or removing a plugin that places map
   markers, otherwise those markers are never recorded. A saved marker whose
   plugin is gone fails validation on the server and resolves to nothing on
   the client.
-- A discovery made in the first seconds of a session, before the baseline
-  pass ends, is treated as a default and not recorded.
+- A discovery made before the first full pass after a load ends (about 3 s
+  after the spawn) is treated as a default and not recorded.
+- The pause menu capture reads every table marker in one frame (a few ms while
+  the game is paused).
