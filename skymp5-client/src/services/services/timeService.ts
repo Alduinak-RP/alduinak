@@ -21,6 +21,8 @@ const MAX_DRIFT_HOURS = 5 / 3600;
 const MAX_DRIFT_DAYS = MAX_DRIFT_HOURS / 24;
 // 1 Jan 1970 was a Thursday, so this counts days from a Sunday midnight (the engine's Sundas is weekday 0)
 const SUNDAY_OFFSET_DAYS = 4;
+// About 30 s of passes
+const DAYS_PASSED_SAMPLES = 15;
 
 interface ServerClock {
   offsetMs: number;
@@ -67,6 +69,8 @@ export class TimeService extends ClientListener {
   // The template save carries its own calendar, so the first pass after a load replaces all of it
   private onLoadGame(): void {
     this.weeks = undefined;
+    this.written = undefined;
+    this.samples = [];
     this.nextSyncAt = 0;
     sendCustomPacket(this.controller, { customPacketType: "gameTimeRequest" });
   }
@@ -108,12 +112,34 @@ export class TimeService extends ClientListener {
     // Rebased per load to within a week above the template save's value, so a load never moves it back
     if (this.weeks === undefined) this.weeks = Math.floor((days - current) / 7);
     const target = days - 7 * this.weeks;
+    if (this.samples && this.samples.push(`${current.toFixed(5)}/${target.toFixed(5)}`) >= DAYS_PASSED_SAMPLES) {
+      this.report(`GameDaysPassed value/target every 2 s after the load: ${this.samples.join(" ")}`);
+      this.samples = undefined;
+    }
+    if (this.engineOwnsDaysPassed) return;
+    // Nothing in the game lowers it, so a drop below our last write means the engine recomputes it from its own counters
+    if (this.written !== undefined && current < this.written - MAX_DRIFT_DAYS) {
+      this.engineOwnsDaysPassed = true;
+      this.report(`GameDaysPassed fell from ${this.written} to ${current} after a write, so it is left to the engine`);
+      return;
+    }
     // Both ways, so training, jail or the DST fall back never leave it ahead
-    if (Math.abs(target - current) >= MAX_DRIFT_DAYS) daysPassed.setValue(target);
+    if (Math.abs(target - current) < MAX_DRIFT_DAYS) return;
+    daysPassed.setValue(target);
+    this.written = Math.fround(target);
+  }
+
+  // printConsole never reaches skyrim-platform.log (and the console is blocked), a throw from its own update does
+  private report(message: string): void {
+    this.controller.once("update", () => { throw new Error(`TimeService: ${message}`); });
   }
 
   // Until the server answers, the client's own local clock stands in
   private clock: ServerClock = { offsetMs: 0, tzOffsetMin: new Date().getTimezoneOffset(), year: DEFAULT_YEAR, timeScale: 1 };
   private nextSyncAt = 0;
   private weeks: number | undefined;
+  private written: number | undefined;
+  private engineOwnsDaysPassed = false;
+  // Diagnostic: the first passes after a load, logged once so the engine's handling of GameDaysPassed can be checked in game
+  private samples: string[] | undefined;
 }
