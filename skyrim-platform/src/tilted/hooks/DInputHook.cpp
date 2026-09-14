@@ -489,6 +489,10 @@ void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
     g_starvedChecks.fill(0);
     return;
   }
+  // Numpad Enter shares VK_RETURN with Enter, so an extended twin counts as the key
+  const auto got = [state](UINT dik) {
+    return state[dik] && g_deliveredDown[dik];
+  };
   int starved = -1;
   for (UINT sc = 1; sc < g_seenUp.size(); ++sc) {
     // AltGr fakes a left Ctrl, so modifiers are left out
@@ -502,7 +506,7 @@ void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
       g_starvedChecks[sc] = 0;
       continue;
     }
-    if (!g_seenUp[sc] || (state[sc] && g_deliveredDown[sc])) {
+    if (!g_seenUp[sc] || got(sc) || got(sc | 0x80)) {
       g_starvedChecks[sc] = 0;
       continue;
     }
