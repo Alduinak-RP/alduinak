@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
@@ -68,6 +68,7 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
+    onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
     this.interactKey = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
   }
 

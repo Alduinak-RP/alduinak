@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, buttonEventKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { RemoteServer } from "./remoteServer";
 import { parseMasteryMenu } from "./masteryService";
 import { ConnectionMessage } from "../events/connectionMessage";
@@ -133,6 +133,7 @@ export class AdminMenuService extends ClientListener {
     this.controller.on("effectFinish", (e) => this.onEffect(e, false));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
+    onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.activeTab = ""; });
   }
 
   get isOpen(): boolean {
