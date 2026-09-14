@@ -2,8 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { LogFn } from "./espmEditorIds";
 
-// Localized record names from <plugin>_english.strings: loose Data/Strings first, then Skyrim - Interface.bsa.
-// Port of misc/gen-map-marker-teleports.py (Bsa, parse_strings, Strings): BSA v104/v105 with uncompressed entries only.
+// Localized names from <plugin>_english.strings (loose Data/Strings, then Skyrim - Interface.bsa); port of misc/gen-map-marker-teleports.py
 
 const INTERFACE_BSA = "Skyrim - Interface.bsa";
 const BSA_HEADER_SIZE = 36;
