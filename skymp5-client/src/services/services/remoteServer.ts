@@ -23,9 +23,10 @@ import { IdManager } from '../../lib/idManager';
 import { nameof } from '../../lib/nameof';
 import { setActorValuePercentage } from '../../sync/actorvalues';
 import { applyAppearanceToPlayer } from '../../sync/appearance';
-import { applyEquipment, isBadMenuShown } from '../../sync/equipment';
+import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '../../sync/equipment';
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement } from '../../sync/movement';
+import { applyWeapDrawn } from '../../sync/movementApply';
 import { dropUnlistedBaseSpells, learnSpells, removeAllSpells, SpellListNatives } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormModel, WorldModel } from '../../view/model';
@@ -1096,9 +1097,11 @@ export class RemoteServer extends ClientListener {
       const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
       const cloneSpellGuard = this.controller.lookupListener(CloneSpellGuardService);
 
-      // Keep-alives only refresh a running clone, recasting would stack concentration casts
+      // Keep-alives and recasts of a running channel only refresh the clone, recasting would stack concentration casts
       const watch = this.cloneCastWatch.get(key);
-      if (msg.data.keepAlive && watch) {
+      const sameChannel = watch !== undefined && spellId !== undefined && watch.spellId === spellId
+        && watch.target === msg.data.target && this.isConcentrationSpell(spellId);
+      if (watch && (msg.data.keepAlive || sameChannel)) {
         watch.expiresAt = now + this.cloneCastTimeoutMs;
         if (spellId) {
           cloneSpellGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
@@ -1119,9 +1122,12 @@ export class RemoteServer extends ClientListener {
         castingSource: msg.data.castingSource,
         animVars: actorAnimationVariables,
         wasDrawn: ac.isWeaponDrawn(),
+        spellId: spellId ?? 0,
+        target: msg.data.target,
       });
 
       if (spellId) {
+        const hands = this.readyCloneHands(ac, spellId, msg.data.castingSource, msg.data.isDualCasting);
         // The platform only casts Fire Storm or Blizzard on the clone when told the observer is guarded
         const replayedHostileSelf = castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
           msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables, true) === true;
@@ -1130,6 +1136,8 @@ export class RemoteServer extends ClientListener {
         } else {
           cloneSpellGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
         }
+        // castSpellImmediate plays no cast animation, the vanilla graph starts one on BeginCastLeft or BeginCastRight
+        hands.forEach((hand) => Debug.sendAnimationEvent(ac, hand === SpellType.Left ? "BeginCastLeft" : "BeginCastRight"));
       }
     });
   }
@@ -1141,6 +1149,26 @@ export class RemoteServer extends ClientListener {
     if (!otherHandCasting) {
       ac.interruptCast();
     }
+  }
+
+  // A clone shows the cast only with the spell drawn in the casting hand
+  private readyCloneHands(ac: Actor, spellId: number, castingSource: number, isDualCasting: boolean): SpellType[] {
+    const isHand = castingSource === SpellType.Left || castingSource === SpellType.Right;
+    if (!isHand || !this.sp.Spell.from(Game.getFormEx(spellId))) {
+      return [];
+    }
+    const hands = isDualCasting ? [SpellType.Left, SpellType.Right] : [castingSource as SpellType];
+    hands.forEach((hand) => {
+      if (ac.getEquippedSpell(hand)?.getFormID() !== spellId) {
+        syncSpellEquipment(ac, spellId, hand);
+      }
+    });
+    applyWeapDrawn(ac, true);
+    return hands;
+  }
+
+  private isConcentrationSpell(spellId: number): boolean {
+    return this.sp.Spell.from(Game.getFormEx(spellId))?.getNthEffectMagicEffect(0)?.getCastingType() === this.concentrationCasting;
   }
 
   private sweepCloneCasts(): void {
@@ -1195,10 +1223,11 @@ export class RemoteServer extends ClientListener {
     });
   }
 
-  private cloneCastWatch = new Map<string, { casterRemoteId: number, expiresAt: number, castingSource: number, animVars: ActorAnimationVariables, wasDrawn: boolean }>();
+  private cloneCastWatch = new Map<string, { casterRemoteId: number, expiresAt: number, castingSource: number, animVars: ActorAnimationVariables, wasDrawn: boolean, spellId: number, target: number }>();
   private cloneCastStoppedAt = new Map<string, number>();
   private readonly cloneCastTimeoutMs = 8000;
   private readonly cloneCastStopMemoryMs = 2000;
+  private readonly concentrationCasting = 2;
   private lastCloneCastSweep = 0;
   private numSetInventory = 0;
 }
