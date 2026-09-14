@@ -5,6 +5,8 @@ import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
+import { addItemTo } from "./actorUtil";
+import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -26,6 +28,8 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
+//                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
+//                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..1000, self allowed
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
@@ -33,6 +37,7 @@ type Mp = any;
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
+//                     { customPacketType: "adminItems", query, kind, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
 //                     { customPacketType: "adminActionResult", ok, text }
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
@@ -40,6 +45,8 @@ type Mp = any;
 
 const MAX_USER_SLOTS = 1024;
 const PING_CACHE_MS = 3000;
+const MAX_ITEM_SPAWN = 1000;
+const SPAWN_COOLDOWN_MS = 250;
 
 const ADMIN_MODES: Array<{ id: string; label: string }> = [
   { id: "god", label: "God" },
@@ -62,6 +69,13 @@ interface TeleportLocation {
   rot: number[];
 }
 
+interface OnlinePlayer {
+  userId: number;
+  actorId: number;
+  profileId: number;
+  name: string;
+}
+
 export class AdminSystem implements System {
   systemName = "AdminSystem";
   constructor(private log: Log, private npcSpawns: NpcSpawnSystem, private mastery: MasterySystem) { }
@@ -76,11 +90,20 @@ export class AdminSystem implements System {
   private pingCacheAt = 0;
   private serverName = "";
   private menuRefusalLogged = new Set<number>();
+  private dataDir = "";
+  private loadOrder: string[] = [];
+  private catalog: CatalogItem[] | null = null;
+  // lower-case desc -> item
+  private catalogByDesc = new Map<string, CatalogItem>();
+  private catalogBuild: Promise<void> | null = null;
+  private spawnAt = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
     const all = s.allSettings as Record<string, any> | null;
     this.serverName = typeof s.name === "string" ? s.name : "";
+    this.dataDir = s.dataDir;
+    this.loadOrder = s.loadOrder;
     this.masterUrl = typeof s.master === "string" ? s.master.replace(/\/+$/, "") : "";
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
@@ -142,8 +165,8 @@ export class AdminSystem implements System {
     return this.tierOf(mp, actorId) !== null;
   }
 
-  private onlinePlayers(mp: Mp): Array<{ userId: number; actorId: number; profileId: number; name: string }> {
-    const out: Array<{ userId: number; actorId: number; profileId: number; name: string }> = [];
+  private onlinePlayers(mp: Mp): OnlinePlayer[] {
+    const out: OnlinePlayer[] = [];
     for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
       try { if (!mp.isConnected(userId)) continue; } catch { continue; }
       let actorId = 0;
@@ -295,6 +318,7 @@ export class AdminSystem implements System {
   // Slots are reused, so the next player in this slot gets the refusal diagnostic again
   disconnect(userId: number): void {
     this.menuRefusalLogged.delete(userId);
+    this.spawnAt.delete(userId);
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -338,6 +362,7 @@ export class AdminSystem implements System {
     }
 
     if (type === "adminMenuRequest") {
+      if (caps.items) this.ensureCatalog();
       const send = (backendPlayers: any[] | null) => {
         try {
           // The fetch outlives the packet handler; the slot must still belong to the same admin
@@ -373,6 +398,10 @@ export class AdminSystem implements System {
     }
     if (action.startsWith("npcZone")) {
       this.npcZoneAction(mp, userId, myActorId, adminProfile, action, content);
+      return;
+    }
+    if (action === "itemSearch") {
+      this.sendItems(mp, userId, content);
       return;
     }
     if (action === "teleportLoc") {
@@ -439,6 +468,8 @@ export class AdminSystem implements System {
         const ok = this.mastery.resetCharacter(ctx, target.actorId);
         if (ok) this.adminLog(`profile ${adminProfile} reset the craft and hours of ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, ok, ok ? `Reset the craft and hours of ${target.name}` : `${target.name} has no craft to reset`);
+      } else if (action === "itemSpawn") {
+        this.spawnItem(mp, userId, myActorId, adminProfile, tier, target, content);
       } else {
         this.reply(mp, userId, false, `Unknown action '${action}'`);
       }
@@ -446,6 +477,76 @@ export class AdminSystem implements System {
       this.log(`AdminSystem: action '${action}' by profile ${adminProfile} failed: ${e}`);
       this.reply(mp, userId, false, "Action failed, see server log");
     }
+  }
+
+  // Built once in the background on first use; a failed build is retried on the next call
+  private ensureCatalog(): void {
+    if (this.catalog || this.catalogBuild) return;
+    const started = Date.now();
+    this.catalogBuild = buildItemCatalog(this.dataDir, this.loadOrder, (line) => this.log(line))
+      .then(items => {
+        this.catalog = items;
+        this.catalogByDesc = new Map(items.map(i => [i.desc.toLowerCase(), i]));
+        this.log(`AdminSystem: item catalog ${items.length} item(s) in ${Date.now() - started} ms`);
+      })
+      .catch(e => this.log(`AdminSystem: item catalog build failed: ${e}`))
+      .finally(() => { this.catalogBuild = null; });
+  }
+
+  private sendItems(mp: Mp, userId: number, content: Content): void {
+    this.ensureCatalog();
+    const query = normaliseQuery(content["query"]);
+    const kind = normaliseKind(content["kind"]);
+    const found = this.catalog ? searchItems(this.catalog, query, kind) : { total: 0, rows: [] };
+    try {
+      mp.sendCustomPacket(userId, JSON.stringify({
+        customPacketType: "adminItems",
+        query,
+        kind,
+        ready: !!this.catalog,
+        total: found.total,
+        items: found.rows.map(({ desc, name, edid, type, plugin }) => ({ desc, name, edid, type, plugin })),
+      }));
+    } catch (e) {
+      this.log(`AdminSystem: adminItems reply failed: ${e}`);
+    }
+  }
+
+  // The catalog is the allow-list; the native record is re-checked because C++ AddItem also accepts leveled lists and form lists
+  private spawnItem(mp: Mp, userId: number, myActorId: number, adminProfile: number, tier: AdminTier, target: OnlinePlayer, content: Content): void {
+    const now = Date.now();
+    if (now - (this.spawnAt.get(userId) ?? 0) < SPAWN_COOLDOWN_MS) return;
+    this.spawnAt.set(userId, now);
+    if (!this.catalog) {
+      this.ensureCatalog();
+      this.reply(mp, userId, false, "The item list is still loading, try again shortly");
+      return;
+    }
+    const entry = this.catalogByDesc.get(String(content["item"] ?? "").toLowerCase());
+    if (!entry) {
+      this.reply(mp, userId, false, "Unknown item");
+      return;
+    }
+    const count = Number(content["count"]);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_ITEM_SPAWN) {
+      this.reply(mp, userId, false, `Count must be a whole number between 1 and ${MAX_ITEM_SPAWN}`);
+      return;
+    }
+    let itemId = 0;
+    let record: any = null;
+    try {
+      itemId = mp.getIdFromDesc(entry.desc);
+      record = mp.lookupEspmRecordById(itemId)?.record;
+    } catch { }
+    if (!record || !ITEM_TYPES.includes(record.type) || (record.type === "ARMO" && (record.flags & ARMO_NON_PLAYABLE))) {
+      this.reply(mp, userId, false, "That is not a spawnable item");
+      return;
+    }
+    addItemTo(mp, target.actorId, itemId, count);
+    const text = `profile ${adminProfile} (${tier}) spawned ${count}x ${JSON.stringify(entry.name)} [${entry.desc} ${entry.type}] for ${JSON.stringify(target.name)} (profile ${target.profileId})`;
+    this.log(`AdminSystem: ${text}`);
+    this.adminLog(text);
+    this.reply(mp, userId, true, `Gave ${count} x ${entry.name} to ${target.actorId === myActorId ? "you" : target.name}`);
   }
 
   // Every tier may manage NPC zones; the slot must still belong to the admin because add/delete finish asynchronously
@@ -611,7 +712,7 @@ export class AdminSystem implements System {
     ctx: SystemContext,
     userId: number,
     adminActorId: number,
-    target: { userId: number; actorId: number; profileId: number; name: string },
+    target: OnlinePlayer,
     adminProfile: number,
     tier: AdminTier
   ): void {
