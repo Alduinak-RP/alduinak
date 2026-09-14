@@ -1,5 +1,7 @@
+import { Menu, MenuOpenEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 
@@ -31,6 +33,7 @@ export class TimeService extends ClientListener {
     super();
     controller.on("update", () => this.onUpdate());
     controller.on("loadGame", () => this.onLoadGame());
+    controller.on("menuOpen", (e) => this.onMenuOpen(e));
     controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
   }
 
@@ -65,6 +68,13 @@ export class TimeService extends ClientListener {
     this.rebaseDaysPassed = true;
     this.nextSyncAt = 0;
     sendCustomPacket(this.controller, { customPacketType: "gameTimeRequest" });
+  }
+
+  // Waiting or sleeping (beds included) would push this client's clock ahead of the server's
+  private onMenuOpen(e: MenuOpenEvent): void {
+    if (e.name !== Menu.Sleep) return;
+    this.sp.callNative("TESModPlatform", "CloseMenu", undefined, Menu.Sleep);
+    showSystemNotification(this.sp, "Time follows the realm's clock, so waiting and sleeping are unavailable.");
   }
 
   private onUpdate(): void {
