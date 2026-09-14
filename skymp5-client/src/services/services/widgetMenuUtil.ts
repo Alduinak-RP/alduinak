@@ -70,10 +70,12 @@ export function isMenuHotkeyBlocked(sp: Sp, controller: CombinedController): boo
   return isUiHidden(controller) || isGameInputBlocked(sp, controller);
 }
 
+export const CONSOLE_MENUS: string[] = [Menu.Console, Menu.ConsoleNativeUI];
+
 // Live query: the console can swallow input without a tracked menuOpen event
 export function isConsoleOpen(sp: Sp): boolean {
   try {
-    return sp.Ui.isMenuOpen(Menu.Console) || sp.Ui.isMenuOpen(Menu.ConsoleNativeUI);
+    return CONSOLE_MENUS.some((menu) => sp.Ui.isMenuOpen(menu));
   } catch {
     return false;
   }
