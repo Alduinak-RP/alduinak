@@ -99,8 +99,7 @@ function showHotkeyConflict() {
   if (el) el.hidden = !code || code !== getKey('ghk-activate')
 }
 
-// Press-to-bind capture. Backspace unbinds server hotkeys other than Interact / Menus: gameHotkeys:save
-// drops code 0, so an unbound game key would silently keep its old binding.
+// Backspace unbinds server hotkeys except Interact / Menus; gameHotkeys:save drops code 0, so game keys cannot unbind
 // Server hotkey button -> [hotkeys:load/save field, default DIK]; hk-chat is separate because it pairs with Enter
 const SERVER_HOTKEYS = {
   'hk-cursor': ['freeCursor', 64], 'hk-voice-ptt': ['voicePtt', 47],
