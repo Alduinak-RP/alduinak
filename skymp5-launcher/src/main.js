@@ -442,22 +442,19 @@ ipcMain.handle('graphics:save', (_e, g) => {
   }
 })
 
+// hotkeys:load/save field -> skymp5-client settings key; chatFocusKeyCodes is the one list-valued hotkey
+const CLIENT_HOTKEY_KEYS = {
+  freeCursor: 'freeCursorKeyCode', housing: 'housingMenuKeyCode', faction: 'factionMenuKeyCode',
+  personal: 'personalMenuKeyCode', voicePtt: 'voicePushToTalkKeyCode', adminMenu: 'adminMenuKeyCode',
+  hideUi: 'hideUiKeyCode', altInteract: 'altInteractKeyCode',
+}
+
 ipcMain.handle('hotkeys:load', () => {
   try {
     const c = readClientSettings()
-    const numOrNull = (v) => (typeof v === 'number' ? v : null)
-    return {
-      ok: true,
-      path: clientSettingsPath(),
-      chatFocus:  Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null,
-      freeCursor: numOrNull(c.freeCursorKeyCode),
-      housing:    numOrNull(c.housingMenuKeyCode),
-      faction:    numOrNull(c.factionMenuKeyCode),
-      personal:   numOrNull(c.personalMenuKeyCode),
-      voicePtt:   numOrNull(c.voicePushToTalkKeyCode),
-      adminMenu:  numOrNull(c.adminMenuKeyCode),
-      hideUi:     numOrNull(c.hideUiKeyCode),
-    }
+    const out = { ok: true, path: clientSettingsPath(), chatFocus: Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null }
+    for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) out[field] = typeof c[key] === 'number' ? c[key] : null
+    return out
   } catch (err) {
     return { ok: false, error: err.message }
   }
@@ -467,14 +464,8 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
   try {
     h = h || {}
     const c = readClientSettings()
-    if (Array.isArray(h.chatFocus))        c.chatFocusKeyCodes  = h.chatFocus.filter(n => typeof n === 'number')
-    if (typeof h.freeCursor === 'number')  c.freeCursorKeyCode  = h.freeCursor
-    if (typeof h.housing === 'number')     c.housingMenuKeyCode = h.housing
-    if (typeof h.faction === 'number')     c.factionMenuKeyCode = h.faction
-    if (typeof h.personal === 'number')    c.personalMenuKeyCode = h.personal
-    if (typeof h.voicePtt === 'number')    c.voicePushToTalkKeyCode = h.voicePtt
-    if (typeof h.adminMenu === 'number')   c.adminMenuKeyCode = h.adminMenu
-    if (typeof h.hideUi === 'number')      c.hideUiKeyCode = h.hideUi
+    if (Array.isArray(h.chatFocus)) c.chatFocusKeyCodes = h.chatFocus.filter(n => typeof n === 'number')
+    for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) if (typeof h[field] === 'number') c[key] = h[field]
     const p = clientSettingsPath()
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(c, null, 2))
@@ -484,9 +475,10 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
   }
 })
 
-// Game hotkeys edit the keyboard column of the game's controlmap.txt.
-// Values are DirectInput scan codes, the same space the renderer's KEY_TABLE uses.
+// Game hotkeys edit the keyboard and mouse columns of the game's controlmap.txt.
+// Values are DirectInput scan codes, the same space the renderer's KEY_TABLE uses; mouse button n is 256 + n.
 const GAME_HOTKEY_EVENTS = ['Activate', 'Jump', 'Sprint', 'Sneak', 'Shout', 'Toggle POV']
+const MOUSE_DIK = 256
 
 function controlmapPath() {
   const gp = effectiveGamePath()
@@ -503,7 +495,15 @@ function readControlmapText() {
 
 function controlmapEventRe(ev) {
   const escaped = ev.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp('^(' + escaped + '[ \\t]+)(0x[0-9a-fA-F]+)', 'm')
+  return new RegExp('^(' + escaped + '[ \\t]+)(\\S+)([ \\t]+)(\\S+)', 'm')
+}
+
+// A bound mouse column wins over the keyboard one; 0xff is unbound
+function controlmapBinding(kb, mouse) {
+  const m = parseInt(mouse, 16)
+  if (m >= 0 && m < 8) return MOUSE_DIK + m
+  const k = parseInt(kb, 16)
+  return k > 0 && k < 0xff ? k : null
 }
 
 // Stale launcher copies lack the AE Creations Menu context or still bind Wait on the gamepad
@@ -513,13 +513,13 @@ function isStaleLauncherControlmap(text) {
   return !/^PurchaseCredits[ \t]/m.test(text) || (!!wait && wait[1].toLowerCase() !== '0xff')
 }
 
-// Rebuilds a stale launcher copy from the seed, keeping the keyboard rebinds the Settings tab manages
+// Rebuilds a stale launcher copy from the seed, keeping the keyboard and mouse rebinds the Settings tab manages
 function upgradeControlmapText(text) {
   if (!isStaleLauncherControlmap(text)) return text
   let upgraded = fs.readFileSync(CONTROLMAP_SEED, 'utf8')
   for (const ev of GAME_HOTKEY_EVENTS) {
     const m = text.match(controlmapEventRe(ev))
-    if (m) upgraded = upgraded.replace(controlmapEventRe(ev), (_m, head) => head + m[2])
+    if (m) upgraded = upgraded.replace(controlmapEventRe(ev), (_m, head, _kb, sep) => head + m[2] + sep + m[4])
   }
   return upgraded
 }
@@ -552,7 +552,7 @@ ipcMain.handle('gameHotkeys:load', () => {
     const keys = {}
     for (const ev of GAME_HOTKEY_EVENTS) {
       const m = cm.text.match(controlmapEventRe(ev))
-      keys[ev] = m ? parseInt(m[2], 16) : null
+      keys[ev] = m ? controlmapBinding(m[2], m[4]) : null
     }
     return { ok: true, path: cm.path, exists: cm.exists, hasGamePath: !!cm.path, keys }
   } catch (err) {
@@ -566,9 +566,12 @@ ipcMain.handle('gameHotkeys:save', (_e, keys) => {
     if (!p) return { ok: false, error: 'Skyrim path is not configured yet' }
     let { text } = readControlmapText()
     for (const [ev, code] of Object.entries(keys || {})) {
-      if (!GAME_HOTKEY_EVENTS.includes(ev) || typeof code !== 'number' || code <= 0 || code > 0xff) continue
-      const hex = '0x' + code.toString(16)
-      text = text.replace(controlmapEventRe(ev), (_m, head) => head + hex)
+      const mouse = code >= MOUSE_DIK && code < MOUSE_DIK + 8
+      if (!GAME_HOTKEY_EVENTS.includes(ev) || typeof code !== 'number' || !(mouse || (code > 0 && code < 0xff))) continue
+      // One binding per action: the other column goes unbound
+      const kb = mouse ? '0xff' : '0x' + code.toString(16)
+      const ms = mouse ? '0x' + (code - MOUSE_DIK).toString(16) : '0xff'
+      text = text.replace(controlmapEventRe(ev), (_m, head, _kb, sep) => head + kb + sep + ms)
     }
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, text)
@@ -2751,11 +2754,7 @@ async function runMO2Install(opts = {}) {
 function writeClientSettings(destPath, srv, serverInfo) {
   // Start fresh every time - do not preserve stale keys from previous writes.
   // Exception: user hotkey bindings, owned by the settings UI; a launch must never reset them to defaults.
-  const HOTKEY_KEYS = [
-    'chatFocusKeyCodes', 'freeCursorKeyCode', 'housingMenuKeyCode',
-    'factionMenuKeyCode', 'personalMenuKeyCode',
-    'voicePushToTalkKeyCode', 'adminMenuKeyCode', 'hideUiKeyCode',
-  ]
+  const HOTKEY_KEYS = ['chatFocusKeyCodes', ...Object.values(CLIENT_HOTKEY_KEYS)]
   let prev = {}
   try { prev = JSON.parse(fs.readFileSync(destPath, 'utf8')) || {} } catch { /* first run */ }
   const settings = {}

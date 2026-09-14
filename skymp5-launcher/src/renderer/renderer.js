@@ -73,8 +73,10 @@ const KEY_TABLE = {
   Insert: [210, 'Insert'], Delete: [211, 'Delete'], Home: [199, 'Home'], End: [207, 'End'],
   MetaLeft: [219, 'Left Win'], MetaRight: [220, 'Right Win'], ContextMenu: [221, 'Menu'],
 }
-const DIK_LABELS = {}
-for (const [dik, label] of Object.values(KEY_TABLE)) DIK_LABELS[dik] = label
+// MouseEvent.button -> [DxScanCode, label]; left and right stay attack and block, so they cancel a capture
+const MOUSE_TABLE = { 1: [258, 'Middle Mouse'], 3: [259, 'Mouse 4'], 4: [260, 'Mouse 5'] }
+const DIK_LABELS = { 256: 'Left Mouse', 257: 'Right Mouse', 261: 'Mouse 6', 262: 'Mouse 7', 263: 'Mouse 8' }
+for (const [dik, label] of [...Object.values(KEY_TABLE), ...Object.values(MOUSE_TABLE)]) DIK_LABELS[dik] = label
 
 const RESOLUTIONS = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1080', '2560x1440', '3440x1440', '3840x2160']
 
@@ -93,17 +95,24 @@ function getKey(id) { const el = document.getElementById(id); return el ? (parse
 
 // Press-to-bind capture. Backspace unbinds server hotkeys only: gameHotkeys:save
 // drops code 0, so an unbound game key would silently keep its old binding.
-const SERVER_HOTKEY_IDS = ['hk-chat', 'hk-cursor', 'hk-housing', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin', 'hk-hide-ui']
+// Server hotkey button -> [hotkeys:load/save field, default DIK]; hk-chat is separate because it pairs with Enter
+const SERVER_HOTKEYS = {
+  'hk-cursor': ['freeCursor', 64], 'hk-housing': ['housing', 35], 'hk-personal': ['personal', 22],
+  'hk-faction': ['faction', 34], 'hk-voice-ptt': ['voicePtt', 47], 'hk-admin': ['adminMenu', 210],
+  'hk-hide-ui': ['hideUi', 59], 'hk-alt-interact': ['altInteract', 45],
+}
+const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]
 const GAME_HOTKEY_IDS = ['ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov']
 
 let activeCapture = null
 
 function endCapture(restorePrev) {
   if (!activeCapture) return
-  const { btn, prevCode, onKey, timer } = activeCapture
+  const { btn, prevCode, onKey, onMouse, timer } = activeCapture
   activeCapture = null
   if (timer) clearTimeout(timer)
   window.removeEventListener('keydown', onKey, { capture: true })
+  window.removeEventListener('mouseup', onMouse, { capture: true })
   btn.classList.remove('hotkey-btn--capturing')
   if (restorePrev) setKey(btn.id, prevCode)
   btn.blur()
@@ -111,7 +120,7 @@ function endCapture(restorePrev) {
 
 function startCapture(btn, canUnbind) {
   endCapture(true)
-  const prompt = canUnbind ? 'Press a key… (Esc cancels, Backspace unbinds)' : 'Press a key… (Esc cancels)'
+  const prompt = canUnbind ? 'Press a key or mouse button… (Esc cancels, Backspace unbinds)' : 'Press a key or mouse button… (Esc cancels)'
   const onKey = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -127,10 +136,20 @@ function startCapture(btn, canUnbind) {
     endCapture(false)
     setKey(btn.id, entry[0])
   }
+  // Bound on release so the back and forward buttons never reach Chromium's history navigation
+  const onMouse = (e) => {
+    const entry = MOUSE_TABLE[e.button]
+    if (!entry) { endCapture(true); return }
+    e.preventDefault()
+    e.stopPropagation()
+    endCapture(false)
+    setKey(btn.id, entry[0])
+  }
   btn.classList.add('hotkey-btn--capturing')
   btn.textContent = prompt
   window.addEventListener('keydown', onKey, { capture: true })
-  activeCapture = { btn, prevCode: getKey(btn.id), onKey, timer: null }
+  window.addEventListener('mouseup', onMouse, { capture: true })
+  activeCapture = { btn, prevCode: getKey(btn.id), onKey, onMouse, timer: null }
 }
 
 ;[...SERVER_HOTKEY_IDS, ...GAME_HOTKEY_IDS].forEach(id => {
@@ -189,20 +208,14 @@ async function loadGameSettingsTab() {
     if (gh && gh.ok) {
       for (const [id, ev] of Object.entries(GHK_MAP)) {
         const code = gh.keys ? gh.keys[ev] : null
-        if (typeof code === 'number' && code > 0 && code <= 0xff) setKey(id, code)
+        if (typeof code === 'number' && code > 0) setKey(id, code)
       }
     }
     const h = await window.electronAPI.hotkeysLoad()
     if (h && h.ok) {
       const chat = Array.isArray(h.chatFocus) ? (h.chatFocus.find(c => c !== 28) || h.chatFocus[0] || 20) : 20
       setKey('hk-chat', chat)
-      setKey('hk-cursor', h.freeCursor != null ? h.freeCursor : 64)
-      setKey('hk-housing', h.housing != null ? h.housing : 35)
-      setKey('hk-personal', h.personal != null ? h.personal : 22)
-      setKey('hk-faction', h.faction != null ? h.faction : 34)
-      setKey('hk-voice-ptt', h.voicePtt != null ? h.voicePtt : 47)
-      setKey('hk-admin', h.adminMenu != null ? h.adminMenu : 210)
-      setKey('hk-hide-ui', h.hideUi != null ? h.hideUi : 59)
+      for (const [id, [field, dflt]] of Object.entries(SERVER_HOTKEYS)) setKey(id, h[field] != null ? h[field] : dflt)
     }
   } catch (err) { /* settings tab is best-effort */ }
 }
@@ -241,17 +254,9 @@ async function saveGameSettingsTab() {
       }
       await window.electronAPI.gameHotkeysSave(keys)
     }
-    const chatKey = getKey('hk-chat')
-    await window.electronAPI.hotkeysSave({
-      chatFocus: [28, chatKey].filter(c => c > 0),
-      freeCursor: getKey('hk-cursor'),
-      housing:    getKey('hk-housing'),
-      personal:   getKey('hk-personal'),
-      faction:    getKey('hk-faction'),
-      voicePtt:   getKey('hk-voice-ptt'),
-      adminMenu:  getKey('hk-admin'),
-      hideUi:     getKey('hk-hide-ui'),
-    })
+    const hk = { chatFocus: [28, getKey('hk-chat')].filter(c => c > 0) }
+    for (const [id, [field]] of Object.entries(SERVER_HOTKEYS)) hk[field] = getKey(id)
+    await window.electronAPI.hotkeysSave(hk)
   } catch (err) { /* best-effort */ }
 }
 

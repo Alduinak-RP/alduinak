@@ -1,9 +1,9 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
@@ -78,13 +78,12 @@ export class BountyBoardService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
-    // Gamepad idCodes are bitmasks that alias onto keyboard scancodes
-    if (e.device !== InputDeviceType.Keyboard) return;
-    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+    const code = buttonEventKeyCode(e);
+    if (code === DxScanCode.Escape && e.isDown && this.menuOpen) {
       this.closeMenu();
       return;
     }
-    if (e.code !== this.menuKey || !e.isDown || this.menuOpen) return;
+    if (code !== this.menuKey || !e.isDown || this.menuOpen) return;
     if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
     sendCustomPacket(this.controller, { customPacketType: "bountyBoardOpenRequest" });
   }

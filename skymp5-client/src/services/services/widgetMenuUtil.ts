@@ -1,7 +1,7 @@
 import { CombinedController, Sp } from "./clientListener";
 import { BrowserService } from "./browserService";
 import { FunctionInfo } from "../../lib/functionInfo";
-import { Menu } from "skyrimPlatform";
+import { ButtonEvent, DxScanCode, InputDeviceType, Menu } from "skyrimPlatform";
 
 // Shared helpers for CEF form-widget menus; widget setters stay per-service (browser-side, injected vars).
 
@@ -95,4 +95,11 @@ export function readMenuKeyCode(sp: Sp, settingName: string, fallback: number): 
     // fall through to the default
   }
   return fallback;
+}
+
+// A button event in the settings' DxScanCode space: keys as is, mouse buttons 256+, gamepad -1 so its bitmasks never alias a key
+export function buttonEventKeyCode(e: ButtonEvent): number {
+  if (e.device === InputDeviceType.Keyboard) return e.code;
+  if (e.device === InputDeviceType.Mouse) return DxScanCode.LeftMouseButton + e.code;
+  return -1;
 }

@@ -1,9 +1,9 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 
@@ -82,14 +82,13 @@ export class HousingService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
-    // Gamepad idCodes are bitmasks that alias onto keyboard scancodes
-    if (e.device !== InputDeviceType.Keyboard) return;
+    const code = buttonEventKeyCode(e);
     // Escape closes an open menu.
-    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+    if (code === DxScanCode.Escape && e.isDown && this.menuOpen) {
       this.closeMenu();
       return;
     }
-    if (e.code !== this.menuKey || !e.isDown) {
+    if (code !== this.menuKey || !e.isDown) {
       return;
     }
     if (isMenuHotkeyBlocked(this.sp, this.controller)) {

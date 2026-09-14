@@ -1,11 +1,11 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
 import { RemoteServer } from "./remoteServer";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
-import { ActiveEffectApplyRemoveEvent, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { ActiveEffectApplyRemoveEvent, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 
 declare const window: any;
 
@@ -100,12 +100,13 @@ export class AdminMenuService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent) {
-    if (e.device !== InputDeviceType.Keyboard || !e.isDown) return;
-    if (e.code === DxScanCode.Escape && this.menuOpen) {
+    if (!e.isDown) return;
+    const code = buttonEventKeyCode(e);
+    if (code === DxScanCode.Escape && this.menuOpen) {
       this.closeMenu();
       return;
     }
-    if (e.code !== this.menuKey) return;
+    if (code !== this.menuKey) return;
     if (this.menuOpen) {
       this.closeMenu();
       return;
