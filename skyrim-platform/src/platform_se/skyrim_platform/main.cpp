@@ -464,14 +464,17 @@ public:
     }
   }
 
-  // Deactivation diagnostics on the game window; every message is forwarded
-  static LRESULT CALLBACK WndProc(HWND, UINT uMsg, WPARAM wParam,
+  // Activation diagnostics on the game window; every message is forwarded
+  static LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam,
                                   LPARAM lParam)
   {
-    if (uMsg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
-      LogWindow("deactivated by", reinterpret_cast<HWND>(lParam));
+    if (uMsg == WM_ACTIVATE) {
+      LogWindow(hwnd,
+                LOWORD(wParam) == WA_INACTIVE ? "deactivated by"
+                                              : "activated from",
+                reinterpret_cast<HWND>(lParam));
     } else if (uMsg == WM_KILLFOCUS) {
-      LogWindow("focus taken by", reinterpret_cast<HWND>(wParam));
+      LogWindow(hwnd, "focus taken by", reinterpret_cast<HWND>(wParam));
     }
     return 0;
   }
@@ -518,17 +521,24 @@ private:
     return result;
   }
 
-  static void LogWindow(const char* what, HWND window)
+  static void LogWindow(HWND self, const char* what, HWND window)
   {
-    static ULONGLONG lastLog = 0;
+    // A budget rather than a gap, so a quick deactivate and reactivate pair is never dropped
+    static ULONGLONG budgetStart = 0;
+    static int budget = 0;
     const ULONGLONG now = GetTickCount64();
-    if (now - lastLog < 500) {
+    if (now - budgetStart > 10000) {
+      budgetStart = now;
+      budget = 20;
+    }
+    if (budget <= 0) {
       return;
     }
-    lastLog = now;
+    --budget;
     const WindowInfo info = Describe(window);
-    spdlog::info("ForegroundGuard: game window {} class '{}' pid {} ({})", what,
-                 info.className, info.pid, ImageName(info));
+    spdlog::info("ForegroundGuard: game window {} {} class '{}' pid {} ({}), {}",
+                 static_cast<void*>(self), what, info.className, info.pid,
+                 ImageName(info), CEFUtils::DInputHook::DescribeInputState());
   }
 
   // Other Chromium apps (Discord, browsers) use the same window classes, so only the pid and the CEF subprocess count
