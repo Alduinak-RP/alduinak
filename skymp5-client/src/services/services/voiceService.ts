@@ -1,11 +1,11 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket } from "./customPacketUtil";
-import { readMenuKeyCode, isConsoleOpen } from "./widgetMenuUtil";
+import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { RemoteServer } from "./remoteServer";
-import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 // Proximity voice chat: push-to-talk (default V, launcher-configurable via voicePushToTalkKeyCode) + LiveKit room managed by VoiceManager in the skymp5-front CEF page.
@@ -66,15 +66,15 @@ export class VoiceService extends ClientListener {
   }
 
   private onButtonEventImpl(e: ButtonEvent) {
-    if (e.device !== InputDeviceType.Keyboard) return;
+    const code = buttonEventKeyCode(e);
 
     // Track Alt so Alt+V can mean "cycle mode" instead of "talk"
-    if (e.code === DxScanCode.LeftAlt || e.code === DxScanCode.RightAlt) {
+    if (code === DxScanCode.LeftAlt || code === DxScanCode.RightAlt) {
       if (e.isDown) this.altDown = true;
       else if (e.isUp) this.altDown = false;
       return;
     }
-    if (e.code !== this.voiceKey) return;
+    if (code !== this.voiceKey) return;
 
     // isHeld frames let a V hold that outlives the Alt+V cycle start transmitting once Alt releases (isDown fires only on the press frame)
     if ((e.isDown || e.isHeld) && !this.pttDown) {

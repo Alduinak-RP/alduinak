@@ -1,5 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { closeWidget, readMenuKeyCode, isMenuHotkeyBlocked } from "./widgetMenuUtil";
+import { closeWidget, readMenuKeyCode, isMenuHotkeyBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { MsgType } from "../../messages";
 import { FunctionInfo } from "../../lib/functionInfo";
@@ -43,12 +43,13 @@ export class PersonalMenuService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
+    const code = buttonEventKeyCode(e);
     // Escape closes an open menu.
-    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+    if (code === DxScanCode.Escape && e.isDown && this.menuOpen) {
       this.closeMenu();
       return;
     }
-    if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
+    if (code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
     }
     if (isMenuHotkeyBlocked(this.sp, this.controller)) {

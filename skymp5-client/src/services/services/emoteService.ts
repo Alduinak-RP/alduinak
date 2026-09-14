@@ -1,8 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
 import { RestraintService } from "./restraintService";
-import { BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
@@ -163,17 +163,16 @@ export class EmoteService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
-    // Gamepad idCodes are bitmasks that alias onto keyboard scancodes
-    if (e.device !== InputDeviceType.Keyboard) return;
-    if (e.code === DxScanCode.Escape && e.isDown && this.menuOpen) {
+    const code = buttonEventKeyCode(e);
+    if (code === DxScanCode.Escape && e.isDown && this.menuOpen) {
       this.closeMenu();
       return;
     }
     // Movement is real gameplay even with the interface hidden
-    if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(e.code) && !isGameInputBlocked(this.sp, this.controller)) {
+    if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(code) && !isGameInputBlocked(this.sp, this.controller)) {
       this.stopActiveEmote();
     }
-    if (e.code !== this.menuKey || !e.isDown || this.menuOpen) {
+    if (code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
     }
     if (isMenuHotkeyBlocked(this.sp, this.controller)) {
