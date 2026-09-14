@@ -163,18 +163,22 @@ export class HousingSystem implements System {
     const primary = this.primaryOf(ctx, targetId);
     if (!primary) return true;
     const rec = this.read(ctx, primary);
-    if (!rec || rec.owner === 0 || !rec.locked) return true;
+    if (!rec || rec.owner === 0) return true;
 
-    // One notice per player per second; a held activate key fires repeatedly.
+    // One notice and log line per player per second; a held activate key fires repeatedly.
     const userId = this.userOf(ctx, casterId);
     const now = Date.now();
-    if (now - (this.lastDenyMs.get(userId) || 0) > 1000) {
-      this.lastDenyMs.set(userId, now);
-      const label = rec.name || "This";
-      this.notice(ctx, userId, this.hasAccess(ctx, primary, rec, casterId)
-        ? `${label} is locked. Unlock it from the housing menu.`
-        : `${label} is locked.`);
+    if (now - (this.lastActivateMs.get(userId) || 0) <= 1000) return !rec.locked;
+    this.lastActivateMs.set(userId, now);
+    const door = `door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)}`;
+    if (!rec.locked) {
+      this.log(`[housing] ${door} let through for ${this.who(ctx, casterId)}: unlocked`);
+      return true;
     }
+    const role = this.accessRole(ctx, primary, rec, casterId);
+    const label = rec.name || "This";
+    this.notice(ctx, userId, role ? `${label} is locked. Unlock it from the housing menu.` : `${label} is locked.`);
+    this.log(`[housing] ${door} denied to ${this.who(ctx, casterId)}: locked${role ? `, may unlock as ${role}` : ""}`);
     return false;
   }
 
@@ -208,7 +212,7 @@ export class HousingSystem implements System {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     if (!this.withinReach(ctx, actorId, target)) {
-      this.notice(ctx, userId, "That is too far away.");
+      this.refuse(ctx, userId, actorId, "menu", target, "That is too far away.");
       return;
     }
     this.sendMenu(ctx, userId, actorId, target);
@@ -226,13 +230,13 @@ export class HousingSystem implements System {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     if (!this.nearProperty(ctx, actorId, target)) {
-      this.notice(ctx, userId, "That is too far away.");
+      this.refuse(ctx, userId, actorId, action, target, "That is too far away.");
       return;
     }
 
     const primary = this.primaryOf(ctx, target);
     if (!primary) {
-      this.notice(ctx, userId, "You cannot claim that.");
+      this.refuse(ctx, userId, actorId, action, target, "You cannot claim that.");
       return;
     }
     const rec = this.read(ctx, primary) || emptyRecord();
@@ -308,16 +312,19 @@ export class HousingSystem implements System {
   }
 
   private doLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, locked: boolean): void {
+    const action = locked ? "lock" : "unlock";
     if (rec.owner === 0) {
-      this.notice(ctx, userId, "Claim it first.");
+      this.refuse(ctx, userId, actorId, action, primary, "Claim it first.");
       return;
     }
-    if (!this.hasAccess(ctx, primary, rec, actorId)) {
-      this.notice(ctx, userId, "You have no key to this.");
+    const role = this.accessRole(ctx, primary, rec, actorId);
+    if (!role) {
+      this.refuse(ctx, userId, actorId, action, primary, "You have no key to this.");
       return;
     }
     rec.locked = locked;
     if (!this.commit(ctx, userId, primary, rec)) return;
+    this.log(`[housing] ${this.claimLabel(primary, rec)} ${locked ? "locked" : "unlocked"} by ${this.who(ctx, actorId)} as ${role}`);
     this.notice(ctx, userId, locked ? "Locked." : "Unlocked.");
     this.sendMenu(ctx, userId, actorId, primary);
   }
@@ -878,12 +885,26 @@ export class HousingSystem implements System {
     this.send(ctx, userId, { customPacketType: "propertyNotice", text });
   }
 
+  // Logged as well as told, so a failed test shows where the request stopped
+  private refuse(ctx: SystemContext, userId: number, actorId: number, action: string, refrId: number, text: string): void {
+    this.notice(ctx, userId, text);
+    this.log(`[housing] ${action} ${refrId.toString(16)} refused for ${this.who(ctx, actorId)}: ${text}`);
+  }
+
+  private who(ctx: SystemContext, actorId: number): string {
+    return `${this.nameOf(ctx, actorId)} (profile ${this.profileOf(ctx, actorId)})`;
+  }
+
+  private claimLabel(primary: number, rec: PropertyRecord): string {
+    return `claim ${primary.toString(16)}${rec.name ? ` "${rec.name}"` : ""}`;
+  }
+
   private claimed: number[] = [];
   private partnerCache = new Map<number, number>();
   private baseTypeCache = new Map<number, string>();
   private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
-  private lastDenyMs = new Map<number, number>();
+  private lastActivateMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxClaims = DEFAULT_MAX_CLAIMS;
   private maxDistance = DEFAULT_MAX_DISTANCE;
