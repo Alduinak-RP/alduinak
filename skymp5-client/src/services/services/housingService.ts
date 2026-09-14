@@ -15,6 +15,7 @@ const WIDGET_ID = 8;
 
 // A hand-over waits for one more interact-key press; it must not wait forever.
 const PENDING_RECIPIENT_MS = 30000;
+const REPLY_WAIT_MS = 5000;
 
 const NOT_PROPERTY_TEXT = "That cannot be claimed.";
 
@@ -130,7 +131,7 @@ export class HousingService extends ClientListener {
     }
     targetLabel = (ref.getName() || "Property").trim() || "Property";
     logTrace(this, `Requesting property info for`, targetLabel, `(${this.target})`);
-    this.awaitingTarget = this.target;
+    this.awaitingAt = Date.now();
     sendCustomPacket(this.controller, { customPacketType: "propertyInfoRequest", target: this.target });
   }
 
@@ -147,8 +148,9 @@ export class HousingService extends ClientListener {
     switch (content["customPacketType"]) {
       case "propertyMenu": {
         const target = Number(content["target"]) || this.target;
-        const requested = target === this.awaitingTarget;
-        if (requested) this.awaitingTarget = 0;
+        // The reply names the pair's primary door, not always the side that was asked about
+        const requested = Date.now() - this.awaitingAt < REPLY_WAIT_MS;
+        this.awaitingAt = 0;
         // Only a refresh of the open menu or the reply to the last request shows, never over a screen that took focus meanwhile
         if (!this.menuOpen && (!requested || this.sp.browser.isFocused())) break;
         const view = content["view"];
@@ -268,6 +270,6 @@ export class HousingService extends ClientListener {
 
   private menuOpen = false;
   private target = 0;
-  private awaitingTarget = 0;
+  private awaitingAt = 0;
   private pendingRecipient: { action: string; target: number; expiresAt: number } | null = null;
 }
