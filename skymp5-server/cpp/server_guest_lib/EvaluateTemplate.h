@@ -13,8 +13,11 @@ auto EvaluateTemplate(WorldState* worldState, uint32_t baseId,
 {
   const std::vector<FormDesc> chainDefault = { FormDesc::FromFormId(
     baseId, worldState->espmFiles) };
+  // A chain starts at its own base, so one left by another base is stale
+  const bool chainFits = !templateChain.empty() &&
+    templateChain.front().ToFormId(worldState->espmFiles) == baseId;
   const std::vector<FormDesc>& chain =
-    templateChain.size() > 0 ? templateChain : chainDefault;
+    chainFits ? templateChain : chainDefault;
 
   std::stringstream detailedLog;
 
