@@ -1,4 +1,4 @@
-import { Actor, ActorBase, createText, destroyText, EffectShader, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
+import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment } from "../sync/equipment";
@@ -16,6 +16,7 @@ import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
 import { isOwnCompanion } from "../services/services/companionService";
+import { adminGhostAlpha, setAdminGhostShader } from "./adminGhostLook";
 
 export interface ScreenResolution {
   width: number;
@@ -308,6 +309,7 @@ export class FormView {
     this.adminView = "visible";
     this.adminShaderOn = false;
     this.adminShaderReplayAt = 0;
+    this.adminGhostFlag = false;
     this.removeNickname();
   }
 
@@ -494,7 +496,7 @@ export class FormView {
       this.animState.useAnimOverrides = false;
     }
 
-    this.applyAdminInvisibility(refr, model);
+    this.applyAdminView(refr, model);
 
 
     if (model.appearance) {
@@ -694,8 +696,8 @@ export class FormView {
     return typeof hostile === "boolean" ? hostile : actor.getActorValue("Aggression") >= 1;
   }
 
-  // Admin Invisible rides the neighbor-visible ff_adminModes prop; 3D reloads reset alpha and shaders, so both are reapplied
-  private applyAdminInvisibility(refr: ObjectReference, model: FormModel): void {
+  // Admin Invisible and Ghost ride the neighbor-visible ff_adminModes prop; 3D reloads reset alpha and shaders, so both are reapplied
+  private applyAdminView(refr: ObjectReference, model: FormModel): void {
     const view = FormView.adminViewOf(model);
     if (view === "visible" && this.adminView === "visible") {
       return;
@@ -705,33 +707,42 @@ export class FormView {
       this.adminShaderOn = false;
       return;
     }
+    // Local weapons and spells pass through a Ghost admin's copy; the server refuses any hit that still lands
+    const ghostFlag = FormView.adminModeOn(model, "ghost");
+    if (ghostFlag !== this.adminGhostFlag) {
+      actor.setGhost(ghostFlag);
+      this.adminGhostFlag = ghostFlag;
+    }
     const now = Date.now();
     const leavingGhost = this.adminView === "ghost" && view !== "ghost";
     const playShader = view === "ghost"
       && (!this.adminShaderOn || (this.adminShaderReplayAt > 0 && now >= this.adminShaderReplayAt));
     if (leavingGhost || playShader) {
-      const shader = EffectShader.from(Game.getFormEx(FormView.adminGhostShaderId));
-      shader?.stop(actor);
-      if (playShader) {
-        shader?.play(actor, -1);
-      }
+      setAdminGhostShader(actor, playShader);
       this.adminShaderOn = playShader;
       this.adminShaderReplayAt = 0;
     }
     if (view !== this.adminView || now - this.lastAdminHideApply >= FormView.adminHideReapplyMs) {
-      actor.setAlpha(view === "hidden" ? 0 : view === "ghost" ? FormView.adminGhostAlpha : 1, false);
+      if (view !== this.adminView) {
+        printConsole(`[admin] ${this.getRemoteRefrId().toString(16)} shown ${view}`);
+      }
+      actor.setAlpha(view === "hidden" ? 0 : view === "ghost" ? adminGhostAlpha : 1, false);
       this.adminView = view;
       this.lastAdminHideApply = now;
     }
   }
 
-  // Invisible admins are hidden from players and shown to admins as ghosts
+  // Invisible admins are hidden from players and shown to admins as ghosts; Ghost admins look ethereal to everyone
   private static adminViewOf(model: FormModel): AdminView {
-    const modes = (model as Record<string, unknown>)["ff_adminModes"];
-    if (!modes || typeof modes !== "object" || !(modes as Record<string, unknown>)["invis"]) {
-      return "visible";
+    if (FormView.adminModeOn(model, "invis")) {
+      return FormView.viewerIsAdmin() ? "ghost" : "hidden";
     }
-    return FormView.viewerIsAdmin() ? "ghost" : "hidden";
+    return FormView.adminModeOn(model, "ghost") ? "ghost" : "visible";
+  }
+
+  private static adminModeOn(model: FormModel, mode: string): boolean {
+    const modes = (model as Record<string, unknown>)["ff_adminModes"];
+    return !!modes && typeof modes === "object" && !!(modes as Record<string, unknown>)[mode];
   }
 
   private static viewerIsAdmin(): boolean {
@@ -849,6 +860,7 @@ export class FormView {
   private adminView: AdminView = "visible";
   private adminShaderOn = false;
   private adminShaderReplayAt = 0;
+  private adminGhostFlag = false;
   private lastAdminHideApply = 0;
   private textNameId: number | undefined = undefined;
   private textActorIdId: number | undefined = undefined;
@@ -858,9 +870,6 @@ export class FormView {
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
   private static readonly adminHideReapplyMs = 1000;
-  // Skyrim.esm GhostEtherealFXShader, the Become Ethereal look
-  private static readonly adminGhostShaderId = 0x64d67;
-  private static readonly adminGhostAlpha = 0.5;
   private static readonly adminShaderReplayDelayMs = 1000;
   // Draugr, falmer, chaurus, frostbite spiders, dwarven automatons, spriggans and wolves: ambush AI can start them passive
   private static readonly ambushRaces = [0xd53, 0x131f4, 0x131eb, 0x4e507, 0x53477, 0x131f1, 0x131f2, 0x131f3, 0x2013b77, 0xf3903, 0x13204, 0x401b644, 0x9aa44, 0x1320a];
