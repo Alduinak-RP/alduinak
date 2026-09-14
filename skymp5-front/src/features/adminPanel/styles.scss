@@ -352,6 +352,11 @@ $admin-row-gutter: 16px;
     display: flex;
     flex-direction: column;
 
+    // The cell's 130px row basis would be a height in this column
+    .admin-panel__cell--name {
+      flex: 0 0 auto;
+    }
+
     .admin-panel__cell--status {
       font-size: 13px;
       line-height: 16px;
