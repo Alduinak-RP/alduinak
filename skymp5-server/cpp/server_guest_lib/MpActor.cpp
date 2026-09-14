@@ -86,13 +86,18 @@ struct MpActor::Impl
   std::unordered_map<espm::ActorValue, std::chrono::system_clock::time_point>
     nextRestorationTimes;
 
-  std::optional<std::chrono::steady_clock::time_point> potionCooldownStart;
-  uint32_t potionCooldownBaseId = 0;
+  struct ConsumeCooldown
+  {
+    std::optional<std::chrono::steady_clock::time_point> start;
+    uint32_t baseId = 0;
+  };
+  ConsumeCooldown potionCooldown;
+  ConsumeCooldown foodCooldown;
 };
 
 namespace {
 
-constexpr auto kPotionCooldown = std::chrono::seconds{ 10 };
+constexpr auto kConsumeCooldown = std::chrono::seconds{ 10 };
 
 void RestoreActorValuePatched(MpActor* actor, espm::ActorValue actorValue,
                               float value)
@@ -578,15 +583,15 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
   WorldState* worldState = GetParent();
   const auto data = espm::Convert<espm::ALCH>(lookupRes.rec)
                       ->GetData(worldState->GetEspmCache());
-  if (data.isFood || data.isPoison) {
+  if (data.isPoison) {
     return false;
   }
 
+  auto& cooldown = data.isFood ? pImpl->foodCooldown : pImpl->potionCooldown;
   const auto now = std::chrono::steady_clock::now();
-  if (!pImpl->potionCooldownStart ||
-      now - *pImpl->potionCooldownStart >= kPotionCooldown) {
-    pImpl->potionCooldownStart = now;
-    pImpl->potionCooldownBaseId = baseId;
+  if (!cooldown.start || now - *cooldown.start >= kConsumeCooldown) {
+    cooldown.start = now;
+    cooldown.baseId = baseId;
     return false;
   }
 
@@ -609,15 +614,15 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
 
   SendInventoryUpdate();
 
-  const std::chrono::duration<float> acceptedAgo =
-    now - *pImpl->potionCooldownStart;
+  const std::chrono::duration<float> acceptedAgo = now - *cooldown.start;
 
   CustomPacketMessage message;
   message.contentJsonDump =
     nlohmann::json{ { "customPacketType", "potionRefused" },
                     { "baseId", baseId },
-                    { "acceptedBaseId", pImpl->potionCooldownBaseId },
-                    { "acceptedSecondsAgo", acceptedAgo.count() } }
+                    { "acceptedBaseId", cooldown.baseId },
+                    { "acceptedSecondsAgo", acceptedAgo.count() },
+                    { "isFood", data.isFood } }
       .dump();
   SendToUser(message, true);
   return true;
