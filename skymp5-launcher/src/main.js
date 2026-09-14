@@ -316,7 +316,7 @@ ipcMain.handle('settings:save', (_e, data) => {
 })
 
 // Graphics / hotkey settings (Settings tab)
-// Graphics edit the MO2 portable profile's SkyrimPrefs.ini. NOTE: this assumes
+// Graphics edit the MO2 portable profile's SkyrimPrefs.ini (FOV its Skyrim.ini). NOTE: this assumes
 // the Alduinak profile uses profile-specific INI files; and if SSEDisplayTweaks is
 // active it may override window mode via its own ini.
 function skyrimPrefsPath() {
@@ -334,6 +334,14 @@ function ensureProfileSkyrimIni() {
     }
   }
   return dest
+}
+// The engine reads FOV from Skyrim.ini [Display], and SkyrimCustom.ini loads after it
+const FOV_KEYS = ['fDefaultWorldFOV', 'fDefault1stPersonFOV']
+const FOV_INIS = ['skyrimcustom.ini', 'skyrim.ini']
+const FOV_DEFAULT = 80
+function clampFov(v) {
+  const n = Math.round(parseFloat(v))
+  return Number.isFinite(n) ? Math.min(170, Math.max(70, n)) : null
 }
 // Server hotkeys live in the Skyrim Platform client settings (the object exposed
 // to the client as settings["skymp5-client"] - the file content is that object).
@@ -381,6 +389,7 @@ ipcMain.handle('graphics:load', () => {
     const shadowRes = num('Display', 'iShadowMapResolution', 2048)
     const reflH = num('Water', 'iWaterReflectHeight', 512)
     const maxDecals = num('Decals', 'uMaxDecals', 250)
+    const fovDisp = FOV_INIS.map(f => ini.read(path.join(mo2.getProfileDir(), f))['Display'] || {}).find(d => FOV_KEYS[0] in d) || {}
     return {
       ok: true,
       path: p,
@@ -398,6 +407,7 @@ ipcMain.handle('graphics:load', () => {
       reflections: reflH >= 1024
         ? (val('Water', 'bReflectLODTrees', '0') === '1' ? 'ultra' : 'high')
         : (val('Water', 'bReflectLODLand', '0') === '1' ? 'medium' : 'low'),
+      fov:       clampFov(fovDisp[FOV_KEYS[0]]) ?? FOV_DEFAULT,
       godrays:   val('Display', 'bVolumetricLightingEnable', '1') === '1',
       lensFlare: val('Imagespace', 'bLensFlare', '1') === '1',
       ao:        val('Display', 'bSAOEnable', '1') === '1',
@@ -449,6 +459,13 @@ ipcMain.handle('graphics:save', (_e, g) => {
     }
     if (REFLECTIONS[g.reflections]) edits.Water = Object.assign({ bUseWaterReflections: '1' }, REFLECTIONS[g.reflections])
     ini.write(skyrimPrefsPath(), edits)
+    const fov = clampFov(g.fov)
+    if (fov !== null) {
+      const fovEdit = { Display: Object.fromEntries(FOV_KEYS.map(k => [k, fov.toFixed(4)])) }
+      ini.write(ensureProfileSkyrimIni(), fovEdit)
+      const custom = path.join(mo2.getProfileDir(), FOV_INIS[0])
+      if (FOV_KEYS.some(k => k in (ini.read(custom)['Display'] || {}))) ini.write(custom, fovEdit)
+    }
     return { ok: true, path: skyrimPrefsPath() }
   } catch (err) {
     return { ok: false, error: err.message }
