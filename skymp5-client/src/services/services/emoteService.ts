@@ -114,6 +114,12 @@ const events = {
   stop: 'emote:stop',
 };
 
+// Sheathing is polled every 0.2 s for about 3 s
+const SHEATHE_POLL_S = 0.2;
+const SHEATHE_MAX_POLLS = 15;
+// The sheathe animation still blends out after the weapon state reads sheathed
+const SHEATHE_SETTLE_S = 0.3;
+
 // Movement input breaks an active emote, matching how remote clones exit poses.
 const CANCEL_KEYS: DxScanCode[] = [
   DxScanCode.W,
@@ -234,11 +240,26 @@ export class EmoteService extends ClientListener {
     this.sendEmote(anim);
   }
 
-  private sendEmote(anim: string): void {
+  private sendEmote(anim: string, sheathePolls = 0): void {
     this.controller.once("update", () => {
       if (this.activeEmote !== anim) return;
       const player = this.sp.Game.getPlayer();
       if (!player) return;
+      // An idle started with a weapon or spell in hand glitches, so the hands are emptied first
+      if (player.isWeaponDrawn()) {
+        if (sheathePolls >= SHEATHE_MAX_POLLS) {
+          this.activeEmote = "";
+          notifyNextUpdate(this.controller, this.sp, "Put your weapon away to use emotes.");
+          return;
+        }
+        if (sheathePolls === 0) player.sheatheWeapon();
+        this.sp.Utility.wait(SHEATHE_POLL_S).then(() => this.sendEmote(anim, sheathePolls + 1));
+        return;
+      }
+      if (sheathePolls > 0) {
+        this.sp.Utility.wait(SHEATHE_SETTLE_S).then(() => this.sendEmote(anim));
+        return;
+      }
       this.sp.Debug.sendAnimationEvent(player, anim);
       logTrace(this, `Playing emote`, anim);
     });
