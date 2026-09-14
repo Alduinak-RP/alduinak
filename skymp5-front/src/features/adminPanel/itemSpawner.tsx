@@ -58,14 +58,21 @@ const kindLabel = (type: string): string => (KINDS.find((k) => k.id === type) ||
 // Kept across sub-tab switches and reopening the menu
 let lastQuery = '';
 let lastKind = '';
+let lastPick: ItemRow | null = null;
+let lastToPlayer = false;
 
 const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: ItemSpawnerProps) => {
   const [query, setQuery] = useState(lastQuery);
   const [kind, setKind] = useState(lastKind);
-  const [pick, setPick] = useState<ItemRow | null>(null);
+  const [pick, setPick] = useState<ItemRow | null>(lastPick);
   const [count, setCount] = useState('1');
-  const [toPlayer, setToPlayer] = useState(false);
+  const [toPlayer, setToPlayer] = useState(lastToPlayer);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    lastPick = pick;
+    lastToPlayer = toPlayer;
+  }, [pick, toPlayer]);
 
   const searchable = normQuery(query).length >= 2 || kind !== '';
   const search = (): void => {
