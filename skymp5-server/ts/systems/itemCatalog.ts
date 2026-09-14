@@ -64,7 +64,7 @@ export async function buildItemCatalog(dataDir: string, loadOrder: string[], log
 }
 
 export const normaliseQuery = (query: unknown): string => String(query ?? "").trim().toLowerCase().slice(0, MAX_QUERY_LENGTH);
-export const normaliseKind = (kind: unknown): string => String(kind ?? "").trim().slice(0, MAX_QUERY_LENGTH);
+export const normaliseKind = normaliseQuery;
 
 // Every token must appear; ranks an exact name, then a name prefix, then a name word starting with the first token
 export function searchItems(items: CatalogItem[], query: string, kind: string, limit = 50): { total: number; rows: CatalogItem[] } {
