@@ -50,17 +50,19 @@ function write(filePath, edits) {
   }
   const eol = text.includes('\r\n') ? '\r\n' : (text.includes('\n') ? '\n' : '\r\n')
   const lines = text.length ? text.split(/\r?\n/) : []
+  while (lines.length && lines[lines.length - 1] === '') lines.pop()
 
   // Track which keys still need to be written, per section.
   const remaining = {}
   for (const s of Object.keys(edits)) remaining[s] = new Set(Object.keys(edits[s]))
 
+  // Missing keys go after the section's last non-blank line
   const flush = (sec, result) => {
     if (!edits[sec]) return
-    for (const k of Array.from(remaining[sec] || [])) {
-      result.push(`${k}=${edits[sec][k]}`)
-      remaining[sec].delete(k)
-    }
+    let at = result.length
+    while (at && !result[at - 1].trim()) at--
+    result.splice(at, 0, ...Array.from(remaining[sec] || [], k => `${k}=${edits[sec][k]}`))
+    if (remaining[sec]) remaining[sec].clear()
   }
 
   const result = []
