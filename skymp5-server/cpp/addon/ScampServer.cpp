@@ -75,21 +75,36 @@ bool StartsWith(const std::string& str, const char* prefix)
   return str.compare(0, strlen(prefix), prefix) == 0;
 }
 
-// Numbers, "0x..." strings or "hex:File.esp" descriptors; bad entries are skipped
+// Parses the whole id, so "-1", "12zz" or "zz:File.esp" throw instead of resolving to a wrong form
+uint32_t ParseFormId(const nlohmann::json& v, const EspmFileTable& files)
+{
+  if (v.is_number_unsigned() && v.get<uint64_t>() <= UINT32_MAX) {
+    return v.get<uint32_t>();
+  }
+  if (!v.is_string()) {
+    throw std::invalid_argument("not a 32-bit form id");
+  }
+  auto s = v.get<std::string>();
+  auto colon = s.find(':');
+  auto id = s.substr(0, colon);
+  size_t pos = 0;
+  auto n = std::stoull(id, &pos, colon == std::string::npos ? 0 : 16);
+  if (pos != id.size() || n > UINT32_MAX) {
+    throw std::invalid_argument("not a 32-bit form id");
+  }
+  return colon == std::string::npos
+    ? static_cast<uint32_t>(n)
+    : FormDesc(static_cast<uint32_t>(n), s.substr(colon + 1)).ToFormId(files);
+}
+
+// Numbers, "0x..." strings or "hex:File.esp" descriptors; bad entries are skipped and logged
 std::set<uint32_t> ParseFormIds(const nlohmann::json& list,
                                 const EspmFileTable& files)
 {
   std::set<uint32_t> res;
   for (auto& v : list) {
     try {
-      if (v.is_number_unsigned()) {
-        res.insert(v.get<uint32_t>());
-      } else if (v.is_string()) {
-        auto s = v.get<std::string>();
-        res.insert(s.find(':') == std::string::npos
-                     ? static_cast<uint32_t>(std::stoul(s, nullptr, 0))
-                     : FormDesc::FromString(s).ToFormId(files));
-      }
+      res.insert(ParseFormId(v, files));
     } catch (std::exception& e) {
       GetLogger()->warn("Skipping form id {}: {}", v.dump(), e.what());
     }
@@ -483,8 +498,15 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
 
     // emptyContainers: placed containers open without their plugin loot unless set to false
     auto emptyIt = serverSettings.find("emptyContainers");
-    partOne->worldState.emptyContainers = emptyIt == serverSettings.end() ||
-      !(*emptyIt).is_boolean() || (*emptyIt).get<bool>();
+    partOne->worldState.emptyContainers = true;
+    if (emptyIt != serverSettings.end()) {
+      if ((*emptyIt).is_boolean()) {
+        partOne->worldState.emptyContainers = (*emptyIt).get<bool>();
+      } else {
+        spdlog::error(
+          "Unexpected value of emptyContainers, should be true or false");
+      }
+    }
 
     // containerLootBaseIds: CONT bases that keep their plugin loot anyway
     auto lootIt = serverSettings.find("containerLootBaseIds");
