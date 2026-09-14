@@ -85,8 +85,6 @@ export class KickService extends ClientListener {
   private quitGame(): void {
     logTrace(this, 'closing the game after kick');
     this.exitAt = 0;
-    // Flushes debounced client state (character progress) before the process dies
-    this.controller.emitter.emit("connectionDisconnect", {});
     this.sp.win32.exitProcess();
   }
 
