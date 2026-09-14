@@ -466,7 +466,10 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
     h = h || {}
     const c = readClientSettings()
     if (Array.isArray(h.chatFocus)) c.chatFocusKeyCodes = h.chatFocus.filter(n => typeof n === 'number')
-    for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) if (typeof h[field] === 'number') c[key] = h[field]
+    for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) {
+      // Interact / Menus cannot be unbound, so a 0 keeps the stored key
+      if (typeof h[field] === 'number' && (field !== 'altInteract' || h[field] > 0)) c[key] = h[field]
+    }
     const p = clientSettingsPath()
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(c, null, 2))
