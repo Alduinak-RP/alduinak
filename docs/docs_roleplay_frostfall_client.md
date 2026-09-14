@@ -49,11 +49,13 @@ the chat input. Quit-to-desktop button is on the login menu.
 ## What each menu fires
 
 ### Housing (`X` on a door or container)
-Hold picker → property picker (SkyMP's 16-property registry is embedded so
-the list is real). Buttons:
-- `request` → `/property request <id>`
-- `approve` / `deny` / `revoke` → `/property <action> <id>` (leader/staff)
-- "show my hold" → `/property list`
+The `housing` widget (HousingService). `X` sends `propertyInfoRequest` and
+renders the server's `propertyMenu` view: `claimable` (claim), `owner` (rename,
+keys, lock, transfer, abandon), `manager` (grant, revoke, rename, and lock when
+`canLock`), `keyholder` (lock / unlock), or "You don't own this". A reference
+the server does not treat as property shows "That cannot be claimed." instead.
+Transfer and grant-container finish with a second `X` on the recipient. See
+`docs_roleplay_property_factions.md` for the packets.
 
 ### Player actions (`Y`) — look at a player first
 | Group | Buttons → command |
