@@ -71,7 +71,8 @@ const send = (key: string, ...args: unknown[]): void => {
   }
 };
 
-const MasteryMenu = ({ data }: { data: MasteryData }) => {
+// embedded renders inside the Personal Menu Skills tab: no backdrop, corner label or Close button
+const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean }) => {
   const ev = data.events || ({} as MasteryEvents);
   const professions = data.professions || [];
   const chosen = data.profession;
@@ -91,10 +92,11 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
   }, [chosen]);
 
   useEffect(() => {
+    if (embedded) return undefined;
     const onUnfocused = () => send(ev.close);
     window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
-  }, [ev.close]);
+  }, [ev.close, embedded]);
 
   // index.js fires menu:escape globally; while the commit dialog is up,
   // Escape should back out of the dialog rather than the whole menu.
@@ -116,10 +118,10 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
   const art = artFor(current.id);
 
   return (
-    <div className="mastery">
-      <div className="mastery__fade" />
+    <div className={embedded ? 'mastery mastery--embedded' : 'mastery'}>
+      {embedded ? null : <div className="mastery__fade" />}
       <div className="mastery__frame">
-        <div className="mastery__corner">Skills</div>
+        {embedded ? null : <div className="mastery__corner">Skills</div>}
         <h1 className="mastery__title">{current.label} &mdash; Mastery</h1>
 
         <nav className="mastery__list">
@@ -185,7 +187,7 @@ const MasteryMenu = ({ data }: { data: MasteryData }) => {
           })}
         </section>
 
-        <button className="mastery__close" onClick={() => send(ev.close)}>Close</button>
+        {embedded ? null : <button className="mastery__close" onClick={() => send(ev.close)}>Close</button>}
 
         {confirming ? (
           <div className="mastery__confirm-shade">

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
+import MasteryMenu, { MasteryData } from '../masteryMenu';
+import ItemSpawner, { ItemResults } from './itemSpawner';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -84,10 +86,12 @@ export interface AdminPanelData {
   debug?: DebugData | null;
   npcZones?: PanelNpcZone[]; // absent on older clients
   npcZonesAt?: number; // Date.now() when npcZones arrived, the countdown base
-  caps?: { ban?: boolean }; // server-resolved tier capabilities, absent on older servers
+  caps?: Partial<Record<AdminSub | 'ban', boolean>>; // server-resolved tier capabilities, absent on older servers
   tier?: string; // "senior" | "developer" | "gm", absent on older servers
   mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
   npcPos?: { id: string; pos: number[]; at: number } | null; // the admin's server-side location for the Add form
+  skills?: Omit<MasteryData, 'events'> | null; // the player's own masteryMenu payload
+  items?: ItemResults | null; // the latest adminItems reply
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -101,16 +105,40 @@ const send = (key: string, ...args: unknown[]): void => {
   }
 };
 
-type Tab = 'debug' | 'players' | 'teleport' | 'modes' | 'npcs';
+type TopTab = 'admin' | 'faction' | 'skills' | 'debug';
+type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items';
 
-// Debug is open to every player; the rest render only while data.admin is true
-const TABS: Array<{ id: Tab; label: string }> = [
+// Admin shows only to confirmed staff; the other three are open to every player
+const TOP_TABS: Array<{ id: TopTab; label: string }> = [
+  { id: 'admin', label: 'Admin' },
+  { id: 'faction', label: 'Faction' },
+  { id: 'skills', label: 'Skills' },
   { id: 'debug', label: 'Debug' },
+];
+
+// Each sub-tab needs its server-sent cap; Item Spawner needs it explicitly true
+const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'players', label: 'Players' },
   { id: 'teleport', label: 'Teleport' },
   { id: 'modes', label: 'Modes' },
   { id: 'npcs', label: 'NPCs' },
+  { id: 'items', label: 'Item Spawner' },
 ];
+
+// The widget remounts on every open; the tabs last picked this session survive it
+let lastTop: TopTab | null = null;
+let lastSub: AdminSub | null = null;
+
+const tabButtons = <T extends string>(tabs: Array<{ id: T; label: string }>, active: T, pick: (id: T) => void) =>
+  tabs.map((t) => (
+    <button
+      key={t.id}
+      className={'admin-panel__tab' + (active === t.id ? ' admin-panel__tab--active' : '')}
+      onClick={() => pick(t.id)}
+    >
+      {t.label}
+    </button>
+  ));
 
 type NpcSub = 'list' | 'add';
 
@@ -237,7 +265,8 @@ const debugCells = (d: DebugData, now: number): DebugCell[] => {
 };
 
 const AdminPanel = ({ data }: { data: AdminPanelData }) => {
-  const [tab, setTab] = useState<Tab>('debug');
+  const [top, setTop] = useState<TopTab | null>(lastTop);
+  const [sub, setSub] = useState<AdminSub | null>(lastSub);
   const [search, setSearch] = useState('');
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [locSearch, setLocSearch] = useState('');
@@ -247,14 +276,32 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
   const [now, setNow] = useState(Date.now());
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const ev = data.events || {};
+  const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
+  const subVisible = (id: AdminSub): boolean => (id === 'items' ? caps.items === true : caps[id] !== false);
+  const shownSubs = ADMIN_SUBS.filter((t) => subVisible(t.id));
+  const adminVisible = !!data.admin && shownSubs.length > 0;
+  const shownTops = TOP_TABS.filter((t) => t.id !== 'admin' || adminVisible);
+  // A hidden or never picked tab falls back to Admin for staff and Skills for everyone else
+  const topTab: TopTab = top && (top !== 'admin' || adminVisible) ? top : adminVisible ? 'admin' : 'skills';
+  const subTab: AdminSub = sub && subVisible(sub) ? sub : shownSubs.length ? shownSubs[0].id : 'players';
+  const view = topTab === 'admin' ? subTab : topTab;
 
   // The zone countdown and the debug clocks tick locally between server pushes
+  const ticking = view === 'npcs' || view === 'debug';
   useEffect(() => {
-    if (tab !== 'npcs' && tab !== 'debug') return undefined;
+    if (!ticking) return undefined;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [tab]);
+  }, [ticking]);
+
+  // The client refreshes Debug only while it is the visible tab
+  useEffect(() => {
+    if (ev.tab) send(ev.tab, topTab);
+  }, [topTab, ev.tab]);
 
   // Get current pos: the server's answer overwrites ID and X/Y/Z, the other fields stay
   const npcPosAt = data.npcPos ? data.npcPos.at : 0;
@@ -264,24 +311,22 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     setZoneForm((f) => ({ ...f, id: p.id, x: String(p.pos[0]), y: String(p.pos[1]), z: String(p.pos[2]) }));
   }, [npcPosAt]);
 
-  // A demoted or not yet confirmed admin never stays on a hidden tab
-  useEffect(() => {
-    if (!data.admin && tab !== 'debug') setTab('debug');
-  }, [data.admin, tab]);
-
-  const ev = data.events || {};
   const players = data.players || [];
   const locations = data.locations || [];
   const modes = data.modes || [];
   const npcZones = data.npcZones || [];
   const debug = data.debug || null;
-  const shownTabs = data.admin ? TABS : TABS.filter((t) => t.id === 'debug');
+  const skills = data.skills || null;
   // Seconds since the client gathered the debug block, added to each effect's elapsed time
   const debugDrift = debug ? Math.max(0, Math.round((now - (debug.updatedAt || now)) / 1000)) : 0;
 
   const refresh = (): void => {
-    if (ev.debugRefresh) send(ev.debugRefresh);
-    if (data.admin) send(ev.refresh);
+    if (topTab === 'debug' && ev.debugRefresh) send(ev.debugRefresh);
+    if (topTab === 'admin') {
+      send(ev.refresh);
+      setRefreshKey((k) => k + 1);
+    }
+    if (topTab === 'skills' && ev.skills) send(ev.skills);
   };
 
   const filter = search.trim().toLowerCase();
@@ -296,7 +341,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   // TP/Summon/Kick/Ban all target the live actor; offline rows only display identity
   const actionsEnabled = !!(selectedPlayer && selectedPlayer.online && selectedPlayer.a);
   // Hidden rather than greyed so a tier without ban never sees a dead button; the server enforces it anyway
-  const canBan = !data.caps || data.caps.ban !== false;
+  const canBan = caps.ban !== false;
 
   const act = (key: string): void => {
     if (selectedPlayer && selectedPlayer.a) send(key, selectedPlayer.a);
@@ -311,8 +356,16 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const locFilter = locSearch.trim().toLowerCase();
   const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
 
-  const openTab = (id: Tab): void => {
-    setTab(id);
+  const openTop = (id: TopTab): void => {
+    lastTop = id;
+    setTop(id);
+    if (id === 'skills' && ev.skills) send(ev.skills);
+    if (id === 'admin' && subTab === 'npcs' && ev.npcList) send(ev.npcList);
+  };
+
+  const openSub = (id: AdminSub): void => {
+    lastSub = id;
+    setSub(id);
     if (id === 'npcs' && ev.npcList) send(ev.npcList);
   };
 
@@ -361,7 +414,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       <div className="admin-panel__window">
         <div className="admin-panel__header">
           <span className="admin-panel__title">
-            {data.admin ? 'Admin Panel' : 'Debug'}
+            Personal Menu
             {data.admin && data.tier ? <span style={{ fontSize: 14, opacity: 0.7, marginLeft: 6 }}>({data.tier})</span> : null}
           </span>
           <div className="admin-panel__header-buttons">
@@ -370,19 +423,31 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
           </div>
         </div>
 
-        <div className="admin-panel__tabs">
-          {shownTabs.map((t) => (
-            <button
-              key={t.id}
-              className={'admin-panel__tab' + (tab === t.id ? ' admin-panel__tab--active' : '')}
-              onClick={() => openTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <div className="admin-panel__tabs">{tabButtons(shownTops, topTab, openTop)}</div>
 
-        {tab === 'debug' ? (
+        {topTab === 'admin' ? (
+          <div className="admin-panel__tabs admin-panel__tabs--sub">{tabButtons(shownSubs, subTab, openSub)}</div>
+        ) : null}
+
+        {view === 'faction' ? (
+          <div className="admin-panel__body">
+            <div className="admin-panel__empty admin-panel__empty--placeholder">
+              Faction management is a work in progress. Hold rosters, ranks and regents will live here.
+            </div>
+          </div>
+        ) : null}
+
+        {view === 'skills' ? (
+          <div className="admin-panel__body">
+            {skills && skills.professions && skills.professions.length ? (
+              <MasteryMenu embedded data={{ ...skills, events: { choose: ev.skillChoose, close: ev.close } }} />
+            ) : (
+              <div className="admin-panel__empty">Loading skills</div>
+            )}
+          </div>
+        ) : null}
+
+        {view === 'debug' ? (
           <div className="admin-panel__body">
             {debug ? (
               <div className="admin-panel__form admin-panel__form--debug">
@@ -419,7 +484,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
           </div>
         ) : null}
 
-        {tab === 'players' ? (
+        {view === 'players' ? (
           <div className="admin-panel__body">
             <div className="admin-panel__actions">
               <Button text="TP to" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
@@ -511,7 +576,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
           </div>
         ) : null}
 
-        {tab === 'teleport' ? (
+        {view === 'teleport' ? (
           <div className="admin-panel__body">
             <div className="admin-panel__filters">
               <input
@@ -537,7 +602,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
           </div>
         ) : null}
 
-        {tab === 'modes' ? (
+        {view === 'modes' ? (
           <div className="admin-panel__modes">
             {modes.map((m) => (
               <button
@@ -551,7 +616,18 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
           </div>
         ) : null}
 
-        {tab === 'npcs' ? (
+        {view === 'items' ? (
+          <ItemSpawner
+            items={data.items || null}
+            ev={ev}
+            send={send}
+            selfActorId={debug ? debug.actorId : ''}
+            selected={actionsEnabled && selectedPlayer && selectedPlayer.a ? { a: selectedPlayer.a, n: selectedPlayer.n } : null}
+            refreshKey={refreshKey}
+          />
+        ) : null}
+
+        {view === 'npcs' ? (
           <div className="admin-panel__body">
             <div className="admin-panel__tabs admin-panel__tabs--sub">
               {NPC_SUBS.map((t) => (

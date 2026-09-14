@@ -342,6 +342,25 @@ $text-dim: rgba(232, 224, 208, 0.6);
   }
 }
 
+// Inside the Personal Menu Skills tab: flows in the admin window instead of covering the screen
+.mastery--embedded {
+  position: static;
+  width: 100%;
+  height: 100%;
+  z-index: auto;
+  display: block;
+  pointer-events: auto;
+
+  .mastery__frame {
+    width: 100%;
+    height: 560px;
+  }
+
+  .mastery__title {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 1080px), (max-height: 700px) {
   .mastery {
     &__frame {
