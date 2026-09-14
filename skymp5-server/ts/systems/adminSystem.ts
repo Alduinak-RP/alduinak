@@ -36,6 +36,7 @@ type Mp = any;
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
+//                       locations[].group: server (adminTeleportLocations) | settlements | forts | temples; the front files a missing or unknown group under Other
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
@@ -70,6 +71,7 @@ const SESSION_MODES = ["speed", "freecam"];
 interface TeleportLocation {
   name: string;
   kind: string; // map marker type label, blank for settings entries without one
+  group: string; // Teleport tab section: "server" for adminTeleportLocations, else the generator's
   cellOrWorldDesc: string;
   pos: number[];
   rot: number[];
@@ -116,9 +118,12 @@ export class AdminSystem implements System {
     this.roleCfg = readAdminRoleConfig(all);
     for (const warning of this.roleCfg.capWarnings) this.log(`AdminSystem: ${warning}`);
     // Configured entries first; a generated map marker never shadows a name already listed
-    const configured = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
-    for (const raw of [...configured, ...MAP_MARKER_LOCATIONS]) {
-      const loc = this.parseLocation(ctx.svr as Mp, raw);
+    const configured: any[] = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
+    const parsed = [
+      ...configured.map(raw => this.parseLocation(ctx.svr as Mp, raw, "server")),
+      ...MAP_MARKER_LOCATIONS.map(raw => this.parseLocation(ctx.svr as Mp, raw, raw.group)),
+    ];
+    for (const loc of parsed) {
       if (loc && !this.locations.some(l => l.name.toLowerCase() === loc.name.toLowerCase())) this.locations.push(loc);
     }
 
@@ -145,7 +150,7 @@ export class AdminSystem implements System {
   }
 
   // Validated like npcSpawnSystem zones; bad descs are dropped at boot
-  private parseLocation(mp: Mp, raw: any): TeleportLocation | null {
+  private parseLocation(mp: Mp, raw: any, group: string): TeleportLocation | null {
     try {
       const name = String(raw?.name ?? "");
       const kind = String(raw?.kind ?? "");
@@ -157,7 +162,7 @@ export class AdminSystem implements System {
         return null;
       }
       mp.getIdFromDesc(cellOrWorldDesc);
-      return { name, kind, cellOrWorldDesc, pos, rot };
+      return { name, kind, group, cellOrWorldDesc, pos, rot };
     } catch (e) {
       this.log(`AdminSystem: bad teleport location skipped: ${e}`);
       return null;
@@ -377,7 +382,7 @@ export class AdminSystem implements System {
           mp.sendCustomPacket(userId, JSON.stringify({
             customPacketType: "adminMenu",
             players: backendPlayers ? this.buildRoster(ctx, myActorId, adminProfile, backendPlayers) : [],
-            locations: caps.teleport ? this.locations.map(l => ({ name: l.name, kind: l.kind })) : [],
+            locations: caps.teleport ? this.locations.map(l => ({ name: l.name, kind: l.kind, group: l.group })) : [],
             modes: caps.modes ? this.modesFor(adminProfile) : [],
             npcZones: caps.npcs ? this.npcSpawns.listZones() : [],
             tier,
