@@ -558,6 +558,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                       </div>
                       <div className="admin-panel__zone-buttons">
                         <Button text="TP" width={48} height={24} onClick={() => send(ev.npcTp, z.name)} />
+                        {ev.npcActivate ? <Button text="Activate" width={84} height={24} onClick={() => send(ev.npcActivate, z.name)} /> : null}
+                        {ev.npcDeactivate ? <Button text="Deactivate" width={100} height={24} onClick={() => send(ev.npcDeactivate, z.name)} /> : null}
                         <Button text="Reset" width={64} height={24} onClick={() => send(ev.npcReset, z.name)} />
                         <Button text="Delete" width={68} height={24} onClick={() => send(ev.npcDelete, z.name)} />
                       </div>

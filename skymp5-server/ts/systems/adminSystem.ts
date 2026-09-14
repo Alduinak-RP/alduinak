@@ -21,7 +21,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
 //                     { customPacketType: "adminAction", action: "toggleMode", mode }
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
-//                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete", target }  target: zone name
+//                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
@@ -467,11 +467,23 @@ export class AdminSystem implements System {
       });
       return;
     }
-    if (action === "npcZoneReset") {
-      const ok = this.npcSpawns.resetZone(name);
-      if (ok) this.adminLog(`profile ${adminProfile} reset npc zone '${name}'`);
-      this.reply(mp, userId, ok, ok ? `Reset zone ${name}` : "Unknown zone");
+    if (action === "npcZoneReset" || action === "npcZoneDeactivate") {
+      const reset = action === "npcZoneReset";
+      const ok = reset ? this.npcSpawns.resetZone(name) : this.npcSpawns.deactivateZone(name);
+      if (ok) this.adminLog(`profile ${adminProfile} ${reset ? "reset" : "deactivated"} npc zone '${name}'`);
+      this.reply(mp, userId, ok, !ok ? "Unknown zone" : reset ? `Reset zone ${name}` : `Deactivated zone ${name}, respawn timer started`);
       if (ok) this.sendZones(mp, userId, myActorId);
+      return;
+    }
+    if (action === "npcZoneActivate") {
+      const placed = this.npcSpawns.activateZone(name, myActorId);
+      if (placed === null) {
+        this.reply(mp, userId, false, "Unknown zone");
+        return;
+      }
+      this.adminLog(`profile ${adminProfile} activated npc zone '${name}', ${placed} npc(s) placed`);
+      this.reply(mp, userId, placed > 0, placed ? `Activated zone ${name}, ${placed} NPC(s) placed` : `Nothing placed in ${name}: every NPC is alive or the spawn failed (server log)`);
+      this.sendZones(mp, userId, myActorId);
       return;
     }
     if (action === "npcZoneTp") {

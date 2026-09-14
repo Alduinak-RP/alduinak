@@ -39,8 +39,19 @@ const events = {
   npcTp: "admin::npctp",
   npcReset: "admin::npcreset",
   npcDelete: "admin::npcdelete",
+  npcActivate: "admin::npcactivate",
+  npcDeactivate: "admin::npcdeactivate",
   masteryGrant: "admin::masterygrant",
   masteryReset: "admin::masteryreset",
+};
+
+// Per-zone buttons -> adminAction; the target is the zone name
+const ZONE_ACTIONS: Record<string, string> = {
+  [events.npcTp]: "npcZoneTp",
+  [events.npcReset]: "npcZoneReset",
+  [events.npcDelete]: "npcZoneDelete",
+  [events.npcActivate]: "npcZoneActivate",
+  [events.npcDeactivate]: "npcZoneDeactivate",
 };
 
 interface DebugServer {
@@ -339,8 +350,8 @@ export class AdminMenuService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
       return;
     }
-    if (kind === events.npcTp || kind === events.npcReset || kind === events.npcDelete) {
-      const zoneAction = kind === events.npcTp ? "npcZoneTp" : kind === events.npcReset ? "npcZoneReset" : "npcZoneDelete";
+    const zoneAction = ZONE_ACTIONS[String(kind)];
+    if (zoneAction) {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: zoneAction, target: String(e.arguments[1] ?? "") });
       return;
     }

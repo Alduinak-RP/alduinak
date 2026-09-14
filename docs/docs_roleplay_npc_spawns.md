@@ -188,6 +188,14 @@ sub-tabs:
   `Respawn: 0` corpse. Opening the tab and every change refresh the list.
   - **TP** puts the admin on `POS`. That counts as being inside, so a ready
     zone spawns on the next poll.
+  - **Activate** places every NPC of the zone that is not alive right now,
+    cooldowns ignored. With nobody inside, the admin's own actor anchors the
+    `PlaceAtMe` and the zone's `Despawn` timer runs as usual, so the NPCs go
+    again after `Despawn` seconds unless a player walks in.
+  - **Deactivate** despawns the zone like an empty zone timing out (living
+    NPCs destroyed, corpses keep their own timer) and puts every slot on its
+    `Respawn` cooldown as if its NPC had just been killed; `Respawn: 0`
+    leaves the zone empty until Activate or Reset.
   - **Reset** destroys the zone's NPCs and clears every cooldown; it fills up
     again on the next poll with a player inside.
   - **Delete** removes the entry from `NPC-Spawns.json` (single click, no
