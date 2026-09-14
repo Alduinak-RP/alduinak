@@ -95,7 +95,13 @@ function getKey(id) { const el = document.getElementById(id); return el ? (parse
 
 // Press-to-bind capture. Backspace unbinds server hotkeys only: gameHotkeys:save
 // drops code 0, so an unbound game key would silently keep its old binding.
-const SERVER_HOTKEY_IDS = ['hk-chat', 'hk-cursor', 'hk-housing', 'hk-personal', 'hk-faction', 'hk-voice-ptt', 'hk-admin', 'hk-hide-ui']
+// Server hotkey button -> [hotkeys:load/save field, default DIK]; hk-chat is separate because it pairs with Enter
+const SERVER_HOTKEYS = {
+  'hk-cursor': ['freeCursor', 64], 'hk-housing': ['housing', 35], 'hk-personal': ['personal', 22],
+  'hk-faction': ['faction', 34], 'hk-voice-ptt': ['voicePtt', 47], 'hk-admin': ['adminMenu', 210],
+  'hk-hide-ui': ['hideUi', 59],
+}
+const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]
 const GAME_HOTKEY_IDS = ['ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov']
 
 let activeCapture = null
@@ -209,13 +215,7 @@ async function loadGameSettingsTab() {
     if (h && h.ok) {
       const chat = Array.isArray(h.chatFocus) ? (h.chatFocus.find(c => c !== 28) || h.chatFocus[0] || 20) : 20
       setKey('hk-chat', chat)
-      setKey('hk-cursor', h.freeCursor != null ? h.freeCursor : 64)
-      setKey('hk-housing', h.housing != null ? h.housing : 35)
-      setKey('hk-personal', h.personal != null ? h.personal : 22)
-      setKey('hk-faction', h.faction != null ? h.faction : 34)
-      setKey('hk-voice-ptt', h.voicePtt != null ? h.voicePtt : 47)
-      setKey('hk-admin', h.adminMenu != null ? h.adminMenu : 210)
-      setKey('hk-hide-ui', h.hideUi != null ? h.hideUi : 59)
+      for (const [id, [field, dflt]] of Object.entries(SERVER_HOTKEYS)) setKey(id, h[field] != null ? h[field] : dflt)
     }
   } catch (err) { /* settings tab is best-effort */ }
 }
@@ -254,17 +254,9 @@ async function saveGameSettingsTab() {
       }
       await window.electronAPI.gameHotkeysSave(keys)
     }
-    const chatKey = getKey('hk-chat')
-    await window.electronAPI.hotkeysSave({
-      chatFocus: [28, chatKey].filter(c => c > 0),
-      freeCursor: getKey('hk-cursor'),
-      housing:    getKey('hk-housing'),
-      personal:   getKey('hk-personal'),
-      faction:    getKey('hk-faction'),
-      voicePtt:   getKey('hk-voice-ptt'),
-      adminMenu:  getKey('hk-admin'),
-      hideUi:     getKey('hk-hide-ui'),
-    })
+    const hk = { chatFocus: [28, getKey('hk-chat')].filter(c => c > 0) }
+    for (const [id, [field]] of Object.entries(SERVER_HOTKEYS)) hk[field] = getKey(id)
+    await window.electronAPI.hotkeysSave(hk)
   } catch (err) { /* best-effort */ }
 }
 
