@@ -1655,6 +1655,8 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   caster->SendPapyrusEvent("OnSpellCast", args.data(), args.size());
 
   if (!spellCastData.keepAlive) {
+    spdlog::info("ActionListener::OnSpellCast - {:x} cast spell {:x}",
+                 caster->GetFormId(), spellCastData.spell);
     FireGamemodeEvent(partOne.worldState, caster->GetFormId(), "onSpellCast",
                       nlohmann::json::array({ spellCastData.spell }));
   }
