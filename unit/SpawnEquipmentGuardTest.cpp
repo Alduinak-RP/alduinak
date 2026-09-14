@@ -47,6 +47,15 @@ bool EquipmentSent(PartOne& partOne)
     return m.j["t"] == MsgType::UpdateEquipment;
   });
 }
+
+bool SnippetSent(PartOne& partOne, const char* function, uint32_t itemId)
+{
+  const auto& messages = partOne.Messages();
+  return std::any_of(messages.begin(), messages.end(), [&](const auto& m) {
+    return m.j["t"] == MsgType::SpSnippet && m.j["function"] == function &&
+      m.j["arguments"][0]["formId"] == itemId;
+  });
+}
 }
 
 TEST_CASE("A naked report right after spawn keeps the saved outfit",
@@ -56,10 +65,12 @@ TEST_CASE("A naked report right after spawn keeps the saved outfit",
   auto& actor = SpawnDressed(partOne, true);
 
   DoMessage(partOne, 0, kNakedReport);
+  partOne.Tick();
 
   REQUIRE(actor.GetEquipment().inv.CountWorn() == 1);
   REQUIRE(actor.GetEquipment().numChanges == 5);
   REQUIRE(!EquipmentSent(partOne));
+  REQUIRE(SnippetSent(partOne, "EquipItem", kIronHelmet));
 }
 
 TEST_CASE("A naked report after the spawn grace is accepted",
