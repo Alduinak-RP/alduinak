@@ -313,6 +313,31 @@ public:
     return MapVirtualKeyA(code, MAPVK_VSC_TO_VK);
   }
 
+  // Engine gates that can ignore a key DirectInput delivered
+  static void LogEngineInputGates(uint8_t code)
+  {
+    const auto engine = RE::Main::GetSingleton();
+    const auto controls = RE::ControlMap::GetSingleton();
+    const auto ui = RE::UI::GetSingleton();
+    std::string menus;
+    for (const std::string_view name :
+         { RE::Console::MENU_NAME, RE::CursorMenu::MENU_NAME,
+           RE::LoadingMenu::MENU_NAME, RE::FaderMenu::MENU_NAME,
+           RE::MessageBoxMenu::MENU_NAME }) {
+      if (ui && ui->IsMenuOpen(name)) {
+        menus += fmt::format("{}{}", menus.empty() ? "" : ", ", name);
+      }
+    }
+    spdlog::info(
+      "Input: key {:#x} down after entering the game, engine: gameActive {}, "
+      "controls {:#x}, textEntry {}, ignoreKbMouse {}, paused {}, menus [{}]",
+      code, engine && engine->gameActive,
+      controls ? controls->enabledControls.underlying() : 0u,
+      controls ? static_cast<int>(controls->textEntryCount) : -1,
+      controls && controls->ignoreKeyboardMouse, ui && ui->GameIsPaused(),
+      menus);
+  }
+
   void OnKeyStateChange(uint8_t code, bool down) noexcept override
   {
     int virtualKeyCode = VscToVk(code);
@@ -320,6 +345,10 @@ public:
     if (!down && virtualKeyCode >= 0 &&
         virtualKeyCode < vkCodeDownDur.size()) {
       vkCodeDownDur[virtualKeyCode] = 0;
+    }
+
+    if (down && CEFUtils::DInputHook::TakeEnteredGameKeyLog()) {
+      LogEngineInputGates(code);
     }
 
     if (!IsBrowserFocused())
@@ -469,10 +498,13 @@ public:
                                   LPARAM lParam)
   {
     if (uMsg == WM_ACTIVATE) {
-      LogWindow(hwnd,
-                LOWORD(wParam) == WA_INACTIVE ? "deactivated by"
-                                              : "activated from",
+      const bool active = LOWORD(wParam) != WA_INACTIVE;
+      LogWindow(hwnd, active ? "activated from" : "deactivated by",
                 reinterpret_cast<HWND>(lParam));
+      // The next "deactivated by" line then covers exactly this stay in front
+      if (active) {
+        CEFUtils::DInputHook::ResetKeyboardCounters();
+      }
     } else if (uMsg == WM_KILLFOCUS) {
       LogWindow(hwnd, "focus taken by", reinterpret_cast<HWND>(wParam));
     }
@@ -521,20 +553,33 @@ private:
     return result;
   }
 
+  // A budget rather than a gap, so a quick deactivate and reactivate pair is never dropped
+  struct LogBudget
+  {
+    ULONGLONG start = 0;
+    int left = 0;
+
+    bool Take()
+    {
+      const ULONGLONG now = GetTickCount64();
+      if (now - start > 10000) {
+        start = now;
+        left = 20;
+      }
+      if (left <= 0) {
+        return false;
+      }
+      --left;
+      return true;
+    }
+  };
+
   static void LogWindow(HWND self, const char* what, HWND window)
   {
-    // A budget rather than a gap, so a quick deactivate and reactivate pair is never dropped
-    static ULONGLONG budgetStart = 0;
-    static int budget = 0;
-    const ULONGLONG now = GetTickCount64();
-    if (now - budgetStart > 10000) {
-      budgetStart = now;
-      budget = 20;
-    }
-    if (budget <= 0) {
+    static LogBudget budget;
+    if (!budget.Take()) {
       return;
     }
-    --budget;
     const WindowInfo info = Describe(window);
     spdlog::info("ForegroundGuard: game window {} {} class '{}' pid {} ({}), {}",
                  static_cast<void*>(self), what, info.className, info.pid,
@@ -576,6 +621,7 @@ private:
 
   void Tick()
   {
+    LogRawInputChange();
     if (!game || !IsWindow(game)) {
       game = getGameWindow ? getGameWindow() : nullptr;
       if (!game) {
@@ -586,6 +632,7 @@ private:
       }
     }
     const HWND foreground = GetForegroundWindow();
+    ProbeAltTab(foreground == game);
     if (foreground == game) {
       if (thief) {
         spdlog::info("ForegroundGuard: game window is in front again after "
@@ -671,6 +718,40 @@ private:
     SetForegroundWindow(game);
   }
 
+  void LogRawInputChange()
+  {
+    const std::string raw = CEFUtils::DInputHook::DescribeRawInput();
+    if (raw == lastRawInput) {
+      return;
+    }
+    lastRawInput = raw;
+    if (diagBudget.Take()) {
+      spdlog::info("ForegroundGuard: raw input registration changed, {}",
+                   CEFUtils::DInputHook::DescribeInputState());
+    }
+  }
+
+  // Windows' own key state, so a swallowed Alt+Tab shows even when DirectInput misses it
+  void ProbeAltTab(bool inFront)
+  {
+    if (!inFront) {
+      altTabTicks = 0;
+    } else if (altTabTicks > 0 && --altTabTicks == 0) {
+      spdlog::info("ForegroundGuard: Alt+Tab did not leave the game, {}",
+                   CEFUtils::DInputHook::DescribeInputState());
+    }
+    const bool tab = (GetAsyncKeyState(VK_TAB) & 0x8001) != 0;
+    const bool pressed =
+      inFront && tab && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    if (pressed && !altTabWas && diagBudget.Take()) {
+      spdlog::info("ForegroundGuard: Alt+Tab pressed with the game in front "
+                   "(Windows view), {}",
+                   CEFUtils::DInputHook::DescribeInputState());
+      altTabTicks = 10;
+    }
+    altTabWas = pressed;
+  }
+
   std::function<HWND()> getGameWindow;
   std::atomic<bool> stop{ false };
   HWND game = nullptr;
@@ -679,6 +760,10 @@ private:
   int attempts = 0;
   int nullTicks = 0;
   bool everForeground = false;
+  std::string lastRawInput;
+  LogBudget diagBudget;
+  int altTabTicks = 0;
+  bool altTabWas = false;
   std::thread thread;
 };
 

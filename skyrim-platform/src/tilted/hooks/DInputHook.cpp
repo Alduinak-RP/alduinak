@@ -7,6 +7,7 @@
 
 #include <FunctionHook.hpp>
 #include <array>
+#include <atomic>
 #include <iostream>
 #include <spdlog/spdlog.h>
 
@@ -18,6 +19,15 @@ std::array<uint8_t, 256> g_pressedWas = ([] {
   return r;
 })();
 std::array<bool, 4> g_mousePressedWas = { 0, 0, 0, 0 };
+
+// Keyboard counters since the last reset, written on the input thread and read from any
+struct KeyboardCounters
+{
+  std::atomic<uint32_t> polls, eventsRead, eventsDelivered, stateDowns,
+    deliveredDowns, kicks, lastFailedHr;
+};
+KeyboardCounters g_keyboard;
+std::atomic<int> g_enteredGameKeyLogs = 0;
 
 const char* DeviceName(IDirectInputDevice8A* device)
 {
@@ -48,6 +58,9 @@ void ProcessKeyboardData(uint8_t* apData)
   for (uint32_t idx = 0; idx < 256; idx++) {
     if (g_pressedWas[idx] != apData[idx]) {
       g_pressedWas[idx] = apData[idx];
+      if (apData[idx]) {
+        ++g_keyboard.stateDowns;
+      }
       g_listener->OnKeyStateChange(idx, apData[idx] != 0);
       // Alt+Tab reached the game; no "deactivated" line after it means Windows never switched
       if (idx == DIK_TAB && apData[idx] &&
@@ -55,6 +68,34 @@ void ProcessKeyboardData(uint8_t* apData)
         spdlog::info("DInputHook: Alt+Tab pressed in the game, {}",
                      CEFUtils::DInputHook::DescribeInputState());
       }
+    }
+  }
+}
+
+// Tallies what DirectInput returned and what the engine receives from this layer
+void CountKeyboardRead(HRESULT result, DWORD dataSize,
+                       const DIDEVICEOBJECTDATA* data, const DWORD* count,
+                       bool delivered)
+{
+  ++g_keyboard.polls;
+  if (FAILED(result)) {
+    g_keyboard.lastFailedHr = static_cast<uint32_t>(result);
+    return;
+  }
+  if (!data || !count || dataSize < 2 * sizeof(DWORD)) {
+    return;
+  }
+  g_keyboard.eventsRead += *count;
+  if (!delivered) {
+    return;
+  }
+  g_keyboard.eventsDelivered += *count;
+  const auto* bytes = reinterpret_cast<const uint8_t*>(data);
+  for (DWORD i = 0; i < *count; ++i) {
+    const auto* event =
+      reinterpret_cast<const DIDEVICEOBJECTDATA*>(bytes + i * dataSize);
+    if (event->dwData & 0x80) {
+      ++g_keyboard.deliveredDowns;
     }
   }
 }
@@ -346,13 +387,17 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
   }
 
   if (instanceInfo.guidInstance == GUID_SysKeyboard) {
+    const bool browserFocus = DInputHook::ChromeFocus();
+    CountKeyboardRead(result, dataSize, outData, outDataLen, !browserFocus);
     uint8_t rawData[256];
     HRESULT hr = IDirectInputDevice8_GetDeviceState(m_pDevice, 256, rawData);
     if (hr == DI_OK) {
       ProcessKeyboardData(rawData);
       memset(rawData, 0, 256);
+    } else {
+      g_keyboard.lastFailedHr = static_cast<uint32_t>(hr);
     }
-    if (DInputHook::ChromeFocus()) {
+    if (browserFocus) {
       *outDataLen = 0;
 
       return result;
@@ -460,17 +505,57 @@ DInputHook& DInputHook::Get() noexcept
 
 std::string DInputHook::DescribeInputState()
 {
-  std::string result =
-    fmt::format("in front: {}, browser focus {}",
-                DescribeWindow(GetForegroundWindow()), ChromeFocus());
+  // The foreground thread's focus, so this works from any thread
+  GUITHREADINFO gui = { sizeof(GUITHREADINFO) };
+  const HWND focus = GetGUIThreadInfo(0, &gui) ? gui.hwndFocus : nullptr;
+  return fmt::format(
+    "in front: {}, browser focus {}{}, focus {}, keyboard since reset: polls "
+    "{}, events from DirectInput {}, events delivered {}, key downs in DI "
+    "state {}, key downs delivered {}, kicks {}, last failed hr {:#x}",
+    DescribeWindow(GetForegroundWindow()), ChromeFocus(), DescribeRawInput(),
+    DescribeWindow(focus), g_keyboard.polls.load(),
+    g_keyboard.eventsRead.load(), g_keyboard.eventsDelivered.load(),
+    g_keyboard.stateDowns.load(), g_keyboard.deliveredDowns.load(),
+    g_keyboard.kicks.load(), g_keyboard.lastFailedHr.load());
+}
+
+void DInputHook::ResetKeyboardCounters()
+{
+  for (std::atomic<uint32_t>* counter :
+       { &g_keyboard.polls, &g_keyboard.eventsRead,
+         &g_keyboard.eventsDelivered, &g_keyboard.stateDowns,
+         &g_keyboard.deliveredDowns, &g_keyboard.kicks,
+         &g_keyboard.lastFailedHr }) {
+    *counter = 0;
+  }
+}
+
+void DInputHook::OnEnteredGame()
+{
+  ResetKeyboardCounters();
+  g_enteredGameKeyLogs = 3;
+}
+
+bool DInputHook::TakeEnteredGameKeyLog()
+{
+  if (g_enteredGameKeyLogs <= 0) {
+    return false;
+  }
+  --g_enteredGameKeyLogs;
+  return true;
+}
+
+std::string DInputHook::DescribeRawInput()
+{
   // DirectInput reads through raw input, so another registration for these usages silences it
   RAWINPUTDEVICE devices[16];
   UINT count = static_cast<UINT>(std::size(devices));
   const UINT n =
     GetRegisteredRawInputDevices(devices, &count, sizeof(RAWINPUTDEVICE));
   if (n == static_cast<UINT>(-1)) {
-    return result + ", raw input unknown";
+    return ", raw input unknown";
   }
+  std::string result;
   for (UINT i = 0; i < n; ++i) {
     const USHORT usage = devices[i].usUsage;
     if (devices[i].usUsagePage == 0x01 && (usage == 0x02 || usage == 0x06)) {
