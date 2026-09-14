@@ -1039,9 +1039,8 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
 
     for (auto raceSpellRaw : raceData.spells) {
       const uint32_t spellId = race.ToGlobalId(raceSpellRaw);
-      if (!isWithheld(spellId,
-                      { espm::SPEL::SpellType::Power,
-                        espm::SPEL::SpellType::LesserPower })) {
+      // Greater powers only, lesser powers such as Khajiit Night Eye stay
+      if (!isWithheld(spellId, { espm::SPEL::SpellType::Power })) {
         result.push_back(spellId);
       }
     }
