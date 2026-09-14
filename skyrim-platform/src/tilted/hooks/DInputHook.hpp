@@ -21,7 +21,7 @@ struct DInputHook
   static std::string DescribeInputState();
   static std::string DescribeRawInput();
   static void ResetKeyboardCounters();
-  // Called at postLoadGame; resets the counters and arms the first key logs
+  // Called at postLoadGame; resets the counters, arms the first key logs and one keyboard re-acquire
   static void OnEnteredGame();
   // True for the first few key downs after entering the game
   static bool TakeEnteredGameKeyLog();

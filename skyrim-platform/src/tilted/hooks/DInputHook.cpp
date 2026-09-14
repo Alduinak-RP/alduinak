@@ -28,6 +28,7 @@ struct KeyboardCounters
 };
 KeyboardCounters g_keyboard;
 std::atomic<int> g_enteredGameKeyLogs = 0;
+std::atomic<ULONGLONG> g_enteredGameAt = 0;
 
 // Keyboard watchdog state, touched only on the engine's input thread
 std::array<bool, 256> g_deliveredDown = {};
@@ -426,6 +427,15 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
     uint8_t rawData[256];
     HRESULT hr = IDirectInputDevice8_GetDeviceState(m_pDevice, 256, rawData);
     WatchKeyboard(hr == DI_OK ? rawData : nullptr);
+    const ULONGLONG enteredAt = g_enteredGameAt;
+    if (enteredAt && GetTickCount64() - enteredAt >= 2000 && !browserFocus &&
+        ThisProcessInFront()) {
+      g_enteredGameAt = 0;
+      spdlog::info(
+        "DInputHook: keyboard re-acquired after entering the game, {}",
+        DInputHook::DescribeInputState());
+      Kick();
+    }
     if (hr == DI_OK) {
       ProcessKeyboardData(rawData);
       memset(rawData, 0, 256);
@@ -635,6 +645,7 @@ void DInputHook::OnEnteredGame()
 {
   ResetKeyboardCounters();
   g_enteredGameKeyLogs = 3;
+  g_enteredGameAt = GetTickCount64();
 }
 
 bool DInputHook::TakeEnteredGameKeyLog()
