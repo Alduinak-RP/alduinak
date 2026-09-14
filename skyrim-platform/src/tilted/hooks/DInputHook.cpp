@@ -46,6 +46,20 @@ bool ThisProcessInFront()
   return pid == GetCurrentProcessId();
 }
 
+// Its release could be lost while the keyboard is unacquired, leaving the key stuck down in the engine
+bool EngineHoldsHeldKey()
+{
+  for (UINT dik = 1; dik < g_deliveredDown.size(); ++dik) {
+    const UINT scan = dik < 0x80 ? dik : 0xE000 | (dik & 0x7F);
+    const UINT vk =
+      g_deliveredDown[dik] ? MapVirtualKeyA(scan, MAPVK_VSC_TO_VK_EX) : 0;
+    if (vk && (GetAsyncKeyState(static_cast<int>(vk)) & 0x8000)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const char* DeviceName(IDirectInputDevice8A* device)
 {
   DIDEVICEINSTANCEA instanceInfo;
@@ -430,11 +444,19 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
     const ULONGLONG enteredAt = g_enteredGameAt;
     if (enteredAt && GetTickCount64() - enteredAt >= 2000 && !browserFocus &&
         ThisProcessInFront()) {
-      g_enteredGameAt = 0;
-      spdlog::info(
-        "DInputHook: keyboard re-acquired after entering the game, {}",
-        DInputHook::DescribeInputState());
-      Kick();
+      // A keyboard that got a key through needs no kick, and a held key waits for its release
+      if (g_keyboard.deliveredDowns) {
+        g_enteredGameAt = 0;
+        spdlog::info("DInputHook: keyboard delivered keys after entering the "
+                     "game, no re-acquire, {}",
+                     DInputHook::DescribeInputState());
+      } else if (!EngineHoldsHeldKey()) {
+        g_enteredGameAt = 0;
+        spdlog::info(
+          "DInputHook: keyboard re-acquired after entering the game, {}",
+          DInputHook::DescribeInputState());
+        Kick();
+      }
     }
     if (hr == DI_OK) {
       ProcessKeyboardData(rawData);
@@ -452,7 +474,7 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
   return result;
 }
 
-// Windows has a key down that DirectInput or the engine never got; re-acquiring is what Alt+Tab does
+// Windows has a key down that DirectInput or the engine never got; re-acquiring repeats DirectInput's half of an Alt+Tab
 void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
 {
   const ULONGLONG now = GetTickCount64();
@@ -491,7 +513,7 @@ void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
       starved = static_cast<int>(sc);
     }
   }
-  if (starved < 0 || now - g_lastKick < 5000) {
+  if (starved < 0 || now - g_lastKick < 5000 || EngineHoldsHeldKey()) {
     return;
   }
   if (!g_awaitingDelivery) {
