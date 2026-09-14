@@ -649,7 +649,10 @@ private:
       return;
     }
     if (!foreground) {
-      ReclaimFromNothing();
+      // Startup only, so nothing pulls the game back once it has been in front
+      if (!everForeground) {
+        ReclaimFromNothing();
+      }
       return;
     }
     nullTicks = 0;
