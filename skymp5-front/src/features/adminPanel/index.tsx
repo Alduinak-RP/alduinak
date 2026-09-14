@@ -360,6 +360,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     lastTop = id;
     setTop(id);
     if (id === 'skills' && ev.skills) send(ev.skills);
+    if (id === 'admin' && subTab === 'npcs' && ev.npcList) send(ev.npcList);
   };
 
   const openSub = (id: AdminSub): void => {
