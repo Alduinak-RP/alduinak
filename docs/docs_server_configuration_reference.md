@@ -238,7 +238,7 @@ Record types (see [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format)) t
 - A container that already got its plugin loot keeps it. Nothing is removed from the database.
 - NPCs, NPC corpses and player bodies are actors, not containers, and keep their inventories. Flora, trees and hanging food are harvested, not opened, and are unchanged.
 
-`false` restores the plugin loot. A container that has never received anything then gets it on its next open. The native server reads the key at boot.
+`false` restores the plugin loot. A container that has never received anything then gets it on its next open. The native server reads the key at boot. Any value other than `true` or `false` is logged as an error and the default stays.
 
 ```json5
 {
@@ -250,7 +250,7 @@ Record types (see [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format)) t
 
 ## containerLootBaseIds
 
-Container base records that keep their plugin loot while `emptyContainers` is on. Give the `CONT` record, not the placed reference, as a number, a `"0x..."` string or a `"hex:File.esp"` descriptor. Empty by default. An entry that doesn't resolve is skipped and logged at boot.
+Container base records that keep their plugin loot while `emptyContainers` is on. Give the `CONT` record, not the placed reference, as a number, a `"0x..."` string or a `"hex:File.esp"` descriptor. Empty by default. An entry that doesn't resolve (a malformed or negative id, one above 32 bits, or a file that isn't loaded) is skipped and logged at boot.
 
 ```json5
 {
