@@ -162,22 +162,17 @@ export class HousingSystem implements System {
     const primary = this.primaryOf(ctx, targetId);
     if (!primary) return true;
     const rec = this.read(ctx, primary);
-    if (!rec || rec.owner === 0) return true;
+    if (!rec || rec.owner === 0 || !rec.locked) return true;
 
     // One notice and log line per player per second; a held activate key fires repeatedly.
     const userId = this.userOf(ctx, casterId);
     const now = Date.now();
-    if (now - (this.lastActivateMs.get(userId) || 0) <= 1000) return !rec.locked;
-    this.lastActivateMs.set(userId, now);
-    const door = `door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)}`;
-    if (!rec.locked) {
-      this.log(`[housing] ${door} let through for ${this.who(ctx, casterId)}: unlocked`);
-      return true;
-    }
+    if (now - (this.lastDenyMs.get(userId) || 0) <= 1000) return false;
+    this.lastDenyMs.set(userId, now);
     const role = this.accessRole(ctx, primary, rec, casterId);
     const label = rec.name || "This";
     this.notice(ctx, userId, role ? `${label} is locked. Unlock it from the housing menu.` : `${label} is locked.`);
-    this.log(`[housing] ${door} denied to ${this.who(ctx, casterId)}: locked${role ? `, may unlock as ${role}` : ""}`);
+    this.log(`[housing] door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)} denied to ${this.who(ctx, casterId)}: locked${role ? `, may unlock as ${role}` : ""}`);
     return false;
   }
 
@@ -901,7 +896,7 @@ export class HousingSystem implements System {
   private baseTypeCache = new Map<number, string>();
   private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
-  private lastActivateMs = new Map<number, number>();
+  private lastDenyMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxClaims = DEFAULT_MAX_CLAIMS;
   private maxDistance = DEFAULT_MAX_DISTANCE;
