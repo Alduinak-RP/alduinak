@@ -12,7 +12,7 @@ type Mp = any;
 // Players claim any unowned door or container they are standing at by pressing
 // the housing key. Owners lock it, name it, cut keys, hand ownership over, or
 // give it up. A locked property refuses activation for everyone, owner included,
-// until someone with access (owner, hold official, admin or key holder) unlocks
+// until the owner, an admin or a key holder unlocks
 // it from the menu; RefDecorService mirrors the lock into the engine as a Master
 // lock so every player sees a locked door.
 //
@@ -105,7 +105,6 @@ interface PrimaryPointer {
 interface ViewerAccess {
   profileId: number;
   admin: boolean;
-  ranks: Array<{ hold: string; rank: string }>;
   keys: Set<string>;
 }
 
@@ -452,14 +451,12 @@ export class HousingSystem implements System {
     return this.accessRole(ctx, primary, rec, actorId) !== "";
   }
 
-  // What lets an actor unlock this: owner, admin, official or key; "" when nothing does
+  // What lets an actor lock or unlock this: owner, admin or key; hold officials only manage the claim
   private accessRole(ctx: SystemContext, primary: number, rec: PropertyRecord, actorId: number): string {
     if (rec.owner === 0) return "unclaimed";
     const v = this.viewerAccess(ctx, actorId);
     if (v.profileId && v.profileId === rec.owner) return "owner";
     if (v.admin) return "admin";
-    const hold = this.holdOf(ctx, primary);
-    if (hold && v.ranks.some((r) => r.hold === hold && MANAGER_RANKS.indexOf(r.rank) !== -1)) return "official";
     return v.keys.has(this.keyNameOf(primary, rec)) ? "key" : "";
   }
 
@@ -477,7 +474,6 @@ export class HousingSystem implements System {
     return {
       profileId: this.profileOf(ctx, actorId),
       admin: this.isAdmin(ctx, actorId),
-      ranks: this.holdRanks(ctx, actorId),
       keys,
     };
   }
