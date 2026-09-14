@@ -2,6 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { openFormMenu, refreshFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { RemoteServer } from "./remoteServer";
+import { TimeService } from "./timeService";
 import { parseMasteryMenu } from "./masteryService";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
@@ -334,11 +335,11 @@ export class AdminMenuService extends ClientListener {
         d.effects.push({ id: hex(id), name: info.name, elapsedSec: Math.round((now - info.since) / 1000) });
       });
     }
-    // timeService mirrors the real UTC calendar shifted by hoursOffset into these globals, so the weekday follows the same clock
+    // TimeService mirrors the server's local calendar into these globals, so the weekday follows the same clock
     const global = (id: number) => safe(() => sp.GlobalVariable.from(sp.Game.getFormEx(id))?.getValue(), NaN);
     const hour = global(GLOBAL_HOUR), day = global(GLOBAL_DAY), month = global(GLOBAL_MONTH), year = global(GLOBAL_YEAR);
     if ([hour, day, month, year].every(Number.isFinite)) {
-      d.gameTime = { hour, day, month, year, weekday: new Date(now + d.hoursOffset * 3600000).getUTCDay() };
+      d.gameTime = { hour, day, month, year, weekday: this.controller.lookupListener(TimeService).getTime().date.getUTCDay() };
     }
     panelData.debug = d;
   }
