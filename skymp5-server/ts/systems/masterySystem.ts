@@ -40,8 +40,10 @@ type Mp = any;
 //   masteryRankHours             [adept, expert, master] thresholds, default [40, 100, 180]
 //   masteryPointIntervalMinutes  minimum gap between two points, default 60
 //   masterySpells                { "<professionId>": [noviceSpell, adept, expert, master] }
-//                                form ids from the Alduinak plugin; professions absent
-//                                from the map simply grant no spell.
+//                                form ids from the Alduinak plugin. A profession absent from
+//                                the map uses the plugin's AldMastery_<Profession>_<Rank>
+//                                spells (misc/proficiency-patcher writes them); one that has
+//                                neither grants no spell.
 //   masteryActivities            { "<professionId>": { craftKeywords, craftStations,
 //                                activatePrefixes, activateTypes, eatIngredient,
 //                                killKeywords, hitKeywords } } overriding
@@ -124,9 +126,8 @@ const ACTOR_TYPES = ["ActorTypeNPC", "ActorTypeCreature", "ActorTypeUndead", "Ac
 const PLAYER_KEYWORD = "ActorTypeNPC";
 
 const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
-  // Potion brewing is client-side (and cooked food is an ALCH record too), so
-  // the lab, the herbs and the tasting are what count.
-  alchemist: { activateTypes: ["FLOR", "TREE"], activatePrefixes: ["CraftingAlchemyWorkbench"], eatIngredient: true },
+  // Potions are crafting-menu recipes at the lab since the proficiency plugin; the herbs and the tasting count too.
+  alchemist: { craftKeywords: ["AldCraftingAlchemy"], activateTypes: ["FLOR", "TREE"], activatePrefixes: ["CraftingAlchemyWorkbench"], eatIngredient: true },
   // Tempering never reaches the server as a craft, so the grindstone and the
   // workbench cannot count. Anything made at a forge, anvil or smelter counts, clothing included.
   blacksmith: {
@@ -140,8 +141,8 @@ const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
   // MoreCraftableEquipment clothes and cloaks are woven at its loom.
   tailor: { craftKeywords: ["CraftingTanningRack", "MCE_CraftingLoom"] },
   warrior: { hitKeywords: ACTOR_TYPES },
-  // Hearthfire recipes name BYOHBuildingCarpenter; the bench also carries BYOHCarpenterTable.
-  woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter"] },
+  // Hearthfire recipes name BYOHBuildingCarpenter; the bench also carries BYOHCarpenterTable. Bows and charcoal come from the proficiency plugin benches.
+  woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter", "AldCraftingWoodcrafting", "AldCraftingKiln"] },
 };
 
 const ACTIVITY_KINDS = ["craft", "activate", "eat", "kill", "hit"] as const;
@@ -226,6 +227,7 @@ export class MasterySystem implements System {
     }
 
     await this.loadRules(ctx, all?.["masteryActivities"], s.dataDir, s.loadOrder);
+    await this.loadPluginSpells(ctx, s.dataDir, s.loadOrder);
 
     const configured = Object.keys(this.spells).length;
     this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one point per ${this.intervalMs / 60000} min, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
@@ -564,6 +566,30 @@ export class MasterySystem implements System {
     } catch (e) {
       this.log(`[mastery] could not revoke spell ${spellId.toString(16)}: ${e}`);
     }
+  }
+
+  // Marker spells of the professions the settings leave out, by the plugin editor id convention.
+  private async loadPluginSpells(ctx: SystemContext, dataDir: string, loadOrder: string[]): Promise<void> {
+    const missing = PROFESSION_IDS.filter((id) => !this.spells[id]);
+    if (!missing.length) return;
+    const edidOf = (id: string, rank: string) => `AldMastery_${id.charAt(0).toUpperCase()}${id.slice(1)}_${rank}`;
+    const names = missing.flatMap((id) => RANK_NAMES.map((rank) => edidOf(id, rank)));
+    const scan = await resolveEditorIds(names, dataDir, loadOrder, this.log, ["SPEL"]);
+    const mp = ctx.svr as Mp;
+    for (const id of missing) {
+      const list = RANK_NAMES.map((rank) => {
+        const desc = scan.resolved.get(edidOf(id, rank).toLowerCase());
+        try { return desc ? mp.getIdFromDesc(desc) >>> 0 : 0; } catch { return 0; }
+      });
+      if (list.some((v) => v)) this.spells[id] = list;
+    }
+    this.log(`[mastery] plugin marker spells found for ${missing.filter((id) => this.spells[id]).length}/${missing.length} unconfigured profession(s) in ${scan.scannedMs} ms`);
+  }
+
+  // Rank of a character in the given profession, -1 when it follows another craft or none.
+  rankOf(ctx: SystemContext, actorId: number, professionId: string): number {
+    const rec = this.read(ctx, actorId);
+    return rec && rec.profession === professionId ? rec.rank : -1;
   }
 
   // ── Activity rules ──────────────────────────────────────────────────────────

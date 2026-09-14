@@ -2,6 +2,8 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
 import { addItemTo } from "./actorUtil";
+import { resolveEditorIds, isEditorId } from "./espmEditorIds";
+import { MasterySystem, RANK_NAMES } from "./masterySystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -10,7 +12,12 @@ type Mp = any;
 //
 // server-settings.json keys (all optional):
 //   gatheringStrikeSeconds       seconds of work per chop or pickaxe strike, default 5
-//   gatheringVeinRespawnMinutes  how long a depleted vein stays empty, default 1440
+//   gatheringVeinRespawnMinutes  how long a fully mined vein takes to grow back, default 1440
+//   gatheringVeinRegenMinutes    minutes per ore collection grown back, default respawn / vein total
+//   miningVeinTiers              { "<ore editor id or hex id>": "Adept" | rank index } overriding DEFAULT_VEIN_TIERS
+//
+// Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
+// Ores above Novice need the miner profession at that rank; everything else is open to anyone with a pickaxe.
 
 const VEIN_PROP = "private.gathering";
 const SEAT_CLOSE_EVENT = "onPapyrusEvent:SkympOnActivateClose";
@@ -33,6 +40,14 @@ const CHOP_DEFAULT_MAX = 6;
 const VEIN_DEFAULT_COUNT = 1;
 const VEIN_DEFAULT_TOTAL = 3;
 const VEIN_DEFAULT_STRIKES = 1;
+
+// Mining rank needed per ore, by the ore item editor id; unlisted ores are open to everyone.
+const DEFAULT_VEIN_TIERS: Record<string, number> = {
+  OreIron: 0, OreCorundum: 0,
+  OreGold: 1, OreSilver: 1,
+  OreOrichalcum: 2, OreMoonstone: 2,
+  OreMalachite: 3, OreQuicksilver: 3, OreEbony: 3,
+};
 
 type StationKind = "chop" | "vein" | "marker";
 
@@ -60,7 +75,8 @@ interface Session {
 
 interface VeinState {
   left: number;
-  resetAt: number;
+  // Epoch ms when the next collection grows back; 0 while the vein is full.
+  regenAt: number;
 }
 
 // Undefined: not a gathering station. False: refused. A function: run once the activation went through.
@@ -69,7 +85,7 @@ type Verdict = undefined | false | (() => void);
 export class GatheringSystem implements System {
   systemName = "GatheringSystem";
 
-  constructor(private log: Log) { }
+  constructor(private log: Log, private mastery: MasterySystem) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -78,9 +94,43 @@ export class GatheringSystem implements System {
     if (Number.isFinite(strike) && strike > 0) this.strikeMs = strike * 1000;
     const respawn = Number(all?.["gatheringVeinRespawnMinutes"]);
     if (Number.isFinite(respawn) && respawn >= 0) this.respawnMs = respawn * 60000;
+    const regen = Number(all?.["gatheringVeinRegenMinutes"]);
+    if (Number.isFinite(regen) && regen > 0) this.regenMs = regen * 60000;
+    await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
 
     this.installHooks(ctx);
-    this.log(`[gathering] ready, one strike per ${this.strikeMs / 1000} s, veins refill after ${this.respawnMs / 60000} min`);
+    const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
+    this.log(`[gathering] ready, one strike per ${this.strikeMs / 1000} s, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank`);
+  }
+
+  // Ore item ids that need a mining rank, from the defaults plus the settings override.
+  private async loadVeinTiers(ctx: SystemContext, raw: unknown, dataDir: string, loadOrder: string[]): Promise<void> {
+    const merged: Record<string, number> = { ...DEFAULT_VEIN_TIERS };
+    if (raw && typeof raw === "object") {
+      for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+        const tier = typeof value === "string" ? RANK_NAMES.indexOf(value) : Number(value);
+        if (Number.isInteger(tier) && tier >= 0 && tier < RANK_NAMES.length) merged[name] = tier;
+        else this.log(`[gathering] miningVeinTiers.${name}: unknown rank ${JSON.stringify(value)}, ignored`);
+      }
+    }
+    const names = Object.keys(merged);
+    const scan = await resolveEditorIds(names.filter(isEditorId), dataDir, loadOrder, this.log, ["MISC"]);
+    const mp = ctx.svr as Mp;
+    const unresolved: string[] = [];
+    for (const name of names) {
+      let id = 0;
+      try {
+        if (name.includes(":")) id = mp.getIdFromDesc(name) >>> 0;
+        else if (!isEditorId(name)) id = parseInt(name, 16) >>> 0;
+        else {
+          const desc = scan.resolved.get(name.toLowerCase());
+          if (desc) id = mp.getIdFromDesc(desc) >>> 0;
+        }
+      } catch { id = 0; }
+      if (!id) unresolved.push(name);
+      else if (merged[name] > 0) this.veinTiers.set(id, merged[name]);
+    }
+    if (unresolved.length) this.log(`[gathering] ore(s) not in the load order, left open to everyone: ${unresolved.join(", ")}`);
   }
 
   // Chained like HousingSystem: a refusal never reaches the furniture, and a
@@ -202,6 +252,10 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["mineoretoolslist"])) {
       return this.deny(ctx, actorId, "You need a pickaxe to mine this vein.");
     }
+    const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) || 0;
+    if (tier > 0 && this.mastery.rankOf(ctx, actorId, "miner") < tier) {
+      return this.deny(ctx, actorId, `Only a miner of ${RANK_NAMES[tier]} rank or better can work this vein.`);
+    }
     if (this.veinState(ctx, veinId, this.veinTotal(props)).left <= 0) {
       return this.deny(ctx, actorId, "This vein is depleted.");
     }
@@ -248,7 +302,7 @@ export class GatheringSystem implements System {
     s.strikesLeft = s.strikesPer;
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
     state.left -= 1;
-    if (state.left <= 0) state.resetAt = now + this.respawnMs;
+    if (!state.regenAt) state.regenAt = now + this.regenPer(s.cap);
     this.writeVein(ctx, s.veinId, state);
     if (state.left <= 0) this.finish(ctx, s, "The vein is depleted.");
   }
@@ -297,14 +351,26 @@ export class GatheringSystem implements System {
     return Math.max(1, props["resourcecounttotal"] || VEIN_DEFAULT_TOTAL);
   }
 
-  // Remaining collections ride the vein's changeform, so a restart keeps a mined-out vein empty.
+  // Time for one collection to grow back.
+  private regenPer(total: number): number {
+    return this.regenMs || Math.max(60000, Math.floor(this.respawnMs / Math.max(1, total)));
+  }
+
+  // Remaining collections ride the vein changeform, so a restart keeps a mined-out vein empty; growth is settled on read.
   private veinState(ctx: SystemContext, veinId: number, total: number): VeinState {
     let raw: any = null;
     try { raw = (ctx.svr as Mp).get(veinId, VEIN_PROP); } catch { /* never mined */ }
-    const left = raw && Number.isFinite(Number(raw.left)) ? Number(raw.left) : total;
-    const resetAt = raw ? Number(raw.resetAt) || 0 : 0;
-    if (left <= 0 && Date.now() >= resetAt) return { left: total, resetAt: 0 };
-    return { left: Math.min(left, total), resetAt };
+    let left = raw && Number.isFinite(Number(raw.left)) ? Math.min(Number(raw.left), total) : total;
+    // Records from before growth carry resetAt, the moment the whole vein came back.
+    let regenAt = raw ? Number(raw.regenAt) || Number(raw.resetAt) || 0 : 0;
+    const now = Date.now();
+    const per = this.regenPer(total);
+    while (left < total && regenAt && now >= regenAt) {
+      left += 1;
+      regenAt += per;
+    }
+    if (left >= total) return { left: total, regenAt: 0 };
+    return { left, regenAt };
   }
 
   private writeVein(ctx: SystemContext, veinId: number, state: VeinState): void {
@@ -436,6 +502,8 @@ export class GatheringSystem implements System {
 
   private strikeMs = DEFAULT_STRIKE_SECONDS * 1000;
   private respawnMs = DEFAULT_VEIN_RESPAWN_MINUTES * 60000;
+  private regenMs = 0;
+  private veinTiers = new Map<number, number>();
   private sessions = new Map<number, Session>();
   private pendingSeats: Array<{ markerId: number; actorId: number }> = [];
   private lastDenyMs = new Map<number, number>();

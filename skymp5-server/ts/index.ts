@@ -237,7 +237,7 @@ const main = async () => {
     new FurnitureSeatSystem(log),
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
-    new GatheringSystem(log),
+    new GatheringSystem(log, masterySystem),
     new BountyBoardSystem(log),
     new UntouchableSystem(log),
     npcSpawnSystem,
