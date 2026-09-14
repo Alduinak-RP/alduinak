@@ -167,6 +167,12 @@ export class RemoteServer extends ClientListener {
         }
       },
     }, 0xff000000, 0xffffffff, "BeginCast*");
+    // Diagnostic: more spellCast events than the replay itself raises means BeginCast made the clone cast again
+    this.controller.on("spellCast", (e) => {
+      if (this.cloneCastReport && e.caster?.getFormID() === this.cloneCastReport.cloneId) {
+        this.cloneCastReport.spellCasts++;
+      }
+    });
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
   }
@@ -1190,6 +1196,7 @@ export class RemoteServer extends ClientListener {
     this.cloneCastReport = {
       cloneId: ac.getFormID(),
       at: now,
+      spellCasts: 0,
       text: `clone cast diagnostic: spell ${spellId.toString(16)} on ${ac.getFormID().toString(16)} hands [${hands}]`
         + ` target is clone ${remoteIdToLocalId(target) === ac.getFormID()}`,
     };
@@ -1202,7 +1209,7 @@ export class RemoteServer extends ClientListener {
     }
     this.lastCloneCastSweep = now;
     const report = this.cloneCastReport;
-    if (report && now - report.at > 500) {
+    if (report && now - report.at > 1000) {
       this.cloneCastReport = undefined;
       const clone = Actor.from(Game.getFormEx(report.cloneId));
       const state = clone
@@ -1211,7 +1218,7 @@ export class RemoteServer extends ClientListener {
           + ` IsCastingRight ${clone.getAnimationVariableBool("IsCastingRight")}`
         : " clone gone";
       // A throw from its own update reaches skyrim-platform.log, printConsole does not
-      this.controller.once("update", () => { throw new Error(report.text + state); });
+      this.controller.once("update", () => { throw new Error(`${report.text}${state} spellCasts ${report.spellCasts}`); });
     }
     for (const [key, stoppedAt] of Array.from(this.cloneCastStoppedAt)) {
       if (now - stoppedAt > this.cloneCastStopMemoryMs) {
@@ -1265,7 +1272,7 @@ export class RemoteServer extends ClientListener {
   private readonly cloneCastStopMemoryMs = 2000;
   private readonly concentrationCasting = 2;
   private lastCloneCastSweep = 0;
-  private cloneCastReport: { cloneId: number, at: number, text: string } | undefined = undefined;
+  private cloneCastReport: { cloneId: number, at: number, text: string, spellCasts: number } | undefined = undefined;
   private lastCloneCastReportAt = 0;
   private numSetInventory = 0;
 }
