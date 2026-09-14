@@ -27,7 +27,7 @@ const MAX_EFFECTS = 4;
 const PLAYER_FORM_ID = 0x14;
 const LIGHT_MOD_HIGH = 0xfe;
 
-// Lives in sp.storage so a client hot reload keeps it; the seen sets span every character of this game process
+// Lives in sp.storage so a client hot reload keeps it; the seen sets span every character played since the last game load
 interface State {
   actorId: number;
   markers: Record<string, true>;
@@ -59,9 +59,7 @@ export class CharacterProgressService extends ClientListener {
     });
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("update", () => this.onUpdate());
-    this.controller.on("loadGame", () => {
-      this.settleFrom = 0;
-    });
+    this.controller.on("loadGame", () => this.onLoadGame());
     this.controller.on("locationDiscovery", () => this.scanSoon());
     this.controller.on("cellFullyLoaded", () => this.scanSoon());
     this.controller.on("equip", (e) => this.onEquip(e));
@@ -106,6 +104,17 @@ export class CharacterProgressService extends ClientListener {
     this.awaiting = true;
     this.settleFrom = 0;
     this.request(Date.now());
+  }
+
+  // A load resets map markers and ingredient effects to the save's state, which becomes the new baseline
+  private onLoadGame(): void {
+    const s = this.state;
+    s.seenMarkers = {};
+    s.seenIngredients = {};
+    s.baselineDone = false;
+    this.settleFrom = 0;
+    this.scanCursor = MAP_MARKER_REFS.length;
+    this.nextScanAt = 0;
   }
 
   private request(now: number): void {
@@ -231,6 +240,7 @@ export class CharacterProgressService extends ClientListener {
         const visible = ref.isMapMarkerVisible();
         if (s.markers[desc]) {
           if (!visible) ref.addToMap(true);
+          s.seenMarkers[desc] = true;
         } else if (visible && !s.seenMarkers[desc]) {
           if (s.baselineDone) this.learn([desc], {}, true);
           else s.seenMarkers[desc] = true;
@@ -286,6 +296,7 @@ export class CharacterProgressService extends ClientListener {
           learned |= bit;
         }
       }
+      if (known) s.seenIngredients[desc] = seen | known;
       if (learned) this.learn([], { [desc]: learned }, true);
     } catch (err) { /* form not loaded on this client */ }
   }
