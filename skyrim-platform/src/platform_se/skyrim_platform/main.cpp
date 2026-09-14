@@ -801,9 +801,6 @@ public:
     CEFUtils::WindowsHook::Install();
     CEFUtils::WindowsHook::Get().SetCallback(&ForegroundGuard::WndProc);
 
-    CEFUtils::DInputHook::Get().SetToggleKeys({ VK_F6 });
-    CEFUtils::DInputHook::Get().SetEnabled(true);
-
     class ProcessMessageListenerImpl : public ProcessMessageListener
     {
     public:
