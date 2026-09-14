@@ -5,7 +5,7 @@ import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
 type Mp = any;
 
 // Soul Trap: a hit carrying a soul trap effect marks its target, and a death before the effect ends fills one of the caster's soul gems.
-// Players have black souls, so only an empty black soul gem takes them, and a player whose soul was taken respawns once in the Soul Cairn.
+// Players have black souls, so only an empty black soul gem takes them; a player whose soul was taken, or who dies in the Soul Cairn, respawns there.
 
 const HIT_EVENT = "onPapyrusEvent:OnHit";
 const TRAPPED_PROP = "private.soulTrapped";
@@ -45,6 +45,8 @@ const SOUL_CAIRN_ARRIVAL = {
   pos: [-19965.66, -15986.51, 2079.48],
   rot: [0, 0, 77.35],
 };
+// The Soul Cairn and the places its doors reach: the Reaper's lair (CELL 02006429) and the Boneyard (WRLD 0200528D).
+const SOUL_CAIRN_SPACES = new Set(["1408:Dawnguard.esm", "6429:Dawnguard.esm", "528d:Dawnguard.esm"]);
 
 interface Trap {
   casterId: number;
@@ -166,8 +168,9 @@ export class SoulTrapSystem implements System {
   // The engine reads the respawn point right after this hook, so the Soul Cairn stands in for this one respawn only
   private routeToSoulCairn(ctx: SystemContext, actorId: number): void {
     const mp = ctx.svr as Mp;
-    if (mp.get(actorId, TRAPPED_PROP) !== true) return;
-    mp.set(actorId, TRAPPED_PROP, false);
+    const trapped = mp.get(actorId, TRAPPED_PROP) === true;
+    if (trapped) mp.set(actorId, TRAPPED_PROP, false);
+    else if (!this.isPlayer(mp, actorId) || !SOUL_CAIRN_SPACES.has(String(mp.get(actorId, "worldOrCellDesc")))) return;
     const home = mp.get(actorId, "spawnPoint");
     mp.set(actorId, "spawnPoint", SOUL_CAIRN_ARRIVAL);
     setTimeout(() => {
@@ -177,7 +180,7 @@ export class SoulTrapSystem implements System {
         this.log(`[soultrap] restoring the spawn point of ${hex(actorId)} failed: ${e}`);
       }
     }, 0);
-    this.log(`[soultrap] ${hex(actorId)} respawns in the Soul Cairn`);
+    this.log(`[soultrap] ${hex(actorId)} respawns in the Soul Cairn${trapped ? "" : ", where it died"}`);
   }
 
   // Smallest empty gem that holds the soul: black souls need a gem that can hold NPC souls, white souls a regular one
