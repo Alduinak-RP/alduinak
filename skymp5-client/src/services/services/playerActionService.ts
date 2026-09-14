@@ -1,7 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked } from "./widgetMenuUtil";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, InputDeviceType } from "skyrimPlatform";
+import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode } from "./widgetMenuUtil";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 
@@ -48,7 +48,8 @@ let targetName = '';
  * Look-at-target interaction menu on the game's own Activate control: every
  * button event carries the user event name the live control map gives it, so
  * a rebind (Settings > Controls or the launcher's Game Hotkeys) applies at
- * once, default E. Activating a player character opens the player-action /
+ * once, default E. The alt interact key (altInteractKeyCode, default X) opens
+ * the same menu. Activating a player character opens the player-action /
  * hold-appointment menu; the InteractionPromptService blocks the clone's
  * engine activation so no dialogue fires underneath. Everything that is not
  * a player character passes through to normal activation. Doors and
@@ -61,17 +62,18 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
+    this.altInteractKey = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X);
   }
 
   private onButtonEvent(e: ButtonEvent): void {
     if (!e.isDown) return;
-    // Escape closes an open menu; gamepad idCodes alias onto keyboard scancodes, so only the keyboard counts here
-    if (e.device === InputDeviceType.Keyboard && e.code === DxScanCode.Escape && this.menuOpen) {
+    const code = buttonEventKeyCode(e);
+    if (code === DxScanCode.Escape && this.menuOpen) {
       this.closeMenu();
       return;
     }
     // The engine stamps the live control map's event name on every device, so a rebind applies at once
-    if (e.userEventName !== "Activate" || this.menuOpen) {
+    if ((e.userEventName !== "Activate" && code !== this.altInteractKey) || this.menuOpen) {
       return;
     }
     if (isMenuHotkeyBlocked(this.sp, this.controller)) {
@@ -177,4 +179,5 @@ export class PlayerActionService extends ClientListener {
 
   private menuOpen = false;
   private playerTarget = 0;
+  private altInteractKey: number;
 }
