@@ -473,7 +473,7 @@ ipcMain.handle('graphics:save', (_e, g) => {
     if (REFLECTIONS[g.reflections]) edits.Water = Object.assign({ bUseWaterReflections: '1' }, REFLECTIONS[g.reflections])
     ini.write(skyrimPrefsPath(), edits)
     const fov = clampFov(g.fov)
-    if (fov !== null) {
+    if (fov !== null && fov !== Math.round(fovInEffect())) {
       const fovEdit = { Display: Object.fromEntries(FOV_KEYS.map(k => [k, fov.toFixed(4)])) }
       ini.write(ensureProfileIni(FOV_INIS[1]), fovEdit)
       const custom = profileIniInEffect(FOV_INIS[0])
