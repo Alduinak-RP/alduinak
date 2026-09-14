@@ -89,14 +89,16 @@ export class CharacterProgressService extends ClientListener {
       if (e.message.isMe) this.onMySpawn();
     });
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
-    this.controller.on("update", () => this.onUpdate());
+    this.controller.on("update", () => this.guarded(() => this.onUpdate()));
     this.controller.on("loadGame", () => this.onLoadGame());
     this.controller.on("locationDiscovery", () => this.scanSoon());
     this.controller.on("cellFullyLoaded", () => this.scanSoon());
     this.controller.on("equip", (e) => this.onEquip(e));
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.Crafting) this.trackCarried();
-      if (e.name === Menu.Main) this.send();
+      // Both quits pass through the pause menu while the world is still loaded
+      if (e.name === Menu.Journal) this.guarded(() => this.captureAll());
+      if (e.name === Menu.Main) this.flush();
     });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.Crafting) this.ingrPollAt = 0;
@@ -131,7 +133,7 @@ export class CharacterProgressService extends ClientListener {
   }
 
   private onMySpawn(): void {
-    this.send();
+    this.flush();
     this.awaiting = true;
     this.settleFrom = 0;
     this.request(Date.now());
@@ -188,28 +190,46 @@ export class CharacterProgressService extends ClientListener {
     this.nextScanAt = 0;
   }
 
+  // Retries the request while awaiting; true once the world has run SETTLE_MS since the spawn or the last load
+  private ready(now: number): boolean {
+    if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return false;
+    const me = this.remoteId();
+    if (!me) return false;
+    if (!this.settleFrom) this.settleFrom = now;
+    if (this.state.actorId !== me) this.awaiting = true;
+    if (this.awaiting) {
+      if (now >= this.requestAt) this.request(now);
+      return false;
+    }
+    return now >= this.settleFrom + SETTLE_MS;
+  }
+
   private onUpdate(): void {
+    const now = Date.now();
+    if (!this.ready(now)) return;
+    this.scanMarkers(now);
+    if (this.ingrQueue.length) {
+      this.ingrQueue.splice(0, INGR_READ_BATCH).forEach((desc) => this.readIngredient(desc));
+    } else if (now >= this.ingrPollAt) {
+      this.ingrPollAt = now + INGR_POLL_MS;
+      this.pollIngredients();
+    }
+    if (this.sendAt && now >= this.sendAt) this.send();
+  }
+
+  // Reads every marker and ingredient at once and sends the result, since updates stop once the player quits
+  private captureAll(): void {
+    const now = Date.now();
+    if (!this.ready(now)) return;
+    this.scanMarkers(now, true);
+    this.pollIngredients();
+    this.ingrQueue.splice(0).forEach((desc) => this.readIngredient(desc));
+    this.flush();
+  }
+
+  private guarded(fn: () => void): void {
     try {
-      if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
-      const now = Date.now();
-      const me = this.remoteId();
-      if (!me) return;
-      if (!this.settleFrom) this.settleFrom = now;
-      if (this.state.actorId !== me) this.awaiting = true;
-      if (this.awaiting) {
-        if (now >= this.requestAt) this.request(now);
-        return;
-      }
-      // Restore and capture start once the world has run for a while after a spawn or a load
-      if (now < this.settleFrom + SETTLE_MS) return;
-      this.scanMarkers(now);
-      if (this.ingrQueue.length) {
-        this.ingrQueue.splice(0, INGR_READ_BATCH).forEach((desc) => this.readIngredient(desc));
-      } else if (now >= this.ingrPollAt) {
-        this.ingrPollAt = now + INGR_POLL_MS;
-        this.pollIngredients();
-      }
-      if (this.sendAt && now >= this.sendAt) this.send();
+      fn();
     } catch (err) {
       if (Date.now() - this.lastErrorAt < ERROR_LOG_MS) return;
       this.lastErrorAt = Date.now();
@@ -236,15 +256,24 @@ export class CharacterProgressService extends ClientListener {
     if (Object.keys(s.pendingMarkers).length || Object.keys(s.pendingIngredients).length) this.sendAt = Date.now() + SEND_DEBOUNCE_MS;
   }
 
+  // Sends the whole backlog now, when no later update would send the rest for this character
+  private flush(): void {
+    do {
+      this.send();
+    } while (this.sendAt);
+  }
+
   // One pass re-applies every known marker flag the engine lost and records new ones; the first pass after a load is the baseline
-  private scanMarkers(now: number): void {
+  private scanMarkers(now: number, all = false): void {
     const s = this.state;
-    if (this.scanCursor >= MAP_MARKER_REFS.length) {
+    if (all) {
+      this.scanCursor = 0;
+    } else if (this.scanCursor >= MAP_MARKER_REFS.length) {
       if (now < this.nextScanAt) return;
       this.scanCursor = 0;
       this.nextScanAt = now + MARKER_SCAN_MS;
     }
-    const end = Math.min(this.scanCursor + SCAN_BATCH, MAP_MARKER_REFS.length);
+    const end = all ? MAP_MARKER_REFS.length : Math.min(this.scanCursor + SCAN_BATCH, MAP_MARKER_REFS.length);
     for (; this.scanCursor < end; ++this.scanCursor) {
       const [localId, plugin] = MAP_MARKER_REFS[this.scanCursor];
       const desc = localId.toString(16) + ":" + plugin;
