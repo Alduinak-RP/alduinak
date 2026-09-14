@@ -105,12 +105,11 @@ router.get('/:key/manifest.json', async (req, res) => {
   res.json({ versionMajor: 1, mods: modsCache.value })
 })
 
-// Called by MasterClient every 5 s: POST /api/servers/:key
+// Called by MasterClient every 5 s: POST /api/servers/:key  (X-Auth-Token)
 // Body: { name, maxPlayers, online }
 router.post('/:key', (req, res) => {
-  if (req.params.key !== config.serverMasterKey) {
-    return res.status(403).json({ error: 'Invalid master key.' })
-  }
+  const { checkKey, checkWriteToken } = require('./master-api')
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
 
   const { name, maxPlayers, online } = req.body || {}
   heartbeat = {
