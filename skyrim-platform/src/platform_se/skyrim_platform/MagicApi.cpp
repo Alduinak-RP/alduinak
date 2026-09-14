@@ -410,6 +410,33 @@ Napi::Value MagicApi::AgePotionEffects(const Napi::CallbackInfo& info)
   return info.Env().Undefined();
 }
 
+// Papyrus RemoveSpell only reaches added spells, so NPC_ and RACE lists are edited here; the change lasts until the game restarts
+Napi::Value MagicApi::RemoveSpellFromList(const Napi::CallbackInfo& info)
+{
+  const auto ownerFormId = NapiHelper::ExtractUInt32(info[0], "ownerFormId");
+  const auto spellFormId = NapiHelper::ExtractUInt32(info[1], "spellFormId");
+
+  g_nativeCallRequirements.gameThrQ->AddTask(
+    [ownerFormId, spellFormId](Viet::Void) {
+      auto* owner = RE::TESForm::LookupByID(ownerFormId);
+      auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormId);
+      if (!owner || !spell) {
+        return;
+      }
+      RE::TESSpellList* list = nullptr;
+      if (auto* npc = owner->As<RE::TESNPC>()) {
+        list = npc;
+      } else if (auto* race = owner->As<RE::TESRace>()) {
+        list = race;
+      }
+      if (list && list->actorEffects) {
+        list->actorEffects->RemoveSpell(spell);
+      }
+    });
+
+  return info.Env().Undefined();
+}
+
 void MagicApi::Register(Napi::Env env, Napi::Object& exports)
 {
   exports.Set("dispelPotionEffects",
@@ -418,6 +445,9 @@ void MagicApi::Register(Napi::Env env, Napi::Object& exports)
   exports.Set("agePotionEffects",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(AgePotionEffects)));
+  exports.Set("removeSpellFromList",
+              Napi::Function::New(
+                env, NapiHelper::WrapCppExceptions(RemoveSpellFromList)));
 
   exports.Set("castSpellImmediate",
               Napi::Function::New(

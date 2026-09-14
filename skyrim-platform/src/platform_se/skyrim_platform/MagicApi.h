@@ -13,6 +13,8 @@ Napi::Value ApplyAnimationVariablesToActor(const Napi::CallbackInfo& info);
 Napi::Value DispelPotionEffects(const Napi::CallbackInfo& info);
 Napi::Value AgePotionEffects(const Napi::CallbackInfo& info);
 
+Napi::Value RemoveSpellFromList(const Napi::CallbackInfo& info);
+
 void Register(Napi::Env env, Napi::Object& exports);
 
 }
