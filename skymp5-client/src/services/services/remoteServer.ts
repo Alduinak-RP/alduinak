@@ -96,6 +96,13 @@ export const holdPcInventoryApply = (ms: number): void => {
 export const requestPcInventoryApply = (): void => {
   pcInvLastApply = 0;
 };
+
+const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
+let spawnEquipmentSettleUntil = 0;
+
+// Reports taken while the spawn apply strips and re-dresses the player read naked
+export const settleSpawnEquipment = (): boolean => Date.now() < spawnEquipmentSettleUntil;
+
 on('update', () => {
   if (isBadMenuShown()) {
     return;
@@ -533,6 +540,7 @@ export class RemoteServer extends ClientListener {
 
     const applyPcInv = () => {
       if (msg.equipment) {
+        spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
         applyEquipment(Game.getPlayer()!, msg.equipment)
       }
 

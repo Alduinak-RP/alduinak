@@ -21,7 +21,7 @@ import { CloneSpellGuardService } from "./cloneSpellGuardService";
 import { UpdateAnimationMessage } from "../messages/updateAnimationMessage";
 import { UpdateEquipmentMessage } from "../messages/updateEquipmentMessage";
 import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
-import { RemoteServer } from "./remoteServer";
+import { RemoteServer, settleSpawnEquipment } from "./remoteServer";
 import { DeathService } from "./deathService";
 import { RestraintService } from "./restraintService";
 import { logTrace } from "../../logging";
@@ -280,6 +280,11 @@ export class SendInputsService extends ClientListener {
     private sendEquipment(_refrId?: number) {
         if (_refrId) {
           return;
+        }
+        // A report waits out the spawn outfit apply, and one follows it even when no equip event fires
+        if (settleSpawnEquipment()) {
+            this.equipmentChanged = true;
+            return;
         }
         // Coalesce bursts: rapid re-equips flood the server with reliable updates whose forced-revert snippets can freeze the client (S2)
         if (this.equipmentChanged && Date.now() - this.lastEquipmentSentMs >= 300) {
