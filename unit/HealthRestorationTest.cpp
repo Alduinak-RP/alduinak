@@ -114,3 +114,47 @@ TEST_CASE("Food has its own 10 second cooldown", "[Restoration]")
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
 }
+
+TEST_CASE("Ingredients share the food cooldown", "[Restoration]")
+{
+  using namespace std::chrono_literals;
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+  ac.SetLastAttributesPercentagesUpdate(std::chrono::steady_clock::now() -
+                                        10s);
+  // 0x4B0BA is Wheat, an INGR record
+  ac.AddItem(0x4B0BA, 2);
+  ac.AddItem(0x64B3D, 1);
+  ac.AddItem(0x3EAE3, 1);
+
+  RawMessageData rawMsgData;
+  rawMsgData.userId = 0;
+
+  OnEquipMessage ingredient;
+  ingredient.baseId = 0x4B0BA;
+  OnEquipMessage food;
+  food.baseId = 0x64B3D;
+  OnEquipMessage potion;
+  potion.baseId = 0x3EAE3;
+
+  p.GetActionListener().OnEquip(rawMsgData, ingredient);
+  REQUIRE(ac.GetInventory().GetItemCount(0x4B0BA) == 1);
+
+  p.GetActionListener().OnEquip(rawMsgData, ingredient);
+  REQUIRE(ac.GetInventory().GetItemCount(0x4B0BA) == 1);
+
+  ac.SetPercentages({ 0.1f, 0.f, 0.f });
+  p.GetActionListener().OnEquip(rawMsgData, food);
+  REQUIRE(ac.GetInventory().GetItemCount(0x64B3D) == 1);
+  REQUIRE(ac.GetChangeForm().actorValues.healthPercentage == 0.1f);
+
+  p.GetActionListener().OnEquip(rawMsgData, potion);
+  REQUIRE(ac.GetInventory().GetItemCount(0x3EAE3) == 0);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
