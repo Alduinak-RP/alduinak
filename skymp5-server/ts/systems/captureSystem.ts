@@ -66,6 +66,9 @@ const DEFAULT_CONSENT_COOLDOWN_MS = 15000;
 // Server-side backstop for the client's "look at a player" rule: max capture/carry initiation range in game units (~activate range). Overridable via "captureInteractMaxDistance".
 const DEFAULT_INTERACT_MAX_DISTANCE = 256;
 
+// A refused carry or carrier attack is logged at most this often per actor
+const REFUSAL_LOG_MS = 5000;
+
 interface RestraintInfo {
   boundHands: boolean;   // arrested
   carried: boolean;
@@ -110,6 +113,8 @@ export class CaptureSystem implements System {
   private consentCooldown = new Map<string, number>();
   private nextRequestId = 1;
   private lastFollowMs = 0;
+  // actorId -> last refusal log timestamp
+  private refusalLogAt = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -147,6 +152,26 @@ export class CaptureSystem implements System {
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       this.onActorAssigned(ctx, actorId);
     });
+    this.installCarrierFightBlock(ctx.svr as Mp);
+  }
+
+  // A carrier cannot fight; onHitAttempt and onSpellCastAttempt need the native build, onHitDamageAttempt works on any
+  private installCarrierFightBlock(mp: Mp): void {
+    for (const event of ["onHitAttempt", "onHitDamageAttempt", "onSpellCastAttempt"]) {
+      const previous = typeof mp[event] === "function" ? mp[event] : null;
+      mp[event] = (actorId: number, ...rest: unknown[]): boolean => {
+        if (this.carrying.has(actorId >>> 0)) {
+          this.logRefusal(actorId >>> 0, event);
+          return false;
+        }
+        if (!previous) return true;
+        try {
+          return previous.call(mp, actorId, ...rest) !== false;
+        } catch {
+          return true;
+        }
+      };
+    }
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -274,7 +299,7 @@ export class CaptureSystem implements System {
       const carrier = info.offlineCarrierActorId ?? info.captorActorId;
       info.offlineCarrierActorId = undefined;
       if (this.userOf(ctx, carrier) >= 0 && !this.isDowned(mp, carrier) &&
-        !this.carrying.has(carrier) && !this.carriedBy.has(actorId)) {
+        !this.carryRefusal(ctx, carrier, actorId)) {
         this.applyCarry(ctx, actorId, carrier);
         return;
       }
@@ -333,12 +358,9 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, "Look at another player to carry them.");
       return;
     }
-    if (this.carrying.has(carrierActorId)) {
-      this.notice(ctx, userId, "You are already carrying someone.");
-      return;
-    }
-    if (this.carriedBy.has(targetActorId)) {
-      this.notice(ctx, userId, `${this.nameOf(ctx, targetActorId)} is already being carried.`);
+    const refusal = this.carryRefusal(ctx, carrierActorId, targetActorId);
+    if (refusal) {
+      this.notice(ctx, userId, refusal);
       return;
     }
     if (this.isDowned(mp, targetActorId)) {
@@ -426,8 +448,11 @@ export class CaptureSystem implements System {
       this.applyCapture(ctx, pend.targetActorId, pend.captorActorId);
       this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} accepted — restrained.`);
     } else {
-      if (this.carrying.has(pend.captorActorId) || this.carriedBy.has(pend.targetActorId)) {
-        return; // state changed while waiting
+      const refusal = this.carryRefusal(ctx, pend.captorActorId, pend.targetActorId);
+      if (refusal) {
+        this.notice(ctx, captorUser, refusal);
+        this.notice(ctx, userId, `${this.nameOf(ctx, pend.captorActorId) || "They"} can no longer carry you.`);
+        return;
       }
       this.applyCarry(ctx, pend.targetActorId, pend.captorActorId);
       this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} accepted — carrying.`);
@@ -631,6 +656,24 @@ export class CaptureSystem implements System {
   }
 
   // ── Small helpers ──────────────────────────────────────────────────────────
+
+  // No carry chains: a carrier cannot be carried and a carried player cannot carry; empty when allowed
+  private carryRefusal(ctx: SystemContext, carrierActorId: number, targetActorId: number): string {
+    const refusal = this.carrying.has(carrierActorId) ? "You are already carrying someone."
+      : this.carriedBy.has(carrierActorId) ? "You cannot carry anyone while being carried."
+      : this.carrying.has(targetActorId) ? `${this.nameOf(ctx, targetActorId)} is carrying someone.`
+      : this.carriedBy.has(targetActorId) ? `${this.nameOf(ctx, targetActorId)} is already being carried.`
+      : "";
+    if (refusal) this.logRefusal(carrierActorId, `carry of ${targetActorId.toString(16)}`);
+    return refusal;
+  }
+
+  private logRefusal(actorId: number, what: string): void {
+    const now = Date.now();
+    if (now - (this.refusalLogAt.get(actorId) ?? 0) < REFUSAL_LOG_MS) return;
+    this.refusalLogAt.set(actorId, now);
+    this.log(`[carry] refused ${what} by ${actorId.toString(16)}`);
+  }
 
   private validTarget(ctx: SystemContext, selfActorId: number, targetActorId: number): boolean {
     if (!targetActorId || targetActorId === selfActorId) {

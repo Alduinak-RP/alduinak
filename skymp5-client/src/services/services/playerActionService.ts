@@ -9,6 +9,7 @@ import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } 
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
+import { RestraintService } from "./restraintService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -181,7 +182,10 @@ export class PlayerActionService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS, targetName, events, WIDGET_ID }, this.controller);
+    const restraint = this.controller.lookupListener(RestraintService);
+    // No carry chains: a carrier or a carried player is never offered Carry
+    const actions = restraint.isCarrying || restraint.isCarried ? ACTIONS.filter((a) => a.id !== 'carry') : ACTIONS;
+    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: actions, targetName, events, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {

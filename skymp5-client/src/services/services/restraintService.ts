@@ -40,6 +40,10 @@ const CARRY_FOLLOW_MIN_SPEED = 50;
 const CARRY_FOLLOW_MAX_DIST = 2048;
 const CARRIER_COLLISION_REFRESH_MS = 1000;
 
+// A carrier's forced sheathe is retried this often; the carry pose waits for the sheathe to blend out
+const SHEATHE_RETRY_MS = 1000;
+const SHEATHE_SETTLE_MS = 300;
+
 const finiteOr = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
@@ -72,8 +76,8 @@ const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("id
  *     the carrier's clone, turned carryYaw degrees from the carrier's facing.
  *     Fully immobilised in third person; the camera can still orbit. The
  *     carrier's clone stops colliding with the player meanwhile.
- *   - carrying: plays the carry-hold pose; controls are untouched so the carrier
- *     can walk the captive around.
+ *   - carrying: plays the carry-hold pose; fighting is disabled and a drawn
+ *     weapon, fists or spell is sheathed. The carrier can still walk.
  *   - any of the above: jumping is blocked and the pose is re-applied after a fall.
  *
  * "Carry stops the respawn process" is enforced server-side (CaptureSystem stops
@@ -103,6 +107,14 @@ export class RestraintService extends ClientListener {
         this.controller.once("update", () => this.reapplyPoses());
       }
     });
+
+    // The server ends a disconnected carrier's carry but cannot tell this client
+    this.controller.emitter.on("connectionDisconnect", () => {
+      if (this.carrying) {
+        this.carrying = false;
+        this.applyCarryAnim();
+      }
+    });
   }
 
   // True while a restraint or carry pose owns the player's animation.
@@ -112,6 +124,10 @@ export class RestraintService extends ClientListener {
 
   get isCarried(): boolean {
     return this.carried;
+  }
+
+  get isCarrying(): boolean {
+    return this.carrying;
   }
 
   // Observers must see a held pose: no locomotion, and the server keeps the last animation only for Standing
@@ -193,6 +209,9 @@ export class RestraintService extends ClientListener {
       this.poseDirty = true;
     }
     this.wasInJump = inJump;
+    if (this.carrying) {
+      this.holdCarrierFightLock(player, now);
+    }
     if (this.poseDirty && !inJump && now >= this.nextPoseReapplyMs) {
       this.poseDirty = false;
       this.nextPoseReapplyMs = now + POSE_REAPPLY_MIN_MS;
@@ -317,7 +336,8 @@ export class RestraintService extends ClientListener {
       this.sp.Game.disablePlayerControls(false, true, false, false, true, false, true, false, 0);
     } else {
       player.setDontMove(false);
-      this.sp.Game.enablePlayerControls(true, true, true, true, true, true, true, true, 0);
+      // A carrier's fighting stays locked
+      this.sp.Game.enablePlayerControls(true, !this.carrying, true, true, true, true, true, true, 0);
     }
   }
 
@@ -355,8 +375,10 @@ export class RestraintService extends ClientListener {
     if (!player) {
       return;
     }
+    this.holdCarrierFightLock(player, Date.now());
     const desired = this.carrying ? this.carrierAnim : OFFSET_STOP_ANIM;
-    if (desired !== this.appliedCarrierAnim) {
+    // A drawn weapon is sheathed first; the tick sends the pose once the sheathe has settled
+    if (desired !== this.appliedCarrierAnim && !(this.carrying && player.isWeaponDrawn())) {
       this.sp.Debug.sendAnimationEvent(player, desired);
       this.appliedCarrierAnim = desired;
     }
@@ -368,6 +390,32 @@ export class RestraintService extends ClientListener {
     } else if (!this.carrying && this.encumbranceApplied) {
       player.modActorValue("CarryWeight", CARRY_OVERLOAD);
       this.encumbranceApplied = false;
+    }
+  }
+
+  // A carrier cannot raise a weapon, fists or a spell; re-asserted every tick because other services re-enable controls
+  private holdCarrierFightLock(player: Actor, now: number): void {
+    if (!this.carrying) {
+      if (this.fightLockApplied) {
+        this.fightLockApplied = false;
+        // Bound and carried keep their own fighting lock
+        if (!this.boundHands && !this.carried) {
+          this.sp.Game.enablePlayerControls(false, true, false, false, false, false, false, false, 0);
+        }
+      }
+      return;
+    }
+    this.fightLockApplied = true;
+    if (this.sp.Game.isFightingControlsEnabled()) {
+      this.sp.Game.disablePlayerControls(false, true, false, false, false, false, false, false, 0);
+    }
+    if (player.isWeaponDrawn()) {
+      if (now >= this.nextSheatheMs) {
+        player.sheatheWeapon();
+        this.nextSheatheMs = now + SHEATHE_RETRY_MS;
+      }
+      this.poseDirty = true;
+      this.nextPoseReapplyMs = now + SHEATHE_SETTLE_MS;
     }
   }
 
@@ -389,6 +437,8 @@ export class RestraintService extends ClientListener {
   private carrierAnim = CARRY_HOLD_ANIM_START;
   private appliedCarrierAnim = "";
   private encumbranceApplied = false;
+  private fightLockApplied = false;
+  private nextSheatheMs = 0;
 
   private lastTickMs = 0;
   private wasInJump = false;
