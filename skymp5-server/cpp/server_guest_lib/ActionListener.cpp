@@ -561,11 +561,84 @@ void ActionListener::OnUpdateAppearance(const RawMessageData& rawMsgData,
   updateAppearanceAttemptEvent.Fire(actor->GetParent());
 }
 
+namespace {
+// Counted from a user's first equipment report after getting its actor
+constexpr auto kSpawnEquipmentGrace = std::chrono::seconds(10);
+
+bool HoldsSavedOutfit(const MpActor& actor)
+{
+  const auto& inventory = actor.GetInventory();
+  const auto& saved = actor.GetEquipment().inv.entries;
+  return std::any_of(saved.begin(), saved.end(), [&](const auto& entry) {
+    return entry.GetWorn() != Inventory::Worn::None &&
+      inventory.HasItem(entry.baseId);
+  });
+}
+
+using SnippetArgs = std::vector<std::optional<
+  std::variant<bool, double, std::string, SpSnippetObjectArgument>>>;
+
+// Runs Actor.<function>(item, args...) on the actor's own client
+void RunItemSnippet(MpActor& actor, const char* function, uint32_t itemId,
+                    SnippetArgs args)
+{
+  SpSnippetObjectArgument itemArg;
+  itemArg.formId = itemId;
+  itemArg.type = "Form";
+  args.insert(args.begin(), itemArg);
+  SpSnippet("Actor", function, args, actor.GetFormId())
+    .Execute(&actor, SpSnippetMode::kNoReturnResult);
+}
+
+// The owner's client may still show the refused report, so it wears the kept outfit again
+void RedressSavedOutfit(MpActor& actor)
+{
+  const auto& inventory = actor.GetInventory();
+  for (const auto& entry : actor.GetEquipment().inv.entries) {
+    const auto worn = entry.GetWorn();
+    if (worn == Inventory::Worn::None || !inventory.HasItem(entry.baseId)) {
+      continue;
+    }
+    if (worn == Inventory::Worn::Left) {
+      RunItemSnippet(actor, "EquipItemEx", entry.baseId, { 2.0, false, false });
+    } else {
+      RunItemSnippet(actor, "EquipItem", entry.baseId, { false, true });
+    }
+  }
+}
+}
+
 void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
                                        const UpdateEquipmentMessage& msg)
 {
   MpActor* actor = partOne.serverState.ActorByUser(rawMsgData.userId);
   if (!actor) {
+    return;
+  }
+
+  // The client's spawn apply strips the player before re-dressing, so a naked report then is not a real change
+  const auto& userInfo = partOne.serverState.userInfo[rawMsgData.userId];
+  const auto now = std::chrono::steady_clock::now();
+  if (userInfo && !userInfo->firstEquipmentReportAt) {
+    userInfo->firstEquipmentReportAt = now;
+  }
+  const bool inSpawnGrace = userInfo &&
+    now - *userInfo->firstEquipmentReportAt < kSpawnEquipmentGrace;
+  const auto msSinceAssign = [&]() -> int64_t {
+    return userInfo ? std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - userInfo->actorAssignedAt)
+                        .count()
+                    : -1;
+  };
+  if (inSpawnGrace && msg.data.inv.CountWorn() == 0 &&
+      actor->GetProfileId() >= 0 && !actor->IsRaceMenuOpen() &&
+      HoldsSavedOutfit(*actor)) {
+    spdlog::warn("ActionListener::OnUpdateEquipment {:x} - kept saved outfit, "
+                 "zero-worn report {} ms after assign (numChanges {})",
+                 actor->GetFormId(), msSinceAssign(), msg.data.numChanges);
+    RedressSavedOutfit(*actor);
+    UpdateEquipmentAttemptEvent refusedEvent(actor, msg.data, false);
+    refusedEvent.Fire(actor->GetParent());
     return;
   }
 
@@ -730,6 +803,14 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     extrasReplaced = true;
   }
 
+  if (isAllowed && actor->GetProfileId() >= 0 && data.inv.CountWorn() == 0 &&
+      actor->GetEquipment().inv.CountWorn() > 0) {
+    spdlog::info("ActionListener::OnUpdateEquipment {:x} - worn {} -> 0 "
+                 "(numChanges {}, {} entries, {} ms after assign)",
+                 actorFormId, actor->GetEquipment().inv.CountWorn(),
+                 data.numChanges, data.inv.entries.size(), msSinceAssign());
+  }
+
   if (isAllowed) {
     // An unlearned spell strips just that slot; weapons/armor still reach neighbours (avoids silent desync)
     if (anySpellStripped || extrasReplaced) {
@@ -790,17 +871,7 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     }
 
     for (uint32_t itemId : itemIdsToUnequip) {
-      SpSnippetObjectArgument itemArg;
-      itemArg.formId = itemId;
-      itemArg.type = "Form";
-      std::vector<std::optional<
-        std::variant<bool, double, std::string, SpSnippetObjectArgument>>>
-        args;
-      args.push_back(itemArg);
-      args.push_back(false);
-      args.push_back(true);
-      SpSnippet("Actor", "UnequipItem", args, actor->GetFormId())
-        .Execute(actor, SpSnippetMode::kNoReturnResult);
+      RunItemSnippet(*actor, "UnequipItem", itemId, { false, true });
     }
   }
 

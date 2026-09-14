@@ -51,6 +51,10 @@ struct UserInfo
   std::vector<std::vector<DeferredMessage>> deferredChannels;
 
   std::string guid;
+
+  // Start of the spawn equipment guard, set by PartOne::SetUserActor
+  std::chrono::steady_clock::time_point actorAssignedAt;
+  std::optional<std::chrono::steady_clock::time_point> firstEquipmentReportAt;
 };
 
 class ServerState

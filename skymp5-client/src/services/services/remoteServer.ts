@@ -63,7 +63,8 @@ import {
   remoteIdToLocalId,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
-import { logTrace, logError } from '../../logging';
+import { logTrace, logError, logToPlatformLog } from '../../logging';
+import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved } from '../../sync/equipment';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
@@ -97,6 +98,49 @@ export const holdPcInventoryApply = (ms: number): void => {
 export const requestPcInventoryApply = (): void => {
   pcInvLastApply = 0;
 };
+
+const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
+let spawnEquipment: Equipment | undefined;
+let spawnEquipmentSettleUntil = 0;
+let spawnEquipmentRedressed = false;
+let spawnEquipmentMenuUsed = false;
+
+const applySpawnEquipment = (player: Actor, eq: Equipment): void => {
+  spawnEquipment = eq;
+  spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
+  spawnEquipmentRedressed = false;
+  spawnEquipmentMenuUsed = false;
+  applyEquipment(player, eq);
+};
+
+// Reports taken while the spawn apply strips and re-dresses the player read naked
+export const settleSpawnEquipment = (player: Actor): boolean => {
+  if (!spawnEquipment) {
+    return false;
+  }
+  // In these menus the player picks their own outfit
+  if (isBadMenuShown()) {
+    spawnEquipmentMenuUsed = true;
+    return true;
+  }
+  // The race menu undresses the player on purpose until it closes
+  if (Date.now() < spawnEquipmentSettleUntil || Ui.isMenuOpen('RaceSex Menu')) {
+    return true;
+  }
+  const unworn = getUnwornSaved(player, spawnEquipment);
+  const redress = !spawnEquipmentRedressed && !spawnEquipmentMenuUsed && unworn.length > 0;
+  logToPlatformLog("RemoteServer", `spawn outfit settled: ${unworn.length} of ${getPlayerWorn(spawnEquipment).length} saved not worn, worn ${countWorn(getInventory(player))}, menu used ${spawnEquipmentMenuUsed},`, redress ? "re-dressing" : "done");
+  if (!redress) {
+    spawnEquipment = undefined;
+    return false;
+  }
+  // The engine dropped some of the queued equips
+  equipEntries(player, unworn);
+  spawnEquipmentRedressed = true;
+  spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
+  return true;
+};
+
 on('update', () => {
   if (isBadMenuShown()) {
     return;
@@ -548,11 +592,13 @@ export class RemoteServer extends ClientListener {
     const numSetInventory = this.numSetInventory;
 
     const applyPcInv = () => {
+      const skipInventory = numSetInventory !== this.numSetInventory;
       if (msg.equipment) {
-        applyEquipment(Game.getPlayer()!, msg.equipment)
+        applySpawnEquipment(Game.getPlayer()!, msg.equipment);
+        logToPlatformLog(this, `spawn outfit applied: worn ${getPlayerWorn(msg.equipment).length} of ${msg.equipment.inv.entries.length} saved (numChanges ${msg.equipment.numChanges}), inventory apply skipped:`, skipInventory);
       }
 
-      if (numSetInventory !== this.numSetInventory) {
+      if (skipInventory) {
         logTrace(this, 'Skipping inventory apply due to newer setInventory message');
         return;
       }

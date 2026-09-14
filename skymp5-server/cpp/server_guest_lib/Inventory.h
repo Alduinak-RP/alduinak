@@ -139,6 +139,7 @@ public:
   bool HasItem(uint32_t baseId) const;
   uint32_t GetItemCount(uint32_t baseId) const;
   uint32_t GetTotalItemCount() const;
+  size_t CountWorn() const;
   bool IsEmpty() const;
 
   std::vector<Entry> entries;
