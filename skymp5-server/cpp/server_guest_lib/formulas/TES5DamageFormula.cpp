@@ -5,6 +5,7 @@
 #include "SpellCastData.h"
 #include "WorldState.h"
 #include "libespm/espm.h"
+#include <spdlog/spdlog.h>
 
 namespace internal {
 
@@ -15,8 +16,6 @@ bool IsUnarmedAttack(const uint32_t sourceFormId)
 
 class TES5DamageFormulaImpl
 {
-  using Effects = std::vector<espm::Effects::Effect>;
-
 public:
   TES5DamageFormulaImpl(const MpActor& aggressor_, const MpActor& target_,
                         const HitData& hitData_);
@@ -35,7 +34,8 @@ private:
   [[nodiscard]] float CalcArmorRatingComponent(
     const Inventory::Entry& opponentEquipmentEntry) const;
   [[nodiscard]] float CalcOpponentArmorRating() const;
-  [[nodiscard]] float CalcMagicEffects(const Effects& effects) const;
+  [[nodiscard]] float CalcEnchantmentArmorRating(
+    uint32_t armorId, uint32_t rawEnchantmentId) const;
   [[nodiscard]] float DetermineDamageFromSource(uint32_t source) const;
   [[nodiscard]] float CalcUnarmedDamage() const;
   [[nodiscard]] float CalcArmorDamagePenalty() const;
@@ -68,13 +68,27 @@ float TES5DamageFormulaImpl::CalcWeaponRating() const
   return GetBaseWeaponDamage();
 }
 
-float TES5DamageFormulaImpl::CalcMagicEffects(const Effects& effects) const
+// Record fields hold ids relative to the plugin that defines the record
+float TES5DamageFormulaImpl::CalcEnchantmentArmorRating(
+  uint32_t armorId, uint32_t rawEnchantmentId) const
 {
+  auto& browser = espmProvider->GetEspm().GetBrowser();
+  auto& cache = espmProvider->GetEspmCache();
+  const auto ench = browser.LookupById(
+    browser.LookupById(armorId).ToGlobalId(rawEnchantmentId));
+  const auto enchRecord = espm::Convert<espm::ENCH>(ench.rec);
+  if (!enchRecord) {
+    spdlog::warn("TES5DamageFormula - armor {:#x} enchantment {:#x} is not an "
+                 "ENCH, ignored",
+                 armorId, rawEnchantmentId);
+    return 0.f;
+  }
   float armorRating = 0.f;
-  for (const auto& effect : effects) {
-    const auto actorValueType =
-      espm::GetData<espm::MGEF>(effect.effectId, espmProvider).data.primaryAV;
-    if (actorValueType == espm::ActorValue::DamageResist) {
+  for (const auto& effect : enchRecord->GetData(cache).effects) {
+    const auto mgef = espm::Convert<espm::MGEF>(
+      browser.LookupById(ench.ToGlobalId(effect.effectId)).rec);
+    if (mgef &&
+        mgef->GetData(cache).data.primaryAV == espm::ActorValue::DamageResist) {
       armorRating += effect.magnitude;
     }
   }
@@ -93,9 +107,8 @@ float TES5DamageFormulaImpl::CalcArmorRatingComponent(
     auto ac = static_cast<float>(armorData.baseRatingX100) / 100;
     if (armorData.enchantmentFormId) {
       // TODO(#632) refactor this effect with actor effect system
-      const auto enchantmentData =
-        espm::GetData<espm::ENCH>(armorData.enchantmentFormId, espmProvider);
-      ac += CalcMagicEffects(enchantmentData.effects);
+      ac += CalcEnchantmentArmorRating(opponentEquipmentEntry.baseId,
+                                       armorData.enchantmentFormId);
     }
 
     return ac;

@@ -98,6 +98,33 @@ TEST_CASE("Damage is reduced based on target's armor", "[TES5DamageFormula]")
   DoDisconnect(p, 0);
 }
 
+TEST_CASE("Enchanted armor from a plugin loaded past its master count counts",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  HitData hitData;
+  hitData.target = 0x14;
+  hitData.aggressor = 0x14;
+  hitData.source = 0x0001397E; // iron dagger 4 damage
+
+  // Dragonborn Acolyte Mask, rating 23: its raw enchantment 0x020250E1 loads as 0x040250E1
+  Equipment eq;
+  eq.inv.entries.push_back(Inventory::Entry(0x040240FE, 1, kExtraWornTrue));
+  ac.SetEquipment(eq);
+
+  TES5DamageFormula formula{};
+  // 4 * 0.01 * (100 - 23 * .12) = 3.8896
+  REQUIRE(formula.CalculateDamage(ac, ac, hitData) == Catch::Approx(3.8896f));
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
 TEST_CASE("Formula is race-dependent for unarmed attack",
           "[TES5DamageFormula]")
 {
