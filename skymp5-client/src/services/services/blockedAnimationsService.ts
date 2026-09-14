@@ -53,6 +53,10 @@ export class BlockedAnimationsService extends ClientListener {
         });
     }
 
+    requestStandUp(): void {
+        this.standUpRequested = true;
+    }
+
     private onHit(e: HitEvent): void {
         if (!this.isPlayerSeated || e.target?.getFormID() !== 0x14) {
             return;
