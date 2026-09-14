@@ -16,8 +16,8 @@ const serverSettings = [
   // Mode & auth
   { key: 'offlineMode', label: 'Offline mode',  type: 'bool', group: 'Mode & auth', help: 'When on, any profile id may connect; master/masterKey are ignored.' },
   { key: 'master',      label: 'Master URL',    type: 'text', group: 'Mode & auth', help: 'Master API URL for online-mode session validation. Empty = offline.' },
-  { key: 'masterKey',   label: 'Master key',    type: 'secret', group: 'Mode & auth', help: 'Shared secret; must match the backend SERVER_MASTER_KEY.' },
-  { key: 'masterApiAuthToken', label: 'Master API auth token', type: 'secret', group: 'Mode & auth', help: 'Must match the backend MASTER_API_AUTH_TOKEN.' },
+  { key: 'masterKey',   label: 'Master key',    type: 'secret', group: 'Mode & auth', help: 'Public server id, not a secret: players receive it via /api/serverinfo and the launcher. Must match the backend SERVER_MASTER_KEY.' },
+  { key: 'masterApiAuthToken', label: 'Master API auth token', type: 'secret', group: 'Mode & auth', help: 'Private secret sent as X-Auth-Token on heartbeats, bans and purchases. Must match the backend MASTER_API_AUTH_TOKEN.' },
   { key: 'enableConsoleCommandsForAll', label: 'Console commands for all', type: 'bool', group: 'Mode & auth', help: 'Allow every player to run console commands (testing only - dangerous).' },
 
   // Gameplay
@@ -104,9 +104,9 @@ const backendEnv = [
   { key: 'SERVER_GAMEMODE',    label: 'Gamemode label',   type: 'text',   group: 'Server metadata', placeholder: 'Roleplay' },
 
   // Master API
-  { key: 'SERVER_MASTER_KEY',      label: 'Master key',         type: 'secret', group: 'Master API', help: 'Must match server-settings.json masterKey.' },
+  { key: 'SERVER_MASTER_KEY',      label: 'Master key',         type: 'secret', group: 'Master API', help: 'Public server id, not a secret. Must match server-settings.json masterKey.' },
   { key: 'MASTER_URL',             label: 'Master URL',         type: 'text',   group: 'Master API' },
-  { key: 'MASTER_API_AUTH_TOKEN',  label: 'Master API auth token', type: 'secret', group: 'Master API' },
+  { key: 'MASTER_API_AUTH_TOKEN',  label: 'Master API auth token', type: 'secret', group: 'Master API', help: 'Private secret the game server sends as X-Auth-Token. Must match server-settings.json masterApiAuthToken.' },
 
   // Discord OAuth & bot
   { key: 'DISCORD_CLIENT_ID',     label: 'Discord client ID',     type: 'text',   group: 'Discord' },
