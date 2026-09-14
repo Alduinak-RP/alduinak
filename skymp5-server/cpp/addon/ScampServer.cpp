@@ -75,6 +75,28 @@ bool StartsWith(const std::string& str, const char* prefix)
   return str.compare(0, strlen(prefix), prefix) == 0;
 }
 
+// Numbers, "0x..." strings or "hex:File.esp" descriptors; bad entries are skipped
+std::set<uint32_t> ParseFormIds(const nlohmann::json& list,
+                                const EspmFileTable& files)
+{
+  std::set<uint32_t> res;
+  for (auto& v : list) {
+    try {
+      if (v.is_number_unsigned()) {
+        res.insert(v.get<uint32_t>());
+      } else if (v.is_string()) {
+        auto s = v.get<std::string>();
+        res.insert(s.find(':') == std::string::npos
+                     ? static_cast<uint32_t>(std::stoul(s, nullptr, 0))
+                     : FormDesc::FromString(s).ToFormId(files));
+      }
+    } catch (std::exception& e) {
+      GetLogger()->warn("Skipping form id {}: {}", v.dump(), e.what());
+    }
+  }
+  return res;
+}
+
 }
 
 Napi::FunctionReference ScampServer::constructor;
@@ -449,16 +471,8 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     // blockedSpells: spell form ids (numbers or "0x..." strings) players may not cast (racial powers etc)
     auto blockedIt = serverSettings.find("blockedSpells");
     if (blockedIt != serverSettings.end() && (*blockedIt).is_array()) {
-      std::set<uint32_t> blockedSpells;
-      for (auto& v : *blockedIt) {
-        if (v.is_number_unsigned()) {
-          blockedSpells.insert(v.get<uint32_t>());
-        } else if (v.is_string()) {
-          blockedSpells.insert(static_cast<uint32_t>(
-            std::stoul(v.get<std::string>(), nullptr, 0)));
-        }
-      }
-      partOne->worldState.SetBlockedSpells(blockedSpells);
+      partOne->worldState.SetBlockedSpells(
+        ParseFormIds(*blockedIt, partOne->worldState.espmFiles));
     }
 
     // playersInheritBaseSpells: false strips the Player record's castable spells (Flames, Healing) from player characters
@@ -466,6 +480,21 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     if (inheritIt != serverSettings.end() && (*inheritIt).is_boolean()) {
       partOne->worldState.SetPlayersInheritBaseSpells((*inheritIt).get<bool>());
     }
+
+    // emptyContainers: placed containers open without their plugin loot unless set to false
+    auto emptyIt = serverSettings.find("emptyContainers");
+    partOne->worldState.emptyContainers = emptyIt == serverSettings.end() ||
+      !(*emptyIt).is_boolean() || (*emptyIt).get<bool>();
+
+    // containerLootBaseIds: CONT bases that keep their plugin loot anyway
+    auto lootIt = serverSettings.find("containerLootBaseIds");
+    if (lootIt != serverSettings.end() && (*lootIt).is_array()) {
+      partOne->worldState.containerLootBaseIds =
+        ParseFormIds(*lootIt, partOne->worldState.espmFiles);
+    }
+    logger->info("emptyContainers is {}, {} container base(s) keep their loot",
+                 partOne->worldState.emptyContainers,
+                 partOne->worldState.containerLootBaseIds.size());
 
     if (auto it = serverSettings.find("serverKey");
         it != serverSettings.end()) {
