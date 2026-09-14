@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { AdminTier, AdminRoleConfig, TIER_CAPS, readAdminRoleConfig, adminTierOf } from "./adminRoles";
+import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest } from "./adminRoles";
 import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { kickWithReason } from "./kickUtil";
@@ -11,8 +11,8 @@ type Mp = any;
 
 // ── In-game admin (Discord-role gated) ───────────────────────────────────────
 // Admins resolve to a tier (senior | developer | gm) via adminRoles.ts from "adminRoles", the legacy "adminRoleIds" and "adminProfileIds".
-// Every tier gets the server console (consoleCommandsAllowed per assign; keep enableConsoleCommandsForAll OFF) and the tabbed admin panel (client AdminMenuService, Insert key).
-// Only tiers with TIER_CAPS.ban may ban; the refusal is enforced here, never in the client.
+// Every tier gets the server console (consoleCommandsAllowed per assign; keep enableConsoleCommandsForAll OFF) and the Admin tab of the Personal Menu (client AdminMenuService, interact key X on nothing).
+// Each request needs the tier cap REQUEST_CAP names (TIER_CAPS, overridable per tier by adminTierCaps); refusals are enforced here, never in the client.
 // Bans post to the backend (master key + auth token), which snapshots discordId/hwid/ip into bans.json; connection-check then refuses the player permanently.
 //
 // Wire protocol (CustomPacket JSON):
@@ -27,7 +27,8 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {ban}, mastery }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, ban}, mastery }
+//                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
@@ -35,7 +36,7 @@ type Mp = any;
 //                     { customPacketType: "adminActionResult", ok, text }
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
-// Non-admin requests are ignored silently; every Insert press sends adminMenuRequest, so that refusal is logged once per user slot.
+// Non-admin requests are ignored silently; every Personal Menu open sends adminMenuRequest, so that refusal is logged once per user slot.
 
 const MAX_USER_SLOTS = 1024;
 const PING_CACHE_MS = 3000;
@@ -84,6 +85,7 @@ export class AdminSystem implements System {
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
     this.roleCfg = readAdminRoleConfig(all);
+    for (const warning of this.roleCfg.capWarnings) this.log(`AdminSystem: ${warning}`);
     // Configured entries first; a generated map marker never shadows a name already listed
     const configured = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
     for (const raw of [...configured, ...MAP_MARKER_LOCATIONS]) {
@@ -316,22 +318,36 @@ export class AdminSystem implements System {
       return;
     }
     const tier = this.tierOf(mp, myActorId) as AdminTier;
-    const caps = TIER_CAPS[tier];
+    const caps = this.roleCfg.tierCaps[tier];
 
     let adminProfile = 0;
     try { adminProfile = Number(mp.get(myActorId, "profileId")) || 0; } catch { }
 
+    const key = type === "adminAction" ? String(content["action"] ?? "") : type;
+    const need = capForRequest(key);
+    if (need === undefined) {
+      this.reply(mp, userId, false, `Unknown action '${key}'`);
+      return;
+    }
+    const missing = need && !caps[need] ? need : key === "ban" && !caps.players ? "players" : null;
+    if (missing) {
+      this.log(`AdminSystem: profile ${adminProfile} (${tier}) refused '${key}': no ${missing} permission`);
+      this.adminLog(`profile ${adminProfile} (${tier}) was refused ${key}: no ${missing} permission`);
+      this.reply(mp, userId, false, `Your rank cannot use ${missing}`);
+      return;
+    }
+
     if (type === "adminMenuRequest") {
-      this.fetchBackendRoster().then(backendPlayers => {
+      const send = (backendPlayers: any[] | null) => {
         try {
           // The fetch outlives the packet handler; the slot must still belong to the same admin
           if (mp.getUserActor(userId) !== myActorId) return;
           mp.sendCustomPacket(userId, JSON.stringify({
             customPacketType: "adminMenu",
-            players: this.buildRoster(ctx, myActorId, adminProfile, backendPlayers),
-            locations: this.locations.map(l => ({ name: l.name, kind: l.kind })),
-            modes: this.modesFor(adminProfile),
-            npcZones: this.npcSpawns.listZones(),
+            players: backendPlayers ? this.buildRoster(ctx, myActorId, adminProfile, backendPlayers) : [],
+            locations: caps.teleport ? this.locations.map(l => ({ name: l.name, kind: l.kind })) : [],
+            modes: caps.modes ? this.modesFor(adminProfile) : [],
+            npcZones: caps.npcs ? this.npcSpawns.listZones() : [],
             tier,
             caps,
             mastery: this.mastery.summaryOf(ctx, myActorId),
@@ -339,7 +355,9 @@ export class AdminSystem implements System {
         } catch (e) {
           this.log(`AdminSystem: adminMenu reply failed: ${e}`);
         }
-      });
+      };
+      if (caps.players) this.fetchBackendRoster().then(send);
+      else send(null);
       return;
     }
     if (type === "npcZonesRequest") {
