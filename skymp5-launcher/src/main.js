@@ -322,6 +322,19 @@ ipcMain.handle('settings:save', (_e, data) => {
 function skyrimPrefsPath() {
   return path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
 }
+// Seeds the profile Skyrim.ini from the player's own so a minimal profile ini never hides their settings (language, archives, etc)
+function ensureProfileSkyrimIni() {
+  const dest = path.join(mo2.getProfileDir(), 'skyrim.ini')
+  if (!fs.existsSync(dest)) {
+    const prefs = findOriginalPrefsIni()
+    const src = prefs ? path.join(path.dirname(prefs), 'Skyrim.ini') : null
+    if (src && fs.existsSync(src)) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      fs.copyFileSync(src, dest)
+    }
+  }
+  return dest
+}
 // Server hotkeys live in the Skyrim Platform client settings (the object exposed
 // to the client as settings["skymp5-client"] - the file content is that object).
 function clientSettingsPath() {
@@ -646,16 +659,7 @@ function applyForcedServerDefaults(gamePath) {
   }
   // Profile ini: kill the Bethesda.net platform, which drives the "AE content available for download" prompt and the CC news.
   try {
-    const dest = path.join(mo2.getProfileDir(), 'skyrim.ini')
-    if (!fs.existsSync(dest)) {
-      // Seed from the player's own ini first so a minimal profile ini never hides their settings (language, archives, etc).
-      const prefs = findOriginalPrefsIni()
-      const src = prefs ? path.join(path.dirname(prefs), 'Skyrim.ini') : null
-      if (src && fs.existsSync(src)) {
-        fs.mkdirSync(path.dirname(dest), { recursive: true })
-        fs.copyFileSync(src, dest)
-      }
-    }
+    const dest = ensureProfileSkyrimIni()
     const cur = ini.read(dest)['Bethesda.net'] || {}
     if (String(cur['bEnablePlatform'] || '') !== '0') {
       ini.write(dest, { 'Bethesda.net': { bEnablePlatform: '0' } })
