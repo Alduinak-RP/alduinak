@@ -26,7 +26,7 @@ import { applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown } from '../../sync/equipment';
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement } from '../../sync/movement';
-import { learnSpells, removeAllSpells } from '../../sync/spell';
+import { dropUnlistedBaseSpells, learnSpells, removeAllSpells, SpellListNatives } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
@@ -559,6 +559,7 @@ export class RemoteServer extends ClientListener {
           const player = Game.getPlayer();
 
           if (player) {
+            dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, learnedSpells);
             removeAllSpells(player);
             learnSpells(player, learnedSpells);
             logTrace(this,
@@ -858,6 +859,16 @@ export class RemoteServer extends ClientListener {
     const i = this.getIdManager().getId(msg.idx);
     const form = this.worldModel.forms[i];
     (form as Record<string, unknown>)[msg.propName] = msgData;
+
+    // Sent after the race menu, whose race switch brings the new race's spells
+    if (msg.propName === 'learnedSpells' && i === this.worldModel.playerCharacterFormIdx && Array.isArray(msgData)) {
+      once('update', () => {
+        const player = Game.getPlayer();
+        if (player) {
+          dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, msgData as number[]);
+        }
+      });
+    }
   }
 
   private onDeathStateContainerMessage(event: ConnectionMessage<DeathStateContainerMessage>): void {

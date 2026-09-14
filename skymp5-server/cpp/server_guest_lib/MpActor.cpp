@@ -391,17 +391,7 @@ void MpActor::VisitProperties(CreateActorMessage& message,
                                                        changeForm, message);
   }
 
-  // Base NPC_/race spells ride along so the client's spell reconciliation does not wipe Flames/Healing
-  auto learnedSpells = changeForm.learnedSpells.GetLearnedSpells();
-  if (worldState && worldState->HasEspm()) {
-    for (uint32_t spellId : GetBaseSpells()) {
-      if (std::find(learnedSpells.begin(), learnedSpells.end(), spellId) ==
-          learnedSpells.end()) {
-        learnedSpells.push_back(spellId);
-      }
-    }
-  }
-  message.props.learnedSpells = std::move(learnedSpells);
+  message.props.learnedSpells = GetLearnedAndBaseSpells();
 
   if (!changeForm.templateChain.empty()) {
     std::vector<uint32_t> templateChain;
@@ -1010,22 +1000,30 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
       }
     }
 
-    // playersInheritBaseSpells=false drops castable Player spells (Flames, Healing), abilities and race spells stay
-    const bool skipCastable = !worldState->PlayersInheritBaseSpells() &&
+    // playersInheritBaseSpells=false keeps only passives: Player spells (Flames, Healing) and race powers are withheld
+    const bool passivesOnly = !worldState->PlayersInheritBaseSpells() &&
       ChangeForm().profileId != -1;
-    for (uint32_t spellId : spells) {
-      if (skipCastable) {
-        // SPLO may also list shouts or leveled spells, GetData would throw on those
-        const auto spell = worldState->GetEspm().GetBrowser().LookupById(spellId);
-        if (spell.rec && spell.rec->GetType() == espm::SPEL::kType) {
-          const auto spellData = espm::GetData<espm::SPEL>(spellId, worldState);
-          if (spellData.spellItem &&
-              spellData.spellItem->type == espm::SPEL::SpellType::Spell) {
-            continue;
-          }
+    auto isWithheld =
+      [&](uint32_t spellId,
+          std::initializer_list<espm::SPEL::SpellType> withheldTypes) {
+        if (!passivesOnly) {
+          return false;
         }
+        // SPLO may also list shouts or leveled spells, GetData would throw on those
+        const auto spell = browser.LookupById(spellId);
+        if (!spell.rec || spell.rec->GetType() != espm::SPEL::kType) {
+          return false;
+        }
+        const auto spellData = espm::GetData<espm::SPEL>(spellId, worldState);
+        return spellData.spellItem &&
+          std::find(withheldTypes.begin(), withheldTypes.end(),
+                    spellData.spellItem->type) != withheldTypes.end();
+      };
+
+    for (uint32_t spellId : spells) {
+      if (!isWithheld(spellId, { espm::SPEL::SpellType::Spell })) {
+        result.push_back(spellId);
       }
-      result.push_back(spellId);
     }
 
     // Players carry their chosen race in appearance, not in the NPC_ record
@@ -1040,7 +1038,11 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
     const auto race = worldState->GetEspm().GetBrowser().LookupById(raceId);
 
     for (auto raceSpellRaw : raceData.spells) {
-      result.push_back(race.ToGlobalId(raceSpellRaw));
+      const uint32_t spellId = race.ToGlobalId(raceSpellRaw);
+      // Greater powers only, lesser powers such as Khajiit Night Eye stay
+      if (!isWithheld(spellId, { espm::SPEL::SpellType::Power })) {
+        result.push_back(spellId);
+      }
     }
   } catch (std::exception& e) {
     spdlog::warn("MpActor::GetBaseSpells {:x} - {}", GetFormId(), e.what());
@@ -1052,6 +1054,26 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
 std::vector<uint32_t> MpActor::GetSpellList() const
 {
   return ChangeForm().learnedSpells.GetLearnedSpells();
+}
+
+// The owner's client keeps exactly these and drops every other NPC_ or race spell
+std::vector<uint32_t> MpActor::GetLearnedAndBaseSpells() const
+{
+  auto spells = GetSpellList();
+  for (uint32_t spellId : GetBaseSpells()) {
+    if (std::find(spells.begin(), spells.end(), spellId) == spells.end()) {
+      spells.push_back(spellId);
+    }
+  }
+  return spells;
+}
+
+void MpActor::SendLearnedSpells()
+{
+  SendToUser(CreatePropertyMessage_(
+               this, "learnedSpells",
+               nlohmann::json(GetLearnedAndBaseSpells()).dump()),
+             true);
 }
 
 std::unique_ptr<const Appearance> MpActor::GetAppearance() const

@@ -1637,6 +1637,7 @@ export declare function getAnimationVariablesFromActor(actorFormId: number): Act
 export declare function applyAnimationVariablesToActor(actorFormId: number, animationVariables: ActorAnimationVariables): boolean;
 export declare function dispelPotionEffects(actorFormId: number, potionFormId: number): void;
 export declare function agePotionEffects(actorFormId: number, potionFormId: number, seconds: number): void;
+export declare function removeSpellFromList(ownerFormId: number, spellFormId: number): void;
 
 export declare function setCollision(refrFormId: number, collision: boolean): void;
 

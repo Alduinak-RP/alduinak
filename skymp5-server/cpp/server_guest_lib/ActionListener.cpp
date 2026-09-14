@@ -549,6 +549,8 @@ void ActionListener::OnUpdateAppearance(const RawMessageData& rawMsgData,
     actor->SetRaceMenuOpen(false);
     actor->SetAppearance(&msg.data.value());
     SendToNeighbours(msg.idx, rawMsgData, true);
+    // The race menu's race switch brought the new race's spells to the client
+    actor->SendLearnedSpells();
   }
 
   UpdateAppearanceAttemptEvent updateAppearanceAttemptEvent(
@@ -800,7 +802,8 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
   }
 
   // Stripped spells are removed on the caster's client in both branches
-  for (uint32_t spellId : spellIdsToRemove) {
+  for (size_t slot = 0; slot < spellIdsToRemove.size(); ++slot) {
+    const uint32_t spellId = spellIdsToRemove[slot];
     if (spellId == 0) {
       continue;
     }
@@ -812,6 +815,14 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
       args;
     args.push_back(spellArg);
     SpSnippet("Actor", "RemoveSpell", args, actor->GetFormId())
+      .Execute(actor, SpSnippetMode::kNoReturnResult);
+
+    // RemoveSpell cannot drop NPC_ or RACE spells, so the hand or power slot is emptied too
+    if (slot == static_cast<size_t>(SpellSlotId::Instant)) {
+      continue;
+    }
+    args.push_back(static_cast<double>(slot));
+    SpSnippet("Actor", "UnequipSpell", args, actor->GetFormId())
       .Execute(actor, SpSnippetMode::kNoReturnResult);
   }
 
