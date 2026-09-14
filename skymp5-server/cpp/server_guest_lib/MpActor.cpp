@@ -1618,9 +1618,14 @@ void MpActor::RespawnWithDelay(bool shouldTeleport)
                 },
                 Mode::NoRequestSave);
               EnsureBaseContainerAdded(worldState->GetEspm());
-              spdlog::info("MpActor::RespawnWithDelay {:x} - {} inventory "
-                           "entries with keyword kept",
-                           GetFormId(), inventoryToKeep.entries.size());
+              // An empty base container adds nothing, so AddItems never tells the owner
+              SendInventoryUpdate();
+              spdlog::info("MpActor::RespawnWithDelay {:x} - {} of {} "
+                           "inventory entries with keyword kept (profileId "
+                           "{}, base {:x})",
+                           GetFormId(), inventoryToKeep.entries.size(),
+                           inventory.entries.size(), GetProfileId(),
+                           GetBaseId());
             }
           }
 
