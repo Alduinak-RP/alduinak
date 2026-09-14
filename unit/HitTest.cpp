@@ -329,6 +329,61 @@ TEST_CASE("An active ward blocks a frontal spell hit like a shield", "[Hit]")
   DoDisconnect(p, 1);
 }
 
+TEST_CASE("A learned spell is cast even when no spell slot names it",
+          "[Hit][SpellCast]")
+{
+  PartOne& p = GetPartOne();
+  constexpr uint32_t kAggressor = 0xff000000;
+  constexpr uint32_t kTarget = 0xff000001;
+  constexpr uint32_t kFlames = 0x00012fcd;
+  constexpr uint32_t kGreaterWard = 0x000211f0;
+
+  DoConnect(p, 0);
+  DoConnect(p, 1);
+  p.CreateActor(kAggressor, { 30, 100, 0 }, 0, 0x3c);
+  p.CreateActor(kTarget, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, kAggressor);
+  p.SetUserActor(1, kTarget);
+  auto& aggressor = p.worldState.GetFormAt<MpActor>(kAggressor);
+  auto& target = p.worldState.GetFormAt<MpActor>(kTarget);
+
+  Equipment aggressorEquipment;
+  aggressorEquipment.leftSpell = kFlames;
+  aggressor.SetEquipment(aggressorEquipment);
+  target.SetAngle({ 0.f, 0.f, 0.f });
+
+  RawMessageData rawMsgData;
+  rawMsgData.userId = 0;
+  HitMessage hitMsg;
+  hitMsg.data.aggressor = 0x14;
+  hitMsg.data.target = kTarget;
+  hitMsg.data.source = kFlames;
+
+  auto healthLostToHit = [&] {
+    target.SetPercentages({ 1.f, 1.f, 1.f });
+    p.GetActionListener().OnHit(rawMsgData, hitMsg);
+    return 1.f - target.GetChangeForm().actorValues.healthPercentage;
+  };
+
+  const float unwarded = healthLostToHit();
+  REQUIRE(unwarded > 0.f);
+
+  // Neither equipped nor learned, so the cast is refused and grants no ward
+  DoMessage(p, 1, MakeSpellCastMessage(kGreaterWard, false));
+  REQUIRE(healthLostToHit() == Catch::Approx(unwarded));
+
+  target.AddSpell(kGreaterWard);
+  DoMessage(p, 1, MakeSpellCastMessage(kGreaterWard, false));
+  REQUIRE(healthLostToHit() ==
+          Catch::Approx(unwarded * kBlockedHitDamageMult).margin(1e-6));
+
+  DoMessage(p, 1, MakeSpellCastMessage(kGreaterWard, true));
+  p.DestroyActor(kAggressor);
+  p.DestroyActor(kTarget);
+  DoDisconnect(p, 0);
+  DoDisconnect(p, 1);
+}
+
 TEST_CASE("A paralysed actor cannot attack or move", "[Hit]")
 {
   PartOne& p = GetPartOne();

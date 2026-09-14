@@ -280,14 +280,15 @@ bool IsSpellInTemplateTree(const MpActor& actor, uint32_t spellId)
   return false;
 }
 
-// Hosted NPCs keep no spell equipment on the server, their spell list is the gate
+// A known spell counts even when the equipment update naming it was late, lost or rejected
 bool CanCastSpell(const MpActor& actor, uint32_t spellId)
 {
-  if (actor.GetEquipment().IsSpellEquipped(spellId)) {
+  if (actor.GetEquipment().IsSpellEquipped(spellId) ||
+      actor.IsSpellLearned(spellId)) {
     return true;
   }
-  return actor.GetProfileId() == -1 &&
-    (actor.IsSpellLearned(spellId) || IsSpellInTemplateTree(actor, spellId));
+  // Hosted NPCs keep no spell equipment on the server, their template tree is the gate
+  return actor.GetProfileId() == -1 && IsSpellInTemplateTree(actor, spellId);
 }
 
 // Cloaks and hazards (Blizzard) hit with a spell they grant, not the spell that was cast
@@ -1654,6 +1655,8 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   caster->SendPapyrusEvent("OnSpellCast", args.data(), args.size());
 
   if (!spellCastData.keepAlive) {
+    spdlog::info("ActionListener::OnSpellCast - {:x} cast spell {:x}",
+                 caster->GetFormId(), spellCastData.spell);
     FireGamemodeEvent(partOne.worldState, caster->GetFormId(), "onSpellCast",
                       nlohmann::json::array({ spellCastData.spell }));
   }
