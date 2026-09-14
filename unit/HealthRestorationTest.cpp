@@ -71,3 +71,46 @@ TEST_CASE("A second potion within 10 seconds is refunded", "[Restoration]")
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
 }
+
+TEST_CASE("Food has its own 10 second cooldown", "[Restoration]")
+{
+  using namespace std::chrono_literals;
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+  ac.SetLastAttributesPercentagesUpdate(std::chrono::steady_clock::now() -
+                                        10s);
+  // 0x64B3D is a sweet roll, food that restores 5 hp
+  ac.AddItem(0x64B3D, 2);
+  ac.AddItem(0x3EAE3, 2);
+
+  RawMessageData rawMsgData;
+  rawMsgData.userId = 0;
+
+  OnEquipMessage food;
+  food.baseId = 0x64B3D;
+  OnEquipMessage potion;
+  potion.baseId = 0x3EAE3;
+
+  p.GetActionListener().OnEquip(rawMsgData, potion);
+  REQUIRE(ac.GetInventory().GetItemCount(0x3EAE3) == 1);
+
+  ac.SetPercentages({ 0.1f, 0.f, 0.f });
+  p.GetActionListener().OnEquip(rawMsgData, food);
+  REQUIRE(ac.GetInventory().GetItemCount(0x64B3D) == 1);
+  REQUIRE(ac.GetChangeForm().actorValues.healthPercentage > 0.1f);
+
+  ac.SetPercentages({ 0.1f, 0.f, 0.f });
+  p.GetActionListener().OnEquip(rawMsgData, food);
+  REQUIRE(ac.GetInventory().GetItemCount(0x64B3D) == 1);
+  REQUIRE(ac.GetChangeForm().actorValues.healthPercentage == 0.1f);
+
+  p.GetActionListener().OnEquip(rawMsgData, potion);
+  REQUIRE(ac.GetInventory().GetItemCount(0x3EAE3) == 1);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
