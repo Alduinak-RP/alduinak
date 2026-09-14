@@ -1106,10 +1106,10 @@ export class RemoteServer extends ClientListener {
       const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
       const cloneSpellGuard = this.controller.lookupListener(CloneSpellGuardService);
 
-      // Keep-alives and recasts of a running channel only refresh the clone, recasting would stack concentration casts
+      // Keep-alives and recasts of a running channel at any target only refresh the clone, recasting would stack concentration casts
       const watch = this.cloneCastWatch.get(key);
       const sameChannel = watch !== undefined && spellId !== undefined && watch.spellId === spellId
-        && watch.target === msg.data.target && this.isConcentrationSpell(spellId);
+        && this.isConcentrationSpell(spellId);
       if (watch && (msg.data.keepAlive || sameChannel)) {
         watch.expiresAt = now + this.cloneCastTimeoutMs;
         if (spellId) {
@@ -1132,7 +1132,6 @@ export class RemoteServer extends ClientListener {
         animVars: actorAnimationVariables,
         wasDrawn: ac.isWeaponDrawn(),
         spellId: spellId ?? 0,
-        target: msg.data.target,
       });
 
       if (spellId) {
@@ -1260,7 +1259,7 @@ export class RemoteServer extends ClientListener {
     });
   }
 
-  private cloneCastWatch = new Map<string, { casterRemoteId: number, expiresAt: number, castingSource: number, animVars: ActorAnimationVariables, wasDrawn: boolean, spellId: number, target: number }>();
+  private cloneCastWatch = new Map<string, { casterRemoteId: number, expiresAt: number, castingSource: number, animVars: ActorAnimationVariables, wasDrawn: boolean, spellId: number }>();
   private cloneCastStoppedAt = new Map<string, number>();
   private readonly cloneCastTimeoutMs = 8000;
   private readonly cloneCastStopMemoryMs = 2000;
