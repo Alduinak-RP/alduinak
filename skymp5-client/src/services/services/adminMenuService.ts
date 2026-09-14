@@ -62,6 +62,9 @@ const ZONE_ACTIONS: Record<string, string> = {
   [events.npcDeactivate]: "npcZoneDeactivate",
 };
 
+// Actions that move the admin; their success reply closes the menu
+const SELF_TELEPORTS = ["teleportTo", "teleportLoc", "npcZoneTp"];
+
 interface DebugServer {
   name: string;
   offsetMs: number;
@@ -236,6 +239,7 @@ export class AdminMenuService extends ClientListener {
       this.pushData();
     } else if (content["customPacketType"] === "adminActionResult") {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
+      if (content["ok"] === true && this.menuOpen && SELF_TELEPORTS.includes(String(content["action"] ?? ""))) this.closeMenu();
     }
   }
 
