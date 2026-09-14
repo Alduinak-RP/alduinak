@@ -8,16 +8,17 @@ import { adminGhostAlpha, setAdminGhostShader } from "../../view/adminGhostLook"
 
 const LOOK_REAPPLY_MS = 2000;
 const SHADER_REPLAY_DELAY_MS = 1000;
-const LOCAL_MODES = ["god", "noclip", "ghost", "invis", "speed"];
+const LOCAL_MODES = ["god", "noclip", "ghost", "invis", "speed", "freecam"];
 const SPEED_MULT = 300;
 const PLAYER_FORM_ID = 0x14;
+
+type FreeCameraApi = { setFreeCameraMode?: (enable: boolean) => boolean };
 
 /**
  * Applies admin mode toggles pushed by the server's AdminSystem:
  *   { customPacketType: "adminMode", mode, on }
- * god/noclip/ghost/invis/speed map to local natives; smite/healhit are fully
- * server-side; freecam has no SkyrimPlatform native (tfc stays a local
- * console command).
+ * god/noclip/ghost/invis/speed/freecam map to local natives; smite/healhit are fully
+ * server-side. The local console is closed for everyone, so freecam uses SkyrimPlatform's setFreeCameraMode.
  * Speed raises the base SpeedMult to 300 and puts the saved base back when turned off, on disconnect and on death.
  * God and Ghost also hold server-side (AdminSystem refuses hit damage); FormView hides remote invis admins via ff_adminModes, shows them to admins as ghosts, and shows Ghost admins to everyone as ghosts.
  */
@@ -28,7 +29,9 @@ export class AdminModeService extends ClientListener {
     this.controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
     this.controller.on("update", () => this.onUpdate());
     this.controller.emitter.on("connectionAccepted", () => this.controller.once("update", () => this.resetLocalModes()));
-    this.controller.emitter.on("connectionDisconnect", () => this.controller.once("update", () => this.apply("speed", false, false)));
+    this.controller.emitter.on("connectionDisconnect", () => this.controller.once("update", () => {
+      for (const mode of ["speed", "freecam"]) this.apply(mode, false, false);
+    }));
   }
 
   // A new session starts with every mode off; the server re-sends the active ones after login
@@ -79,9 +82,7 @@ export class AdminModeService extends ClientListener {
         if (notify) showSystemNotification(this.sp, on ? "Speed: you move three times as fast" : "Speed off");
         break;
       case "freecam":
-        showSystemNotification(this.sp, on
-          ? "Freecam has no hotkey: open the console (~) and type tfc"
-          : "Freecam off; if the camera is still free, type tfc in the console (~) again");
+        this.setFreecam(on, notify);
         break;
       case "smite":
         showSystemNotification(this.sp, on ? "Smite enabled" : "Smite disabled");
@@ -110,6 +111,17 @@ export class AdminModeService extends ClientListener {
     // Any CarryWeight change makes the engine re-read the movement speed
     player.modActorValue("CarryWeight", 1);
     player.modActorValue("CarryWeight", -1);
+  }
+
+  // Takes a boolean only, so nothing a player types can reach a console command through here
+  private setFreecam(on: boolean, notify: boolean): void {
+    const api = this.sp as Sp & FreeCameraApi;
+    if (typeof api.setFreeCameraMode !== "function") {
+      if (notify && on) showSystemNotification(this.sp, "Freecam needs the updated SkyrimPlatform native build");
+      return;
+    }
+    const active = api.setFreeCameraMode(on);
+    if (notify) showSystemNotification(this.sp, active ? "Freecam: movement keys fly the camera, your character stays put; turn it off in Modes" : "Freecam off");
   }
 
   // A respawned player drops effect shaders; speed ends with death
