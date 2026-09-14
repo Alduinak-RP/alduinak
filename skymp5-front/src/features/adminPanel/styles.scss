@@ -402,6 +402,12 @@ $admin-row-gutter: 16px;
     &--hwid { flex: 1 1 130px; }
     &--elapsed { flex: 0 0 72px; }
 
+    &--kind {
+      flex: 0 0 130px;
+      font-size: 14px;
+      color: $admin-gold-dim;
+    }
+
     &--status {
       display: flex;
       align-items: center;

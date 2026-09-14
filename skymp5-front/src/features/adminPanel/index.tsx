@@ -28,6 +28,7 @@ interface PanelMastery {
 
 interface PanelLocation {
   name: string;
+  kind?: string; // map marker type label, absent on older servers
 }
 
 interface PanelMode {
@@ -299,7 +300,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
 
   const locFilter = locSearch.trim().toLowerCase();
-  const shownLocations = locations.filter((l) => !locFilter || l.name.toLowerCase().indexOf(locFilter) !== -1);
+  const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
 
   const openTab = (id: Tab): void => {
     setTab(id);
@@ -518,6 +519,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 shownLocations.map((l) => (
                   <div key={l.name} className="admin-panel__row admin-panel__row--location">
                     <span className="admin-panel__cell admin-panel__cell--name">{l.name}</span>
+                    {l.kind ? <span className="admin-panel__cell admin-panel__cell--kind">{l.kind}</span> : null}
                     <Button text="Teleport" width={112} height={30} onClick={() => send(ev.tpLoc, l.name)} />
                   </div>
                 ))
