@@ -571,6 +571,38 @@ bool HoldsSavedOutfit(const MpActor& actor)
       inventory.HasItem(entry.baseId);
   });
 }
+
+using SnippetArgs = std::vector<std::optional<
+  std::variant<bool, double, std::string, SpSnippetObjectArgument>>>;
+
+// Runs Actor.<function>(item, args...) on the actor's own client
+void RunItemSnippet(MpActor& actor, const char* function, uint32_t itemId,
+                    SnippetArgs args)
+{
+  SpSnippetObjectArgument itemArg;
+  itemArg.formId = itemId;
+  itemArg.type = "Form";
+  args.insert(args.begin(), itemArg);
+  SpSnippet("Actor", function, args, actor.GetFormId())
+    .Execute(&actor, SpSnippetMode::kNoReturnResult);
+}
+
+// The owner's client may still show the refused report, so it wears the kept outfit again
+void RedressSavedOutfit(MpActor& actor)
+{
+  const auto& inventory = actor.GetInventory();
+  for (const auto& entry : actor.GetEquipment().inv.entries) {
+    const auto worn = entry.GetWorn();
+    if (worn == Inventory::Worn::None || !inventory.HasItem(entry.baseId)) {
+      continue;
+    }
+    if (worn == Inventory::Worn::Left) {
+      RunItemSnippet(actor, "EquipItemEx", entry.baseId, { 2.0, false, false });
+    } else {
+      RunItemSnippet(actor, "EquipItem", entry.baseId, { false, true });
+    }
+  }
+}
 }
 
 void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
@@ -601,6 +633,7 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     spdlog::warn("ActionListener::OnUpdateEquipment {:x} - kept saved outfit, "
                  "zero-worn report {} ms after assign (numChanges {})",
                  actor->GetFormId(), msSinceAssign(), msg.data.numChanges);
+    RedressSavedOutfit(*actor);
     UpdateEquipmentAttemptEvent refusedEvent(actor, msg.data, false);
     refusedEvent.Fire(actor->GetParent());
     return;
@@ -835,17 +868,7 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     }
 
     for (uint32_t itemId : itemIdsToUnequip) {
-      SpSnippetObjectArgument itemArg;
-      itemArg.formId = itemId;
-      itemArg.type = "Form";
-      std::vector<std::optional<
-        std::variant<bool, double, std::string, SpSnippetObjectArgument>>>
-        args;
-      args.push_back(itemArg);
-      args.push_back(false);
-      args.push_back(true);
-      SpSnippet("Actor", "UnequipItem", args, actor->GetFormId())
-        .Execute(actor, SpSnippetMode::kNoReturnResult);
+      RunItemSnippet(*actor, "UnequipItem", itemId, { false, true });
     }
   }
 
