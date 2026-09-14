@@ -90,15 +90,19 @@ function setKey(id, code) {
   const c = typeof code === 'number' ? code : 0
   el.dataset.code = String(c)
   el.textContent = labelForCode(c)
+  showHotkeyConflict()
 }
 function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.dataset.code, 10) || 0) : 0 }
+function showHotkeyConflict() {
+  const el = document.getElementById('hk-conflict')
+  const code = getKey('hk-alt-interact')
+  if (el) el.hidden = !code || code !== getKey('ghk-activate')
+}
 
-// Press-to-bind capture. Backspace unbinds server hotkeys only: gameHotkeys:save
-// drops code 0, so an unbound game key would silently keep its old binding.
+// Backspace unbinds server hotkeys except Interact / Menus; gameHotkeys:save drops code 0, so game keys cannot unbind
 // Server hotkey button -> [hotkeys:load/save field, default DIK]; hk-chat is separate because it pairs with Enter
 const SERVER_HOTKEYS = {
-  'hk-cursor': ['freeCursor', 64], 'hk-housing': ['housing', 35], 'hk-personal': ['personal', 22],
-  'hk-faction': ['faction', 34], 'hk-voice-ptt': ['voicePtt', 47], 'hk-admin': ['adminMenu', 210],
+  'hk-cursor': ['freeCursor', 64], 'hk-voice-ptt': ['voicePtt', 47],
   'hk-hide-ui': ['hideUi', 59], 'hk-alt-interact': ['altInteract', 45],
 }
 const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]
@@ -126,6 +130,7 @@ function startCapture(btn, canUnbind) {
     e.stopPropagation()
     if (e.code === 'Escape') { endCapture(true); return }
     if (canUnbind && e.code === 'Backspace') { endCapture(false); setKey(btn.id, 0); return }
+    if (e.code === 'Backspace' && btn.id === 'hk-alt-interact') { endCapture(true); return }
     const entry = KEY_TABLE[e.code]
     if (!entry) {
       if (activeCapture.timer) clearTimeout(activeCapture.timer)
@@ -156,7 +161,7 @@ function startCapture(btn, canUnbind) {
   const btn = document.getElementById(id)
   if (!btn) return
   setKey(id, 0)
-  btn.addEventListener('click', () => startCapture(btn, SERVER_HOTKEY_IDS.includes(id)))
+  btn.addEventListener('click', () => startCapture(btn, SERVER_HOTKEY_IDS.includes(id) && id !== 'hk-alt-interact'))
 })
 window.addEventListener('blur', () => endCapture(true))
 

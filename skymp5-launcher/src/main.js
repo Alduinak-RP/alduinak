@@ -444,8 +444,7 @@ ipcMain.handle('graphics:save', (_e, g) => {
 
 // hotkeys:load/save field -> skymp5-client settings key; chatFocusKeyCodes is the one list-valued hotkey
 const CLIENT_HOTKEY_KEYS = {
-  freeCursor: 'freeCursorKeyCode', housing: 'housingMenuKeyCode', faction: 'factionMenuKeyCode',
-  personal: 'personalMenuKeyCode', voicePtt: 'voicePushToTalkKeyCode', adminMenu: 'adminMenuKeyCode',
+  freeCursor: 'freeCursorKeyCode', voicePtt: 'voicePushToTalkKeyCode',
   hideUi: 'hideUiKeyCode', altInteract: 'altInteractKeyCode',
 }
 
@@ -454,6 +453,8 @@ ipcMain.handle('hotkeys:load', () => {
     const c = readClientSettings()
     const out = { ok: true, path: clientSettingsPath(), chatFocus: Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null }
     for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) out[field] = typeof c[key] === 'number' ? c[key] : null
+    // Interact / Menus cannot be unbound, so a stored 0 shows and saves the X default
+    if (out.altInteract === 0) out.altInteract = null
     return out
   } catch (err) {
     return { ok: false, error: err.message }
@@ -465,7 +466,10 @@ ipcMain.handle('hotkeys:save', (_e, h) => {
     h = h || {}
     const c = readClientSettings()
     if (Array.isArray(h.chatFocus)) c.chatFocusKeyCodes = h.chatFocus.filter(n => typeof n === 'number')
-    for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) if (typeof h[field] === 'number') c[key] = h[field]
+    for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) {
+      // Interact / Menus cannot be unbound, so a 0 keeps the stored key
+      if (typeof h[field] === 'number' && (field !== 'altInteract' || h[field] > 0)) c[key] = h[field]
+    }
     const p = clientSettingsPath()
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(c, null, 2))
