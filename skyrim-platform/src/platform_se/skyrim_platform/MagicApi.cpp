@@ -348,7 +348,12 @@ std::vector<RE::ActiveEffect*> GetPotionEffects(uint32_t actorFormId,
 {
   std::vector<RE::ActiveEffect*> res;
   auto* pActor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
-  auto* pPotion = RE::TESForm::LookupByID<RE::AlchemyItem>(potionFormId);
+  // Ingredients are IngredientItem forms, not AlchemyItem
+  RE::MagicItem* pPotion =
+    RE::TESForm::LookupByID<RE::AlchemyItem>(potionFormId);
+  if (!pPotion) {
+    pPotion = RE::TESForm::LookupByID<RE::IngredientItem>(potionFormId);
+  }
   if (!pActor || !pPotion) {
     return res;
   }
