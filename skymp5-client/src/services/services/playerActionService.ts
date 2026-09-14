@@ -4,6 +4,7 @@ import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, butt
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
+import { isFreeCamera } from "./adminModeService";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
@@ -94,7 +95,8 @@ export class PlayerActionService extends ClientListener {
     const personal = this.controller.lookupListener(AdminMenuService);
     if (isInteract && (housing.takePendingPick() || this.controller.lookupListener(FactionService).takePendingPick())) return;
 
-    const ref = this.sp.Game.getCurrentCrosshairRef();
+    // The crosshair ref is stale in free camera, so X there always opens the Personal Menu, the only way out of Freecam
+    const ref = isFreeCamera(this.sp) ? null : this.sp.Game.getCurrentCrosshairRef();
     const actor = ref && ref.getFormID() !== PLAYER_FORM_ID ? Actor.from(ref) : null;
     const remoteId = ref && actor ? localIdToRemoteId(ref.getFormID()) : 0;
     if (ref && actor && (actor.isDead() ? remoteId >= FIRST_DYNAMIC_REMOTE_ID : isPlayerCharacterId(this.controller, remoteId))) {

@@ -1,5 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket } from "./customPacketUtil";
+import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
 import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
@@ -11,8 +11,12 @@ const SHADER_REPLAY_DELAY_MS = 1000;
 const LOCAL_MODES = ["god", "noclip", "ghost", "invis", "speed", "freecam"];
 const SPEED_MULT = 300;
 const PLAYER_FORM_ID = 0x14;
+const FREE_CAMERA_STATE = 3;
+const FREECAM_CHECK_MS = 1000;
 
 type FreeCameraApi = { setFreeCameraMode?: (enable: boolean) => boolean };
+
+export const isFreeCamera = (sp: Sp): boolean => sp.Game.getCameraState() === FREE_CAMERA_STATE;
 
 /**
  * Applies admin mode toggles pushed by the server's AdminSystem:
@@ -20,6 +24,7 @@ type FreeCameraApi = { setFreeCameraMode?: (enable: boolean) => boolean };
  * god/noclip/ghost/invis/speed/freecam map to local natives; smite/healhit are fully
  * server-side. The local console is closed for everyone, so freecam uses SkyrimPlatform's setFreeCameraMode.
  * Speed raises the base SpeedMult to 300 and puts the saved base back when turned off, on disconnect and on death.
+ * Freecam ends on disconnect and on death; a camera that leaves free mode by itself (a load, a forced third person) is reported to the server.
  * God and Ghost also hold server-side (AdminSystem refuses hit damage); FormView hides remote invis admins via ff_adminModes, shows them to admins as ghosts, and shows Ghost admins to everyone as ghosts.
  */
 export class AdminModeService extends ClientListener {
@@ -116,19 +121,31 @@ export class AdminModeService extends ClientListener {
   // Takes a boolean only, so nothing a player types can reach a console command through here
   private setFreecam(on: boolean, notify: boolean): void {
     const api = this.sp as Sp & FreeCameraApi;
-    if (typeof api.setFreeCameraMode !== "function") {
-      if (notify && on) showSystemNotification(this.sp, "Freecam needs the updated SkyrimPlatform native build");
-      return;
-    }
-    const active = api.setFreeCameraMode(on);
-    if (notify) showSystemNotification(this.sp, active ? "Freecam: movement keys fly the camera, your character stays put; turn it off in Modes" : "Freecam off");
+    const hasNative = typeof api.setFreeCameraMode === "function";
+    const active = !!api.setFreeCameraMode?.(on);
+    this.freecamCheckAt = Date.now() + FREECAM_CHECK_MS;
+    if (on && !active) this.reportFreecamOff();
+    if (!notify) return;
+    showSystemNotification(this.sp, active ? "Freecam: movement keys fly the camera, your character stays put; turn it off in Modes"
+      : !on ? "Freecam off" : hasNative ? "Freecam could not start here" : "Freecam needs the updated SkyrimPlatform native build");
   }
 
-  // A respawned player drops effect shaders; speed ends with death
+  // The server records the camera's real state, so Modes and the next toggle follow it
+  private reportFreecamOff(): void {
+    this.localModes.delete("freecam");
+    sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "toggleMode", mode: "freecam", on: false });
+  }
+
+  // A respawned player drops effect shaders; speed and freecam end with death
   private onApplyDeathState(e: ApplyDeathStateEvent): void {
-    if (!this.ghost && this.speedBase === null) return;
+    const freecam = this.localModes.has("freecam");
+    if (!this.ghost && this.speedBase === null && !freecam) return;
     if (e.actor.getFormID() !== PLAYER_FORM_ID) return;
     if (e.isDead && this.speedBase !== null) this.controller.once("update", () => this.apply("speed", false, false));
+    if (e.isDead && freecam) this.controller.once("update", () => {
+      this.apply("freecam", false, false);
+      this.reportFreecamOff();
+    });
     if (this.ghost && !e.isDead) this.shaderReplayAt = Date.now() + SHADER_REPLAY_DELAY_MS;
   }
 
@@ -146,6 +163,11 @@ export class AdminModeService extends ClientListener {
       if (this.ghost && player) setAdminGhostShader(player, true);
     }
     if ((this.invisible || this.ghost) && now - this.lastLookApply >= LOOK_REAPPLY_MS) this.applyAlpha(false);
+    if (this.localModes.has("freecam") && now >= this.freecamCheckAt) {
+      this.freecamCheckAt = now + FREECAM_CHECK_MS;
+      // Pausing menus such as Tween may swap the camera state, so only a running game counts
+      if (!this.sp.Utility.isInMenuMode() && !isFreeCamera(this.sp)) this.reportFreecamOff();
+    }
   }
 
   private collisionsDisabled = false;
@@ -153,6 +175,7 @@ export class AdminModeService extends ClientListener {
   private ghost = false;
   private lastLookApply = 0;
   private shaderReplayAt = 0;
+  private freecamCheckAt = 0;
   private speedBase: number | null = null;
   private localModes = new Set<string>();
 }
