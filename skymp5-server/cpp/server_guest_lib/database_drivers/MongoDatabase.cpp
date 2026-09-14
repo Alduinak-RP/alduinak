@@ -98,6 +98,18 @@ std::vector<std::optional<MpChangeForm>>&& MongoDatabase::UpsertImpl(
       auto upd = nlohmann::json::object();
       upd["$set"] = pImpl->jsonSanitizer->SanitizeJsonRecursive(jChangeForm);
 
+      // A reused ff id would otherwise keep optional keys of the previous owner
+      auto unset = nlohmann::json::object();
+      for (const char* key : { "templateChain", "factions", "displayName",
+                               "setNodeScale", "setNodeTextureSet" }) {
+        if (!jChangeForm.contains(key)) {
+          unset[key] = "";
+        }
+      }
+      if (!unset.empty()) {
+        upd["$unset"] = std::move(unset);
+      }
+
       bulk.append(mongocxx::model::update_one(
                     { std::move(bsoncxx::from_json(filter.dump())),
                       std::move(bsoncxx::from_json(upd.dump())) })
