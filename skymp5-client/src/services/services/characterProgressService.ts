@@ -5,56 +5,51 @@ import { RemoteServer } from "./remoteServer";
 import { SinglePlayerService } from "./singlePlayerService";
 import { getInventory } from "../../sync/inventory";
 import { MAP_MARKER_REFS } from "../../data/mapMarkerRefs";
+import { ConnectionMessage } from "../events/connectionMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
 
-// Per-character local replay of discovered map markers and learned ingredient effects, keyed by server and actor id
+// Discovered map markers and learned ingredient effects per character, stored by the server's KnowledgeSystem and replayed here
 
-const PLUGIN_NAME = "character-progress-no-load";
-const FILE_VERSION = 1;
-const STORAGE_KEY = "characterProgressState";
+const LEGACY_PLUGIN_NAME = "character-progress-no-load";
+const STORAGE_KEY = "characterKnowledgeState";
+const SETTLE_MS = 3000;
+const REQUEST_RETRY_MS = 15000;
 const MARKER_SCAN_MS = 10000;
 const INGR_POLL_MS = 5000;
 const INGR_EQUIP_DELAY_MS = 700;
-const WRITE_DEBOUNCE_MS = 2000;
+const SEND_DEBOUNCE_MS = 1500;
 const ERROR_LOG_MS = 5000;
-const RESTORE_DELAY_S = 2.5;
-const RESTORE_BATCH = 25;
 const SCAN_BATCH = 60;
 const INGR_READ_BATCH = 5;
-const MAX_CHARACTERS = 30;
-const MAX_MARKERS = 3000;
-const MAX_INGREDIENTS = 1500;
+const MAX_SEND = 200;
 const MAX_EFFECTS = 4;
 const PLAYER_FORM_ID = 0x14;
 const LIGHT_MOD_HIGH = 0xfe;
 
-interface CharacterEntry {
-  name: string;
-  updatedAt: number;
-  markers: string[];
-  ingredients: Record<string, boolean[]>;
-}
-
-interface ProgressDoc {
-  version: number;
-  characters: Record<string, CharacterEntry>;
-}
-
-// An ingredient item carries its saved flags; a marker item has none
-interface RestoreItem {
-  desc: string;
-  flags?: boolean[];
-}
-
-// Lives in sp.storage so a client hot reload keeps unwritten progress
+// Lives in sp.storage so a client hot reload keeps it; the seen sets span every character of this game process
 interface State {
-  key: string | null;
-  myIdx: number;
+  actorId: number;
   markers: Record<string, true>;
-  ingredients: Record<string, boolean[]>;
-  queue: RestoreItem[];
-  restored: boolean;
-  dirty: boolean;
+  ingredients: Record<string, number>;
+  pendingMarkers: string[];
+  pendingIngredients: Record<string, number>;
+  // Engine state a character or the plugins already explain, so it is never recorded as a new discovery
+  seenMarkers: Record<string, true>;
+  seenIngredients: Record<string, number>;
+  baselineDone: boolean;
 }
+
+// Server pairs of [desc, effect bitmask]
+const toMasks = (raw: unknown): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (Array.isArray(raw)) {
+    raw.forEach((p) => {
+      if (Array.isArray(p) && typeof p[0] === "string") out[p[0]] = Number(p[1]) >>> 0;
+    });
+  }
+  return out;
+};
 
 export class CharacterProgressService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -62,74 +57,89 @@ export class CharacterProgressService extends ClientListener {
     this.controller.emitter.on("createActorMessage", (e) => {
       if (e.message.isMe) this.onMySpawn();
     });
-    this.controller.emitter.on("destroyActorMessage", (e) => {
-      if (e.message.idx === this.state.myIdx) this.onMyDespawn();
-    });
-    this.controller.emitter.on("connectionDisconnect", () => this.flush());
+    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("update", () => this.onUpdate());
+    this.controller.on("loadGame", () => {
+      this.settleFrom = 0;
+    });
     this.controller.on("locationDiscovery", () => this.scanSoon());
     this.controller.on("cellFullyLoaded", () => this.scanSoon());
     this.controller.on("equip", (e) => this.onEquip(e));
+    this.controller.on("menuOpen", (e) => {
+      if (e.name === Menu.Crafting) this.trackCarried();
+      if (e.name === Menu.Main) this.send();
+    });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.Crafting) this.ingrPollAt = 0;
     });
-    this.controller.on("menuOpen", (e) => {
-      if (e.name === Menu.Main) this.flush();
-    });
-    // A hot reload inside the restore delay resumes the pending restore on the first update
-    if (this.state.myIdx !== -1 && !this.state.key) this.restoreArmed = true;
   }
 
-  private restoreArmed = false;
-  private spawnGen = 0;
+  private awaiting = false;
+  private requestAt = 0;
+  private settleFrom = 0;
   private scanCursor = MAP_MARKER_REFS.length;
   private nextScanAt = 0;
   private ingrPollAt = 0;
   private ingrQueue: string[] = [];
-  private writeAt = 0;
+  private sendAt = 0;
   private lastErrorAt = 0;
+  // Ingredients carried or eaten this session, still read after the last one is gone
+  private tracked: Record<string, true> = {};
   private readonly descToId = new Map<string, number>();
-  private readonly idToDesc = new Map<number, string | null>();
+  private readonly ingrDescs = new Map<number, string | null>();
 
   private get state(): State {
     let s = this.sp.storage[STORAGE_KEY] as State | undefined;
     if (!s || typeof s !== "object") {
-      s = { key: null, myIdx: -1, markers: {}, ingredients: {}, queue: [], restored: false, dirty: false };
+      s = { actorId: 0, markers: {}, ingredients: {}, pendingMarkers: [], pendingIngredients: {}, seenMarkers: {}, seenIngredients: {}, baselineDone: false };
       this.sp.storage[STORAGE_KEY] = s;
     }
     return s;
   }
 
-  private onMySpawn(): void {
-    this.flush();
-    const s = this.state;
-    s.key = null;
-    s.restored = false;
-    s.queue = [];
-    s.myIdx = this.controller.lookupListener(RemoteServer).getMyActorIndex();
-    this.restoreArmed = false;
-    // Land after the inventory passes remoteServer runs right after spawn
-    const gen = ++this.spawnGen;
-    this.controller.once("update", () => {
-      this.sp.Utility.wait(RESTORE_DELAY_S).then(() => {
-        if (gen === this.spawnGen) this.restoreArmed = true;
-      });
-    });
+  private remoteId(): number {
+    return this.controller.lookupListener(RemoteServer).getMyRemoteRefrId() >>> 0;
   }
 
-  private onMyDespawn(): void {
-    this.flush();
+  private onMySpawn(): void {
+    this.send();
+    this.awaiting = true;
+    this.settleFrom = 0;
+    this.request(Date.now());
+  }
+
+  private request(now: number): void {
+    this.requestAt = now + REQUEST_RETRY_MS;
+    sendCustomPacket(this.controller, { customPacketType: "knowledgeRequest" });
+  }
+
+  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (content?.customPacketType !== "knowledgeState") return;
+    const actorId = Number(content.actorId) >>> 0;
+    if (!actorId || actorId !== this.remoteId()) return;
     const s = this.state;
-    s.key = null;
-    s.myIdx = -1;
-    s.restored = false;
-    s.queue = [];
-    this.restoreArmed = false;
+    // A reconnect of the same character resends whatever the server never got
+    const prev = s.actorId === actorId ? { markers: Object.keys(s.markers), masks: s.ingredients } : null;
+    s.actorId = actorId;
+    s.markers = {};
+    s.ingredients = {};
+    s.pendingMarkers = [];
+    s.pendingIngredients = {};
+    this.learn(Array.isArray(content.markers) ? content.markers : [], toMasks(content.ingredients), false);
+    if (prev) this.learn(prev.markers, prev.masks, true);
+    const legacy = this.legacyEntry(actorId);
+    if (legacy) this.learn(legacy.markers, legacy.masks, true);
+    this.awaiting = false;
+    this.scanSoon();
+    this.ingrPollAt = 0;
+    logTrace(this, `Knowledge of ${actorId.toString(16)}: ${Object.keys(s.markers).length} markers, ${Object.keys(s.ingredients).length} ingredients`);
   }
 
   private onEquip(e: EquipEvent): void {
     try {
       if (e.actor.getFormID() !== PLAYER_FORM_ID || e.baseObj.getType() !== FormType.Ingredient) return;
+      this.track(e.baseObj.getFormID());
       this.ingrPollAt = Math.min(this.ingrPollAt, Date.now() + INGR_EQUIP_DELAY_MS);
     } catch (err) { /* stale event object */ }
   }
@@ -141,14 +151,17 @@ export class CharacterProgressService extends ClientListener {
   private onUpdate(): void {
     try {
       if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
-      const s = this.state;
-      if (this.restoreArmed && !s.key) this.beginRestore();
-      if (!s.key) return;
-      if (s.queue.length || !s.restored) {
-        this.drainRestore();
+      const now = Date.now();
+      const me = this.remoteId();
+      if (!me) return;
+      if (!this.settleFrom) this.settleFrom = now;
+      if (this.state.actorId !== me) this.awaiting = true;
+      if (this.awaiting) {
+        if (now >= this.requestAt) this.request(now);
         return;
       }
-      const now = Date.now();
+      // Restore and capture start once the world has run for a while after a spawn or a load
+      if (now < this.settleFrom + SETTLE_MS) return;
       this.scanMarkers(now);
       if (this.ingrQueue.length) {
         this.ingrQueue.splice(0, INGR_READ_BATCH).forEach((desc) => this.readIngredient(desc));
@@ -156,7 +169,7 @@ export class CharacterProgressService extends ClientListener {
         this.ingrPollAt = now + INGR_POLL_MS;
         this.pollIngredients();
       }
-      if (s.dirty && now >= this.writeAt) this.write();
+      if (this.sendAt && now >= this.sendAt) this.send();
     } catch (err) {
       if (Date.now() - this.lastErrorAt < ERROR_LOG_MS) return;
       this.lastErrorAt = Date.now();
@@ -164,86 +177,43 @@ export class CharacterProgressService extends ClientListener {
     }
   }
 
-  private beginRestore(): void {
-    const remoteId = this.controller.lookupListener(RemoteServer).getMyRemoteRefrId();
-    if (!remoteId || this.sp.Ui.isMenuOpen(Menu.Main)) return;
-    const cfg = this.sp.settings["skymp5-client"] || {};
+  // Adds to the current character's sets; pending ones also go to the server
+  private learn(markers: unknown[], masks: Record<string, number>, pending: boolean): void {
     const s = this.state;
-    s.key = `${cfg["server-ip"]}:${cfg["server-port"]}/${remoteId.toString(16)}`;
-    s.markers = {};
-    s.ingredients = {};
-    s.queue = [];
-    s.restored = false;
-    this.restoreArmed = false;
-    const entry = this.readDoc().characters[s.key];
-    if (entry) {
-      if (Array.isArray(entry.markers)) {
-        entry.markers.forEach((desc) => {
-          if (typeof desc !== "string") return;
-          s.markers[desc] = true;
-          s.queue.push({ desc });
-        });
-      }
-      if (entry.ingredients && typeof entry.ingredients === "object") {
-        for (const desc in entry.ingredients) {
-          const flags = entry.ingredients[desc];
-          if (!Array.isArray(flags)) continue;
-          s.ingredients[desc] = flags.map((f) => f === true);
-          s.queue.push({ desc, flags: s.ingredients[desc] });
-        }
-      }
+    let added = false;
+    markers.forEach((desc) => {
+      if (typeof desc !== "string" || s.markers[desc]) return;
+      s.markers[desc] = s.seenMarkers[desc] = true;
+      if (pending) s.pendingMarkers.push(desc);
+      added = true;
+    });
+    for (const desc in masks) {
+      const bits = masks[desc] & ~(s.ingredients[desc] || 0);
+      if (!bits) continue;
+      s.ingredients[desc] = (s.ingredients[desc] || 0) | bits;
+      s.seenIngredients[desc] = (s.seenIngredients[desc] || 0) | bits;
+      if (pending) s.pendingIngredients[desc] = (s.pendingIngredients[desc] || 0) | bits;
+      added = true;
     }
-    logTrace(this, `Restoring ${s.queue.length} items for ${s.key}`);
+    if (pending && added && !this.sendAt) this.sendAt = Date.now() + SEND_DEBOUNCE_MS;
   }
 
-  private drainRestore(): void {
+  private send(): void {
     const s = this.state;
-    let calls = 0;
-    let done = 0;
-    while (done < s.queue.length && calls < RESTORE_BATCH) {
-      const item = s.queue[done++];
-      calls += item.flags ? this.restoreIngredient(item.desc, item.flags) : this.restoreMarker(item.desc);
-    }
-    s.queue.splice(0, done);
-    if (s.queue.length) return;
-    s.restored = true;
-    this.scanSoon();
-    this.ingrQueue = [];
-    this.ingrPollAt = 0;
-    logTrace(this, "Restore complete for", s.key);
+    this.sendAt = 0;
+    if (!s.actorId) return;
+    const markers = s.pendingMarkers.splice(0, MAX_SEND);
+    const ingredients = Object.keys(s.pendingIngredients).slice(0, MAX_SEND).map((desc) => {
+      const mask = s.pendingIngredients[desc];
+      delete s.pendingIngredients[desc];
+      return [desc, mask];
+    });
+    if (!markers.length && !ingredients.length) return;
+    sendCustomPacket(this.controller, { customPacketType: "knowledgeAdd", actorId: s.actorId, markers, ingredients });
+    if (s.pendingMarkers.length || Object.keys(s.pendingIngredients).length) this.sendAt = Date.now() + SEND_DEBOUNCE_MS;
   }
 
-  // Both restore helpers return the number of native calls made so the frame budget holds
-  private restoreMarker(desc: string): number {
-    try {
-      const ref = this.sp.ObjectReference.from(this.formFromDesc(desc));
-      if (!ref) return 1;
-      if (ref.isMapMarkerVisible()) return 2;
-      ref.addToMap(true);
-      return 3;
-    } catch (err) {
-      return 1;
-    }
-  }
-
-  private restoreIngredient(desc: string, flags: boolean[]): number {
-    let calls = 1;
-    try {
-      const ing = this.sp.Ingredient.from(this.formFromDesc(desc));
-      if (!ing) return calls;
-      const n = Math.min(MAX_EFFECTS, ing.getNumEffects());
-      ++calls;
-      for (let i = 0; i < n; ++i) {
-        if (!flags[i]) continue;
-        ++calls;
-        if (ing.getIsNthEffectKnown(i)) continue;
-        ing.learnEffect(i);
-        ++calls;
-      }
-    } catch (err) { /* form not loaded on this client */ }
-    return calls;
-  }
-
+  // One pass re-shows every known marker the engine lost and records newly visible ones; the session's first pass is the baseline
   private scanMarkers(now: number): void {
     const s = this.state;
     if (this.scanCursor >= MAP_MARKER_REFS.length) {
@@ -255,53 +225,68 @@ export class CharacterProgressService extends ClientListener {
     for (; this.scanCursor < end; ++this.scanCursor) {
       const [localId, plugin] = MAP_MARKER_REFS[this.scanCursor];
       const desc = localId.toString(16) + ":" + plugin;
-      if (s.markers[desc]) continue;
       try {
         const ref = this.sp.ObjectReference.from(this.formFromDesc(desc));
-        if (!ref || !ref.isMapMarkerVisible()) continue;
-      } catch (err) {
-        continue;
-      }
-      if (Object.keys(s.markers).length >= MAX_MARKERS) return;
-      s.markers[desc] = true;
-      this.markDirty();
+        if (!ref) continue;
+        const visible = ref.isMapMarkerVisible();
+        if (s.markers[desc]) {
+          if (!visible) ref.addToMap(true);
+        } else if (visible && !s.seenMarkers[desc]) {
+          if (s.baselineDone) this.learn([desc], {}, true);
+          else s.seenMarkers[desc] = true;
+        }
+      } catch (err) { /* form not loaded on this client */ }
     }
+    if (this.scanCursor >= MAP_MARKER_REFS.length) s.baselineDone = true;
   }
 
   // Collects the descs to read; onUpdate then reads INGR_READ_BATCH of them per frame
   private pollIngredients(): void {
-    const s = this.state;
-    const player = this.sp.Game.getPlayer();
-    if (!player) return;
-    const seen: Record<string, true> = {};
-    getInventory(player).entries.forEach((e) => {
-      if (e.count <= 0) return;
-      try {
-        if (!this.sp.Ingredient.from(this.sp.Game.getFormEx(e.baseId))) return;
-        const desc = this.descOf(e.baseId);
-        if (desc) seen[desc] = true;
-      } catch (err) { /* unloaded base form */ }
-    });
-    for (const desc in s.ingredients) seen[desc] = true;
-    this.ingrQueue = Object.keys(seen);
+    this.trackCarried();
+    const known = Object.keys(this.state.ingredients).filter((desc) => !this.tracked[desc]);
+    this.ingrQueue = Object.keys(this.tracked).concat(known);
   }
 
+  private trackCarried(): void {
+    const player = this.sp.Game.getPlayer();
+    if (!player) return;
+    getInventory(player).entries.forEach((e) => {
+      if (e.count > 0) this.track(e.baseId);
+    });
+  }
+
+  private track(baseId: number): void {
+    let desc = this.ingrDescs.get(baseId);
+    if (desc === undefined) {
+      desc = null;
+      try {
+        if (this.sp.Ingredient.from(this.sp.Game.getFormEx(baseId))) desc = this.descOf(baseId);
+      } catch (err) { /* unloaded base form */ }
+      this.ingrDescs.set(baseId, desc);
+    }
+    if (desc) this.tracked[desc] = true;
+  }
+
+  // Re-teaches known effects the engine lost and records effects it learned since
   private readIngredient(desc: string): void {
     const s = this.state;
     try {
       const ing = this.sp.Ingredient.from(this.formFromDesc(desc));
       if (!ing) return;
       const n = Math.min(MAX_EFFECTS, ing.getNumEffects());
-      let saved = s.ingredients[desc];
+      const known = s.ingredients[desc] || 0;
+      const seen = s.seenIngredients[desc] || 0;
+      let learned = 0;
       for (let i = 0; i < n; ++i) {
-        if ((saved && saved[i]) || !ing.getIsNthEffectKnown(i)) continue;
-        if (!saved) {
-          if (Object.keys(s.ingredients).length >= MAX_INGREDIENTS) return;
-          saved = s.ingredients[desc] = [];
+        const bit = 1 << i;
+        const engineKnows = ing.getIsNthEffectKnown(i);
+        if (known & bit) {
+          if (!engineKnows) ing.learnEffect(i);
+        } else if (engineKnows && !(seen & bit)) {
+          learned |= bit;
         }
-        saved[i] = true;
-        this.markDirty();
       }
+      if (learned) this.learn([], { [desc]: learned }, true);
     } catch (err) { /* form not loaded on this client */ }
   }
 
@@ -318,9 +303,7 @@ export class CharacterProgressService extends ClientListener {
 
   // Runtime form id to "hex:Plugin" using the client's own load order (light plugins live in the 0xFE space)
   private descOf(id: number): string | null {
-    let desc = this.idToDesc.get(id);
-    if (desc !== undefined) return desc;
-    desc = null;
+    let desc: string | null = null;
     const high = id >>> 24;
     try {
       if (high === LIGHT_MOD_HIGH) {
@@ -330,75 +313,25 @@ export class CharacterProgressService extends ClientListener {
         desc = (id & 0xffffff).toString(16) + ":" + this.sp.Game.getModName(high);
       }
     } catch (err) { /* keep null */ }
-    if (desc && desc.endsWith(":")) desc = null;
-    this.idToDesc.set(id, desc);
-    return desc;
+    return desc && !desc.endsWith(":") ? desc : null;
   }
 
-  private markDirty(): void {
-    const s = this.state;
-    if (!s.dirty) this.writeAt = Date.now() + WRITE_DEBOUNCE_MS;
-    s.dirty = true;
-  }
-
-  private flush(): void {
-    if (this.state.dirty) this.write();
-  }
-
-  private ownerName(): string {
-    if (this.sp.storage["ownerModelSet"] !== true) return "";
-    const owner = this.sp.storage["ownerModel"] as Record<string, unknown> | undefined;
-    const appearance = owner && (owner["appearance"] as { name?: string } | undefined);
-    return (appearance && appearance.name) || "";
-  }
-
-  private readDoc(): ProgressDoc {
+  // The previous client's local save for this character, merged on login so nothing it kept is lost
+  private legacyEntry(actorId: number): { markers: unknown[]; masks: Record<string, number> } | null {
     try {
+      const cfg = this.sp.settings["skymp5-client"] || {};
       // @ts-expect-error (TODO: Remove in 2.10.0)
-      const data = this.sp.getPluginSourceCode(PLUGIN_NAME, "PluginsNoLoad");
-      if (data) {
-        const parsed = JSON.parse(data.slice(2));
-        if (parsed && typeof parsed === "object" && parsed.characters && typeof parsed.characters === "object") {
-          return { version: FILE_VERSION, characters: parsed.characters };
-        }
+      const data = this.sp.getPluginSourceCode(LEGACY_PLUGIN_NAME, "PluginsNoLoad");
+      const entry = data ? JSON.parse(data.slice(2)).characters[`${cfg["server-ip"]}:${cfg["server-port"]}/${actorId.toString(16)}`] : null;
+      if (!entry) return null;
+      const masks: Record<string, number> = {};
+      for (const desc in entry.ingredients || {}) {
+        const flags = entry.ingredients[desc];
+        if (Array.isArray(flags)) masks[desc] = flags.reduce((m: number, f: unknown, i: number) => (f === true && i < MAX_EFFECTS ? m | (1 << i) : m), 0);
       }
-    } catch (err) { /* missing or corrupt file, start fresh */ }
-    return { version: FILE_VERSION, characters: {} };
-  }
-
-  // Merges only this character into a fresh read so another game instance on this PC keeps its entries
-  private write(): void {
-    const s = this.state;
-    if (!s.key) return;
-    const doc = this.readDoc();
-    const chars = doc.characters;
-    const old = chars[s.key];
-    const entry: CharacterEntry = {
-      name: this.ownerName() || (old && old.name) || "",
-      updatedAt: Date.now(),
-      markers: Object.keys(s.markers).slice(0, MAX_MARKERS),
-      ingredients: {},
-    };
-    Object.keys(s.ingredients).slice(0, MAX_INGREDIENTS).forEach((desc) => {
-      entry.ingredients[desc] = s.ingredients[desc];
-    });
-    chars[s.key] = entry;
-    const keys = Object.keys(chars);
-    if (keys.length > MAX_CHARACTERS) {
-      keys.sort((a, b) => (chars[a].updatedAt || 0) - (chars[b].updatedAt || 0));
-      keys.slice(0, keys.length - MAX_CHARACTERS).forEach((k) => delete chars[k]);
-    }
-    try {
-      this.sp.writePlugin(
-        PLUGIN_NAME,
-        "//" + JSON.stringify(doc),
-        // @ts-expect-error (TODO: Remove in 2.10.0)
-        "PluginsNoLoad"
-      );
-      s.dirty = false;
+      return { markers: Array.isArray(entry.markers) ? entry.markers : [], masks };
     } catch (err) {
-      this.writeAt = Date.now() + WRITE_DEBOUNCE_MS;
-      logError(this, err);
+      return null;
     }
   }
 }
