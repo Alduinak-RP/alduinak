@@ -31,6 +31,7 @@ interface PanelMastery {
 interface PanelLocation {
   name: string;
   kind?: string; // map marker type label, absent on older servers
+  group?: string; // Teleport section id (LOC_GROUPS), absent on older servers
 }
 
 interface PanelMode {
@@ -125,9 +126,21 @@ const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'items', label: 'Item Spawner' },
 ];
 
-// The widget remounts on every open; the tabs last picked this session survive it
+// Teleport sections in display order; a missing or unknown group lands in Other
+const LOC_GROUPS: Array<{ id: string; label: string }> = [
+  { id: 'server', label: 'Server locations' },
+  { id: 'settlements', label: 'Settlements' },
+  { id: 'forts', label: 'Forts' },
+  { id: 'temples', label: 'Temples' },
+  { id: 'other', label: 'Other' }
+];
+
+// The widget remounts on every open; the tabs and Teleport sections last opened this session survive it
 let lastTop: TopTab | null = null;
 let lastSub: AdminSub | null = null;
+let openLocGroups: string[] = [];
+
+const toggled = (list: string[], id: string): string[] => (list.indexOf(id) === -1 ? list.concat(id) : list.filter((x) => x !== id));
 
 const tabButtons = <T extends string>(tabs: Array<{ id: T; label: string }>, active: T, pick: (id: T) => void) =>
   tabs.map((t) => (
@@ -270,6 +283,9 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [search, setSearch] = useState('');
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [locSearch, setLocSearch] = useState('');
+  const [openGroups, setOpenGroups] = useState<string[]>(openLocGroups);
+  // Sections collapsed during the current search; every section with a match starts expanded
+  const [searchClosed, setSearchClosed] = useState<string[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [npcSub, setNpcSub] = useState<NpcSub>('list');
   const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('none');
@@ -355,6 +371,18 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const locFilter = locSearch.trim().toLowerCase();
   const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
+  const groupOf = (l: PanelLocation): string => (l.group && LOC_GROUPS.some((g) => g.id === l.group) ? l.group : 'other');
+  const locSections = LOC_GROUPS.map((g) => ({ ...g, rows: shownLocations.filter((l) => groupOf(l) === g.id) })).filter((g) => g.rows.length > 0);
+  const groupOpen = (id: string): boolean => (locFilter ? searchClosed.indexOf(id) === -1 : openGroups.indexOf(id) !== -1);
+
+  const toggleGroup = (id: string): void => {
+    if (locFilter) {
+      setSearchClosed(toggled(searchClosed, id));
+      return;
+    }
+    openLocGroups = toggled(openGroups, id);
+    setOpenGroups(openLocGroups);
+  };
 
   const openTop = (id: TopTab): void => {
     lastTop = id;
@@ -583,19 +611,33 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 className="admin-panel__search"
                 placeholder="Search locations"
                 value={locSearch}
-                onChange={(e) => setLocSearch(e.target.value)}
+                onChange={(e) => {
+                  setLocSearch(e.target.value);
+                  setSearchClosed([]);
+                }}
               />
             </div>
             <div className="admin-panel__list">
-              {shownLocations.length === 0 ? (
-                <div className="admin-panel__empty">No locations configured</div>
+              {locSections.length === 0 ? (
+                <div className="admin-panel__empty">{locations.length === 0 ? 'No locations configured' : 'No locations match the search'}</div>
               ) : (
-                shownLocations.map((l) => (
-                  <div key={l.name} className="admin-panel__row admin-panel__row--location">
-                    <span className="admin-panel__cell admin-panel__cell--name">{l.name}</span>
-                    {l.kind ? <span className="admin-panel__cell admin-panel__cell--kind">{l.kind}</span> : null}
-                    <Button text="Teleport" width={112} height={30} onClick={() => send(ev.tpLoc, l.name)} />
-                  </div>
+                locSections.map((g) => (
+                  <React.Fragment key={g.id}>
+                    <div className="admin-panel__row admin-panel__row--head admin-panel__row--clickable" onClick={() => toggleGroup(g.id)}>
+                      <span className="admin-panel__cell admin-panel__cell--name">
+                        {(groupOpen(g.id) ? '▾ ' : '▸ ') + g.label + ' (' + g.rows.length + ')'}
+                      </span>
+                    </div>
+                    {groupOpen(g.id)
+                      ? g.rows.map((l) => (
+                        <div key={l.name} className="admin-panel__row admin-panel__row--location">
+                          <span className="admin-panel__cell admin-panel__cell--name">{l.name}</span>
+                          {l.kind ? <span className="admin-panel__cell admin-panel__cell--kind">{l.kind}</span> : null}
+                          <Button text="Teleport" width={112} height={30} onClick={() => send(ev.tpLoc, l.name)} />
+                        </div>
+                      ))
+                      : null}
+                  </React.Fragment>
                 ))
               )}
             </div>
