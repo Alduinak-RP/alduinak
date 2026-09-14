@@ -158,6 +158,15 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("updateAnimVariablesMessage", (e) => this.onUpdateAnimVariablesMessage(e));
 
     this.controller.on("update", () => this.sweepCloneCasts());
+    // Diagnostic: whether a clone's graph took the replayed cast event
+    this.sp.hooks.sendAnimationEvent.add({
+      enter: () => { },
+      leave: (ctx) => {
+        if (this.cloneCastReport && ctx.animEventName.startsWith("BeginCast")) {
+          this.cloneCastReport.text += ` ${ctx.animEventName}=${ctx.animationSucceeded}`;
+        }
+      },
+    }, 0xff000000, 0xffffffff);
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
   }
@@ -1138,6 +1147,7 @@ export class RemoteServer extends ClientListener {
         }
         // castSpellImmediate plays no cast animation, the vanilla graph starts one on BeginCastLeft or BeginCastRight
         hands.forEach((hand) => Debug.sendAnimationEvent(ac, hand === SpellType.Left ? "BeginCastLeft" : "BeginCastRight"));
+        this.startCloneCastReport(ac, spellId, msg.data.target, hands);
       }
     });
   }
@@ -1171,12 +1181,39 @@ export class RemoteServer extends ClientListener {
     return this.sp.Spell.from(Game.getFormEx(spellId))?.getNthEffectMagicEffect(0)?.getCastingType() === this.concentrationCasting;
   }
 
+  // At most one report per 10 s, sweepCloneCasts sends it once the clone had time to react
+  private startCloneCastReport(ac: Actor, spellId: number, target: number, hands: SpellType[]): void {
+    const now = Date.now();
+    if (now - this.lastCloneCastReportAt < 10000) {
+      return;
+    }
+    this.lastCloneCastReportAt = now;
+    this.cloneCastReport = {
+      cloneId: ac.getFormID(),
+      at: now,
+      text: `clone cast diagnostic: spell ${spellId.toString(16)} on ${ac.getFormID().toString(16)} hands [${hands}]`
+        + ` target is clone ${remoteIdToLocalId(target) === ac.getFormID()}`,
+    };
+  }
+
   private sweepCloneCasts(): void {
     const now = Date.now();
     if (now - this.lastCloneCastSweep < 250) {
       return;
     }
     this.lastCloneCastSweep = now;
+    const report = this.cloneCastReport;
+    if (report && now - report.at > 500) {
+      this.cloneCastReport = undefined;
+      const clone = Actor.from(Game.getFormEx(report.cloneId));
+      const state = clone
+        ? ` held ${clone.getEquippedSpell(SpellType.Left)?.getFormID().toString(16)}/${clone.getEquippedSpell(SpellType.Right)?.getFormID().toString(16)}`
+          + ` drawn ${clone.isWeaponDrawn()} IsCastingLeft ${clone.getAnimationVariableBool("IsCastingLeft")}`
+          + ` IsCastingRight ${clone.getAnimationVariableBool("IsCastingRight")}`
+        : " clone gone";
+      // A throw from its own update reaches skyrim-platform.log, printConsole does not
+      this.controller.once("update", () => { throw new Error(report.text + state); });
+    }
     for (const [key, stoppedAt] of Array.from(this.cloneCastStoppedAt)) {
       if (now - stoppedAt > this.cloneCastStopMemoryMs) {
         this.cloneCastStoppedAt.delete(key);
@@ -1229,5 +1266,7 @@ export class RemoteServer extends ClientListener {
   private readonly cloneCastStopMemoryMs = 2000;
   private readonly concentrationCasting = 2;
   private lastCloneCastSweep = 0;
+  private cloneCastReport: { cloneId: number, at: number, text: string } | undefined = undefined;
+  private lastCloneCastReportAt = 0;
   private numSetInventory = 0;
 }
