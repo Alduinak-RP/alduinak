@@ -63,6 +63,7 @@ import {
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
 import { logTrace, logError } from '../../logging';
+import { countWorn, Equipment } from '../../sync/equipment';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
@@ -98,10 +99,34 @@ export const requestPcInventoryApply = (): void => {
 };
 
 const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
+let spawnEquipment: Equipment | undefined;
 let spawnEquipmentSettleUntil = 0;
+let spawnEquipmentRedressed = false;
+
+const applySpawnEquipment = (player: Actor, eq: Equipment, redressed: boolean): void => {
+  spawnEquipment = eq;
+  spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
+  spawnEquipmentRedressed = redressed;
+  applyEquipment(player, eq);
+};
 
 // Reports taken while the spawn apply strips and re-dresses the player read naked
-export const settleSpawnEquipment = (): boolean => Date.now() < spawnEquipmentSettleUntil;
+export const settleSpawnEquipment = (player: Actor): boolean => {
+  if (!spawnEquipment) {
+    return false;
+  }
+  if (Date.now() < spawnEquipmentSettleUntil) {
+    return true;
+  }
+  if (spawnEquipmentRedressed || countWorn(getInventory(player)) > 0 || countWorn(spawnEquipment.inv) === 0) {
+    spawnEquipment = undefined;
+    return false;
+  }
+  // The engine dropped the queued re-dress, so the saved outfit is applied once more
+  applySpawnEquipment(player, spawnEquipment, true);
+  requestPcInventoryApply();
+  return true;
+};
 
 on('update', () => {
   if (isBadMenuShown()) {
@@ -540,8 +565,7 @@ export class RemoteServer extends ClientListener {
 
     const applyPcInv = () => {
       if (msg.equipment) {
-        spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
-        applyEquipment(Game.getPlayer()!, msg.equipment)
+        applySpawnEquipment(Game.getPlayer()!, msg.equipment, false);
       }
 
       if (numSetInventory !== this.numSetInventory) {

@@ -63,6 +63,8 @@ const filterWorn = (inv: Inventory): Inventory => {
   return { entries: inv.entries.filter((x) => x.worn || x.wornLeft) };
 };
 
+export const countWorn = (inv: Inventory): number => filterWorn(inv).entries.length;
+
 const removeUnnecessaryExtra = (inv: Inventory, ignoreAmmo: boolean): Inventory => {
   return {
     entries: inv.entries.map((x) => {

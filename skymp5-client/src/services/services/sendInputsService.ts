@@ -282,7 +282,7 @@ export class SendInputsService extends ClientListener {
           return;
         }
         // A report waits out the spawn outfit apply, and one follows it even when no equip event fires
-        if (settleSpawnEquipment()) {
+        if (settleSpawnEquipment(this.sp.Game.getPlayer() as Actor)) {
             this.equipmentChanged = true;
             return;
         }
