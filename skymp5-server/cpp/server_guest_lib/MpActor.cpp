@@ -534,7 +534,8 @@ bool MpActor::OnEquip(uint32_t baseId)
     return false;
   }
 
-  if (isPotion && RefusePotionOnCooldown(lookupRes, baseId)) {
+  if ((isPotion || isIngredient) &&
+      RefusePotionOnCooldown(lookupRes, baseId)) {
     return false;
   }
 
@@ -581,13 +582,22 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
                                      uint32_t baseId)
 {
   WorldState* worldState = GetParent();
-  const auto data = espm::Convert<espm::ALCH>(lookupRes.rec)
-                      ->GetData(worldState->GetEspmCache());
-  if (data.isPoison) {
-    return false;
+  auto& cache = worldState->GetEspmCache();
+  // Ingredients are eaten raw, so they share the food window
+  bool isFood = true;
+  std::vector<espm::Effects::Effect> effects;
+  if (auto ingredient = espm::Convert<espm::INGR>(lookupRes.rec)) {
+    effects = ingredient->GetData(cache).effects;
+  } else {
+    auto data = espm::Convert<espm::ALCH>(lookupRes.rec)->GetData(cache);
+    if (data.isPoison) {
+      return false;
+    }
+    isFood = data.isFood;
+    effects = std::move(data.effects);
   }
 
-  auto& cooldown = data.isFood ? pImpl->foodCooldown : pImpl->potionCooldown;
+  auto& cooldown = isFood ? pImpl->foodCooldown : pImpl->potionCooldown;
   const auto now = std::chrono::steady_clock::now();
   if (!cooldown.start || now - *cooldown.start >= kConsumeCooldown) {
     cooldown.start = now;
@@ -597,7 +607,7 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
 
   // Undo the local gain without an echo window, which would freeze values
   std::vector<espm::ActorValue> restoredValues;
-  for (const auto& effect : data.effects) {
+  for (const auto& effect : effects) {
     const espm::ActorValue av =
       espm::GetData<espm::MGEF>(effect.effectId, worldState).data.primaryAV;
     const bool isValue = av == espm::ActorValue::Health ||
@@ -622,7 +632,7 @@ bool MpActor::RefusePotionOnCooldown(const espm::LookupResult& lookupRes,
                     { "baseId", baseId },
                     { "acceptedBaseId", cooldown.baseId },
                     { "acceptedSecondsAgo", acceptedAgo.count() },
-                    { "isFood", data.isFood } }
+                    { "isFood", isFood } }
       .dump();
   SendToUser(message, true);
   return true;
