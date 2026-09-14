@@ -489,12 +489,16 @@ TEST_CASE("Healing Hands heals the actor its hits land on, not the caster",
     p.Tick();
   };
 
+  // Each heal is measured from the health just before it, a hit recomputes health too
+  constexpr float kMinHeal = 0.02f;
+
   // The cast names the caster as its target, the hit names the healed actor
   DoMessage(p, 0, MakeSpellCastMessage(kHealingHands, false));
   p.GetActionListener().OnHit(casterMsgData, hit);
+  const float beforeTick = health(target);
   tickAfter(1050ms);
   const float healed = health(target);
-  REQUIRE(healed > 0.5f);
+  REQUIRE(healed > beforeTick + kMinHeal);
   REQUIRE(health(caster) == 0.5f);
 
   // No hit within the timeout, so the next tick heals nobody
@@ -504,9 +508,10 @@ TEST_CASE("Healing Hands heals the actor its hits land on, not the caster",
 
   // A stop heals the part of a second since the last tick
   p.GetActionListener().OnHit(casterMsgData, hit);
+  const float beforeStop = health(target);
   std::this_thread::sleep_for(300ms);
   DoMessage(p, 0, MakeSpellCastMessage(kHealingHands, true));
-  REQUIRE(health(target) > healed);
+  REQUIRE(health(target) > beforeStop);
   REQUIRE(health(caster) == 0.5f);
 
   // Self concentration still heals the caster
@@ -514,7 +519,7 @@ TEST_CASE("Healing Hands heals the actor its hits land on, not the caster",
   caster.SetEquipment(casterEquipment);
   DoMessage(p, 0, MakeSpellCastMessage(kHealing, false));
   tickAfter(1050ms);
-  REQUIRE(health(caster) > 0.5f);
+  REQUIRE(health(caster) > 0.5f + kMinHeal);
   DoMessage(p, 0, MakeSpellCastMessage(kHealing, true));
 
   p.DestroyActor(kCaster);
