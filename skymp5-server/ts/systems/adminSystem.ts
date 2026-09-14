@@ -15,7 +15,7 @@ type Mp = any;
 // Admins resolve to a tier (senior | developer | gm) via adminRoles.ts from "adminRoles", the legacy "adminRoleIds" and "adminProfileIds".
 // Every tier gets the Admin tab of the Personal Menu (client AdminMenuService, interact key X on nothing).
 // Nobody gets console commands: consoleCommandsAllowed is cleared on every assign and enableConsoleCommandsForAll must stay off.
-// The gamemode's isAdminActor asks globalThis.__alduinakIsAdmin, since the console flag no longer marks admins.
+// The gamemode's isAdminActor asks globalThis.__alduinakIsAdmin.
 // Each request needs the tier cap REQUEST_CAP names (TIER_CAPS, overridable per tier by adminTierCaps); refusals are enforced here, never in the client.
 // Bans post to the backend (master key + auth token), which snapshots discordId/hwid/ip into bans.json; connection-check then refuses the player permanently.
 //
@@ -124,7 +124,7 @@ export class AdminSystem implements System {
     (globalThis as any).__alduinakIsAdmin = (actorId: number) => this.isAdminActor(ctx.svr as Mp, actorId);
     if (all?.["enableConsoleCommandsForAll"] === true) this.log("AdminSystem: enableConsoleCommandsForAll is on, so every player can run console commands; turn it off");
 
-    // A saved console flag from before the console was disabled is cleared; admin modes follow the admin check
+    // Server console commands stay off for every character; admin modes follow the admin check
     ctx.gm.on("userAssignActor", (userId: number) => {
       const mp = ctx.svr as Mp;
       try {
