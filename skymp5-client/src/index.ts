@@ -54,8 +54,6 @@ import { SearchService } from "./services/services/searchService";
 import { VoiceService } from "./services/services/voiceService";
 import { AdminMenuService } from "./services/services/adminMenuService";
 import { AdminModeService } from "./services/services/adminModeService";
-// U-key personal menu disabled for now, features not needed yet
-// import { PersonalMenuService } from "./services/services/personalMenuService";
 import { ChatService } from "./services/services/chatService";
 import { FactionService } from "./services/services/factionService";
 import { TradeService } from "./services/services/tradeService";
