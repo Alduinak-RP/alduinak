@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
 import MasteryMenu, { MasteryData } from '../masteryMenu';
+import ItemSpawner, { ItemResults } from './itemSpawner';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -90,6 +91,7 @@ export interface AdminPanelData {
   mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
   npcPos?: { id: string; pos: number[]; at: number } | null; // the admin's server-side location for the Add form
   skills?: Omit<MasteryData, 'events'> | null; // the player's own masteryMenu payload
+  items?: ItemResults | null; // the latest adminItems reply
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -104,7 +106,7 @@ const send = (key: string, ...args: unknown[]): void => {
 };
 
 type TopTab = 'admin' | 'faction' | 'skills' | 'debug';
-type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs';
+type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items';
 
 // Admin shows only to confirmed staff; the other three are open to every player
 const TOP_TABS: Array<{ id: TopTab; label: string }> = [
@@ -114,12 +116,13 @@ const TOP_TABS: Array<{ id: TopTab; label: string }> = [
   { id: 'debug', label: 'Debug' },
 ];
 
-// Each sub-tab needs its server-sent cap
+// Each sub-tab needs its server-sent cap; Item Spawner needs it explicitly true
 const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'players', label: 'Players' },
   { id: 'teleport', label: 'Teleport' },
   { id: 'modes', label: 'Modes' },
   { id: 'npcs', label: 'NPCs' },
+  { id: 'items', label: 'Item Spawner' },
 ];
 
 // The widget remounts on every open; the tabs last picked this session survive it
@@ -273,10 +276,11 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
   const [now, setNow] = useState(Date.now());
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const ev = data.events || {};
   const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
-  const subVisible = (id: AdminSub): boolean => caps[id] !== false;
+  const subVisible = (id: AdminSub): boolean => (id === 'items' ? caps.items === true : caps[id] !== false);
   const shownSubs = ADMIN_SUBS.filter((t) => subVisible(t.id));
   const adminVisible = !!data.admin && shownSubs.length > 0;
   const shownTops = TOP_TABS.filter((t) => t.id !== 'admin' || adminVisible);
@@ -318,7 +322,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const refresh = (): void => {
     if (topTab === 'debug' && ev.debugRefresh) send(ev.debugRefresh);
-    if (topTab === 'admin') send(ev.refresh);
+    if (topTab === 'admin') {
+      send(ev.refresh);
+      setRefreshKey((k) => k + 1);
+    }
     if (topTab === 'skills' && ev.skills) send(ev.skills);
   };
 
@@ -606,6 +613,17 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               </button>
             ))}
           </div>
+        ) : null}
+
+        {view === 'items' ? (
+          <ItemSpawner
+            items={data.items || null}
+            ev={ev}
+            send={send}
+            selfActorId={debug ? debug.actorId : ''}
+            selected={actionsEnabled && selectedPlayer && selectedPlayer.a ? { a: selectedPlayer.a, n: selectedPlayer.n } : null}
+            refreshKey={refreshKey}
+          />
         ) : null}
 
         {view === 'npcs' ? (

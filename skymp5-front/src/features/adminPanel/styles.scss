@@ -1,4 +1,4 @@
-// Tabbed admin panel: Debug read-outs / Players roster / Teleport locations / Mode toggles / NPC zones. Trade-window chrome.
+// Personal Menu: Admin (Players, Teleport, Modes, NPCs, Item Spawner), Faction, Skills and Debug tabs. Trade-window chrome.
 
 $admin-gold: #c8b48a;
 $admin-gold-dim: #8a7a55;
@@ -464,6 +464,41 @@ $admin-row-gutter: 16px;
       background: rgba(64, 54, 30, 0.6);
       box-shadow: 0 0 10px rgba(200, 180, 138, 0.55), inset 0 0 14px rgba(200, 180, 138, 0.18);
     }
+  }
+
+  // Item Spawner: type chips, extra list columns and the spawn bar
+  &__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  &__mode--chip {
+    font-size: 14px;
+    padding: 3px 10px;
+  }
+
+  &__cell--edid { flex: 1 1 150px; }
+  &__cell--desc { flex: 0 0 170px; }
+
+  &__spawn {
+    align-items: center;
+  }
+
+  &__spawn-item {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+  }
+
+  // Inside a label an input keeps its intrinsic width unless min-width is cleared
+  &__spawn-count {
+    flex: 0 0 64px;
+    min-width: 0;
+    text-align: center;
   }
 
   // Players tab: worked-hours grant strip for yourself and the selected row
