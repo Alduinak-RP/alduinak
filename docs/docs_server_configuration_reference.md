@@ -264,10 +264,12 @@ boot.
 
 ## playersInheritBaseSpells
 
-`true` (default) keeps the Player record's castable spells (Flames, Healing) on
-every player character. `false` makes characters start without them; abilities
-such as the combat heal rate and every race spell stay. Read by the native
-server at boot.
+`true` (default) keeps the Player record's castable spells (Flames, Healing)
+and the race's power (Highborn, Battle Cry, Night Eye...) on every player
+character. `false` makes characters start without them; abilities such as the
+combat heal rate and racial passives stay, and spells learned in play (tomes)
+are kept. The client drops the withheld spells from its own spell lists at
+spawn and after the race menu. Read by the native server at boot.
 
 ```json5
 {

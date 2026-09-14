@@ -1010,22 +1010,30 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
       }
     }
 
-    // playersInheritBaseSpells=false drops castable Player spells (Flames, Healing), abilities and race spells stay
-    const bool skipCastable = !worldState->PlayersInheritBaseSpells() &&
+    // playersInheritBaseSpells=false keeps only passives: Player spells (Flames, Healing) and race powers are withheld
+    const bool passivesOnly = !worldState->PlayersInheritBaseSpells() &&
       ChangeForm().profileId != -1;
-    for (uint32_t spellId : spells) {
-      if (skipCastable) {
-        // SPLO may also list shouts or leveled spells, GetData would throw on those
-        const auto spell = worldState->GetEspm().GetBrowser().LookupById(spellId);
-        if (spell.rec && spell.rec->GetType() == espm::SPEL::kType) {
-          const auto spellData = espm::GetData<espm::SPEL>(spellId, worldState);
-          if (spellData.spellItem &&
-              spellData.spellItem->type == espm::SPEL::SpellType::Spell) {
-            continue;
-          }
+    auto isWithheld =
+      [&](uint32_t spellId,
+          std::initializer_list<espm::SPEL::SpellType> withheldTypes) {
+        if (!passivesOnly) {
+          return false;
         }
+        // SPLO may also list shouts or leveled spells, GetData would throw on those
+        const auto spell = browser.LookupById(spellId);
+        if (!spell.rec || spell.rec->GetType() != espm::SPEL::kType) {
+          return false;
+        }
+        const auto spellData = espm::GetData<espm::SPEL>(spellId, worldState);
+        return spellData.spellItem &&
+          std::find(withheldTypes.begin(), withheldTypes.end(),
+                    spellData.spellItem->type) != withheldTypes.end();
+      };
+
+    for (uint32_t spellId : spells) {
+      if (!isWithheld(spellId, { espm::SPEL::SpellType::Spell })) {
+        result.push_back(spellId);
       }
-      result.push_back(spellId);
     }
 
     // Players carry their chosen race in appearance, not in the NPC_ record
@@ -1040,7 +1048,12 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
     const auto race = worldState->GetEspm().GetBrowser().LookupById(raceId);
 
     for (auto raceSpellRaw : raceData.spells) {
-      result.push_back(race.ToGlobalId(raceSpellRaw));
+      const uint32_t spellId = race.ToGlobalId(raceSpellRaw);
+      if (!isWithheld(spellId,
+                      { espm::SPEL::SpellType::Power,
+                        espm::SPEL::SpellType::LesserPower })) {
+        result.push_back(spellId);
+      }
     }
   } catch (std::exception& e) {
     spdlog::warn("MpActor::GetBaseSpells {:x} - {}", GetFormId(), e.what());
