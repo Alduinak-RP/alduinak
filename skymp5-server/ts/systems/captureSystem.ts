@@ -27,7 +27,7 @@ type Mp = any;
 //     { customPacketType: "captureRequest",  target: <actorFormId> }
 //     { customPacketType: "carryRequest",    target: <actorFormId> }
 //     { customPacketType: "putdownRequest",  target: <actorFormId> }   // stop carrying, keep any binding (older clients' Put down)
-//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // one step per press: set a carried captive down, else free their binds
+//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // one step per press: set a carried captive down, else free their binds (captor or last carrier)
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
 //     { customPacketType: "playerMenuRequest", target: <actorFormId> }  // the player menu opened on target
 //   Server -> Client:
@@ -89,6 +89,7 @@ interface RestraintInfo {
   carried: boolean;
   captorActorId: number; // who applied it: release authority + disconnect cleanup
   offlineCarrierActorId?: number; // who was carrying them when they logged out
+  lastCarrierActorId?: number; // who carried them last in this restraint: may free the binds until they disconnect
   addedShackle?: boolean; // a pair was moved captor -> captive, remove it on release
 }
 
@@ -285,10 +286,12 @@ export class CaptureSystem implements System {
         own.offlineCarrierActorId = carrier;
       }
     }
-    // Release anyone they had captured.
+    // Release anyone they had captured; a carrier leaving loses the right to free
     for (const [tid, info] of Array.from(this.restraints)) {
       if (info.captorActorId === actorId) {
         this.releaseTarget(ctx, tid);
+      } else if (info.lastCarrierActorId === actorId) {
+        info.lastCarrierActorId = undefined;
       }
     }
     // Their own restraint record is intentionally KEPT: relogging must not be an escape; onActorAssigned re-applies or cleans up on reconnect
@@ -422,7 +425,7 @@ export class CaptureSystem implements System {
     }
     const step = this.releaseStep(requesterActorId, targetActorId);
     if (!step) {
-      this.notice(ctx, userId, "Only their captor can release them.");
+      this.notice(ctx, userId, "Only their captor or carrier can release them.");
       return;
     }
     if (step === "putdown") {
@@ -450,14 +453,15 @@ export class CaptureSystem implements System {
     } catch { /* user gone */ }
   }
 
-  // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press; null when not theirs to release
+  // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release
   private releaseStep(requesterActorId: number, targetActorId: number): "putdown" | "release" | null {
-    const isCaptor = this.restraints.get(targetActorId)?.captorActorId === requesterActorId;
+    const info = this.restraints.get(targetActorId);
+    const isCaptor = info?.captorActorId === requesterActorId;
     const carrier = this.carriedBy.get(targetActorId);
     if (carrier !== undefined) {
       return carrier === requesterActorId || isCaptor ? "putdown" : null;
     }
-    return isCaptor ? "release" : null;
+    return isCaptor || info?.lastCarrierActorId === requesterActorId ? "release" : null;
   }
 
   private onConsentResult(ctx: SystemContext, userId: number, content: Content): void {
@@ -593,6 +597,7 @@ export class CaptureSystem implements System {
     const info = this.restraints.get(targetActorId)
       ?? { boundHands: false, carried: false, captorActorId: carrierActorId };
     info.carried = true;
+    info.lastCarrierActorId = carrierActorId;
     this.restraints.set(targetActorId, info);
     this.carrying.set(carrierActorId, targetActorId);
     this.carriedBy.set(targetActorId, carrierActorId);
