@@ -60,6 +60,8 @@ export class HostingSystem implements System {
   // Per NPC: the hoster the audit last saw or set, to spot claims clients made in between
   private lastHoster = new Map<number, number>();
   private silent = new Map<number, Silent>();
+  // Per NPC: its hoster when a host attempt found that hoster paused, since it may resume before the audit sees the claim
+  private pausedHost = new Map<number, number>();
   private hostRange = DEFAULT_HOST_RANGE;
   private aggroMs = DEFAULT_AGGRO_SEC * 1000;
   private supported = false;
@@ -147,6 +149,7 @@ export class HostingSystem implements System {
   // A managed NPC only goes to a live client the server streams it to; every other NPC stays first come
   private mayHost(requesterId: number, npcId: number): boolean {
     if (!this.hostables.has(npcId)) return true;
+    this.noteAttempt(npcId);
     let ids: unknown[] = [];
     try {
       ids = this.mp.get(npcId, "actorNeighbors") ?? [];
@@ -226,14 +229,29 @@ export class HostingSystem implements System {
     return { hoster: best.id, reason: "nearest" };
   }
 
-  // A host change the audit did not make is a client's claim: it gets the switch cooldown, and a live host it replaced had not run the NPC
+  // A host change the audit did not make is a client's claim: it gets the switch cooldown, and a host live when the claim arrived had not run the NPC
   private noteClaim(npcId: number, current: number, now: number): void {
     const last = this.lastHoster.get(npcId);
     if (last === current) return;
     this.lastHoster.set(npcId, current);
+    const pausedAtClaim = this.pausedHost.get(npcId) === last;
+    this.pausedHost.delete(npcId);
     if (!current) return;
     this.switchedAt.set(npcId, now);
-    if (last && this.isLive(last)) this.silent.set(npcId, { playerId: last, until: now + SILENT_MS });
+    if (last && !pausedAtClaim && this.isLive(last)) this.silent.set(npcId, { playerId: last, until: now + SILENT_MS });
+  }
+
+  // The successful claim's own attempt is the last one seen for the host it replaces
+  private noteAttempt(npcId: number): void {
+    let hoster = 0;
+    try {
+      hoster = Number(this.mp.getHoster(npcId)) >>> 0;
+    } catch {
+      return;
+    }
+    if (!hoster) return;
+    if (!this.isLive(hoster)) this.pausedHost.set(npcId, hoster);
+    else if (this.pausedHost.get(npcId) === hoster) this.pausedHost.delete(npcId);
   }
 
   // Without getMovementAgeMs everyone counts as live and a lost claim is the only sign of a paused host
@@ -293,7 +311,7 @@ export class HostingSystem implements System {
       for (const h of list) if (h && h.id) next.set(h.id >>> 0, h);
     }
     this.hostables = next;
-    for (const map of [this.aggro, this.switchedAt, this.lastHoster, this.silent] as Map<number, unknown>[]) {
+    for (const map of [this.aggro, this.switchedAt, this.lastHoster, this.silent, this.pausedHost] as Map<number, unknown>[]) {
       for (const id of Array.from(map.keys())) if (!next.has(id)) map.delete(id);
     }
   }
