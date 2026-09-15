@@ -168,8 +168,8 @@ const ZONE_FILTERS: Array<{ id: ZoneFilter; label: string }> = [
   { id: 'none', label: 'None' },
 ];
 
-// Field names follow NPC-Spawns.json; the server applies its own defaults to a blank Size, Despawn or Respawn.
-const EMPTY_ZONE_FORM = { name: '', id: '', x: '', y: '', z: '', size: '2000', npc: '', despawn: '120', respawn: '1800' };
+// Field names follow NPC-Spawns.json; the server applies its own defaults to a blank Size, Spread, Despawn or Respawn.
+const EMPTY_ZONE_FORM = { name: '', id: '', x: '', y: '', z: '', size: '2000', spread: '', npc: '', despawn: '120', respawn: '1800' };
 type ZoneForm = typeof EMPTY_ZONE_FORM;
 
 const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: string }> = [
@@ -179,6 +179,7 @@ const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: stri
   { key: 'y', label: 'Y', placeholder: '-29429' },
   { key: 'z', label: 'Z', placeholder: '8280' },
   { key: 'size', label: 'Size', placeholder: '2000' },
+  { key: 'spread', label: 'Spread', placeholder: '40% of Size, at most 1024' },
   { key: 'despawn', label: 'Despawn (s)', placeholder: '120' },
   { key: 'respawn', label: 'Respawn (s)', placeholder: '1800' },
 ];
@@ -420,7 +421,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const canAddZone = !!(zoneForm.name.trim() && zoneForm.id.trim() && zoneForm.npc.trim())
     && isNum(zoneForm.x) && isNum(zoneForm.y) && isNum(zoneForm.z)
-    && isBlankOrNum(zoneForm.size) && isBlankOrNum(zoneForm.despawn) && isBlankOrNum(zoneForm.respawn);
+    && isBlankOrNum(zoneForm.size) && isBlankOrNum(zoneForm.spread) && isBlankOrNum(zoneForm.despawn) && isBlankOrNum(zoneForm.respawn);
 
   const addZone = (): void => {
     if (!canAddZone) return;
@@ -429,6 +430,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       ID: zoneForm.id.trim(),
       POS: { x: Number(zoneForm.x), y: Number(zoneForm.y), z: Number(zoneForm.z) },
       Size: optionalNumber(zoneForm.size),
+      Spread: optionalNumber(zoneForm.spread),
       NPC: zoneForm.npc.split('\n').map((s) => s.trim()).filter(Boolean),
       Despawn: optionalNumber(zoneForm.despawn),
       Respawn: optionalNumber(zoneForm.respawn),
