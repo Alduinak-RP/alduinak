@@ -13,7 +13,7 @@ declare const window: any;
 // Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
 // Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs and the Item Spawner (adminAction itemSearch / itemSpawn); the Skills tab embeds the mastery menu.
+// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones and the Pets grant: adminAction petBases / petGrant) and the Item Spawner (adminAction itemSearch / itemSpawn); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -52,6 +52,8 @@ const events = {
   skillChoose: "admin::skillchoose",
   itemSearch: "admin::itemsearch",
   itemSpawn: "admin::itemspawn",
+  petBases: "admin::petbases",
+  petGrant: "admin::petgrant",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -94,7 +96,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, events };
 
 function hex(id: number): string {
   return id.toString(16);
@@ -154,6 +156,7 @@ export class AdminMenuService extends ClientListener {
     panelData.mastery = null;
     panelData.npcPos = null;
     panelData.items = null;
+    panelData.petBases = null;
     this.activeTab = "";
     this.refreshDebug();
     this.showMenu();
@@ -196,9 +199,12 @@ export class AdminMenuService extends ClientListener {
         mastery: content["mastery"] && typeof content["mastery"] === "object" ? content["mastery"] : null,
         skills: panelData.skills,
         items: panelData.items,
+        petBases: panelData.petBases,
         events,
       };
       this.pushData();
+      // The Pets sub-tab needs the grantable bases; only a server that resolves caps knows the action
+      if (panelData.caps.npcs === true) sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "petBases" });
     } else if (content["customPacketType"] === "masteryMenu") {
       if (!this.menuOpen) return;
       panelData.skills = parseMasteryMenu(content);
@@ -225,6 +231,11 @@ export class AdminMenuService extends ClientListener {
     } else if (content["customPacketType"] === "npcZones") {
       panelData.npcZones = Array.isArray(content["zones"]) ? content["zones"] : [];
       panelData.npcZonesAt = Date.now();
+      this.pushData();
+    } else if (content["customPacketType"] === "petBases") {
+      const bases = content["bases"];
+      // An empty object shows "No bases configured" instead of loading forever
+      panelData.petBases = bases && typeof bases === "object" ? bases : {};
       this.pushData();
     } else if (content["customPacketType"] === "adminPos") {
       // at lets a second press on the same spot refill a form edited in between
@@ -407,6 +418,28 @@ export class AdminMenuService extends ClientListener {
     if (kind === events.npcAdd) {
       // The front sends one NPC-Spawns.json entry as a JSON string; the server pushes npcZones after every mutation
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "npcZoneAdd", zone: typeof e.arguments[1] === "string" ? e.arguments[1] : "" });
+      return;
+    }
+    if (kind === events.petBases) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "petBases" });
+      return;
+    }
+    if (kind === events.petGrant) {
+      // The front sends {kind, base, name} as a JSON string; the reply is an adminActionResult toast
+      let grant: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(str(e.arguments[1]));
+        if (parsed && typeof parsed === "object") grant = parsed;
+      } catch {
+        // a bad payload grants nothing, the server refuses the empty kind
+      }
+      sendCustomPacket(this.controller, {
+        customPacketType: "adminAction",
+        action: "petGrant",
+        kind: str(grant["kind"]),
+        base: str(grant["base"]),
+        name: str(grant["name"]),
+      });
       return;
     }
     if (kind === events.masteryGrant || kind === events.masteryReset) {

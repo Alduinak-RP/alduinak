@@ -50,6 +50,12 @@ interface PanelNpcZone {
   readyInSec: number; // seconds until every slot may spawn, 0 = ready, -1 = never until reset
 }
 
+// One grantable pet base from the petBases packet (petSystem.ts baseList).
+interface PetBase {
+  desc: string;
+  editorId: string;
+}
+
 // Server identity from the debugInfo packet (adminMenuService.ts DebugServer).
 interface DebugServer {
   name: string;
@@ -93,6 +99,7 @@ export interface AdminPanelData {
   npcPos?: { id: string; pos: number[]; at: number } | null; // the admin's server-side location for the Add form
   skills?: Omit<MasteryData, 'events'> | null; // the player's own masteryMenu payload
   items?: ItemResults | null; // the latest adminItems reply
+  petBases?: Partial<Record<PetKind, PetBase[]>> | null; // the petBases reply, absent until it arrives
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -153,12 +160,24 @@ const tabButtons = <T extends string>(tabs: Array<{ id: T; label: string }>, act
     </button>
   ));
 
-type NpcSub = 'list' | 'add';
+type NpcSub = 'list' | 'add' | 'pets';
 
 const NPC_SUBS: Array<{ id: NpcSub; label: string }> = [
   { id: 'list', label: 'Zones' },
   { id: 'add', label: 'Add' },
+  { id: 'pets', label: 'Pets' },
 ];
+
+type PetKind = 'horse' | 'livestock' | 'dog';
+
+const PET_KINDS: Array<{ id: PetKind; label: string }> = [
+  { id: 'horse', label: 'Horse' },
+  { id: 'livestock', label: 'Livestock' },
+  { id: 'dog', label: 'Dog' },
+];
+
+// Same bound the server's cleanDisplayName applies to a pet name
+const MAX_PET_NAME = 24;
 
 type ZoneFilter = 'cooldown' | 'active' | 'none';
 
@@ -292,6 +311,9 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('none');
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
+  const [petKind, setPetKind] = useState<PetKind>('horse');
+  const [petBase, setPetBase] = useState('');
+  const [petName, setPetName] = useState('');
   const [now, setNow] = useState(Date.now());
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -438,6 +460,22 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     // The server toast reports success or the reason; the list refreshes on the npcZones push
     setZoneForm(EMPTY_ZONE_FORM);
     setNpcSub('list');
+  };
+
+  // The bases arrive with the panel; the Pets sub-tab asks again only when they never came
+  const openNpcSub = (id: NpcSub): void => {
+    setNpcSub(id);
+    if (id === 'pets' && !data.petBases && ev.petBases) send(ev.petBases);
+  };
+
+  const petBaseList: PetBase[] = (data.petBases && data.petBases[petKind]) || [];
+  // The picked base follows the kind: an unknown pick falls back to the first base
+  const petPick = petBaseList.some((b) => b.desc === petBase) ? petBase : petBaseList.length ? petBaseList[0].desc : '';
+
+  const grantPet = (): void => {
+    if (!petPick) return;
+    send(ev.petGrant, JSON.stringify({ kind: petKind, base: petPick, name: petName.trim() }));
+    setPetName('');
   };
 
   return (
@@ -679,7 +717,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 <button
                   key={t.id}
                   className={'admin-panel__tab' + (npcSub === t.id ? ' admin-panel__tab--active' : '')}
-                  onClick={() => setNpcSub(t.id)}
+                  onClick={() => openNpcSub(t.id)}
                 >
                   {t.label}
                 </button>
@@ -720,6 +758,49 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     </div>
                   ))
                 )}
+              </div>
+            ) : npcSub === 'pets' ? (
+              <div className="admin-panel__body">
+                <div className="admin-panel__form">
+                  <div className="admin-panel__field admin-panel__field--half">
+                    Kind
+                    <div className="admin-panel__filters">
+                      {PET_KINDS.map((k) => (
+                        <label key={k.id} className="admin-panel__checkbox">
+                          <input type="radio" name="pet-kind" checked={petKind === k.id} onChange={() => setPetKind(k.id)} />
+                          {k.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="admin-panel__field admin-panel__field--half">
+                    Base
+                    <div className="admin-panel__filters">
+                      {petBaseList.length === 0 ? (
+                        <span className="admin-panel__hint">{data.petBases ? 'No bases configured' : 'Loading...'}</span>
+                      ) : petBaseList.map((b) => (
+                        <label key={b.desc} className="admin-panel__checkbox">
+                          <input type="radio" name="pet-base" checked={petPick === b.desc} onChange={() => setPetBase(b.desc)} />
+                          {b.editorId}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="admin-panel__field admin-panel__field--half">
+                    Name (optional)
+                    <input
+                      className="admin-panel__input"
+                      placeholder="blank: the species name"
+                      maxLength={MAX_PET_NAME}
+                      value={petName}
+                      onChange={(e) => setPetName(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className="admin-panel__actions">
+                  <Button text="Add to my pets" width={168} height={32} disabled={!petPick} onClick={grantPet} />
+                </div>
+                <span className="admin-panel__hint">Stored for your own character; bring it out with the Pets option at a stable, farm or home door.</span>
               </div>
             ) : (
               <div className="admin-panel__body">

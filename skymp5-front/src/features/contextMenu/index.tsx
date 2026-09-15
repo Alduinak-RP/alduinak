@@ -19,6 +19,8 @@ export interface ContextMenuData {
   targetName: string;
   actions: MenuAction[];
   events: ContextMenuEvents;
+  hideTrade?: boolean;
+  tradeLabel?: string;
 }
 
 // Gap from the screen centre to the panel's top-left corner, in px.
@@ -62,7 +64,9 @@ const ContextMenu = ({ data }: { data: ContextMenuData }) => {
     <div className="context-menu">
       <div className="context-menu__panel" ref={panelRef} style={style}>
         <div className="context-menu__title">{data.targetName}</div>
-        <button className="context-menu__row" onClick={() => send(ev.trade)}>Trade</button>
+        {!data.hideTrade ? (
+          <button className="context-menu__row" onClick={() => send(ev.trade)}>{data.tradeLabel || 'Trade'}</button>
+        ) : null}
         {actions.map((a) => (
           <button key={a.id} className="context-menu__row" onClick={() => send(ev.action, a.id)}>
             {a.label}

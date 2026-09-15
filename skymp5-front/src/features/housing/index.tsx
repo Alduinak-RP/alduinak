@@ -13,6 +13,7 @@ interface HousingEvents {
   createKey: string;
   revokeKeys: string;
   grantContainer: string;
+  pets: string;
   cancel: string;
   [key: string]: string;
 }
@@ -28,6 +29,7 @@ export interface HousingData {
   hasKeys: boolean;
   canGrantContainers: boolean;
   ownerName: string | null;
+  pets?: string; // "stable" | "farm" | "house" when pets are kept at this door, else ""
   events: HousingEvents;
 }
 
@@ -138,6 +140,10 @@ const Housing = ({ data }: { data: HousingData }) => {
             <button className="housing__button" onClick={() => send(ev.grantContainer)}>
               Grant this container
             </button>
+          ) : null}
+
+          {data.pets ? (
+            <button className="housing__button" onClick={() => send(ev.pets)}>Pets</button>
           ) : null}
         </div>
 

@@ -1,0 +1,197 @@
+// Stored pets at a door, sharing the housing panel's red/black palette.
+
+$fast: 140ms ease;
+
+$panel-bg-top: rgba(8, 4, 4, 0.92);
+$panel-bg-bottom: rgba(0, 0, 0, 0.88);
+$red-border-dim: rgba(110, 30, 28, 0.55);
+$red-border-bright: rgba(200, 70, 60, 0.85);
+$red-fill: rgba(30, 8, 8, 0.75);
+$red-fill-active: rgba(80, 20, 20, 0.78);
+$red-glow: rgba(180, 30, 30, 0.4);
+$red-hairline: rgba(180, 60, 50, 0.45);
+$text-bright: #f2e6e3;
+$text-body: rgba(230, 220, 218, 0.88);
+$text-muted: rgba(210, 170, 165, 0.65);
+
+.pet-list {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 52;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
+
+  &__fade {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(10, 0, 0, 0.1), rgba(0, 0, 0, 0.55) 100%);
+  }
+
+  &__panel {
+    position: relative;
+    pointer-events: auto;
+    width: min(440px, 92vw);
+    max-height: 80vh;
+    padding: 26px 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background:
+      linear-gradient(180deg, $panel-bg-top, $panel-bg-bottom),
+      radial-gradient(circle at center 18%, rgba(120, 30, 25, 0.16), transparent 60%);
+    border: 1px solid rgba(120, 35, 30, 0.55);
+    box-shadow:
+      inset 0 0 36px rgba(0, 0, 0, 0.7),
+      0 20px 34px rgba(0, 0, 0, 0.75);
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      height: 1px;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, $red-hairline, transparent);
+    }
+
+    &::before {
+      top: 10px;
+    }
+
+    &::after {
+      bottom: 10px;
+    }
+  }
+
+  &__header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+  }
+
+  &__title {
+    margin: 0;
+    color: $text-bright;
+    font-size: clamp(20px, 2vw, 26px);
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow: 0 0 12px $red-glow;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__status {
+    color: $text-muted;
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+
+  &__empty {
+    margin: 0;
+    text-align: center;
+    color: $text-muted;
+    font-size: 14px;
+    font-style: italic;
+  }
+
+  &__rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid rgba(110, 30, 28, 0.3);
+    background: rgba(0, 0, 0, 0.35);
+
+    &--out {
+      opacity: 0.7;
+    }
+  }
+
+  &__info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__name {
+    color: $text-bright;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__kind {
+    color: $text-muted;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__button {
+    flex: 0 0 auto;
+    min-width: 96px;
+    padding: 8px 14px;
+    border: 1px solid $red-border-dim;
+    background: $red-fill;
+    color: $text-body;
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background $fast, border-color $fast, color $fast;
+
+    &:hover:not(:disabled) {
+      background: $red-fill-active;
+      border-color: $red-border-bright;
+      color: $text-bright;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    &--primary {
+      background: rgba(60, 14, 12, 0.8);
+      border-color: rgba(150, 45, 40, 0.7);
+      color: $text-bright;
+    }
+
+    &--quiet {
+      background: transparent;
+      border-color: rgba(110, 30, 28, 0.35);
+      color: $text-muted;
+    }
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: center;
+  }
+}
