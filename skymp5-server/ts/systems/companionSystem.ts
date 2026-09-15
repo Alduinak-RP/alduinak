@@ -4,6 +4,7 @@ import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./syste
 import { placeNpc, placeAtMe, NpcLocation, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, hex, baseIdOf, destroyLeftovers, destroyRef } from "./actorUtil";
+import { HostingSystem, Hostable } from "./hostingSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -104,7 +105,7 @@ const looseEntries = (inventory: any): Record<string, unknown>[] => {
 
 export class CompanionSystem implements System {
   systemName = "CompanionSystem";
-  constructor(private log: Log) { }
+  constructor(private log: Log, private hosting?: HostingSystem) { }
 
   private mp: Mp = null;
   private companions = new Map<number, Companion>();
@@ -222,10 +223,17 @@ export class CompanionSystem implements System {
       lastRetargetAt: 0,
       ownerAwaySince: 0,
     });
+    // The owner's engine drives it from the first moment instead of after the clients' 1.5 s host timer
+    this.hosting?.assign(id, ownerId, "owner");
     this.log(`CompanionSystem: ${kind} ${hex(id)} (${baseDesc}) spawned for ${hex(ownerId)}${opts.source ? ` by ${hex(opts.source)}` : ""}`);
     this.save();
     this.sendState(ownerId);
     return id;
+  }
+
+  // Every companion, for the hosting audit: only the owner may host it
+  hostables(): Hostable[] {
+    return Array.from(this.companions.values()).map((c) => ({ id: c.id, owner: c.ownerId }));
   }
 
   // A summon vanishes, a reanimated corpse dies again

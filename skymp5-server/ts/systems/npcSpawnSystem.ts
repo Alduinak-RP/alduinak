@@ -5,6 +5,7 @@ import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
 import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
+import { Hostable } from "./hostingSystem";
 import { destroyLeftovers } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -657,6 +658,11 @@ export class NpcSpawnSystem implements System {
       wait = Math.max(wait, at - now);
     }
     return Math.ceil(wait / 1000);
+  }
+
+  // Living zone NPCs, for the hosting audit
+  liveNpcs(): Hostable[] {
+    return this.zones.flatMap((z) => z.spawned.filter((e) => e.id && !e.diedAt).map((e) => ({ id: e.id })));
   }
 
   // ── Admin panel API ──────────────────────────────────────────────────────────
