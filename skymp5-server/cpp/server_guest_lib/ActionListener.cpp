@@ -416,6 +416,9 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
     MpActor* myActor = partOne.serverState.ActorByUser(rawMsgData.userId);
     if (myActor && myActor->GetIdx() == msg.idx && IsParalyzed(*myActor)) {
       if (!myActor->GetTeleportFlag()) {
+        // The client is still running, so hosting keeps counting it as live
+        partOne.worldState.SetLastMovUpdate(msg.idx,
+                                            std::chrono::system_clock::now());
         return;
       }
       paralyzedUntil.erase(myActor->GetFormId());

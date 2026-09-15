@@ -443,6 +443,7 @@ TEST_CASE("A paralysed actor cannot attack or move", "[Hit]")
   movement["data"]["pos"] = { 300.f, 0.f, 0.f };
   DoMessage(p, 1, movement);
   REQUIRE(victim.GetPos() == NiPoint3{ 0.f, 0.f, 0.f });
+  REQUIRE(p.worldState.GetLastMovUpdate(victim.GetIdx()));
 
   p.DestroyActor(kCaster);
   p.DestroyActor(kVictim);
