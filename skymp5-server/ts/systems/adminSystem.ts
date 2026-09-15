@@ -68,6 +68,9 @@ const MIRRORED_MODES = ["god", "smite", "healhit", "invis", "ghost"];
 // Modes that end on respawn and at every actor assign; the off packet makes the client undo them
 const SESSION_MODES = ["speed", "freecam"];
 
+// Teleport tab sections, the front's LOC_GROUPS ids
+const TELEPORT_GROUPS = ["cities", "villages", "forts", "temples", "other"];
+
 interface TeleportLocation {
   name: string;
   kind: string; // map marker type label, blank for settings entries without one
@@ -120,7 +123,7 @@ export class AdminSystem implements System {
     // Configured entries first, in Temples unless they set a group; a generated row never shadows a name already listed
     const configured: any[] = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
     const unlisted = (loc: TeleportLocation | null): loc is TeleportLocation => !!loc && !this.locations.some(l => l.name.toLowerCase() === loc.name.toLowerCase());
-    for (const loc of configured.map(raw => this.parseLocation(ctx.svr as Mp, raw, typeof raw?.group === "string" ? raw.group : "temples"))) {
+    for (const loc of configured.map(raw => this.parseLocation(ctx.svr as Mp, raw, this.configuredGroup(raw)))) {
       if (unlisted(loc)) this.locations.push(loc);
     }
     // A generated temple in a configured entry's cell is left out; its name becomes that entry's blank kind so the search finds both
@@ -171,6 +174,14 @@ export class AdminSystem implements System {
       this.log(`AdminSystem: bad teleport location skipped: ${e}`);
       return null;
     }
+  }
+
+  // Case-insensitive; blank means temples, and an unknown section is logged and listed under temples
+  private configuredGroup(raw: any): string {
+    const group = raw?.group == null ? "" : String(raw.group).trim().toLowerCase();
+    if (TELEPORT_GROUPS.includes(group)) return group;
+    if (group) this.log(`AdminSystem: teleport location '${raw?.name ?? "?"}' has unknown group '${raw.group}', listed under temples`);
+    return "temples";
   }
 
   private tierOf(mp: Mp, actorId: number): AdminTier | null {
