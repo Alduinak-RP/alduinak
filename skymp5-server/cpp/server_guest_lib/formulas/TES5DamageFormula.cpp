@@ -3,6 +3,7 @@
 #include "HitData.h"
 #include "MpActor.h"
 #include "SpellCastData.h"
+#include "SpellEffectUtils.h"
 #include "WorldState.h"
 #include "libespm/espm.h"
 #include <spdlog/spdlog.h>
@@ -210,29 +211,21 @@ TES5SpellDamageFormulaImpl::TES5SpellDamageFormulaImpl(
 
 float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
 {
-  const auto spellData =
-    espm::GetData<espm::SPEL>(spellCastData.spell, espmProvider);
-
   float damage = 0.f;
-
-  for (const auto& effect : spellData.effects) {
-
-    if (!effect.effectItem || effect.effectFormId == 0) {
-      continue;
-    }
-
-    auto magicEffect =
-      espm::GetData<espm::MGEF>(effect.effectFormId, espmProvider);
-
-    const bool needAddDamage =
-      magicEffect.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
-      magicEffect.data.IsFlagSet(espm::MGEF::Flags::Detrimental);
-
-    if (needAddDamage &&
-        magicEffect.data.primaryAV == espm::ActorValue::Health) {
-
-      damage += effect.effectItem->magnitude;
-    }
+  const bool isSpell = ForEachSpellEffectData(
+    espmProvider, spellCastData.spell,
+    [&](const espm::SPEL::EFIT* effectItem, const espm::MGEF::DATA& data,
+        const espm::LookupResult&) {
+      const bool needAddDamage = data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
+        data.IsFlagSet(espm::MGEF::Flags::Detrimental);
+      if (effectItem && needAddDamage &&
+          data.primaryAV == espm::ActorValue::Health) {
+        damage += effectItem->magnitude;
+      }
+    });
+  if (!isSpell) {
+    spdlog::warn("TES5SpellDamageFormula - {:#x} is not a SPEL, ignored",
+                 spellCastData.spell);
   }
   return damage;
 }
