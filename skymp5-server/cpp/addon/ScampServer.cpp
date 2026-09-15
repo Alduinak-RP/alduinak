@@ -141,6 +141,7 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("respawnActor", &ScampServer::RespawnActor),
       InstanceMethod("setHoster", &ScampServer::SetHoster),
       InstanceMethod("getHoster", &ScampServer::GetHoster),
+      InstanceMethod("getMovementAgeMs", &ScampServer::GetMovementAgeMs),
       InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
@@ -872,6 +873,32 @@ Napi::Value ScampServer::GetHoster(const Napi::CallbackInfo& info)
     auto it = hosters.find(formId);
     return Napi::Number::New(info.Env(),
                              it == hosters.end() ? 0 : it->second);
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// getMovementAgeMs(actorFormId) - ms since the actor's last movement message, -1 when none arrived or the form is unknown
+Napi::Value ScampServer::GetMovementAgeMs(const Napi::CallbackInfo& info)
+{
+  auto formId = info[0].As<Napi::Number>().Uint32Value();
+  try {
+    auto& form = partOne->worldState.LookupFormByIdNoLoad(formId);
+    MpObjectReference* refr = form ? form->AsObjectReference() : nullptr;
+    std::optional<std::chrono::system_clock::time_point> last;
+    if (refr) {
+      last = partOne->worldState.GetLastMovUpdate(refr->GetIdx());
+    }
+    if (!last) {
+      return Napi::Number::New(info.Env(), -1);
+    }
+    const int64_t ageMs =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now() - *last)
+        .count();
+    return Napi::Number::New(info.Env(),
+                             static_cast<double>(std::max<int64_t>(ageMs, 0)));
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }

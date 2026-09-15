@@ -51,6 +51,7 @@ public:
   Napi::Value RespawnActor(const Napi::CallbackInfo& info);
   Napi::Value SetHoster(const Napi::CallbackInfo& info);
   Napi::Value GetHoster(const Napi::CallbackInfo& info);
+  Napi::Value GetMovementAgeMs(const Napi::CallbackInfo& info);
   Napi::Value CreateBot(const Napi::CallbackInfo& info);
   Napi::Value GetUserByActor(const Napi::CallbackInfo& info);
   Napi::Value GetUserIp(const Napi::CallbackInfo& info);

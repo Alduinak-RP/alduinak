@@ -43,6 +43,8 @@ export interface ScampServer {
   // Moves the actor's AI to that player's client; 0 leaves it unhosted
   setHoster(actorId: number, hosterId: number): void;
   getHoster(actorId: number): number;
+  // Milliseconds since the actor's last movement message; -1 when none arrived
+  getMovementAgeMs(actorId: number): number;
   getActorsByProfileId(profileId: number): number[];
   createBot(): Bot;
   getUserByActor(formId: number): number;
