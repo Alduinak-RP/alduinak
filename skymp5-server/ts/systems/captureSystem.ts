@@ -287,12 +287,18 @@ export class CaptureSystem implements System {
         own.offlineCarrierActorId = carrier;
       }
     }
-    // Release anyone they had captured; a carrier leaving loses the right to free
+    // Release anyone they had captured; a carrier leaving loses the right to free and sets an offline captive down
     for (const [tid, info] of Array.from(this.restraints)) {
       if (info.captorActorId === actorId) {
         this.releaseTarget(ctx, tid);
-      } else if (info.lastCarrierActorId === actorId) {
+        continue;
+      }
+      if (info.lastCarrierActorId === actorId) {
         info.lastCarrierActorId = undefined;
+      }
+      if (info.offlineCarrierActorId === actorId) {
+        info.offlineCarrierActorId = undefined;
+        info.carried = false;
       }
     }
     // Their own restraint record is intentionally KEPT: relogging must not be an escape; onActorAssigned re-applies or cleans up on reconnect
