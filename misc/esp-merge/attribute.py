@@ -1356,8 +1356,7 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     rekey_map = {f'{SELF}:{loc:06X}': f'{o}:{xl:06X}' for loc, (o, xl) in at.canon.selfmap.items() if o not in ('SELF', 'BROKEN')}
     retired = sorted({e['fid'][2:] for e in E.values() if e['src'] == 'R4' and e['class'] == 'GRAVES-REMOVED'} | set(renum) |
                      {e['fid'][2:] for e in E.values() if e.get('subtype') == 'MASTER-RENUMBERED'})
-    ren_cells_r4 = sorted(k for k, v in renum.items() if any(e['type'] == 'CELL' and e['fid'][2:] == v for e in E.values() if e['src'] == 'NEW'))
-    changeform_query = {'worldOrCellDesc': [f'{int(x, 16):x}:{SELF}' for x in ren_cells_r4],
+    changeform_query = {'worldOrCellDesc': [f'{x:x}:{SELF}' for x in sorted(ren_cells)],
                         'formDesc': [f'{int(x, 16):x}:{SELF}' for x in retired + [f'{PLAN["broken"] & 0xFFFFFF:06X}']]}
     owner_review = [f'{e["fid"]} {e.get("edid", "")}: {e.get("note", "")}' for e in ents if e.get('subtype') == 'DOUBLED']
     mod_masters = sorted({e['master'] for e in E.values() if e['src'] == 'NEW' and e.get('master')} - set(r4.m) - set(new.m))
