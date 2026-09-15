@@ -12,7 +12,7 @@ type Mp = any;
 // Consent-gated search of another player's inventory via the VANILLA container window: on accept the server marks the searcher as the target's inventory occupant (setInventoryOccupant native), which authorizes the engine's PutItem/TakeItem, and tells the searcher's client to open the target's inventory.
 // Item moves ride the normal server-validated container-sync path; if the pair separates, the session ends and the client closes the window.
 // Dead bodies (players or spawned NPCs) open at once without consent; the searcher may take and put items like vanilla looting.
-// A restrained (bound or carried) player is searched without consent too, and cannot search anyone; startSession tells them who is searching.
+// A restrained (bound or carried) player is searched without consent too, and cannot search anyone; startSession tells them who is searching, and such a search ends once they are freed.
 // A dead player's body gives up a limited number of distinct items (a stack counts once); the take that reaches the limit closes the window and respawns the player, which removes the body.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
@@ -51,6 +51,8 @@ interface SearchSession {
   searcherActorId: number;
   targetActorId: number;
   body: boolean;
+  // Started without consent because the target was restrained
+  auto: boolean;
 }
 
 export class SearchSystem implements System {
@@ -156,6 +158,10 @@ export class SearchSystem implements System {
         this.endSession(ctx, s, "The body is gone.");
         continue;
       }
+      if (s.auto && !isRestrained(ctx.svr, s.targetActorId)) {
+        this.endSession(ctx, s, "They are no longer restrained.");
+        continue;
+      }
       if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, this.keepMaxDistance)) {
         this.endSession(ctx, s, "They moved away.");
       }
@@ -231,7 +237,7 @@ export class SearchSystem implements System {
     const body = this.isDead(ctx, targetActorId);
     // Bodies and restrained players are searched without a prompt
     if (body || isRestrained(ctx.svr, targetActorId)) {
-      this.startSession(ctx, searcherActorId, targetActorId, body);
+      this.startSession(ctx, searcherActorId, targetActorId, body, !body);
       return;
     }
     const now = Date.now();
@@ -313,7 +319,7 @@ export class SearchSystem implements System {
     }
   }
 
-  private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): void {
+  private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean, auto = false): void {
     const searcherUser = this.userOf(ctx, searcherActorId);
     const taken = body ? this.bodyTakesOf(ctx, targetActorId) : undefined;
     if (taken && taken.size >= this.playerBodyTakeLimit) {
@@ -324,7 +330,7 @@ export class SearchSystem implements System {
       this.notice(ctx, searcherUser, "The search could not start.");
       return;
     }
-    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body });
+    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, auto });
     this.searching.set(searcherActorId, targetActorId);
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
