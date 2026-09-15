@@ -1,7 +1,7 @@
 # Rotates the skympuser MongoDB password and updates the live server-settings.json.
 #
 # setup-mongodb.ps1 creates only skympuser (readWrite + dbAdmin on skymp). That
-# account cannot change its own password, so with no admin user the rotation
+# account cannot change its own password, so without -AdminPassword the rotation
 # needs a brief auth-disabled window. The script restores authorization and
 # restarts the service even if a step fails.
 #
@@ -9,14 +9,17 @@
 #   powershell -ExecutionPolicy Bypass -File deploy\mongodb\rotate-password.ps1 -NewPassword '<password>'
 #
 # Optional: -CreateAdmin '<adminPassword>' also creates a root user
-# (alduinakAdmin) so later rotations need no downtime at all.
+# (alduinakAdmin) in that window. Later rotations that pass
+# -AdminPassword '<adminPassword>' log in as it and need no downtime at all.
 
 param(
   [Parameter(Mandatory = $true)][string]$NewPassword,
   [string]$CreateAdmin = '',
+  [string]$AdminPassword = '',
+  [string]$AdminUser = 'alduinakAdmin',
   [string]$User = 'skympuser',
-  [string]$MongoCfg = 'C:\Program Files\MongoDB\Server\8.0\bin\mongod.cfg',
-  [string]$ServiceName = 'MongoDB',
+  [string]$MongoCfg = 'C:\Users\Administrator\Desktop\alduinak\deploy\mongodb\mongod.cfg',
+  [string]$ServiceName = 'AlduinakMongo',
   [string]$Settings = 'C:\Users\Administrator\Desktop\alduinak\build\dist\server\server-settings.json'
 )
 
@@ -24,7 +27,7 @@ $ErrorActionPreference = 'Stop'
 
 function Get-Mongosh {
   $candidates = @(
-    'X:\Program Files\mongosh\mongosh.exe',
+    "$env:LOCALAPPDATA\Programs\mongosh\mongosh.exe",
     'C:\Program Files\mongosh\mongosh.exe'
   )
   foreach ($c in $candidates) { if (Test-Path $c) { return $c } }
@@ -34,7 +37,9 @@ function Get-Mongosh {
 }
 
 function Invoke-Mongo($uri, $js) {
-  $out = & $mongosh $uri --quiet --eval $js 2>&1
+  foreach ($k in $secrets.Keys) { Set-Item "Env:$k" $secrets[$k] }
+  try { $out = & $mongosh $uri --quiet --eval $js 2>&1 }
+  finally { foreach ($k in $secrets.Keys) { Remove-Item "Env:$k" -ErrorAction SilentlyContinue } }
   if ($LASTEXITCODE -ne 0) { throw "mongosh failed: $out" }
   return ($out | Out-String).Trim()
 }
@@ -42,21 +47,24 @@ function Invoke-Mongo($uri, $js) {
 $mongosh = Get-Mongosh
 Write-Host "[rotate] mongosh: $mongosh"
 
-# JSON string escape so quotes or backslashes in the password cannot break the eval
-$pwJs = ($NewPassword | ConvertTo-Json)
+# Passwords reach mongosh as env vars, off its command line, where PowerShell 5.1 would strip JS string quotes
+$secrets = @{
+  ALDUINAK_MONGO_PWD = $NewPassword
+  ALDUINAK_MONGO_ADMIN_PWD = $AdminPassword
+  ALDUINAK_MONGO_NEW_ADMIN_PWD = $CreateAdmin
+}
 
-$updateJs = "db.getSiblingDB('admin').updateUser('$User', { pwd: $pwJs }); print('UPDATED');"
+$updateJs = "db.getSiblingDB('admin').updateUser('$User', { pwd: process.env.ALDUINAK_MONGO_PWD }); print('UPDATED');"
 $rotated = $false
 
-# Fast path: works when an admin account exists or changeOwnPassword was granted
-try {
-  $settingsJson = Get-Content $Settings -Raw | ConvertFrom-Json
-  $currentUri = $settingsJson.databaseUri
-  Write-Host '[rotate] trying rotation with the current credentials'
-  $res = Invoke-Mongo $currentUri $updateJs
-  if ($res -match 'UPDATED') { $rotated = $true; Write-Host '[rotate] rotated without downtime' }
-} catch {
-  Write-Host "[rotate] authenticated rotation not permitted: $($_.Exception.Message)"
+# Fast path: log in as the admin user and rotate without restarting MongoDB
+if ($AdminPassword) {
+  if ($CreateAdmin) { throw '-CreateAdmin needs the auth-disabled window, run it without -AdminPassword' }
+  Write-Host "[rotate] rotating as $AdminUser"
+  $res = Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' "db.getSiblingDB('admin').auth('$AdminUser', process.env.ALDUINAK_MONGO_ADMIN_PWD); $updateJs"
+  if ($res -notmatch 'UPDATED') { throw "updateUser did not confirm: $res" }
+  $rotated = $true
+  Write-Host '[rotate] rotated without downtime'
 }
 
 if (-not $rotated) {
@@ -68,20 +76,19 @@ if (-not $rotated) {
   try {
     # Disable auth, restart, rotate on the localhost connection
     ($original -replace 'authorization:\s*enabled', 'authorization: disabled') |
-      Set-Content $MongoCfg -Encoding ascii
+      Set-Content $MongoCfg -Encoding ascii -NoNewline
     Restart-Service $ServiceName
     Start-Sleep -Seconds 3
     $res = Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' $updateJs
     if ($res -notmatch 'UPDATED') { throw "updateUser did not confirm: $res" }
     if ($CreateAdmin) {
-      $adminPwJs = ($CreateAdmin | ConvertTo-Json)
-      $adminJs = "try { db.getSiblingDB('admin').createUser({ user: 'alduinakAdmin', pwd: $adminPwJs, roles: [ { role: 'root', db: 'admin' } ] }); print('ADMIN_CREATED'); } catch (e) { print('ADMIN_SKIPPED: ' + e.message); }"
+      $adminJs = "try { db.getSiblingDB('admin').createUser({ user: '$AdminUser', pwd: process.env.ALDUINAK_MONGO_NEW_ADMIN_PWD, roles: [ { role: 'root', db: 'admin' } ] }); print('ADMIN_CREATED'); } catch (e) { print('ADMIN_SKIPPED: ' + e.message); }"
       Write-Host ('[rotate] ' + (Invoke-Mongo 'mongodb://127.0.0.1:27017/admin' $adminJs))
     }
     $rotated = $true
   } finally {
     # Always restore authorization, even if the rotation threw
-    Set-Content $MongoCfg -Value $original -Encoding ascii
+    Set-Content $MongoCfg -Value $original -Encoding ascii -NoNewline
     Restart-Service $ServiceName
     Start-Sleep -Seconds 3
     Write-Host '[rotate] authorization restored and service restarted'

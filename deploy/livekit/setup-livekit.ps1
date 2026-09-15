@@ -1,6 +1,6 @@
 <#
   Alduinak LiveKit media-server setup. RUN THIS YOURSELF, elevated.
-  Deploys the LiveKit server binary (reusing X:\Downloads if present),
+  Deploys the LiveKit server binary (reusing <repo>\livekit if present),
   generates API keys into livekit.yaml, registers a Windows service, and
   opens the firewall ports. Safe to re-run: keys are only generated once.
 
@@ -17,7 +17,7 @@
 #>
 param(
   [string] $Version = "1.13.4",
-  [string] $Root = "X:\Alduinak\livekit"
+  [string] $Root = "C:\Alduinak\livekit"
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,17 +27,18 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $cfgSrc = Join-Path $PSScriptRoot "livekit.yaml"
 $cfgDst = Join-Path $Root "livekit.yaml"
+$reuseDir = Join-Path $repoRoot "livekit"
 
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 
-# 1. Get the LiveKit server binary: reuse an already-downloaded copy from
-#    X:\Downloads if present, otherwise download the release zip. Verify the
+# 1. Get the LiveKit server binary: reuse the gitignored copy in <repo>\livekit
+#    if present, otherwise download the release zip. Verify the
 #    latest at https://github.com/livekit/livekit/releases if the URL 404s.
 $exe = Join-Path $Root "livekit-server.exe"
 if (-not (Test-Path $exe)) {
-  if (Test-Path "X:\Downloads\livekit-server.exe") {
-    Write-Host "[livekit] using existing X:\Downloads\livekit-server.exe"
-    Copy-Item "X:\Downloads\livekit-server.exe" $exe
+  if (Test-Path "$reuseDir\livekit-server.exe") {
+    Write-Host "[livekit] using existing $reuseDir\livekit-server.exe"
+    Copy-Item "$reuseDir\livekit-server.exe" $exe
   } else {
     $zip = "$env:TEMP\livekit_$Version.zip"
     $url = "https://github.com/livekit/livekit/releases/download/v$Version/livekit_${Version}_windows_amd64.zip"
@@ -50,9 +51,9 @@ if (-not (Test-Path $exe)) {
     }
   }
 }
-# lk.exe (LiveKit CLI, token generation) rides along if it was downloaded too.
-if ((Test-Path "X:\Downloads\lk.exe") -and -not (Test-Path (Join-Path $Root "lk.exe"))) {
-  Copy-Item "X:\Downloads\lk.exe" (Join-Path $Root "lk.exe")
+# lk.exe (LiveKit CLI, token generation) rides along if <repo>\livekit has it too.
+if ((Test-Path "$reuseDir\lk.exe") -and -not (Test-Path (Join-Path $Root "lk.exe"))) {
+  Copy-Item "$reuseDir\lk.exe" (Join-Path $Root "lk.exe")
 }
 
 # 2. Generate API keys once and write them into a copy of the config.

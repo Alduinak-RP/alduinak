@@ -1,14 +1,14 @@
 <#
-  Alduinak MongoDB finish-setup for the box as it stands (2026-07-27):
-  MongoDB 8.0 was installed via the MSI with its bundled "MongoDB" service,
-  config at C:\Program Files\MongoDB\Server\8.0\bin\mongod.cfg, and data/log
-  already on X: (X:\Program Files\MongoDB\Server\8.0\...). Auth is OFF and no
-  app user exists yet. RUN THIS YOURSELF in an elevated PowerShell.
+  Alduinak MongoDB finish-setup: migrates the file-driver world into the
+  AlduinakMongo service that deploy\mongodb\setup-mongodb.ps1 registers
+  (config deploy\mongodb\mongod.cfg, data/log under C:\Alduinak\mongodb).
+  RUN THIS YOURSELF in an elevated PowerShell.
 
   Stage 1 (default) does, in order:
-    1. Backs up build\dist\server\world to X:\Alduinak\backups.
-    2. Creates the skympuser app user (while auth is still off).
-    3. Enables authorization in the service's mongod.cfg and restarts MongoDB.
+    1. Backs up build\dist\server\world to C:\Alduinak\backups.
+    2. Creates the skympuser app user while auth is still off (with auth
+       already on, as setup-mongodb.ps1 leaves it, step 4 checks the user).
+    3. Enables authorization in mongod.cfg if needed and restarts AlduinakMongo.
     4. Verifies authenticated login works.
     5. Patches server-settings.json with the MIGRATION driver block.
   Then: start AlduinakGameServer once. It migrates file->mongo and exits.
@@ -17,17 +17,18 @@
   flips server-settings.json to the plain mongodb driver. Then start the
   game service normally.
 
-  Requires mongosh (not installed by the server MSI):
+  Requires mongosh (setup-mongodb.ps1 installs it):
     https://downloads.mongodb.com/compass/mongosh-2.9.2-x64.msi
 
   Usage (elevated):
-    powershell -ExecutionPolicy Bypass -File deploy\mongodb\finish-mongodb-x.ps1 -Password "YourStrongPassword"
-    powershell -ExecutionPolicy Bypass -File deploy\mongodb\finish-mongodb-x.ps1 -Password "YourStrongPassword" -Finalize
+    powershell -ExecutionPolicy Bypass -File deploy\mongodb\finish-mongodb.ps1 -Password "YourStrongPassword"
+    powershell -ExecutionPolicy Bypass -File deploy\mongodb\finish-mongodb.ps1 -Password "YourStrongPassword" -Finalize
 #>
 param(
   [Parameter(Mandatory = $true)] [string] $Password,
   [string] $User = "skympuser",
-  [string] $MongoCfg = "C:\Program Files\MongoDB\Server\8.0\bin\mongod.cfg",
+  [string] $MongoCfg = (Join-Path $PSScriptRoot "mongod.cfg"),
+  [string] $ServiceName = "AlduinakMongo",
   [switch] $Finalize
 )
 
@@ -42,15 +43,15 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 $mongosh = (Get-Command mongosh -ErrorAction SilentlyContinue).Source
 if (-not $mongosh) {
-  $found = Get-ChildItem "C:\Program Files\mongosh*\mongosh.exe", "C:\Program Files\MongoDB\mongosh*\mongosh.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+  $found = Get-ChildItem "$env:LOCALAPPDATA\Programs\mongosh\mongosh.exe", "C:\Program Files\mongosh*\mongosh.exe", "C:\Program Files\MongoDB\mongosh*\mongosh.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($found) { $mongosh = $found.FullName }
 }
 if (-not $mongosh) {
   throw "mongosh not found. Install it first: https://downloads.mongodb.com/compass/mongosh-2.9.2-x64.msi"
 }
-$mongoSvc = Get-Service MongoDB -ErrorAction SilentlyContinue
-if (-not $mongoSvc) { throw "MongoDB service not found; install MongoDB Community Server 8.0 (MSI) first." }
-if ($mongoSvc.Status -ne "Running") { Start-Service MongoDB; Start-Sleep -Seconds 3 }
+$mongoSvc = Get-Service $ServiceName -ErrorAction SilentlyContinue
+if (-not $mongoSvc) { throw "$ServiceName service not found; run deploy\mongodb\setup-mongodb.ps1 first." }
+if ($mongoSvc.Status -ne "Running") { Start-Service $ServiceName; Start-Sleep -Seconds 3 }
 
 # The server bundle JSON.parses this file; PS 5.1 Set-Content -Encoding UTF8
 # writes a BOM that crashes it, so write BOM-free explicitly.
@@ -82,7 +83,7 @@ if ($gameSvc -and $gameSvc.Status -eq "Running") {
 if (-not $Finalize) {
   # 1. Backup the file-driver world before anything touches it.
   $stamp = Get-Date -Format "yyyyMMdd-HHmm"
-  $backup = "X:\Alduinak\backups\world-$stamp"
+  $backup = "C:\Alduinak\backups\world-$stamp"
   $world = Join-Path $repoRoot "build\dist\server\world"
   if (Test-Path $world) {
     Write-Host "[mongo] backing up world -> $backup"
@@ -98,12 +99,12 @@ if (-not $Finalize) {
   Write-Host "[mongo] creating user $User"
   $env:ALDUINAK_MONGO_PWD = $Password
   try {
-    $js = "try { db.getSiblingDB('admin').createUser({ user: '$User', pwd: process.env.ALDUINAK_MONGO_PWD, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] }); print('CREATED'); } catch (e) { if (/already exists/.test(e.message)) { print('EXISTS'); } else { print('FAILED: ' + e.message); quit(1); } }"
+    $js = "try { db.getSiblingDB('admin').createUser({ user: '$User', pwd: process.env.ALDUINAK_MONGO_PWD, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] }); print('CREATED'); } catch (e) { if (/already exists/.test(e.message)) { print('EXISTS'); } else if (/requires authentication/.test(e.message)) { print('SKIPPED: auth already on'); } else { print('FAILED: ' + e.message); quit(1); } }"
     $created = Invoke-Mongosh "mongodb://127.0.0.1:27017/admin" $js "createUser"
   } finally {
     Remove-Item Env:ALDUINAK_MONGO_PWD -ErrorAction SilentlyContinue
   }
-  if ($created -notmatch "CREATED|EXISTS") { throw "createUser did not succeed: $created" }
+  if ($created -notmatch "CREATED|EXISTS|SKIPPED") { throw "createUser did not succeed: $created" }
   Write-Host "[mongo] user: $created"
 
   # 3. Enable authorization in the service config and restart.
@@ -117,7 +118,7 @@ if (-not $Finalize) {
     }
     Set-Content -Path $MongoCfg -Value $cfg -Encoding ascii
     Write-Host "[mongo] enabled authorization in $MongoCfg (backup: $MongoCfg.bak)"
-    Restart-Service MongoDB
+    Restart-Service $ServiceName
     Start-Sleep -Seconds 5
   } else {
     Write-Host "[mongo] authorization already enabled"
