@@ -9,8 +9,8 @@ A companion is an NPC ally owned by one player. The server keeps the list; the o
 ## How it works
 
 - A companion is a normal server actor, placed the same way as zone NPCs (`npcPlacement.ts`).
-- Only its owner may host it. The server refuses every other host attempt through the `onHostAttempt` gamemode event (`ActionListener.cpp`). So the owner's engine drives it, and everyone else sees it through the owner's movement and animation stream.
-- The owner's client makes it a teammate in the player faction, keeps it following the player, and starts combat with the target the server recorded.
+- Only its owner may host it. The server refuses every other host attempt through the `onHostAttempt` gamemode event (`ActionListener.cpp`) and assigns the owner as host the moment the companion spawns (`HostingSystem`, see `docs_roleplay_npc_spawns.md`), instead of waiting for the owner's client to notice it after 1.5 s. So the owner's engine drives it, and everyone else sees it through the owner's movement and animation stream.
+- The owner's client makes it a teammate in the player faction (favors allowed, so the vanilla command mode can drive it), sets Assistance to help allies and Confidence to foolhardy so it joins the owner's fights and never flees, keeps it following the player (it runs once more than 256 units behind), and starts combat with the target the server recorded.
 - Its hits go to the server like any hosted NPC's hits, and the server computes the damage. A companion never damages its owner or the owner's other companions (`onHitDamageAttempt`).
 - **Ordering an attack:** when the owner hits a living actor with a weapon or a hostile spell, the client sends `companionCommand` / `attack`. The server checks ownership and range (4096 units, same cell), then records the target.
 - **Defending the owner:** when anyone damages the owner, every companion of that owner targets the attacker. A companion that is already fighting switches target at most once every 3 s.

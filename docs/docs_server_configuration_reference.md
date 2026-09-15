@@ -310,6 +310,30 @@ spawn and after the race menu. Read by the native server at boot.
 }
 ```
 
+## npcHostRange
+
+How far, in game units, a player can be from a server NPC (a spawn zone NPC or a companion) and still run its AI. The server moves an NPC's hosting to the player it is fighting, to its owner, or to the nearest player within this range, and unhosts it when nobody is within range (see `docs_roleplay_npc_spawns.md`, Hosting). Default 8192, about two cells; a client unloads exteriors beyond that. Needs the `scam_native` build with `setHoster`; older builds log once at boot and keep client-driven hosting.
+
+```json5
+{
+  // ...
+  "npcHostRange": 8192
+  // ...
+}
+```
+
+## npcAggroHostSeconds
+
+For this many seconds after a player and a zone NPC exchanged a damaging hit, that player hosts the NPC, so its AI runs on the client that is fighting it. Default 30; `0` disables the aggro rule and leaves nearest-player hosting.
+
+```json5
+{
+  // ...
+  "npcAggroHostSeconds": 30
+  // ...
+}
+```
+
 ## gamemodePath
 
 Contains a relative or an absolute path to a file or directory with a gamemode.

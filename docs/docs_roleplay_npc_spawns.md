@@ -47,6 +47,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | `ID` | yes | | the cell or worldspace the zone lives in: an editor id (`Kagrenzel01`, `Tamriel`), a form desc (`1a26f:Skyrim.esm`) or a load-order form id (`0x0001A26F`, `0001A26F`) |
 | `POS` | yes | | centre of the zone: `{ "x": .., "y": .., "z": .. }`, `[x, y, z]` or `"x, y, z"` |
 | `Size` | no | 2000 | trigger radius in game units |
+| `Spread` | no | 40% of `Size`, at most 1024 | radius around `POS` within which the NPCs stand; every placement picks a random spot at least 96 units from the zone's living NPCs (12 tries, then the last one stands); `0` puts everyone on `POS`; never more than `Size` |
 | `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional; at most 40 NPCs per zone in total |
 | `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); `0` = never |
 | `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
@@ -104,7 +105,7 @@ emptying  -- a player back within 1.5 x Size ------->  active   (timer cleared)
 emptying  -- Despawn seconds elapsed --------------->  idle     (living NPCs destroyed; corpses and slot cooldowns keep their timers)
 
 per slot (one per NPC to place):
-ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a player inside --> placed again at the same slot
+ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a player inside --> placed again at a fresh random spot
 ```
 
 - Every NPC of a zone has a slot with its own cooldown. A kill starts that
@@ -125,8 +126,11 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
 - NPCs are placed with `PlaceAtMe` anchored on a player who is inside the zone,
-  so the actor starts in the right cell, then teleported to their slot, which
-  also becomes their spawn point. `spawnDelay` is forced to `1e9` seconds
+  so the actor starts in the right cell, then teleported to a random spot
+  within `Spread` of `POS` (at least 96 units from the zone's other living
+  NPCs), which also becomes their spawn point. Z is `POS` plus 64, so a large
+  `Spread` on steep ground drops or buries NPCs; keep it inside the flat part
+  of the zone. `spawnDelay` is forced to `1e9` seconds
   (about 31 years) so the engine never revives them: a respawn is always a
   fresh copy from this system. Do not use larger values such as `1e12`: they
   overflow the engine's timer arithmetic and the actor respawns on the next
@@ -138,6 +142,36 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   crash or a restart are destroyed on boot through `zone-spawns.json`.
 - A failed spawn (`PlaceAtMe` error) puts the slot on a 30 second cooldown
   instead of retrying every poll.
+
+## Hosting: which client runs the AI
+
+A server NPC has no AI of its own. One client, its host, runs the engine AI on
+its local copy and streams the movement to the server, which relays it to
+everyone else. Before `HostingSystem` (`skymp5-server/ts/systems/hostingSystem.ts`)
+the host was whoever loaded the NPC first and kept it as long as their client
+kept sending movement, which it does even for an actor it has unloaded, so a
+player far across Tamriel could hold an NPC in the engine's low-detail AI
+forever: the NPC stood still or shambled for everyone near it.
+
+The server now audits every zone NPC and companion every 1.5 seconds and moves
+hosting with `mp.setHoster` (a `scam_native` addon call; without it the audit
+logs once at boot and hosting stays client-driven):
+
+- a companion is hosted by its owner, assigned the moment it spawns, and by
+  nobody while the owner is farther than `npcHostRange` or in another cell;
+- an unowned NPC is hosted by the player it last exchanged a damaging hit
+  with, for `npcAggroHostSeconds` after that hit, as long as that player is
+  within range;
+- otherwise by the nearest player in its cell or worldspace within
+  `npcHostRange`. A host still in range keeps the NPC unless another player is
+  less than half as far away, and never loses it within 5 seconds of a switch;
+- with nobody in range the NPC is unhosted and stands still.
+
+`npcHostRange` (default 8192 units, about two cells) and `npcAggroHostSeconds`
+(default 30) live in `server-settings.json`. Every switch logs
+`HostingSystem: <npc> hosted by <player> (aggro|nearest|owner|nobody in range)`.
+A client can still claim an unhosted NPC on its own (the old 2 second rule);
+the next audit corrects it if the choice was wrong.
 
 ### Placement
 
