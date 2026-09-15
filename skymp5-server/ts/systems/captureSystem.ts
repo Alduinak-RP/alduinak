@@ -47,6 +47,16 @@ const MENU_STATE_PACKET = "playerMenuState";
 //   mp.get(actorId, "private.restrained") -> { boundHands, carried, captorActorId, carrierActorId } | null
 const RESTRAINED_PROP = "private.restrained";
 
+// Bound or carried, for systems that gate on restraint
+export function isRestrained(mp: Mp, actorId: number): boolean {
+  try {
+    const r = mp.get(actorId, RESTRAINED_PROP);
+    return !!r && (r.boundHands === true || r.carried === true);
+  } catch {
+    return false;
+  }
+}
+
 // 0 = no item requirement; set manaclesFormId in server-settings.json to gate arrests behind a carryable item
 const DEFAULT_MANACLES = 0;
 
