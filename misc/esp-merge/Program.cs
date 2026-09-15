@@ -295,12 +295,12 @@ static class Merge
         var idx = Index(mod);
         var count = mod.EnumerateMajorRecords().Count();
         Shared.Require(count == wantRecords && idx.Count == count, $"{count} records ({idx.Count} indexed), expected {wantRecords}");
-        Shared.Require(!idx.ContainsKey(new FormKey(self, 0x04B2AB)), "the broken ref 0E04B2AB is still there");
         foreach (var e in entries)
         {
             var act = S(e, "action");
             var target = S(e, "target");
-            if (act is "drop" or "delete") continue;
+            if (act == "delete") { Shared.Require(!idx.ContainsKey(newKey(S(e, "fid"))), $"{S(e, "fid")} ({S(e, "class")}) should be deleted"); continue; }
+            if (act == "drop") continue;
             if (act == "absent") { Shared.Require(!idx.ContainsKey(r4Key(S(e, "fid"))), $"{S(e, "fid")} should be absent"); continue; }
             var key = target != "" ? Shared.Key(target) : newKey(S(e, "fid"));
             Shared.Require(idx.ContainsKey(key), $"{S(e, "type")} {key} ({act}) is missing");
