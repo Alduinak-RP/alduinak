@@ -11,6 +11,9 @@ export interface SystemContext {
 // Emitted on SystemContext.gm once attachSaveStorage has loaded the world DB, after every system's initAsync
 export const WORLD_LOADED_EVENT = "worldLoaded";
 
+// Emitted on SystemContext.gm (userId, actorId) when a player opens character select from the game; the body stays until the logout grace ends
+export const USER_MENU_QUIT_EVENT = "userMenuQuit";
+
 export interface System {
   systemName: string;
   initAsync?: (ctx: SystemContext) => Promise<void>;

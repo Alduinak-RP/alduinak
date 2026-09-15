@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
+import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
 import { placeNpc, NpcLocation, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef } from "./actorUtil";
@@ -158,6 +158,8 @@ export class PetSystem implements System {
   private anchors: Anchor[] = [];
   private uidCounter = 0;
   private ffWarned = new Set<string>();
+  // Characters whose player opened character select; the body stays in the world until the logout grace ends
+  private menuAway = new Set<number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
@@ -175,11 +177,13 @@ export class PetSystem implements System {
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       try {
+        this.menuAway.delete(actorId >>> 0);
         this.onOwnerAssigned(actorId >>> 0);
       } catch (e) {
         this.log(`PetSystem: assign hook failed: ${e}`);
       }
     });
+    ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.menuAway.add(actorId >>> 0));
     this.installHooks();
     this.capture.onNpcCarryEnd = (npcId) => this.onCarryEnd(npcId);
     await this.resolveRecords(all, settings.dataDir, settings.loadOrder);
@@ -198,6 +202,7 @@ export class PetSystem implements System {
     let actorId = 0;
     try { actorId = ctx.svr.getUserActor(userId) >>> 0; } catch { return; }
     if (!actorId) return;
+    this.menuAway.delete(actorId);
     this.dropTransfersOf(actorId);
     const ride = this.rideOf(actorId);
     if (ride) this.clearRide(ride, "rider left");
@@ -269,7 +274,7 @@ export class PetSystem implements System {
     if (!base) return `No ${kind} base is configured`;
     const pets = this.readPets(ownerId);
     if (!pets) return "That character has no pet storage";
-    if (pets.length >= this.cfg.petMaxPets) return `They already keep ${this.cfg.petMaxPets} pets`;
+    if (this.keptCount(pets) >= this.cfg.petMaxPets) return `They already keep ${this.cfg.petMaxPets} pets`;
     const rec: StoredPet = {
       uid: this.newUid(),
       name: cleanDisplayName(name, MAX_NAME) || this.speciesOf(base.editorId, kind),
@@ -372,6 +377,7 @@ export class PetSystem implements System {
   private onMount(userId: number, actorId: number, target: number, mounted: unknown): void {
     const released = mounted === undefined && this.released.has(target);
     if (released && !isNear(this.mp, actorId, target, this.cfg.petInteractMaxDistance)) return this.notice(userId, "Too far.");
+    if (released && this.rideOf(actorId)) return this.notice(userId, "You are already mounted.");
     const a = released ? this.adopt(userId, actorId, target) : this.active.get(target);
     if (!a || a.kind !== "horse") return;
     if (mounted === true || mounted === false) return this.onMountReport(userId, actorId, a, mounted);
@@ -411,6 +417,17 @@ export class PetSystem implements System {
       a.pending = undefined;
       return this.send(userId, { customPacketType: "petDismount", target: a.id });
     }
+    // The caps may have filled while the rider climbed on
+    if (a.ownerId !== actorId) {
+      const other = this.rideOf(actorId);
+      const refusal = other && other !== a ? "You are already mounted." : this.roomFor(actorId);
+      if (refusal) {
+        a.pending = undefined;
+        this.hosting.assign(a.id, a.ownerId, "owner");
+        this.notice(userId, refusal);
+        return this.send(userId, { customPacketType: "petDismount", target: a.id });
+      }
+    }
     let hoster = 0;
     try { hoster = Number(this.mp.getHoster(a.id)) >>> 0; } catch { }
     if (hoster !== actorId && !this.hosting.assign(a.id, actorId, "rider")) {
@@ -418,7 +435,11 @@ export class PetSystem implements System {
       return this.send(userId, { customPacketType: "petDismount", target: a.id });
     }
     // Mounting someone else's horse takes it; the previous owner only loses it once the rider really sits
-    if (a.ownerId !== actorId) this.changeOwner(a, actorId, "stolen");
+    if (a.ownerId !== actorId && !this.changeOwner(a, actorId, "stolen")) {
+      a.pending = undefined;
+      this.hosting.assign(a.id, a.ownerId, "owner");
+      return this.send(userId, { customPacketType: "petDismount", target: a.id });
+    }
     a.pending = undefined;
     a.ridingBy = actorId;
     this.setFf(actorId, MOUNT_FF, a.id);
@@ -526,7 +547,7 @@ export class PetSystem implements System {
     }
     const theirs = this.readPets(recipientId);
     if (!theirs) return this.notice(userId, "They cannot keep pets.");
-    if (theirs.length >= this.cfg.petMaxPets) return this.notice(userId, "They already keep enough pets.");
+    if (this.roomFor(recipientId)) return this.notice(userId, "They have no room for another pet.");
     const requestId = this.nextConsentId++;
     const timer = setTimeout(() => {
       if (this.transfers.delete(requestId)) this.notice(userOf(this.mp, actorId), `${nameShownTo(this.mp, actorId, recipientId)} did not respond.`);
@@ -561,6 +582,12 @@ export class PetSystem implements System {
     }
     if (!isNear(this.mp, t.ownerId, t.recipientId, this.cfg.petInteractMaxDistance)) {
       this.notice(ownerUser, `${nameShownTo(this.mp, t.ownerId, t.recipientId)} is out of reach.`);
+      return;
+    }
+    const refusal = this.roomFor(t.recipientId);
+    if (refusal) {
+      this.notice(userId, refusal);
+      this.notice(ownerUser, "They have no room for another pet.");
       return;
     }
     if (!this.changeOwner(a, t.recipientId, "transferred")) {
@@ -608,6 +635,8 @@ export class PetSystem implements System {
     const category = this.categoryOfDoor(actorId, door);
     if (!category) return this.notice(userId, "No pets are kept here.");
     if (!this.nearRef(actorId, door)) return this.notice(userId, "Stand at the door.");
+    // Horses and livestock come out where they can be unsummoned again
+    if (category !== "house" && !this.anchorNearActor(actorId, category)) return this.notice(userId, "Summon it from the outside door.");
     const pets = this.readPets(actorId) ?? [];
     const rec = pets.find((p) => p.uid === uid);
     if (!rec || rec.home !== category) return this.notice(userId, "That pet is not kept here.");
@@ -716,13 +745,13 @@ export class PetSystem implements System {
         continue;
       }
       // A character switch or a quit to the menu fires no disconnect
-      if (userOf(mp, a.ownerId) < 0) {
+      if (userOf(mp, a.ownerId) < 0 || this.menuAway.has(a.ownerId)) {
         a.ownerAwaySince = a.ownerAwaySince || now;
         if (now - a.ownerAwaySince >= OWNER_GONE_MS) this.store(a, "owner left");
         continue;
       }
       a.ownerAwaySince = 0;
-      if (a.ridingBy && userOf(mp, a.ridingBy) < 0) this.clearRide(a, "rider left");
+      if (a.ridingBy && (userOf(mp, a.ridingBy) < 0 || this.menuAway.has(a.ridingBy))) this.clearRide(a, "rider left");
       if (a.pending && now - a.pending.at > this.cfg.petMountTimeoutSeconds * 1000) {
         const rider = a.pending.rider;
         a.pending = undefined;
@@ -840,13 +869,17 @@ export class PetSystem implements System {
   private roomFor(actorId: number): string {
     const pets = this.readPets(actorId);
     if (!pets) return "You cannot keep pets.";
-    if (pets.length >= this.cfg.petMaxPets) return "You already keep enough pets.";
+    if (this.keptCount(pets) >= this.cfg.petMaxPets) return "You already keep enough pets.";
     if (this.outCount(actorId) >= this.cfg.petMaxOut) return `You cannot have more than ${this.cfg.petMaxOut} pets out.`;
     return "";
   }
 
   private outCount(ownerId: number): number {
     return this.ownedBy(ownerId).filter((a) => !a.diedAt).length;
+  }
+
+  private keptCount(pets: StoredPet[]): number {
+    return pets.filter((p) => !p.diedAt).length;
   }
 
   // Mounting a released horse makes it the rider's

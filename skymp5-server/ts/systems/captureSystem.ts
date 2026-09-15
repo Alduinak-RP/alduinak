@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
-import { nameShownTo } from "./actorUtil";
+import { nameShownTo, isPlayerActor } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -247,8 +247,9 @@ export class CaptureSystem implements System {
         // Each snap is a full engine teleport on the carried client; only
         // resend when the body actually drifted or changed cell
         const carriedLoc = mp.get(carriedActorId, "locationalData");
-        // A carried NPC is hosted and moved by its carrier's client
-        if (this.userOf(ctx, carriedActorId) < 0) continue;
+        // A carried pet is moved by its carrier's client within a cell; a load door still snaps it, and a player body keeps the old path
+        if (this.userOf(ctx, carriedActorId) < 0 && !isPlayerActor(mp, carriedActorId) &&
+          carriedLoc && carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) continue;
         if (carriedLoc && Array.isArray(carriedLoc.pos) &&
           carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) {
           const dx = x - carriedLoc.pos[0], dy = y - carriedLoc.pos[1], dz = z - carriedLoc.pos[2];

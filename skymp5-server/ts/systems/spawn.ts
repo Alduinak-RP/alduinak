@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
@@ -231,6 +231,7 @@ export class Spawn implements System {
           const actorId = ctx.svr.getUserActor(userId);
           if (actorId !== 0) {
             this.schedulePark(ctx, actorId);
+            ctx.gm.emit(USER_MENU_QUIT_EVENT, userId, actorId);
           }
         } catch { /* form vanished */ }
       }
