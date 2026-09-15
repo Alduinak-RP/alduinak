@@ -177,6 +177,8 @@ const GFX_INPUT_IDS = [
 const fovInput = document.getElementById('gfx-fov')
 const showFov = () => { const out = document.getElementById('gfx-fov-value'); if (out && fovInput) out.textContent = fovInput.value }
 if (fovInput) fovInput.addEventListener('input', showFov)
+// Stored on release, so closing Settings without Save keeps it
+if (fovInput) fovInput.addEventListener('change', () => window.electronAPI.graphicsSaveFov(fovInput.value))
 
 function setInputsDisabled(ids, disabled) {
   for (const id of ids) { const el = document.getElementById(id); if (el) el.disabled = !!disabled }
