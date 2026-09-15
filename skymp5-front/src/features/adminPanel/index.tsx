@@ -128,8 +128,8 @@ const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
 
 // Teleport sections in display order; a missing or unknown group lands in Other
 const LOC_GROUPS: Array<{ id: string; label: string }> = [
-  { id: 'server', label: 'Server locations' },
-  { id: 'settlements', label: 'Settlements' },
+  { id: 'cities', label: 'Cities' },
+  { id: 'villages', label: 'Villages' },
   { id: 'forts', label: 'Forts' },
   { id: 'temples', label: 'Temples' },
   { id: 'other', label: 'Other' }
