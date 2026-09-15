@@ -41,6 +41,13 @@ var loadIndex = env.LoadOrder.ListedOrder.Take(position).Count(l => l.Mod != nul
 if (((int)mod.ModHeader.Flags & 0x200) != 0) throw new Exception($"{pluginName} is ESL-flagged, the global id rule below does not apply");
 var report = new Report(loadIndex, pluginKey);
 var ctx = new PatchContext(mod, cache, env.LoadOrder, spec, report);
+if (opts.NextFormId is uint pinned)
+{
+    // Pinned ids keep the marker spells stable for learnedSpells and server-settings.json; AddNew does not check for collisions
+    var taken = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == pluginKey && r.FormKey.ID >= pinned && r.FormKey.ID < pinned + 0x100).Select(r => r.FormKey.ToString()).ToList();
+    if (taken.Count > 0) throw new Exception($"--next-form-id {pinned:X}: own records already use {string.Join(", ", taken.Take(10))}");
+    mod.ModHeader.Stats.NextFormID = pinned;
+}
 
 Console.WriteLine($"{pluginName}: position {position} in the load order, full slot {loadIndex:X2}, {mod.ModHeader.MasterReferences.Count} masters, next form id {mod.ModHeader.Stats.NextFormID:X}");
 
@@ -79,11 +86,12 @@ return 0;
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir)
+record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir, uint? NextFormId)
 {
     public static Cli Parse(string[] args)
     {
         string? settings = null, plugin = null, spec = null, outDir = null, reportDir = null;
+        uint? nextFormId = null;
         for (int i = 0; i + 1 < args.Length; i += 2)
         {
             switch (args[i])
@@ -93,12 +101,13 @@ record Cli(string Settings, string Plugin, string Spec, string Out, string Repor
                 case "--spec": spec = args[i + 1]; break;
                 case "--out": outDir = args[i + 1]; break;
                 case "--report": reportDir = args[i + 1]; break;
+                case "--next-form-id": nextFormId = Convert.ToUInt32(args[i + 1], 16); break;
                 default: throw new Exception($"unknown option {args[i]}");
             }
         }
         if (settings == null || plugin == null || spec == null || outDir == null)
-            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>]");
-        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir);
+            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--next-form-id <hex>]");
+        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir, nextFormId);
     }
 }
 
