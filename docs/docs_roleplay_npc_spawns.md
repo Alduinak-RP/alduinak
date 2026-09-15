@@ -154,9 +154,12 @@ forever: the NPC stood still or shambled for everyone near it.
 The server now audits every zone NPC and companion every 1.5 seconds and moves
 hosting with `mp.setHoster` (a `scam_native` addon call; without it the audit
 logs once at boot and hosting stays client-driven). A candidate host is a
-living player the server streams the NPC to (the NPC's 4096-unit grid cell and
-the eight cells around it, read through `actorNeighbors`), in its cell or
-worldspace and within `npcHostRange`:
+living player whose game is running (the server got movement for that
+player's own character within the last 2 seconds, read through
+`mp.getMovementAgeMs`; a paused, alt-tabbed or loading game sends none), that
+the server streams the NPC to (the NPC's 4096-unit grid cell and the eight
+cells around it, read through `actorNeighbors`), in its cell or worldspace and
+within `npcHostRange`:
 
 - a companion is hosted by its owner, assigned the moment it spawns;
 - an unowned NPC is hosted by a player who exchanged a damaging hit with it
@@ -167,16 +170,26 @@ worldspace and within `npcHostRange`:
   the NPC unless another is less than half as far away;
 - a host that is still a candidate never loses the NPC within 5 seconds of a
   switch, and that includes a claim its own client made;
+- a paused or dead host is no candidate, so another candidate takes the NPC at
+  the next audit without that 5 second wait;
 - with no candidate, the current host keeps the NPC as long as the server
   still streams it to that player, because unhosting would only let that
   client claim it straight back. Once the host no longer receives the NPC it
   is unhosted and stands still until a client that has it loaded claims it.
 
 A client can still claim an NPC on its own: an unhosted one at once, a hosted
-one once its host has sent no movement for 2 seconds (paused, alt-tabbed,
-loading). The audit reads a claim over a live host as that host having gone
-silent and does not give it that NPC back for 60 seconds, so a paused player
-standing next to an NPC does not pull it back every few seconds.
+one once its host has sent no movement for that NPC for 2 seconds. For zone
+NPCs and companions the server refuses the claim (`onHostAttempt`) when the
+NPC is not streamed to that player or that player's game is paused; the
+companion owner rule runs first, and every other NPC stays first come. A claim
+over a host whose game was running means that client did not run the NPC, so
+the audit does not give it that NPC back for 60 seconds. A paused host is not
+locked out: once its game runs again it is a candidate like anyone else.
+
+An older `scam_native` without `getMovementAgeMs` logs that once at boot. The
+audit then counts every player as running and checks claims for streaming
+only, so a paused player can still be picked once, and is skipped for that NPC
+for 60 seconds after another client claims it.
 
 Whoever starts hosting, by audit or by claim, gets `HostStart` and a second
 later the NPC's health, magicka and stamina percentages
