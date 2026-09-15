@@ -637,6 +637,49 @@ If "damageMultFormulaSettings" is not present, the server will use some default 
 }
 ```
 
+## damageMultConditionalFormulaSettings
+
+Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. The hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from `misc/proficiency-patcher/out/proficiency-ids.json`):
+
+```json5
+{
+  // ...
+  "damageMultConditionalFormulaSettings": {
+    "hunterOverDraw": {
+      "physicalDamageMultiplier": 1.2,
+      "conditions": [
+        { "function": "HasSpell", "runsOn": "Subject", "comparison": "==", "value": 1, "parameter1": "0x2B002032", "parameter2": "0x0", "logicalOperator": "AND" },
+        { "function": "SkympGetIsPlayer", "runsOn": "Target", "comparison": "==", "value": 0, "parameter1": "0x0", "parameter2": "0x0", "logicalOperator": "AND" },
+        { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 7, "parameter1": "0", "parameter2": "0x0", "logicalOperator": "OR" },
+        { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 7, "parameter1": "1", "parameter2": "0x0", "logicalOperator": "OR" },
+        { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 12, "parameter1": "0", "parameter2": "0x0", "logicalOperator": "OR" },
+        { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 12, "parameter1": "1", "parameter2": "0x0", "logicalOperator": "AND" }
+      ]
+    }
+  }
+  // ...
+}
+```
+
+## Mastery, gathering and hunting
+
+All optional; see `docs/docs_roleplay_mastery.md` for the system.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `masteryRankHours` | `[40, 100, 180]` | Worked hours for Adept, Expert, Master |
+| `masteryPointIntervalMinutes` | `60` | Minimum gap between two counted hours |
+| `masterySpells` | plugin markers | `{ "<profession>": [novice, adept, expert, master] }` form ids; a profession left out uses the plugin's `AldMastery_<Profession>_<Rank>` spells |
+| `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
+| `gatheringStrikeSeconds` | `5` | Seconds per chop or pickaxe strike |
+| `gatheringVeinRespawnMinutes` | `1440` | Time for a fully mined vein to grow back |
+| `gatheringVeinRegenMinutes` | respawn / vein total | Minutes per ore collection grown back |
+| `miningVeinTiers` | iron, corundum open; gold, silver Adept; orichalcum, moonstone Expert; malachite, quicksilver, ebony Master | `{ "<ore editor id>": "Adept" }` overrides, by the ore item the vein hands out |
+| `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
+| `huntingTrophyChance` | `0.15` | Master hunter: chance of one extra pelt per kind |
+| `huntingHarvestNeedsHunter` | `false` | Only hunters may take pelts and meat off animal corpses |
+| `huntingMeats`, `huntingPelts` | vanilla and DLC lists | Editor ids of what counts as meat and pelt |
+
 ## enableGamemodeDataUpdatesBroadcast
 
 A boolean setting that controls hot-reloading behavior for connected clients.
