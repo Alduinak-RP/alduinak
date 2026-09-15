@@ -1,4 +1,5 @@
 #pragma once
+#include "CTDA.h"
 #include "RecordHeader.h"
 
 #pragma pack(push, 1)
@@ -89,6 +90,7 @@ public:
   {
     uint32_t effectFormId = 0;
     const EFIT* effectItem = nullptr;
+    std::vector<CTDA> conditions;
   };
 
   struct Data

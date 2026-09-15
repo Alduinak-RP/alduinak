@@ -25,6 +25,8 @@ MGEF::Data MGEF::GetData(
         result.data.primaryAV = ActorValue(
           *reinterpret_cast<const std::underlying_type_t<ActorValue>*>(data +
                                                                        0x44));
+      } else if (!std::memcmp(type, "CTDA", 4)) {
+        result.conditions.push_back(*reinterpret_cast<const CTDA*>(data));
       }
     },
     compressedFieldsCache);

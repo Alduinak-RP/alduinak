@@ -18,6 +18,9 @@ SPEL::Data SPEL::GetData(
           Effect{ *reinterpret_cast<const uint32_t*>(data), nullptr });
       } else if (!std::memcmp(type, "EFIT", 4)) {
         result.effects.back().effectItem = reinterpret_cast<const EFIT*>(data);
+      } else if (!std::memcmp(type, "CTDA", 4) && !result.effects.empty()) {
+        result.effects.back().conditions.push_back(
+          *reinterpret_cast<const CTDA*>(data));
       }
     },
     compressedFieldsCache);
