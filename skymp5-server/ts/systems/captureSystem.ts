@@ -24,8 +24,8 @@ type Mp = any;
 //   Client -> Server:
 //     { customPacketType: "captureRequest",  target: <actorFormId> }
 //     { customPacketType: "carryRequest",    target: <actorFormId> }
-//     { customPacketType: "putdownRequest",  target: <actorFormId> }   // stop carrying, keep any binding
-//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // fully free
+//     { customPacketType: "putdownRequest",  target: <actorFormId> }   // stop carrying, keep any binding (older clients' Put down)
+//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // one step per press: set a carried captive down, else free their binds
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
 //   Server -> Client:
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
@@ -397,19 +397,32 @@ export class CaptureSystem implements System {
       return;
     }
     const targetActorId = toFormId(content.target, 0);
-    const info = this.restraints.get(targetActorId);
-    if (!info) {
+    if (!this.restraints.has(targetActorId) && !this.carriedBy.has(targetActorId)) {
       this.notice(ctx, userId, "They are not restrained.");
       return;
     }
-    // Only the captor (or whoever is carrying them) may release: prevents griefing
-    const carrier = this.carriedBy.get(targetActorId);
-    if (info.captorActorId !== requesterActorId && carrier !== requesterActorId) {
+    const step = this.releaseStep(requesterActorId, targetActorId);
+    if (!step) {
       this.notice(ctx, userId, "Only their captor can release them.");
+      return;
+    }
+    if (step === "putdown") {
+      this.stopCarry(ctx, targetActorId);
+      this.notice(ctx, userId, `You set ${this.nameOf(ctx, targetActorId)} down.`);
       return;
     }
     this.releaseTarget(ctx, targetActorId);
     this.notice(ctx, userId, `You released ${this.nameOf(ctx, targetActorId)}.`);
+  }
+
+  // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press; null when not theirs to release
+  private releaseStep(requesterActorId: number, targetActorId: number): "putdown" | "release" | null {
+    const isCaptor = this.restraints.get(targetActorId)?.captorActorId === requesterActorId;
+    const carrier = this.carriedBy.get(targetActorId);
+    if (carrier !== undefined) {
+      return carrier === requesterActorId || isCaptor ? "putdown" : null;
+    }
+    return isCaptor ? "release" : null;
   }
 
   private onConsentResult(ctx: SystemContext, userId: number, content: Content): void {
