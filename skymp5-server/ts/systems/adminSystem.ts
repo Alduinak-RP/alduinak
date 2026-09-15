@@ -73,7 +73,7 @@ const TELEPORT_GROUPS = ["cities", "villages", "forts", "temples", "other"];
 
 interface TeleportLocation {
   name: string;
-  kind: string; // map marker type label, blank for settings entries without one
+  kind: string; // map marker type label; a configured entry's own kind, or the name of the generated temple it replaced
   group: string; // Teleport tab section: the generator's, or the configured entry's ("temples" when unset)
   cellOrWorldDesc: string;
   cellId: number; // cellOrWorldDesc resolved by getIdFromDesc
