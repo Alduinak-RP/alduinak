@@ -1,6 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { ConnectionMessage } from "../events/connectionMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
@@ -33,7 +35,6 @@ const ACTIONS: PlayerAction[] = [
   { id: 'search', label: 'Search' },
   { id: 'capture', label: 'Restrain' },
   { id: 'carry', label: 'Carry' },
-  { id: 'putdown', label: 'Put down' },
   { id: 'release', label: 'Release' },
 ];
 
@@ -43,7 +44,6 @@ const PACKET_ACTIONS: Record<string, string> = {
   search: 'searchRequest',
   capture: 'captureRequest',
   carry: 'carryRequest',
-  putdown: 'putdownRequest',
   release: 'releaseRequest',
 };
 
@@ -74,6 +74,7 @@ export class PlayerActionService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
     this.interactKey = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
@@ -124,12 +125,22 @@ export class PlayerActionService extends ClientListener {
     }
     targetName = (ref.getName() || "").trim();
     this.playerTarget = remoteId;
+    // Release appears once the server confirms it applies to this target
+    this.canRelease = false;
+    sendCustomPacket(this.controller, { customPacketType: "playerMenuRequest", target: remoteId });
     // Names stay hidden until introduced (ff_knownIds owner prop)
     if (!targetName || !this.knowsTarget(this.playerTarget)) {
       targetName = "Stranger";
     }
     logTrace(this, `Opening player-action menu for`, targetName);
     this.openMenu();
+  }
+
+  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (content?.["customPacketType"] !== "playerMenuState" || content["target"] !== this.playerTarget) return;
+    this.canRelease = content["canRelease"] === true;
+    if (this.menuOpen && this.canRelease) refreshFormMenu(this.sp, this.playerWidgetSetter, this.menuArgs());
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -182,10 +193,15 @@ export class PlayerActionService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
+    openFormMenu(this.sp, this.playerWidgetSetter, this.menuArgs(), this.controller);
+  }
+
+  private menuArgs(): Record<string, unknown> {
     const restraint = this.controller.lookupListener(RestraintService);
     // No carry chains: a carrier or a carried player is never offered Carry
-    const actions = restraint.isCarrying || restraint.isCarried ? ACTIONS.filter((a) => a.id !== 'carry') : ACTIONS;
-    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: actions, targetName, events, WIDGET_ID }, this.controller);
+    const noCarry = restraint.isCarrying || restraint.isCarried;
+    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease));
+    return { ACTIONS: actions, targetName, events, WIDGET_ID };
   }
 
   private closeMenu(): void {
@@ -208,5 +224,6 @@ export class PlayerActionService extends ClientListener {
 
   private menuOpen = false;
   private playerTarget = 0;
+  private canRelease = false;
   private interactKey: number;
 }
