@@ -23,6 +23,7 @@ import { Login } from "./systems/login";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
 import { GatheringSystem } from "./systems/gatheringSystem";
+import { HuntingSystem } from "./systems/huntingSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
@@ -238,6 +239,8 @@ const main = async () => {
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
     new GatheringSystem(log, masterySystem),
+    // After mastery so its kill relay is in place to be wrapped.
+    new HuntingSystem(log, masterySystem),
     new BountyBoardSystem(log),
     new UntouchableSystem(log),
     npcSpawnSystem,

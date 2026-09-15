@@ -592,6 +592,11 @@ export class MasterySystem implements System {
     return rec && rec.profession === professionId ? rec.rank : -1;
   }
 
+  // Whether an actor's base records or race carry the keyword; players count as ActorTypeNPC only.
+  actorHasKeyword(ctx: SystemContext, actorId: number, keywordId: number): boolean {
+    return this.actorHasAny(ctx, actorId, new Set([keywordId >>> 0]));
+  }
+
   // ── Activity rules ──────────────────────────────────────────────────────────
 
   private async loadRules(ctx: SystemContext, raw: unknown, dataDir: string, loadOrder: string[]): Promise<void> {
