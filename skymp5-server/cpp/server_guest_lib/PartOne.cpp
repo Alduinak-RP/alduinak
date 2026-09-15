@@ -5,9 +5,11 @@
 #include <string>
 #include <vector>
 
+#include "ChangeValuesMessage.h"
 #include "CreateActorMessage.h"
 #include "CustomPacketMessage.h"
 #include "DestroyActorMessage.h"
+#include "HostStartMessage.h"
 #include "HostStopMessage.h"
 #include "SetRaceMenuOpenMessage.h"
 #include "UpdateGameModeDataMessage.h"
@@ -664,6 +666,56 @@ void PartOne::SendHostStop(Networking::UserId badHosterUserId,
   HostStopMessage message;
   message.target = longFormId;
   GetSendTarget().Send(badHosterUserId, message, true);
+}
+
+void PartOne::StartHosting(Networking::UserId hosterUserId,
+                           MpObjectReference& remote)
+{
+  // Prevents too fast host switch
+  auto idx = remote.GetIdx();
+  auto& lastUpdates = worldState.lastMovUpdateByIdx;
+  if (lastUpdates.size() <= idx) {
+    lastUpdates.resize(idx + 1);
+  }
+  lastUpdates[idx] = std::chrono::system_clock::now();
+
+  auto remoteAsActor = remote.AsActor();
+  if (remoteAsActor) {
+    remoteAsActor->EquipBestWeapon();
+  }
+
+  uint64_t longFormId = remote.GetFormId();
+  if (remoteAsActor && longFormId < 0xff000000) {
+    longFormId += 0x100000000;
+  }
+
+  HostStartMessage message;
+  message.target = longFormId;
+  GetSendTarget().Send(hosterUserId, message, true);
+
+  if (!remoteAsActor) {
+    return;
+  }
+
+  // Otherwise the new host keeps a stale health percentage until someone hits the actor
+  auto formId = remote.GetFormId();
+  worldState.SetTimer(std::chrono::seconds(1))
+    .Then([this, formId](Viet::Void) {
+      auto& form = worldState.LookupFormByIdNoLoad(formId);
+      MpActor* actor = form ? form->AsActor() : nullptr;
+      if (!actor) {
+        return;
+      }
+
+      auto changeForm = actor->GetChangeForm();
+
+      ChangeValuesMessage msg;
+      msg.idx = actor->GetIdx();
+      msg.data.health = changeForm.actorValues.healthPercentage;
+      msg.data.magicka = changeForm.actorValues.magickaPercentage;
+      msg.data.stamina = changeForm.actorValues.staminaPercentage;
+      actor->GetActorToSendTo().SendToUser(msg, true);
+    });
 }
 
 FormCallbacks PartOne::CreateFormCallbacks()
