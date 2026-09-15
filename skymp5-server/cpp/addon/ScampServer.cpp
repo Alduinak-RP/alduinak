@@ -7,6 +7,8 @@
 #include "FormCallbacks.h"
 #include "FormDesc.h"
 #include "GamemodeApi.h"
+#include "HostStartMessage.h"
+#include "HostStopMessage.h"
 #include "MpChangeForms.h"
 #include "NapiHelper.h"
 #include "NetworkingCombined.h"
@@ -139,6 +141,8 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("setEnabled", &ScampServer::SetEnabled),
       InstanceMethod("setInventoryOccupant", &ScampServer::SetInventoryOccupant),
       InstanceMethod("respawnActor", &ScampServer::RespawnActor),
+      InstanceMethod("setHoster", &ScampServer::SetHoster),
+      InstanceMethod("getHoster", &ScampServer::GetHoster),
       InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
@@ -802,6 +806,87 @@ Napi::Value ScampServer::RespawnActor(const Napi::CallbackInfo& info)
   try {
     auto& actor = partOne->worldState.GetFormAt<MpActor>(actorFormId);
     actor.Respawn(true);
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// setHoster(actorFormId, hosterActorFormId) - moves the actor's AI to that
+// player's client; 0 leaves it unhosted. The old hoster gets HostStop, the new
+// one HostStart, like a client-initiated switch in ActionListener::OnHostAttempt.
+Napi::Value ScampServer::SetHoster(const Napi::CallbackInfo& info)
+{
+  auto formId = info[0].As<Napi::Number>().Uint32Value();
+  auto hosterId = info[1].As<Napi::Number>().Uint32Value();
+  try {
+    auto& remote = partOne->worldState.GetFormAt<MpActor>(formId);
+    auto& hosters = partOne->worldState.hosters;
+    auto it = hosters.find(formId);
+    const uint32_t prevHoster = it == hosters.end() ? 0 : it->second;
+    if (prevHoster == hosterId) {
+      return info.Env().Undefined();
+    }
+
+    Networking::UserId newUser = Networking::InvalidUserId;
+    if (hosterId) {
+      auto& hosterActor = partOne->worldState.GetFormAt<MpActor>(hosterId);
+      newUser = partOne->serverState.UserByActor(&hosterActor);
+      if (newUser == Networking::InvalidUserId) {
+        throw std::runtime_error("Hoster has no user attached");
+      }
+    }
+
+    if (prevHoster) {
+      auto& prevForm = partOne->worldState.LookupFormById(prevHoster);
+      MpActor* prevActor = prevForm ? prevForm->AsActor() : nullptr;
+      auto prevUser = prevActor ? partOne->serverState.UserByActor(prevActor)
+                                : Networking::InvalidUserId;
+      if (prevUser != Networking::InvalidUserId) {
+        partOne->SendHostStop(prevUser, remote);
+      }
+    }
+
+    if (!hosterId) {
+      hosters.erase(formId);
+      remote.UpdateHoster(0);
+      return info.Env().Undefined();
+    }
+
+    hosters[formId] = hosterId;
+    remote.UpdateHoster(hosterId);
+
+    // Same grace period against a takeover as a client-initiated switch
+    auto idx = remote.GetIdx();
+    auto& lastUpdates = partOne->worldState.lastMovUpdateByIdx;
+    if (lastUpdates.size() <= idx) {
+      lastUpdates.resize(idx + 1);
+    }
+    lastUpdates[idx] = std::chrono::system_clock::now();
+    remote.EquipBestWeapon();
+
+    uint64_t longFormId = formId;
+    if (longFormId < 0xff000000) {
+      longFormId += 0x100000000;
+    }
+    HostStartMessage message;
+    message.target = longFormId;
+    partOne->GetSendTarget().Send(newUser, message, true);
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// getHoster(actorFormId) - the actor id of the hosting player, 0 when unhosted
+Napi::Value ScampServer::GetHoster(const Napi::CallbackInfo& info)
+{
+  auto formId = info[0].As<Napi::Number>().Uint32Value();
+  try {
+    auto& hosters = partOne->worldState.hosters;
+    auto it = hosters.find(formId);
+    return Napi::Number::New(info.Env(),
+                             it == hosters.end() ? 0 : it->second);
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }
