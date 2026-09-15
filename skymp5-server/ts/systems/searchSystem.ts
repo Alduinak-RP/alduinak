@@ -55,6 +55,8 @@ interface SearchSession {
   body: boolean;
   // Started without consent because the target was bound
   auto: boolean;
+  // A pet's inventory opened by its owner
+  pet: boolean;
 }
 
 export class SearchSystem implements System {
@@ -151,13 +153,17 @@ export class SearchSystem implements System {
     }
     for (const s of Array.from(this.sessions.values())) {
       // A side that lost its user (character switch, logout-grace park) ends the search
-      if (this.userOf(ctx, s.searcherActorId) < 0 || (!s.body && this.userOf(ctx, s.targetActorId) < 0)) {
+      if (this.userOf(ctx, s.searcherActorId) < 0 || (!s.body && !s.pet && this.userOf(ctx, s.targetActorId) < 0)) {
         this.endSession(ctx, s, "");
         continue;
       }
       // Respawned, revived or despawned
       if (s.body && !this.isDead(ctx, s.targetActorId)) {
         this.endSession(ctx, s, "The body is gone.");
+        continue;
+      }
+      if (s.pet && this.isDead(ctx, s.targetActorId)) {
+        this.endSession(ctx, s, "");
         continue;
       }
       if (s.auto && !isBound(ctx.svr, s.targetActorId)) {
@@ -321,7 +327,7 @@ export class SearchSystem implements System {
     }
   }
 
-  private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean, auto = false): void {
+  private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean, auto = false, pet = false): void {
     const searcherUser = this.userOf(ctx, searcherActorId);
     const taken = body ? this.bodyTakesOf(ctx, targetActorId) : undefined;
     if (taken && taken.size >= this.playerBodyTakeLimit) {
@@ -332,7 +338,7 @@ export class SearchSystem implements System {
       this.notice(ctx, searcherUser, "The search could not start.");
       return;
     }
-    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, auto });
+    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, auto, pet });
     this.searching.set(searcherActorId, targetActorId);
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
@@ -353,8 +359,14 @@ export class SearchSystem implements System {
     if (isRestrained(ctx.svr, viewerActorId)) return "You cannot trade while restrained.";
     if (this.sessions.has(targetActorId)) return "It is already being searched.";
     if (this.searching.has(viewerActorId)) return "You are already searching someone.";
-    this.startSession(ctx, viewerActorId, targetActorId, false, true);
+    this.startSession(ctx, viewerActorId, targetActorId, false, false, true);
     return "";
+  }
+
+  // Closes a pet's inventory window when the pet leaves the world or its owner
+  endPetInventory(ctx: SystemContext, petActorId: number): void {
+    const s = this.sessions.get(petActorId);
+    if (s?.pet) this.endSession(ctx, s, "");
   }
 
   // ── Session teardown ────────────────────────────────────────────────────────

@@ -247,9 +247,9 @@ export class CaptureSystem implements System {
         // Each snap is a full engine teleport on the carried client; only
         // resend when the body actually drifted or changed cell
         const carriedLoc = mp.get(carriedActorId, "locationalData");
-        // An NPC has no client to follow on its own, so it is moved whenever the carrier moved
-        const npc = this.userOf(ctx, carriedActorId) < 0;
-        if (!npc && carriedLoc && Array.isArray(carriedLoc.pos) &&
+        // A carried NPC is hosted and moved by its carrier's client
+        if (this.userOf(ctx, carriedActorId) < 0) continue;
+        if (carriedLoc && Array.isArray(carriedLoc.pos) &&
           carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) {
           const dx = x - carriedLoc.pos[0], dy = y - carriedLoc.pos[1], dz = z - carriedLoc.pos[2];
           if (dx * dx + dy * dy + dz * dz < CARRY_MAX_DRIFT_SQ) {
@@ -357,7 +357,7 @@ export class CaptureSystem implements System {
 
   // ── NPC carry (pets) ───────────────────────────────────────────────────────
 
-  // Picks up a server NPC without a prompt; empty result on success, else the refusal. The follow loop moves it with the carrier
+  // Picks up a server NPC without a prompt; empty result on success, else the refusal. The carrier must host it, its client moves it
   carryNpc(ctx: SystemContext, carrierActorId: number, npcId: number, npcName: string): string {
     if (this.userOf(ctx, npcId) >= 0) return "That is a player.";
     const refusal = this.carrying.has(carrierActorId) ? "You are already carrying something."

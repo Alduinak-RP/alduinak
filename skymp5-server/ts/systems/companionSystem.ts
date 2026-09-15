@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { placeNpc, placeAtMe, NpcLocation, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, hex, baseIdOf, destroyLeftovers, destroyRef } from "./actorUtil";
+import { userOf, isAlive, isNear, hex, baseIdOf, destroyLeftovers, destroyRef, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -459,14 +459,6 @@ export class CompanionSystem implements System {
     return "";
   }
 
-  private isDoor(refId: number): boolean {
-    try {
-      return this.mp.lookupEspmRecordById(baseIdOf(this.mp, refId))?.record?.type === "DOOR";
-    } catch {
-      return false;
-    }
-  }
-
   private sendState(ownerId: number): void {
     const user = userOf(this.mp, ownerId);
     if (user < 0) return;
@@ -496,7 +488,7 @@ export class CompanionSystem implements System {
     // A companion only opens doors: pickups and containers it activates would sink into its inventory or lock players out
     const previousActivate = typeof mp.onActivate === "function" ? mp.onActivate : null;
     mp.onActivate = (targetId: number, casterId: number): boolean => {
-      if (this.companions.has(casterId >>> 0) && !this.isDoor(targetId >>> 0)) return false;
+      if (this.companions.has(casterId >>> 0) && !isDoorRef(this.mp, targetId >>> 0)) return false;
       return chain(previousActivate, [targetId, casterId]);
     };
 

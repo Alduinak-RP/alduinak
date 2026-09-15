@@ -21,6 +21,14 @@ export const baseIdOf = (mp: Mp, actorId: number): number => {
   }
 };
 
+export const isDoorRef = (mp: Mp, refId: number): boolean => {
+  try {
+    return mp.lookupEspmRecordById(baseIdOf(mp, refId))?.record?.type === "DOOR";
+  } catch {
+    return false;
+  }
+};
+
 // Player characters use the Player NPC_ (0x7) base and keep a profile id while logged out
 export const isPlayerActor = (mp: Mp, actorId: number): boolean => {
   const base = baseIdOf(mp, actorId);

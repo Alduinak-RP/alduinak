@@ -447,6 +447,12 @@ export class HousingSystem implements System {
   // Set by PetSystem: the kind of pets storable at a door, shown as the menu's Pets option
   petCategoryOf: ((actorId: number, refrId: number) => string) | null = null;
 
+  // Both halves of a teleport door, just the ref for anything else
+  doorSides(ctx: SystemContext, refrId: number): number[] {
+    const partner = refrId ? this.partnerOf(ctx, refrId) : 0;
+    return partner ? [refrId, partner] : [refrId];
+  }
+
   // The property's name when this character owns the door or container, else null
   ownedRefName(ctx: SystemContext, actorId: number, refrId: number): string | null {
     const primary = this.primaryOf(ctx, refrId);
