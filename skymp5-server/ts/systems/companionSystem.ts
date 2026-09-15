@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
-import { placeNpc, placeAtMe, NpcLocation, HOSTILE_PROP } from "./npcPlacement";
+import { placeNpc, placeAtMe, locationNear, HOSTILE_PROP, FOLLOW_OFFSET, FOLLOW_TELEPORT_DISTANCE } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, hex, baseIdOf, destroyLeftovers, destroyRef, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
@@ -76,10 +76,6 @@ const DEFAULT_ASH_PILE_BASE = 0xc674b;
 const REGISTRY_FILE = "./companions.json";
 const UPDATE_MS = 500;
 const SPAWN_DISTANCE = 160;
-const SPAWN_LIFT = 32;
-const FOLLOW_OFFSET = -128;
-// Farther than this from the owner, or in another cell, the companion is moved behind them
-const FOLLOW_TELEPORT_DISTANCE = 4096;
 const COMMAND_RANGE = 4096;
 const TARGET_KEEP_RANGE = 6144;
 const DEFEND_RETARGET_MS = 3000;
@@ -200,7 +196,7 @@ export class CompanionSystem implements System {
     if (KIND_RULES[kind].commanded) this.makeRoom(ownerId);
     let id = 0;
     try {
-      const loc = this.locationNear(ownerId, SPAWN_DISTANCE);
+      const loc = locationNear(mp, ownerId, SPAWN_DISTANCE);
       if (opts.pos) loc.pos = opts.pos;
       if (opts.rot) loc.rot = opts.rot;
       id = placeNpc(mp, ownerId, baseDesc, loc) >>> 0;
@@ -319,19 +315,6 @@ export class CompanionSystem implements System {
     while (commanded.length >= limit) this.end(commanded.shift() as Companion, "replaced", false);
   }
 
-  // distance > 0 is in front of the owner, < 0 behind
-  private locationNear(ownerId: number, distance: number): NpcLocation {
-    const mp = this.mp;
-    const p = mp.getActorPos(ownerId);
-    const angleZ = Number(mp.get(ownerId, "angle")?.[2]) || 0;
-    const rad = (angleZ * Math.PI) / 180;
-    return {
-      cellOrWorldDesc: String(mp.get(ownerId, "worldOrCellDesc")),
-      pos: [p[0] + distance * Math.sin(rad), p[1] + distance * Math.cos(rad), p[2] + SPAWN_LIFT],
-      rot: [0, 0, angleZ],
-    };
-  }
-
   private check(c: Companion, now: number): void {
     const mp = this.mp;
     let dead = false;
@@ -354,7 +337,7 @@ export class CompanionSystem implements System {
     c.ownerAwaySince = 0;
     if (KIND_RULES[c.kind].commanded && !isAlive(mp, c.ownerId)) return this.end(c, "owner died", false);
     if (!isNear(mp, c.id, c.ownerId, FOLLOW_TELEPORT_DISTANCE)) {
-      const loc = this.locationNear(c.ownerId, FOLLOW_OFFSET);
+      const loc = locationNear(mp, c.ownerId, FOLLOW_OFFSET);
       mp.set(c.id, "locationalData", loc);
       mp.set(c.id, "spawnPoint", loc);
     }

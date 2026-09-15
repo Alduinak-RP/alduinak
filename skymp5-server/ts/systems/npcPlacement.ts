@@ -13,6 +13,27 @@ export const NEVER_RESPAWN = 1e9;
 // Neighbor-visible flag (registered in the gamemode) telling clients the NPC attacks players on sight
 export const HOSTILE_PROP = "ff_hostile";
 
+// Keeps a placed actor from starting inside the ground
+const SPAWN_LIFT = 32;
+
+// Where a follower settles behind its owner
+export const FOLLOW_OFFSET = -128;
+
+// Farther than this from its owner, or in another cell, a follower is moved behind them
+export const FOLLOW_TELEPORT_DISTANCE = 4096;
+
+// distance > 0 is in front of the anchor, < 0 behind it
+export const locationNear = (mp: Mp, anchorId: number, distance: number): NpcLocation => {
+  const p = mp.getActorPos(anchorId);
+  const angleZ = Number(mp.get(anchorId, "angle")?.[2]) || 0;
+  const rad = (angleZ * Math.PI) / 180;
+  return {
+    cellOrWorldDesc: String(mp.get(anchorId, "worldOrCellDesc")),
+    pos: [p[0] + distance * Math.sin(rad), p[1] + distance * Math.cos(rad), p[2] + SPAWN_LIFT],
+    rot: [0, 0, angleZ],
+  };
+};
+
 // PlaceAtMe needs a self ref (anchorId); the new reference starts at the anchor's position and cell; throws on failure
 export const placeAtMe = (mp: Mp, anchorId: number, baseDesc: string): number => {
   const self = { type: "form", desc: mp.getDescFromId(anchorId) };

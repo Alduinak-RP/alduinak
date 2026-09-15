@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
-import { placeNpc, NpcLocation, HOSTILE_PROP } from "./npcPlacement";
+import { placeNpc, locationNear, HOSTILE_PROP, FOLLOW_OFFSET, FOLLOW_TELEPORT_DISTANCE } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
@@ -95,7 +95,6 @@ const MOUNT_FF = "ff_mount";
 const REGISTRY_FILE = "./pets.json";
 const UPDATE_MS = 1000;
 const SPAWN_DISTANCE = 160;
-const SPAWN_LIFT = 32;
 const MAX_NAME = 24;
 // Consent ids above the capture system's own counter so both share the client prompt
 const CONSENT_ID_BASE = 1_000_000_000;
@@ -502,6 +501,8 @@ export class PetSystem implements System {
     if (!a || !a.carriedBy) return;
     a.carriedBy = 0;
     this.pushFf(a);
+    // Back to its owner's client at once instead of waiting for the hosting audit
+    if (!a.diedAt && !a.ridingBy) this.hosting.assign(a.id, a.ownerId, "owner");
   }
 
   private onUnsummon(userId: number, actorId: number, target: number): void {
@@ -656,7 +657,9 @@ export class PetSystem implements System {
     const mp = this.mp;
     let id = 0;
     try {
-      id = placeNpc(mp, ownerId, rec.baseDesc, this.locationInFrontOf(ownerId)) >>> 0;
+      // A dog comes out at its follow spot, so it never starts by walking back past its owner
+      const distance = rec.kind === "dog" ? FOLLOW_OFFSET : SPAWN_DISTANCE;
+      id = placeNpc(mp, ownerId, rec.baseDesc, locationNear(mp, ownerId, distance)) >>> 0;
     } catch (e) {
       this.log(`PetSystem: failed to place ${rec.baseDesc} for ${hex(ownerId)}: ${e}`);
       return 0;
@@ -768,6 +771,7 @@ export class PetSystem implements System {
         this.pushFf(a);
       }
       if (a.fleeSince && now - a.fleeSince >= this.cfg.petFleeSeconds * 1000) this.store(a, "fled home");
+      this.followOwner(a);
     }
     for (const r of Array.from(this.released.values())) {
       let alive = true;
@@ -778,6 +782,22 @@ export class PetSystem implements System {
         this.save();
       }
     }
+  }
+
+  // An out dog is moved behind its owner across a load door or a long distance, the way a companion is
+  private followOwner(a: Active): void {
+    if (a.kind !== "dog" || a.diedAt || a.fleeSince || a.carriedBy || a.ridingBy || a.pending) return;
+    if (!this.active.has(a.id) || isNear(this.mp, a.id, a.ownerId, FOLLOW_TELEPORT_DISTANCE)) return;
+    try {
+      const loc = locationNear(this.mp, a.ownerId, FOLLOW_OFFSET);
+      this.mp.set(a.id, "locationalData", loc);
+      this.mp.set(a.id, "spawnPoint", loc);
+    } catch (e) {
+      this.log(`PetSystem: ${a.name} ${hex(a.id)} could not be moved to ${hex(a.ownerId)}: ${e}`);
+      return;
+    }
+    // A move with no host reaches no client
+    this.hosting.assign(a.id, a.ownerId, "owner");
   }
 
   private onDeath(a: Active, now: number): void {
@@ -1095,18 +1115,6 @@ export class PetSystem implements System {
     const dx = Number(a[0]) - Number(b[0]), dy = Number(a[1]) - Number(b[1]), dz = Number(a[2]) - Number(b[2]);
     const max = this.cfg.petInteractMaxDistance * 2;
     return dx * dx + dy * dy + dz * dz <= max * max;
-  }
-
-  private locationInFrontOf(actorId: number): NpcLocation {
-    const mp = this.mp;
-    const p = mp.getActorPos(actorId);
-    const angleZ = Number(mp.get(actorId, "angle")?.[2]) || 0;
-    const rad = (angleZ * Math.PI) / 180;
-    return {
-      cellOrWorldDesc: String(mp.get(actorId, "worldOrCellDesc")),
-      pos: [p[0] + SPAWN_DISTANCE * Math.sin(rad), p[1] + SPAWN_DISTANCE * Math.cos(rad), p[2] + SPAWN_LIFT],
-      rot: [0, 0, angleZ],
-    };
   }
 
   // ── Bases and products ───────────────────────────────────────────────────────
