@@ -179,7 +179,7 @@ const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: stri
   { key: 'y', label: 'Y', placeholder: '-29429' },
   { key: 'z', label: 'Z', placeholder: '8280' },
   { key: 'size', label: 'Size', placeholder: '2000' },
-  { key: 'spread', label: 'Spread', placeholder: '40% of Size, at most 1024' },
+  { key: 'spread', label: 'Spread', placeholder: 'blank: rings around POS' },
   { key: 'despawn', label: 'Despawn (s)', placeholder: '120' },
   { key: 'respawn', label: 'Respawn (s)', placeholder: '1800' },
 ];

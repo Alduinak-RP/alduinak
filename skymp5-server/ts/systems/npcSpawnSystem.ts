@@ -26,10 +26,7 @@ const MAX_COUNT = 20;
 const MAX_TOTAL = 40;
 const MAX_NAME = 64;
 const SLOT_SPACING = 96;
-// Without Spread in the file, NPCs stand within this share of Size, capped
-const DEFAULT_SPREAD_FRACTION = 0.4;
-const MAX_DEFAULT_SPREAD = 1024;
-// Random spots tried before a crowded zone accepts the last one
+// Random spots tried within Spread before a crowded zone falls back to the ring slot
 const PLACE_ATTEMPTS = 12;
 // Spawn height above POS so an NPC drops onto an uneven floor instead of starting inside it
 const SPAWN_LIFT = 64;
@@ -62,10 +59,10 @@ interface Zone {
   cellOrWorldId: number;
   pos: number[];
   radius: number;
-  // NPCs stand at random spots within this radius of pos
-  spread: number;
+  // Set: random spots within this radius of pos; unset: rings of slots around pos
+  spread?: number;
   npcs: ZoneNpc[];
-  // One entry per NPC to place
+  // One entry per NPC to place; slot i rings at slotPos(i)
   slots: ZoneNpc[];
   total: number;
   despawnSeconds: number;
@@ -85,7 +82,7 @@ interface Draft {
   locator: string;
   pos: number[];
   radius: number;
-  spread: number;
+  spread?: number;
   npcs: { id: string; count: number }[];
   despawnSeconds: number;
   respawnSeconds: number;
@@ -291,7 +288,9 @@ export class NpcSpawnSystem implements System {
       reject(`'${name}' skipped, more than ${MAX_TOTAL} NPCs`);
       return null;
     }
-    const spread = Math.min(radius, Math.max(0, num(pick(raw, "spread"), Math.min(radius * DEFAULT_SPREAD_FRACTION, MAX_DEFAULT_SPREAD))));
+    // Only an explicit positive Spread scatters; blank or 0 keeps the rings
+    const spreadRaw = num(pick(raw, "spread"), 0);
+    const spread = spreadRaw > 0 ? Math.min(radius, spreadRaw) : undefined;
     return {
       name, locator, pos, radius, spread, npcs,
       despawnSeconds: Math.max(0, num(pick(raw, "despawn"), DEFAULT_DESPAWN)),
@@ -460,7 +459,7 @@ export class NpcSpawnSystem implements System {
       const anchor = this.anchorIn(zone) ?? fallbackAnchor;
       if (anchor === undefined) break;
       const npc = zone.slots[slot];
-      const fresh = this.spawnOne(mp, zone, npc, anchor);
+      const fresh = this.spawnOne(mp, zone, npc, slot, anchor);
       if (fresh === null) {
         zone.slotReadyAt[slot] = now + RETRY_MS;
         continue;
@@ -486,9 +485,9 @@ export class NpcSpawnSystem implements System {
     return placed;
   }
 
-  private spawnOne(mp: Mp, zone: Zone, npc: ZoneNpc, anchorId: number): { id: number; pos: number[] } | null {
+  private spawnOne(mp: Mp, zone: Zone, npc: ZoneNpc, slot: number, anchorId: number): { id: number; pos: number[] } | null {
     try {
-      const pos = this.pickPos(zone);
+      const pos = this.pickPos(zone, slot);
       const loc = { cellOrWorldDesc: zone.cellOrWorldDesc, pos, rot: [0, 0, 0] };
       const id = placeNpc(mp, anchorId, npc.baseDesc, loc);
       try { mp.set(id, TAG_PROP, zone.name); } catch { }
@@ -539,17 +538,32 @@ export class NpcSpawnSystem implements System {
     return aggression >= 1 || (aggroRadius && confidence >= 1);
   }
 
-  // A random spot within Spread of POS, at least SLOT_SPACING from the zone's living NPCs; a crowded zone keeps the last try
-  private pickPos(zone: Zone): number[] {
+  // Slot 0 stands on POS, the rest fill rings of 6, 12, 18... SLOT_SPACING apart so no two spawn inside each other
+  private slotPos(zone: Zone, slot: number): number[] {
+    let ring = 0;
+    let first = 0;
+    const ringSize = (r: number) => Math.max(1, 6 * r);
+    while (slot >= first + ringSize(ring)) {
+      first += ringSize(ring);
+      ring++;
+    }
+    const size = Math.min(ringSize(ring), zone.total - first);
+    const angle = (2 * Math.PI * (slot - first)) / size;
+    const radius = ring * SLOT_SPACING;
+    return [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
+  }
+
+  // With Spread a random spot at least SLOT_SPACING from the zone's living NPCs, else or when crowded the ring slot
+  private pickPos(zone: Zone, slot: number): number[] {
+    if (!zone.spread) return this.slotPos(zone, slot);
     const taken = zone.spawned.filter((e) => e.id && !e.diedAt).map((e) => e.pos);
-    let pos = zone.pos;
     for (let attempt = 0; attempt < PLACE_ATTEMPTS; attempt++) {
       const angle = Math.random() * 2 * Math.PI;
       const radius = zone.spread * Math.sqrt(Math.random());
-      pos = [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2]];
-      if (taken.every((t) => Math.hypot(t[0] - pos[0], t[1] - pos[1]) >= SLOT_SPACING)) break;
+      const pos = [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
+      if (taken.every((t) => Math.hypot(t[0] - pos[0], t[1] - pos[1]) >= SLOT_SPACING)) return pos;
     }
-    return [pos[0], pos[1], pos[2] + SPAWN_LIFT];
+    return this.slotPos(zone, slot);
   }
 
   // A death starts the slot's Respawn cooldown and the corpse's own removal timer
