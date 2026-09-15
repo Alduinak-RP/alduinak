@@ -1,0 +1,1763 @@
+{
+ "pluginName": "AlduinakAdditions.esp",
+ "professions": {
+  "alchemist": "Alchemist",
+  "blacksmith": "Blacksmith",
+  "cook": "Cook",
+  "hunter": "Hunter",
+  "miner": "Miner",
+  "tailor": "Tailor",
+  "warrior": "Warrior",
+  "woodworker": "Woodworker"
+ },
+ "ranks": [
+  "Novice",
+  "Adept",
+  "Expert",
+  "Master"
+ ],
+ "keywords": {
+  "alchemy": "AldCraftingAlchemy",
+  "kiln": "AldCraftingKiln",
+  "woodcrafting": "AldCraftingWoodcrafting"
+ },
+ "abilities": {
+  "hunter": {
+   "Adept": {
+    "perks": [
+     "QuickShot",
+     "Ranger"
+    ]
+   },
+   "Expert": {
+    "perks": [
+     "EagleEye30"
+    ]
+   }
+  },
+  "warrior": {
+   "Novice": {
+    "perks": [
+     "FightingStance"
+    ]
+   },
+   "Adept": {
+    "perks": [
+     {
+      "edid": "DualFlurry30",
+      "untilRank": "Master"
+     },
+     "BlockRunner"
+    ],
+    "stamina": 25
+   },
+   "Expert": {
+    "perks": [
+     "ShieldCharge",
+     "CriticalCharge",
+     "GreatCriticalCharge"
+    ],
+    "stamina": 25
+   },
+   "Master": {
+    "perks": [
+     "ChampionsStance",
+     "Sweep",
+     "DualFlurry50",
+     "Warmaster"
+    ]
+   }
+  }
+ },
+ "woodcraftingBench": {
+  "edid": "AldWoodcraftingBench",
+  "name": "Woodcrafting Bench",
+  "template": "BYOHHouseCarpentersWorkbench",
+  "removeKeywords": [
+   "BYOHCarpenterTable",
+   "BYOHBuildingCarpenter"
+  ],
+  "alsoTag": [
+   "BYOHHouseCarpentersWorkbench",
+   "BYOHHouseCarpentersWorkbenchWH",
+   "LuxVia_MarkarthEntrance_CarpenterBench"
+  ]
+ },
+ "alchemyLabs": [
+  "CraftingAlchemyWorkbench",
+  "CraftingAlchemyWorkbenchTabletop",
+  "schwarky_alchemylab"
+ ],
+ "alchemy": {
+  "profession": "alchemist",
+  "recipes": [
+   {
+    "output": "FortifySkillAlteration01",
+    "name": "Potion of Alteration",
+    "tier": "Adept",
+    "items": {
+     "SpikyGrass01": 3,
+     "Taproot": 1
+    }
+   },
+   {
+    "output": "FortifySkillAlteration02",
+    "name": "Draught of Alteration",
+    "tier": "Expert",
+    "items": {
+     "SpikyGrass01": 5,
+     "ChaurusEggs": 5,
+     "Taproot": 1
+    }
+   },
+   {
+    "output": "FortifySkillAlteration03",
+    "name": "Philter of Alteration",
+    "tier": "Master",
+    "items": {
+     "SpikyGrass01": 7,
+     "ChaurusEggs": 7,
+     "Taproot": 1,
+     "Mushroom06": 6
+    }
+   },
+   {
+    "output": "FortifySkillAlteration04",
+    "name": "Elixir of Alteration",
+    "tier": "Master",
+    "items": {
+     "SpikyGrass01": 9,
+     "ChaurusEggs": 9,
+     "Taproot": 1,
+     "Mushroom06": 8
+    }
+   },
+   {
+    "output": "FortifyCarry01",
+    "name": "Potion of Strength",
+    "tier": "Expert",
+    "items": {
+     "CreepClusterRoot": 5,
+     "ScalyPholiotaBits": 6,
+     "TrollFat": 2
+    }
+   },
+   {
+    "output": "FortifyCarry02",
+    "name": "Draught of Strength",
+    "tier": "Master",
+    "items": {
+     "CreepClusterRoot": 7,
+     "ScalyPholiotaBits": 8,
+     "TrollFat": 3,
+     "BearClaws": 1
+    }
+   },
+   {
+    "output": "FortifySkillConjuration01",
+    "name": "Conjurer's Potion",
+    "tier": "Expert",
+    "items": {
+     "MountainFlower01Blue": 3,
+     "BoneMeal": 5,
+     "Lavender": 10
+    }
+   },
+   {
+    "output": "FortifySkillConjuration02",
+    "name": "Conjurer's Draught",
+    "tier": "Master",
+    "items": {
+     "MountainFlower01Blue": 5,
+     "BoneMeal": 7,
+     "Lavender": 12,
+     "HagravenFeathers": 2
+    }
+   },
+   {
+    "output": "FortifySkillDestruction01",
+    "name": "Potion of Destruction",
+    "tier": "Expert",
+    "items": {
+     "GlowingMushroom": 7,
+     "Nightshade": 5
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "FortifySkillDestruction02",
+    "name": "Draught of Destruction",
+    "tier": "Master",
+    "items": {
+     "GlowingMushroom": 9,
+     "Nightshade": 7,
+     "Ectoplasm": 1
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "FortifySkillIllusion01",
+    "name": "Potion of Illusion",
+    "tier": "Adept",
+    "items": {
+     "DragonsTongue": 7,
+     "MoraTapinellaBits": 4
+    }
+   },
+   {
+    "output": "FortifySkillIllusion02",
+    "name": "Draught of Illusion",
+    "tier": "Expert",
+    "items": {
+     "DragonsTongue": 9,
+     "MoraTapinellaBits": 6
+    }
+   },
+   {
+    "output": "FortifySkillIllusion03",
+    "name": "Philter of Illusion",
+    "tier": "Master",
+    "items": {
+     "DragonsTongue": 11,
+     "MoraTapinellaBits": 8,
+     "DwarvenOil": 1
+    }
+   },
+   {
+    "output": "FortifySkillIllusion04",
+    "name": "Elixir of Illusion",
+    "tier": "Master",
+    "items": {
+     "DragonsTongue": 13,
+     "MoraTapinellaBits": 10,
+     "DwarvenOil": 2,
+     "Taproot": 1
+    }
+   },
+   {
+    "output": "FortifySkillMarksman01",
+    "name": "Potion of True Shot",
+    "tier": "Master",
+    "items": {
+     "CanisRoot01": 5,
+     "SpiderEgg": 3,
+     "JuniperBerries": 10
+    }
+   },
+   {
+    "output": "FortifySkillOneHanded01",
+    "name": "Potion of the Warrior",
+    "tier": "Master",
+    "items": {
+     "SabrecatTooth": 5,
+     "BirdEgg01": 8
+    }
+   },
+   {
+    "output": "FortifySkillOneHanded02",
+    "name": "Draught of the Warrior",
+    "tier": "Master",
+    "items": {
+     "SabrecatTooth": 7,
+     "BirdEgg01": 10
+    }
+   },
+   {
+    "output": "FortifySkillTwoHanded01",
+    "name": "Potion of the Berserker",
+    "tier": "Master",
+    "items": {
+     "BearClaws": 2,
+     "BirdEgg01": 3,
+     "HangingMoss": 10
+    }
+   },
+   {
+    "output": "FortifySkillTwoHanded02",
+    "name": "Draught of the Berserker",
+    "tier": "Master",
+    "items": {
+     "BearClaws": 4,
+     "BirdEgg01": 5,
+     "HangingMoss": 12,
+     "Mushroom01": 6
+    }
+   },
+   {
+    "output": "FortifySkillRestoration01",
+    "name": "Potion of the Healer",
+    "tier": "Expert",
+    "items": {
+     "SaltPile": 4,
+     "AntlersSmall": 6
+    }
+   },
+   {
+    "output": "FortifySkillRestoration02",
+    "name": "Draught of the Healer",
+    "tier": "Master",
+    "items": {
+     "SaltPile": 6,
+     "AntlersSmall": 8
+    }
+   },
+   {
+    "output": "FortifyHealRate01",
+    "name": "Potion of Regeneration",
+    "tier": "Master",
+    "items": {
+     "Garlic": 5,
+     "JuniperBerries": 7,
+     "Mushroom05": 10
+    }
+   },
+   {
+    "output": "FortifyMagickaRate01",
+    "name": "Potion of Lasting Potency",
+    "tier": "Expert",
+    "items": {
+     "Garlic": 12,
+     "JazBay": 7
+    }
+   },
+   {
+    "output": "FortifyMagickaRate02",
+    "name": "Draught of Lasting Potency",
+    "tier": "Master",
+    "items": {
+     "Garlic": 14,
+     "JazBay": 9,
+     "SaltPile": 5
+    }
+   },
+   {
+    "output": "FortifyStaminaRate01",
+    "name": "Potion of Vigor",
+    "tier": "Expert",
+    "items": {
+     "Mushroom01": 9,
+     "ScalyPholiotaBits": 7
+    }
+   },
+   {
+    "output": "FortifyStaminaRate02",
+    "name": "Draught of Vigor",
+    "tier": "Master",
+    "items": {
+     "Mushroom01": 11,
+     "ScalyPholiotaBits": 9,
+     "MoraTapinellaBits": 5
+    }
+   },
+   {
+    "output": "ResistFire25",
+    "name": "Potion of Resist Fire",
+    "tier": "Expert",
+    "items": {
+     "BoneMeal": 5,
+     "DragonsTongue": 12,
+     "Mushroom01": 8
+    }
+   },
+   {
+    "output": "ResistFire50",
+    "name": "Draught of Resist Fire",
+    "tier": "Master",
+    "items": {
+     "BoneMeal": 7,
+     "DragonsTongue": 14,
+     "Mushroom01": 10,
+     "FireSalts": 2
+    }
+   },
+   {
+    "output": "ResistFrost25",
+    "name": "Potion of Resist Cold",
+    "tier": "Expert",
+    "items": {
+     "FrostMirriam": 4,
+     "Snowberry": 12,
+     "MountainFlower01Purple": 8
+    }
+   },
+   {
+    "output": "ResistFrost50",
+    "name": "Draught of Resist Cold",
+    "tier": "Master",
+    "items": {
+     "FrostMirriam": 6,
+     "FrostSalts": 1,
+     "Snowberry": 14,
+     "MountainFlower01Purple": 10
+    }
+   },
+   {
+    "output": "ResistMagic25",
+    "name": "Potion of Resist Magic",
+    "tier": "Expert",
+    "items": {
+     "Mushroom02": 7,
+     "TundraCotton": 5
+    }
+   },
+   {
+    "output": "ResistMagic50",
+    "name": "Draught of Resist Magic",
+    "tier": "Master",
+    "items": {
+     "Mushroom02": 9,
+     "TundraCotton": 7,
+     "Lavender": 12,
+     "Nirnroot": 1
+    }
+   },
+   {
+    "output": "ResistShock25",
+    "name": "Potion of Resist Shock",
+    "tier": "Expert",
+    "items": {
+     "GlowingMushroom": 5,
+     "BirdEgg02": 3
+    }
+   },
+   {
+    "output": "ResistShock50",
+    "name": "Draught of Resist Shock",
+    "tier": "Master",
+    "items": {
+     "GlowingMushroom": 7,
+     "BirdEgg02": 5,
+     "SwampFungalPod01": 3
+    }
+   },
+   {
+    "output": "RestoreHealth01",
+    "name": "Potion of Minor Healing",
+    "tier": "Novice",
+    "items": {
+     "MountainFlower01Blue": 12,
+     "Wheat": 8
+    }
+   },
+   {
+    "output": "RestoreHealth02",
+    "name": "Potion of Healing",
+    "tier": "Expert",
+    "items": {
+     "MountainFlower01Blue": 14,
+     "Wheat": 10,
+     "Mushroom04": 5
+    }
+   },
+   {
+    "output": "RestoreHealth03",
+    "name": "Potion of Plentiful Healing",
+    "tier": "Master",
+    "items": {
+     "MountainFlower01Blue": 16,
+     "Wheat": 12,
+     "Mushroom04": 7,
+     "SabrecatEyeball": 2
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "RestoreMagicka01",
+    "name": "Potion of Minor Magicka",
+    "tier": "Novice",
+    "items": {
+     "CreepClusterRoot": 7,
+     "ElvesEar": 8
+    }
+   },
+   {
+    "output": "RestoreMagicka02",
+    "name": "Potion of Magicka",
+    "tier": "Expert",
+    "items": {
+     "CreepClusterRoot": 9,
+     "ElvesEar": 10,
+     "Mushroom03": 4
+    }
+   },
+   {
+    "output": "RestoreMagicka03",
+    "name": "Potion of Plentiful Magicka",
+    "tier": "Master",
+    "items": {
+     "CreepClusterRoot": 11,
+     "ElvesEar": 12,
+     "Mushroom03": 6,
+     "GiantLichen": 8
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "RestoreStamina01",
+    "name": "Potion of Minor Stamina",
+    "tier": "Novice",
+    "items": {
+     "MountainFlower01Purple": 12,
+     "AntlersLarge": 5
+    }
+   },
+   {
+    "output": "RestoreStamina02",
+    "name": "Potion of Stamina",
+    "tier": "Expert",
+    "items": {
+     "MountainFlower01Purple": 14,
+     "AntlersLarge": 7,
+     "BearClaws": 3
+    }
+   },
+   {
+    "output": "RestoreStamina03",
+    "name": "Potion of Plentiful Stamina",
+    "tier": "Master",
+    "items": {
+     "MountainFlower01Purple": 16,
+     "AntlersLarge": 7,
+     "BearClaws": 5,
+     "BeeHoneyComb": 6
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "CurePoison",
+    "name": "Cure Poison",
+    "tier": "Adept",
+    "items": {
+     "deathBell": 4,
+     "ChaurusEggs": 5,
+     "MudcrabChitin": 7
+    }
+   },
+   {
+    "output": "CureDisease",
+    "name": "Potion of Cure Disease",
+    "tier": "Adept",
+    "items": {
+     "ChaurusEggs": 7,
+     "deathBell": 6,
+     "Garlic": 4
+    }
+   },
+   {
+    "output": "FortifyMagicka01",
+    "name": "Potion of Extra Magicka",
+    "tier": "Expert",
+    "items": {
+     "MountainFlower01Red": 12,
+     "JazBay": 7,
+     "TundraCotton": 10
+    }
+   },
+   {
+    "output": "FortifyMagicka02",
+    "name": "Draught of Extra Magicka",
+    "tier": "Master",
+    "items": {
+     "MountainFlower01Red": 14,
+     "JazBay": 9,
+     "TundraCotton": 12,
+     "Ectoplasm": 1
+    }
+   },
+   {
+    "output": "FortifyStamina01",
+    "name": "Potion of Enhanced Stamina",
+    "tier": "Expert",
+    "items": {
+     "Garlic": 8,
+     "Lavender": 11
+    }
+   },
+   {
+    "output": "FortifyStamina02",
+    "name": "Draught of Enhanced Stamina",
+    "tier": "Master",
+    "items": {
+     "Garlic": 10,
+     "Lavender": 13,
+     "SlaughterfishEgg01": 5
+    }
+   },
+   {
+    "output": "TGTQ02BalmoraBlue",
+    "name": "Balmora Blue",
+    "tier": "Expert",
+    "items": {
+     "MoonSugar": 5,
+     "Nightshade": 12,
+     "JazBay": 4
+    }
+   },
+   {
+    "output": "WindhelmDoubleDistilledSkooma",
+    "name": "Double-Distilled Skooma",
+    "tier": "Master",
+    "items": {
+     "MoonSugar": 5,
+     "Nightshade": 12,
+     "JazBay": 4,
+     "FireSalts": 1
+    }
+   },
+   {
+    "output": "DA14Water",
+    "name": "Holy Water",
+    "tier": "Adept",
+    "items": {
+     "GiantToes": 2,
+     "MountainFlower01Blue": 8
+    }
+   },
+   {
+    "output": "DLC1RedwaterDenSkooma",
+    "name": "Redwater Skooma",
+    "tier": "Expert",
+    "items": {
+     "MoonSugar": 5,
+     "Nightshade": 12,
+     "Nirnroot": 6
+    }
+   },
+   {
+    "output": "Skooma",
+    "name": "Skooma",
+    "tier": "Adept",
+    "items": {
+     "MoonSugar": 5,
+     "Nightshade": 12
+    }
+   },
+   {
+    "output": "DamageHealth01",
+    "name": "Weak Poison",
+    "tier": "Adept",
+    "items": {
+     "Mushroom02": 5,
+     "ChaurusEggs": 7,
+     "SpiderEgg": 2
+    }
+   },
+   {
+    "output": "DamageMagicka01",
+    "name": "Weak Magicka Poison",
+    "tier": "Adept",
+    "items": {
+     "GiantLichen": 8,
+     "HagravenFeathers": 2
+    }
+   },
+   {
+    "output": "DamageStamina01",
+    "name": "Weak Stamina Poison",
+    "tier": "Adept",
+    "items": {
+     "BoneMeal": 7,
+     "CanisRoot01": 5,
+     "SpiderEgg": 2
+    }
+   },
+   {
+    "output": "WeaknessFire01",
+    "name": "Weak Aversion to Fire",
+    "tier": "Expert",
+    "items": {
+     "Mushroom02": 7,
+     "JuniperBerries": 5,
+     "FrostSalts": 1
+    }
+   },
+   {
+    "output": "WeaknessFrost01",
+    "name": "Weak Aversion to Frost",
+    "tier": "Expert",
+    "items": {
+     "ElvesEar": 7,
+     "FireSalts": 1,
+     "IceWraithTeeth": 2
+    }
+   },
+   {
+    "output": "WeaknessMagic01",
+    "name": "Weak Aversion to Magic",
+    "tier": "Expert",
+    "items": {
+     "CreepClusterRoot": 7,
+     "DwarvenOil": 1,
+     "BirdEgg01": 5
+    }
+   },
+   {
+    "output": "WeaknessShock01",
+    "name": "Weak Aversion to Shock",
+    "tier": "Expert",
+    "items": {
+     "VoidSalts": 1,
+     "HagravenFeathers": 2,
+     "GiantLichen": 7
+    }
+   },
+   {
+    "output": "FoodWineBottle02",
+    "name": "Wine",
+    "tier": "Novice",
+    "items": {
+     "FrostMirriam": 4,
+     "JazBay": 8
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "Ale",
+    "name": "Ale",
+    "tier": "Novice",
+    "items": {
+     "Lavender": 3,
+     "Wheat": 6
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "FoodMead",
+    "name": "Nord Mead",
+    "tier": "Novice",
+    "items": {
+     "Snowberry": 2,
+     "FoodHoney": 4
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "VoidSalts",
+    "name": "Void Salts",
+    "tier": "Adept",
+    "items": {
+     "SoulGemPetty": 2,
+     "SaltPile": 3,
+     "GemAmethyst": 1
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "FireSalts",
+    "name": "Fire Salts",
+    "tier": "Adept",
+    "items": {
+     "SoulGemPetty": 2,
+     "SaltPile": 5,
+     "GemRuby": 4
+    },
+    "proposedTier": true
+   },
+   {
+    "output": "FrostSalts",
+    "name": "Frost Salts",
+    "tier": "Adept",
+    "items": {
+     "SoulGemPetty": 2,
+     "SaltPile": 4,
+     "GemSapphire": 1
+    },
+    "proposedTier": true
+   }
+  ]
+ },
+ "kilnRecipes": [
+  {
+   "edid": "AldRecipeKiln_Charcoal",
+   "output": "Charcoal",
+   "count": 1,
+   "profession": "woodworker",
+   "tier": "Novice",
+   "items": {
+    "Firewood01": 2
+   }
+  }
+ ],
+ "cooking": {
+  "profession": "cook",
+  "benches": [
+   "CraftingCookpot",
+   "BYOHCraftingOven"
+  ],
+  "saltItem": "SaltPile",
+  "needsSalt": [
+   "RecipeFoodBeefCooked",
+   "RecipeFoodChickenCooked",
+   "RecipeFoodHorkerCooked",
+   "RecipeFoodHorseCooked",
+   "RecipeFoodGoatCooked",
+   "RecipeFoodMammothCooked",
+   "RecipeFoodPheasantCooked",
+   "RecipeFoodRabbitCooked",
+   "RecipeFoodSalmonCooked",
+   "RecipeFoodVenisonCooked"
+  ],
+  "tiers": {
+   "Adept": [
+    "RecipeFoodStewAppleCabbage",
+    "RecipeFoodSoupCabbagePotato",
+    "DLC2RecipeFoodStewCabbage",
+    "BYOHRecipeFoodSoupClamChowder",
+    "RecipeFoodStewHorker",
+    "DLC2RecipeFoodStewHorkerAshYam",
+    "BYOHRecipeFoodPotatoBread",
+    "RecipeFoodSoupPotato",
+    "BYOHRecipeFoodSweetRoll",
+    "RecipeFoodSoupTomato",
+    "RecipeFoodSoupVegetable"
+   ],
+   "Expert": [
+    "RecipeFoodStewBeef",
+    "BYOHRecipeFoodBraidedBread",
+    "BYOHRecipeFoodBread",
+    "BYOHRecipeFoodChickenDumplings"
+   ],
+   "Master": [
+    "BYOHRecipeFoodAppleDumplings",
+    "BYOHRecipeFoodApplePie",
+    "RecipeFoodElsweyrFondue",
+    "BYOHRecipeFoodGarlicBread",
+    "BYOHRecipeFoodJazbayCrostata",
+    "BYOHRecipeFoodJuniperberryCrostata",
+    "BYOHRecipeFoodLavenderDumplings",
+    "BYOHRecipeFoodSnowberryCrostata",
+    "RecipeFoodStewVenison"
+   ]
+  }
+ },
+ "smithing": {
+  "profession": "blacksmith",
+  "benches": [
+   "CraftingSmithingForge",
+   "CraftingSmithingSkyforge",
+   "CraftingSmelter",
+   "DLC2CraftingSmithingSkaalForge",
+   "DLC1CraftingDawnguard",
+   "DLC1LD_CraftingForgeAetherium"
+  ],
+  "materials": {
+   "Adept": [
+    "IngotGold",
+    "ingotSilver",
+    "IngotSteel",
+    "OreGold",
+    "OreSilver"
+   ],
+   "Expert": [
+    "IngotOrichalcum",
+    "IngotDwarven",
+    "IngotIMoonstone",
+    "OreOrichalcum",
+    "OreMoonstone",
+    "DwarvenLargeScrap",
+    "DwarvenLargeScrap2",
+    "DwarvenLargeScrap3",
+    "DwarvenPlateMetalLarge",
+    "DwarvenPlateMetalSmall",
+    "DwarvenScrapBent",
+    "DwarvenScrapLever",
+    "DwarvenScrapLever02",
+    "DwarvenScrapMetal"
+   ],
+   "Master": [
+    "IngotMalachite",
+    "IngotQuicksilver",
+    "IngotEbony",
+    "OreMalachite",
+    "OreQuicksilver",
+    "OreEbony",
+    "DragonBone",
+    "DragonScales",
+    "DLC2OreStalhrim",
+    "DaedraHeart"
+   ]
+  },
+  "stripPerkConditions": true,
+  "exclude": []
+ },
+ "woodworking": {
+  "profession": "woodworker",
+  "stripPerkConditions": true,
+  "recipes": {
+   "Adept": [
+    "JS_RecipeImperialShield",
+    "RecipeArmorTH_Iron1Shield",
+    "RecipeHearthguardShield",
+    "DLC2RecipeWeaponAshlanderGreatbow",
+    "DLC2RecipeArrowAsh",
+    "RecipeHearthguardShieldClothless",
+    "MCERecipeArmorGuardShieldFalkreath",
+    "MCERecipeArmorGuardShieldHjaalmarch",
+    "MCERecipeArmorGuardShieldMarkarth",
+    "MCERecipeArmorGuardShieldPale",
+    "MCERecipeArmorGuardShieldRiften",
+    "MCERecipeArmorGuardShieldSolitude",
+    "MCERecipeArmorGuardShieldWhiterun",
+    "MCERecipeArmorGuardShieldWinterhold",
+    "MCERecipeArrowFalmer",
+    "MCERecipeArrowForsworn",
+    "MCERecipeWeaponFalmerBow",
+    "MCERecipeWeaponForswornBow",
+    "MCERecipeWeaponImperialBow",
+    "MCERecipeArmorGuardShieldEastmarch",
+    "RecipeArmorIronShieldToweraltdk",
+    "RecipeArmorLargeWoodShieldaltdk",
+    "RecipeArmorSteelRoundedShieldaltdk",
+    "RecipeArmorNordicVanguardShieldaltdk",
+    "RecipeArmorRihadShield",
+    "DLC1RecipeTechBoltSteel",
+    "DLC1RecipeTechBoltDwarvenExplodingShock",
+    "DLC1RecipeTechBoltDwarvenExplodingIce",
+    "DLC1RecipeTechBoltDwarvenExplodingFire",
+    "DLC1RecipeTechBoltSteelExplodingShock",
+    "DLC1RecipeTechBoltSteelExplodingIce",
+    "DLC1RecipeTechBoltSteelExplodingFire",
+    "DLC1RecipeArrowSteel",
+    "DLC1RecipeArrowIron",
+    "RecipeArmorImperialShieldLight",
+    "RecipeWeaponSkyforgeBow",
+    "RecipeArmorSteelShield",
+    "RecipeArmorIronBandedShield",
+    "RecipeArmorImperialShield",
+    "RecipeArmorHideShield",
+    "RecipeArmorIronShield"
+   ],
+   "Expert": [
+    "RecipeArmorDIS_Alikr_Shield1",
+    "RecipeArmorDIS_Alikr_Shield2",
+    "DLC1RecipeTechBoltDwarven",
+    "DLC1RecipeArrowElven",
+    "DLC1RecipeArrowOrcish",
+    "DLC1RecipeArrowDwarven",
+    "RecipeWeaponOrcishBow",
+    "RecipeWeaponDwarvenBow",
+    "RecipeArmorOrcishShield",
+    "RecipeArmorDwarvenShield",
+    "RecipeArmorElvenShield"
+   ],
+   "Master": [
+    "RecipeArmorEinherjarShield",
+    "RecipeArmorEinherjarShield2",
+    "RecipeArmorRedoranShield",
+    "RecipeArmorBonesaintShield",
+    "RecipeArmorEbonyShieldaltdk",
+    "RecipeArmorDaedricShieldaltdk",
+    "DLC2RecipeArrowStalhrim",
+    "DLC2RecipeArrowNordic",
+    "DLC1RecipeArrowDragonbone",
+    "DLC1RecipeArrowDaedric",
+    "DLC1RecipeArrowGlass",
+    "DLC1RecipeArrowEbony",
+    "RecipeWeaponGlassBow",
+    "RecipeWeaponElvenBow",
+    "RecipeWeaponEbonyBow",
+    "RecipeArmorDaedricShield",
+    "RecipeArmorDragonplateShield",
+    "RecipeArmorEbonyShield",
+    "RecipeArmorDragonscaleShield",
+    "RecipeArmorGlassShield"
+   ]
+  }
+ },
+ "tailoring": {
+  "profession": "tailor",
+  "recipes": [
+   {
+    "edid": "RecipeArmorevgsmpfastenedscarfarmor",
+    "name": "Fastened Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpfastenedscarfLIGHTarmor",
+    "name": "Fastened Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpfastenedscarfDARKarmor",
+    "name": "Fastened Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpgaiterarmor",
+    "name": "Loose Neck Gaiter",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpgaiterLIGHTarmor",
+    "name": "Loose Neck Gaiter",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpgaiterDARKarmor",
+    "name": "Loose Neck Gaiter",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpgatheredscarfarmor",
+    "name": "Gathered Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 3,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpgatheredscarfLIGHTarmor",
+    "name": "Gathered Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 3,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpgatheredscarfDARKarmor",
+    "name": "Gathered Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 3,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpclothcloakarmor",
+    "name": "Short Cloth Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpclothcloakDARKarmor",
+    "name": "Short Cloth Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpclothcloakBLUEarmor",
+    "name": "Short Cloth Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpclothcloakREDarmor",
+    "name": "Short Cloth Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpwovenscarfarmor",
+    "name": "Short Woven Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpwovenscarfLIGHTarmor",
+    "name": "Short Woven Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpwovenscarfDARKarmor",
+    "name": "Short Woven Scarf",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedmaskarmor",
+    "name": "Rugged Mask",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedmaskDARKarmor",
+    "name": "Rugged Mask",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedmaskLIGHTarmor",
+    "name": "Rugged Mask",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedmaskREDarmor",
+    "name": "Rugged Mask",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedmaskBLUEarmor",
+    "name": "Rugged Mask",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedcapearmor",
+    "name": "Rugged Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedcapeDARKarmor",
+    "name": "Rugged Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedcapeLIGHTarmor",
+    "name": "Rugged Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedcapeREDarmor",
+    "name": "Rugged Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpruggedcapeBLUEarmor",
+    "name": "Rugged Cape",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorTH_ComFur",
+    "name": "Fur Collar",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "BearPelt": 1,
+     "LeatherStrips": 1,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorTH_ComFurA",
+    "name": "Large Fur Collar",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "BearPelt": 1,
+     "LeatherStrips": 2,
+     "Leather01": 3
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpquiltedmantlearmor",
+    "name": "Quilted Mantle",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 3,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptoothlocksatchelarmor",
+    "name": "Toothlock Satchel",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 2,
+     "SabrecatTooth": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptoothlocksatchelDARKarmor",
+    "name": "Toothlock Satchel",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 2,
+     "SabrecatTooth": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmppatchworksatchelarmor",
+    "name": "Patchwork Satchel",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 4,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmppatchworksatchelDARKarmor",
+    "name": "Patchwork Satchel",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 4,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedsatchelarmor",
+    "name": "Reinforced Satchel (brown)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 2,
+     "IngotGold": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedsatchelDARKarmor",
+    "name": "Reinforced Satchel (black)",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 2,
+     "IngotQuicksilver": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedmantlearmor",
+    "name": "Reinforced Mantle",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 3,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedmantleGRarmor",
+    "name": "Reinforced Mantle",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 3,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedmantleBLarmor",
+    "name": "Reinforced Mantle",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 3,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "002RecipeCommonArmor01",
+    "name": "Boiled Leather Cuirass",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "ArmorLeatherCuirass": 1,
+     "LeatherStrips": 4,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "002RecipeCommonArmor10",
+    "name": "Robed Iron Armor",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "ArmorIronCuirass": 1,
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "002RecipeCommonArmor11",
+    "name": "Robed Iron Armor",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "ArmorIronCuirass": 1,
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "002RecipeCommonArmor05",
+    "name": "Leather Doublet",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "ArmorLeatherCuirass": 1
+    }
+   },
+   {
+    "edid": "002RecipeCommonArmor06",
+    "name": "Leather Doublet",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "ArmorLeatherCuirass": 1
+    }
+   },
+   {
+    "edid": "002RecipeCommonArmor07",
+    "name": "Leather Doublet",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 1,
+     "ArmorLeatherCuirass": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpsturdypouchLarmor",
+    "name": "Sturdy Pouch (Left)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 1,
+     "IngotQuicksilver": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpsturdypouchLDARKarmor",
+    "name": "Sturdy Pouch (Left)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 1,
+     "IngotQuicksilver": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpsturdypouchRarmor",
+    "name": "Sturdy Pouch (Right)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 1,
+     "IngotQuicksilver": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpsturdypouchRDARKarmor",
+    "name": "Sturdy Pouch (Right)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 2,
+     "Leather01": 1,
+     "IngotQuicksilver": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptraderpackarmor",
+    "name": "Trader's Resource",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 4,
+     "Leather01": 1,
+     "IngotIron": 2,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptraderpackGRAYarmor",
+    "name": "Trader's Resource",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 4,
+     "Leather01": 1,
+     "IngotIron": 2,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptraderpackREDarmor",
+    "name": "Trader's Resource",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 4,
+     "Leather01": 1,
+     "IngotIron": 2,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptraderpacklanternarmor",
+    "name": "Trader's Resource & Lantern",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 4,
+     "IngotIron": 4,
+     "Firewood01": 3,
+     "Leather01": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptraderpacklanternGRAYarmor",
+    "name": "Trader's Resource & Lantern",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 4,
+     "IngotIron": 4,
+     "Firewood01": 3,
+     "Leather01": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmptraderpacklanternREDarmor",
+    "name": "Trader's Resource & Lantern",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 4,
+     "IngotIron": 4,
+     "Firewood01": 3,
+     "Leather01": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpackarmor",
+    "name": "Reinforced Backpack",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 5,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpackDARKarmor",
+    "name": "Reinforced Backpack",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 5,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpackLTHarmor",
+    "name": "Reinforced Backpack",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 5,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpackLIGHTarmor",
+    "name": "Reinforced Backpack",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 5,
+     "IngotIron": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpacklanternarmor",
+    "name": "Reinforced Backpack & Lantern",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 5,
+     "LeatherStrips": 3,
+     "IngotIron": 2,
+     "Firewood01": 2,
+     "IngotCorundum": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpacklanternDARKarmor",
+    "name": "Reinforced Backpack & Lantern",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 5,
+     "LeatherStrips": 3,
+     "IngotIron": 2,
+     "Firewood01": 2,
+     "IngotCorundum": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpacklanternLTHarmor",
+    "name": "Reinforced Backpack & Lantern",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 5,
+     "LeatherStrips": 3,
+     "IngotIron": 2,
+     "Firewood01": 2,
+     "IngotCorundum": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpreinforcedbackpacklanternLIGHTarmor",
+    "name": "Reinforced Backpack & Lantern",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 5,
+     "LeatherStrips": 3,
+     "IngotIron": 2,
+     "Firewood01": 2,
+     "IngotCorundum": 1
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpexqcloakarmor",
+    "name": "Exquisite Cloak",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 3,
+     "IngotGold": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpexqcloakWGarmor",
+    "name": "Exquisite Cloak",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 3,
+     "IngotGold": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpexqcloakBSarmor",
+    "name": "Exquisite Cloak",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 3,
+     "IngotGold": 2
+    }
+   },
+   {
+    "edid": "RecipeArmorevgsmpexqcloakRSarmor",
+    "name": "Exquisite Cloak",
+    "tier": "Master",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Leather01": 3,
+     "IngotGold": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask_Unpainted",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask_BlueYellow",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask_BlueRed",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask_Cloth",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask_BlueRed_Cloth",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask_BlueYellow_Cloth",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   },
+   {
+    "edid": "00RecipeArmorBogBlightMask_Unpainted_Cloth",
+    "name": "Argonian Funerary Mask",
+    "tier": "Adept",
+    "bench": "CraftingTanningRack",
+    "items": {
+     "Firewood01": 2,
+     "Leather01": 2
+    }
+   }
+  ],
+  "newRecipes": [],
+  "disableRecipes": [
+   "00ENCHRecipeArmorBogBlightMask",
+   "00ENCHRecipeArmorBogBlightMask_BlueRed",
+   "00ENCHRecipeArmorBogBlightMask_BlueYellow",
+   "00ENCHRecipeArmorBogBlightMask_Unpainted",
+   "00ENCHRecipeArmorBogBlightMask_Cloth",
+   "00ENCHRecipeArmorBogBlightMask_BlueRed_Cloth",
+   "00ENCHRecipeArmorBogBlightMask_BlueYellow_Cloth",
+   "00ENCHRecipeArmorBogBlightMask_Unpainted_Cloth"
+  ],
+  "disabledBench": "MothNest1"
+ }
+}
