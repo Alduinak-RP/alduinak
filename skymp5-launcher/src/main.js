@@ -352,15 +352,15 @@ function clampFov(v) {
   const n = Math.round(parseFloat(v))
   return Number.isFinite(n) ? Math.min(170, Math.max(70, n)) : null
 }
-function fovInEffect() {
-  const d = FOV_INIS.map(profileIniInEffect).map(f => (f && ini.read(f).Display) || {}).find(x => FOV_KEYS[0] in x) || {}
-  const n = parseFloat(d[FOV_KEYS[0]])
+function fovInEffect(key = FOV_KEYS[0]) {
+  const d = FOV_INIS.map(profileIniInEffect).map(f => (f && ini.read(f).Display) || {}).find(x => key in x) || {}
+  const n = parseFloat(d[key])
   return Number.isFinite(n) ? n : FOV_DEFAULT
 }
-// Writes both FOV keys when the value differs from the one in effect
+// Writes both FOV keys unless both already hold the value
 function saveFov(v) {
   const fov = clampFov(v)
-  if (fov === null || fov === Math.round(fovInEffect())) return
+  if (fov === null || FOV_KEYS.every(k => Math.round(fovInEffect(k)) === fov)) return
   const fovEdit = { Display: Object.fromEntries(FOV_KEYS.map(k => [k, fov.toFixed(4)])) }
   ini.write(ensureProfileIni(FOV_INIS[1]), fovEdit)
   const custom = profileIniInEffect(FOV_INIS[0])
