@@ -63,7 +63,7 @@ TEMPLE = 'Temple'
 
 # Kind label -> Teleport tab section; the panel files anything else under Other
 GROUPS = {
-    'City': 'settlements', 'Town': 'settlements', 'Settlement': 'settlements', 'Orc Stronghold': 'settlements',
+    'City': 'cities', 'Town': 'villages', 'Settlement': 'villages', 'Orc Stronghold': 'villages',
     'Fort': 'forts', 'Castle': 'forts', 'Imperial Camp': 'forts', 'Stormcloak Camp': 'forts',
     TEMPLE: 'temples',
 }
