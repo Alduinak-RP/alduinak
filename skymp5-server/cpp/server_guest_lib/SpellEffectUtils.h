@@ -3,10 +3,10 @@
 #include "libespm/espm.h"
 #include <spdlog/spdlog.h>
 
-// Calls callback(effectItem, mgefData, mgefLookup) for each effect of a SPEL, effectItem may be null; false if spellId is not a SPEL
+// Calls callback(spellData, effect, mgefData, mgefLookup) for each effect of a SPEL; false if spellId is not a SPEL
 template <class Callback>
-bool ForEachSpellEffectData(WorldState* worldState, uint32_t spellId,
-                            const Callback& callback)
+bool ForEachSpellEffectRecord(WorldState* worldState, uint32_t spellId,
+                              const Callback& callback)
 {
   auto& browser = worldState->GetEspm().GetBrowser();
   const auto spellLookup = browser.LookupById(spellId);
@@ -23,13 +23,26 @@ bool ForEachSpellEffectData(WorldState* worldState, uint32_t spellId,
       browser.LookupById(spellLookup.ToGlobalId(effect.effectFormId));
     const auto mgef = espm::Convert<espm::MGEF>(mgefLookup.rec);
     if (!mgef) {
-      spdlog::warn("ForEachSpellEffectData - spell {:#x} effect {:#x} is not "
-                   "an MGEF, ignored",
+      spdlog::warn("ForEachSpellEffectRecord - spell {:#x} effect {:#x} is "
+                   "not an MGEF, ignored",
                    spellId, effect.effectFormId);
       continue;
     }
-    callback(effect.effectItem, mgef->GetData(worldState->GetEspmCache()).data,
+    callback(spellData, effect, mgef->GetData(worldState->GetEspmCache()),
              mgefLookup);
   }
   return true;
+}
+
+// Calls callback(effectItem, mgefData, mgefLookup) for each effect of a SPEL, effectItem may be null; false if spellId is not a SPEL
+template <class Callback>
+bool ForEachSpellEffectData(WorldState* worldState, uint32_t spellId,
+                            const Callback& callback)
+{
+  return ForEachSpellEffectRecord(
+    worldState, spellId,
+    [&](const espm::SPEL::Data&, const espm::SPEL::Effect& effect,
+        const espm::MGEF::Data& mgef, const espm::LookupResult& mgefLookup) {
+      callback(effect.effectItem, mgef.data, mgefLookup);
+    });
 }
