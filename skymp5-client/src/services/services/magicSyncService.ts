@@ -4,6 +4,7 @@ import { isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
 import { ClientListener, CombinedController, Sp } from './clientListener';
+import { MountService } from './mountService';
 import { logTrace } from '../../logging';
 
 import { MsgType } from "../../messages";
@@ -62,6 +63,11 @@ export class MagicSyncService extends ClientListener {
         // Sampled here because the spellCast event names no target
         const crosshairRef = Game.getCurrentCrosshairRef();
         this.crosshairActorId = crosshairRef && Actor.from(crosshairRef) ? crosshairRef.getFormID() : 0;
+
+        // A rider's snapshot carries riding and locomotion state that would unseat the observers' clone
+        if (this.controller.lookupListener(MountService).isMounted) {
+            return;
+        }
 
         if (Date.now() - this.lastSendUpdateAnimationVariables <= this.sendUpdateAnimationVariablesRateMs) {
             return;

@@ -16,27 +16,49 @@ const sqr = (x: number) => x * x;
 // A standing actor this far above or below the reported height sank or floated locally
 const standingMaxDeltaZ = 64;
 
-export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: boolean): void => {
+// A mounted rider clone is carried by its horse in-engine: no translation, offset or locomotion events reach it
+export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: boolean, mounted?: boolean): void => {
   if (teleportIfNeed(refr, m)) {
     return;
   }
 
-  // Z axis isn't useful here
-  const acX = refr.getPositionX();
-  const acY = refr.getPositionY();
-  const lagUnitsNoZ = Math.round(Math.sqrt(sqr(m.pos[0] - acX) + sqr(m.pos[1] - acY)));
+  if (!mounted) {
+    // Z axis isn't useful here
+    const acX = refr.getPositionX();
+    const acY = refr.getPositionY();
+    const lagUnitsNoZ = Math.round(Math.sqrt(sqr(m.pos[0] - acX) + sqr(m.pos[1] - acY)));
 
-  if (isMyClone === true) {
-    SpApiInteractor.getControllerInstance().emitter.emit("newLocalLagValueCalculated", { lagUnitsNoZ });
+    if (isMyClone === true) {
+      SpApiInteractor.getControllerInstance().emitter.emit("newLocalLagValueCalculated", { lagUnitsNoZ });
+    }
+
+    translateTo(refr, m);
   }
-
-  translateTo(refr, m);
 
   const ac = Actor.from(refr);
   if (!ac) {
     return;
   }
 
+  applyHeadTracking(ac, m);
+
+  if (!mounted) {
+    // ac.stopCombat();
+    ac.blockActivation(true);
+
+    keepOffsetFromActor(ac, m);
+
+    applySprinting(ac, m.runMode === "Sprinting");
+    applyBlocking(ac, m);
+    applySneaking(ac, m.isSneaking);
+    applyWeapDrawn(ac, m.isWeapDrawn);
+  }
+  applyHealthPercentage(ac, m.healthPercentage);
+
+  SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: m.isDead });
+};
+
+const applyHeadTracking = (ac: Actor, m: Movement) => {
   let lookAt = null;
   if (m.lookAt) {
     try {
@@ -57,19 +79,6 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
   } else {
     ac.setHeadTracking(false);
   }
-
-  // ac.stopCombat();
-  ac.blockActivation(true);
-
-  keepOffsetFromActor(ac, m);
-
-  applySprinting(ac, m.runMode === "Sprinting");
-  applyBlocking(ac, m);
-  applySneaking(ac, m.isSneaking);
-  applyWeapDrawn(ac, m.isWeapDrawn);
-  applyHealthPercentage(ac, m.healthPercentage);
-
-  SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: m.isDead });
 };
 
 const keepOffsetFromActor = (ac: Actor, m: Movement) => {

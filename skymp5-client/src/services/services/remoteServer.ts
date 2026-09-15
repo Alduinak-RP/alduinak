@@ -37,6 +37,7 @@ import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
 import { UpdateEquipmentMessage } from '../messages/updateEquipmentMessage';
 import { RagdollService } from './ragdollService';
 import { RestraintService } from './restraintService';
+import { MountService } from './mountService';
 import { CloneSpellGuardService } from './cloneSpellGuardService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
 import { TeleportMessage } from '../messages/teleportMessage';
@@ -65,6 +66,7 @@ import {
 import { TimeService } from './timeService';
 import { logTrace, logError, logToPlatformLog } from '../../logging';
 import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved } from '../../sync/equipment';
+import { isRiderClone } from '../../sync/mountApply';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
@@ -400,6 +402,11 @@ export class RemoteServer extends ClientListener {
       const ragdollService = this.controller.lookupListener(RagdollService);
 
       const refrId = refr?.getFormID();
+
+      // A server move of a rider starts from the ground
+      if (refrId === 0x14) {
+        this.controller.lookupListener(MountService).dismountNow("teleport");
+      }
 
       // Carry follow rides the cheap havok translate; doors and every other teleport need a real move
       if (refr && refrId === 0x14 && this.controller.lookupListener(RestraintService).isCarried &&
@@ -1296,6 +1303,11 @@ export class RemoteServer extends ClientListener {
     once('update', () => {
       const ac = Actor.from(Game.getFormEx(remoteIdToLocalId(msg.data.actorRemoteId)));
       if (!ac) {
+        return;
+      }
+
+      // The snapshot carries locomotion and riding state the engine owns on a seated rider clone
+      if (isRiderClone(ac.getFormID())) {
         return;
       }
 

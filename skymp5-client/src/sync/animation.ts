@@ -13,6 +13,7 @@ import {
 } from "skyrimPlatform";
 import { Movement } from "./movement";
 import { applyWeapDrawn } from "./movementApply";
+import { isRiderClone } from "./mountApply";
 
 export enum AnimationEventName {
   Ragdoll = "Ragdoll",
@@ -125,12 +126,18 @@ const isIdle = (animEventName: string) => {
 export const applyAnimation = (
   refr: ObjectReference,
   anim: Animation,
-  state: AnimationApplyState
+  state: AnimationApplyState,
+  mounted?: boolean
 ): void => {
   if (state.lastNumChanges === anim.numChanges) {
     return;
   }
   state.lastNumChanges = anim.numChanges;
+
+  // The engine owns a seated rider clone's graph; a replayed event would knock it out of the saddle
+  if (mounted) {
+    return;
+  }
 
   if (state.useAnimOverrides) {
     const animOverride = animOverridesLowerCase[anim.animEventName.toLowerCase()];
@@ -360,6 +367,10 @@ export const setupHooks = (): void => {
 
       // Disable idle animations for 0xff actors
       if (ctx.selfId < 0xff000000) {
+        return;
+      }
+      // The engine drives the idles of a seated rider clone
+      if (isRiderClone(ctx.selfId)) {
         return;
       }
       if (isIdle(ctx.animEventName)) {

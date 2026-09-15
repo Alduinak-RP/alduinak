@@ -8,6 +8,7 @@ import { localIdToRemoteId } from "../../view/worldViewMisc";
 
 import { LastInvService } from "./lastInvService";
 import { logError, logTrace } from "../../logging";
+import { takeSyntheticActivation } from "../../sync/mountApply";
 
 export class ActivationService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -23,6 +24,12 @@ export class ActivationService extends ClientListener {
         let target = e.target ? e.target.getFormID() : 0;
 
         if (!target || !caster) {
+          return;
+        }
+
+        // The observer's own seating of a rider clone on its horse is not the rider's activation
+        if (takeSyntheticActivation(caster, target)) {
+          logTrace(this, "Dropped the synthetic mount activation of", target.toString(16));
           return;
         }
 

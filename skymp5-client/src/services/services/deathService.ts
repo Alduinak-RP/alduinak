@@ -3,7 +3,9 @@ import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RespawnNeededError } from "../../lib/errors";
 import { AnimationEventName } from "../../sync/animation";
+import { dismountRiderOf, releaseRiderClone } from "../../sync/mountApply";
 import { RagdollService } from "./ragdollService";
+import { MountService } from "./mountService";
 
 export class DeathService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -87,6 +89,8 @@ export class DeathService extends ClientListener {
 
   private killActor = (actor: Actor, killer: Actor | null = null): void => {
     if (this.isPlayer(actor) === true) {
+      // The ragdoll starts from the ground, not the saddle
+      this.controller.lookupListener(MountService).dismountNow("death");
       this.playerDead = true;
       this.busyForOtherReasonsCounter++;
       this.sp.Utility.wait(7.5).then(() => this.busyForOtherReasonsCounter--);
@@ -94,6 +98,9 @@ export class DeathService extends ClientListener {
       actor.setDontMove(true);
       this.killWithPush(actor);
     } else {
+      // A seated rider clone leaves the saddle and a ridden horse throws its rider before the kill
+      releaseRiderClone(actor.getFormID());
+      dismountRiderOf(actor.getFormID());
       actor.endDeferredKill();
       actor.kill(killer);
     }

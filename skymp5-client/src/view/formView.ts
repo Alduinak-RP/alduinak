@@ -5,6 +5,7 @@ import { isBadMenuShown, applyEquipment } from "../sync/equipment";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement } from "../sync/movementApply";
+import { applyMount, makeMountState, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { Movement } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
@@ -289,10 +290,14 @@ export class FormView {
     this.spawnMoment = 0;
     this.dealtWithRef = false;
     const refrId = this.refrId;
+    this.mountState = makeMountState();
     once("update", () => {
       if (refrId >= 0xff000000) {
         const refr = ObjectReference.from(Game.getFormEx(refrId));
         if (refr) {
+          // A horse leaving throws its rider first; a rider leaving lets go of its saddle
+          dismountRiderOf(refrId);
+          releaseRiderClone(refrId);
           refr.delete();
         }
         SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refrId, -1);
@@ -397,6 +402,9 @@ export class FormView {
       Actor.from(refr)?.clearKeepOffsetFromActor();
     }
 
+    // A rider clone is seated on its horse clone and left to the engine while it rides
+    const mounted = !model.isMyClone && applyMount(refr, model, this.mountState);
+
     if (model.movement) {
       let ac = Actor.from(refr);
       if (
@@ -428,11 +436,13 @@ export class FormView {
           }
           try {
             // A sender silent for 2 s (paused game, Steam overlay) settles at the copy's own height instead of running in place or hanging mid-air
-            const movement: Movement = isNewMovement || !this.movState.everApplied || !ac
+            const movement: Movement = mounted || isNewMovement || !this.movState.everApplied || !ac
               ? model.movement
               : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
-            applyMovement(refr, movement, !!model.isMyClone);
-            restoreSitCollisionIfMoving(refr, movement);
+            applyMovement(refr, movement, !!model.isMyClone, mounted);
+            if (!mounted) {
+              restoreSitCollisionIfMoving(refr, movement);
+            }
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;
@@ -490,7 +500,7 @@ export class FormView {
 
     if (refr.is3DLoaded()) {
       if (model.animation) {
-        applyAnimation(refr, model.animation, this.animState);
+        applyAnimation(refr, model.animation, this.animState, mounted);
       }
       // Use them only once, for spawning actors with correct animations
       this.animState.useAnimOverrides = false;
@@ -853,6 +863,7 @@ export class FormView {
   private spawnMoment = 0;
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
+  private mountState = makeMountState();
   private localImmortal = false;
   private hostilityApplied = false;
   private hostileFlagSeen: unknown = undefined;

@@ -24,6 +24,8 @@ import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
 import { RemoteServer, settleSpawnEquipment } from "./remoteServer";
 import { DeathService } from "./deathService";
 import { RestraintService } from "./restraintService";
+import { MountService } from "./mountService";
+import { Movement } from "../../sync/movement";
 import { logTrace, logToPlatformLog } from "../../logging";
 
 const playerFormId = 0x14;
@@ -140,7 +142,7 @@ export class SendInputsService extends ClientListener {
             const movement = getMovement(owner, form);
             const message: MessageWithRefrId<UpdateMovementMessage> = {
                 t: MsgType.UpdateMovement,
-                data: _refrId ? movement : this.controller.lookupListener(RestraintService).filterOwnMovement(movement),
+                data: _refrId ? movement : this.filterOwnMovement(movement),
                 _refrId
             };
             this.controller.emitter.emit("sendMessageWithRefrId", {
@@ -149,6 +151,12 @@ export class SendInputsService extends ClientListener {
             });
             this.lastSendMovementMoment.set(refrIdStr, now);
         }
+    }
+
+    // A held pose or a saddle owns the player's locomotion, observers must not replay it on the clone
+    private filterOwnMovement(movement: Movement): Movement {
+        const restrained = this.controller.lookupListener(RestraintService).filterOwnMovement(movement);
+        return this.controller.lookupListener(MountService).filterOwnMovement(restrained);
     }
 
     private sendActorValuePercentage(_refrId?: number, form?: FormModel) {
