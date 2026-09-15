@@ -174,6 +174,8 @@ class Canon:
                 owners[loc].add(m)
         s.selfq_owner = {loc: next(iter(ms)) for loc, ms in owners.items() if len(ms) == 1}
         s.selfq_seen = collections.defaultdict(set)
+        # links NEW nulled, recorded while the R4 and master pairs are judged: ids their master does not define, and cleared real records
+        s.track, s.nulled, s.cleared = False, collections.defaultdict(set), collections.defaultdict(set)
 
     def of(s, v, fid):
         if fid == 0:
@@ -198,6 +200,15 @@ class Canon:
 
     def broken(s, c):
         return c[0] in ('', 'SELF?', '?BAD')
+
+    def unresolvable(s, c):
+        # a kept-master id its master does not define (injected by another plugin, or dangling); the CK nulls it on load
+        return c[0] not in ('', 'SELF', 'SELF?', '?BAD', 'BROKEN') and c[0] not in s.dropped and c[1] not in city.own_ids(c[0])
+
+    def note_null(s, rb, xs, where):
+        if s.track and rb.v is s.new:
+            for x in xs:
+                (s.nulled if s.unresolvable(x) else s.cleared)[x].add(f'{rb.label()} {where}')
 
 
 def layout(rtype, t):
@@ -241,8 +252,20 @@ def list_diff(t, la, lb, ra, rb, canon, out):
     for nb in list(only_b):
         for na in only_a:
             if na[1] == nb[1] and len(na[0]) == len(nb[0]) and all(
-                    x == y or (canon.lostable(x) and (canon.broken(y) or x[1] == y[1])) or (x[0] and y == ('', 0)) for x, y in zip(na[0], nb[0])):
-                out.append(('artifact', t, 'link lost ' + ','.join(hk(x) for x, y in zip(na[0], nb[0]) if x != y)))
+                    x == y or (canon.lostable(x) and (canon.broken(y) or x[1] == y[1])) or (y == ('', 0) and canon.unresolvable(x)) for x, y in zip(na[0], nb[0])):
+                gone = [x for x, y in zip(na[0], nb[0]) if x != y]
+                canon.note_null(rb, [x for x in gone if not canon.lostable(x)], t)
+                out.append(('artifact', t, 'link lost ' + ','.join(hk(x) + ('' if canon.lostable(x) else ' (its master does not define it)') for x in gone)))
+                only_a.remove(na)
+                only_b.remove(nb)
+                break
+    # NEW nulled a link to a record a kept master really defines: a Graves edit, never an artifact
+    for nb in list(only_b):
+        for na in only_a:
+            if na[1] == nb[1] and len(na[0]) == len(nb[0]) and all(x == y or y == ('', 0) for x, y in zip(na[0], nb[0])):
+                gone = [x for x, y in zip(na[0], nb[0]) if x != y]
+                canon.note_null(rb, gone, t)
+                out.append(('edit', t, 'link to a kept-master record cleared ' + ','.join(hk(x) for x in gone)))
                 only_a.remove(na)
                 only_b.remove(nb)
                 break
@@ -359,8 +382,16 @@ def vmad_diff(x, y, ra, rb, canon, out):
             objs_b = [v for v in flat_objs(pb[p][2])] if p in pb else []
             cleared = p in pb and objs_a and len(objs_a) == len(objs_b) and all(b == a or b == ('', 0) for a, b in zip(objs_a, objs_b)) and \
                 [x for x in pa[p][:2]] == [x for x in pb[p][:2]]
-            if cleared or (p in pa and objs_a and all(canon.lostable(c) for c in objs_a) and (p not in pb or all(canon.broken(c) or c[1] == a[1] for c, a in zip(objs_b, objs_a)))):
+            gone = [a for a, b in zip(objs_a, objs_b) if b != a] if cleared else []
+            where = f'VMAD {n.decode("latin1")}.{p.decode("latin1")}'
+            if cleared and all(canon.lostable(a) or canon.unresolvable(a) for a in gone):
+                canon.note_null(rb, [a for a in gone if not canon.lostable(a)], where)
+                out.append(('artifact', 'VMAD', f'{n.decode("latin1")}.{p.decode("latin1")} link lost {",".join(hk(c) for c in gone)}'))
+            elif p in pa and objs_a and all(canon.lostable(c) for c in objs_a) and (p not in pb or all(canon.broken(c) or c[1] == a[1] for c, a in zip(objs_b, objs_a))):
                 out.append(('artifact', 'VMAD', f'{n.decode("latin1")}.{p.decode("latin1")} link lost {",".join(hk(c) for c in objs_a)}'))
+            elif cleared:
+                canon.note_null(rb, [a for a in gone if not canon.lostable(a) and not canon.unresolvable(a)], where)
+                out.append(('edit', 'VMAD', f'{n.decode("latin1")}.{p.decode("latin1")} link to a kept-master record cleared {",".join(hk(c) for c in gone)}'))
             else:
                 out.append(('edit', 'VMAD', f'{n.decode("latin1")}.{p.decode("latin1")}'))
     if ta != tb:
@@ -877,6 +908,7 @@ class Attr:
     def decide(s):
         s.pair_stats = collections.Counter()
         s.reverted = []
+        s.canon.track = True
         rekey = {'REOWNED', 'COLLISION'}
         for r in s.master_pairs:
             key = ('NEW', r.fid)
@@ -933,6 +965,7 @@ class Attr:
                     e['edit'], e['edited_fields'] = 'EDITED', edits
                 if edits:
                     s.three_way(r, cp)
+        s.canon.track = False
 
     def three_way(s, r, cp):
         # NEW matching RAW where R4 does not means Graves's copy reverted an r3/r4 patch
@@ -1209,6 +1242,7 @@ def main():
     hits, recs = city.scan(order, want, keep={'CELL', 'NAVM'})
     at.chains = hits
     at.decide()
+    at.nulled_by = city.carriers(order, set(canon.nulled)) if canon.nulled else {}
     at.navmesh(recs)
     at.city_review(order, hits, recs)
     at.later_overrides(hits)
@@ -1310,6 +1344,12 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
                 and e.get('target', '').startswith('Skyrim.esm'))
     check('XLCN field artifacts on the 4 Skyrim cells', xl == PLAN['xlcn_cells'], ' '.join(f'{x:06X}' for x in xl))
     check('no navmesh geometry edits', not at.problems, '; '.join(at.problems))
+    nulled = {hk(k): {'records': sorted(v), 'written_by': [f'{p} {t} {e}'.strip() for p, t, e in at.nulled_by.get(k, [])]}
+              for k, v in sorted(at.canon.nulled.items())}
+    cleared = {hk(k): sorted(v) for k, v in sorted(at.canon.cleared.items())}
+    check('links NEW nulled are artifacts only where the master does not define the id', all(v['records'] for v in nulled.values()),
+          f'{sum(len(v["records"]) for v in nulled.values())} artifact ' + str({k: (len(v['records']), v['written_by']) for k, v in nulled.items()})
+          + f'; {sum(len(v) for v in cleared.values())} cleared links to defined kept-master records kept as edits {cleared}')
 
     remap = {f'{SELF}:{loc:06X}': f'{sorted(ms)[0]}:{loc:06X}' for loc, ms in at.canon.selfq_seen.items()}
     renum = {f'{xl:06X}': f'{loc:06X}' for loc, (o, xl) in at.canon.selfmap.items() if o == 'SELF' and loc != xl}
@@ -1327,6 +1367,7 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     owner_review += [f'{c["cell"]} {c["edid"]}: {c["why"]}' for c in at.city_cells if c['decision'] == 'CONFLICT']
     owner_review += [f'city cell {c["cell"]} {c["edid"]}: Graves edited {c["graves_fields"]} ({c["decision"]})' for c in at.city_cells
                      if c.get('graves_fields') and c['decision'] != 'CONFLICT']
+    owner_review += [f'NEW cleared the link to {k} (a record its master defines) in {v}; kept as a Graves edit' for k, v in cleared.items()]
     if idx:
         owner_review.append(f'{len(idx)} form ids use raw indices 08-0D (step 2a assumes only 0E04B2AB NAME): {idx}')
 
@@ -1350,6 +1391,7 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
                          for f, e in ((f, E.get(('NEW', f), {'class': 'UNCLASSIFIED'})) for f in at.q449_fids)],
         'rekey_map': rekey_map, 'dangling_self_links': remap, 'renumber_map_r4_to_new': renum, 'retired_own_ids': retired,
         'changeform_query': changeform_query, 'masters_beyond_r4': beyond,
+        'nulled_links': {'not_defined_by_master': nulled, 'cleared_defined': cleared},
         'collision_slots_all': {f'{k:06X}': [f'{x.nk[0]} {x.type} {x.fid:08X}' for x in v] for k, v in sorted(at.collide.items())},
         'entries': ents,
     }

@@ -1,5 +1,6 @@
 # Load-order scan for the r7 attribution: which plugins carry a record, and detached copies of the ones to compare.
 import collections
+import functools
 import struct
 import zlib
 
@@ -54,6 +55,28 @@ class HRec:
         return f'{self.v.name} {self.type} {self.fid:08X}' + (f' "{self.edid()}"' if self.edid() else '')
 
 
+def records(name):
+    # every record header of a staged plugin as (view, type, form id, flags, data offset, size, buffer)
+    buf = open(STAGE + name, 'rb').read()
+    hsz, hflags = struct.unpack_from('<II', buf, 4)
+    masters = [v.split(b'\0')[0].decode('latin1') for t, v in fastesp.subs_of(buf[24:24 + hsz]) if t == 'MAST']
+    v = HView(name, masters, bool(hflags & LOCALIZED))
+    i, end = 24 + hsz, len(buf)
+    while i < end:
+        t = buf[i:i + 4]
+        if t == b'GRUP':
+            i += 24
+            continue
+        sz, fl, fid = struct.unpack_from('<III', buf, i + 4)
+        yield v, t, fid, fl, i + 24, sz, buf
+        i += 24 + sz
+
+
+def hrec(v, t, fid, fl, o, sz, buf):
+    d = buf[o:o + sz]
+    return HRec(v, t.decode('latin1'), fid, fl, zlib.decompress(d[4:]) if fl & 0x40000 else bytes(d))
+
+
 def scan(order, want, keep):
     # want: set of (type, owner, local) keys; returns {key: [plugins in load order]} and {(plugin, key): HRec} for types in keep
     hits, recs = collections.defaultdict(list), {}
@@ -62,28 +85,38 @@ def scan(order, want, keep):
     for name in order:
         if name == SELF:
             break
-        buf = open(STAGE + name, 'rb').read()
-        hsz, hflags = struct.unpack_from('<II', buf, 4)
-        masters = [v.split(b'\0')[0].decode('latin1') for t, v in fastesp.subs_of(buf[24:24 + hsz]) if t == 'MAST']
-        v = HView(name, masters, bool(hflags & LOCALIZED))
-        i, end = 24 + hsz, len(buf)
-        while i < end:
-            t = buf[i:i + 4]
-            if t == b'GRUP':
-                i += 24
+        for v, t, fid, fl, o, sz, buf in records(name):
+            if t not in types:
                 continue
-            sz, fl, fid = struct.unpack_from('<III', buf, i + 4)
-            if t in types:
-                tn = t.decode('latin1')
-                o = v.owner(fid >> 24)
-                key = lwant.get((tn, o.lower() if o else '', fid & 0xFFFFFF))
-                if key is not None:
-                    hits[key].append(name)
-                    if tn in keep:
-                        d = buf[i + 24:i + 24 + sz]
-                        recs[(name, key)] = HRec(v, tn, fid, fl, zlib.decompress(d[4:]) if fl & 0x40000 else bytes(d))
-            i += 24 + sz
+            tn = t.decode('latin1')
+            ow = v.owner(fid >> 24)
+            key = lwant.get((tn, ow.lower() if ow else '', fid & 0xFFFFFF))
+            if key is not None:
+                hits[key].append(name)
+                if tn in keep:
+                    recs[(name, key)] = hrec(v, t, fid, fl, o, sz, buf)
     return hits, recs
+
+
+@functools.lru_cache(maxsize=None)
+def own_ids(name):
+    # local ids a plugin defines at its own index
+    return frozenset(fid & 0xFFFFFF for v, t, fid, *_ in records(name) if (fid >> 24) == v.n)
+
+
+def carriers(order, keys):
+    # (owner, local) -> [(plugin, type, editor id)] for every plugin before AlduinakAdditions that writes that form id
+    lk = {(o.lower(), loc): (o, loc) for o, loc in keys}
+    out = collections.defaultdict(list)
+    for name in order:
+        if name == SELF:
+            break
+        for v, t, fid, fl, o, sz, buf in records(name):
+            ow = v.owner(fid >> 24)
+            k = lk.get((ow.lower() if ow else '', fid & 0xFFFFFF))
+            if k is not None:
+                out[k].append((name, t.decode('latin1'), hrec(v, t, fid, fl, o, sz, buf).edid()))
+    return out
 
 
 def read_strings(path):
