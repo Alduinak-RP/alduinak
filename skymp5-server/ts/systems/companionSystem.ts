@@ -459,6 +459,14 @@ export class CompanionSystem implements System {
     return "";
   }
 
+  private isDoor(refId: number): boolean {
+    try {
+      return this.mp.lookupEspmRecordById(baseIdOf(this.mp, refId))?.record?.type === "DOOR";
+    } catch {
+      return false;
+    }
+  }
+
   private sendState(ownerId: number): void {
     const user = userOf(this.mp, ownerId);
     if (user < 0) return;
@@ -483,6 +491,13 @@ export class CompanionSystem implements System {
       const c = this.companions.get(actorId >>> 0);
       if (c) return requesterId >>> 0 === c.ownerId;
       return chain(previousHost, [requesterId, actorId]);
+    };
+
+    // A companion only opens doors: pickups and containers it activates would sink into its inventory or lock players out
+    const previousActivate = typeof mp.onActivate === "function" ? mp.onActivate : null;
+    mp.onActivate = (targetId: number, casterId: number): boolean => {
+      if (this.companions.has(casterId >>> 0) && !this.isDoor(targetId >>> 0)) return false;
+      return chain(previousActivate, [targetId, casterId]);
     };
 
     const previousHit = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
