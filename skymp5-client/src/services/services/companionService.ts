@@ -10,6 +10,7 @@ import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../
 // The owner hosts its companions, so this engine's AI drives them: teammate setup, following, and combat with the server's target.
 
 const COMPANION_IDS_KEY = "ownCompanionIds";
+const DRIVEN_PET_IDS_KEY = "ownDrivenPetIds";
 const PLAYER_ID = 0x14;
 const PLAYER_FACTION = 0xdb1;
 const TWIN_SOULS_PERK = 0xd5f1c;
@@ -29,6 +30,17 @@ interface LocalState {
 export const isOwnCompanion = (remoteId: number | undefined): boolean => {
   const ids = storage[COMPANION_IDS_KEY];
   return remoteId !== undefined && Array.isArray(ids) && ids.includes(remoteId);
+};
+
+// Pets PetService steers itself: following dogs and fleeing pets
+export const setDrivenPetIds = (ids: number[]): void => {
+  storage[DRIVEN_PET_IDS_KEY] = ids;
+};
+
+// Own companions and steered pets keep the follow offset their service gives them
+export const keepsOwnOffset = (remoteId: number | undefined): boolean => {
+  const ids = storage[DRIVEN_PET_IDS_KEY];
+  return isOwnCompanion(remoteId) || (remoteId !== undefined && Array.isArray(ids) && ids.includes(remoteId));
 };
 
 export class CompanionService extends ClientListener {

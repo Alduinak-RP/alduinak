@@ -34,17 +34,18 @@ const PARK_MIN_SPEED = 100;
 // Rider clones being seated, seated or climbing off, by local id, with their horse's local id
 const ridingClones = new Map<number, number>();
 
-let syntheticActivation: { caster: number; target: number; at: number } | undefined;
+const syntheticActivations: { caster: number; target: number; at: number }[] = [];
 
 export const isRiderClone = (localId: number): boolean => ridingClones.has(localId);
 
 // The forced activate raises the observer's activate event with the rider clone as caster; ActivationService drops it
 export const takeSyntheticActivation = (casterLocalId: number, targetLocalId: number): boolean => {
-  const s = syntheticActivation;
-  if (!s || s.caster !== casterLocalId || s.target !== targetLocalId || Date.now() - s.at > SYNTHETIC_TTL_MS) {
+  const now = Date.now();
+  const i = syntheticActivations.findIndex((s) => s.caster === casterLocalId && s.target === targetLocalId && now - s.at <= SYNTHETIC_TTL_MS);
+  if (i < 0) {
     return false;
   }
-  syntheticActivation = undefined;
+  syntheticActivations.splice(i, 1);
   return true;
 };
 
@@ -156,7 +157,11 @@ export const applyMount = (refr: ObjectReference, model: FormModel, state: Mount
     return track(riderId, state);
   }
   park(rider, horse);
-  syntheticActivation = { caster: riderId, target: horseLocalId, at: now };
+  // Marks of seats that raised no event expire
+  for (let i = syntheticActivations.length - 1; i >= 0; i--) {
+    if (now - syntheticActivations[i].at > SYNTHETIC_TTL_MS) syntheticActivations.splice(i, 1);
+  }
+  syntheticActivations.push({ caster: riderId, target: horseLocalId, at: now });
   horse.activate(rider, true);
   state.horseLocalId = horseLocalId;
   state.pending = true;

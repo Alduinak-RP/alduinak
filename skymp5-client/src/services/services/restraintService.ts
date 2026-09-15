@@ -1,4 +1,4 @@
-import { Actor } from "skyrimPlatform";
+import { Actor, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
@@ -217,6 +217,7 @@ export class RestraintService extends ClientListener {
     if (this.carrying) {
       this.holdCarrierFightLock(player, now);
       this.poseCarriedNpc();
+      this.moveCarriedNpc(player);
     }
     if (this.poseDirty && !inJump && now >= this.nextPoseReapplyMs) {
       this.poseDirty = false;
@@ -237,7 +238,21 @@ export class RestraintService extends ClientListener {
       return;
     }
     this.keepCarrierCollisionOff(carrierLocalId);
+    this.holdAt(player, carrier);
+  }
 
+  // The carrier hosts the carried NPC, so moving its clone here moves it for everyone
+  private moveCarriedNpc(player: Actor): void {
+    const npc = this.posedNpcLocalId ? this.sp.Actor.from(this.sp.Game.getFormEx(this.posedNpcLocalId)) : null;
+    if (!npc || !npc.is3DLoaded()) {
+      return;
+    }
+    this.keepCarrierCollisionOff(this.posedNpcLocalId);
+    this.holdAt(npc, player);
+  }
+
+  // Held ahead of and above the carrier, turned across its arms
+  private holdAt(held: Actor, carrier: ObjectReference): void {
     const carrierYaw = carrier.getAngleZ();
     const yawRad = carrierYaw * Math.PI / 180;
     const carrierPos = ObjectReferenceEx.getPos(carrier);
@@ -247,14 +262,14 @@ export class RestraintService extends ClientListener {
       carrierPos[2] + this.carryUp,
     ];
     const targetYaw = carrierYaw + this.carryYaw;
-    const yawDiff = Math.abs(((targetYaw - player.getAngleZ()) % 360 + 540) % 360 - 180);
-    const dist = ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(player), target);
+    const yawDiff = Math.abs(((targetYaw - held.getAngleZ()) % 360 + 540) % 360 - 180);
+    const dist = ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(held), target);
     if (dist > CARRY_FOLLOW_MAX_DIST || (dist < CARRY_FOLLOW_DEADZONE && yawDiff < CARRY_FOLLOW_YAW_DEADZONE)) {
       return;
     }
-    player.translateTo(
+    held.translateTo(
       target[0], target[1], target[2],
-      player.getAngleX(), player.getAngleY(), targetYaw,
+      held.getAngleX(), held.getAngleY(), targetYaw,
       Math.max(dist / CARRY_FOLLOW_TIME_S, CARRY_FOLLOW_MIN_SPEED), 0,
     );
   }
@@ -413,6 +428,7 @@ export class RestraintService extends ClientListener {
         previous.setDontMove(false);
         this.sp.Debug.sendAnimationEvent(previous, IDLE_EXIT_ANIM);
       }
+      this.restoreCarrierCollision();
       this.posedNpcLocalId = 0;
     }
     const npc = localId ? this.sp.Actor.from(this.sp.Game.getFormEx(localId)) : null;

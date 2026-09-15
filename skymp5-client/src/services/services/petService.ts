@@ -5,7 +5,7 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
-import { CompanionService, isOwnCompanion } from "./companionService";
+import { CompanionService, isOwnCompanion, setDrivenPetIds } from "./companionService";
 import { EmoteService } from "./emoteService";
 import { RemoteServer } from "./remoteServer";
 import { isPlayerCharacterId } from "./playerActionService";
@@ -190,9 +190,10 @@ export class PetService extends ClientListener {
     this.syncFollowers();
   }
 
-  // Out dogs follow like summons unless they flee; the list is re-sent only when it changes
+  // Out dogs follow like summons unless they flee or are carried; the list is re-sent only when it changes
   private syncFollowers(): void {
-    const ids = this.pets.filter((p) => p.out && p.kind === "dog" && !this.petOf(p.id)?.flee).map((p) => p.id);
+    const ids = this.pets.filter((p) => p.out && p.kind === "dog" && !this.petOf(p.id)?.flee && !this.petOf(p.id)?.carried).map((p) => p.id);
+    setDrivenPetIds(ids.concat(Array.from(this.fleeing)));
     const key = ids.join(",");
     if (key === this.followersKey) return;
     this.followersKey = key;
@@ -217,6 +218,7 @@ export class PetService extends ClientListener {
       const actor = Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(pet.id)));
       if (!actor || actor.isDead() || !actor.is3DLoaded()) continue;
       this.fleeing.add(pet.id);
+      this.syncFollowers();
       actor.setDoingFavor(false);
       actor.keepOffsetFromActor(player, 0, FLEE_OFFSET, 0, 0, 0, 0, FLEE_RADIUS, FLEE_RADIUS);
     }

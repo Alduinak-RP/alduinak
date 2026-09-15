@@ -16,7 +16,7 @@ import { localIdToRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
-import { isOwnCompanion } from "../services/services/companionService";
+import { isOwnCompanion, keepsOwnOffset } from "../services/services/companionService";
 import { adminGhostAlpha, setAdminGhostShader } from "./adminGhostLook";
 
 export interface ScreenResolution {
@@ -397,8 +397,8 @@ export class FormView {
     }
     setDefaultAnimsDisabled(this.refrId, alreadyHosted ? false : true);
 
-    // Own companions keep the follow offset CompanionService gives them
-    if (alreadyHosted && !isOwnCompanion(this.remoteRefrId)) {
+    // Own companions and steered pets keep the follow offset their service gives them
+    if (alreadyHosted && !keepsOwnOffset(this.remoteRefrId)) {
       Actor.from(refr)?.clearKeepOffsetFromActor();
     }
 
