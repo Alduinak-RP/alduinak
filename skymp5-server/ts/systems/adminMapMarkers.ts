@@ -158,3 +158,24 @@ export const MAP_MARKER_LOCATIONS = [
   { name: "Winterhold Imperial Camp", kind: "Imperial Camp", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [51947.7, 95472.13, -6868.51], rot: [0, 0, 219.63] },
   { name: "Winterhold Stormcloak Camp", kind: "Stormcloak Camp", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [145204.47, 55116.42, -11375.95], rot: [0, 0, 0] },
 ];
+// Pet homes: Stable (21) markers keep horses, Farm (13) and Wheat Mill (19) markers keep livestock; PetSystem stores a pet within petAnchorRadius of one.
+export const PET_ANCHORS = [
+  { name: "Battle-Born Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [34469.02, -4371.02, -4329.06] },
+  { name: "Chillfurrow Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [31382.25, -10534.32, -4138.82] },
+  { name: "Farmhaven", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [24380.42, 10249.01, -4031.48] },
+  { name: "Hlaalu Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [146687.11, 33898.2, -13689.36] },
+  { name: "Hoarfrost Stables", kind: "stable", cellOrWorldDesc: "3c:Skyrim.esm", pos: [111037, 100453, -9004.29] },
+  { name: "Hollyfrost Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [149758.33, 35760.76, -13236.95] },
+  { name: "Katla's Farm", kind: "stable", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-74344.16, 96470.01, -11512] },
+  { name: "Loreius Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [32789.25, 26084.46, -6761.4] },
+  { name: "Markarth Stables", kind: "stable", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-169440.98, 5806.32, -4075.77] },
+  { name: "Merryfair Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [166303.58, -88701.64, 11032.04] },
+  { name: "Old Attius Farm", kind: "farm", cellOrWorldDesc: "800:Dragonborn.esm", pos: [34665.79, 23258.71, 569.67] },
+  { name: "Pelagia Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [19263.99, -16976.2, -4534.99] },
+  { name: "Riften Stables", kind: "stable", cellOrWorldDesc: "3c:Skyrim.esm", pos: [173136.91, -90911.7, 11102.38] },
+  { name: "Salvius Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-164369.48, 5654.13, -4498.7] },
+  { name: "Sarethi Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [112594.89, -70922.4, 11517.47] },
+  { name: "Snow-Shod Farm", kind: "farm", cellOrWorldDesc: "3c:Skyrim.esm", pos: [165899.84, -108707.37, 11257.86] },
+  { name: "Whiterun Stables", kind: "stable", cellOrWorldDesc: "3c:Skyrim.esm", pos: [18312.82, -10665.46, -4590.24] },
+  { name: "Windhelm Stables", kind: "stable", cellOrWorldDesc: "3c:Skyrim.esm", pos: [135885.88, 26101.39, -12348.47] },
+];

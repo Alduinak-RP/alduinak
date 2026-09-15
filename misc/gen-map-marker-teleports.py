@@ -51,6 +51,9 @@ TYPES = {
     56: 'Tel Mithryn', 57: 'To Skyrim', 58: 'To Solstheim', 59: 'Castle Karstaag',
 }
 
+# TNAM type -> pet home kind: stables keep horses, farms and wheat mills keep livestock (PET_ANCHORS, used by PetSystem)
+PET_ANCHOR_KINDS = {13: 'farm', 19: 'farm', 21: 'stable'}
+
 # TNAM type -> label shown in the panel; everything else is left out
 KINDS = {
     1: 'City', 2: 'Town', 3: 'Settlement', 6: 'Fort', 16: 'Imperial Camp', 17: 'Stormcloak Camp', 28: 'Orc Stronghold',
@@ -301,6 +304,12 @@ def main():
         print(f'{kind:16} {label:40} {place:24} {plugin}', file=sys.stderr)
         lines.append(f'  {{ name: {json.dumps(label)}, kind: "{kind}", group: "{GROUPS[kind]}", cellOrWorldDesc: "{place}", '
                      f'pos: [{pos[0]}, {pos[1]}, {pos[2]}], rot: [0, 0, {deg}] }},')
+    anchors = []
+    for key, m in sorted(markers.items(), key=lambda kv: (kv[1]['name'].lower(), kv[0])):
+        if m['type'] not in PET_ANCHOR_KINDS or not m['name']:
+            continue
+        anchors.append(f'  {{ name: {json.dumps(m["name"])}, kind: "{PET_ANCHOR_KINDS[m["type"]]}", cellOrWorldDesc: "{proper(m["place"])}", '
+                       f'pos: [{", ".join(num(v) for v in m["pos"])}] }},')
     kinds = {}
     for t, kind in sorted(KINDS.items()):
         kinds.setdefault(kind, []).append(str(t))
@@ -309,10 +318,12 @@ def main():
         f'// Marker types included: {", ".join(f"{kind} ({chr(47).join(ts)})" for kind, ts in kinds.items())}.\n'
         '// Temples: interior cells named "Temple", at the arrival point of the load door leading in.\n'
         'export const MAP_MARKER_LOCATIONS = [\n' + '\n'.join(lines) + '\n];\n'
+        '// Pet homes: Stable (21) markers keep horses, Farm (13) and Wheat Mill (19) markers keep livestock; PetSystem stores a pet within petAnchorRadius of one.\n'
+        'export const PET_ANCHORS = [\n' + '\n'.join(anchors) + '\n];\n'
     )
     with open(OUT, 'w', encoding='utf-8', newline='\n') as f:
         f.write(body)
-    print(f'wrote {len(lines)} location(s) to {OUT}', file=sys.stderr)
+    print(f'wrote {len(lines)} location(s) and {len(anchors)} pet anchor(s) to {OUT}', file=sys.stderr)
 
 
 if __name__ == '__main__':
