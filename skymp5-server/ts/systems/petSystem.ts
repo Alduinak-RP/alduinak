@@ -371,12 +371,13 @@ export class PetSystem implements System {
     if (!isNear(this.mp, actorId, a.id, this.cfg.petInteractMaxDistance)) return this.notice(userId, "Too far.");
     if (this.rideOf(actorId)) return this.notice(userId, "You are already mounted.");
     a.pending = { rider: actorId, at: Date.now() };
+    // Already the host: no HostStart is coming, so the client may activate at once
+    let hosted = false;
+    try { hosted = (Number(this.mp.getHoster(a.id)) >>> 0) === actorId; } catch { }
     if (!this.hosting.assign(a.id, actorId, "rider")) {
       a.pending = undefined;
       return this.notice(userId, "Try again.");
     }
-    let hosted = false;
-    try { hosted = (Number(this.mp.getHoster(a.id)) >>> 0) === actorId; } catch { }
     this.send(userId, { customPacketType: "petMount", target: a.id, hosted });
   }
 

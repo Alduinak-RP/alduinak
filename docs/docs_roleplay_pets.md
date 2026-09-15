@@ -23,8 +23,8 @@ menu reaches them.
 | conjured companion | anywhere | the command mode | only Pet and Unsummon (= dismiss) |
 
 The X menu on a pet you own: **Trade** opens its inventory in the vanilla container window (the search system's occupant path), **Pet** plays the
-tanning-rack idle on you, **Carry** picks it up with the player carry system (not horses; the server moves it with you, its host is released
-meanwhile), **Unsummon** stores it (only when you stand near its home, see the table), **Rename** (24 characters, letters, numbers, spaces, `'`,
+tanning-rack idle on you, **Carry** picks it up with the player carry system (not horses; the animal freezes and the server moves it with you, its host is
+released meanwhile), **Unsummon** stores it (only when you stand near its home, see the table), **Rename** (24 characters, letters, numbers, spaces, `'`,
 `_`, `-`), **Transfer** hands it to the player you look at next, who must accept the prompt, **Release** sets it free: it wanders, hosted by
 whoever is nearest, and is deleted for good after `petReleaseSeconds`.
 
