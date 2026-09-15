@@ -15,7 +15,7 @@ ROLLBACK = R7 + 'rollback/' + SELF
 
 
 def main():
-    src, sha = step_input('masks')
+    src, sha = step_input('thrones')
     b = open(src, 'rb').read()
     p = Plugin(buf=b)
     assert p.serialize() == b, 'round trip is not exact'

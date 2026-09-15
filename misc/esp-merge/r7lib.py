@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import struct
 import subprocess
 import sys
 
@@ -9,6 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 for _p in (os.path.join(HERE, 'tools'), os.path.join(HERE, '..')):
     if os.path.exists(os.path.join(_p, 'esplib.py')) and _p not in sys.path:
         sys.path.insert(0, _p)
+from esplib import Group  # noqa: E402
 
 ROOT = 'C:/Users/Administrator/Desktop/alduinak-overnight-2026-09-11/'
 ESPFIX = ROOT + 'esp-fix/'
@@ -100,7 +102,44 @@ def dotnet(args):
     return r.returncode, (r.stdout + r.stderr).splitlines()
 
 
-def live_load_order():
+def live_load_order(settings=SETTINGS):
     # Only dataDir and loadOrder are read; the rest of the live settings holds secrets
-    s = json.load(open(SETTINGS, encoding='utf-8'))
+    s = json.load(open(settings, encoding='utf-8'))
     return s['dataDir'], [os.path.basename(p.replace('\\', '/')) for p in s['loadOrder']]
+
+
+def flat(p, skip=()):
+    # every node in file order; group headers without their size field
+    out = []
+    for n, _ in p.walk():
+        if isinstance(n, Group):
+            h = bytearray(n.hdr)
+            h[4:8] = b'\0\0\0\0'
+            out.append(bytes(h))
+        elif n.fid not in skip:
+            out.append(bytes(n.hdr) + bytes(n.raw))
+    return out
+
+
+def norm(masters, name, fid):
+    i = fid >> 24
+    return (masters[i] if i < len(masters) else name, fid & 0xFFFFFF) if fid else ('', 0)
+
+
+def canon_subs(masters, rec, name, fid_subs, alt_subs):
+    # subrecords with every form id replaced by (plugin, local id); alt_subs hold one inside each alternate texture entry
+    out = []
+    for t, v in rec.subs():
+        if t in fid_subs:
+            v = tuple(norm(masters, name, x) for x in struct.unpack(f'<{len(v) // 4}I', v))
+        elif t in alt_subs:
+            n, o, ents = struct.unpack_from('<I', v, 0)[0], 4, []
+            for _ in range(n):
+                ln = struct.unpack_from('<I', v, o)[0]
+                fid, index = struct.unpack_from('<II', v, o + 4 + ln)
+                ents.append((v[o + 4:o + 4 + ln], norm(masters, name, fid), index))
+                o += 12 + ln
+            assert o == len(v), f'{t} parse overran'
+            v = tuple(ents)
+        out.append((t, v))
+    return out

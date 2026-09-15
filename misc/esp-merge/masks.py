@@ -3,11 +3,11 @@
 #   python masks.py
 # Writes r7/work/masks/AlduinakAdditions.esp and appends the run to r7/build-log.txt.
 import os
-import struct
 import sys
 
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools')]
-from r7lib import SELF, STAGE, STAGE_SETTINGS, STAGE_SETTINGS_SHA, WORK, assert_untouched, build_log, check_sha, dotnet, record_output, step_input  # noqa: E402
+from r7lib import (SELF, STAGE, STAGE_SETTINGS, STAGE_SETTINGS_SHA, WORK, assert_untouched, build_log, canon_subs, check_sha, dotnet,  # noqa: E402
+                   record_output, step_input)
 from esplib import Plugin  # noqa: E402
 
 SOURCE = 'Kad_BogBlightMask.esp'
@@ -17,33 +17,6 @@ OUT_DIR = WORK + 'masks'
 # ARMO subrecords made of form ids; MO2S-MO5S hold one inside each alternate texture entry
 FID_SUBS = {'KWDA', 'EITM', 'ETYP', 'BIDS', 'BAMT', 'RNAM', 'TNAM', 'YNAM', 'ZNAM', 'MODL'}
 ALT_TEXTURES = {'MO2S', 'MO3S', 'MO4S', 'MO5S'}
-
-
-def canon_subs(p, rec, name):
-    # subrecords with every form id replaced by (plugin, local id)
-    out = []
-    for t, v in rec.subs():
-        if t in FID_SUBS:
-            ids = struct.unpack(f'<{len(v) // 4}I', v)
-            v = tuple(norm_in(p, name, x) for x in ids)
-        elif t in ALT_TEXTURES:
-            n, o, ents = struct.unpack_from('<I', v, 0)[0], 4, []
-            for _ in range(n):
-                ln = struct.unpack_from('<I', v, o)[0]
-                txt = v[o + 4:o + 4 + ln]
-                fid, index = struct.unpack_from('<II', v, o + 4 + ln)
-                ents.append((txt, norm_in(p, name, fid), index))
-                o += 12 + ln
-            assert o == len(v), f'{t} parse overran'
-            v = tuple(ents)
-        out.append((t, v))
-    return out
-
-
-def norm_in(p, name, fid):
-    m = p.masters()
-    i = fid >> 24
-    return (m[i] if i < len(m) else name, fid & 0xFFFFFF) if fid else ('', 0)
 
 
 def main():
@@ -68,8 +41,8 @@ def main():
         kad = Plugin(STAGE + SOURCE)
         kr = {r.fid: r for r, _ in kad.records() if r.type == 'ARMO'}
         for _, fid in added:
-            want = [s for s in canon_subs(kad, kr[(len(kad.masters()) << 24) | (fid & 0xFFFFFF)], SOURCE) if s[0] != 'EITM']
-            got = canon_subs(b, rb[('ARMO', fid)], SELF)
+            want = [s for s in canon_subs(kad.masters(), kr[(len(kad.masters()) << 24) | (fid & 0xFFFFFF)], SOURCE, FID_SUBS, ALT_TEXTURES) if s[0] != 'EITM']
+            got = canon_subs(b.masters(), rb[('ARMO', fid)], SELF, FID_SUBS, ALT_TEXTURES)
             assert got == want, f'ARMO {fid:08X} is not Kad\'s record minus EITM: {[t for t, _ in got]} vs {[t for t, _ in want]}'
         lines += [f'checked: master list unchanged ({len(b.masters())}), exactly 8 new ARMO overrides, every other record byte-equal to step 3',
                   'checked: each override equals Kad\'s record minus EITM, subrecord by subrecord with form ids normalised',
