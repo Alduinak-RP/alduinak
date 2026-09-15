@@ -27,7 +27,9 @@ type Mp = any;
 //     { customPacketType: "putdownRequest",  target: <actorFormId> }   // stop carrying, keep any binding (older clients' Put down)
 //     { customPacketType: "releaseRequest",  target: <actorFormId> }   // one step per press: set a carried captive down, else free their binds
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
+//     { customPacketType: "playerMenuRequest", target: <actorFormId> }  // the player menu opened on target
 //   Server -> Client:
+//     { customPacketType: "playerMenuState", target, canRelease }       // -> the requester only: whether their Release applies
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
 //     { customPacketType: "carryState",      carrying, anim }              // -> carrier's RestraintService (pose only)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
@@ -37,6 +39,7 @@ const RESTRAINT_PACKET = "restraintState";
 const CARRY_PACKET = "carryState";
 const CONSENT_REQUEST = "captureConsentRequest";
 const NOTICE_PACKET = "captureNotice";
+const MENU_STATE_PACKET = "playerMenuState";
 
 // Mirrors the captive's restraint state so the gamemode can gate its own logic
 // on it (e.g. skip its temple pass-out for a bound or carried player):
@@ -181,6 +184,7 @@ export class CaptureSystem implements System {
       case "putdownRequest": this.onPutdownRequest(ctx, userId, content); break;
       case "releaseRequest": this.onReleaseRequest(ctx, userId, content); break;
       case "captureConsentResult": this.onConsentResult(ctx, userId, content); break;
+      case "playerMenuRequest": this.onMenuRequest(ctx, userId, content); break;
       default: break;
     }
   }
@@ -413,6 +417,22 @@ export class CaptureSystem implements System {
     }
     this.releaseTarget(ctx, targetActorId);
     this.notice(ctx, userId, `You released ${this.nameOf(ctx, targetActorId)}.`);
+  }
+
+  // Only the requester's own release permission is revealed, never the target's restraint details
+  private onMenuRequest(ctx: SystemContext, userId: number, content: Content): void {
+    const requesterActorId = this.resolveActor(ctx, userId);
+    const targetActorId = toFormId(content.target, 0);
+    if (requesterActorId === null || !targetActorId) {
+      return;
+    }
+    try {
+      ctx.svr.sendCustomPacket(userId, JSON.stringify({
+        customPacketType: MENU_STATE_PACKET,
+        target: targetActorId,
+        canRelease: this.releaseStep(requesterActorId, targetActorId) !== null,
+      }));
+    } catch { /* user gone */ }
   }
 
   // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press; null when not theirs to release
