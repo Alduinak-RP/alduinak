@@ -704,10 +704,11 @@ export class CaptureSystem implements System {
 
   // ── Small helpers ──────────────────────────────────────────────────────────
 
-  // No carry chains: a carrier cannot be carried and a carried player cannot carry; empty when allowed
+  // No carry chains and no bound carriers: a carrier cannot be carried, a carried or bound player cannot carry; empty when allowed
   private carryRefusal(ctx: SystemContext, carrierActorId: number, targetActorId: number): string {
     const refusal = this.carrying.has(carrierActorId) ? "You are already carrying someone."
       : this.carriedBy.has(carrierActorId) ? "You cannot carry anyone while being carried."
+      : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anyone while bound."
       : this.carrying.has(targetActorId) ? `${this.nameOf(ctx, targetActorId)} is carrying someone.`
       : this.carriedBy.has(targetActorId) ? `${this.nameOf(ctx, targetActorId)} is already being carried.`
       : "";
