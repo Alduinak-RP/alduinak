@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { KEY_BASE_ID } from "./housingSystem";
-import { isRestrained } from "./captureSystem";
+import { isBound, isRestrained } from "./captureSystem";
 import { nameShownTo } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -13,7 +13,8 @@ type Mp = any;
 // Consent-gated search of another player's inventory via the VANILLA container window: on accept the server marks the searcher as the target's inventory occupant (setInventoryOccupant native), which authorizes the engine's PutItem/TakeItem, and tells the searcher's client to open the target's inventory.
 // Item moves ride the normal server-validated container-sync path; if the pair separates, the session ends and the client closes the window.
 // Dead bodies (players or spawned NPCs) open at once without consent; the searcher may take and put items like vanilla looting.
-// A restrained (bound or carried) player is searched without consent too, and cannot search anyone; startSession tells them who is searching, and such a search ends once they are freed.
+// A bound player is searched without consent too; startSession tells them who is searching, and such a search ends once they are freed. A player who is only carried is asked as usual.
+// A restrained (bound or carried) player cannot search anyone.
 // A dead player's body gives up a limited number of distinct items (a stack counts once); the take that reaches the limit closes the window and respawns the player, which removes the body.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
@@ -52,7 +53,7 @@ interface SearchSession {
   searcherActorId: number;
   targetActorId: number;
   body: boolean;
-  // Started without consent because the target was restrained
+  // Started without consent because the target was bound
   auto: boolean;
 }
 
@@ -159,7 +160,7 @@ export class SearchSystem implements System {
         this.endSession(ctx, s, "The body is gone.");
         continue;
       }
-      if (s.auto && !isRestrained(ctx.svr, s.targetActorId)) {
+      if (s.auto && !isBound(ctx.svr, s.targetActorId)) {
         this.endSession(ctx, s, "They are no longer restrained.");
         continue;
       }
@@ -236,8 +237,8 @@ export class SearchSystem implements System {
       }
     }
     const body = this.isDead(ctx, targetActorId);
-    // Bodies and restrained players are searched without a prompt
-    if (body || isRestrained(ctx.svr, targetActorId)) {
+    // Bodies and bound players are searched without a prompt
+    if (body || isBound(ctx.svr, targetActorId)) {
       this.startSession(ctx, searcherActorId, targetActorId, body, !body);
       return;
     }
