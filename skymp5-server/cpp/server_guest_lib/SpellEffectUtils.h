@@ -3,7 +3,7 @@
 #include "libespm/espm.h"
 #include <spdlog/spdlog.h>
 
-// Calls callback(spellData, effect, mgefData, mgefLookup) for each effect of a SPEL; false if spellId is not a SPEL
+// Calls callback(spellLookup, spellData, effect, mgefData, mgefLookup) for each effect of a SPEL; false if spellId is not a SPEL
 template <class Callback>
 bool ForEachSpellEffectRecord(WorldState* worldState, uint32_t spellId,
                               const Callback& callback)
@@ -28,8 +28,8 @@ bool ForEachSpellEffectRecord(WorldState* worldState, uint32_t spellId,
                    spellId, effect.effectFormId);
       continue;
     }
-    callback(spellData, effect, mgef->GetData(worldState->GetEspmCache()),
-             mgefLookup);
+    callback(spellLookup, spellData, effect,
+             mgef->GetData(worldState->GetEspmCache()), mgefLookup);
   }
   return true;
 }
@@ -41,8 +41,9 @@ bool ForEachSpellEffectData(WorldState* worldState, uint32_t spellId,
 {
   return ForEachSpellEffectRecord(
     worldState, spellId,
-    [&](const espm::SPEL::Data&, const espm::SPEL::Effect& effect,
-        const espm::MGEF::Data& mgef, const espm::LookupResult& mgefLookup) {
+    [&](const espm::LookupResult&, const espm::SPEL::Data&,
+        const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
+        const espm::LookupResult& mgefLookup) {
       callback(effect.effectItem, mgef.data, mgefLookup);
     });
 }

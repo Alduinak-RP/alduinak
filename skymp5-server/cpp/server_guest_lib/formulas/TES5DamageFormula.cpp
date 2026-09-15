@@ -262,8 +262,9 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
   float damage = 0.f;
   const bool isSpell = ForEachSpellEffectRecord(
     espmProvider, spellCastData.spell,
-    [&](const espm::SPEL::Data& spell, const espm::SPEL::Effect& effect,
-        const espm::MGEF::Data& mgef, const espm::LookupResult&) {
+    [&](const espm::LookupResult&, const espm::SPEL::Data& spell,
+        const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
+        const espm::LookupResult&) {
       const bool needAddDamage =
         mgef.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
         mgef.data.IsFlagSet(espm::MGEF::Flags::Detrimental);
