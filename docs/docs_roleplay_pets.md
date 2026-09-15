@@ -23,20 +23,25 @@ menu reaches them.
 | conjured companion | anywhere | the command mode | only Pet and Unsummon (= dismiss) |
 
 The X menu on a pet you own: **Trade** opens its inventory in the vanilla container window (the search system's occupant path), **Pet** plays the
-tanning-rack idle on you, **Carry** picks it up with the player carry system (not horses; the animal freezes and the server moves it with you, its host is
-released meanwhile), **Unsummon** stores it (only when you stand near its home, see the table), **Rename** (24 characters, letters, numbers, spaces, `'`,
+tanning-rack idle on you, **Carry** picks it up with the player carry system (not horses; the animal freezes, and your client, which hosts it meanwhile, holds it in
+your arms), **Unsummon** stores it (only when you stand near its home, see the table), **Rename** (24 characters, letters, numbers, spaces, `'`,
 `_`, `-`), **Transfer** hands it to the player you look at next, who must accept the prompt, **Release** sets it free: it wanders, hosted by
-whoever is nearest, and is deleted for good after `petReleaseSeconds`.
+whoever is nearest, and is deleted for good after `petReleaseSeconds`; anyone who mounts a released horse keeps it. Taking a
+horse (stealing or claiming a released one) needs room under `petMaxPets` and `petMaxOut`. A commanded pet, like a companion, only
+opens doors; containers and items refuse it.
 
 Getting a pet out: at a door of the right kind (a stable door, a farm door or a door you own) the housing menu shows **Pets**; the list shows the
-pets kept there and a Summon button. At most `petMaxOut` pets are out at once and a character keeps at most `petMaxPets`. Admins add a pet to
+pets kept there and a Summon button. Either side of a teleport door counts, so a stable's or farm's interior door works as well as the
+outside one. At most `petMaxOut` pets are out at once and a character keeps at most `petMaxPets`. Admins add a pet to
 their own list from the admin panel (NPCs > Pets) and hand it over with Transfer.
 
 Lifecycle:
 
 - **Death:** the body stays `petCorpseSeconds` (default the `npcCorpseSeconds` value, 300) and is searchable like any NPC body; then it is
-  removed and the record deleted. Killing your own pet earns no hunter mastery.
-- **Owner logs out:** every pet of theirs goes back to its home.
+  removed and the record deleted. The death is written to the record at once, so a restart in between still deletes it at the owner's
+  next login, and a body keeps its timer when its owner logs out. Hitting or killing any pet earns no mastery.
+- **Owner logs out, switches character or quits to the menu** (5 s without a user): every living pet of theirs goes back to its home and
+  a ride ends.
 - **Owner downed:** the pet runs off and goes home after `petFleeSeconds` (30).
 - **Restart:** every pet of the previous run is removed at boot (`pets.json` lists them); the records start stored.
 - **Riding:** the rider hosts the horse; the hosting audit never moves a ridden or carried pet. A rider who dies, disconnects or is teleported is
