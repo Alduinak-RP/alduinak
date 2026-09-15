@@ -17,6 +17,7 @@
 
 #include "SkympGetDamageSourceHasKeyword.h"
 #include "SkympGetIsDamageSource.h"
+#include "SkympGetIsPlayer.h"
 #include "SkympWornHasKeywordCount.h"
 
 ConditionFunctionMap ConditionFunctionFactory::CreateConditionFunctions()
@@ -56,6 +57,8 @@ ConditionFunctionMap ConditionFunctionFactory::CreateConditionFunctions()
     std::make_shared<ConditionFunctions::SkympGetDamageSourceHasKeyword>());
   res.RegisterConditionFunction(
     std::make_shared<ConditionFunctions::SkympGetIsDamageSource>());
+  res.RegisterConditionFunction(
+    std::make_shared<ConditionFunctions::SkympGetIsPlayer>());
   res.RegisterConditionFunction(
     std::make_shared<ConditionFunctions::SkympWornHasKeywordCount>());
 

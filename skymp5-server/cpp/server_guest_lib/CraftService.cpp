@@ -52,7 +52,7 @@ void CraftService::OnCraftItem(const RawMessageData& rawMsgData,
   }
 
   std::vector<uint32_t> workbenchKeywordIds =
-    workbenchBase.rec->GetKeywordIds(cache);
+    GetWorkbenchKeywordIds(workbenchBase, cache);
 
   auto recipesList =
     FindRecipe(me, workbenchKeywordIds, br, inputObjects, resultObjectId);
@@ -228,6 +228,17 @@ void CraftService::UseCraftRecipe(MpActor* me, const espm::COBJ* recipeUsed,
                         entries);
 
   craftEvent.Fire(me->GetParent());
+}
+
+// KWDA holds ids relative to the bench plugin's master list, the recipe's bench keyword is compared as a combined id
+std::vector<uint32_t> CraftService::GetWorkbenchKeywordIds(
+  const espm::LookupResult& workbenchBase, espm::CompressedFieldsCache& cache)
+{
+  std::vector<uint32_t> ids = workbenchBase.rec->GetKeywordIds(cache);
+  for (auto& id : ids) {
+    id = workbenchBase.ToGlobalId(id);
+  }
+  return ids;
 }
 
 namespace {

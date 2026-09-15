@@ -4,6 +4,7 @@
 #include "CraftItemMessage.h"
 #include "PacketParser.h"
 #include "condition_functions/ConditionFunctionFactory.h"
+#include <algorithm>
 #include <cstring>
 
 using Catch::Matchers::ContainsSubstring;
@@ -227,4 +228,19 @@ TEST_CASE("Recipe conditions read form ids through the recipe plugin's master li
   p.worldState.conditionFunctionMap = ConditionFunctionMap();
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
+}
+
+TEST_CASE("Workbench keywords are read through the bench plugin's master list",
+          "[Craft][espm]")
+{
+  PartOne& p = GetPartOne();
+  auto& cache = p.worldState.GetEspmCache();
+
+  // HearthFires.esm loads fourth, but its own records carry index 02 inside the plugin
+  auto oven = p.GetEspm().GetBrowser().LookupById(0x0300283F);
+  REQUIRE(oven.rec);
+  auto ids = CraftService::GetWorkbenchKeywordIds(oven, cache);
+  const uint32_t byohCraftingOven = 0x030117F7;
+  REQUIRE(std::find(ids.begin(), ids.end(), byohCraftingOven) != ids.end());
+  REQUIRE(std::find(ids.begin(), ids.end(), 0x020117F7u) == ids.end());
 }

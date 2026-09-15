@@ -35,6 +35,11 @@ public:
                                      const espm::COBJ::Data& recipeData,
                                      const espm::LookupResult& recipe);
 
+  // public for CraftTest.cpp
+  static std::vector<uint32_t> GetWorkbenchKeywordIds(
+    const espm::LookupResult& workbenchBase,
+    espm::CompressedFieldsCache& cache);
+
 private:
   bool ConsiderRecipeCandidate(
     std::optional<MpActor*> me,
