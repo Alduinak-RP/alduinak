@@ -18,19 +18,16 @@ export interface Hostable {
 export type HostableProvider = () => Hostable[];
 
 const AUDIT_MS = 1500;
-// Farther than this, or in another cell, a client has unloaded the NPC and cannot run its AI; overridable via "npcHostRange"
+// Farther than this a player is not chosen as a new host; overridable via "npcHostRange"
 const DEFAULT_HOST_RANGE = 8192;
 // Aggro outlives the last hit exchanged with a player this long; overridable via "npcAggroHostSeconds"
 const DEFAULT_AGGRO_SEC = 30;
-// A host still in range keeps the NPC this long after a switch
+// A host still eligible keeps the NPC this long after a switch or a client's claim
 const SWITCH_COOLDOWN_MS = 5000;
 // Without aggro, a nearer player takes over only when this much nearer than the current host
 const NEARER_FACTOR = 0.5;
-
-interface Aggro {
-  playerId: number;
-  at: number;
-}
+// A host that lost the NPC to another client's claim had gone silent; it is not given that NPC back for this long
+const SILENT_MS = 60000;
 
 interface Located {
   id: number;
@@ -43,6 +40,11 @@ interface Nearby {
   d2: number;
 }
 
+interface Silent {
+  playerId: number;
+  until: number;
+}
+
 export class HostingSystem implements System {
   systemName = "HostingSystem";
   constructor(private log: Log) { }
@@ -50,8 +52,12 @@ export class HostingSystem implements System {
   private mp: Mp = null;
   private providers: HostableProvider[] = [];
   private hostables = new Map<number, Hostable>();
-  private aggro = new Map<number, Aggro>();
+  // Per NPC: when each player last exchanged a damaging hit with it
+  private aggro = new Map<number, Map<number, number>>();
   private switchedAt = new Map<number, number>();
+  // Per NPC: the hoster the audit last saw or set, to spot claims clients made in between
+  private lastHoster = new Map<number, number>();
+  private silent = new Map<number, Silent>();
   private hostRange = DEFAULT_HOST_RANGE;
   private aggroMs = DEFAULT_AGGRO_SEC * 1000;
   private supported = false;
@@ -88,34 +94,41 @@ export class HostingSystem implements System {
     return this.switchTo(actorId >>> 0, hosterId >>> 0, reason);
   }
 
+  // Only hits the other handlers let through and that deal damage count
   private installHooks(): void {
     const mp = this.mp;
     const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
     mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      try {
-        this.noteHit(aggressorId >>> 0, targetId >>> 0);
-      } catch { }
-      if (!previous) return true;
-      try {
-        return previous.apply(mp, [aggressorId, targetId, sourceId, damage]) !== false;
-      } catch {
-        return true;
+      let allowed = true;
+      if (previous) {
+        try {
+          allowed = previous.apply(mp, [aggressorId, targetId, sourceId, damage]) !== false;
+        } catch { }
       }
+      if (allowed && damage > 0) {
+        try {
+          this.noteHit(aggressorId >>> 0, targetId >>> 0);
+        } catch { }
+      }
+      return allowed;
     };
   }
 
-  // A hit between a player and an unowned NPC makes that player the NPC's aggro holder
+  // A hit between a player and an unowned NPC keeps that player engaged with the NPC
   private noteHit(aggressorId: number, targetId: number): void {
-    const now = Date.now();
     const target = this.hostables.get(targetId);
     if (target && !target.owner && isPlayerActor(this.mp, aggressorId)) {
-      this.aggro.set(targetId, { playerId: aggressorId, at: now });
+      this.engage(targetId, aggressorId);
       return;
     }
     const aggressor = this.hostables.get(aggressorId);
-    if (aggressor && !aggressor.owner && isPlayerActor(this.mp, targetId)) {
-      this.aggro.set(aggressorId, { playerId: targetId, at: now });
-    }
+    if (aggressor && !aggressor.owner && isPlayerActor(this.mp, targetId)) this.engage(aggressorId, targetId);
+  }
+
+  private engage(npcId: number, playerId: number): void {
+    let hits = this.aggro.get(npcId);
+    if (!hits) this.aggro.set(npcId, (hits = new Map()));
+    hits.set(playerId, Date.now());
   }
 
   private audit(): void {
@@ -130,6 +143,8 @@ export class HostingSystem implements System {
       return;
     }
     const players = playerIds.map((id) => this.locate(id)).filter((p): p is Located => !!p);
+    const living = new Set(players.filter((p) => isAlive(mp, p.id)).map((p) => p.id));
+    const streamers = this.streamers(players);
     const range2 = this.hostRange * this.hostRange;
     for (const h of this.hostables.values()) {
       if (!isAlive(mp, h.id)) continue;
@@ -141,9 +156,14 @@ export class HostingSystem implements System {
       } catch {
         continue;
       }
+      this.noteClaim(h.id, current, now);
+      const listening = streamers.get(h.id);
+      const silent = this.silent.get(h.id);
       const near: Nearby[] = [];
       for (const p of players) {
-        if (p.cell !== at.cell) continue;
+        // Only a client the server streams the NPC to can run its AI
+        if (p.cell !== at.cell || !listening?.has(p.id) || !living.has(p.id)) continue;
+        if (silent && silent.playerId === p.id && silent.until > now) continue;
         const dx = p.pos[0] - at.pos[0];
         const dy = p.pos[1] - at.pos[1];
         const dz = p.pos[2] - at.pos[2];
@@ -152,16 +172,25 @@ export class HostingSystem implements System {
       }
       const { hoster, reason } = this.choose(h, near, current, now);
       if (hoster === current) continue;
-      const currentInRange = near.some((p) => p.id === current);
-      if (hoster && currentInRange && now - (this.switchedAt.get(h.id) ?? 0) < SWITCH_COOLDOWN_MS) continue;
+      // Unhosting a host that still streams the NPC would only let its client claim it straight back
+      if (!hoster && listening?.has(current)) continue;
+      const currentEligible = near.some((p) => p.id === current);
+      if (hoster && currentEligible && now - (this.switchedAt.get(h.id) ?? 0) < SWITCH_COOLDOWN_MS) continue;
       this.switchTo(h.id, hoster, reason);
     }
   }
 
   private choose(h: Hostable, near: Nearby[], current: number, now: number): { hoster: number; reason: string } {
     if (h.owner) return { hoster: near.some((p) => p.id === h.owner) ? h.owner : 0, reason: "owner" };
-    const a = this.aggro.get(h.id);
-    if (a && now - a.at <= this.aggroMs && near.some((p) => p.id === a.playerId)) return { hoster: a.playerId, reason: "aggro" };
+    const hits = this.aggro.get(h.id);
+    const lastHit = (id: number) => hits?.get(id) ?? -Infinity;
+    const engaged = near.filter((p) => now - lastHit(p.id) <= this.aggroMs);
+    // A host still fighting the NPC keeps it, so a group fight does not bounce the AI between clients
+    if (engaged.some((p) => p.id === current)) return { hoster: current, reason: "aggro" };
+    if (engaged.length) {
+      const latest = engaged.reduce((a, b) => (lastHit(b.id) > lastHit(a.id) ? b : a));
+      return { hoster: latest.id, reason: "aggro" };
+    }
     if (!near.length) return { hoster: 0, reason: "nobody in range" };
     let best = near[0];
     for (const p of near) if (p.d2 < best.d2) best = p;
@@ -169,6 +198,16 @@ export class HostingSystem implements System {
     // A host still in range keeps the NPC unless the nearest player is much nearer
     if (cur && best.d2 > cur.d2 * NEARER_FACTOR * NEARER_FACTOR) return { hoster: current, reason: "kept" };
     return { hoster: best.id, reason: "nearest" };
+  }
+
+  // A host change the audit did not make is a client's claim: it gets the switch cooldown, and the host it replaced had gone silent
+  private noteClaim(npcId: number, current: number, now: number): void {
+    const last = this.lastHoster.get(npcId);
+    if (last === current) return;
+    this.lastHoster.set(npcId, current);
+    if (!current) return;
+    this.switchedAt.set(npcId, now);
+    if (last) this.silent.set(npcId, { playerId: last, until: now + SILENT_MS });
   }
 
   private switchTo(actorId: number, hosterId: number, reason: string): boolean {
@@ -179,8 +218,30 @@ export class HostingSystem implements System {
       return false;
     }
     this.switchedAt.set(actorId, Date.now());
+    this.lastHoster.set(actorId, hosterId);
     this.log(`HostingSystem: ${hex(actorId)} hosted by ${hosterId ? hex(hosterId) : "nobody"} (${reason})`);
     return true;
+  }
+
+  // NPC id to the players the server streams it to (its 3x3 grid of 4096-unit cells), read from each player's neighbours
+  private streamers(players: Located[]): Map<number, Set<number>> {
+    const out = new Map<number, Set<number>>();
+    for (const p of players) {
+      let ids: unknown[] = [];
+      try {
+        ids = this.mp.get(p.id, "actorNeighbors") ?? [];
+      } catch {
+        continue;
+      }
+      for (const raw of ids) {
+        const id = Number(raw) >>> 0;
+        if (!this.hostables.has(id)) continue;
+        let set = out.get(id);
+        if (!set) out.set(id, (set = new Set()));
+        set.add(p.id);
+      }
+    }
+    return out;
   }
 
   private collect(): void {
@@ -195,8 +256,9 @@ export class HostingSystem implements System {
       for (const h of list) if (h && h.id) next.set(h.id >>> 0, h);
     }
     this.hostables = next;
-    for (const id of Array.from(this.aggro.keys())) if (!next.has(id)) this.aggro.delete(id);
-    for (const id of Array.from(this.switchedAt.keys())) if (!next.has(id)) this.switchedAt.delete(id);
+    for (const map of [this.aggro, this.switchedAt, this.lastHoster, this.silent] as Map<number, unknown>[]) {
+      for (const id of Array.from(map.keys())) if (!next.has(id)) map.delete(id);
+    }
   }
 
   private locate(id: number): Located | null {
