@@ -244,7 +244,7 @@ export class RestraintService extends ClientListener {
   // The carrier hosts the carried NPC, so moving its clone here moves it for everyone
   private moveCarriedNpc(player: Actor): void {
     const npc = this.posedNpcLocalId ? this.sp.Actor.from(this.sp.Game.getFormEx(this.posedNpcLocalId)) : null;
-    if (!npc || !npc.is3DLoaded()) {
+    if (!npc || !npc.is3DLoaded() || ObjectReferenceEx.getWorldOrCell(npc) !== ObjectReferenceEx.getWorldOrCell(player)) {
       return;
     }
     this.keepCarrierCollisionOff(this.posedNpcLocalId);

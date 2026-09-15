@@ -463,7 +463,7 @@ export class FormView {
         } else {
           const remoteId = this.remoteRefrId;
           if (ac && remoteId && ac.is3DLoaded()) {
-            if (!isOwnCompanion(remoteId)) {
+            if (!keepsOwnOffset(remoteId)) {
               ac.clearKeepOffsetFromActor();
             }
 
