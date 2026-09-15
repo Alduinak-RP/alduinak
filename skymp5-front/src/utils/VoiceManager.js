@@ -8,7 +8,7 @@
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
 // Events back to the game (window.skyrimPlatform.sendMessage):
 //   'voice::ready', 'voice::micDenied', 'voice::error' <text>,
-//   'voice::speaking' <json array of {id, level}: own voice plus audible speakers, every 150 ms while anyone talks, [] once when quiet>
+//   'voice::speaking' <json array of {id, level}: own voice while PTT is held plus audible unmuted speakers, every 150 ms while anyone talks, [] once when quiet>
 
 import { Room, RoomEvent, Track } from 'livekit-client';
 
@@ -98,6 +98,7 @@ class VoiceManager {
         const el = this.audioEls.get(participant.identity);
         if (el) { el.remove(); this.audioEls.delete(participant.identity); }
         delete this.peerRanges[participant.identity];
+        this.emitSpeaking();
       });
       room.on(RoomEvent.ParticipantConnected, () => {
         this.publishRange(); // newcomers need to learn my current range
@@ -125,6 +126,7 @@ class VoiceManager {
         }
       });
       room.on(RoomEvent.ActiveSpeakersChanged, () => this.emitSpeaking());
+      room.on(RoomEvent.TrackMuted, () => this.emitSpeaking());
 
       await room.connect(url, token, { autoSubscribe: true });
       try { await room.startAudio(); } catch (e) { /* autoplay policy: unlocked by CEF switch */ }
@@ -164,12 +166,19 @@ class VoiceManager {
     this.emitSpeaking();
   }
 
-  // Lip sync feed: own voice always, remote voices while in range; repeats while non-empty, the empty list goes out once
+  // activeSpeakers lags PTT release and keeps leavers, so also need a live mic and, for remotes, presence and range
+  isTalking(p) {
+    if (!p.isMicrophoneEnabled) return false;
+    if (p.isLocal) return this.ptt;
+    return this.room.remoteParticipants.get(p.identity) === p && this.gainFor(p.identity) > 0;
+  }
+
+  // Lip sync feed: own voice while transmitting, remote voices while in range; repeats while non-empty, the empty list goes out once
   emitSpeaking() {
     let list = [];
     if (this.room) {
       list = this.room.activeSpeakers
-        .filter((p) => p.isLocal || this.gainFor(p.identity) > 0)
+        .filter((p) => this.isTalking(p))
         .map((p) => ({ id: p.identity, level: Math.round((p.audioLevel || 0) * 100) / 100 }));
     }
     const json = JSON.stringify(list);
@@ -180,6 +189,7 @@ class VoiceManager {
 
   async setPtt(down) {
     this.ptt = !!down;
+    this.emitSpeaking();
     // The banner doubles as the transmit indicator: solid while the mic is open, hidden on release
     if (this.ptt) this.showBanner(this.mode);
     else this.hideBanner();
