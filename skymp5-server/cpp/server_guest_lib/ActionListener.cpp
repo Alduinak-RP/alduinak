@@ -11,6 +11,7 @@
 #include "MpObjectReference.h"
 #include "MsgType.h"
 #include "Overloaded.h"
+#include "SpellEffectUtils.h"
 #include "WorldState.h"
 #include "gamemode_events/CustomEvent.h"
 #include "gamemode_events/EatItemEvent.h"
@@ -114,33 +115,6 @@ std::vector<uint32_t> GetKnownSpells(const MpActor& actor)
     }
   }
   return spells;
-}
-
-// Calls callback(effectItem, mgefData, mgefLookup) for each effect of a SPEL, effectItem may be null
-template <class Callback>
-void ForEachSpellEffectData(WorldState* worldState, uint32_t spellId,
-                            const Callback& callback)
-{
-  auto& browser = worldState->GetEspm().GetBrowser();
-  const auto spellLookup = browser.LookupById(spellId);
-  const auto spell = espm::Convert<espm::SPEL>(spellLookup.rec);
-  if (!spell) {
-    return;
-  }
-  const auto spellData = spell->GetData(worldState->GetEspmCache());
-  for (const auto& effect : spellData.effects) {
-    if (effect.effectFormId == 0) {
-      continue;
-    }
-    const auto mgefLookup =
-      browser.LookupById(spellLookup.ToGlobalId(effect.effectFormId));
-    const auto mgef = espm::Convert<espm::MGEF>(mgefLookup.rec);
-    if (!mgef) {
-      continue;
-    }
-    callback(effect.effectItem, mgef->GetData(worldState->GetEspmCache()).data,
-             mgefLookup);
-  }
 }
 
 // Calls callback(effectType, associatedItem, projectile) with global ids for each effect of a SPEL

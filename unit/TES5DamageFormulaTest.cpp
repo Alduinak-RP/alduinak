@@ -5,6 +5,7 @@
 #include "GetBaseActorValues.h"
 #include "HitData.h"
 #include "PacketParser.h"
+#include "condition_functions/ConditionFunctionFactory.h"
 #include "formulas/TES5DamageFormula.h"
 #include "libespm/Loader.h"
 
@@ -121,6 +122,201 @@ TEST_CASE("Enchanted armor from a plugin loaded past its master count counts",
   // 4 * 0.01 * (100 - 23 * .12) = 3.8896
   REQUIRE(formula.CalculateDamage(ac, ac, hitData) == Catch::Approx(3.8896f));
 
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage sums the hostile Health effects of a spell",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  spellCastData.spell = 0x0001C789; // Fireball, 40 fire damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 40.f);
+
+  spellCastData.spell = 0x0002B96C; // Ice Spike, 25 frost damage plus a slow
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 25.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage from a plugin loaded past its master count counts",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  // Dragonborn Freeze: its raw effect 0x0202732E loads as 0x0402732E, 20 frost damage
+  spellCastData.spell = 0x0402732D;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 20.f);
+
+  // Frost Breath 1: Dragonborn overrides it, raw effect 0x02020E96 loads as 0x04020E96
+  spellCastData.spell = 0x0005D172;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 10.f);
+
+  spellCastData.spell = 0x0001397E; // iron dagger, not a SPEL
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 0.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage skips perk riders because the server holds no perk "
+          "data",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  // Below 15% health, but the Disintegrate rider (+200) needs HasPerk
+  ac.SetPercentages({ 0.1f, 1.f, 1.f });
+
+  spellCastData.spell = 0x0002DD2A; // Sparks, 8 shock damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 8.f);
+
+  spellCastData.spell = 0x0002DD29; // Lightning Bolt, 25 shock damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 25.f);
+
+  spellCastData.spell = 0x0002B392; // Lightning Cloak damage, 8 shock damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 8.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage counts effects gated by IsHostileToActor or by "
+          "conditions the server does not evaluate",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  spellCastData.spell = 0x0002B385; // Flame Cloak damage, 8 fire damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 8.f);
+
+  // Every GetLevel tier of the storm counts: 8 + 13 + 15 + 17 + 20 + 23
+  spellCastData.spell = 0x000D488A;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 96.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage of unconditional spells and shouts is unchanged",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  spellCastData.spell = 0x00012FCD; // Flames, 8 fire damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 8.f);
+
+  spellCastData.spell = 0x00012FD0; // Firebolt, 25 fire damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 25.f);
+
+  // Unrelenting Force 3: 10 plus the conditional 40 from Dragonborn
+  spellCastData.spell = 0x00013F3A;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 50.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage counts a conditional effect when its conditions hold",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  p.CreateActor(0xff000001, { 0, 0, 0 }, 0, 0x3c);
+  auto& caster = p.worldState.GetFormAt<MpActor>(0xff000000);
+  auto& target = p.worldState.GetFormAt<MpActor>(0xff000001);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  // Labyrinthian reward spell: 25 damage while the actor hit has less than full Magicka
+  spellCastData.spell = 0x000DA746;
+  caster.SetPercentages({ 1.f, 0.5f, 1.f });
+  target.SetPercentages({ 1.f, 1.f, 1.f });
+  REQUIRE(formula.CalculateDamage(caster, target, spellCastData) == 0.f);
+
+  target.SetPercentages({ 1.f, 0.5f, 1.f });
+  REQUIRE(formula.CalculateDamage(caster, target, spellCastData) == 25.f);
+
+  p.DestroyActor(0xff000001);
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage reads HasKeyword from the race of the actor hit",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  p.CreateActor(0xff000001, { 0, 0, 0 }, 0, 0x3c);
+  auto& caster = p.worldState.GetFormAt<MpActor>(0xff000000);
+  auto& target = p.worldState.GetFormAt<MpActor>(0xff000001);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  // Sun Fire: 25 sun damage, only to ActorTypeUndead
+  spellCastData.spell = 0x02003F52;
+  REQUIRE(formula.CalculateDamage(caster, target, spellCastData) == 0.f);
+
+  Appearance appearance;
+  appearance.raceId = 0x00088794; // NordRaceVampire, an ActorTypeUndead race
+  target.SetAppearance(&appearance);
+  REQUIRE(formula.CalculateDamage(caster, target, spellCastData) == 25.f);
+  REQUIRE(formula.CalculateDamage(target, caster, spellCastData) == 0.f);
+
+  p.DestroyActor(0xff000001);
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
 }

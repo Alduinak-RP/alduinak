@@ -21,12 +21,16 @@ float ConditionFunctions::GetActorValuePercent::Execute(
 
   auto& actorValues = actor.GetActorValues();
 
+  // Plugin CTDAs pass the actor value index instead of the ActorValueInfo id
   switch (parameter1) {
     case kHealthActorValueId:
+    case static_cast<uint32_t>(espm::ActorValue::Health):
       return actorValues.healthPercentage;
     case kMagickaActorValueId:
+    case static_cast<uint32_t>(espm::ActorValue::Magicka):
       return actorValues.magickaPercentage;
     case kStaminaActorValueId:
+    case static_cast<uint32_t>(espm::ActorValue::Stamina):
       return actorValues.staminaPercentage;
     default:
       break;

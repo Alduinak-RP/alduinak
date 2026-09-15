@@ -13,7 +13,8 @@ class ConditionFunctionMap;
 enum class ConditionsEvaluatorCaller
 {
   kDamageMultConditionalFormula,
-  kCraft
+  kCraft,
+  kSpellDamage
 };
 
 struct ConditionsEvaluatorSettings

@@ -1,6 +1,8 @@
 #pragma once
 #include "ActorValue.h"
+#include "CTDA.h"
 #include "RecordHeader.h"
+#include <vector>
 
 #pragma pack(push, 1)
 
@@ -104,6 +106,7 @@ public:
   struct Data
   {
     DATA data;
+    std::vector<CTDA> conditions;
   };
 
   Data GetData(CompressedFieldsCache& compressedFieldsCache) const noexcept;

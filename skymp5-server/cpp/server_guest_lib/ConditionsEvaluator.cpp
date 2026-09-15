@@ -40,6 +40,11 @@ void ConditionsEvaluator::EvaluateConditions(
       enableLogging = true;
       break;
     }
+    if (callerToLog == "SpellDamage" &&
+        caller == ConditionsEvaluatorCaller::kSpellDamage) {
+      enableLogging = true;
+      break;
+    }
   }
 
   std::vector<int> conditionResolutions;
