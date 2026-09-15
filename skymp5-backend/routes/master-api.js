@@ -502,3 +502,5 @@ module.exports.isDiscordWhitelisted = isDiscordWhitelisted
 module.exports.recordLaunchCheck    = recordLaunchCheck
 module.exports.recordSessionHwid    = recordSessionHwid
 module.exports.currentFilesVersion  = currentFilesVersion
+module.exports.checkKey             = checkKey
+module.exports.checkWriteToken      = checkWriteToken
