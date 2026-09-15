@@ -177,9 +177,22 @@ const GFX_INPUT_IDS = [
 const fovInput = document.getElementById('gfx-fov')
 const showFov = () => { const out = document.getElementById('gfx-fov-value'); if (out && fovInput) out.textContent = fovInput.value }
 if (fovInput) fovInput.addEventListener('input', showFov)
+// Stored on release, so closing Settings without Save keeps it
+const fovError = document.getElementById('gfx-fov-error')
+if (fovInput) fovInput.addEventListener('change', async () => {
+  const r = await window.electronAPI.graphicsSaveFov(fovInput.value).catch(() => null)
+  if (fovError) fovError.hidden = !!(r && r.ok)
+})
 
 function setInputsDisabled(ids, disabled) {
   for (const id of ids) { const el = document.getElementById(id); if (el) el.disabled = !!disabled }
+}
+let gfxExists = true
+// Graphics live in the MO2 profile inis, which a direct launch never reads
+function lockGfx() {
+  const mo2On = fieldMo2Enabled.checked
+  setInputsDisabled(GFX_INPUT_IDS, !gfxExists || !mo2On)
+  const note = document.getElementById('gfx-mo2-off'); if (note) note.hidden = mo2On
 }
 
 async function loadGameSettingsTab() {
@@ -210,7 +223,8 @@ async function loadGameSettingsTab() {
       setChk('gfx-lensflare', g.lensFlare)
       setChk('gfx-ao', g.ao)
       setChk('gfx-precip', g.precip)
-      setInputsDisabled(GFX_INPUT_IDS, !g.exists)
+      gfxExists = !!g.exists
+      lockGfx()
     }
     const gh = await window.electronAPI.gameHotkeysLoad()
     const ghkEditable = !!(gh && gh.ok && gh.hasGamePath)
@@ -651,6 +665,7 @@ document.getElementById('btn-detect-path').addEventListener('click', async () =>
 const mo2EnableText = document.getElementById('mo2-enable-text')
 
 async function refreshMo2Status() {
+  lockGfx()
   const status  = await window.electronAPI.mo2Status()
   const enabled = fieldMo2Enabled.checked
 

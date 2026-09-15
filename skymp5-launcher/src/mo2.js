@@ -24,6 +24,7 @@ const os   = require('os')
 const https = require('https')
 const crypto = require('crypto')
 const { spawn, execFileSync, execFile } = require('child_process')
+const ini = require('./ini')
 
 const MO2_VERSION = '2.5.2'
 const MO2_URL     = `https://github.com/ModOrganizer2/modorganizer/releases/download/v${MO2_VERSION}/Mod.Organizer-${MO2_VERSION}.7z`
@@ -275,7 +276,7 @@ async function installFresh(onProgress) {
 const fwd = p => p.replace(/\\/g, '/')
 
 // Detect the Skyrim SE store edition
-function detectEdition(gameDir) {
+function detectEdition(gameDir, fallback = 'Steam') {
   try {
     const names = fs.readdirSync(gameDir)
     if (names.includes('Galaxy64.dll') || names.some(f => /^goggame-.*\.(info|dll|hashdb)$/i.test(f))) return 'GOG'
@@ -283,7 +284,18 @@ function detectEdition(gameDir) {
     if (names.some(f => /^Gaming\.Desktop|appxmanifest/i.test(f))) return 'Microsoft Store'
     if (names.includes('steam_api64.dll')) return 'Steam'
   } catch { /* unreadable */ }
-  return 'Steam'
+  return fallback
+}
+
+// Variant names the MO2 Skyrim SE plugin accepts
+const MO2_VARIANTS = ['Steam', 'GOG', 'Epic Games']
+
+// MO2 reads game_edition, and the variant picks the My Games folder the profile inis are mapped onto
+function syncGameEdition(iniPath, skyrimPath) {
+  const edition = detectEdition(skyrimPath, null)
+  if (!MO2_VARIANTS.includes(edition) || (ini.read(iniPath).General || {}).game_edition === edition) return
+  ini.write(iniPath, { General: { game_edition: edition } })
+  _log(`set game_edition=${edition} for ${skyrimPath}`)
 }
 
 function instanceDirLines() {
@@ -331,7 +343,6 @@ function buildInstanceIni(skyrimPath, style) {
   return [
     '[General]',
     'gameName=Skyrim Special Edition',
-    `gameEdition=${detectEdition(skyrimPath)}`,
     `gamePath=@ByteArray(${fwd(skyrimPath)})`,
     `selected_profile=@ByteArray(${PROFILE})`,
     `version=${MO2_VERSION}`,
@@ -437,6 +448,7 @@ function ensureInstance(skyrimPath, loadOrder) {
   } else {
     fs.writeFileSync(iniPath, buildInstanceIni(skyrimPath, pickDarkStyle()))
   }
+  syncGameEdition(iniPath, skyrimPath)
 
   // Profile files - only created when missing so MO2-side changes survive.
   const modlistPath = path.join(getProfileDir(), 'modlist.txt')

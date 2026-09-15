@@ -357,6 +357,15 @@ function fovInEffect() {
   const n = parseFloat(d[FOV_KEYS[0]])
   return Number.isFinite(n) ? n : FOV_DEFAULT
 }
+// Writes both FOV keys when the value differs from the one in effect
+function saveFov(v) {
+  const fov = clampFov(v)
+  if (fov === null || fov === Math.round(fovInEffect())) return
+  const fovEdit = { Display: Object.fromEntries(FOV_KEYS.map(k => [k, fov.toFixed(4)])) }
+  ini.write(ensureProfileIni(FOV_INIS[1]), fovEdit)
+  const custom = profileIniInEffect(FOV_INIS[0])
+  if (custom && FOV_KEYS.some(k => k in (ini.read(custom).Display || {}))) ini.write(ensureProfileIni(FOV_INIS[0]), fovEdit)
+}
 // Server hotkeys live in the Skyrim Platform client settings (the object exposed
 // to the client as settings["skymp5-client"] - the file content is that object).
 function clientSettingsPath() {
@@ -472,15 +481,19 @@ ipcMain.handle('graphics:save', (_e, g) => {
     }
     if (REFLECTIONS[g.reflections]) edits.Water = Object.assign({ bUseWaterReflections: '1' }, REFLECTIONS[g.reflections])
     ini.write(skyrimPrefsPath(), edits)
-    const fov = clampFov(g.fov)
-    if (fov !== null && fov !== Math.round(fovInEffect())) {
-      const fovEdit = { Display: Object.fromEntries(FOV_KEYS.map(k => [k, fov.toFixed(4)])) }
-      ini.write(ensureProfileIni(FOV_INIS[1]), fovEdit)
-      const custom = profileIniInEffect(FOV_INIS[0])
-      if (custom && FOV_KEYS.some(k => k in (ini.read(custom).Display || {}))) ini.write(ensureProfileIni(FOV_INIS[0]), fovEdit)
-    }
+    saveFov(g.fov)
     return { ok: true, path: skyrimPrefsPath() }
   } catch (err) {
+    return { ok: false, error: err.message }
+  }
+})
+
+ipcMain.handle('graphics:saveFov', (_e, v) => {
+  try {
+    saveFov(v)
+    return { ok: true }
+  } catch (err) {
+    log('[graphics] could not save the FOV:', err.message)
     return { ok: false, error: err.message }
   }
 })
