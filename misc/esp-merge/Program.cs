@@ -8,15 +8,17 @@ using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 using Noggog;
 
-// Mutagen passes of the r7 AlduinakAdditions.esp merge (reports/r7-esp-merge-plan.md), run through merge.py.
+// Mutagen passes of the r7 AlduinakAdditions.esp merge (reports/r7-esp-merge-plan.md), run through merge.py and masks.py.
 //   dotnet run -c Release -- merge --settings <json> --new <padded esp> --new-sha <hex> --r4 <esp> --r4-sha <hex> --attribution <json> --attribution-sha <hex> --removed-navm <txt> --records <n> --out <dir>
+//   dotnet run -c Release -- armor-effects --settings <json> --plugin <esp> --plugin-sha <hex> --source <plugin> --effect <hex id> --expect <hex ids> --out <dir>
 
 var opts = new Dictionary<string, string>();
 for (int i = 1; i + 1 < args.Length; i += 2) opts[args[i].TrimStart('-')] = args[i + 1];
 return (args.Length > 0 ? args[0] : "") switch
 {
     "merge" => Merge.Run(opts),
-    _ => throw new Exception("usage: merge, see the header of Program.cs"),
+    "armor-effects" => ArmorEffects.Run(opts),
+    _ => throw new Exception("usage: merge | armor-effects, see the header of Program.cs"),
 };
 
 static class Shared
@@ -470,5 +472,42 @@ static class Merge
                 default: throw new Exception($"{target.FormKey}: restoring {f} is not implemented");
             }
         }
+    }
+}
+
+static class ArmorEffects
+{
+    // Strips the enchantment from the crafted ARMO of one plugin; the master list must not change
+    public static int Run(Dictionary<string, string> o)
+    {
+        Shared.CheckSha(o["plugin"], o["plugin-sha"]);
+        var (env, order) = Shared.Environment(o["settings"]);
+        using var envScope = env;
+        var mod = SkyrimMod.CreateFromBinary(new ModPath(Shared.Self, o["plugin"]), Shared.Release);
+        var before = mod.ModHeader.MasterReferences.Select(m => m.Master).ToList();
+        var src = ModKey.FromNameAndExtension(o["source"]);
+        var effect = new FormKey(src, Convert.ToUInt32(o["effect"], 16));
+        var expect = o["expect"].Split(',').Select(x => Convert.ToUInt32(x, 16)).ToHashSet();
+        Shared.Require(before.Contains(src), $"{src} is not a master of the plugin");
+
+        var winners = env.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides().ToDictionary(c => c.FormKey, c => c);
+        foreach (var c in mod.ConstructibleObjects) winners[c.FormKey] = c;
+        var crafted = winners.Values.Select(c => c.CreatedObject.FormKey).ToHashSet();
+        var targets = env.LoadOrder[src].Mod!.Armors.Where(a => a.FormKey.ModKey == src && !a.ObjectEffect.IsNull && crafted.Contains(a.FormKey)).ToList();
+        Shared.Require(targets.Select(a => a.FormKey.ID).ToHashSet().SetEquals(expect), $"crafted enchanted ARMO in {src}: {string.Join(", ", targets.Select(a => a.FormKey))}");
+        foreach (var a in targets)
+        {
+            var carriers = env.LoadOrder.ListedOrder.Where(l => l.Mod != null && l.Mod.Armors.ContainsKey(a.FormKey)).Select(l => l.ModKey).ToList();
+            Shared.Require(carriers.SequenceEqual(new[] { src }) && !mod.Armors.ContainsKey(a.FormKey), $"{a.FormKey} is overridden by {string.Join(", ", carriers)} or already by the plugin");
+            Shared.Require(a.ObjectEffect.FormKey == effect, $"{a.FormKey} carries {a.ObjectEffect.FormKey}, not {effect}");
+            var ovr = mod.Armors.GetOrAddAsOverride(a);
+            ovr.ObjectEffect.Clear();
+            Console.WriteLine($"  {a.FormKey} {a.EditorID}: EITM {effect} removed; value {ovr.Value}, rating {ovr.ArmorRating}, weight {ovr.Weight}");
+        }
+        var path = Shared.Write(mod, o["out"], order);
+        var after = Shared.Masters(path);
+        Shared.Require(after.SequenceEqual(before), $"master list changed: {string.Join(", ", after)}");
+        Console.WriteLine($"wrote {path}; {targets.Count} ARMO overrides, master list unchanged ({after.Count})");
+        return 0;
     }
 }
