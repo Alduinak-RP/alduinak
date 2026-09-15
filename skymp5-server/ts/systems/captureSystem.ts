@@ -463,8 +463,11 @@ export class CaptureSystem implements System {
     } catch { /* user gone */ }
   }
 
-  // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release
+  // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release or the requester is bound
   private releaseStep(requesterActorId: number, targetActorId: number): "putdown" | "release" | null {
+    if (this.restraints.get(requesterActorId)?.boundHands) {
+      return null;
+    }
     const info = this.restraints.get(targetActorId);
     const isCaptor = info?.captorActorId === requesterActorId;
     const carrier = this.carriedBy.get(targetActorId);
