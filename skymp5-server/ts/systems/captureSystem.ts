@@ -599,6 +599,12 @@ export class CaptureSystem implements System {
   }
 
   private applyCapture(ctx: SystemContext, targetActorId: number, captorActorId: number): void {
+    // A bound player cannot carry, so a carrier drops their body first
+    const carried = this.carrying.get(targetActorId);
+    if (carried !== undefined) {
+      this.stopCarry(ctx, carried);
+      this.notice(ctx, this.userOf(ctx, carried), "Your carrier was restrained.");
+    }
     const info = this.restraints.get(targetActorId)
       ?? { boundHands: false, carried: false, captorActorId };
     info.boundHands = true;
