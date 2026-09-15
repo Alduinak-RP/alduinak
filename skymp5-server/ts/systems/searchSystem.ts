@@ -3,6 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { KEY_BASE_ID } from "./housingSystem";
 import { isRestrained } from "./captureSystem";
+import { nameShownTo } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -221,7 +222,7 @@ export class SearchSystem implements System {
       return;
     }
     if (this.sessions.has(targetActorId)) {
-      this.notice(ctx, userId, `${this.nameShownTo(ctx, searcherActorId, targetActorId)} is already being searched.`);
+      this.notice(ctx, userId, `${nameShownTo(ctx.svr,searcherActorId, targetActorId)} is already being searched.`);
       return;
     }
     if (this.searching.has(searcherActorId)) {
@@ -244,7 +245,7 @@ export class SearchSystem implements System {
     const cooldownKey = `${searcherActorId}:${targetActorId}`;
     const lastPrompt = this.consentCooldown.get(cooldownKey);
     if (lastPrompt !== undefined && now - lastPrompt < this.consentCooldownMs) {
-      this.notice(ctx, userId, `Wait before asking ${this.nameShownTo(ctx, searcherActorId, targetActorId)} again.`);
+      this.notice(ctx, userId, `Wait before asking ${nameShownTo(ctx.svr,searcherActorId, targetActorId)} again.`);
       return;
     }
     if (this.consentCooldown.size > 512) {
@@ -264,18 +265,18 @@ export class SearchSystem implements System {
     const timer = setTimeout(() => {
       if (this.pending.delete(requestId)) {
         this.notice(ctx, this.userOf(ctx, searcherActorId),
-          `${this.nameShownTo(ctx, searcherActorId, targetActorId)} did not respond.`);
+          `${nameShownTo(ctx.svr,searcherActorId, targetActorId)} did not respond.`);
       }
     }, this.consentTimeoutMs);
     this.pending.set(requestId, { searcherActorId, targetActorId, timer });
 
-    const searcherName = this.nameShownTo(ctx, targetActorId, searcherActorId);
+    const searcherName = nameShownTo(ctx.svr,targetActorId, searcherActorId);
     ctx.svr.sendCustomPacket(targetUser, JSON.stringify({
       customPacketType: "searchConsentRequest",
       requestId,
       text: `${searcherName} wants to search you. Allow?`,
     }));
-    this.notice(ctx, userId, `Waiting for ${this.nameShownTo(ctx, searcherActorId, targetActorId)} to accept…`);
+    this.notice(ctx, userId, `Waiting for ${nameShownTo(ctx.svr,searcherActorId, targetActorId)} to accept…`);
   }
 
   private onConsentResult(ctx: SystemContext, userId: number, content: Content): void {
@@ -294,14 +295,14 @@ export class SearchSystem implements System {
 
     const searcherUser = this.userOf(ctx, pend.searcherActorId);
     if (content.accepted !== true) {
-      this.notice(ctx, searcherUser, `${this.nameShownTo(ctx, pend.searcherActorId, pend.targetActorId)} refused the search.`);
+      this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} refused the search.`);
       return;
     }
     if (searcherUser < 0) {
       return; // searcher left while we waited
     }
     if (!this.validTarget(ctx, pend.searcherActorId, pend.targetActorId)) {
-      this.notice(ctx, searcherUser, `${this.nameShownTo(ctx, pend.searcherActorId, pend.targetActorId)} is out of reach.`);
+      this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} is out of reach.`);
       return;
     }
     if (this.sessions.has(pend.targetActorId) || this.searching.has(pend.searcherActorId) || isRestrained(ctx.svr, pend.searcherActorId)) {
@@ -340,7 +341,7 @@ export class SearchSystem implements System {
       entries: this.simpleEntriesOf(ctx, targetActorId),
     }));
     this.notice(ctx, this.userOf(ctx, targetActorId),
-      `${this.nameShownTo(ctx, targetActorId, searcherActorId)} is searching ${body ? "your body" : "you"}.`);
+      `${nameShownTo(ctx.svr,targetActorId, searcherActorId)} is searching ${body ? "your body" : "you"}.`);
     this.log(`[search] ${searcherActorId.toString(16)} searches ${body ? "body " : ""}${targetActorId.toString(16)}`);
   }
 
@@ -529,26 +530,6 @@ export class SearchSystem implements System {
     } catch {
       return -1;
     }
-  }
-
-  private nameOf(ctx: SystemContext, actorId: number): string {
-    try {
-      const n = ctx.svr.getActorName(actorId);
-      return typeof n === "string" ? n.trim() : "";
-    } catch {
-      return "";
-    }
-  }
-
-  // The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
-  private nameShownTo(ctx: SystemContext, viewerActorId: number, subjectActorId: number): string {
-    try {
-      const known = (ctx.svr as Mp).get(viewerActorId, "ff_knownIds");
-      if (Array.isArray(known) && !known.includes(subjectActorId)) {
-        return "A stranger";
-      }
-    } catch { /* fall through to the real name */ }
-    return this.nameOf(ctx, subjectActorId) || "Someone";
   }
 
   // Plain {baseId, count} stacks without extra data, mirroring what TakeItem can move

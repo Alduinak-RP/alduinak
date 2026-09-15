@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
+import { nameShownTo } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -384,7 +385,7 @@ export class CaptureSystem implements System {
       if (downed) this.stopBleedout(ctx, targetActorId);
       this.applyCarry(ctx, targetActorId, carrierActorId);
       this.notice(ctx, userId, `You picked up ${this.nameOf(ctx, targetActorId)}.`);
-      this.notice(ctx, this.userOf(ctx, targetActorId), `${this.nameOf(ctx, carrierActorId) || "Someone"} is carrying you.`);
+      this.notice(ctx, this.userOf(ctx, targetActorId), `${nameShownTo(mp, targetActorId, carrierActorId)} is carrying you.`);
       return;
     }
     this.requestConsent(ctx, "carry", carrierActorId, targetActorId);
