@@ -19,6 +19,7 @@ type Mp = any;
 // accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
 // captured/carried instantly with no prompt, and doing so STOPS their bleedout
 // (mp.set isDead=false stands them up instead of a temple respawn).
+// A restrained (bound) target is carried with no prompt as well and is told who carries them.
 //
 // Wire protocol: all packets are MsgType.CustomPacket carrying JSON.
 //   Client -> Server:
@@ -367,10 +368,13 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, refusal);
       return;
     }
-    if (this.isDowned(mp, targetActorId)) {
-      this.stopBleedout(ctx, targetActorId);
+    const downed = this.isDowned(mp, targetActorId);
+    // Downed and restrained targets are picked up without a prompt
+    if (downed || this.restraints.has(targetActorId)) {
+      if (downed) this.stopBleedout(ctx, targetActorId);
       this.applyCarry(ctx, targetActorId, carrierActorId);
       this.notice(ctx, userId, `You picked up ${this.nameOf(ctx, targetActorId)}.`);
+      this.notice(ctx, this.userOf(ctx, targetActorId), `${this.nameOf(ctx, carrierActorId) || "Someone"} is carrying you.`);
       return;
     }
     this.requestConsent(ctx, "carry", carrierActorId, targetActorId);
