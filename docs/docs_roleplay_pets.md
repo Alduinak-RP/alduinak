@@ -84,7 +84,7 @@ two `ff_` ones (see Deployment).
 | `petMaxPets` | 10 | pets a character may keep |
 | `petMaxOut` | 3 | pets a character may have out at once |
 | `petBases` | `{ horse: [EncHorseSaddledBrown, EncHorseSaddledBlack, EncHorseSaddledGrey, EncHorseSaddledPalomino], livestock: [EncCow, EncGoatDomestic, EncChicken], dog: [EncDog, TrainedDog] }` | grantable NPC_ bases per kind, editor ids or `hex:Plugin` descs; unknown ones are logged at boot |
-| `petHarvestItems` | `{ milk: BYOHFoodMilk, egg: FoodChickensEgg }` | the products, editor ids or descs |
+| `petHarvestItems` | `{ milk: BYOHFoodMilk, egg: BirdEgg03 }` | the products, editor ids or descs |
 
 Editor ids are resolved by the same plugin scan the spawner uses, so the load order cannot break them. The stable and farm anchors come from
 `adminMapMarkers.ts` (`PET_ANCHORS`), regenerated with `python misc/gen-map-marker-teleports.py`.

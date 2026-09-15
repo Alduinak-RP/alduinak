@@ -112,7 +112,7 @@ const DEFAULT_BASES: Record<PetKind, string[]> = {
 // Editor id candidates for the harvest products, the first one found in the load order wins
 const DEFAULT_HARVEST_ITEMS: Record<string, string[]> = {
   milk: ["BYOHFoodMilk"],
-  egg: ["FoodChickensEgg", "FoodChickenEgg", "ChickensEgg"],
+  egg: ["BirdEgg03"],
 };
 const HARVEST_RULES: { match: RegExp; product: string }[] = [
   { match: /cow|goat/i, product: "milk" },
