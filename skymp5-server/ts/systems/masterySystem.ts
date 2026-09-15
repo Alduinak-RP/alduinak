@@ -693,9 +693,19 @@ export class MasterySystem implements System {
   // further away than the weapon carries.
   private combatCounts(ctx: SystemContext, actorId: number, targetId: number, keywords: Set<number>, reach: number): boolean {
     if (!targetId || targetId === actorId || !keywords.size) return false;
+    // A pet, owned or released, is nobody's game
+    if (this.isPet(ctx, targetId)) return false;
     const loc = this.locationOf(ctx, actorId);
     if (!loc || !this.inReach(ctx, loc, targetId, reach)) return false;
     return this.actorHasAny(ctx, targetId, keywords);
+  }
+
+  private isPet(ctx: SystemContext, actorId: number): boolean {
+    try {
+      return !!(ctx.svr as any).get(actorId, "private.pet");
+    } catch {
+      return false;
+    }
   }
 
   // How far a hit from this source may land: 0 when the source is no weapon or spell.
