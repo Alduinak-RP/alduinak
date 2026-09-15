@@ -3,6 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest, missingCap } from "./adminRoles";
 import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
+import { PetSystem, PetKind } from "./petSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, userOf } from "./actorUtil";
@@ -32,6 +33,8 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..1000, self allowed
+//                     { customPacketType: "adminAction", action: "petBases" }  answered with petBases, the grantable pet bases per kind
+//                     { customPacketType: "adminAction", action: "petGrant", kind, base, name }  stores a pet of that kind for the admin's own character
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
@@ -91,6 +94,12 @@ interface OnlinePlayer {
 export class AdminSystem implements System {
   systemName = "AdminSystem";
   constructor(private log: Log, private npcSpawns: NpcSpawnSystem, private mastery: MasterySystem) { }
+
+  private pets: PetSystem | null = null;
+
+  setPetSystem(pets: PetSystem): void {
+    this.pets = pets;
+  }
 
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private masterUrl = "";
@@ -432,6 +441,10 @@ export class AdminSystem implements System {
       this.sendItems(mp, userId, content);
       return;
     }
+    if (action === "petBases" || action === "petGrant") {
+      this.petAction(mp, userId, myActorId, adminProfile, action, content);
+      return;
+    }
     if (action === "teleportLoc") {
       const name = String(content["target"] ?? "");
       const loc = this.locations.find(l => l.name === name);
@@ -575,6 +588,26 @@ export class AdminSystem implements System {
     this.log(`AdminSystem: ${text}`);
     this.adminLog(text);
     this.reply(mp, userId, true, `Gave ${count} x ${entry.name} to ${target.actorId === myActorId ? "you" : target.name}`);
+  }
+
+  // Pets: the grantable bases, and a stored pet for the admin's own character to hand to a stablemaster
+  private petAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, action: string, content: Content): void {
+    if (!this.pets) {
+      this.reply(mp, userId, false, "Pets are not enabled");
+      return;
+    }
+    if (action === "petBases") {
+      try {
+        mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "petBases", bases: this.pets.baseList() }));
+      } catch (e) {
+        this.log(`AdminSystem: petBases reply failed: ${e}`);
+      }
+      return;
+    }
+    const kind = String(content["kind"] ?? "") as PetKind;
+    const refusal = this.pets.grant(myActorId, kind, String(content["base"] ?? ""), String(content["name"] ?? ""));
+    if (!refusal) this.adminLog(`profile ${adminProfile} granted themselves a ${kind} pet (${String(content["base"] ?? "")})`);
+    this.reply(mp, userId, !refusal, refusal || `A ${kind} was added to your pets`);
   }
 
   // Every tier may manage NPC zones; the slot must still belong to the admin because add/delete finish asynchronously

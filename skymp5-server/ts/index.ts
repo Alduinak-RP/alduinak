@@ -41,6 +41,7 @@ import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
 import { CompanionSystem } from "./systems/companionSystem";
 import { HostingSystem } from "./systems/hostingSystem";
+import { PetSystem } from "./systems/petSystem";
 import { ConjurationSystem } from "./systems/conjurationSystem";
 import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { EventEmitter } from "events";
@@ -224,18 +225,27 @@ const main = async () => {
   // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
   hostingSystem.addProvider(() => npcSpawnSystem.liveNpcs());
   hostingSystem.addProvider(() => companionSystem.hostables());
+  const captureSystem = new CaptureSystem(log);
+  const housingSystem = new HousingSystem(log);
+  const searchSystem = new SearchSystem(log);
+  // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
+  const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);
+  hostingSystem.addProvider(() => petSystem.hostables());
+  housingSystem.petCategoryOf = (actorId, refrId) => petSystem.categoryOfDoor(actorId, refrId);
+  const adminSystem = new AdminSystem(log, npcSpawnSystem, masterySystem);
+  adminSystem.setPetSystem(petSystem);
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing
-    new AdminSystem(log, npcSpawnSystem, masterySystem),
-    new CaptureSystem(log),
-    new HousingSystem(log),
+    adminSystem,
+    captureSystem,
+    housingSystem,
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
-    new SearchSystem(log),
+    searchSystem,
     new SoulTrapSystem(log, companionSystem),
     new VoiceSystem(log),
     new AfkSystem(log),
@@ -254,6 +264,8 @@ const main = async () => {
     // After AdminSystem: its onHitDamageAttempt hook wraps the god-mode one
     companionSystem,
     new ConjurationSystem(log, companionSystem),
+    // After companions: its host and activate hooks wrap theirs
+    petSystem,
     new KnowledgeSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),

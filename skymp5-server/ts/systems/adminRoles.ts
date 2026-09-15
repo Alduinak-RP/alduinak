@@ -41,6 +41,8 @@ export const REQUEST_CAP: Record<string, AdminCap | null> = {
   npcZonePos: "npcs",
   itemSearch: "items",
   itemSpawn: "items",
+  petBases: "npcs",
+  petGrant: "npcs",
 };
 
 // Undefined for an unknown request
