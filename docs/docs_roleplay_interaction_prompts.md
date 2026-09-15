@@ -42,6 +42,10 @@ keeps its display name with a verb picked from its base form type.
   over their name. The interact key (`X`, `altInteractKeyCode`) opens the same
   menu on a player; on a door or container it opens the housing menu, and on
   anything else, a world NPC included, the Personal Menu.
+- **Pets** (`ff_pet` on a server NPC, see `docs_roleplay_pets.md`): the pet's name with
+  Ride on any horse, Harvest on your own livestock, Command on your own dog or
+  conjured companion, no verb on someone else's animal; X on your own pet opens
+  the pet menu instead of the Personal Menu. A dead pet keeps the Search path.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
   when harvested; coin purses, loose salmon and any other `untouchableBaseIds`

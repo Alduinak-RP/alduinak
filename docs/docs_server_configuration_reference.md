@@ -322,6 +322,19 @@ How far, in game units, a player can be from a server NPC (a spawn zone NPC or a
 }
 ```
 
+## Pets
+
+The pet system (`docs_roleplay_pets.md`) reads `petInteractMaxDistance`, `petAnchorRadius`, `petHarvestHours`, `petCorpseSeconds`, `petReleaseSeconds`, `petFleeSeconds`, `petMountTimeoutSeconds`, `petMaxPets`, `petMaxOut`, `petBases` and `petHarvestItems`; every key is optional and documented there with its default.
+
+```json5
+{
+  // ...
+  "petHarvestHours": 12,
+  "petMaxOut": 3
+  // ...
+}
+```
+
 ## npcAggroHostSeconds
 
 For this many seconds after a player and a zone NPC exchanged a damaging hit, that player may host the NPC, so its AI runs on the client that is fighting it. Only hits the other handlers allowed (god mode, ghost mode and the capture carrier rule refuse some) and that deal damage count. A host that is itself inside its window keeps the NPC when another player hits it, so a group fight does not move the AI between clients. Default 30; `0` disables the aggro rule and leaves nearest-player hosting.

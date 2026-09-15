@@ -1,6 +1,6 @@
-# Companions (summons, reanimated corpses, pets)
+# Companions (summons, reanimated corpses)
 
-A companion is an NPC ally owned by one player. The server keeps the list; the owner's game runs the AI.
+A companion is an NPC ally owned by one player. The server keeps the list; the owner's game runs the AI. Horses, livestock and dogs are pets, a separate system (`docs_roleplay_pets.md`) whose X menu also reaches a companion (Pet, Unsummon) and whose E hands it the vanilla command mode.
 
 - **Server:** `skymp5-server/ts/systems/companionSystem.ts` (`CompanionSystem`, created in `ts/index.ts`).
 - **Owner's client:** `skymp5-client/src/services/services/companionService.ts`.
