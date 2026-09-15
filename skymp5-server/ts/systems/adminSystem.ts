@@ -76,6 +76,7 @@ interface TeleportLocation {
   kind: string; // map marker type label, blank for settings entries without one
   group: string; // Teleport tab section: the generator's, or the configured entry's ("temples" when unset)
   cellOrWorldDesc: string;
+  cellId: number; // cellOrWorldDesc resolved by getIdFromDesc
   pos: number[];
   rot: number[];
 }
@@ -129,7 +130,7 @@ export class AdminSystem implements System {
     // A generated temple in a configured entry's cell is left out; its name becomes that entry's blank kind so the search finds both
     for (const loc of MAP_MARKER_LOCATIONS.map(raw => this.parseLocation(ctx.svr as Mp, raw, raw.group))) {
       if (!unlisted(loc)) continue;
-      const twin = loc.group === "temples" ? this.locations.find(l => l.cellOrWorldDesc.toLowerCase() === loc.cellOrWorldDesc.toLowerCase()) : undefined;
+      const twin = loc.group === "temples" ? this.locations.find(l => l.cellId === loc.cellId) : undefined;
       if (!twin) this.locations.push(loc);
       else if (!twin.kind) twin.kind = loc.name;
     }
@@ -168,8 +169,8 @@ export class AdminSystem implements System {
         this.log(`AdminSystem: teleport location '${name || "?"}' skipped, needs name/cellOrWorldDesc/pos`);
         return null;
       }
-      mp.getIdFromDesc(cellOrWorldDesc);
-      return { name, kind, group, cellOrWorldDesc, pos, rot };
+      const cellId = Number(mp.getIdFromDesc(cellOrWorldDesc));
+      return { name, kind, group, cellOrWorldDesc, cellId, pos, rot };
     } catch (e) {
       this.log(`AdminSystem: bad teleport location skipped: ${e}`);
       return null;
