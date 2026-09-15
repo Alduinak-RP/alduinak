@@ -92,16 +92,28 @@ if ((Get-Service AlduinakMongo -ErrorAction SilentlyContinue).Status -ne 'Runnin
 # 3. Create the app user. authorization is enabled, but the localhost
 #    exception lets the FIRST user be created without auth.
 if ($mongosh) {
-  $userJs = $User | ConvertTo-Json -Compress
-  $pwJs = $Password | ConvertTo-Json -Compress
+  # PowerShell 5.1 strips double quotes from native args, so this JS uses none and reads the password from the environment
   $js = @"
 try {
   db = db.getSiblingDB('admin');
-  db.createUser({ user: $userJs, pwd: $pwJs, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] });
-  print('[mongo] created user ' + $userJs);
-} catch (e) { print('[mongo] createUser: ' + e.message); }
+  db.createUser({ user: '$User', pwd: process.env.ALDUINAK_MONGO_PWD, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] });
+  print('CREATED');
+} catch (e) {
+  if (/already exists/.test(e.message)) { print('EXISTS'); }
+  else if (/requires authentication/.test(e.message)) { print('SKIPPED'); }
+  else { print('FAILED: ' + e.message); quit(1); }
+}
 "@
-  & $mongosh "mongodb://127.0.0.1:27017/admin" --eval $js
+  $env:ALDUINAK_MONGO_PWD = $Password
+  try { $out = & $mongosh "mongodb://127.0.0.1:27017/admin" --quiet --eval $js }
+  finally { Remove-Item Env:ALDUINAK_MONGO_PWD -ErrorAction SilentlyContinue }
+  if ($LASTEXITCODE -ne 0) { throw "mongosh failed during 'createUser' (exit $LASTEXITCODE): $out" }
+  switch ("$out".Trim()) {
+    'CREATED' { Write-Host "[mongo] created user $User" }
+    'EXISTS' { Write-Host "[mongo] user $User already exists" }
+    'SKIPPED' { Write-Host "[mongo] skipped creating ${User}: auth is on and a user already exists (localhost exception closed)" }
+    default { throw "createUser did not succeed: $_" }
+  }
 }
 
 Write-Host ""
