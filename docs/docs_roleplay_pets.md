@@ -64,7 +64,8 @@ Client to server `petRequest {action, target, ...}`: `menu`, `use`, `mount` (plu
 Server to client: `petState {pets: [{uid, id, name, kind, home, homeName, out}]}` to the owner at login and on every change; `petMenu {target,
 title, actions, trade}`; `petList {door, category, pets}`; `petMount {target, hosted}` (activate the horse, you host it); `petDismount {target}`;
 `petCommand {target}`; `petAction {target, action: "pet"}`; `notification {text}`; `carryState` now carries `target` (the carried NPC); the
-housing `propertyMenu` carries `pets` (the door's category or empty); `petBases {bases}` answers the admin's `adminAction petBases`.
+housing `propertyMenu` carries `pets` (the door's category or empty); `petBases {bases}` answers the admin's `adminAction petBases`, each row
+`{desc, editorId, name}` where `name` is the display label for the panel, from the built-in table or the prettified editor id.
 
 Properties: `private.pets {list}` on the owner (never sent), `private.pet {owner, uid, kind, name, released?}` on the actor (never sent),
 `ff_pet {kind, name, owner, dead?, flee?, carried?}` on the actor and `ff_mount` on riders, both neighbor-visible. The gamemode must register the
