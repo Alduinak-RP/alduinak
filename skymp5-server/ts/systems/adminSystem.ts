@@ -36,7 +36,7 @@ type Mp = any;
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
-//                       locations[].group: server (adminTeleportLocations) | settlements | forts | temples; the front files a missing or unknown group under Other
+//                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | other; the front files a missing or unknown group under Other
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
@@ -71,7 +71,7 @@ const SESSION_MODES = ["speed", "freecam"];
 interface TeleportLocation {
   name: string;
   kind: string; // map marker type label, blank for settings entries without one
-  group: string; // Teleport tab section: "server" for adminTeleportLocations, else the generator's
+  group: string; // Teleport tab section: the generator's, or the configured entry's ("temples" when unset)
   cellOrWorldDesc: string;
   pos: number[];
   rot: number[];
@@ -117,14 +117,18 @@ export class AdminSystem implements System {
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
     this.roleCfg = readAdminRoleConfig(all);
     for (const warning of this.roleCfg.capWarnings) this.log(`AdminSystem: ${warning}`);
-    // Configured entries first; a generated map marker never shadows a name already listed
+    // Configured entries first, in Temples unless they set a group; a generated row never shadows a name already listed
     const configured: any[] = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
-    const parsed = [
-      ...configured.map(raw => this.parseLocation(ctx.svr as Mp, raw, "server")),
-      ...MAP_MARKER_LOCATIONS.map(raw => this.parseLocation(ctx.svr as Mp, raw, raw.group)),
-    ];
-    for (const loc of parsed) {
-      if (loc && !this.locations.some(l => l.name.toLowerCase() === loc.name.toLowerCase())) this.locations.push(loc);
+    const unlisted = (loc: TeleportLocation | null): loc is TeleportLocation => !!loc && !this.locations.some(l => l.name.toLowerCase() === loc.name.toLowerCase());
+    for (const loc of configured.map(raw => this.parseLocation(ctx.svr as Mp, raw, typeof raw?.group === "string" ? raw.group : "temples"))) {
+      if (unlisted(loc)) this.locations.push(loc);
+    }
+    // A generated temple in a configured entry's cell is left out; its name becomes that entry's blank kind so the search finds both
+    for (const loc of MAP_MARKER_LOCATIONS.map(raw => this.parseLocation(ctx.svr as Mp, raw, raw.group))) {
+      if (!unlisted(loc)) continue;
+      const twin = loc.group === "temples" ? this.locations.find(l => l.cellOrWorldDesc.toLowerCase() === loc.cellOrWorldDesc.toLowerCase()) : undefined;
+      if (!twin) this.locations.push(loc);
+      else if (!twin.kind) twin.kind = loc.name;
     }
 
     this.installHitRefusalHook(ctx.svr as Mp);
