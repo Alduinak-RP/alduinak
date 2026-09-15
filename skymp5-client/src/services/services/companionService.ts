@@ -24,8 +24,13 @@ interface CompanionEntry {
 interface LocalState {
   localId: number;
   following: boolean;
+  // The heading offset of the last keep-offset call and when it was issued
+  followAngle: number;
+  followAt: number;
   fightingTarget: number;
 }
+
+const normalizeAngle = (deg: number): number => ((deg % 360) + 540) % 360 - 180;
 
 export const isOwnCompanion = (remoteId: number | undefined): boolean => {
   const ids = storage[COMPANION_IDS_KEY];
@@ -175,7 +180,7 @@ export class CompanionService extends ClientListener {
   private stateFor(remoteId: number, actor: Actor): LocalState {
     let state = this.local.get(remoteId);
     if (!state || state.localId !== actor.getFormID()) {
-      state = { localId: actor.getFormID(), following: false, fightingTarget: 0 };
+      state = { localId: actor.getFormID(), following: false, followAngle: 0, followAt: 0, fightingTarget: 0 };
       this.local.set(remoteId, state);
       this.prepare(actor);
     }
@@ -198,10 +203,7 @@ export class CompanionService extends ClientListener {
   }
 
   private fight(actor: Actor, target: Actor, state: LocalState): void {
-    if (state.following) {
-      actor.clearKeepOffsetFromActor();
-      state.following = false;
-    }
+    this.stopFollowing(actor, state);
     state.fightingTarget = target.getFormID();
     if (actor.getCombatTarget()?.getFormID() !== state.fightingTarget) {
       actor.startCombat(target);
@@ -216,18 +218,42 @@ export class CompanionService extends ClientListener {
       }
       state.fightingTarget = 0;
     }
-    if (actor.isInCombat()) {
-      if (state.following) {
-        actor.clearKeepOffsetFromActor();
-        state.following = false;
-      }
+    // A fight of its own and the vanilla command mode both own the copy's AI
+    if (actor.isInCombat() || actor.isDoingFavor()) {
+      this.stopFollowing(actor, state);
       return;
     }
-    if (!state.following) {
-      actor.keepOffsetFromActor(player, 0, CompanionService.followOffsetY, 0, 0, 0, 0,
-        CompanionService.catchUpRadius, CompanionService.followRadius);
-      state.following = true;
+    const angle = this.followAngle(actor, player);
+    const now = Date.now();
+    // Re-issued on a real turn or every couple of seconds, because the first formView apply and a respawn overwrite it
+    if (state.following
+      && Math.abs(normalizeAngle(angle - state.followAngle)) < CompanionService.followAngleStep
+      && now - state.followAt < CompanionService.followReassertMs) {
+      return;
     }
+    actor.keepOffsetFromActor(player, 0, CompanionService.followOffsetY, 0, 0, 0, angle,
+      CompanionService.catchUpRadius, CompanionService.followRadius);
+    state.following = true;
+    state.followAngle = angle;
+    state.followAt = now;
+  }
+
+  // Heading toward the follow point so the follower walks forward; 0 once it is there, which settles it facing the owner's way
+  private followAngle(actor: Actor, player: Actor): number {
+    const heading = player.getAngleZ();
+    const rad = (heading * Math.PI) / 180;
+    const dx = player.getPositionX() + CompanionService.followOffsetY * Math.sin(rad) - actor.getPositionX();
+    const dy = player.getPositionY() + CompanionService.followOffsetY * Math.cos(rad) - actor.getPositionY();
+    if (dx * dx + dy * dy <= CompanionService.followRadius * CompanionService.followRadius) {
+      return 0;
+    }
+    return normalizeAngle((Math.atan2(dx, dy) * 180) / Math.PI - heading);
+  }
+
+  private stopFollowing(actor: Actor, state: LocalState): void {
+    if (!state.following) return;
+    actor.clearKeepOffsetFromActor();
+    state.following = false;
   }
 
   // Twin Souls raises the summon limit to two; the server only keeps the flag for a character in game, so it is repeated while true
@@ -263,5 +289,8 @@ export class CompanionService extends ClientListener {
   // Farther than catchUpRadius it runs to the owner; nearer it walks, so a large value left it standing or plodding
   private static readonly catchUpRadius = 256;
   private static readonly followRadius = 128;
+  // Below this turn the offset is left alone, or the follower hunts its heading every tick
+  private static readonly followAngleStep = 20;
+  private static readonly followReassertMs = 2000;
   private static readonly hostileEffectFlag = 0x1;
 }
