@@ -141,6 +141,17 @@ $admin-row-gutter: 16px;
     &--end {
       margin-left: auto;
     }
+
+    // Pet bases: two fixed columns, a long label is cut instead of widening the form
+    &--grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 16px;
+
+      .admin-panel__checkbox {
+        min-width: 0;
+      }
+    }
   }
 
   &__search,
@@ -230,6 +241,9 @@ $admin-row-gutter: 16px;
     font-size: 15px;
     cursor: pointer;
     white-space: nowrap;
+    // Radio labels read as words, not as a field caption
+    text-transform: none;
+    letter-spacing: 0;
 
     input {
       cursor: pointer;

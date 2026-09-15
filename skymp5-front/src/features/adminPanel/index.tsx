@@ -54,6 +54,7 @@ interface PanelNpcZone {
 interface PetBase {
   desc: string;
   editorId: string;
+  name?: string; // display name, absent on an older server
 }
 
 // Server identity from the debugInfo packet (adminMenuService.ts DebugServer).
@@ -775,13 +776,13 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   </div>
                   <div className="admin-panel__field admin-panel__field--half">
                     Base
-                    <div className="admin-panel__filters">
+                    <div className="admin-panel__filters admin-panel__filters--grid">
                       {petBaseList.length === 0 ? (
                         <span className="admin-panel__hint">{data.petBases ? 'No bases configured' : 'Loading...'}</span>
                       ) : petBaseList.map((b) => (
-                        <label key={b.desc} className="admin-panel__checkbox">
+                        <label key={b.desc} className="admin-panel__checkbox" title={b.editorId}>
                           <input type="radio" name="pet-base" checked={petPick === b.desc} onChange={() => setPetBase(b.desc)} />
-                          {b.editorId}
+                          <span className="admin-panel__cell">{b.name || b.editorId}</span>
                         </label>
                       ))}
                     </div>
