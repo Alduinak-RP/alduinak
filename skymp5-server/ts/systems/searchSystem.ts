@@ -12,7 +12,7 @@ type Mp = any;
 // Consent-gated search of another player's inventory via the VANILLA container window: on accept the server marks the searcher as the target's inventory occupant (setInventoryOccupant native), which authorizes the engine's PutItem/TakeItem, and tells the searcher's client to open the target's inventory.
 // Item moves ride the normal server-validated container-sync path; if the pair separates, the session ends and the client closes the window.
 // Dead bodies (players or spawned NPCs) open at once without consent; the searcher may take and put items like vanilla looting.
-// A restrained (bound or carried) player is searched without consent too; startSession tells them who is searching.
+// A restrained (bound or carried) player is searched without consent too, and cannot search anyone; startSession tells them who is searching.
 // A dead player's body gives up a limited number of distinct items (a stack counts once); the take that reaches the limit closes the window and respawns the player, which removes the body.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
@@ -205,6 +205,10 @@ export class SearchSystem implements System {
     if (this.isDead(ctx, searcherActorId)) {
       return;
     }
+    if (isRestrained(ctx.svr, searcherActorId)) {
+      this.notice(ctx, userId, "You cannot search while restrained.");
+      return;
+    }
     const targetActorId = toFormId(content.target);
     if (!this.validTarget(ctx, searcherActorId, targetActorId)) {
       this.notice(ctx, userId, "Look at a player or a body to search.");
@@ -294,7 +298,7 @@ export class SearchSystem implements System {
       this.notice(ctx, searcherUser, `${this.nameShownTo(ctx, pend.searcherActorId, pend.targetActorId)} is out of reach.`);
       return;
     }
-    if (this.sessions.has(pend.targetActorId) || this.searching.has(pend.searcherActorId)) {
+    if (this.sessions.has(pend.targetActorId) || this.searching.has(pend.searcherActorId) || isRestrained(ctx.svr, pend.searcherActorId)) {
       return; // state changed while waiting
     }
     this.startSession(ctx, pend.searcherActorId, pend.targetActorId, this.isDead(ctx, pend.targetActorId));
