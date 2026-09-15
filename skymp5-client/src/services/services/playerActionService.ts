@@ -13,6 +13,7 @@ import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
 import { TimersService } from "./timersService";
+import { PetService } from "./petService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -66,11 +67,13 @@ let targetName = '';
  * (altInteractKeyCode, default X, launcher "Interact / Menus") open the
  * player interaction menu on a living player character and search a body;
  * the InteractionPromptService blocks the clone's engine activation so no
- * dialogue fires underneath. Activate leaves everything else to normal
- * activation. The interact key also completes a pending housing hand-over or
- * faction add-member pick first, asks HousingService for the property menu on
- * a door or container, and opens the Personal Menu (AdminMenuService) on
- * anything else or nothing. Drives the gamemode through its existing contracts.
+ * dialogue fires underneath. On a living pet or own summon the interact key
+ * opens the pet menu and Activate uses it (PetService). Activate leaves
+ * everything else to normal activation. The interact key also completes a
+ * pending housing hand-over, faction add-member or pet transfer pick first,
+ * asks HousingService for the property menu on a door or container, and opens
+ * the Personal Menu (AdminMenuService) on anything else or nothing. Drives the
+ * gamemode through its existing contracts.
  */
 export class PlayerActionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -98,19 +101,26 @@ export class PlayerActionService extends ClientListener {
 
     const housing = this.controller.lookupListener(HousingService);
     const personal = this.controller.lookupListener(AdminMenuService);
-    if (isInteract && (housing.takePendingPick() || this.controller.lookupListener(FactionService).takePendingPick())) return;
-
+    const pets = this.controller.lookupListener(PetService);
     // The crosshair ref is stale in free camera, so X there always opens the Personal Menu, the only way out of Freecam
     const ref = isFreeCamera(this.sp) ? null : this.sp.Game.getCurrentCrosshairRef();
     const actor = ref && ref.getFormID() !== PLAYER_FORM_ID ? Actor.from(ref) : null;
     const remoteId = ref && actor ? localIdToRemoteId(ref.getFormID()) : 0;
+    if (isInteract && (housing.takePendingPick() || this.controller.lookupListener(FactionService).takePendingPick() || pets.takePendingPick(remoteId))) return;
+
     if (ref && actor && (actor.isDead() ? remoteId >= FIRST_DYNAMIC_REMOTE_ID : isPlayerCharacterId(this.controller, remoteId))) {
       this.interactWithPlayer(ref, actor, remoteId);
       return;
     }
+    // A dead pet took the Search path above
+    if (ref && actor && !actor.isDead() && pets.kindOf(remoteId)) {
+      if (isInteract) pets.openMenu(remoteId, ref);
+      else pets.use(remoteId, ref);
+      return;
+    }
     if (isActivate) return;
     // A menu left open without focus (F6) is still on screen
-    if (housing.isOpen || personal.isOpen) return;
+    if (housing.isOpen || personal.isOpen || pets.isOpen) return;
     if (ref && isPropertyRef(ref)) {
       housing.requestMenuFor(ref);
       return;

@@ -65,8 +65,18 @@ export class CompanionService extends ClientListener {
   private setCompanions(list: CompanionEntry[]): void {
     this.companions = list;
     storage[COMPANION_IDS_KEY] = list.map((c) => c.id);
+    this.pruneLocal();
+  }
+
+  // Hosted NPCs of another service (PetService's dogs) that get the teammate setup and follow, never a server target
+  setExtraFollowers(remoteIds: number[]): void {
+    this.extraFollowers = remoteIds;
+    this.pruneLocal();
+  }
+
+  private pruneLocal(): void {
     Array.from(this.local.keys()).forEach((id) => {
-      if (!list.some((c) => c.id === id)) {
+      if (!this.companions.some((c) => c.id === id) && !this.extraFollowers.includes(id)) {
         this.local.delete(id);
       }
     });
@@ -117,7 +127,7 @@ export class CompanionService extends ClientListener {
   private onUpdate(): void {
     const now = Date.now();
     this.reportPerks(now);
-    if (!this.companions.length || now - this.lastApplyMs < CompanionService.applyIntervalMs) {
+    if ((!this.companions.length && !this.extraFollowers.length) || now - this.lastApplyMs < CompanionService.applyIntervalMs) {
       return;
     }
     this.lastApplyMs = now;
@@ -126,20 +136,27 @@ export class CompanionService extends ClientListener {
       return;
     }
     for (const c of this.companions) {
-      if (!isRemoteHostedByMe(c.id)) {
-        continue;
-      }
-      const actor = this.sp.Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(c.id)));
-      if (!actor || actor.isDead() || !actor.is3DLoaded()) {
-        continue;
-      }
-      const state = this.stateFor(c.id, actor);
-      const target = c.target ? this.sp.Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(c.target))) : null;
-      if (target && !target.isDead()) {
-        this.fight(actor, target, state);
-      } else {
-        this.follow(actor, player, state);
-      }
+      this.drive(c.id, c.target, player);
+    }
+    for (const id of this.extraFollowers) {
+      this.drive(id, 0, player);
+    }
+  }
+
+  private drive(remoteId: number, targetId: number, player: Actor): void {
+    if (!isRemoteHostedByMe(remoteId)) {
+      return;
+    }
+    const actor = this.sp.Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(remoteId)));
+    if (!actor || actor.isDead() || !actor.is3DLoaded()) {
+      return;
+    }
+    const state = this.stateFor(remoteId, actor);
+    const target = targetId ? this.sp.Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(targetId))) : null;
+    if (target && !target.isDead()) {
+      this.fight(actor, target, state);
+    } else {
+      this.follow(actor, player, state);
     }
   }
 
@@ -218,6 +235,7 @@ export class CompanionService extends ClientListener {
   }
 
   private companions: CompanionEntry[] = [];
+  private extraFollowers: number[] = [];
   private local = new Map<number, LocalState>();
   private lastApplyMs = 0;
   private lastOrderTarget = 0;

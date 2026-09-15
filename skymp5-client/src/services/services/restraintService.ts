@@ -7,6 +7,7 @@ import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement, NiPoint3 } from "../../sync/movement";
 import { isInSitPose, setRefrCollision } from "../../sync/animation";
+import { isPlayerCharacterId } from "./playerActionService";
 
 // Vanilla behaviour-graph "offset" overlay events (no ESP required), cleared with OffsetStop.
 // All three are whitelisted in sync/animation.ts (forcedSyncAnims) so the poses sync to other players.
@@ -18,6 +19,7 @@ const OFFSET_STOP_ANIM = "OffsetStop";
 const CARRIED_ANIM_START = "IdleChairEnterInstant";
 const IDLE_EXIT_ANIM = "IdleForceDefaultState";
 const CARRY_OVERLOAD = 10000;
+const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
 
 // Lowercase: BSFixedString pools are case-insensitive, so the engine's spelling can vary
 const JUMP_START_EVENTS = new Set(["jumpstandingstart", "jumpdirectionalstart"]);
@@ -65,8 +67,8 @@ const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("id
  *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 30, "carryUp": 40, "carryYaw": 90 }
  *   { "customPacketType": "restraintState", "boundHands": false, "carried": false, "carrier": 0 }
  *
- *   // The carrier (pose only, no control change):
- *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart" }
+ *   // The carrier (pose only, no control change); target is the carried actor's server id, an NPC's clone is posed here:
+ *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart", "target": 4278190090 }
  *   { "customPacketType": "carryState", "carrying": false }
  *
  * Effects on the local player:
@@ -181,7 +183,10 @@ export class RestraintService extends ClientListener {
       if (typeof content["anim"] === "string" && content["anim"]) {
         this.carrierAnim = content["anim"] as string;
       }
-      logTrace(this, `carryState carrying=${this.carrying}`);
+      // A carried player poses itself through restraintState; only an NPC's clone is posed by the carrier
+      const target = typeof content["target"] === "number" ? content["target"] as number : 0;
+      this.carriedNpcId = this.carrying && target >= FIRST_DYNAMIC_REMOTE_ID && !isPlayerCharacterId(this.controller, target) ? target : 0;
+      logTrace(this, `carryState carrying=${this.carrying} npc=${this.carriedNpcId.toString(16)}`);
       this.applyCarryAnim();
     }
   }
@@ -211,6 +216,7 @@ export class RestraintService extends ClientListener {
     this.wasInJump = inJump;
     if (this.carrying) {
       this.holdCarrierFightLock(player, now);
+      this.poseCarriedNpc();
     }
     if (this.poseDirty && !inJump && now >= this.nextPoseReapplyMs) {
       this.poseDirty = false;
@@ -293,6 +299,7 @@ export class RestraintService extends ClientListener {
     }
     if (this.carrying) {
       this.appliedCarrierAnim = "";
+      this.posedNpcLocalId = 0;
       this.applyCarryAnimNow();
     }
   }
@@ -391,6 +398,30 @@ export class RestraintService extends ClientListener {
       player.modActorValue("CarryWeight", CARRY_OVERLOAD);
       this.encumbranceApplied = false;
     }
+    this.poseCarriedNpc();
+  }
+
+  // The carried NPC's clone sits still in the carrier's arms while the server moves it; re-posed when its local copy changes
+  private poseCarriedNpc(): void {
+    const localId = this.carriedNpcId ? remoteIdToLocalId(this.carriedNpcId) : 0;
+    if (localId === this.posedNpcLocalId) {
+      return;
+    }
+    if (this.posedNpcLocalId) {
+      const previous = this.sp.Actor.from(this.sp.Game.getFormEx(this.posedNpcLocalId));
+      if (previous) {
+        previous.setDontMove(false);
+        this.sp.Debug.sendAnimationEvent(previous, IDLE_EXIT_ANIM);
+      }
+      this.posedNpcLocalId = 0;
+    }
+    const npc = localId ? this.sp.Actor.from(this.sp.Game.getFormEx(localId)) : null;
+    if (!npc || !npc.is3DLoaded()) {
+      return;
+    }
+    npc.setDontMove(true);
+    this.sp.Debug.sendAnimationEvent(npc, this.carriedAnim);
+    this.posedNpcLocalId = localId;
   }
 
   // A carrier cannot raise a weapon, fists or a spell; re-asserted every tick because other services re-enable controls
@@ -436,6 +467,8 @@ export class RestraintService extends ClientListener {
   private carrying = false;
   private carrierAnim = CARRY_HOLD_ANIM_START;
   private appliedCarrierAnim = "";
+  private carriedNpcId = 0;
+  private posedNpcLocalId = 0;
   private encumbranceApplied = false;
   private fightLockApplied = false;
   private nextSheatheMs = 0;

@@ -43,6 +43,8 @@ import { AuthService } from "./services/services/authService";
 import { CharacterSelectService } from "./services/services/characterSelectService";
 import { CharCreatorService } from "./services/services/charCreatorService";
 import { HousingService } from "./services/services/housingService";
+import { PetService } from "./services/services/petService";
+import { MountService } from "./services/services/mountService";
 import { RefDecorService } from "./services/services/refDecorService";
 import { PlayerActionService } from "./services/services/playerActionService";
 import { EmoteService } from "./services/services/emoteService";
@@ -135,6 +137,8 @@ const main = () => {
       new CharacterSelectService(sp, controller),
       new CharCreatorService(sp, controller),
       new HousingService(sp, controller),
+      new PetService(sp, controller),
+      new MountService(sp, controller),
       new RefDecorService(sp, controller),
       new PlayerActionService(sp, controller),
       new EmoteService(sp, controller),

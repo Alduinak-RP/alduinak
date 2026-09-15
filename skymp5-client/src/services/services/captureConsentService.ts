@@ -25,8 +25,9 @@ const events = {
 let promptText = "";
 
 /**
- * Consent prompt for the arrest/capture/carry feature. When another player asks
- * to restrain or carry this player, the server sends a `captureConsentRequest`
+ * Consent prompt for the arrest/capture/carry feature, also used by pet
+ * transfers. When another player asks to restrain or carry this player or
+ * offers a pet, the server sends a `captureConsentRequest`
  * and we pop a Yes/No widget; the player's choice is returned as a
  * `captureConsentResult`. Also routes `captureNotice` feedback into the chat's
  * System tab. Server-authoritative: inert until the server sends a packet.
@@ -124,7 +125,7 @@ export class CaptureConsentService extends ClientListener {
     const widget = {
       type: "form",
       id: WIDGET_ID,
-      caption: "Restraint Request",
+      caption: "Request",
       elements: [
         { type: "text", text: promptText, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] },
         { type: "button", text: "Allow", tags: [], click: () => window.skyrimPlatform.sendMessage(events.yes) },

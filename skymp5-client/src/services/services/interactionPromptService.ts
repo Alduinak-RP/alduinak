@@ -6,6 +6,7 @@ import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
 import { isPlayerCharacterId } from "./playerActionService";
+import { PetService } from "./petService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -152,6 +153,8 @@ export class InteractionPromptService extends ClientListener {
     if (!remoteId || remoteId < 0xff000000 || (!dead && !isPlayerCharacterId(this.controller, remoteId))) {
       // Local-only bodies have activation blocked by WorldCleanerService
       if (dead) return null;
+      const pet = this.petPromptFor(ref, remoteId);
+      if (pet) return pet;
       const name = (ref.getDisplayName() || "").trim();
       return name ? { verb: "Talk", label: name } : null;
     }
@@ -161,6 +164,22 @@ export class InteractionPromptService extends ClientListener {
     const known = raw && this.knowsTarget(remoteId);
     if (dead) return { verb: "Search", label: known ? raw : "Body" };
     return { verb: "Interact", label: known ? raw : "Stranger" };
+  }
+
+  // Living pets show their ff_pet name and a verb only for what E does here (PetService owns the key); own summons read Command
+  private petPromptFor(ref: ObjectReference, remoteId: number): Prompt | null {
+    const pets = this.controller.lookupListener(PetService);
+    const kind = pets.kindOf(remoteId);
+    const pet = pets.petOf(remoteId);
+    const alive = !!pet && !pet.dead;
+    if (!alive && kind !== "companion") return null;
+    const label = pet && alive ? pet.name : (ref.getDisplayName() || "").trim();
+    if (!label) return null;
+    try { ref.blockActivation(true); } catch { /* unloaded ref */ }
+    const verb = kind === "horse" || kind === "horse-foreign" ? "Ride"
+      : kind === "livestock" ? "Harvest"
+      : kind === "dog" || kind === "companion" ? "Command" : "";
+    return { verb, label };
   }
 
   // True when the local player's ff_knownIds list contains the remote actor

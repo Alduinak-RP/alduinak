@@ -224,6 +224,16 @@ export class EmoteService extends ClientListener {
     }
   }
 
+  // Plays an idle for another service; exits replace the exit chain derived from its name
+  play(anim: string, exits?: string[]): void {
+    if (this.isPoseLocked()) {
+      notifyNextUpdate(this.controller, this.sp, "You cannot use emotes while restrained.");
+      return;
+    }
+    if (exits) this.customExits.set(anim, exits);
+    this.playEmote(anim);
+  }
+
   private playEmote(anim: string): void {
     const previous = this.activeEmote;
     this.activeEmote = anim;
@@ -286,7 +296,7 @@ export class EmoteService extends ClientListener {
       return;
     }
     const base = anim.replace(/(Start|Enter)$/, "");
-    const attempts = ["IdleForceDefaultState", base + "ExitStart", base + "Exit"];
+    const attempts = this.customExits.get(anim) ?? ["IdleForceDefaultState", base + "ExitStart", base + "Exit"];
     if (!this.propAnims.has(anim)) {
       this.tryExitChain(attempts, 0, chain, onDone);
       return;
@@ -371,6 +381,7 @@ export class EmoteService extends ClientListener {
   private activeEmote = "";
   private allowedAnims: Set<string>;
   private propAnims: Set<string>;
+  private customExits = new Map<string, string[]>();
   private probeAnim = "";
   private probeSucceeded = false;
   // Generation counter: bumping it abandons any pending exit chain.
