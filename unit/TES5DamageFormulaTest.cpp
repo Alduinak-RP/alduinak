@@ -190,7 +190,7 @@ TEST_CASE("Spell damage skips perk riders because the server holds no perk "
   TES5DamageFormula formula{};
   SpellCastData spellCastData{};
 
-  // Below 15% health, but the Disintegrate rider (+200) also needs HasPerk on the caster
+  // Below 15% health, but the Disintegrate rider (+200) needs HasPerk
   ac.SetPercentages({ 0.1f, 1.f, 1.f });
 
   spellCastData.spell = 0x0002DD2A; // Sparks, 8 shock damage

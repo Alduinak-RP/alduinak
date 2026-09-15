@@ -240,7 +240,7 @@ bool ActorHasKeyword(const MpActor& actor, uint32_t keywordId)
       .value_or(false);
   return npcHasKeyword ||
     formHasKeyword(
-      worldState->GetEspm().GetBrowser().LookupById(actor.GetRaceId()));
+           worldState->GetEspm().GetBrowser().LookupById(actor.GetRaceId()));
 }
 
 bool CompareWithCtda(float value, const espm::CTDA& ctda)
@@ -263,7 +263,7 @@ bool CompareWithCtda(float value, const espm::CTDA& ctda)
   return false;
 }
 
-// Magic effect conditions run Subject on the actor hit and Target on the caster, null for other run-ons or flags
+// Subject is the actor hit, Target the caster, null for other run-ons or flags
 const MpActor* TES5SpellDamageFormulaImpl::GetConditionActor(
   const espm::CTDA& ctda) const
 {
@@ -301,7 +301,8 @@ bool TES5SpellDamageFormulaImpl::ConditionHolds(
     av == espm::ActorValue::Magicka || av == espm::ActorValue::Stamina;
   const auto& functions = espmProvider->conditionFunctionMap;
   if (actor && ctda.functionIndex == kGetActorValuePercent &&
-      trackedPercentage && functions.GetConditionFunction(ctda.functionIndex)) {
+      trackedPercentage &&
+      functions.GetConditionFunction(ctda.functionIndex)) {
     bool holds = false;
     ConditionsEvaluator::EvaluateConditions(
       functions, espmProvider->conditionsEvaluatorSettings,
@@ -310,11 +311,11 @@ bool TES5SpellDamageFormulaImpl::ConditionHolds(
       [&](bool evalRes, std::vector<std::string>&) { holds = evalRes; });
     return holds;
   }
-  // IsHostileToActor holds for the actor being hit, and conditions the server cannot evaluate do not gate damage
+  // IsHostileToActor and conditions the server does not evaluate hold
   return true;
 }
 
-// A CTDA with the OR flag joins the next one into a group, and every group must hold
+// CTDAs flagged OR join the next one into a group, and every group must hold
 bool TES5SpellDamageFormulaImpl::ConditionsHold(
   const std::vector<espm::CTDA>& ctdas, const espm::LookupResult& owner) const
 {
