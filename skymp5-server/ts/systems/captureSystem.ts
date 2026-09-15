@@ -416,12 +416,8 @@ export class CaptureSystem implements System {
       return;
     }
     const targetActorId = toFormId(content.target, 0);
-    const carrier = this.carriedBy.get(targetActorId);
-    if (carrier === undefined) {
-      this.notice(ctx, userId, "They are not being carried.");
-      return;
-    }
-    if (carrier !== requesterActorId) {
+    // One refusal for every case, so the reply says nothing about a target who may be far away
+    if (this.carriedBy.get(targetActorId) !== requesterActorId) {
       this.notice(ctx, userId, "You are not carrying them.");
       return;
     }
@@ -435,11 +431,8 @@ export class CaptureSystem implements System {
       return;
     }
     const targetActorId = toFormId(content.target, 0);
-    if (!this.restraints.has(targetActorId) && !this.carriedBy.has(targetActorId)) {
-      this.notice(ctx, userId, "They are not restrained.");
-      return;
-    }
     const step = this.releaseStep(requesterActorId, targetActorId);
+    // One refusal for every case, so the reply says nothing about a target who may be far away
     if (!step) {
       this.notice(ctx, userId, "Only their captor or carrier can release them.");
       return;
