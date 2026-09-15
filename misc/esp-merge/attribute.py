@@ -844,7 +844,7 @@ class Attr:
                 if dup:
                     x = dup[0]
                     s.put('NEW', r, 'OWN', sub='DOUBLED', cp=x, target=s.own_target(r), action='keep',
-                          note=f'new id, exact copy (cell, base, position) of {x.v.tag} {x.label()} ({x.nk[0]}); owner review' + keynote)
+                          note=f'new id, exact copy (cell, base, position) of {x.v.tag} {x.label()} ({x.nk[0]})' + keynote)
                     s.q449['doubled copy'] += 1
                 else:
                     same_id = [f'{m} {x.label()}' for m, x in s.dmdef(r.type, loc)]
@@ -954,6 +954,7 @@ class Attr:
                     e['edited_fields'] = edits
             elif e['class'] in ('OWN', 'RENUMBERED', 'COLLISION'):
                 if e.get('subtype') == 'DOUBLED':
+                    s.doubled(r, cp, e)
                     continue
                 if arts and not edits:
                     e['base_class'], e['class'] = e['class'], 'FIELD-ARTIFACT'
@@ -966,6 +967,19 @@ class Attr:
                 if edits:
                     s.three_way(r, cp)
         s.canon.track = False
+
+    def doubled(s, r, cp, e):
+        # A doubled copy whose every field is the master's or R4's override's holds no Graves content, so it is deleted
+        ov = s.r4.one((cp.type,) + cp.nk)
+        vs_master = {t or 'flags' for c, t, _ in compare(cp, r, s.canon) if c == 'edit'}
+        vs_r4 = {t or 'flags' for c, t, _ in compare(ov, r, s.canon) if c == 'edit'} if ov is not None else vs_master
+        own = sorted(vs_master & vs_r4)
+        if own:
+            s.unclassified.append(f'{r.label()}: doubled copy of {cp.label()} with its own {own}')
+            return
+        e['action'] = 'delete'
+        e['note'] += (f'; differs from {cp.nk[0]} in {sorted(vs_master)}, from R4\'s override {ov.label() if ov else "(none)"} in {sorted(vs_r4)}, '
+                      'so every field is one of theirs, it holds no Graves content and would be a second copy of the ref: deleted')
 
     def three_way(s, r, cp):
         # NEW matching RAW where R4 does not means Graves's copy reverted an r3/r4 patch
@@ -1356,9 +1370,13 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     rekey_map = {f'{SELF}:{loc:06X}': f'{o}:{xl:06X}' for loc, (o, xl) in at.canon.selfmap.items() if o not in ('SELF', 'BROKEN')}
     retired = sorted({e['fid'][2:] for e in E.values() if e['src'] == 'R4' and e['class'] == 'GRAVES-REMOVED'} | set(renum) |
                      {e['fid'][2:] for e in E.values() if e.get('subtype') == 'MASTER-RENUMBERED'})
+    deleted = sorted(e['fid'][2:] for e in E.values() if e.get('action') == 'delete')
+    doubled = [e for e in E.values() if e.get('subtype') == 'DOUBLED']
+    check('every doubled copy holds no Graves content and is deleted', all(e['action'] == 'delete' for e in doubled),
+          '; '.join(f'{e["fid"]} {e.get("edid", "")} {e["action"]}' for e in doubled))
     changeform_query = {'worldOrCellDesc': [f'{x:x}:{SELF}' for x in sorted(ren_cells)],
-                        'formDesc': [f'{int(x, 16):x}:{SELF}' for x in retired + [f'{PLAN["broken"] & 0xFFFFFF:06X}']]}
-    owner_review = [f'{e["fid"]} {e.get("edid", "")}: {e.get("note", "")}' for e in ents if e.get('subtype') == 'DOUBLED']
+                        'formDesc': [f'{int(x, 16):x}:{SELF}' for x in retired + deleted]}
+    owner_review = [f'{e["fid"]} {e.get("edid", "")}: {e.get("note", "")}' for e in doubled if e['action'] != 'delete']
     mod_masters = sorted({e['master'] for e in E.values() if e['src'] == 'NEW' and e.get('master')} - set(r4.m) - set(new.m))
     if mod_masters:
         owner_review.append(f're-owning Graves\'s overrides of plugins that are not R4 masters adds masters {mod_masters}: '

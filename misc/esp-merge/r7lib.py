@@ -31,7 +31,7 @@ INPUTS = {
 }
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
-ATTRIBUTION = (R7 + 'attribution.json', 'd31ea15c3518904f004547d1a922ea913c3bb7c6b3ed7f691067815c4628f003')
+ATTRIBUTION = (R7 + 'attribution.json', '031388679ed48a92032cd7873302051b28cc37854ff1cd376305d148b44d880c')
 STAGE_SETTINGS_SHA = 'f9dce8d45661830ed8eb307542250da6ca1158d4eeb6f42e7b2416611417cb22'
 REMOVED_NAVM = (ESPFIX + 'tools/removed-navm.txt', '48763ffc1347aac94e6b35cb7cfe49b0ba20b8b8e1c921df1ef70af304ece7c8')
 WORK = R7 + 'work/'
