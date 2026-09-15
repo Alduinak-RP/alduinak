@@ -51,6 +51,9 @@ PLAN = {'own': 7204, 'reowned_total': 873, 'reowned': {'COBJ': 358, 'REFR': 502,
         'removed_land': [0x001F7D, 0x001F7E, 0x001F85, 0x001F86, 0x001F87],
         'skyrim_navm': [0x079BDB, 0x0E807E, 0x0E8601, 0x0EA083, 0x0EA089, 0x0EA08A, 0x0EA091, 0x0EA094, 0x0EA09C], 'drop_navm': 0x0EA093,
         'xlcn_cells': [0x0095B8, 0x0095D7, 0x0095D8, 0x0095F7], 'new_cells': 84, 'city_refs': {'REFR': 304, 'ACHR': 30}, 'q449': 449,
+        'q449_split': {'renumbered own (slot collision)': 306, 'renumbered override (slot collision)': 7, 'master ref, in place': 9,
+                       'master ref, moved': 37, 'non-R4-master ref, moved': 5, 'non-R4-master ref, renumbered copy': 5, 'doubled copy': 1,
+                       'genuinely new': 79},
         'copied_interiors': {'The Great City of Falkreath.esp': [0x0022CA], 'City of Dawnstar.esp': [0x006679, 0x010358, 0x015FC0, 0x07F4B6],
                              'Warbirds Whiterun Metropolis.esp': [0x1261EE, 0x21F472],
                              'Winterhold Restored.esp': [0x30948F, 0x33CA2F, 0x8D4981, 0xD7128E, 0xD7B4BB]}}
@@ -516,8 +519,10 @@ def close(p, q, tol=0.05):
 
 # ---------------------------------------------------------------------------------------------------------------------
 class Attr:
-    def __init__(s, new, r4, raw, dm, origin, dropped, canon):
+    def __init__(s, new, r4, raw, dm, origin, dropped, canon, srcs):
         s.new, s.r4, s.raw, s.dm, s.origin, s.dropped, s.canon = new, r4, raw, dm, origin, dropped, canon
+        # every plugin before AlduinakAdditions that NEW does not have as a master; the CK wrote Graves's overrides of them at the own index
+        s.srcs = srcs
         s.entries, s.cp, s.r4taken = {}, {}, {}
         s.own = [r for r in new.recs if (r.fid >> 24) >= 8]
         assert all((r.fid >> 24) == NEW_OWN for r in s.own), 'own records at an index other than 0x0E'
@@ -540,7 +545,10 @@ class Attr:
         return [(m, s.r4.one((t, m, loc))) for m in s.dropped if s.r4.one((t, m, loc))]
 
     def dmdef(s, t, loc):
-        return [(m, s.origin[m][(t, loc)]) for m in s.dropped if (t, loc) in s.origin[m]]
+        return [(m, s.origin[m][(t, loc)]) for m in s.srcs if (t, loc) in s.origin[m]]
+
+    def src_tag(s, m):
+        return 'master' if m in s.dropped else 'non-R4-master'
 
     def cellkey(s, r):
         return s.canon.of(r.v, r.cellg) if r.cellg is not None else None
@@ -608,6 +616,8 @@ class Attr:
             d = [(m, x) for m, x in s.dmdef('CELL', loc) if strip_dup(x.edid()) == strip_dup(r.edid())]
             if (a and b) or len(b) > 1:
                 s.unclassified.append(f'CELL {r.label()}: more than one R4 record on the slot')
+            elif not a and not b and len(d) > 1:
+                s.unclassified.append(f'CELL {r.label()}: defined by {[m for m, _ in d]}')
             elif a:
                 s.set_self(loc, ('SELF', loc))
                 s.take(a, 'own')
@@ -651,6 +661,8 @@ class Attr:
                 d = [(m, x) for m, x in s.dmdef(r.type, loc) if strip_dup(x.edid()) == strip_dup(r.edid())]
             if (a and b) or len(b) > 1:
                 s.unclassified.append(f'{r.label()}: more than one R4 record on the slot')
+            elif not a and not b and len(d) > 1:
+                s.unclassified.append(f'{r.label()}: defined by {[m for m, _ in d]}')
             elif a:
                 s.set_self(loc, ('SELF', loc))
                 s.take(a, 'own')
@@ -726,7 +738,15 @@ class Attr:
         losers = {x.fid: x for xs in s.collide.values() for x in xs if x.fid not in s.r4taken}
         # renumber pool: R4 own refs and R4 dropped-master override refs that no NEW record holds by key
         pool = [x for x in s.r4.recs if x.type in REF_TYPES and x.fid not in s.r4taken and (x.nk[0] == SELF or x.nk[0] in s.dropped)]
-        allpos = pool + [x for m in s.dropped for x in s.dm[m].recs if x.type in REF_TYPES and (x.fid >> 24) == s.dm[m].n]
+        by_base = collections.defaultdict(list)
+        for m in s.srcs:
+            for (t, _), x in s.origin[m].items():
+                if t in REF_TYPES:
+                    by_base[s.canon.of(x.v, x.base())].append(x)
+
+        def near(r):
+            k = s.canon.of(r.v, r.base())
+            return by_base.get(k, []) if k[0] != 'SELF?' else [x for xs in by_base.values() for x in xs]
         s.q449 = collections.Counter()
         s.q449_total = len(rest)
         s.q449_fids = [r.fid for r, _, _, _ in rest]
@@ -742,8 +762,15 @@ class Attr:
                 ren = [x for x in ren if x.edid() == r.edid()] or [x for x in pool if x.fid not in s.r4taken and x.edid() == r.edid() and x.type == r.type]
             dmx = [(m, x) for m, x in s.dmdef(r.type, loc) if s.same_ref(r, x)]
             dml = [(m, x) for m, x in s.dmdef(r.type, loc) if s.same_ref(r, x, strict=False)]
-            if ren and dmx:
-                s.unclassified.append(f'{r.label()}: matches both R4 {ren[0].label()} and {dmx[0][0]} {dmx[0][1].label()}')
+            # a plugin ref whose id an own record already holds: the CK gave Graves's override of it the next free id
+            mren = [(x.v.name, x) for x in near(r) if (x.fid & 0xFFFFFF) != loc and (x.fid & 0xFFFFFF) in s.holder and s.same_ref(r, x)
+                    and not s.same_ref(s.holder[x.fid & 0xFFFFFF], x, strict=False) and all(y.nk != x.nk for y in ren)]
+            if (ren and dmx) or (ren and mren) or ((dmx or dml) and mren):
+                s.unclassified.append(f'{r.label()}: matches more than one of R4 {[x.label() for x in ren[:1]]}, '
+                                      f'same id {[f"{m} {x.label()}" for m, x in (dmx or dml)[:1]]}, renumbered {[f"{m} {x.label()}" for m, x in mren[:1]]}')
+                continue
+            if not ren and (len(dmx or dml) > 1 or len(mren) > 1):
+                s.unclassified.append(f'{r.label()}: matches refs in several plugins {[f"{m} {x.label()}" for m, x in (dmx or dml or mren)]}')
                 continue
             if ren:
                 x = ren[0]
@@ -769,10 +796,19 @@ class Attr:
                 moved = '' if dmx else f'; moved {math.dist(r.pos()[:3], x.pos()[:3]):.1f} units' + (
                     '' if s.canon.eq(s.cellkey(r), s.canon.of(x.v, x.cellg)) else f' into cell {hk(s.cellkey(r))} from {hk(s.canon.of(x.v, x.cellg))}')
                 s.put('NEW', r, 'REOWNED', sub='MASTER-DEFINED', master=m, cp=x, target=f'{m}:{loc:06X}',
-                      note=f'same id and base as the {m} ref; left own it would be a second copy of it' + moved + keynote)
-                s.q449['master ref, ' + ('in place' if dmx else 'moved')] += 1
+                      note=f'same id and base as the {m} ref' + ('' if m in s.dropped else ' (not an R4 master)') +
+                      '; left own it would be a second copy of it' + moved + keynote)
+                s.q449[s.src_tag(m) + ' ref, ' + ('in place' if dmx else 'moved')] += 1
+            elif mren:
+                m, x = mren[0]
+                xl = x.fid & 0xFFFFFF
+                s.set_self(loc, (m, xl))
+                s.put('NEW', r, 'REOWNED', sub='MASTER-RENUMBERED', master=m, cp=x, target=f'{m}:{xl:06X}',
+                      note=f'same base, cell and position as the {m} ref {xl:06X}' + ('' if m in s.dropped else ' (not an R4 master)') +
+                      f', whose id NEW gives to {s.holder[xl].label()}; the CK renumbered the override to {loc:06X}' + keynote)
+                s.q449[s.src_tag(m) + ' ref, renumbered copy'] += 1
             else:
-                dup = [x for x in allpos if close(r.pos(), x.pos()) and s.same_ref(r, x)]
+                dup = [x for x in pool + near(r) if close(r.pos(), x.pos()) and s.same_ref(r, x)]
                 s.set_self(loc, ('SELF', loc))
                 if dup:
                     x = dup[0]
@@ -875,7 +911,7 @@ class Attr:
             edits = sorted({t or 'flags' for c, t, _ in d if c == 'edit'})
             arts = sorted({t for c, t, _ in d if c == 'artifact'})
             if e['class'] in rekey and e.get('master') or (e['class'] == 'REOWNED'):
-                src = 'master' if e.get('subtype') == 'MASTER-DEFINED' else 'r4'
+                src = 'master' if e.get('subtype') in ('MASTER-DEFINED', 'MASTER-RENUMBERED') else 'r4'
                 e['edit'] = 'EDITED' if edits else 'ARTIFACT-ONLY'
                 e['content'] = 'NEW' if edits else src.upper()
                 e['action'] = 'rekey-new' if edits else f'rekey-{src}'
@@ -1139,18 +1175,24 @@ def main():
     assert r4.m == raw.m, 'R4 and RAW master lists differ'
     dropped = [m for m in r4.m if m not in new.m]
     added_masters = [m for m in new.m if m not in r4.m]
+    data_dir, order = live_load_order()
+    before = order[:order.index(SELF)]
+    spell = {m.lower(): m for m in dropped}
+    srcs = [spell.get(p.lower(), p) for p in before if p.lower() not in {m.lower() for m in new.m}]
+    assert set(dropped) <= set(srcs), 'a dropped master does not load before AlduinakAdditions'
     dm, dm_sha = {}, {}
-    for m in dropped:
+    for m in srcs:
         b = open(STAGE + m, 'rb').read()
         dm_sha[m] = sha_bytes(b)
         dm[m] = View(m, b, name=m)
-    origin = {m: {} for m in dropped}
+    origin = {m: {} for m in srcs}
     for m, v in dm.items():
         for r in v.recs:
             if (r.fid >> 24) == v.n:
                 origin[m][(r.type, r.fid & 0xFFFFFF)] = r
-    canon = Canon(new, dropped, origin)
-    at = Attr(new, r4, raw, dm, origin, dropped, canon)
+    canon = Canon(new, dropped, {m: origin[m] for m in dropped})
+    at = Attr(new, r4, raw, dm, origin, dropped, canon, srcs)
+    at.order = order
     at.cells()
     at.others()
     at.refs()
@@ -1158,7 +1200,6 @@ def main():
     at.masters_pairs()
     at.r4_missing()
 
-    data_dir, order = live_load_order()
     want = {(r.type,) + r.nk for r in at.master_new}
     want |= {(e['type'], e['master'], int(e['target'].split(':')[1], 16)) for e in at.entries.values() if e.get('master') and e.get('target')}
     want |= {('NAVM', 'Skyrim.esm', x) for x in PLAN['skyrim_navm'] + [PLAN['drop_navm']]}
@@ -1242,7 +1283,21 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
             cr[t] += n
     check('304 REFR and 30 ACHR new Skyrim overrides reviewed', cr.get('REFR', 0) - 3 == PLAN['city_refs']['REFR'] and cr.get('ACHR', 0) == PLAN['city_refs']['ACHR'],
           f'{dict(at.city_refs)} (REFR includes 2 Lux Via and 1 Update.esm)')
-    check('449 own refs settled record by record', at.q449_total == PLAN['q449'] and sum(at.q449.values()) == at.q449_total, str(dict(at.q449)))
+    check('449 own refs settled record by record', at.q449_total == PLAN['q449'] and sum(at.q449.values()) == at.q449_total and at.q449 == PLAN['q449_split'],
+          str(dict(at.q449)))
+    ren_mod = sorted(int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e.get('subtype') == 'MASTER-RENUMBERED')
+    block = sorted(int(e['fid'], 16) & 0xFFFFFF for e in E.values()
+                   if e['src'] == 'NEW' and (e['class'] == 'RENUMBERED' or e.get('subtype') in ('RENUMBERED', 'LOSER-RENUMBERED')))
+    past = [x for x in ren_mod if x > block[-1]]
+    check('renumbered plugin refs continue the CK renumber block', all(x >= block[0] for x in ren_mod) and past == list(range(block[-1] + 1, block[-1] + 1 + len(past))),
+          f'{" ".join(f"{x:06X}" for x in ren_mod)}; block of R4 records the CK renumbered {block[0]:06X}..{block[-1]:06X}')
+    tg = collections.Counter(e['target'] for e in E.values() if e['src'] == 'NEW' and e.get('master'))
+    check('no two NEW records re-own the same target', all(n == 1 for n in tg.values()), str([t for t, n in tg.items() if n > 1]))
+    pos = {p.lower(): i for i, p in enumerate(at.order)}
+    reown_m = {e['master'] for e in E.values() if e['src'] == 'NEW' and e.get('master')}
+    beyond = sorted((set(new.m) | reown_m | set(at.forward_masters)) - set(r4.m), key=lambda m: pos.get(m.lower(), 999))
+    check('every master the merge adds loads before AlduinakAdditions', all(pos.get(m.lower(), 999) < pos[SELF.lower()] for m in beyond),
+          ', '.join(f'{m} ({pos.get(m.lower())})' for m in beyond))
     check('prior report keys all map to classified records', not prior_bad, '; '.join(prior_bad[:5]))
     fa9 = sorted(int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e['type'] == 'NAVM' and e['class'] == 'FIELD-ARTIFACT')
     check('9 Skyrim NAVM take R4', fa9 == sorted(PLAN['skyrim_navm']), ' '.join(f'{x:06X}' for x in fa9))
@@ -1256,8 +1311,16 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     remap = {f'{SELF}:{loc:06X}': f'{sorted(ms)[0]}:{loc:06X}' for loc, ms in at.canon.selfq_seen.items()}
     renum = {f'{xl:06X}': f'{loc:06X}' for loc, (o, xl) in at.canon.selfmap.items() if o == 'SELF' and loc != xl}
     rekey_map = {f'{SELF}:{loc:06X}': f'{o}:{xl:06X}' for loc, (o, xl) in at.canon.selfmap.items() if o not in ('SELF', 'BROKEN')}
-    retired = sorted({e['fid'][2:] for e in E.values() if e['src'] == 'R4' and e['class'] == 'GRAVES-REMOVED'} | set(renum))
+    retired = sorted({e['fid'][2:] for e in E.values() if e['src'] == 'R4' and e['class'] == 'GRAVES-REMOVED'} | set(renum) |
+                     {e['fid'][2:] for e in E.values() if e.get('subtype') == 'MASTER-RENUMBERED'})
+    ren_cells_r4 = sorted(k for k, v in renum.items() if any(e['type'] == 'CELL' and e['fid'][2:] == v for e in E.values() if e['src'] == 'NEW'))
+    changeform_query = {'worldOrCellDesc': [f'{int(x, 16):x}:{SELF}' for x in ren_cells_r4],
+                        'formDesc': [f'{int(x, 16):x}:{SELF}' for x in retired + [f'{PLAN["broken"] & 0xFFFFFF:06X}']]}
     owner_review = [f'{e["fid"]} {e.get("edid", "")}: {e.get("note", "")}' for e in ents if e.get('subtype') == 'DOUBLED']
+    mod_masters = sorted({e['master'] for e in E.values() if e['src'] == 'NEW' and e.get('master')} - set(r4.m) - set(new.m))
+    if mod_masters:
+        owner_review.append(f're-owning Graves\'s overrides of plugins that are not R4 masters adds masters {mod_masters}: '
+                            + '; '.join(f'{e["fid"]} -> {e["target"]}' for e in ents if e.get('master') in mod_masters))
     owner_review += [f'{c["cell"]} {c["edid"]}: {c["why"]}' for c in at.city_cells if c['decision'] == 'CONFLICT']
     if idx:
         owner_review.append(f'{len(idx)} form ids use raw indices 08-0D (step 2a assumes only 0E04B2AB NAME): {idx}')
@@ -1265,7 +1328,8 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     doc = {
         'generated_by': 'misc/esp-merge/attribute.py', 'plan': 'reports/r7-esp-merge-plan.md step 1',
         'inputs': {t: {'path': INPUTS[t][0], 'sha256': INPUTS[t][1]} for t in ('NEW', 'R4', 'RAW')},
-        'dropped_masters': dm_sha, 'added_masters': added_masters, 'new_masters': new.m,
+        'dropped_masters': {m: dm_sha[m] for m in dropped}, 'searched_plugins': {m: h for m, h in dm_sha.items() if m not in dropped},
+        'added_masters': added_masters, 'new_masters': new.m,
         'counts': {'new_own': dict(c_own), 'r4_missing': dict(c_r4),
                    'reowned_by_type': dict(collections.Counter(e['type'] for e in own_new if e.get('master'))),
                    'reowned_edit': dict(collections.Counter(f'{e["type"]} {e.get("edit")}' for e in own_new if e.get('master'))),
@@ -1276,9 +1340,10 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
         'reverted_r4_patches': at.reverted, 'navmesh': at.nav,
         'city_cells': [{k: v for k, v in c.items()} for c in at.city_cells], 'city_refs': {f'{t} {k}': n for (t, k), n in at.city_refs.items()},
         'forward_extra_masters': dict(at.forward_masters),
-        'q449_records': [f'{f:08X} {E[("NEW", f)]["class"]}/{E[("NEW", f)].get("subtype", "")} {E[("NEW", f)].get("master", "")} '
-                         f'{E[("NEW", f)].get("action", "")}: {E[("NEW", f)].get("note", "")}' for f in at.q449_fids],
+        'q449_records': [f'{f:08X} {e["class"]}/{e.get("subtype", "")} {e.get("master", "")} {e.get("action", "")}: {e.get("note", "")}'
+                         for f, e in ((f, E.get(('NEW', f), {'class': 'UNCLASSIFIED'})) for f in at.q449_fids)],
         'rekey_map': rekey_map, 'dangling_self_links': remap, 'renumber_map_r4_to_new': renum, 'retired_own_ids': retired,
+        'changeform_query': changeform_query, 'masters_beyond_r4': beyond,
         'collision_slots_all': {f'{k:06X}': [f'{x.nk[0]} {x.type} {x.fid:08X}' for x in v] for k, v in sorted(at.collide.items())},
         'entries': ents,
     }
