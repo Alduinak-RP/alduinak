@@ -1,6 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { ConnectionMessage } from "../events/connectionMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
@@ -10,6 +12,7 @@ import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
+import { TimersService } from "./timersService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -17,6 +20,8 @@ declare const window: any;
 const WIDGET_ID = 10;
 const PLAYER_FORM_ID = 0x14;
 const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
+// The menu waits up to this long for the server's Release answer so no row moves under the cursor; an older server never answers
+const MENU_STATE_WAIT_MS = 500;
 
 // Server-spawned NPCs share the dynamic id space; only player characters carry an appearance
 export const isPlayerCharacterId = (controller: CombinedController, remoteId: number): boolean =>
@@ -33,7 +38,6 @@ const ACTIONS: PlayerAction[] = [
   { id: 'search', label: 'Search' },
   { id: 'capture', label: 'Restrain' },
   { id: 'carry', label: 'Carry' },
-  { id: 'putdown', label: 'Put down' },
   { id: 'release', label: 'Release' },
 ];
 
@@ -43,7 +47,6 @@ const PACKET_ACTIONS: Record<string, string> = {
   search: 'searchRequest',
   capture: 'captureRequest',
   carry: 'carryRequest',
-  putdown: 'putdownRequest',
   release: 'releaseRequest',
 };
 
@@ -74,6 +77,7 @@ export class PlayerActionService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
     this.interactKey = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
@@ -89,7 +93,7 @@ export class PlayerActionService extends ClientListener {
     // When one key is both, the Activate rules win
     const isActivate = e.userEventName === "Activate";
     const isInteract = !isActivate && code === this.interactKey;
-    if ((!isActivate && !isInteract) || this.menuOpen) return;
+    if ((!isActivate && !isInteract) || this.menuOpen || this.menuWait) return;
     if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
 
     const housing = this.controller.lookupListener(HousingService);
@@ -124,12 +128,38 @@ export class PlayerActionService extends ClientListener {
     }
     targetName = (ref.getName() || "").trim();
     this.playerTarget = remoteId;
+    // Release appears only when the server confirms it applies to this target
+    this.canRelease = false;
+    sendCustomPacket(this.controller, { customPacketType: "playerMenuRequest", target: remoteId });
     // Names stay hidden until introduced (ff_knownIds owner prop)
     if (!targetName || !this.knowsTarget(this.playerTarget)) {
       targetName = "Stranger";
     }
     logTrace(this, `Opening player-action menu for`, targetName);
-    this.openMenu();
+    const wait = this.menuWait = ++this.menuWaitSeq;
+    this.controller.lookupListener(TimersService).setTimeout(() => this.openWaitingMenu(wait), MENU_STATE_WAIT_MS);
+  }
+
+  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (content?.["customPacketType"] !== "playerMenuState" || content["target"] !== this.playerTarget) return;
+    const canRelease = content["canRelease"] === true;
+    const changed = canRelease !== this.canRelease;
+    this.canRelease = canRelease;
+    const wait = this.menuWait;
+    if (wait) {
+      // Native calls are unsafe in the packet handler
+      this.controller.once("update", () => this.openWaitingMenu(wait));
+    } else if (changed && this.menuOpen) {
+      refreshFormMenu(this.sp, this.playerWidgetSetter, this.menuArgs());
+    }
+  }
+
+  // Opens once the Release answer is in or the wait ran out, unless another screen took over meanwhile
+  private openWaitingMenu(wait: number): void {
+    if (wait !== this.menuWait) return;
+    this.menuWait = 0;
+    if (!this.menuOpen && !isMenuHotkeyBlocked(this.sp, this.controller)) this.openMenu();
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -182,10 +212,14 @@ export class PlayerActionService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    const restraint = this.controller.lookupListener(RestraintService);
-    // No carry chains: a carrier or a carried player is never offered Carry
-    const actions = restraint.isCarrying || restraint.isCarried ? ACTIONS.filter((a) => a.id !== 'carry') : ACTIONS;
-    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: actions, targetName, events, WIDGET_ID }, this.controller);
+    openFormMenu(this.sp, this.playerWidgetSetter, this.menuArgs(), this.controller);
+  }
+
+  private menuArgs(): Record<string, unknown> {
+    // No carry chains and no bound carriers: a carrying, carried or bound player is never offered Carry
+    const noCarry = this.controller.lookupListener(RestraintService).isPoseLocked;
+    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease));
+    return { ACTIONS: actions, targetName, events, WIDGET_ID };
   }
 
   private closeMenu(): void {
@@ -208,5 +242,9 @@ export class PlayerActionService extends ClientListener {
 
   private menuOpen = false;
   private playerTarget = 0;
+  private canRelease = false;
+  // Token of the open waiting for the server's Release answer, 0 when none
+  private menuWait = 0;
+  private menuWaitSeq = 0;
   private interactKey: number;
 }

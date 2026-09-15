@@ -54,6 +54,19 @@ export const isNear = (mp: Mp, aId: number, bId: number, range: number): boolean
   }
 };
 
+// The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
+export const nameShownTo = (mp: Mp, viewerActorId: number, subjectActorId: number): string => {
+  try {
+    const known = mp.get(viewerActorId, "ff_knownIds");
+    if (Array.isArray(known) && !known.includes(subjectActorId)) return "A stranger";
+  } catch { /* fall through to the real name */ }
+  try {
+    const n = mp.getActorName(subjectActorId);
+    if (typeof n === "string" && n.trim()) return n.trim();
+  } catch { /* no name */ }
+  return "Someone";
+};
+
 export const hex = (id: number): string => (id >>> 0).toString(16);
 
 // Removes a server-placed actor or object for every client; throws when the form does not exist

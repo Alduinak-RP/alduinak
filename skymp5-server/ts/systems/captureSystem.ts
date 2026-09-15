@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
+import { nameShownTo } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -19,15 +20,19 @@ type Mp = any;
 // accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
 // captured/carried instantly with no prompt, and doing so STOPS their bleedout
 // (mp.set isDead=false stands them up instead of a temple respawn).
+// A restrained (bound) target is carried with no prompt as well and is told who carries them.
+// Texts name players as SearchSystem does: "A stranger" until introduced.
 //
 // Wire protocol: all packets are MsgType.CustomPacket carrying JSON.
 //   Client -> Server:
 //     { customPacketType: "captureRequest",  target: <actorFormId> }
 //     { customPacketType: "carryRequest",    target: <actorFormId> }
-//     { customPacketType: "putdownRequest",  target: <actorFormId> }   // stop carrying, keep any binding
-//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // fully free
+//     { customPacketType: "putdownRequest",  target: <actorFormId> }   // stop carrying, keep any binding (older clients' Put down)
+//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // one step per press: set a carried captive down, else free their binds (captor or last carrier)
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
+//     { customPacketType: "playerMenuRequest", target: <actorFormId> }  // the player menu opened on target
 //   Server -> Client:
+//     { customPacketType: "playerMenuState", target, canRelease }       // -> the requester only: whether their Release applies
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
 //     { customPacketType: "carryState",      carrying, anim }              // -> carrier's RestraintService (pose only)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
@@ -37,11 +42,22 @@ const RESTRAINT_PACKET = "restraintState";
 const CARRY_PACKET = "carryState";
 const CONSENT_REQUEST = "captureConsentRequest";
 const NOTICE_PACKET = "captureNotice";
+const MENU_STATE_PACKET = "playerMenuState";
 
 // Mirrors the captive's restraint state so the gamemode can gate its own logic
 // on it (e.g. skip its temple pass-out for a bound or carried player):
 //   mp.get(actorId, "private.restrained") -> { boundHands, carried, captorActorId, carrierActorId } | null
 const RESTRAINED_PROP = "private.restrained";
+
+// Bound or carried, for systems that gate on restraint
+export function isRestrained(mp: Mp, actorId: number): boolean {
+  try {
+    const r = mp.get(actorId, RESTRAINED_PROP);
+    return !!r && (r.boundHands === true || r.carried === true);
+  } catch {
+    return false;
+  }
+}
 
 // 0 = no item requirement; set manaclesFormId in server-settings.json to gate arrests behind a carryable item
 const DEFAULT_MANACLES = 0;
@@ -74,6 +90,7 @@ interface RestraintInfo {
   carried: boolean;
   captorActorId: number; // who applied it: release authority + disconnect cleanup
   offlineCarrierActorId?: number; // who was carrying them when they logged out
+  lastCarrierActorId?: number; // who carried them last in this restraint: may free the binds until they disconnect
   addedShackle?: boolean; // a pair was moved captor -> captive, remove it on release
 }
 
@@ -181,6 +198,7 @@ export class CaptureSystem implements System {
       case "putdownRequest": this.onPutdownRequest(ctx, userId, content); break;
       case "releaseRequest": this.onReleaseRequest(ctx, userId, content); break;
       case "captureConsentResult": this.onConsentResult(ctx, userId, content); break;
+      case "playerMenuRequest": this.onMenuRequest(ctx, userId, content); break;
       default: break;
     }
   }
@@ -269,10 +287,18 @@ export class CaptureSystem implements System {
         own.offlineCarrierActorId = carrier;
       }
     }
-    // Release anyone they had captured.
+    // Release anyone they had captured; a carrier leaving loses the right to free and sets an offline captive down
     for (const [tid, info] of Array.from(this.restraints)) {
       if (info.captorActorId === actorId) {
         this.releaseTarget(ctx, tid);
+        continue;
+      }
+      if (info.lastCarrierActorId === actorId) {
+        info.lastCarrierActorId = undefined;
+      }
+      if (info.offlineCarrierActorId === actorId) {
+        info.offlineCarrierActorId = undefined;
+        info.carried = false;
       }
     }
     // Their own restraint record is intentionally KEPT: relogging must not be an escape; onActorAssigned re-applies or cleans up on reconnect
@@ -330,7 +356,7 @@ export class CaptureSystem implements System {
       return;
     }
     if (this.restraints.get(targetActorId)?.boundHands) {
-      this.notice(ctx, userId, `${this.nameOf(ctx, targetActorId)} is already restrained.`);
+      this.notice(ctx, userId, `${nameShownTo(mp, captorActorId, targetActorId)} is already restrained.`);
       return;
     }
     if (!this.hasManacles(mp, captorActorId)) {
@@ -341,7 +367,7 @@ export class CaptureSystem implements System {
     if (this.isDowned(mp, targetActorId)) {
       this.stopBleedout(ctx, targetActorId);
       this.applyCapture(ctx, targetActorId, captorActorId);
-      this.notice(ctx, userId, `You restrained ${this.nameOf(ctx, targetActorId)}.`);
+      this.notice(ctx, userId, `You restrained ${nameShownTo(mp, captorActorId, targetActorId)}.`);
       return;
     }
     this.requestConsent(ctx, "capture", captorActorId, targetActorId);
@@ -363,10 +389,13 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, refusal);
       return;
     }
-    if (this.isDowned(mp, targetActorId)) {
-      this.stopBleedout(ctx, targetActorId);
+    const downed = this.isDowned(mp, targetActorId);
+    // Downed and restrained targets are picked up without a prompt
+    if (downed || this.restraints.has(targetActorId)) {
+      if (downed) this.stopBleedout(ctx, targetActorId);
       this.applyCarry(ctx, targetActorId, carrierActorId);
-      this.notice(ctx, userId, `You picked up ${this.nameOf(ctx, targetActorId)}.`);
+      this.notice(ctx, userId, `You picked up ${nameShownTo(mp, carrierActorId, targetActorId)}.`);
+      this.notice(ctx, this.userOf(ctx, targetActorId), `${nameShownTo(mp, targetActorId, carrierActorId)} is carrying you.`);
       return;
     }
     this.requestConsent(ctx, "carry", carrierActorId, targetActorId);
@@ -388,7 +417,7 @@ export class CaptureSystem implements System {
       return;
     }
     this.stopCarry(ctx, targetActorId);
-    this.notice(ctx, userId, `You set ${this.nameOf(ctx, targetActorId)} down.`);
+    this.notice(ctx, userId, `You set ${nameShownTo(ctx.svr, requesterActorId, targetActorId)} down.`);
   }
 
   private onReleaseRequest(ctx: SystemContext, userId: number, content: Content): void {
@@ -397,19 +426,50 @@ export class CaptureSystem implements System {
       return;
     }
     const targetActorId = toFormId(content.target, 0);
-    const info = this.restraints.get(targetActorId);
-    if (!info) {
+    if (!this.restraints.has(targetActorId) && !this.carriedBy.has(targetActorId)) {
       this.notice(ctx, userId, "They are not restrained.");
       return;
     }
-    // Only the captor (or whoever is carrying them) may release: prevents griefing
-    const carrier = this.carriedBy.get(targetActorId);
-    if (info.captorActorId !== requesterActorId && carrier !== requesterActorId) {
-      this.notice(ctx, userId, "Only their captor can release them.");
+    const step = this.releaseStep(requesterActorId, targetActorId);
+    if (!step) {
+      this.notice(ctx, userId, "Only their captor or carrier can release them.");
+      return;
+    }
+    const name = nameShownTo(ctx.svr, requesterActorId, targetActorId);
+    if (step === "putdown") {
+      this.stopCarry(ctx, targetActorId);
+      this.notice(ctx, userId, `You set ${name} down.`);
       return;
     }
     this.releaseTarget(ctx, targetActorId);
-    this.notice(ctx, userId, `You released ${this.nameOf(ctx, targetActorId)}.`);
+    this.notice(ctx, userId, `You released ${name}.`);
+  }
+
+  // Only the requester's own release permission is revealed, never the target's restraint details
+  private onMenuRequest(ctx: SystemContext, userId: number, content: Content): void {
+    const requesterActorId = this.resolveActor(ctx, userId);
+    const targetActorId = toFormId(content.target, 0);
+    if (requesterActorId === null || !targetActorId) {
+      return;
+    }
+    try {
+      ctx.svr.sendCustomPacket(userId, JSON.stringify({
+        customPacketType: MENU_STATE_PACKET,
+        target: targetActorId,
+        canRelease: this.releaseStep(requesterActorId, targetActorId) !== null,
+      }));
+    } catch { /* user gone */ }
+  }
+
+  // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release
+  private releaseStep(requesterActorId: number, targetActorId: number): "putdown" | "release" | null {
+    const info = this.restraints.get(targetActorId);
+    const isCaptor = info?.captorActorId === requesterActorId;
+    const carrier = this.carriedBy.get(targetActorId);
+    if (carrier !== undefined) {
+      return carrier === requesterActorId || isCaptor ? "putdown" : null;
+    }
+    return isCaptor || info?.lastCarrierActorId === requesterActorId ? "release" : null;
   }
 
   private onConsentResult(ctx: SystemContext, userId: number, content: Content): void {
@@ -427,8 +487,9 @@ export class CaptureSystem implements System {
     clearTimeout(pend.timer);
 
     const captorUser = this.userOf(ctx, pend.captorActorId);
+    const targetName = nameShownTo(ctx.svr, pend.captorActorId, pend.targetActorId);
     if (content.accepted !== true) {
-      this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} refused.`);
+      this.notice(ctx, captorUser, `${targetName} refused.`);
       return;
     }
     if (captorUser < 0) {
@@ -436,7 +497,7 @@ export class CaptureSystem implements System {
     }
     // They may have moved apart (or perma-died) while the prompt was open.
     if (!this.validTarget(ctx, pend.captorActorId, pend.targetActorId)) {
-      this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} is out of reach.`);
+      this.notice(ctx, captorUser, `${targetName} is out of reach.`);
       return;
     }
 
@@ -446,16 +507,16 @@ export class CaptureSystem implements System {
         return;
       }
       this.applyCapture(ctx, pend.targetActorId, pend.captorActorId);
-      this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} accepted — restrained.`);
+      this.notice(ctx, captorUser, `${targetName} accepted — restrained.`);
     } else {
       const refusal = this.carryRefusal(ctx, pend.captorActorId, pend.targetActorId);
       if (refusal) {
         this.notice(ctx, captorUser, refusal);
-        this.notice(ctx, userId, `${this.nameOf(ctx, pend.captorActorId) || "They"} can no longer carry you.`);
+        this.notice(ctx, userId, `${nameShownTo(ctx.svr, pend.targetActorId, pend.captorActorId)} can no longer carry you.`);
         return;
       }
       this.applyCarry(ctx, pend.targetActorId, pend.captorActorId);
-      this.notice(ctx, captorUser, `${this.nameOf(ctx, pend.targetActorId)} accepted — carrying.`);
+      this.notice(ctx, captorUser, `${targetName} accepted — carrying.`);
     }
   }
 
@@ -474,12 +535,13 @@ export class CaptureSystem implements System {
         return;
       }
     }
+    const targetName = nameShownTo(ctx.svr, captorActorId, targetActorId);
     const now = Date.now();
     const cooldownKey = `${captorActorId}:${targetActorId}`;
     const lastPrompt = this.consentCooldown.get(cooldownKey);
     if (lastPrompt !== undefined && now - lastPrompt < this.consentCooldownMs) {
       this.notice(ctx, this.userOf(ctx, captorActorId),
-        `Wait before asking ${this.nameOf(ctx, targetActorId)} again.`);
+        `Wait before asking ${targetName} again.`);
       return;
     }
     if (this.consentCooldown.size > 512) {
@@ -495,12 +557,12 @@ export class CaptureSystem implements System {
     const timer = setTimeout(() => {
       if (this.pending.delete(requestId)) {
         this.notice(ctx, this.userOf(ctx, captorActorId),
-          `${this.nameOf(ctx, targetActorId)} did not respond.`);
+          `${targetName} did not respond.`);
       }
     }, this.consentTimeoutMs);
     this.pending.set(requestId, { kind, captorActorId, targetActorId, timer });
 
-    const captorName = this.nameOf(ctx, captorActorId) || "Someone";
+    const captorName = nameShownTo(ctx.svr, targetActorId, captorActorId);
     const verb = kind === "capture" ? "restrain" : "carry";
     ctx.svr.sendCustomPacket(targetUser, JSON.stringify({
       customPacketType: CONSENT_REQUEST,
@@ -508,7 +570,7 @@ export class CaptureSystem implements System {
       text: `${captorName} wants to ${verb} you. Allow?`,
     }));
     this.notice(ctx, this.userOf(ctx, captorActorId),
-      `Waiting for ${this.nameOf(ctx, targetActorId)} to accept…`);
+      `Waiting for ${targetName} to accept…`);
   }
 
   // Reflect the captive's current restraint record into RESTRAINED_PROP
@@ -545,6 +607,7 @@ export class CaptureSystem implements System {
     const info = this.restraints.get(targetActorId)
       ?? { boundHands: false, carried: false, captorActorId: carrierActorId };
     info.carried = true;
+    info.lastCarrierActorId = carrierActorId;
     this.restraints.set(targetActorId, info);
     this.carrying.set(carrierActorId, targetActorId);
     this.carriedBy.set(targetActorId, carrierActorId);
@@ -657,12 +720,13 @@ export class CaptureSystem implements System {
 
   // ── Small helpers ──────────────────────────────────────────────────────────
 
-  // No carry chains: a carrier cannot be carried and a carried player cannot carry; empty when allowed
+  // No carry chains and no bound carriers: a carrier cannot be carried, a carried or bound player cannot carry; empty when allowed
   private carryRefusal(ctx: SystemContext, carrierActorId: number, targetActorId: number): string {
     const refusal = this.carrying.has(carrierActorId) ? "You are already carrying someone."
       : this.carriedBy.has(carrierActorId) ? "You cannot carry anyone while being carried."
-      : this.carrying.has(targetActorId) ? `${this.nameOf(ctx, targetActorId)} is carrying someone.`
-      : this.carriedBy.has(targetActorId) ? `${this.nameOf(ctx, targetActorId)} is already being carried.`
+      : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anyone while bound."
+      : this.carrying.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is carrying someone.`
+      : this.carriedBy.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is already being carried.`
       : "";
     if (refusal) this.logRefusal(carrierActorId, `carry of ${targetActorId.toString(16)}`);
     return refusal;
@@ -851,15 +915,6 @@ export class CaptureSystem implements System {
       return u;
     } catch {
       return -1;
-    }
-  }
-
-  private nameOf(ctx: SystemContext, actorId: number): string {
-    try {
-      const n = ctx.svr.getActorName(actorId);
-      return typeof n === "string" ? n.trim() : "";
-    } catch {
-      return "";
     }
   }
 
