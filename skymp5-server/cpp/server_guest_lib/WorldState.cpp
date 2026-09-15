@@ -1229,6 +1229,27 @@ bool WorldState::PlayersInheritBaseSpells() const noexcept
   return pImpl->playersInheritBaseSpells;
 }
 
+std::optional<std::chrono::system_clock::time_point>
+WorldState::GetLastMovUpdate(uint32_t idx) const
+{
+  if (idx >= lastMovUpdateByIdx.size()) {
+    return std::nullopt;
+  }
+  return lastMovUpdateByIdx[idx];
+}
+
+void WorldState::SetLastMovUpdate(uint32_t idx,
+                                  std::chrono::system_clock::time_point time)
+{
+  if (idx == FormIndex::g_invalidIdx) {
+    return;
+  }
+  if (lastMovUpdateByIdx.size() <= idx) {
+    lastMovUpdateByIdx.resize(static_cast<size_t>(idx) + 1);
+  }
+  lastMovUpdateByIdx[idx] = time;
+}
+
 bool WorldState::HasEspmFile(std::string_view filename) const noexcept
 {
   return std::find(espmFiles.begin(), espmFiles.end(), filename) !=

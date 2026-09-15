@@ -236,6 +236,11 @@ public:
   void SetPlayersInheritBaseSpells(bool enable);
   [[nodiscard]] bool PlayersInheritBaseSpells() const noexcept;
   void SetEnableConsoleCommandsForAllSetting(bool enable);
+  // Last UpdateMovement time per form idx; nullopt when none arrived
+  [[nodiscard]] std::optional<std::chrono::system_clock::time_point>
+  GetLastMovUpdate(uint32_t idx) const;
+  void SetLastMovUpdate(uint32_t idx,
+                        std::chrono::system_clock::time_point time);
 
 public:
   EspmFileTable espmFiles;
@@ -247,8 +252,6 @@ public:
   std::unordered_map<uint32_t, uint32_t> hosters;
   std::unordered_map<uint32_t, std::map<uint32_t, float>>
     activationChildsByActivationParent;
-  std::vector<std::optional<std::chrono::system_clock::time_point>>
-    lastMovUpdateByIdx;
 
   bool isPapyrusHotReloadEnabled = false;
 
@@ -316,6 +319,8 @@ private:
   std::unordered_map<uint32_t, GridInfo> grids;
   std::unique_ptr<MakeID> formIdxManager;
   std::vector<MpObjectReference*> refrByIdxUnreliable;
+  std::vector<std::optional<std::chrono::system_clock::time_point>>
+    lastMovUpdateByIdx;
   espm::Loader* espm = nullptr;
   FormCallbacksFactory formCallbacksFactory;
   std::unique_ptr<espm::CompressedFieldsCache> espmCache;

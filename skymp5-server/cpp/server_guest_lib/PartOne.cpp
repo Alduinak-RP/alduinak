@@ -672,12 +672,8 @@ void PartOne::StartHosting(Networking::UserId hosterUserId,
                            MpObjectReference& remote)
 {
   // Prevents too fast host switch
-  auto idx = remote.GetIdx();
-  auto& lastUpdates = worldState.lastMovUpdateByIdx;
-  if (lastUpdates.size() <= idx) {
-    lastUpdates.resize(idx + 1);
-  }
-  lastUpdates[idx] = std::chrono::system_clock::now();
+  worldState.SetLastMovUpdate(remote.GetIdx(),
+                              std::chrono::system_clock::now());
 
   auto remoteAsActor = remote.AsActor();
   if (remoteAsActor) {

@@ -480,12 +480,8 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
       actor->SetLastAnimEvent(std::nullopt);
     }
 
-    if (partOne.worldState.lastMovUpdateByIdx.size() <= msg.idx) {
-      auto newSize = static_cast<size_t>(msg.idx) + 1;
-      partOne.worldState.lastMovUpdateByIdx.resize(newSize);
-    }
-    partOne.worldState.lastMovUpdateByIdx[msg.idx] =
-      std::chrono::system_clock::now();
+    partOne.worldState.SetLastMovUpdate(msg.idx,
+                                        std::chrono::system_clock::now());
   }
 }
 
@@ -1155,12 +1151,8 @@ void ActionListener::OnHostAttempt(const RawMessageData& rawMsgData,
   auto& hoster = partOne.worldState.hosters[remoteId];
   const uint32_t prevHoster = hoster;
 
-  auto remoteIdx = remote.GetIdx();
-
-  std::optional<std::chrono::system_clock::time_point> lastRemoteUpdate;
-  if (partOne.worldState.lastMovUpdateByIdx.size() > remoteIdx) {
-    lastRemoteUpdate = partOne.worldState.lastMovUpdateByIdx[remoteIdx];
-  }
+  const auto lastRemoteUpdate =
+    partOne.worldState.GetLastMovUpdate(remote.GetIdx());
 
   const auto hostResetTimeout = std::chrono::seconds(2);
 
