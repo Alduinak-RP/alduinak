@@ -13,6 +13,8 @@ export interface Hostable {
   id: number;
   // Only this actor hosts it (companions, pets); nobody while the owner is away
   owner?: number;
+  // Hosting stays where it is: a ridden or carried pet
+  locked?: boolean;
 }
 
 export type HostableProvider = () => Hostable[];
@@ -175,7 +177,7 @@ export class HostingSystem implements System {
     const streamers = this.streamers(players);
     const range2 = this.hostRange * this.hostRange;
     for (const h of this.hostables.values()) {
-      if (!isAlive(mp, h.id)) continue;
+      if (!isAlive(mp, h.id) || h.locked) continue;
       const at = this.locate(h.id);
       if (!at) continue;
       let current = 0;

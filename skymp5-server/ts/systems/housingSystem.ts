@@ -438,7 +438,31 @@ export class HousingSystem implements System {
       hasKeys: owned,
       canGrantContainers: (isOwner || isManager) && owned && this.baseTypeOf(ctx, primary) === "CONT",
       ownerName: owned ? (rec!.ownerName || "Someone") : null,
+      pets: this.petCategoryOf ? this.petCategoryOf(actorId, primary || target) : "",
     });
+  }
+
+  // ── Pets ────────────────────────────────────────────────────────────────────
+
+  // Set by PetSystem: the kind of pets storable at a door, shown as the menu's Pets option
+  petCategoryOf: ((actorId: number, refrId: number) => string) | null = null;
+
+  // The property's name when this character owns the door or container, else null
+  ownedRefName(ctx: SystemContext, actorId: number, refrId: number): string | null {
+    const primary = this.primaryOf(ctx, refrId);
+    const rec = primary ? this.read(ctx, primary) : null;
+    if (!rec || rec.owner === 0 || rec.owner !== this.profileOf(ctx, actorId)) return null;
+    return rec.name || "";
+  }
+
+  // The nearest property this character owns within reach, else null
+  nearestOwnedRef(ctx: SystemContext, actorId: number): { refrId: number; name: string } | null {
+    const profileId = this.profileOf(ctx, actorId);
+    if (!profileId) return null;
+    for (const { primary, rec } of this.liveClaims(ctx)) {
+      if (rec.owner === profileId && this.nearProperty(ctx, actorId, primary)) return { refrId: primary, name: rec.name || "" };
+    }
+    return null;
   }
 
   // ── Access ──────────────────────────────────────────────────────────────────

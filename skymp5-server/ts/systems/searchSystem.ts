@@ -346,6 +346,17 @@ export class SearchSystem implements System {
     this.log(`[search] ${searcherActorId.toString(16)} searches ${body ? "body " : ""}${targetActorId.toString(16)}`);
   }
 
+  // Opens a pet's inventory for its owner in the vanilla container window; empty result on success, else the refusal
+  openPetInventory(ctx: SystemContext, viewerActorId: number, targetActorId: number): string {
+    if (!this.hasOccupantNative(ctx)) return "Trading needs a newer server build.";
+    if (this.isDead(ctx, viewerActorId)) return "You cannot do that now.";
+    if (isRestrained(ctx.svr, viewerActorId)) return "You cannot trade while restrained.";
+    if (this.sessions.has(targetActorId)) return "It is already being searched.";
+    if (this.searching.has(viewerActorId)) return "You are already searching someone.";
+    this.startSession(ctx, viewerActorId, targetActorId, false, true);
+    return "";
+  }
+
   // ── Session teardown ────────────────────────────────────────────────────────
 
   private endSession(ctx: SystemContext, s: SearchSession, reasonForSearcher: string): void {

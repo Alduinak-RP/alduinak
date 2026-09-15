@@ -67,6 +67,10 @@ export const nameShownTo = (mp: Mp, viewerActorId: number, subjectActorId: numbe
   return "Someone";
 };
 
+// Letters, numbers, spaces and a few marks, single-spaced, trimmed and capped; empty when nothing usable is left
+export const cleanDisplayName = (raw: unknown, max: number): string =>
+  String(raw ?? "").replace(/[^A-Za-z0-9 '_-]/g, "").replace(/\s+/g, " ").trim().slice(0, max);
+
 export const hex = (id: number): string => (id >>> 0).toString(16);
 
 // Removes a server-placed actor or object for every client; throws when the form does not exist

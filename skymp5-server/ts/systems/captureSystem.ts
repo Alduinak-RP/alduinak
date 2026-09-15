@@ -138,6 +138,8 @@ export class CaptureSystem implements System {
   // "captorActorId:targetActorId" -> last prompt timestamp (spam guard)
   private consentCooldown = new Map<string, number>();
   private nextRequestId = 1;
+  // Set by PetSystem: a carried NPC was set down or freed
+  onNpcCarryEnd: ((carriedActorId: number, carrierActorId: number) => void) | null = null;
   private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
   private refusalLogAt = new Map<number, number>();
@@ -245,7 +247,9 @@ export class CaptureSystem implements System {
         // Each snap is a full engine teleport on the carried client; only
         // resend when the body actually drifted or changed cell
         const carriedLoc = mp.get(carriedActorId, "locationalData");
-        if (carriedLoc && Array.isArray(carriedLoc.pos) &&
+        // An NPC has no client to follow on its own, so it is moved whenever the carrier moved
+        const npc = this.userOf(ctx, carriedActorId) < 0;
+        if (!npc && carriedLoc && Array.isArray(carriedLoc.pos) &&
           carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) {
           const dx = x - carriedLoc.pos[0], dy = y - carriedLoc.pos[1], dz = z - carriedLoc.pos[2];
           if (dx * dx + dy * dy + dz * dz < CARRY_MAX_DRIFT_SQ) {
@@ -349,6 +353,31 @@ export class CaptureSystem implements System {
     if (info.boundHands) {
       this.equipShackles(ctx, actorId); // relog must not shed the cuffs
     }
+  }
+
+  // ── NPC carry (pets) ───────────────────────────────────────────────────────
+
+  // Picks up a server NPC without a prompt; empty result on success, else the refusal. The follow loop moves it with the carrier
+  carryNpc(ctx: SystemContext, carrierActorId: number, npcId: number, npcName: string): string {
+    if (this.userOf(ctx, npcId) >= 0) return "That is a player.";
+    const refusal = this.carrying.has(carrierActorId) ? "You are already carrying something."
+      : this.carriedBy.has(carrierActorId) ? "You cannot carry anything while being carried."
+      : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anything while bound."
+      : this.carriedBy.has(npcId) ? `${npcName} is already being carried.`
+      : "";
+    if (refusal) return refusal;
+    this.applyCarry(ctx, npcId, carrierActorId);
+    return "";
+  }
+
+  // What the carrier holds, 0 when nothing
+  carriedOf(carrierActorId: number): number {
+    return this.carrying.get(carrierActorId) ?? 0;
+  }
+
+  stopCarrying(ctx: SystemContext, carrierActorId: number): void {
+    const carried = this.carrying.get(carrierActorId);
+    if (carried !== undefined) this.stopCarry(ctx, carried);
   }
 
   // ── Incoming requests ──────────────────────────────────────────────────────
@@ -625,7 +654,7 @@ export class CaptureSystem implements System {
     this.lastCarryPos.delete(targetActorId);
     this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, info);
-    this.sendCarryState(ctx, carrierActorId, true);
+    this.sendCarryState(ctx, carrierActorId, true, targetActorId);
     this.log(`[carry] ${carrierActorId.toString(16)} carries ${targetActorId.toString(16)}`);
   }
 
@@ -638,7 +667,8 @@ export class CaptureSystem implements System {
     this.carrying.delete(carrier);
     this.carriedBy.delete(targetActorId);
     this.lastCarryPos.delete(targetActorId);
-    this.sendCarryState(ctx, carrier, false);
+    this.sendCarryState(ctx, carrier, false, targetActorId);
+    if (this.userOf(ctx, targetActorId) < 0) this.onNpcCarryEnd?.(targetActorId, carrier);
 
     const info = this.restraints.get(targetActorId);
     if (info) {
@@ -660,7 +690,8 @@ export class CaptureSystem implements System {
       this.carrying.delete(carrier);
       this.carriedBy.delete(targetActorId);
       this.lastCarryPos.delete(targetActorId);
-      this.sendCarryState(ctx, carrier, false);
+      this.sendCarryState(ctx, carrier, false, targetActorId);
+      if (this.userOf(ctx, targetActorId) < 0) this.onNpcCarryEnd?.(targetActorId, carrier);
     }
     const info = this.restraints.get(targetActorId);
     this.restraints.delete(targetActorId);
@@ -708,7 +739,7 @@ export class CaptureSystem implements System {
     return Number.isFinite(n) ? n : fallback;
   }
 
-  private sendCarryState(ctx: SystemContext, carrierActorId: number, carrying: boolean): void {
+  private sendCarryState(ctx: SystemContext, carrierActorId: number, carrying: boolean, target = 0): void {
     const u = this.userOf(ctx, carrierActorId);
     if (u < 0) {
       return;
@@ -717,6 +748,7 @@ export class CaptureSystem implements System {
       customPacketType: CARRY_PACKET,
       carrying,
       anim: this.carrierAnim,
+      target,
     }));
   }
 
