@@ -493,6 +493,7 @@ ipcMain.handle('graphics:saveFov', (_e, v) => {
     saveFov(v)
     return { ok: true }
   } catch (err) {
+    log('[graphics] could not save the FOV:', err.message)
     return { ok: false, error: err.message }
   }
 })
