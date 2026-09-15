@@ -99,17 +99,21 @@ export class HostingSystem implements System {
     return this.switchTo(actorId >>> 0, hosterId >>> 0, reason);
   }
 
-  // Only hits the other handlers let through and that deal damage count
+  // Only hits the other handlers let through and that deal damage count; the companion owner veto wraps the host attempt check
   private installHooks(): void {
     const mp = this.mp;
-    const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
-    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      let allowed = true;
-      if (previous) {
-        try {
-          allowed = previous.apply(mp, [aggressorId, targetId, sourceId, damage]) !== false;
-        } catch { }
+    const chain = (previous: ((...args: unknown[]) => unknown) | null, args: unknown[]): boolean => {
+      if (!previous) return true;
+      try {
+        return previous.apply(mp, args) !== false;
+      } catch {
+        return true;
       }
+    };
+
+    const previousHit = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
+    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
+      const allowed = chain(previousHit, [aggressorId, targetId, sourceId, damage]);
       if (allowed && damage > 0) {
         try {
           this.noteHit(aggressorId >>> 0, targetId >>> 0);
@@ -117,6 +121,10 @@ export class HostingSystem implements System {
       }
       return allowed;
     };
+
+    const previousHost = typeof mp.onHostAttempt === "function" ? mp.onHostAttempt : null;
+    mp.onHostAttempt = (requesterId: number, actorId: number): boolean =>
+      this.mayHost(requesterId >>> 0, actorId >>> 0) && chain(previousHost, [requesterId, actorId]);
   }
 
   // A hit between a player and an unowned NPC keeps that player engaged with the NPC
@@ -134,6 +142,18 @@ export class HostingSystem implements System {
     let hits = this.aggro.get(npcId);
     if (!hits) this.aggro.set(npcId, (hits = new Map()));
     hits.set(playerId, Date.now());
+  }
+
+  // A managed NPC only goes to a live client the server streams it to; every other NPC stays first come
+  private mayHost(requesterId: number, npcId: number): boolean {
+    if (!this.hostables.has(npcId)) return true;
+    let ids: unknown[] = [];
+    try {
+      ids = this.mp.get(npcId, "actorNeighbors") ?? [];
+    } catch {
+      return true;
+    }
+    return ids.some((id) => Number(id) >>> 0 === requesterId) && this.isLive(requesterId);
   }
 
   private audit(): void {
