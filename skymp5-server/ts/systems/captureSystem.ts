@@ -745,11 +745,13 @@ export class CaptureSystem implements System {
     if (u < 0) {
       return;
     }
+    // Only a carried NPC is posed by the carrier; a carried player poses itself through restraintState
+    const npcTarget = target && !isPlayerActor(ctx.svr as Mp, target) ? target : 0;
     ctx.svr.sendCustomPacket(u, JSON.stringify({
       customPacketType: CARRY_PACKET,
       carrying,
       anim: this.carrierAnim,
-      target,
+      target: npcTarget,
     }));
   }
 
