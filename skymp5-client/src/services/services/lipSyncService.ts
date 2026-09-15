@@ -34,6 +34,7 @@ export class LipSyncService extends ClientListener {
   private pending: Map<number, number> | undefined;
   private lastReportAt = 0;
   private nextTickAt = 0;
+  private playerFaceOpen = false;
   private playerCloseOwed = false;
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -70,9 +71,9 @@ export class LipSyncService extends ClientListener {
       } else if (this.mouths.size > 0 && now - this.lastReportAt > REPORT_TTL_MS) {
         this.reconcile(new Map());
       }
-      if (this.playerCloseOwed && !this.isFirstPerson()) this.closeFace(PLAYER_FORM_ID);
-      if (now < this.nextTickAt || this.mouths.size === 0) return;
+      if (now < this.nextTickAt || (this.mouths.size === 0 && !this.playerCloseOwed)) return;
       this.nextTickAt = now + TICK_MS;
+      if (this.playerCloseOwed && !this.isFirstPerson()) this.closeFace(PLAYER_FORM_ID);
       this.mouths.forEach((mouth, remoteId) => this.animate(remoteId, mouth));
     } catch (err) {
       logError(this, `onUpdate failed: ${err}`);
@@ -142,11 +143,12 @@ export class LipSyncService extends ClientListener {
     const strength = Math.min(0.9, 0.25 + mouth.level * 2.5) * (0.7 + Math.random() * 0.3);
     mouth.phoneme = MOUTH_PHONEMES[Math.floor(Math.random() * MOUTH_PHONEMES.length)];
     actor.setExpressionPhoneme(mouth.phoneme, strength);
+    if (mouth.localId === PLAYER_FORM_ID) this.playerFaceOpen = true;
   }
 
-  // Zeroes every slot this service opens; the player's is redone after first person, where the write may miss the body's face
+  // Zeroes every slot this service opens; an open player face is redone after first person, where the write may miss the body's face
   private closeFace(localId: number): void {
-    if (localId === PLAYER_FORM_ID) this.playerCloseOwed = this.isFirstPerson();
+    if (localId === PLAYER_FORM_ID) this.playerFaceOpen = this.playerCloseOwed = this.playerFaceOpen && this.isFirstPerson();
     try {
       const actor = this.actorOf(localId);
       MOUTH_PHONEMES.forEach((phoneme) => actor?.setExpressionPhoneme(phoneme, 0));
