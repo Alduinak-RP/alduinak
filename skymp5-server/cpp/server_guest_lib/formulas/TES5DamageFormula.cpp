@@ -1,6 +1,7 @@
 #include "TES5DamageFormula.h"
 
 #include "ConditionsEvaluator.h"
+#include "EvaluateTemplate.h"
 #include "HitData.h"
 #include "MpActor.h"
 #include "SpellCastData.h"
@@ -8,7 +9,6 @@
 #include "WorldState.h"
 #include "libespm/espm.h"
 #include <algorithm>
-#include <iterator>
 #include <spdlog/spdlog.h>
 
 namespace internal {
@@ -200,8 +200,11 @@ private:
 
 private:
   [[nodiscard]] float GetBaseSpellDamage() const;
-  [[nodiscard]] bool ConditionsHold(
-    const std::vector<espm::CTDA>& ctdas) const;
+  [[nodiscard]] const MpActor* GetConditionActor(const espm::CTDA& ctda) const;
+  [[nodiscard]] bool ConditionHolds(const espm::CTDA& ctda,
+                                    const espm::LookupResult& owner) const;
+  [[nodiscard]] bool ConditionsHold(const std::vector<espm::CTDA>& ctdas,
+                                    const espm::LookupResult& owner) const;
 };
 
 TES5SpellDamageFormulaImpl::TES5SpellDamageFormulaImpl(
@@ -214,47 +217,120 @@ TES5SpellDamageFormulaImpl::TES5SpellDamageFormulaImpl(
 {
 }
 
-// The server knows the Health, Magicka and Stamina percentages of the actor hit and of the caster
-bool IsEvaluableSpellCondition(const espm::CTDA& ctda,
-                               const ConditionFunctionMap& functions)
+// Keywords of the actor's base NPC_ and race, worn items are not included
+bool ActorHasKeyword(const MpActor& actor, uint32_t keywordId)
 {
-  constexpr uint16_t kGetActorValuePercent = 640;
-  const auto av =
-    static_cast<espm::ActorValue>(ctda.GetDefaultData().firstParameter);
-  const bool knownValue = av == espm::ActorValue::Health ||
-    av == espm::ActorValue::Magicka || av == espm::ActorValue::Stamina;
-  const bool knownActor =
-    ctda.runOnType == espm::CTDA::RunOnTypeFlags::Subject ||
-    ctda.runOnType == espm::CTDA::RunOnTypeFlags::Target;
-  const bool plainFlags = (static_cast<uint8_t>(ctda.GetFlags()) &
-                           ~static_cast<uint8_t>(espm::CTDA::Flags::OR)) == 0;
-  return ctda.functionIndex == kGetActorValuePercent && knownValue &&
-    knownActor && plainFlags &&
-    functions.GetConditionFunction(ctda.functionIndex);
+  WorldState* worldState = actor.GetParent();
+  const auto formHasKeyword = [&](const espm::LookupResult& form) {
+    if (!form.rec) {
+      return false;
+    }
+    const auto ids = form.rec->GetKeywordIds(worldState->GetEspmCache());
+    return std::any_of(ids.begin(), ids.end(), [&](uint32_t rawId) {
+      return form.ToGlobalId(rawId) == keywordId;
+    });
+  };
+  const bool npcHasKeyword =
+    EvaluateTemplateNoThrow<espm::NPC_::UseKeywords>(
+      worldState, actor.GetBaseId(), actor.GetTemplateChain(),
+      [&](const espm::LookupResult& npc, const espm::NPC_::Data&) {
+        return formHasKeyword(npc);
+      },
+      nullptr)
+      .value_or(false);
+  return npcHasKeyword ||
+    formHasKeyword(
+      worldState->GetEspm().GetBrowser().LookupById(actor.GetRaceId()));
 }
 
-// Magic effect conditions run Subject on the actor hit and Target on the caster
-bool TES5SpellDamageFormulaImpl::ConditionsHold(
-  const std::vector<espm::CTDA>& ctdas) const
+bool CompareWithCtda(float value, const espm::CTDA& ctda)
 {
-  if (ctdas.empty()) {
-    return true;
+  const float other = ctda.comparisonValue;
+  switch (ctda.GetOperator()) {
+    case espm::CTDA::Operator::EqualTo:
+      return value == other;
+    case espm::CTDA::Operator::NotEqualTo:
+      return value != other;
+    case espm::CTDA::Operator::GreaterThen:
+      return value > other;
+    case espm::CTDA::Operator::GreaterThenOrEqualTo:
+      return value >= other;
+    case espm::CTDA::Operator::LessThen:
+      return value < other;
+    case espm::CTDA::Operator::LessThenOrEqualTo:
+      return value <= other;
   }
-  const auto& functions = espmProvider->conditionFunctionMap;
-  if (!std::all_of(ctdas.begin(), ctdas.end(), [&](const espm::CTDA& ctda) {
-        return IsEvaluableSpellCondition(ctda, functions);
-      })) {
+  return false;
+}
+
+// Magic effect conditions run Subject on the actor hit and Target on the caster, null for other run-ons or flags
+const MpActor* TES5SpellDamageFormulaImpl::GetConditionActor(
+  const espm::CTDA& ctda) const
+{
+  const bool plainFlags = (static_cast<uint8_t>(ctda.GetFlags()) &
+                           ~static_cast<uint8_t>(espm::CTDA::Flags::OR)) == 0;
+  if (plainFlags && ctda.runOnType == espm::CTDA::RunOnTypeFlags::Subject) {
+    return &target;
+  }
+  if (plainFlags && ctda.runOnType == espm::CTDA::RunOnTypeFlags::Target) {
+    return &aggressor;
+  }
+  return nullptr;
+}
+
+// Condition form ids are relative to the owner record's plugin
+bool TES5SpellDamageFormulaImpl::ConditionHolds(
+  const espm::CTDA& ctda, const espm::LookupResult& owner) const
+{
+  constexpr uint16_t kHasPerk = 448;
+  constexpr uint16_t kHasKeyword = 560;
+  constexpr uint16_t kGetActorValuePercent = 640;
+  if (ctda.functionIndex == kHasPerk) {
+    // The server holds no perk data
     return false;
   }
-  std::vector<Condition> conditions;
-  std::transform(ctdas.begin(), ctdas.end(), std::back_inserter(conditions),
-                 &Condition::FromCtda);
-  bool holds = false;
-  ConditionsEvaluator::EvaluateConditions(
-    functions, espmProvider->conditionsEvaluatorSettings,
-    ConditionsEvaluatorCaller::kSpellDamage, conditions, target, aggressor,
-    [&](bool evalRes, std::vector<std::string>&) { holds = evalRes; });
-  return holds;
+  const MpActor* actor = GetConditionActor(ctda);
+  const uint32_t parameter = ctda.GetDefaultData().firstParameter;
+  if (actor && ctda.functionIndex == kHasKeyword) {
+    const bool hasKeyword =
+      ActorHasKeyword(*actor, owner.ToGlobalId(parameter));
+    return CompareWithCtda(hasKeyword ? 1.f : 0.f, ctda);
+  }
+  const auto av = static_cast<espm::ActorValue>(parameter);
+  const bool trackedPercentage = av == espm::ActorValue::Health ||
+    av == espm::ActorValue::Magicka || av == espm::ActorValue::Stamina;
+  const auto& functions = espmProvider->conditionFunctionMap;
+  if (actor && ctda.functionIndex == kGetActorValuePercent &&
+      trackedPercentage && functions.GetConditionFunction(ctda.functionIndex)) {
+    bool holds = false;
+    ConditionsEvaluator::EvaluateConditions(
+      functions, espmProvider->conditionsEvaluatorSettings,
+      ConditionsEvaluatorCaller::kSpellDamage, { Condition::FromCtda(ctda) },
+      target, aggressor,
+      [&](bool evalRes, std::vector<std::string>&) { holds = evalRes; });
+    return holds;
+  }
+  // IsHostileToActor holds for the actor being hit, and conditions the server cannot evaluate do not gate damage
+  return true;
+}
+
+// A CTDA with the OR flag joins the next one into a group, and every group must hold
+bool TES5SpellDamageFormulaImpl::ConditionsHold(
+  const std::vector<espm::CTDA>& ctdas, const espm::LookupResult& owner) const
+{
+  bool groupHolds = false;
+  for (size_t i = 0; i < ctdas.size(); ++i) {
+    groupHolds = groupHolds || ConditionHolds(ctdas[i], owner);
+    const bool joinsNext = static_cast<uint8_t>(ctdas[i].GetFlags()) &
+      static_cast<uint8_t>(espm::CTDA::Flags::OR);
+    if (!joinsNext || i + 1 == ctdas.size()) {
+      if (!groupHolds) {
+        return false;
+      }
+      groupHolds = false;
+    }
+  }
+  return true;
 }
 
 float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
@@ -262,9 +338,9 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
   float damage = 0.f;
   const bool isSpell = ForEachSpellEffectRecord(
     espmProvider, spellCastData.spell,
-    [&](const espm::LookupResult&, const espm::SPEL::Data& spell,
+    [&](const espm::LookupResult& spellLookup, const espm::SPEL::Data& spell,
         const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
-        const espm::LookupResult&) {
+        const espm::LookupResult& mgefLookup) {
       const bool needAddDamage =
         mgef.data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
         mgef.data.IsFlagSet(espm::MGEF::Flags::Detrimental);
@@ -276,8 +352,8 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
       const bool isShout = spell.spellItem &&
         spell.spellItem->type == espm::SPEL::SpellType::Voice;
       if (isShout ||
-          (ConditionsHold(effect.conditions) &&
-           ConditionsHold(mgef.conditions))) {
+          (ConditionsHold(effect.conditions, spellLookup) &&
+           ConditionsHold(mgef.conditions, mgefLookup))) {
         damage += effect.effectItem->magnitude;
       }
     });
