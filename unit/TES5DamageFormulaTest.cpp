@@ -5,6 +5,7 @@
 #include "GetBaseActorValues.h"
 #include "HitData.h"
 #include "PacketParser.h"
+#include "condition_functions/ConditionFunctionFactory.h"
 #include "formulas/TES5DamageFormula.h"
 #include "libespm/Loader.h"
 
@@ -170,6 +171,92 @@ TEST_CASE("Spell damage from a plugin loaded past its master count counts",
   spellCastData.spell = 0x0001397E; // iron dagger, not a SPEL
   REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 0.f);
 
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage skips effects whose conditions the server cannot "
+          "evaluate",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  // Below 15% health, but the Disintegrate rider (+200) also needs HasPerk and HasKeyword
+  ac.SetPercentages({ 0.1f, 1.f, 1.f });
+
+  spellCastData.spell = 0x0002DD2A; // Sparks, 8 shock damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 8.f);
+
+  spellCastData.spell = 0x0002DD29; // Lightning Bolt, 25 shock damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 25.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage of unconditional spells and shouts is unchanged",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  spellCastData.spell = 0x00012FCD; // Flames, 8 fire damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 8.f);
+
+  spellCastData.spell = 0x00012FD0; // Firebolt, 25 fire damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 25.f);
+
+  // Unrelenting Force 3: 10 plus the conditional 40 from Dragonborn
+  spellCastData.spell = 0x00013F3A;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 50.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage counts a conditional effect when its conditions hold",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  p.worldState.conditionFunctionMap =
+    ConditionFunctionFactory::CreateConditionFunctions();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  p.CreateActor(0xff000001, { 0, 0, 0 }, 0, 0x3c);
+  auto& caster = p.worldState.GetFormAt<MpActor>(0xff000000);
+  auto& target = p.worldState.GetFormAt<MpActor>(0xff000001);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  // Labyrinthian reward spell: 25 damage while the actor hit has less than full Magicka
+  spellCastData.spell = 0x000DA746;
+  caster.SetPercentages({ 1.f, 0.5f, 1.f });
+  target.SetPercentages({ 1.f, 1.f, 1.f });
+  REQUIRE(formula.CalculateDamage(caster, target, spellCastData) == 0.f);
+
+  target.SetPercentages({ 1.f, 0.5f, 1.f });
+  REQUIRE(formula.CalculateDamage(caster, target, spellCastData) == 25.f);
+
+  p.DestroyActor(0xff000001);
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
 }
