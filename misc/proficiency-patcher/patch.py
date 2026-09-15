@@ -154,6 +154,7 @@ def main():
     ap.add_argument('--settings', default=os.path.join(HERE, '..', '..', 'build', 'dist', 'server', 'server-settings.json'))
     ap.add_argument('--spec', default=os.path.join(HERE, 'spec.json'))
     ap.add_argument('--skip-verify', action='store_true')
+    ap.add_argument('--next-form-id', help='first own form id to allocate, in hex; pins the marker spell ids')
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     log = []
@@ -162,6 +163,8 @@ def main():
     for r in removed:
         log.append(f'pre-clean: removed duplicate {r}')
     cmd = ['dotnet', 'run', '-c', 'Release', '--project', HERE, '--', '--settings', a.settings, '--plugin', pre, '--spec', a.spec, '--out', a.out, '--report', a.out]
+    if a.next_form_id:
+        cmd += ['--next-form-id', a.next_form_id]
     print(' '.join(cmd))
     r = subprocess.run(cmd)
     if r.returncode != 0:
