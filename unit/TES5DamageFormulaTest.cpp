@@ -125,6 +125,51 @@ TEST_CASE("Enchanted armor from a plugin loaded past its master count counts",
   DoDisconnect(p, 0);
 }
 
+TEST_CASE("Spell damage sums the hostile Health effects of a spell",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  spellCastData.spell = 0x0001C789; // Fireball, 40 fire damage
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 40.f);
+
+  spellCastData.spell = 0x0002B96C; // Ice Spike, 25 frost damage plus a slow
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 25.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage from a plugin loaded past its master count counts",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  TES5DamageFormula formula{};
+  SpellCastData spellCastData{};
+
+  // Dragonborn Freeze: its raw effect 0x0202732E loads as 0x0402732E, 20 frost damage
+  spellCastData.spell = 0x0402732D;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 20.f);
+
+  spellCastData.spell = 0x0001397E; // iron dagger, not a SPEL
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 0.f);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
 TEST_CASE("Formula is race-dependent for unarmed attack",
           "[TES5DamageFormula]")
 {
