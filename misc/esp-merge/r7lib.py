@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +31,12 @@ INPUTS = {
 }
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
+ATTRIBUTION = (R7 + 'attribution.json', 'd31ea15c3518904f004547d1a922ea913c3bb7c6b3ed7f691067815c4628f003')
+STAGE_SETTINGS_SHA = 'f9dce8d45661830ed8eb307542250da6ca1158d4eeb6f42e7b2416611417cb22'
+REMOVED_NAVM = (ESPFIX + 'tools/removed-navm.txt', '48763ffc1347aac94e6b35cb7cfe49b0ba20b8b8e1c921df1ef70af304ece7c8')
+WORK = R7 + 'work/'
+MANIFEST = WORK + 'manifest.json'
+BUILD_LOG = R7 + 'build-log.txt'
 
 
 def sha_bytes(b):
@@ -58,6 +65,39 @@ def assert_untouched():
         assert sha_file(p) == INPUTS['LIVE'][1], f'live copy changed: {p}'
     assert sha_file(INPUTS['NEW'][0]) == INPUTS['NEW'][1], 'the Desktop NEW file changed'
     return [f'untouched: {p} {INPUTS["LIVE"][1][:8]}' for p in LIVE_COPIES] + [f'untouched: {INPUTS["NEW"][0]} {INPUTS["NEW"][1][:8]}']
+
+
+def check_sha(path, want):
+    got = sha_file(path)
+    assert got == want, f'{path}: sha256 {got} is not the expected {want}'
+    return path
+
+
+def record_output(tag, path):
+    # Each step records its output here and the next step asserts it, so every intermediate file is sha-pinned
+    m = json.load(open(MANIFEST, encoding='utf-8')) if os.path.exists(MANIFEST) else {}
+    m[tag] = {'path': path, 'sha256': sha_file(path)}
+    with open(MANIFEST, 'w', encoding='utf-8') as f:
+        json.dump(m, f, indent=1)
+    return m[tag]['sha256']
+
+
+def step_input(tag):
+    e = json.load(open(MANIFEST, encoding='utf-8'))[tag]
+    return check_sha(e['path'], e['sha256']), e['sha256']
+
+
+def build_log(title, lines):
+    with open(BUILD_LOG, 'a', encoding='utf-8') as f:
+        f.write(f'== {title}\n' + '\n'.join(lines) + '\n\n')
+    print('\n'.join(lines))
+
+
+def dotnet(args):
+    # Runs the esp-merge Mutagen tool next to this file; returns (exit code, output lines)
+    r = subprocess.run(['dotnet', 'run', '-c', 'Release', '--project', HERE, '--'] + args,
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    return r.returncode, (r.stdout + r.stderr).splitlines()
 
 
 def live_load_order():
