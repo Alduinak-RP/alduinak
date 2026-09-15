@@ -163,6 +163,10 @@ TEST_CASE("Spell damage from a plugin loaded past its master count counts",
   spellCastData.spell = 0x0402732D;
   REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 20.f);
 
+  // Frost Breath 1: Dragonborn overrides it, raw effect 0x02020E96 loads as 0x04020E96
+  spellCastData.spell = 0x0005D172;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 10.f);
+
   spellCastData.spell = 0x0001397E; // iron dagger, not a SPEL
   REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 0.f);
 
