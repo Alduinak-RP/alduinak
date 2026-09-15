@@ -401,6 +401,7 @@ TEST_CASE("A paralysed actor cannot attack or move", "[Hit]")
   p.SetUserActor(1, kVictim);
   auto& caster = p.worldState.GetFormAt<MpActor>(kCaster);
   auto& victim = p.worldState.GetFormAt<MpActor>(kVictim);
+  REQUIRE(!p.worldState.GetLastMovUpdate(victim.GetIdx()));
 
   Equipment casterEquipment;
   casterEquipment.leftSpell = kParalyze;

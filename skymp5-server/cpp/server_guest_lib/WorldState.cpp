@@ -139,6 +139,11 @@ void WorldState::AddForm(std::unique_ptr<MpForm> form, uint32_t formId,
       refrByIdxUnreliable.resize(refr->GetIdx() + 1, nullptr);
     }
     refrByIdxUnreliable[refr->GetIdx()] = refr;
+
+    // A reused idx must not inherit the movement time of the form that freed it
+    if (refr->GetIdx() < lastMovUpdateByIdx.size()) {
+      lastMovUpdateByIdx[refr->GetIdx()].reset();
+    }
   }
 
   // MpObjectReference::Init requests save for newly created forms. That's why
