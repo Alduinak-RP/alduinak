@@ -26,7 +26,9 @@ const DEFAULT_AGGRO_SEC = 30;
 const SWITCH_COOLDOWN_MS = 5000;
 // Without aggro, a nearer player takes over only when this much nearer than the current host
 const NEARER_FACTOR = 0.5;
-// A host that lost the NPC to another client's claim had gone silent; it is not given that NPC back for this long
+// A client that sent no movement for its own player this long is paused, alt-tabbed or loading; the C++ takeover rule uses 2 s too
+const LIVE_MS = 2000;
+// A live host that lost the NPC to another client's claim did not run it; it is not given that NPC back for this long
 const SILENT_MS = 60000;
 
 interface Located {
@@ -61,6 +63,7 @@ export class HostingSystem implements System {
   private hostRange = DEFAULT_HOST_RANGE;
   private aggroMs = DEFAULT_AGGRO_SEC * 1000;
   private supported = false;
+  private liveness = false;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
@@ -71,6 +74,8 @@ export class HostingSystem implements System {
     if (Number.isFinite(sec) && sec >= 0) this.aggroMs = sec * 1000;
     this.supported = typeof this.mp.setHoster === "function" && typeof this.mp.getHoster === "function";
     if (!this.supported) this.log("HostingSystem: scam_native has no setHoster/getHoster, hosting stays client-driven");
+    this.liveness = typeof this.mp.getMovementAgeMs === "function";
+    if (this.supported && !this.liveness) this.log("HostingSystem: scam_native has no getMovementAgeMs, a paused player is skipped as host only after another client claims its NPC");
     this.installHooks();
   }
 
@@ -143,7 +148,7 @@ export class HostingSystem implements System {
       return;
     }
     const players = playerIds.map((id) => this.locate(id)).filter((p): p is Located => !!p);
-    const living = new Set(players.filter((p) => isAlive(mp, p.id)).map((p) => p.id));
+    const ready = new Set(players.filter((p) => isAlive(mp, p.id) && this.isLive(p.id)).map((p) => p.id));
     const streamers = this.streamers(players);
     const range2 = this.hostRange * this.hostRange;
     for (const h of this.hostables.values()) {
@@ -162,7 +167,7 @@ export class HostingSystem implements System {
       const near: Nearby[] = [];
       for (const p of players) {
         // Only a client the server streams the NPC to can run its AI
-        if (p.cell !== at.cell || !listening?.has(p.id) || !living.has(p.id)) continue;
+        if (p.cell !== at.cell || !listening?.has(p.id) || !ready.has(p.id)) continue;
         if (silent && silent.playerId === p.id && silent.until > now) continue;
         const dx = p.pos[0] - at.pos[0];
         const dy = p.pos[1] - at.pos[1];
@@ -174,6 +179,7 @@ export class HostingSystem implements System {
       if (hoster === current) continue;
       // Unhosting a host that still streams the NPC would only let its client claim it straight back
       if (!hoster && listening?.has(current)) continue;
+      // A paused or dead host is no candidate, so it loses the NPC without the cooldown
       const currentEligible = near.some((p) => p.id === current);
       if (hoster && currentEligible && now - (this.switchedAt.get(h.id) ?? 0) < SWITCH_COOLDOWN_MS) continue;
       this.switchTo(h.id, hoster, reason);
@@ -200,14 +206,25 @@ export class HostingSystem implements System {
     return { hoster: best.id, reason: "nearest" };
   }
 
-  // A host change the audit did not make is a client's claim: it gets the switch cooldown, and the host it replaced had gone silent
+  // A host change the audit did not make is a client's claim: it gets the switch cooldown, and a live host it replaced had not run the NPC
   private noteClaim(npcId: number, current: number, now: number): void {
     const last = this.lastHoster.get(npcId);
     if (last === current) return;
     this.lastHoster.set(npcId, current);
     if (!current) return;
     this.switchedAt.set(npcId, now);
-    if (last) this.silent.set(npcId, { playerId: last, until: now + SILENT_MS });
+    if (last && this.isLive(last)) this.silent.set(npcId, { playerId: last, until: now + SILENT_MS });
+  }
+
+  // Without getMovementAgeMs everyone counts as live and a lost claim is the only sign of a paused host
+  private isLive(playerId: number): boolean {
+    if (!this.liveness) return true;
+    try {
+      const age = Number(this.mp.getMovementAgeMs(playerId));
+      return age >= 0 && age <= LIVE_MS;
+    } catch {
+      return true;
+    }
   }
 
   private switchTo(actorId: number, hosterId: number, reason: string): boolean {
