@@ -139,6 +139,8 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("setEnabled", &ScampServer::SetEnabled),
       InstanceMethod("setInventoryOccupant", &ScampServer::SetInventoryOccupant),
       InstanceMethod("respawnActor", &ScampServer::RespawnActor),
+      InstanceMethod("setHoster", &ScampServer::SetHoster),
+      InstanceMethod("getHoster", &ScampServer::GetHoster),
       InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
@@ -802,6 +804,74 @@ Napi::Value ScampServer::RespawnActor(const Napi::CallbackInfo& info)
   try {
     auto& actor = partOne->worldState.GetFormAt<MpActor>(actorFormId);
     actor.Respawn(true);
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// setHoster(actorFormId, hosterActorFormId) moves an NPC's AI to that player's client; 0 unhosts it
+Napi::Value ScampServer::SetHoster(const Napi::CallbackInfo& info)
+{
+  auto formId = info[0].As<Napi::Number>().Uint32Value();
+  auto hosterId = info[1].As<Napi::Number>().Uint32Value();
+  try {
+    auto& remote = partOne->worldState.GetFormAt<MpActor>(formId);
+    // A player character is driven by its own client, as in OnHostAttempt
+    if (partOne->serverState.UserByActor(&remote) !=
+        Networking::InvalidUserId) {
+      throw std::runtime_error("Actor is controlled by a user");
+    }
+    auto& hosters = partOne->worldState.hosters;
+    auto it = hosters.find(formId);
+    const uint32_t prevHoster = it == hosters.end() ? 0 : it->second;
+    if (prevHoster == hosterId) {
+      return info.Env().Undefined();
+    }
+
+    Networking::UserId newUser = Networking::InvalidUserId;
+    if (hosterId) {
+      auto& hosterActor = partOne->worldState.GetFormAt<MpActor>(hosterId);
+      newUser = partOne->serverState.UserByActor(&hosterActor);
+      if (newUser == Networking::InvalidUserId) {
+        throw std::runtime_error("Hoster has no user attached");
+      }
+    }
+
+    if (prevHoster) {
+      auto& prevForm = partOne->worldState.LookupFormById(prevHoster);
+      MpActor* prevActor = prevForm ? prevForm->AsActor() : nullptr;
+      auto prevUser = prevActor ? partOne->serverState.UserByActor(prevActor)
+                                : Networking::InvalidUserId;
+      if (prevUser != Networking::InvalidUserId) {
+        partOne->SendHostStop(prevUser, remote);
+      }
+    }
+
+    if (!hosterId) {
+      hosters.erase(formId);
+      remote.UpdateHoster(0);
+      return info.Env().Undefined();
+    }
+
+    hosters[formId] = hosterId;
+    remote.UpdateHoster(hosterId);
+    partOne->StartHosting(newUser, remote);
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// getHoster(actorFormId) - the actor id of the hosting player, 0 when unhosted
+Napi::Value ScampServer::GetHoster(const Napi::CallbackInfo& info)
+{
+  auto formId = info[0].As<Napi::Number>().Uint32Value();
+  try {
+    auto& hosters = partOne->worldState.hosters;
+    auto it = hosters.find(formId);
+    return Napi::Number::New(info.Env(),
+                             it == hosters.end() ? 0 : it->second);
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }

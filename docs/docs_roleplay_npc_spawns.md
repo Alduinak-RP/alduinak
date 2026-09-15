@@ -47,6 +47,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | `ID` | yes | | the cell or worldspace the zone lives in: an editor id (`Kagrenzel01`, `Tamriel`), a form desc (`1a26f:Skyrim.esm`) or a load-order form id (`0x0001A26F`, `0001A26F`) |
 | `POS` | yes | | centre of the zone: `{ "x": .., "y": .., "z": .. }`, `[x, y, z]` or `"x, y, z"` |
 | `Size` | no | 2000 | trigger radius in game units |
+| `Spread` | no | none (rings) | radius around `POS` within which the NPCs stand at random spots, at least 96 units from the zone's living NPCs; capped at `Size`. Blank or `0` keeps the ring layout (see Placement). Only set it for a zone whose floor is flat and open that far out |
 | `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional; at most 40 NPCs per zone in total |
 | `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); `0` = never |
 | `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
@@ -104,7 +105,7 @@ emptying  -- a player back within 1.5 x Size ------->  active   (timer cleared)
 emptying  -- Despawn seconds elapsed --------------->  idle     (living NPCs destroyed; corpses and slot cooldowns keep their timers)
 
 per slot (one per NPC to place):
-ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a player inside --> placed again at the same slot
+ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a player inside --> placed again (its ring spot, or a fresh random spot with Spread)
 ```
 
 - Every NPC of a zone has a slot with its own cooldown. A kill starts that
@@ -125,8 +126,9 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
 - NPCs are placed with `PlaceAtMe` anchored on a player who is inside the zone,
-  so the actor starts in the right cell, then teleported to their slot, which
-  also becomes their spawn point. `spawnDelay` is forced to `1e9` seconds
+  so the actor starts in the right cell, then teleported to its ring spot, or
+  with `Spread` a random spot (see Placement), which also becomes its spawn
+  point. `spawnDelay` is forced to `1e9` seconds
   (about 31 years) so the engine never revives them: a respawn is always a
   fresh copy from this system. Do not use larger values such as `1e12`: they
   overflow the engine's timer arithmetic and the actor respawns on the next
@@ -139,18 +141,77 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
 - A failed spawn (`PlaceAtMe` error) puts the slot on a 30 second cooldown
   instead of retrying every poll.
 
+## Hosting: which client runs the AI
+
+A server NPC has no AI of its own. One client, its host, runs the engine AI on
+its local copy and streams the movement to the server, which relays it to
+everyone else. Before `HostingSystem` (`skymp5-server/ts/systems/hostingSystem.ts`)
+the host was whoever loaded the NPC first and kept it as long as their client
+kept sending movement, which it does even for an actor it has unloaded, so a
+player far across Tamriel could hold an NPC in the engine's low-detail AI
+forever: the NPC stood still or shambled for everyone near it.
+
+The server now audits every zone NPC and companion every 1.5 seconds and moves
+hosting with `mp.setHoster` (a `scam_native` addon call; without it the audit
+logs once at boot and hosting stays client-driven). A candidate host is a
+living player the server streams the NPC to (the NPC's 4096-unit grid cell and
+the eight cells around it, read through `actorNeighbors`), in its cell or
+worldspace and within `npcHostRange`:
+
+- a companion is hosted by its owner, assigned the moment it spawns;
+- an unowned NPC is hosted by a player who exchanged a damaging hit with it
+  within the last `npcAggroHostSeconds`: the current host while it is one of
+  them, otherwise the one with the latest hit. Only hits the other hit
+  handlers allowed and that dealt damage count;
+- otherwise by the nearest candidate. A host that is still a candidate keeps
+  the NPC unless another is less than half as far away;
+- a host that is still a candidate never loses the NPC within 5 seconds of a
+  switch, and that includes a claim its own client made;
+- with no candidate, the current host keeps the NPC as long as the server
+  still streams it to that player, because unhosting would only let that
+  client claim it straight back. Once the host no longer receives the NPC it
+  is unhosted and stands still until a client that has it loaded claims it.
+
+A client can still claim an NPC on its own: an unhosted one at once, a hosted
+one once its host has sent no movement for 2 seconds (paused, alt-tabbed,
+loading). The audit reads a claim over a live host as that host having gone
+silent and does not give it that NPC back for 60 seconds, so a paused player
+standing next to an NPC does not pull it back every few seconds.
+
+Whoever starts hosting, by audit or by claim, gets `HostStart` and a second
+later the NPC's health, magicka and stamina percentages
+(`PartOne::StartHosting`), so its engine does not run the NPC on stale health.
+`mp.setHoster` refuses a player character (an actor with a user attached).
+
+`npcHostRange` (default 8192) and `npcAggroHostSeconds` (default 30) live in
+`server-settings.json`. Every switch logs
+`HostingSystem: <npc> hosted by <player> (aggro|nearest|owner|nobody in range)`.
+
 ### Placement
 
-The first NPC stands on `POS`; the others fill rings around it: 6 on a ring
-96 units out, 12 at 192, 18 at 288 and so on, with a partly filled outer ring
-spread evenly. Neighbours stand about 96 units apart, so a pack of trolls or
-spiders does not spawn inside each other and get shoved through the floor.
-Every slot is placed 64 units above `POS`, so the NPC drops onto a sloped or
-bumpy floor instead of starting inside it. Record `POS` standing on open floor
-with room around it: up to 7 NPCs need about 96 units of clear floor around
-`POS`, 8 to 19 about 192. A respawn reuses the dead NPC's slot. Every spawned
-actor is tagged `private.npcSpawner = <Name>` (best effort) for gamemode
-scripts that want to tell spawner NPCs apart.
+Without `Spread` the first NPC stands on `POS` and the others fill rings
+around it: 6 on a ring 96 units out, 12 at 192, 18 at 288 and so on, with a
+partly filled outer ring spread evenly. Neighbours stand about 96 units apart,
+so a pack of trolls or spiders does not spawn inside each other and get shoved
+through the floor. Record `POS` standing on open floor with room around it: up
+to 7 NPCs need about 96 units of clear floor around `POS`, 8 to 19 about 192,
+20 to 37 about 288. Each NPC has its own ring spot, and a respawn stands on the
+dead NPC's spot again.
+
+With `Spread` every placement, first spawn and respawn alike, picks a random
+spot within `Spread` of `POS` that is at least 96 units from the zone's living
+NPCs. After 12 failed tries (a `Spread` too small for the count) the NPC takes
+its ring spot instead, so NPCs still never spawn inside each other.
+
+Every spot, ring or random, is placed 64 units above `POS`, so the NPC drops
+onto a sloped or bumpy floor instead of starting inside it. That only helps
+near `POS`: a random spot far out on steep ground, or beyond the walls of a
+small room, lands under the terrain, inside rock or in the void, and an NPC
+lost that way stays alive in its slot until the zone despawns. Keep `Spread`
+inside the flat, open part of the zone; interior zones are safest without it.
+
+Every spawned actor is tagged `private.npcSpawner = <Name>` (best effort) for
+gamemode scripts that want to tell spawner NPCs apart.
 
 Every spawned actor also gets `ff_hostile` (true or false, neighbor-visible;
 the gamemode's `50_properties.js` registers it). It is true when the base's

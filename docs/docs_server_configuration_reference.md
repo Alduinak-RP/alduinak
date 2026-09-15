@@ -310,6 +310,30 @@ spawn and after the race menu. Read by the native server at boot.
 }
 ```
 
+## npcHostRange
+
+How far, in game units, a player can be from a server NPC (a spawn zone NPC or a companion) and still be picked as its new host. Only players the server streams the NPC to count: the server sends an actor to the players in its 4096-unit grid cell and the eight cells around it, so a player 4.1k units away across two cell lines may not have it, while one 11k units away diagonally may. The server moves an NPC's hosting to the player it is fighting, to its owner, or to the nearest such player within this range. A host that still streams the NPC keeps it when nobody else qualifies, so an NPC is unhosted only once its host no longer receives it (see `docs_roleplay_npc_spawns.md`, Hosting). Default 8192. Needs the `scam_native` build with `setHoster`; older builds log once at boot and keep client-driven hosting.
+
+```json5
+{
+  // ...
+  "npcHostRange": 8192
+  // ...
+}
+```
+
+## npcAggroHostSeconds
+
+For this many seconds after a player and a zone NPC exchanged a damaging hit, that player may host the NPC, so its AI runs on the client that is fighting it. Only hits the other handlers allowed (god mode, ghost mode and the capture carrier rule refuse some) and that deal damage count. A host that is itself inside its window keeps the NPC when another player hits it, so a group fight does not move the AI between clients. Default 30; `0` disables the aggro rule and leaves nearest-player hosting.
+
+```json5
+{
+  // ...
+  "npcAggroHostSeconds": 30
+  // ...
+}
+```
+
 ## gamemodePath
 
 Contains a relative or an absolute path to a file or directory with a gamemode.

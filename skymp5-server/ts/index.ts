@@ -40,6 +40,7 @@ import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
 import { CompanionSystem } from "./systems/companionSystem";
+import { HostingSystem } from "./systems/hostingSystem";
 import { ConjurationSystem } from "./systems/conjurationSystem";
 import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { EventEmitter } from "events";
@@ -216,9 +217,13 @@ const main = async () => {
   const log = console.log;
   const systems = new Array<System>();
   // The admin panel's NPCs tab drives the spawner and its Players tab grants mastery hours.
+  const hostingSystem = new HostingSystem(log);
   const npcSpawnSystem = new NpcSpawnSystem(log);
   const masterySystem = new MasterySystem(log);
-  const companionSystem = new CompanionSystem(log);
+  const companionSystem = new CompanionSystem(log, hostingSystem);
+  // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
+  hostingSystem.addProvider(() => npcSpawnSystem.liveNpcs());
+  hostingSystem.addProvider(() => companionSystem.hostables());
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
@@ -243,6 +248,8 @@ const main = async () => {
     new HuntingSystem(log, masterySystem),
     new BountyBoardSystem(log),
     new UntouchableSystem(log),
+    // Observes hits for the hosting audit; before the spawner and the companions that feed it
+    hostingSystem,
     npcSpawnSystem,
     // After AdminSystem: its onHitDamageAttempt hook wraps the god-mode one
     companionSystem,

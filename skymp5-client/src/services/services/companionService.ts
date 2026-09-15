@@ -153,16 +153,19 @@ export class CompanionService extends ClientListener {
     return state;
   }
 
-  // A teammate in the player faction instead of its own factions, so it is never hostile to the owner and only attacks enemies unprovoked
+  // A teammate in the player faction instead of its own factions, so it is never hostile to the owner and only attacks enemies unprovoked.
+  // Assistance 2 joins the owner's fights instead of waiting to be attacked; Confidence 4 never flees; favors allow the command mode
   private prepare(actor: Actor): void {
     actor.removeFromAllFactions();
     const faction = this.sp.Faction.from(this.sp.Game.getFormEx(PLAYER_FACTION));
     if (faction) {
       actor.setFactionRank(faction, 0);
     }
-    actor.setPlayerTeammate(true, false);
+    actor.setPlayerTeammate(true, true);
     actor.ignoreFriendlyHits(true);
     actor.setActorValue("Aggression", 1);
+    actor.setActorValue("Assistance", 2);
+    actor.setActorValue("Confidence", 4);
   }
 
   private fight(actor: Actor, target: Actor, state: LocalState): void {
@@ -227,7 +230,8 @@ export class CompanionService extends ClientListener {
   private static readonly cleanerBurstMs = 3000;
   private static readonly perkCheckMs = 10000;
   private static readonly followOffsetY = -128;
-  private static readonly catchUpRadius = 512;
+  // Farther than catchUpRadius it runs to the owner; nearer it walks, so a large value left it standing or plodding
+  private static readonly catchUpRadius = 256;
   private static readonly followRadius = 128;
   private static readonly hostileEffectFlag = 0x1;
 }

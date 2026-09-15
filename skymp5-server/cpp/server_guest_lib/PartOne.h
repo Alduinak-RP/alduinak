@@ -132,6 +132,10 @@ public:
   void SendHostStop(Networking::UserId badHosterUserId,
                     MpObjectReference& remote);
 
+  // HostStart with a takeover grace period, then the actor's values a second later
+  void StartHosting(Networking::UserId hosterUserId,
+                    MpObjectReference& remote);
+
   static MessageSerializer& GetMessageSerializerInstance();
 
 private:

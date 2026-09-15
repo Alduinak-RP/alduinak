@@ -5,6 +5,7 @@ import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
 import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
+import { Hostable } from "./hostingSystem";
 import { destroyLeftovers } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -25,6 +26,8 @@ const MAX_COUNT = 20;
 const MAX_TOTAL = 40;
 const MAX_NAME = 64;
 const SLOT_SPACING = 96;
+// Random spots tried within Spread before a crowded zone falls back to the ring slot
+const PLACE_ATTEMPTS = 12;
 // Spawn height above POS so an NPC drops onto an uneven floor instead of starting inside it
 const SPAWN_LIFT = 64;
 const RETRY_MS = 30000;
@@ -47,6 +50,7 @@ interface Spawned {
   id: number;
   slot: number;
   diedAt: number;
+  pos: number[];
 }
 
 interface Zone {
@@ -55,8 +59,10 @@ interface Zone {
   cellOrWorldId: number;
   pos: number[];
   radius: number;
+  // Set: random spots within this radius of pos; unset: rings of slots around pos
+  spread?: number;
   npcs: ZoneNpc[];
-  // One entry per NPC to place; slot i stands at slotPos(i)
+  // One entry per NPC to place; slot i rings at slotPos(i)
   slots: ZoneNpc[];
   total: number;
   despawnSeconds: number;
@@ -76,6 +82,7 @@ interface Draft {
   locator: string;
   pos: number[];
   radius: number;
+  spread?: number;
   npcs: { id: string; count: number }[];
   despawnSeconds: number;
   respawnSeconds: number;
@@ -281,8 +288,11 @@ export class NpcSpawnSystem implements System {
       reject(`'${name}' skipped, more than ${MAX_TOTAL} NPCs`);
       return null;
     }
+    // Only an explicit positive Spread scatters; blank or 0 keeps the rings
+    const spreadRaw = num(pick(raw, "spread"), 0);
+    const spread = spreadRaw > 0 ? Math.min(radius, spreadRaw) : undefined;
     return {
-      name, locator, pos, radius, npcs,
+      name, locator, pos, radius, spread, npcs,
       despawnSeconds: Math.max(0, num(pick(raw, "despawn"), DEFAULT_DESPAWN)),
       respawnSeconds: Math.max(0, num(pick(raw, "respawn"), DEFAULT_RESPAWN)),
     };
@@ -349,12 +359,12 @@ export class NpcSpawnSystem implements System {
     }
     const slots = npcs.flatMap((n) => Array<ZoneNpc>(n.count).fill(n));
     return {
-      name: draft.name, cellOrWorldDesc, cellOrWorldId, pos: draft.pos, radius: draft.radius, npcs, slots,
+      name: draft.name, cellOrWorldDesc, cellOrWorldId, pos: draft.pos, radius: draft.radius, spread: draft.spread, npcs, slots,
       total: slots.length,
       despawnSeconds: draft.despawnSeconds,
       respawnSeconds: draft.respawnSeconds,
       slotReadyAt: slots.map(() => 0),
-      signature: JSON.stringify([cellOrWorldDesc, draft.pos, draft.radius, slots.map((n) => n.baseDesc), draft.despawnSeconds, draft.respawnSeconds]),
+      signature: JSON.stringify([cellOrWorldDesc, draft.pos, draft.radius, draft.spread, slots.map((n) => n.baseDesc), draft.despawnSeconds, draft.respawnSeconds]),
       spawned: [], emptySince: 0, inside: new Set(),
     };
   }
@@ -449,18 +459,19 @@ export class NpcSpawnSystem implements System {
       const anchor = this.anchorIn(zone) ?? fallbackAnchor;
       if (anchor === undefined) break;
       const npc = zone.slots[slot];
-      const id = this.spawnOne(mp, zone, npc, slot, anchor);
-      if (id === null) {
+      const fresh = this.spawnOne(mp, zone, npc, slot, anchor);
+      if (fresh === null) {
         zone.slotReadyAt[slot] = now + RETRY_MS;
         continue;
       }
       if (entry) {
         this.removeNpc(mp, entry.id);
-        this.log(`NpcSpawnSystem: '${zone.name}' respawned ${npc.baseDesc} (${hex(entry.id)} -> ${hex(id)})`);
-        entry.id = id;
+        this.log(`NpcSpawnSystem: '${zone.name}' respawned ${npc.baseDesc} (${hex(entry.id)} -> ${hex(fresh.id)})`);
+        entry.id = fresh.id;
+        entry.pos = fresh.pos;
         entry.diedAt = 0;
       } else {
-        zone.spawned.push({ id, slot, diedAt: 0 });
+        zone.spawned.push({ id: fresh.id, slot, diedAt: 0, pos: fresh.pos });
       }
       zone.slotReadyAt[slot] = 0;
       placed++;
@@ -474,13 +485,14 @@ export class NpcSpawnSystem implements System {
     return placed;
   }
 
-  private spawnOne(mp: Mp, zone: Zone, npc: ZoneNpc, slot: number, anchorId: number): number | null {
+  private spawnOne(mp: Mp, zone: Zone, npc: ZoneNpc, slot: number, anchorId: number): { id: number; pos: number[] } | null {
     try {
-      const loc = { cellOrWorldDesc: zone.cellOrWorldDesc, pos: this.slotPos(zone, slot), rot: [0, 0, 0] };
+      const pos = this.pickPos(zone, slot);
+      const loc = { cellOrWorldDesc: zone.cellOrWorldDesc, pos, rot: [0, 0, 0] };
       const id = placeNpc(mp, anchorId, npc.baseDesc, loc);
       try { mp.set(id, TAG_PROP, zone.name); } catch { }
       try { mp.set(id, HOSTILE_PROP, this.isHostileBase(mp, npc.baseDesc)); } catch { }
-      return id;
+      return { id, pos };
     } catch (e) {
       this.log(`NpcSpawnSystem: '${zone.name}' failed to spawn ${npc.baseDesc}: ${e}`);
       return null;
@@ -539,6 +551,19 @@ export class NpcSpawnSystem implements System {
     const angle = (2 * Math.PI * (slot - first)) / size;
     const radius = ring * SLOT_SPACING;
     return [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
+  }
+
+  // With Spread a random spot at least SLOT_SPACING from the zone's living NPCs, else or when crowded the ring slot
+  private pickPos(zone: Zone, slot: number): number[] {
+    if (!zone.spread) return this.slotPos(zone, slot);
+    const taken = zone.spawned.filter((e) => e.id && !e.diedAt).map((e) => e.pos);
+    for (let attempt = 0; attempt < PLACE_ATTEMPTS; attempt++) {
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = zone.spread * Math.sqrt(Math.random());
+      const pos = [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
+      if (taken.every((t) => Math.hypot(t[0] - pos[0], t[1] - pos[1]) >= SLOT_SPACING)) return pos;
+    }
+    return this.slotPos(zone, slot);
   }
 
   // A death starts the slot's Respawn cooldown and the corpse's own removal timer
@@ -659,6 +684,11 @@ export class NpcSpawnSystem implements System {
     return Math.ceil(wait / 1000);
   }
 
+  // Living zone NPCs, for the hosting audit
+  liveNpcs(): Hostable[] {
+    return this.zones.flatMap((z) => z.spawned.filter((e) => e.id && !e.diedAt).map((e) => ({ id: e.id })));
+  }
+
   // ── Admin panel API ──────────────────────────────────────────────────────────
 
   listZones(): ZoneSummary[] {
@@ -691,6 +721,7 @@ export class NpcSpawnSystem implements System {
       ID: draft.locator,
       POS: { x: draft.pos[0], y: draft.pos[1], z: draft.pos[2] },
       Size: draft.radius,
+      Spread: draft.spread,
       NPC: draft.npcs.map((n) => n.count > 1 ? `${n.id} ${n.count}` : n.id),
       Despawn: draft.despawnSeconds,
       Respawn: draft.respawnSeconds,
