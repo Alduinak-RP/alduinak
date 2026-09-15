@@ -1030,19 +1030,22 @@ class Attr:
             later = pri is not None and pp != vp
             npr = fields(compare(pri, r, s.canon)) if later else nv
             mv = fields(compare(van, pri, s.canon)) if later else set()
-            # per field: NEW vs vanilla, NEW vs the prior winner, prior winner vs vanilla
-            forward = sorted(npr - nv)
-            graves = sorted((nv & npr) - mv)
-            conflict = sorted(nv & npr & mv)
-            carried = sorted((nv & mv) - npr)
-            info.update(graves_fields=graves + conflict, mod_fields=sorted(mv), carried_mod_fields=carried,
-                        graves_diffs=[f'{c}:{t}:{d}'[:120] for c, t, d in dv if c != 'noise' and (t or 'flags') in set(graves + conflict)])
+            # a field is Graves's only when NEW's value matches no plugin in the chain, masters and mods alike
+            per = {p: fields(compare(recs[(p, key)], r, s.canon)) for p in chain if (p, key) in recs}
+            mine = set.intersection(*per.values()) if per else nv
+            forward = sorted(npr - mine)
+            graves = sorted(mine - mv)
+            conflict = sorted(mine & mv)
+            carried = {t: [p for p in chain if t not in per.get(p, {t})] for t in sorted(nv - mine)}
+            info.update(graves_fields=graves + conflict, mod_fields=sorted(mv), carried_fields=carried,
+                        graves_diffs=[f'{c}:{t}:{d}'[:120] for c, t, d in dv if c != 'noise' and (t or 'flags') in mine])
             if not later:
                 info['decision'], info['why'] = 'KEEP', 'no later plugin changes the cell'
             elif not npr:
                 info['decision'], info['why'] = 'KEEP', 'NEW already equals the prior winner apart from CK noise'
             elif not graves and not conflict:
-                info['decision'], info['why'] = 'FORWARD', f'NEW differs from {pp} only where NEW is vanilla; forward the prior winner, keep NEW\'s children'
+                src = ', '.join(f'{t} from {carried[t]}' if t in carried else f'{t} vanilla' for t in forward)
+                info['decision'], info['why'] = 'FORWARD', f'NEW differs from {pp} only where it keeps an earlier plugin\'s value ({src}); forward the prior winner, keep NEW\'s children'
                 info['forward_fields'] = 'all'
             elif not forward and not conflict:
                 info['decision'], info['why'] = 'KEEP', f'Graves edited {graves}, which {pp} leaves vanilla; nothing to forward'
@@ -1322,6 +1325,8 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
         owner_review.append(f're-owning Graves\'s overrides of plugins that are not R4 masters adds masters {mod_masters}: '
                             + '; '.join(f'{e["fid"]} -> {e["target"]}' for e in ents if e.get('master') in mod_masters))
     owner_review += [f'{c["cell"]} {c["edid"]}: {c["why"]}' for c in at.city_cells if c['decision'] == 'CONFLICT']
+    owner_review += [f'city cell {c["cell"]} {c["edid"]}: Graves edited {c["graves_fields"]} ({c["decision"]})' for c in at.city_cells
+                     if c.get('graves_fields') and c['decision'] != 'CONFLICT']
     if idx:
         owner_review.append(f'{len(idx)} form ids use raw indices 08-0D (step 2a assumes only 0E04B2AB NAME): {idx}')
 
@@ -1339,6 +1344,7 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
         'prior_reconcile': prior, 'owner_review': owner_review, 'index_08_0D': idx,
         'reverted_r4_patches': at.reverted, 'navmesh': at.nav,
         'city_cells': [{k: v for k, v in c.items()} for c in at.city_cells], 'city_refs': {f'{t} {k}': n for (t, k), n in at.city_refs.items()},
+        'city_cells_graves_edited': [f'{c["cell"]} {c["edid"]!r} {c["decision"]}: {c["graves_fields"]}' for c in at.city_cells if c.get('graves_fields')],
         'forward_extra_masters': dict(at.forward_masters),
         'q449_records': [f'{f:08X} {e["class"]}/{e.get("subtype", "")} {e.get("master", "")} {e.get("action", "")}: {e.get("note", "")}'
                          for f, e in ((f, E.get(('NEW', f), {'class': 'UNCLASSIFIED'})) for f in at.q449_fids)],
@@ -1374,10 +1380,12 @@ def write_text(doc, at, ents):
     L += ['', 'OWNER REVIEW'] + [f'  {x}' for x in doc['owner_review']]
     L += ['', 'R4 PATCHES NEW REVERTED (NEW equals RAW)'] + [f'  {x}' for x in doc['reverted_r4_patches']]
     L += ['', 'NAVMESH'] + [f'  {x}' for x in doc['navmesh']['pairs'] + doc['navmesh']['drop']] + [f'  NVMI {doc["navmesh"]["nvmi"]}']
-    L += ['', 'CITY CELLS (84 Skyrim + Lux Via, NEW vs vanilla and the prior winner)']
+    L += ['', 'CITY CELLS (84 Skyrim + Lux Via; a field is Graves\'s only when NEW\'s value is in no plugin of the chain)']
     for c in doc['city_cells']:
         L.append(f'  {c["decision"]:8s} {c["cell"]} {c["edid"]!r} prior={c["prior"]} graves={c.get("graves_fields")} mod={c.get("mod_fields")}'
+                 + (f' carried={c["carried_fields"]}' if c.get('carried_fields') else '')
                  + (f' forward={c.get("forward_fields")}' if c.get('forward_fields') else '') + (f' masters+={c["extra_masters"]}' if c.get('extra_masters') else ''))
+    L.append(f'  cells Graves edited: {doc["city_cells_graves_edited"] or "none"}')
     L += ['  city refs: ' + str(doc['city_refs']), '  extra masters from forwarding: ' + str(doc['forward_extra_masters'])]
     L += ['', f'THE {len(doc["q449_records"])} OWN REFS WITH NO R4 RECORD UNDER THEIR ID (new, doubled or re-owned, record by record)']
     L += [f'  {x}' for x in doc['q449_records']]
