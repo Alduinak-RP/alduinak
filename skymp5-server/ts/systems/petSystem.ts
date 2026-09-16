@@ -38,6 +38,13 @@ type Mp = any;
 export type PetKind = "horse" | "livestock" | "dog";
 export type PetHome = "stable" | "farm" | "house";
 
+// One grantable base as the admin panel sees it
+export interface PetBaseEntry {
+  desc: string;
+  editorId: string;
+  name: string;
+}
+
 export interface StoredPet {
   uid: string;
   name: string;
@@ -109,6 +116,22 @@ const DEFAULT_BASES: Record<PetKind, string[]> = {
   livestock: ["EncCow", "EncGoatDomestic", "EncChicken"],
   dog: ["EncDog", "TrainedDog"],
 };
+// Display names for the bases; in game every horse coat is called just "Horse"
+const BASE_LABEL: Record<string, string> = {
+  enchorsesaddledbrown: "Brown Horse",
+  enchorsesaddledblack: "Black Horse",
+  enchorsesaddledgrey: "Grey Horse",
+  enchorsesaddledpalomino: "Palomino Horse",
+  enccow: "Cow",
+  encgoatdomestic: "Goat",
+  encchicken: "Chicken",
+  encdog: "Dog",
+  traineddog: "Trained Dog",
+};
+// An id outside the table drops its Enc prefix and splits at camel case: EncWolfIce reads "Wolf Ice"
+const baseLabel = (editorId: string): string =>
+  BASE_LABEL[editorId.toLowerCase()] ||
+  editorId.replace(/^Enc(?=[A-Z])/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
 // Editor id candidates for the harvest products, the first one found in the load order wins
 const DEFAULT_HARVEST_ITEMS: Record<string, string[]> = {
   milk: ["BYOHFoodMilk"],
@@ -151,8 +174,7 @@ export class PetSystem implements System {
   private nextConsentId = CONSENT_ID_BASE;
   private leftovers: number[] = [];
   private cfg = { ...DEFAULTS };
-  // kind -> [{desc, editorId}]
-  private bases = new Map<PetKind, { desc: string; editorId: string }[]>();
+  private bases = new Map<PetKind, PetBaseEntry[]>();
   // product -> item desc
   private harvestItems = new Map<string, string>();
   private anchors: Anchor[] = [];
@@ -258,7 +280,7 @@ export class PetSystem implements System {
   }
 
   // Grantable bases per kind, for the admin panel
-  baseList(): Record<PetKind, { desc: string; editorId: string }[]> {
+  baseList(): Record<PetKind, PetBaseEntry[]> {
     return {
       horse: this.bases.get("horse") ?? [],
       livestock: this.bases.get("livestock") ?? [],
@@ -1174,13 +1196,15 @@ export class PetSystem implements System {
     }
     const descOf = (ref: string): string => (ref.includes(":") ? ref : resolved.get(ref.toLowerCase()) ?? "");
     for (const kind of Object.keys(basesByKind) as PetKind[]) {
-      const list: { desc: string; editorId: string }[] = [];
+      const list: PetBaseEntry[] = [];
       for (const ref of basesByKind[kind]) {
         const desc = descOf(ref);
         if (!desc) continue;
         let ok = false;
         try { ok = this.mp.lookupEspmRecordById(this.mp.getIdFromDesc(desc))?.record?.type === "NPC_"; } catch { }
-        if (ok) list.push({ desc, editorId: this.editorIdOf(desc) || ref });
+        if (!ok) continue;
+        const editorId = this.editorIdOf(desc) || ref;
+        list.push({ desc, editorId, name: baseLabel(editorId) });
       }
       this.bases.set(kind, list);
       wanted.set(kind, list.map((b) => b.editorId).join(", ") || "none");
