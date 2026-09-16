@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Step 1: attribution manifest for the r7 merge (read-only). Classifies every NEW own-index record and every R4 record NEW lacks.
+# Step 1: attribution manifest for a merge run (read-only). Classifies every NEW own-index record and every R4 record NEW lacks.
 #   python attribute.py
-# Writes r7/attribution.json and r7/attribution.txt; exits 2 when a record is unclassified or a count does not reconcile.
+# Writes <run>/attribution.json and attribution.txt, plus delta.json for a replay run; exits 2 when a record is unclassified or a count does not reconcile.
 import collections
 import json
 import math
@@ -13,11 +13,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.join(HERE, 'tools')]
-from r7lib import ESPFIX, INPUTS, R7, SELF, STAGE, assert_untouched, live_load_order, read_input, sha_bytes, sha_file  # noqa: E402
+from r7lib import ESPFIX, INPUTS, RUN_DIR, SELF, STAGE, assert_untouched, live_load_order, read_input, sha_bytes, sha_file  # noqa: E402
 from esplib import Plugin, Record, zstr  # noqa: E402
 import city  # noqa: E402
 
-NEW_OWN = 0x0E
 REF_TYPES = {'REFR', 'ACHR', 'PGRE', 'PHZD', 'PMIS', 'PARW', 'PBAR', 'PBEA', 'PCON', 'PFLA'}
 CELL_CHILD_GROUPS = (6, 8, 9, 10)
 DUP_RE = re.compile(r'DUPLICATE\d*$', re.I)
@@ -34,9 +33,9 @@ FID_LAYOUT = {
     'XCMO': (0, (0,), ()), 'XCCM': (0, (0,), ()), 'CNTO': (8, (0,), ()), 'KWDA': (4, (0,), ()), 'XLRT': (4, (0,), ()),
     'XLKR': (8, (0, 4), ()), 'XPOD': (4, (0,), ()), 'XLRM': (0, (0,), ()), 'XLTW': (0, (0,), ()),
     'XLOC': (0, (4,), (1, 2, 3, 9, 10, 11)), 'XCLR': (4, (0,), ()), 'ATXT': (0, (0,), (5,)), 'BTXT': (0, (0,), (5,)),
-    'CTDA': (0, (12, 16, 24), (1, 2, 3, 10, 11)), 'XHOR': (0, (0,), ()), 'XCZC': (0, (0,), ()),
+    'CTDA': (0, (12, 16, 24), (1, 2, 3, 10, 11)), 'XHOR': (0, (0,), ()), 'XCZC': (0, (0,), ()), 'EFID': (0, (0,), ()),
 }
-TYPE_LAYOUT = {('COBJ', 'CNAM'): (0, (0,), ()), ('COBJ', 'BNAM'): (0, (0,), ()),
+TYPE_LAYOUT = {('COBJ', 'CNAM'): (0, (0,), ()), ('COBJ', 'BNAM'): (0, (0,), ()), ('ARMO', 'MODL'): (0, (0,), ()),
                ('WEAP', 'CRDT'): (0, (16,), (2, 3, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22, 23))}
 RAW_PAD = {'XCLC': (9, 10, 11)}
 FLOAT_SUBS = {'XSCL', 'XRDS', 'XCLW'}
@@ -44,19 +43,86 @@ FLOAT_SUBS = {'XSCL', 'XRDS', 'XCLW'}
 NOISE_SUBS = {'OBND', 'XRGD', 'XRGB'}
 TYPE_NOISE = {('LCTN', t) for t in ('ACSR', 'ACID', 'LCSR', 'LCID', 'ACPR', 'LCPR', 'ACEP', 'LCEP', 'ACUN', 'LCUN')}
 NAV_SUBS = {'NVNM', 'NVMI', 'NVPP'}
-PLAN = {'own': 7204, 'reowned_total': 873, 'reowned': {'COBJ': 358, 'REFR': 502, 'CELL': 6, 'NAVM': 3, 'ACTI': 1, 'FURN': 1, 'ACHR': 1},
-        'collision_slots': [0x0012CC, 0x001328, 0x001384, 0x00138F, 0x0018F6, 0x0018F7, 0x001902, 0x001EE8, 0x001EE9, 0x001EEA, 0x001EEB],
-        'renumbered_cells': {0x825: 0x726A, 0x826: 0x726D, 0x83B: 0x726E, 0x847: 0x726F, 0x85D: 0x719C}, 'renumbered_refs': 386,
-        'broken': 0x0E04B2AB, 'lost': 111, 'lost_navm': 0x090C434A, 'lost_nvmi': 14, 'removed_own': 312,
-        'removed_land': [0x001F7D, 0x001F7E, 0x001F85, 0x001F86, 0x001F87],
-        'skyrim_navm': [0x079BDB, 0x0E807E, 0x0E8601, 0x0EA083, 0x0EA089, 0x0EA08A, 0x0EA091, 0x0EA094, 0x0EA09C], 'drop_navm': 0x0EA093,
-        'xlcn_cells': [0x0095B8, 0x0095D7, 0x0095D8, 0x0095F7], 'new_cells': 84, 'city_refs': {'REFR': 304, 'ACHR': 30}, 'q449': 449,
-        'q449_split': {'renumbered own (slot collision)': 306, 'renumbered override (slot collision)': 7, 'master ref, in place': 9,
-                       'master ref, moved': 37, 'non-R4-master ref, moved': 5, 'non-R4-master ref, renumbered copy': 5, 'doubled copy': 1,
-                       'genuinely new': 79},
-        'copied_interiors': {'The Great City of Falkreath.esp': [0x0022CA], 'City of Dawnstar.esp': [0x006679, 0x010358, 0x015FC0, 0x07F4B6],
-                             'Warbirds Whiterun Metropolis.esp': [0x1261EE, 0x21F472],
-                             'Winterhold Restored.esp': [0x30948F, 0x33CA2F, 0x8D4981, 0xD7128E, 0xD7B4BB]}}
+ALT_TEXTURES = {'MODS', 'MO2S', 'MO3S', 'MO4S', 'MO5S'}
+# Subrecords the CK adds with its default value when it saves a record: (record type, subrecord) -> (value, whether the value is a form id)
+CK_DEFAULTS = {('SPEL', 'ETYP'): (('Skyrim.esm', 0x013F44), True), ('MGEF', 'SNDD'): (b'', False), ('KYWD', 'CNAM'): (b'\0\0\0\0', False)}
+# Bytes the CK rewrites with junk: (record type, subrecord) -> (entry size, junk offsets inside an entry)
+JUNK_BYTES = {('LAND', 'VTXT'): (8, (2, 3))}
+PLANS = {}
+PLANS['6017a624'] = {'run': 'r7', 'masters': 8, 'own_index': 0x0E, 'own': 7204, 'reowned_total': 873, 'reowned': {'COBJ': 358, 'REFR': 502, 'CELL': 6, 'NAVM': 3, 'ACTI': 1, 'FURN': 1, 'ACHR': 1},
+    'collision_slots': [0x0012CC, 0x001328, 0x001384, 0x00138F, 0x0018F6, 0x0018F7, 0x001902, 0x001EE8, 0x001EE9, 0x001EEA, 0x001EEB],
+    'renumbered_cells': {0x825: 0x726A, 0x826: 0x726D, 0x83B: 0x726E, 0x847: 0x726F, 0x85D: 0x719C}, 'renumbered_refs': 386,
+    'broken': 0x0E04B2AB, 'lost': 111, 'lost_navm': 0x090C434A, 'lost_nvmi': 14, 'removed_own': 312,
+    'removed_land': [0x001F7D, 0x001F7E, 0x001F85, 0x001F86, 0x001F87],
+    'skyrim_navm': [0x079BDB, 0x0E807E, 0x0E8601, 0x0EA083, 0x0EA089, 0x0EA08A, 0x0EA091, 0x0EA094, 0x0EA09C], 'drop_navm': 0x0EA093,
+    'xlcn_cells': [0x0095B8, 0x0095D7, 0x0095D8, 0x0095F7], 'new_cells': 84, 'city_refs': {'REFR': 304, 'ACHR': 30}, 'q449': 449,
+    'q449_split': {'renumbered own (slot collision)': 306, 'renumbered override (slot collision)': 7, 'master ref, in place': 9,
+                   'master ref, moved': 37, 'non-R4-master ref, moved': 5, 'non-R4-master ref, renumbered copy': 5, 'doubled copy': 1,
+                   'genuinely new': 79},
+    'copied_interiors': {'The Great City of Falkreath.esp': [0x0022CA], 'City of Dawnstar.esp': [0x006679, 0x010358, 0x015FC0, 0x07F4B6],
+                         'Warbirds Whiterun Metropolis.esp': [0x1261EE, 0x21F472],
+                         'Winterhold Restored.esp': [0x30948F, 0x33CA2F, 0x8D4981, 0xD7128E, 0xD7B4BB]}}
+PLANS['f8cefed9'] = {
+    'run': 'r11', 'masters': 9, 'own_index': 0x0B, 'itm': True, 'odd_index': {0x09: 'Missives.esp', 0x0A: 'Winterhold Restored.esp'}, 'own': 7702,
+    'classes': {"NEW ACHR FIELD-ARTIFACT/": 1, "NEW ACHR MASTER-OVERRIDE/CK-NOISE": 13, "NEW ACHR OWN/": 58, "NEW ACHR RENUMBERED/": 1,
+                "NEW ACHR REOWNED//ARTIFACT-ONLY": 1, "NEW ACTI REOWNED//ARTIFACT-ONLY": 1, "NEW ARMO COLLISION/SURVIVOR-REOWNED/ARTIFACT-ONLY": 4,
+                "NEW ARMO REOWNED//ARTIFACT-ONLY": 4, "NEW CELL FIELD-ARTIFACT/": 1, "NEW CELL FIELD-ARTIFACT/MASTER-OVERRIDE": 7,
+                "NEW CELL MASTER-OVERRIDE/CK-NOISE": 438, "NEW CELL OWN/": 14, "NEW CELL RENUMBERED/": 8, "NEW CELL REOWNED//ARTIFACT-ONLY": 12,
+                "NEW COBJ COLLISION/SURVIVOR-REOWNED/ARTIFACT-ONLY": 108, "NEW COBJ OWN/": 68, "NEW COBJ REOWNED//ARTIFACT-ONLY": 468,
+                "NEW COBJ REOWNED/RENUMBERED/ARTIFACT-ONLY": 146, "NEW FURN MASTER-OVERRIDE/CK-NOISE": 2, "NEW FURN OWN/": 1, "NEW FURN REOWNED//ARTIFACT-ONLY": 4,
+                "NEW KYWD OWN/": 3, "NEW LAND MASTER-OVERRIDE/CK-NOISE": 6, "NEW LCTN MASTER-OVERRIDE/CK-NOISE": 14, "NEW MGEF OWN/": 14,
+                "NEW NAVI FIELD-ARTIFACT/MASTER-OVERRIDE": 1, "NEW NAVM FIELD-ARTIFACT/MASTER-OVERRIDE": 9, "NEW NAVM MASTER-OVERRIDE/DROP": 1, "NEW NAVM OWN/": 3,
+                "NEW NAVM REOWNED//ARTIFACT-ONLY": 3, "NEW QUST MASTER-OVERRIDE/CK-NOISE": 4, "NEW REFR COLLISION/LOSER-RENUMBERED": 52,
+                "NEW REFR COLLISION/LOSER-RENUMBERED/ARTIFACT-ONLY": 10, "NEW REFR COLLISION/SURVIVOR-OWN": 13, "NEW REFR FIELD-ARTIFACT/": 1,
+                "NEW REFR FIELD-ARTIFACT/MASTER-OVERRIDE": 1, "NEW REFR MASTER-OVERRIDE/CK-NOISE": 1333, "NEW REFR MASTER-OVERRIDE/GRAVES-EDIT": 15,
+                "NEW REFR MASTER-OVERRIDE/ITM": 1, "NEW REFR MASTER-OVERRIDE/NEW": 5, "NEW REFR OWN/": 5939, "NEW REFR OWN/NEW": 8, "NEW REFR RENUMBERED/": 133,
+                "NEW REFR REOWNED//ARTIFACT-ONLY": 587, "NEW REFR REOWNED//EDITED": 2, "NEW REFR REOWNED/RENUMBERED/ARTIFACT-ONLY": 2, "NEW SPEL OWN/": 32,
+                "R4 ACHR LOST/": 4, "R4 NAVM LOST/": 1, "R4 REFR COLLISION/LOSER-LOST": 5, "R4 REFR LOST/": 105},
+    'reowned': {'CELL': 12, 'ACTI': 1, 'ARMO': 8, 'FURN': 4, 'COBJ': 576, 'NAVM': 3, 'REFR': 589, 'ACHR': 1},
+    'renumbered': {'own': {'CELL': 8, 'REFR': 185, 'ACHR': 1}, 'overrides': {'COBJ': 146, 'REFR': 12}},
+    'renumbered_ranges': {'own ACHR': ['04626B', '04626B'], 'own CELL': ['04626A', '04632A'], 'own REFR': ['04626C', '046337'],
+                           'overrides COBJ': ['0461D8', '046269'], 'overrides REFR': ['04632B', '046336']},
+    'renumbered_overrides': {"ArgonianWeapons.esp COBJ": 1, "Armors of the Velothi Pt2.esp COBJ": 48, "City of Dawnstar.esp REFR": 7, "Closed Helmets StandAlone.esp COBJ": 11,
+                             "JK's Windhelm's Outskirts.esp REFR": 5, "Kad_BogBlightMask.esp COBJ": 8, "Kad_MoonMonkRobes.esp COBJ": 13, "MoreCraftableEquipment.esp COBJ": 46,
+                             "Redgarb.esp COBJ": 8, "RedoranTombWarden.esp COBJ": 7, "Titus Mede I's Armor - My version by Xtudo.esp COBJ": 3, "evgnnsmpaccessories.esp COBJ": 1},
+    'renumbered_override_refs': ["City of Dawnstar.esp:001326->046331", "City of Dawnstar.esp:001328->04632F", "City of Dawnstar.esp:001384->04632C",
+                                 "City of Dawnstar.esp:00138F->04632D", "City of Dawnstar.esp:0018F6->046330", "City of Dawnstar.esp:0018F7->04632E",
+                                 "City of Dawnstar.esp:001902->04632B", "JK's Windhelm's Outskirts.esp:0008B0->046334", "JK's Windhelm's Outskirts.esp:00093A->046332",
+                                 "JK's Windhelm's Outskirts.esp:0009AF->046335", "JK's Windhelm's Outskirts.esp:0009D2->046333", "JK's Windhelm's Outskirts.esp:000BEC->046336"],
+    'renumbered_cells': {0x833: 0x4632A, 0x857: 0x46325, 0x82F: 0x46326, 0x80D: 0x46313, 0x858: 0x46327, 0x813: 0x46328, 0x834: 0x4626A, 0x80B: 0x46329},
+    'shared_slots_high': {"001011": ["Viking's Longhouse.esp FURN", "AlduinakAdditions.esp REFR"], "0012CC": ["AlduinakAdditions.esp REFR", "Missives.esp REFR"],
+                          "0012EA": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"], "0012EB": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"],
+                          "0012EC": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"], "0012ED": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"],
+                          "001301": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"], "001302": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"],
+                          "00130B": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"], "00130C": ["AVExpansion.esp COBJ", "AlduinakAdditions.esp REFR"],
+                          "001326": ["AlduinakAdditions.esp ACHR", "City of Dawnstar.esp REFR"], "001328": ["AlduinakAdditions.esp REFR", "City of Dawnstar.esp REFR"],
+                          "001384": ["AlduinakAdditions.esp REFR", "City of Dawnstar.esp REFR"], "00138F": ["AlduinakAdditions.esp REFR", "City of Dawnstar.esp REFR"],
+                          "0018F6": ["AlduinakAdditions.esp REFR", "City of Dawnstar.esp REFR"], "0018F7": ["AlduinakAdditions.esp REFR", "City of Dawnstar.esp REFR"],
+                          "001902": ["AlduinakAdditions.esp REFR", "City of Dawnstar.esp REFR"],
+                          "0048A8": ["Imperial Guard Centurion Armor SE - Johnskyrim.esp COBJ", "ArgonianWeapons.esp COBJ"],
+                          "00748D": ["City of Dawnstar.esp REFR", "AlduinakAdditions.esp REFR"], "009477": ["AlduinakAdditions.esp REFR", "Missives.esp REFR"],
+                          "00948F": ["AlduinakAdditions.esp REFR", "Missives.esp REFR"], "009491": ["AlduinakAdditions.esp REFR", "Missives.esp REFR"]},
+    'lost': {'REFR COLLISION/LOSER-LOST': 5, 'ACHR LOST/': 4, 'REFR LOST/': 105, 'NAVM LOST/': 1}, 'lost_navm': ['0C0C434A'], 'lost_nvmi': 14,
+    'index_scan': ['REFR 090094B2 NAME -> 090012CB', 'REFR 0A6B156F XESP -> 0A6E6F46'],
+    'skyrim_navm': [0x079BDB, 0x0E807E, 0x0E8601, 0x0EA083, 0x0EA089, 0x0EA08A, 0x0EA091, 0x0EA094, 0x0EA09C], 'drop_navm': 0x0EA093,
+    'drop': ['NAVM Skyrim.esm:0EA093', 'REFR Skyrim.esm:0A17D3'],
+    'xlcn_cells': [0x0095B8, 0x0095D7, 0x0095D8, 0x0095F7, 0x009B5B, 0x009BB7, 0x00BD13],
+    'duplicate_edids': {'ACHR FaendalREF001': {'007166': ['007166'], '00181A': ['00181A']},
+                        'CELL RiverwoodFaendalsHouseDUPLICATE001': {'000848': ['000848'], '00085A': ['00085A']}},
+    'delta': ["REFR AlduinakAdditions.esp:00C5C0 new", "REFR AlduinakAdditions.esp:00C5C1 new", "REFR AlduinakAdditions.esp:00C5C2 new",
+              "REFR AlduinakAdditions.esp:0116DA new", "REFR AlduinakAdditions.esp:0116DB new", "REFR AlduinakAdditions.esp:0116DC new",
+              "REFR AlduinakAdditions.esp:016805 new", "REFR AlduinakAdditions.esp:016807 new", "REFR JK's Whiterun's Outskirts.esp:141049 edit",
+              "REFR Missives.esp:0094B2 edit", "REFR Skyrim.esm:0A467D edit", "REFR Skyrim.esm:0B74B4 new", "REFR Skyrim.esm:0B74B5 edit",
+              "REFR Skyrim.esm:0B74B6 edit", "REFR Skyrim.esm:0B74B7 edit", "REFR Skyrim.esm:0B74B8 edit", "REFR Skyrim.esm:0B74B9 edit",
+              "REFR Skyrim.esm:0B74BA edit", "REFR Skyrim.esm:0B74BB edit", "REFR Skyrim.esm:0B74BC edit", "REFR Skyrim.esm:0B74BD edit",
+              "REFR Skyrim.esm:0C71E6 new", "REFR Skyrim.esm:0C71EC edit", "REFR Skyrim.esm:0C71F9 edit", "REFR Skyrim.esm:0C71FA new",
+              "REFR Skyrim.esm:0C71FE edit", "REFR Skyrim.esm:0CE271 new", "REFR Skyrim.esm:0D059C edit", "REFR Warbirds Whiterun Metropolis.esp:0150A0 edit",
+              "REFR Winterhold Restored.esp:6B156F new"],
+}
+PLAN = PLANS[INPUTS['NEW'][1][:8]]
+NEW_NM, NEW_OWN = PLAN['masters'], PLAN['own_index']
+# Raw indices between the master count and the own index that name a load-order plugin the CK dropped
+ODD = PLAN.get('odd_index', {})
 
 
 def strip_dup(e):
@@ -71,6 +137,10 @@ def edid_dup(a, b):
     if DUP_RE.search(a):
         return DUP_RE.sub('', a).lower() == stem
     return a.lower() == stem or a.lower().rstrip('0123456789') == stem.rstrip('0123456789')
+
+
+def is_own(fid):
+    return (fid >> 24) >= NEW_NM and (fid >> 24) not in ODD
 
 
 def hk(nk):
@@ -130,13 +200,14 @@ class R:
 
 
 class View:
-    def __init__(self, tag, buf, name=SELF, own=None):
+    def __init__(self, tag, buf, name=SELF, own=None, odd=None):
         p = Plugin(buf=buf)
         assert p.serialize() == buf, f'{tag}: esplib round trip is not exact'
         self.tag, self.name, self.p = tag, name, p
         self.m = p.masters()
         self.n = len(self.m)
         self.own = self.n if own is None else own
+        self.odd = odd or {}
         self.localized = bool(p.header.flags & LOCALIZED)
         self.recs, self.by_key, self.by_fid = [], collections.defaultdict(list), collections.defaultdict(list)
         for node, par in p.walk():
@@ -149,7 +220,7 @@ class View:
     def owner(self, idx):
         if idx < self.n:
             return self.m[idx]
-        return self.name if idx == self.own else None
+        return self.name if idx == self.own else self.odd.get(idx)
 
     def nk(self, fid):
         o = self.owner(fid >> 24)
@@ -224,7 +295,9 @@ def entries(vals, lay, rec, canon, remapped):
         for i in range(0, max(len(val) - n + 1, 1), n):
             e = val[i:i + n]
             fids = []
-            for s in slots:
+            # a condition whose comparison value is a global holds that global's form id
+            fslots = (4,) + slots if lay is FID_LAYOUT['CTDA'] and e[:1] and e[0] & 0x04 else slots
+            for s in fslots:
                 if s + 4 > len(e):
                     continue
                 c = canon.of(rec.v, u32(e, s))
@@ -234,7 +307,7 @@ def entries(vals, lay, rec, canon, remapped):
                     c = (canon.selfq_owner[c[1]], c[1])
                 fids.append(c)
             rest = bytearray(e)
-            for s in slots:
+            for s in fslots:
                 rest[s:s + 4] = b'\0' * len(rest[s:s + 4])
             for p in pads:
                 if p < len(rest):
@@ -249,6 +322,14 @@ def list_diff(t, la, lb, ra, rb, canon, out):
     ea, eb = entries(la, lay, ra, canon, []), entries(lb, lay, rb, canon, remapped)
     ca, cb = collections.Counter(ea), collections.Counter(eb)
     only_a, only_b = list((ca - cb).elements()), list((cb - ca).elements())
+    # a parameter that is not a form id holds junk the CK rewrites; both sides then name an index past the master list
+    for nb in list(only_b):
+        for na in only_a:
+            if na[1] == nb[1] and len(na[0]) == len(nb[0]) and all(x == y or x[0] == y[0] == '?BAD' for x, y in zip(na[0], nb[0])):
+                out.append(('noise', t, 'junk parameter bytes'))
+                only_a.remove(na)
+                only_b.remove(nb)
+                break
     for nb in list(only_b):
         for na in only_a:
             if na[1] == nb[1] and len(na[0]) == len(nb[0]) and all(
@@ -274,6 +355,9 @@ def list_diff(t, la, lb, ra, rb, canon, out):
         # the CK drops a whole list entry (keyword plus ref, item plus count) when one of its links does not resolve
         if not live or any(canon.lostable(x) for x in live):
             out.append(('artifact', t, 'entry lost' + (' ' + ','.join(hk(x) for x in live) if live else ' (null entry)')))
+        elif any(canon.unresolvable(x) for x in live):
+            canon.note_null(rb, [x for x in live if canon.unresolvable(x)], t)
+            out.append(('artifact', t, 'entry lost ' + ','.join(hk(x) for x in live) + ' (its master does not define it)'))
         elif t == 'XLRL':
             out.append(('noise', t, 'location ref removed'))
         else:
@@ -455,6 +539,16 @@ def raw_diff(t, x, y, ra, rb, canon, out):
         else:
             out.append(('edit', t, f'{fa} -> {fb}'))
         return
+    if (rt, t) in JUNK_BYTES and len(x) == len(y):
+        size, junk = JUNK_BYTES[(rt, t)]
+        xa, ya = bytearray(x), bytearray(y)
+        for i in range(0, len(xa), size):
+            for p in junk:
+                if i + p < len(xa):
+                    xa[i + p] = ya[i + p] = 0
+        if xa == ya:
+            out.append(('noise', t, 'junk bytes'))
+            return
     if t in RAW_PAD and len(x) == len(y):
         xa, ya = bytearray(x), bytearray(y)
         for p in RAW_PAD[t]:
@@ -470,6 +564,40 @@ def raw_diff(t, x, y, ra, rb, canon, out):
         out.append(('edit', t, 'navmesh data'))
         return
     out.append(('edit', t, f'{x.hex()[:40]} -> {y.hex()[:40]}' if len(x) <= 20 and len(y) <= 20 else f'len {len(x)} -> {len(y)}'))
+
+
+def alt_entries(v, rec, canon):
+    n, o, ents = u32(v, 0), 4, []
+    for _ in range(n):
+        ln = u32(v, o)
+        ents.append((v[o + 4:o + 4 + ln], canon.of(rec.v, u32(v, o + 4 + ln)), u32(v, o + 8 + ln)))
+        o += 12 + ln
+    return ents
+
+
+def alt_diff(t, x, y, ra, rb, canon):
+    # alternate textures: entries whose texture set lives in a dropped master are lost by the CK
+    ea, eb = alt_entries(x, ra, canon), alt_entries(y, rb, canon)
+    gone = [e for e in ea if e not in eb]
+    if all(e in ea for e in eb) and all(canon.lostable(e[1]) for e in gone):
+        return ('artifact', t, 'entries lost ' + ','.join(hk(e[1]) for e in gone))
+    return ('edit', t, 'alternate textures')
+
+
+def added_or_removed(t, la, lb, ra, rb, canon):
+    rt = ra.type
+    if not la and (rt, t) in CK_DEFAULTS and len(lb) == 1:
+        want, fid = CK_DEFAULTS[(rt, t)]
+        got = canon.of(rb.v, u32(lb[0], 0)) if fid and len(lb[0]) == 4 else lb[0]
+        if got == want:
+            return ('noise', t, 'added with the CK default')
+    if not lb and t == 'FULL' and not ra.v.localized and all(v in (b'', b'\0') for v in la):
+        return ('noise', t, 'empty name dropped')
+    if not lb and t in ALT_TEXTURES and len(la) == 1:
+        gone = alt_entries(la[0], ra, canon)
+        if gone and all(canon.lostable(e[1]) for e in gone):
+            return ('artifact', t, 'entries lost ' + ','.join(hk(e[1]) for e in gone))
+    return ('edit', t, 'subrecord ' + ('removed' if la else 'added'))
 
 
 def compare(ra, rb, canon):
@@ -501,7 +629,10 @@ def compare(ra, rb, canon):
                 cnto_art = True
             continue
         if not lb or not la:
-            out.append(('edit', t, 'subrecord ' + ('removed' if la else 'added')))
+            out.append(added_or_removed(t, la, lb, ra, rb, canon))
+            continue
+        if t in ALT_TEXTURES and len(la) == len(lb) == 1:
+            out.append(alt_diff(t, la[0], lb[0], ra, rb, canon))
             continue
         if len(la) != len(lb):
             out.append(('edit', t, f'count {len(la)} -> {len(lb)}'))
@@ -555,8 +686,8 @@ class Attr:
         # every plugin before AlduinakAdditions that NEW does not have as a master; the CK wrote Graves's overrides of them at the own index
         s.srcs = srcs
         s.entries, s.cp, s.r4taken = {}, {}, {}
-        s.own = [r for r in new.recs if (r.fid >> 24) >= 8]
-        assert all((r.fid >> 24) == NEW_OWN for r in s.own), 'own records at an index other than 0x0E'
+        s.own = [r for r in new.recs if is_own(r.fid)]
+        assert all((r.fid >> 24) == NEW_OWN for r in s.own), f'own records at an index other than {NEW_OWN:02X}'
         assert max(collections.Counter(r.fid & 0xFFFFFF for r in s.own).values()) == 1, 'NEW reuses a local id across own records'
         s.unclassified, s.problems = [], []
         # a slot where R4 has more than one own or dropped-master record (any type) holds only one of them in NEW
@@ -592,6 +723,13 @@ class Attr:
             return True
         cn, cx = s.cellkey(n), s.cellkey(x)
         return cn is not None and cx is not None and c.eq(cn, cx) and close(n.pos(), x.pos())
+
+    def by_edid(s, r, cands, key=lambda x: x.edid()):
+        # editor ids repeat (live holds two RiverwoodFaendalsHouseDUPLICATE001 cells), so several hits are settled by content
+        hits = [x for x in cands if key(x) == key(r)]
+        if len(hits) > 1:
+            hits = [x for x in hits if not any(c == 'edit' for c, _, _ in compare(x, r, s.canon))]
+        return hits
 
     def set_self(s, loc, target):
         s.canon.selfmap[loc] = target
@@ -666,7 +804,7 @@ class Attr:
                 pend.append(r)
         miss = [x for x in s.r4.recs if x.type == 'CELL' and x.nk[0] == SELF and x.fid not in s.r4taken]
         for r in pend:
-            hits = [x for x in miss if x.edid() == r.edid() and x.fid not in s.r4taken]
+            hits = s.by_edid(r, [x for x in miss if x.fid not in s.r4taken])
             if len(hits) == 1:
                 x = hits[0]
                 s.set_self(r.fid & 0xFFFFFF, ('SELF', x.fid & 0xFFFFFF))
@@ -691,8 +829,14 @@ class Attr:
             else:
                 d = [(m, x) for m, x in s.dmdef(r.type, loc) if strip_dup(x.edid()) == strip_dup(r.edid())]
             if (a and b) or len(b) > 1:
-                s.unclassified.append(f'{r.label()}: more than one R4 record on the slot')
-            elif not a and not b and len(d) > 1:
+                # the slot is shared by R4 records of any owner and local id range; the survivor is the one with NEW's editor id
+                cands = ([('SELF', a)] if a else []) + b
+                hit = s.by_edid(r, [x for _, x in cands], key=lambda x: strip_dup(x.edid()))
+                if len(hit) != 1:
+                    s.unclassified.append(f'{r.label()}: more than one R4 record on the slot, {len(hit)} match by editor id')
+                    continue
+                a, b = (hit[0], []) if hit[0] is a else (None, [(m, x) for m, x in b if x is hit[0]])
+            if not a and not b and len(d) > 1:
                 s.unclassified.append(f'{r.label()}: defined by {[m for m, _ in d]}')
             elif a:
                 s.set_self(loc, ('SELF', loc))
@@ -713,6 +857,32 @@ class Attr:
                 s.set_self(loc, ('SELF', loc))
                 s.put('NEW', r, 'OWN', sub='NEW', target=s.own_target(r), action='keep')
 
+    def renumbered_others(s):
+        # a record the CK lost from a shared slot comes back under a new id; it pairs with the R4 record of the same type and editor id
+        for r in s.own:
+            e = s.entries.get(('NEW', r.fid))
+            if r.type in REF_TYPES or r.type == 'CELL' or not e or e['class'] != 'OWN' or e.get('subtype') != 'NEW' or not r.edid():
+                continue
+            loc = r.fid & 0xFFFFFF
+            pool = [x for x in s.r4.recs if x.type == r.type and x.fid not in s.r4taken and (x.nk[0] == SELF or x.nk[0] in s.dropped)]
+            hit = s.by_edid(r, pool)
+            if len(hit) > 1:
+                s.unclassified.append(f'{r.label()}: {len(hit)} R4 records share the editor id')
+            if len(hit) != 1:
+                continue
+            x = hit[0]
+            xl = x.fid & 0xFFFFFF
+            del s.entries[('NEW', r.fid)]
+            s.take(x, 'renumbered')
+            if x.nk[0] == SELF:
+                s.set_self(loc, ('SELF', xl))
+                s.put('NEW', r, 'RENUMBERED', cp=x, target=s.own_target(r), action='keep', note=f'R4 own {xl:06X} -> NEW id {loc:06X}' + s.slot_note(xl))
+            else:
+                m = x.nk[0]
+                s.set_self(loc, (m, xl))
+                s.put('NEW', r, 'REOWNED', sub='RENUMBERED', master=m, cp=x, target=f'{m}:{xl:06X}',
+                      note=f'R4 {m} override {xl:06X}; the CK renumbered it to {loc:06X}' + s.slot_note(xl))
+
     # ---- phase 3: refs ----
     def refs(s):
         pend = []
@@ -721,7 +891,7 @@ class Attr:
                 continue
             loc = r.fid & 0xFFFFFF
             b0 = r.base()
-            if b0 is not None and 8 <= (b0 >> 24) < NEW_OWN:
+            if b0 is not None and NEW_NM <= (b0 >> 24) < NEW_OWN and (b0 >> 24) not in ODD:
                 s.set_self(loc, ('BROKEN', loc))
                 s.put('NEW', r, 'BROKEN', action='delete', note=f'NAME {b0:08X} uses index {b0 >> 24:02X}, past the master list')
                 continue
@@ -879,7 +1049,7 @@ class Attr:
     def masters_pairs(s):
         s.master_pairs, s.master_new = [], []
         for r in s.new.recs:
-            if (r.fid >> 24) >= 8:
+            if is_own(r.fid):
                 continue
             x = s.r4.one((r.type,) + r.nk)
             if x is not None:
@@ -1054,9 +1224,17 @@ class Attr:
             if r.type in REF_TYPES:
                 chain = hits.get(key, [])
                 mods = [p for p in chain if p.lower() not in lower_masters]
+                pri = recs.get((chain[-1], key)) if chain else None
+                if PLAN.get('itm') and pri is not None and not [c for c, _, _ in compare(pri, r, s.canon) if c != 'noise']:
+                    s.put('NEW', r, 'MASTER-OVERRIDE', sub='ITM', cp=pri, target=hk(r.nk), action='drop',
+                          note=f'identical to the load-order winner {chain[-1]} apart from CK noise')
+                    continue
                 s.city_refs[(r.type, 'also overridden by a non-master plugin' if mods else 'only masters')] += 1
-                s.put('NEW', r, 'MASTER-OVERRIDE', sub='NEW', target=hk(r.nk), action='keep',
-                      note=f'other overrides: {mods}' if mods else '')
+                e = s.put('NEW', r, 'MASTER-OVERRIDE', sub='NEW', target=hk(r.nk), action='keep',
+                          note=f'other overrides: {mods}' if mods else '')
+                if PLAN.get('itm') and pri is not None:
+                    e['counterpart'] = f'{chain[-1]}:{pri.fid:08X}'
+                    e['diffs'] = [f'{c}:{t}:{det}'[:160] for c, t, det in compare(pri, r, s.canon)]
                 continue
             if r.type != 'CELL':
                 continue
@@ -1135,38 +1313,54 @@ class Attr:
         # form ids that use a raw index between the master count and the own index
         hits = []
         for r in s.new.recs:
-            for t, v in r.subs():
-                lay = layout(r.type, t)
-                vals = []
-                if lay:
-                    size, slots, _ = lay
-                    n = size or len(v)
-                    vals = [u32(v, i + o) for i in range(0, max(len(v) - n + 1, 1), n) for o in slots if i + o + 4 <= len(v)]
-                elif t == 'VMAD':
-                    try:
-                        sc, _ = vmad_scripts(v)
-                        vals = [f for _, _, pr in sc for p in pr for f in flat_objs(p[3])]
-                    except (ValueError, struct.error, IndexError):
-                        vals = []
-                elif t == 'NVNM':
-                    links = nvnm_links(v)
-                    if links is None:
-                        hits.append(f'{r.label()} NVNM could not be decoded')
-                    else:
-                        vals = links[0] + links[1]
-                elif t == 'NVMI':
-                    vals = [u32(v, 0)]
-                for f in vals:
-                    if 8 <= (f >> 24) < NEW_OWN:
-                        hits.append(f'{r.label()} {t} -> {f:08X}')
+            for t, f in links(r):
+                if f is None:
+                    hits.append(f'{r.label()} {t} could not be decoded')
+                elif NEW_NM <= (f >> 24) < NEW_OWN:
+                    hits.append(f'{r.label()} {t} -> {f:08X}')
         return hits
+
+    def odd_owners(s):
+        # each raw index between the master count and the own index, with every load-order plugin defining all its record and link ids
+        use = collections.defaultdict(lambda: (set(), set()))
+        for r in s.new.recs:
+            if NEW_NM <= (r.fid >> 24) < NEW_OWN:
+                use[r.fid >> 24][0].add((r.type, r.fid & 0xFFFFFF))
+            for _, f in links(r):
+                if f is not None and NEW_NM <= (f >> 24) < NEW_OWN:
+                    use[f >> 24][1].add(f & 0xFFFFFF)
+        return {i: [m for m in s.srcs if all(k in s.origin[m] for k in recs) and ids <= city.own_ids(m)] for i, (recs, ids) in sorted(use.items())}
+
+
+def links(r):
+    # every form id a record's subrecords carry, as (subrecord, form id); None when a navmesh does not decode
+    for t, v in r.subs():
+        lay = layout(r.type, t)
+        vals = []
+        if lay:
+            size, slots, _ = lay
+            n = size or len(v)
+            vals = [u32(v, i + o) for i in range(0, max(len(v) - n + 1, 1), n) for o in slots if i + o + 4 <= len(v)]
+        elif t == 'VMAD':
+            try:
+                sc, _ = vmad_scripts(v)
+                vals = [f for _, _, pr in sc for p in pr for f in flat_objs(p[3])]
+            except (ValueError, struct.error, IndexError):
+                vals = []
+        elif t == 'NVNM':
+            nl = nvnm_links(v)
+            vals = nl[0] + nl[1] if nl is not None else [None]
+        elif t == 'NVMI':
+            vals = [u32(v, 0)]
+        for f in vals:
+            yield t, f
 
 
 # ---------------------------------------------------------------------------------------------------------------------
 def prior_reconcile(at, new, r4):
     # record-level reconciliation with the two earlier diff reports (their pickled pairing results)
     out, bad = {}, []
-    pdir = R7 + 'prior/'
+    pdir = RUN_DIR + 'prior/'
     try:
         m = pickle.load(open(pdir + 'match.pkl', 'rb'))
         p = pickle.load(open(pdir + 'paired.pkl', 'rb'))
@@ -1189,7 +1383,7 @@ def prior_reconcile(at, new, r4):
         f = nfid(k)
         e = at.entries.get(('NEW', f))
         if e is None:
-            if (f >> 24) < 8 and f in new.by_fid:
+            if not is_own(f) and f in new.by_fid:
                 return 'MASTER-OVERRIDE/IDENTICAL-or-noise'
             bad.append(f'prior NEW key {k} has no record')
             return 'NONE'
@@ -1219,7 +1413,7 @@ def prior_reconcile(at, new, r4):
 
 def main():
     bufs = {t: read_input(t) for t in ('NEW', 'R4', 'RAW')}
-    new = View('NEW', bufs['NEW'], own=NEW_OWN)
+    new = View('NEW', bufs['NEW'], own=NEW_OWN, odd=ODD)
     r4 = View('R4', bufs['R4'])
     raw = View('RAW', bufs['RAW'])
     assert r4.m == raw.m, 'R4 and RAW master lists differ'
@@ -1243,8 +1437,10 @@ def main():
     canon = Canon(new, dropped, {m: origin[m] for m in dropped})
     at = Attr(new, r4, raw, dm, origin, dropped, canon, srcs)
     at.order = order
+    at.odd = at.odd_owners()
     at.cells()
     at.others()
+    at.renumbered_others()
     at.refs()
     at.collision_survivors()
     at.masters_pairs()
@@ -1253,7 +1449,7 @@ def main():
     want = {(r.type,) + r.nk for r in at.master_new}
     want |= {(e['type'], e['master'], int(e['target'].split(':')[1], 16)) for e in at.entries.values() if e.get('master') and e.get('target')}
     want |= {('NAVM', 'Skyrim.esm', x) for x in PLAN['skyrim_navm'] + [PLAN['drop_navm']]}
-    hits, recs = city.scan(order, want, keep={'CELL', 'NAVM'})
+    hits, recs = city.scan(order, want, keep={'CELL', 'NAVM'} | (REF_TYPES if PLAN.get('itm') else set()))
     at.chains = hits
     at.decide()
     at.nulled_by = city.carriers(order, set(canon.nulled)) if canon.nulled else {}
@@ -1261,38 +1457,29 @@ def main():
     at.city_review(order, hits, recs)
     at.later_overrides(hits)
     idx = at.index_scan()
-    prior, prior_bad = prior_reconcile(at, new, r4)
+    prior, prior_bad = prior_reconcile(at, new, r4) if PLAN['run'] == 'r7' else ({}, [])
     report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_bad)
 
 
-def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_bad):
-    E = at.entries
-    ents = sorted(E.values(), key=lambda e: (e['src'], e['type'], e['fid']))
-    own_new = [e for (src, f), e in E.items() if src == 'NEW' and (f >> 24) == NEW_OWN]
-    c_own = collections.Counter(e['class'] for e in own_new)
-    c_r4 = collections.Counter(e['class'] for (src, f), e in E.items() if src == 'R4')
-    mp = collections.Counter(f'{e["type"]} {e["class"]}/{e.get("subtype", "")}' for (src, f), e in E.items() if src == 'NEW' and (f >> 24) < 8)
-    for (t, k), n in at.pair_stats.items():
-        if k == 'IDENTICAL':
-            mp[f'{t} IDENTICAL'] += n
-    checks, fails = [], []
+def delta_entries(E):
+    # NEW records whose content is Graves's own work, as (entry, kind); a replay writes exactly these
+    out = []
+    for (src, _), e in sorted(E.items()):
+        if src != 'NEW':
+            continue
+        cls, sub_ = e['class'], e.get('subtype')
+        if cls == 'MASTER-OVERRIDE' and sub_ in ('GRAVES-EDIT', 'NEW') or e.get('edit') == 'EDITED':
+            out.append((e, 'edit' if sub_ == 'GRAVES-EDIT' or e.get('edit') == 'EDITED' else 'new'))
+        elif cls == 'OWN' and sub_ == 'NEW':
+            out.append((e, 'new'))
+    return out
 
-    def check(name, ok, detail=''):
-        checks.append(f'{"OK  " if ok else "FAIL"} {name}' + (f': {detail}' if detail else ''))
-        if not ok:
-            fails.append(name)
 
-    check('every NEW own-index record classified once', len(own_new) == len(at.own) == PLAN['own'], f'{len(own_new)} of {len(at.own)} (plan {PLAN["own"]})')
-    master_entries = sum(1 for (src, f), e in E.items() if src == 'NEW' and (f >> 24) < 8)
-    check('every NEW record accounted', len(at.own) + len(at.master_pairs) + len(at.master_new) == len(new.recs),
-          f'{len(at.own)} own + {len(at.master_pairs)} master pairs + {len(at.master_new)} master-only = {len(new.recs)}')
-    r4_entries = {f for (src, f), e in E.items() if src == 'R4'}
-    check('every R4 record paired or classified', set(at.r4taken) | r4_entries == {x.fid for x in r4.recs} and
-          not (r4_entries - {f for f, w in at.r4taken.items() if w == 'collision-loser'}) & set(at.r4taken),
-          f'{len(at.r4taken)} paired or consumed, {len(r4_entries)} R4 entries, R4 has {len(r4.recs)}')
-    check('no unclassified record', not at.unclassified, '; '.join(at.unclassified[:10]))
+def delta_key(e, kind):
+    return f'{e["type"]} {e["target"]} {kind}'
 
-    re_r4 = collections.Counter(e['type'] for e in E.values() if e['src'] == 'NEW' and e.get('master') and e.get('subtype') != 'MASTER-DEFINED')
+
+def checks_r7(at, new, r4, E, check, prior, prior_bad, ren_cells):
     prior_reown = prior.get('prior_reowned_pairs', {})
     pr_by_type = collections.Counter()
     for k, n in prior_reown.items():
@@ -1301,7 +1488,6 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
           f'prior pairing {prior.get("prior_reowned_total")} = {dict(pr_by_type)}; the plan\'s 358 COBJ is 359 in the report it quotes')
     same_slots = sorted(at.same_type_slots)
     check('11 collision slots', same_slots == PLAN['collision_slots'], ' '.join(f'{x:06X}' for x in same_slots))
-    ren_cells = {int(e['note'].split()[2], 16): int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e['class'] == 'RENUMBERED' and e['type'] == 'CELL'}
     check('5 renumbered cells', ren_cells == PLAN['renumbered_cells'], str({f'{a:X}': f'{b:X}' for a, b in ren_cells.items()}))
     broken = [e['fid'] for e in E.values() if e['class'] == 'BROKEN']
     check('one broken ref 0E04B2AB', broken == [f'{PLAN["broken"]:08X}'], str(broken))
@@ -1342,13 +1528,6 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     past = [x for x in ren_mod if x > block[-1]]
     check('renumbered plugin refs continue the CK renumber block', all(x >= block[0] for x in ren_mod) and past == list(range(block[-1] + 1, block[-1] + 1 + len(past))),
           f'{" ".join(f"{x:06X}" for x in ren_mod)}; block of R4 records the CK renumbered {block[0]:06X}..{block[-1]:06X}')
-    tg = collections.Counter(e['target'] for e in E.values() if e['src'] == 'NEW' and e.get('master'))
-    check('no two NEW records re-own the same target', all(n == 1 for n in tg.values()), str([t for t, n in tg.items() if n > 1]))
-    pos = {p.lower(): i for i, p in enumerate(at.order)}
-    reown_m = {e['master'] for e in E.values() if e['src'] == 'NEW' and e.get('master')}
-    beyond = sorted((set(new.m) | reown_m | set(at.forward_masters)) - set(r4.m), key=lambda m: pos.get(m.lower(), 999))
-    check('every master the merge adds loads before AlduinakAdditions', all(pos.get(m.lower(), 999) < pos[SELF.lower()] for m in beyond),
-          ', '.join(f'{m} ({pos.get(m.lower())})' for m in beyond))
     check('prior report keys all map to classified records', not prior_bad, '; '.join(prior_bad[:5]))
     fa9 = sorted(int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e['type'] == 'NAVM' and e['class'] == 'FIELD-ARTIFACT')
     check('9 Skyrim NAVM take R4', fa9 == sorted(PLAN['skyrim_navm']), ' '.join(f'{x:06X}' for x in fa9))
@@ -1357,6 +1536,108 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     xl = sorted(int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e['type'] == 'CELL' and e['class'] == 'FIELD-ARTIFACT'
                 and e.get('target', '').startswith('Skyrim.esm'))
     check('XLCN field artifacts on the 4 Skyrim cells', xl == PLAN['xlcn_cells'], ' '.join(f'{x:06X}' for x in xl))
+
+
+def checks_r11(at, new, r4, E, check, idx, ren_cells, delta):
+    classes = collections.Counter(f'{e["src"]} {e["type"]} {e["class"]}/{e.get("subtype", "")}' + (f'/{e["edit"]}' if e.get('edit') else '') for e in E.values())
+    check('classes by type match the plan', dict(classes) == PLAN['classes'], json.dumps(dict(sorted(classes.items()))))
+    own = [e for e in E.values() if e['src'] == 'NEW' and is_own(int(e['fid'], 16))]
+    reowned = collections.Counter(e['type'] for e in own if e.get('master') and e.get('subtype') not in ('RENUMBERED', 'LOSER-RENUMBERED'))
+    check(f'{sum(PLAN["reowned"].values())} overrides re-owned at their own id', dict(reowned) == PLAN['reowned'], str(dict(reowned)))
+    ren_own = [e for e in own if not e.get('master') and (e['class'] == 'RENUMBERED' or e.get('subtype') == 'LOSER-RENUMBERED')]
+    ren_ovr = [e for e in own if e.get('master') and e.get('subtype') in ('RENUMBERED', 'LOSER-RENUMBERED')]
+    by_type = {t: collections.Counter(e['type'] for e in es) for t, es in (('own', ren_own), ('overrides', ren_ovr))}
+    ranges = {}
+    for t, es in (('own', ren_own), ('overrides', ren_ovr)):
+        for kind in sorted({e['type'] for e in es}):
+            got = sorted(e['fid'][2:] for e in es if e['type'] == kind)
+            ranges[f'{t} {kind}'] = [got[0], got[-1]]
+    check(f'{len(ren_own)} own records and {len(ren_ovr)} re-owned overrides renumbered, by type and new id range',
+          {t: dict(c) for t, c in by_type.items()} == PLAN['renumbered'] and ranges == PLAN['renumbered_ranges'],
+          f'{ {t: dict(c) for t, c in by_type.items()} } {json.dumps(ranges)}')
+    ren_masters = collections.Counter(f'{e["master"]} {e["type"]}' for e in ren_ovr)
+    ren_refs = sorted(f'{e["target"]}->{e["fid"][2:]}' for e in ren_ovr if e['type'] in REF_TYPES)
+    check(f'renumbered re-owned overrides by master, and the {len(ren_refs)} refs among them',
+          dict(ren_masters) == PLAN['renumbered_overrides'] and ren_refs == PLAN['renumbered_override_refs'],
+          json.dumps(dict(sorted(ren_masters.items()))) + ' ' + json.dumps(ren_refs))
+    check(f'{len(PLAN["renumbered_cells"])} renumbered cells', ren_cells == PLAN['renumbered_cells'], str({f'{a:X}': f'{b:X}' for a, b in ren_cells.items()}))
+    high = {f'{k:06X}': [f'{x.nk[0]} {x.type}' for x in v] for k, v in sorted(at.collide.items()) if k > 0xFFF}
+    held = all(('NEW', at.holder[k].fid) in E for k in at.collide if k > 0xFFF and k in at.holder)
+    placed = all(x.fid in at.r4taken or ('R4', x.fid) in E for k, v in at.collide.items() if k > 0xFFF for x in v)
+    check(f'{len(high)} shared slots above 0xFFF are settled like the ESL range ones', high == PLAN['shared_slots_high'] and held and placed,
+          json.dumps(high))
+    lost = collections.Counter(f'{e["type"]} {e["class"]}/{e.get("subtype", "")}' for e in E.values() if e['src'] == 'R4')
+    check('R4 records NEW lost', dict(lost) == PLAN['lost'], json.dumps(dict(lost)))
+    check('LOST NAVM', [e['fid'] for e in E.values() if e['class'] == 'LOST' and e['type'] == 'NAVM'] == PLAN['lost_navm'])
+    nv = at.nav.get('nvmi', {})
+    wb_only = [k for k in nv.get('only_r4', []) if k.startswith('Warbirds')]
+    check(f'{PLAN["lost_nvmi"]} Warbirds NVMI only in R4', len(wb_only) == PLAN['lost_nvmi'] and not nv.get('only_new'), f'R4-only NVMI {nv.get("only_r4")}')
+    check('raw indices between the masters and the own index name exactly one load-order plugin each',
+          at.odd == {i: [m] for i, m in ODD.items()}, str(at.odd))
+    check('form ids at those indices', idx == PLAN['index_scan'], str(idx))
+    fa = sorted(int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e['type'] == 'NAVM' and e['class'] == 'FIELD-ARTIFACT')
+    check(f'{len(PLAN["skyrim_navm"])} Skyrim NAVM keep R4', fa == sorted(PLAN['skyrim_navm']), ' '.join(f'{x:06X}' for x in fa))
+    drop = [e for e in E.values() if e.get('action') == 'drop']
+    check('dropped: vanilla NAVM and ITM overrides', sorted(f'{e["type"]} {e["target"]}' for e in drop) == PLAN['drop'], str(sorted(f'{e["type"]} {e["target"]} {e.get("note", "")[:60]}' for e in drop)))
+    xl = sorted(int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e['type'] == 'CELL' and e['class'] == 'FIELD-ARTIFACT' and e.get('target', '').startswith('Skyrim.esm'))
+    check('XLCN field artifacts on Skyrim cells', xl == PLAN['xlcn_cells'], ' '.join(f'{x:06X}' for x in xl))
+    dups = collections.defaultdict(list)
+    for x in r4.recs:
+        if x.nk[0] == SELF and x.edid():
+            dups[(x.type, x.edid())].append(x)
+    dups = {k: v for k, v in dups.items() if len(v) > 1}
+    pairs = collections.defaultdict(list)
+    for e in E.values():
+        if e['src'] == 'NEW' and e.get('counterpart', '').startswith('R4:'):
+            pairs[int(e['counterpart'][3:], 16)].append(e['fid'][2:])
+    got = {f'{t} {ed}': {f'{x.fid & 0xFFFFFF:06X}': pairs.get(x.fid, []) for x in v} for (t, ed), v in sorted(dups.items())}
+    check('R4 own records sharing an editor id each pair with exactly one NEW record', got == PLAN['duplicate_edids'], json.dumps(got))
+    keys = sorted(delta_key(e, k) for e, k in delta)
+    check(f'the delta is {len(PLAN["delta"])} records', keys == PLAN['delta'], json.dumps(keys))
+    fields = collections.Counter(d.split(':')[1] or 'flags' for e, _ in delta for d in e.get('diffs', []) if not d.startswith('noise'))
+    check('the delta is REFR placement and flags only, with no artifact field to restore', all(e['type'] == 'REFR' and not e.get('restore_fields') for e, _ in delta)
+          and set(fields) <= {'DATA', 'flags'}, str(dict(fields)))
+    check('no own record removed and no broken or doubled record', not [e for e in E.values() if e['class'] in ('GRAVES-REMOVED', 'BROKEN') or e.get('subtype') == 'DOUBLED'])
+
+
+def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_bad):
+    E = at.entries
+    ents = sorted(E.values(), key=lambda e: (e['src'], e['type'], e['fid']))
+    own_new = [e for (src, f), e in E.items() if src == 'NEW' and (f >> 24) == NEW_OWN]
+    c_own = collections.Counter(e['class'] for e in own_new)
+    c_r4 = collections.Counter(e['class'] for (src, f), e in E.items() if src == 'R4')
+    mp = collections.Counter(f'{e["type"]} {e["class"]}/{e.get("subtype", "")}' for (src, f), e in E.items() if src == 'NEW' and not is_own(f))
+    for (t, k), n in at.pair_stats.items():
+        if k == 'IDENTICAL':
+            mp[f'{t} IDENTICAL'] += n
+    checks, fails = [], []
+
+    def check(name, ok, detail=''):
+        checks.append(f'{"OK  " if ok else "FAIL"} {name}' + (f': {detail}' if detail else ''))
+        if not ok:
+            fails.append(name)
+
+    check('every NEW own-index record classified once', len(own_new) == len(at.own) == PLAN['own'], f'{len(own_new)} of {len(at.own)} (plan {PLAN["own"]})')
+    check('every NEW record accounted', len(at.own) + len(at.master_pairs) + len(at.master_new) == len(new.recs),
+          f'{len(at.own)} own + {len(at.master_pairs)} master pairs + {len(at.master_new)} master-only = {len(new.recs)}')
+    r4_entries = {f for (src, f), e in E.items() if src == 'R4'}
+    check('every R4 record paired or classified', set(at.r4taken) | r4_entries == {x.fid for x in r4.recs} and
+          not (r4_entries - {f for f, w in at.r4taken.items() if w == 'collision-loser'}) & set(at.r4taken),
+          f'{len(at.r4taken)} paired or consumed, {len(r4_entries)} R4 entries, R4 has {len(r4.recs)}')
+    check('no unclassified record', not at.unclassified, '; '.join(at.unclassified[:10]))
+    ren_cells = {int(e['note'].split()[2], 16): int(e['fid'], 16) & 0xFFFFFF for e in E.values() if e['class'] == 'RENUMBERED' and e['type'] == 'CELL'}
+    delta = delta_entries(E) if PLAN['run'] == 'r11' else []
+    if PLAN['run'] == 'r7':
+        checks_r7(at, new, r4, E, check, prior, prior_bad, ren_cells)
+    else:
+        checks_r11(at, new, r4, E, check, idx, ren_cells, delta)
+    tg = collections.Counter(e['target'] for e in E.values() if e['src'] == 'NEW' and e.get('master'))
+    check('no two NEW records re-own the same target', all(n == 1 for n in tg.values()), str([t for t, n in tg.items() if n > 1]))
+    pos = {p.lower(): i for i, p in enumerate(at.order)}
+    reown_m = {e['master'] for e in E.values() if e['src'] == 'NEW' and e.get('master')}
+    beyond = sorted((set(new.m) | reown_m | set(at.forward_masters)) - set(r4.m), key=lambda m: pos.get(m.lower(), 999))
+    check('every master the merge adds loads before AlduinakAdditions', all(pos.get(m.lower(), 999) < pos[SELF.lower()] for m in beyond),
+          ', '.join(f'{m} ({pos.get(m.lower())})' for m in beyond))
     check('no navmesh geometry edits', not at.problems, '; '.join(at.problems))
     nulled = {hk(k): {'records': sorted(v), 'written_by': [f'{p} {t} {e}'.strip() for p, t, e in at.nulled_by.get(k, [])]}
               for k, v in sorted(at.canon.nulled.items())}
@@ -1385,14 +1666,14 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
     owner_review += [f'city cell {c["cell"]} {c["edid"]}: Graves edited {c["graves_fields"]} ({c["decision"]})' for c in at.city_cells
                      if c.get('graves_fields') and c['decision'] != 'CONFLICT']
     owner_review += [f'NEW cleared the link to {k} (a record its master defines) in {v}; kept as a Graves edit' for k, v in cleared.items()]
-    if idx:
+    if idx and PLAN['run'] == 'r7':
         owner_review.append(f'{len(idx)} form ids use raw indices 08-0D (step 2a assumes only 0E04B2AB NAME): {idx}')
 
     doc = {
-        'generated_by': 'misc/esp-merge/attribute.py', 'plan': 'reports/r7-esp-merge-plan.md step 1',
+        'generated_by': 'misc/esp-merge/attribute.py', 'plan': PLAN['run'],
         'inputs': {t: {'path': INPUTS[t][0], 'sha256': INPUTS[t][1]} for t in ('NEW', 'R4', 'RAW')},
         'dropped_masters': {m: dm_sha[m] for m in dropped}, 'searched_plugins': {m: h for m, h in dm_sha.items() if m not in dropped},
-        'added_masters': added_masters, 'new_masters': new.m,
+        'added_masters': added_masters, 'new_masters': new.m, 'odd_index_owners': {f'{i:02X}': v for i, v in getattr(at, 'odd', {}).items()},
         'counts': {'new_own': dict(c_own), 'r4_missing': dict(c_r4),
                    'reowned_by_type': dict(collections.Counter(e['type'] for e in own_new if e.get('master'))),
                    'reowned_edit': dict(collections.Counter(f'{e["type"]} {e.get("edit")}' for e in own_new if e.get('master'))),
@@ -1412,18 +1693,24 @@ def report(at, new, r4, raw, dropped, added_masters, dm_sha, idx, prior, prior_b
         'collision_slots_all': {f'{k:06X}': [f'{x.nk[0]} {x.type} {x.fid:08X}' for x in v] for k, v in sorted(at.collide.items())},
         'entries': ents,
     }
-    with open(R7 + 'attribution.json', 'w', encoding='utf-8') as f:
+    with open(RUN_DIR + 'attribution.json', 'w', encoding='utf-8') as f:
         json.dump(doc, f, indent=1, default=sorted)
     write_text(doc, at, ents)
+    if PLAN['run'] == 'r11':
+        rows = [{'kind': k, 'type': e['type'], 'fid': e['fid'], 'target': e['target'], 'cell': e.get('cell'), 'world': e.get('world'),
+                 'class': f'{e["class"]}/{e.get("subtype", "")}', 'changes': [d for d in e.get('diffs', []) if not d.startswith('noise')]} for e, k in delta]
+        with open(RUN_DIR + 'delta.json', 'w', encoding='utf-8') as f:
+            json.dump({'generated_by': 'misc/esp-merge/attribute.py', 'new': INPUTS['NEW'][1], 'records': rows}, f, indent=1)
     untouched = assert_untouched()
     print('\n'.join(checks))
     print('\n'.join(untouched))
-    print(f'wrote {R7}attribution.json ({sha_file(R7 + "attribution.json")[:8]}) and attribution.txt')
+    print(f'wrote {RUN_DIR}attribution.json ({sha_file(RUN_DIR + "attribution.json")[:8]}) and attribution.txt'
+          + (f', delta.json ({sha_file(RUN_DIR + "delta.json")[:8]})' if PLAN['run'] == 'r11' else ''))
     sys.exit(2 if fails else 0)
 
 
 def write_text(doc, at, ents):
-    L = ['r7 attribution manifest (step 1)', '']
+    L = [f'{PLAN["run"]} attribution manifest (step 1)', '']
     L += [f'{k}: {v["path"]} {v["sha256"][:8]}' for k, v in doc['inputs'].items()]
     L += ['', 'CHECKS'] + doc['checks'] + ['', 'COUNTS']
     for k, v in doc['counts'].items():
@@ -1460,7 +1747,7 @@ def write_text(doc, at, ents):
             L.append(f'      note: {e["note"]}')
         for d in [x for x in e.get('diffs', []) if not x.startswith('noise')][:6]:
             L.append(f'      {d}')
-    with open(R7 + 'attribution.txt', 'w', encoding='utf-8') as f:
+    with open(RUN_DIR + 'attribution.txt', 'w', encoding='utf-8') as f:
         f.write('\n'.join(L) + '\n')
 
 

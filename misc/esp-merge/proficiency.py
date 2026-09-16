@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Step 3: re-runs the proficiency generator on the merged base with new ids pinned at 0x201D; the result is accepted only when it reproduces LIVE's marker ids.
 #   python proficiency.py
-# Writes r7/work/prof/ (patch.py output) and appends the acceptance checks to r7/build-log.txt.
+# Writes <run>/work/prof/ (patch.py output) and appends the acceptance checks to <run>/build-log.txt.
 import os
 import struct
 import subprocess
@@ -9,16 +9,16 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.join(HERE, 'tools')]
-from r7lib import (ESPFIX, SELF, STAGE, STAGE_SETTINGS, STAGE_SETTINGS_SHA, WORK, assert_untouched, build_log, check_sha,  # noqa: E402
+from r7lib import (ESPFIX, RUN, RUN_NAME, SELF, STAGE, STAGE_SETTINGS, STAGE_SETTINGS_SHA, WORK, assert_untouched, build_log, check_sha,  # noqa: E402
                    read_input, record_output, sha_file, step_input)
 import fastesp  # noqa: E402
 
 PATCHER = os.path.join(HERE, '..', 'proficiency-patcher')
-SPEC = (os.path.join(PATCHER, 'spec.json'), '4db72fbedc6b3f1f0446985122e8c98bc32aa67337991796aa20a8f7c3ce8320')
+SPEC = (os.path.join(PATCHER, 'spec.json'), RUN['spec'])
 LIVE_DIR = ESPFIX + 'proficiency/'
 # LIVE_LAST_ID ends the block LIVE shipped; the woodcutter's axe recipe took the next id
-NEXT_ID, LIVE_LAST_ID, LAST_ID = 0x201D, 0x2092, 0x2093
-OWN_RECORDS, ADDED = 119, 1556
+NEXT_ID, LIVE_LAST_ID, LAST_ID = 0x201D, RUN['live_last_id'], RUN['last_id']
+OWN_RECORDS, ADDED = RUN['own_records'], RUN['added']
 OUT = WORK + 'prof/'
 
 
@@ -74,7 +74,7 @@ def main():
         check(f'{OWN_RECORDS} own records at 0x{NEXT_ID:X}-0x{LAST_ID:X}, LIVE\'s ids unmoved by type, id and editor id',
               mine[:len(live)] == live and len(mine) == OWN_RECORDS, str(types))
         check(f'added records match the spec ({OWN_RECORDS} own + {ADDED - OWN_RECORDS} overrides)', f' added {ADDED}' in verify_counts(OUT + 'verify.txt'),
-              f'r7: {verify_counts(OUT + "verify.txt")}; LIVE: {verify_counts(LIVE_DIR + "verify.txt")}')
+              f'{RUN_NAME}: {verify_counts(OUT + "verify.txt")}; LIVE: {verify_counts(LIVE_DIR + "verify.txt")}')
         lines.append(f'masters: {len(pl["masters"])}')
         lines += [f'  {i:02X} {m}' for i, m in enumerate(pl['masters'])]
     lines += [c for _, c in checks]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Step 0: builds r7/stage-data (hardlinks to the load order plugins and archives) and r7/server-settings.stage.json.
+# Step 0: builds the run's stage-data (hardlinks to the load order plugins and archives) and server-settings.stage.json.
 #   python stage.py [--slot <plugin> --slot-sha <sha256>]
 # The AlduinakAdditions.esp slot stays empty unless --slot names the plugin a later step needs there.
 import argparse
@@ -8,7 +8,7 @@ import os
 import sys
 
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools')]
-from r7lib import DATA, R7, SELF, STAGE, STAGE_SETTINGS, assert_untouched, live_load_order, sha_file  # noqa: E402
+from r7lib import DATA, RUN, SELF, STAGE, STAGE_SETTINGS, assert_untouched, live_load_order, sha_file  # noqa: E402
 
 
 def link(src, dst):
@@ -87,7 +87,7 @@ def main():
         assert os.path.samefile(DATA + name, STAGE + name), name
     log.append(f'checked: all {len(others) + len(bsas)} stage entries are the same files as Data')
     log += assert_untouched()
-    with open(R7 + 'stage-log.txt', 'a', encoding='utf-8') as f:
+    with open(RUN['stage'] + 'stage-log.txt', 'a', encoding='utf-8') as f:
         f.write('\n'.join(log) + '\n\n')
     print('\n'.join(log))
 

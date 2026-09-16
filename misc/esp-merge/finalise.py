@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Step 5: checks the header and masters of the r7 plugin, copies it to r7/AlduinakAdditions.esp, keeps a rollback copy of the deployed plugin and closes the build log.
+# Step 5: checks the header and masters of the run's plugin, copies it to <run>/AlduinakAdditions.esp, keeps a rollback copy of the deployed plugin and closes the build log.
 #   python finalise.py
 import json
 import os
@@ -7,11 +7,12 @@ import struct
 import sys
 
 sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools')]
-from r7lib import ATTRIBUTION, DEPLOYED_SHA, MANIFEST, R7, SELF, assert_untouched, build_log, check_sha, live_load_order, read_input, step_input  # noqa: E402
+from r7lib import (ATTRIBUTION, DEPLOYED_SHA, INPUTS, RUN, RUN_DIR, SELF, assert_untouched, build_log, check_sha, live_load_order, manifests,  # noqa: E402
+                   read_input, step_input)
 from esplib import Plugin  # noqa: E402
 
-OUT = R7 + SELF
-ROLLBACK = R7 + 'rollback/' + SELF
+OUT = RUN_DIR + SELF
+ROLLBACK = RUN_DIR + 'rollback/' + SELF
 
 
 def main():
@@ -46,14 +47,21 @@ def main():
     check_sha(ROLLBACK, DEPLOYED_SHA)
 
     at = json.load(open(check_sha(*ATTRIBUTION), encoding='utf-8'))
-    chain = json.load(open(MANIFEST, encoding='utf-8'))
+    chain = {}
+    for m in reversed(manifests()):
+        chain.update(m)
     lines = [f'output {OUT}', f'sha256 {sha}', f'size {len(b)} bytes; {recs} records, {grps} groups; HEDR 1.71, count {count} (records + groups - {deployed_offset}, as deployed), next id {nxt:X}; TES4 flags 0, form version 44',
              f'masters ({len(masters)}), each in the server loadOrder before AlduinakAdditions (position {pos[SELF.lower()]}):']
     lines += [f'  {i:02X} {m} (load order {pos[m.lower()]})' for i, m in enumerate(masters)]
     lines += ['step chain:'] + [f'  {k}: {v["path"]} {v["sha256"]}' for k, v in chain.items()]
-    lines += ['city cells forwarded from the prior winner (NEW\'s children kept):']
-    lines += [f'  {c["cell"]} {c["edid"]!r} from {c["prior"]}' for c in at['city_cells'] if c['decision'] == 'FORWARD']
-    lines.append('city cells where Graves edited cell fields: ' + (', '.join(at['city_cells_graves_edited']) or 'none'))
+    if 'delta' in RUN:
+        rows = json.load(open(check_sha(*RUN['delta']), encoding='utf-8'))['records']
+        lines += [f'refs replayed from {INPUTS["NEW"][0]} ({len(rows)}):']
+        lines += [f'  {r["kind"]} {r["type"]} {r["target"]} in {r["cell"]}: ' + ('; '.join(r['changes']) or 'new own ref') for r in rows]
+    else:
+        lines += ['city cells forwarded from the prior winner (NEW\'s children kept):']
+        lines += [f'  {c["cell"]} {c["edid"]!r} from {c["prior"]}' for c in at['city_cells'] if c['decision'] == 'FORWARD']
+        lines.append('city cells where Graves edited cell fields: ' + (', '.join(at['city_cells_graves_edited']) or 'none'))
     lines.append(f'rollback copy of the deployed plugin: {ROLLBACK} {DEPLOYED_SHA}')
     build_log('step 5 finalise (misc/esp-merge/finalise.py)', lines + assert_untouched())
 

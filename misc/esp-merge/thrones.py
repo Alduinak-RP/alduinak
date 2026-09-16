@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Step 4b: drops FurnitureForce3rdPerson from every winning throne FURN that still carries it, as esp-fix/tools/r4_throne_keywords.py did for r4.
 #   python thrones.py
-# Writes r7/work/thrones/AlduinakAdditions.esp; it runs after the last Mutagen pass, so the master list must not change.
+# Writes <run>/work/thrones/AlduinakAdditions.esp; it runs after the last Mutagen pass, so the master list must not change.
 import os
 import struct
 import sys

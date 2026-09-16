@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Step 4: strips the enchantment from the 8 crafted Kad_BogBlightMask.esp funerary masks (Program.cs armor-effects) and proves nothing else changed.
 #   python masks.py
-# Writes r7/work/masks/AlduinakAdditions.esp and appends the run to r7/build-log.txt.
+# Writes <run>/work/masks/AlduinakAdditions.esp and appends the run to <run>/build-log.txt.
 import os
 import sys
 
