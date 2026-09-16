@@ -1250,21 +1250,76 @@ const CC_FILE_RE = /^cc[a-z]{3}sse\d{3}-.*\.(?:es[mlp]|bsa)$/i
 // AE extras the engine force-loads without a plugins.txt entry.
 const CC_EXTRAS  = new Set(['_resourcepack.esl', '_resourcepack.bsa', 'marketplacetextures.bsa'])
 
+const CC_QUARANTINE_DIR = 'disabled CC mods'
+
+// Existing folders that may hold Creation Club files: searchDirs plus first-level "disabled"/"kzl" folders of the root and its Data
+function creationDirs(gameRoot, searchDirs) {
+  if (!gameRoot) return []
+  const out = []
+  const seen = new Set()
+  const add = p => {
+    const key = path.resolve(p).toLowerCase()
+    if (seen.has(key)) return
+    try { if (!fs.statSync(lp(p)).isDirectory()) return } catch { return }
+    seen.add(key)
+    out.push(p)
+  }
+  for (const rel of (Array.isArray(searchDirs) ? searchDirs : [])) {
+    if (typeof rel === 'string' && !rel.split(/[\\/]/).includes('..')) add(path.join(gameRoot, ...rel.split(/[\\/]/)))
+  }
+  for (const parent of [gameRoot, path.join(gameRoot, 'Data')]) {
+    let entries = []
+    try { entries = fs.readdirSync(lp(parent), { withFileTypes: true }) } catch { continue }
+    for (const e of entries) if (e.isDirectory() && /disabled|kzl/i.test(e.name)) add(path.join(parent, e.name))
+  }
+  return out
+}
+
+// First verified copy of a creations file in dirs; an archive of another store build is the unverified fallback, plugins never are
+async function locateCreation(file, dirs) {
+  const accept = Array.isArray(file.accept) ? file.accept : []
+  const rejected = []
+  let fallback = null
+  for (const dir of dirs) {
+    const full = path.join(dir, file.name)
+    let st
+    try { st = fs.statSync(lp(full)) } catch { continue }
+    if (!st.isFile()) continue
+    let sha = ''
+    if (accept.some(a => a.size === st.size)) {
+      try { sha = await hashCached(full, st) } catch { rejected.push({ path: full, size: st.size, sha256: 'unreadable' }); continue }
+      if (accept.some(a => a.size === st.size && String(a.sha256).toLowerCase() === sha)) return { path: full, size: st.size, sha256: sha, verified: true, rejected }
+    }
+    if (!sha) { try { sha = await hashCached(full, st) } catch { sha = 'unreadable' } }
+    rejected.push({ path: full, size: st.size, sha256: sha })
+    if (file.kind === 'archive' && !fallback && sha !== 'unreadable') fallback = { path: full, size: st.size, sha256: sha, verified: false }
+  }
+  return fallback ? { ...fallback, rejected } : { path: null, rejected }
+}
+
 /**
  * Move Creation Club plugins/archives (plus the AE resource pack and
  * marketplace textures) out of <gamePath>/Data into "<gamePath>/disabled CC
  * mods". Non-portable installs play from the user's real Skyrim folder, where
  * the engine force-loads CC content via Skyrim.ccc regardless of plugins.txt
- * and fights the server's load order. Files named in serverLoadOrder are left
- * alone. Idempotent; returns the number of files moved.
+ * and fights the server's load order. Files named in serverLoadOrder, their
+ * archives and keepNames (the manifest's creations, remembered for launches
+ * without serverinfo) are left alone. Idempotent; returns the number of files moved.
  */
-function disableCcContent(gamePath, serverLoadOrder) {
+function disableCcContent(gamePath, serverLoadOrder, keepNames) {
   const dataDir = path.join(gamePath, 'Data')
-  const keep = new Set((serverLoadOrder || []).map(f => path.basename(f).toLowerCase()))
+  const keep = new Set((keepNames || []).map(f => path.basename(f).toLowerCase()))
+  for (const f of (serverLoadOrder || [])) {
+    const name = path.basename(f).toLowerCase()
+    const base = name.replace(/\.es[mlp]$/, '')
+    keep.add(name)
+    keep.add(`${base}.bsa`)
+    keep.add(`${base} - textures.bsa`)
+  }
   let names = []
   try { names = fs.readdirSync(dataDir) } catch { return 0 }
 
-  const destDir = path.join(gamePath, 'disabled CC mods')
+  const destDir = path.join(gamePath, CC_QUARANTINE_DIR)
   let moved = 0
   for (const name of names) {
     const l = name.toLowerCase()
@@ -1345,6 +1400,7 @@ module.exports = {
   verifyArchive,
   sha256File,
   sha256FileAsync,
+  hashCached,
   listFilesRel,
   lp,
   extractToCache,
@@ -1369,6 +1425,9 @@ module.exports = {
   parseArchiveListing,
   listArchiveEntries,
   waitForDownloads,
+  CC_QUARANTINE_DIR,
+  creationDirs,
+  locateCreation,
   disableCcContent,
   launchGame,
   openUI,

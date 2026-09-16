@@ -22,6 +22,7 @@ import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
+import { NeedsSystem } from "./systems/needsSystem";
 import { GatheringSystem } from "./systems/gatheringSystem";
 import { HuntingSystem } from "./systems/huntingSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
@@ -257,6 +258,8 @@ const main = async () => {
     new AfkSystem(log),
     new TimeSystem(log),
     new FurnitureSeatSystem(log),
+    // Before mastery, whose hooks wrap this one's, so a craft refused for fatigue is never credited
+    new NeedsSystem(log, masterySystem),
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
     new GatheringSystem(log, masterySystem),

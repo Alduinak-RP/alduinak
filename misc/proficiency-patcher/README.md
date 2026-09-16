@@ -43,6 +43,52 @@ records). The first run restores the Mutagen NuGet package.
    form id, so records are then matched by editor id and compared structurally. Exit code 3 on any other
    difference, and `verify.txt` lists it.
 
+## AlduinakCreations.esp
+
+The settings `loadOrder` must carry the four plugins of `spec.json` `creations.plugins` right after `Dragonborn.esm`, in
+`Skyrim.ccc` order: Fish, SurvivalMode, Curios, AdvDSGS (`misc/esp-merge/stage.py` stages them so). The same run then
+also writes `AlduinakCreations.esp`, `creations-report.md` and, through `patch.py`, `verify-creations.txt` and
+`AlduinakCreations.inputs.json`. A load order with only some of them is refused, and so is one with none of them unless
+`--no-creations` is passed to `patch.py`, which builds `AlduinakAdditions.esp` alone (byte-identical to a full run).
+`AlduinakCreations.esp` may appear last in the settings `loadOrder` or be absent: the run never reads it.
+
+**Rebuild it whenever any plugin before it changes.** It copies whole CELL and WRLD records (626 cells, 14 worldspaces
+today, including Riverwood, Riften, Dawnstar and Solitude), 87 references, 4 navmeshes and other reverted records from
+their winner at build time, `AlduinakAdditions.esp` included, and it loads last, so a stale copy silently undoes a later
+edit of Graves's plugin or a city mod. `verify_creations.py` writes `AlduinakCreations.inputs.json` after a clean check:
+the plugin's sha256 and the name and sha256 of every plugin loaded before it except the five vanilla masters, in order.
+The file ships next to the plugin in the MO2 mod, and `skymp5-backend/scripts/compile-manifest.js` (manager "Update
+manifest") refuses to publish a manifest whose plugins before `AlduinakCreations.esp` differ from it by name, order or
+sha256, or where the plugin is not the last enabled one; the file itself is never installed. The esp-merge pipeline
+re-pins `AlduinakAdditions.esp` in it at step 5, after steps 4 and 4b, which add only ARMO and FURN overrides.
+
+- `AlduinakAdditions.esp` is built from a load order without the Creations, so it gains no Creation Club master and
+  stays byte-identical to a run without them (checked 2026-09-16: 35c9db43 both ways on r7's merged base). Its full
+  slot, and so `proficiency-ids.json`, moves from `0x2B` to `0x2D`; `misc/esp-merge/proficiency.py` expects that shift.
+- `AlduinakCreations.esp` is ESL-flagged and holds overrides only, so it takes no full slot and shifts nothing. It
+  masters the Creations and `AlduinakAdditions.esp` (for the rank markers) and loads last.
+- The Creation Club plugins are localized. Every DLC master keeps its strings in `Skyrim - Interface.bsa`, where
+  Mutagen only looks for `Skyrim.esm`'s, so the program extracts that archive's strings to a temp folder first.
+  The dataDir must hold the four Creation BSAs as well as their plugins.
+
+| Key | Effect |
+|---|---|
+| `creations.globals` | GLOB values pinned: Survival never switches on and its prompt never shows (its `DOBJ` keys `SRVE`, `SRVS`, `SRVT` point at these globals; no vanilla default object is changed, so the `DOBJ` itself is kept). |
+| `creations.stageAbilities` | The hunger stage abilities the server grants lose their `...ImodEffect` screen effect. |
+| `creations.revertTypes` | A Creation edit of a master record of these types is replaced by the record as it wins without the Creations. |
+| `creations.keepTypes` | Creation edits kept: `ALCH` (the Survival hunger effects the server reads), `DOBJ`, `NAVI` (overridden later by `AlduinakAdditions.esp` anyway). An edit of a type in neither list fails the run. |
+| `creations.recipes` | `cooking`, `smithing`, `woodworking`, `uncraftable` sections laid over the root spec for the Creation recipes only; `smithing.materials` adds to the root table. |
+
+Besides the keys, every run clears Start Game Enabled on each Creation quest, neutralises every Creation story manager
+branch and quest node and every loading screen (a single `GetRandomPercent < 0` condition), and sets Initially Disabled
+without an enable parent on every reference a Creation places. Cells and worldspaces it touches carry the fields of
+their winner without the Creations, so no later city mod edit is undone.
+
+`verify_creations.py` re-reads every plugin with `misc/esp-merge/fastesp.py` and checks each record against its source:
+placed references differ only by the flag and the enable parent, reverted records equal the winner without the
+Creations (Mutagen's subrecord order, `-0.0` and `XPRM` rounding aside), quests only lose the flag, and every live
+Creation reference, start-game quest, loading screen and story manager node is covered.
+
 ## What the spec describes
 
 | Key | Effect |

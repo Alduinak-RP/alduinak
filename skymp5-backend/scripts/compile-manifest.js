@@ -3,9 +3,12 @@
 /**
  * Compile an install manifest from a reference MO2 install.
  * Author overrides live in data/manifest-sources.json (all optional):
- *   { "urls": { "<archiveName>": "https://direct-download/…" }, "rootInclude": ["skse64_loader.exe", …] }
+ *   { "urls": { "<archiveName>": "https://direct-download/…" }, "rootInclude": ["skse64_loader.exe", …],
+ *     "creations": { "plugins": ["ccBGSSSE001-Fish.esm", …], "searchDirs": ["Data", …], "extraAccept": { "<file>": [{ "sha256", "size" }] } } }
  * `urls` gives a download source to non-Nexus archives; `rootInclude` lists
  * game-root files to capture (skse64_*.exe/.dll are picked up automatically).
+ * `creations` names Creation Club plugins every Skyrim SE 1.6 install carries: they are hashed from --game, never
+ * redistributed, and the launcher copies them out of the player's own game; `extraAccept` adds known store copies.
  */
 
 const fs      = require('fs')
@@ -45,6 +48,20 @@ const PROFILE_DIR = path.join(MO2, 'profiles', args.profile)
 const DATA_DIR    = path.join(__dirname, '..', 'data')
 const OUT         = args.out ? path.resolve(args.out) : path.join(DATA_DIR, 'install-manifest.json')
 const MODLIST_OUT = path.join(DATA_DIR, 'modlist.json')
+
+// Where the launcher looks for Creation files, relative to the game root; Keizaal's launcher parks them in disabled_by_kzl
+const CREATION_SEARCH_DIRS = ['Data', 'Data/disabled_by_kzl', 'disabled_by_kzl', 'disabled CC mods']
+const CREATION_TITLES = {
+  'ccbgssse001-fish.esm': 'Fishing',
+  'ccqdrsse001-survivalmode.esl': 'Survival Mode',
+  'ccbgssse037-curios.esl': 'Rare Curios',
+  'ccbgssse025-advdsgs.esm': 'Saints & Seducers',
+}
+
+// AlduinakCreations.esp copies whole cells, worldspaces and reverted records out of the plugins before it; its build pins them
+const CREATIONS_PLUGIN = 'AlduinakCreations.esp'
+const CREATIONS_INPUTS = 'AlduinakCreations.inputs.json'
+const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm'])
 
 const INLINE_WARN = 50 * 1024 * 1024   // warn when inlining anything this large
 // Hard cap on total inlined base64: the launcher parses the manifest as one
@@ -161,12 +178,80 @@ function writeManifestFile(out, m) {
     })
     w('],"order":' + JSON.stringify(m.order))
     w(',"plugins":' + JSON.stringify(m.plugins))
+    if (m.creations) w(',"creations":' + JSON.stringify(m.creations))
     w(',"root":[')
     writeFiles(m.root)
     w('],"rootHash":' + JSON.stringify(m.rootHash) + '}')
   } finally {
     fs.closeSync(fd)
   }
+}
+
+// Creation Club files: a plugin is accepted only by sha256 and size, its archives by name (the launcher logs a mismatch)
+async function creationsSection() {
+  const c = sources.creations
+  if (!c || !Array.isArray(c.plugins) || c.plugins.length === 0) return null
+  if (!args.game) throw new Error('manifest-sources.json lists creations: pass --game <game root> so their files can be hashed')
+  const data = path.join(path.resolve(args.game), 'Data')
+  const extra = c.extraAccept || {}
+  const files = []
+  for (const plugin of c.plugins) {
+    const base = plugin.replace(/\.es[mlp]$/i, '')
+    for (const name of [plugin, `${base}.bsa`, `${base} - Textures.bsa`]) {
+      const full = path.join(data, name)
+      if (!fs.existsSync(full)) {
+        if (name === plugin) throw new Error(`creation plugin missing from ${data}: ${name}`)
+        continue
+      }
+      const { sha, size } = await hashFile(full)
+      const accept = [{ sha256: sha, size }, ...(Array.isArray(extra[name]) ? extra[name] : [])]
+      files.push({ name, plugin, to: `Data/${name}`, kind: name === plugin ? 'plugin' : 'archive', title: CREATION_TITLES[plugin.toLowerCase()] || base, accept })
+      console.log(`  creation ${name} (${(size / 1048576).toFixed(1)} MB, sha256 ${sha.slice(0, 16)}…)`)
+    }
+  }
+  const hash = sha256Buf(Buffer.from(files.map(f => `${f.name}:${f.accept.map(a => `${a.sha256}/${a.size}`).join(',')}`).join('\n')))
+  return { plugins: c.plugins, searchDirs: Array.isArray(c.searchDirs) ? c.searchDirs : CREATION_SEARCH_DIRS, files, hash }
+}
+
+// Refuses to publish an AlduinakCreations.esp built against other plugins than the ones this manifest loads before it
+function checkCreationsInputs(mods, plugins, creations, inputsFiles) {
+  const provider = new Map()
+  for (const m of mods) {
+    for (const f of m.files) {
+      const key = f.to.toLowerCase()
+      if (!key.includes('/') && !provider.has(key)) provider.set(key, { sha256: f.sha256, mod: m.name })
+    }
+  }
+  for (const f of (creations && creations.files) || []) {
+    if (f.kind === 'plugin') provider.set(f.name.toLowerCase(), { sha256: f.accept[0].sha256, mod: 'the game' })
+  }
+  const own = provider.get(CREATIONS_PLUGIN.toLowerCase())
+  if (!own) return
+  const fail = why => {
+    throw new Error(`${CREATIONS_PLUGIN} in mod "${own.mod}" ${why}. It copies whole cells and worldspaces from the plugins loaded before it: ` +
+      `rebuild it with misc/proficiency-patcher and copy the new plugin and ${CREATIONS_INPUTS} into that mod (docs/docs_roleplay_creations_and_needs.md)`)
+  }
+  const file = inputsFiles.get(own.mod)
+  if (!file) fail(`has no ${CREATIONS_INPUTS} next to it`)
+  let pinned
+  try { pinned = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (err) { fail(`has an unreadable ${CREATIONS_INPUTS} (${err.message})`) }
+  if (pinned.sha256 !== own.sha256) fail(`does not match its ${CREATIONS_INPUTS}, which belongs to another build`)
+  const enabled = plugins.filter(l => l.startsWith('*')).map(l => l.slice(1).trim())
+  const at = enabled.findIndex(n => n.toLowerCase() === CREATIONS_PLUGIN.toLowerCase())
+  if (at < 0 || at !== enabled.length - 1) fail('is not the last enabled plugin in plugins.txt')
+  const before = enabled.slice(0, at).filter(n => !VANILLA_MASTERS.has(n.toLowerCase()))
+  const inputs = Array.isArray(pinned.inputs) ? pinned.inputs : []
+  const built = inputs.map(i => String(i.name))
+  const differs = before.findIndex((n, k) => n.toLowerCase() !== (built[k] || '').toLowerCase())
+  if (differs >= 0 || before.length !== built.length) {
+    const k = differs >= 0 ? differs : Math.min(before.length, built.length)
+    fail(`was built for another load order: plugin ${k + 1} after the vanilla masters is ${before[k] || 'none'} here and was ${built[k] || 'none'} in the build`)
+  }
+  const stale = inputs
+    .map(i => ({ name: i.name, was: String(i.sha256), now: (provider.get(i.name.toLowerCase()) || {}).sha256 || 'missing' }))
+    .filter(i => i.was !== i.now)
+  if (stale.length) fail(`is stale, ${stale.length} plugin(s) changed since its build: ${stale.map(i => `${i.name} (built ${i.was.slice(0, 8)}, now ${i.now.slice(0, 8)})`).join(', ')}`)
+  console.log(`  ${CREATIONS_PLUGIN}: built against the ${built.length} plugins this manifest loads before it`)
 }
 
 // Main
@@ -241,6 +326,13 @@ async function main() {
       .filter(l => l && !l.startsWith('#'))
   } catch { /* no plugins.txt: load order then comes from the server at launch */ }
 
+  // The Creations load right after the vanilla masters in Skyrim.ccc order, whatever the MO2 profile says
+  const creations = await creationsSection()
+  if (creations) {
+    const own = new Set(creations.plugins.map(p => p.toLowerCase()))
+    plugins = [...creations.plugins.map(p => `*${p}`), ...plugins.filter(l => !own.has(l.replace(/^[*+-]/, '').trim().toLowerCase()))]
+  }
+
   // 3. Emit a directive per file in each mod folder
   const mods = []
   const inlineWarnings = []
@@ -267,10 +359,14 @@ async function main() {
     return { to: toRel, inline, sha256: sha, size }
   }
 
+  const inputsFiles = new Map()
   for (const modName of order) {
     const modDir = path.join(MODS, modName)
     if (!fs.existsSync(modDir)) continue
-    const rels = walk(modDir).filter(r => r.toLowerCase() !== 'meta.ini')
+    const all = walk(modDir)
+    if (all.some(r => r.toLowerCase() === CREATIONS_INPUTS.toLowerCase())) inputsFiles.set(modName, path.join(modDir, CREATIONS_INPUTS))
+    // The inputs file is build metadata for the check below, never installed
+    const rels = all.filter(r => r.toLowerCase() !== 'meta.ini' && r.toLowerCase() !== CREATIONS_INPUTS.toLowerCase())
     if (rels.length === 0) continue
 
     const files = []
@@ -279,6 +375,8 @@ async function main() {
     }
     mods.push({ name: modName, modId: readModId(modDir), files, hash: contentHash(files) })
   }
+
+  checkCreationsInputs(mods, plugins, creations, inputsFiles)
 
   // 4. Optional game-root files (preloaders, etc.)
   const root = []
@@ -309,13 +407,15 @@ async function main() {
     .map(({ id, hash, size, name, source }) => ({ id, hash, size, name, source }))
 
   const manifest = {
-    schema:  2,
+    // Launchers that predate a schema refuse it; the install-manifest route answers them with an update message
+    schema:  creations ? 3 : 2,
     builtAt: new Date().toISOString(),
     game:    'skyrimspecialedition',
     archives: usedArchives,
     mods,
     order,      // full modlist.txt order, separators included
     plugins,    // plugins.txt load order
+    creations,
     root,
     rootHash: contentHash(root),
   }
@@ -340,6 +440,7 @@ async function main() {
   console.log(`mods:        ${mods.length}`)
   console.log(`separators:  ${order.filter(n => n.endsWith('_separator')).length}`)
   console.log(`plugins:     ${plugins.length}`)
+  console.log(`creations:   ${creations ? `${creations.plugins.length} plugins, ${creations.files.length} files (schema 3)` : 'none'}`)
   console.log(`root files:  ${root.length}`)
   console.log(`directives:  ${mods.reduce((n, m) => n + m.files.length, 0) + root.length} (${inlineCount} inline)`)
 

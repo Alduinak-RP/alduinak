@@ -13,6 +13,32 @@ from esplib import Plugin  # noqa: E402
 
 OUT = RUN_DIR + SELF
 ROLLBACK = RUN_DIR + 'rollback/' + SELF
+SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'proficiency-patcher', 'spec.json')
+
+
+def creations_files(final_sha):
+    # Steps 4 and 4b add only ARMO and FURN overrides, which AlduinakCreations.esp never copies, so its inputs file moves to the final plugin
+    name = (json.load(open(SPEC, encoding='utf-8')).get('creations') or {}).get('pluginName')
+    if not name or not RUN.get('creations'):
+        return []
+    plugin, plugin_sha = step_input('creations')
+    inputs, _ = step_input('creations-inputs')
+    _, prof_sha = step_input('prof')
+    body = json.load(open(inputs, encoding='utf-8'))
+    own = [i for i in body['inputs'] if i['name'] == SELF]
+    assert body['plugin'] == name and body['sha256'] == plugin_sha and len(own) == 1 and own[0]['sha256'] == prof_sha, f'{inputs} does not pin the step 3 plugins'
+    assert not any(r.type in ('ARMO', 'FURN') for r, _ in Plugin(plugin).records()), f'{name} overrides ARMO or FURN records, which steps 4 and 4b change'
+    own[0]['sha256'] = final_sha
+    out_dir = os.path.dirname(OUT)
+    with open(os.path.join(out_dir, name), 'wb') as f:
+        f.write(open(plugin, 'rb').read())
+    check_sha(os.path.join(out_dir, name), plugin_sha)
+    out_inputs = os.path.join(out_dir, os.path.basename(inputs))
+    with open(out_inputs, 'w', encoding='utf-8') as f:
+        json.dump(body, f, indent=1)
+        f.write('\n')
+    return [f'output {os.path.join(out_dir, name)} sha256 {plugin_sha}',
+            f'output {out_inputs}: {len(body["inputs"])} plugins, {SELF} re-pinned from step 3 {prof_sha[:8]} to {final_sha[:8]}']
 
 
 def main():
@@ -45,6 +71,7 @@ def main():
     with open(ROLLBACK, 'wb') as f:
         f.write(deployed_buf)
     check_sha(ROLLBACK, DEPLOYED_SHA)
+    creations = creations_files(sha)
 
     at = json.load(open(check_sha(*ATTRIBUTION), encoding='utf-8'))
     chain = {}
@@ -62,6 +89,7 @@ def main():
         lines += ['city cells forwarded from the prior winner (NEW\'s children kept):']
         lines += [f'  {c["cell"]} {c["edid"]!r} from {c["prior"]}' for c in at['city_cells'] if c['decision'] == 'FORWARD']
         lines.append('city cells where Graves edited cell fields: ' + (', '.join(at['city_cells_graves_edited']) or 'none'))
+    lines += creations
     lines.append(f'rollback copy of the deployed plugin: {ROLLBACK} {DEPLOYED_SHA}')
     build_log('step 5 finalise (misc/esp-merge/finalise.py)', lines + assert_untouched())
 

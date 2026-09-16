@@ -13,6 +13,8 @@ const MAX_LIGHT_MODS = 0x1000;
 
 // Steam and GOG copies of these may differ, and Skyrim.esm is too big to hash on every connect
 const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm']);
+// Creation Club files come from the player's own install, where the store copy may differ as well
+const CREATION_CLUB_RE = /^cc[a-z]{3}sse\d{3}-.*\.es[mlp]$/i;
 
 interface State {
   statusTextId?: number;
@@ -71,7 +73,7 @@ export class LoadOrderVerificationService extends ClientListener {
     const serverMods = new Map((manifest.mods || []).map((mod) => [lower(mod.filename), mod]));
     for (const name of [...full, ...light]) {
       const serverMod = serverMods.get(lower(name));
-      if (!serverMod || VANILLA_MASTERS.has(lower(name))) {
+      if (!serverMod || VANILLA_MASTERS.has(lower(name)) || CREATION_CLUB_RE.test(name)) {
         continue;
       }
       const { crc32, size } = this.getFileInfoSafe(name);

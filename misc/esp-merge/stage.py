@@ -2,6 +2,7 @@
 # Step 0: builds the run's stage-data (hardlinks to the load order plugins and archives) and server-settings.stage.json.
 #   python stage.py [--slot <plugin> --slot-sha <sha256>]
 # The AlduinakAdditions.esp slot stays empty unless --slot names the plugin a later step needs there.
+# A run with creations stages the Creation Club plugins of the patcher spec right after Dragonborn.esm, whether or not the live loadOrder has them yet.
 import argparse
 import json
 import os
@@ -19,6 +20,16 @@ def link(src, dst):
     return True
 
 
+def staged_order(order):
+    # Skyrim.ccc order after Dragonborn.esm, only for a run with creations; AlduinakCreations.esp is step 3's output, so it is never staged
+    spec = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'proficiency-patcher', 'spec.json')
+    cs = json.load(open(spec, encoding='utf-8')).get('creations') or {}
+    skip = {n.lower() for n in cs.get('plugins', [])} | {cs.get('pluginName', '').lower()}
+    base = [n for n in order if n.lower() not in skip]
+    at = [n.lower() for n in base].index('dragonborn.esm') + 1
+    return base, base[:at] + (list(cs.get('plugins', [])) if RUN.get('creations') else []) + base[at:]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--slot')
@@ -26,9 +37,11 @@ def main():
     a = ap.parse_args()
     assert bool(a.slot) == bool(a.slot_sha), '--slot needs --slot-sha'
     log = []
-    data_dir, order = live_load_order()
+    data_dir, live = live_load_order()
     assert data_dir.replace('\\', '/').rstrip('/') + '/' == DATA, f'live dataDir is {data_dir}'
-    assert len(order) == 71 and order[-1] == SELF and len(set(n.lower() for n in order)) == 71, 'unexpected live loadOrder'
+    base, order = staged_order(live)
+    assert len(base) == 71 and base[-1] == SELF and len(set(n.lower() for n in order)) == len(order), 'unexpected live loadOrder'
+    log.append(f'live loadOrder {len(live)} plugins, staged {len(order)}: ' + ', '.join(order[5:5 + len(order) - len(base)]) + ' after Dragonborn.esm')
     os.makedirs(STAGE, exist_ok=True)
 
     made = kept = 0

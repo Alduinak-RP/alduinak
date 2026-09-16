@@ -302,7 +302,9 @@ items work but are tradeable.
 Two server fixes make plugin conditions work at all: `CraftService` reads CTDA
 parameters and bench keywords through the defining plugin's master list, so a
 marker in `AlduinakAdditions.esp` (raw index `0x25`) matches the combined id
-(`0x2B` in the live load order, ESL-flagged plugins do not take a full slot).
+(`0x2B` in the load order before the Creation Club plugins, `0x2D` once
+`ccBGSSSE001-Fish.esm` and `ccBGSSSE025-AdvDSGS.esm` load after Dragonborn;
+ESL-flagged plugins do not take a full slot).
 
 ### The generator
 

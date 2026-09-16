@@ -1632,6 +1632,103 @@ ipcMain.handle('launch:direct', () => guardLaunch(async () => {
  *  3. Verify the SkyMP client files exist.
  */
  
+// Highest install manifest schema this launcher understands; the backend refuses newer manifests to older launchers
+const MANIFEST_SCHEMA = 3
+const MANIFEST_URL = () => `${config.apiUrl}/api/install-manifest?schema=${MANIFEST_SCHEMA}`
+const UPDATE_LAUNCHER_ERROR = 'This server needs a newer Alduinak launcher. Accept the launcher update (or download it again from the website), then try again.'
+const CREATIONS_STAMP = 'creations-complete.json'
+
+function readJsonOrNull(p) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
+}
+
+// Copies the manifest's Creation Club files from the player's own Skyrim install (never downloaded) into gamePath/Data
+async function ensureCreations(manifest, gamePath) {
+  const c = manifest && manifest.creations
+  if (!c || !Array.isArray(c.files) || c.files.length === 0) return { ok: true, warning: null }
+  const portable = !!store.get('isolatedGame') && gamePath === isolatedGameDir()
+  const sourceRoot = portable ? store.get('skyrimPath') : gamePath
+  const dirs = mo2.creationDirs(sourceRoot, c.searchDirs)
+  const stampPath = path.join(gamePath, CREATIONS_STAMP)
+  const stamp = readJsonOrNull(stampPath)
+  const stamped = new Map(stamp && stamp.hash === c.hash && Array.isArray(stamp.files) ? stamp.files.map(f => [String(f.name).toLowerCase(), f]) : [])
+  const accepted = (f, size, sha) => (f.accept || []).some(a => a.size === size && String(a.sha256).toLowerCase() === sha)
+  const done = []
+  const missing = []
+  const warnings = []
+  const mb = n => (n / 1048576).toFixed(0)
+
+  for (let i = 0; i < c.files.length; i++) {
+    const f = c.files[i]
+    const to = path.join(gamePath, ...String(f.to).split('/'))
+    const progress = text => send('install:progress', { phase: 'download', file: text, index: i, total: c.files.length, skipped: false })
+    let st = null
+    try { st = fs.statSync(mo2.lp(to)) } catch { /* not there yet */ }
+    const prior = stamped.get(f.name.toLowerCase())
+    if (st && prior && prior.size === st.size && prior.mtimeMs === st.mtimeMs) { done.push(prior); continue }
+    if (st) {
+      progress(`Checking ${f.title} (${f.name})…`)
+      const sha = await mo2.hashCached(to, st)
+      if (accepted(f, st.size, sha)) { done.push({ name: f.name, size: st.size, mtimeMs: st.mtimeMs, sha256: sha }); continue }
+      log(`[creations] ${f.name}: ${to} does not match the server copy (size ${st.size}, sha256 ${sha})`)
+    }
+    progress(`Looking for ${f.title} (${f.name}) in your Skyrim install…`)
+    const found = await mo2.locateCreation(f, dirs.filter(d => path.resolve(d, f.name).toLowerCase() !== path.resolve(to).toLowerCase()))
+    for (const r of found.rejected) log(`[creations] ${f.name}: ${r.path} does not match the server copy (size ${r.size}, sha256 ${r.sha256})`)
+    if (!found.path) {
+      if (st && f.kind === 'archive') {
+        const sha = await mo2.hashCached(to, st)
+        warnings.push(`${f.name} differs from the server copy (sha256 ${sha}) and was kept`)
+        done.push({ name: f.name, size: st.size, mtimeMs: st.mtimeMs, sha256: sha })
+        continue
+      }
+      missing.push({ ...f, differs: !!st })
+      continue
+    }
+    if (!found.verified) warnings.push(`${f.name} at ${found.path} differs from the server copy (sha256 ${found.sha256}) and was used anyway`)
+    const tmp = `${to}.alduinak-tmp`
+    try {
+      fs.mkdirSync(path.dirname(to), { recursive: true })
+      // Our own quarantine of this install is moved back rather than copied
+      if (path.resolve(path.dirname(found.path)).toLowerCase() === path.resolve(gamePath, mo2.CC_QUARANTINE_DIR).toLowerCase()) {
+        fs.renameSync(mo2.lp(found.path), mo2.lp(to))
+        const moved = fs.statSync(mo2.lp(to))
+        done.push({ name: f.name, size: moved.size, mtimeMs: moved.mtimeMs, sha256: found.sha256 })
+        log(`[creations] moved ${found.path} back to ${to}`)
+        continue
+      }
+      progress(`Copying ${f.title} (${f.name}, ${mb(found.size)} MB) from ${found.path}…`)
+      await fs.promises.copyFile(mo2.lp(found.path), mo2.lp(tmp))
+      const tst = fs.statSync(mo2.lp(tmp))
+      if (tst.size !== found.size || await mo2.sha256FileAsync(tmp) !== found.sha256) throw new Error('the copy does not match its source')
+      fs.renameSync(mo2.lp(tmp), mo2.lp(to))
+      const final = fs.statSync(mo2.lp(to))
+      done.push({ name: f.name, size: final.size, mtimeMs: final.mtimeMs, sha256: found.sha256 })
+      log(`[creations] copied ${found.path} -> ${to}`)
+    } catch (err) {
+      try { fs.rmSync(mo2.lp(tmp), { force: true }) } catch {}
+      return { ok: false, error: `Could not copy ${f.name} from ${found.path}: ${err.message}` }
+    }
+  }
+
+  if (missing.length > 0) {
+    const byTitle = new Map()
+    for (const f of missing) byTitle.set(f.title, [...(byTitle.get(f.title) || []), f.differs ? `${f.name}, whose copy in Data is a different version` : f.name])
+    const list = [...byTitle].map(([title, names]) => `${title} (${names.join(', ')})`).join(', ')
+    return {
+      ok: false,
+      error: `Alduinak needs the free Creations included with Skyrim Special Edition 1.6 (no Anniversary Edition purchase needed): ${list}. ` +
+             `Not found in ${dirs.length ? dirs.join(', ') : `${sourceRoot || 'your Skyrim folder'} (no Data folder found)`}. ` +
+             'Verify the game files in Steam (Properties > Installed Files > Verify integrity of game files) or GOG Galaxy, ' +
+             'or move them back from the folder another launcher put them in, then press Update again.',
+    }
+  }
+  try { fs.writeFileSync(stampPath, JSON.stringify({ hash: c.hash, files: done }, null, 2) + '\n') } catch { /* the stamp only saves re-hashing */ }
+  store.set('creationFiles', c.files.map(f => f.name))
+  for (const w of warnings) log(`[creations] ${w}`)
+  return { ok: true, warning: warnings.length ? `Creation Club: ${warnings.join('; ')}` : null }
+}
+
 // Adds two missing folders to prevent a code 2 crash
 function ensureClientDirs(gamePath) {
   if (!gamePath) return
@@ -1720,7 +1817,11 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
   // the engine force-loads it via Skyrim.ccc and fights the server load order.
   // The isolated game copy never receives cc* files, so this is a no-op there.
   if (skyrimPath === store.get('skyrimPath')) {
-    mo2.disableCcContent(skyrimPath, serverInfo?.loadOrder)
+    mo2.disableCcContent(skyrimPath, serverInfo?.loadOrder, store.get('creationFiles'))
+  }
+
+  if (Number(serverInfo?.manifestSchema) > MANIFEST_SCHEMA) {
+    return { success: false, error: UPDATE_LAUNCHER_ERROR }
   }
 
   // Staging gate: surface everything missing before we write settings or launch
@@ -1794,6 +1895,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
         plugins: Array.isArray(serverInfo.loadOrder)
           ? serverInfo.loadOrder.map(f => path.basename(f))
           : [],
+        manifestSchema: MANIFEST_SCHEMA,
       }, { 'x-session': session })
       if (!check.ok) {
         if (check.filesOk === false) {
@@ -2181,8 +2283,27 @@ async function checkFilesImpl() {
   // Modlist
   progress('Fetching the install manifest…')
   let manifest = null
-  try { manifest = await fetchJSON(`${config.apiUrl}/api/install-manifest`) }
+  try { manifest = await fetchJSON(MANIFEST_URL()) }
   catch (err) { notes.push(`Modlist: could not fetch the install manifest (${err.serverError || err.message}), section skipped.`) }
+  if (manifest && Number(manifest.schema) > MANIFEST_SCHEMA) {
+    notes.push(`Modlist: ${UPDATE_LAUNCHER_ERROR}`)
+    manifest = null
+  }
+  if (manifest && manifest.creations && Array.isArray(manifest.creations.files) && gameOk) {
+    progress('Checking the Creation Club files…')
+    for (const f of manifest.creations.files) {
+      const full = path.join(gamePath, ...String(f.to).split('/'))
+      const size = sizeOf(full)
+      if (size === -1) { add('missing', show(full), 'modlist'); continue }
+      let sha = ''
+      try { sha = await mo2.hashCached(full, fs.statSync(mo2.lp(full))) } catch { add('corrupt', `${show(full)} (unreadable)`, 'modlist'); continue }
+      const known = (f.accept || []).some(a => a.size === size && String(a.sha256).toLowerCase() === sha)
+      if (known) continue
+      if (f.kind === 'plugin') add('corrupt', `${show(full)} (differs from the server copy)`, 'modlist')
+      else notes.push(`Creation Club: ${show(full)} differs from the server copy (sha256 ${sha}); archives of other store builds are accepted.`)
+      await yieldNow()
+    }
+  }
   if (manifest && Array.isArray(manifest.mods)) {
     const modsDir  = mo2.getModsDir()
     const sanitize = n => String(n).replace(/[<>:"/\\|?*]/g, '')
@@ -2539,7 +2660,7 @@ async function runMO2Install(opts = {}) {
 
     // 3. Mods from the compiled install manifest
     let manifest
-    try { manifest = await fetchJSON(`${config.apiUrl}/api/install-manifest`) }
+    try { manifest = await fetchJSON(MANIFEST_URL()) }
     catch (err) {
       // A 404 means the backend never compiled (or lost, after a fresh
       // deploy) its manifest - surface the backend's own explanation.
@@ -2552,6 +2673,12 @@ async function runMO2Install(opts = {}) {
     if (!manifest || !Array.isArray(manifest.mods) || !Array.isArray(manifest.archives)) {
       return fail('Install manifest is missing or malformed - run "npm run compile-manifest" on the backend.')
     }
+    if (Number(manifest.schema) > MANIFEST_SCHEMA) return fail(UPDATE_LAUNCHER_ERROR)
+
+    // Creation Club files from the player's own install, before any mod: the load order needs them either way
+    const creations = await ensureCreations(manifest, skyrimPath)
+    if (!creations.ok) return fail(creations.error)
+    const setupWarning = [vanillaWarning, creations.warning].filter(Boolean).join(' | ') || null
 
     const finishOrder = () => {
       const order = (Array.isArray(manifest.order) && manifest.order.length)
@@ -2574,7 +2701,7 @@ async function runMO2Install(opts = {}) {
       store.set('modpackState', 'ready')
       send('install:complete', {
         success: true, mo2: true, upToDate: coreUpToDate, modsTotal: 0,
-        warning: [vanillaWarning, 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.']
+        warning: [setupWarning, 'The install manifest has no mods yet - compile it from the reference MO2 install on the backend.']
           .filter(Boolean).join(' | '),
       })
       return
@@ -2635,7 +2762,7 @@ async function runMO2Install(opts = {}) {
       store.set('modpackState', 'ready')
       send('install:complete', {
         success: true, mo2: true, upToDate: true, modsTotal: manifest.mods.length,
-        ...(vanillaWarning ? { warning: vanillaWarning } : {}),
+        ...(setupWarning ? { warning: setupWarning } : {}),
       })
       return
     }
@@ -2784,7 +2911,7 @@ async function runMO2Install(opts = {}) {
     store.set('modpackState', 'ready')
     send('install:complete', {
       success: true, mo2: true, upToDate: coreUpToDate, modsTotal: manifest.mods.length,
-      ...(vanillaWarning ? { warning: vanillaWarning } : {}),
+      ...(setupWarning ? { warning: setupWarning } : {}),
     })
   } catch (err) {
     if (err.message === 'Cancelled') { fail('Install cancelled.'); return }

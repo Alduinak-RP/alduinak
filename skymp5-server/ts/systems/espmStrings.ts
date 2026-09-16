@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { LogFn } from "./espmEditorIds";
 
-// Localized names from <plugin>_english.strings (loose Data/Strings, then Skyrim - Interface.bsa); port of misc/gen-map-marker-teleports.py
+// Localized names from <plugin>_english.strings (loose Data/Strings, the plugin's own archive, then Skyrim - Interface.bsa); port of misc/gen-map-marker-teleports.py
 
 const INTERFACE_BSA = "Skyrim - Interface.bsa";
 const BSA_HEADER_SIZE = 36;
@@ -89,22 +89,22 @@ export function parseStrings(raw: Buffer): Map<number, string> {
 
 // A missing or compressed table reads as empty and is logged once per plugin
 export function createStringsReader(dataDir: string, log: LogFn): { lookup(plugin: string, id: number): string } {
-  const bsaPath = path.join(dataDir, INTERFACE_BSA);
   const tables = new Map<string, Map<number, string>>();
-  let index: Map<string, BsaEntry> | null | undefined;
+  const indexes = new Map<string, Map<string, BsaEntry> | null>();
 
-  const fromBsa = (name: string): Buffer | null => {
-    if (index === undefined) {
+  const fromBsa = (archive: string, name: string): Buffer | null => {
+    const bsaPath = path.join(dataDir, archive);
+    if (!indexes.has(archive)) {
       try {
-        index = readBsaIndex(readAt(bsaPath, 0, bsaIndexSize(readAt(bsaPath, 0, BSA_HEADER_SIZE))));
+        indexes.set(archive, fs.existsSync(bsaPath) ? readBsaIndex(readAt(bsaPath, 0, bsaIndexSize(readAt(bsaPath, 0, BSA_HEADER_SIZE)))) : null);
       } catch (e) {
-        log(`espm strings: ${INTERFACE_BSA} unreadable: ${e}`);
-        index = null;
+        log(`espm strings: ${archive} unreadable: ${e}`);
+        indexes.set(archive, null);
       }
     }
-    const hit = index?.get(name);
+    const hit = indexes.get(archive)?.get(name);
     if (!hit) return null;
-    if (hit.compressed) throw new Error(`${name} is compressed in ${INTERFACE_BSA}`);
+    if (hit.compressed) throw new Error(`${name} is compressed in ${archive}`);
     return readAt(bsaPath, hit.pos, hit.size);
   };
 
@@ -116,9 +116,10 @@ export function createStringsReader(dataDir: string, log: LogFn): { lookup(plugi
     const file = `${key}_english.strings`;
     try {
       const loose = path.join(dataDir, "Strings", file);
-      const raw = fs.existsSync(loose) ? fs.readFileSync(loose) : fromBsa(`strings\\${file}`);
+      // Creation Club plugins carry their strings in an archive of their own name
+      const raw = fs.existsSync(loose) ? fs.readFileSync(loose) : fromBsa(`${key}.bsa`, `strings\\${file}`) || fromBsa(INTERFACE_BSA, `strings\\${file}`);
       if (raw) t = parseStrings(raw);
-      else log(`espm strings: ${file} is in neither Strings nor ${INTERFACE_BSA}, its names fall back to editor ids`);
+      else log(`espm strings: ${file} is in neither Strings, ${key}.bsa nor ${INTERFACE_BSA}, its names fall back to editor ids`);
     } catch (e) {
       log(`espm strings: ${file} unreadable (${e}), its names fall back to editor ids`);
     }

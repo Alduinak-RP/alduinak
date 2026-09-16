@@ -59,6 +59,8 @@ _R11_RUN = {
     'R10': (ESPFIX + 'r10/AlduinakAdditions.esp', 'ad651b18d2b068ca30267dc75ea929abb7807539a847e594b658949169ef47a9'),
     'spec': 'dd510ba88a126f1b823c2b56eb3623c35a09ac28797a5f8b79fcfd5c87466512',
     'live_last_id': 0x2092, 'last_id': 0x2093, 'own_records': 119, 'added': 1546,
+    # Stages the Creation Club plugins of the patcher spec and builds AlduinakCreations.esp in step 3
+    'creations': True,
 }
 RUNS = {
     'r7': _R7_RUN,
@@ -68,7 +70,7 @@ RUNS = {
     # Graves's 2026-09-16 records replayed onto r7's merged base (delta.py), then steps 3-5 with the integrated r11 spec
     'r11': _R11_RUN,
     # The replay check: r11's replayed base through steps 3-5 with the r10 spec, compared with r10 by verify_replay.py
-    'r11-graves': dict(_R11_RUN, dir=R11 + 'graves-replay/', stage=R11 + 'graves-replay/', chain='r11',
+    'r11-graves': dict(_R11_RUN, dir=R11 + 'graves-replay/', stage=R11 + 'graves-replay/', chain='r11', creations=False,
                        stage_sha='619a0967dd4444cb4e3d33fbbb5278d9c5057832b6b01bd9771dfb40109c670d'),
 }
 RUN_NAME = os.environ.get('ESP_MERGE_RUN', 'r7')

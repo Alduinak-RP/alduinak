@@ -107,6 +107,15 @@ export const destroyRef = (mp: Mp, id: number): void => {
   mp.callPapyrusFunction("method", "ObjectReference", "Delete", { type: "form", desc: mp.getDescFromId(id) }, []);
 };
 
+// Through Papyrus, so the server records learnedSpells (which HasSpell reads) and the client learns it live; throws when a form is unknown
+export const addSpellTo = (mp: Mp, actorId: number, spellId: number): void => {
+  mp.callPapyrusFunction("method", "Actor", "AddSpell", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(spellId) }, false]);
+};
+
+export const removeSpellFrom = (mp: Mp, actorId: number, spellId: number): void => {
+  mp.callPapyrusFunction("method", "Actor", "RemoveSpell", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(spellId) }]);
+};
+
 export const addItemTo = (mp: Mp, actorId: number, itemId: number, count: number, silent = false): void => {
   mp.callPapyrusFunction("method", "ObjectReference", "AddItem", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(itemId) }, count, silent]);
 };

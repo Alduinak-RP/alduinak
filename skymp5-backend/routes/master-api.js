@@ -131,6 +131,8 @@ function recordSessionHwid(token, hwid) {
 // Returns { ok: true } or { ok: false, error } for the session-validation gate.
 function launchGateStatus(entry) {
   if (!config.launchCheckEnforce) return { ok: true }
+  // A launcher too old for the published install manifest, whatever files it reports
+  if (entry.launchCheck && entry.launchCheck.schemaOk === false) return { ok: false, error: 'launcherOutdated' }
   const required = currentFilesVersion()
   if (!required) return { ok: true }   // no published package: can't compare
   const lc = entry.launchCheck

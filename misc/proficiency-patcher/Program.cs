@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Mutagen.Bethesda;
+using Mutagen.Bethesda.Archives;
 using Mutagen.Bethesda.Environments;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Aspects;
@@ -17,31 +18,38 @@ using Noggog;
 // conditions on cooking, smithing, tempering, woodworking and tailoring recipes, the meadery boiler benches, the hidden
 // and moved recipes, the few enchantment and placed reference fixes the spec names, and the writing items.
 // Run through patch.py, which pre-cleans the plugin, invokes this program and verifies the result.
-//   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>]
+//   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--no-creations]
 
 var opts = Cli.Parse(args);
 var spec = JsonNode.Parse(File.ReadAllText(opts.Spec))!.AsObject();
 var settings = JsonNode.Parse(File.ReadAllText(opts.Settings))!;
 var dataDir = settings["dataDir"]!.GetValue<string>();
-var loadOrderNames = settings["loadOrder"]!.AsArray().Select(n => Path.GetFileName(n!.GetValue<string>())).ToList();
+var creationsSpec = spec["creations"] as JsonObject;
+var creationsName = creationsSpec?["pluginName"]?.GetValue<string>() ?? "";
+var loadOrderNames = settings["loadOrder"]!.AsArray().Select(n => Path.GetFileName(n!.GetValue<string>()))
+    .Where(n => !string.Equals(n, creationsName, StringComparison.OrdinalIgnoreCase)).ToList();
 var pluginName = spec["pluginName"]?.GetValue<string>() ?? "AlduinakAdditions.esp";
 var pluginKey = ModKey.FromNameAndExtension(pluginName);
 var position = loadOrderNames.FindIndex(n => string.Equals(n, pluginName, StringComparison.OrdinalIgnoreCase));
 if (position < 0) throw new Exception($"{pluginName} is not in the server load order");
+var creationKeys = Creations.PluginKeys(creationsSpec, loadOrderNames, opts.NoCreations);
 
 var keys = loadOrderNames.Select(n => ModKey.FromNameAndExtension(n)).ToArray();
 var env = GameEnvironment.Typical.Builder<ISkyrimMod, ISkyrimModGetter>(GameRelease.SkyrimSE)
     .WithTargetDataFolder(dataDir)
+    .WithStringParameters(new StringsReadParameters { StringsFolderOverride = BaseStrings.Extract(dataDir) })
     .WithLoadOrder(keys)
     .Build();
-var cache = env.LinkCache;
+// The Creations stay out of AlduinakAdditions.esp: their recipes and overrides go to AlduinakCreations.esp
+var additionsOrder = new LoadOrder<IModListingGetter<ISkyrimModGetter>>(env.LoadOrder.ListedOrder.Where(l => !creationKeys.Contains(l.ModKey)));
+var cache = additionsOrder.ToImmutableLinkCache();
 // The pre-cleaned copy has another file name, the records must still belong to the plugin's own key
 var mod = SkyrimMod.CreateFromBinary(new ModPath(pluginKey, opts.Plugin), SkyrimRelease.SkyrimSE);
 // Light (ESL-flagged) plugins share the 0xFE slot, so the plugin's full slot counts only the full plugins before it
 var loadIndex = env.LoadOrder.ListedOrder.Take(position).Count(l => l.Mod != null && ((int)l.Mod.ModHeader.Flags & 0x200) == 0);
 if (((int)mod.ModHeader.Flags & 0x200) != 0) throw new Exception($"{pluginName} is ESL-flagged, the global id rule below does not apply");
 var report = new Report(loadIndex, pluginKey);
-var ctx = new PatchContext(mod, cache, env.LoadOrder, spec, report);
+var ctx = new PatchContext(mod, cache, additionsOrder, spec, report);
 if (opts.NextFormId is uint pinned)
 {
     // Pinned ids keep the marker spells stable for learnedSpells and server-settings.json; AddNew does not check for collisions
@@ -91,18 +99,23 @@ mod.WriteToBinary(outPath, new BinaryWriteParameters
 });
 Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes)");
 report.Write(opts.ReportDir, mod, env.LoadOrder, failed: false);
+if (creationKeys.Count > 0 && !opts.NoCreations && !Creations.Build(spec, creationsSpec!, env.LoadOrder.ListedOrder, mod, creationKeys, opts.Out, opts.ReportDir))
+    return 2;
 return 0;
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir, uint? NextFormId)
+record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir, uint? NextFormId, bool NoCreations)
 {
     public static Cli Parse(string[] args)
     {
         string? settings = null, plugin = null, spec = null, outDir = null, reportDir = null;
         uint? nextFormId = null;
-        for (int i = 0; i + 1 < args.Length; i += 2)
+        var noCreations = false;
+        for (int i = 0; i < args.Length; i += 2)
         {
+            if (args[i] == "--no-creations") { noCreations = true; i--; continue; }
+            if (i + 1 >= args.Length) throw new Exception($"option {args[i]} needs a value");
             switch (args[i])
             {
                 case "--settings": settings = args[i + 1]; break;
@@ -115,8 +128,27 @@ record Cli(string Settings, string Plugin, string Spec, string Out, string Repor
             }
         }
         if (settings == null || plugin == null || spec == null || outDir == null)
-            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--next-form-id <hex>]");
-        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir, nextFormId);
+            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--next-form-id <hex>] [--no-creations]");
+        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir, nextFormId, noCreations);
+    }
+}
+
+// Mutagen reads only Skyrim.esm's strings from Skyrim - Interface.bsa, where the DLC masters keep theirs as well
+static class BaseStrings
+{
+    public static string? Extract(string dataDir)
+    {
+        var bsa = Path.Combine(dataDir, "Skyrim - Interface.bsa");
+        if (!File.Exists(bsa)) return null;
+        var dir = Path.Combine(Path.GetTempPath(), "proficiency-patcher-strings");
+        Directory.CreateDirectory(dir);
+        foreach (var f in Archive.CreateReader(GameRelease.SkyrimSE, bsa).Files)
+        {
+            var path = f.Path.Replace('\\', '/');
+            if (path.StartsWith("strings/", StringComparison.OrdinalIgnoreCase))
+                File.WriteAllBytes(Path.Combine(dir, Path.GetFileName(path)), f.GetBytes());
+        }
+        return dir;
     }
 }
 
@@ -128,13 +160,20 @@ class PatchContext
     public readonly JsonObject Spec;
     public readonly Report Report;
     public readonly ModKey Key;
+    // Plugin holding the AldMastery_ marker spells the tier conditions point at
+    public readonly ModKey MarkerKey;
+    // Winning recipes the loops over the load order may tier
+    public readonly Func<IMajorRecordGetter, bool> Includes;
     // Editor id -> record already in the mutable plugin (own records and overrides), refreshed as records are added.
     private readonly Dictionary<string, IMajorRecord> ownByEdid = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<FormKey, int>? materialTiers;
 
-    public PatchContext(SkyrimMod mod, ILinkCache cache, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, JsonObject spec, Report report)
+    public PatchContext(SkyrimMod mod, ILinkCache cache, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, JsonObject spec, Report report,
+                        ModKey? markerKey = null, Func<IMajorRecordGetter, bool>? includes = null)
     {
         Mod = mod; Cache = cache; LoadOrder = loadOrder; Spec = spec; Report = report; Key = mod.ModKey;
+        MarkerKey = markerKey ?? mod.ModKey;
+        Includes = includes ?? (_ => true);
         foreach (var rec in mod.EnumerateMajorRecords())
             if (!string.IsNullOrEmpty(rec.EditorID)) ownByEdid[rec.EditorID] = rec;
     }
@@ -402,20 +441,23 @@ static class Steps
         var needsSalt = cook["needsSalt"]!.AsArray().Select(x => x!.GetValue<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var tierOf = TierMap(cook["tiers"]!.AsObject());
         var benches = cook["benches"]!.AsArray().Select(x => c.KeyOf<IKeywordGetter>(x!.GetValue<string>())).ToHashSet();
+        var strip = cook["stripConditions"]?.GetValue<bool>() == true ? StripSet(c, true) : new HashSet<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
-            if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
+            if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
             seen.Add(edid);
             var tier = tierOf.GetValueOrDefault(edid, "Novice");
             var addSalt = needsSalt.Contains(edid) && !(winning.Items ?? new List<IContainerEntryGetter>()).Any(i => i.Item.Item.FormKey == salt);
-            if (tier == "Novice" && !addSalt && !HasAldCondition(c, winning)) { c.Report.Recipes.Add(new RecipeLine("cooking", edid, c.NameOf(winning.CreatedObject.FormKey), profession, "Novice", Items(c, winning), untouched: true)); continue; }
+            var stripped = winning.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
+            if (tier == "Novice" && !addSalt && !stripped && !HasAldCondition(c, winning)) { c.Report.Recipes.Add(new RecipeLine("cooking", edid, c.NameOf(winning.CreatedObject.FormKey), profession, "Novice", Items(c, winning), untouched: true)); continue; }
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
             cobj.Items ??= new ExtendedList<ContainerEntry>();
             if (addSalt) cobj.Items.Add(new ContainerEntry { Item = new ContainerItem { Item = salt.ToLink<IItemGetter>(), Count = 1 } });
+            cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
             SetTier(c, cobj, profession, tier);
-            c.Report.Recipes.Add(new RecipeLine("cooking", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), salted: addSalt));
+            c.Report.Recipes.Add(new RecipeLine("cooking", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), salted: addSalt, gatesStripped: stripped));
         }
         foreach (var edid in tierOf.Keys.Concat(needsSalt).Where(e => !seen.Contains(e)))
             c.Error($"cooking: recipe '{edid}' is not a winning cooking recipe in the load order");
@@ -436,7 +478,7 @@ static class Steps
             NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()), profession, "AldRecipeSmith_");
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
-            if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
+            if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
             if (exclude.Contains(edid) || woodworking.Contains(edid)) continue;
             var tierIdx = MaterialTierOf(winning, c.MaterialTiers);
@@ -465,7 +507,7 @@ static class Steps
         var ranks = c.Ranks;
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
-            if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
+            if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
             var tier = ranks[MaterialTierOf(winning, c.MaterialTiers)];
             var marker = crafter.GetValueOrDefault(winning.CreatedObject.FormKey, profession);
@@ -836,13 +878,13 @@ static class Steps
     }
 
     static bool HasAldCondition(PatchContext c, IConstructibleObjectGetter cobj) =>
-        cobj.Conditions.Any(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.Key);
+        cobj.Conditions.Any(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey);
 
     // Replace every existing marker condition by the one for this tier; Novice means no condition at all.
     static void SetTier(PatchContext c, ConstructibleObject cobj, string profession, string tier)
     {
         if (Array.IndexOf(c.Ranks, tier) < 0) throw new SpecException($"unknown tier '{tier}' on {cobj.EditorID}");
-        cobj.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.Key);
+        cobj.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey);
         if (tier == c.Ranks[0]) return;
         // A trailing OR would let the marker join that group and the gate would pass without it
         if (cobj.Conditions.Count > 0) cobj.Conditions[^1].Flags &= ~Condition.Flag.OR;
@@ -881,11 +923,11 @@ class Report
 
     public uint GlobalId(FormKey k) => (uint)(loadIndex << 24) | k.ID;
 
-    public void Write(string dir, SkyrimMod mod, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, bool failed)
+    public void Write(string dir, SkyrimMod mod, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, bool failed, string reportName = "proficiency-report.md")
     {
         Directory.CreateDirectory(dir);
         var md = new List<string>();
-        md.Add($"# Proficiency patch report{(failed ? " (FAILED)" : "")}");
+        md.Add($"# {(reportName == "proficiency-report.md" ? "Proficiency" : key.FileName.String)} patch report{(failed ? " (FAILED)" : "")}");
         md.Add("");
         if (Errors.Count > 0) { md.Add("## Errors"); md.AddRange(Errors.Select(e => "- " + e)); md.Add(""); }
         if (Warnings.Count > 0) { md.Add("## Warnings"); md.AddRange(Warnings.Select(e => "- " + e)); md.Add(""); }
@@ -923,7 +965,8 @@ class Report
             }
             md.Add("");
         }
-        File.WriteAllText(Path.Combine(dir, "proficiency-report.md"), string.Join("\n", md));
+        File.WriteAllText(Path.Combine(dir, reportName), string.Join("\n", md));
+        if (spells.Count == 0 && reportName != "proficiency-report.md") return;
         var json = new JsonObject
         {
             ["plugin"] = key.FileName.String,

@@ -3,7 +3,7 @@
 /**
  * POST /api/launch-check: called by the launcher right before starting the game.
  *   Headers: { x-session: <play-session token> }
- *   Body:    { filesVersion: string, plugins: string[] }  (plugins in load order)
+ *   Body:    { filesVersion: string, plugins: string[], manifestSchema?: number }  (plugins in load order)
  * Compares the report against what the backend publishes and records the result on
  * the session; session validation (master-api.js) refuses sessions whose last check
  * is missing or stale, so out-of-date clients can't bypass the launcher's gate.
@@ -14,6 +14,7 @@ const router = require('express').Router()
 const path   = require('path')
 const { lookupSession, recordLaunchCheck, currentFilesVersion } = require('./master-api')
 const { getGameLoadOrder } = require('./serverinfo')
+const { publishedSchema, supportedSchema } = require('./install-manifest')
 
 // Vanilla masters ship with the game and are excluded from the comparison (mirrors the launcher's own list)
 const VANILLA_MASTERS = new Set([
@@ -33,17 +34,19 @@ router.post('/', async (req, res) => {
   const entry = lookupSession(token)
   if (!entry) return res.status(401).json({ error: 'Invalid or expired session.' })
 
-  const { filesVersion, plugins } = req.body || {}
+  const { filesVersion, plugins, manifestSchema } = req.body || {}
 
   const requiredVersion = currentFilesVersion()
-  const filesOk = !requiredVersion || filesVersion === requiredVersion
+  // A launcher that cannot read the published manifest schema is sent back to update, where the manifest route names the fix
+  const schemaOk = publishedSchema() <= supportedSchema(manifestSchema)
+  const filesOk = (!requiredVersion || filesVersion === requiredVersion) && schemaOk
 
   // Load order: enforced only when the game server's manifest is available.
   const expected = normalizePlugins(await getGameLoadOrder())
   const reported = normalizePlugins(plugins)
   const pluginsOk = expected.length === 0 || expected.join('|') === reported.join('|')
 
-  recordLaunchCheck(token, { filesVersion: filesVersion || '', filesOk, pluginsOk })
+  recordLaunchCheck(token, { filesVersion: filesVersion || '', filesOk, pluginsOk, schemaOk })
 
   res.json({ ok: filesOk && pluginsOk, filesOk, pluginsOk, requiredVersion })
 })

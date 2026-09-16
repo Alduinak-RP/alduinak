@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Builds the proficiency version of AlduinakAdditions.esp: pre-cleans the plugin, runs the Mutagen patcher, verifies the output record by record.
-#   python patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --out out [--settings ../../build/dist/server/server-settings.json] [--spec spec.json]
-# The output is out/AlduinakAdditions.esp plus proficiency-report.md, proficiency-ids.json and verify.txt.
+#   python patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --out out [--settings ../../build/dist/server/server-settings.json] [--spec spec.json] [--no-creations]
+# The output is out/AlduinakAdditions.esp plus proficiency-report.md, proficiency-ids.json and verify.txt, and with a creations spec AlduinakCreations.esp, its inputs json and verify-creations.txt.
 import argparse
 import json
 import os
@@ -171,6 +171,7 @@ def main():
     ap.add_argument('--spec', default=os.path.join(HERE, 'spec.json'))
     ap.add_argument('--skip-verify', action='store_true')
     ap.add_argument('--next-form-id', help='first own form id to allocate, in hex; pins the marker spell ids')
+    ap.add_argument('--no-creations', action='store_true', help='build AlduinakAdditions.esp without AlduinakCreations.esp')
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     log = []
@@ -178,9 +179,16 @@ def main():
     removed = preclean(a.plugin, pre)
     for r in removed:
         log.append(f'pre-clean: removed duplicate {r}')
+    cs = json.load(open(a.spec, encoding='utf-8')).get('creations')
+    creations = os.path.join(a.out, (cs or {}).get('pluginName', 'AlduinakCreations.esp'))
+    for stale in (creations, os.path.splitext(creations)[0] + '.inputs.json', os.path.join(a.out, 'verify-creations.txt')):
+        if os.path.exists(stale):
+            os.remove(stale)
     cmd = ['dotnet', 'run', '-c', 'Release', '--project', HERE, '--', '--settings', a.settings, '--plugin', pre, '--spec', a.spec, '--out', a.out, '--report', a.out]
     if a.next_form_id:
         cmd += ['--next-form-id', a.next_form_id]
+    if a.no_creations:
+        cmd.append('--no-creations')
     print(' '.join(cmd))
     r = subprocess.run(cmd)
     if r.returncode != 0:
@@ -199,6 +207,13 @@ def main():
         print('\n'.join(problems[:20]))
         sys.exit(3)
     print(f'verified: only records of types {sorted(PATCHED_TYPES)}, the meadery bench references and cells and the spec\'s named overrides were added or changed; {out_esp}')
+    if cs and not a.no_creations:
+        if not os.path.exists(creations):
+            print(f'{creations} was not built')
+            sys.exit(4)
+        r = subprocess.run([sys.executable, os.path.join(HERE, 'verify_creations.py'), '--out', a.out, '--settings', a.settings, '--spec', a.spec])
+        if r.returncode != 0:
+            sys.exit(r.returncode)
 
 
 if __name__ == '__main__':

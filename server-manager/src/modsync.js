@@ -152,6 +152,7 @@ function readManifestLight(file) {
     builtAt: m.builtAt || null,
     order:   Array.isArray(m.order) ? m.order : [],
     plugins: Array.isArray(m.plugins) ? m.plugins : [],
+    creations: m.creations && Array.isArray(m.creations.plugins) ? { plugins: m.creations.plugins.map(String) } : null,
     mods: (Array.isArray(m.mods) ? m.mods : []).map(mod => ({
       name: mod.name,
       hash: mod.hash || '',
@@ -182,9 +183,10 @@ function resolveExpected(manifest) {
   return out
 }
 
-// Enabled in plugins.txt while no mod in the manifest provides the file (a stale MO2 profile)
+// Enabled in plugins.txt while no mod in the manifest provides the file (a stale MO2 profile); Creation Club plugins come from the game itself
 function unprovidedPlugins(manifest, expected = resolveExpected(manifest)) {
-  return enabledPlugins(manifest).filter(n => !expected.has(fileKey(n)))
+  const creations = new Set(((manifest && manifest.creations && manifest.creations.plugins) || []).map(lower))
+  return enabledPlugins(manifest).filter(n => !expected.has(fileKey(n)) && !creations.has(lower(n)))
 }
 
 // ── Plugin flags ─────────────────────────────────────────────────────────────

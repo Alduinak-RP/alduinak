@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
+import { addSpellTo, removeSpellFrom } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -544,16 +545,11 @@ export class MasterySystem implements System {
     rec.granted = [];
   }
 
-  // AddSpell through Papyrus so the server records it in learnedSpells (which
-  // HasSpell reads) and the client learns it live; a console addspell would be
-  // client-local and lost on the next actor sync.
+  // A console addspell would be client-local and lost on the next actor sync.
   private addSpell(ctx: SystemContext, actorId: number, spellId: number): void {
     if (!spellId) return;
-    const mp = ctx.svr as Mp;
     try {
-      const self = { type: "form", desc: mp.getDescFromId(actorId) };
-      const spell = { type: "espm", desc: mp.getDescFromId(spellId) };
-      mp.callPapyrusFunction("method", "Actor", "AddSpell", self, [spell, false]);
+      addSpellTo(ctx.svr as Mp, actorId, spellId);
     } catch (e) {
       this.log(`[mastery] could not grant spell ${spellId.toString(16)}: ${e}`);
     }
@@ -561,11 +557,8 @@ export class MasterySystem implements System {
 
   private removeSpell(ctx: SystemContext, actorId: number, spellId: number): void {
     if (!spellId) return;
-    const mp = ctx.svr as Mp;
     try {
-      const self = { type: "form", desc: mp.getDescFromId(actorId) };
-      const spell = { type: "espm", desc: mp.getDescFromId(spellId) };
-      mp.callPapyrusFunction("method", "Actor", "RemoveSpell", self, [spell]);
+      removeSpellFrom(ctx.svr as Mp, actorId, spellId);
     } catch (e) {
       this.log(`[mastery] could not revoke spell ${spellId.toString(16)}: ${e}`);
     }
@@ -603,6 +596,17 @@ export class MasterySystem implements System {
   // Whether a base record carries the keyword; the espm lookup is cached per base id.
   baseHasKeyword(ctx: SystemContext, baseId: number, keywordId: number): boolean {
     return !!baseId && !!keywordId && this.baseKeywords(ctx, baseId >>> 0).has(keywordId >>> 0);
+  }
+
+  // Profession whose craft keywords hold this workbench keyword, null for a bench no profession works
+  professionOfBench(benchKeyword: number): string | null {
+    return PROFESSION_IDS.filter((id) => this.rules[id] && this.rules[id].craftKeywords.has(benchKeyword >>> 0))[0] || null;
+  }
+
+  // Keywords of the furniture or activator behind a reference, empty for anything else
+  stationKeywords(ctx: SystemContext, refrId: number): Set<number> {
+    const base = this.baseOf(ctx, refrId);
+    return base && (base.type === "FURN" || base.type === "ACTI") ? this.baseKeywords(ctx, base.id) : new Set<number>();
   }
 
   // ── Activity rules ──────────────────────────────────────────────────────────
@@ -735,7 +739,7 @@ export class MasterySystem implements System {
 
   // The C++ matches the recipe against the packet's ingredient list, not the
   // inventory, so a craft with nothing in the bag must not count.
-  private holdsInputs(ctx: SystemContext, actorId: number, recipeId: number): boolean {
+  holdsInputs(ctx: SystemContext, actorId: number, recipeId: number): boolean {
     const needed = this.recipeInputs(ctx, recipeId);
     if (!needed.length) return false;
     let held: Map<number, number>;
@@ -799,7 +803,7 @@ export class MasterySystem implements System {
   }
 
   // Workbench keyword of a recipe, 0 when unknown.
-  private recipeBench(ctx: SystemContext, recipeId: number): number {
+  recipeBench(ctx: SystemContext, recipeId: number): number {
     const hit = this.benchCache.get(recipeId);
     if (hit !== undefined) return hit;
     const bench = this.fieldFormIds(this.lookup(ctx, recipeId), "BNAM")[0] || 0;

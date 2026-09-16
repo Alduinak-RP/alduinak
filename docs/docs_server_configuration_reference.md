@@ -690,7 +690,7 @@ If "damageMultFormulaSettings" is not present, the server will use some default 
 
 ## damageMultConditionalFormulaSettings
 
-Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. The hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from `misc/proficiency-patcher/out/proficiency-ids.json`):
+Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. The hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from `misc/proficiency-patcher/out/proficiency-ids.json`; it is `0x2D002032` with the Creation Club plugins in the load order, `0x2B002032` before them):
 
 ```json5
 {
@@ -699,7 +699,7 @@ Named damage rules, each a multiplier applied when its conditions hold. Conditio
     "hunterOverDraw": {
       "physicalDamageMultiplier": 1.2,
       "conditions": [
-        { "function": "HasSpell", "runsOn": "Subject", "comparison": "==", "value": 1, "parameter1": "0x2B002032", "parameter2": "0x0", "logicalOperator": "AND" },
+        { "function": "HasSpell", "runsOn": "Subject", "comparison": "==", "value": 1, "parameter1": "0x2D002032", "parameter2": "0x0", "logicalOperator": "AND" },
         { "function": "SkympGetIsPlayer", "runsOn": "Target", "comparison": "==", "value": 0, "parameter1": "0x0", "parameter2": "0x0", "logicalOperator": "AND" },
         { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 7, "parameter1": "0", "parameter2": "0x0", "logicalOperator": "OR" },
         { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 7, "parameter1": "1", "parameter2": "0x0", "logicalOperator": "OR" },
@@ -711,6 +711,24 @@ Named damage rules, each a multiplier applied when its conditions hold. Conditio
   // ...
 }
 ```
+
+## Hunger and fatigue
+
+All optional; see `docs/docs_roleplay_creations_and_needs.md` for the system. Hunger uses Survival Mode's scale, 0 (full) to 1000.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `needsEnabled` | `true` | `false` switches hunger and fatigue off |
+| `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours) |
+| `needsHungerOffline` | `false` | `true` drains hunger while logged out too |
+| `needsHungerStart` | `145` | Hunger of a new character; 145 is Survival Mode's starting value, in the Satisfied stage |
+| `needsHungerStages` | `[80, 160, 340, 520, 770]` | Hunger at which Satisfied, Peckish, Hungry, Famished and Starving begin |
+| `needsHungerStageAbilities` | `true` | Grant the Survival stage ability of the current stage |
+| `needsFoodRestore` | `{ "VerySmall": 2, "Small": 18, "Medium": 220, "Large": 380, "LargeVampire": 380 }` | Hunger removed by a food carrying that Survival hunger effect |
+| `needsFatigueCraftsPerHour` | `[6, 12, 18, 24]` | Recipes one full fatigue bar pays for at Novice, Adept, Expert, Master |
+| `needsFatigueRegenPerMinute` | `0.016` | Share of the bar refilled per minute |
+| `needsFatigueOfflineRegen` | `true` | `false` refills the bar only while online |
+| `needsFatigueFreeKeywords` | `["AldCraftingMead"]` | Bench keywords whose recipes cost no fatigue |
 
 ## Mastery, gathering and hunting
 

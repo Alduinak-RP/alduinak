@@ -142,7 +142,7 @@ the `files[]` list written by the backend's `npm run merge`.
 | GET | `/api/metrics` | Server performance stats |
 | GET | `/api/files/version` | Current client files version tag |
 | GET | `/api/files/zip` | Client files bundle (ZIP download) |
-| GET | `/api/install-manifest` | Compiled MO2 modpack manifest |
+| GET | `/api/install-manifest?schema=3` | Compiled MO2 modpack manifest; a manifest newer than the schema asked for answers 404 with an update-the-launcher message |
 | GET | `/api/nexus-downloads` | File-pinned Nexus links page (opened in browser) |
 | GET | `/api/version` | Launcher update check |
 | GET | `/api/users/login-discord` | Starts Discord login (opened in browser) |

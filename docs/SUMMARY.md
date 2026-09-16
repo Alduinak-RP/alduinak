@@ -44,6 +44,7 @@
 - [SkyMP Client Integration (current backend)](docs_roleplay_frostfall_client.md)
 - [Interaction Prompts](docs_roleplay_interaction_prompts.md)
 - [Mastery System](docs_roleplay_mastery.md)
+- [Creation Club Items, Hunger and Fatigue](docs_roleplay_creations_and_needs.md)
 - [Bounty Boards](docs_roleplay_bounty_boards.md)
 - [Writings (letters, journals, books)](docs_roleplay_writing.md)
 - [NPC Spawns](docs_roleplay_npc_spawns.md)

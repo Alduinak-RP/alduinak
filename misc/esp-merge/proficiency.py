@@ -2,6 +2,7 @@
 # Step 3: re-runs the proficiency generator on the merged base with new ids pinned at 0x201D; the result is accepted only when it reproduces LIVE's marker ids.
 #   python proficiency.py
 # Writes <run>/work/prof/ (patch.py output) and appends the acceptance checks to <run>/build-log.txt.
+import json
 import os
 import struct
 import subprocess
@@ -20,6 +21,9 @@ LIVE_DIR = ESPFIX + 'proficiency/'
 NEXT_ID, LIVE_LAST_ID, LAST_ID = 0x201D, RUN['live_last_id'], RUN['last_id']
 OWN_RECORDS, ADDED = RUN['own_records'], RUN['added']
 OUT = WORK + 'prof/'
+_CREATIONS_NAME = (json.load(open(SPEC[0], encoding='utf-8')).get('creations') or {}).get('pluginName')
+# AlduinakCreations.esp and its inputs file, built by the same patch.py run when the spec has a creations section
+CREATIONS = (OUT + _CREATIONS_NAME, OUT + os.path.splitext(_CREATIONS_NAME)[0] + '.inputs.json') if _CREATIONS_NAME and RUN.get('creations') else ()
 
 
 def own_block(path, last):
@@ -27,6 +31,13 @@ def own_block(path, last):
     pl = fastesp.load(path)
     n = len(pl['masters'])
     return sorted((r.fid & 0xFFFFFF, r.type, r.edid()) for r in pl['recs'] if (r.fid >> 24) == n and NEXT_ID <= (r.fid & 0xFFFFFF) <= last)
+
+
+def same_markers(live, new):
+    # The Creation Club masters before the plugin move its full slot (0x2B to 0x2D), so only editor ids and local ids must match
+    slot = new['loadIndex']
+    return (list(live['markerSpells']) == list(new['markerSpells']) and not new['errors']
+            and all(int(v, 16) >> 24 == slot and int(v, 16) & 0xFFFFFF == int(live['markerSpells'][k], 16) & 0xFFFFFF for k, v in new['markerSpells'].items()))
 
 
 def verify_counts(path):
@@ -45,7 +56,7 @@ def main():
     lines = [f'input base {base_sha[:8]}, spec {SPEC[1][:8]}; stage slot {SELF} -> merged base']
 
     cmd = [sys.executable, os.path.join(PATCHER, 'patch.py'), '--plugin', base, '--settings', STAGE_SETTINGS, '--spec', SPEC[0],
-           '--out', OUT, '--next-form-id', f'0x{NEXT_ID:X}']
+           '--out', OUT, '--next-form-id', f'0x{NEXT_ID:X}'] + (['--no-creations'] if _CREATIONS_NAME and not CREATIONS else [])
     r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
     lines += ['$ ' + ' '.join(cmd)] + [x for x in (r.stdout + r.stderr).splitlines() if not x.startswith('  rewritten ') and not x.startswith('  added ')]
     out = OUT + SELF
@@ -61,8 +72,9 @@ def main():
         check('verify.txt has no problems', problems == '', problems[:300])
         pre = OUT + 'AlduinakAdditions.preclean.esp'
         check('preclean removed nothing', 'pre-clean: removed' not in text and sha_file(pre) == base_sha)
-        live_ids, ids = open(LIVE_DIR + 'proficiency-ids.json', 'rb').read(), open(OUT + 'proficiency-ids.json', 'rb').read()
-        check('proficiency-ids.json byte-equal to the live one', ids == live_ids, f'sha {sha_file(OUT + "proficiency-ids.json")[:8]}')
+        live_ids, ids = json.load(open(LIVE_DIR + 'proficiency-ids.json', encoding='utf-8')), json.load(open(OUT + 'proficiency-ids.json', encoding='utf-8'))
+        check('proficiency-ids.json names the live marker spells at their local ids, in the slot of this load order', same_markers(live_ids, ids),
+              f'slot 0x{live_ids["loadIndex"]:02X} -> 0x{ids["loadIndex"]:02X}, sha {sha_file(OUT + "proficiency-ids.json")[:8]}')
         pl = fastesp.load(out)
         hsz = struct.unpack_from('<I', pl['buf'], 4)[0]
         nxt = struct.unpack_from('<I', dict(fastesp.subs_of(pl['buf'][24:24 + hsz]))['HEDR'], 8)[0]
@@ -77,10 +89,21 @@ def main():
               f'{RUN_NAME}: {verify_counts(OUT + "verify.txt")}; LIVE: {verify_counts(LIVE_DIR + "verify.txt")}')
         lines.append(f'masters: {len(pl["masters"])}')
         lines += [f'  {i:02X} {m}' for i, m in enumerate(pl['masters'])]
+        if CREATIONS:
+            report = OUT + 'verify-creations.txt'
+            text = open(report, encoding='utf-8').read() if os.path.exists(report) else 'verify-creations.txt missing'
+            problems = text.split('\n\n', 1)[1].strip() if '\n\n' in text else text
+            check(f'{os.path.basename(CREATIONS[0])} built and verify-creations.txt has no problems', os.path.exists(CREATIONS[0]) and problems == '', problems[:300])
+            pinned = json.load(open(CREATIONS[1], encoding='utf-8')) if os.path.exists(CREATIONS[1]) else {}
+            built = {i['name']: i['sha256'] for i in pinned.get('inputs', [])}
+            check(f'{os.path.basename(CREATIONS[1])} pins that plugin and this {SELF}',
+                  os.path.exists(CREATIONS[0]) and pinned.get('sha256') == sha_file(CREATIONS[0]) and built.get(SELF) == sha_file(out), f'{len(built)} plugins pinned')
     lines += [c for _, c in checks]
     ok = all(o for o, _ in checks)
     if ok:
         lines.append(f'accepted {out} {record_output("prof", out)}')
+        for tag, path in zip(('creations', 'creations-inputs'), CREATIONS):
+            lines.append(f'accepted {path} {record_output(tag, path)}')
     else:
         lines.append('REJECTED: see the failed checks')
     build_log('step 3 proficiency re-run (misc/proficiency-patcher/patch.py --next-form-id 0x201D)', lines + assert_untouched())

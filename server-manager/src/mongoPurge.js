@@ -15,8 +15,12 @@ const PROGRESS_EVERY = 250
 const EXTRA_IDS = [['enchantmentId', ['enchantmentId', 'maxCharge', 'chargePercent', 'removeEnchantmentOnUnequip']], ['poisonId', ['poisonId', 'poisonCount']]]
 // Equipped spell slots on equipmentDump (0 = none)
 const SPELL_SLOTS = ['leftSpell', 'rightSpell', 'voiceSpell', 'instantSpell']
-// Reference ids on dynamicFields["private.housing"] (0 = none)
-const HOUSING_REFS = ['primary', 'partner']
+// Form ids inside dynamicFields records (0 = none): single ids and id arrays per literal dotted key
+const DYNAMIC_IDS = {
+  'private.housing': { refs: ['primary', 'partner'], lists: [] },
+  'private.mastery': { refs: [], lists: ['granted'] },
+  'private.needs': { refs: ['stageSpell'], lists: [] },
+}
 
 function hex8(n) { return '0x' + (n >>> 0).toString(16).toUpperCase().padStart(8, '0') }
 function typed(v) { return v > INT32_MAX ? Long.fromNumber(v) : new Int32(v) }
@@ -319,22 +323,32 @@ function classifyDoc(doc, ctx) {
   scanDynamicFields(doc.dynamicFields, ctx.removed, 'dynamicFields', dyn)
   for (const hit of dyn) out.warnings.push(`${who}: ${hit} (left unchanged)`)
 
-  // "private.housing" is a literal dotted key, so a remap rewrites the whole dynamicFields object (other values keep their BSON types)
-  const housing = isPlainObject(doc.dynamicFields) ? doc.dynamicFields['private.housing'] : null
-  if (isPlainObject(housing)) {
+  // The keys are literal dotted names, so every remap lands in one rewrite of the whole dynamicFields object (other values keep their BSON types)
+  const dynamic = {}
+  for (const [key, ids] of Object.entries(DYNAMIC_IDS)) {
+    const record = isPlainObject(doc.dynamicFields) ? doc.dynamicFields[key] : null
+    if (!isPlainObject(record)) continue
+    const label = key.replace('private.', '')
     let rewritten = null
-    for (const ref of HOUSING_REFS) {
-      if (!has(housing[ref]) || num(housing[ref]) === 0) continue
-      const m = mapId(housing[ref], ctx, out, `housing ${ref}`)
-      if (m.kind === 'drop') out.warnings.push(`${who}: housing ${ref} ${hex8(m.value)} belongs to removed plugin ${m.plugin} (left unchanged)`)
+    for (const ref of ids.refs) {
+      if (!has(record[ref]) || num(record[ref]) === 0) continue
+      const m = mapId(record[ref], ctx, out, `${label} ${ref}`)
+      if (m.kind === 'drop') out.warnings.push(`${who}: ${label} ${ref} ${hex8(m.value)} belongs to removed plugin ${m.plugin} (left unchanged)`)
       else if (m.kind === 'remap') {
-        rewritten = rewritten || { ...housing }
+        rewritten = rewritten || { ...record }
         rewritten[ref] = typed(m.next)
-        out.changes.push(`housing: remapped ${ref} ${hex8(m.value)} -> ${hex8(m.next)} (${m.plugin})`)
+        out.changes.push(`${label}: remapped ${ref} ${hex8(m.value)} -> ${hex8(m.next)} (${m.plugin})`)
       }
     }
-    if (rewritten) out.set.dynamicFields = { ...doc.dynamicFields, 'private.housing': rewritten }
+    for (const list of ids.lists) {
+      const plan = planIds(arr(record[list]), ctx, out, `${label} ${list}`)
+      if (!plan) continue
+      rewritten = rewritten || { ...record }
+      rewritten[list] = plan.set || arr(record[list]).filter(v => !plan.pull.$in.includes(num(v)))
+    }
+    if (rewritten) dynamic[key] = rewritten
   }
+  if (Object.keys(dynamic).length) out.set.dynamicFields = { ...doc.dynamicFields, ...dynamic }
 
   if (Object.keys(out.set).length || Object.keys(out.unset).length || Object.keys(out.pull).length) out.action = 'update'
   return out
