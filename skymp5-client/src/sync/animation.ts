@@ -134,7 +134,7 @@ export const applyAnimation = (
   }
   state.lastNumChanges = anim.numChanges;
 
-  // The engine owns a seated rider clone's graph; a replayed event would knock it out of the saddle
+  // The engine owns a riding clone's graph; a replayed event would walk it off the horse it is seated on or carried by
   if (mounted) {
     return;
   }

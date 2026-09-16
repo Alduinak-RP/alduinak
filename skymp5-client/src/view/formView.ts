@@ -5,7 +5,7 @@ import { isBadMenuShown, applyEquipment } from "../sync/equipment";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement } from "../sync/movementApply";
-import { applyMount, makeMountState, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
+import { applyMount, isMountSuspended, makeMountState, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { Movement } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
@@ -402,8 +402,8 @@ export class FormView {
       Actor.from(refr)?.clearKeepOffsetFromActor();
     }
 
-    // A rider clone is seated on its horse clone and left to the engine while it rides
-    const mounted = !model.isMyClone && applyMount(refr, model, this.mountState);
+    // A rider clone is left to the engine while it rides, and so is a horse clone while the engine is asked to seat one
+    const mounted = !model.isMyClone && (applyMount(refr, model, this.mountState) || isMountSuspended(this.refrId));
 
     if (model.movement) {
       let ac = Actor.from(refr);
