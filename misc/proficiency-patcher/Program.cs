@@ -326,11 +326,12 @@ static class Steps
             NewRecipe(c, r, bench, profession, "AldRecipeAlchemy_");
     }
 
+    // A kiln recipe may name its own bench; the kiln keyword is the fallback until a kiln furniture exists
     public static void KilnRecipes(PatchContext c)
     {
-        var bench = c.KeyOf<IKeywordGetter>(c.Spec["keywords"]!["kiln"]!.GetValue<string>());
+        var fallback = c.Spec["keywords"]!["kiln"]!.GetValue<string>();
         foreach (var r in c.Spec["kilnRecipes"]!.AsArray().Select(x => x!.AsObject()))
-            NewRecipe(c, r, bench, r["profession"]!.GetValue<string>(), "AldRecipeKiln_");
+            NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]?.GetValue<string>() ?? fallback), r["profession"]!.GetValue<string>(), "AldRecipeKiln_");
     }
 
     static void NewRecipe(PatchContext c, JsonObject r, FormKey bench, string profession, string prefix)

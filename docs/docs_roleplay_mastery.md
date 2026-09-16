@@ -71,7 +71,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Miner | iron and corundum veins | gold and silver veins | orichalcum and moonstone veins | malachite, quicksilver and ebony veins |
 | Tailor | scarves, gaiter, short capes, rugged mask and cape | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels, Reinforced Mantle, Boiled Leather Cuirass, Robed Iron Armor, Leather Doublet, Sturdy Pouch | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
 | Warrior | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
-| Woodworker | Charcoal (at the kiln) | iron, steel, hide and orcish-free bows, arrows and shields | orcish, dwarven, elven arrows and shields, orcish and dwarven bows | glass, ebony, daedric, dragon, stalhrim bows, arrows and shields |
+| Woodworker | Charcoal (at the smelter) | iron, steel, hide and orcish-free bows, arrows and shields | orcish, dwarven, elven arrows and shields, orcish and dwarven bows | glass, ebony, daedric, dragon, stalhrim bows, arrows and shields |
 
 Smithing and woodworking tiers follow the materials: the highest material among
 a recipe's inputs and its product decides, so elven bows (quicksilver) land in
@@ -87,9 +87,12 @@ Benches:
   workbench model, keyword `AldCraftingWoodcrafting`) is a new furniture record
   for placing in the Creation Kit; the existing Hearthfire carpenter's
   workbenches also offer the woodcrafting recipes.
-- **Kiln**: the charcoal recipe waits on keyword `AldCraftingKiln`. The kiln
-  furniture comes from a separate mod; give it that keyword and the recipe shows.
-- Smelters are unchanged.
+- **Smelters** carry the charcoal recipe (2 Firewood into 1 Charcoal, open to
+  everyone); the ore-to-ingot recipes there keep their blacksmith tiers. Credit
+  for charcoal counts as blacksmith work, because mastery hours follow the
+  recipe's bench keyword.
+- **Kiln**: the keyword `AldCraftingKiln` stays in the plugin, unused. A kiln
+  mod can claim it and the charcoal recipe moves back with one spec field.
 
 ### Vanilla perks through abilities
 

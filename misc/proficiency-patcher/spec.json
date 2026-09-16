@@ -769,6 +769,7 @@
  "kilnRecipes": [
   {
    "edid": "AldRecipeKiln_Charcoal",
+   "bench": "CraftingSmelter",
    "output": "Charcoal",
    "count": 1,
    "profession": "woodworker",
