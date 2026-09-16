@@ -139,24 +139,19 @@ export class AdminMenuService extends ClientListener {
     this.controller.on("effectFinish", (e) => this.onEffect(e, false));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
-    onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.activeTab = ""; });
+    onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.activeTab = ""; this.clearAdminData(); });
+    // Staff status arrives before the first X so a remembered Admin tab never waits on the roster fetch
+    this.controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" }); });
   }
 
   get isOpen(): boolean {
     return this.menuOpen;
   }
 
-  // Admin data is cleared on every open so a demoted admin never sees stale tabs; skills stay cached until the reply
+  // Roles are only read at login, so staff data survives reopens and refreshes in place when the reply lands
   open(): void {
-    panelData.admin = false;
-    panelData.players = [];
-    panelData.locations = [];
-    panelData.modes = [];
-    panelData.npcZones = [];
-    panelData.mastery = null;
     panelData.npcPos = null;
     panelData.items = null;
-    panelData.petBases = null;
     this.activeTab = "";
     this.refreshDebug();
     this.showMenu();
@@ -253,6 +248,16 @@ export class AdminMenuService extends ClientListener {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
       if (content["ok"] === true && this.menuOpen && SELF_TELEPORTS.includes(String(content["action"] ?? ""))) this.closeMenu();
     }
+  }
+
+  private clearAdminData(): void {
+    panelData.admin = false;
+    panelData.players = [];
+    panelData.locations = [];
+    panelData.modes = [];
+    panelData.npcZones = [];
+    panelData.mastery = null;
+    panelData.petBases = null;
   }
 
   private showMenu(): void {

@@ -191,7 +191,7 @@ $text-dim: rgba(232, 224, 208, 0.6);
 
     // One quiet sentence under the hour count
     &--hint {
-      font-size: 12px;
+      font-size: 15px;
       letter-spacing: 0.04em;
       text-transform: none;
     }
@@ -237,7 +237,7 @@ $text-dim: rgba(232, 224, 208, 0.6);
     margin: 0;
     padding: 6px 0 0 18px;
     color: $text;
-    font-size: 13px;
+    font-size: 16px;
     letter-spacing: 0.04em;
   }
 
@@ -377,7 +377,7 @@ $text-dim: rgba(232, 224, 208, 0.6);
 
     &__rank-perk {
       padding-left: 10px;
-      font-size: 12px;
+      font-size: 15px;
     }
   }
 }
