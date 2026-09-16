@@ -91,14 +91,26 @@ keyword no furniture carries: no menu lists them and `CraftService` refuses the
 bench keyword.
 
 **Faction and guild sets are never craftable.** The stripped quest gates would
-otherwise have handed 64 recipes to anyone of the right rank: the eight hold
-guard cuirasses, the eight full helmets and the nine hold shields, the
-Stormcloak and Stormcloak Bear sets, the Thieves Guild armour with its Karliah,
-Leader and Variant sets, the Dark Brotherhood armour, the Forsworn armour and
-the Skaal clothes. They are parked on `MothNest1` beside the Daedric recipes, so
-a hold guard cuirass or a guild uniform is earned, never smithed. Stalhrim,
-Nordic, Bonemold, the Dawnguard crossbows and bolts, the Blades armour and the
-Skyforge Bow stay craftable at their mastery tier.
+otherwise have handed 105 recipes to anyone of the right rank, so all of them
+are parked on `MothNest1` beside the Daedric recipes and a uniform is earned,
+never smithed:
+
+- the eight hold guard cuirasses, the eight full helmets and the nine hold
+  shields;
+- the Stormcloak and Stormcloak Bear sets;
+- the Thieves Guild armour with its Karliah, Leader and Variant sets;
+- the Dark Brotherhood armour, the Forsworn armour, weapons and arrows, and the
+  Skaal clothes;
+- the Companions (Wolf) armour, the Dawnguard armour with its axe and hammer,
+  the Morag Tong armour and the Penitus Oculatus armour;
+- the one-offs: General Tullius' armour, Tsun's armour, the Imperial Legate and
+  Captain helmets, the Dragonbone Crown, the Ancient Falmer crown, the Akaviri
+  katana, the silver sword and greatsword, and the Cidhna Mine shiv.
+
+Stalhrim, Nordic, Bonemold, the Dawnguard crossbows and bolts, the Blades armour
+and the Skyforge Bow stay craftable at their mastery tier. Tempering is
+untouched: a parked recipe's Improve entry still lists the item for anyone
+holding one.
 
 Benches:
 
