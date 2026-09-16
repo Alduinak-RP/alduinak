@@ -91,8 +91,7 @@ bool CanSeatOnMount(RE::Actor* rider, RE::Actor* mount)
   return !rider->GetOccupiedFurniture();
 }
 
-// Drives the engine's own mount interaction, then snaps the rider into the
-// saddle
+// Drives the engine mount interaction, then snaps the rider into the saddle
 bool SeatRiderOnMount(RE::Actor* rider, RE::Actor* mount)
 {
   if (rider->IsOnMount()) {
@@ -152,8 +151,16 @@ Napi::Value ObjectReferenceApi::SetCollision(const Napi::CallbackInfo& info)
 
 Napi::Value ObjectReferenceApi::MountActor(const Napi::CallbackInfo& info)
 {
-  auto* rider = GetArgActor(info[0]);
-  auto* mount = GetArgActor(info[1]);
+  RE::Actor* rider = nullptr;
+  RE::Actor* mount = nullptr;
+
+  // An unusable argument answers false, it never throws into the update loop
+  try {
+    rider = GetArgActor(info[0]);
+    mount = GetArgActor(info[1]);
+  } catch (const std::exception&) {
+    return Napi::Boolean::New(info.Env(), false);
+  }
 
   if (!rider || !mount) {
     return Napi::Boolean::New(info.Env(), false);
