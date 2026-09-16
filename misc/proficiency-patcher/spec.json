@@ -21,6 +21,16 @@
   "kiln": "AldCraftingKiln",
   "woodcrafting": "AldCraftingWoodcrafting"
  },
+ "stripConditions": [
+  "HasPerk",
+  "GetStage",
+  "GetStageDone",
+  "GetQuestCompleted",
+  "GetQuestRunning",
+  "GetQuestVariable",
+  "GetVMQuestVariable",
+  "GetGlobalValue"
+ ],
  "abilities": {
   "hunter": {
    "Adept": {

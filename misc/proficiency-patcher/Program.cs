@@ -121,6 +121,7 @@ class PatchContext
     public readonly ModKey Key;
     // Editor id -> record already in the mutable plugin (own records and overrides), refreshed as records are added.
     private readonly Dictionary<string, IMajorRecord> ownByEdid = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<FormKey, int>? materialTiers;
 
     public PatchContext(SkyrimMod mod, ILinkCache cache, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, JsonObject spec, Report report)
     {
@@ -130,6 +131,7 @@ class PatchContext
     }
 
     public string[] Ranks => Spec["ranks"]!.AsArray().Select(r => r!.GetValue<string>()).ToArray();
+    public Dictionary<FormKey, int> MaterialTiers => materialTiers ??= Steps.MaterialTiers(this);
     public IEnumerable<KeyValuePair<string, string>> Professions => Spec["professions"]!.AsObject().Select(p => new KeyValuePair<string, string>(p.Key, p.Value!.GetValue<string>()));
 
     public string MarkerEdid(string profession, string rank) => $"AldMastery_{Cap(profession)}_{rank}";
@@ -383,7 +385,7 @@ static class Steps
             c.Error($"cooking: recipe '{edid}' is not a winning cooking recipe in the load order");
     }
 
-    // ---- smithing: tier by the highest material used; vanilla perk gates removed ----------------------------------
+    // ---- smithing: tier by the highest material used; gates the server cannot evaluate removed --------------------
     public static void Smithing(PatchContext c)
     {
         var s = c.Spec["smithing"]!.AsObject();
@@ -392,41 +394,54 @@ static class Steps
         var exclude = (s["exclude"]?.AsArray().Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var forced = TierMap(s["tiers"]?.AsObject() ?? new JsonObject());
         var ranks = c.Ranks;
-        var materialTier = new Dictionary<FormKey, int>();
-        foreach (var (rank, list) in s["materials"]!.AsObject().Select(kv => (kv.Key, kv.Value!.AsArray())))
+        var woodworking = WoodworkingSet(c);
+        var strip = StripSet(c, s["stripPerkConditions"]?.GetValue<bool>() ?? true);
+        foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
+        {
+            if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
+            var edid = winning.EditorID ?? "";
+            if (exclude.Contains(edid) || woodworking.Contains(edid)) continue;
+            var tierIdx = MaterialTierOf(winning, c.MaterialTiers);
+            if (forced.TryGetValue(edid, out var forcedTier)) tierIdx = Array.IndexOf(ranks, forcedTier);
+            var tier = ranks[tierIdx];
+            var stripped = winning.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
+            if (tier == "Novice" && !stripped && !HasAldCondition(c, winning))
+            {
+                c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
+                continue;
+            }
+            var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
+            cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
+            SetTier(c, cobj, profession, tier);
+            c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
+        }
+    }
+
+    // Material editor id -> rank index, from the owner's ingot table
+    public static Dictionary<FormKey, int> MaterialTiers(PatchContext c)
+    {
+        var ranks = c.Ranks;
+        var tiers = new Dictionary<FormKey, int>();
+        foreach (var (rank, list) in c.Spec["smithing"]!["materials"]!.AsObject().Select(kv => (kv.Key, kv.Value!.AsArray())))
         {
             var idx = Array.IndexOf(ranks, rank);
             if (idx < 0) throw new SpecException($"smithing material rank '{rank}' unknown");
             foreach (var edid in list.Select(x => x!.GetValue<string>()))
             {
                 if (!c.TryWinning<IMajorRecordGetter>(edid, out var mat)) { c.Error($"smithing material '{edid}' not found"); continue; }
-                materialTier[mat.FormKey] = Math.Max(materialTier.GetValueOrDefault(mat.FormKey), idx);
+                tiers[mat.FormKey] = Math.Max(tiers.GetValueOrDefault(mat.FormKey), idx);
             }
         }
-        var woodworking = WoodworkingSet(c);
-        var stripPerks = s["stripPerkConditions"]?.GetValue<bool>() ?? true;
-        foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
-        {
-            if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
-            var edid = winning.EditorID ?? "";
-            if (exclude.Contains(edid) || woodworking.Contains(edid)) continue;
-            // The highest material among the inputs and the product decides the tier
-            int tierIdx = materialTier.GetValueOrDefault(winning.CreatedObject.FormKey);
-            foreach (var item in winning.Items ?? new List<IContainerEntryGetter>())
-                tierIdx = Math.Max(tierIdx, materialTier.GetValueOrDefault(item.Item.Item.FormKey));
-            if (forced.TryGetValue(edid, out var forcedTier)) tierIdx = Array.IndexOf(ranks, forcedTier);
-            var tier = ranks[tierIdx];
-            var hasPerk = winning.Conditions.Any(IsPerkCondition);
-            if (tier == "Novice" && !(stripPerks && hasPerk) && !HasAldCondition(c, winning))
-            {
-                c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
-                continue;
-            }
-            var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
-            if (stripPerks) cobj.Conditions.RemoveAll(IsPerkCondition);
-            SetTier(c, cobj, profession, tier);
-            c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), perkStripped: hasPerk, origin: winning.FormKey.ModKey.FileName));
-        }
+        return tiers;
+    }
+
+    // The highest material among the inputs and the product decides the tier
+    static int MaterialTierOf(IConstructibleObjectGetter cobj, Dictionary<FormKey, int> tiers)
+    {
+        var idx = tiers.GetValueOrDefault(cobj.CreatedObject.FormKey);
+        foreach (var item in cobj.Items ?? new List<IContainerEntryGetter>())
+            idx = Math.Max(idx, tiers.GetValueOrDefault(item.Item.Item.FormKey));
+        return idx;
     }
 
     static HashSet<string> WoodworkingSet(PatchContext c)
@@ -441,7 +456,7 @@ static class Steps
         var w = c.Spec["woodworking"]!.AsObject();
         var profession = w["profession"]!.GetValue<string>();
         var bench = c.KeyOf<IKeywordGetter>(c.Spec["keywords"]!["woodcrafting"]!.GetValue<string>());
-        var stripPerks = w["stripPerkConditions"]?.GetValue<bool>() ?? true;
+        var strip = StripSet(c, w["stripPerkConditions"]?.GetValue<bool>() ?? true);
         foreach (var (tier, list) in w["recipes"]!.AsObject().Select(kv => (kv.Key, kv.Value!.AsArray())))
         {
             foreach (var edid in list.Select(x => x!.GetValue<string>()))
@@ -450,10 +465,10 @@ static class Steps
                 var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
                 var from = c.EdidOf(cobj.WorkbenchKeyword.FormKey);
                 cobj.WorkbenchKeyword.SetTo(bench);
-                var hasPerk = cobj.Conditions.Any(IsPerkCondition);
-                if (stripPerks) cobj.Conditions.RemoveAll(IsPerkCondition);
+                var stripped = cobj.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
+                cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
                 SetTier(c, cobj, profession, tier);
-                c.Report.Recipes.Add(new RecipeLine("woodworking", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), perkStripped: hasPerk, origin: winning.FormKey.ModKey.FileName, note: $"moved from {from}"));
+                c.Report.Recipes.Add(new RecipeLine("woodworking", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName, note: $"moved from {from}"));
             }
         }
     }
@@ -463,6 +478,7 @@ static class Steps
     {
         var t = c.Spec["tailoring"]!.AsObject();
         var profession = t["profession"]!.GetValue<string>();
+        var strip = StripSet(c, true);
         foreach (var r in t["recipes"]!.AsArray().Select(x => x!.AsObject()))
         {
             var edid = r["edid"]!.GetValue<string>();
@@ -478,11 +494,11 @@ static class Steps
                     cobj.Items.Add(new ContainerEntry { Item = new ContainerItem { Item = ing.FormKey.ToLink<IItemGetter>(), Count = item.Value!.GetValue<int>() } });
                 }
             }
-            var hasPerk = cobj.Conditions.Any(IsPerkCondition);
-            cobj.Conditions.RemoveAll(IsPerkCondition);
+            var stripped = cobj.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
+            cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
             var tier = r["tier"]!.GetValue<string>();
             SetTier(c, cobj, profession, tier);
-            c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), perkStripped: hasPerk, origin: winning.FormKey.ModKey.FileName));
+            c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
         }
         foreach (var r in t["newRecipes"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
         {
@@ -515,7 +531,19 @@ static class Steps
         return map;
     }
 
-    static bool IsPerkCondition(IConditionGetter cond) => cond.Data is IHasPerkConditionDataGetter;
+    // The condition functions the server cannot evaluate; an unregistered one answers true server-side
+    static HashSet<string> StripSet(PatchContext c, bool withPerks)
+    {
+        var set = (c.Spec["stripConditions"]?.AsArray().Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!withPerks) set.Remove("HasPerk");
+        return set;
+    }
+
+    static string FunctionOf(IConditionGetter cond)
+    {
+        var name = cond.Data.GetType().Name;
+        return name.EndsWith("ConditionData") ? name[..^"ConditionData".Length] : name;
+    }
 
     static bool HasAldCondition(PatchContext c, IConstructibleObjectGetter cobj) =>
         cobj.Conditions.Any(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.Key);
@@ -526,6 +554,8 @@ static class Steps
         if (Array.IndexOf(c.Ranks, tier) < 0) throw new SpecException($"unknown tier '{tier}' on {cobj.EditorID}");
         cobj.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.Key);
         if (tier == c.Ranks[0]) return;
+        // A trailing OR would let the marker join that group and the gate would pass without it
+        if (cobj.Conditions.Count > 0) cobj.Conditions[^1].Flags &= ~Condition.Flag.OR;
         var marker = c.Winning<ISpellGetter>(c.MarkerEdid(profession, tier));
         var data = new HasSpellConditionData { RunOnType = Condition.RunOnType.Subject };
         data.Spell.Link.SetTo(marker.FormKey);
@@ -546,7 +576,7 @@ static class ContextExtensions
     }
 }
 
-record RecipeLine(string Kind, string Edid, string Output, string Profession, string Tier, List<string> Items, bool untouched = false, bool salted = false, bool perkStripped = false, string? origin = null, string? note = null);
+record RecipeLine(string Kind, string Edid, string Output, string Profession, string Tier, List<string> Items, bool untouched = false, bool salted = false, bool gatesStripped = false, string? origin = null, string? note = null);
 
 class Report
 {
@@ -597,7 +627,7 @@ class Report
                 var flags = new List<string>();
                 if (r.untouched) flags.Add("untouched");
                 if (r.salted) flags.Add("salt added");
-                if (r.perkStripped) flags.Add("perk gate removed");
+                if (r.gatesStripped) flags.Add("vanilla gates removed");
                 if (r.note != null) flags.Add(r.note);
                 md.Add($"| {r.Tier} | {r.Edid} | {r.Output} | {r.origin ?? key.FileName} | {string.Join(", ", r.Items)} | {string.Join("; ", flags)} |");
             }
