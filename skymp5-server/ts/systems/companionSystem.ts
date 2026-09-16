@@ -441,6 +441,7 @@ export class CompanionSystem implements System {
     const mp = this.mp;
     const rules = KIND_RULES[c.kind];
     this.companions.delete(c.id);
+    this.lastTargetLogAt.delete(c.id);
     this.log(`CompanionSystem: ${c.kind} ${hex(c.id)} of ${hex(c.ownerId)} ended (${reason})`);
     if (died || rules.dieOnEnd) {
       if (!rules.lootable) {

@@ -236,6 +236,7 @@ export class PetService extends ClientListener {
     }
     const actor = Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(remoteId)));
     if (!actor || actor.isDead()) return;
+    if (this.commanded !== remoteId) this.endCommandMode();
     actor.setDoingFavor(true);
     this.commanded = remoteId;
     this.commandName = this.petOf(remoteId)?.name || (actor.getDisplayName() || "").trim() || "Companion";
@@ -258,7 +259,7 @@ export class PetService extends ClientListener {
 
   // Never yourself, the pet under command, or anything else of yours
   canAttack(remoteId: number): boolean {
-    if (!remoteId || remoteId === this.commanded || remoteId === this.myId() || !this.commandingName()) return false;
+    if (!this.commandingName() || !remoteId || remoteId === this.commanded || remoteId === this.myId()) return false;
     const kind = this.kindOf(remoteId);
     return kind === "" || kind === "horse-foreign";
   }
