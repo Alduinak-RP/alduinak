@@ -542,7 +542,7 @@ export class CompanionSystem implements System {
     try { this.mp.sendCustomPacket(user, JSON.stringify({ customPacketType: "companionState", companions, allies })); } catch { }
   }
 
-  // Only the owner hosts a companion; companions never damage their owner or the owner's other companions; hits on an owner call defend
+  // Only the owner hosts a companion; nothing of an owner's damages the owner's own companions or pets; a hit on an owner or on one of theirs calls defend
   private installHooks(): void {
     const mp = this.mp;
     const chain = (previous: ((...args: unknown[]) => unknown) | null, args: unknown[]): boolean => {
