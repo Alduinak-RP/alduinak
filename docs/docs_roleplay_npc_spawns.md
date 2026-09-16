@@ -14,6 +14,7 @@ lists, adds, resets and deletes zones in game.
 
 - Server piece: `skymp5-server/ts/systems/npcSpawnSystem.ts` (zones, polling, spawn/despawn/respawn, admin API)
 - Plugin scanner: `skymp5-server/ts/systems/espmEditorIds.ts` (turns cell and worldspace editor ids into form descs)
+- Navmesh spots: `skymp5-server/ts/systems/navmeshSpots.ts` (reads the plugins' navmesh so NPCs spawn on walkable ground, see Placement)
 - Admin panel: `skymp5-server/ts/systems/adminSystem.ts` (packets), `skymp5-client/src/services/services/adminMenuService.ts` (passthrough), `skymp5-front/src/features/adminPanel` (NPCs tab)
 - Live file: `build/dist/server/NPC-Spawns.json` (gitignored, edited by hand on the box or from the panel)
 - Sidecar: `build/dist/server/zone-spawns.json` (ids of the NPCs currently placed, used for crash cleanup on boot)
@@ -47,7 +48,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | `ID` | yes | | the cell or worldspace the zone lives in: an editor id (`Kagrenzel01`, `Tamriel`), a form desc (`1a26f:Skyrim.esm`) or a load-order form id (`0x0001A26F`, `0001A26F`) |
 | `POS` | yes | | centre of the zone: `{ "x": .., "y": .., "z": .. }`, `[x, y, z]` or `"x, y, z"` |
 | `Size` | no | 2000 | trigger radius in game units |
-| `Spread` | no | none (rings) | radius around `POS` within which the NPCs stand at random spots, at least 96 units from the zone's living NPCs; capped at `Size`. Blank or `0` keeps the ring layout (see Placement). Only set it for a zone whose floor is flat and open that far out |
+| `Spread` | no | `Size` | radius around `POS` of the walkable navmesh the NPCs scatter over, each at its own random spot; capped at `Size`. Blank uses the whole `Size`, `0` keeps the ring layout around `POS` (see Placement). Set a smaller value to keep a pack close together |
 | `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional; at most 40 NPCs per zone in total |
 | `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); `0` = never |
 | `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
@@ -105,7 +106,7 @@ emptying  -- a player back within 1.5 x Size ------->  active   (timer cleared)
 emptying  -- Despawn seconds elapsed --------------->  idle     (living NPCs destroyed; corpses and slot cooldowns keep their timers)
 
 per slot (one per NPC to place):
-ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a player inside --> placed again (its ring spot, or a fresh random spot with Spread)
+ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a player inside --> placed again (a fresh random navmesh spot, or its ring spot with Spread 0)
 ```
 
 - Every NPC of a zone has a slot with its own cooldown. A kill starts that
@@ -126,9 +127,9 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
 - NPCs are placed with `PlaceAtMe` anchored on a player who is inside the zone,
-  so the actor starts in the right cell, then teleported to its ring spot, or
-  with `Spread` a random spot (see Placement), which also becomes its spawn
-  point. `spawnDelay` is forced to `1e9` seconds
+  so the actor starts in the right cell, then teleported to a random navmesh
+  spot, or its ring spot with `Spread: 0` (see Placement), which also becomes
+  its spawn point. `spawnDelay` is forced to `1e9` seconds
   (about 31 years) so the engine never revives them: a respawn is always a
   fresh copy from this system. Do not use larger values such as `1e12`: they
   overflow the engine's timer arithmetic and the actor respawns on the next
@@ -218,26 +219,69 @@ has been loaded for a second.
 
 ### Placement
 
-Without `Spread` the first NPC stands on `POS` and the others fill rings
-around it: 6 on a ring 96 units out, 12 at 192, 18 at 288 and so on, with a
-partly filled outer ring spread evenly. Neighbours stand about 96 units apart,
-so a pack of trolls or spiders does not spawn inside each other and get shoved
-through the floor. Record `POS` standing on open floor with room around it: up
-to 7 NPCs need about 96 units of clear floor around `POS`, 8 to 19 about 192,
-20 to 37 about 288. Each NPC has its own ring spot, and a respawn stands on the
-dead NPC's spot again.
+NPCs spawn on the navmesh, the walkable ground the game's own AI paths on,
+so a random spot never lands in rock, under the terrain or in the void. When
+the zones load, the server reads the `NAVM` records of the plugins in
+`loadOrder` (the last override of a navmesh wins, a deleted one drops out).
+For each zone it starts on the triangle `POS` stands on and keeps every
+triangle reachable on foot from there, across triangle edges and navmesh
+portals but not ledge jumps, whose centre lies within `Spread` of `POS` (the
+whole `Size` when `Spread` is blank). A multi-level dungeon only uses the floor
+that can be walked to from `POS` without leaving the zone, never a floor above
+or below it or a room behind a wall. A zone whose ID is a cell inside a
+worldspace (Fallowstone Cave) also finds the navmesh filed under that
+worldspace.
 
-With `Spread` every placement, first spawn and respawn alike, picks a random
-spot within `Spread` of `POS` that is at least 96 units from the zone's living
-NPCs. After 12 failed tries (a `Spread` too small for the count) the NPC takes
-its ring spot instead, so NPCs still never spawn inside each other.
+Every placement, first spawn and respawn alike, picks a random point on that
+navmesh for each NPC on its own (a pack does not stay together; give the zone
+a smaller `Spread` for that). The point must be:
 
-Every spot, ring or random, is placed 64 units above `POS`, so the NPC drops
-onto a sloped or bumpy floor instead of starting inside it. That only helps
-near `POS`: a random spot far out on steep ground, or beyond the walls of a
-small room, lands under the terrain, inside rock or in the void, and an NPC
-lost that way stays alive in its slot until the zone despawns. Keep `Spread`
-inside the flat, open part of the zone; interior zones are safest without it.
+- within `Spread` (or `Size`) of `POS`;
+- at least 96 units from the zone's living NPCs;
+- at least 768 units from every online player in the zone's cell or
+  worldspace, admins included, so NPCs do not pop in beside someone who walks
+  in or teleports to `POS`.
+
+After 24 tries without a point that meets all three, the best try is used
+(spacing from the NPCs counts before distance from the players), so a small
+cave still places everyone on its navmesh, just closer to the players.
+
+What an NPC may stand on follows its race, read through TPLT templates and
+leveled lists: races that swim but cannot walk (slaughterfish) use water
+triangles, large and extra large races (mammoths, giants, dragons, snow bears)
+skip triangles marked for no large creatures, and everyone else skips water
+and door triangles. When a zone has no triangle of that kind, any triangle of
+its navmesh is used. No plugin in the load order of 2026-09-16 marks a
+triangle for no large creatures, so that rule has nothing to skip yet.
+
+The spot is placed 64 units above the navmesh, so the NPC drops onto the floor
+instead of starting inside it.
+
+The scan reads the whole load order once (about a second on the live box, in
+the background, yielding to the game tick like the editor id scan). A zone
+waits with its first spawn until its area is scanned. Results stay cached
+until the server restarts, so a reload or a panel change only scans a zone
+whose ID, `POS`, `Size` or `Spread` changed. A scan that fails or cannot read a
+plugin is used as far as it got but not cached, so the next reload tries
+again.
+
+`Spread: 0` keeps the ring layout: the first NPC stands on `POS` and the
+others fill rings around it, 6 on a ring 96 units out, 12 at 192, 18 at 288
+and so on, with a partly filled outer ring spread evenly, all 64 units above
+`POS`. Each NPC has its own ring spot, and a respawn stands on the dead NPC's
+spot again. Record `POS` on open floor: up to 7 NPCs need about 96 units of
+clear floor around it, 8 to 19 about 192, 20 to 37 about 288.
+
+A zone with no navmesh within reach of `POS` uses the rings too and is named
+once in the `navmesh spots` log line. In the live file of 2026-09-16 that is
+South Skybound Watch Frost Troll (nearest navmesh 3521 units away), Lover
+Stone Beast (2786) and Frostbite Trio (7191): record their `POS` again standing
+on walkable ground so they scatter as well.
+
+A spot on the far side of a large outdoor zone can be more than 4096 units
+from a player who just crossed the zone's edge. Until that player's client
+streams the NPC (see Hosting) nobody hosts it, so it stands still for a
+moment.
 
 Every spawned actor is tagged `private.npcSpawner = <Name>` (best effort) for
 gamemode scripts that want to tell spawner NPCs apart.
@@ -256,8 +300,8 @@ otherwise be attacked only by the hosting player's NPCs.
 The file is watched with chokidar (`awaitWriteFinish`). About two seconds
 after the last write the file is parsed and resolved again; if it is valid,
 the new zones replace the old ones and a load summary is logged. A zone whose
-`Name` (case-insensitive) and definition (location, `POS`, `Size`, NPC list,
-`Despawn`, `Respawn`) did not change is carried over with its NPCs, cooldowns
+`Name` (case-insensitive) and definition (location, `POS`, `Size`, `Spread`,
+NPC list, `Despawn`, `Respawn`) did not change is carried over with its NPCs, cooldowns
 and players intact, so adding or removing one zone leaves the others running;
 the summary counts them as `carried N zone(s)`. Editing any field of a zone
 despawns it and starts it fresh; renaming one does the same. Invalid JSON, or
@@ -282,7 +326,8 @@ views:
   placed) or **None** (every zone, the default). A partly killed zone
   matches both of the first two.
   - **TP** puts the admin on `POS`. That counts as being inside, so a ready
-    zone spawns on the next poll.
+    zone spawns on the next poll, at least 768 units from the admin where the
+    navmesh allows it.
   - **Activate** places every NPC of the zone that is not alive right now,
     cooldowns ignored. With nobody inside, the admin's own actor anchors the
     `PlaceAtMe` and the zone's `Despawn` timer runs as usual, so the NPCs go
@@ -295,14 +340,15 @@ views:
     again on the next poll with a player inside.
   - **Delete** removes the entry from `NPC-Spawns.json` (single click, no
     confirmation) and despawns it.
-- **Add** takes Name, ID, X/Y/Z, Size, one NPC entry per line (`00023A99 4`),
-  Despawn and Respawn. **Get current pos** fills ID and X/Y/Z with where the
+- **Add** takes Name, ID, X/Y/Z, Size (2100 filled in, the value every live
+  zone uses), Spread (blank for the whole Size, `0` for rings), one NPC entry
+  per line (`00023A99 4`), Despawn and Respawn. **Get current pos** fills ID and X/Y/Z with where the
   server has the admin right now: the ID as the form desc of the worldspace
   outdoors or the cell indoors (`3c:Skyrim.esm`), the same location the
   zone check compares players against, and the position to two decimals.
   The Add button stays disabled until Name, ID, NPC and
   all three coordinates are filled in and every number field holds a number
-  (Size, Despawn and Respawn may be blank for the defaults). The server then
+  (Size, Spread, Despawn and Respawn may be blank for the defaults). The server then
   validates exactly like a file load (unknown ID, non-`NPC_` base, duplicate
   name, more than 40 NPCs, a Name over 64 characters and missing fields are
   refused with a toast naming the reason) and appends the entry in the field
@@ -326,7 +372,9 @@ Everything goes through the server log and the manager console, prefixed
   the admin log (staff channel) names the profile that added, reset, deleted or teleported to a zone
 - `'<Name>' entered by <player name> (<hex actor id>)` once per player entering
   the zone; there is no line for leaving
-- `'<Name>' spawned 4/4 npc(s): 23a99:Skyrim.esm x4`
+- `navmesh spots for N/M zone(s) in X ms; rings kept for: ...` after each scan, naming the zones without navmesh near `POS`;
+  `navmesh scan failed, ...` or `navmesh scan missed unreadable plugins, ...` when the result is not cached
+- `'<Name>' spawned 4/4 npc(s) (navmesh): 23a99:Skyrim.esm x4`, `(rings)` for `Spread: 0` or a zone without navmesh
 - `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456)`
 - `'<Name>' despawned 4 npc(s)`
 - `removed a/b leftover npc(s) from the previous run` on boot, once the world DB has loaded (the ids come from `zone-spawns.json`)

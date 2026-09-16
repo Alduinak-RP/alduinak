@@ -17,8 +17,10 @@ const TAG_GRUP = tag("GRUP");
 const TAG_EDID = tag("EDID");
 const TAG_MAST = tag("MAST");
 const TAG_XXXX = tag("XXXX");
+// Group type of a World Children group, whose label is the worldspace
+const GROUP_WORLD_CHILDREN = 1;
 // Groups this deep and shallower hand control back to the event loop so the game tick keeps running
-const YIELD_DEPTH = 3;
+const YIELD_DEPTH = 4;
 const YIELD_MS = 20;
 
 export type LogFn = (line: string) => void;
@@ -39,6 +41,8 @@ export interface EspmRecord {
   formId: number;
   // Record header flags (0x20 deleted)
   flags: number;
+  // Plugin-local id of the worldspace whose children hold the record; 0 outside any
+  world: number;
   fields: { type: string; data: Buffer }[];
 }
 
@@ -54,7 +58,7 @@ const cache = new Map<string, string>();
 const knownMissing = new Set<string>();
 
 // Returns true from the visitor to stop the scan
-type Visit = (type: number, formId: number, data: Buffer | null, flags: number) => boolean;
+type Visit = (type: number, formId: number, data: Buffer | null, flags: number, world: number) => boolean;
 
 export const cstr = (b: Buffer): string => b.toString("latin1").replace(/\0+$/, "");
 
@@ -114,7 +118,7 @@ function readMasters(buf: Buffer): string[] {
   return masters;
 }
 
-function* walkGroup(buf: Buffer, start: number, end: number, depth: number, tags: Set<number>, visit: Visit): Generator<void, boolean, void> {
+function* walkGroup(buf: Buffer, start: number, end: number, depth: number, tags: Set<number>, visit: Visit, world = 0): Generator<void, boolean, void> {
   let off = start;
   while (off + HEADER_SIZE <= end) {
     const type = buf.readUInt32LE(off);
@@ -124,7 +128,8 @@ function* walkGroup(buf: Buffer, start: number, end: number, depth: number, tags
       const label = buf.readUInt32LE(off + 8);
       // Top-level groups are labelled by record type; only the requested trees matter
       if (depth > 0 || tags.has(label)) {
-        if (yield* walkGroup(buf, off + HEADER_SIZE, Math.min(off + size, end), depth + 1, tags, visit)) return true;
+        const inner = buf.readUInt32LE(off + 12) === GROUP_WORLD_CHILDREN ? label : world;
+        if (yield* walkGroup(buf, off + HEADER_SIZE, Math.min(off + size, end), depth + 1, tags, visit, inner)) return true;
         if (depth < YIELD_DEPTH) yield;
       }
       off += size;
@@ -133,7 +138,7 @@ function* walkGroup(buf: Buffer, start: number, end: number, depth: number, tags
       if (tags.has(type)) {
         const flags = buf.readUInt32LE(off + 8);
         const formId = buf.readUInt32LE(off + 12);
-        if (visit(type, formId, recordData(buf, off + HEADER_SIZE, dataSize, flags), flags)) return true;
+        if (visit(type, formId, recordData(buf, off + HEADER_SIZE, dataSize, flags), flags, world)) return true;
       }
       off += HEADER_SIZE + dataSize;
     }
@@ -162,23 +167,28 @@ async function readPlugin(entry: string, dataDir: string, log: LogFn): Promise<{
   catch { log(`espm scan: plugin '${owner}' not readable at ${file}, skipped`); return null; }
 }
 
-// Visits every record of the given types, plugin by plugin in load order, so later overrides arrive last
-export async function scanRecords(dataDir: string, loadOrder: string[], types: string[], log: LogFn, visit: (rec: EspmRecord) => void): Promise<void> {
+// Visits every record of the given types, plugin by plugin in load order, so later overrides arrive last; resolves to the number of unreadable plugins
+export async function scanRecords(dataDir: string, loadOrder: string[], types: string[], log: LogFn, visit: (rec: EspmRecord) => void): Promise<number> {
   const tags = new Set(types.map(tag));
+  let skipped = 0;
   for (const entry of loadOrder) {
     const plugin = await readPlugin(entry, dataDir, log);
-    if (!plugin) continue;
+    if (!plugin) {
+      skipped++;
+      continue;
+    }
     const { buf, owner } = plugin;
     const masters = readMasters(buf);
     const localized = buf.length >= HEADER_SIZE && (buf.readUInt32LE(8) & FLAG_LOCALIZED) !== 0;
-    await scanPlugin(buf, tags, (type, formId, data, flags) => {
+    await scanPlugin(buf, tags, (type, formId, data, flags, world) => {
       if (!data) return false;
       const fields: EspmRecord["fields"] = [];
       eachSubrecord(data, (t, body) => { fields.push({ type: tagName(t), data: body }); return false; });
-      visit({ owner, masters, localized, type: tagName(type), formId, flags, fields });
+      visit({ owner, masters, localized, type: tagName(type), formId, flags, world, fields });
       return false;
     });
   }
+  return skipped;
 }
 
 export async function resolveEditorIds(editorIds: string[], dataDir: string, loadOrder: string[], log: LogFn, types: string[] = DEFAULT_TYPES): Promise<EditorIdScan> {

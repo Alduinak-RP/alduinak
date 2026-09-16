@@ -189,7 +189,7 @@ const ZONE_FILTERS: Array<{ id: ZoneFilter; label: string }> = [
 ];
 
 // Field names follow NPC-Spawns.json; the server applies its own defaults to a blank Size, Spread, Despawn or Respawn.
-const EMPTY_ZONE_FORM = { name: '', id: '', x: '', y: '', z: '', size: '2000', spread: '', npc: '', despawn: '120', respawn: '1800' };
+const EMPTY_ZONE_FORM = { name: '', id: '', x: '', y: '', z: '', size: '2100', spread: '', npc: '', despawn: '120', respawn: '1800' };
 type ZoneForm = typeof EMPTY_ZONE_FORM;
 
 const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: string }> = [
@@ -199,7 +199,7 @@ const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: stri
   { key: 'y', label: 'Y', placeholder: '-29429' },
   { key: 'z', label: 'Z', placeholder: '8280' },
   { key: 'size', label: 'Size', placeholder: '2000' },
-  { key: 'spread', label: 'Spread', placeholder: 'blank: rings around POS' },
+  { key: 'spread', label: 'Spread', placeholder: 'blank: anywhere in Size, 0: rings' },
   { key: 'despawn', label: 'Despawn (s)', placeholder: '120' },
   { key: 'respawn', label: 'Respawn (s)', placeholder: '1800' },
 ];

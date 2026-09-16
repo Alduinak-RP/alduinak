@@ -7,6 +7,7 @@ import { espmFieldFormIds } from "./formIdUtil";
 import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
 import { Hostable } from "./hostingSystem";
 import { destroyLeftovers } from "./actorUtil";
+import { loadNavmeshSpots, randomPointOn, NavmeshTarget, SpotKind, Spots } from "./navmeshSpots";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -26,15 +27,24 @@ const MAX_COUNT = 20;
 const MAX_TOTAL = 40;
 const MAX_NAME = 64;
 const SLOT_SPACING = 96;
-// Random spots tried within Spread before a crowded zone falls back to the ring slot
-const PLACE_ATTEMPTS = 12;
+// Random navmesh spots tried per placement before the best of them is taken
+const PLACE_ATTEMPTS = 24;
+// A fresh NPC stands at least this far from every player in the zone's cell or worldspace when the navmesh allows it
+const PLAYER_CLEARANCE = 768;
 // Spawn height above POS so an NPC drops onto an uneven floor instead of starting inside it
 const SPAWN_LIFT = 64;
 const RETRY_MS = 30000;
 const RELOAD_DEBOUNCE_MS = 500;
 const TAG_PROP = "private.npcSpawner";
-// ACBS template flag: the AI data comes from the TPLT template
+// ACBS template flags: the race or the AI data comes from the TPLT template
+const TEMPLATE_USE_TRAITS = 0x01;
 const TEMPLATE_USE_AI_DATA = 0x10;
+// RACE DATA flags and size (0 small .. 3 extra large)
+const RACE_FLAGS_OFFSET = 32;
+const RACE_SIZE_OFFSET = 64;
+const RACE_SIZE_LARGE = 2;
+const RACE_SWIMS = 0x40;
+const RACE_WALKS = 0x100;
 const MAX_TEMPLATE_DEPTH = 8;
 // Slot cooldown marker for Respawn 0: the slot stays empty until the zone despawns or an admin resets it
 const NEVER_READY = -1;
@@ -59,8 +69,10 @@ interface Zone {
   cellOrWorldId: number;
   pos: number[];
   radius: number;
-  // Set: random spots within this radius of pos; unset: rings of slots around pos
+  // Radius of the navmesh area NPCs scatter over, Size when unset; 0 keeps rings of slots around pos
   spread?: number;
+  // Walkable navmesh within reach of pos: undefined while it is scanned, null when there is none
+  spots?: Spots | null;
   npcs: ZoneNpc[];
   // One entry per NPC to place; slot i rings at slotPos(i)
   slots: ZoneNpc[];
@@ -100,6 +112,8 @@ export interface ZoneSummary {
 
 type Reject = (msg: string) => void;
 
+type EspmField = { type: string; data: Uint8Array };
+
 // The parsed zone file; root and key are set when the array sits under a wrapper object
 interface ZoneFile {
   list: unknown[];
@@ -127,6 +141,10 @@ const num = (v: unknown, fallback: number): number => {
 
 const hex = (id: number): string => id.toString(16);
 
+const view = (data: Uint8Array): DataView => new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+const distance = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
 const isHexId = (text: string): boolean => /^0x[0-9a-f]{1,8}$/i.test(text) || /^[0-9a-f]{1,8}$/i.test(text);
 
 // ID forms: "1a26f:Skyrim.esm" desc, "0x0001A26F" / "0001A26F" load-order id, anything else an editor id
@@ -149,6 +167,9 @@ export class NpcSpawnSystem implements System {
   // Dead NPC actorId -> epoch ms when its corpse is destroyed
   private corpses = new Map<number, number>();
   private corpseMs = DEFAULT_CORPSE_SECONDS * 1000;
+  // Navmesh spots by area for the whole run, since plugins only change with a restart
+  private spotCache = new Map<string, Spots | null>();
+  private scanning = new Set<string>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
@@ -211,6 +232,7 @@ export class NpcSpawnSystem implements System {
       }
       const carried = this.replaceZones(mp, zones);
       this.log(`NpcSpawnSystem: ${zones.length}/${list.length} zone(s) loaded from ${ZONES_FILE} (${reason}), carried ${carried} zone(s)`);
+      this.attachSpots(mp);
     } finally {
       this.loading = false;
     }
@@ -288,14 +310,64 @@ export class NpcSpawnSystem implements System {
       reject(`'${name}' skipped, more than ${MAX_TOTAL} NPCs`);
       return null;
     }
-    // Only an explicit positive Spread scatters; blank or 0 keeps the rings
-    const spreadRaw = num(pick(raw, "spread"), 0);
-    const spread = spreadRaw > 0 ? Math.min(radius, spreadRaw) : undefined;
+    // Blank scatters over the whole Size, 0 keeps the rings
+    const spreadRaw = num(pick(raw, "spread"), NaN);
+    const spread = spreadRaw === 0 ? 0 : spreadRaw > 0 ? Math.min(radius, spreadRaw) : undefined;
     return {
       name, locator, pos, radius, spread, npcs,
       despawnSeconds: Math.max(0, num(pick(raw, "despawn"), DEFAULT_DESPAWN)),
       respawnSeconds: Math.max(0, num(pick(raw, "respawn"), DEFAULT_RESPAWN)),
     };
+  }
+
+  private spotKey(zone: Zone): string {
+    return [zone.cellOrWorldId, zone.pos.join(","), zone.spread || zone.radius].join("|");
+  }
+
+  private awaitingSpots(zone: Zone): boolean {
+    return zone.spread !== 0 && zone.spots === undefined;
+  }
+
+  // Cached areas apply at once; the rest are scanned in the background, never twice at the same time
+  private attachSpots(mp: Mp): void {
+    const targets = new Map<string, NavmeshTarget>();
+    for (const zone of this.zones) {
+      if (zone.spread === 0) continue;
+      const key = this.spotKey(zone);
+      if (this.spotCache.has(key)) zone.spots = this.spotCache.get(key);
+      else if (!this.scanning.has(key)) targets.set(key, { key, cellOrWorldId: zone.cellOrWorldId, pos: zone.pos, radius: zone.spread || zone.radius });
+    }
+    if (!targets.size) return;
+    for (const key of targets.keys()) this.scanning.add(key);
+    void this.scanSpots(mp, Array.from(targets.values()));
+  }
+
+  // A reload may replace the zones meanwhile, so results go to the current zones by key; a partial scan is used but not cached
+  private async scanSpots(mp: Mp, targets: NavmeshTarget[]): Promise<void> {
+    const started = Date.now();
+    let found = new Map<string, Spots | null>();
+    try {
+      const s = await Settings.get();
+      const scan = await loadNavmeshSpots(mp, s.dataDir, s.loadOrder, targets, this.log);
+      found = scan.spots;
+      if (scan.complete) for (const [key, spots] of found) this.spotCache.set(key, spots);
+      else this.log("NpcSpawnSystem: navmesh scan missed unreadable plugins, it runs again on the next reload");
+    } catch (e) {
+      this.log(`NpcSpawnSystem: navmesh scan failed, zones use rings until the next reload: ${e}`);
+    }
+    const keys = new Set(targets.map((t) => t.key));
+    for (const key of keys) this.scanning.delete(key);
+    const rings: string[] = [];
+    let matched = 0;
+    for (const zone of this.zones) {
+      const key = this.spotKey(zone);
+      if (zone.spread === 0 || !keys.has(key)) continue;
+      zone.spots = found.get(key) ?? null;
+      matched++;
+      if (!zone.spots) rings.push(zone.name);
+    }
+    const kept = rings.length ? `; rings kept for: ${rings.join(", ")}` : "";
+    this.log(`NpcSpawnSystem: navmesh spots for ${matched - rings.length}/${matched} zone(s) in ${Date.now() - started} ms${kept}`);
   }
 
   // {x,y,z}, [x,y,z] or "x, y, z"
@@ -407,7 +479,7 @@ export class NpcSpawnSystem implements System {
       if (zone.spawned.length) this.checkDeaths(mp, zone, now);
       if (occupied) {
         zone.emptySince = 0;
-        this.fillSlots(mp, zone, now);
+        if (!this.awaitingSpots(zone)) this.fillSlots(mp, zone, now);
       } else if (zone.spawned.length && zone.despawnSeconds > 0) {
         if (!zone.emptySince) zone.emptySince = now;
         if (now - zone.emptySince >= zone.despawnSeconds * 1000) this.despawn(mp, zone);
@@ -479,7 +551,8 @@ export class NpcSpawnSystem implements System {
     if (!placed) return 0;
     if (!before) {
       const summary = zone.npcs.map((n) => `${n.baseDesc} x${n.count}`).join(", ");
-      this.log(`NpcSpawnSystem: '${zone.name}' spawned ${zone.spawned.length}/${zone.total} npc(s): ${summary}`);
+      const layout = zone.spread !== 0 && zone.spots ? "navmesh" : "rings";
+      this.log(`NpcSpawnSystem: '${zone.name}' spawned ${zone.spawned.length}/${zone.total} npc(s) (${layout}): ${summary}`);
     }
     this.saveSpawns();
     return placed;
@@ -487,7 +560,7 @@ export class NpcSpawnSystem implements System {
 
   private spawnOne(mp: Mp, zone: Zone, npc: ZoneNpc, slot: number, anchorId: number): { id: number; pos: number[] } | null {
     try {
-      const pos = this.pickPos(zone, slot);
+      const pos = this.pickPos(mp, zone, slot, this.spotKind(mp, npc.baseDesc));
       const loc = { cellOrWorldDesc: zone.cellOrWorldDesc, pos, rot: [0, 0, 0] };
       const id = placeNpc(mp, anchorId, npc.baseDesc, loc);
       try { mp.set(id, TAG_PROP, zone.name); } catch { }
@@ -500,23 +573,49 @@ export class NpcSpawnSystem implements System {
   }
 
   private hostileByBase = new Map<string, boolean>();
+  private kindByBase = new Map<string, SpotKind>();
 
   private isHostileBase(mp: Mp, baseDesc: string): boolean {
     let hostile = this.hostileByBase.get(baseDesc);
     if (hostile === undefined) {
-      try { hostile = this.aiDataHostile(mp, mp.getIdFromDesc(baseDesc) >>> 0, 0); } catch { hostile = false; }
+      try { hostile = this.anyNpc(mp, mp.getIdFromDesc(baseDesc) >>> 0, TEMPLATE_USE_AI_DATA, (_res, fields) => this.aiDataHostile(fields)); } catch { hostile = false; }
       this.hostileByBase.set(baseDesc, hostile);
     }
     return hostile;
   }
 
-  // Vanilla attacks-on-sight test from AIDT: aggressive, or an aggro radius on a creature that is not cowardly
-  private aiDataHostile(mp: Mp, formId: number, depth: number): boolean {
+  // Races that swim but cannot walk stand on water; large and extra large races skip navmesh marked for no large creatures
+  private spotKind(mp: Mp, baseDesc: string): SpotKind {
+    let kind = this.kindByBase.get(baseDesc);
+    if (kind === undefined) {
+      kind = "land";
+      try {
+        const id = mp.getIdFromDesc(baseDesc) >>> 0;
+        const race = (test: (data: DataView) => boolean) => this.anyNpc(mp, id, TEMPLATE_USE_TRAITS, (res) => {
+          const data = this.raceData(mp, res);
+          return !!data && test(data);
+        });
+        if (race((data) => (data.getUint32(RACE_FLAGS_OFFSET, true) & (RACE_SWIMS | RACE_WALKS)) === RACE_SWIMS)) kind = "water";
+        else if (race((data) => data.getUint32(RACE_SIZE_OFFSET, true) >= RACE_SIZE_LARGE)) kind = "large";
+      } catch { }
+      this.kindByBase.set(baseDesc, kind);
+    }
+    return kind;
+  }
+
+  private raceData(mp: Mp, npc: any): DataView | null {
+    const raceId = espmFieldFormIds(npc, "RNAM")[0];
+    const fields: any[] = (raceId && mp.lookupEspmRecordById(raceId)?.record?.fields) || [];
+    const data = fields.find((f) => f?.type === "DATA" && f.data instanceof Uint8Array)?.data;
+    return data && data.byteLength >= RACE_SIZE_OFFSET + 4 ? view(data) : null;
+  }
+
+  // True when test holds for an NPC_ the base resolves to, following leveled list entries and TPLT templates that supply templateFlag
+  private anyNpc(mp: Mp, formId: number, templateFlag: number, test: (res: any, fields: EspmField[]) => boolean, depth = 0): boolean {
     const res = mp.lookupEspmRecordById(formId);
     const rec = res?.record;
     if (!rec || depth > MAX_TEMPLATE_DEPTH) return false;
-    const fields: { type: string; data: Uint8Array }[] = (rec.fields || []).filter((f: any) => f && f.data instanceof Uint8Array);
-    const view = (data: Uint8Array) => new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const fields: EspmField[] = (rec.fields || []).filter((f: any) => f && f.data instanceof Uint8Array);
     if (rec.type === "LVLN") {
       // LVLO: level, padding, then the entry's form id
       const entries: number[] = [];
@@ -524,13 +623,18 @@ export class NpcSpawnSystem implements System {
         if (f.type !== "LVLO" || f.data.byteLength < 8) continue;
         try { entries.push(res.toGlobalRecordId(view(f.data).getUint32(4, true)) >>> 0); } catch { }
       }
-      return entries.some((id) => this.aiDataHostile(mp, id, depth + 1));
+      return entries.some((id) => this.anyNpc(mp, id, templateFlag, test, depth + 1));
     }
     if (rec.type !== "NPC_") return false;
     const acbs = fields.find((f) => f.type === "ACBS")?.data;
     const templateFlags = acbs && acbs.byteLength >= 20 ? view(acbs).getUint16(18, true) : 0;
-    const template = templateFlags & TEMPLATE_USE_AI_DATA ? espmFieldFormIds(res, "TPLT")[0] : 0;
-    if (template) return this.aiDataHostile(mp, template, depth + 1);
+    const template = templateFlags & templateFlag ? espmFieldFormIds(res, "TPLT")[0] : 0;
+    if (template) return this.anyNpc(mp, template, templateFlag, test, depth + 1);
+    return test(res, fields);
+  }
+
+  // Vanilla attacks-on-sight test from AIDT: aggressive, or an aggro radius on a creature that is not cowardly
+  private aiDataHostile(fields: EspmField[]): boolean {
     const aidt = fields.find((f) => f.type === "AIDT")?.data;
     if (!aidt || aidt.byteLength < 20) return false;
     const [aggression, confidence] = [aidt[0], aidt[1]];
@@ -553,17 +657,36 @@ export class NpcSpawnSystem implements System {
     return [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
   }
 
-  // With Spread a random spot at least SLOT_SPACING from the zone's living NPCs, else or when crowded the ring slot
-  private pickPos(zone: Zone, slot: number): number[] {
-    if (!zone.spread) return this.slotPos(zone, slot);
+  // Random navmesh spot within reach of POS; SLOT_SPACING from living NPCs counts before PLAYER_CLEARANCE, and the best try wins when none fits both
+  private pickPos(mp: Mp, zone: Zone, slot: number, kind: SpotKind): number[] {
+    if (zone.spread === 0 || !zone.spots) return this.slotPos(zone, slot);
+    const reach = zone.spread || zone.radius;
     const taken = zone.spawned.filter((e) => e.id && !e.diedAt).map((e) => e.pos);
+    const players = this.playerPositions(mp, zone);
+    let best: number[] | null = null;
+    let bestScore = -1;
     for (let attempt = 0; attempt < PLACE_ATTEMPTS; attempt++) {
-      const angle = Math.random() * 2 * Math.PI;
-      const radius = zone.spread * Math.sqrt(Math.random());
-      const pos = [zone.pos[0] + radius * Math.cos(angle), zone.pos[1] + radius * Math.sin(angle), zone.pos[2] + SPAWN_LIFT];
-      if (taken.every((t) => Math.hypot(t[0] - pos[0], t[1] - pos[1]) >= SLOT_SPACING)) return pos;
+      const spot = randomPointOn(zone.spots, kind);
+      if (!spot || distance(spot, zone.pos) > reach) continue;
+      spot[2] += SPAWN_LIFT;
+      const spaced = taken.every((t) => distance(t, spot) >= SLOT_SPACING);
+      const clear = Math.min(PLAYER_CLEARANCE, ...players.map((p) => distance(p, spot)));
+      const score = (spaced ? PLAYER_CLEARANCE + 1 : 0) + clear;
+      if (score > bestScore) [best, bestScore] = [spot, score];
+      if (spaced && clear >= PLAYER_CLEARANCE) break;
     }
-    return this.slotPos(zone, slot);
+    return best ?? this.slotPos(zone, slot);
+  }
+
+  // Every online player in the zone's cell or worldspace, admins included
+  private playerPositions(mp: Mp, zone: Zone): number[][] {
+    let ids: number[] = [];
+    try { ids = mp.get(0, "onlinePlayers") ?? []; } catch { }
+    const out: number[][] = [];
+    for (const id of ids) {
+      try { if (mp.getActorCellOrWorld(id) === zone.cellOrWorldId) out.push(mp.getActorPos(id)); } catch { }
+    }
+    return out;
   }
 
   // A death starts the slot's Respawn cooldown and the corpse's own removal timer
