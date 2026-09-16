@@ -21,6 +21,7 @@ All menus render as `form` widgets and **preserve SkyMP's chat widget**
 | `F6` | BrowserService | `freeCursorKeyCode` | Free / lock the mouse cursor |
 | `Enter`, `T` | BrowserService | `chatFocusKeyCodes` | Focus the chat box to type |
 | `F1` | BrowserService | `hideUiKeyCode` | Hide every overlay (chat, prompts, nametags, voice banner, open menus); press again to show. Menu hotkeys and chat focus are inert while hidden; server screens (death, trade, consent prompts, character select) bring the interface back |
+| `B` | EmoteService | `emoteWheelKeyCode` (launcher Server Hotkeys > Emote Wheel) | Open the emote wheel; the same key closes it again, as do Esc and a right-click. The open wheel holds browser focus, so the front forwards the press and the client matches it with `domKeyCode`: that works for scan codes up to 88 except Num Lock, not for extended keys (arrows, the Insert/Home/Page block, Right Ctrl/Alt, Numpad Enter and /, Windows keys) or mouse buttons. W, A, S, D, Space and R cancel a playing emote |
 
 Every `...KeyCode` setting also takes a mouse button as DxScanCode 256 + n
 (258 middle, 259 Mouse 4, 260 Mouse 5); the launcher's Settings tab captures them.

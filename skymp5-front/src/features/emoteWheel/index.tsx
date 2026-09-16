@@ -146,9 +146,13 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   useEffect(() => {
     // Losing browser focus (free-cursor key, chat) would strand the overlay.
     const onUnfocused = () => send(ev.close);
+    // The game sees no keys while the wheel has focus, so the client matches presses to the wheel key
+    const onKeyDown = (e: KeyboardEvent) => { if (!e.repeat) send(ev.key, e.code); };
     window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
+      window.removeEventListener('keydown', onKeyDown);
       if (swapTimer.current) clearTimeout(swapTimer.current);
     };
   }, []);

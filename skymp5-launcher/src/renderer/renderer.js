@@ -93,10 +93,36 @@ function setKey(id, code) {
   showHotkeyConflict()
 }
 function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.dataset.code, 10) || 0) : 0 }
+// Shared keys only warn; Save still writes them
 function showHotkeyConflict() {
+  const interact = getKey('hk-alt-interact')
+  const interactClash = !!interact && interact === getKey('ghk-activate')
   const el = document.getElementById('hk-conflict')
-  const code = getKey('hk-alt-interact')
-  if (el) el.hidden = !code || code !== getKey('ghk-activate')
+  if (el) el.hidden = !interactClash
+  const uses = new Map()
+  for (const id of [...SERVER_HOTKEY_IDS, ...GAME_HOTKEY_IDS]) {
+    const btn = document.getElementById(id)
+    const code = getKey(id)
+    if (!btn || !code) continue
+    if (!uses.has(code)) uses.set(code, { ids: [], names: new Set() })
+    uses.get(code).ids.push(id)
+    uses.get(code).names.add(btn.previousElementSibling.textContent)
+  }
+  const shared = { hk: [], ghk: [] }
+  for (const [code, { ids, names }] of uses) {
+    const fixed = CLIENT_FIXED_KEYS[code]
+    if (fixed && (fixed[1] || ids.some(id => id.startsWith('hk-')))) names.add(fixed[0])
+    // hk-conflict already explains Interact / Menus on the Activate key
+    if (names.size < 2 || (interactClash && code === interact && names.size === 2)) continue
+    const text = `${labelForCode(code)} (${[...names].join(', ')})`
+    for (const section of Object.keys(shared)) if (ids.some(id => id.startsWith(section + '-'))) shared[section].push(text)
+  }
+  for (const [section, list] of Object.entries(shared)) {
+    const warn = document.getElementById(section + '-duplicate')
+    if (!warn) continue
+    warn.hidden = !list.length
+    warn.textContent = `Each of these keys does more than one thing on the same press: ${list.join('; ')}.`
+  }
 }
 
 // Backspace unbinds server hotkeys except Interact / Menus; gameHotkeys:save drops code 0, so game keys cannot unbind
@@ -104,9 +130,16 @@ function showHotkeyConflict() {
 const SERVER_HOTKEYS = {
   'hk-cursor': ['freeCursor', 64], 'hk-voice-ptt': ['voicePtt', 47],
   'hk-hide-ui': ['hideUi', 59], 'hk-alt-interact': ['altInteract', 45],
+  'hk-emote-wheel': ['emoteWheel', 48],
 }
 const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]
 const GAME_HOTKEY_IDS = ['ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov']
+// DIK -> [use, also shared by Game Hotkeys rows]; movement cancelling an emote is intended, so those only count for Server Hotkeys
+const CLIENT_FIXED_KEYS = {
+  1: ['menu close', true], 15: ['game menu', true], 28: ['Activate Chat', true], 49: ['bounty board', true],
+  17: ['emote cancel', false], 30: ['emote cancel', false], 31: ['emote cancel', false],
+  32: ['emote cancel', false], 57: ['emote cancel', false], 19: ['emote cancel', false],
+}
 
 let activeCapture = null
 

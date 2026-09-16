@@ -508,6 +508,7 @@ ipcMain.handle('graphics:saveFov', (_e, v) => {
 const CLIENT_HOTKEY_KEYS = {
   freeCursor: 'freeCursorKeyCode', voicePtt: 'voicePushToTalkKeyCode',
   hideUi: 'hideUiKeyCode', altInteract: 'altInteractKeyCode',
+  emoteWheel: 'emoteWheelKeyCode',
 }
 const CLIENT_SETTINGS_HOTKEYS = ['chatFocusKeyCodes', ...Object.values(CLIENT_HOTKEY_KEYS)]
 // Hotkeys saved while the game runs wait here for the next launch, as SkyrimPlatform reloads every plugin when its folder changes

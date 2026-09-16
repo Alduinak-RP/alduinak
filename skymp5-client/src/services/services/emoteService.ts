@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode, domKeyCode } from "./widgetMenuUtil";
 import { RestraintService } from "./restraintService";
 import { SendInputsService } from "./sendInputsService";
 import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, SHEATHE_SETTLE_S } from "../../sync/animation";
@@ -114,6 +114,7 @@ const events = {
   play: 'emote:play',
   close: 'emote:close',
   stop: 'emote:stop',
+  key: 'emote:key',
 };
 
 // Movement input breaks an active emote, matching how remote clones exit poses.
@@ -199,6 +200,12 @@ export class EmoteService extends ClientListener {
     }
     if (key === events.close) {
       this.closeMenu();
+      return;
+    }
+    // The wheel key again closes the wheel
+    if (key === events.key) {
+      const menuDomKey = domKeyCode(this.menuKey);
+      if (menuDomKey && e.arguments[1] === menuDomKey) this.closeMenu();
       return;
     }
     if (key === events.stop) {
@@ -388,4 +395,8 @@ export class EmoteService extends ClientListener {
   private probeSucceeded = false;
   // Generation counter: bumping it abandons any pending exit chain.
   private chainId = 0;
+
+  get menuKeyCode(): number {
+    return this.menuKey;
+  }
 }

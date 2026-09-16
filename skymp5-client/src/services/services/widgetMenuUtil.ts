@@ -109,6 +109,20 @@ export function readClientSettingNumber(sp: Sp, settingName: string, fallback: n
   return fallback;
 }
 
+// KeyboardEvent.code by DxScanCode from 1; CEF gets the scan code as is, so extended keys, Num Lock and mouse buttons have none
+const DOM_KEY_CODES = ("Escape Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace Tab " +
+  "KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Enter ControlLeft " +
+  "KeyA KeyS KeyD KeyF KeyG KeyH KeyJ KeyK KeyL Semicolon Quote Backquote ShiftLeft Backslash " +
+  "KeyZ KeyX KeyC KeyV KeyB KeyN KeyM Comma Period Slash ShiftRight NumpadMultiply AltLeft Space CapsLock " +
+  "F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 - ScrollLock Numpad7 Numpad8 Numpad9 NumpadSubtract " +
+  "Numpad4 Numpad5 Numpad6 NumpadAdd Numpad1 Numpad2 Numpad3 Numpad0 NumpadDecimal - - - F11 F12").split(" ");
+
+// Lets a focused CEF menu match its own hotkey, since the game sees no keys while the browser has focus
+export function domKeyCode(code: number): string {
+  const name = DOM_KEY_CODES[code - 1];
+  return name && name !== "-" ? name : "";
+}
+
 // A button event in the settings' DxScanCode space: keys as is, mouse buttons 256+, gamepad -1 so its bitmasks never alias a key
 export function buttonEventKeyCode(e: ButtonEvent): number {
   if (e.device === InputDeviceType.Keyboard) return e.code;
