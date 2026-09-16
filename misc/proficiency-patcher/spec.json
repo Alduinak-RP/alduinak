@@ -893,6 +893,19 @@
   "temperBenches": [
    "CraftingSmithingArmorTable",
    "CraftingSmithingSharpeningWheel"
+  ],
+  "newRecipes": [
+   {
+    "edid": "AldRecipeSmith_Axe01",
+    "bench": "CraftingSmithingForge",
+    "output": "Axe01",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   }
   ]
  },
  "woodworking": {

@@ -357,7 +357,13 @@ static class Steps
         c.Report.Recipes.Add(new RecipeLine(Kind(prefix), edid, c.NameOf(output.FormKey), profession, r["tier"]!.GetValue<string>(), cobj.Items.Select(i => $"{i.Item.Count}x {c.NameOf(i.Item.Item.FormKey)}").ToList()));
     }
 
-    static string Kind(string prefix) => prefix.Contains("Kiln") ? "kiln" : "alchemy";
+    static string Kind(string prefix) => prefix switch
+    {
+        "AldRecipeKiln_" => "kiln",
+        "AldRecipeSmith_" => "smithing",
+        "AldRecipeTailor_" => "tailoring",
+        _ => "alchemy",
+    };
 
     // ---- cooking: vanilla recipes kept, meats need salt, tiers by the owner's list ----------------------------------
     public static void Cooking(PatchContext c)
@@ -398,6 +404,8 @@ static class Steps
         var ranks = c.Ranks;
         var woodworking = WoodworkingSet(c);
         var strip = StripSet(c, s["stripPerkConditions"]?.GetValue<bool>() ?? true);
+        foreach (var r in s["newRecipes"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+            NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()), profession, "AldRecipeSmith_");
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
             if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
