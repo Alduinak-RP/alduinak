@@ -17,7 +17,7 @@ menu reaches them.
 
 | Kind | Home | E does | Menu extras |
 |---|---|---|---|
-| horse | a stable (any Stable map marker within `petAnchorRadius`) | mounts it; anyone can mount a horse, and doing so takes it from its owner | Trade (its inventory) |
+| horse | a stable (any Stable map marker within `petAnchorRadius`) | mounts it; anyone can mount a horse, and doing so takes it from its owner. In the saddle E always dismounts, whatever the crosshair found, and the prompt reads Dismount | Trade (its inventory) |
 | livestock | a farm (any Farm or Wheat Mill marker) | harvests: cows and goats give a Jug of Milk, chickens an egg, once per `petHarvestHours` real hours, counted while the owner is offline (a timestamp on the record, checked on the attempt) | none |
 | dog | the owner's own house (any door they claimed) | the vanilla command mode; dogs never sit on furniture | Trade (its inventory) |
 | conjured companion | anywhere | the command mode | only Pet and Unsummon (= dismiss) |
@@ -46,14 +46,23 @@ Lifecycle:
 - **Restart:** every pet of the previous run is removed at boot (`pets.json` lists them); the records start stored.
 - **Riding:** the rider hosts the horse; the hosting audit never moves a ridden or carried pet. A rider who dies, disconnects or is teleported is
   dismounted server-side; a horse that dies under its rider too.
+- **Dismount:** the activate key in the saddle calls the vanilla Dismount on the rider's own client (`mountService.ts`). A refusal (galloping, a
+  slope) says so on screen and the key can be pressed again at once. The ride ends server-side when the rider's client reports `mounted: false`,
+  once the player is really off, so other players see the horse emptied about a second later.
 
 ## Riding, what other players see
 
 The server tells every client which horse a rider sits on through the neighbor-visible `ff_mount` property on the rider (the horse's id, 0
-when none). An observing client parks the rider's copy beside the horse copy and lets the engine seat it (`activate` with default processing,
-the same call that opens server containers), then stops moving that copy itself until the property clears. This needs no C++; whether the engine
-seats a non-player activator is the first thing to test in game. The design, its fallbacks and the ordered test plan are in
-`alduinak-pet-system-2026-09-14/visible-riding-design.md` on the Desktop of the server box.
+when none). An observing client parks the rider's copy beside the horse copy, waits for it to get there, and then asks for the saddle with both
+copies standing still: the native `mountActor` export where the client has one, otherwise `activate` with default processing, the same call that
+opens server containers. The horse copy is left alone (no translation, no offset) around each attempt, and the rider's copy is off normal
+movement sync for the whole ride.
+
+Whether the engine seats a non-player rider is still unproven. When it refuses, after six tries or at once if `mountActor` says no, the copy is
+attached to the horse copy instead (`setVehicle`, and the `SaddleBone` node when the vehicle does not carry it). That rides along without a
+riding pose, but the copy is never dragged on the horse's back and never walks. Each outcome, including which clause refused and a missing horse
+copy, is written once per ride to `Documents\My Games\Skyrim Special Edition\Platform\skyrim-platform.log` on the observer's PC. The design, its
+fallbacks and the ordered test plan are in `alduinak-pet-system-2026-09-14/visible-riding-design.md` on the Desktop of the server box.
 
 ## Protocol (MsgType.CustomPacket JSON)
 
