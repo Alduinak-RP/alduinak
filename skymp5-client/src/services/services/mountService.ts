@@ -1,7 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
 import { isRemoteHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement } from "../../sync/movement";
 import { RemoteServer } from "./remoteServer";
@@ -13,6 +13,8 @@ const POLL_MS = 130;
 const HOST_WAIT_MS = 1500;
 const MOUNT_WAIT_MS = 3000;
 const HORSE_LOST_MS = 2000;
+// How long the climb off the horse is given before another Dismount is sent
+const DISMOUNT_WAIT_MS = 3000;
 
 // Rider side of horse riding (skymp5-server petSystem.ts mount handshake): mounts the granted horse, reports mounted / dismounted,
 // and dismounts before death, teleports and host loss. Observers seat the rider's clone from ff_mount (sync/mountApply.ts).
@@ -45,12 +47,27 @@ export class MountService extends ClientListener {
       return;
     }
     const player = this.sp.Game.getPlayer();
-    if (player && player.isOnMount()) {
-      player.dismount();
+    if (player && player.isOnMount() && player.dismount()) {
+      this.leavingUntil = Date.now() + DISMOUNT_WAIT_MS;
     }
     logTrace(this, `dismount (${reason})`);
     this.report(false);
     this.reset();
+  }
+
+  // The activate key in the saddle; the mounted poll reports the ride's end once the player is off
+  dismountByKey(): void {
+    const player = this.phase === "mounted" ? this.sp.Game.getPlayer() : null;
+    if (!player || !player.isOnMount() || Date.now() < this.leavingUntil) {
+      return;
+    }
+    if (!player.dismount()) {
+      notifyNextUpdate(this.controller, this.sp, "You cannot dismount here.");
+      logTrace(this, "dismount (key) refused");
+      return;
+    }
+    this.leavingUntil = Date.now() + DISMOUNT_WAIT_MS;
+    logTrace(this, "dismount (key)");
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -86,8 +103,8 @@ export class MountService extends ClientListener {
       return;
     }
     const player = this.sp.Game.getPlayer();
-    if (player && player.isOnMount()) {
-      player.dismount();
+    if (player && player.isOnMount() && player.dismount()) {
+      this.leavingUntil = Date.now() + DISMOUNT_WAIT_MS;
     }
     logTrace(this, "dismounted by the server");
     this.reset();
@@ -102,6 +119,7 @@ export class MountService extends ClientListener {
       return;
     }
     refr.activate(this.sp.Game.getPlayer(), true);
+    this.leavingUntil = 0;
     this.setPhase("waitMount");
   }
 
@@ -116,8 +134,8 @@ export class MountService extends ClientListener {
       return;
     }
     if (this.phase === "idle") {
-      // A saddle reached after the handshake gave up has no rider server-side
-      if (player.isOnMount()) {
+      // A saddle reached after the handshake gave up has no rider server-side, but a dismount animation still runs
+      if (player.isOnMount() && now >= this.leavingUntil) {
         player.dismount();
         logTrace(this, "left an untracked saddle");
       }
@@ -139,8 +157,12 @@ export class MountService extends ClientListener {
       }
     } else if (!player.isOnMount()) {
       logTrace(this, "dismounted");
+      this.leavingUntil = 0;
       this.report(false);
       this.reset();
+    } else if (this.leavingUntil && now >= this.leavingUntil) {
+      logTrace(this, "dismount by key did not take");
+      this.leavingUntil = 0;
     } else if (this.horseLost(now)) {
       this.dismountNow("horse dead or hosted elsewhere");
     }
@@ -186,4 +208,6 @@ export class MountService extends ClientListener {
   private horseId = 0;
   private lostSince = 0;
   private lastPollMs = 0;
+  // While a dismount animation runs, so nothing sends Dismount again every poll
+  private leavingUntil = 0;
 }
