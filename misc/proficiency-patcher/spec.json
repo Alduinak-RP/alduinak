@@ -889,7 +889,11 @@
    ]
   },
   "stripPerkConditions": true,
-  "exclude": []
+  "exclude": [],
+  "temperBenches": [
+   "CraftingSmithingArmorTable",
+   "CraftingSmithingSharpeningWheel"
+  ]
  },
  "woodworking": {
   "profession": "woodworker",

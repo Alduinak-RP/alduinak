@@ -14,7 +14,7 @@ using Noggog;
 
 // Rewrites AlduinakAdditions.esp with the proficiency content described by spec.json: the rank marker abilities,
 // the crafting keywords, the alchemy lab and woodcrafting benches, the potion and charcoal recipes, and the tier
-// conditions on cooking, smithing, woodworking and tailoring recipes.
+// conditions on cooking, smithing, tempering, woodworking and tailoring recipes.
 // Run through patch.py, which pre-cleans the plugin, invokes this program and verifies the result.
 //   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>]
 
@@ -59,6 +59,7 @@ Steps.AlchemyRecipes(ctx);
 Steps.KilnRecipes(ctx);
 Steps.Cooking(ctx);
 Steps.Smithing(ctx);
+Steps.Tempering(ctx);
 Steps.Woodworking(ctx);
 Steps.Tailoring(ctx);
 Steps.Uncraftable(ctx);
@@ -415,6 +416,29 @@ static class Steps
             cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
             SetTier(c, cobj, profession, tier);
             c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
+        }
+    }
+
+    // ---- tempering: the Improve tab follows the same material table, vanilla conditions kept ----------------------
+    public static void Tempering(PatchContext c)
+    {
+        var s = c.Spec["smithing"]!.AsObject();
+        var profession = s["profession"]!.GetValue<string>();
+        var benches = (s["temperBenches"]?.AsArray().Select(x => c.KeyOf<IKeywordGetter>(x!.GetValue<string>())) ?? Enumerable.Empty<FormKey>()).ToHashSet();
+        var ranks = c.Ranks;
+        foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
+        {
+            if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
+            var edid = winning.EditorID ?? "";
+            var tier = ranks[MaterialTierOf(winning, c.MaterialTiers)];
+            if (tier == ranks[0] && !HasAldCondition(c, winning))
+            {
+                c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
+                continue;
+            }
+            var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
+            SetTier(c, cobj, profession, tier);
+            c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName));
         }
     }
 
