@@ -6,6 +6,7 @@
   <title>Alduinak Management</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/manager.css">
+  <link rel="stylesheet" href="/faction-editor.css">
 </head>
 <body>
   <div class="shell">
@@ -161,99 +162,13 @@
       <section id="factionsView" class="view hidden">
         <div class="stats" id="stats"></div>
 
-        <div class="split">
-          <section class="panel">
-            <div class="panel-head">
-              <h2>Faction</h2>
-              <span id="factionEditLabel" class="muted">New faction</span>
-            </div>
-            <form id="factionForm" class="form">
-              <label>
-                Faction
-                <select id="factionEditSelect"></select>
-              </label>
-              <label>
-                Kind
-                <select id="factionScopeInput">
-                  <option value="hold">Hold court (hold)</option>
-                  <option value="faction">Army or guild (faction)</option>
-                </select>
-              </label>
-              <label>
-                Group
-                <input id="factionGroupInput" autocomplete="off" placeholder="Whiterun">
-              </label>
-              <label>
-                Display Name
-                <input id="factionNameInput" autocomplete="off" placeholder="Court of Whiterun">
-              </label>
-              <label>
-                Zone
-                <select id="factionZoneInput">
-                  <option value="">None</option>
-                  <option value="west">West</option>
-                  <option value="east">East</option>
-                  <option value="neutral">Neutral</option>
-                </select>
-              </label>
-              <label>
-                Chat Colour
-                <input id="factionColorInput" autocomplete="off" placeholder="c9a36b">
-              </label>
-              <label>
-                Uniform
-                <textarea id="factionUniformInput" rows="4" placeholder="One item per line with a count: 0x00013ED9 1 or 13ED9:Skyrim.esm 1"></textarea>
-              </label>
-              <div class="actions-row">
-                <button class="primary" type="submit">Save Faction</button>
-                <button id="factionDeleteButton" class="danger mini" type="button">Delete Faction</button>
-              </div>
-            </form>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <h2>Ranks</h2>
-              <span id="rankEditLabel" class="muted">New rank</span>
-            </div>
-            <div id="ranksTable" class="table compact-table"></div>
-            <form id="rankForm" class="form">
-              <label>
-                Rank Name
-                <input id="rankNameInput" autocomplete="off" required>
-              </label>
-              <label>
-                Order (0 is the leader)
-                <input id="rankOrderInput" type="number" min="0" max="99">
-              </label>
-              <label>
-                Capacity (empty is open)
-                <input id="rankCapacityInput" type="number" min="0">
-              </label>
-              <label>
-                Permission (empty keeps the default)
-                <input id="rankPermissionInput" autocomplete="off" placeholder="hold.whiterun.jarl">
-              </label>
-              <label class="check-row">
-                <input id="rankUniformIssuerInput" type="checkbox">
-                <span>May issue uniforms</span>
-              </label>
-              <div>
-                Appoints, promotes, demotes and removes
-                <div id="rankAppointsChecks" class="checks"></div>
-              </div>
-              <label>
-                Rank Uniform (replaces the faction uniform)
-                <textarea id="rankUniformInput" rows="3" placeholder="Empty uses the faction uniform"></textarea>
-              </label>
-              <div class="actions-row">
-                <button class="primary" type="submit">Save Rank</button>
-                <button id="rankNewButton" class="ghost" type="button">New Rank</button>
-                <button id="rankDeleteButton" class="danger mini" type="button">Delete Rank</button>
-              </div>
-            </form>
-          </section>
-        </div>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Definitions</h2>
+            <span class="muted">Factions, ranks and what each rank may do</span>
+          </div>
+          <div id="factionEditorRoot"></div>
+        </section>
 
         <div class="toolbar">
           <label>
@@ -361,6 +276,7 @@
 
   <div id="toast" class="toast hidden"></div>
   <script src="/dashboard-config.js"></script>
+  <script src="/faction-editor.js"></script>
   <script src="/app.js"></script>
   <script src="/manager.js"></script>
 </body>

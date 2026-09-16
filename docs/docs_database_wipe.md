@@ -24,8 +24,8 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `build/dist/server/starter-grants.json` | Reset to `{}`, so each account's first new character gets the starting kit and 50 gold again |
 | `build/dist/server/writings/` | Emptied. Document ids restart with the wiped counter, so old files would collide with new ones. |
 | `skymp5-backend/data/characters.json` | Reset to `{}` (it names wiped characters) |
-| `skymp5-backend/data/faction-whitelist.json` | `assignments` cleared. `factions` and `requirements` are kept. |
-| `C:\logs` `admin`, `ban`, `bounty`, `chat`, `pvp` and `trading` logs, plus their rotated copies in the log root and in the `C:\logs\YYYY-MM` archive folders | Moved into `C:\logs\pre-wipe-<yyyyMMdd-HHmm>\`. Archived copies keep their `YYYY-MM` subfolder. New characters reuse the old `0xff` ids, so pre-wipe log lines would point at the wrong people. |
+| `skymp5-backend/data/faction-whitelist.json` | `assignments` cleared. `factions`, `requirements` and the `retired` ids are kept. |
+| `C:\logs` `admin`, `ban`, `bounty`, `chat`, `faction`, `pvp` and `trading` logs, plus their rotated copies in the log root and in the `C:\logs\YYYY-MM` archive folders | Moved into `C:\logs\pre-wipe-<yyyyMMdd-HHmm>\`. Archived copies keep their `YYYY-MM` subfolder. New characters reuse the old `0xff` ids, so pre-wipe log lines would point at the wrong people. |
 
 **Kept, untouched:**
 - **Server folder:** `server-settings.json` (you edit one value by hand in step 10), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the gamemode, plugins and `data/`.

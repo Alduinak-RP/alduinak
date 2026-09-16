@@ -4,6 +4,7 @@ import * as fetchRetry from "fetch-retry";
 type Mp = any;
 
 const READ_TIMEOUT_MS = 5000;
+const NOT_MODIFIED = Symbol("notModified");
 // Longer so a slow but committed write is rarely reported as failed
 const WRITE_TIMEOUT_MS = 15000;
 
@@ -50,7 +51,8 @@ export interface CharacterReport {
 // Every call resolves with the account-wide payload; callers narrow it to a character with filterAccessForSlot
 export interface FactionBackend {
   fetchAccess(profileId: number): Promise<AccessPayload>;
-  fetchDefinitions(): Promise<{ factions: unknown[]; requirements: unknown[] }>;
+  // null: unchanged since the previous call
+  fetchDefinitions(): Promise<{ factions: unknown[]; requirements: unknown[] } | null>;
   fetchRoster(factionId: string): Promise<RosterRow[]>;
   assign(profileId: number, requirementId: string, playerName: string, slot: number | null, by: string): Promise<AccessPayload>;
   remove(profileId: number, requirementId: string, slot: number | null): Promise<AccessPayload>;
@@ -100,7 +102,7 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
   const base = `${master}/api/servers/${masterKey}`;
 
   // Attempt cap lives in retryOn (fetch-retry ignores 'retries' when retryOn is a function); mutations never retry, replaying a committed POST/DELETE misreports success as failure
-  const request = async (method: string, path: string, body?: unknown): Promise<any> => {
+  const request = async (method: string, path: string, body?: unknown, conditional?: { etag: string }): Promise<any> => {
     const mayRetry = method === "GET";
     // One deadline covers every attempt so an unreachable master cannot hold a player's request queue
     const signal = AbortSignal.timeout(mayRetry ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
@@ -109,19 +111,25 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
       headers: {
         "Content-Type": "application/json",
         ...(typeof authToken === "string" && authToken ? { "x-auth-token": authToken } : {}),
+        ...(conditional?.etag ? { "if-none-match": conditional.etag } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
       retryOn: (attempt: number, error: Error | null, response: Response) =>
         mayRetry && attempt < 3 && !signal.aborted && (error !== null || response.status >= 500),
     });
+    if (conditional && response.status === 304) return NOT_MODIFIED;
     // A body cut off by the deadline must fail, an empty payload would read as no ranks
     const data = await response.json().catch((e: unknown) => { if (signal.aborted) throw e; return {}; });
     if (!response.ok) {
       throw new Error(String(data?.error || `master api HTTP ${response.status}`));
     }
+    if (conditional) conditional.etag = response.headers.get("etag") || "";
     return data;
   };
+
+  // The last definitions ETag, sent back so an unchanged table costs a 304
+  const definitionsVersion = { etag: "" };
 
   const fetchCheck = async (profileId: number): Promise<AccessPayload> =>
     pickPayload(await request("GET", `/profiles/${profileId}/check`));
@@ -148,7 +156,8 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
     fetchAccess: fetchCheck,
 
     fetchDefinitions: async () => {
-      const data = await request("GET", "/factions");
+      const data = await request("GET", "/factions", undefined, definitionsVersion);
+      if (data === NOT_MODIFIED) return null;
       return {
         factions: Array.isArray(data?.factions) ? data.factions : [],
         requirements: Array.isArray(data?.requirements) ? data.requirements : [],

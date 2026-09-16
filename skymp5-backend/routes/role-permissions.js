@@ -18,6 +18,7 @@ const KNOWN_PERMISSIONS = [
   'server.access.manage',
   'factions.view',
   'factions.manage',
+  'factions.define',
   'lore.write',
   'rules.write',
   'staff.whitelist_info',

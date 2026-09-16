@@ -3,7 +3,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const fs   = require('fs')
-const http = require('http')
 const https = require('https')
 const os = require('os')
 const config = require('./config')
@@ -18,6 +17,7 @@ const {
   hooks: serviceHooks, serviceByKey, resolvedNames, serviceName, gameStatus, readServerSettings,
   statusAll, doServiceAction, doServicesAction, discoverLogTargets, requireGameStopped,
 } = require('./services')
+const { backendRequest, factionsRequest } = require('./backendApi')
 
 let win = null
 
@@ -586,27 +586,13 @@ ipcMain.handle('chars:delete', async (_e, formDesc) => {
 })
 
 // Ask the running backend to drop a user's sessions (they live in its memory).
-function backendDropSessions(discordId) {
-  return new Promise((resolve, reject) => {
-    const api = config.backendApi
-    if (!api.key || !api.token) return reject(new Error('backend api credentials missing'))
-    const req = http.request({
-      hostname: '127.0.0.1', port: api.port, method: 'DELETE',
-      path: `/api/servers/${encodeURIComponent(api.key)}/sessions-by-discord/${encodeURIComponent(discordId)}`,
-      headers: { 'X-Auth-Token': api.token },
-      timeout: 3000,
-    }, res => {
-      let d = ''; res.on('data', c => d += c)
-      res.on('end', () => {
-        if (res.statusCode === 200) { try { resolve({ ok: true, dropped: JSON.parse(d).dropped || 0 }) } catch { resolve({ ok: true, dropped: 0 }) } }
-        else if (res.statusCode === 404) resolve({ ok: false, noRoute: true })  // backend runs pre-route code
-        else resolve({ ok: false })
-      })
-    })
-    req.on('timeout', () => { req.destroy(new Error('timeout')) })
-    req.on('error', reject)
-    req.end()
-  })
+async function backendDropSessions(discordId) {
+  const api = config.backendApi
+  if (!api.key || !api.token) throw new Error('backend api credentials missing')
+  const { status, data } = await backendRequest('DELETE', `/api/servers/${encodeURIComponent(api.key)}/sessions-by-discord/${encodeURIComponent(discordId)}`, { headers: { 'X-Auth-Token': api.token } })
+  if (status === 200) return { ok: true, dropped: (data && data.dropped) || 0 }
+  if (status === 404) return { ok: false, noRoute: true }  // backend runs pre-route code
+  return { ok: false }
 }
 
 // A deleted player's cached launcher session (24h sliding TTL) would let them
@@ -632,6 +618,9 @@ async function dropPlayerSessions(discordId) {
   try { backendRunning = /^SERVICE_RUNNING/.test(await nssm('status', await serviceName(serviceByKey.backend))) } catch {}
   return { dropped, warnRestart: backendRunning }
 }
+
+// Factions tab: definitions live in the backend, which is their only writer
+ipcMain.handle('factions:api', (_e, method, subPath, body) => factionsRequest(method, subPath, body))
 
 // Deletes the backend player record + profile mapping (and their sessions),
 // optionally with all their characters. A returning player gets a fresh profile.

@@ -1,0 +1,92 @@
+/* Shared faction editor; colours follow the dashboard variables and fall back to the Server Manager palette */
+.fe {
+  --fe-panel: var(--panel, #1d1813);
+  --fe-panel-2: var(--panel-2, #120f0b);
+  --fe-input: var(--bg, #0e0b08);
+  --fe-line: var(--line, #3a3025);
+  --fe-text: var(--text, #e8e0d2);
+  --fe-muted: var(--muted, #8a7c66);
+  --fe-accent: var(--accent, #e8b96b);
+  --fe-danger: var(--danger, #e08b8b);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 10px;
+  min-height: 0;
+  color: var(--fe-text);
+  font-size: 13px;
+}
+.fe * { box-sizing: border-box; }
+.fe.fe-busy { cursor: progress; }
+
+.fe-toolbar, .fe-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fe-row { margin-top: 8px; }
+.fe-status { margin-left: auto; color: var(--fe-muted); font-size: 12px; white-space: pre-wrap; }
+.fe-status.fe-error { color: var(--fe-danger); }
+.fe-note { margin: 0; color: var(--fe-muted); font-size: 12px; }
+.fe-note.fe-warn { color: var(--fe-accent); margin-bottom: 8px; }
+.fe-muted { color: var(--fe-muted); font-size: 12px; font-weight: normal; }
+
+.fe input:not([type=checkbox]):not([type=color]), .fe select, .fe textarea {
+  background: var(--fe-input); border: 1px solid var(--fe-line); color: var(--fe-text);
+  border-radius: 4px; padding: 6px 8px; font: inherit; min-width: 0; min-height: 0; width: auto; flex: initial;
+}
+.fe input[type=checkbox] { width: auto; min-height: 0; margin: 0; }
+.fe-grid input:not([type=color]), .fe-grid select { width: 100%; }
+.fe-row input:not([type=checkbox]) { flex: 1 1 160px; }
+.fe-search { flex: 1 1 200px; }
+.fe input[type=color] { width: 36px; height: 30px; padding: 0; border: 1px solid var(--fe-line); background: none; }
+.fe-color { display: flex; gap: 6px; }
+.fe-color input[name=color] { width: 90px; }
+
+.fe-btn {
+  background: var(--fe-panel); border: 1px solid var(--fe-line); color: var(--fe-text);
+  border-radius: 4px; padding: 6px 12px; cursor: pointer; font: inherit; min-height: 0;
+}
+.fe-btn:hover:not(:disabled) { border-color: var(--fe-accent); }
+.fe-btn:disabled { opacity: .45; cursor: default; }
+.fe-btn.fe-small { padding: 2px 8px; font-size: 12px; }
+.fe-btn.fe-primary { border-color: var(--fe-accent); color: var(--fe-accent); }
+.fe-btn.fe-danger { border-color: var(--fe-danger); color: var(--fe-danger); }
+.fe-link { background: none; border: 0; padding: 0; color: var(--fe-accent); cursor: pointer; font: inherit; text-decoration: underline; }
+
+.fe-split { display: flex; gap: 14px; min-height: 0; flex: 1; }
+.fe-list {
+  list-style: none; margin: 0; padding: 0; width: 34%; min-width: 220px; overflow-y: auto;
+  border: 1px solid var(--fe-line); border-radius: 6px; background: var(--fe-panel-2);
+}
+.fe-list li { padding: 8px 12px; border-bottom: 1px solid var(--fe-line); cursor: pointer; }
+.fe-list li:hover { background: var(--fe-panel); }
+.fe-list li.fe-selected { background: var(--fe-panel); border-left: 3px solid var(--fe-accent); }
+.fe-list li.fe-empty { cursor: default; color: var(--fe-muted); }
+.fe-line { display: flex; align-items: center; gap: 8px; }
+.fe-name { font-weight: 600; }
+.fe-sub { font-size: 11px; color: var(--fe-muted); margin-top: 2px; }
+.fe-badge { font-size: 11px; border: 1px solid var(--fe-line); border-radius: 3px; padding: 0 6px; color: var(--fe-muted); white-space: nowrap; }
+.fe-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; flex: none; border: 1px solid rgba(0, 0, 0, .4); }
+
+.fe-detail { flex: 1; overflow-y: auto; min-width: 0; }
+.fe-title { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; color: var(--fe-accent); font-size: 17px; }
+.fe-title code, .fe h4 code { font-size: 11px; color: var(--fe-muted); font-weight: normal; }
+.fe-card { border: 1px solid var(--fe-line); border-radius: 6px; background: var(--fe-panel); padding: 12px 14px; margin: 0 0 12px; overflow-x: auto; }
+.fe-card h4 { margin: 0 0 8px; font-size: 14px; }
+.fe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 12px; }
+.fe .fe-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fe-muted); }
+.fe-grid label[hidden] { display: none; }
+.fe .fe-field { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 12px; color: var(--fe-muted); }
+.fe .fe-field textarea { width: 100%; resize: vertical; font-family: monospace; }
+.fe-flags { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 4px; }
+.fe-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+.fe-table { width: 100%; min-width: 0; border-collapse: collapse; margin: 4px 0; }
+.fe-table th, .fe-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--fe-line); }
+.fe-table th { font-size: 11px; color: var(--fe-muted); font-weight: 600; text-transform: none; }
+.fe-table tr.fe-selected td { background: var(--fe-panel-2); }
+.fe-order { white-space: nowrap; width: 1%; }
+.fe-matrix td:not(:first-child), .fe-matrix th:not(:first-child) { text-align: center; }
+
+.fe-confirm { border: 1px solid var(--fe-danger); border-radius: 6px; padding: 8px 12px; margin-top: 8px; }
+.fe-confirm p { margin: 0 0 6px; }
+.fe-sample, .fe-member-list { margin: 4px 0; padding-left: 18px; }
+.fe-member-list li { padding: 2px 0; }
+.fe-danger-zone { border-color: var(--fe-danger); }

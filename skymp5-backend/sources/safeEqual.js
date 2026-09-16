@@ -11,3 +11,4 @@ function safeEqual(provided, expected) {
 }
 
 module.exports = safeEqual
+module.exports.safeEqual = safeEqual

@@ -4,7 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
-import { HOLD_MANAGER_RANKS, holdKey, holdRanksOf } from "./factionRules";
+import { FactionDef, holdKey, holdRanksOf, managesHold } from "./factionRules";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -474,6 +474,9 @@ export class HousingSystem implements System {
   // Set by FactionSystem: the faction a door or container belongs to and whether this actor may use it, null when it is no faction's
   factionGate: ((actorId: number, refrId: number) => { name: string; allowed: boolean } | null) | null = null;
 
+  // Set by FactionSystem: a loaded faction definition, so each hold rank's property flag picks the hold managers
+  factionDef: ((factionId: string) => FactionDef | null | undefined) | null = null;
+
   // Both halves of a teleport door, just the ref for anything else
   doorSides(ctx: SystemContext, refrId: number): number[] {
     const partner = refrId ? this.partnerOf(ctx, refrId) : 0;
@@ -537,7 +540,7 @@ export class HousingSystem implements System {
     if (!hold) return false;
     let access: unknown = null;
     try { access = (ctx.svr as Mp).get(actorId, "private.skympAccess"); } catch { return false; }
-    return holdRanksOf(access).some((r) => r.hold === holdKey(hold) && HOLD_MANAGER_RANKS.includes(r.rank));
+    return holdRanksOf(access).some((r) => r.hold === holdKey(hold) && managesHold(this.factionDef?.(r.factionId), r.rank));
   }
 
   // Every admin tier overrides housing claims

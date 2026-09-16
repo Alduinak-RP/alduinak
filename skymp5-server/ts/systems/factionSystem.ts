@@ -43,7 +43,8 @@ const CONSENT_TIMEOUT_MS = 20000;
 const INVITE_COOLDOWN_MS = 15000;
 const DEFAULT_INVITE_DISTANCE = 1024;
 const DEFAULT_UNIFORM_COOLDOWN_HOURS = 24;
-const DEFINITIONS_TTL_MS = 60000;
+// Definition edits from the dashboard or the Server Manager reach the game this often, a 304 when nothing changed
+const DEFINITIONS_TTL_MS = 20000;
 const DEFINITIONS_RETRY_MS = 15000;
 const ROSTER_TTL_MS = 3000;
 const ACCESS_FILE_CHECK_MS = 10000;
@@ -120,6 +121,7 @@ export class FactionSystem implements System {
     this.roleCfg = readAdminRoleConfig(all);
 
     this.housing.factionGate = (actorId, refrId) => this.gate(actorId, refrId);
+    this.housing.factionDef = (factionId) => (this.definitionsLoaded ? this.defs.get(factionId) ?? null : undefined);
     (globalThis as any).__alduinakFactionChat = (actorId: number, text: string) => this.chat(actorId >>> 0, String(text ?? "").trim());
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
@@ -208,7 +210,7 @@ export class FactionSystem implements System {
   private async invite(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, content: Content): Promise<void> {
     const rank = rules.rankOf(faction, String(content["rank"] ?? ""));
     const targetId = Number(content["target"]) >>> 0;
-    if (!rank || !rules.canAppoint(faction, auth, rank)) return this.notice(userId, "You cannot invite anyone to that rank.");
+    if (!rank || !rules.canInvite(faction, auth, rank)) return this.notice(userId, "You cannot invite anyone to that rank.");
     const refusal = this.inviteTargetRefusal(actorId, targetId);
     if (refusal) return this.notice(userId, refusal);
     for (const p of this.invites.values()) {
@@ -277,7 +279,7 @@ export class FactionSystem implements System {
     // The inviter may have lost the rank while the prompt was open
     const inviter = this.onlineByActor(invite.inviterId);
     const inviterAuth = inviter ? this.authorityOf(invite.inviterId, faction, await this.refreshActorAccess(invite.inviterId)) : null;
-    if (!inviterAuth || !rules.canAppoint(faction, inviterAuth, rank)) return this.notice(userId, "The invitation is no longer valid.");
+    if (!inviterAuth || !rules.canInvite(faction, inviterAuth, rank)) return this.notice(userId, "The invitation is no longer valid.");
 
     const payload = await backend.assign(target.profileId, rank.id, this.realName(target.actorId), target.slot, this.who(invite.inviterId));
     this.applyAccess(target.profileId, payload);
@@ -304,7 +306,7 @@ export class FactionSystem implements System {
     if (action === "uniform") return this.issueUniform(userId, actorId, faction, auth, name, memberRank, online);
 
     if (action === "remove") {
-      if (!rules.canManage(faction, auth, memberRank)) return this.notice(userId, "You cannot remove them.");
+      if (!rules.canRemove(faction, auth, memberRank)) return this.notice(userId, "You cannot remove them.");
       const payload = await backend.remove(profileId, memberRank.id, slot);
       this.applyAccess(profileId, payload);
       this.invalidateRoster(faction.id);
@@ -317,7 +319,7 @@ export class FactionSystem implements System {
     const target = action === "promote" ? rules.promotionFor(faction, auth, memberRank)
       : action === "demote" ? rules.demotionFor(faction, auth, memberRank)
         : rules.rankOf(faction, String(content["rank"] ?? ""));
-    if (!target || target.slug === memberRank.slug || !rules.canManage(faction, auth, memberRank) || !rules.canAppoint(faction, auth, target)) {
+    if (!target || !rules.canSetRank(faction, auth, memberRank, target)) {
       return this.notice(userId, "You cannot give them that rank.");
     }
     const payload = await backend.assign(profileId, target.id, name, slot, this.who(actorId));
@@ -425,7 +427,6 @@ export class FactionSystem implements System {
       .map((row) => {
         const rank = rules.rankOf(faction, row.rankSlug);
         const isSelf = !!self && row.profileId === self.profileId && (row.slot === null || row.slot === self.slot);
-        const manage = !!rank && !isSelf && rules.canManage(faction, auth, rank);
         return {
           key: `${row.profileId}:${row.slot === null ? "all" : row.slot}`,
           profileId: row.profileId ?? 0,
@@ -437,14 +438,14 @@ export class FactionSystem implements System {
           self: isSelf,
           promote: rank && !isSelf ? rules.promotionFor(faction, auth, rank)?.slug || "" : "",
           demote: rank && !isSelf ? rules.demotionFor(faction, auth, rank)?.slug || "" : "",
-          setRanks: manage ? rules.appointableRanks(faction, auth).filter((r) => r.slug !== row.rankSlug).map((r) => r.slug) : [],
-          canRemove: manage,
+          setRanks: rank && !isSelf ? rules.rankTargets(faction, auth, rank).map((r) => r.slug) : [],
+          canRemove: !!rank && !isSelf && rules.canRemove(faction, auth, rank),
           canUniform: !!rank && rules.canIssueUniform(faction, auth) && rules.uniformFor(faction, rank).length > 0,
         };
       })
       .filter((m) => m.profileId > 0)
       .sort((a, b) => (rules.rankOf(faction, a.rankSlug)?.order ?? 99) - (rules.rankOf(faction, b.rankSlug)?.order ?? 99) || a.name.localeCompare(b.name));
-    const inviteRanks = rules.appointableRanks(faction, auth).map((r) => ({ slug: r.slug, name: r.name }));
+    const inviteRanks = rules.invitableRanks(faction, auth).map((r) => ({ slug: r.slug, name: r.name }));
     // Players close enough to invite who are not in the faction yet
     const nearby = !inviteRanks.length ? [] : everyone
       .filter((o) => o.actorId !== actorId && isNear(this.mp, actorId, o.actorId, this.inviteDistance))
@@ -478,7 +479,7 @@ export class FactionSystem implements System {
     const mine = new Set(rules.membershipsOf(access).map((m) => m.factionId));
     const options = Array.from(this.defs.values())
       .filter((f) => staff || mine.has(f.id))
-      .map((f) => ({ factionId: f.id, name: f.name, ranks: rules.appointableRanks(f, this.authorityOf(actorId, f, access)).map((r) => ({ slug: r.slug, name: r.name })) }))
+      .map((f) => ({ factionId: f.id, name: f.name, ranks: rules.invitableRanks(f, this.authorityOf(actorId, f, access)).map((r) => ({ slug: r.slug, name: r.name })) }))
       .filter((o) => o.ranks.length > 0);
     if (!options.length) return this.notice(userId, "You cannot invite anyone to a faction.");
     this.send(userId, { customPacketType: "factionInviteOptions", target: targetId, targetName: nameShownTo(this.mp, actorId, targetId), options });
@@ -490,7 +491,7 @@ export class FactionSystem implements System {
     try { access = this.mp.get(actorId, "private.skympAccess"); } catch { return; }
     const mine = rules.membershipsOf(access).filter((m, i, all) => all.findIndex((x) => x.factionId === m.factionId) === i);
     const staff = this.isStaff(actorId);
-    const canInvite = Array.from(this.defs.values()).some((f) => (staff || mine.some((m) => m.factionId === f.id)) && rules.appointableRanks(f, this.authorityOf(actorId, f, access)).length > 0);
+    const canInvite = Array.from(this.defs.values()).some((f) => (staff || mine.some((m) => m.factionId === f.id)) && rules.invitableRanks(f, this.authorityOf(actorId, f, access)).length > 0);
     this.send(userId, {
       customPacketType: "factionState",
       factions: mine.map((m) => ({ id: m.factionId, name: this.defs.get(m.factionId)?.name || m.factionId })),
@@ -533,10 +534,14 @@ export class FactionSystem implements System {
     if (!entry) return null;
     const name = entry.label || entry.factions.map((id) => this.defs.get(id)?.name || id).join(" or ");
     if (!isPlayerActor(this.mp, actorId)) return { name, allowed: true };
+    // A rank list on the entry names who may pass; without one every rank with the faction access flag may
     const allowed = this.membershipsOfActor(actorId).some((m) => {
       if (!entry.factions.includes(m.factionId)) return false;
       const ranks = Array.isArray(entry.ranks) ? entry.ranks : entry.ranks ? entry.ranks[m.factionId] : null;
-      return !ranks || ranks.includes(m.rankSlug);
+      if (ranks) return ranks.includes(m.rankSlug);
+      if (!this.definitionsLoaded) return true;
+      const faction = this.defs.get(m.factionId);
+      return !!faction && !!rules.rankOf(faction, m.rankSlug)?.factionAccess;
     });
     return { name, allowed };
   }
@@ -656,11 +661,15 @@ export class FactionSystem implements System {
     if (!backend) return Promise.resolve();
     this.definitionsLoading = backend.fetchDefinitions()
       .then((raw) => {
-        const had = this.defs.size;
-        this.defs = rules.buildFactions(raw);
         this.definitionsDueAt = Date.now() + DEFINITIONS_TTL_MS;
         this.definitionsError = "";
+        if (!raw) return;
+        const had = this.defs.size;
+        const reload = this.definitionsLoaded;
+        this.defs = rules.buildFactions(raw);
+        this.definitionsLoaded = true;
         if (had !== this.defs.size) this.log(`[factions] ${this.defs.size} faction(s) loaded from the backend`);
+        if (reload) this.refreshOnlineAccess();
       })
       .catch((e) => {
         this.definitionsDueAt = Date.now() + DEFINITIONS_RETRY_MS;
@@ -671,6 +680,25 @@ export class FactionSystem implements System {
       })
       .finally(() => { this.definitionsLoading = null; });
     return this.definitionsLoading;
+  }
+
+  // A definition edit can delete ranks and their members, so every online character reloads its ranks without a relog
+  private refreshOnlineAccess(): void {
+    this.rosters.clear();
+    const backend = this.backend();
+    if (!backend) return;
+    const profileIds = Array.from(new Set(this.online().map((o) => o.profileId)));
+    this.log(`[factions] faction definitions changed, reloading the ranks of ${profileIds.length} online account(s)`);
+    void (async () => {
+      for (const profileId of profileIds) {
+        try {
+          this.applyAccess(profileId, await backend.fetchAccess(profileId));
+        } catch (e) {
+          this.log(`[factions] ranks not reloaded after the definition change, they refresh at the next menu or login: ${e}`);
+          return;
+        }
+      }
+    })();
   }
 
   private async roster(factionId: string, fresh: boolean): Promise<RosterRow[]> {
@@ -813,6 +841,7 @@ export class FactionSystem implements System {
   private defs = new Map<string, rules.FactionDef>();
   private definitionsDueAt = 0;
   private definitionsLoading: Promise<void> | null = null;
+  private definitionsLoaded = false;
   private definitionsError = "";
   private menuError = "";
   private rosters = new Map<string, { at: number; rows: RosterRow[] }>();

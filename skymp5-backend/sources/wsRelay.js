@@ -29,7 +29,7 @@
 'use strict'
 
 const { WebSocketServer, WebSocket } = require('ws')
-const crypto = require('crypto')
+const { safeEqual } = require('./safeEqual')
 
 // No default: privileged (gamemode/console) auth fails closed when unset.
 const RELAY_SECRET = process.env.RELAY_SECRET
@@ -41,11 +41,7 @@ function secretMatches(provided) {
     console.error('[ws-relay] RELAY_SECRET is not set; refusing privileged auth')
     return false
   }
-  if (typeof provided !== 'string') return false
-  const a = Buffer.from(provided)
-  const b = Buffer.from(RELAY_SECRET)
-  if (a.length !== b.length) return false
-  return crypto.timingSafeEqual(a, b)
+  return safeEqual(provided, RELAY_SECRET)
 }
 
 // One gamemode socket (reconnects on crash/restart)

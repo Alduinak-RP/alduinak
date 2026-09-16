@@ -5,11 +5,13 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
   <title>Alduinak Server Manager</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="../../../skymp5-backend/public/dashboard/faction-editor.css" />
 </head>
 <body>
   <nav id="tabs">
     <button class="tab active" data-tab="console">Console</button>
     <button class="tab" data-tab="players">Players</button>
+    <button class="tab" data-tab="factions">Factions</button>
     <button class="tab" data-tab="build">Build</button>
     <button class="tab" data-tab="modlist">Modlist</button>
     <button class="tab" data-tab="settings">Settings</button>
@@ -38,6 +40,10 @@
           <p class="muted">Select a player to view and edit their details.</p>
         </div>
       </div>
+    </section>
+
+    <section id="factions" class="panel">
+      <div id="faction-editor"></div>
     </section>
 
     <section id="build" class="panel">
@@ -135,5 +141,7 @@
   </div>
 
   <script src="renderer.js"></script>
+  <script src="../../../skymp5-backend/public/dashboard/faction-editor.js"></script>
+  <script src="factions.js"></script>
 </body>
 </html>

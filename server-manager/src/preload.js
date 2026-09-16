@@ -37,6 +37,9 @@ contextBridge.exposeInMainWorld('mgr', {
   charsDelete:    (formDesc)      => ipcRenderer.invoke('chars:delete', formDesc),
   playersDelete:  (profileId, o)  => ipcRenderer.invoke('players:delete', profileId, o),
 
+  // Factions tab
+  factionsApi:    (method, path, body) => ipcRenderer.invoke('factions:api', method, path, body),
+
   // Settings tab
   settingsSchema: ()                   => ipcRenderer.invoke('settings:schema'),
   settingsRead:   (key)                => ipcRenderer.invoke('settings:read', key),

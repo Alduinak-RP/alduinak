@@ -1,10 +1,11 @@
 {
   "_readme": [
     "Seed for skymp5-backend/data/faction-whitelist.json. Copy it there only while that file is missing or has no assignments.",
-    "Rank order 0 is the leader. appoints lists the rank ids a holder may invite, promote to, demote from and remove.",
-    "The leader may also remove anyone. issuesUniform lets a rank hand out the faction uniform; capacity null means open.",
+    "Rank order 0 is the leader. appoints lists the rank ids a holder may invite into, act on and demote to; promotes (up to), demotes (holders of) and removes follow appoints until a rank sets its own.",
+    "permission is always the rank id with dots. The leader may also promote, demote, set and remove anyone below it. issuesUniform lets a rank hand out the faction uniform; capacity null means open.",
+    "Optional rank flags: invites (default true), managesProperty (default true for a hold's jarl and steward), factionAccess (default true).",
     "uniform entries are { \"item\": \"13ed9:Skyrim.esm\" or \"0x00013ED9\", \"count\": 1 }; a rank uniform replaces the faction one.",
-    "Every name, cap, ladder and uniform here is editable from the dashboard Factions view."
+    "Names, caps, ladders, rank lists and flags are edited in the dashboard Factions view or the Server Manager Factions tab; uniforms in the dashboard Factions view."
   ],
   "factions": [
     {

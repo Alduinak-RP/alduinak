@@ -5,7 +5,8 @@ const fs   = require('fs')
 const path = require('path')
 const liveEnv = require('./liveEnv')
 
-const FILE = path.join(__dirname, '..', 'data', 'role-permissions.json')
+// ROLE_PERMISSIONS_FILE lets tests use their own role map instead of the live one
+const FILE = process.env.ROLE_PERMISSIONS_FILE || path.join(__dirname, '..', 'data', 'role-permissions.json')
 
 function _load() {
   try {

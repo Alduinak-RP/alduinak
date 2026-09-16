@@ -69,7 +69,7 @@ router.delete('/:profileId/factions/:assignmentId', requirePermission('factions.
       err.status = 404
       throw err
     }
-    factions.deleteAssignment(req.params.assignmentId)
+    factions.deleteAssignment(req.params.assignmentId, req.session.discordId)
     res.json({ ok: true })
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'failed to remove faction' })

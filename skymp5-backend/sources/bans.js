@@ -2,11 +2,11 @@
 
 // data/bans.json: one entry per banned discordId with hwid/ip captured at ban time, so alt accounts can be matched later
 
-const fs   = require('fs')
-const path = require('path')
+const fs       = require('fs')
+const path     = require('path')
+const auditLog = require('./auditLog')
 
-const FILE    = path.join(__dirname, '..', 'data', 'bans.json')
-const LOG_DIR = process.env.BAN_LOG_DIR || 'C:\\Users\\Administrator\\Desktop\\logs'
+const FILE = path.join(__dirname, '..', 'data', 'bans.json')
 
 function load() {
   try {
@@ -65,14 +65,8 @@ function removeByDiscordId(discordId) {
   return true
 }
 
-// Appends a timestamped line to ban.log; logging failures must never break the ban flow
 function logBan(line) {
-  try {
-    fs.mkdirSync(LOG_DIR, { recursive: true })
-    fs.appendFileSync(path.join(LOG_DIR, 'ban.log'), `${new Date().toISOString()} ${line}\n`)
-  } catch (e) {
-    console.error('[bans] failed to write ban.log:', e.message)
-  }
+  auditLog.append('ban.log', line)
 }
 
 module.exports = {
