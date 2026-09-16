@@ -53,10 +53,10 @@ earn no mastery hours (see `docs_roleplay_mastery.md`).
 | Lute | Woodcrafting Bench | 2 Firewood, 2 Leather Strips |
 | Flute | Woodcrafting Bench | 1 Firewood |
 | Drum | Woodcrafting Bench | 2 Firewood, 1 Leather |
-| Broom | Woodcrafting Bench | 1 Firewood, 1 Wheat |
+| Broom | Woodcrafting Bench | 1 Firewood, 1 Straw |
 | Imperial War Horn | forge | 1 Mammoth Tusk, 1 Iron Ingot, 1 Leather Strips |
 | Nord War Horn | forge | 1 Mammoth Tusk, 1 Iron Ingot, 1 Leather Strips |
 
-The broom takes Wheat rather than Hearthfire Straw: straw only exists in merchant chests, and every merchant
-is disabled. The recipes live in `kilnRecipes` of `misc/proficiency-patcher/spec.json`; staff can still hand
-items out with the admin item spawn.
+The broom takes Hearthfire Straw (`BYOHMaterialStraw`, HearthFires.esm), the owner's choice over Wheat. The
+recipes live in `kilnRecipes` of `misc/proficiency-patcher/spec.json`; staff can still hand items out with the
+admin item spawn.
