@@ -155,6 +155,19 @@ export class BrowserService extends ClientListener {
   private freeCursorKey: DxScanCode = DxScanCode.F6;
   private chatFocusKeys: DxScanCode[] = [DxScanCode.Enter, DxScanCode.T];
 
+  get hideUiKeyCode(): number {
+    return this.hideUiKey;
+  }
+
+  get freeCursorKeyCode(): number {
+    return this.freeCursorKey;
+  }
+
+  // The dedicated chat key, or Enter when only Enter focuses chat
+  get chatKeyCode(): number {
+    return this.chatFocusKeys.find((key) => key > 0 && key !== DxScanCode.Enter) ?? DxScanCode.Enter;
+  }
+
   private readonly badMenus: Menu[] = [
     Menu.Barter,
     Menu.Book,

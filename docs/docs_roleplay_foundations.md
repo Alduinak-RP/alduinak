@@ -97,17 +97,53 @@ All messages use `MsgType.CustomPacket` with a JSON dump in `contentJsonDump`.
     { "name": "Lydia",  "info": "Level 3 Nord — Whiterun" },
     null,
     null
-  ]
+  ],
+  "intro": {
+    "pages": [
+      { "text": "In 4E 210, ..." },
+      { "caption": "Welcome to Alduinak", "text": "Use [get alt interaction button] to ...\nUse [get voice key button] to ..." }
+    ],
+    "question": "Where will your journey begin?",
+    "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ]
+  }
 }
 ```
 
 - `maxCharacters` — number of slots to show (defaults to `characters.length`).
 - `characters[i]` — a `{ name, info }` summary for a filled slot, or `null`
   for an empty slot. `info` is an optional one-line description.
+- `intro` — optional new character intro. The server sends it while its
+  `startLocations` list is not empty (see the server configuration reference).
 
 On receipt the client shows the menu and makes the browser visible/focused.
 Filled slots offer **play** and **delete** (delete asks for confirmation);
 empty slots offer **create**.
+
+#### New character intro
+
+Pressing Play on an Empty slot while the menu carries `intro` does not create
+the character at once. The panel (form widget 32, styled like the character
+select panel) walks through:
+
+1. One screen per synopsis page, each with **Back** and **Continue**. Every
+   bracketed placeholder becomes the player's own key in brackets, read from
+   the bindings the client acts on: `[get alt interaction button]` is
+   `altInteractKeyCode` (PlayerActionService), `[get voice key button]` is
+   `voicePushToTalkKeyCode` (VoiceService), `[get release mouse button]` is
+   `freeCursorKeyCode`, `[get hide interface button]` is `hideUiKeyCode` and
+   `[get activate chat button]` is the chat key from `chatFocusKeyCodes`, or
+   Enter when only Enter is bound (BrowserService). Key names match launcher
+   Settings. A line whose key is unbound is left out.
+2. The question with one button per start location, stacked, and **Back**.
+3. A confirmation, "Begin at <label>?", with **Back** (to the list) and
+   **Confirm**.
+
+Back on a synopsis page or the question returns to the slot list. Confirm sends
+`create` with the chosen `start` id and closes the menu. Nothing exists on the
+server before Confirm, so quitting or disconnecting on any intro screen leaves
+the slot Empty and the next Play shows the intro again. Existing characters
+never see it, and the choice cannot be redone; staff move a player with the
+admin Teleport tab.
 
 #### Server → Client: close the menu without a choice (optional)
 
@@ -119,10 +155,11 @@ empty slots offer **create**.
 
 ```json
 { "customPacketType": "characterSelectResult", "action": "play",   "slot": 0 }
-{ "customPacketType": "characterSelectResult", "action": "create", "slot": 1 }
+{ "customPacketType": "characterSelectResult", "action": "create", "slot": 1, "start": "dawnstar-docks" }
 { "customPacketType": "characterSelectResult", "action": "delete", "slot": 2 }
 ```
 
+`start` is the chosen start location id and is only sent after the intro.
 After the player picks `play`/`create`/`delete`, the client closes the menu
 and returns input focus to the game. The gamemode is then responsible for the
 follow-up (spawn the chosen character, start character creation, delete and
@@ -146,8 +183,9 @@ re-open the menu, etc.).
 
 ### Customising the menu UI
 
-The slot layout is built in `characterSelectService.ts`
+The slot layout and the intro screens are built in `characterSelectService.ts`
 (`browsersideWidgetSetter`) using the existing widget form system (`text` and
 `button` elements). Adjust there to add fields (e.g. portraits via `icon`
 elements) or change labels. Localised strings live in the `translations` map
-in the same file.
+in the same file. The intro panel styles are the `.login--w32` rules in
+`skymp5-front/src/features/login/styles.scss`.

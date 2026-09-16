@@ -129,3 +129,25 @@ export function buttonEventKeyCode(e: ButtonEvent): number {
   if (e.device === InputDeviceType.Mouse) return DxScanCode.LeftMouseButton + e.code;
   return -1;
 }
+
+// Launcher Settings key names by settings key code (skymp5-launcher renderer.js DIK_LABELS)
+const KEY_LABELS: Record<number, string> = {
+  2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "6", 8: "7", 9: "8", 10: "9", 11: "0", 12: "-", 13: "=",
+  14: "Backspace", 15: "Tab", 16: "Q", 17: "W", 18: "E", 19: "R", 20: "T", 21: "Y", 22: "U", 23: "I",
+  24: "O", 25: "P", 26: "[", 27: "]", 28: "Enter", 29: "Left Ctrl", 30: "A", 31: "S", 32: "D", 33: "F",
+  34: "G", 35: "H", 36: "J", 37: "K", 38: "L", 39: ";", 40: "'", 41: "Grave (~)", 42: "Left Shift", 43: "\\",
+  44: "Z", 45: "X", 46: "C", 47: "V", 48: "B", 49: "N", 50: "M", 51: ",", 52: ".", 53: "/",
+  54: "Right Shift", 55: "Numpad *", 56: "Left Alt", 57: "Space", 58: "Caps Lock", 59: "F1", 60: "F2",
+  61: "F3", 62: "F4", 63: "F5", 64: "F6", 65: "F7", 66: "F8", 67: "F9", 68: "F10", 69: "Num Lock",
+  70: "Scroll Lock", 71: "Numpad 7", 72: "Numpad 8", 73: "Numpad 9", 74: "Numpad -", 75: "Numpad 4",
+  76: "Numpad 5", 77: "Numpad 6", 78: "Numpad +", 79: "Numpad 1", 80: "Numpad 2", 81: "Numpad 3",
+  82: "Numpad 0", 83: "Numpad .", 87: "F11", 88: "F12", 156: "Numpad Enter", 157: "Right Ctrl",
+  181: "Numpad /", 183: "Print Screen", 184: "Right Alt", 197: "Pause", 199: "Home", 200: "Up",
+  201: "Page Up", 203: "Left", 205: "Right", 207: "End", 208: "Down", 209: "Page Down", 210: "Insert",
+  211: "Delete", 219: "Left Win", 220: "Right Win", 221: "Menu", 256: "Left Mouse", 257: "Right Mouse",
+  258: "Middle Mouse", 259: "Mouse 4", 260: "Mouse 5", 261: "Mouse 6", 262: "Mouse 7", 263: "Mouse 8",
+};
+
+export function keyLabel(code: number): string {
+  return KEY_LABELS[code] || `0x${code.toString(16)}`;
+}

@@ -43,6 +43,11 @@ export class VoiceService extends ClientListener {
   }
 
   private voiceKey: DxScanCode;
+
+  get pushToTalkKeyCode(): number {
+    return this.voiceKey;
+  }
+
   private disabledByServer = false;
   private connectedForRefrId = 0;
   private pendingRefrId = 0;

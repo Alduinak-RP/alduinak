@@ -1,13 +1,16 @@
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
-import { openFormMenu, readMenuLanguage } from "./widgetMenuUtil";
+import { keyLabel, openFormMenu, readMenuLanguage } from "./widgetMenuUtil";
 import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { logTrace } from "../../logging";
 import { NetworkingService } from "./networkingService";
 import { SinglePlayerService } from "./singlePlayerService";
+import { BrowserService } from "./browserService";
+import { VoiceService } from "./voiceService";
+import { PlayerActionService } from "./playerActionService";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -21,7 +24,29 @@ interface CharacterSlot {
   dead?: boolean;
 }
 
+interface IntroPage {
+  caption?: string;
+  text: string;
+}
+
+// New character intro from the server: synopsis pages, then the start location question
+interface StartIntro {
+  pages: IntroPage[];
+  question: string;
+  locations: { id: string; label: string }[];
+}
+
 const WIDGET_ID = 7;
+const INTRO_WIDGET_ID = 32;
+
+// Synopsis placeholders and the live key bindings that fill them
+const INTRO_KEYS: [string, (controller: CombinedController) => number][] = [
+  ["[get alt interaction button]", (c) => c.lookupListener(PlayerActionService).interactKeyCode],
+  ["[get voice key button]", (c) => c.lookupListener(VoiceService).pushToTalkKeyCode],
+  ["[get release mouse button]", (c) => c.lookupListener(BrowserService).freeCursorKeyCode],
+  ["[get hide interface button]", (c) => c.lookupListener(BrowserService).hideUiKeyCode],
+  ["[get activate chat button]", (c) => c.lookupListener(BrowserService).chatKeyCode],
+];
 
 // Event keys exchanged with the browser; namespaced to avoid collisions with other "browserMessage" listeners.
 const events = {
@@ -32,6 +57,11 @@ const events = {
   confirmDelete: 'characterSelect:confirmDelete', // arg: delete check
   cancelDelete: 'characterSelect:cancelDelete',
   quit: 'characterSelect:quit',
+  introNext: 'characterSelect:introNext',
+  introBack: 'characterSelect:introBack',       // back to the slot list
+  introPick: 'characterSelect:introPick',       // arg: start location index
+  introConfirm: 'characterSelect:introConfirm',
+  introCancel: 'characterSelect:introCancel',   // back to the start locations
 };
 
 const translations = {
@@ -47,6 +77,9 @@ const translations = {
     cancel: 'Отмена',
     quit: 'Выйти',
     dead: 'Мёртв',
+    next: 'Продолжить',
+    back: 'Назад',
+    beginAt: 'Начать путь здесь: {0}?',
   },
   "en": {
     selectCharacter: 'Select Character',
@@ -60,6 +93,9 @@ const translations = {
     cancel: 'Cancel',
     quit: 'Quit',
     dead: 'Dead',
+    next: 'Continue',
+    back: 'Back',
+    beginAt: 'Begin at {0}?',
   },
 } as const;
 
@@ -71,6 +107,27 @@ let characters: (CharacterSlot | null)[] = [];
 let maxCharacters = 3;
 let selectedSlot: number | null = null;
 let confirmDeleteSlot: number | null = null;
+let intro: StartIntro | null = null;
+// null shows the slot list; the intro walks page -> question -> confirm
+let introScreen: 'page' | 'question' | 'confirm' | null = null;
+let introPages: IntroPage[] = [];
+let introPage = 0;
+let introPick = -1;
+
+function parseIntro(raw: unknown): StartIntro | null {
+  const r = raw as Partial<StartIntro> | null;
+  if (!r || typeof r !== 'object' || !Array.isArray(r.pages) || !Array.isArray(r.locations) || typeof r.question !== 'string') return null;
+  const pages = r.pages.filter((p) => p && typeof p.text === 'string');
+  const locations = r.locations.filter((l) => l && typeof l.id === 'string' && typeof l.label === 'string');
+  return locations.length > 0 ? { pages, question: r.question, locations } : null;
+}
+
+function resetIntro(): void {
+  introScreen = null;
+  introPages = [];
+  introPage = 0;
+  introPick = -1;
+}
 
 /**
  * Character-selection menu. Inert until the server opens it, so it has no effect
@@ -78,17 +135,19 @@ let confirmDeleteSlot: number | null = null;
  *
  * Protocol (all messages are {@link MsgType.CustomPacket} JSON dumps):
  *
- *   Server -> Client, open the menu:
+ *   Server -> Client, open the menu (without intro an empty slot creates at once):
  *     { "customPacketType": "characterSelectMenu",
  *       "maxCharacters": 3,
- *       "characters": [ { "name": "Lydia", "info": "..." }, null, null ] }
+ *       "characters": [ { "name": "Lydia", "info": "..." }, null, null ],
+ *       "intro": { "pages": [ { "caption": "...", "text": "..." } ], "question": "...",
+ *                  "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ] } }
  *
  *   Server -> Client, close without a choice (optional):
  *     { "customPacketType": "characterSelectMenuClose" }
  *
  *   Client -> Server, the player chose:
  *     { "customPacketType": "characterSelectResult", "action": "play",   "slot": 0 }
- *     { "customPacketType": "characterSelectResult", "action": "create", "slot": 1 }
+ *     { "customPacketType": "characterSelectResult", "action": "create", "slot": 1, "start": "dawnstar-docks" }
  *     { "customPacketType": "characterSelectResult", "action": "delete", "slot": 2 }
  */
 export class CharacterSelectService extends ClientListener {
@@ -119,6 +178,8 @@ export class CharacterSelectService extends ClientListener {
         maxCharacters = typeof content["maxCharacters"] === 'number' ? content["maxCharacters"] : Math.max(characters.length, 1);
         selectedSlot = null;
         confirmDeleteSlot = null;
+        intro = parseIntro(content["intro"]);
+        resetIntro();
         this.menuOpen = true;
         logTrace(this, `Opening character select menu with`, maxCharacters, `slots`);
         openFormMenu(this.sp, this.browsersideWidgetSetter, this.menuArgs(), this.controller);
@@ -145,7 +206,14 @@ export class CharacterSelectService extends ClientListener {
         break;
       case events.play:
         // Play loads the selection or starts creation if empty; dead slots refused, server is the authority.
-        if (selectedSlot !== null && !characters[selectedSlot]?.dead) {
+        if (introScreen === null && selectedSlot !== null && !characters[selectedSlot]?.dead) {
+          if (!characters[selectedSlot] && intro) {
+            introPages = this.resolveIntroPages(intro.pages);
+            introPage = 0;
+            introScreen = introPages.length > 0 ? 'page' : 'question';
+            this.renderMenu();
+            break;
+          }
           const action = characters[selectedSlot] ? 'play' : 'create';
           this.sendResult(action, selectedSlot);
           this.closeMenu();
@@ -170,6 +238,38 @@ export class CharacterSelectService extends ClientListener {
       case events.cancelDelete:
         confirmDeleteSlot = null;
         this.renderMenu();
+        break;
+      case events.introNext:
+        if (introScreen === 'page') {
+          if (introPage + 1 < introPages.length) introPage++;
+          else introScreen = 'question';
+          this.renderMenu();
+        }
+        break;
+      case events.introBack:
+        if (introScreen === 'page' || introScreen === 'question') {
+          resetIntro();
+          this.renderMenu();
+        }
+        break;
+      case events.introPick:
+        if (introScreen === 'question' && intro && Number.isInteger(slot) && intro.locations[slot]) {
+          introPick = slot;
+          introScreen = 'confirm';
+          this.renderMenu();
+        }
+        break;
+      case events.introConfirm:
+        if (introScreen === 'confirm' && intro && intro.locations[introPick] && selectedSlot !== null) {
+          this.sendResult('create', selectedSlot, intro.locations[introPick].id);
+          this.closeMenu();
+        }
+        break;
+      case events.introCancel:
+        if (introScreen === 'confirm') {
+          introScreen = 'question';
+          this.renderMenu();
+        }
         break;
       case events.quit:
         logTrace(this, 'quit requested from character select');
@@ -198,13 +298,34 @@ export class CharacterSelectService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest' });
   }
 
-  private sendResult(action: 'play' | 'create' | 'delete', slot: number): void {
-    logTrace(this, `Sending character select result:`, action, slot);
-    sendCustomPacket(this.controller, { customPacketType: 'characterSelectResult', action, slot });
+  private sendResult(action: 'play' | 'create' | 'delete', slot: number, start?: string): void {
+    logTrace(this, `Sending character select result:`, action, slot, start);
+    sendCustomPacket(this.controller, { customPacketType: 'characterSelectResult', action, slot, start });
+  }
+
+  // Placeholders become [key] labels; a line whose key is unbound is dropped
+  private resolveIntroPages(pages: IntroPage[]): IntroPage[] {
+    const keys = INTRO_KEYS.map(([placeholder, read]) => {
+      let code = 0;
+      try { code = read(this.controller); } catch { /* service not registered */ }
+      return { placeholder, code };
+    });
+    return pages
+      .map((page) => ({
+        caption: page.caption,
+        text: page.text.split('\n')
+          .filter((line) => keys.every((k) => k.code > 0 || line.indexOf(k.placeholder) < 0))
+          .map((line) => keys.reduce((s, k) => s.split(k.placeholder).join(`[${keyLabel(k.code)}]`), line))
+          .join('\n'),
+      }))
+      .filter((page) => page.text.trim().length > 0);
   }
 
   private menuArgs(): Record<string, unknown> {
-    return { characters, maxCharacters, selectedSlot, confirmDeleteSlot, events, strings, WIDGET_ID };
+    return {
+      characters, maxCharacters, selectedSlot, confirmDeleteSlot, events, strings, WIDGET_ID,
+      intro, introScreen, introPages, introPage, introPick, INTRO_WIDGET_ID,
+    };
   }
 
   private renderMenu(): void {
@@ -217,6 +338,7 @@ export class CharacterSelectService extends ClientListener {
     this.menuOpen = false;
     selectedSlot = null;
     confirmDeleteSlot = null;
+    resetIntro();
     // Clear forms only; chat and other in-game widgets must survive a mid-session reopen.
     this.sp.browser.executeJavaScript(
       'window.skyrimPlatform.widgets.set((window.skyrimPlatform.widgets.get()||[]).filter(function(w){return w&&w.type!=="form";}));'
@@ -226,6 +348,31 @@ export class CharacterSelectService extends ClientListener {
 
   // Runs inside the CEF browser; only the injected variables and window are available here.
   private browsersideWidgetSetter = () => {
+    if (introScreen !== null && intro) {
+      const form: any = { type: "form", id: INTRO_WIDGET_ID, elements: [] as any[] };
+      if (introScreen === "page") {
+        const page = introPages[introPage];
+        if (page.caption) form.caption = page.caption;
+        form.elements.push({ type: "text", text: page.text, tags: [] });
+        form.elements.push({ type: "button", text: strings.back, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introBack) });
+        form.elements.push({ type: "button", text: strings.next, tags: ["ELEMENT_SAME_LINE"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introNext) });
+      } else if (introScreen === "question") {
+        form.caption = intro.question;
+        for (let i = 0; i < intro.locations.length; i++) {
+          form.elements.push({ type: "button", text: intro.locations[i].label, tags: [], width: 560, click: () => window.skyrimPlatform.sendMessage(events.introPick, i) });
+        }
+        form.elements.push({ type: "button", text: strings.back, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introBack) });
+      } else {
+        form.caption = intro.question;
+        form.elements.push({ type: "text", text: strings.beginAt.replace("{0}", intro.locations[introPick].label), tags: [] });
+        form.elements.push({ type: "button", text: strings.back, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introCancel) });
+        form.elements.push({ type: "button", text: strings.confirm, tags: ["ELEMENT_SAME_LINE"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introConfirm) });
+      }
+      const rest = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w && w.type !== "form");
+      window.skyrimPlatform.widgets.set(rest.concat([form]));
+      return;
+    }
+
     const widget: any = { type: "form", id: WIDGET_ID, caption: strings.selectCharacter, elements: [] as any[] };
 
     // Strike through via combining U+0336 overlays; the form renderer has no text styling.

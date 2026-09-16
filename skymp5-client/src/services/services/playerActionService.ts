@@ -254,4 +254,8 @@ export class PlayerActionService extends ClientListener {
   private menuWait = 0;
   private menuWaitSeq = 0;
   private interactKey: number;
+
+  get interactKeyCode(): number {
+    return this.interactKey;
+  }
 }

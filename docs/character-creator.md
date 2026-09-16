@@ -15,7 +15,9 @@ for fresh characters. Species → Race → Identity (sex/age/stats) → Appearan
 
 ## Flow
 
-1. `spawn.ts` `onSelectCharacter` creates a fresh actor. When the
+1. `spawn.ts` `onSelectCharacter` creates a fresh actor at the start location
+   the player chose on the intro screens (`startLocations`, see
+   `docs_server_configuration_reference.md`). When the
    `charCreator.enabled` server setting is true it sends `charCreatorOpen`
    instead of `setRaceMenuOpen(actorId, true)` and marks the actor
    `private.charCreatorPending = true` (relogging re-opens the creator until

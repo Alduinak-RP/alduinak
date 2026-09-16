@@ -279,8 +279,9 @@ dothatopcheck {  0% {
   }
 }
 
-// Character select (form widget id 7): red/black panel so it reads over the main menu video
-.login.login--w7 {
+// Character select (form widget 7) and the new character intro (32): a red/black panel that reads over the main menu video
+.login.login--w7,
+.login.login--w32 {
   .login-form {
     background:
       linear-gradient(180deg, rgba(8, 4, 4, 0.92), rgba(0, 0, 0, 0.88)),
@@ -324,6 +325,36 @@ dothatopcheck {  0% {
     }
     .skymp-input-button_text {
       color: rgba(230, 220, 218, 0.88);
+    }
+  }
+}
+
+// New character intro: wrapped multi-line text, scrolling inside the panel when the screen is short
+.login.login--w32 {
+  .login-form--content_main {
+    max-height: calc(100vh - 180px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    &:first-child {
+      margin-top: 36px;
+    }
+  }
+  .login-form--content_header {
+    text-align: center;
+  }
+  .container {
+    margin-top: 16px;
+  }
+  .skyrimText {
+    width: 720px;
+    height: auto;
+    font-size: 24px;
+    line-height: 1.4;
+    text-align: center;
+    white-space: pre-line;
+    overflow: visible;
+    span {
+      width: auto;
     }
   }
 }

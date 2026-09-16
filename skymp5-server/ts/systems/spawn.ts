@@ -4,6 +4,7 @@ import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./sys
 import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
+import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 
 type Mp = any;
 
@@ -108,9 +109,9 @@ function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
 // CharacterSelectService). Flag off (default) keeps the original
 // single-character behaviour, so enabling can never brick login on its own.
 //   Server -> Client:
-//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info} | null ] }
+//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info} | null ], intro?: {pages, question, locations: [{id,label}]} }
 //   Client -> Server:
-//     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot }
+//     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot, start?: locationId }
 export class Spawn implements System {
   systemName = "Spawn";
   constructor(private log: Log) { }
@@ -118,6 +119,7 @@ export class Spawn implements System {
   private characterSelect = false;
   private maxCharacters = DEFAULT_MAX_CHARACTERS;
   private startingItems = DEFAULT_STARTING_ITEMS;
+  private startLocations = DEFAULT_START_LOCATIONS;
   private logoutGraceMs = DEFAULT_LOGOUT_GRACE_MS;
   private charCreator = parseCharCreatorSettings(undefined);
   private modHair: ModHairCatalog | null = null;
@@ -141,12 +143,18 @@ export class Spawn implements System {
     if (Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= 10) this.maxCharacters = rawMax;
     const parsedItems = parseStartingItems(all?.["startingItems"]);
     if (parsedItems) this.startingItems = parsedItems;
+    if (all?.["startLocations"] !== undefined) {
+      const parsedStarts = parseStartLocations(all["startLocations"]);
+      if (parsedStarts) this.startLocations = parsedStarts;
+      else this.log("[spawn] startLocations setting is malformed, using the default start locations");
+    }
     const rawGrace = Number(all?.["logoutGraceMs"]);
     if (Number.isInteger(rawGrace) && rawGrace >= 0) this.logoutGraceMs = rawGrace;
     this.charCreator = parseCharCreatorSettings(all?.["charCreator"]);
     if (this.charCreator.enabled) this.loadModHair();
     this.installAppearanceHook(ctx);
     this.installEquipmentHook(ctx);
+    this.installCreationDamageHook(ctx);
 
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
       if (this.characterSelect) {
@@ -171,7 +179,7 @@ export class Spawn implements System {
     if (type === "characterSelectResult") {
       const slot = Number(content.slot);
       if (content.action === "delete") this.onDeleteCharacter(ctx, userId, slot);
-      else this.onSelectCharacter(ctx, userId, slot);   // "play" or "create"
+      else this.onSelectCharacter(ctx, userId, slot, content.start);   // "play" or "create"
     } else if (type === "characterSelectMenuRequest") {
       this.onMenuRequest(ctx, userId);
     }
@@ -335,12 +343,21 @@ export class Spawn implements System {
       actorId !== undefined
         ? { name: this.characterName(ctx, actorId) || `Character ${i + 1}`, dead: this.isPermaDead(mp, actorId) }
         : null);
+    const intro = this.startLocations.length
+      ? { pages: INTRO_PAGES, question: INTRO_QUESTION, locations: this.startLocations.map(({ id, label }) => ({ id, label })) }
+      : undefined;
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
-      customPacketType: "characterSelectMenu", maxCharacters: this.maxCharacters, characters,
+      customPacketType: "characterSelectMenu", maxCharacters: this.maxCharacters, characters, intro,
     }));
   }
 
-  private onSelectCharacter(ctx: SystemContext, userId: number, slot: number): void {
+  private randomStartPoint(): { pos: number[]; angleZ: number; worldOrCell: number } {
+    const { startPoints } = this.settingsObject;
+    const point = startPoints[randomInteger(0, startPoints.length - 1)];
+    return { pos: point.pos, angleZ: point.angleZ, worldOrCell: +point.worldOrCell };
+  }
+
+  private onSelectCharacter(ctx: SystemContext, userId: number, slot: number, start: unknown): void {
     const auth = this.pending.get(userId);
     if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= this.maxCharacters) return;
 
@@ -357,15 +374,24 @@ export class Spawn implements System {
     }
 
     if (isNew) {
-      const { startPoints } = this.settingsObject;
-      const idx = randomInteger(0, startPoints.length - 1);
-      actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
-        +startPoints[idx].worldOrCell, auth.profileId);
+      // The intro's choice is the only way in while start locations are configured; coordinates never come from the client
+      let loc: StartLocation | undefined;
+      if (this.startLocations.length) {
+        loc = this.startLocations.find((l) => l.id === start);
+        if (!loc) {
+          this.log("Refusing character creation in slot", slot, "with unknown start location", String(start).slice(0, 64));
+          this.sendCharacterList(ctx, userId, auth.profileId);
+          return;
+        }
+      }
+      const point = loc ? { pos: arrivalPos(loc), angleZ: loc.angleZ, worldOrCell: loc.worldOrCell } : this.randomStartPoint();
+      actorId = ctx.svr.createActor(0, point.pos, point.angleZ, point.worldOrCell, auth.profileId);
       mp.set(actorId, "private.charSlot", slot);
       this.giveStartingItems(mp, actorId, auth.profileId, slot);
       mp.set(actorId, "private.kitPending", true);
       mp.set(actorId, "private.creationPending", true);
-      this.log("Creating character", actorId.toString(16), "in slot", slot);
+      if (loc) mp.set(actorId, "private.startLocation", { id: loc.id, at: Date.now() });
+      this.log("Creating character", actorId.toString(16), "in slot", slot, loc ? `at ${loc.id}` : "at a start point");
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
     }
@@ -445,6 +471,18 @@ export class Spawn implements System {
       }
       if (!previous) return true;
       try { return previous.call(mp, actorId, appearance, isAllowed) !== false; }
+      catch { return true; }
+    };
+  }
+
+  // Unfinished characters neither take nor deal weapon and spell damage; chained like the admin god mode
+  private installCreationDamageHook(ctx: SystemContext): void {
+    const mp = ctx.svr as unknown as Mp;
+    const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
+    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
+      if (this.isCreationPending(mp, targetId >>> 0) || this.isCreationPending(mp, aggressorId >>> 0)) return false;
+      if (!previous) return true;
+      try { return previous.call(mp, aggressorId, targetId, sourceId, damage) !== false; }
       catch { return true; }
     };
   }
@@ -632,7 +670,6 @@ export class Spawn implements System {
 
   private legacySpawn(ctx: SystemContext, userId: number, userProfileId: number,
     discordRoleIds: string[], discordId?: string, access?: unknown): void {
-    const { startPoints } = this.settingsObject;
     const mp = ctx.svr as unknown as Mp;
     // Perma-dead characters are locked here too (see onSelectCharacter): skip them and start a fresh character instead
     let actorId = ctx.svr.getActorsByProfileId(userProfileId)
@@ -647,9 +684,8 @@ export class Spawn implements System {
         this.sendCharCreatorOpen(ctx, userId, userProfileId);
       }
     } else {
-      const idx = randomInteger(0, startPoints.length - 1);
-      actorId = ctx.svr.createActor(0, startPoints[idx].pos, startPoints[idx].angleZ,
-        +startPoints[idx].worldOrCell, userProfileId);
+      const point = this.randomStartPoint();
+      actorId = ctx.svr.createActor(0, point.pos, point.angleZ, point.worldOrCell, userProfileId);
       this.giveStartingItems(mp, actorId, userProfileId, 0);
       mp.set(actorId, "private.kitPending", true);
       mp.set(actorId, "private.creationPending", true);
