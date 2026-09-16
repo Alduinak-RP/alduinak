@@ -10,9 +10,20 @@ It is re-runnable: run it again on a fresh plugin from the Creation Kit and the 
 
 ## Run
 
+The input is the merged base of the r7 pipeline, never the live plugin. `misc/esp-merge/proficiency.py`
+is step 3 of that pipeline and runs the command below, then checks the result against the ids LIVE
+shipped:
+
 ```bash
-python misc/proficiency-patcher/patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --settings build/dist/server/server-settings.json --out misc/proficiency-patcher/out
+python misc/proficiency-patcher/patch.py --plugin <r7 work/base>/AlduinakAdditions.esp --settings <r7 server-settings.stage.json> --out <dir> --next-form-id 0x201D
 ```
+
+`--next-form-id` pins the own records to the block at `0x201D` so the marker spell ids never move, and
+it refuses a plugin that already holds them ("own records already use ..."): the live plugin does, and
+`patch.py`'s pre-clean only drops duplicate LAND records, it does not strip the generated layer. Running
+against the live plugin without the pin is a hotfix route only. Every record is still found by editor id
+and reused, so nothing moves, but a record the spec adds would take the plugin's own next form id rather
+than the next id in the pinned block.
 
 Needs the .NET 9 SDK (`dotnet`), Python 3 and the game Data folder named by `dataDir` in the settings
 file, with every plugin of `loadOrder` present (Mutagen reads them to resolve editor ids and winning
@@ -42,7 +53,9 @@ records). The first run restores the Mutagen NuGet package.
 | `kilnRecipes` | The charcoal recipe. `bench` names the keyword it sits on (`CraftingSmelter`); `keywords.kiln` is the fallback and waits for a kiln mod carrying `AldCraftingKiln`. |
 | `woodcraftingBench` | A new FURN copied from the Hearthfire carpenter's workbench, plus existing benches that also get the woodcrafting keyword. |
 | `cooking` | Vanilla cooking recipes keep their benches; `needsSalt` adds a Salt Pile where it is missing; `tiers` sets the rank. |
-| `smithing` | Every recipe at the smithing benches is tiered by the highest `materials` entry among its inputs and product; vanilla `HasPerk` gates are removed. |
+| `stripConditions` | CTDA functions `CraftService` has no implementation for. Every recipe the patcher tiers loses them, so the menu and the server agree; an unregistered function answers true server-side. |
+| `smithing` | Every recipe at the smithing benches is tiered by the highest `materials` entry among its inputs and product. `temperBenches` tiers the armour table and the grindstone by the same table, keeping their vanilla conditions. `newRecipes` adds forge recipes of the plugin's own (the woodcutter's axe). |
+| `uncraftable` | Recipes parked on a keyword no furniture carries, so nothing can ever make them: the 20 Daedric recipes. |
 | `woodworking` | Bow, arrow, bolt and shield recipes move from the forge to the woodcrafting keyword with their tier. |
 | `tailoring` | The owner's list at the tanning rack with the ingredients from the spec; `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe. |
 
