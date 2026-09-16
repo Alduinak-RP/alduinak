@@ -231,12 +231,7 @@ export class SendInputsService extends ClientListener {
         // Extermly important that it's a local id since AnimationSource depends on it
         const refrIdStr = owner.getFormID().toString(16);
 
-        let animSource = this.playerAnimSource.get(refrIdStr);
-        if (!animSource) {
-            animSource = new AnimationSource(owner);
-            this.playerAnimSource.set(refrIdStr, animSource);
-        }
-        const anim = animSource.getAnimation();
+        const anim = this.getAnimSource(owner).getAnimation();
 
         const lastAnimationSent = this.lastAnimationSent.get(refrIdStr);
         if (
@@ -258,6 +253,23 @@ export class SendInputsService extends ClientListener {
                 });
             }
         }
+    }
+
+    relayPlayerAnimEvent(animEventName: string): void {
+        const player = this.sp.Game.getPlayer();
+        if (player) {
+            this.getAnimSource(player).relay(animEventName);
+        }
+    }
+
+    private getAnimSource(owner: Actor): AnimationSource {
+        const refrIdStr = owner.getFormID().toString(16);
+        let animSource = this.playerAnimSource.get(refrIdStr);
+        if (!animSource) {
+            animSource = new AnimationSource(owner);
+            this.playerAnimSource.set(refrIdStr, animSource);
+        }
+        return animSource;
     }
 
     private sendAppearance(_refrId?: number) {

@@ -2,6 +2,8 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { notifyNextUpdate } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode } from "./widgetMenuUtil";
 import { RestraintService } from "./restraintService";
+import { SendInputsService } from "./sendInputsService";
+import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, SHEATHE_SETTLE_S } from "../../sync/animation";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
@@ -113,12 +115,6 @@ const events = {
   close: 'emote:close',
   stop: 'emote:stop',
 };
-
-// Sheathing is polled every 0.2 s for about 3 s
-const SHEATHE_POLL_S = 0.2;
-const SHEATHE_MAX_POLLS = 15;
-// The sheathe animation still blends out after the weapon state reads sheathed
-const SHEATHE_SETTLE_S = 0.3;
 
 // Movement input breaks an active emote, matching how remote clones exit poses.
 const CANCEL_KEYS: DxScanCode[] = [
@@ -258,10 +254,16 @@ export class EmoteService extends ClientListener {
       if (player.isWeaponDrawn()) {
         if (sheathePolls >= SHEATHE_MAX_POLLS) {
           this.activeEmote = "";
+          // Observers were already told the weapon is going away
+          this.controller.lookupListener(SendInputsService).relayPlayerAnimEvent("Equip");
           notifyNextUpdate(this.controller, this.sp, "Put your weapon away to use emotes.");
           return;
         }
-        if (sheathePolls === 0) player.sheatheWeapon();
+        if (sheathePolls === 0) {
+          player.sheatheWeapon();
+          // Observers start sheathing the copy now instead of when the idle arrives
+          this.controller.lookupListener(SendInputsService).relayPlayerAnimEvent("Unequip");
+        }
         this.sp.Utility.wait(SHEATHE_POLL_S).then(() => this.sendEmote(anim, sheathePolls + 1));
         return;
       }

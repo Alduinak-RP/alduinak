@@ -508,7 +508,7 @@ export class FormView {
 
     if (refr.is3DLoaded()) {
       if (model.animation) {
-        applyAnimation(refr, model.animation, this.animState, mounted);
+        applyAnimation(refr, model.animation, this.animState, mounted, !!model.appearance);
       }
       // Use them only once, for spawning actors with correct animations
       this.animState.useAnimOverrides = false;

@@ -30,6 +30,12 @@ export interface AnimationApplyState {
   useAnimOverrides: boolean;
 }
 
+// Sheathing is polled every 0.2 s for about 3 s
+export const SHEATHE_POLL_S = 0.2;
+export const SHEATHE_MAX_POLLS = 15;
+// The sheathe animation still blends out after the weapon state reads sheathed
+export const SHEATHE_SETTLE_S = 0.3;
+
 const allowedIdles = new Array<[number, string]>();
 const refsWithDefaultAnimsDisabled = new Set<number>();
 const allowedAnims = new Set<string>();
@@ -68,6 +74,13 @@ const actorGetUpAnimsLowerCase = [
   'idlechairchildrightexit',
   'idleforcedefaultstate'
 ];
+
+// Bound, carried and carry-hold poses; the carrier's own client sheathes before its pose
+const restraintPosesLowerCase = new Set<string>([
+  'offsetboundstandingstart',
+  'offsetcarrybasketstart',
+  'idlechairenterinstant',
+]);
 
 // It's critical for values to be the correct case, not just lowercase, otherwise 'allowedIdles' check will break
 // We don't want to modify the check itself, because it'll be slower
@@ -123,11 +136,56 @@ const isIdle = (animEventName: string) => {
   );
 };
 
+// Exits, get-ups and restraint poses never wait, or a copy stays posed after its player moved on
+const needsEmptyHands = (animEventName: string): boolean => {
+  const animEventNameLowerCase = animEventName.toLowerCase();
+  if (
+    animEventNameLowerCase.includes("exit") ||
+    actorGetUpAnimsLowerCase.includes(animEventNameLowerCase) ||
+    restraintPosesLowerCase.has(animEventNameLowerCase)
+  ) {
+    return false;
+  }
+  return isIdle(animEventName) || (forcedSyncAnims.has(animEventName) && animEventName !== "OffsetStop");
+};
+
+// Null once a newer event replaced the waiting one or the copy can no longer take it
+const findWaitingActor = (refrId: number, anim: Animation, state: AnimationApplyState): Actor | null => {
+  if (state.lastNumChanges !== anim.numChanges || isRiderClone(refrId)) {
+    return null;
+  }
+  const ac = Actor.from(Game.getFormEx(refrId));
+  return ac && ac.is3DLoaded() && !ac.isDead() ? ac : null;
+};
+
+// A copy still drawn when the polls run out plays the event anyway to stay in step with its player
+const playAfterSheathe = (refrId: number, anim: Animation, state: AnimationApplyState, polls: number): void => {
+  Utility.wait(SHEATHE_POLL_S).then(() => {
+    const ac = findWaitingActor(refrId, anim, state);
+    if (!ac) {
+      return;
+    }
+    if (!ac.isWeaponDrawn()) {
+      Utility.wait(SHEATHE_SETTLE_S).then(() => {
+        const settled = findWaitingActor(refrId, anim, state);
+        if (settled) {
+          sendToGraph(settled, anim);
+        }
+      });
+    } else if (polls + 1 < SHEATHE_MAX_POLLS) {
+      playAfterSheathe(refrId, anim, state, polls + 1);
+    } else {
+      sendToGraph(ac, anim);
+    }
+  });
+};
+
 export const applyAnimation = (
   refr: ObjectReference,
   anim: Animation,
   state: AnimationApplyState,
-  mounted?: boolean
+  mounted?: boolean,
+  sheatheFirst?: boolean
 ): void => {
   if (state.lastNumChanges === anim.numChanges) {
     return;
@@ -144,12 +202,6 @@ export const applyAnimation = (
     if (animOverride !== undefined) {
       anim.animEventName = animOverride;
     }
-  }
-
-  const animEventNameLowerCase = anim.animEventName.toLowerCase();
-
-  if (isIdle(anim.animEventName)) {
-    allowedIdles.push([refr.getFormID(), anim.animEventName]);
   }
 
   const ac = Actor.from(refr);
@@ -179,6 +231,23 @@ export const applyAnimation = (
       }
     }
     return;
+  }
+
+  // A player's copy sheathes before an idle or pose, as its player did
+  if (ac && sheatheFirst && ac.isWeaponDrawn() && needsEmptyHands(anim.animEventName)) {
+    applyWeapDrawn(ac, false);
+    playAfterSheathe(ac.getFormID(), { ...anim }, state, 0);
+    return;
+  }
+
+  sendToGraph(refr, anim);
+};
+
+const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
+  const animEventNameLowerCase = anim.animEventName.toLowerCase();
+
+  if (isIdle(anim.animEventName)) {
+    allowedIdles.push([refr.getFormID(), anim.animEventName]);
   }
 
   if (refsWithDefaultAnimsDisabled.has(refr.getFormID())) {
@@ -284,6 +353,11 @@ export class AnimationSource {
   getAnimation(): Animation {
     const { numChanges, animEventName } = this;
     return { numChanges, animEventName };
+  }
+
+  // For events the send hook does not report, such as a sheathe started by a script
+  relay(animEventName: string): void {
+    this.onSendAnimationEvent(animEventName);
   }
 
   private onSendAnimationEvent(animEventName: string) {
