@@ -11,6 +11,8 @@ one-shot migration.
   the `AlduinakMongo` service against `mongod.cfg`, and creates the `skympuser`
   app user. Installs mongosh and the Database Tools (mongodump/mongorestore)
   when they are missing. Claude does not run installers or register services.
+- `wipe-world.js` - backup, verify, apply and restore for a full world wipe
+  before a deploy. Runbook: [`docs/docs_database_wipe.md`](../../docs/docs_database_wipe.md).
 
 ## Steps
 

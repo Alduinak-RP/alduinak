@@ -590,4 +590,4 @@ async function restorePurge(opts) {
   }
 }
 
-module.exports = { purgeRemovedMods, restorePurge, computeSlots, decodeId, encodeId, descOf, classifyDoc, basename }
+module.exports = { purgeRemovedMods, restorePurge, computeSlots, decodeId, encodeId, descOf, classifyDoc, basename, sanitize, isPlayer, foreignDescriptors, openChangeForms }

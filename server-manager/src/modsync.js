@@ -375,6 +375,11 @@ function updateDiff(patch) {
   return writeDiff(diff)
 }
 
+// The manager refuses to start the game server while a synced load order still waits for its MongoDB purge
+function purgePending(diff) {
+  return Boolean(diff && diff.syncedSettingsAt && diff.purgeNeeded && !diff.purgedAt)
+}
+
 // ".prev" always means the last manifest whose files reached the Data folder
 function shouldRotatePrev(previousDiff) {
   return !previousDiff || Boolean(previousDiff.syncedDataAt)
@@ -602,9 +607,11 @@ module.exports = {
   writeDiff,
   readDiff,
   updateDiff,
+  purgePending,
   shouldRotatePrev,
   readSettingsFile,
   writeSettingsFile,
+  writeJsonAtomic,
   syncSettings,
   syncData,
   basename,

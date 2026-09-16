@@ -5,13 +5,13 @@ const path = require('path')
 const fs   = require('fs')
 const http = require('http')
 const https = require('https')
-const { execFile } = require('child_process')
 const WebSocket = require('ws')
 const config = require('./config')
 const { Builder } = require('./build')
 const schema = require('./settingsSchema')
 const modsync = require('./modsync')
 const mongoPurge = require('./mongoPurge')
+const { LOCK_CODES, nssm, nativeModuleLocked } = require('./serviceCheck')
 
 let win = null
 
@@ -51,17 +51,6 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 	
 const serviceByKey = Object.fromEntries(config.services.map(s => [s.key, s]))
 
-// nssm <verb> <service ...args> - returns trimmed stdout (status / message).
-// nssm prints UTF-16LE; read as utf8 it interleaves NUL bytes, so strip them.
-function nssm(verb, name, ...rest) {
-  return new Promise(resolve => {
-    execFile(config.nssm, [verb, name, ...rest], { windowsHide: true, timeout: verb === 'status' ? 5000 : 30000 }, (err, stdout, stderr) => {
-      const clean = String(stdout || stderr || (err && err.message) || '').replace(/\u0000/g, '').trim()
-      resolve(clean)
-    })
-  })
-}
-
 // nssm start/stop returns before the service settles (exiting non-zero on the
 // transient *_PENDING states), so poll `nssm status` until the target state.
 async function awaitStatus(name, want) {
@@ -98,7 +87,7 @@ async function gameStatus() { return nssm('status', await serviceName(serviceByK
 function purgePending() {
   let diff = null
   try { diff = modsync.readDiff() } catch {}
-  if (!diff || !diff.syncedSettingsAt || !diff.purgeNeeded || diff.purgedAt) return null
+  if (!modsync.purgePending(diff)) return null
   return 'refused: a MongoDB purge is pending for the new load order, run Purge MongoDB (or Restore last purge) first'
 }
 
@@ -571,8 +560,6 @@ function readJsonOrNull(file) {
 function readServerSettings() {
   try { return modsync.readSettingsFile(config.paths.serverSettings).settings } catch { return {} }
 }
-
-const LOCK_CODES = ['EBUSY', 'EPERM', 'EACCES']
 
 // Rename with retries: the backend may be streaming the target to a launcher at that moment
 async function replaceFile(from, to, attempts = 10) {
@@ -1147,14 +1134,6 @@ ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
   if (!dryRun && r.ok) stampDiff({ syncedDataAt: new Date().toISOString() }, t => b.line(t))
   return r
 }))
-
-// nssm reports stopped for a server started by hand, but its process still holds the native module open
-function nativeModuleLocked() {
-  const file = path.join(config.paths.serverDir, 'scam_native.node')
-  if (!fs.existsSync(file)) return null
-  try { fs.closeSync(fs.openSync(file, 'r+')); return null }
-  catch (err) { return LOCK_CODES.includes(err.code) ? 'a game server process still holds scam_native.node (started outside nssm?), stop it first' : null }
-}
 
 // A running game server re-upserts every loaded form, so database writes need it stopped; a dry run only warns
 async function requireGameStopped(log, dryRun) {
