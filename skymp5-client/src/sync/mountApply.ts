@@ -198,7 +198,7 @@ const attach = (rider: Actor, horse: Actor, state: MountState, now: number): voi
   state.lastFollowMs = now;
   // The vehicle carries it on its own where the engine honours that; otherwise the clone is put back on the saddle node
   if (ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(rider), saddlePos(horse)) > ATTACH_DRIFT_UNITS) {
-    rider.moveToNode(horse, SADDLE_NODE);
+    rider.moveToNode(horse, SADDLE_NODE).catch(() => { /* clone vanished */ });
   }
 };
 

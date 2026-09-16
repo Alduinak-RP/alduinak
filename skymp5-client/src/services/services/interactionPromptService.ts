@@ -46,7 +46,8 @@ let prompt: Prompt = { verb: "", label: "" };
  * characters read "Interact" with introduction- and mask-aware names (and
  * get their engine activation blocked so the interaction menu owns the key),
  * everything else keeps its display name with a verb picked by base form
- * type. A rider reads "Dismount", which is all the key does in the saddle. The engine still performs the actual activation, which the server
+ * type. A rider reads "Dismount", which is all the key does in the saddle.
+ * The engine still performs the actual activation, which the server
  * intercepts where it wants to.
  *
  * Set customPrompts: false in the skymp5-client settings block to keep the
