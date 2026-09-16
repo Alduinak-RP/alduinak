@@ -102,6 +102,15 @@ export class SearchSystem implements System {
     const rawLimit = Number(all?.["searchPlayerBodyTakeLimit"]);
     if (Number.isInteger(rawLimit) && rawLimit >= 0) this.playerBodyTakeLimit = rawLimit;
     this.installTakeHook(ctx);
+    this.installPutHook(ctx);
+  }
+
+  // What a search may not move out of a target, in either direction
+  private stuck(ctx: SystemContext, targetActorId: number, actorId: number, baseId: number): boolean {
+    // A property key's name is the housing credential, so a search never moves one and it never counts,
+    // and what the window never showed cannot be moved either, whatever the client sends
+    return this.isSearching(targetActorId, actorId)
+      && (baseId === KEY_BASE_ID || this.hidden(ctx, actorId, targetActorId, baseId));
   }
 
   // Chains mp.onTakeItem like the other systems' activation hooks; a refused take never leaves the body
@@ -109,10 +118,7 @@ export class SearchSystem implements System {
     const mp = ctx.svr as Mp;
     const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
     mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
-      // A property key's name is the housing credential, so a search never moves one and it never counts,
-      // and what the window never showed cannot be taken either, whatever the client sends
-      if (this.isSearching(sourceId >>> 0, actorId >>> 0)
-        && ((baseId >>> 0) === KEY_BASE_ID || this.hidden(ctx, actorId >>> 0, sourceId >>> 0, baseId >>> 0))) {
+      if (this.stuck(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0)) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
@@ -130,6 +136,26 @@ export class SearchSystem implements System {
         this.recordTake(ctx, sourceId >>> 0, actorId >>> 0, taken, baseId >>> 0, count);
       }
       return allowed;
+    };
+  }
+
+  // The same gate on the way in, so what a searcher may not take back never reaches the target
+  private installPutHook(ctx: SystemContext): void {
+    const mp = ctx.svr as Mp;
+    const previous = typeof mp.onPutItem === "function" ? mp.onPutItem : null;
+    mp.onPutItem = (targetId: number, actorId: number, baseId: number, count: number): boolean => {
+      if (this.stuck(ctx, targetId >>> 0, actorId >>> 0, baseId >>> 0)) {
+        this.resyncInventory(ctx, actorId >>> 0);
+        return false;
+      }
+      if (!previous) {
+        return true;
+      }
+      try {
+        return previous.call(mp, targetId, actorId, baseId, count) !== false;
+      } catch {
+        return true;
+      }
     };
   }
 
