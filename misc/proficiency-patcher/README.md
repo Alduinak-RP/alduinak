@@ -55,7 +55,7 @@ records). The first run restores the Mutagen NuGet package.
 | `cooking` | Vanilla cooking recipes keep their benches; `needsSalt` adds a Salt Pile where it is missing; `tiers` sets the rank. |
 | `stripConditions` | CTDA functions `CraftService` has no implementation for. Every recipe the patcher tiers loses them, so the menu and the server agree; an unregistered function answers true server-side. |
 | `smithing` | Every recipe at the smithing benches is tiered by the highest `materials` entry among its inputs and product. `temperBenches` tiers the armour table and the grindstone by the same table, keeping their vanilla conditions; the marker profession is the one whose list crafts the item, so the bows and shields of `woodworking` temper under the woodworker ranks. `newRecipes` adds forge recipes of the plugin's own (the woodcutter's axe). |
-| `uncraftable` | Recipes parked on a keyword no furniture carries, so nothing can ever make them: the 20 Daedric recipes. |
+| `uncraftable` | Recipes parked on a keyword no furniture carries, so nothing can ever make them: the 20 Daedric recipes and the 64 faction and guild set pieces (hold guard, Stormcloak, Thieves Guild, Dark Brotherhood, Forsworn, Skaal) that `stripConditions` would otherwise expose. |
 | `woodworking` | Bow, arrow, bolt and shield recipes move from the forge to the woodcrafting keyword with their tier. |
 | `tailoring` | The owner's list at the tanning rack with the ingredients from the spec; `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe. |
 

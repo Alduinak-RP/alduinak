@@ -90,6 +90,16 @@ three closed helmets and the Daedric arrow, are parked on the `MothNest1`
 keyword no furniture carries: no menu lists them and `CraftService` refuses the
 bench keyword.
 
+**Faction and guild sets are never craftable.** The stripped quest gates would
+otherwise have handed 64 recipes to anyone of the right rank: the eight hold
+guard cuirasses, the eight full helmets and the nine hold shields, the
+Stormcloak and Stormcloak Bear sets, the Thieves Guild armour with its Karliah,
+Leader and Variant sets, the Dark Brotherhood armour, the Forsworn armour and
+the Skaal clothes. They are parked on `MothNest1` beside the Daedric recipes, so
+a hold guard cuirass or a guild uniform is earned, never smithed. Stalhrim,
+Nordic, Bonemold, the Dawnguard crossbows and bolts, the Blades armour and the
+Skyforge Bow stay craftable at their mastery tier.
+
 Benches:
 
 - **Alchemy labs** open the crafting menu (keyword `AldCraftingAlchemy`) with
