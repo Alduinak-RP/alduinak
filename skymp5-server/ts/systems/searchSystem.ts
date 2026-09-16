@@ -63,6 +63,9 @@ export class SearchSystem implements System {
   systemName = "SearchSystem";
   constructor(private log: Log) { }
 
+  // Set by index.ts: items a looter may not have off this body. Asked again on every take, so the window and the server agree
+  hidesItem?: (ctx: SystemContext, viewerActorId: number, targetActorId: number, baseId: number) => boolean;
+
   // targetActorId -> session (a target is searched by at most one player)
   private sessions = new Map<number, SearchSession>();
   // searcherActorId -> targetActorId (reverse lookup)
@@ -106,8 +109,10 @@ export class SearchSystem implements System {
     const mp = ctx.svr as Mp;
     const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
     mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
-      // A property key's name is the housing credential, so a search never moves one and it never counts
-      if ((baseId >>> 0) === KEY_BASE_ID && this.isSearching(sourceId >>> 0, actorId >>> 0)) {
+      // A property key's name is the housing credential, so a search never moves one and it never counts,
+      // and what the window never showed cannot be taken either, whatever the client sends
+      if (this.isSearching(sourceId >>> 0, actorId >>> 0)
+        && ((baseId >>> 0) === KEY_BASE_ID || this.hidden(ctx, actorId >>> 0, sourceId >>> 0, baseId >>> 0))) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
@@ -345,7 +350,7 @@ export class SearchSystem implements System {
       target: targetActorId,
       body,
       // Simple stacks of the real inventory: the searcher's local clone never holds it, so the client syncs the clone before opening the window
-      entries: this.simpleEntriesOf(ctx, targetActorId),
+      entries: this.visibleEntriesOf(ctx, searcherActorId, targetActorId, body),
     }));
     this.notice(ctx, this.userOf(ctx, targetActorId),
       `${nameShownTo(ctx.svr,targetActorId, searcherActorId)} is searching ${body ? "your body" : "you"}.`);
@@ -566,6 +571,27 @@ export class SearchSystem implements System {
         .map((e) => ({ baseId: e.baseId >>> 0, count: e.count | 0 }));
     } catch {
       return [];
+    }
+  }
+
+  // On a body the client drops the stacks the server left out, so a hidden item is simply not in the window
+  private visibleEntriesOf(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): { baseId: number, count: number }[] {
+    const entries = this.simpleEntriesOf(ctx, targetActorId);
+    if (!body || !this.hidesItem) {
+      return entries;
+    }
+    return entries.filter((e) => !this.hidden(ctx, searcherActorId, targetActorId, e.baseId));
+  }
+
+  private hidden(ctx: SystemContext, searcherActorId: number, targetActorId: number, baseId: number): boolean {
+    if (!this.hidesItem) {
+      return false;
+    }
+    try {
+      return this.hidesItem(ctx, searcherActorId, targetActorId, baseId) === true;
+    } catch (e) {
+      this.log(`[search] item filter failed: ${e}`);
+      return false;
     }
   }
 
