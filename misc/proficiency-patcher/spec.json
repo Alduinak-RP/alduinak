@@ -1784,7 +1784,12 @@
    "00ENCHRecipeArmorBogBlightMask_Cloth",
    "00ENCHRecipeArmorBogBlightMask_BlueRed_Cloth",
    "00ENCHRecipeArmorBogBlightMask_BlueYellow_Cloth",
-   "00ENCHRecipeArmorBogBlightMask_Unpainted_Cloth"
+   "00ENCHRecipeArmorBogBlightMask_Unpainted_Cloth",
+   "0RecipeArmorKhajiitGauntlets_Clothes",
+   "0RecipeArmorKhajiitGauntletsBlack_Clothes",
+   "0RecipeArmorKhajiitGauntletsJadarri_Clothes",
+   "0RecipeArmorKhajiitGauntletsWater_Clothes",
+   "0RecipeArmorKhajiitGauntletsWhite_Clothes"
   ],
   "disabledBench": "MothNest1"
  },
@@ -1916,7 +1921,112 @@
    "MCERecipeWeaponForswornAxe",
    "MCERecipeWeaponForswornBow",
    "MCERecipeWeaponForswornSword",
-   "MCERecipeWeaponShiv"
+   "MCERecipeWeaponShiv",
+   "RecipeArmorArmorBoneCrown_CLS",
+   "RecipeArmorImperialBattlemageBootsA",
+   "RecipeImperialBattlemageCuirass",
+   "RecipeArmorImperialBattlemageGauntletsA",
+   "RecipeArmorImperialBattlemageHelmetA",
+   "JS_RecipeImperialArmor",
+   "JS_RecipeImperialBoots",
+   "JS_RecipeImperialGloves",
+   "JS_RecipeImperialHelmet",
+   "JS_RecipeImperialSword",
+   "JS_RecipeImperialCloak",
+   "JS_RecipeImperialShield",
+   "RecipeArmorImperialBoots",
+   "RecipeArmorImperialCuirass",
+   "RecipeArmorImperialGauntlets",
+   "RecipeArmorImperialHelmet",
+   "RecipeArmorImperialBootsLight",
+   "RecipeArmorImperialCuirassLight",
+   "RecipeArmorImperialGauntletsLight",
+   "RecipeArmorImperialHelmetLight",
+   "MCERecipeArmorImperialCuirassStudded",
+   "RecipeArmorImperialStuddedCuirass",
+   "RecipeArmorImperialGauntletsMedium",
+   "RecipeArmorImperialHelmetMedium",
+   "MCERecipeWeaponImperialSword",
+   "RecipeArmorImperialShield",
+   "RecipeArmorImperialShieldLight",
+   "MCERecipeWeaponImperialBow",
+   "RecipeArmorArmorImperialHelmetFull_CLS",
+   "RecipeArmorArmorImperialHelmet_CLS",
+   "RecipeArmorArmorImperialLightHelmet_CLS",
+   "0RecipeArmorKhajiitGauntlets",
+   "0RecipeArmorKhajiitGauntletsBlack",
+   "0RecipeArmorKhajiitGauntletsJadarri",
+   "0RecipeArmorKhajiitGauntletsWater",
+   "0RecipeArmorKhajiitGauntletsWhite",
+   "RecipeArmorArmorDragonplateHelmet_U_CLS",
+   "RecipeArmor1SilverBoots",
+   "RecipeArmor1SilverCuirass",
+   "RecipeArmor1SilverGantlets",
+   "RecipeArmor1SilverHelmet",
+   "RecipeArmor1SilverCuirass2",
+   "RecipeArmor1SilverHelmet2",
+   "RecipeTitusMedeBoots_0",
+   "RecipeTitusMedeChest1_0",
+   "RecipeTitusMedeHelmet1_0",
+   "RecipeTitusMedeHelmet0_1",
+   "Xtudo_RecipeTitusMedeBoots_0",
+   "Xtudo_RecipeTitusMedeChest1_0",
+   "Xtudo_RecipeTitusMedeHelmet1_0",
+   "Xtudo_RecipeTitusMedeHelmet0_1",
+   "Xtudo_RecipeTitusMedeGloves_0",
+   "Xtudo_RecipeTitusMedeGloves_0Light",
+   "MCERecipeArmorDLC1VampireArmorRoyalRed",
+   "RecipeArmorTH_Glass1Boots",
+   "RecipeArmorTH_Glass1Cuirass",
+   "RecipeArmorTH_Glass1Gauntlets",
+   "RecipeArmorTH_Glass1Helmet",
+   "RecipeArmorDunYngolBarrowSteelPlateHelmet_CLS",
+   "DLC2RecipeArmorBonemoldBoots",
+   "DLC2RecipeArmorBonemoldCuirassGuard",
+   "DLC2RecipeArmorBonemoldCuirass",
+   "DLC2RecipeArmorBonemoldCuirassVariant",
+   "DLC2RecipeArmorBonemoldGauntlets",
+   "DLC2RecipeArmorBonemoldHelmet",
+   "DLC2RecipeArmorBonemoldShield",
+   "DLC2RecipeArmorBonemoldImprovedBoots",
+   "DLC2RecipeArmorBonemoldImprovedCuirass",
+   "DLC2RecipeArmorBonemoldImprovedGauntlets",
+   "DLC2RecipeArmorBonemoldImprovedHelmet",
+   "DLC2RecipeArmorBonemoldImprovedShield",
+   "RecipeArmorDLC2ArmorBonemoldHelmet_CLS",
+   "RecipeArmorDLC2ArmorBonemoldHelmet_U_CLS",
+   "RecipeArmorDLC2ArmorBonemoldImprovedHelmet_CLS",
+   "DLC2RecipeArmorChitinHeavyBoots",
+   "DLC2RecipeArmorChitinHeavyCuirass",
+   "DLC2RecipeArmorChitinHeavyGauntlets",
+   "DLC2RecipeArmorChitinHeavyHelmet",
+   "DLC2RecipeArmorChitinLightBoots",
+   "DLC2RecipeArmorChitinLightCuirass",
+   "DLC2RecipeArmorChitinLightGauntlets",
+   "DLC2RecipeArmorChitinLightHelmet",
+   "DLC2RecipeArmorChitinShield",
+   "RecipeArmorDLC2ArmorChitinHeavyHelmet_CLS",
+   "RecipeArmorDLC2ArmorChitinLightHelmet_CLS",
+   "RecipeArmorDLC2ArmorChitinLightHelmet_U_CLS",
+   "RecipeArmorDLC1ArmorDawnguardHelmetHeavy_U_CLS",
+   "RecipeArmorDLC1ArmorDawnguardHelmetLight_CLS",
+   "RecipeArmorDLC2dunHaknirArmorHelm_CLS",
+   "RecipeArmorDLC2dunHaknirArmorHelmNP_CLS",
+   "RecipeArmorDLC2ArmorNordicHeavyHelmet_U_CLS",
+   "RecipeMTGrandmasterBoots",
+   "RecipeMTGrandmasterCuirass",
+   "RecipeMTGrandmasterGauntlets",
+   "RecipeMTGrandmasterHelmet",
+   "RecipeMTGrandmasterSword",
+   "RecipeMTSeekerBoots",
+   "RecipeMTSeekerCuirass",
+   "RecipeMTSeekerDagger",
+   "RecipeMTSeekerGauntlets",
+   "RecipeMTSeekerHelmet",
+   "RecipeMTSeekerHelmetAlt",
+   "RecipeMTSeekerSword",
+   "RecipeArmorArmorCompanionsHelmet_CLS",
+   "RecipeArmorArmorCompanionsHelmet_U_CLS"
   ]
  },
  "meadery": {
@@ -1984,5 +2094,59 @@
     "BeeHoneyComb": 1
    }
   }
- }
+ },
+ "benchMoves": [
+  {
+   "bench": "CraftingSmithingSkyforge",
+   "profession": "blacksmith",
+   "recipes": [
+    "DLC2RecipeArmorNordicHeavyBoots",
+    "DLC2RecipeArmorNordicHeavyCuirass",
+    "DLC2RecipeArmorNordicHeavyGauntlets",
+    "DLC2RecipeArmorNordicHeavyHelmet",
+    "RecipeArmorDLC2ArmorNordicHeavyHelmet_CLS",
+    "DLC2RecipeArmorNordicShield",
+    "DLC2RecipeWeaponNordicBattleAxe",
+    "DLC2RecipeWeaponNordicBow",
+    "DLC2RecipeWeaponNordicDagger",
+    "DLC2RecipeWeaponNordicGreatsword",
+    "DLC2RecipeWeaponNordicMace",
+    "DLC2RecipeWeaponNordicSword",
+    "DLC2RecipeWeaponNordicWarAxe",
+    "DLC2RecipeWeaponNordicWarhammer"
+   ]
+  }
+ ],
+ "benchKeywordRemovals": {
+  "Eli_Anvil": [
+   "CraftingSmithingSkyforge"
+  ],
+  "MM_CraftingBlacksmithAnvil": [
+   "CraftingSmithingSkyforge"
+  ]
+ },
+ "enchantmentMagnitudes": [
+  {
+   "enchantment": "_EnchLightFront2",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "SadrasBackpack"
+   ]
+  },
+  {
+   "enchantment": "_EnchLightFrontDUPLICATE003",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "SadrasBackpackDUPLICATE001"
+   ]
+  }
+ ],
+ "placements": [
+  {
+   "ref": "0A17D3:Skyrim.esm",
+   "anchor": "0A17CD:Skyrim.esm"
+  }
+ ]
 }

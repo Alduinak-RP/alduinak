@@ -98,6 +98,14 @@ def meadery_allowed(spec):
     return lambda k, rec: (k[0] == 'REFR' and k[1] == 'self' and str(k[2]).startswith('AldMeadBench_')) or (k[0] == 'CELL' and edid(rec).lower() in cells)
 
 
+def spec_overrides(spec):
+    # Overrides of other types the spec names: placed references by form key, enchantments by editor id
+    s = json.load(open(spec, encoding='utf-8'))
+    refs = {('REFR', p['ref'].split(':')[1].lower(), int(p['ref'].split(':')[0], 16)) for p in s.get('placements', [])}
+    enchs = {e['enchantment'].lower() for e in s.get('enchantmentMagnitudes', [])}
+    return lambda k, rec: (k[0], k[1].lower(), k[2]) in refs or (k[0] == 'ENCH' and edid(rec).lower() in enchs)
+
+
 def verify(original, patched, log, allowed=lambda k, rec: False):
     po, pp = Plugin(original), Plugin(patched)
     ro, go = index(po)
@@ -181,7 +189,8 @@ def main():
     out_esp = os.path.join(a.out, os.path.basename(a.plugin))
     if a.skip_verify:
         sys.exit(0)
-    problems = verify(pre, out_esp, log, meadery_allowed(a.spec))
+    meadery, named = meadery_allowed(a.spec), spec_overrides(a.spec)
+    problems = verify(pre, out_esp, log, lambda k, rec: meadery(k, rec) or named(k, rec))
     with open(os.path.join(a.out, 'verify.txt'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(log + [''] + problems) + '\n')
     print('\n'.join(log))
@@ -189,7 +198,7 @@ def main():
         print(f'VERIFY FAILED: {len(problems)} unexpected difference(s), first 20:')
         print('\n'.join(problems[:20]))
         sys.exit(3)
-    print(f'verified: only records of types {sorted(PATCHED_TYPES)} and the meadery bench references and cells were added or changed; {out_esp}')
+    print(f'verified: only records of types {sorted(PATCHED_TYPES)}, the meadery bench references and cells and the spec\'s named overrides were added or changed; {out_esp}')
 
 
 if __name__ == '__main__':

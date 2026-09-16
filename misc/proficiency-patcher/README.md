@@ -37,7 +37,8 @@ records). The first run restores the Mutagen NuGet package.
    created or changed, per tier) and `proficiency-ids.json` (the marker spells with their global form ids);
 3. verifies the output against the pre-cleaned input with `misc/esplib.py`: only KYWD, SPEL, MGEF, FURN and
    COBJ records may be added or changed, plus the `AldMeadBench_` references and the overrides of the cells
-   `meadery` names; everything else must be byte-identical up to Mutagen's known
+   `meadery` names, the ENCH overrides `enchantmentMagnitudes` names by editor id and the REFR overrides
+   `placements` names by form key; everything else must be byte-identical up to Mutagen's known
    normalisations (`-0.0` floats, deleted records without subrecords). A changed master list renumbers every
    form id, so records are then matched by editor id and compared structurally. Exit code 3 on any other
    difference, and `verify.txt` lists it.
@@ -56,10 +57,14 @@ records). The first run restores the Mutagen NuGet package.
 | `cooking` | Vanilla cooking recipes keep their benches; `needsSalt` adds a Salt Pile where it is missing; `tiers` sets the rank. |
 | `stripConditions` | CTDA functions `CraftService` has no implementation for. Every recipe the patcher tiers loses them, so the menu and the server agree; an unregistered function answers true server-side. |
 | `smithing` | Every recipe at the smithing benches is tiered by the highest `materials` entry among its inputs and product. `temperBenches` tiers the armour table and the grindstone by the same table, keeping their vanilla conditions; the marker profession is the one whose list crafts the item, so the bows and shields of `woodworking` temper under the woodworker ranks. `newRecipes` adds forge recipes of the plugin's own (the woodcutter's axe). |
-| `uncraftable` | Recipes parked on a keyword no furniture carries, so nothing can ever make them: the 20 Daedric recipes and the 105 faction, guild and one-off pieces (hold guard, Stormcloak, Thieves Guild, Dark Brotherhood, Forsworn, Skaal, Companions, Dawnguard armour, Morag Tong, Penitus Oculatus, and the named unique items) that `stripConditions` would otherwise expose. |
+| `uncraftable` | Recipes parked on a keyword no furniture carries, so nothing can ever make them: the 20 Daedric recipes, the 105 faction, guild and one-off pieces (hold guard, Stormcloak, Thieves Guild, Dark Brotherhood, Forsworn, Skaal, Companions, Dawnguard armour, Morag Tong, Penitus Oculatus, and the named unique items) that `stripConditions` would otherwise expose, and the owner's 105 launch hides (every Imperial recipe, Bonemold, Chitin, Silver, Titus Mede I, Vampire Royal, Vvardenfell Glass, the Velothi Morag Tong sets, the +40 unarmed Moon Monk gauntlets and the closed-helmet conversions of unique and faction helmets). Runs after `woodworking`, so it also parks the Imperial shields and bow moved there. |
 | `meadery` | The mead benches: `keyword` (`AldCraftingMead`, shared) and one keyword per bench, a FURN per bench copied from `template` with `removeKeywords` swapped for both keywords, its Novice `recipe` at its own keyword (`AldRecipeMead_<output>`), and one persistent `AldMeadBench_<boiler>` reference per `placements` entry (`pos`, `rotZ` in degrees) in an override of `cell`, refused further than 256 units from its `boiler`. `honey` is the Bee Honeycomb recipe at the cooking pot (`AldRecipeCook_FoodHoney`). |
+| `benchMoves` | Existing recipes moved to another bench keyword with their tier kept (the Nordic Carved set to `CraftingSmithingSkyforge`). A recipe may not also be `uncraftable`. The report notes every furniture still carrying the keyword. |
+| `benchKeywordRemovals` | Bench keywords taken off existing furniture by editor id (the Skyforge keyword off the Riften Extension North and Mammoth Manor anvils, so the Whiterun Skyforge is the only one). A missing bench is a warning. |
+| `enchantmentMagnitudes` | One effect's magnitude on an enchantment (the Travelling Merchant Backpack's Fortify Carry Weight, 60). `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
+| `placements` | A placed reference (`ref`, a form key) moved to its `anchor`'s winning position plus the offset the defining plugin had between the two (the Windhelm Gray Quarter gate door back in the arch WindhelmSSE.esp moved). Refused when either record was rotated since. The override joins the plugin's own cell and world groups when it already has them. |
 | `woodworking` | Bow, arrow, bolt and shield recipes move from the forge to the woodcrafting keyword with their tier. |
-| `tailoring` | The owner's list at the tanning rack with the ingredients from the spec; `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe. |
+| `tailoring` | The owner's list at the tanning rack with the ingredients from the spec; `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe (the bog blight masks and the five tanning-rack twins of the +40 unarmed Moon Monk gauntlets). |
 
 Tier conditions are `HasSpell(AldMastery_<Profession>_<Rank>) == 1`, Run On Subject. The server evaluates
 the same condition in `CraftService`, which is why perks are never used (see `docs/docs_roleplay_mastery.md`).

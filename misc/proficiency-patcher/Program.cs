@@ -14,7 +14,8 @@ using Noggog;
 
 // Rewrites AlduinakAdditions.esp with the proficiency content described by spec.json: the rank marker abilities,
 // the crafting keywords, the alchemy lab and woodcrafting benches, the potion and charcoal recipes, the tier
-// conditions on cooking, smithing, tempering, woodworking and tailoring recipes, and the meadery boiler benches.
+// conditions on cooking, smithing, tempering, woodworking and tailoring recipes, the meadery boiler benches, the hidden
+// and moved recipes, and the few enchantment and placed reference fixes the spec names.
 // Run through patch.py, which pre-cleans the plugin, invokes this program and verifies the result.
 //   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>]
 
@@ -64,6 +65,10 @@ Steps.Woodworking(ctx);
 Steps.Tailoring(ctx);
 Steps.Uncraftable(ctx);
 Steps.Meadery(ctx);
+Steps.BenchKeywordRemovals(ctx);
+Steps.BenchMoves(ctx);
+Steps.EnchantmentMagnitudes(ctx);
+Steps.Placements(ctx);
 
 if (report.Errors.Count > 0)
 {
@@ -487,14 +492,108 @@ static class Steps
              "uncraftable", u["profession"]!.GetValue<string>());
     }
 
-    static void Park(PatchContext c, IEnumerable<string> edids, FormKey bench, string kind, string profession)
+    // Only the bench keyword changes, so a recipe keeps the tier an earlier step gave it
+    static void Park(PatchContext c, IEnumerable<string> edids, FormKey bench, string kind, string profession,
+                     string tier = "disabled", string note = "bench set to the parking keyword, recipe hidden")
     {
         foreach (var edid in edids)
         {
-            if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"{kind}: recipe to disable '{edid}' not found"); continue; }
+            if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"{kind}: recipe '{edid}' not found"); continue; }
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
             cobj.WorkbenchKeyword.SetTo(bench);
-            c.Report.Recipes.Add(new RecipeLine(kind, edid, c.NameOf(cobj.CreatedObject.FormKey), profession, "disabled", Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: "bench set to the parking keyword, recipe hidden"));
+            c.Report.Recipes.Add(new RecipeLine(kind, edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: note));
+        }
+    }
+
+    // ---- bench moves: existing recipes offered at another bench only ------------------------------------------------
+    public static void BenchMoves(PatchContext c)
+    {
+        var parked = (c.Spec["uncraftable"]?["recipes"]?.AsArray().Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in c.Spec["benchMoves"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        {
+            var bench = m["bench"]!.GetValue<string>();
+            var recipes = m["recipes"]!.AsArray().Select(x => x!.GetValue<string>()).ToList();
+            foreach (var edid in recipes.Where(parked.Contains)) c.Error($"bench move: '{edid}' is also in uncraftable");
+            var key = c.KeyOf<IKeywordGetter>(bench);
+            Park(c, recipes.Where(e => !parked.Contains(e)), key, "bench move", m["profession"]!.GetValue<string>(), "moved", $"moved to {bench}");
+            var winners = c.LoadOrder.PriorityOrder.Furniture().WinningOverrides().ToDictionary(f => f.FormKey);
+            foreach (var f in c.Mod.Furniture) winners[f.FormKey] = f;
+            var offeredBy = winners.Values.Where(f => f.Keywords?.Any(k => k.FormKey == key) == true).Select(f => f.EditorID ?? f.FormKey.ToString());
+            c.Note($"Bench move: {recipes.Count} recipes to {bench}, a keyword carried by {string.Join(", ", offeredBy)}");
+        }
+    }
+
+    // ---- bench keyword removals: an existing bench stops offering a keyword's recipes ------------------------------
+    public static void BenchKeywordRemovals(PatchContext c)
+    {
+        foreach (var (edid, list) in (c.Spec["benchKeywordRemovals"]?.AsObject() ?? new JsonObject()).Select(kv => (kv.Key, kv.Value!.AsArray())))
+        {
+            if (!c.TryWinning<IFurnitureGetter>(edid, out var winning)) { c.Warn($"bench keyword removal: bench '{edid}' not found, skipped"); continue; }
+            var names = list.Select(x => x!.GetValue<string>()).ToList();
+            var drop = names.Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+            if (winning.Keywords?.Any(k => drop.Contains(k.FormKey)) != true) { c.Note($"Bench {edid} ({winning.FormKey}): already without {string.Join(", ", names)}"); continue; }
+            var furn = c.Override(c.Mod.Furniture, winning);
+            furn.Keywords!.RemoveAll(k => drop.Contains(k.FormKey));
+            c.Note($"Bench {edid} ({winning.FormKey}): {string.Join(", ", names)} removed");
+        }
+    }
+
+    // ---- enchantment magnitudes: one effect of an enchantment only the listed armours carry --------------------------
+    public static void EnchantmentMagnitudes(PatchContext c)
+    {
+        if (c.Spec["enchantmentMagnitudes"] is not JsonArray entries) return;
+        var carriers = c.LoadOrder.PriorityOrder.Armor().WinningOverrides().Select(a => (a.FormKey, Ench: a.ObjectEffect.FormKeyNullable))
+            .Concat(c.LoadOrder.PriorityOrder.Weapon().WinningOverrides().Select(w => (w.FormKey, Ench: w.ObjectEffect.FormKeyNullable)))
+            .Where(x => x.Ench != null).ToLookup(x => x.Ench!.Value, x => x.FormKey);
+        foreach (var e in entries.Select(x => x!.AsObject()))
+        {
+            var edid = e["enchantment"]!.GetValue<string>();
+            var effect = c.KeyOf<IMagicEffectGetter>(e["effect"]!.GetValue<string>());
+            var magnitude = e["magnitude"]!.GetValue<float>();
+            var armors = e["armors"]!.AsArray().Select(x => c.Winning<IArmorGetter>(x!.GetValue<string>())).ToList();
+            var enchs = armors.Select(a => a.ObjectEffect.FormKeyNullable).Distinct().ToList();
+            if (enchs.Count != 1 || enchs[0] is not FormKey ench || !c.Cache.TryResolve<IObjectEffectGetter>(ench, out var winning) || winning.EditorID != edid)
+            {
+                c.Error($"enchantment {edid}: the listed armours carry {string.Join(", ", enchs.Select(x => x?.ToString() ?? "no enchantment"))}");
+                continue;
+            }
+            var shared = carriers[ench].Except(armors.Select(a => a.FormKey)).ToList();
+            if (shared.Count > 0) { c.Error($"enchantment {edid} is also carried by {string.Join(", ", shared.Select(c.EdidOf))}"); continue; }
+            var rec = c.Override(c.Mod.ObjectEffects, winning);
+            var hits = rec.Effects.Where(x => x.BaseEffect.FormKey == effect && x.Data != null).ToList();
+            if (hits.Count != 1) { c.Error($"enchantment {edid}: {hits.Count} effects of {c.EdidOf(effect)}, expected 1"); continue; }
+            c.Note($"Enchantment {edid} ({ench}): {c.EdidOf(effect)} magnitude {hits[0].Data!.Magnitude} -> {magnitude} on {string.Join(", ", armors.Select(a => a.EditorID))}");
+            hits[0].Data!.Magnitude = magnitude;
+        }
+    }
+
+    // ---- placements: a placed reference keeps the offset to its anchor that the defining plugin gave it -------------
+    public static void Placements(PatchContext c)
+    {
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        foreach (var p in c.Spec["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        {
+            var refKey = FormKey.Factory(p["ref"]!.GetValue<string>());
+            var anchorKey = FormKey.Factory(p["anchor"]!.GetValue<string>());
+            // Contexts run from the winning override down to the defining plugin
+            var refs = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(refKey).ToList();
+            var anchors = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(anchorKey).ToList();
+            if (refs.Count == 0 || anchors.Count == 0) { c.Error($"placement: {refKey} or its anchor {anchorKey} not found"); continue; }
+            var (refWin, refOrigin) = (refs[0].Record.Placement!, refs[^1].Record.Placement!);
+            var (anchorWin, anchorOrigin) = (anchors[0].Record.Placement!, anchors[^1].Record.Placement!);
+            // A pure translation only holds while neither record was rotated after its defining plugin
+            if (refWin.Rotation != refOrigin.Rotation || anchorWin.Rotation != anchorOrigin.Rotation)
+            {
+                c.Error($"placement {refKey}: the reference or the anchor was rotated by {refs[0].ModKey} / {anchors[0].ModKey}");
+                continue;
+            }
+            var target = new P3Float((float)((double)anchorWin.Position.X + refOrigin.Position.X - anchorOrigin.Position.X),
+                                     (float)((double)anchorWin.Position.Y + refOrigin.Position.Y - anchorOrigin.Position.Y),
+                                     (float)((double)anchorWin.Position.Z + refOrigin.Position.Z - anchorOrigin.Position.Z));
+            if (refWin.Position == target) { c.Note($"Placement {refKey}: already at {target} in {refs[0].ModKey}"); continue; }
+            var rec = refs[0].GetOrAddAsOverride(c.Mod);
+            c.Note($"Placement {refKey} ({c.EdidOf(rec.Base.FormKey)}): {rec.Placement!.Position} from {refs[0].ModKey} -> {target}, anchor {anchorKey} at {anchorWin.Position} from {anchors[0].ModKey}");
+            rec.Placement.Position = target;
         }
     }
 

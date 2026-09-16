@@ -65,7 +65,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Profession | Novice (everyone) | Adept | Expert | Master |
 |---|---|---|---|---|
 | Alchemist | Minor Healing, Minor Stamina, Minor Magicka, wine, ale, mead, and Honningbrew and Black-Briar mead at the meadery boilers | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
-| Blacksmith | iron, corundum, leather, the woodcutter's axe | gold, steel, silver | orichalcum, dwarven, moonstone | malachite, quicksilver, ebony, dragon, stalhrim, nordic |
+| Blacksmith | iron, corundum, leather, the woodcutter's axe | gold, steel, silver | orichalcum, dwarven, moonstone | malachite, quicksilver, ebony, dragon, stalhrim, nordic (at the Skyforge only) |
 | Cook | the cooked meats (each needs a Salt Pile), Steamed Mudcrab Legs, Honey (from one Bee Honeycomb) | soups, stews, chowder, Sweet Roll, Potato Bread | Bread, Braided Bread, Chicken Dumpling, Beef Stew | pies, crostatas, dumplings, Garlic Bread, Elsweyr Fondue, Venison Stew |
 | Hunter | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
 | Miner | iron and corundum veins | gold and silver veins | orichalcum and moonstone veins | malachite, quicksilver and ebony veins |
@@ -107,10 +107,41 @@ never smithed:
   Captain helmets, the Dragonbone Crown, the Ancient Falmer crown, the Akaviri
   katana, the silver sword and greatsword, and the Cidhna Mine shiv.
 
-Stalhrim, Nordic, Bonemold, the Dawnguard crossbows and bolts, the Blades armour
-and the Skyforge Bow stay craftable at their mastery tier. Tempering is
-untouched: a parked recipe's Improve entry still lists the item for anyone
-holding one.
+**The owner's launch list is never craftable either.** Another 105 recipes
+sit on `MothNest1`, which reverses the earlier ruling that kept Bonemold
+craftable:
+
+- every Imperial recipe: the Imperial, Imperial Light and DIS Heavy Legion
+  pieces, the studded cuirass, the sword, the Imperial Battlemage and Imperial
+  Centurion sets, the three Imperial closed helmets, and the heavy shield, light
+  shield, bow and Centurion shield from the woodcrafting bench. Steel Imperial
+  Gauntlets and the Blades armour stay;
+- Bonemold (plain, Improved and the three closed helmets) and Chitin (heavy,
+  light, the shield and the three closed helmets). Redoran Tombwarden and
+  Bonesaint stay;
+- the Silver armour of 1SilverArmor, both Titus Mede I sets, the Vampire Royal
+  armour and the Vvardenfell Glass armour;
+- the Morag Tong Grandmaster and Seeker sets of Armors of the Velothi;
+- the Moon Monk's Gauntlets with +40 unarmed damage, and their five tanning-rack
+  twins (`tailoring.disableRecipes`);
+- the closed-helmet conversions of unique or faction helmets: Helm of Bone,
+  Nidhogg, Avatar of Yngol, Drakesteinn, both Deathbrand helms, the Dawnguard
+  Judgment and light helms, and the Companions Wolf Closed Helmet and Ulfhedinn
+  Closed Helm.
+
+**Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
+Nordic Bow included) and closed helmet, 14 recipes, move to the
+`CraftingSmithingSkyforge` keyword with their blacksmith tier (`benchMoves`).
+The Whiterun Skyforge is the only furniture left with that keyword:
+`benchKeywordRemovals` takes it off the Riften Extension North anvil
+(`Eli_Anvil`) and the Mammoth Manor forge (`MM_CraftingBlacksmithAnvil`), which
+therefore also stop offering the Ancient Nord armour, the Nord Hero weapons and
+Sentinel's steel plate cuirass and bracers. The Nordic arrow stays at the
+woodcrafting bench, and the AVExpansion Nordic Vanguard set stays where it is.
+
+Stalhrim, the Dawnguard crossbows and bolts, the Blades armour and the Skyforge
+Bow stay craftable at their mastery tier. Tempering is untouched: a parked
+recipe's Improve entry still lists the item for anyone holding one.
 
 Benches:
 
@@ -276,16 +307,27 @@ produces is:
 - `KYWD` `AldCraftingAlchemy`, `AldCraftingKiln`, `AldCraftingWoodcrafting`,
   and the mead keywords.
 - `FURN` overrides of the alchemy labs (bench type Create Object, the alchemy
-  keyword) and the carpenter's workbenches, plus the new woodcrafting bench and
-  the two mead benches.
+  keyword), the carpenter's workbenches and the two anvils that lose the Skyforge
+  keyword, plus the new woodcrafting bench and the two mead benches.
 - `REFR` `AldMeadBench_<boiler>`: the five placed mead benches, persistent, in
   overrides of the two meadery cells.
+- `ENCH` overrides of the Travelling Merchant Backpack's two enchantments
+  (Armors of the Velothi): Fortify Carry Weight 60 instead of 100, on both
+  variants. No other item carries them, and the step refuses one that is shared.
+  The bags of Nirn Necessities keep their own values (pouch 25, satchel 50,
+  backpacks 75, Trader's Resource 200).
+- One `REFR` override, the Windhelm Gray Quarter gate door (Skyrim.esm
+  `000A17D3`): WindhelmSSE.esp moved the door and its arch `000A17CD` by
+  different amounts, so the door is put back at the arch's position plus the
+  vanilla offset between the two, inside the plugin's existing cell and world
+  groups.
 - `COBJ` records: the new alchemy, charcoal and woodcutter's axe recipes;
   overrides of every cooking, smithing, tempering, woodworking and tailoring
   recipe with one condition, `HasSpell`, parameter the rank's marker, **Run On =
   Subject**, `== 1`. Novice means no condition. `Run On` must be Subject:
   `ConditionsEvaluator` only accepts `Subject`, `Target` and `Reference`. The
-  recipes listed under `uncraftable` keep their tier but sit on `MothNest1`.
+  recipes listed under `uncraftable` keep their tier but sit on `MothNest1`;
+  those under `benchMoves` keep their tier at their new bench keyword.
 
 Constraints that still hold:
 
