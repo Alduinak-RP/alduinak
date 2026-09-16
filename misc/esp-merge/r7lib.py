@@ -33,6 +33,8 @@ INPUTS = {
 }
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
+# What the live copies hold today: the r7 plugin, deployed 2026-09-15. Re-pin after every deploy.
+DEPLOYED_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
 ATTRIBUTION = (R7 + 'attribution.json', '031388679ed48a92032cd7873302051b28cc37854ff1cd376305d148b44d880c')
 STAGE_SETTINGS_SHA = 'f9dce8d45661830ed8eb307542250da6ca1158d4eeb6f42e7b2416611417cb22'
 REMOVED_NAVM = (ESPFIX + 'tools/removed-navm.txt', '48763ffc1347aac94e6b35cb7cfe49b0ba20b8b8e1c921df1ef70af304ece7c8')
@@ -62,11 +64,11 @@ def read_input(tag):
 
 
 def assert_untouched():
-    # The live copies must still be LIVE and the Desktop file must still be NEW
+    # The live copies must still be the deployed plugin and the Desktop file must still be NEW
     for p in LIVE_COPIES:
-        assert sha_file(p) == INPUTS['LIVE'][1], f'live copy changed: {p}'
+        assert sha_file(p) == DEPLOYED_SHA, f'live copy changed: {p}'
     assert sha_file(INPUTS['NEW'][0]) == INPUTS['NEW'][1], 'the Desktop NEW file changed'
-    return [f'untouched: {p} {INPUTS["LIVE"][1][:8]}' for p in LIVE_COPIES] + [f'untouched: {INPUTS["NEW"][0]} {INPUTS["NEW"][1][:8]}']
+    return [f'untouched: {p} {DEPLOYED_SHA[:8]}' for p in LIVE_COPIES] + [f'untouched: {INPUTS["NEW"][0]} {INPUTS["NEW"][1][:8]}']
 
 
 def check_sha(path, want):
