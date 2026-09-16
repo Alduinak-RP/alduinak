@@ -108,8 +108,11 @@ Benches:
 - **Forges** carry one added recipe, the woodcutter's axe (one iron ingot and
   one leather strip, open to everyone). Every vanilla merchant on this server is
   disabled, and without an axe no one can chop firewood.
-- **Armour table and grindstone**: the Improve tab shows only what the smith
-  could forge. This is a menu gate, nothing more (see below).
+- **Armour table and grindstone**: the Improve tab shows only what the character
+  could have made. The rank comes from the material table, the profession from
+  whoever crafts the item, so the 27 bow and shield entries ask for the
+  woodworker rank and everything else for the blacksmith rank. This is a menu
+  gate, nothing more (see below).
 
 ### Vanilla perks through abilities
 

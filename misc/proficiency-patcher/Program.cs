@@ -433,21 +433,36 @@ static class Steps
         var s = c.Spec["smithing"]!.AsObject();
         var profession = s["profession"]!.GetValue<string>();
         var benches = (s["temperBenches"]?.AsArray().Select(x => c.KeyOf<IKeywordGetter>(x!.GetValue<string>())) ?? Enumerable.Empty<FormKey>()).ToHashSet();
+        var crafter = CrafterOfProduct(c);
         var ranks = c.Ranks;
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
             if (!benches.Contains(winning.WorkbenchKeyword.FormKey)) continue;
             var edid = winning.EditorID ?? "";
             var tier = ranks[MaterialTierOf(winning, c.MaterialTiers)];
+            var marker = crafter.GetValueOrDefault(winning.CreatedObject.FormKey, profession);
             if (tier == ranks[0] && !HasAldCondition(c, winning))
             {
-                c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
+                c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(winning.CreatedObject.FormKey), marker, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
                 continue;
             }
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
-            SetTier(c, cobj, profession, tier);
-            c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName));
+            SetTier(c, cobj, marker, tier);
+            c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(cobj.CreatedObject.FormKey), marker, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName,
+                                                note: marker == profession ? null : $"{marker} rank"));
         }
+    }
+
+    // Product -> the profession whose recipe list crafts it, so a temper entry asks for the rank that made the item
+    static Dictionary<FormKey, string> CrafterOfProduct(PatchContext c)
+    {
+        var map = new Dictionary<FormKey, string>();
+        var lists = new[] { (c.Spec["woodworking"]!["profession"]!.GetValue<string>(), WoodworkingSet(c)),
+                            (c.Spec["tailoring"]!["profession"]!.GetValue<string>(), TailoringSet(c)) };
+        foreach (var (prof, edids) in lists)
+            foreach (var edid in edids)
+                if (c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)) map[recipe.CreatedObject.FormKey] = prof;
+        return map;
     }
 
     // ---- recipes that must never be craftable: parked on a keyword no furniture carries ---------------------------
@@ -501,6 +516,9 @@ static class Steps
         var w = c.Spec["woodworking"]!["recipes"]!.AsObject();
         return w.SelectMany(kv => kv.Value!.AsArray().Select(x => x!.GetValue<string>())).ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
+
+    static HashSet<string> TailoringSet(PatchContext c) =>
+        c.Spec["tailoring"]!["recipes"]!.AsArray().Select(x => x!["edid"]!.GetValue<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     // ---- woodworking: bows, arrows and shields move to the woodcrafting bench --------------------------------------
     public static void Woodworking(PatchContext c)
