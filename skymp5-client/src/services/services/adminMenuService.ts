@@ -16,7 +16,7 @@ declare const window: any;
 // Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
 // Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones and the Pets grant: adminAction petBases / petGrant), the Item Spawner (adminAction itemSearch / itemSpawn) and Writings (writingStaff); the Skills tab embeds the mastery menu.
+// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn) and Writings (writingStaff); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -64,6 +64,11 @@ const events = {
   writingDestroy: "admin::writingdestroy",
   factionMenu: "admin::factionmenu",
   faction: "admin::faction",
+  jobList: "admin::joblist",
+  jobSave: "admin::jobsave",
+  jobDelete: "admin::jobdelete",
+  jobTp: "admin::jobtp",
+  jobPos: "admin::jobpos",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -83,7 +88,7 @@ const WRITING_STAFF_OPS: Record<string, string> = {
 };
 
 // Actions that move the admin; their success reply closes the menu
-const SELF_TELEPORTS = ["teleportTo", "teleportLoc", "npcZoneTp"];
+const SELF_TELEPORTS = ["teleportTo", "teleportLoc", "npcZoneTp", "jobTp"];
 
 interface DebugServer {
   name: string;
@@ -131,7 +136,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, events };
 
 function hex(id: number): string {
   return id ? id.toString(16) : "";
@@ -240,6 +245,7 @@ export class AdminMenuService extends ClientListener {
         items: panelData.items,
         petBases: panelData.petBases,
         faction: panelData.faction,
+        jobs: panelData.jobs,
         events,
       };
       if (panelData.debug) panelData.debug.target = this.shownTarget();
@@ -281,9 +287,12 @@ export class AdminMenuService extends ClientListener {
       // An empty object shows "No bases configured" instead of loading forever
       panelData.petBases = bases && typeof bases === "object" ? bases : {};
       this.pushData();
+    } else if (content["customPacketType"] === "adminJobs") {
+      panelData.jobs = Array.isArray(content["jobs"]) ? content["jobs"] : [];
+      this.pushData();
     } else if (content["customPacketType"] === "adminPos") {
-      // at lets a second press on the same spot refill a form edited in between
-      panelData.npcPos = { id: String(content["cellOrWorldDesc"] ?? ""), pos: Array.isArray(content["pos"]) ? content["pos"] : [], at: Date.now() };
+      // at lets a second press on the same spot refill a form edited in between; end names the job end asked for, "" for the zone form
+      panelData.npcPos = { id: String(content["cellOrWorldDesc"] ?? ""), pos: Array.isArray(content["pos"]) ? content["pos"] : [], at: Date.now(), end: this.posEnd };
       this.pushData();
     } else if (content["customPacketType"] === "adminMode") {
       // Keep the Modes tab highlight in sync without a full roster refresh
@@ -307,6 +316,7 @@ export class AdminMenuService extends ClientListener {
     panelData.npcZones = [];
     panelData.mastery = null;
     panelData.petBases = null;
+    panelData.jobs = null;
   }
 
   private showMenu(): void {
@@ -546,8 +556,23 @@ export class AdminMenuService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "npcZonesRequest" });
       return;
     }
-    if (kind === events.npcPos) {
+    if (kind === events.npcPos || kind === events.jobPos) {
+      this.posEnd = kind === events.jobPos ? str(e.arguments[1]) : "";
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "npcZonePos" });
+      return;
+    }
+    if (kind === events.jobList) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "jobList" });
+      return;
+    }
+    if (kind === events.jobSave) {
+      // One Jobs.json entry as a JSON string; the server pushes adminJobs after every change
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "jobAdd", job: str(e.arguments[1]) });
+      return;
+    }
+    if (kind === events.jobDelete || kind === events.jobTp) {
+      const action = kind === events.jobDelete ? "jobDelete" : "jobTp";
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action, target: str(e.arguments[1]), end: str(e.arguments[2]) });
       return;
     }
     if (kind === events.npcAdd) {
@@ -623,4 +648,5 @@ export class AdminMenuService extends ClientListener {
   private server: DebugServer | null = null;
   private serverActorId = "";
   private serverProfileId = 0;
+  private posEnd = "";
 }

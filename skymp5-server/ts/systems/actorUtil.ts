@@ -21,12 +21,37 @@ export const baseIdOf = (mp: Mp, actorId: number): number => {
   }
 };
 
-export const isDoorRef = (mp: Mp, refId: number): boolean => {
+export const GOLD_BASE_ID = 0x0000000f;
+
+// Record type of a reference's base ("DOOR", "FURN"...), "" when unknown
+export const baseTypeOf = (mp: Mp, refId: number): string => {
   try {
-    return mp.lookupEspmRecordById(baseIdOf(mp, refId))?.record?.type === "DOOR";
+    return String(mp.lookupEspmRecordById(baseIdOf(mp, refId))?.record?.type ?? "");
+  } catch {
+    return "";
+  }
+};
+
+export const isDoorRef = (mp: Mp, refId: number): boolean => baseTypeOf(mp, refId) === "DOOR";
+
+// Whether the inventory holds at least one item whose base id matches
+export const holdsItem = (mp: Mp, actorId: number, match: (baseId: number) => boolean): boolean => {
+  try {
+    const inv = mp.get(actorId, "inventory");
+    const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries : [];
+    return entries.some((e) => Number(e.count) > 0 && match(Number(e.baseId) >>> 0));
   } catch {
     return false;
   }
+};
+
+// "45 min" or "3 h 12 min", rounded up to the minute
+export const formatWait = (ms: number): string => {
+  const minutes = Math.ceil(ms / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
 };
 
 // Player characters use the Player NPC_ (0x7) base and keep a profile id while logged out

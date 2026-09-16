@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson } from "./playerText";
+import { GOLD_BASE_ID } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -46,8 +47,6 @@ const BOARD_PROP = "private.bountyBoard";
 // hit with the crosshair (_M_MissiveBoard, "Missive Board") and the invisible
 // script primitive singleplayer uses (_M_ActivatorBoard). Both are boards.
 const BOARD_BASE_DESCS = ["12cb:Missives.esp", "d65:Missives.esp"];
-
-const GOLD_BASE_ID = 0x0000000f;
 
 const DEFAULT_COST_GOLD = 25;
 const DEFAULT_EXPIRY_DAYS = 7;

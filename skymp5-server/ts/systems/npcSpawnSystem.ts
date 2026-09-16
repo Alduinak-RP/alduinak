@@ -124,20 +124,31 @@ interface ZoneFile {
 }
 
 // Field names in the file are matched case-insensitively; key must be lower case
-const pickKey = (raw: unknown, key: string): string | undefined => {
+export const pickKey = (raw: unknown, key: string): string | undefined => {
   if (!raw || typeof raw !== "object") return undefined;
   return Object.keys(raw).find((x) => x.toLowerCase() === key);
 };
 
-const pick = (raw: unknown, key: string): unknown => {
+export const pick = (raw: unknown, key: string): unknown => {
   const k = pickKey(raw, key);
   return k === undefined ? undefined : (raw as Record<string, unknown>)[k];
 };
 
-const num = (v: unknown, fallback: number): number => {
+export const num = (v: unknown, fallback: number): number => {
   if (v === undefined || v === null || v === "") return fallback;
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+};
+
+// {x,y,z}, [x,y,z] or "x, y, z"
+export const parsePos = (raw: unknown): number[] | null => {
+  let parts: unknown[] | null = null;
+  if (Array.isArray(raw)) parts = raw;
+  else if (typeof raw === "string") parts = raw.split(/[,\s]+/).filter(Boolean);
+  else if (raw && typeof raw === "object") parts = [pick(raw, "x"), pick(raw, "y"), pick(raw, "z")];
+  if (!parts || parts.length !== 3) return null;
+  const pos = parts.map((v) => num(v, NaN));
+  return pos.every((v) => Number.isFinite(v)) ? pos : null;
 };
 
 const hex = (id: number): string => id.toString(16);
@@ -298,7 +309,7 @@ export class NpcSpawnSystem implements System {
       return null;
     }
     const locator = String(pick(raw, "id") ?? "").trim();
-    const pos = this.parsePos(pick(raw, "pos"));
+    const pos = parsePos(pick(raw, "pos"));
     const radius = num(pick(raw, "size"), DEFAULT_SIZE);
     const npcs = this.parseNpcs(pick(raw, "npc"));
     if (!locator || !pos || !(radius > 0) || !npcs.length) {
@@ -367,17 +378,6 @@ export class NpcSpawnSystem implements System {
     }
     const kept = rings.length ? `; rings kept for: ${rings.join(", ")}` : "";
     this.log(`NpcSpawnSystem: navmesh spots for ${matched - rings.length}/${matched} zone(s) in ${Date.now() - started} ms${kept}`);
-  }
-
-  // {x,y,z}, [x,y,z] or "x, y, z"
-  private parsePos(raw: unknown): number[] | null {
-    let parts: unknown[] | null = null;
-    if (Array.isArray(raw)) parts = raw;
-    else if (typeof raw === "string") parts = raw.split(/[,\s]+/).filter(Boolean);
-    else if (raw && typeof raw === "object") parts = [pick(raw, "x"), pick(raw, "y"), pick(raw, "z")];
-    if (!parts || parts.length !== 3) return null;
-    const pos = parts.map((v) => num(v, NaN));
-    return pos.every((v) => Number.isFinite(v)) ? pos : null;
   }
 
   // "00023A99 4", "23a99:Skyrim.esm 4" or { id, count }; count defaults to 1

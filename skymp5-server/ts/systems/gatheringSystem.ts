@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { espmContainerEntries, espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
-import { addItemTo } from "./actorUtil";
+import { addItemTo, holdsItem } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { MasterySystem, RANK_NAMES } from "./masterySystem";
 
@@ -481,13 +481,7 @@ export class GatheringSystem implements System {
       this.toolCache.set(listId, tools);
     }
     if (!tools.size) return true;
-    try {
-      const inv = (ctx.svr as Mp).get(actorId, "inventory");
-      const entries = inv && Array.isArray(inv.entries) ? inv.entries : [];
-      return entries.some((e: any) => tools!.has(Number(e.baseId) >>> 0) && Number(e.count) > 0);
-    } catch {
-      return false;
-    }
+    return holdsItem(ctx.svr as Mp, actorId, (baseId) => tools!.has(baseId));
   }
 
   private lookup(ctx: SystemContext, formId: number): any {

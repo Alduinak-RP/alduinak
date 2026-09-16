@@ -6,6 +6,7 @@ import MasteryMenu, { MasteryData } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
 import WritingTools from './writingTools';
 import FactionTab, { FactionMenuData } from './factionTab';
+import Jobs, { AdminPos, JobRow } from './jobs';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -118,11 +119,12 @@ export interface AdminPanelData {
   caps?: Partial<Record<AdminSub | 'kick' | 'ban', boolean>>; // server-resolved tier capabilities, absent on older servers
   tier?: string; // "senior" | "developer" | "gm", absent on older servers
   mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
-  npcPos?: { id: string; pos: number[]; at: number } | null; // the admin's server-side location for the Add form
+  npcPos?: AdminPos | null; // the admin's server-side location for the Add form or one end of the job form
   skills?: Omit<MasteryData, 'events'> | null; // the player's own masteryMenu payload
   items?: ItemResults | null; // the latest adminItems reply
   petBases?: Partial<Record<PetKind, PetBase[]>> | null; // the petBases reply, absent until it arrives
   faction?: FactionMenuData | null; // the factionMenu reply, absent until it arrives
+  jobs?: JobRow[] | null; // the adminJobs reply, absent until it arrives
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -184,12 +186,13 @@ const tabButtons = <T extends string>(tabs: Array<{ id: T; label: string }>, act
     </button>
   ));
 
-type NpcSub = 'list' | 'add' | 'pets';
+type NpcSub = 'list' | 'add' | 'pets' | 'jobs';
 
 const NPC_SUBS: Array<{ id: NpcSub; label: string }> = [
   { id: 'list', label: 'Zones' },
   { id: 'add', label: 'Add' },
   { id: 'pets', label: 'Pets' },
+  { id: 'jobs', label: 'Jobs' },
 ];
 
 type PetKind = 'horse' | 'livestock' | 'dog';
@@ -396,7 +399,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const npcPosAt = data.npcPos ? data.npcPos.at : 0;
   useEffect(() => {
     const p = data.npcPos;
-    if (!p || !p.id || !p.pos || p.pos.length !== 3) return;
+    if (!p || p.end || !p.id || !p.pos || p.pos.length !== 3) return;
     setZoneForm((f) => ({ ...f, id: p.id, x: String(p.pos[0]), y: String(p.pos[1]), z: String(p.pos[2]) }));
   }, [npcPosAt]);
 
@@ -424,6 +427,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     if (topTab === 'admin') {
       send(ev.refresh);
       setRefreshKey((k) => k + 1);
+      if (view === 'npcs' && npcSub === 'jobs' && ev.jobList) send(ev.jobList);
     }
     if (topTab === 'skills' && ev.skills) send(ev.skills);
     if (topTab === 'faction' && ev.factionMenu) send(ev.factionMenu, data.faction ? data.faction.selected : '');
@@ -528,6 +532,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const openNpcSub = (id: NpcSub): void => {
     setNpcSub(id);
     if (id === 'pets' && !data.petBases && ev.petBases) send(ev.petBases);
+    if (id === 'jobs' && ev.jobList) send(ev.jobList);
   };
 
   const petBaseList: PetBase[] = (data.petBases && data.petBases[petKind]) || [];
@@ -780,7 +785,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
         {view === 'npcs' ? (
           <div className="admin-panel__body">
             <div className="admin-panel__tabs admin-panel__tabs--sub">
-              {NPC_SUBS.map((t) => (
+              {NPC_SUBS.filter((t) => t.id !== 'jobs' || !!ev.jobList).map((t) => (
                 <button
                   key={t.id}
                   className={'admin-panel__tab' + (npcSub === t.id ? ' admin-panel__tab--active' : '')}
@@ -826,6 +831,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   ))
                 )}
               </div>
+            ) : npcSub === 'jobs' ? (
+              <Jobs jobs={data.jobs || null} pos={data.npcPos || null} ev={ev} send={send} />
             ) : npcSub === 'pets' ? (
               <div className="admin-panel__body">
                 <div className="admin-panel__form">

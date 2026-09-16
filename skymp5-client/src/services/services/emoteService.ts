@@ -208,7 +208,7 @@ export class EmoteService extends ClientListener {
       return;
     }
     if (this.isPoseLocked()) {
-      notifyNextUpdate(this.controller, this.sp, "You cannot use emotes while restrained.");
+      notifyNextUpdate(this.controller, this.sp, this.poseLockNotice());
       return;
     }
     this.openMenu();
@@ -246,7 +246,7 @@ export class EmoteService extends ClientListener {
         return;
       }
       if (this.isPoseLocked()) {
-        notifyNextUpdate(this.controller, this.sp, "You cannot use emotes while restrained.");
+        notifyNextUpdate(this.controller, this.sp, this.poseLockNotice());
         return;
       }
       this.playEmote(anim);
@@ -256,7 +256,7 @@ export class EmoteService extends ClientListener {
   // Plays an idle for another service; exits replace the exit chain derived from its name
   play(anim: string, exits?: string[]): void {
     if (this.isPoseLocked()) {
-      notifyNextUpdate(this.controller, this.sp, "You cannot use emotes while restrained.");
+      notifyNextUpdate(this.controller, this.sp, this.poseLockNotice());
       return;
     }
     if (exits) this.customExits.set(anim, exits);
@@ -392,6 +392,15 @@ export class EmoteService extends ClientListener {
     } catch {
       return false;
     }
+  }
+
+  // A carrier, on a passive job or not, is holding a load rather than restrained
+  private poseLockNotice(): string {
+    try {
+      const restraint = this.controller.lookupListener(RestraintService);
+      if (restraint.isCarrying && !restraint.isCarried) return "Put down what you carry to use emotes.";
+    } catch { /* restraint wording */ }
+    return "You cannot use emotes while restrained.";
   }
 
   private openMenu(): void {

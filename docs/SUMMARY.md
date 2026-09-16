@@ -48,5 +48,6 @@
 - [Bounty Boards](docs_roleplay_bounty_boards.md)
 - [Writings (letters, journals, books)](docs_roleplay_writing.md)
 - [NPC Spawns](docs_roleplay_npc_spawns.md)
+- [Passive Jobs (carry trips for gold)](docs_roleplay_jobs.md)
 - [Character Progress (map markers, ingredient effects)](docs_roleplay_character_progress.md)
 - [Emote Wheel (prop emotes and their items)](docs_roleplay_emote_wheel.md)

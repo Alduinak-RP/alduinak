@@ -67,7 +67,7 @@ const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("id
  *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 30, "carryUp": 40, "carryYaw": 90 }
  *   { "customPacketType": "restraintState", "boundHands": false, "carried": false, "carrier": 0 }
  *
- *   // The carrier (pose only, no control change); target is the carried actor's server id, an NPC's clone is posed here:
+ *   // The carrier (pose only, no control change); target is the carried actor's server id, an NPC's clone is posed here, 0 for a passive job load:
  *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart", "target": 4278190090 }
  *   { "customPacketType": "carryState", "carrying": false }
  *
@@ -401,7 +401,8 @@ export class RestraintService extends ClientListener {
     const desired = this.carrying ? this.carrierAnim : OFFSET_STOP_ANIM;
     // A drawn weapon is sheathed first; the tick sends the pose once the sheathe has settled
     if (desired !== this.appliedCarrierAnim && !(this.carrying && player.isWeaponDrawn())) {
-      this.sp.Debug.sendAnimationEvent(player, desired);
+      // A bound or carried pose applied meanwhile owns the offset layer, so ending the carry must not stop it
+      if (this.carrying || !(this.boundHands || this.carried)) this.sp.Debug.sendAnimationEvent(player, desired);
       this.appliedCarrierAnim = desired;
     }
     // Carrying a body over-encumbers: blocks sprint/jump and forces walk.

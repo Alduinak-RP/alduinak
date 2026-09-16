@@ -8,6 +8,7 @@ import { logError } from "../../logging";
 import { isPlayerCharacterId } from "./playerActionService";
 import { PetService } from "./petService";
 import { MountService } from "./mountService";
+import { JobService } from "./jobService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -32,6 +33,8 @@ const PROMPT_POLL_MS = 500;
 interface Prompt {
   verb: string;
   label: string;
+  // The verb alone as one sentence-case line
+  line?: boolean;
 }
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
@@ -78,6 +81,12 @@ export class InteractionPromptService extends ClientListener {
         if (focused) this.clearPrompt();
         else this.refresh();
       }
+      // A job offer comes and goes without a crosshair event
+      const jobVersion = this.controller.lookupListener(JobService).promptVersion;
+      if (jobVersion !== this.jobPromptVersion) {
+        this.jobPromptVersion = jobVersion;
+        if (!focused) this.refresh();
+      }
       // A death or respawn under the crosshair fires no crosshair event
       const now = Date.now();
       if (!focused && this.promptShown && now - this.lastPollMs >= PROMPT_POLL_MS) {
@@ -104,13 +113,14 @@ export class InteractionPromptService extends ClientListener {
     } catch { /* not in game yet */ }
   }
 
+  // With nothing under the crosshair a passive job offer may show
   private apply(ref: ObjectReference | null): void {
-    const next = ref ? this.promptFor(ref) : null;
+    const next = ref ? this.promptFor(ref) : this.controller.lookupListener(JobService).prompt;
     if (!next) {
       this.clearPrompt();
       return;
     }
-    if (this.promptShown && next.verb === prompt.verb && next.label === prompt.label) {
+    if (this.promptShown && next.verb === prompt.verb && next.label === prompt.label && !!next.line === !!prompt.line) {
       return;
     }
     prompt = next;
@@ -267,6 +277,7 @@ export class InteractionPromptService extends ClientListener {
       id: WIDGET_ID,
       verb: prompt.verb,
       label: prompt.label,
+      line: !!prompt.line,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
@@ -278,4 +289,5 @@ export class InteractionPromptService extends ClientListener {
   private boardBaseId: number | undefined = undefined;
   private errorLogged = false;
   private lastPollMs = 0;
+  private jobPromptVersion = 0;
 }

@@ -414,6 +414,7 @@ const ignoredAnims = new Set<string>([
 // carry case; bound-hands (arrest) reuses the same mechanism.
 const forcedSyncAnims = new Set<string>([
   "OffsetCarryBasketStart",
+  "OffsetCarryLogStart",
   "OffsetBoundStandingStart",
   "OffsetArmsCrossedStart",
   "OffsetStop",

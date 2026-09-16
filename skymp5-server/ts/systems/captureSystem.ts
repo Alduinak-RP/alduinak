@@ -140,6 +140,8 @@ export class CaptureSystem implements System {
   private nextRequestId = 1;
   // Set by PetSystem: a carried NPC was set down or freed
   onNpcCarryEnd: ((carriedActorId: number, carrierActorId: number) => void) | null = null;
+  // Set by JobSystem: the load a job carrier holds, "" when none
+  jobLoadOf: ((actorId: number) => string) | null = null;
   private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
   private refusalLogAt = new Map<number, number>();
@@ -361,7 +363,9 @@ export class CaptureSystem implements System {
   // Picks up a server NPC without a prompt; empty result on success, else the refusal. The carrier must host it, its client moves it
   carryNpc(ctx: SystemContext, carrierActorId: number, npcId: number, npcName: string): string {
     if (this.userOf(ctx, npcId) >= 0) return "That is a player.";
-    const refusal = this.carrying.has(carrierActorId) ? "You are already carrying something."
+    const load = this.jobLoadOf?.(carrierActorId) ?? "";
+    const refusal = load ? `Put the ${load} down first.`
+      : this.carrying.has(carrierActorId) ? "You are already carrying something."
       : this.carriedBy.has(carrierActorId) ? "You cannot carry anything while being carried."
       : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anything while bound."
       : this.carriedBy.has(npcId) ? `${npcName} is already being carried.`
@@ -768,7 +772,10 @@ export class CaptureSystem implements System {
 
   // No carry chains and no bound carriers: a carrier cannot be carried, a carried or bound player cannot carry; empty when allowed
   private carryRefusal(ctx: SystemContext, carrierActorId: number, targetActorId: number): string {
-    const refusal = this.carrying.has(carrierActorId) ? "You are already carrying someone."
+    const load = this.jobLoadOf?.(carrierActorId) ?? "";
+    const refusal = load ? `Put the ${load} down first.`
+      : this.jobLoadOf?.(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} has their hands full.`
+      : this.carrying.has(carrierActorId) ? "You are already carrying someone."
       : this.carriedBy.has(carrierActorId) ? "You cannot carry anyone while being carried."
       : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anyone while bound."
       : this.carrying.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is carrying someone.`

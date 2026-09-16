@@ -54,6 +54,7 @@ import { BountyBoardService } from "./services/services/bountyBoardService";
 import { WritingService } from "./services/services/writingService";
 import { InteractionPromptService } from "./services/services/interactionPromptService";
 import { RestraintService } from "./services/services/restraintService";
+import { JobService } from "./services/services/jobService";
 import { CaptureConsentService } from "./services/services/captureConsentService";
 import { SearchService } from "./services/services/searchService";
 import { VoiceService } from "./services/services/voiceService";
@@ -152,6 +153,7 @@ const main = () => {
       new WritingService(sp, controller),
       new InteractionPromptService(sp, controller),
       new RestraintService(sp, controller),
+      new JobService(sp, controller),
       new CaptureConsentService(sp, controller),
       new SearchService(sp, controller),
       new VoiceService(sp, controller),

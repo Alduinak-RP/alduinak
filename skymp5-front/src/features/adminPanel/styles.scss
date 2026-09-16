@@ -268,6 +268,11 @@ $admin-row-gutter: 16px;
       max-height: 200px;
     }
 
+    // Leaves room for the job form below the list
+    &--jobs {
+      max-height: 170px;
+    }
+
     &::-webkit-scrollbar {
       width: 8px;
     }

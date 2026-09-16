@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
 import { placeNpc, moveNpc, locationNear, locationForFollower, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, isStreamedTo, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef } from "./actorUtil";
+import { userOf, isAlive, isNear, isStreamedTo, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef, formatWait } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
 import { CompanionSystem } from "./companionSystem";
 import { HousingSystem } from "./housingSystem";
@@ -406,7 +406,7 @@ export class PetSystem implements System {
     const now = Date.now();
     const readyAt = rec.harvestAt + this.cfg.petHarvestHours * 3600 * 1000;
     if (readyAt > now) {
-      this.notice(userId, `${a.name} can be harvested again in ${this.hoursLeft(readyAt - now)}.`);
+      this.notice(userId, `${a.name} can be harvested again in ${formatWait(readyAt - now)}.`);
       return;
     }
     let itemId = 0;
@@ -1259,14 +1259,6 @@ export class PetSystem implements System {
     if (!m) return KIND_LABEL[kind];
     const word = m[0].toLowerCase();
     return word.charAt(0).toUpperCase() + word.slice(1);
-  }
-
-  private hoursLeft(ms: number): string {
-    const minutes = Math.ceil(ms / 60000);
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    const rest = minutes % 60;
-    return rest ? `${hours} h ${rest} min` : `${hours} h`;
   }
 
   private newUid(): string {

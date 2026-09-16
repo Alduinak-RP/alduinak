@@ -15,6 +15,7 @@ import { RestraintService } from "./restraintService";
 import { TimersService } from "./timersService";
 import { PetService } from "./petService";
 import { MountService } from "./mountService";
+import { JobService } from "./jobService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -54,6 +55,10 @@ const PACKET_ACTIONS: Record<string, string> = {
   factionInvite: 'factionInviteOptionsRequest',
 };
 
+// While a passive job load is carried: Put down joins the menu, and the interact key on nothing opens this one first
+const PUT_DOWN: PlayerAction = { id: 'putDown', label: 'Put down' };
+const LOAD_ACTIONS: PlayerAction[] = [PUT_DOWN, { id: 'personal', label: 'Personal Menu' }];
+
 const events = {
   action: 'pa:action',
   close: 'pa:close',
@@ -62,6 +67,7 @@ const events = {
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
 let targetName = '';
+let hideTrade = false;
 
 /**
  * The one interact router. Both the game's own Activate control (default E;
@@ -138,7 +144,19 @@ export class PlayerActionService extends ClientListener {
       housing.requestMenuFor(ref);
       return;
     }
+    const load = this.controller.lookupListener(JobService).load;
+    if (load) {
+      this.openLoadMenu(load);
+      return;
+    }
     personal.open();
+  }
+
+  private openLoadMenu(title: string): void {
+    targetName = title;
+    this.playerTarget = 0;
+    this.menuOpen = true;
+    openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: LOAD_ACTIONS, targetName, hideTrade: true, events, WIDGET_ID }, this.controller);
   }
 
   private interactWithPlayer(ref: ObjectReference, actor: Actor, remoteId: number): void {
@@ -208,6 +226,17 @@ export class PlayerActionService extends ClientListener {
     }
     if (key === events.action) {
       const actionId = typeof e.arguments[1] === "string" ? (e.arguments[1] as string) : "";
+      if (actionId === PUT_DOWN.id) {
+        this.controller.lookupListener(JobService).putDown();
+        this.closeMenu();
+        return;
+      }
+      if (actionId === "personal") {
+        this.closeMenu();
+        // The Personal Menu reads the game as it opens, which only the update context allows
+        this.controller.once("update", () => this.controller.lookupListener(AdminMenuService).open());
+        return;
+      }
       const packetType = PACKET_ACTIONS[actionId];
       if (packetType && this.playerTarget) {
         sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
@@ -229,7 +258,8 @@ export class PlayerActionService extends ClientListener {
     const noCarry = this.controller.lookupListener(RestraintService).isPoseLocked;
     const canInvite = this.controller.lookupListener(FactionService).canInvite;
     const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease) && (a.id !== 'factionInvite' || canInvite));
-    return { ACTIONS: actions, targetName, events, WIDGET_ID };
+    if (this.controller.lookupListener(JobService).load) actions.push(PUT_DOWN);
+    return { ACTIONS: actions, targetName, hideTrade: false, events, WIDGET_ID };
   }
 
   private closeMenu(): void {
@@ -244,6 +274,7 @@ export class PlayerActionService extends ClientListener {
       id: WIDGET_ID,
       targetName: targetName,
       actions: ACTIONS,
+      hideTrade: hideTrade,
       events: events,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);

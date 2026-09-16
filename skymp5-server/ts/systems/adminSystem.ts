@@ -4,6 +4,7 @@ import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForReq
 import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { PetSystem, PetKind } from "./petSystem";
+import { JobSystem } from "./jobSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, userOf } from "./actorUtil";
@@ -35,6 +36,9 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..1000, self allowed
 //                     { customPacketType: "adminAction", action: "petBases" }  answered with petBases, the grantable pet bases per kind
 //                     { customPacketType: "adminAction", action: "petGrant", kind, base, name }  stores a pet of that kind for the admin's own character
+//                     { customPacketType: "adminAction", action: "jobList" }  answered with adminJobs
+//                     { customPacketType: "adminAction", action: "jobAdd", job }  job: JSON string of one Jobs.json entry, replacing the entry of that name
+//                     { customPacketType: "adminAction", action: "jobDelete", target } | { action: "jobTp", target, end }  target: job name, end: pickup | dropoff
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
@@ -42,9 +46,10 @@ type Mp = any;
 //                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | other; the front files a missing or unknown group under Other
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
-//                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form
+//                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form or one end of the job form
+//                     { customPacketType: "adminJobs", jobs: [JobSummary] }  after jobList and after every job mutation
 //                     { customPacketType: "adminItems", query, kind, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
-//                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp), which closes the menu
+//                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp, jobTp), which closes the menu
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
 // Non-admin requests are ignored silently; every Personal Menu open sends adminMenuRequest, so that refusal is logged once per user slot.
@@ -99,6 +104,12 @@ export class AdminSystem implements System {
 
   setPetSystem(pets: PetSystem): void {
     this.pets = pets;
+  }
+
+  private jobs: JobSystem | null = null;
+
+  setJobSystem(jobs: JobSystem): void {
+    this.jobs = jobs;
   }
 
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
@@ -445,6 +456,10 @@ export class AdminSystem implements System {
       this.petAction(mp, userId, myActorId, adminProfile, action, content);
       return;
     }
+    if (action.startsWith("job")) {
+      this.jobAction(mp, userId, myActorId, adminProfile, action, content);
+      return;
+    }
     if (action === "teleportLoc") {
       const name = String(content["target"] ?? "");
       const loc = this.locations.find(l => l.name === name);
@@ -693,6 +708,75 @@ export class AdminSystem implements System {
         this.reply(mp, userId, true, `Teleported to ${name}`, action);
       } catch (e) {
         this.log(`AdminSystem: npcZoneTp '${name}' by profile ${adminProfile} failed: ${e}`);
+        this.reply(mp, userId, false, "Teleport failed, see server log");
+      }
+      return;
+    }
+    this.reply(mp, userId, false, `Unknown action '${action}'`);
+  }
+
+  // The slot must still belong to the admin because save and delete finish asynchronously
+  private sendJobs(mp: Mp, userId: number, adminActorId: number): void {
+    try {
+      if (!this.jobs || mp.getUserActor(userId) !== adminActorId) return;
+      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminJobs", jobs: this.jobs.listJobs() }));
+    } catch (e) {
+      this.log(`AdminSystem: adminJobs reply failed: ${e}`);
+    }
+  }
+
+  private jobAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, action: string, content: Content): void {
+    const jobs = this.jobs;
+    if (!jobs) {
+      this.reply(mp, userId, false, "Jobs are not enabled");
+      return;
+    }
+    const name = String(content["target"] ?? "");
+    if (action === "jobList") {
+      this.sendJobs(mp, userId, myActorId);
+      return;
+    }
+    if (action === "jobAdd") {
+      let raw: unknown;
+      try { raw = JSON.parse(String(content["job"] ?? "")); } catch { raw = null; }
+      if (!raw || typeof raw !== "object") {
+        this.reply(mp, userId, false, "Bad job data");
+        return;
+      }
+      jobs.saveJob(raw).then(({ error, name: saved, replaced }) => {
+        if (!error) this.adminLog(`profile ${adminProfile} ${replaced ? "replaced" : "added"} job '${saved}'`);
+        this.replyIfSameAdmin(mp, userId, myActorId, !error, error ?? `${replaced ? "Replaced" : "Added"} job ${saved}`);
+        if (!error) this.sendJobs(mp, userId, myActorId);
+      }).catch(e => {
+        this.log(`AdminSystem: jobAdd by profile ${adminProfile} failed: ${e}`);
+        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+      });
+      return;
+    }
+    if (action === "jobDelete") {
+      jobs.deleteJob(name).then(ok => {
+        if (ok) this.adminLog(`profile ${adminProfile} deleted job '${name}'`);
+        this.replyIfSameAdmin(mp, userId, myActorId, ok, ok ? `Deleted job ${name}` : "Unknown job");
+        if (ok) this.sendJobs(mp, userId, myActorId);
+      }).catch(e => {
+        this.log(`AdminSystem: jobDelete '${name}' by profile ${adminProfile} failed: ${e}`);
+        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+      });
+      return;
+    }
+    if (action === "jobTp") {
+      const end = content["end"] === "dropoff" ? "dropoff" : "pickup";
+      const target = jobs.teleportTarget(name, end);
+      if (!target) {
+        this.reply(mp, userId, false, `The ${end} of that job has no known location`);
+        return;
+      }
+      try {
+        mp.set(myActorId, "locationalData", { cellOrWorldDesc: target.cellOrWorldDesc, pos: target.pos, rot: [0, 0, 0] });
+        this.adminLog(`profile ${adminProfile} teleported to the ${end} of job '${name}'`);
+        this.reply(mp, userId, true, `Teleported to the ${end} of ${name}`, action);
+      } catch (e) {
+        this.log(`AdminSystem: jobTp '${name}' by profile ${adminProfile} failed: ${e}`);
         this.reply(mp, userId, false, "Teleport failed, see server log");
       }
       return;

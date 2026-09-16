@@ -44,6 +44,10 @@ export const REQUEST_CAP: Record<string, AdminCap | null> = {
   itemSpawn: "items",
   petBases: "npcs",
   petGrant: "npcs",
+  jobList: "npcs",
+  jobAdd: "npcs",
+  jobDelete: "npcs",
+  jobTp: "npcs",
 };
 
 // Undefined for an unknown request

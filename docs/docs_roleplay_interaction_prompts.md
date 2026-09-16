@@ -52,6 +52,11 @@ keeps its display name with a verb picked from its base form type.
   form get no prompt at all and are activation-blocked), item types Take. The board base (`12cb:Missives.esp`,
   resolved through `Game.getFormFromFile` so load order cannot break it)
   gets Read + "Notice Board".
+- **Passive job offers** (`docs_roleplay_jobs.md`): with nothing under the
+  crosshair, a player standing at a job's pickup sees the server's offer
+  as one sentence-case line (`[E] Carry hay (10 gold)`, the widget's `line`
+  form); the key is spelled out because the vanilla glyph only shows with a
+  target. `JobService` sends Activate on it to the server.
 - Apart from the blocked player clones, the engine still performs the real
   activation; the server intercepts activations where it wants to (the
   bounty board does).

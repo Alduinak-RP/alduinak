@@ -47,6 +47,7 @@ import { PetSystem } from "./systems/petSystem";
 import { ConjurationSystem } from "./systems/conjurationSystem";
 import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { FactionSystem } from "./systems/factionSystem";
+import { JobSystem } from "./systems/jobSystem";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -242,6 +243,10 @@ const main = async () => {
   housingSystem.petCategoryOf = (actorId, refrId) => petSystem.categoryOfDoor(actorId, refrId);
   const adminSystem = new AdminSystem(log, npcSpawnSystem, masterySystem);
   adminSystem.setPetSystem(petSystem);
+  // Passive jobs: a job carrier neither carries nor is carried, and the admin panel places the jobs
+  const jobSystem = new JobSystem(log, captureSystem, masterySystem);
+  captureSystem.jobLoadOf = (actorId) => jobSystem.loadOf(actorId);
+  adminSystem.setJobSystem(jobSystem);
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
@@ -281,6 +286,8 @@ const main = async () => {
     new KnowledgeSystem(log),
     new DiscordBanSystem(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
+    // Last: its hit and activate hooks wrap every other one
+    jobSystem,
   );
 
   setupStreams(scampNative.getScampNative());
