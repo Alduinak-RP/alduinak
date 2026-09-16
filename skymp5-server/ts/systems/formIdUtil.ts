@@ -35,6 +35,18 @@ export const espmFieldFormIds = (lookup: any, fieldType: string): number[] => {
   return out;
 };
 
+// CNTO entries of a recipe or container: an item id followed by a count, eight bytes each, mapped to global ids.
+export const espmContainerEntries = (lookup: any): Array<{ baseId: number; count: number }> => {
+  const out: Array<{ baseId: number; count: number }> = [];
+  if (!lookup || !lookup.record || typeof lookup.toGlobalRecordId !== "function") return out;
+  for (const f of lookup.record.fields || []) {
+    if (f.type !== "CNTO" || !(f.data instanceof Uint8Array) || f.data.byteLength < 8) continue;
+    const view = new DataView(f.data.buffer, f.data.byteOffset, f.data.byteLength);
+    try { out.push({ baseId: lookup.toGlobalRecordId(view.getUint32(0, true)) >>> 0, count: view.getUint32(4, true) }); } catch { /* unmapped master */ }
+  }
+  return out;
+};
+
 // Default (keywordless) linked reference of a placed espm reference; 0 if absent.
 export const espmLinkedRefId = (lookup: any): number => {
   if (!lookup || !lookup.record || typeof lookup.toGlobalRecordId !== "function") return 0;

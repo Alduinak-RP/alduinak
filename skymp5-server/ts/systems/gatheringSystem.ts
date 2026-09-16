@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
-import { espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
+import { espmContainerEntries, espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
 import { addItemTo } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { MasterySystem, RANK_NAMES } from "./masterySystem";
@@ -15,9 +15,11 @@ type Mp = any;
 //   gatheringVeinRespawnMinutes  how long a fully mined vein takes to grow back, default 1440
 //   gatheringVeinRegenMinutes    minutes per ore collection grown back, default respawn / vein total
 //   miningVeinTiers              { "<ore editor id or hex id>": "Adept" | rank index } overriding DEFAULT_VEIN_TIERS
+//   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //
 // Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
 // Ores above Novice need the miner profession at that rank; everything else is open to anyone with a pickaxe.
+// Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
 
 const VEIN_PROP = "private.gathering";
 const SEAT_CLOSE_EVENT = "onPapyrusEvent:SkympOnActivateClose";
@@ -49,7 +51,10 @@ const DEFAULT_VEIN_TIERS: Record<string, number> = {
   OreMalachite: 3, OreQuicksilver: 3, OreEbony: 3,
 };
 
-type StationKind = "chop" | "vein" | "marker";
+// Placed containers open empty on this server, so the honeycomb for the honey recipe comes from here.
+const DEFAULT_PRODUCE: Record<string, number> = { BeeHive: 60 };
+
+type StationKind = "chop" | "vein" | "marker" | "produce";
 
 interface Station {
   kind: StationKind;
@@ -79,8 +84,8 @@ interface VeinState {
   regenAt: number;
 }
 
-// Undefined: not a gathering station. False: refused. A function: run once the activation went through.
-type Verdict = undefined | false | (() => void);
+// Undefined: not a gathering station. False: refused. A function: run once the activation went through; returning false keeps the target shut.
+type Verdict = undefined | false | (() => void) | (() => false);
 
 export class GatheringSystem implements System {
   systemName = "GatheringSystem";
@@ -97,10 +102,11 @@ export class GatheringSystem implements System {
     const regen = Number(all?.["gatheringVeinRegenMinutes"]);
     if (Number.isFinite(regen) && regen > 0) this.regenMs = regen * 60000;
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
+    await this.loadProduce(ctx, all?.["gatheringProduceContainers"], s.dataDir, s.loadOrder);
 
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
-    this.log(`[gathering] ready, one strike per ${this.strikeMs / 1000} s, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank`);
+    this.log(`[gathering] ready, one strike per ${this.strikeMs / 1000} s, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s)`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -114,9 +120,31 @@ export class GatheringSystem implements System {
       }
     }
     const names = Object.keys(merged);
-    const scan = await resolveEditorIds(names.filter(isEditorId), dataDir, loadOrder, this.log, ["MISC"]);
+    const ids = await this.resolveIds(ctx, names, ["MISC"], dataDir, loadOrder);
+    for (const [name, id] of ids) if (merged[name] > 0) this.veinTiers.set(id, merged[name]);
+    const unresolved = names.filter((n) => !ids.has(n));
+    if (unresolved.length) this.log(`[gathering] ore(s) not in the load order, left open to everyone: ${unresolved.join(", ")}`);
+  }
+
+  // Container base ids that hand out their contents and grow them back, from the defaults or the settings replacement.
+  private async loadProduce(ctx: SystemContext, raw: unknown, dataDir: string, loadOrder: string[]): Promise<void> {
+    const minutes: Record<string, number> = raw && typeof raw === "object" ? {} : { ...DEFAULT_PRODUCE };
+    for (const [name, value] of Object.entries(raw && typeof raw === "object" ? raw as Record<string, unknown> : {})) {
+      if (Number.isFinite(Number(value)) && Number(value) > 0) minutes[name] = Number(value);
+      else this.log(`[gathering] gatheringProduceContainers.${name}: ${JSON.stringify(value)} is not a number of minutes, ignored`);
+    }
+    const names = Object.keys(minutes);
+    const ids = await this.resolveIds(ctx, names, ["CONT"], dataDir, loadOrder);
+    for (const [name, id] of ids) this.produceMs.set(id, minutes[name] * 60000);
+    const unresolved = names.filter((n) => !ids.has(n));
+    if (unresolved.length) this.log(`[gathering] produce container(s) not in the load order: ${unresolved.join(", ")}`);
+  }
+
+  // Editor ids, hex ids and "hex:Plugin.esp" descs to global form ids; unresolved names are left out.
+  private async resolveIds(ctx: SystemContext, names: string[], types: string[], dataDir: string, loadOrder: string[]): Promise<Map<string, number>> {
+    const scan = await resolveEditorIds(names.filter(isEditorId), dataDir, loadOrder, this.log, types);
     const mp = ctx.svr as Mp;
-    const unresolved: string[] = [];
+    const ids = new Map<string, number>();
     for (const name of names) {
       let id = 0;
       try {
@@ -127,10 +155,9 @@ export class GatheringSystem implements System {
           if (desc) id = mp.getIdFromDesc(desc) >>> 0;
         }
       } catch { id = 0; }
-      if (!id) unresolved.push(name);
-      else if (merged[name] > 0) this.veinTiers.set(id, merged[name]);
+      if (id) ids.set(name, id);
     }
-    if (unresolved.length) this.log(`[gathering] ore(s) not in the load order, left open to everyone: ${unresolved.join(", ")}`);
+    return ids;
   }
 
   // Chained like HousingSystem: a refusal never reaches the furniture, and a
@@ -150,7 +177,7 @@ export class GatheringSystem implements System {
       if (previous) {
         try { allowed = previous.call(mp, targetId, casterId) !== false; } catch { allowed = true; }
       }
-      if (allowed && verdict) verdict();
+      if (allowed && verdict && verdict() === false) return false;
       return allowed;
     };
 
@@ -198,8 +225,23 @@ export class GatheringSystem implements System {
       case "chop": return this.onChoppingBlock(ctx, targetId, casterId, station.props);
       case "vein": return this.onVein(ctx, targetId, casterId, station.props);
       case "marker": return this.onMiningMarker(ctx, targetId, casterId, station.props);
+      case "produce": return this.onProduce(ctx, targetId, casterId, station.props);
       default: return undefined;
     }
+  }
+
+  private onProduce(ctx: SystemContext, containerId: number, actorId: number, props: Record<string, number>): Verdict {
+    const regrow = this.produceMs.get(props["base"]) || 0;
+    // The engine never asks where an activator stands, so a forged packet from afar gathers nothing
+    if (!this.withinReach(ctx, actorId, containerId)) return false;
+    if (this.veinState(ctx, containerId, 1, regrow).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
+    const items = espmContainerEntries(this.lookup(ctx, props["base"])).filter((e) => e.count > 0 && String(this.lookup(ctx, e.baseId)?.record.type || "") !== "LVLI");
+    if (!items.length) return undefined;
+    return () => {
+      for (const e of items) this.addItem(ctx, actorId, e.baseId, e.count);
+      this.writeVein(ctx, containerId, { left: 0, regenAt: Date.now() + regrow });
+      return false;
+    };
   }
 
   private onChoppingBlock(ctx: SystemContext, blockId: number, actorId: number, props: Record<string, number>): Verdict {
@@ -332,12 +374,20 @@ export class GatheringSystem implements System {
   private stillWorking(ctx: SystemContext, s: Session, now: number): boolean {
     if (now - s.startedAt > MAX_SESSION_MS) return false;
     if (this.userOf(ctx, s.actorId) < 0) return false;
+    try {
+      if ((ctx.svr as Mp).get(s.actorId, "isDead")) return false;
+    } catch {
+      return false;
+    }
+    return this.withinReach(ctx, s.actorId, s.furnitureId);
+  }
+
+  private withinReach(ctx: SystemContext, actorId: number, refId: number): boolean {
     const mp = ctx.svr as Mp;
     try {
-      if (mp.get(s.actorId, "isDead")) return false;
-      const loc = mp.get(s.actorId, "locationalData");
-      if (!loc || String(loc.cellOrWorldDesc) !== String(mp.get(s.furnitureId, "worldOrCellDesc"))) return false;
-      const pos = mp.get(s.furnitureId, "pos");
+      const loc = mp.get(actorId, "locationalData");
+      if (!loc || String(loc.cellOrWorldDesc) !== String(mp.get(refId, "worldOrCellDesc"))) return false;
+      const pos = mp.get(refId, "pos");
       const d = Math.hypot(loc.pos[0] - pos[0], loc.pos[1] - pos[1], loc.pos[2] - pos[2]);
       return Number.isFinite(d) && d <= SEAT_REACH;
     } catch {
@@ -357,14 +407,13 @@ export class GatheringSystem implements System {
   }
 
   // Remaining collections ride the vein changeform, so a restart keeps a mined-out vein empty; growth is settled on read.
-  private veinState(ctx: SystemContext, veinId: number, total: number): VeinState {
+  private veinState(ctx: SystemContext, veinId: number, total: number, per = this.regenPer(total)): VeinState {
     let raw: any = null;
     try { raw = (ctx.svr as Mp).get(veinId, VEIN_PROP); } catch { /* never mined */ }
     let left = raw && Number.isFinite(Number(raw.left)) ? Math.min(Number(raw.left), total) : total;
     // Records from before growth carry resetAt, the moment the whole vein came back.
     let regenAt = raw ? Number(raw.regenAt) || Number(raw.resetAt) || 0 : 0;
     const now = Date.now();
-    const per = this.regenPer(total);
     while (left < total && regenAt && now >= regenAt) {
       left += 1;
       regenAt += per;
@@ -418,6 +467,7 @@ export class GatheringSystem implements System {
     if (type === "FURN" && scripts.has("resourcefurniturescript")) station = { kind: "chop", props: scripts.get("resourcefurniturescript")! };
     else if (type === "ACTI" && scripts.has("mineorescript")) station = { kind: "vein", props: scripts.get("mineorescript")! };
     else if (type === "FURN" && scripts.has("mineorefurniturescript")) station = { kind: "marker", props: scripts.get("mineorefurniturescript")! };
+    else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
     this.stationCache.set(baseId, station);
     return station;
   }
@@ -510,4 +560,6 @@ export class GatheringSystem implements System {
   private markerVein = new Map<number, number>();
   private stationCache = new Map<number, Station | null>();
   private toolCache = new Map<number, Set<number>>();
+  // Produce container base id -> ms until it has produce again
+  private produceMs = new Map<number, number>();
 }

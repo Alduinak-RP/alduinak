@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
-import { espmFieldFormIds } from "./formIdUtil";
+import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -126,8 +126,8 @@ const ACTOR_TYPES = ["ActorTypeNPC", "ActorTypeCreature", "ActorTypeUndead", "Ac
 const PLAYER_KEYWORD = "ActorTypeNPC";
 
 const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
-  // Potions are crafting-menu recipes at the lab since the proficiency plugin; the herbs and the tasting count too.
-  alchemist: { craftKeywords: ["AldCraftingAlchemy"], activateTypes: ["FLOR", "TREE"], activatePrefixes: ["CraftingAlchemyWorkbench"], eatIngredient: true },
+  // Potions are crafting-menu recipes at the lab since the proficiency plugin; the herbs, the tasting and any brew at a meadery boiler count too.
+  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: ["AldCraftingMead"], activateTypes: ["FLOR", "TREE"], activatePrefixes: ["CraftingAlchemyWorkbench"], eatIngredient: true },
   // Tempering never reaches the server as a craft, so the grindstone and the
   // workbench cannot count. Anything made at a forge, anvil or smelter counts, clothing included.
   blacksmith: {
@@ -804,21 +804,10 @@ export class MasterySystem implements System {
     return bench;
   }
 
-  // CNTO entries of a recipe: an item id followed by a count, eight bytes each.
   private recipeInputs(ctx: SystemContext, recipeId: number): Array<{ baseId: number; count: number }> {
     const hit = this.inputCache.get(recipeId);
     if (hit) return hit;
-    const out: Array<{ baseId: number; count: number }> = [];
-    const res = this.lookup(ctx, recipeId);
-    if (res && typeof res.toGlobalRecordId === "function") {
-      for (const f of res.record.fields || []) {
-        if (f.type !== "CNTO" || !(f.data instanceof Uint8Array) || f.data.byteLength < 8) continue;
-        const view = new DataView(f.data.buffer, f.data.byteOffset, f.data.byteLength);
-        try {
-          out.push({ baseId: res.toGlobalRecordId(view.getUint32(0, true)) >>> 0, count: view.getUint32(4, true) });
-        } catch { /* unmapped master */ }
-      }
-    }
+    const out = espmContainerEntries(this.lookup(ctx, recipeId));
     this.inputCache.set(recipeId, out);
     return out;
   }

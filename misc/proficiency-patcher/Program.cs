@@ -13,8 +13,8 @@ using Mutagen.Bethesda.Strings;
 using Noggog;
 
 // Rewrites AlduinakAdditions.esp with the proficiency content described by spec.json: the rank marker abilities,
-// the crafting keywords, the alchemy lab and woodcrafting benches, the potion and charcoal recipes, and the tier
-// conditions on cooking, smithing, tempering, woodworking and tailoring recipes.
+// the crafting keywords, the alchemy lab and woodcrafting benches, the potion and charcoal recipes, the tier
+// conditions on cooking, smithing, tempering, woodworking and tailoring recipes, and the meadery boiler benches.
 // Run through patch.py, which pre-cleans the plugin, invokes this program and verifies the result.
 //   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>]
 
@@ -63,6 +63,7 @@ Steps.Tempering(ctx);
 Steps.Woodworking(ctx);
 Steps.Tailoring(ctx);
 Steps.Uncraftable(ctx);
+Steps.Meadery(ctx);
 
 if (report.Errors.Count > 0)
 {
@@ -157,7 +158,11 @@ class PatchContext
     public FormKey KeyOf<T>(string edid) where T : class, IMajorRecordGetter => Winning<T>(edid).FormKey;
 
     // Own record by editor id, created when missing (idempotent re-runs reuse it).
-    public T OwnOrNew<T>(IGroup<T> group, string edid, Action<T>? init = null) where T : class, IMajorRecord
+    public T OwnOrNew<T>(IGroup<T> group, string edid, Action<T>? init = null) where T : class, IMajorRecord =>
+        OwnOrNew(edid, () => group.AddNew(edid), init);
+
+    // Same for records outside a top-level group, such as placed references; create adds the record to its container
+    public T OwnOrNew<T>(string edid, Func<T> create, Action<T>? init = null) where T : class, IMajorRecord
     {
         if (ownByEdid.TryGetValue(edid, out var existing))
         {
@@ -166,7 +171,7 @@ class PatchContext
         }
         if (Cache.TryResolveIdentifier(edid, out var clash) && clash.ModKey != Key)
             throw new SpecException($"editor id '{edid}' is already used by {clash}");
-        var rec = group.AddNew(edid);
+        var rec = create();
         init?.Invoke(rec);
         ownByEdid[edid] = rec;
         Report.NewRecords.Add($"{rec.Registration.Name} {edid} {rec.FormKey}");
@@ -275,24 +280,7 @@ static class Steps
     {
         var w = c.Spec["woodcraftingBench"]!.AsObject();
         var kw = c.KeyOf<IKeywordGetter>(c.Spec["keywords"]!["woodcrafting"]!.GetValue<string>());
-        var template = c.Winning<IFurnitureGetter>(w["template"]!.GetValue<string>());
-        var edid = w["edid"]!.GetValue<string>();
-        var bench = c.OwnOrNew(c.Mod.Furniture, edid);
-        var key = bench.FormKey;
-        bench.DeepCopyIn(template);
-        bench.EditorID = edid;
-        // The Hearthfire bench script builds house parts; a plain crafting bench needs none of it
-        bench.VirtualMachineAdapter = null;
-        bench.Name = w["name"]!.GetValue<string>();
-        bench.Keywords ??= new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
-        var drop = (w["removeKeywords"]?.AsArray().Select(x => c.KeyOf<IKeywordGetter>(x!.GetValue<string>())) ?? Enumerable.Empty<FormKey>()).ToHashSet();
-        bench.Keywords.RemoveAll(x => drop.Contains(x.FormKey));
-        if (!bench.Keywords.Any(x => x.FormKey == kw)) bench.Keywords.Add(kw.ToLink<IKeywordGetter>());
-        bench.WorkbenchData ??= new WorkbenchData();
-        bench.WorkbenchData.BenchType = WorkbenchData.Type.CreateObject;
-        bench.WorkbenchData.UsesSkill = null;
-        if (bench.FormKey != key) throw new Exception("form key changed by DeepCopyIn");
-        c.Note($"Woodcrafting bench {edid} {key} created from {template.EditorID}");
+        NewBench(c, w["template"]!.GetValue<string>(), w["edid"]!.GetValue<string>(), w["name"]!.GetValue<string>(), w["removeKeywords"]?.AsArray(), new[] { kw });
 
         foreach (var tagEdid in w["alsoTag"]?.AsArray().Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>())
         {
@@ -302,6 +290,30 @@ static class Steps
             if (!furn.Keywords.Any(x => x.FormKey == kw)) furn.Keywords.Add(kw.ToLink<IKeywordGetter>());
             c.Note($"Woodcrafting: {tagEdid} also offers woodcrafting recipes");
         }
+    }
+
+    // A crafting bench copied from a template furniture, the template's listed keywords swapped for the bench keywords
+    static Furniture NewBench(PatchContext c, string templateEdid, string edid, string name, JsonArray? removeKeywords, IEnumerable<FormKey> keywords)
+    {
+        var template = c.Winning<IFurnitureGetter>(templateEdid);
+        var bench = c.OwnOrNew(c.Mod.Furniture, edid);
+        var key = bench.FormKey;
+        bench.DeepCopyIn(template);
+        bench.EditorID = edid;
+        // Template scripts (the Hearthfire bench builds house parts) have no place on a plain crafting bench
+        bench.VirtualMachineAdapter = null;
+        bench.Name = name;
+        bench.Keywords ??= new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
+        var drop = (removeKeywords?.Select(x => c.KeyOf<IKeywordGetter>(x!.GetValue<string>())) ?? Enumerable.Empty<FormKey>()).ToHashSet();
+        bench.Keywords.RemoveAll(x => drop.Contains(x.FormKey));
+        foreach (var kw in keywords)
+            if (!bench.Keywords.Any(x => x.FormKey == kw)) bench.Keywords.Add(kw.ToLink<IKeywordGetter>());
+        bench.WorkbenchData ??= new WorkbenchData();
+        bench.WorkbenchData.BenchType = WorkbenchData.Type.CreateObject;
+        bench.WorkbenchData.UsesSkill = null;
+        if (bench.FormKey != key) throw new Exception("form key changed by DeepCopyIn");
+        c.Note($"Bench {edid} {key} created from {template.EditorID} with {string.Join(", ", bench.Keywords.Select(x => c.Mod.Keywords.TryGetValue(x.FormKey)?.EditorID ?? c.EdidOf(x.FormKey)))}");
+        return bench;
     }
 
     // ---- alchemy labs open the crafting menu instead of the alchemy menu -------------------------------------------
@@ -362,6 +374,8 @@ static class Steps
         "AldRecipeKiln_" => "kiln",
         "AldRecipeSmith_" => "smithing",
         "AldRecipeTailor_" => "tailoring",
+        "AldRecipeMead_" => "mead",
+        "AldRecipeCook_" => "cooking",
         _ => "alchemy",
     };
 
@@ -482,6 +496,66 @@ static class Steps
             cobj.WorkbenchKeyword.SetTo(bench);
             c.Report.Recipes.Add(new RecipeLine(kind, edid, c.NameOf(cobj.CreatedObject.FormKey), profession, "disabled", Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: "bench set to the parking keyword, recipe hidden"));
         }
+    }
+
+    // ---- meadery: invisible stirring benches at the boilers, each offering its own mead, plus the honey recipe --------
+    public static void Meadery(PatchContext c)
+    {
+        if (c.Spec["meadery"] is not JsonObject m) return;
+        var profession = m["profession"]!.GetValue<string>();
+        var shared = c.OwnOrNew(c.Mod.Keywords, m["keyword"]!.GetValue<string>()).FormKey;
+        var benches = m["benches"]!.AsArray().Select(x => x!.AsObject()).ToList();
+        var own = benches.Select(b => c.OwnOrNew(c.Mod.Keywords, b["keyword"]!.GetValue<string>()).FormKey).ToList();
+        for (int i = 0; i < benches.Count; i++)
+        {
+            var b = benches[i];
+            var bench = NewBench(c, m["template"]!.GetValue<string>(), b["edid"]!.GetValue<string>(), b["name"]!.GetValue<string>(), m["removeKeywords"]?.AsArray(), new[] { shared, own[i] });
+            NewRecipe(c, b["recipe"]!.AsObject(), own[i], profession, "AldRecipeMead_");
+            foreach (var p in b["placements"]!.AsArray().Select(x => x!.AsObject()))
+                PlaceBench(c, b["cell"]!.GetValue<string>(), bench.FormKey, p);
+        }
+        if (m["honey"] is JsonObject h)
+            NewRecipe(c, h, c.KeyOf<IKeywordGetter>(h["bench"]!.GetValue<string>()), h["profession"]!.GetValue<string>(), "AldRecipeCook_");
+    }
+
+    const int PersistentFlag = 0x400;
+
+    // A persistent reference of an own bench next to a vanilla boiler, kept in an override of the boiler's cell
+    static void PlaceBench(PatchContext c, string cellEdid, FormKey bench, JsonObject p)
+    {
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        var boilerKey = FormKey.Factory(p["boiler"]!.GetValue<string>());
+        var edid = $"AldMeadBench_{boilerKey.ID:X6}";
+        // The load order, not the plugin, decides the cell: an own override holds only the benches
+        if (!cache.TryResolve<ICellGetter>(cellEdid, out var cellRec) || !cache.TryResolveContext<ICell, ICellGetter>(cellRec.FormKey, out var cellCtx))
+        {
+            c.Error($"meadery: cell '{cellEdid}' not found");
+            return;
+        }
+        if (!cache.TryResolveContext<IPlacedObject, IPlacedObjectGetter>(boilerKey, out var boilerCtx) || boilerCtx.Record.Placement == null
+            || boilerCtx.Parent?.Record is not ICellGetter boilerCell || boilerCell.FormKey != cellRec.FormKey)
+        {
+            c.Error($"meadery: boiler {boilerKey} is not a placed object of {cellEdid}");
+            return;
+        }
+        var boiler = boilerCtx.Record;
+        var xyz = p["pos"]!.AsArray().Select(v => v!.GetValue<float>()).ToArray();
+        var position = new P3Float(xyz[0], xyz[1], xyz[2]);
+        var rotZ = p["rotZ"]!.GetValue<float>();
+        var distance = (position - boiler.Placement.Position).Magnitude;
+        // Guards against a position surveyed at the wrong boiler
+        if (distance > 256) { c.Error($"meadery: {edid} at {position} is {distance:0} units from its boiler {boilerKey}"); return; }
+        var cell = cellCtx.GetOrAddAsOverride(c.Mod);
+        var placed = c.OwnOrNew(edid, () =>
+        {
+            var r = new PlacedObject(c.Mod.GetNextFormKey(), SkyrimRelease.SkyrimSE) { EditorID = edid };
+            cell.Persistent.Add(r);
+            return r;
+        });
+        placed.Base.SetTo(bench);
+        placed.MajorRecordFlagsRaw |= PersistentFlag;
+        placed.Placement = new Placement { Position = position, Rotation = new P3Float(0, 0, rotZ * MathF.PI / 180) };
+        c.Note($"Mead bench {edid} {placed.FormKey} in {cellEdid} at {position}, heading {rotZ}, {distance:0} units from boiler {boilerKey}");
     }
 
     // Material editor id -> rank index, from the owner's ingot table

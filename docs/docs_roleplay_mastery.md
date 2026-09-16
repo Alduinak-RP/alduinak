@@ -14,7 +14,7 @@ mining veins and hunting bonuses check the rank on the server.
   with the interact key (`X`) on nothing.
 - Front piece: `skymp5-front/src/features/masteryMenu/`, embedded in `features/adminPanel`
 - Server pieces: `skymp5-server/ts/systems/masterySystem.ts` (ranks, markers,
-  worked hours), `gatheringSystem.ts` (vein tiers, vein regrowth),
+  worked hours), `gatheringSystem.ts` (vein tiers, vein regrowth, beehives),
   `huntingSystem.ts` (hunter bonuses).
 - Plugin piece: `misc/proficiency-patcher/` writes every marker, bench, recipe
   and condition into `AlduinakAdditions.esp` from `spec.json` (see its README).
@@ -64,9 +64,9 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 
 | Profession | Novice (everyone) | Adept | Expert | Master |
 |---|---|---|---|---|
-| Alchemist | Minor Healing, Minor Stamina, Minor Magicka, wine, ale, mead | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
+| Alchemist | Minor Healing, Minor Stamina, Minor Magicka, wine, ale, mead, and Honningbrew and Black-Briar mead at the meadery boilers | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
 | Blacksmith | iron, corundum, leather, the woodcutter's axe | gold, steel, silver | orichalcum, dwarven, moonstone | malachite, quicksilver, ebony, dragon, stalhrim, nordic |
-| Cook | the cooked meats (each needs a Salt Pile), Steamed Mudcrab Legs | soups, stews, chowder, Sweet Roll, Potato Bread | Bread, Braided Bread, Chicken Dumpling, Beef Stew | pies, crostatas, dumplings, Garlic Bread, Elsweyr Fondue, Venison Stew |
+| Cook | the cooked meats (each needs a Salt Pile), Steamed Mudcrab Legs, Honey (from one Bee Honeycomb) | soups, stews, chowder, Sweet Roll, Potato Bread | Bread, Braided Bread, Chicken Dumpling, Beef Stew | pies, crostatas, dumplings, Garlic Bread, Elsweyr Fondue, Venison Stew |
 | Hunter | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
 | Miner | iron and corundum veins | gold and silver veins | orichalcum and moonstone veins | malachite, quicksilver and ebony veins |
 | Tailor | scarves, gaiter, short capes, rugged mask and cape | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels, Reinforced Mantle, Boiled Leather Cuirass, Robed Iron Armor, Leather Doublet, Sturdy Pouch | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
@@ -130,11 +130,53 @@ Benches:
 - **Forges** carry one added recipe, the woodcutter's axe (one iron ingot and
   one leather strip, open to everyone). Every vanilla merchant on this server is
   disabled, and without an axe no one can chop firewood.
+- **Meadery boilers**: the three boilers of the north row in Honningbrew
+  Meadery's boiler room and the two in Black-Briar Meadery's basement brew
+  mead, see below.
 - **Armour table and grindstone**: the Improve tab shows only what the character
   could have made. The rank comes from the material table, the profession from
   whoever crafts the item, so the 27 bow and shield entries ask for the
   woodworker rank and everything else for the blacksmith rank. This is a menu
   gate, nothing more (see below).
+
+### Mead
+
+The boilers are statics with no seat, so each one has an invisible stirring
+bench beside it: a copy of the vanilla `CraftingCookingPotInvisible` (one user,
+the cooking-pot stirring idle) whose small collision box sits against the lower
+front of the boiler. Aim there and the prompt reads "Use Honningbrew Boiler" or
+"Use Black-Briar Boiler". A Honningbrew brewer stands on the walkway facing the
+boiler; a Black-Briar brewer stands on the raised stone platform between the two
+boilers.
+
+| Boiler | Mead (1 bottle) | Ingredients |
+|---|---|---|
+| Honningbrew `000C5B11`, `000C5AD8`, `000C5B12` | Honningbrew Mead | 1 Red Apple, 1 Green Apple, 2 Lavender, 1 Honey |
+| Black-Briar `000A6310`, `000A6311` | Black-Briar Mead | 2 Snowberries, 1 Honey, 1 Salt Pile, 2 Red Mountain Flower |
+
+Each boiler offers only its own mead (keywords `AldCraftingMeadHonningbrew`
+and `AldCraftingMeadBlackBriar`). Brewing is free: the recipes carry no rank
+condition, so any character brews, and the shared `AldCraftingMead` keyword on
+both benches is what the fatigue cost skips. Only an Alchemist earns hours
+there, under the usual one-per-hour rule: `AldCraftingMead` is an alchemist
+`craftStations` keyword. Nord Mead stays at the alchemy lab.
+
+Where the ingredients come from on this server, where placed loose items and
+container loot are off:
+
+- Red and Green Apples: the 28 apple trees (22 red, 6 green) JK's Whiterun's
+  Outskirts plants in the orchards north of Honningbrew. They are flora, so
+  they grow back like any plant (`reloot.FLOR`).
+- Lavender, Snowberries and Red Mountain Flower: flora across Skyrim.
+- Salt Pile: the salt every cooked meat needs as well. No recipe or plant makes
+  it; only the vanilla loot lists of bandits, Forsworn, warlocks and other human
+  foes carry it.
+- Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
+  open to everyone.
+- Bee Honeycomb: the vanilla beehives. `gatheringSystem.ts` keeps them shut and
+  hands over a honeycomb, a beehive husk and a bee on E, then the hive is empty
+  for an hour (`gatheringProduceContainers`). The state rides the hive as
+  `private.gathering`, like a vein.
 
 ### Vanilla perks through abilities
 
@@ -231,9 +273,13 @@ produces is:
 - 32 `SPEL` records `AldMastery_<Profession>_<Rank>`, Ability, constant, self,
   no cost, standalone (never on a RACE or NPC_ record, else they could not be
   revoked); the hunter and warrior ones carry perk effects.
-- `KYWD` `AldCraftingAlchemy`, `AldCraftingKiln`, `AldCraftingWoodcrafting`.
+- `KYWD` `AldCraftingAlchemy`, `AldCraftingKiln`, `AldCraftingWoodcrafting`,
+  and the mead keywords.
 - `FURN` overrides of the alchemy labs (bench type Create Object, the alchemy
-  keyword) and the carpenter's workbenches, plus the new woodcrafting bench.
+  keyword) and the carpenter's workbenches, plus the new woodcrafting bench and
+  the two mead benches.
+- `REFR` `AldMeadBench_<boiler>`: the five placed mead benches, persistent, in
+  overrides of the two meadery cells.
 - `COBJ` records: the new alchemy, charcoal and woodcutter's axe recipes;
   overrides of every cooking, smithing, tempering, woodworking and tailoring
   recipe with one condition, `HasSpell`, parameter the rank's marker, **Run On =

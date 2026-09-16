@@ -36,7 +36,8 @@ records). The first run restores the Mutagen NuGet package.
 2. runs the C# patcher, which writes `AlduinakAdditions.esp`, `proficiency-report.md` (every record it
    created or changed, per tier) and `proficiency-ids.json` (the marker spells with their global form ids);
 3. verifies the output against the pre-cleaned input with `misc/esplib.py`: only KYWD, SPEL, MGEF, FURN and
-   COBJ records may be added or changed, everything else must be byte-identical up to Mutagen's known
+   COBJ records may be added or changed, plus the `AldMeadBench_` references and the overrides of the cells
+   `meadery` names; everything else must be byte-identical up to Mutagen's known
    normalisations (`-0.0` floats, deleted records without subrecords). A changed master list renumbers every
    form id, so records are then matched by editor id and compared structurally. Exit code 3 on any other
    difference, and `verify.txt` lists it.
@@ -56,6 +57,7 @@ records). The first run restores the Mutagen NuGet package.
 | `stripConditions` | CTDA functions `CraftService` has no implementation for. Every recipe the patcher tiers loses them, so the menu and the server agree; an unregistered function answers true server-side. |
 | `smithing` | Every recipe at the smithing benches is tiered by the highest `materials` entry among its inputs and product. `temperBenches` tiers the armour table and the grindstone by the same table, keeping their vanilla conditions; the marker profession is the one whose list crafts the item, so the bows and shields of `woodworking` temper under the woodworker ranks. `newRecipes` adds forge recipes of the plugin's own (the woodcutter's axe). |
 | `uncraftable` | Recipes parked on a keyword no furniture carries, so nothing can ever make them: the 20 Daedric recipes and the 105 faction, guild and one-off pieces (hold guard, Stormcloak, Thieves Guild, Dark Brotherhood, Forsworn, Skaal, Companions, Dawnguard armour, Morag Tong, Penitus Oculatus, and the named unique items) that `stripConditions` would otherwise expose. |
+| `meadery` | The mead benches: `keyword` (`AldCraftingMead`, shared) and one keyword per bench, a FURN per bench copied from `template` with `removeKeywords` swapped for both keywords, its Novice `recipe` at its own keyword (`AldRecipeMead_<output>`), and one persistent `AldMeadBench_<boiler>` reference per `placements` entry (`pos`, `rotZ` in degrees) in an override of `cell`, refused further than 256 units from its `boiler`. `honey` is the Bee Honeycomb recipe at the cooking pot (`AldRecipeCook_FoodHoney`). |
 | `woodworking` | Bow, arrow, bolt and shield recipes move from the forge to the woodcrafting keyword with their tier. |
 | `tailoring` | The owner's list at the tanning rack with the ingredients from the spec; `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe. |
 

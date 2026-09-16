@@ -713,6 +713,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `gatheringVeinRespawnMinutes` | `1440` | Time for a fully mined vein to grow back |
 | `gatheringVeinRegenMinutes` | respawn / vein total | Minutes per ore collection grown back |
 | `miningVeinTiers` | iron, corundum open; gold, silver Adept; orichalcum, moonstone Expert; malachite, quicksilver, ebony Master | `{ "<ore editor id>": "Adept" }` overrides, by the ore item the vein hands out |
+| `gatheringProduceContainers` | `{ "BeeHive": 60 }` | `{ "<container editor id>": minutes }`: placed containers of these bases never open; E hands over what the container record lists (a beehive: honeycomb, husk and a bee) and it grows back after the minutes. Replaces the default, `{}` turns it off |
 | `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
 | `huntingTrophyChance` | `0.15` | Master hunter: chance of one extra pelt per kind |
 | `huntingPeltsNeedHunter` | `true` | Pelts on a dead animal, pets included, are left out of the loot window of anyone who is not a hunter, and a take or a put of one is refused. A pelt is any item carrying `VendorItemAnimalHide` plus the `huntingPelts` list. A non-hunter who owned the pet also stops seeing the pelts and leather they stored in it, and loses them when the body is removed on the `petCorpseSeconds` / `npcCorpseSeconds` timer |

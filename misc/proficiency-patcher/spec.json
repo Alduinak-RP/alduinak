@@ -1918,5 +1918,71 @@
    "MCERecipeWeaponForswornSword",
    "MCERecipeWeaponShiv"
   ]
+ },
+ "meadery": {
+  "profession": "alchemist",
+  "keyword": "AldCraftingMead",
+  "template": "CraftingCookingPotInvisible",
+  "removeKeywords": [
+   "CraftingCookpot"
+  ],
+  "benches": [
+   {
+    "edid": "AldMeadBoilerHonningbrew",
+    "name": "Honningbrew Boiler",
+    "keyword": "AldCraftingMeadHonningbrew",
+    "recipe": {
+     "output": "FoodHonningbrewMead",
+     "name": "Honningbrew Mead",
+     "tier": "Novice",
+     "count": 1,
+     "items": {
+      "FoodApple": 1,
+      "FoodApple02": 1,
+      "Lavender": 2,
+      "FoodHoney": 1
+     }
+    },
+    "cell": "HonningbrewMeadery03",
+    "placements": [
+     { "boiler": "0C5B11:Skyrim.esm", "pos": [6829.2, -9011.9, -912.0], "rotZ": 0 },
+     { "boiler": "0C5AD8:Skyrim.esm", "pos": [7081.7, -9011.7, -912.0], "rotZ": 0 },
+     { "boiler": "0C5B12:Skyrim.esm", "pos": [7343.5, -8999.0, -912.0], "rotZ": 0 }
+    ]
+   },
+   {
+    "edid": "AldMeadBoilerBlackBriar",
+    "name": "Black-Briar Boiler",
+    "keyword": "AldCraftingMeadBlackBriar",
+    "recipe": {
+     "output": "FoodBlackBriarMead",
+     "name": "Black-Briar Mead",
+     "tier": "Novice",
+     "count": 1,
+     "items": {
+      "Snowberry": 2,
+      "FoodHoney": 1,
+      "SaltPile": 1,
+      "MountainFlower01Red": 2
+     }
+    },
+    "cell": "RiftenBlackBriarMeadery",
+    "placements": [
+     { "boiler": "0A6310:Skyrim.esm", "pos": [1317.5, -4371.4, -128.0], "rotZ": 45 },
+     { "boiler": "0A6311:Skyrim.esm", "pos": [1235.4, -4378.5, -128.0], "rotZ": 315 }
+    ]
+   }
+  ],
+  "honey": {
+   "output": "FoodHoney",
+   "name": "Honey",
+   "bench": "CraftingCookpot",
+   "profession": "cook",
+   "tier": "Novice",
+   "count": 1,
+   "items": {
+    "BeeHoneyComb": 1
+   }
+  }
  }
 }
