@@ -1770,5 +1770,31 @@
    "00ENCHRecipeArmorBogBlightMask_Unpainted_Cloth"
   ],
   "disabledBench": "MothNest1"
+ },
+ "uncraftable": {
+  "bench": "MothNest1",
+  "profession": "blacksmith",
+  "recipes": [
+   "RecipeWeaponDaedricBattleAxe",
+   "RecipeWeaponDaedricBow",
+   "RecipeWeaponDaedricDagger",
+   "RecipeWeaponDaedricGreatsword",
+   "RecipeWeaponDaedricMace",
+   "RecipeWeaponDaedricSword",
+   "RecipeWeaponDaedricWarAxe",
+   "RecipeWeaponDaedricWarhammer",
+   "RecipeArmorDaedricBoots",
+   "RecipeArmorDaedricCuirass",
+   "RecipeArmorDaedricGauntlets",
+   "RecipeArmorDaedricHelmet",
+   "RecipeArmorDaedricShield",
+   "RecipeArmorDaedricCuirassaltdk",
+   "RecipeArmorDaedricHelmetaltdk",
+   "RecipeArmorDaedricShieldaltdk",
+   "RecipeArmorArmorDaedricHelmet_CLS",
+   "RecipeArmorArmorDaedricHelmet_D_CLS",
+   "RecipeArmorArmorDaedricHelmet_U_CLS",
+   "DLC1RecipeArrowDaedric"
+  ]
  }
 }

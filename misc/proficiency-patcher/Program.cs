@@ -61,6 +61,7 @@ Steps.Cooking(ctx);
 Steps.Smithing(ctx);
 Steps.Woodworking(ctx);
 Steps.Tailoring(ctx);
+Steps.Uncraftable(ctx);
 
 if (report.Errors.Count > 0)
 {
@@ -417,6 +418,25 @@ static class Steps
         }
     }
 
+    // ---- recipes that must never be craftable: parked on a keyword no furniture carries ---------------------------
+    public static void Uncraftable(PatchContext c)
+    {
+        if (c.Spec["uncraftable"] is not JsonObject u) return;
+        Park(c, u["recipes"]!.AsArray().Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>()),
+             "uncraftable", u["profession"]!.GetValue<string>());
+    }
+
+    static void Park(PatchContext c, IEnumerable<string> edids, FormKey bench, string kind, string profession)
+    {
+        foreach (var edid in edids)
+        {
+            if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"{kind}: recipe to disable '{edid}' not found"); continue; }
+            var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
+            cobj.WorkbenchKeyword.SetTo(bench);
+            c.Report.Recipes.Add(new RecipeLine(kind, edid, c.NameOf(cobj.CreatedObject.FormKey), profession, "disabled", Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: "bench set to the parking keyword, recipe hidden"));
+        }
+    }
+
     // Material editor id -> rank index, from the owner's ingot table
     public static Dictionary<FormKey, int> MaterialTiers(PatchContext c)
     {
@@ -506,16 +526,7 @@ static class Steps
             NewRecipe(c, r, bench, profession, "AldRecipeTailor_");
         }
         if (t["disableRecipes"] is JsonArray disable)
-        {
-            var parking = c.KeyOf<IKeywordGetter>(t["disabledBench"]!.GetValue<string>());
-            foreach (var edid in disable.Select(x => x!.GetValue<string>()))
-            {
-                if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"tailoring: recipe to disable '{edid}' not found"); continue; }
-                var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
-                cobj.WorkbenchKeyword.SetTo(parking);
-                c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, "disabled", Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: "bench set to the parking keyword, recipe hidden"));
-            }
-        }
+            Park(c, disable.Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(t["disabledBench"]!.GetValue<string>()), "tailoring", profession);
     }
 
     // ---- helpers -------------------------------------------------------------------------------------------------
