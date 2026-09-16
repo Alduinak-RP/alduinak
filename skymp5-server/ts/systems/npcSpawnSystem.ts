@@ -140,6 +140,23 @@ export const num = (v: unknown, fallback: number): number => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+// "00023A99 4", "23a99:Skyrim.esm 4" or { id, count }; count defaults to 1, null without an id
+export const parseIdCount = (item: unknown): { id: string; count: number } | null => {
+  let id = "";
+  let count = 1;
+  if (typeof item === "string") {
+    const m = item.trim().match(/^(.+?)(?:\s+(\d+))?$/);
+    if (m) {
+      id = m[1];
+      count = num(m[2], 1);
+    }
+  } else if (item && typeof item === "object") {
+    id = String(pick(item, "id") ?? "").trim();
+    count = num(pick(item, "count"), 1);
+  }
+  return id ? { id, count } : null;
+};
+
 // {x,y,z}, [x,y,z] or "x, y, z"
 export const parsePos = (raw: unknown): number[] | null => {
   let parts: unknown[] | null = null;
@@ -380,24 +397,12 @@ export class NpcSpawnSystem implements System {
     this.log(`NpcSpawnSystem: navmesh spots for ${matched - rings.length}/${matched} zone(s) in ${Date.now() - started} ms${kept}`);
   }
 
-  // "00023A99 4", "23a99:Skyrim.esm 4" or { id, count }; count defaults to 1
   private parseNpcs(raw: unknown): { id: string; count: number }[] {
     const list = raw === undefined || raw === null ? [] : Array.isArray(raw) ? raw : [raw];
     const out: { id: string; count: number }[] = [];
     for (const item of list) {
-      let id = "";
-      let count = 1;
-      if (typeof item === "string") {
-        const m = item.trim().match(/^(.+?)(?:\s+(\d+))?$/);
-        if (m) {
-          id = m[1];
-          count = num(m[2], 1);
-        }
-      } else if (item && typeof item === "object") {
-        id = String(pick(item, "id") ?? "").trim();
-        count = num(pick(item, "count"), 1);
-      }
-      if (id) out.push({ id, count: Math.max(1, Math.min(MAX_COUNT, Math.round(count))) });
+      const entry = parseIdCount(item);
+      if (entry) out.push({ id: entry.id, count: Math.max(1, Math.min(MAX_COUNT, Math.round(entry.count))) });
     }
     return out;
   }

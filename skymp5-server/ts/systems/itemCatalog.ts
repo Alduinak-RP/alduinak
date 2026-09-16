@@ -22,6 +22,21 @@ export interface CatalogItem {
 }
 
 const fieldOf = (rec: EspmRecord, type: string): Buffer | undefined => rec.fields.find((f) => f.type === type)?.data;
+
+// FULL of a record, read through the owner's string tables when the plugin is localized
+const fullName = (rec: EspmRecord, strings: ReturnType<typeof createStringsReader>): string => {
+  const full = fieldOf(rec, "FULL");
+  if (!full) return "";
+  if (!rec.localized) return cstr(full);
+  return full.length >= 4 ? strings.lookup(rec.owner, full.readUInt32LE(0)) : "";
+};
+
+// "5a68:HearthFires.esm" and "005A68:hearthfires.esm" give the same key
+export const descKey = (desc: string): string => {
+  const at = desc.indexOf(":");
+  return `${parseInt(desc.slice(0, at), 16)}:${desc.slice(at + 1).toLowerCase()}`;
+};
+
 const collate = new Intl.Collator("en", { sensitivity: "base" }).compare;
 
 const isCarryableLight = (rec: EspmRecord): boolean => {
@@ -39,10 +54,7 @@ export async function buildItemCatalog(dataDir: string, loadOrder: string[], log
       byKey.delete(key);
       return;
     }
-    const full = fieldOf(rec, "FULL");
-    let name = "";
-    if (full && rec.localized) name = full.length >= 4 ? strings.lookup(rec.owner, full.readUInt32LE(0)) : "";
-    else if (full) name = cstr(full);
+    const name = fullName(rec, strings);
     const prev = byKey.get(key);
     const first = prev?.desc ?? desc;
     byKey.set(key, {
@@ -61,6 +73,20 @@ export async function buildItemCatalog(dataDir: string, loadOrder: string[], log
     items.push({ ...item, name, hay: `${name} ${item.edid} ${item.desc}`.toLowerCase() });
   }
   return items.sort((a, b) => collate(a.name, b.name));
+}
+
+// Names of a few items by descKey, as the last override in the load order gives them; one scan of the given record types
+export async function itemNames(descs: string[], types: string[], dataDir: string, loadOrder: string[], log: LogFn): Promise<Map<string, string>> {
+  const wanted = new Set(descs.map(descKey));
+  const names = new Map<string, string>();
+  if (!wanted.size) return names;
+  const strings = createStringsReader(dataDir, log);
+  await scanRecords(dataDir, loadOrder, types, log, (rec) => {
+    const key = descKey(espmDesc(rec.formId, rec.masters, rec.owner));
+    const name = wanted.has(key) ? fullName(rec, strings) : "";
+    if (name) names.set(key, name);
+  });
+  return names;
 }
 
 export const normaliseQuery = (query: unknown): string => String(query ?? "").trim().toLowerCase().slice(0, MAX_QUERY_LENGTH);

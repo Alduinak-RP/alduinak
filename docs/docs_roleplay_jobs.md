@@ -7,8 +7,9 @@ and the load in between (hay bales, blocks of wood, baskets of fish). A player
 standing at a pickup sees an offer where the activate prompt usually is,
 `[E] Carry hay (10 gold)`, and presses Activate to take the work. The character
 goes into a vanilla carry pose, is forced to walk and cannot fight, and walking
-into the dropoff pays the gold. Each character can make 10 paid trips in any
-12 hours, counted across every job and while offline. Nothing is placed in the
+into the dropoff pays the gold, plus any `Rewards` items of the job (hay
+hauling pays Straw, fishing a raw fish). Each character can make 10 paid trips
+in any 12 hours, counted across every job and while offline. Nothing is placed in the
 world and no plugin record is needed; the file is watched, so edits apply
 without a restart, and the Jobs sub-tab of the Personal Menu places jobs in game.
 
@@ -50,6 +51,7 @@ with placeholder coordinates:
       "Prompt": "Carry hay",
       "CarryAnim": "OffsetCarryBasketStart",
       "Requires": [],
+      "Rewards": [{ "ID": "BYOHMaterialStraw", "Count": 1 }],
       "Pickup": { "ID": "Tamriel", "POS": "0, 0, 0", "Radius": 200, "Label": "the hay pile" },
       "Dropoff": { "ID": "Tamriel", "POS": "0, 0, 0", "Radius": 250, "Label": "the stable" }
     },
@@ -72,6 +74,36 @@ with placeholder coordinates:
       "CarryAnim": "OffsetCarryBasketStart",
       "Requires": ["ccBGSSSE001_FishingPoleKW"],
       "RequiresText": "a fishing rod",
+      "Rewards": [
+        {
+          "OneOf": [
+            "ccBGSSSE001_FoodAngler",
+            "ccBGSSSE001_FoodArcticChar",
+            "ccBGSSSE001_FoodArcticGrayling",
+            "ccBGSSSE001_FoodAtlanticCod",
+            "ccBGSSSE001_FoodBucketFish",
+            "ccBGSSSE001_FoodCabezon",
+            "ccBGSSSE001_FoodCarp",
+            "ccBGSSSE001_FoodCuckooCatfish",
+            "ccBGSSSE001_FoodDragonfish",
+            "ccBGSSSE001_FoodGlassCatfish",
+            "ccBGSSSE001_FoodSalmon",
+            "ccBGSSSE001_FoodSlaughterfish",
+            "ccBGSSSE001_FoodTripodFish",
+            "ccBGSSSE001_FoodTunaSalmon",
+            "ccBGSSSE001_FoodVampireFish",
+            "ccBGSSSE001_AngelfishIng",
+            "ccBGSSSE001_AnglerLarvaeIng",
+            "ccBGSSSE001_GlassfishIng",
+            "ccBGSSSE001_GoldfishIng",
+            "ccBGSSSE001_LyretailAnthiasIng",
+            "ccBGSSSE001_PearlfishIng",
+            "ccBGSSSE001_PinnateSpadefishIng",
+            "ccBGSSSE001_PygmySunfishIng"
+          ],
+          "Count": 1
+        }
+      ],
       "Pickup": { "ID": "Tamriel", "POS": "0, 0, 0", "Radius": 200, "Label": "the fishing dock" },
       "Dropoff": { "ID": "Tamriel", "POS": "0, 0, 0", "Radius": 250, "Label": "the fishmonger" }
     }
@@ -104,17 +136,29 @@ A value out of range is logged and the default is used.
 | `CarryAnim` | no | `OffsetCarryBasketStart` | an `Offset...` behaviour event; observers only see it when it is in the client's `forcedSyncAnims` (`skymp5-client/src/sync/animation.ts`), which holds `OffsetCarryBasketStart` and `OffsetCarryLogStart` |
 | `Requires` | no | none | editor ids, load-order ids (`0x0010ACCC`) or descs (`10accc:Skyrim.esm`); the player must hold any one of them. An entry may be an item, a form list (every item in it counts) or a keyword (any held item carrying it counts) |
 | `RequiresText` | no | `the right tool` | "You need `<RequiresText>` for this work." |
+| `Rewards` | no | none | items added with the gold at every paid delivery and named in the payment notice. Each entry is `"id count"`, `{ "ID": id, "Count": n }` or `{ "OneOf": [ids], "Count": n }`, where one of the `OneOf` ids is picked at random per delivery; ids are editor ids, load-order ids or descs of item records. `Count` 1..100, at most 8 entries and 64 ids per entry |
 | `Pickup`, `Dropoff` | yes | | `ID`: the cell indoors or the worldspace outdoors, as an editor id (`Tamriel`, `WhiterunWorld`), a desc (`3c:Skyrim.esm`) or a load-order id; `POS`: `{x,y,z}`, `[x,y,z]` or `"x, y, z"`; `Radius`: default 200, clamped to 50..2000; `Label`: how messages name the spot ("the stable") |
 
 `ID` resolves exactly like an NPC zone's (see `docs_roleplay_npc_spawns.md`,
-ID resolution), and `Requires` editor ids are looked up among the `FLST`,
-`KYWD`, `WEAP`, `ARMO` and `MISC` records of the load order.
+ID resolution), `Requires` editor ids are looked up among the `FLST`,
+`KYWD`, `WEAP`, `ARMO` and `MISC` records of the load order, and `Rewards`
+editor ids among the item records (`WEAP`, `ARMO`, `AMMO`, `ALCH`, `INGR`,
+`BOOK`, `MISC`, `KEYM`, `SCRL`, `SLGM`, `LIGH`).
+
+The template pays Haybales 1 Straw (`BYOHMaterialStraw`, HearthFires.esm) and
+Fishing one raw fish at random: the 23 raw fish the cooking recipes of
+`ccBGSSSE001-Fish.esm` take, 15 food fish (`ccBGSSSE001_Food<Fish>`) and 8
+ingredient fish (`ccBGSSSE001_<Fish>Ing`); the juvenile mudcrab and crab meat
+are left out. Woodblocks pays gold only. The Rare Curios ingredients and the
+Amber and Madness ores have no job or other source: staff hand them out with
+the admin item spawn.
 
 A job fails closed. An enabled entry is skipped, with one log line naming the
 reason, when a location does not resolve, a `POS` is unusable, the two ends
 share a cell and lie closer than `MinDistance`, `Pay` or `CarryAnim` is
-invalid, or a `Requires` entry is not in the load order or is not an item,
-form list or keyword. The fishing rod keyword comes from
+invalid, a `Requires` entry is not in the load order or is not an item,
+form list or keyword, or a `Rewards` entry is malformed or names anything but
+an item of the load order. The fishing rod keyword and the raw fish come from
 `ccBGSSSE001-Fish.esm`, which is not in `loadOrder` until the Creation Club
 content is added, so an enabled Fishing job logs
 `[jobs] 'Fishing' skipped, Requires 'ccBGSSSE001_FishingPoleKW' is not in the load order`
@@ -174,11 +218,16 @@ Walking within `Radius` of the dropoff ends the trip:
   The minimum is 10 seconds, or the straight distance from the edge of the
   pickup offer (1.25 x its `Radius`) to the edge of the dropoff divided by
   `MaxSpeed`, whichever is longer. Ends in different cells use the 10 seconds.
-- Otherwise the gold is added silently (`AddItem` of `Gold001`), the delivery
-  time is stored and the player reads
-  "You deliver the block of wood and earn 10 gold. 7 of 10 trips left.", or on
-  the last one "You deliver the block of wood and earn 10 gold. That was your
-  last trip; there is more work in 11 h 40 min."
+- Otherwise the gold and each `Rewards` entry are added silently (`AddItem`),
+  the delivery time is stored and the player reads
+  "You deliver the block of wood and earn 10 gold. 7 of 10 trips left.", with
+  rewards "You deliver the hay bale and earn 10 gold and 1 Straw. 9 of 10 trips
+  left.", or on the last one "You deliver the block of wood and earn 10 gold.
+  That was your last trip; there is more work in 11 h 40 min."
+- Reward names are the items' in-game names, read once from the plugins
+  (localized strings included); an item without a name shows its id from the
+  file. A reward the server cannot add is logged and left out of the notice;
+  the gold and the trip still count.
 
 Jobs are pure income: a delivery never adds mastery hours.
 
@@ -283,6 +332,9 @@ Personal Menu > Admin > NPCs > **Jobs** (every tier with the `npcs` cap):
   plugin is in `loadOrder`, and still fails closed once enabled) and answers
   with a toast naming the first problem. A valid entry replaces the entry of
   the same name in place or is appended. **Clear** empties the form.
+- The form has no `Rewards` field: a save keeps the `Rewards` of the entry it
+  replaces (validated like `Requires`, only with Enabled on). Rewards are
+  edited in the file by hand.
 
 Save and Delete rewrite the whole file through a temp file and a rename,
 keeping the wrapper's other keys; hand formatting is normalised. A file that is
@@ -305,7 +357,9 @@ Prefixed `[jobs]` in the server log and the manager console:
 - `N/M job(s) active from ./Jobs.json (boot | file changed | admin save | admin delete), disabled: ...; 10 trips per 12 h`
 - `'<Name>' skipped, <reason>` for each enabled entry that does not load
 - `<character> (<actor id>) picked up <Name>, 3/10 trips made`
-- `<character> (<actor id>) delivered <Name>, +10 gold, 4/10`
+- `<character> (<actor id>) delivered <Name>, +10 gold, +1 Straw, 4/10`
+- `reward <item> for <character> (<actor id>) (<Name>) failed: <error>`
+- `reward item names unreadable, the file's ids stand in: <error>`
 - `<character> (<actor id>) delivered <Name> in 12 s, under the 17 s minimum, not paid`
 - `<actor id> disconnected carrying <Name>`
 - `refused onHitDamageAttempt by job carrier <actor id>` (at most every 5 s per carrier)
@@ -333,7 +387,8 @@ Prefixed `[jobs]` in the server log and the manager console:
 4. The offer reads `[E] Carry hay (10 gold)`. Take the work: pose, forced walk,
    no sprint, jump or weapon, and the emote wheel key reads "Put down what you
    carry to use emotes."; a second client sees the pose. Walk to the dropoff:
-   10 gold, "9 of 10 trips left".
+   10 gold and 1 Straw, "You deliver the hay bale and earn 10 gold and 1 Straw.
+   9 of 10 trips left."
 5. Woodblocks without an axe is refused; with a woodcutter's axe it works, and
    the second client sees the log pose.
 6. X on nothing while carrying: the load menu; Put down ends the trip; Personal
@@ -347,5 +402,6 @@ Prefixed `[jobs]` in the server log and the manager console:
    over-encumbrance.
 10. Make 10 trips (or lower `WindowHours`): the next start names the wait; a
     trip becomes available again 12 h after it was made, also while offline.
-11. With `ccBGSSSE001-Fish.esm` in `loadOrder`, Fishing loads and accepts any CC fishing rod.
+11. With `ccBGSSSE001-Fish.esm` in `loadOrder`, Fishing loads, accepts any CC fishing rod
+    and pays 10 gold and one raw fish, named in the notice.
 12. Check whether a basket or a log shows in the hands; decide on props if not.

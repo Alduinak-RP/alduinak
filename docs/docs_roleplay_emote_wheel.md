@@ -57,6 +57,6 @@ earn no mastery hours (see `docs_roleplay_mastery.md`).
 | Imperial War Horn | forge | 1 Mammoth Tusk, 1 Iron Ingot, 1 Leather Strips |
 | Nord War Horn | forge | 1 Mammoth Tusk, 1 Iron Ingot, 1 Leather Strips |
 
-The broom takes Hearthfire Straw (`BYOHMaterialStraw`, HearthFires.esm), the owner's choice over Wheat. The
-recipes live in `kilnRecipes` of `misc/proficiency-patcher/spec.json`; staff can still hand items out with the
-admin item spawn.
+The broom takes Hearthfire Straw (`BYOHMaterialStraw`, HearthFires.esm), the owner's choice over Wheat; the
+Haybales passive job pays Straw (`docs_roleplay_jobs.md`). The recipes live in `kilnRecipes` of
+`misc/proficiency-patcher/spec.json`; staff can still hand items out with the admin item spawn.

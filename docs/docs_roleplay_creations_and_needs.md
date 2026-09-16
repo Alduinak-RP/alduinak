@@ -143,14 +143,12 @@ plugin in the MO2 mod, and "Update manifest" fails with the changed plugins name
 The Fishing campfire recipes (no bench carries `Camping_CampfireCookingShared`) and the Hearthfire aquarium house parts
 are left as they are.
 
-**Sources (not built yet).** With the quests, leveled-list injections and placed objects off, the recipe inputs below
-reach players only through admin grants until the owner picks a source for each:
-- Raw fish and crabs (Fishing): only the fishing spots and the Fishing quests gave them; the passive fishing job pays gold.
-- Rare Curios ingredients: Curios injects them into vendor and loot leveled lists by quest.
-- Amber and Madness ore (Saints & Seducers): leveled loot only (`ccBGSSSE025_LItemOreAmber`, `...OreMadness`), no ore
-  veins exist for GatheringSystem to use.
-Options: server-side payouts or drop tables in an Alduinak system, placed ore veins (Graves), or static leveled-list
-merges in `AlduinakCreations.esp` (not chosen so far).
+**Sources.** With the quests, leveled-list injections and placed objects off, the recipe inputs below reach players
+this way:
+- Raw fish (Fishing): the passive Fishing job pays one raw fish at random with its gold (`Rewards` in `Jobs.json`, see
+  `docs_roleplay_jobs.md`). Crab meat and juvenile mudcrabs have no source.
+- Rare Curios ingredients and Amber and Madness ore (Saints & Seducers): admin item spawn only, by owner decision. Staff
+  hand them out when players buy things at the EEC, through roleplay.
 
 ## Hunger and fatigue
 

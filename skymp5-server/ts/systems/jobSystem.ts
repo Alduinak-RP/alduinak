@@ -7,7 +7,8 @@ import { espmFieldFormIds } from "./formIdUtil";
 import { addItemTo, baseTypeOf, cleanDisplayName, formatWait, GOLD_BASE_ID, hex, holdsItem, isAlive, userOf } from "./actorUtil";
 import { CaptureSystem, isRestrained } from "./captureSystem";
 import { MasterySystem } from "./masterySystem";
-import { pick, pickKey, num, parsePos } from "./npcSpawnSystem";
+import { pick, pickKey, num, parsePos, parseIdCount } from "./npcSpawnSystem";
+import { ITEM_TYPES, descKey, itemNames } from "./itemCatalog";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -22,6 +23,7 @@ type Mp = any;
 //                     { customPacketType: "carryState", carrying, anim, target: 0 }  the pose, applied by RestraintService
 //                     { customPacketType: "notification", text }
 // Persistence: private.jobs = { trips: [epoch ms of each paid delivery] } on the character. The limit is rolling and shared by every job.
+// Rewards: items added with the gold at delivery, one item of each entry picked at random.
 
 const JOBS_FILE = "./Jobs.json";
 const JOBS_PROP = "private.jobs";
@@ -35,6 +37,9 @@ const RELOAD_DEBOUNCE_MS = 500;
 const MAX_NAME = 64;
 const MAX_TEXT = 48;
 const MAX_REQUIRES = 16;
+const MAX_REWARDS = 8;
+const MAX_REWARD_ITEMS = 64;
+const MAX_REWARD_COUNT = 100;
 const MAX_KEPT_TRIPS = 100;
 const DEFAULT_ANIM = "OffsetCarryBasketStart";
 const DEFAULT_RADIUS = 200;
@@ -53,8 +58,6 @@ const DENY_NOTICE_MS = 1000;
 const REFUSAL_LOG_MS = 5000;
 const MOUNT_FF = "ff_mount";
 
-// Record types a Requires entry may name as an item
-const ITEM_TYPES = ["WEAP", "ARMO", "MISC", "AMMO", "INGR", "ALCH", "BOOK", "SLGM", "KEYM", "LIGH", "SCRL"];
 const REQUIRE_SCAN_TYPES = ["FLST", "KYWD", "WEAP", "ARMO", "MISC"];
 
 interface Globals {
@@ -82,6 +85,12 @@ interface EndDraft {
   label: string;
 }
 
+// ids as written in the file: editor ids, load-order ids or descs
+interface RewardDraft {
+  ids: string[];
+  count: number;
+}
+
 interface Draft {
   name: string;
   enabled: boolean;
@@ -91,6 +100,7 @@ interface Draft {
   anim: string;
   requires: string[];
   requiresText: string;
+  rewards: RewardDraft[];
   pickup: EndDraft;
   dropoff: EndDraft;
 }
@@ -103,12 +113,26 @@ interface End {
   label: string;
 }
 
+interface Reward {
+  items: number[];
+  // In-game names, the file's id where a record has none
+  names: string[];
+  count: number;
+}
+
 interface Job {
   draft: Draft;
   pickup: End;
   dropoff: End;
   tools: Set<number>;
   keywords: number[];
+  rewards: Reward[];
+}
+
+// Editor ids resolved for the Requires and Rewards of enabled drafts
+interface ResolvedIds {
+  requires: Map<string, string>;
+  rewards: Map<string, string>;
 }
 
 // Every named file entry; the ends resolve when the location does, the job only when it is enabled and valid
@@ -173,6 +197,8 @@ const listOf = (raw: unknown): string[] => {
   return list.map((v) => String(v ?? "").trim()).filter(Boolean);
 };
 
+const joinedList = (parts: string[]): string => (parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts.join(""));
+
 export class JobSystem implements System {
   systemName = "JobSystem";
   constructor(private log: Log, private capture: CaptureSystem, private mastery: MasterySystem) { }
@@ -193,6 +219,8 @@ export class JobSystem implements System {
   private struck = new Set<number>();
   private lastDenyMs = new Map<number, number>();
   private refusalLogAt = new Map<number, number>();
+  // Reward item id -> in-game name, "" when the record has none; plugins only change with a restart
+  private rewardNames = new Map<number, string>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.ctx = ctx;
@@ -287,7 +315,7 @@ export class JobSystem implements System {
       drafts.push({ draft, problem: problems[0] ?? "" });
     }
     const enabled = drafts.filter((d) => d.draft.enabled && !d.problem).map((d) => d.draft);
-    const { locators, requires } = await this.resolveIds(drafts.map((d) => d.draft), enabled);
+    const { locators, ids } = await this.resolveIds(drafts.map((d) => d.draft), enabled);
     const entries: Entry[] = [];
     const jobs: Job[] = [];
     for (const { draft, problem } of drafts) {
@@ -295,13 +323,14 @@ export class JobSystem implements System {
       const reject: Reject = (msg) => problems.push(msg);
       const pickup = this.buildEnd(draft.pickup, "Pickup", locators, reject);
       const dropoff = this.buildEnd(draft.dropoff, "Dropoff", locators, reject);
-      const job = pickup && dropoff && !problems.length ? this.buildJob(draft, pickup, dropoff, globals, draft.enabled ? requires : null, reject) : null;
+      const job = pickup && dropoff && !problems.length ? this.buildJob(draft, pickup, dropoff, globals, draft.enabled ? ids : null, reject) : null;
       const status = [draft.enabled ? "" : "disabled", problems[0] ?? ""].filter(Boolean).join(", ");
       entries.push({ draft, status, pickup, dropoff });
       if (!draft.enabled) continue;
       if (job && !problems.length) jobs.push(job);
       else this.log(`[jobs] '${draft.name}' skipped, ${problems[0]}`);
     }
+    await this.nameRewards(jobs);
     this.replace(globals, jobs, entries);
     const disabled = entries.filter((e) => !e.draft.enabled).map((e) => e.draft.name);
     this.log(`[jobs] ${jobs.length}/${file.list.length} job(s) active from ${JOBS_FILE} (${reason})${disabled.length ? `, disabled: ${disabled.join(", ")}` : ""}; ${globals.tripsPerWindow} trips per ${globals.windowMs / 3600000} h`);
@@ -377,6 +406,7 @@ export class JobSystem implements System {
     if (!/^Offset[A-Za-z0-9_]+$/i.test(anim)) reject(`CarryAnim '${anim}' is not an Offset pose`);
     const requires = listOf(pick(raw, "requires"));
     if (requires.length > MAX_REQUIRES) reject(`more than ${MAX_REQUIRES} Requires entries`);
+    const rewards = this.parseRewards(pick(raw, "rewards"), reject);
     return {
       name,
       enabled: enabledRaw !== false && String(enabledRaw).toLowerCase() !== "false",
@@ -386,9 +416,29 @@ export class JobSystem implements System {
       anim,
       requires,
       requiresText: cleanDisplayName(pick(raw, "requirestext"), MAX_TEXT) || "the right tool",
+      rewards,
       pickup: this.parseEnd(pick(raw, "pickup"), "the pickup"),
       dropoff: this.parseEnd(pick(raw, "dropoff"), "the dropoff"),
     };
+  }
+
+  // Entries are "id count", { ID, Count } or { OneOf: [ids], Count }
+  private parseRewards(raw: unknown, reject: Reject): RewardDraft[] {
+    const list = raw === undefined || raw === null ? [] : Array.isArray(raw) ? raw : [raw];
+    if (list.length > MAX_REWARDS) reject(`more than ${MAX_REWARDS} Rewards entries`);
+    const rewards: RewardDraft[] = [];
+    for (const entry of list) {
+      const oneOf = pick(entry, "oneof");
+      const single = oneOf === undefined ? parseIdCount(entry) : null;
+      const ids = single ? [single.id] : listOf(oneOf);
+      const count = single ? single.count : num(pick(entry, "count"), 1);
+      if (!ids.length || ids.length > MAX_REWARD_ITEMS || !Number.isInteger(count) || count < 1 || count > MAX_REWARD_COUNT) {
+        reject(`Rewards entry ${JSON.stringify(entry)} needs 1 to ${MAX_REWARD_ITEMS} items and a whole Count from 1 to ${MAX_REWARD_COUNT}`);
+        continue;
+      }
+      rewards.push({ ids, count });
+    }
+    return rewards;
   }
 
   private parseEnd(raw: unknown, label: string): EndDraft {
@@ -400,14 +450,24 @@ export class JobSystem implements System {
     };
   }
 
-  // Locations resolve for every entry so a disabled job can still be visited; Requires only for the given drafts
-  private async resolveIds(all: Draft[], withRequires: Draft[]): Promise<{ locators: Map<string, string>; requires: Map<string, string> }> {
+  // Locations resolve for every entry so a disabled job can still be visited; Requires and Rewards only for the given drafts
+  private async resolveIds(all: Draft[], withRequires: Draft[]): Promise<{ locators: Map<string, string>; ids: ResolvedIds }> {
     const s = await Settings.get();
     const locatorIds = all.flatMap((d) => [d.pickup.locator, d.dropoff.locator]).filter((l) => l && isEditorId(l));
     const requireIds = withRequires.flatMap((d) => d.requires).filter(isEditorId);
+    const rewardIds = withRequires.flatMap((d) => d.rewards.flatMap((r) => r.ids)).filter(isEditorId);
     const locators = await resolveEditorIds(Array.from(new Set(locatorIds)), s.dataDir, s.loadOrder, this.log);
     const requires = await resolveEditorIds(Array.from(new Set(requireIds)), s.dataDir, s.loadOrder, this.log, REQUIRE_SCAN_TYPES);
-    return { locators: locators.resolved, requires: requires.resolved };
+    const rewards = await resolveEditorIds(Array.from(new Set(rewardIds)), s.dataDir, s.loadOrder, this.log, ITEM_TYPES);
+    return { locators: locators.resolved, ids: { requires: requires.resolved, rewards: rewards.resolved } };
+  }
+
+  private recordType(id: number): string {
+    try {
+      return String((id ? this.mp.lookupEspmRecordById(id) : null)?.record?.type ?? "");
+    } catch {
+      return "";
+    }
   }
 
   // "3c:Skyrim.esm" desc, "0x0000003C" load-order id or an editor id already resolved; 0 when unknown
@@ -441,21 +501,19 @@ export class JobSystem implements System {
     return { desc, cellId, pos: end.pos, radius: end.radius, label: end.label };
   }
 
-  // Requires null skips the tools (a disabled entry); any entry that does not resolve refuses the job, so it fails closed
-  private buildJob(draft: Draft, pickup: End, dropoff: End, globals: Globals, requires: Map<string, string> | null, reject: Reject): Job | null {
+  // Ids null skips the tools and rewards (a disabled entry); any entry that does not resolve refuses the job, so it fails closed
+  private buildJob(draft: Draft, pickup: End, dropoff: End, globals: Globals, ids: ResolvedIds | null, reject: Reject): Job | null {
     if (pickup.cellId === dropoff.cellId && distance(pickup.pos, dropoff.pos) < globals.minDistance) {
       reject(`pickup and dropoff are ${Math.round(distance(pickup.pos, dropoff.pos))} units apart, MinDistance is ${globals.minDistance}`);
       return null;
     }
     const tools = new Set<number>();
     const keywords: number[] = [];
-    for (const req of requires ? draft.requires : []) {
-      const id = this.formIdOf(req, requires!);
-      let res: any = null;
-      try { res = id ? this.mp.lookupEspmRecordById(id) : null; } catch { res = null; }
-      const type = String(res?.record?.type ?? "");
+    for (const req of ids ? draft.requires : []) {
+      const id = this.formIdOf(req, ids!.requires);
+      const type = this.recordType(id);
       if (type === "FLST") {
-        const listed = espmFieldFormIds(res, "LNAM");
+        const listed = espmFieldFormIds(this.mp.lookupEspmRecordById(id), "LNAM");
         if (!listed.length) {
           reject(`Requires '${req}' lists no items`);
           return null;
@@ -470,13 +528,49 @@ export class JobSystem implements System {
         return null;
       }
     }
-    return { draft, pickup, dropoff, tools, keywords };
+    const rewards: Reward[] = [];
+    for (const reward of ids ? draft.rewards : []) {
+      const items = reward.ids.map((text) => this.formIdOf(text, ids!.rewards));
+      const bad = items.findIndex((id) => !ITEM_TYPES.includes(this.recordType(id)));
+      if (bad >= 0) {
+        const type = this.recordType(items[bad]);
+        reject(type ? `Rewards '${reward.ids[bad]}' is a ${type}, not an item` : `Rewards '${reward.ids[bad]}' is not in the load order`);
+        return null;
+      }
+      rewards.push({ items, names: [...reward.ids], count: reward.count });
+    }
+    return { draft, pickup, dropoff, tools, keywords, rewards };
+  }
+
+  // One scan of the reward records' types names every item not named before
+  private async nameRewards(jobs: Job[]): Promise<void> {
+    const rewards = jobs.flatMap((j) => j.rewards);
+    const descs = new Map<number, string>();
+    for (const id of rewards.flatMap((r) => r.items)) {
+      if (this.rewardNames.has(id) || descs.has(id)) continue;
+      try {
+        descs.set(id, this.mp.getDescFromId(id));
+      } catch {
+        this.rewardNames.set(id, "");
+      }
+    }
+    if (descs.size) {
+      const s = await Settings.get();
+      const types = Array.from(new Set(Array.from(descs.keys()).map((id) => this.recordType(id))));
+      try {
+        const names = await itemNames(Array.from(descs.values()), types, s.dataDir, s.loadOrder, this.log);
+        for (const [id, desc] of descs) this.rewardNames.set(id, names.get(descKey(desc)) ?? "");
+      } catch (e) {
+        this.log(`[jobs] reward item names unreadable, the file's ids stand in: ${e}`);
+      }
+    }
+    for (const reward of rewards) reward.names = reward.items.map((id, i) => this.rewardNames.get(id) || reward.names[i]);
   }
 
   // Trips of a job that is gone or was edited end; every offer is withdrawn and the next poll makes it again
   private replace(globals: Globals, jobs: Job[], entries: Entry[] = []): void {
     this.globals = globals;
-    const signature = (j: Job) => JSON.stringify([j.draft, j.pickup, j.dropoff, Array.from(j.tools), j.keywords]);
+    const signature = (j: Job) => JSON.stringify([j.draft, j.pickup, j.dropoff, Array.from(j.tools), j.keywords, j.rewards]);
     const next = new Map(jobs.map((j) => [j.draft.name.toLowerCase(), j]));
     for (const [actorId, trip] of Array.from(this.trips)) {
       const same = next.get(trip.job.draft.name.toLowerCase());
@@ -639,6 +733,7 @@ export class JobSystem implements System {
       this.log(`[jobs] paying ${who} for ${draft.name} failed: ${e}`);
       return this.endTrip(actorId, "Nobody could pay you just now.");
     }
+    const paid = [`${draft.pay} gold`, ...this.grantRewards(actorId, trip.job, who)];
     recent.push(now);
     try {
       this.mp.set(actorId, JOBS_PROP, { trips: recent.slice(-MAX_KEPT_TRIPS) });
@@ -646,11 +741,26 @@ export class JobSystem implements System {
       this.log(`[jobs] recording the trip of ${who} failed: ${e}`);
     }
     const left = limit - recent.length;
-    const earned = `You deliver the ${draft.item} and earn ${draft.pay} gold.`;
+    const earned = `You deliver the ${draft.item} and earn ${joinedList(paid)}.`;
     this.endTrip(actorId, left > 0
       ? `${earned} ${left} of ${limit} trips left.`
       : `${earned} That was your last trip; there is more work in ${formatWait(this.nextFreeAt(recent) - now)}.`);
-    this.log(`[jobs] ${who} delivered ${draft.name}, +${draft.pay} gold, ${recent.length}/${limit}`);
+    this.log(`[jobs] ${who} delivered ${draft.name}, +${paid.join(", +")}, ${recent.length}/${limit}`);
+  }
+
+  // A reward that fails is logged and left out of the notice; the gold stands
+  private grantRewards(actorId: number, job: Job, who: string): string[] {
+    const granted: string[] = [];
+    for (const reward of job.rewards) {
+      const i = Math.floor(Math.random() * reward.items.length);
+      try {
+        addItemTo(this.mp, actorId, reward.items[i], reward.count, true);
+        granted.push(`${reward.count} ${reward.names[i]}`);
+      } catch (e) {
+        this.log(`[jobs] reward ${reward.names[i]} for ${who} (${job.draft.name}) failed: ${e}`);
+      }
+    }
+    return granted;
   }
 
   // Ends a trip without pay; the pose is dropped unless CaptureSystem owns it
@@ -807,16 +917,16 @@ export class JobSystem implements System {
     }));
   }
 
-  // Validates like a file entry, Requires only when enabled, then replaces the entry of that name or appends it; error null on success
+  // Validates like a file entry, Requires and Rewards only when enabled, then replaces the entry of that name or appends it; error null on success
   async saveJob(raw: unknown): Promise<{ error: string | null; name: string; replaced: boolean }> {
     const problems: string[] = [];
     const reject: Reject = (msg) => problems.push(msg);
-    const draft = this.parseDraft(raw, this.globals, reject);
+    const draft = this.parseDraft(this.withKeptRewards(raw), this.globals, reject);
     if (!draft || problems.length) return { error: problems[0], name: "", replaced: false };
-    const { locators, requires } = await this.resolveIds([draft], draft.enabled ? [draft] : []);
+    const { locators, ids } = await this.resolveIds([draft], draft.enabled ? [draft] : []);
     const pickup = this.buildEnd(draft.pickup, "Pickup", locators, reject);
     const dropoff = this.buildEnd(draft.dropoff, "Dropoff", locators, reject);
-    if (pickup && dropoff) this.buildJob(draft, pickup, dropoff, this.globals, draft.enabled ? requires : null, reject);
+    if (pickup && dropoff) this.buildJob(draft, pickup, dropoff, this.globals, draft.enabled ? ids : null, reject);
     if (problems.length) return { error: problems[0], name: draft.name, replaced: false };
     const file = this.readJobFile();
     if (typeof file === "string") return { error: file, name: draft.name, replaced: false };
@@ -829,6 +939,7 @@ export class JobSystem implements System {
       CarryAnim: draft.anim,
       Requires: draft.requires,
       RequiresText: draft.requires.length ? draft.requiresText : undefined,
+      Rewards: draft.rewards.length ? draft.rewards.map((r) => (r.ids.length === 1 ? { ID: r.ids[0], Count: r.count } : { OneOf: r.ids, Count: r.count })) : undefined,
       Pickup: this.endEntry(draft.pickup),
       Dropoff: this.endEntry(draft.dropoff),
     };
@@ -844,6 +955,14 @@ export class JobSystem implements System {
     this.log(`[jobs] '${draft.name}' ${at >= 0 ? "replaced in" : "appended to"} ${JOBS_FILE} by admin`);
     await this.queueLoad("admin save");
     return { error: null, name: draft.name, replaced: at >= 0 };
+  }
+
+  // The panel form has no Rewards field, so a save without one keeps the Rewards of the entry it replaces
+  private withKeptRewards(raw: unknown): unknown {
+    const file = this.readJobFile();
+    if (typeof file === "string" || !raw || typeof raw !== "object" || pickKey(raw, "rewards") !== undefined) return raw;
+    const kept = pick(file.list.find((e) => entryName(e) === entryName(raw)), "rewards");
+    return kept === undefined ? raw : { ...(raw as Record<string, unknown>), Rewards: kept };
   }
 
   private endEntry(end: EndDraft): Record<string, unknown> {
