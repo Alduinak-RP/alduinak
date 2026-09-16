@@ -715,7 +715,8 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `miningVeinTiers` | iron, corundum open; gold, silver Adept; orichalcum, moonstone Expert; malachite, quicksilver, ebony Master | `{ "<ore editor id>": "Adept" }` overrides, by the ore item the vein hands out |
 | `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
 | `huntingTrophyChance` | `0.15` | Master hunter: chance of one extra pelt per kind |
-| `huntingHarvestNeedsHunter` | `false` | Only hunters may take pelts and meat off animal corpses |
+| `huntingPeltsNeedHunter` | `true` | Pelts on a dead animal, pets included, are left out of the loot window of anyone who is not a hunter, and a take of one is refused. A pelt is any item carrying `VendorItemAnimalHide` plus the `huntingPelts` list. A non-hunter who owned the pet also stops seeing pelts they stored in it |
+| `huntingHarvestNeedsHunter` | `false` | Hides the meat as well, by the same rule |
 | `huntingMeats`, `huntingPelts` | vanilla and DLC lists | Editor ids of what counts as meat and pelt |
 
 ## enableGamemodeDataUpdatesBroadcast
