@@ -65,18 +65,40 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Profession | Novice (everyone) | Adept | Expert | Master |
 |---|---|---|---|---|
 | Alchemist | Minor Healing, Minor Stamina, Minor Magicka, wine, ale, mead | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
-| Blacksmith | iron, corundum, leather | gold, steel, silver | orichalcum, dwarven, moonstone | malachite, quicksilver, ebony, daedric, dragon, stalhrim |
+| Blacksmith | iron, corundum, leather, the woodcutter's axe | gold, steel, silver | orichalcum, dwarven, moonstone | malachite, quicksilver, ebony, dragon, stalhrim, nordic |
 | Cook | the cooked meats (each needs a Salt Pile), Steamed Mudcrab Legs | soups, stews, chowder, Sweet Roll, Potato Bread | Bread, Braided Bread, Chicken Dumpling, Beef Stew | pies, crostatas, dumplings, Garlic Bread, Elsweyr Fondue, Venison Stew |
 | Hunter | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
 | Miner | iron and corundum veins | gold and silver veins | orichalcum and moonstone veins | malachite, quicksilver and ebony veins |
 | Tailor | scarves, gaiter, short capes, rugged mask and cape | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels, Reinforced Mantle, Boiled Leather Cuirass, Robed Iron Armor, Leather Doublet, Sturdy Pouch | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
 | Warrior | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
-| Woodworker | Charcoal (at the kiln) | iron, steel, hide and orcish-free bows, arrows and shields | orcish, dwarven, elven arrows and shields, orcish and dwarven bows | glass, ebony, daedric, dragon, stalhrim bows, arrows and shields |
+| Woodworker | Charcoal (at the smelter) | iron, steel, hide and orcish-free bows, arrows and shields | orcish, dwarven, elven arrows and shields, orcish and dwarven bows | glass, ebony, dragon, stalhrim bows, arrows and shields |
 
-Smithing and woodworking tiers follow the materials: the highest material among
-a recipe's inputs and its product decides, so elven bows (quicksilver) land in
-Master. Recipes the lists do not mention stay Novice, and the vanilla `HasPerk`
-gates are removed from every tiered recipe, since players never hold perks.
+Smithing, tempering and woodworking tiers follow the materials: the highest
+material among a recipe's inputs and its product decides, so elven bows
+(quicksilver) land in Master. Recipes the lists do not mention stay Novice.
+
+Every tiered recipe also loses the vanilla conditions this server cannot
+evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in
+the spec). Players never hold perks and quests never run, so those conditions
+hid Stalhrim, Nordic, Bonemold, the Dawnguard crossbows and bolts, the Blades
+armour and the Skyforge Bow from every menu, while `CraftService` read them as
+true and accepted the craft from anyone. The marker is appended outside any OR
+group, so it can never be satisfied by a sibling condition.
+
+**Daedric is never craftable.** All 20 recipes, the weapons, the armour, the
+three closed helmets and the Daedric arrow, are parked on the `MothNest1`
+keyword no furniture carries: no menu lists them and `CraftService` refuses the
+bench keyword.
+
+**Faction and guild sets are never craftable.** The stripped quest gates would
+otherwise have handed 64 recipes to anyone of the right rank: the eight hold
+guard cuirasses, the eight full helmets and the nine hold shields, the
+Stormcloak and Stormcloak Bear sets, the Thieves Guild armour with its Karliah,
+Leader and Variant sets, the Dark Brotherhood armour, the Forsworn armour and
+the Skaal clothes. They are parked on `MothNest1` beside the Daedric recipes, so
+a hold guard cuirass or a guild uniform is earned, never smithed. Stalhrim,
+Nordic, Bonemold, the Dawnguard crossbows and bolts, the Blades armour and the
+Skyforge Bow stay craftable at their mastery tier.
 
 Benches:
 
@@ -87,9 +109,20 @@ Benches:
   workbench model, keyword `AldCraftingWoodcrafting`) is a new furniture record
   for placing in the Creation Kit; the existing Hearthfire carpenter's
   workbenches also offer the woodcrafting recipes.
-- **Kiln**: the charcoal recipe waits on keyword `AldCraftingKiln`. The kiln
-  furniture comes from a separate mod; give it that keyword and the recipe shows.
-- Smelters are unchanged.
+- **Smelters** carry the charcoal recipe (2 Firewood into 1 Charcoal, open to
+  everyone); the ore-to-ingot recipes there keep their blacksmith tiers. Credit
+  for charcoal counts as blacksmith work, because mastery hours follow the
+  recipe's bench keyword.
+- **Kiln**: the keyword `AldCraftingKiln` stays in the plugin, unused. A kiln
+  mod can claim it and the charcoal recipe moves back with one spec field.
+- **Forges** carry one added recipe, the woodcutter's axe (one iron ingot and
+  one leather strip, open to everyone). Every vanilla merchant on this server is
+  disabled, and without an axe no one can chop firewood.
+- **Armour table and grindstone**: the Improve tab shows only what the character
+  could have made. The rank comes from the material table, the profession from
+  whoever crafts the item, so the 27 bow and shield entries ask for the
+  woodworker rank and everything else for the blacksmith rank. This is a menu
+  gate, nothing more (see below).
 
 ### Vanilla perks through abilities
 
@@ -189,16 +222,20 @@ produces is:
 - `KYWD` `AldCraftingAlchemy`, `AldCraftingKiln`, `AldCraftingWoodcrafting`.
 - `FURN` overrides of the alchemy labs (bench type Create Object, the alchemy
   keyword) and the carpenter's workbenches, plus the new woodcrafting bench.
-- `COBJ` records: new alchemy and kiln recipes; overrides of every cooking,
-  smithing, woodworking and tailoring recipe with one condition, `HasSpell`,
-  parameter the rank's marker, **Run On = Subject**, `== 1`. Novice means no
-  condition. `Run On` must be Subject: `ConditionsEvaluator` only accepts
-  `Subject`, `Target` and `Reference`.
+- `COBJ` records: the new alchemy, charcoal and woodcutter's axe recipes;
+  overrides of every cooking, smithing, tempering, woodworking and tailoring
+  recipe with one condition, `HasSpell`, parameter the rank's marker, **Run On =
+  Subject**, `== 1`. Novice means no condition. `Run On` must be Subject:
+  `ConditionsEvaluator` only accepts `Subject`, `Target` and `Reference`. The
+  recipes listed under `uncraftable` keep their tier but sit on `MothNest1`.
 
 Constraints that still hold:
 
-- **Tempering recipes can never be gated this way.** `CraftService` hard-blocks
-  recipes whose bench keyword is `ArmorTable` or `SharpeningWheel`.
+- **Tempering is a menu gate only.** `CraftService` hard-blocks every recipe
+  whose bench keyword is `ArmorTable` or `SharpeningWheel`, so the marker there
+  hides what is above the smith's rank and enforces nothing. Those recipes keep
+  their vanilla conditions, so Arcane Blacksmith still decides whether an
+  enchanted item can be improved.
 - The server matches ingredients **exactly**; recipes with optional
   ingredients will not work.
 - Adding records means the plugin has to reach the server Data folder,

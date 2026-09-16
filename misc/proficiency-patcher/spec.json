@@ -21,6 +21,16 @@
   "kiln": "AldCraftingKiln",
   "woodcrafting": "AldCraftingWoodcrafting"
  },
+ "stripConditions": [
+  "HasPerk",
+  "GetStage",
+  "GetStageDone",
+  "GetQuestCompleted",
+  "GetQuestRunning",
+  "GetQuestVariable",
+  "GetVMQuestVariable",
+  "GetGlobalValue"
+ ],
  "abilities": {
   "hunter": {
    "Adept": {
@@ -769,6 +779,7 @@
  "kilnRecipes": [
   {
    "edid": "AldRecipeKiln_Charcoal",
+   "bench": "CraftingSmelter",
    "output": "Charcoal",
    "count": 1,
    "profession": "woodworker",
@@ -878,7 +889,24 @@
    ]
   },
   "stripPerkConditions": true,
-  "exclude": []
+  "exclude": [],
+  "temperBenches": [
+   "CraftingSmithingArmorTable",
+   "CraftingSmithingSharpeningWheel"
+  ],
+  "newRecipes": [
+   {
+    "edid": "AldRecipeSmith_Axe01",
+    "bench": "CraftingSmithingForge",
+    "output": "Axe01",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   }
+  ]
  },
  "woodworking": {
   "profession": "woodworker",
@@ -1759,5 +1787,95 @@
    "00ENCHRecipeArmorBogBlightMask_Unpainted_Cloth"
   ],
   "disabledBench": "MothNest1"
+ },
+ "uncraftable": {
+  "bench": "MothNest1",
+  "profession": "blacksmith",
+  "recipes": [
+   "RecipeWeaponDaedricBattleAxe",
+   "RecipeWeaponDaedricBow",
+   "RecipeWeaponDaedricDagger",
+   "RecipeWeaponDaedricGreatsword",
+   "RecipeWeaponDaedricMace",
+   "RecipeWeaponDaedricSword",
+   "RecipeWeaponDaedricWarAxe",
+   "RecipeWeaponDaedricWarhammer",
+   "RecipeArmorDaedricBoots",
+   "RecipeArmorDaedricCuirass",
+   "RecipeArmorDaedricGauntlets",
+   "RecipeArmorDaedricHelmet",
+   "RecipeArmorDaedricShield",
+   "RecipeArmorDaedricCuirassaltdk",
+   "RecipeArmorDaedricHelmetaltdk",
+   "RecipeArmorDaedricShieldaltdk",
+   "RecipeArmorArmorDaedricHelmet_CLS",
+   "RecipeArmorArmorDaedricHelmet_D_CLS",
+   "RecipeArmorArmorDaedricHelmet_U_CLS",
+   "DLC1RecipeArrowDaedric",
+   "MCERecipeArmorGuardCuirassFalkreath",
+   "MCERecipeArmorGuardCuirassHjaalmarch",
+   "MCERecipeArmorGuardCuirassMarkarth",
+   "MCERecipeArmorGuardCuirassRiften",
+   "MCERecipeArmorGuardCuirassSolitude",
+   "MCERecipeArmorGuardCuirassThePale",
+   "MCERecipeArmorGuardCuirassWhiterun",
+   "MCERecipeArmorGuardCuirassWinterhold",
+   "MCERecipeArmorGuardHelmetFullFalkreath",
+   "MCERecipeArmorGuardHelmetFullHaafingar",
+   "MCERecipeArmorGuardHelmetFullHjaalmarch",
+   "MCERecipeArmorGuardHelmetFullPale",
+   "MCERecipeArmorGuardHelmetFullReach",
+   "MCERecipeArmorGuardHelmetFullRift",
+   "MCERecipeArmorGuardHelmetFullWhiterun",
+   "MCERecipeArmorGuardHelmetFullWinterhold",
+   "MCERecipeArmorGuardShieldEastmarch",
+   "MCERecipeArmorGuardShieldFalkreath",
+   "MCERecipeArmorGuardShieldHjaalmarch",
+   "MCERecipeArmorGuardShieldMarkarth",
+   "MCERecipeArmorGuardShieldPale",
+   "MCERecipeArmorGuardShieldRiften",
+   "MCERecipeArmorGuardShieldSolitude",
+   "MCERecipeArmorGuardShieldWhiterun",
+   "MCERecipeArmorGuardShieldWinterhold",
+   "MCERecipeArmorStormcloakBoots",
+   "MCERecipeArmorStormcloakCuirass",
+   "MCERecipeArmorStormcloakGauntlets",
+   "MCERecipeArmorStormcloakHelmetFull",
+   "MCERecipeArmorStormcloakBearBoots",
+   "MCERecipeArmorStormcloakBearCuirass",
+   "MCERecipeArmorStormcloakBearGauntlets",
+   "MCERecipeArmorStormcloakBearHelmet",
+   "MCERecipeArmorThievesGuildBoots",
+   "MCERecipeArmorThievesGuildCuirass",
+   "MCERecipeArmorThievesGuildGauntlets",
+   "MCERecipeArmorThievesGuildHelmet",
+   "MCERecipeArmorThievesGuildKarliahBoots",
+   "MCERecipeArmorThievesGuildKarliahCuirass",
+   "MCERecipeArmorThievesGuildKarliahGauntlets",
+   "MCERecipeArmorThievesGuildKarliahHelmet",
+   "MCERecipeArmorThievesGuildLeaderBoots",
+   "MCERecipeArmorThievesGuildLeaderCuirass",
+   "MCERecipeArmorThievesGuildLeaderGauntlets",
+   "MCERecipeArmorThievesGuildLeaderHelmet",
+   "MCERecipeArmorThievesGuildVariantBoots",
+   "MCERecipeArmorThievesGuildVariantCuirass",
+   "MCERecipeArmorThievesGuildVariantGauntlets",
+   "MCERecipeArmorThievesGuildVariantHelmet",
+   "MCERecipeArmorThievesGuildVariant02Helmet",
+   "MCERecipeArmorDBArmorShortSleeve",
+   "MCERecipeArmorDBBoots",
+   "MCERecipeArmorDBCuirass",
+   "MCERecipeArmorDBGauntlets",
+   "MCERecipeArmorDBHelmet",
+   "MCERecipeArmorDBHelmetMasked",
+   "MCERecipeArmorForswornBoots",
+   "MCERecipeArmorForswornCuirass",
+   "MCERecipeArmorForswornGauntlets",
+   "MCERecipeArmorForswornHelmet",
+   "MCERecipeArmorDLC2ClothesSkaalBoots",
+   "MCERecipeArmorDLC2ClothesSkaalCoat",
+   "MCERecipeArmorDLC2ClothesSkaalGloves",
+   "MCERecipeArmorDLC2ClothesSkaalHat"
+  ]
  }
 }

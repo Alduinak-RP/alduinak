@@ -14,17 +14,19 @@ from r7lib import (ESPFIX, SELF, STAGE, STAGE_SETTINGS, STAGE_SETTINGS_SHA, WORK
 import fastesp  # noqa: E402
 
 PATCHER = os.path.join(HERE, '..', 'proficiency-patcher')
-SPEC = (os.path.join(PATCHER, 'spec.json'), '267ec7447c0d667cf8408e1bfd7d1ace46b777d2a44a9b949036e23435cc9bab')
+SPEC = (os.path.join(PATCHER, 'spec.json'), '24f1be07e99d41131869e8202257b45de055be38d1023c3d8e6f17824f55b1ee')
 LIVE_DIR = ESPFIX + 'proficiency/'
-NEXT_ID, LAST_ID = 0x201D, 0x2092
+# LIVE_LAST_ID ends the block LIVE shipped; the woodcutter's axe recipe took the next id
+NEXT_ID, LIVE_LAST_ID, LAST_ID = 0x201D, 0x2092, 0x2093
+OWN_RECORDS, ADDED = 119, 1546
 OUT = WORK + 'prof/'
 
 
-def own_block(path):
-    # (type, local id, editor id) of every own record in the pinned id block
+def own_block(path, last):
+    # (local id, type, editor id) of every own record in the pinned id block
     pl = fastesp.load(path)
     n = len(pl['masters'])
-    return sorted((r.type, r.fid & 0xFFFFFF, r.edid()) for r in pl['recs'] if (r.fid >> 24) == n and NEXT_ID <= (r.fid & 0xFFFFFF) <= LAST_ID)
+    return sorted((r.fid & 0xFFFFFF, r.type, r.edid()) for r in pl['recs'] if (r.fid >> 24) == n and NEXT_ID <= (r.fid & 0xFFFFFF) <= last)
 
 
 def verify_counts(path):
@@ -64,13 +66,14 @@ def main():
         pl = fastesp.load(out)
         hsz = struct.unpack_from('<I', pl['buf'], 4)[0]
         nxt = struct.unpack_from('<I', dict(fastesp.subs_of(pl['buf'][24:24 + hsz]))['HEDR'], 8)[0]
-        check('header next id above 0x2092', nxt > LAST_ID, f'{nxt:X}')
-        mine, live = own_block(out), own_block(LIVE_DIR + SELF)
+        check(f'header next id above 0x{LAST_ID:X}', nxt > LAST_ID, f'{nxt:X}')
+        mine, live = own_block(out, LAST_ID), own_block(LIVE_DIR + SELF, LIVE_LAST_ID)
         types = {}
-        for t, _, _ in mine:
+        for _, t, _ in mine:
             types[t] = types.get(t, 0) + 1
-        check('118 own records at 0x201D-0x2092 equal LIVE by type, id and editor id', mine == live and len(mine) == 118, str(types))
-        check('added records match LIVE (118 own + 649 overrides)', ' added 767' in verify_counts(OUT + 'verify.txt') or verify_counts(OUT + 'verify.txt').endswith('added 767'),
+        check(f'{OWN_RECORDS} own records at 0x{NEXT_ID:X}-0x{LAST_ID:X}, LIVE\'s ids unmoved by type, id and editor id',
+              mine[:len(live)] == live and len(mine) == OWN_RECORDS, str(types))
+        check(f'added records match the spec ({OWN_RECORDS} own + {ADDED - OWN_RECORDS} overrides)', f' added {ADDED}' in verify_counts(OUT + 'verify.txt'),
               f'r7: {verify_counts(OUT + "verify.txt")}; LIVE: {verify_counts(LIVE_DIR + "verify.txt")}')
         lines.append(f'masters: {len(pl["masters"])}')
         lines += [f'  {i:02X} {m}' for i, m in enumerate(pl['masters'])]

@@ -13,7 +13,7 @@ and records its output in `r7/work/manifest.json`. It appends its run to `r7/bui
 | 3 | `proficiency.py` | `../proficiency-patcher/patch.py --next-form-id 0x201D` on the merged base, accepted only if the ids match LIVE |
 | 4 | `masks.py` + `Program.cs armor-effects` | clears EITM on the 8 crafted Kad_BogBlightMask.esp masks |
 | 4b | `thrones.py` | esplib, after the last Mutagen pass: drops FurnitureForce3rdPerson from every winning throne FURN still carrying it (Viking's Longhouse.esp 000E75) |
-| 5 | `finalise.py` | header and master checks, `r7/AlduinakAdditions.esp`, `r7/rollback/` copy of LIVE |
+| 5 | `finalise.py` | header and master checks, `r7/AlduinakAdditions.esp`, `r7/rollback/` copy of the plugin the live copies hold (`DEPLOYED_SHA`) |
 
 Run the steps in order from this folder with Python 3 and the .NET 9 SDK. The plugin reaches players only through the deploy steps in
 the plan: Update manifest, Sync Data, Build Client and a game service restart.
