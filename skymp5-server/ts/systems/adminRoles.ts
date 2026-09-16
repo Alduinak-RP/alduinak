@@ -5,11 +5,12 @@ export type AdminTier = "senior" | "developer" | "gm";
 // Precedence when a player holds roles from several tiers
 const TIER_ORDER: AdminTier[] = ["senior", "developer", "gm"];
 
-export type AdminCap = "players" | "teleport" | "modes" | "npcs" | "items" | "kick" | "ban";
-export const ADMIN_CAPS: AdminCap[] = ["players", "teleport", "modes", "npcs", "items", "kick", "ban"];
+// factions: manage every faction in game (ranks, removals, invites at any rank, uniforms)
+export type AdminCap = "players" | "teleport" | "modes" | "npcs" | "items" | "kick" | "ban" | "factions";
+export const ADMIN_CAPS: AdminCap[] = ["players", "teleport", "modes", "npcs", "items", "kick", "ban", "factions"];
 export type AdminCaps = Record<AdminCap, boolean>;
 
-const allCaps = (kickBan: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, kick: kickBan, ban: kickBan });
+const allCaps = (moderation: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, kick: moderation, ban: moderation, factions: moderation });
 
 export const TIER_CAPS: Record<AdminTier, AdminCaps> = {
   senior: allCaps(true),

@@ -41,6 +41,7 @@ const ACTIONS: PlayerAction[] = [
   { id: 'capture', label: 'Restrain' },
   { id: 'carry', label: 'Carry' },
   { id: 'release', label: 'Release' },
+  { id: 'factionInvite', label: 'Invite to faction' },
 ];
 
 // Every action goes to the server systems as a custom packet (by server form id).
@@ -50,6 +51,7 @@ const PACKET_ACTIONS: Record<string, string> = {
   capture: 'captureRequest',
   carry: 'carryRequest',
   release: 'releaseRequest',
+  factionInvite: 'factionInviteOptionsRequest',
 };
 
 const events = {
@@ -72,7 +74,7 @@ let targetName = '';
  * opens the pet menu and Activate uses it (PetService). In the saddle Activate
  * always dismounts (MountService), whatever the crosshair found. Activate leaves
  * everything else to normal activation. The interact key also completes a
- * pending housing hand-over, faction add-member or pet transfer pick first,
+ * pending housing hand-over or pet transfer pick first,
  * asks HousingService for the property menu on a door or container, and opens
  * the Personal Menu (AdminMenuService) on anything else or nothing. Drives the
  * gamemode through its existing contracts.
@@ -115,7 +117,7 @@ export class PlayerActionService extends ClientListener {
     const ref = isFreeCamera(this.sp) ? null : this.sp.Game.getCurrentCrosshairRef();
     const actor = ref && ref.getFormID() !== PLAYER_FORM_ID ? Actor.from(ref) : null;
     const remoteId = ref && actor ? localIdToRemoteId(ref.getFormID()) : 0;
-    if (isInteract && (housing.takePendingPick() || this.controller.lookupListener(FactionService).takePendingPick() || pets.takePendingPick(remoteId))) return;
+    if (isInteract && (housing.takePendingPick() || pets.takePendingPick(remoteId))) return;
     // Command mode owns Activate on a living target and on the commanded pet itself; the interact key keeps opening the menus
     if (isActivate && ref && actor && !actor.isDead() && (pets.orderFollow(remoteId, ref) || pets.orderAttack(remoteId, ref))) return;
 
@@ -225,7 +227,8 @@ export class PlayerActionService extends ClientListener {
   private menuArgs(): Record<string, unknown> {
     // No carry chains and no bound carriers: a carrying, carried or bound player is never offered Carry
     const noCarry = this.controller.lookupListener(RestraintService).isPoseLocked;
-    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease));
+    const canInvite = this.controller.lookupListener(FactionService).canInvite;
+    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease) && (a.id !== 'factionInvite' || canInvite));
     return { ACTIONS: actions, targetName, events, WIDGET_ID };
   }
 

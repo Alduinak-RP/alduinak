@@ -4,6 +4,7 @@ const fs               = require('fs')
 const path             = require('path')
 const profiles         = require('./profiles')
 const factionWhitelist = require('./factionWhitelist')
+const characters       = require('./characters')
 
 const FILE = path.join(__dirname, '..', 'data', 'players.json')
 
@@ -173,6 +174,7 @@ function decorate(player) {
     assignments: factionWhitelist.getPlayerAssignments(player.discordId),
     factionPermissions: factionWhitelist.getPlayerFactionPermissions(player.discordId),
     gameFactions: factionWhitelist.getPlayerGameFactions(player.discordId),
+    characters: characters.forProfile(player.profileId),
   }
 }
 

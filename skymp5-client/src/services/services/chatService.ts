@@ -288,6 +288,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       if (s.indexOf('[[G]]')===0){ tab='local'; s=s.slice(5); }      // legacy global -> local
       else if (s.indexOf('[[S]]')===0){ tab='all'; s=s.slice(5); }
       else if (s.indexOf('[[A]]')===0){ tab='admin'; s=s.slice(5); }
+      else if (s.indexOf('[[F]]')===0){ tab='faction'; s=s.slice(5); }
       // Parse a '#{rrggbb}text' coloured line.
       var parts=s.split('#{'), segs=[], col=WHITE;
       for (var i=0;i<parts.length;i++){ var p=parts[i];

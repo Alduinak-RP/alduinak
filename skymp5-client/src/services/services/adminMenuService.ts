@@ -62,6 +62,8 @@ const events = {
   writingRead: "admin::writingread",
   writingRename: "admin::writingrename",
   writingDestroy: "admin::writingdestroy",
+  factionMenu: "admin::factionmenu",
+  faction: "admin::faction",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -129,7 +131,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, events };
 
 function hex(id: number): string {
   return id ? id.toString(16) : "";
@@ -182,8 +184,9 @@ export class AdminMenuService extends ClientListener {
     return this.menuOpen;
   }
 
-  // Roles are only read at login, so staff data survives reopens and refreshes in place when the reply lands
+  // Staff data survives reopens and refreshes in place when the reply lands; faction data clears so a demoted member never sees a stale roster
   open(): void {
+    panelData.faction = null;
     panelData.npcPos = null;
     panelData.items = null;
     this.activeTab = "";
@@ -192,6 +195,7 @@ export class AdminMenuService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "debugInfoRequest" });
     sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
     sendCustomPacket(this.controller, { customPacketType: "masteryInfoRequest" });
+    sendCustomPacket(this.controller, { customPacketType: "factionMenuRequest" });
   }
 
   private onButtonEvent(e: ButtonEvent) {
@@ -235,6 +239,7 @@ export class AdminMenuService extends ClientListener {
         skills: panelData.skills,
         items: panelData.items,
         petBases: panelData.petBases,
+        faction: panelData.faction,
         events,
       };
       if (panelData.debug) panelData.debug.target = this.shownTarget();
@@ -244,6 +249,9 @@ export class AdminMenuService extends ClientListener {
     } else if (content["customPacketType"] === "masteryMenu") {
       if (!this.menuOpen) return;
       panelData.skills = parseMasteryMenu(content);
+      this.pushData();
+    } else if (content["customPacketType"] === "factionMenu") {
+      panelData.faction = content;
       this.pushData();
     } else if (content["customPacketType"] === "adminItems") {
       panelData.items = parseItems(content);
@@ -476,6 +484,30 @@ export class AdminMenuService extends ClientListener {
     if (kind === events.skillChoose) {
       const profession = str(e.arguments[1]);
       if (profession) sendCustomPacket(this.controller, { customPacketType: "masteryChoose", profession });
+      return;
+    }
+    if (kind === events.factionMenu) {
+      sendCustomPacket(this.controller, { customPacketType: "factionMenuRequest", factionId: str(e.arguments[1]) });
+      return;
+    }
+    if (kind === events.faction) {
+      // The front sends {action, factionId, profileId?, slot?, rank?, target?} as a JSON string; the server checks every right
+      let req: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(str(e.arguments[1]));
+        if (parsed && typeof parsed === "object") req = parsed;
+      } catch {
+        return;
+      }
+      sendCustomPacket(this.controller, {
+        customPacketType: "factionRequest",
+        action: str(req["action"]),
+        factionId: str(req["factionId"]),
+        profileId: Number(req["profileId"]) || 0,
+        slot: Number.isInteger(req["slot"]) ? req["slot"] : null,
+        rank: str(req["rank"]),
+        target: Number(req["target"]) || 0,
+      });
       return;
     }
     if (kind === events.itemSearch) {

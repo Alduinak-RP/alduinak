@@ -1,0 +1,242 @@
+{
+  "_readme": [
+    "Seed for faction-access.json next to gamemode.js. The game server re-reads the file within 10 seconds of a change.",
+    "Every ref below was checked in Skyrim.esm: the door, its cell and its teleport partner. Either side of a pair gates both.",
+    "label is what outsiders are told (Only <label> may use this.); ranks limits the listed factions to those rank ids.",
+    "note is for people and is ignored."
+  ],
+  "refs": [
+    {
+      "ref": "25bff:Skyrim.esm",
+      "note": "Falkreath Sanctuary, Black Door inside",
+      "label": "the Dark Brotherhood",
+      "factions": [
+        "faction:dark-brotherhood"
+      ]
+    },
+    {
+      "ref": "25c00:Skyrim.esm",
+      "note": "Falkreath Sanctuary, Black Door outside",
+      "label": "the Dark Brotherhood",
+      "factions": [
+        "faction:dark-brotherhood"
+      ]
+    },
+    {
+      "ref": "19518:Skyrim.esm",
+      "note": "Dawnstar Sanctuary, Black Door inside",
+      "label": "the Dark Brotherhood",
+      "factions": [
+        "faction:dark-brotherhood"
+      ]
+    },
+    {
+      "ref": "1951a:Skyrim.esm",
+      "note": "Dawnstar Sanctuary, Black Door outside",
+      "label": "the Dark Brotherhood",
+      "factions": [
+        "faction:dark-brotherhood"
+      ]
+    },
+    {
+      "ref": "5e0d7:Skyrim.esm",
+      "note": "Dawnstar Sanctuary, stained glass passage inside",
+      "label": "the Dark Brotherhood",
+      "factions": [
+        "faction:dark-brotherhood"
+      ]
+    },
+    {
+      "ref": "84b2d:Skyrim.esm",
+      "note": "Dawnstar Sanctuary, passage exit outside",
+      "label": "the Dark Brotherhood",
+      "factions": [
+        "faction:dark-brotherhood"
+      ]
+    },
+    {
+      "ref": "25d84:Skyrim.esm",
+      "note": "The Cistern, door to the Ragged Flagon",
+      "label": "the Thieves Guild",
+      "factions": [
+        "faction:thieves-guild"
+      ]
+    },
+    {
+      "ref": "25d83:Skyrim.esm",
+      "note": "Ragged Flagon, door to the Cistern",
+      "label": "the Thieves Guild",
+      "factions": [
+        "faction:thieves-guild"
+      ]
+    },
+    {
+      "ref": "2d2fa:Skyrim.esm",
+      "note": "The Cistern, graveyard ladder inside",
+      "label": "the Thieves Guild",
+      "factions": [
+        "faction:thieves-guild"
+      ]
+    },
+    {
+      "ref": "2d2dd:Skyrim.esm",
+      "note": "Riften graveyard, Cistern porthole outside",
+      "label": "the Thieves Guild",
+      "factions": [
+        "faction:thieves-guild"
+      ]
+    },
+    {
+      "ref": "16d1e:Skyrim.esm",
+      "note": "The Cistern, second ladder inside",
+      "label": "the Thieves Guild",
+      "factions": [
+        "faction:thieves-guild"
+      ]
+    },
+    {
+      "ref": "16c1d:Skyrim.esm",
+      "note": "Riften, second Cistern porthole outside",
+      "label": "the Thieves Guild",
+      "factions": [
+        "faction:thieves-guild"
+      ]
+    },
+    {
+      "ref": "166c9:Skyrim.esm",
+      "note": "The Underforge, door inside",
+      "label": "the Circle",
+      "factions": [
+        "faction:companions"
+      ],
+      "ranks": [
+        "harbinger",
+        "circle-member"
+      ]
+    },
+    {
+      "ref": "1a701:Skyrim.esm",
+      "note": "Skyforge, Underforge door outside",
+      "label": "the Circle",
+      "factions": [
+        "faction:companions"
+      ],
+      "ranks": [
+        "harbinger",
+        "circle-member"
+      ]
+    },
+    {
+      "ref": "6767e:Skyrim.esm",
+      "note": "The Underforge, back exit inside",
+      "label": "the Circle",
+      "factions": [
+        "faction:companions"
+      ],
+      "ranks": [
+        "harbinger",
+        "circle-member"
+      ]
+    },
+    {
+      "ref": "6767f:Skyrim.esm",
+      "note": "Whiterun, Underforge back exit outside",
+      "label": "the Circle",
+      "factions": [
+        "faction:companions"
+      ],
+      "ranks": [
+        "harbinger",
+        "circle-member"
+      ]
+    },
+    {
+      "ref": "cc821:Skyrim.esm",
+      "note": "Arch-Mage Quarters, door to the Hall of the Elements",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    },
+    {
+      "ref": "cc81c:Skyrim.esm",
+      "note": "Hall of the Elements, door to the Arch-Mage Quarters",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    },
+    {
+      "ref": "109680:Skyrim.esm",
+      "note": "Arch-Mage Quarters, door to the Arcanaeum",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    },
+    {
+      "ref": "10967f:Skyrim.esm",
+      "note": "Arcanaeum, door to the Arch-Mage Quarters",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    },
+    {
+      "ref": "109686:Skyrim.esm",
+      "note": "Arch-Mage Quarters, balcony door inside",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    },
+    {
+      "ref": "107f02:Skyrim.esm",
+      "note": "College, Arch-Mage balcony door outside",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    },
+    {
+      "ref": "109685:Skyrim.esm",
+      "note": "Arch-Mage Quarters, second balcony door inside",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    },
+    {
+      "ref": "107f03:Skyrim.esm",
+      "note": "College, second Arch-Mage balcony door outside",
+      "label": "the Arch-Mage",
+      "factions": [
+        "faction:college-of-winterhold"
+      ],
+      "ranks": [
+        "arch-mage"
+      ]
+    }
+  ]
+}

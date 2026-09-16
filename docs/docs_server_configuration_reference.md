@@ -348,6 +348,17 @@ Letters, journals and books (`docs_roleplay_writing.md`) read `writingEnabled` (
 }
 ```
 
+## Factions
+
+The faction system (`docs_roleplay_property_factions.md` section 6) needs `master`, `masterKey` and `masterApiAuthToken`; without the token it stays off and the Faction tab says factions are unavailable. Faction and rank data live in the backend, not here. Optional keys:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `factionInviteMaxDistance` | `1024` | How close an officer must stand to invite someone, in game units |
+| `factionUniformCooldownHours` | `24` | Hours before the same character can be issued the same faction's uniform again |
+
+Faction-only doors and containers come from `faction-access.json` next to `gamemode.js`, not from this file.
+
 ## npcAggroHostSeconds
 
 For this many seconds after a player and a zone NPC exchanged a damaging hit, that player may host the NPC, so its AI runs on the client that is fighting it. Only hits the other handlers allowed (god mode, ghost mode and the capture carrier rule refuse some) and that deal damage count. A host that is itself inside its window keeps the NPC when another player hits it, so a group fight does not move the AI between clients. Default 30; `0` disables the aggro rule and leaves nearest-player hosting.
@@ -461,7 +472,7 @@ Every player opens the Personal Menu with the interact key (X by default) while 
   - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`;
   - Item Spawner, see below.
-- **Faction**: a work-in-progress placeholder.
+- **Faction**: the character's factions with roster, promote, demote, set rank, remove, uniform, leave and the /f chat choice, see `docs_roleplay_property_factions.md`.
 - **Skills**: the mastery (craft) menu.
 - **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, crosshair target distance (activatable references only; F6 look-around follows the crosshair within a quarter second, and a target the crosshair leaves stays on screen marked "last seen" until the menu closes; a player character you were not introduced to reads Stranger or Body, as on the interaction prompt), the target's ref id with its `hex:Plugin` desc, server id and base id with its desc (a ref created in game shows the server's base from the world model, plus the client's own base when that differs; another player's character shows its ref and server ids to staff only, since those ids would follow a masked character), a Copy IDs button that puts one line on the clipboard (name, ref id, server id when different, base id, cell and position; the descs paste straight into the Item Spawner search), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
 
@@ -469,13 +480,13 @@ Admins also get the admin chat channel. Nobody gets the server console commands 
 
 Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, and the server refuses every request the tier lacks the cap for, with an admin.log line.
 
-| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` |
-|---|---|---|---|---|---|---|---|
-| `senior` | yes | yes | yes | yes | yes | yes | yes |
-| `developer` | yes | yes | yes | yes | yes | no | no |
-| `gm` | yes | yes | yes | yes | yes | yes | yes |
+| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` | `factions` |
+|---|---|---|---|---|---|---|---|---|
+| `senior` | yes | yes | yes | yes | yes | yes | yes | yes |
+| `developer` | yes | yes | yes | yes | yes | no | no | no |
+| `gm` | yes | yes | yes | yes | yes | yes | yes | yes |
 
-`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab and `items` the Item Spawner. `kick` is the Kick button and `ban` the Ban button; both also need `players`. `adminTierCaps` changes the defaults per tier.
+`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab and `items` the Item Spawner. `kick` is the Kick button and `ban` the Ban button; both also need `players`. `factions` lets staff see and manage every faction in the Faction tab, the leader rank included. `adminTierCaps` changes the defaults per tier.
 
 Teleporting yourself (TP to on a player, a Teleport location or an NPC zone's TP) closes the Personal Menu once the server confirms it. A refused teleport, Summon and every other action leave it open.
 
@@ -525,7 +536,7 @@ Master-api profile ids (numbers) that are always `senior`, regardless of Discord
 
 ### adminTierCaps
 
-Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `kick` and `ban` for `developer`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items`, `kick` and `ban` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
+Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `kick`, `ban` and `factions` for `developer`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items`, `kick`, `ban` and `factions` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
 
 ```json5
 {

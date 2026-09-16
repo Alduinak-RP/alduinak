@@ -449,7 +449,7 @@ $admin-row-gutter: 16px;
     color: $admin-gold-dim;
     font-style: italic;
 
-    // Faction tab stand-in
+    // Faction tab without a faction
     &--placeholder {
       min-height: 240px;
       padding: 0 40px;
@@ -498,6 +498,36 @@ $admin-row-gutter: 16px;
   }
 
   &__cell--edid { flex: 1 1 150px; }
+  &__cell--rank { flex: 0 0 170px; }
+
+  // Faction tab: picker, name, zone and rank badges, per-member controls
+  &__faction-pick {
+    flex: 0 0 240px;
+  }
+
+  &__faction-name {
+    font-size: 20px;
+    white-space: nowrap;
+  }
+
+  &__faction-badge {
+    padding: 1px 8px;
+    font-size: 13px;
+    color: $admin-gold-dim;
+    border: 1px solid rgba(200, 180, 138, 0.3);
+    white-space: nowrap;
+  }
+
+  &__faction-rank {
+    flex: 0 0 130px;
+    height: 24px;
+    font-size: 13px;
+  }
+
+  &__row--faction {
+    justify-content: space-between;
+    padding: 3px 0;
+  }
   &__cell--desc { flex: 0 0 170px; }
 
   &__spawn {

@@ -7,8 +7,11 @@ const state = {
   user: null,
   players: [],
   selectedProfileId: null,
+  factions: [],
   requirements: [],
   assignments: [],
+  editFactionId: '',
+  editRankId: '',
   access: null,
   roles: {},
   knownPermissions: [],
@@ -80,6 +83,28 @@ const nodes = {
   roleNameInput: el('roleNameInput'),
   selectedRole: el('selectedRole'),
   permissionChecks: el('permissionChecks'),
+  factionForm: el('factionForm'),
+  factionEditSelect: el('factionEditSelect'),
+  factionEditLabel: el('factionEditLabel'),
+  factionScopeInput: el('factionScopeInput'),
+  factionGroupInput: el('factionGroupInput'),
+  factionNameInput: el('factionNameInput'),
+  factionZoneInput: el('factionZoneInput'),
+  factionColorInput: el('factionColorInput'),
+  factionUniformInput: el('factionUniformInput'),
+  factionDeleteButton: el('factionDeleteButton'),
+  ranksTable: el('ranksTable'),
+  rankForm: el('rankForm'),
+  rankEditLabel: el('rankEditLabel'),
+  rankNameInput: el('rankNameInput'),
+  rankOrderInput: el('rankOrderInput'),
+  rankCapacityInput: el('rankCapacityInput'),
+  rankPermissionInput: el('rankPermissionInput'),
+  rankUniformIssuerInput: el('rankUniformIssuerInput'),
+  rankAppointsChecks: el('rankAppointsChecks'),
+  rankUniformInput: el('rankUniformInput'),
+  rankNewButton: el('rankNewButton'),
+  rankDeleteButton: el('rankDeleteButton'),
   toast: el('toast'),
 }
 
@@ -91,13 +116,52 @@ function toast(message) {
 }
 
 // Character slot: '' in a select means "all characters" (slot null on the
-// backend); '0'..'2' are individual characters, shown to admins as 1-based.
+// backend); '0'..'9' are individual characters, shown to admins as 1-based.
 function slotFromSelect(value) {
   return value === '' || value === null || value === undefined ? null : Number(value)
 }
 
-function slotLabel(slot) {
-  return slot === null || slot === undefined ? 'All' : `Character ${Number(slot) + 1}`
+// Names come from the game server's character report (player.characters)
+function slotLabel(slot, player) {
+  if (slot === null || slot === undefined) return 'All'
+  const character = ((player && player.characters) || []).find(c => c.slot === Number(slot))
+  const label = `Character ${Number(slot) + 1}`
+  return character && character.name ? `${label}: ${character.name}${character.dead ? ' (dead)' : ''}` : label
+}
+
+// Every reported character of the player, or three unnamed slots before the first report; a new player starts on their first character
+function renderSlotOptions(select, player) {
+  const reported = (player && player.characters) || []
+  const slots = reported.length ? reported.map(c => c.slot) : [0, 1, 2]
+  const owner = player ? String(player.profileId) : ''
+  const previous = select.dataset.owner === owner ? select.value : null
+  select.dataset.owner = owner
+  select.innerHTML = '<option value="">All characters</option>' + slots
+    .map(slot => `<option value="${slot}">${escapeHtml(slotLabel(slot, player))}</option>`)
+    .join('')
+  select.value = previous !== null && [...select.options].some(o => o.value === previous) ? previous : String(slots[0])
+}
+
+function playerByDiscordId(discordId) {
+  const id = String(discordId || '').trim()
+  return state.players.find(player => String(player.discordId) === id) || null
+}
+
+// One item per line: "<form id or desc> <count>"
+function parseUniform(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const parts = line.split(/\s+/)
+      const count = parts.length > 1 && /^\d+$/.test(parts[parts.length - 1]) ? Number(parts.pop()) : 1
+      return { item: parts.join(' '), count }
+    })
+}
+
+function uniformText(list) {
+  return (list || []).map(u => `${u.item} ${u.count}`).join('\n')
 }
 
 function escapeHtml(value) {
@@ -168,6 +232,7 @@ async function loadSession() {
 
 async function loadFactions() {
   const data = await api('/api/faction-whitelist')
+  state.factions = data.factions || []
   state.requirements = data.requirements || []
   state.assignments = data.assignments || []
 }
@@ -283,6 +348,7 @@ function renderPlayerDetail() {
   nodes.playerRequirementSelect.innerHTML = state.requirements
     .map(req => `<option value="${escapeHtml(req.id)}">${escapeHtml(req.group)} - ${escapeHtml(req.rank)}</option>`)
     .join('')
+  renderSlotOptions(nodes.playerSlotSelect, player)
   nodes.playerFactionForm.querySelector('button[type="submit"]').disabled = !player
 }
 
@@ -304,7 +370,7 @@ function renderPlayerAssignments(player) {
           <tr>
             <td>${escapeHtml(assignment.requirement?.group || assignment.requirementId)}</td>
             <td>${escapeHtml(assignment.requirement?.rank || '')}</td>
-            <td>${escapeHtml(slotLabel(assignment.slot))}</td>
+            <td>${escapeHtml(slotLabel(assignment.slot, player))}</td>
             <td><button class="danger mini" data-delete-player-assignment="${escapeHtml(assignment.id)}" type="button">Remove</button></td>
           </tr>
         `).join('')}
@@ -442,7 +508,7 @@ function renderAssignments() {
             <tr>
               <td>${escapeHtml(assignment.playerName || 'Unnamed')}</td>
               <td>${escapeHtml(assignment.discordId)}</td>
-              <td>${escapeHtml(slotLabel(assignment.slot))}</td>
+              <td>${escapeHtml(slotLabel(assignment.slot, playerByDiscordId(assignment.discordId)))}</td>
               <td>${escapeHtml(req.group || '')}</td>
               <td>${escapeHtml(req.rank || '')}</td>
               <td>${escapeHtml(req.permission || '')}</td>
@@ -460,6 +526,157 @@ function renderFactions() {
   renderFilters()
   renderRequirements()
   renderAssignments()
+  renderFactionEditor()
+  renderSlotOptions(nodes.slotSelect, playerByDiscordId(nodes.discordIdInput.value))
+}
+
+function editedFaction() {
+  return state.factions.find(f => f.id === state.editFactionId) || null
+}
+
+function factionRanks(factionId) {
+  return state.requirements
+    .filter(req => req.factionId === factionId)
+    .sort((a, b) => a.order - b.order)
+}
+
+function renderFactionEditor() {
+  const faction = editedFaction()
+  if (!faction) state.editFactionId = ''
+  nodes.factionEditSelect.innerHTML = '<option value="">New faction</option>' + state.factions
+    .map(f => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)} (${escapeHtml(f.id)})</option>`)
+    .join('')
+  nodes.factionEditSelect.value = state.editFactionId
+  nodes.factionEditLabel.textContent = faction ? faction.id : 'New faction'
+  nodes.factionScopeInput.value = faction ? faction.scope : (nodes.factionScopeInput.value || 'faction')
+  nodes.factionScopeInput.disabled = !!faction
+  nodes.factionGroupInput.value = faction ? faction.group : ''
+  nodes.factionGroupInput.disabled = !!faction
+  nodes.factionNameInput.value = faction ? faction.name : ''
+  nodes.factionZoneInput.value = faction ? faction.zone : ''
+  nodes.factionColorInput.value = faction ? faction.color : ''
+  nodes.factionUniformInput.value = faction ? uniformText(faction.uniform) : ''
+  nodes.factionDeleteButton.disabled = !faction
+  renderRankEditor()
+}
+
+function renderRankEditor() {
+  const faction = editedFaction()
+  const ranks = faction ? factionRanks(faction.id) : []
+  const rank = ranks.find(r => r.id === state.editRankId) || null
+  if (!rank) state.editRankId = ''
+  const rankName = slug => (ranks.find(r => r.id.split(':')[2] === slug) || { rank: slug }).rank
+  nodes.ranksTable.innerHTML = !faction
+    ? '<div class="empty-row">Save or pick a faction to edit its ranks.</div>'
+    : `
+    <table>
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>Rank</th>
+          <th>Slots</th>
+          <th>Appoints</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ranks.map(r => `
+          <tr class="${r.id === state.editRankId ? 'selected' : ''}">
+            <td>${r.order}</td>
+            <td>${escapeHtml(r.rank)}${r.issuesUniform ? ' <span class="tag">uniforms</span>' : ''}</td>
+            <td>${r.capacity === null ? `${r.assigned} / open` : `${r.assigned}/${r.capacity}`}</td>
+            <td>${escapeHtml(r.appoints === null ? 'leader only' : r.appoints.map(rankName).join(', ') || '-')}</td>
+            <td><button class="ghost mini" data-edit-rank="${escapeHtml(r.id)}" type="button">Edit</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `
+  nodes.rankEditLabel.textContent = rank ? rank.id : (faction ? 'New rank' : 'No faction')
+  nodes.rankNameInput.value = rank ? rank.rank : ''
+  nodes.rankOrderInput.value = rank ? rank.order : ''
+  nodes.rankCapacityInput.value = rank && rank.capacity !== null ? rank.capacity : ''
+  nodes.rankPermissionInput.value = rank ? rank.permission || '' : ''
+  nodes.rankUniformIssuerInput.checked = !!(rank && rank.issuesUniform)
+  nodes.rankUniformInput.value = rank ? uniformText(rank.uniform) : ''
+  const appoints = rank && rank.appoints ? rank.appoints : []
+  nodes.rankAppointsChecks.innerHTML = ranks
+    .filter(r => !rank || r.id !== rank.id)
+    .map(r => {
+      const slug = r.id.split(':')[2]
+      return `
+        <label class="check-row">
+          <input type="checkbox" value="${escapeHtml(slug)}" ${appoints.includes(slug) ? 'checked' : ''}>
+          <span>${escapeHtml(r.rank)}</span>
+        </label>
+      `
+    }).join('')
+  nodes.rankForm.querySelector('button[type="submit"]').disabled = !faction
+  nodes.rankDeleteButton.disabled = !rank
+}
+
+async function saveFaction(event) {
+  event.preventDefault()
+  const faction = editedFaction()
+  const saved = await api('/api/faction-whitelist/factions', {
+    method: 'PUT',
+    body: JSON.stringify({
+      id: faction ? faction.id : undefined,
+      scope: nodes.factionScopeInput.value,
+      group: nodes.factionGroupInput.value,
+      name: nodes.factionNameInput.value,
+      zone: nodes.factionZoneInput.value,
+      color: nodes.factionColorInput.value,
+      uniform: parseUniform(nodes.factionUniformInput.value),
+    }),
+  })
+  state.editFactionId = saved.id
+  await loadFactions()
+  renderFactions()
+  toast('Faction saved')
+}
+
+async function deleteFaction() {
+  const faction = editedFaction()
+  if (!faction || !window.confirm(`Delete ${faction.name} and all of its ranks?`)) return
+  await api(`/api/faction-whitelist/factions/${encodeURIComponent(faction.id)}`, { method: 'DELETE' })
+  state.editFactionId = ''
+  await loadFactions()
+  renderFactions()
+  toast('Faction deleted')
+}
+
+async function saveRank(event) {
+  event.preventDefault()
+  const faction = editedFaction()
+  if (!faction) return
+  const saved = await api('/api/faction-whitelist/requirements', {
+    method: 'PUT',
+    body: JSON.stringify({
+      id: state.editRankId || undefined,
+      factionId: faction.id,
+      rank: nodes.rankNameInput.value,
+      order: nodes.rankOrderInput.value,
+      capacity: nodes.rankCapacityInput.value,
+      permission: nodes.rankPermissionInput.value,
+      issuesUniform: nodes.rankUniformIssuerInput.checked,
+      appoints: [...nodes.rankAppointsChecks.querySelectorAll('input:checked')].map(input => input.value),
+      uniform: parseUniform(nodes.rankUniformInput.value),
+    }),
+  })
+  state.editRankId = saved.id
+  await loadFactions()
+  renderFactions()
+  toast('Rank saved')
+}
+
+async function deleteRank() {
+  if (!state.editRankId || !window.confirm('Delete this rank?')) return
+  await api(`/api/faction-whitelist/requirements/${encodeURIComponent(state.editRankId)}`, { method: 'DELETE' })
+  state.editRankId = ''
+  await loadFactions()
+  renderFactions()
+  toast('Rank deleted')
 }
 
 function renderPermissionChecks(selected = []) {
@@ -688,6 +905,20 @@ function bindEvents() {
     renderRequirements()
   })
   nodes.assignmentForm.addEventListener('submit', event => saveAssignment(event).catch(err => toast(err.message)))
+  nodes.discordIdInput.addEventListener('input', () => renderSlotOptions(nodes.slotSelect, playerByDiscordId(nodes.discordIdInput.value)))
+  nodes.factionForm.addEventListener('submit', event => saveFaction(event).catch(err => toast(err.message)))
+  nodes.factionDeleteButton.addEventListener('click', () => deleteFaction().catch(err => toast(err.message)))
+  nodes.factionEditSelect.addEventListener('change', event => {
+    state.editFactionId = event.target.value
+    state.editRankId = ''
+    renderFactionEditor()
+  })
+  nodes.rankForm.addEventListener('submit', event => saveRank(event).catch(err => toast(err.message)))
+  nodes.rankDeleteButton.addEventListener('click', () => deleteRank().catch(err => toast(err.message)))
+  nodes.rankNewButton.addEventListener('click', () => {
+    state.editRankId = ''
+    renderRankEditor()
+  })
   nodes.roleForm.addEventListener('submit', event => saveRole(event).catch(err => toast(err.message)))
 
   document.querySelector('.nav').addEventListener('click', event => {
@@ -704,6 +935,13 @@ function bindEvents() {
       const req = state.requirements.find(r => r.id === state.selectedRequirementId)
       if (req) state.assignGroup = req.group
       renderRequirements()
+      return
+    }
+
+    const editRank = event.target.closest('[data-edit-rank]')
+    if (editRank) {
+      state.editRankId = editRank.dataset.editRank
+      renderRankEditor()
       return
     }
 

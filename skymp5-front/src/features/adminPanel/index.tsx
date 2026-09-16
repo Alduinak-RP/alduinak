@@ -5,6 +5,7 @@ import { copyText } from '../../utils/copyText';
 import MasteryMenu, { MasteryData } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
 import WritingTools from './writingTools';
+import FactionTab, { FactionMenuData } from './factionTab';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -121,6 +122,7 @@ export interface AdminPanelData {
   skills?: Omit<MasteryData, 'events'> | null; // the player's own masteryMenu payload
   items?: ItemResults | null; // the latest adminItems reply
   petBases?: Partial<Record<PetKind, PetBase[]>> | null; // the petBases reply, absent until it arrives
+  faction?: FactionMenuData | null; // the factionMenu reply, absent until it arrives
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -424,6 +426,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       setRefreshKey((k) => k + 1);
     }
     if (topTab === 'skills' && ev.skills) send(ev.skills);
+    if (topTab === 'faction' && ev.factionMenu) send(ev.factionMenu, data.faction ? data.faction.selected : '');
   };
 
   const filter = search.trim().toLowerCase();
@@ -470,6 +473,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     lastTop = id;
     setTop(id);
     if (id === 'skills' && ev.skills) send(ev.skills);
+    if (id === 'faction' && ev.factionMenu) send(ev.factionMenu, data.faction ? data.faction.selected : '');
     if (id === 'admin' && subTab === 'npcs' && ev.npcList) send(ev.npcList);
   };
 
@@ -558,9 +562,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
         {view === 'faction' ? (
           <div className="admin-panel__body">
-            <div className="admin-panel__empty admin-panel__empty--placeholder">
-              Faction management is a work in progress. Hold rosters, ranks and regents will live here.
-            </div>
+            <FactionTab data={data.faction || null} ev={ev} send={send} />
           </div>
         ) : null}
 

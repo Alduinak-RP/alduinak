@@ -12,6 +12,14 @@ export const toFormId = (v: unknown, fallback = 0): number => {
   return fallback;
 };
 
+// A settings or data file form id: a desc ("13ED9:Skyrim.esm"), a hex string ("0x00013ED9") or a number; 0 when unresolvable.
+export const formIdFromConfig = (mp: any, v: unknown): number => {
+  if (typeof v === "string" && v.includes(":")) {
+    try { return mp.getIdFromDesc(v.trim()) >>> 0; } catch { return 0; }
+  }
+  return toFormId(v);
+};
+
 // First four bytes of an espm record field, little-endian: a plugin-local form id.
 export const readFormIdField = (lookup: any, fieldType: string): number => {
   const fields = lookup && lookup.record && Array.isArray(lookup.record.fields) ? lookup.record.fields : [];

@@ -81,12 +81,16 @@ const Chat = (props) => {
 
   const hasUnreadPersonal = window.chatMessages.some((m) => m.channel === 'personal' && !m.read);
   const hasUnreadSystem = window.chatMessages.some((m) => m.channel === SYSTEM_CHANNEL && !m.read);
+  const hasUnreadFaction = window.chatMessages.some((m) => m.channel === 'faction' && !m.read);
   useEffect(() => {
     if (channel === 'personal') {
       window.chatMessages.forEach((m) => { if (m.channel === 'personal') m.read = true; });
     }
     if (channel === SYSTEM_CHANNEL) {
       window.chatMessages.forEach((m) => { if (m.channel === SYSTEM_CHANNEL) m.read = true; });
+    }
+    if (channel === 'faction') {
+      window.chatMessages.forEach((m) => { if (m.channel === 'faction') m.read = true; });
     }
   }, [channel, props.messages]);
 
@@ -389,7 +393,7 @@ const Chat = (props) => {
                         <div className='chat-tabs-row'>
                           <Channels
                             active={channel}
-                            unread={{ personal: hasUnreadPersonal, system: hasUnreadSystem }}
+                            unread={{ personal: hasUnreadPersonal, system: hasUnreadSystem, faction: hasUnreadFaction }}
                             onSelect={(id) => {
                               setChannel(id);
                               if (id !== SYSTEM_CHANNEL && inputRef.current) inputRef.current.focus();

@@ -4,6 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
+import { HOLD_MANAGER_RANKS, holdKey, holdRanksOf } from "./factionRules";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -58,11 +59,7 @@ const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
 const CHANGE_FAILED = "That cannot be changed right now.";
 
-// Hold ranks that may manage property in their own hold; ported from the
-// permission matrix in server_guest_lib/HoldClaims.cpp.
-const MANAGER_RANKS = ["jarl", "steward"];
-
-// Interior cells that belong to a hold, from HoldClaims::GetHoldCells().
+// Interior cells that belong to a hold, from HoldClaims::GetHoldCells(); names are hold keys (factionRules.holdKey).
 // Only these can resolve a hold manager; everything else is owner + admin only.
 const HOLD_CELLS: Record<number, string> = {
   0x000165a8: "whiterun",   // Breezehome
@@ -158,23 +155,36 @@ export class HousingSystem implements System {
     };
   }
 
-  // Locked means locked for everyone; access only lets a player unlock it from the menu
+  // Faction doors and containers refuse outsiders; locked means locked for everyone, access only lets a player unlock it from the menu
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): boolean {
+    const faction = this.factionGate ? this.factionGate(casterId, targetId) : null;
+    if (faction && !faction.allowed && !this.isAdmin(ctx, casterId)) {
+      const userId = this.userOf(ctx, casterId);
+      if (!this.firstDenial(userId)) return false;
+      this.notice(ctx, userId, `Only ${faction.name} may use this.`);
+      this.log(`[housing] ${targetId.toString(16)} denied to ${this.who(ctx, casterId)}: belongs to ${faction.name}`);
+      return false;
+    }
     const primary = this.primaryOf(ctx, targetId);
     if (!primary) return true;
     const rec = this.read(ctx, primary);
     if (!rec || rec.owner === 0 || !rec.locked) return true;
 
-    // One notice and log line per player per second; a held activate key fires repeatedly.
     const userId = this.userOf(ctx, casterId);
-    const now = Date.now();
-    if (now - (this.lastDenyMs.get(userId) || 0) <= 1000) return false;
-    this.lastDenyMs.set(userId, now);
+    if (!this.firstDenial(userId)) return false;
     const role = this.accessRole(ctx, primary, rec, casterId);
     const label = rec.name || "This";
     this.notice(ctx, userId, role ? `${label} is locked. Unlock it from the housing menu.` : `${label} is locked.`);
     this.log(`[housing] door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)} denied to ${this.who(ctx, casterId)}: locked${role ? `, may unlock as ${role}` : ""}`);
     return false;
+  }
+
+  // One notice and log line per player per second; a held activate key fires repeatedly.
+  private firstDenial(userId: number): boolean {
+    const now = Date.now();
+    if (now - (this.lastDenyMs.get(userId) || 0) <= 1000) return false;
+    this.lastDenyMs.set(userId, now);
+    return true;
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -254,6 +264,11 @@ export class HousingSystem implements System {
   }
 
   private doClaim(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord): void {
+    const faction = this.factionGate ? this.factionGate(actorId, primary) : null;
+    if (faction) {
+      this.notice(ctx, userId, `This belongs to ${faction.name}.`);
+      return;
+    }
     if (rec.owner !== 0) {
       this.notice(ctx, userId, "Somebody already owns this.");
       return;
@@ -412,6 +427,14 @@ export class HousingSystem implements System {
   // ── Menu ────────────────────────────────────────────────────────────────────
 
   private sendMenu(ctx: SystemContext, userId: number, actorId: number, target: number): void {
+    const faction = this.factionGate ? this.factionGate(actorId, target) : null;
+    if (faction && !this.isAdmin(ctx, actorId)) {
+      this.send(ctx, userId, {
+        customPacketType: "propertyMenu", target, view: "denied", owned: true, name: null, locked: false,
+        canLock: false, hasKeys: false, canGrantContainers: false, ownerName: faction.name, pets: "",
+      });
+      return;
+    }
     const primary = this.primaryOf(ctx, target);
     const rec = primary ? this.read(ctx, primary) : null;
     const owned = !!rec && rec.owner !== 0;
@@ -447,6 +470,9 @@ export class HousingSystem implements System {
 
   // Set by PetSystem: the kind of pets storable at a door, shown as the menu's Pets option
   petCategoryOf: ((actorId: number, refrId: number) => string) | null = null;
+
+  // Set by FactionSystem: the faction a door or container belongs to and whether this actor may use it, null when it is no faction's
+  factionGate: ((actorId: number, refrId: number) => { name: string; allowed: boolean } | null) | null = null;
 
   // Both halves of a teleport door, just the ref for anything else
   doorSides(ctx: SystemContext, refrId: number): number[] {
@@ -509,26 +535,14 @@ export class HousingSystem implements System {
     if (this.isAdmin(ctx, actorId)) return true;
     const hold = this.holdOf(ctx, primary);
     if (!hold) return false;
-    return this.holdRanks(ctx, actorId).some((r) => r.hold === hold && MANAGER_RANKS.indexOf(r.rank) !== -1);
+    let access: unknown = null;
+    try { access = (ctx.svr as Mp).get(actorId, "private.skympAccess"); } catch { return false; }
+    return holdRanksOf(access).some((r) => r.hold === holdKey(hold) && HOLD_MANAGER_RANKS.includes(r.rank));
   }
 
   // Every admin tier overrides housing claims
   private isAdmin(ctx: SystemContext, actorId: number): boolean {
     return adminTierOf(ctx.svr as Mp, actorId, this.roleCfg) !== null;
-  }
-
-  // Backend faction rows are "hold:<slug>:<rank>".
-  private holdRanks(ctx: SystemContext, actorId: number): Array<{ hold: string; rank: string }> {
-    const out: Array<{ hold: string; rank: string }> = [];
-    try {
-      const access = (ctx.svr as Mp).get(actorId, "private.skympAccess");
-      const rows = access && Array.isArray(access.factions) ? access.factions : [];
-      for (const row of rows) {
-        const parts = String(row?.requirementId || "").split(":");
-        if (parts.length === 3 && parts[0] === "hold") out.push({ hold: parts[1], rank: parts[2] });
-      }
-    } catch { }
-    return out;
   }
 
   // The hold a property answers to. Either half of a teleport pair may be the

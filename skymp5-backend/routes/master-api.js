@@ -23,9 +23,17 @@
  *   GET /api/servers/:key/players  (X-Auth-Token)
  *     Full player roster (identity fields only) for the in-game admin panel.
  *   POST /api/servers/:key/profiles/:profileId/factions  (X-Auth-Token)
- *     In-game faction appointment. Body: { requirementId, playerName?, notes? }
+ *     In-game faction appointment. Body: { requirementId, slot?, playerName?, notes?, by? }  slot null = every character
  *   DELETE /api/servers/:key/profiles/:profileId/factions/:assignmentId  (X-Auth-Token)
  *     Removes one official backend faction slot.
+ *   GET /api/servers/:key/factions  (X-Auth-Token)
+ *     Faction and rank definitions without members: { factions, requirements }
+ *   GET /api/servers/:key/groups/:scope/:group/roster  (X-Auth-Token)
+ *     Every member of one faction, online or not: { members: [{ profileId, playerName, rank, rankSlug, slot }] }
+ *   DELETE /api/servers/:key/profiles/:profileId/characters/:slot/factions  (X-Auth-Token)
+ *     Removes a deleted or perma-dead character's ranks; ?accountWide=1 also removes the rows shared by every character
+ *   PUT /api/servers/:key/profiles/:profileId/characters  (X-Auth-Token)
+ *     Character names per slot for the dashboard. Body: { characters: [{ slot, name, dead }] }
  */
 
 const router = require('express').Router()
@@ -34,6 +42,7 @@ const fs     = require('fs')
 const path   = require('path')
 const config = require('../config')
 const factionWhitelist = require('../sources/factionWhitelist')
+const characters = require('../sources/characters')
 const serverAccess = require('../sources/serverAccess')
 const profiles = require('../sources/profiles')
 const players  = require('../sources/players')
@@ -388,22 +397,88 @@ router.get('/:key/players', (req, res) => {
 // GET /api/servers/:key/holds/:holdSlug/roster
 // Full member list of one hold (online or not) for the in-game faction menu.
 
+// Read-only profile lookup, and discordIds stay out of the response; a reported character name wins over the name stored at appointment
+function rosterMembers(rows) {
+  const profileMap = profiles.load().map
+  const nameOf = characters.nameLookup()
+  return rows.map(member => {
+    const profileId = profileMap[member.discordId] || null
+    return {
+      profileId,
+      playerName: (profileId && nameOf(profileId, member.slot)) || member.playerName,
+      rank: member.rank,
+      rankSlug: member.rankSlug,
+      slot: member.slot,
+    }
+  })
+}
+
 router.get('/:key/holds/:holdSlug/roster', (req, res) => {
   if (!checkKey(req, res)) return
 
   try {
-    // Read-only profile lookup, and discordIds stay out of the response
-    const profileMap = profiles.load().map
-    const members = factionWhitelist.getHoldRoster(req.params.holdSlug).map(member => ({
-      profileId: profileMap[member.discordId] || null,
-      playerName: member.playerName,
-      rank: member.rank,
-      rankSlug: member.rankSlug,
-      slot: member.slot,
-    }))
-    res.json({ hold: req.params.holdSlug, members })
+    res.json({ hold: req.params.holdSlug, members: rosterMembers(factionWhitelist.getHoldRoster(req.params.holdSlug)) })
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'failed to load roster' })
+  }
+})
+
+// GET /api/servers/:key/factions
+
+router.get('/:key/factions', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  try {
+    res.json(factionWhitelist.listDefinitions())
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to load factions' })
+  }
+})
+
+// GET /api/servers/:key/groups/:scope/:group/roster
+
+router.get('/:key/groups/:scope/:group/roster', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  try {
+    const factionId = `${factionWhitelist.slug(req.params.scope)}:${factionWhitelist.slug(req.params.group)}`
+    res.json({ factionId, members: rosterMembers(factionWhitelist.getFactionRoster(factionId)) })
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to load roster' })
+  }
+})
+
+// DELETE /api/servers/:key/profiles/:profileId/characters/:slot/factions
+
+router.delete('/:key/profiles/:profileId/characters/:slot/factions', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  const discordId = getProfileDiscordId(req, res)
+  if (!discordId) return
+
+  try {
+    const removed = factionWhitelist.releaseCharacter(discordId, req.params.slot, req.query.accountWide === '1')
+    res.json({
+      ok: true,
+      removed: removed.map(row => ({ requirementId: row.requirementId, rank: row.requirement ? row.requirement.rank : null, group: row.requirement ? row.requirement.group : null, slot: row.slot ?? null })),
+      ...getProfileFactionPayload(discordId),
+    })
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to release character' })
+  }
+})
+
+// PUT /api/servers/:key/profiles/:profileId/characters
+
+router.put('/:key/profiles/:profileId/characters', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  if (!getProfileDiscordId(req, res)) return
+
+  try {
+    res.json({ characters: characters.setCharacters(req.params.profileId, req.body && req.body.characters) })
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to store characters' })
   }
 })
 
@@ -416,10 +491,11 @@ router.post('/:key/profiles/:profileId/factions', (req, res) => {
   if (!discordId) return
 
   try {
+    const by = String((req.body && req.body.by) || '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 80)
     const assignment = factionWhitelist.createAssignment({
       ...req.body,
       discordId,
-    }, 'skymp-server')
+    }, by ? `skymp-server (${by})` : 'skymp-server')
     res.status(201).json({
       assignment,
       ...getProfileFactionPayload(discordId),

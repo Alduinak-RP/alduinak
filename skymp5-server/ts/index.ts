@@ -46,6 +46,7 @@ import { HostingSystem } from "./systems/hostingSystem";
 import { PetSystem } from "./systems/petSystem";
 import { ConjurationSystem } from "./systems/conjurationSystem";
 import { KnowledgeSystem } from "./systems/knowledgeSystem";
+import { FactionSystem } from "./systems/factionSystem";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -250,6 +251,7 @@ const main = async () => {
     adminSystem,
     captureSystem,
     housingSystem,
+    new FactionSystem(log, housingSystem),
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
     searchSystem,
@@ -395,7 +397,7 @@ const main = async () => {
     console.error(e);
   }
 
-  // Attach before gamemode load (it probes mp.assignBackendFaction etc); a failed attach must degrade, never block the load
+  // Attach before gamemode load (FactionSystem and the gamemode use it); a failed attach must degrade, never block the load
   try {
     attachBackendFactionApi(server, settingsObject);
   } catch (e) {

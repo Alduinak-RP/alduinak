@@ -1,159 +1,57 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuLanguage, buttonEventKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
-import { localIdToRemoteId } from "../../view/worldViewMisc";
-import { logTrace } from "../../logging";
+import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
-
-// One row in the hold-management menu, as sent by the server.
-interface FactionMember {
-  name?: string;
-  profileId: number;
-  rank?: string;
-  online?: boolean;
-}
-
-// Regent info block sent alongside the roster.
-interface RegentInfo {
-  line: { profileId: number; name?: string }[];
-  activeProfileId: number | null;
-  actingName: string | null;
-  canManage: boolean;
-}
 
 const WIDGET_ID = 9;
 
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
-  add: 'faction:add',
-  remove: 'faction:remove',
-  promote: 'faction:promote',
-  demote: 'faction:demote',
-  regentAdd: 'faction:regentadd',
-  regentRemove: 'faction:regentremove',
-  regentUp: 'faction:regentup',
-  regencyGrant: 'faction:regencygrant',
-  regencyRevoke: 'faction:regencyrevoke',
-  close: 'faction:close',
+  invite: "faction:invite",
+  close: "faction:close",
 };
 
-const translations = {
-  "ru": {
-    title: 'Управление холдом',
-    addMember: 'добавить',
-    remove: 'убрать',
-    promote: 'повысить',
-    demote: 'понизить',
-    close: 'закрыть',
-    empty: 'Нет членов',
-    lookAtNewMember: 'Наведитесь на нового члена и нажмите клавишу взаимодействия',
-    addCancelled: 'Добавление отменено',
-    offline: 'оффлайн',
-    actingLeader: 'Действующий лидер',
-    regentLine: 'Линия регентов',
-    regentAdd: 'в регенты',
-    regentUp: 'выше',
-    regencyGrant: 'дать регентство',
-    regencyRevoke: 'снять регентство',
-    activeRegent: 'регент',
-  },
-  "en": {
-    title: 'Manage Hold',
-    addMember: 'add member',
-    remove: 'remove',
-    promote: 'promote',
-    demote: 'demote',
-    close: 'close',
-    empty: 'No members',
-    lookAtNewMember: 'Look at the new member and press the interact key',
-    addCancelled: 'Add cancelled',
-    offline: 'offline',
-    actingLeader: 'Acting leader',
-    regentLine: 'Regent line',
-    regentAdd: 'make regent',
-    regentUp: 'move up',
-    regencyGrant: 'grant regency',
-    regencyRevoke: 'revoke regency',
-    activeRegent: 'regent',
-  },
-} as const;
-
-type TranslationStrings = { [K in keyof typeof translations['ru']]: string };
+interface InviteOption {
+  factionId: string;
+  name: string;
+  ranks: { slug: string; name: string }[];
+}
 
 // Module-level state shared with the browser-side widget setter via runtime injection
-let strings: TranslationStrings = translations['en'];
-let title = '';
-let members: FactionMember[] = [];
-let regents: RegentInfo = { line: [], activeProfileId: null, actingName: null, canManage: false };
+let inviteTitle = "";
+let inviteOptions: InviteOption[] = [];
+
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 /**
- * Hold (faction) management for the fixed-holds model. No key opens it: the
- * menu stays dormant until a server handler sends "factionMenu" (the Personal
- * Menu's Faction tab is a placeholder for now). The server validates that you
- * may manage a hold and replies with the member list plus regent info.
+ * Faction membership on the client. The Personal Menu's Faction tab (AdminMenuService) shows rosters and rank actions; this
+ * service keeps the player's faction state, which unlocks the chat's Faction tab and the interaction menu's Invite to faction,
+ * opens the rank picker for an invitation and shows faction notices. Server side: skymp5-server factionSystem.ts.
  *
- * Protocol - all messages are {@link MsgType.CustomPacket} with a JSON dump.
- *
- *   Client -> Server, open my hold roster (no client path sends it at present):
- *     { "customPacketType": "factionMenuRequest" }
- *
- *   Server -> Client, the roster (server validated permission):
- *     { "customPacketType": "factionMenu",
- *       "title": "Whiterun Hold",
- *       "members": [ { "name": "Lydia", "profileId": 7, "rank": "guard", "online": true } ],
- *       "regents": { "line": [{ "profileId": 7, "name": "Lydia" }],
- *                    "activeProfileId": null, "actingName": null, "canManage": true } }
- *
- *   Client -> Server, management actions:
- *     { "customPacketType": "factionRequest", "action": "add",           "recipient": 134669556 }
- *     { "customPacketType": "factionRequest", "action": "remove",        "profileId": 7 }
- *     { "customPacketType": "factionRequest", "action": "promote",       "profileId": 7 }
- *     { "customPacketType": "factionRequest", "action": "demote",        "profileId": 7 }
- *     { "customPacketType": "factionRequest", "action": "regentadd",     "profileId": 7 }
- *     { "customPacketType": "factionRequest", "action": "regentremove",  "profileId": 7 }
- *     { "customPacketType": "factionRequest", "action": "regentup",      "profileId": 7 }
- *     { "customPacketType": "factionRequest", "action": "regencygrant",  "profileId": 7 }
- *     { "customPacketType": "factionRequest", "action": "regencyrevoke" }
- *
- *   Server -> Client, feedback (corner notification):
- *     { "customPacketType": "factionNotice", "text": "Lydia is now a guard." }
- *
- * After a change, the server re-sends "factionMenu" to refresh the list.
- * Add member is two-step: pick add, then look at the new member and press the
- * interact key (PlayerActionService calls takePendingPick).
+ *   Server -> Client:
+ *     { "customPacketType": "factionState", "factions": [{ "id", "name" }], "chat": "hold:whiterun", "canInvite": true }
+ *     { "customPacketType": "factionInviteOptions", "target", "targetName", "options": [{ "factionId", "name", "ranks": [{ "slug", "name" }] }] }
+ *     { "customPacketType": "factionNotice", "text": "Lydia is now Guard." }
+ *   Client -> Server:
+ *     { "customPacketType": "factionRequest", "action": "invite", "factionId", "rank", "target" }
  */
 export class FactionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
-
-    const language = readMenuLanguage(this.sp);
-    if (language in translations) {
-      strings = translations[language as keyof typeof translations];
-    }
+    onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
   }
 
-  // Second step of add member: consumes the pending pick with the crosshair's player
-  takePendingPick(): boolean {
-    if (!this.pendingAdd) return false;
-    this.pendingAdd = false;
-    const ref = this.sp.Game.getCurrentCrosshairRef();
-    const recipient = ref && Actor.from(ref) ? ref : null;
-    if (!recipient || recipient.getFormID() === 0x14) {
-      notifyNextUpdate(this.controller, this.sp, strings.addCancelled);
-      return true;
-    }
-    this.sendRequest({ action: "add", recipient: localIdToRemoteId(recipient.getFormID()) });
-    return true;
+  get canInvite(): boolean {
+    return this.inviteAllowed;
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -167,36 +65,28 @@ export class FactionService extends ClientListener {
     if (!content) return;
 
     switch (content["customPacketType"]) {
-      case "factionMenu":
-        title = typeof content["title"] === "string" ? content["title"] as string : strings.title;
-        // Sanitize the roster: skip non-objects, coerce profileId to number so the setter cannot throw.
-        const rawMembers = Array.isArray(content["members"]) ? content["members"] : [];
-        members = [];
-        for (let i = 0; i < rawMembers.length; i++) {
-          const m: any = rawMembers[i];
-          if (!m || typeof m !== "object") {
-            continue;
-          }
-          const profileId = Number(m.profileId);
-          if (isNaN(profileId)) {
-            continue;
-          }
-          members.push({
-            profileId,
-            name: String(m.name ?? ''),
-            rank: typeof m.rank === "string" ? m.rank : undefined,
-            online: m.online !== false,
-          });
-        }
-        regents = this.sanitizeRegents(content["regents"]);
-        logTrace(this, `Opening faction menu`, title, `(${members.length} members)`);
-        this.openMenu();
+      case "factionState": {
+        this.inviteAllowed = content["canInvite"] === true;
+        const member = Array.isArray(content["factions"]) && content["factions"].length > 0;
+        // Native calls are unsafe in the packet handler
+        this.controller.once("update", () => this.sp.browser.executeJavaScript(`window.__alduinakFaction = ${member ? "true" : "false"};`));
         break;
-      case "factionMenuClose":
-        if (this.menuOpen) {
-          this.closeMenu();
-        }
+      }
+      case "factionInviteOptions": {
+        const raw = Array.isArray(content["options"]) ? content["options"] : [];
+        inviteOptions = raw
+          .filter((o: any) => o && typeof o === "object" && Array.isArray(o.ranks))
+          .map((o: any) => ({
+            factionId: str(o.factionId),
+            name: str(o.name),
+            ranks: o.ranks.filter((r: any) => r && typeof r.slug === "string").map((r: any) => ({ slug: r.slug, name: str(r.name) || r.slug })),
+          }))
+          .filter((o: InviteOption) => o.factionId && o.ranks.length);
+        this.target = Number(content["target"]) || 0;
+        inviteTitle = `Invite ${str(content["targetName"]) || "them"}`;
+        if (this.target && inviteOptions.length) this.controller.once("update", () => this.openMenu());
         break;
+      }
       case "factionNotice":
         if (typeof content["text"] === "string") {
           notifyNextUpdate(this.controller, this.sp, content["text"]);
@@ -207,84 +97,26 @@ export class FactionService extends ClientListener {
     }
   }
 
-  private sanitizeRegents(raw: unknown): RegentInfo {
-    const r: any = raw && typeof raw === "object" ? raw : {};
-    const line: { profileId: number; name?: string }[] = [];
-    if (Array.isArray(r.line)) {
-      for (const e of r.line) {
-        const profileId = Number(e && e.profileId);
-        if (!isNaN(profileId) && profileId) {
-          line.push({ profileId, name: String((e && e.name) ?? '') });
-        }
-      }
-    }
-    return {
-      line,
-      activeProfileId: Number(r.activeProfileId) || null,
-      actingName: typeof r.actingName === "string" ? r.actingName : null,
-      canManage: r.canManage === true,
-    };
-  }
-
   private onBrowserMessage(e: BrowserMessageEvent): void {
     const key = e.arguments[0];
-    // Escape pressed inside the browser closes the menu on the first press.
-    if (key === "menu:escape") {
+    if (key === "menu:escape" || key === events.close) {
       if (this.menuOpen) this.closeMenu();
       return;
     }
-    if (typeof key !== "string" || !key.startsWith("faction:") || !this.menuOpen) {
-      return;
-    }
-    const profileId = Number(e.arguments[1]);
-
-    switch (key) {
-      case events.add:
-        // Defer to a second key press where the player looks at the new member.
-        this.pendingAdd = true;
-        this.closeMenu();
-        notifyNextUpdate(this.controller, this.sp, strings.lookAtNewMember);
-        break;
-      case events.remove:
-        this.sendRequest({ action: "remove", profileId });
-        // Leave the menu open; the server re-sends factionMenu to refresh it.
-        break;
-      case events.promote:
-        this.sendRequest({ action: "promote", profileId });
-        break;
-      case events.demote:
-        this.sendRequest({ action: "demote", profileId });
-        break;
-      case events.regentAdd:
-        this.sendRequest({ action: "regentadd", profileId });
-        break;
-      case events.regentRemove:
-        this.sendRequest({ action: "regentremove", profileId });
-        break;
-      case events.regentUp:
-        this.sendRequest({ action: "regentup", profileId });
-        break;
-      case events.regencyGrant:
-        this.sendRequest({ action: "regencygrant", profileId });
-        break;
-      case events.regencyRevoke:
-        this.sendRequest({ action: "regencyrevoke" });
-        break;
-      case events.close:
-        this.closeMenu();
-        break;
-      default:
-        break;
-    }
-  }
-
-  private sendRequest(payload: Record<string, unknown>): void {
-    sendCustomPacket(this.controller, { customPacketType: "factionRequest", ...payload });
+    if (key !== events.invite || !this.menuOpen) return;
+    sendCustomPacket(this.controller, {
+      customPacketType: "factionRequest",
+      action: "invite",
+      factionId: str(e.arguments[1]),
+      rank: str(e.arguments[2]),
+      target: this.target,
+    });
+    this.closeMenu();
   }
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, strings, title, members, regents, WIDGET_ID }, this.controller);
+    openFormMenu(this.sp, this.browsersideWidgetSetter, { events, inviteTitle, inviteOptions, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {
@@ -295,103 +127,27 @@ export class FactionService extends ClientListener {
   // Runs inside the CEF browser; only the injected variables and window are available here.
   // No spread syntax: it breaks after FunctionInfo stringification (see commit 8d7c0c05).
   private browsersideWidgetSetter = () => {
-    const widget: any = {
-      type: "form",
-      id: WIDGET_ID,
-      caption: title || strings.title,
-      elements: [] as any[],
-    };
-    const inLine = (profileId: number) => {
-      for (let i = 0; i < regents.line.length; i++) {
-        if (regents.line[i].profileId === profileId) return true;
-      }
-      return false;
-    };
-
-    if (regents.actingName) {
-      widget.elements.push({ type: "text", text: strings.actingLeader + ": " + regents.actingName, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
-    }
-
-    if (members.length === 0) {
-      widget.elements.push({ type: "text", text: strings.empty, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
-    } else {
-      for (let i = 0; i < members.length; i++) {
-        const m = members[i];
-        let label = (m.name || `#${m.profileId}`) + (m.rank ? ` - ${m.rank}` : "");
-        if (m.online === false) label += ` (${strings.offline})`;
-        widget.elements.push({ type: "text", text: label, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
-        widget.elements.push({
+    const elements: any[] = [];
+    for (let i = 0; i < inviteOptions.length; i++) {
+      const option = inviteOptions[i];
+      elements.push({ type: "text", text: option.name, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
+      for (let j = 0; j < option.ranks.length; j++) {
+        const rank = option.ranks[j];
+        elements.push({
           type: "button",
-          text: strings.promote,
+          text: rank.name,
           tags: [],
-          click: () => window.skyrimPlatform.sendMessage(events.promote, m.profileId),
+          click: () => window.skyrimPlatform.sendMessage(events.invite, option.factionId, rank.slug),
         });
-        widget.elements.push({
-          type: "button",
-          text: strings.demote,
-          tags: ["ELEMENT_SAME_LINE"],
-          click: () => window.skyrimPlatform.sendMessage(events.demote, m.profileId),
-        });
-        widget.elements.push({
-          type: "button",
-          text: strings.remove,
-          tags: ["ELEMENT_SAME_LINE"],
-          click: () => window.skyrimPlatform.sendMessage(events.remove, m.profileId),
-        });
-        if (regents.canManage && !inLine(m.profileId)) {
-          widget.elements.push({
-            type: "button",
-            text: strings.regentAdd,
-            tags: ["ELEMENT_SAME_LINE"],
-            click: () => window.skyrimPlatform.sendMessage(events.regentAdd, m.profileId),
-          });
-        }
       }
     }
-
-    if (regents.line.length > 0) {
-      widget.elements.push({ type: "text", text: strings.regentLine + ":", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
-      for (let i = 0; i < regents.line.length; i++) {
-        const r = regents.line[i];
-        const active = regents.activeProfileId === r.profileId;
-        let label = (i + 1) + ". " + (r.name || `#${r.profileId}`);
-        if (active) label += " (" + strings.activeRegent + ")";
-        widget.elements.push({ type: "text", text: label, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] });
-        if (regents.canManage) {
-          widget.elements.push({
-            type: "button",
-            text: strings.regentUp,
-            tags: [],
-            click: () => window.skyrimPlatform.sendMessage(events.regentUp, r.profileId),
-          });
-          widget.elements.push({
-            type: "button",
-            text: strings.remove,
-            tags: ["ELEMENT_SAME_LINE"],
-            click: () => window.skyrimPlatform.sendMessage(events.regentRemove, r.profileId),
-          });
-          widget.elements.push({
-            type: "button",
-            text: active ? strings.regencyRevoke : strings.regencyGrant,
-            tags: ["ELEMENT_SAME_LINE"],
-            click: () => window.skyrimPlatform.sendMessage(active ? events.regencyRevoke : events.regencyGrant, r.profileId),
-          });
-        }
-      }
-    }
-
-    widget.elements.push({
-      type: "button",
-      text: strings.close,
-      tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"],
-      click: () => window.skyrimPlatform.sendMessage(events.close),
-    });
-
-    // Preserve any other widgets
+    elements.push({ type: "button", text: "Cancel", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.close) });
+    const widget = { type: "form", id: WIDGET_ID, caption: inviteTitle, elements };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
   private menuOpen = false;
-  private pendingAdd = false;
+  private target = 0;
+  private inviteAllowed = false;
 }

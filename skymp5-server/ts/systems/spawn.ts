@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
@@ -168,6 +168,12 @@ export class Spawn implements System {
     };
     ctx.gm.on("spawnAllowed", listenerFn);
     (ctx.svr as any)._onSpawnAllowed = listenerFn;
+    // In-game faction changes replace the access cached at login, so the next character select applies them
+    ctx.gm.on(ACCESS_REFRESHED_EVENT, (profileId: number, access: unknown) => {
+      for (const auth of [...this.authCache.values(), ...this.pending.values()]) {
+        if (auth.profileId === profileId) auth.access = access;
+      }
+    });
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -339,13 +345,17 @@ export class Spawn implements System {
 
   private sendCharacterList(ctx: SystemContext, userId: number, profileId: number): void {
     const mp = ctx.svr as unknown as Mp;
-    const characters = this.slotMap(ctx, profileId).map((actorId, i) =>
+    const slots = this.slotMap(ctx, profileId);
+    const characters = slots.map((actorId, i) =>
       actorId !== undefined
         ? { name: this.characterName(ctx, actorId) || `Character ${i + 1}`, dead: this.isPermaDead(mp, actorId) }
         : null);
     const intro = this.startLocations.length
       ? { pages: INTRO_PAGES, question: INTRO_QUESTION, locations: this.startLocations.map(({ id, label }) => ({ id, label })) }
       : undefined;
+    ctx.gm.emit(CHARACTER_LIST_EVENT, profileId, slots
+      .map((actorId, slot) => (actorId === undefined ? null : { slot, actorId, dead: this.isPermaDead(mp, actorId) }))
+      .filter((e) => e !== null));
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
       customPacketType: "characterSelectMenu", maxCharacters: this.maxCharacters, characters, intro,
     }));
@@ -660,6 +670,7 @@ export class Spawn implements System {
     if (actorId !== undefined) {
       // Perma-dead characters may be deleted too (destroying the body) so a perma-death cannot lock the slot forever
       this.cancelPark(actorId);
+      ctx.gm.emit(CHARACTER_RETIRED_EVENT, auth.profileId, slot, actorId);
       ctx.svr.destroyActor(actorId);
       this.log("Deleted character", actorId.toString(16), "from slot", slot);
     }
