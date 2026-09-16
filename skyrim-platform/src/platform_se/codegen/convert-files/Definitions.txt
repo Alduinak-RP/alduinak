@@ -1636,3 +1636,5 @@ export declare function dispelPotionEffects(actorFormId: number, potionFormId: n
 export declare function agePotionEffects(actorFormId: number, potionFormId: number, seconds: number): void;
 
 export declare function setCollision(refrFormId: number, collision: boolean): void;
+
+export declare function mountActor(rider: Actor | number, mount: Actor | number): boolean;

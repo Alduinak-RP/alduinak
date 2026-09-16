@@ -17,6 +17,8 @@ public:
     RE::BSScript::ErrorLogger* logger,
     RE::BSScript::Internal::VirtualMachine* vm,
     RE::BSScript::IFunction::CallResult* ret);
+  // Runs the task on the thread pumping the update loop, and waits
+  void PushToGameThreadAndWait(const std::function<void()>& task);
   void PrepareWorker();
   void StartWorker();
   void StopWorker();
