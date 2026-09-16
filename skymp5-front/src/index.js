@@ -7,6 +7,7 @@ import { store } from './redux/store';
 import { Provider } from 'react-redux';
 
 import { Widgets } from './utils/Widgets';
+import { assetUrl } from './utils/assetUrl';
 import './utils/VoiceManager';
 import './utils/MainMenuMedia';
 
@@ -37,7 +38,7 @@ window.scrollToLastMessage = () => {
 };
 
 window.playSound = (name) => {
-  (new Audio(require('./sound/' + name).default)).play();
+  (new Audio(assetUrl(require('./sound/' + name)))).play();
 };
 
 if (window.skyrimPlatform?.sendMessage) {

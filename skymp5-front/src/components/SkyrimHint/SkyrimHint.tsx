@@ -1,5 +1,6 @@
 import React from 'react';
 import { SkyrimHintProps } from '../../interfaces/buttons';
+import { assetUrl } from '../../utils/assetUrl';
 import './SkyrimHint.scss';
 
 export const SkyrimHint = (
@@ -11,7 +12,7 @@ export const SkyrimHint = (
         left ? 'left' : ''
       }`}
       style={{
-        backgroundImage: `url(${require('../../img/hint.svg').default})`,
+        backgroundImage: `url(${assetUrl(require('../../img/hint.svg'))})`,
         display: isOpened ? 'flex' : 'none'
       }}
     >

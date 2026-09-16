@@ -6,7 +6,10 @@ import { parseMasteryMenu } from "./masteryService";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
-import { ActiveEffectApplyRemoveEvent, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
+import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
+import { formDesc } from "../../lib/formDesc";
+import { isPlayerCharacterId } from "./playerActionService";
+import { ActiveEffectApplyRemoveEvent, Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 
 declare const window: any;
 
@@ -18,6 +21,8 @@ declare const window: any;
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
 const DEBUG_REFRESH_MS = 5000;
+const TARGET_REFRESH_MS = 250;
+const FIRST_DYNAMIC_ID = 0xff000000;
 const EFFECTS_STORAGE_KEY = "adminDebugEffects";
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 const GLOBAL_HOUR = 0x38;
@@ -74,6 +79,24 @@ interface DebugServer {
   tzOffsetMin: number;
 }
 
+// Crosshair target read-outs; player marks another player's character or body
+interface DebugTarget {
+  name: string;
+  dist: number;
+  live: boolean;
+  player: boolean;
+  refId: string;
+  refDesc: string;
+  serverId: string;
+  baseId: string;
+  baseDesc: string;
+  localBaseId: string;
+  localBaseDesc: string;
+  cell: string;
+  cellName: string;
+  pos: number[];
+}
+
 interface DebugData {
   account: string;
   character: string;
@@ -84,7 +107,7 @@ interface DebugData {
   pos: number[];
   cell: { id: string; name: string; interior: boolean; world: string; location: string } | null;
   heading: { deg: number; compass: string };
-  target: { name: string; id: string; dist: number } | null;
+  target: DebugTarget | null;
   av: { health: number[]; magicka: number[]; stamina: number[] };
   gameTime: { hour: number; day: number; month: number; year: number; weekday: number } | null;
   hoursOffset: number;
@@ -99,7 +122,7 @@ type EffectMap = Map<number, { name: string; since: number }>;
 let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, events };
 
 function hex(id: number): string {
-  return id.toString(16);
+  return id ? id.toString(16) : "";
 }
 
 function safe<T>(fn: () => T | null | undefined, fallback: T): T {
@@ -135,6 +158,7 @@ export class AdminMenuService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("update", () => this.onUpdate());
+    this.controller.on("crosshairRefChanged", () => { this.crosshairMoved = true; });
     this.controller.on("effectStart", (e) => this.onEffect(e, true));
     this.controller.on("effectFinish", (e) => this.onEffect(e, false));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
@@ -166,11 +190,17 @@ export class AdminMenuService extends ClientListener {
     }
   }
 
-  // The Debug tab reads the game every 5 s only while it is the visible tab
+  // The Debug tab reads the game every 5 s only while it is the visible tab; a crosshair move (F6 look-around) re-reads just the target
   private onUpdate(): void {
-    if (!this.menuOpen || this.activeTab !== "debug" || Date.now() - this.lastDebugAt < DEBUG_REFRESH_MS) return;
-    this.refreshDebug();
-    this.pushData();
+    if (!this.menuOpen || this.activeTab !== "debug") return;
+    const now = Date.now();
+    if (now - this.lastDebugAt >= DEBUG_REFRESH_MS) {
+      this.refreshDebug();
+      this.pushData();
+    } else if (this.crosshairMoved && now - this.lastTargetAt >= TARGET_REFRESH_MS) {
+      this.crosshairMoved = false;
+      this.refreshTarget();
+    }
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -197,6 +227,7 @@ export class AdminMenuService extends ClientListener {
         petBases: panelData.petBases,
         events,
       };
+      if (panelData.debug) panelData.debug.target = this.shownTarget();
       this.pushData();
       // The Pets sub-tab needs the grantable bases; only a server that resolves caps knows the action
       if (panelData.caps.npcs === true) sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "petBases" });
@@ -335,14 +366,8 @@ export class AdminMenuService extends ClientListener {
       }
       const deg = Math.round(((safe(() => player.getAngleZ(), 0) % 360) + 360) % 360) % 360;
       d.heading = { deg, compass: COMPASS[Math.round(deg / 45) % 8] };
-      const ref = safe(() => sp.Game.getCurrentCrosshairRef(), null);
-      if (ref) {
-        d.target = {
-          name: safe(() => ref.getDisplayName(), "") || safe(() => ref.getBaseObject()?.getName(), ""),
-          id: hex(safe(() => ref.getFormID(), 0)),
-          dist: Math.round(safe(() => player.getDistance(ref), 0)),
-        };
-      }
+      this.readTarget(player);
+      d.target = this.shownTarget();
       const av = (name: string) => [Math.round(safe(() => player.getActorValue(name), 0)), Math.round(safe(() => player.getActorValueMax(name), 0))];
       d.av = { health: av("Health"), magicka: av("Magicka"), stamina: av("Stamina") };
       // Pruned on every refresh so finished effects missed by effectFinish drop out
@@ -363,6 +388,65 @@ export class AdminMenuService extends ClientListener {
       d.gameTime = { hour, day, month, year, weekday: Math.floor(daysPassed) % 7 };
     }
     panelData.debug = d;
+  }
+
+  // A crosshair miss keeps the last target as last seen while the menu stays open
+  private readTarget(player: Actor): void {
+    const sp = this.sp;
+    this.lastTargetAt = Date.now();
+    const ref = safe(() => sp.Game.getCurrentCrosshairRef(), null);
+    if (!ref) {
+      if (this.target && this.menuOpen) this.target.live = false;
+      else this.target = null;
+      return;
+    }
+    const descOf = (id: number): string => (id && formDesc(id)) || "";
+    const refId = safe(() => ref.getFormID(), 0) >>> 0;
+    const serverId = safe(() => localIdToRemoteId(refId), 0) >>> 0;
+    const character = safe(() => isPlayerCharacterId(this.controller, serverId), false);
+    // Refs created in game read their base from the server's world model
+    const serverBase = serverId >= FIRST_DYNAMIC_ID
+      ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId)?.baseId, 0) >>> 0
+      : 0;
+    const localBase = safe(() => ref.getBaseObject()?.getFormID(), 0) >>> 0;
+    const baseId = serverBase || localBase;
+    const localBaseId = localBase !== baseId ? localBase : 0;
+    let name = safe(() => ref.getDisplayName(), "") || safe(() => ref.getBaseObject()?.getName(), "");
+    if (character && !knowsCharacter(serverId)) name = safe(() => sp.Actor.from(ref)?.isDead(), false) ? "Body" : "Stranger";
+    this.target = {
+      name,
+      dist: Math.round(safe(() => player.getDistance(ref), 0)),
+      live: true,
+      player: character,
+      refId: hex(refId),
+      refDesc: descOf(refId),
+      serverId: hex(serverId),
+      baseId: hex(baseId),
+      baseDesc: descOf(baseId),
+      localBaseId: hex(localBaseId),
+      localBaseDesc: descOf(localBaseId),
+      cell: hex(safe(() => ref.getParentCell()?.getFormID(), 0)),
+      cellName: safe(() => ref.getParentCell()?.getName(), ""),
+      pos: [safe(() => ref.getPositionX(), 0), safe(() => ref.getPositionY(), 0), safe(() => ref.getPositionZ(), 0)].map(Math.round),
+    };
+  }
+
+  // Pushes only when the target or its last seen state changed
+  private refreshTarget(): void {
+    const key = (t: DebugTarget | null): string => (t ? t.refId + ":" + t.live : "");
+    const before = key(this.target);
+    const player = safe(() => this.sp.Game.getPlayer(), null);
+    if (!player) return;
+    this.readTarget(player);
+    if (!panelData.debug || key(this.target) === before) return;
+    panelData.debug.target = this.shownTarget();
+    this.pushData();
+  }
+
+  // A player character's ref and server ids stay the same across masks and sessions, so only staff see them
+  private shownTarget(): DebugTarget | null {
+    const t = this.target;
+    return t && t.player && !panelData.admin ? { ...t, refId: "", refDesc: "", serverId: "" } : t;
   }
 
   private onBrowserMessage(e: BrowserMessageEvent) {
@@ -487,6 +571,9 @@ export class AdminMenuService extends ClientListener {
   private menuOpen = false;
   private activeTab = "";
   private lastDebugAt = 0;
+  private lastTargetAt = 0;
+  private crosshairMoved = false;
+  private target: DebugTarget | null = null;
   private server: DebugServer | null = null;
   private serverActorId = "";
   private serverProfileId = 0;

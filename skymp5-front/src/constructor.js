@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
 
 import './features/login/styles.scss';
 import './constructor.scss';
 
-import { SkyrimFrame } from './components/SkyrimFrame/SkyrimFrame';
 import { SkyrimInput } from './components/SkyrimInput/SkyrimInput';
 import { SkyrimHint } from './components/SkyrimHint/SkyrimHint';
 import Button from './constructorComponents/button';
@@ -40,20 +39,19 @@ const styles = [
 
 const Constructor = props => {
   const content_mainRef = useRef();
-  useEffect(() => {
-    if (props.dynamicSize) {
-      switch (props.elem.type) {
-        case 'form':
-          const isContentInitialized = content_mainRef && content_mainRef.current && content_mainRef.current.clientHeight && content_mainRef.current.clientWidth;
-          if (isContentInitialized) {
-            setFwidth(content_mainRef.current.clientWidth + 60 < 257 ? 257 : content_mainRef.current.clientWidth + 60);
-            setFheight(content_mainRef.current.clientHeight + 96);
-          }
-          break;
-        default:
-          break;
-      }
-    }
+  // Form boxes fit their content before paint and again whenever it resizes, as when the web font finishes loading
+  useLayoutEffect(() => {
+    const content = content_mainRef.current;
+    if (!props.dynamicSize || props.elem.type !== 'form' || !content) return undefined;
+    const measure = () => {
+      if (!content.clientHeight || !content.clientWidth) return;
+      setFwidth(Math.max(257, content.clientWidth + 60));
+      setFheight(content.clientHeight + 96);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
   }, [props.elem]);
   const [fwidth, setFwidth] = useState(props.width || 512);
   const [fheight, setFheight] = useState(props.height || 704);
@@ -211,7 +209,6 @@ const Constructor = props => {
                 {result.body}
               </div>
             </div>
-            <SkyrimFrame width={fwidth} height={fheight} />
           </div>
         </div>
       );

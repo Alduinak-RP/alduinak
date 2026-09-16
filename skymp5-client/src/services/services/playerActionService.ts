@@ -8,7 +8,7 @@ import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
 import { isFreeCamera } from "./adminModeService";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
-import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
@@ -153,7 +153,7 @@ export class PlayerActionService extends ClientListener {
     this.canRelease = false;
     sendCustomPacket(this.controller, { customPacketType: "playerMenuRequest", target: remoteId });
     // Names stay hidden until introduced (ff_knownIds owner prop)
-    if (!targetName || !this.knowsTarget(this.playerTarget)) {
+    if (!targetName || !knowsCharacter(this.playerTarget)) {
       targetName = "Stranger";
     }
     logTrace(this, `Opening player-action menu for`, targetName);
@@ -215,20 +215,6 @@ export class PlayerActionService extends ClientListener {
       this.closeMenu();
       return;
     }
-  }
-
-  // True when the local player's ff_knownIds list contains the remote actor id.
-  // A missing list (gamemode without the introduce feature) shows real names.
-  private knowsTarget(remoteId: number): boolean {
-    if (this.sp.storage["ownerModelSet"] !== true) {
-      return true;
-    }
-    const owner = this.sp.storage["ownerModel"] as Record<string, unknown> | undefined;
-    const known = owner ? owner["ff_knownIds"] : undefined;
-    if (!Array.isArray(known)) {
-      return true;
-    }
-    return known.includes(remoteId);
   }
 
   private openMenu(): void {

@@ -8,6 +8,7 @@ import { MAP_MARKER_REFS } from "../../data/mapMarkerRefs";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { formDesc } from "../../lib/formDesc";
 
 // Discovered map markers and learned ingredient effects per character, stored by the server's KnowledgeSystem and replayed here
 
@@ -25,7 +26,6 @@ const INGR_READ_BATCH = 5;
 const MAX_SEND = 200;
 const MAX_EFFECTS = 4;
 const PLAYER_FORM_ID = 0x14;
-const LIGHT_MOD_HIGH = 0xfe;
 const MARKER_SHOWN = 1;
 const MARKER_DISCOVERED = 2;
 
@@ -315,7 +315,7 @@ export class CharacterProgressService extends ClientListener {
     if (desc === undefined) {
       desc = null;
       try {
-        if (this.sp.Ingredient.from(this.sp.Game.getFormEx(baseId))) desc = this.descOf(baseId);
+        if (this.sp.Ingredient.from(this.sp.Game.getFormEx(baseId))) desc = formDesc(baseId);
       } catch (err) { /* unloaded base form */ }
       this.ingrDescs.set(baseId, desc);
     }
@@ -355,21 +355,6 @@ export class CharacterProgressService extends ClientListener {
       this.descToId.set(desc, id);
     }
     return id ? this.sp.Game.getFormEx(id) : null;
-  }
-
-  // Runtime form id to "hex:Plugin" using the client's own load order (light plugins live in the 0xFE space)
-  private descOf(id: number): string | null {
-    let desc: string | null = null;
-    const high = id >>> 24;
-    try {
-      if (high === LIGHT_MOD_HIGH) {
-        const idx = (id >>> 12) & 0xfff;
-        if (idx < this.sp.Game.getLightModCount()) desc = (id & 0xfff).toString(16) + ":" + this.sp.Game.getLightModName(idx);
-      } else if (high < this.sp.Game.getModCount()) {
-        desc = (id & 0xffffff).toString(16) + ":" + this.sp.Game.getModName(high);
-      }
-    } catch (err) { /* keep null */ }
-    return desc && !desc.endsWith(":") ? desc : null;
   }
 
   // The previous client's local save for this character, merged on login so nothing it kept is lost

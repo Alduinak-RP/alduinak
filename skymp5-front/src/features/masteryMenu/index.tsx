@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
+import { assetUrl } from '../../utils/assetUrl';
+
 import './styles.scss';
 
 interface Profession {
@@ -45,10 +47,6 @@ const ART: Record<string, string> = {
   warrior: 'Combat',
   woodworker: 'Woodcutting',
 };
-
-// Asset modules export the url as module.exports or as .default depending on the loader.
-const assetUrl = (mod: { default?: string } | string): string =>
-  typeof mod === 'string' ? mod : mod.default || '';
 
 const artFor = (professionId: string): string => {
   const name = ART[professionId];

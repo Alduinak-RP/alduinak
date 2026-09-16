@@ -15,6 +15,7 @@
     margin: auto;
     position: relative;
     pointer-events: auto;
+    background: rgba(0, 0, 0, 0.5);
     &--content {
       font-family: 'Bankir-Retro', sans-serif;
       display: flex;
@@ -265,12 +266,21 @@ dothatopcheck {  0% {
   animation: dothatopcheck 1s ease 0s forwards;
 }
 
-// Character select (form widget id 7): red/black panel so it reads over the
-// main menu video; other form widgets keep the default frame.
-.login.login--w7 {
-  .frame {
-    display: none;
+// Request prompts (12 restrain, carry and pet transfer, 15 trade, 16 search) wrap to two lines sized with the vw font
+.login.login--w12,
+.login.login--w15,
+.login.login--w16 {
+  .skyrimText {
+    width: 26vw;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
+}
+
+// Character select (form widget id 7): red/black panel so it reads over the main menu video
+.login.login--w7 {
   .login-form {
     background:
       linear-gradient(180deg, rgba(8, 4, 4, 0.92), rgba(0, 0, 0, 0.88)),

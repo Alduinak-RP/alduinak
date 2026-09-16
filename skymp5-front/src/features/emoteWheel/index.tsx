@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+import { assetUrl } from '../../utils/assetUrl';
+
 import './styles.scss';
 
 interface EmoteDef {
@@ -73,10 +75,6 @@ const shortenLabel = (label: string): string => {
     .replace('Crossed', 'Cross')
     .replace('Sitting', 'Sit');
 };
-
-// Asset modules export the url as module.exports or as .default depending on the loader.
-const assetUrl = (mod: { default?: string } | string): string =>
-  typeof mod === 'string' ? mod : mod.default || '';
 
 const previewFor = (anim: string): string => {
   try {

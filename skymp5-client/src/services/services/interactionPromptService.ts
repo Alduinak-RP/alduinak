@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { closeWidget, isUiHidden } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, CrosshairRefChangedEvent, Form, FormType, ObjectReference } from "skyrimPlatform";
-import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
 import { isPlayerCharacterId } from "./playerActionService";
@@ -171,7 +171,7 @@ export class InteractionPromptService extends ClientListener {
     // The engine must not start a dialogue or a local loot window on the clone under our menu.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
     const raw = (ref.getName() || "").trim();
-    const known = raw && this.knowsTarget(remoteId);
+    const known = raw && knowsCharacter(remoteId);
     if (dead) return { verb: "Search", label: known ? raw : "Body" };
     return { verb: "Interact", label: known ? raw : "Stranger" };
   }
@@ -190,16 +190,6 @@ export class InteractionPromptService extends ClientListener {
       : kind === "livestock" ? "Harvest"
       : kind === "dog" || kind === "companion" ? "Command" : "";
     return { verb, label };
-  }
-
-  // True when the local player's ff_knownIds list contains the remote actor
-  // id. A missing list (gamemode without introductions) shows real names.
-  private knowsTarget(remoteId: number): boolean {
-    if (this.sp.storage["ownerModelSet"] !== true) return true;
-    const owner = this.sp.storage["ownerModel"] as Record<string, unknown> | undefined;
-    const known = owner ? owner["ff_knownIds"] : undefined;
-    if (!Array.isArray(known)) return true;
-    return known.includes(remoteId);
   }
 
   private verbFor(ref: ObjectReference, type: number): string | null {

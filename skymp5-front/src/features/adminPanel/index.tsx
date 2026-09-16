@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
+import { copyText } from '../../utils/copyText';
 import MasteryMenu, { MasteryData } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
 import './styles.scss';
@@ -64,6 +65,24 @@ interface DebugServer {
   tzOffsetMin: number; // server-side Date.getTimezoneOffset()
 }
 
+// The crosshair target (adminMenuService.ts DebugTarget); ref and server ids arrive empty on another player's character unless staff.
+interface DebugTarget {
+  name: string;
+  dist: number;
+  live: boolean; // false once the crosshair left it while the menu stayed open
+  player: boolean;
+  refId: string;
+  refDesc: string; // "hex:Plugin", empty for a ref created in game
+  serverId: string; // empty for a client-only ref
+  baseId: string;
+  baseDesc: string;
+  localBaseId: string; // the client's own base when it differs from baseId
+  localBaseDesc: string;
+  cell: string;
+  cellName: string;
+  pos: number[];
+}
+
 // Read-outs the client gathers every 5 s while the panel is open (adminMenuService.ts DebugData).
 interface DebugData {
   account: string;
@@ -75,7 +94,7 @@ interface DebugData {
   pos: number[];
   cell: { id: string; name: string; interior: boolean; world: string; location: string } | null;
   heading: { deg: number; compass: string };
-  target: { name: string; id: string; dist: number } | null;
+  target: DebugTarget | null;
   av: { health: number[]; magicka: number[]; stamina: number[] }; // [cur, max]
   gameTime: { hour: number; day: number; month: number; year: number; weekday: number } | null; // month 0-based
   hoursOffset: number;
@@ -237,6 +256,20 @@ const WEEKDAYS = ['Sundas', 'Morndas', 'Tirdas', 'Middas', 'Turdas', 'Fredas', '
 
 const hexId = (id: string): string => (id ? '0x' + id.toUpperCase() : '-');
 
+const withDesc = (id: string, desc: string): string => hexId(id) + (desc ? ' (' + desc + ')' : '');
+
+// One line for bug reports; the descs paste straight into the Item Spawner search
+const targetReport = (t: DebugTarget): string => {
+  const parts = [t.name || '(no name)'];
+  if (t.refId) parts.push('ref ' + withDesc(t.refId, t.refDesc));
+  if (t.serverId && t.serverId !== t.refId) parts.push('server ' + hexId(t.serverId));
+  if (t.baseId) parts.push('base ' + withDesc(t.baseId, t.baseDesc));
+  if (t.localBaseId) parts.push('local base ' + withDesc(t.localBaseId, t.localBaseDesc));
+  if (t.cell) parts.push('cell ' + hexId(t.cell) + (t.cellName ? ' ' + t.cellName : ''));
+  parts.push('pos ' + (t.pos || []).join(' '));
+  return parts.join(' | ');
+};
+
 const ordinal = (n: number): string => {
   const tens = n % 100;
   if (tens >= 11 && tens <= 13) return n + 'th';
@@ -271,10 +304,13 @@ interface DebugCell {
   hint?: string;
 }
 
-// The twelve read-out cells in display order, three rows of four
+// The fifteen read-out cells in display order, four to a row; the target report button closes the fourth row
 const debugCells = (d: DebugData, now: number): DebugCell[] => {
   const server = d.server;
   const cell = d.cell;
+  const t = d.target;
+  const hidden = !!t && t.player && !t.refId;
+  const inGame = (desc: string): string => desc || 'created in game';
   const place = cell ? [cell.name || cell.location, !cell.interior && cell.world ? '(' + cell.world + ')' : ''].filter(Boolean).join(' ') : '';
   const av = d.av || { health: [], magicka: [], stamina: [] };
   const pair = (v: number[]): string => (v && v.length ? Math.round(v[0]) + '/' + Math.round(v[1] || 0) : '-');
@@ -288,13 +324,21 @@ const debugCells = (d: DebugData, now: number): DebugCell[] => {
     { label: 'Direction Facing', value: d.heading ? d.heading.compass + ' ' + Math.round(d.heading.deg) + '°' : '-' },
     {
       label: 'Target Distance',
-      value: d.target ? (d.target.name || hexId(d.target.id)) + ' ' + Math.round(d.target.dist) + ' u' : 'no target',
-      hint: 'Activatable references only',
+      value: t ? (t.name || hexId(t.baseId)) + ' ' + Math.round(t.dist) + ' u' : 'no target',
+      hint: t && !t.live ? 'Last seen' : 'Activatable references only',
     },
     { label: 'Magicka / Health / Stamina', value: [av.magicka, av.health, av.stamina].map(pair).join(' | ') },
     { label: 'Game Time/Date', value: gameClock(d.gameTime), sub: gameDate(d.gameTime) },
     { label: 'Local Time/Date', value: formatClock(now, new Date(now).getTimezoneOffset()) },
     { label: 'Server Time/Date', value: server ? formatClock(now + server.offsetMs, server.tzOffsetMin) : 'unknown' },
+    { label: 'Target Ref ID', value: !t ? '-' : hidden ? 'Staff only' : hexId(t.refId), sub: t && !hidden ? inGame(t.refDesc) : undefined },
+    { label: 'Target Server ID', value: !t ? '-' : hidden ? 'Staff only' : !t.serverId ? 'client only' : t.serverId === t.refId ? 'same as ref' : hexId(t.serverId) },
+    {
+      label: 'Target Base ID',
+      value: t ? hexId(t.baseId) : '-',
+      sub: t && t.baseId ? inGame(t.baseDesc) : undefined,
+      hint: t && t.localBaseId ? 'Local ' + withDesc(t.localBaseId, t.localBaseDesc) : undefined,
+    },
   ];
 };
 
@@ -317,6 +361,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [petName, setPetName] = useState('');
   const [now, setNow] = useState(Date.now());
   const [refreshKey, setRefreshKey] = useState(0);
+  const [copied, setCopied] = useState<{ text: string; ok: boolean } | null>(null);
 
   const ev = data.events || {};
   const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
@@ -359,6 +404,16 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const skills = data.skills || null;
   // Seconds since the client gathered the debug block, added to each effect's elapsed time
   const debugDrift = debug ? Math.max(0, Math.round((now - (debug.updatedAt || now)) / 1000)) : 0;
+
+  const report = debug && debug.target ? targetReport(debug.target) : '';
+  const copyReport = (): void => {
+    if (report) copyText(report).then((ok) => setCopied({ text: report, ok }));
+  };
+  const copyHint = !report
+    ? 'Aim at something and press X, or press F6 and look around'
+    : copied && copied.text === report
+      ? copied.ok ? 'Copied' : 'Copy failed, select the ids instead'
+      : 'Name, ids, cell and position';
 
   const refresh = (): void => {
     if (topTab === 'debug' && ev.debugRefresh) send(ev.debugRefresh);
@@ -529,6 +584,11 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     {c.hint ? <span className="admin-panel__hint">{c.hint}</span> : null}
                   </div>
                 ))}
+                <div className="admin-panel__field">
+                  Target Report
+                  <Button text="Copy IDs" width={104} height={32} disabled={!report} onClick={copyReport} />
+                  <span className="admin-panel__hint">{copyHint}</span>
+                </div>
               </div>
             ) : (
               <div className="admin-panel__empty">Waiting for game data</div>

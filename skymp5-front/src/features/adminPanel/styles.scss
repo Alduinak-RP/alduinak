@@ -182,7 +182,7 @@ $admin-row-gutter: 16px;
     grid-template-columns: repeat(4, 1fr);
     gap: 10px 14px;
 
-    // Debug read-outs: twelve fixed cells, nowrap values must not widen a column
+    // Debug read-outs: sixteen fixed cells, nowrap values must not widen a column
     &--debug {
       grid-template-columns: repeat(4, minmax(0, 1fr));
       row-gap: 16px;
@@ -190,6 +190,11 @@ $admin-row-gutter: 16px;
 
       .admin-panel__field {
         min-width: 0;
+      }
+
+      // main.scss disables selection globally; ids must stay copyable by hand
+      .admin-panel__value {
+        user-select: text;
       }
     }
   }
@@ -558,6 +563,7 @@ $admin-row-gutter: 16px;
 
   // Scale SkyrimButton's default 30px type down to fit the compact 32px-tall buttons.
   &__actions,
+  &__form--debug,
   &__header-buttons,
   &__row--location,
   &__mastery-row {

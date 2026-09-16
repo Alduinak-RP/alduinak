@@ -66,6 +66,16 @@ export const isModelHostedByOther = (model: FormModel): boolean => {
   return !isRemoteHostedByMe(remoteId) || !ObjectReference.from(Game.getFormEx(remoteIdToLocalId(remoteId)))?.is3DLoaded();
 };
 
+// True once the local player was introduced to this remote character (ff_knownIds owner prop); a gamemode without introductions knows everyone
+export const knowsCharacter = (remoteId: number): boolean => {
+  if (storage["ownerModelSet"] !== true) {
+    return true;
+  }
+  const owner = storage["ownerModel"] as Record<string, unknown> | undefined;
+  const known = owner ? owner["ff_knownIds"] : undefined;
+  return !Array.isArray(known) || known.includes(remoteId);
+};
+
 export const getObjectReference = (i: number): ObjectReference | null => {
   const view = getViewFromStorage();
   if (view) {

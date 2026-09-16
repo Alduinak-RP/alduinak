@@ -12,7 +12,7 @@ import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
-import { isModelHostedByOther, localIdToRemoteId } from "./worldViewMisc";
+import { isModelHostedByOther, knowsCharacter, localIdToRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
@@ -651,19 +651,9 @@ export class FormView {
     }
   }
 
-  // Real name once introduced to the local player (ff_knownIds owner prop), else "Stranger"
-  // A missing list (gamemode without the feature) keeps real names for everyone
+  // Real name once introduced to the local player, else "Stranger"
   private tagName(refr: ObjectReference): string {
-    const name = refr.getDisplayName();
-    if (storage["ownerModelSet"] !== true) {
-      return name;
-    }
-    const owner = storage["ownerModel"] as Record<string, unknown> | undefined;
-    const known = owner ? owner["ff_knownIds"] : undefined;
-    if (!Array.isArray(known)) {
-      return name;
-    }
-    return known.includes(this.getRemoteRefrId()) ? name : "Stranger";
+    return knowsCharacter(this.getRemoteRefrId()) ? refr.getDisplayName() : "Stranger";
   }
 
   private isSweetHidePerson(refr: ObjectReference): boolean {
