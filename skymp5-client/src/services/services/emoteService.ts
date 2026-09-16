@@ -1,10 +1,12 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode, domKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode, domKeyCode } from "./widgetMenuUtil";
 import { RestraintService } from "./restraintService";
 import { SendInputsService } from "./sendInputsService";
+import { getPcInventory } from "./remoteServer";
 import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, SHEATHE_SETTLE_S } from "../../sync/animation";
-import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
+import { formIdFromDesc } from "../../view/worldViewMisc";
+import { BrowserMessageEvent, ButtonEvent, DxScanCode, Inventory } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
@@ -12,11 +14,28 @@ declare const window: any;
 
 const WIDGET_ID = 24;
 
+// An item the emote shows in hand; any one of the "hex:Plugin" items unlocks it
+interface PropNeed {
+  label: string;
+  items: string[];
+}
+
+const PROPS: Record<string, PropNeed> = {
+  lute: { label: "a lute", items: ["dabab:Skyrim.esm", "a8a0e:City of Dawnstar.esp"] },
+  flute: { label: "a flute", items: ["daba7:Skyrim.esm", "105177:Skyrim.esm", "105109:Skyrim.esm"] },
+  drum: { label: "a drum", items: ["daba9:Skyrim.esm"] },
+  broom: { label: "a broom", items: ["6717f:Skyrim.esm"] },
+  imperialHorn: { label: "an Imperial war horn", items: ["200ba:Skyrim.esm"] },
+  // Nord War Horn, Torygg's War Horn, Vrage's Horn
+  nordHorn: { label: "a Nord war horn", items: ["200b6:Skyrim.esm", "e77bb:Skyrim.esm", "1252be:WindhelmSSE.esp"] },
+};
+
 interface EmoteDef {
   anim: string;
   label: string;
   // Idle loads an anim object (hoe, book, instrument) into the hand
   prop?: boolean;
+  needs?: PropNeed;
 }
 
 interface EmoteGroup {
@@ -87,7 +106,7 @@ const GROUPS: EmoteGroup[] = [
     emotes: [
       { anim: 'IdleDrink', label: 'Drink', prop: true },
       { anim: 'IdleEatingStandingStart', label: 'Eating', prop: true },
-      { anim: 'IdleLooseSweepingStart', label: 'Sweeping', prop: true },
+      { anim: 'IdleLooseSweepingStart', label: 'Sweeping', prop: true, needs: PROPS.broom },
       { anim: 'IdleHoe', label: 'Use Hoe', prop: true },
       { anim: 'IdleRitualStart', label: 'Ritual' },
       { anim: 'IdleNoteRead', label: 'Read Note', prop: true },
@@ -101,11 +120,11 @@ const GROUPS: EmoteGroup[] = [
       { anim: 'IdleCiceroDance1', label: 'Cicero Dance 1' },
       { anim: 'IdleCiceroDance2', label: 'Cicero Dance 2' },
       { anim: 'IdleCiceroDance3', label: 'Cicero Dance 3' },
-      { anim: 'IdleDrumStart', label: 'Play Drum', prop: true },
-      { anim: 'IdleFluteStart', label: 'Play Flute', prop: true },
-      { anim: 'IdleLuteStart', label: 'Play Lute', prop: true },
-      { anim: 'IdleBlowHornImperial', label: 'Horn (Imper.)', prop: true },
-      { anim: 'IdleBlowHornStormcloak', label: 'Horn (Stormcl.)', prop: true },
+      { anim: 'IdleDrumStart', label: 'Play Drum', prop: true, needs: PROPS.drum },
+      { anim: 'IdleFluteStart', label: 'Play Flute', prop: true, needs: PROPS.flute },
+      { anim: 'IdleLuteStart', label: 'Play Lute', prop: true, needs: PROPS.lute },
+      { anim: 'IdleBlowHornImperial', label: 'Horn (Imper.)', prop: true, needs: PROPS.imperialHorn },
+      { anim: 'IdleBlowHornStormcloak', label: 'Horn (Stormcl.)', prop: true, needs: PROPS.nordHorn },
     ],
   },
 ];
@@ -151,8 +170,15 @@ export class EmoteService extends ClientListener {
       for (const emote of group.emotes) {
         this.allowedAnims.add(emote.anim);
         if (emote.prop) this.propAnims.add(emote.anim);
+        if (emote.needs) this.propNeeds.set(emote.anim, emote.needs);
       }
     }
+    this.controller.once("update", () => this.resolveProps());
+    // Natives throw in the packet handler, and the stored snapshot lags a frame behind the message
+    this.controller.emitter.on("setInventoryMessage", (e) => {
+      const inventory = e.message.inventory;
+      this.controller.once("update", () => this.onInventory(inventory));
+    });
 
     // Records whether the graph accepted the exit event probed by tryExitChain.
     this.sp.hooks.sendAnimationEvent.add({
@@ -238,6 +264,11 @@ export class EmoteService extends ClientListener {
   }
 
   private playEmote(anim: string): void {
+    const need = this.missingProp(anim, getPcInventory());
+    if (need) {
+      notifyNextUpdate(this.controller, this.sp, `You need ${need.label} for this emote.`);
+      return;
+    }
     const previous = this.activeEmote;
     this.activeEmote = anim;
     // Offset overlays live on their own graph layer: crossing between an
@@ -365,7 +396,57 @@ export class EmoteService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
-    openFormMenu(this.sp, this.emoteWidgetSetter, { GROUPS, events, WIDGET_ID }, this.controller);
+    openFormMenu(this.sp, this.emoteWidgetSetter, this.menuArgs(getPcInventory()), this.controller);
+  }
+
+  // Item ids stay on the client; the wheel only learns what is locked and what it needs
+  private menuArgs(inventory: Inventory | undefined): Record<string, unknown> {
+    const groups = GROUPS.map((group) => ({
+      ...group,
+      emotes: group.emotes.map(({ needs, ...emote }) =>
+        needs ? { ...emote, locked: !this.carries(needs, inventory), needs: needs.label } : emote),
+    }));
+    return { GROUPS: groups, events, WIDGET_ID };
+  }
+
+  private missingProp(anim: string, inventory: Inventory | undefined): PropNeed | undefined {
+    const need = this.propNeeds.get(anim);
+    return need && !this.carries(need, inventory) ? need : undefined;
+  }
+
+  private carries(need: PropNeed, inventory: Inventory | undefined): boolean {
+    const entries = inventory ? inventory.entries : [];
+    return need.items.some((desc) => {
+      const id = this.propIds.get(desc);
+      return !!id && entries.some((e) => e.baseId === id && e.count > 0);
+    });
+  }
+
+  // Unresolved items are retried on the next inventory change
+  private resolveProps(): void {
+    this.propNeeds.forEach((need) => {
+      for (const desc of need.items) {
+        if (this.propIds.has(desc)) continue;
+        const id = formIdFromDesc(desc);
+        if (id) this.propIds.set(desc, id);
+      }
+    });
+  }
+
+  private onInventory(inventory: Inventory): void {
+    this.resolveProps();
+    const need = this.missingProp(this.activeEmote, inventory);
+    if (need) {
+      const player = this.sp.Game.getPlayer();
+      // activeEmote outlives an idle ended by combat, furniture or mounting; only a prop still in hand is stopped
+      if (player && player.getAnimationVariableBool("bAnimObjectLoaded")) {
+        this.stopActiveEmote();
+        notifyNextUpdate(this.controller, this.sp, `You no longer carry ${need.label}.`);
+      } else {
+        this.activeEmote = "";
+      }
+    }
+    if (this.menuOpen) refreshFormMenu(this.sp, this.emoteWidgetSetter, this.menuArgs(inventory));
   }
 
   private closeMenu(): void {
@@ -390,6 +471,8 @@ export class EmoteService extends ClientListener {
   private activeEmote = "";
   private allowedAnims: Set<string>;
   private propAnims: Set<string>;
+  private propNeeds = new Map<string, PropNeed>();
+  private propIds = new Map<string, number>();
   private customExits = new Map<string, string[]>();
   private probeAnim = "";
   private probeSucceeded = false;

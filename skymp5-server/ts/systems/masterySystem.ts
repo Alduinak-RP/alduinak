@@ -52,6 +52,8 @@ type Mp = any;
 //                                ("0x88105") or a desc ("88105:Skyrim.esm").
 
 const MASTERY_PROP = "private.mastery";
+// Plugin recipes any character makes at Novice (instruments, broom, war horns) are no one's work
+const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
 
 const DEFAULT_RANK_HOURS = [40, 100, 180];
 const DEFAULT_POINT_INTERVAL_MINUTES = 60;
@@ -324,8 +326,9 @@ export class MasterySystem implements System {
   private matches(ctx: SystemContext, rules: ResolvedRules, ev: ActivityEvent): boolean {
     switch (ev.kind) {
       case "craft": {
-        const bench = this.recipeBench(ctx, ev.detail["recipeId"]);
-        if (!ev.detail["held"] || !bench) return false;
+        const recipeId = ev.detail["recipeId"];
+        const bench = this.recipeBench(ctx, recipeId);
+        if (!ev.detail["held"] || !bench || this.isCommonRecipe(ctx, recipeId)) return false;
         const byKeyword = rules.craftKeywords.has(bench);
         if (!byKeyword && !rules.craftStations.size) return false;
         return this.benchInReach(ctx, ev.actorId, bench, (keywords) =>
@@ -802,6 +805,11 @@ export class MasterySystem implements System {
     const bench = this.fieldFormIds(this.lookup(ctx, recipeId), "BNAM")[0] || 0;
     this.benchCache.set(recipeId, bench);
     return bench;
+  }
+
+  private isCommonRecipe(ctx: SystemContext, recipeId: number): boolean {
+    const info = this.baseInfo(ctx, recipeId);
+    return !!info && info.editorId.startsWith(COMMON_RECIPE_PREFIX);
   }
 
   private recipeInputs(ctx: SystemContext, recipeId: number): Array<{ baseId: number; count: number }> {

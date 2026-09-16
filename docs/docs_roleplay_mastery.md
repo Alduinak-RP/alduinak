@@ -35,6 +35,8 @@ Thresholds come from `masteryRankHours` in `server-settings.json` (default
 a hit that belongs to the profession, and the next point cannot come sooner
 than `masteryPointIntervalMinutes` (default 60) after the last one. Hours are
 **per character**: the record lives on the actor form, so an alt starts at Novice.
+Common recipes (editor id `AldRecipeCommon_*`) never count, whatever bench
+they sit on.
 
 Markers are cumulative: a Master holds the Novice, Adept, Expert and Master
 abilities. Novice content carries no condition at all, so everyone can make
@@ -164,6 +166,12 @@ Benches:
 - **Meadery boilers**: the three boilers of the north row in Honningbrew
   Meadery's boiler room and the two in Black-Briar Meadery's basement brew
   mead, see below.
+- **Common recipes** make the items the prop emotes need: the lute, flute, drum
+  and broom at the Woodcrafting Bench, the Imperial and Nord war horns at the
+  forge (costs in `docs_roleplay_emote_wheel.md`). Any character makes them at
+  Novice, whatever their profession, and they earn no hours: `masterySystem.ts`
+  skips every recipe named `AldRecipeCommon_*`. In the spec they are
+  `kilnRecipes` entries without a `profession`.
 - **Armour table and grindstone**: the Improve tab shows only what the character
   could have made. The rank comes from the material table, the profession from
   whoever crafts the item, so the 27 bow and shield entries ask for the
@@ -321,7 +329,8 @@ produces is:
   different amounts, so the door is put back at the arch's position plus the
   vanilla offset between the two, inside the plugin's existing cell and world
   groups.
-- `COBJ` records: the new alchemy, charcoal and woodcutter's axe recipes;
+- `COBJ` records: the new alchemy, charcoal, woodcutter's axe and common
+  (instrument, broom and war horn) recipes;
   overrides of every cooking, smithing, tempering, woodworking and tailoring
   recipe with one condition, `HasSpell`, parameter the rank's marker, **Run On =
   Subject**, `== 1`. Novice means no condition. `Run On` must be Subject:

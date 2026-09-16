@@ -8,6 +8,7 @@ import { showUi } from "./widgetMenuUtil";
 import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { logTrace, logError } from "../../logging";
 import { applyAppearanceToPlayer, Appearance } from "../../sync/appearance";
+import { formIdFromDesc } from "../../view/worldViewMisc";
 
 // Preview payloads larger than this are ignored (malformed or hostile page state).
 const MAX_PREVIEW_JSON = 32 * 1024;
@@ -221,27 +222,15 @@ export class CharCreatorService extends ClientListener {
     const modParts: object[] = [];
     const modExtras: Record<string, number[]> = {};
     for (const h of modHair.hairs as { desc?: unknown; label?: unknown; male?: unknown; female?: unknown; races?: unknown; extras?: unknown }[]) {
-      const id = this.formIdOf(h?.desc);
+      const id = formIdFromDesc(h?.desc);
       const races = typeof h?.races === 'number' ? raceSets[h.races] : undefined;
       if (!id || !Array.isArray(races)) continue;
       modParts.push({ id, label: String(h.label ?? ''), kind: 'hair', male: h.male === true, female: h.female === true, races });
-      const extras = (Array.isArray(h.extras) ? h.extras : []).map((d) => this.formIdOf(d)).filter((x) => x !== 0);
+      const extras = (Array.isArray(h.extras) ? h.extras : []).map((d) => formIdFromDesc(d)).filter((x) => x !== 0);
       if (extras.length) modExtras[String(id)] = extras;
     }
     logTrace(this, `resolved ${modParts.length}/${modHair.hairs.length} mod hairs`);
     return { ...rest, modParts, modExtras };
-  }
-
-  private formIdOf(desc: unknown): number {
-    if (typeof desc !== 'string') return 0;
-    const sep = desc.indexOf(':');
-    if (sep <= 0) return 0;
-    try {
-      const form = this.sp.Game.getFormFromFile(parseInt(desc.slice(0, sep), 16), desc.slice(sep + 1));
-      return form ? form.getFormID() : 0;
-    } catch {
-      return 0;
-    }
   }
 
   private menuOpen = false;

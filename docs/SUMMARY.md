@@ -47,3 +47,4 @@
 - [Bounty Boards](docs_roleplay_bounty_boards.md)
 - [NPC Spawns](docs_roleplay_npc_spawns.md)
 - [Character Progress (map markers, ingredient effects)](docs_roleplay_character_progress.md)
+- [Emote Wheel (prop emotes and their items)](docs_roleplay_emote_wheel.md)

@@ -787,6 +787,73 @@
    "items": {
     "Firewood01": 2
    }
+  },
+  {
+   "edid": "AldRecipeCommon_Lute",
+   "bench": "AldCraftingWoodcrafting",
+   "output": "Lute",
+   "count": 1,
+   "tier": "Novice",
+   "items": {
+    "Firewood01": 2,
+    "LeatherStrips": 2
+   }
+  },
+  {
+   "edid": "AldRecipeCommon_Flute",
+   "bench": "AldCraftingWoodcrafting",
+   "output": "Flute",
+   "count": 1,
+   "tier": "Novice",
+   "items": {
+    "Firewood01": 1
+   }
+  },
+  {
+   "edid": "AldRecipeCommon_Drum",
+   "bench": "AldCraftingWoodcrafting",
+   "output": "Drum",
+   "count": 1,
+   "tier": "Novice",
+   "items": {
+    "Firewood01": 2,
+    "Leather01": 1
+   }
+  },
+  {
+   "edid": "AldRecipeCommon_Broom",
+   "bench": "AldCraftingWoodcrafting",
+   "output": "Broom01",
+   "count": 1,
+   "tier": "Novice",
+   "items": {
+    "Firewood01": 1,
+    "Wheat": 1
+   }
+  },
+  {
+   "edid": "AldRecipeCommon_ImperialWarHorn",
+   "bench": "CraftingSmithingForge",
+   "output": "ImperialWarHorn",
+   "count": 1,
+   "tier": "Novice",
+   "items": {
+    "MammothTusk": 1,
+    "IngotIron": 1,
+    "LeatherStrips": 1
+   }
+  },
+  {
+   "edid": "AldRecipeCommon_NordWarHorn",
+   "bench": "CraftingSmithingForge",
+   "output": "NordWarHorn",
+   "count": 1,
+   "tier": "Novice",
+   "items": {
+    "MammothTusk": 1,
+    "IngotIron": 1,
+    "LeatherStrips": 1
+   }
   }
  ],
  "cooking": {

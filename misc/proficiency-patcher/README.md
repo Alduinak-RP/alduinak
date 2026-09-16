@@ -52,7 +52,7 @@ records). The first run restores the Mutagen NuGet package.
 | `keywords` | `AldCraftingAlchemy`, `AldCraftingKiln`, `AldCraftingWoodcrafting`: the bench keywords of the new recipes. |
 | `alchemyLabs` | FURN records switched from the alchemy menu to the crafting menu with the alchemy keyword. |
 | `alchemy.recipes` | Potion, drink, poison and salt recipes at the alchemy keyword. Novice recipes carry no condition. |
-| `kilnRecipes` | The charcoal recipe. `bench` names the keyword it sits on (`CraftingSmelter`); `keywords.kiln` is the fallback and waits for a kiln mod carrying `AldCraftingKiln`. |
+| `kilnRecipes` | The charcoal recipe. `bench` names the keyword it sits on (`CraftingSmelter`); `keywords.kiln` is the fallback and waits for a kiln mod carrying `AldCraftingKiln`. An entry without `profession` is a common recipe: it must be Novice and named `AldRecipeCommon_*`, any character makes it, and the server's mastery system credits no hours for that prefix. The lute, flute, drum and broom (Woodcrafting Bench) and the two war horns (forge) are common recipes, reported under `common`. |
 | `woodcraftingBench` | A new FURN copied from the Hearthfire carpenter's workbench, plus existing benches that also get the woodcrafting keyword. |
 | `cooking` | Vanilla cooking recipes keep their benches; `needsSalt` adds a Salt Pile where it is missing; `tiers` sets the rank. |
 | `stripConditions` | CTDA functions `CraftService` has no implementation for. Every recipe the patcher tiers loses them, so the menu and the server agree; an unregistered function answers true server-side. |

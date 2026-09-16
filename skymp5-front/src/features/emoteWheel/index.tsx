@@ -7,6 +7,9 @@ import './styles.scss';
 interface EmoteDef {
   anim: string;
   label: string;
+  // Set by the client when the emote needs an item the character does not carry
+  locked?: boolean;
+  needs?: string;
 }
 
 interface EmoteGroup {
@@ -90,7 +93,7 @@ interface RingProps {
   segClass: string;
   labelClass: string;
   activeId: string;
-  items: { id: string; label: string }[];
+  items: { id: string; label: string; locked?: boolean }[];
   onHover?: (id: string) => void;
   onClick: (id: string) => void;
 }
@@ -109,11 +112,11 @@ const Ring = ({ innerR, outerR, segClass, labelClass, activeId, items, onHover, 
           <g key={item.id}>
             <path
               d={describeArcSegment(CENTER, CENTER, innerR, outerR, startAngle, endAngle)}
-              className={segClass + (item.id === activeId ? ' active' : '')}
+              className={segClass + (item.id === activeId ? ' active' : '') + (item.locked ? ' locked' : '')}
               onMouseEnter={onHover ? () => onHover(item.id) : undefined}
               onClick={() => onClick(item.id)}
             />
-            <text x={labelPoint.x} y={labelPoint.y} className={labelClass}>
+            <text x={labelPoint.x} y={labelPoint.y} className={labelClass + (item.locked ? ' locked' : '')}>
               {shortenLabel(item.label)}
             </text>
           </g>
@@ -141,6 +144,7 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   const [previewAnim, setPreviewAnim] = useState(initialAnim);
   const [previewSrc, setPreviewSrc] = useState(previewFor(initialAnim));
   const [previewChanging, setPreviewChanging] = useState(false);
+  const [refusedAnim, setRefusedAnim] = useState('');
   const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -162,6 +166,8 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   const previewedEmote =
     (previewedGroup && previewedGroup.emotes.find((it) => it.anim === previewAnim)) ||
     (activeGroup && activeGroup.emotes[0]);
+  const previewLocked = !!(previewedEmote && previewedEmote.locked);
+  const refused = previewLocked && previewedEmote && previewedEmote.anim === refusedAnim ? previewedEmote : null;
 
   // Short dip while the preview gif swaps, so the change reads as intentional.
   const changePreview = (anim: string) => {
@@ -190,6 +196,11 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
     savedAnim = anim;
     setActiveAnim(anim);
     changePreview(anim);
+    const emote = activeGroup && activeGroup.emotes.find((e) => e.anim === anim);
+    if (emote && emote.locked) {
+      setRefusedAnim(anim);
+      return;
+    }
     send(ev.play, anim);
   };
 
@@ -223,13 +234,15 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
                 segClass="emote-wheel__emote-segment"
                 labelClass="emote-wheel__segment-label"
                 activeId={activeAnim}
-                items={activeGroup.emotes.map((e) => ({ id: e.anim, label: e.label }))}
+                items={activeGroup.emotes.map((e) => ({ id: e.anim, label: e.label, locked: e.locked }))}
                 onHover={changePreview}
                 onClick={selectEmote}
               />
             </svg>
             <div className="emote-wheel__center">
-              <p className="emote-wheel__center-category">{(previewedGroup ? previewedGroup.label : '').toUpperCase()}</p>
+              <p className={'emote-wheel__center-category' + (refused ? ' emote-wheel__center-category--needs' : '')}>
+                {(refused ? 'Needs ' + refused.needs : previewedGroup ? previewedGroup.label : '').toUpperCase()}
+              </p>
               <h2 className="emote-wheel__center-emote">{previewedEmote ? previewedEmote.label : ''}</h2>
               <button className="emote-wheel__center-cancel" onClick={() => send(ev.stop)}>
                 Cancel Emote
@@ -240,8 +253,15 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
         </section>
         <aside className="emote-wheel__preview">
           <h2 className="emote-wheel__preview-name">{previewedEmote ? previewedEmote.label : ''}</h2>
-          <div className={'emote-wheel__preview-frame' + (previewChanging ? ' emote-wheel__preview-frame--changing' : '')}>
+          <div
+            className={
+              'emote-wheel__preview-frame' +
+              (previewChanging ? ' emote-wheel__preview-frame--changing' : '') +
+              (previewLocked ? ' emote-wheel__preview-frame--locked' : '')
+            }
+          >
             <div className="emote-wheel__preview-glow" />
+            {previewLocked && previewedEmote && <p className="emote-wheel__preview-needs">Requires {previewedEmote.needs}</p>}
             <img src={previewSrc} alt="Selected emote preview" />
           </div>
         </aside>

@@ -352,14 +352,20 @@ static class Steps
     {
         var fallback = c.Spec["keywords"]!["kiln"]!.GetValue<string>();
         foreach (var r in c.Spec["kilnRecipes"]!.AsArray().Select(x => x!.AsObject()))
-            NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]?.GetValue<string>() ?? fallback), r["profession"]!.GetValue<string>(), "AldRecipeKiln_");
+            NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]?.GetValue<string>() ?? fallback), r["profession"]?.GetValue<string>(), "AldRecipeKiln_");
     }
 
-    static void NewRecipe(PatchContext c, JsonObject r, FormKey bench, string profession, string prefix)
+    // The server's mastery system credits no hours for recipes under this prefix
+    const string CommonRecipePrefix = "AldRecipeCommon_";
+
+    // A recipe without a profession is a common one: Novice, so anyone makes it, and named for the mastery exemption
+    static void NewRecipe(PatchContext c, JsonObject r, FormKey bench, string? profession, string prefix)
     {
         var outputEdid = r["output"]!.GetValue<string>();
         if (!c.TryWinning<IMajorRecordGetter>(outputEdid, out var output)) { c.Error($"recipe output '{outputEdid}' not found"); return; }
-        var edid = r["edid"]?.GetValue<string>() ?? prefix + outputEdid;
+        var edid = r["edid"]?.GetValue<string>() ?? (profession == null ? CommonRecipePrefix : prefix) + outputEdid;
+        if (profession == null && (r["tier"]!.GetValue<string>() != c.Ranks[0] || !edid.StartsWith(CommonRecipePrefix)))
+            throw new SpecException($"recipe {edid}: a recipe without a profession must be {c.Ranks[0]} and named {CommonRecipePrefix}*");
         var cobj = c.OwnOrNew(c.Mod.ConstructibleObjects, edid);
         cobj.WorkbenchKeyword.SetTo(bench);
         cobj.CreatedObject.SetTo(output.FormKey);
@@ -370,8 +376,9 @@ static class Steps
             if (!c.TryWinning<IMajorRecordGetter>(item.Key, out var ing)) { c.Error($"recipe {edid}: ingredient '{item.Key}' not found"); continue; }
             cobj.Items.Add(new ContainerEntry { Item = new ContainerItem { Item = ing.FormKey.ToLink<IItemGetter>(), Count = item.Value!.GetValue<int>() } });
         }
-        SetTier(c, cobj, profession, r["tier"]!.GetValue<string>());
-        c.Report.Recipes.Add(new RecipeLine(Kind(prefix), edid, c.NameOf(output.FormKey), profession, r["tier"]!.GetValue<string>(), cobj.Items.Select(i => $"{i.Item.Count}x {c.NameOf(i.Item.Item.FormKey)}").ToList()));
+        SetTier(c, cobj, profession ?? "", r["tier"]!.GetValue<string>());
+        c.Report.Recipes.Add(new RecipeLine(profession == null ? "common" : Kind(prefix), edid, c.NameOf(output.FormKey), profession ?? "any", r["tier"]!.GetValue<string>(), cobj.Items.Select(i => $"{i.Item.Count}x {c.NameOf(i.Item.Item.FormKey)}").ToList(),
+                                           note: profession == null ? "no mastery hours" : null));
     }
 
     static string Kind(string prefix) => prefix switch

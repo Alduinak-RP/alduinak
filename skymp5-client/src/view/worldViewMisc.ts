@@ -76,6 +76,19 @@ export const knowsCharacter = (remoteId: number): boolean => {
   return !Array.isArray(known) || known.includes(remoteId);
 };
 
+// "hex:Plugin" to this client's form id, 0 when the plugin or record is missing; natives need a game context
+export const formIdFromDesc = (desc: unknown): number => {
+  if (typeof desc !== "string") return 0;
+  const sep = desc.indexOf(":");
+  if (sep <= 0) return 0;
+  try {
+    const form = Game.getFormFromFile(parseInt(desc.slice(0, sep), 16), desc.slice(sep + 1));
+    return form ? form.getFormID() : 0;
+  } catch {
+    return 0;
+  }
+};
+
 export const getObjectReference = (i: number): ObjectReference | null => {
   const view = getViewFromStorage();
   if (view) {
