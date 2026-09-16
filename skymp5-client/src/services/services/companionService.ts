@@ -58,6 +58,7 @@ export class CompanionService extends ClientListener {
   }
 
   private onConnectionAccepted(): void {
+    this.allyTargets = new Map();
     this.setCompanions([]);
     this.sentTwinSouls = false;
     this.lastPerkCheckMs = 0;
@@ -68,15 +69,19 @@ export class CompanionService extends ClientListener {
     if (!content || content["customPacketType"] !== "companionState") {
       return;
     }
-    const raw = Array.isArray(content["companions"]) ? content["companions"] as Record<string, unknown>[] : [];
-    const list: CompanionEntry[] = raw
-      .filter((x) => x && typeof x["id"] === "number")
-      .map((x) => ({ id: x["id"] as number, target: typeof x["target"] === "number" ? x["target"] as number : 0 }));
+    const list = this.readEntries(content["companions"]);
     // A new companion stands in for the engine's own summon, which the world cleaner removes
     if (list.some((c) => !this.companions.some((old) => old.id === c.id))) {
       this.controller.lookupListener(WorldCleanerService).sweepBurst(CompanionService.cleanerBurstMs);
     }
+    this.allyTargets = new Map(this.readEntries(content["allies"]).map((a) => [a.id, a.target]));
     this.setCompanions(list);
+  }
+
+  private readEntries(raw: unknown): CompanionEntry[] {
+    return (Array.isArray(raw) ? raw as Record<string, unknown>[] : [])
+      .filter((x) => x && typeof x["id"] === "number")
+      .map((x) => ({ id: x["id"] as number, target: typeof x["target"] === "number" ? x["target"] as number : 0 }));
   }
 
   private setCompanions(list: CompanionEntry[]): void {
@@ -85,7 +90,7 @@ export class CompanionService extends ClientListener {
     this.pruneLocal();
   }
 
-  // Hosted NPCs of another service (PetService's dogs) that get the teammate setup and follow, never a server target
+  // Hosted NPCs of another service (PetService's dogs); their targets arrive in the state packet's allies array
   setExtraFollowers(remoteIds: number[]): void {
     this.extraFollowers = remoteIds;
     this.pruneLocal();
@@ -101,7 +106,7 @@ export class CompanionService extends ClientListener {
 
   // The owner's hit with a weapon or a hostile spell is the attack order, as vanilla summons join the caster's fights
   private onHit(e: HitEvent): void {
-    if (!this.companions.length || !e.aggressor || !e.target || e.aggressor.getFormID() !== PLAYER_ID) {
+    if ((!this.companions.length && !this.extraFollowers.length) || !e.aggressor || !e.target || e.aggressor.getFormID() !== PLAYER_ID) {
       return;
     }
     const target = this.sp.Actor.from(e.target);
@@ -109,7 +114,8 @@ export class CompanionService extends ClientListener {
       return;
     }
     const targetId = localIdToRemoteId(target.getFormID());
-    if (!targetId || isOwnCompanion(targetId)) {
+    // The server refuses every pet of ours as a target too, this only saves the packet
+    if (!targetId || keepsOwnOffset(targetId)) {
       return;
     }
     const now = Date.now();
@@ -156,7 +162,7 @@ export class CompanionService extends ClientListener {
       this.drive(c.id, c.target, player);
     }
     for (const id of this.extraFollowers) {
-      this.drive(id, 0, player);
+      this.drive(id, this.allyTargets.get(id) ?? 0, player);
     }
   }
 
@@ -274,6 +280,7 @@ export class CompanionService extends ClientListener {
 
   private companions: CompanionEntry[] = [];
   private extraFollowers: number[] = [];
+  private allyTargets = new Map<number, number>();
   private local = new Map<number, LocalState>();
   private lastApplyMs = 0;
   private lastOrderTarget = 0;
