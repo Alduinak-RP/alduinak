@@ -14,7 +14,7 @@ from r7lib import (ESPFIX, SELF, STAGE, STAGE_SETTINGS, STAGE_SETTINGS_SHA, WORK
 import fastesp  # noqa: E402
 
 PATCHER = os.path.join(HERE, '..', 'proficiency-patcher')
-SPEC = (os.path.join(PATCHER, 'spec.json'), '24f1be07e99d41131869e8202257b45de055be38d1023c3d8e6f17824f55b1ee')
+SPEC = (os.path.join(PATCHER, 'spec.json'), 'dd510ba88a126f1b823c2b56eb3623c35a09ac28797a5f8b79fcfd5c87466512')
 LIVE_DIR = ESPFIX + 'proficiency/'
 # LIVE_LAST_ID ends the block LIVE shipped; the woodcutter's axe recipe took the next id
 NEXT_ID, LIVE_LAST_ID, LAST_ID = 0x201D, 0x2092, 0x2093
