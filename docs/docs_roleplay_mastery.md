@@ -138,10 +138,16 @@ too, plus the `huntingPelts` list for the two Dawnguard hides, which carry no
 keywords. The rule covers dead pets as well, since a pet horse or cow drops a
 hide like any other animal; the cost is that a non-hunter who owned the pet also
 stops seeing pelts, or leather, which carries the same keyword, that they had
-stored in it. Nothing is destroyed: the items stay on the corpse, the rule only
-decides who is shown them. Meat stays open to everyone unless
-`huntingHarvestNeedsHunter` is turned on, which puts meat under the same rule.
-Turn the pelt rule off with `huntingPeltsNeedHunter` false.
+stored in it. The rule itself destroys nothing, it only decides who is shown a
+stack, but a body is not forever: a dead pet is removed `petCorpseSeconds` after
+it dies (300 by default, `npcCorpseSeconds` for spawned and companion animals),
+and everything still on it goes with it. So a non-hunter owner does not merely
+lose sight of the pelts and the leather they had stored in a pet, they lose them
+for good once the body is gone. A put is refused for the same stacks a take is,
+so an item a searcher cannot see can never be parked back on the body either.
+Meat stays open to everyone unless `huntingHarvestNeedsHunter` is turned on,
+which puts meat under the same rule. Turn the pelt rule off with
+`huntingPeltsNeedHunter` false.
 
 ---
 
