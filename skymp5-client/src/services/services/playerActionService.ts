@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, isMenuHotkeyBlocked, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
@@ -14,6 +14,7 @@ import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
 import { TimersService } from "./timersService";
 import { PetService } from "./petService";
+import { MountService } from "./mountService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -68,7 +69,8 @@ let targetName = '';
  * player interaction menu on a living player character and search a body;
  * the InteractionPromptService blocks the clone's engine activation so no
  * dialogue fires underneath. On a living pet or own summon the interact key
- * opens the pet menu and Activate uses it (PetService). Activate leaves
+ * opens the pet menu and Activate uses it (PetService). In the saddle Activate
+ * always dismounts (MountService), whatever the crosshair found. Activate leaves
  * everything else to normal activation. The interact key also completes a
  * pending housing hand-over, faction add-member or pet transfer pick first,
  * asks HousingService for the property menu on a door or container, and opens
@@ -97,7 +99,14 @@ export class PlayerActionService extends ClientListener {
     const isActivate = e.userEventName === "Activate";
     const isInteract = !isActivate && code === this.interactKey;
     if ((!isActivate && !isInteract) || this.menuOpen || this.menuWait) return;
-    if (isMenuHotkeyBlocked(this.sp, this.controller)) return;
+    if (isGameInputBlocked(this.sp, this.controller)) return;
+    // A hidden interface must not trap a rider, so the saddle is checked before the rest of the hotkey block
+    const mount = this.controller.lookupListener(MountService);
+    if (isActivate && mount.isMounted) {
+      mount.dismountByKey();
+      return;
+    }
+    if (isUiHidden(this.controller)) return;
 
     const housing = this.controller.lookupListener(HousingService);
     const personal = this.controller.lookupListener(AdminMenuService);

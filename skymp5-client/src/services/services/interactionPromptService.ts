@@ -7,6 +7,7 @@ import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
 import { isPlayerCharacterId } from "./playerActionService";
 import { PetService } from "./petService";
+import { MountService } from "./mountService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -45,7 +46,8 @@ let prompt: Prompt = { verb: "", label: "" };
  * characters read "Interact" with introduction- and mask-aware names (and
  * get their engine activation blocked so the interaction menu owns the key),
  * everything else keeps its display name with a verb picked by base form
- * type. The engine still performs the actual activation, which the server
+ * type. A rider reads "Dismount", which is all the key does in the saddle.
+ * The engine still performs the actual activation, which the server
  * intercepts where it wants to.
  *
  * Set customPrompts: false in the skymp5-client settings block to keep the
@@ -126,6 +128,9 @@ export class InteractionPromptService extends ClientListener {
   }
 
   private promptFor(ref: ObjectReference): Prompt | null {
+    if (this.controller.lookupListener(MountService).isMounted) {
+      return { verb: "Dismount", label: "" };
+    }
     const actor = Actor.from(ref);
     if (actor) return this.actorPromptFor(ref);
     const base = ref.getBaseObject();

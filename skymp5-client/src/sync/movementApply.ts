@@ -16,7 +16,7 @@ const sqr = (x: number) => x * x;
 // A standing actor this far above or below the reported height sank or floated locally
 const standingMaxDeltaZ = 64;
 
-// A mounted rider clone is carried by its horse in-engine: no translation, offset or locomotion events reach it.
+// A riding clone is carried by its horse, and a horse being mounted is left to the engine: no translation, offset or locomotion events reach either
 // ownOffset leaves the keep-offset to the service that drives this copy (own companions, steered pets)
 export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: boolean, mounted?: boolean, ownOffset?: boolean): void => {
   if (teleportIfNeed(refr, m)) {
