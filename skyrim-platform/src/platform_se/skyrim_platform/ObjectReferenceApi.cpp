@@ -123,6 +123,24 @@ bool SeatRiderOnMountGuarded(RE::Actor* rider, RE::Actor* mount) noexcept
     return false;
   }
 }
+
+// Keeps a retrying client from filling the log with the same outcome
+bool IsNewMountResult(uint32_t riderId, uint32_t mountId, bool seated)
+{
+  static uint32_t lastRiderId = 0;
+  static uint32_t lastMountId = 0;
+  static bool lastSeated = false;
+
+  if (riderId == lastRiderId && mountId == lastMountId &&
+      seated == lastSeated) {
+    return false;
+  }
+
+  lastRiderId = riderId;
+  lastMountId = mountId;
+  lastSeated = seated;
+  return true;
+}
 }
 
 Napi::Value ObjectReferenceApi::SetCollision(const Napi::CallbackInfo& info)
@@ -143,9 +161,9 @@ Napi::Value ObjectReferenceApi::MountActor(const Napi::CallbackInfo& info)
 
   const bool seated = SeatRiderOnMountGuarded(rider, mount);
 
-  if (!seated) {
-    spdlog::info("mountActor: {:x} was not seated on {:x}", rider->formID,
-                 mount->formID);
+  if (IsNewMountResult(rider->formID, mount->formID, seated)) {
+    spdlog::info("mountActor: {:x} {} {:x}", rider->formID,
+                 seated ? "seated on" : "was refused by", mount->formID);
   }
 
   return Napi::Boolean::New(info.Env(), seated);
