@@ -343,10 +343,27 @@ Napi::Value MagicApi::ApplyAnimationVariablesToActor(
 
 namespace {
 // Collected into a vector because dispelling can unlink list nodes
+std::vector<RE::ActiveEffect*> GetLiveEffects(RE::Actor& actor,
+                                              const RE::MagicItem& spell)
+{
+  std::vector<RE::ActiveEffect*> res;
+  auto* activeEffects = actor.AsMagicTarget()->GetActiveEffectList();
+  if (!activeEffects) {
+    return res;
+  }
+
+  for (auto* activeEffect : *activeEffects) {
+    if (activeEffect && activeEffect->spell == &spell &&
+        activeEffect->flags.none(RE::ActiveEffect::Flag::kDispelled)) {
+      res.push_back(activeEffect);
+    }
+  }
+  return res;
+}
+
 std::vector<RE::ActiveEffect*> GetPotionEffects(uint32_t actorFormId,
                                                 uint32_t potionFormId)
 {
-  std::vector<RE::ActiveEffect*> res;
   auto* pActor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
   // Ingredients are IngredientItem forms, not AlchemyItem
   RE::MagicItem* pPotion =
@@ -355,19 +372,61 @@ std::vector<RE::ActiveEffect*> GetPotionEffects(uint32_t actorFormId,
     pPotion = RE::TESForm::LookupByID<RE::IngredientItem>(potionFormId);
   }
   if (!pActor || !pPotion) {
+    return {};
+  }
+  return GetLiveEffects(*pActor, *pPotion);
+}
+
+struct WornEnchantedArmor
+{
+  RE::TESObjectARMO* armor;
+  RE::ExtraDataList* extraList;
+  RE::EnchantmentItem* enchantment;
+};
+
+std::vector<WornEnchantedArmor> GetWornEnchantedArmor(RE::Actor& actor)
+{
+  std::vector<WornEnchantedArmor> res;
+  auto* changes = actor.GetInventoryChanges(true);
+  if (!changes || !changes->entryList) {
     return res;
   }
 
-  auto* activeEffects = pActor->AsMagicTarget()->GetActiveEffectList();
-  if (!activeEffects) {
-    return res;
-  }
-
-  for (auto* activeEffect : *activeEffects) {
-    if (activeEffect && activeEffect->spell == pPotion &&
-        activeEffect->flags.none(RE::ActiveEffect::Flag::kDispelled)) {
-      res.push_back(activeEffect);
+  for (auto* entry : *changes->entryList) {
+    auto* armor = entry && entry->object
+      ? entry->object->As<RE::TESObjectARMO>()
+      : nullptr;
+    if (!armor || !entry->extraLists) {
+      continue;
     }
+    for (auto* extraList : *entry->extraLists) {
+      if (!extraList ||
+          (!extraList->HasType<RE::ExtraWorn>() &&
+           !extraList->HasType<RE::ExtraWornLeft>())) {
+        continue;
+      }
+      auto* extraEnchantment = extraList->GetByType<RE::ExtraEnchantment>();
+      auto* enchantment = extraEnchantment && extraEnchantment->enchantment
+        ? extraEnchantment->enchantment
+        : armor->formEnchanting;
+      // Only constant effects are armor abilities, anything else crashes UpdateArmorAbility
+      if (enchantment && !enchantment->effects.empty() &&
+          enchantment->GetCastingType() ==
+            RE::MagicSystem::CastingType::kConstantEffect) {
+        res.push_back({ armor, extraList, enchantment });
+      }
+    }
+  }
+  return res;
+}
+
+// One cast adds an active effect per enchantment entry, so the most common base effect counts the casts
+size_t CountCasts(const std::vector<RE::ActiveEffect*>& effects)
+{
+  std::unordered_map<const RE::EffectSetting*, size_t> perBaseEffect;
+  size_t res = 0;
+  for (auto* activeEffect : effects) {
+    res = std::max(res, ++perBaseEffect[activeEffect->GetBaseObject()]);
   }
   return res;
 }
@@ -415,6 +474,52 @@ Napi::Value MagicApi::AgePotionEffects(const Napi::CallbackInfo& info)
   return info.Env().Undefined();
 }
 
+// Scripted equips and inventory changes can leave a worn item without its enchantment ability
+Napi::Value MagicApi::ReapplyWornEnchantments(const Napi::CallbackInfo& info)
+{
+  const auto actorFormId = NapiHelper::ExtractUInt32(info[0], "actorFormId");
+
+  g_nativeCallRequirements.gameThrQ->AddTask([actorFormId](Viet::Void) {
+    auto* pActor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+    if (!pActor || pActor->IsDead()) {
+      return;
+    }
+
+    // Collected first because applying an ability can edit the inventory lists
+    const auto worn = GetWornEnchantedArmor(*pActor);
+    std::unordered_map<const RE::EnchantmentItem*, size_t> casts;
+
+    for (const auto& item : worn) {
+      const auto effects = GetLiveEffects(*pActor, *item.enchantment);
+      // Items sharing an enchantment are told apart by the effect source
+      if (std::any_of(effects.begin(), effects.end(), [&](auto* effect) {
+            return effect->source == item.armor;
+          })) {
+        continue;
+      }
+
+      auto it = casts.try_emplace(item.enchantment, CountCasts(effects)).first;
+      const auto numWorn = static_cast<size_t>(std::count_if(
+        worn.begin(), worn.end(), [&](const WornEnchantedArmor& other) {
+          return other.enchantment == item.enchantment;
+        }));
+      // The engine may report the wrong source, so never stack past one cast per worn item
+      if (it->second >= numWorn) {
+        continue;
+      }
+
+      pActor->UpdateArmorAbility(item.armor, item.extraList);
+      ++it->second;
+      logger::info("ReapplyWornEnchantments - actor {:x} re-applied "
+                   "enchantment {:x} of worn armor {:x}",
+                   actorFormId, item.enchantment->GetFormID(),
+                   item.armor->GetFormID());
+    }
+  });
+
+  return info.Env().Undefined();
+}
+
 // Papyrus RemoveSpell only reaches added spells, so NPC_ and RACE lists are edited here; the change lasts until the game restarts
 Napi::Value MagicApi::RemoveSpellFromList(const Napi::CallbackInfo& info)
 {
@@ -450,6 +555,9 @@ void MagicApi::Register(Napi::Env env, Napi::Object& exports)
   exports.Set("agePotionEffects",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(AgePotionEffects)));
+  exports.Set("reapplyWornEnchantments",
+              Napi::Function::New(
+                env, NapiHelper::WrapCppExceptions(ReapplyWornEnchantments)));
   exports.Set("removeSpellFromList",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(RemoveSpellFromList)));

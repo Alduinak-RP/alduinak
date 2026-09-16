@@ -101,6 +101,20 @@ export const requestPcInventoryApply = (): void => {
   pcInvLastApply = 0;
 };
 
+const WORN_ENCHANTMENT_REAPPLY_DELAY_MS = 1500;
+const WORN_ENCHANTMENT_REAPPLY_MAX_WAIT_MS = 5000;
+let wornEnchantmentReapplyAt = 0;
+let wornEnchantmentReapplyDeadline = 0;
+
+// Waits for a burst of changes to end so the engine's own equips and dispels have landed
+const requestWornEnchantmentReapply = (): void => {
+  const now = Date.now();
+  if (!wornEnchantmentReapplyAt) {
+    wornEnchantmentReapplyDeadline = now + WORN_ENCHANTMENT_REAPPLY_MAX_WAIT_MS;
+  }
+  wornEnchantmentReapplyAt = Math.min(now + WORN_ENCHANTMENT_REAPPLY_DELAY_MS, wornEnchantmentReapplyDeadline);
+};
+
 const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
 let spawnEquipment: Equipment | undefined;
 let spawnEquipmentSettleUntil = 0;
@@ -134,6 +148,7 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
   logToPlatformLog("RemoteServer", `spawn outfit settled: ${unworn.length} of ${getPlayerWorn(spawnEquipment).length} saved not worn, worn ${countWorn(getInventory(player))}, menu used ${spawnEquipmentMenuUsed},`, redress ? "re-dressing" : "done");
   if (!redress) {
     spawnEquipment = undefined;
+    requestWornEnchantmentReapply();
     return false;
   }
   // The engine dropped some of the queued equips
@@ -168,6 +183,7 @@ on('update', () => {
         return !f || !isBoundItem(f);
       });
       applyInventory(player, pcInv, false, true);
+      requestWornEnchantmentReapply();
     }
   }
 });
@@ -221,6 +237,29 @@ export class RemoteServer extends ClientListener {
     });
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
+    // The engine loses worn enchantment abilities on scripted equips, inventory changes and stray dispels
+    this.controller.on("equip", (e) => this.onPlayerWornChange(e.actor));
+    this.controller.on("containerChanged", (e) => this.onPlayerWornChange(e.oldContainer, e.newContainer));
+    this.controller.on("effectFinish", (e) => this.onPlayerWornChange(e.target));
+    this.controller.on("update", () => this.reapplyWornEnchantments());
+  }
+
+  private onPlayerWornChange(...refs: (ObjectReference | null | undefined)[]): void {
+    if (refs.some((ref) => ref?.getFormID() === 0x14)) {
+      requestWornEnchantmentReapply();
+    }
+  }
+
+  // Menus hold inventory entries, so the check waits for them to close
+  private reapplyWornEnchantments(): void {
+    if (!wornEnchantmentReapplyAt || Date.now() < wornEnchantmentReapplyAt || isBadMenuShown()) {
+      return;
+    }
+    wornEnchantmentReapplyAt = 0;
+    const natives = this.sp as unknown as {
+      reapplyWornEnchantments?: (actorFormId: number) => void;
+    };
+    natives.reapplyWornEnchantments?.(0x14);
   }
 
   private onHostStartMessage(event: ConnectionMessage<HostStartMessage>) {

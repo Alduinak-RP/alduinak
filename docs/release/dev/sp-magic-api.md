@@ -38,5 +38,12 @@ function agePotionEffects(actorFormId: number, potionFormId: number, seconds: nu
 ```
 Both run on the game thread and do nothing when the actor or potion is not found.
 
+### Worn Enchantments
+```ts
+function reapplyWornEnchantments(actorFormId: number): void;
+// Re-applies the constant enchantment of every worn armor whose ability the engine lost (scripted equips, inventory changes).
+```
+Runs on the game thread. An item counts as covered when a live effect of its enchantment has it as the source, and an enchantment is never cast more times than worn items carry it.
+
 ### SpellCast event handling improvments
 - The `RE::TESSpellCastEvent` now triggers and handles the `spellCast` event consistently, regardless of the presence of a `MagicCaster` in the slot where the spell is located.
