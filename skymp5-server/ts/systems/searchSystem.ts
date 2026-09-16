@@ -105,10 +105,8 @@ export class SearchSystem implements System {
     this.installPutHook(ctx);
   }
 
-  // What a search may not move out of a target, in either direction
+  // A property key's name is the housing credential, and a stack the window never showed is not there to move
   private stuck(ctx: SystemContext, targetActorId: number, actorId: number, baseId: number): boolean {
-    // A property key's name is the housing credential, so a search never moves one and it never counts,
-    // and what the window never showed cannot be moved either, whatever the client sends
     return this.isSearching(targetActorId, actorId)
       && (baseId === KEY_BASE_ID || this.hidden(ctx, actorId, targetActorId, baseId));
   }
