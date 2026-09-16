@@ -231,6 +231,8 @@ const main = async () => {
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
   const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);
   hostingSystem.addProvider(() => petSystem.hostables());
+  // Out dogs fight through the companion targeting, and no pet of the owner is ever a valid target
+  companionSystem.setAllySource(() => petSystem.fighters(), (id) => petSystem.ownerOf(id));
   housingSystem.petCategoryOf = (actorId, refrId) => petSystem.categoryOfDoor(actorId, refrId);
   const adminSystem = new AdminSystem(log, npcSpawnSystem, masterySystem);
   adminSystem.setPetSystem(petSystem);

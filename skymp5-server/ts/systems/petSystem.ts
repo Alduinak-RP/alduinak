@@ -308,6 +308,21 @@ export class PetSystem implements System {
     return this.active.has(actorId >>> 0) || this.released.has(actorId >>> 0);
   }
 
+  // Out dogs that may join their owner's fights, for CompanionSystem's targeting
+  fighters(): { id: number; ownerId: number }[] {
+    const out: { id: number; ownerId: number }[] = [];
+    for (const a of this.active.values()) {
+      if (a.kind !== "dog" || a.diedAt || a.carriedBy || a.ridingBy || a.pending || a.fleeSince) continue;
+      out.push({ id: a.id, ownerId: a.ownerId });
+    }
+    return out;
+  }
+
+  // The owner of a pet in the world, 0 for a released one or anything else
+  ownerOf(actorId: number): number {
+    return this.active.get(actorId >>> 0)?.ownerId ?? 0;
+  }
+
   // ── Menu and E ───────────────────────────────────────────────────────────────
 
   private onMenu(userId: number, actorId: number, target: number): void {

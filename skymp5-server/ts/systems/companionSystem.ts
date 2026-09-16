@@ -48,6 +48,18 @@ interface Companion extends CompanionInfo {
   ownerAwaySince: number;
 }
 
+// An NPC outside the companions map that its owner sends into fights, such as an out dog (petSystem.ts)
+export interface AllyInfo {
+  id: number;
+  ownerId: number;
+}
+
+// A companion or an ally: everything the owner's targeting applies to
+interface Fighter extends AllyInfo {
+  targetId: number;
+  lastRetargetAt: number;
+}
+
 interface Stored {
   ownerId: number;
   baseDesc: string;
@@ -80,6 +92,7 @@ const COMMAND_RANGE = 4096;
 const TARGET_KEEP_RANGE = 6144;
 const DEFEND_RETARGET_MS = 3000;
 const OWNER_GONE_MS = 5000;
+const TARGET_LOG_MS = 5000;
 // Vanilla: one commanded actor, two with Twin Souls
 const COMMAND_LIMIT = 1;
 const TWIN_SOULS_LIMIT = 2;
@@ -113,6 +126,11 @@ export class CompanionSystem implements System {
   private ashPileDesc = "";
   private stored: Stored[] = [];
   private twinSouls = new Set<number>();
+  private allyFighters: (() => AllyInfo[]) | null = null;
+  private petOwnerOf: ((actorId: number) => number) | null = null;
+  // Targets of allies; who the allies are is read live from the provider instead
+  private allyTargets = new Map<number, { ownerId: number; targetId: number; lastRetargetAt: number }>();
+  private lastTargetLogAt = new Map<number, number>();
   // Actor ids of the previous run still to destroy
   private leftovers: number[] = [];
 
@@ -146,6 +164,11 @@ export class CompanionSystem implements System {
         this.log(`CompanionSystem: check of ${hex(c.id)} failed: ${e}`);
       }
     }
+    try {
+      this.checkAllies();
+    } catch (e) {
+      this.log(`CompanionSystem: ally check failed: ${e}`);
+    }
   }
 
   disconnect(userId: number, ctx: SystemContext): void {
@@ -168,7 +191,7 @@ export class CompanionSystem implements System {
       return;
     }
     const wanted = content["companionId"] === undefined ? 0 : toFormId(content["companionId"]);
-    const mine = this.ownedBy(ownerId).filter((c) => !wanted || c.id === wanted);
+    const mine = this.fightersOf(ownerId).filter((c) => !wanted || c.id === wanted);
     if (!mine.length) return;
     if (action === "attack") {
       const targetId = toFormId(content["targetId"]);
@@ -240,37 +263,43 @@ export class CompanionSystem implements System {
     return true;
   }
 
-  orderAttack(companionId: number, targetId: number): boolean {
-    const c = this.companions.get(companionId >>> 0);
-    if (!c || !this.isValidTarget(c.ownerId, targetId >>> 0, COMMAND_RANGE)) return false;
-    if (c.targetId !== targetId >>> 0) {
-      c.targetId = targetId >>> 0;
-      c.lastRetargetAt = Date.now();
-      this.sendState(c.ownerId);
+  // PetSystem hands over the pets that may fight and the owner of any pet; both are called live, never cached
+  setAllySource(fighters: () => AllyInfo[], ownerOf: (actorId: number) => number): void {
+    this.allyFighters = fighters;
+    this.petOwnerOf = ownerOf;
+  }
+
+  orderAttack(fighterId: number, targetId: number): boolean {
+    const f = this.fighterOf(fighterId);
+    if (!f || !this.isValidTarget(f.ownerId, targetId >>> 0, COMMAND_RANGE)) return false;
+    if (f.targetId !== (targetId >>> 0)) {
+      this.setTarget(f, targetId >>> 0, Date.now());
+      this.logTarget(f, "ordered to attack");
+      this.sendState(f.ownerId);
     }
     return true;
   }
 
-  orderFollow(companionId: number): boolean {
-    const c = this.companions.get(companionId >>> 0);
-    if (!c) return false;
-    if (c.targetId) {
-      c.targetId = 0;
-      this.sendState(c.ownerId);
+  orderFollow(fighterId: number): boolean {
+    const f = this.fighterOf(fighterId);
+    if (!f) return false;
+    if (f.targetId) {
+      this.setTarget(f, 0, Date.now());
+      this.sendState(f.ownerId);
     }
     return true;
   }
 
-  // Every companion of the owner turns on the aggressor; one already fighting switches at most every few seconds
+  // Every companion and ally of the owner turns on the aggressor; one already fighting switches at most every few seconds
   defend(ownerId: number, aggressorId: number): void {
-    const mine = this.ownedBy(ownerId);
+    const mine = this.fightersOf(ownerId);
     if (!mine.length || !this.isValidTarget(ownerId, aggressorId, COMMAND_RANGE)) return;
     const now = Date.now();
     let changed = false;
-    for (const c of mine) {
-      if (c.targetId === aggressorId || (c.targetId && now - c.lastRetargetAt < DEFEND_RETARGET_MS)) continue;
-      c.targetId = aggressorId;
-      c.lastRetargetAt = now;
+    for (const f of mine) {
+      if (f.targetId === aggressorId || (f.targetId && now - f.lastRetargetAt < DEFEND_RETARGET_MS)) continue;
+      this.setTarget(f, aggressorId, now);
+      this.logTarget(f, "defends against");
       changed = true;
     }
     if (changed) this.sendState(ownerId);
@@ -301,9 +330,70 @@ export class CompanionSystem implements System {
     return Array.from(this.companions.values()).filter((c) => c.ownerId === ownerId);
   }
 
+  private allyList(): Fighter[] {
+    let raw: AllyInfo[] = [];
+    try { raw = this.allyFighters?.() ?? []; } catch { return []; }
+    return raw.map((a) => {
+      const id = a.id >>> 0;
+      const t = this.allyTargets.get(id);
+      return { id, ownerId: a.ownerId >>> 0, targetId: t?.targetId ?? 0, lastRetargetAt: t?.lastRetargetAt ?? 0 };
+    });
+  }
+
+  private alliesOf(ownerId: number): Fighter[] {
+    return this.allyList().filter((a) => a.ownerId === ownerId);
+  }
+
+  private fightersOf(ownerId: number): Fighter[] {
+    return (this.ownedBy(ownerId) as Fighter[]).concat(this.alliesOf(ownerId));
+  }
+
+  private fighterOf(id: number): Fighter | undefined {
+    return this.companions.get(id >>> 0) ?? this.allyList().find((a) => a.id === (id >>> 0));
+  }
+
+  // A companion keeps its target on its own record, an ally in allyTargets
+  private setTarget(f: Fighter, targetId: number, now: number): void {
+    f.targetId = targetId;
+    f.lastRetargetAt = now;
+    if (!this.companions.has(f.id)) this.allyTargets.set(f.id, { ownerId: f.ownerId, targetId, lastRetargetAt: now });
+  }
+
+  private logTarget(f: Fighter, how: string): void {
+    const now = Date.now();
+    if (now - (this.lastTargetLogAt.get(f.id) ?? 0) < TARGET_LOG_MS) return;
+    this.lastTargetLogAt.set(f.id, now);
+    this.log(`CompanionSystem: ${hex(f.id)} of ${hex(f.ownerId)} ${how} ${hex(f.targetId)}`);
+  }
+
+  // The owner of a companion or of any pet, 0 for anyone else
+  private ownerOfPet(actorId: number): number {
+    const id = actorId >>> 0;
+    if (!id) return 0;
+    const c = this.companions.get(id);
+    if (c) return c.ownerId;
+    try { return (this.petOwnerOf?.(id) ?? 0) >>> 0; } catch { return 0; }
+  }
+
   private isValidTarget(ownerId: number, targetId: number, range: number): boolean {
-    if (!targetId || targetId === ownerId || this.companions.get(targetId)?.ownerId === ownerId) return false;
+    if (!targetId || targetId === ownerId || this.ownerOfPet(targetId) === ownerId) return false;
     return isAlive(this.mp, targetId) && isNear(this.mp, ownerId, targetId, range);
+  }
+
+  // An ally that is stored, carried, ridden, fleeing or dead stops being offered and forgets its fight
+  private checkAllies(): void {
+    const live = new Map<number, number>();
+    for (const a of this.allyList()) live.set(a.id, a.ownerId);
+    const owners = new Set<number>();
+    for (const [id, t] of Array.from(this.allyTargets)) {
+      const ownerId = live.get(id);
+      if (ownerId === undefined || (t.targetId && !this.isValidTarget(ownerId, t.targetId, TARGET_KEEP_RANGE))) {
+        this.allyTargets.delete(id);
+        this.lastTargetLogAt.delete(id);
+        if (t.targetId) owners.add(t.ownerId);
+      }
+    }
+    for (const o of owners) this.sendState(o);
   }
 
   // The newest commanded actor replaces the oldest
@@ -446,7 +536,9 @@ export class CompanionSystem implements System {
     const user = userOf(this.mp, ownerId);
     if (user < 0) return;
     const companions = this.ownedBy(ownerId).map((c) => ({ id: c.id, target: c.targetId, kind: c.kind }));
-    try { this.mp.sendCustomPacket(user, JSON.stringify({ customPacketType: "companionState", companions })); } catch { }
+    // Allies stay out of the companions list: the client keys its own companion ids, hostility and cleaner burst on that one
+    const allies = this.alliesOf(ownerId).map((a) => ({ id: a.id, target: a.targetId }));
+    try { this.mp.sendCustomPacket(user, JSON.stringify({ customPacketType: "companionState", companions, allies })); } catch { }
   }
 
   // Only the owner hosts a companion; companions never damage their owner or the owner's other companions; hits on an owner call defend
@@ -477,11 +569,12 @@ export class CompanionSystem implements System {
 
     const previousHit = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
     mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      const aggressor = this.companions.get(aggressorId >>> 0);
-      const targetOwner = this.companions.get(targetId >>> 0)?.ownerId ?? targetId >>> 0;
-      if (aggressor && aggressor.ownerId === targetOwner) return false;
+      const aggressorOwner = this.ownerOfPet(aggressorId >>> 0);
+      // A hit pet is defended by the rest of its owner's, so both sides resolve through companions and allies alike
+      const targetOwner = this.ownerOfPet(targetId >>> 0) || targetId >>> 0;
+      if (aggressorOwner && aggressorOwner === targetOwner) return false;
       try {
-        this.defend(targetId >>> 0, aggressorId >>> 0);
+        this.defend(targetOwner, aggressorId >>> 0);
       } catch (e) {
         this.log(`CompanionSystem: defend failed: ${e}`);
       }
