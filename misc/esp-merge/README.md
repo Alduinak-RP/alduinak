@@ -45,15 +45,15 @@ Run every step with `ESP_MERGE_RUN=r11`, in this order:
 
 | Step | Script | Does | State |
 |---|---|---|---|
-| 0 | `stage.py` | `r11/stage-data` and `r11/server-settings.stage.json` | done, c2e6e976; restage and re-pin when the CC load order lands |
+| 0 | `stage.py` | `r11/stage-data` and `r11/server-settings.stage.json`: the 71 live plugins with the four Creations after Dragonborn.esm (75) | done, 57ea2a7d |
 | 1 | `attribute.py` | classifies all 7,702 own-index records of NEW against the live plugin be1cb8e3 and writes `attribution.json` and `delta.json`; exits 2 unless every count matches `PLANS['f8cefed9']` | done and pinned (8be20542, b76a9e75) |
 | 2 | `delta.py` | writes the 30 delta refs onto r7's base (17 replaced in place or refiled to their new cell, 13 added), deletes the stray portal-box marker 001F84 under the Windhelm arena, keeps masters and next id | done, `r11/work/base` ff7f1d0a |
 | 2v | `verify_replay.py` | independent of delta.py: base vs r7's base, each ref against its original, the load-order winner and live, no accidental re-enable | passes |
-| 3 | `proficiency.py` | `patch.py` with the integrated `spec.json` (see below), CC plugins already in the staged load order | integration |
-| 4 | `masks.py` | the 8 mask ARMO lose EITM | integration |
-| 4b | `thrones.py` | throne keyword override | integration |
-| 4c | (other tracks) | any extra esplib or Mutagen pass, for example a ref placement; it reads the previous step's manifest tag and `finalise.py` must read its tag instead of `thrones` | integration |
-| 5 | `finalise.py` | `r11/AlduinakAdditions.esp` and `r11/rollback/` = be1cb8e3 | integration |
+| 3 | `proficiency.py` | `patch.py` with the integrated `spec.json` (ffdf692a): 1,591 added, 152 own records at 0x201D-0x20B4, `proficiency-ids.json` in slot 0x2D, `AlduinakCreations.esp` | done, 40ca3888 and 37cf0dfc |
+| 4 | `masks.py` | the 8 mask ARMO lose EITM | done, 9bb88081 |
+| 4b | `thrones.py` | throne keyword override | done, 7e2ebcfb |
+| 4c | (other tracks) | any extra esplib or Mutagen pass; it reads the previous step's manifest tag and `finalise.py` must read its tag instead of `thrones` | none: the door placement runs inside step 3 |
+| 5 | `finalise.py` | `r11/AlduinakAdditions.esp`, `r11/AlduinakCreations.esp` with its inputs file re-pinned, and `r11/rollback/` = be1cb8e3 | done, 7e2ebcfb and 37cf0dfc |
 
 The attribution handles what the 2026-09-16 save added to the known damage:
 
@@ -82,14 +82,14 @@ the 17 replaced refs as the only other difference and every other record byte-eq
   with the `AldCraftingMead` keyword (meadery), the blank writing items and sealing wax (writeable-books) and the CC recipe
   tiers plus the `AlduinakCreations.esp` section (cc-content) all go into `../proficiency-patcher/spec.json` and
   `Program.cs`. Step 3 runs once on the merged spec.
-- **Pins to move at integration.** In `RUNS['r11']`: `spec` (the merged spec.json sha), `added` (from `work/prof/verify.txt`),
-  and `own_records` and `last_id` when a track adds own records. New own records take ids after 0x2093 so the marker block
-  0x201D-0x2093 and `proficiency-ids.json` stay put; if a track adds marker spells, the ids file check needs a new
-  reference.
+- **Pins.** `RUNS['r11']` pins `spec`, `added` (from `work/prof/verify.txt`), `own_records`, `last_id` and `slot`. New own
+  records take ids after LIVE's block 0x201D-0x2092; the common recipes moved r10's woodcutter's axe recipe from 0x2093
+  to 0x2099. `proficiency-ids.json` must equal LIVE's with only the full slot moved to `slot`; if a track adds marker
+  spells, the ids file check needs a new reference.
 - **CC plugins (steps 0, 3, 4b, 5).** The four Creation plugins load right after Dragonborn.esm and `AlduinakCreations.esp`
-  loads last. Restage r11 from that load order and re-pin `stage_sha` before step 3; `stage.py` expects 71 plugins,
-  `thrones.py` expects AlduinakAdditions last and `finalise.py` checks masters against the live `loadOrder`, so those
-  expectations follow the cc-content change. Steps 1 and 2 are pinned and need no rerun.
+  loads last. The stage leaves `AlduinakCreations.esp` out (step 3 builds it), so `thrones.py` still finds
+  AlduinakAdditions last; the two ESM-flagged Creations move its full slot from 0x2B to 0x2D. Steps 1 and 2 are pinned
+  and need no rerun.
 - **Deploy.** `DEPLOYED_SHA` stays be1cb8e3 until the r11 plugin is live, then re-pin it.
 
 ## Graves's next save

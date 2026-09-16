@@ -19,7 +19,7 @@ SPEC = (os.path.join(PATCHER, 'spec.json'), RUN['spec'])
 LIVE_DIR = ESPFIX + 'proficiency/'
 # LIVE_LAST_ID ends the block LIVE shipped; the woodcutter's axe recipe took the next id
 NEXT_ID, LIVE_LAST_ID, LAST_ID = 0x201D, RUN['live_last_id'], RUN['last_id']
-OWN_RECORDS, ADDED = RUN['own_records'], RUN['added']
+OWN_RECORDS, ADDED, SLOT = RUN['own_records'], RUN['added'], RUN['slot']
 OUT = WORK + 'prof/'
 _CREATIONS_NAME = (json.load(open(SPEC[0], encoding='utf-8')).get('creations') or {}).get('pluginName')
 # AlduinakCreations.esp and its inputs file, built by the same patch.py run when the spec has a creations section
@@ -33,11 +33,11 @@ def own_block(path, last):
     return sorted((r.fid & 0xFFFFFF, r.type, r.edid()) for r in pl['recs'] if (r.fid >> 24) == n and NEXT_ID <= (r.fid & 0xFFFFFF) <= last)
 
 
-def same_markers(live, new):
-    # The Creation Club masters before the plugin move its full slot (0x2B to 0x2D), so only editor ids and local ids must match
-    slot = new['loadIndex']
-    return (list(live['markerSpells']) == list(new['markerSpells']) and not new['errors']
-            and all(int(v, 16) >> 24 == slot and int(v, 16) & 0xFFFFFF == int(live['markerSpells'][k], 16) & 0xFFFFFF for k, v in new['markerSpells'].items()))
+def shifted_ids(live, slot):
+    # LIVE's ids file with only its full slot moved to the run's pinned slot (0x2B to 0x2D once the Creations load)
+    ids = dict(live, loadIndex=slot)
+    ids['markerSpells'] = {k: f'0x{slot:02X}{int(v, 16) & 0xFFFFFF:06X}' for k, v in live['markerSpells'].items()}
+    return ids
 
 
 def verify_counts(path):
@@ -73,7 +73,7 @@ def main():
         pre = OUT + 'AlduinakAdditions.preclean.esp'
         check('preclean removed nothing', 'pre-clean: removed' not in text and sha_file(pre) == base_sha)
         live_ids, ids = json.load(open(LIVE_DIR + 'proficiency-ids.json', encoding='utf-8')), json.load(open(OUT + 'proficiency-ids.json', encoding='utf-8'))
-        check('proficiency-ids.json names the live marker spells at their local ids, in the slot of this load order', same_markers(live_ids, ids),
+        check(f'proficiency-ids.json equals the live one with only the slot moved to 0x{SLOT:02X}', json.dumps(ids) == json.dumps(shifted_ids(live_ids, SLOT)),
               f'slot 0x{live_ids["loadIndex"]:02X} -> 0x{ids["loadIndex"]:02X}, sha {sha_file(OUT + "proficiency-ids.json")[:8]}')
         pl = fastesp.load(out)
         hsz = struct.unpack_from('<I', pl['buf'], 4)[0]

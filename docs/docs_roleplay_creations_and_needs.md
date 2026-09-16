@@ -78,8 +78,8 @@ Every full slot after Dragonborn moves up by 2 (AlduinakAdditions `0x2B` to `0x2
 settings `loadOrder` comes from manager "Sync server settings". Stored ids follow either by wiping the database or by
 the manager's purge, which re-encodes shifted ids in inventories, equipment, learned spells, appearance, housing
 references and now also `private.mastery.granted` and `private.needs.stageSpell`. The one id in `server-settings.json`,
-the hunter's Over Draw rule, becomes `0x2D002032`. `misc/esp-merge/proficiency.py` accepts the marker ids by editor id
-and local id in whatever slot the load order gives.
+the hunter's Over Draw rule, becomes `0x2D002032`. `misc/esp-merge/proficiency.py` accepts the ids file only as LIVE's
+with the full slot moved to the run's pinned `slot` (`0x2D` for r11).
 
 ## AlduinakCreations.esp
 
@@ -200,9 +200,9 @@ One window, game service stopped, together with the other r11 plugin work (the p
    `skymp5-backend/data/manifest-sources.json` and `install-manifest.json`, and the live `AlduinakAdditions.esp`.
 2. **Build the plugins** from the integrated branch with the esp-merge pipeline, run `r11` of
    `misc/esp-merge/r7lib.py` (from the graves-replay work), in `misc/esp-merge` with `ESP_MERGE_RUN=r11`:
-   1. Set the step 3 pins of `RUNS['r11']` for the merged tree: `spec` (sha256 of `misc/proficiency-patcher/spec.json`),
-      then `added`, `own_records` and `last_id` from a trial step 3 when other spec sections add records. This branch
-      alone cannot run step 3: its `proficiency.py` still pins the r10 spec `dd510ba8`.
+   1. Keep the step 3 pins of `RUNS['r11']` in step with the tree: `spec` (sha256 of `misc/proficiency-patcher/spec.json`),
+      `added`, `own_records`, `last_id` and `slot`. The integrated tree pins spec `ffdf692a`, 1,591 added, 152 own
+      records ending at `0x20B4` and slot `0x2D`; a spec change needs a trial step 3 and new pins.
    2. `python stage.py`: stages the live `loadOrder` with the four Creations inserted after `Dragonborn.esm` (taken from
       `spec.json`, whether or not the live order has them yet, `AlduinakCreations.esp` left out) and hardlinks their
       plugins and BSAs from the GOG Data folder. It asserts 71 plugins besides the Creations with `AlduinakAdditions.esp`

@@ -40,11 +40,13 @@ _R7_RUN = {
     'frozen': (R7 + 'work/padded/AlduinakAdditions.esp', 'db02e960afd166a5243634231c0cdbc5e51982dc5ad3e2cb612a2f5a0814da88'),
     'spec': '267ec7447c0d667cf8408e1bfd7d1ace46b777d2a44a9b949036e23435cc9bab',
     'live_last_id': 0x2092, 'last_id': 0x2092, 'own_records': 118, 'added': 767,
+    # The plugin's full slot in the staged load order, which proficiency-ids.json carries
+    'slot': 0x2B,
 }
 _R11_RUN = {
     'dir': R11,
     'stage': R11,
-    'stage_sha': 'c2e6e97689ffbef4ef077742f7a749d830eaf316011199c4de77a23a63038ba3',
+    'stage_sha': '57ea2a7da9bec479775d4574533cfa52098662ab251ed36818ac17be67db9c8a',
     # Graves's 2026-09-16 CK save, frozen from the Desktop
     'NEW': (R11 + 'input/AlduinakAdditions.esp', 'f8cefed985c9f35c06d4cb8d0c687f746bcf88e44665580e9791b2a5298157e9'),
     # The live r7 plugin he started from, which is also the attribution's RAW
@@ -57,10 +59,12 @@ _R11_RUN = {
     # The r7 merged base the replay writes onto, and the staged r10 plugin the replay check compares with
     'BASE': (R7 + 'work/base/AlduinakAdditions.esp', '15ecf7a40cb3539da169045d77a6180d01a551966986ab98f11df5c0372fecc4'),
     'R10': (ESPFIX + 'r10/AlduinakAdditions.esp', 'ad651b18d2b068ca30267dc75ea929abb7807539a847e594b658949169ef47a9'),
-    'spec': 'dd510ba88a126f1b823c2b56eb3623c35a09ac28797a5f8b79fcfd5c87466512',
-    'live_last_id': 0x2092, 'last_id': 0x2093, 'own_records': 119, 'added': 1546,
+    'spec': 'ffdf692a9e6e3aa53d4deda450573a67461b32b21c8d155993b158c4d52a2b58',
+    'live_last_id': 0x2092, 'last_id': 0x20B4, 'own_records': 152, 'added': 1591,
     # Stages the Creation Club plugins of the patcher spec and builds AlduinakCreations.esp in step 3
     'creations': True,
+    # The two ESM-flagged Creations take full slots before the plugin; the ESL ones take light slots
+    'slot': 0x2D,
 }
 RUNS = {
     'r7': _R7_RUN,
@@ -70,8 +74,9 @@ RUNS = {
     # Graves's 2026-09-16 records replayed onto r7's merged base (delta.py), then steps 3-5 with the integrated r11 spec
     'r11': _R11_RUN,
     # The replay check: r11's replayed base through steps 3-5 with the r10 spec, compared with r10 by verify_replay.py
-    'r11-graves': dict(_R11_RUN, dir=R11 + 'graves-replay/', stage=R11 + 'graves-replay/', chain='r11', creations=False,
-                       stage_sha='619a0967dd4444cb4e3d33fbbb5278d9c5057832b6b01bd9771dfb40109c670d'),
+    'r11-graves': dict(_R11_RUN, dir=R11 + 'graves-replay/', stage=R11 + 'graves-replay/', chain='r11', creations=False, slot=0x2B,
+                       stage_sha='619a0967dd4444cb4e3d33fbbb5278d9c5057832b6b01bd9771dfb40109c670d',
+                       spec='dd510ba88a126f1b823c2b56eb3623c35a09ac28797a5f8b79fcfd5c87466512', last_id=0x2093, own_records=119, added=1546),
 }
 RUN_NAME = os.environ.get('ESP_MERGE_RUN', 'r7')
 assert RUN_NAME in RUNS, f'ESP_MERGE_RUN {RUN_NAME} is not one of {sorted(RUNS)}'
