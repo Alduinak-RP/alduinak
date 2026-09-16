@@ -172,7 +172,7 @@ const GHK_MAP = {
 }
 const GFX_INPUT_IDS = [
   'gfx-windowmode', 'gfx-resolution', 'gfx-texquality', 'gfx-aa', 'gfx-shadowquality',
-  'gfx-decals', 'gfx-reflections', 'gfx-fov', 'gfx-godrays', 'gfx-lensflare', 'gfx-ao', 'gfx-precip',
+  'gfx-decals', 'gfx-reflections', 'gfx-godrays', 'gfx-lensflare', 'gfx-ao', 'gfx-precip',
 ]
 const fovInput = document.getElementById('gfx-fov')
 const showFov = () => { const out = document.getElementById('gfx-fov-value'); if (out && fovInput) out.textContent = fovInput.value }
@@ -269,6 +269,8 @@ async function saveGameSettingsTab() {
         ao:            chk('gfx-ao'),
         precip:        chk('gfx-precip'),
       })
+    } else if (fovInput) {
+      await window.electronAPI.graphicsSaveFov(fovInput.value)
     }
     const ghkFirst = document.getElementById('ghk-activate')
     if (ghkFirst && !ghkFirst.disabled) {

@@ -357,10 +357,16 @@ function fovInEffect() {
   const n = parseFloat(d[FOV_KEYS[0]])
   return Number.isFinite(n) ? n : FOV_DEFAULT
 }
-// Writes both FOV keys when the value differs from the one in effect
+// The slider value once moved, else the one the inis give; launches copy the stored one into the client settings
+function launcherFov() {
+  return clampFov(store.get('fov')) ?? clampFov(fovInEffect())
+}
+// Stores a moved slider value, and writes both profile FOV keys when the value differs from the one in effect
 function saveFov(v) {
   const fov = clampFov(v)
-  if (fov === null || fov === Math.round(fovInEffect())) return
+  if (fov === null) return
+  if (fov !== launcherFov()) store.set('fov', fov)
+  if (!fs.existsSync(skyrimPrefsPath()) || fov === Math.round(fovInEffect())) return
   const fovEdit = { Display: Object.fromEntries(FOV_KEYS.map(k => [k, fov.toFixed(4)])) }
   ini.write(ensureProfileIni(FOV_INIS[1]), fovEdit)
   const custom = profileIniInEffect(FOV_INIS[0])
@@ -429,7 +435,7 @@ ipcMain.handle('graphics:load', () => {
       reflections: reflH >= 1024
         ? (val('Water', 'bReflectLODTrees', '0') === '1' ? 'ultra' : 'high')
         : (val('Water', 'bReflectLODLand', '0') === '1' ? 'medium' : 'low'),
-      fov:       clampFov(fovInEffect()),
+      fov:       launcherFov(),
       godrays:   val('Display', 'bVolumetricLightingEnable', '1') === '1',
       lensFlare: val('Imagespace', 'bLensFlare', '1') === '1',
       ao:        val('Display', 'bSAOEnable', '1') === '1',
@@ -503,10 +509,13 @@ const CLIENT_HOTKEY_KEYS = {
   freeCursor: 'freeCursorKeyCode', voicePtt: 'voicePushToTalkKeyCode',
   hideUi: 'hideUiKeyCode', altInteract: 'altInteractKeyCode',
 }
+const CLIENT_SETTINGS_HOTKEYS = ['chatFocusKeyCodes', ...Object.values(CLIENT_HOTKEY_KEYS)]
+// Hotkeys saved while the game runs wait here for the next launch, as SkyrimPlatform reloads every plugin when its folder changes
+const PENDING_HOTKEYS = 'pendingClientHotkeys'
 
 ipcMain.handle('hotkeys:load', () => {
   try {
-    const c = readClientSettings()
+    const c = { ...readClientSettings(), ...store.get(PENDING_HOTKEYS) }
     const out = { ok: true, path: clientSettingsPath(), chatFocus: Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null }
     for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) out[field] = typeof c[key] === 'number' ? c[key] : null
     // Interact / Menus cannot be unbound, so a stored 0 shows and saves the X default
@@ -517,18 +526,23 @@ ipcMain.handle('hotkeys:load', () => {
   }
 })
 
-ipcMain.handle('hotkeys:save', (_e, h) => {
+ipcMain.handle('hotkeys:save', async (_e, h) => {
   try {
     h = h || {}
-    const c = readClientSettings()
+    const c = { ...readClientSettings(), ...store.get(PENDING_HOTKEYS) }
     if (Array.isArray(h.chatFocus)) c.chatFocusKeyCodes = h.chatFocus.filter(n => typeof n === 'number')
     for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) {
       // Interact / Menus cannot be unbound, so a 0 keeps the stored key
       if (typeof h[field] === 'number' && (field !== 'altInteract' || h[field] > 0)) c[key] = h[field]
     }
     const p = clientSettingsPath()
+    if ((await gameProcessRunning()) || Date.now() - launchStartedAt < LAUNCH_GRACE_MS) {
+      store.set(PENDING_HOTKEYS, Object.fromEntries(CLIENT_SETTINGS_HOTKEYS.filter(k => k in c).map(k => [k, c[k]])))
+      return { ok: true, path: p, deferred: true }
+    }
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, JSON.stringify(c, null, 2))
+    store.delete(PENDING_HOTKEYS)
     return { ok: true, path: p }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -2805,11 +2819,13 @@ async function runMO2Install(opts = {}) {
 function writeClientSettings(destPath, srv, serverInfo) {
   // Start fresh every time - do not preserve stale keys from previous writes.
   // Exception: user hotkey bindings, owned by the settings UI; a launch must never reset them to defaults.
-  const HOTKEY_KEYS = ['chatFocusKeyCodes', ...Object.values(CLIENT_HOTKEY_KEYS)]
   let prev = {}
   try { prev = JSON.parse(fs.readFileSync(destPath, 'utf8')) || {} } catch { /* first run */ }
+  prev = { ...prev, ...store.get(PENDING_HOTKEYS) }
   const settings = {}
-  for (const k of HOTKEY_KEYS) if (prev[k] !== undefined) settings[k] = prev[k]
+  for (const k of CLIENT_SETTINGS_HOTKEYS) if (prev[k] !== undefined) settings[k] = prev[k]
+  const fov = clampFov(store.get('fov'))
+  if (fov !== null) settings.fov = fov
 
   settings['server-ip']   = srv.address
   settings['server-port'] = Number(srv.port)
@@ -2855,6 +2871,7 @@ function writeClientSettings(destPath, srv, serverInfo) {
 
   fs.mkdirSync(path.dirname(destPath), { recursive: true })
   fs.writeFileSync(destPath, JSON.stringify(settings, null, 2) + '\n')
+  store.delete(PENDING_HOTKEYS)
 }
 
 function fetchJSON(url, headers = {}, redirectsLeft = 3) {

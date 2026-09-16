@@ -74,6 +74,7 @@ import { KeyboardEventsService } from "./services/services/keyboardEventsService
 import { MagicSyncService } from "./services/services/magicSyncService";
 import { ProfilingService } from "./services/services/profilingService";
 import { SettingsService } from "./services/services/settingsService";
+import { FovSettingsService } from "./services/services/fovSettingsService";
 import { SweetCameraEnforcementService } from "./services/services/sweetCameraEnforcementService";
 import { ServerJsVerificationService } from "./services/services/serverJsVerificationService";
 import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService";
@@ -123,6 +124,7 @@ const main = () => {
       new RemoteServer(sp, controller),
       new SpSnippetService(sp, controller),
       new SettingsService(sp, controller),
+      new FovSettingsService(sp, controller),
       new SweetTaffySweetCantDropService(sp, controller),
       new SweetCameraEnforcementService(sp, controller),
       new SweetTaffyEvalService(sp, controller),
