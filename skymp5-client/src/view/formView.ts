@@ -12,7 +12,7 @@ import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
-import { localIdToRemoteId } from "./worldViewMisc";
+import { isModelHostedByOther, localIdToRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
@@ -424,7 +424,8 @@ export class FormView {
       const isNewMovement = +(model.numMovementChanges as number) !== this.movState.lastNumChanges;
       if (isNewMovement || Date.now() - this.movState.lastApply > 2000) {
         this.movState.lastApply = Date.now();
-        if (model.isHostedByOther || !this.movState.everApplied) {
+        const hostedByOther = isModelHostedByOther(model);
+        if (hostedByOther || !this.movState.everApplied) {
           const backup = model.movement.isWeapDrawn;
           const isDeadBackup = model.movement.isDead;
           if (forcedWeapDrawn === true || forcedWeapDrawn === false) {
@@ -440,7 +441,7 @@ export class FormView {
               ? model.movement
               : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
             // The first apply also runs on the host, where a self offset would replace the follow its service just issued
-            const ownOffset = !model.isHostedByOther && keepsOwnOffset(this.remoteRefrId);
+            const ownOffset = !hostedByOther && keepsOwnOffset(this.remoteRefrId);
             applyMovement(refr, movement, !!model.isMyClone, mounted, ownOffset);
             if (!mounted) {
               restoreSitCollisionIfMoving(refr, movement);

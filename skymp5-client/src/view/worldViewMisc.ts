@@ -2,6 +2,7 @@ import { Game, ObjectReference, storage } from "skyrimPlatform";
 import { WorldView } from "./worldView";
 import { SpApiInteractor } from '../services/spApiInteractor';
 import { RemoteServer } from "../services/services/remoteServer";
+import { FormModel } from "./model";
 
 export const getViewFromStorage = (): WorldView | undefined => {
   const res = storage["view"] as WorldView;
@@ -55,6 +56,15 @@ export const isRemoteHostedByMe = (remoteId: number): boolean => {
 };
 
 export const isHostedByMe = (localFormId: number): boolean => isRemoteHostedByMe(localIdToRemoteId(localFormId));
+
+// The server also routes isHostedByOther to the host; a HostStart outranks it while the NPC is loaded here, where a stale one soon gets its HostStop
+export const isModelHostedByOther = (model: FormModel): boolean => {
+  if (model.isHostedByOther !== true) {
+    return false;
+  }
+  const remoteId = model.refrId ?? 0;
+  return !isRemoteHostedByMe(remoteId) || !ObjectReference.from(Game.getFormEx(remoteIdToLocalId(remoteId)))?.is3DLoaded();
+};
 
 export const getObjectReference = (i: number): ObjectReference | null => {
   const view = getViewFromStorage();

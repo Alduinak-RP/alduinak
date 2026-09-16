@@ -75,6 +75,13 @@ including which clause refused and a missing horse copy, is written once per rid
 Edition\Platform\skyrim-platform.log` on the observer's PC. The design, its fallbacks and the ordered test plan are in
 `alduinak-pet-system-2026-09-14/visible-riding-design.md` on the Desktop of the server box.
 
+The rider's own client knows it hosts the horse from its HostStart and HostStop messages, not from the horse's `isHostedByOther` property. The
+server also routes that property to the host through the horse's own listener slot, so a rider can be told their own horse is hosted elsewhere;
+believing it would end every ride about 2 s after mounting (`mountService.ts`) and pull the ridden horse back to the server's echo of its own
+movement (`formView.ts`). The same rule covers every NPC a client hosts, dogs and companions included (`isModelHostedByOther` in
+`worldViewMisc.ts`). A HostStart only wins while that NPC's 3D is loaded on the host's client, where the client keeps sending its movement, so an
+entry the server no longer agrees with is answered by a HostStop instead of leaving the NPC frozen; an NPC that is not loaded follows the server.
+
 ## Protocol (MsgType.CustomPacket JSON)
 
 Client to server `petRequest {action, target, ...}`: `menu`, `use`, `mount` (plus `mounted: true|false` in the rider's reports), `trade`, `pet`,

@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
-import { isRemoteHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { isModelHostedByOther, isRemoteHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement } from "../../sync/movement";
 import { RemoteServer } from "./remoteServer";
 import { logError, logTrace } from "../../logging";
@@ -171,7 +171,7 @@ export class MountService extends ClientListener {
   // The horse's model says it died or moved to another host; a HostStop counts the same
   private horseLost(now: number): boolean {
     const form = this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === this.horseId);
-    const lost = !form || form.isDead === true || form.isHostedByOther === true || !isRemoteHostedByMe(this.horseId);
+    const lost = !form || form.isDead === true || isModelHostedByOther(form) || !isRemoteHostedByMe(this.horseId);
     if (!lost) {
       this.lostSince = 0;
       return false;
