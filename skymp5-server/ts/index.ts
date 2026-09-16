@@ -228,6 +228,9 @@ const main = async () => {
   const captureSystem = new CaptureSystem(log);
   const housingSystem = new HousingSystem(log);
   const searchSystem = new SearchSystem(log);
+  const huntingSystem = new HuntingSystem(log, masterySystem);
+  // Pelts on game are a hunter's, so a search neither shows nor gives them to anyone else
+  searchSystem.hidesItem = (ctx, viewerId, targetId, baseId) => huntingSystem.hidesFrom(ctx, viewerId, targetId, baseId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
   const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);
   hostingSystem.addProvider(() => petSystem.hostables());
@@ -255,7 +258,7 @@ const main = async () => {
     // After mastery so a refused tool check is never credited as work.
     new GatheringSystem(log, masterySystem),
     // After mastery so its kill relay is in place to be wrapped.
-    new HuntingSystem(log, masterySystem),
+    huntingSystem,
     new BountyBoardSystem(log),
     new UntouchableSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
