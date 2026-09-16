@@ -22,6 +22,7 @@ type Mp = any;
 // Client -> server: { customPacketType: "petRequest", action, target, ... }
 //   menu {target}                       the X menu on a pet or conjured companion -> petMenu
 //   use {target}                        E: horse -> mount handshake, livestock -> harvest, dog / companion -> petCommand
+//   attack {target, victim}             E in command mode: the dog goes after that actor
 //   mount {target, mounted?}            E on a horse, then the client's mounted:true/false report -> petMount / petDismount
 //   trade | pet | carry | unsummon | release {target}
 //   rename {target, name}
@@ -231,6 +232,7 @@ export class PetSystem implements System {
         case "unsummon": return this.onUnsummon(userId, actorId, target);
         case "rename": return this.onRename(userId, actorId, target, content["name"]);
         case "transfer": return this.onTransfer(userId, actorId, target, toFormId(content["recipient"]));
+        case "attack": return this.onAttack(userId, actorId, target, toFormId(content["victim"]));
         case "release": return this.onRelease(userId, actorId, target);
         case "list": return this.onList(userId, actorId, toFormId(content["door"]));
         case "summon": return this.onSummon(userId, actorId, String(content["uid"] ?? ""), toFormId(content["door"]));
@@ -356,6 +358,14 @@ export class PetSystem implements System {
     if (!this.mine(userId, actorId, target)) return;
     if (a.kind === "livestock") return this.harvest(userId, actorId, a);
     this.send(userId, { customPacketType: "petCommand", target });
+  }
+
+  // Command mode: the dog is sent at a target CompanionSystem validates the way it validates a summon order
+  private onAttack(userId: number, actorId: number, target: number, victimId: number): void {
+    const a = this.active.get(target);
+    if (!a || a.ownerId !== actorId || a.kind !== "dog") return;
+    if (a.diedAt || a.carriedBy || a.ridingBy || a.pending || a.fleeSince || !isAlive(this.mp, a.id)) return;
+    if (!this.companions.orderAttack(a.id, victimId)) this.notice(userId, `${a.name} cannot go after that.`);
   }
 
   private harvest(userId: number, actorId: number, a: Active): void {

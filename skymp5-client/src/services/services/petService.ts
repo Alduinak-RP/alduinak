@@ -28,6 +28,8 @@ const PET_ANIM_EXITS = ["IdleChairExitStart", "IdleForceDefaultState"];
 // A fleeing pet keeps this far ahead of its downed owner
 const FLEE_OFFSET = 2048;
 const FLEE_RADIUS = 128;
+// Command mode ends on its own after this, so a forgotten one never keeps the interact key
+const COMMAND_MODE_MS = 30000;
 
 export type PetKind = "horse" | "livestock" | "dog";
 
@@ -85,8 +87,8 @@ const blockActivation = (ref: ObjectReference): void => {
  * for the pet menu and renders petMenu as sent (contextMenu widget), E uses the pet
  * (mount a horse, harvest own livestock, command an own dog or summon). Also runs the
  * rename prompt, the transfer pick, the petting idle, the command mode with its
- * no-furniture rule for dogs, the flee of a downed owner's pets, and feeds the out dogs
- * to CompanionService so they follow like summons.
+ * attack order and its no-furniture rule for dogs, the flee of a downed owner's pets,
+ * and feeds the out dogs to CompanionService so they follow and fight like summons.
  */
 export class PetService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -200,11 +202,13 @@ export class PetService extends ClientListener {
     this.controller.lookupListener(CompanionService).setExtraFollowers(ids);
   }
 
-  // Throttled: follower changes and the flee of a downed owner's hosted pets
+  // Throttled: the command-mode expiry, follower changes and the flee of a downed owner's hosted pets
   private onUpdate(): void {
     const now = Date.now();
-    if (now - this.lastTickMs < TICK_MS || !this.pets.length) return;
+    if (now - this.lastTickMs < TICK_MS) return;
     this.lastTickMs = now;
+    if (this.commanded) this.commandingName();
+    if (!this.pets.length) return;
     this.syncFollowers();
     const player = this.sp.Game.getPlayer();
     if (!player) return;
@@ -224,7 +228,7 @@ export class PetService extends ClientListener {
     }
   }
 
-  // The vanilla favor state: the engine's crosshair commands then drive the hosted copy
+  // The vanilla favor state on the copy, plus the state this service owns: the crosshair then reads "{pet} Attack"
   private enterCommandMode(remoteId: number): void {
     if (!isRemoteHostedByMe(remoteId)) {
       logTrace(this, `Command mode refused, not hosting`, remoteId.toString(16));
@@ -233,7 +237,62 @@ export class PetService extends ClientListener {
     const actor = Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(remoteId)));
     if (!actor || actor.isDead()) return;
     actor.setDoingFavor(true);
+    this.commanded = remoteId;
+    this.commandName = this.petOf(remoteId)?.name || (actor.getDisplayName() || "").trim() || "Companion";
+    this.commandUntil = Date.now() + COMMAND_MODE_MS;
     logTrace(this, `Command mode on`, remoteId.toString(16));
+  }
+
+  // The commanded pet's name while the order is still open, else "" and the state is dropped
+  commandingName(): string {
+    if (!this.commanded) return "";
+    const actor = Date.now() < this.commandUntil && isRemoteHostedByMe(this.commanded)
+      ? Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(this.commanded)))
+      : null;
+    if (!actor || actor.isDead()) {
+      this.endCommandMode();
+      return "";
+    }
+    return this.commandName;
+  }
+
+  // Never yourself, the pet under command, or anything else of yours
+  canAttack(remoteId: number): boolean {
+    if (!remoteId || remoteId === this.commanded || remoteId === this.myId() || !this.commandingName()) return false;
+    const kind = this.kindOf(remoteId);
+    return kind === "" || kind === "horse-foreign";
+  }
+
+  // E on a valid target while commanding; a summon is ordered through its own companionCommand
+  orderAttack(remoteId: number, ref: ObjectReference): boolean {
+    if (!this.canAttack(remoteId)) return false;
+    const commanded = this.commanded;
+    blockActivation(ref);
+    // A player clone stays blocked as it always is; a world NPC must be talkable again on the next tick
+    if (!isPlayerCharacterId(this.controller, remoteId)) {
+      this.controller.once("update", () => { try { ref.blockActivation(false); } catch { /* unloaded ref */ } });
+    }
+    if (isOwnCompanion(commanded)) {
+      sendCustomPacket(this.controller, { customPacketType: "companionCommand", action: "attack", targetId: remoteId, companionId: commanded });
+    } else {
+      sendCustomPacket(this.controller, { customPacketType: "petRequest", action: "attack", target: commanded, victim: remoteId });
+    }
+    this.endCommandMode();
+    logTrace(this, `Attack ordered on`, remoteId.toString(16));
+    return true;
+  }
+
+  // One order per command, like vanilla; also the way out on Escape and on the expiry
+  private endCommandMode(): void {
+    const id = this.commanded;
+    this.commanded = 0;
+    this.commandName = "";
+    this.commandUntil = 0;
+    if (!id) return;
+    const actor = Actor.from(this.sp.Game.getFormEx(remoteIdToLocalId(id)));
+    if (!actor) return;
+    actor.setDoingFavor(false);
+    actor.evaluatePackage();
   }
 
   // Dogs never sit: a favor that sends an own dog onto furniture is cancelled
@@ -253,6 +312,7 @@ export class PetService extends ClientListener {
     if (!e.isDown || buttonEventKeyCode(e) !== DxScanCode.Escape) return;
     if (this.promptOpen) this.closePrompt();
     else if (this.menuOpen) this.closeMenu();
+    else if (this.commanded) this.endCommandMode();
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -375,4 +435,7 @@ export class PetService extends ClientListener {
   private menuRequestedAt = 0;
   private pendingTransfer: { target: number; expiresAt: number } | null = null;
   private lastTickMs = 0;
+  private commanded = 0;
+  private commandName = "";
+  private commandUntil = 0;
 }
