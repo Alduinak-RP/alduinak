@@ -97,11 +97,28 @@ export class CompanionService extends ClientListener {
   }
 
   private pruneLocal(): void {
-    Array.from(this.local.keys()).forEach((id) => {
+    Array.from(this.local.entries()).forEach(([id, state]) => {
       if (!this.companions.some((c) => c.id === id) && !this.extraFollowers.includes(id)) {
         this.local.delete(id);
+        // Natives are unsafe in the packet handler this can come from
+        this.controller.once("update", () => this.release(id, state));
       }
     });
+  }
+
+  // A copy that leaves the driven list keeps no order of ours, except the offset another service now gives it
+  private release(remoteId: number, state: LocalState): void {
+    if (this.local.has(remoteId)) {
+      return;
+    }
+    const actor = this.sp.Actor.from(this.sp.Game.getFormEx(state.localId));
+    if (!actor) {
+      return;
+    }
+    this.stopFighting(actor, state);
+    if (!keepsOwnOffset(remoteId)) {
+      this.stopFollowing(actor, state);
+    }
   }
 
   // The owner's hit with a weapon or a hostile spell is the attack order, as vanilla summons join the caster's fights
@@ -216,14 +233,19 @@ export class CompanionService extends ClientListener {
     }
   }
 
-  private follow(actor: Actor, player: Actor, state: LocalState): void {
-    // The order ended (target dead, gone or recalled): leave that fight, not one the engine picked itself
-    if (state.fightingTarget) {
-      if (actor.getCombatTarget()?.getFormID() === state.fightingTarget) {
-        actor.stopCombat();
-      }
-      state.fightingTarget = 0;
+  // Leaves the fight the order gave it, not one the engine picked itself
+  private stopFighting(actor: Actor, state: LocalState): void {
+    if (!state.fightingTarget) {
+      return;
     }
+    if (actor.getCombatTarget()?.getFormID() === state.fightingTarget) {
+      actor.stopCombat();
+    }
+    state.fightingTarget = 0;
+  }
+
+  private follow(actor: Actor, player: Actor, state: LocalState): void {
+    this.stopFighting(actor, state);
     // A fight of its own and the vanilla command mode both own the copy's AI
     if (actor.isInCombat() || actor.isDoingFavor()) {
       this.stopFollowing(actor, state);
