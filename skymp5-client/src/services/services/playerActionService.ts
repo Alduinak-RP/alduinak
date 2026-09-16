@@ -116,8 +116,8 @@ export class PlayerActionService extends ClientListener {
     const actor = ref && ref.getFormID() !== PLAYER_FORM_ID ? Actor.from(ref) : null;
     const remoteId = ref && actor ? localIdToRemoteId(ref.getFormID()) : 0;
     if (isInteract && (housing.takePendingPick() || this.controller.lookupListener(FactionService).takePendingPick() || pets.takePendingPick(remoteId))) return;
-    // Command mode owns Activate on a living target; the interact key keeps opening the menus
-    if (isActivate && ref && actor && !actor.isDead() && pets.orderAttack(remoteId, ref)) return;
+    // Command mode owns Activate on a living target and on the commanded pet itself; the interact key keeps opening the menus
+    if (isActivate && ref && actor && !actor.isDead() && (pets.orderFollow(remoteId, ref) || pets.orderAttack(remoteId, ref))) return;
 
     if (ref && actor && (actor.isDead() ? remoteId >= FIRST_DYNAMIC_REMOTE_ID : isPlayerCharacterId(this.controller, remoteId))) {
       this.interactWithPlayer(ref, actor, remoteId);

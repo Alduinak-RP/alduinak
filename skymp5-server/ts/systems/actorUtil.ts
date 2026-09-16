@@ -62,6 +62,16 @@ export const isNear = (mp: Mp, aId: number, bId: number, range: number): boolean
   }
 };
 
+// False when the viewer is in another cell or worldspace or outside the grid the server streams around the actor, so their client has no copy of it
+export const isStreamedTo = (mp: Mp, actorId: number, viewerId: number): boolean => {
+  try {
+    const ids: unknown[] = mp.get(actorId, "actorNeighbors") ?? [];
+    return ids.some((id) => Number(id) >>> 0 === viewerId >>> 0);
+  } catch {
+    return false;
+  }
+};
+
 // The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
 export const nameShownTo = (mp: Mp, viewerActorId: number, subjectActorId: number): string => {
   try {

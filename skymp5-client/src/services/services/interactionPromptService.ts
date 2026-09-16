@@ -155,9 +155,10 @@ export class InteractionPromptService extends ClientListener {
     const dead = Actor.from(ref)?.isDead() === true;
     const remoteId = localIdToRemoteId(ref.getFormID());
     const pets = this.controller.lookupListener(PetService);
-    // While commanding a pet, a valid target reads "{pet name} Attack" and the interact router issues the order
-    if (!dead && pets.canAttack(remoteId)) {
-      return { verb: pets.commandingName(), label: "Attack" };
+    // While commanding a pet, a valid target reads "{pet name} Attack", the pet itself "{pet name} Follow", and the interact router issues the order
+    const order = dead ? "" : pets.canAttack(remoteId) ? "Attack" : pets.canFollow(remoteId) ? "Follow" : "";
+    if (order) {
+      return { verb: pets.commandingName(), label: order };
     }
     // Player characters and server-side bodies are ours; world and server-spawned NPCs keep their vanilla activation
     if (!remoteId || remoteId < 0xff000000 || (!dead && !isPlayerCharacterId(this.controller, remoteId))) {

@@ -1,9 +1,9 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
-import { placeNpc, locationNear, HOSTILE_PROP, FOLLOW_OFFSET, FOLLOW_TELEPORT_DISTANCE } from "./npcPlacement";
+import { placeNpc, moveNpc, locationNear, locationForFollower, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef } from "./actorUtil";
+import { userOf, isAlive, isNear, isStreamedTo, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
 import { CompanionSystem } from "./companionSystem";
 import { HousingSystem } from "./housingSystem";
@@ -355,13 +355,15 @@ export class PetSystem implements System {
       if (companion.ownerId !== actorId) return;
       this.send(userId, {
         customPacketType: "petMenu", target, title: "Companion", trade: false,
-        actions: [{ id: "pet", label: "Pet" }, { id: "unsummon", label: "Unsummon" }],
+        actions: [{ id: "pet", label: "Pet" }, { id: "follow", label: "Follow" }, { id: "unsummon", label: "Unsummon" }],
       });
       return;
     }
     const a = this.mine(userId, actorId, target);
     if (!a) return;
     const actions: { id: string; label: string }[] = [{ id: "pet", label: "Pet" }];
+    // The client sends Follow as a companionCommand, since a dog fights through CompanionSystem
+    if (a.kind === "dog" && !a.carriedBy) actions.push({ id: "follow", label: "Follow" });
     if (a.kind !== "horse") actions.push({ id: "carry", label: a.carriedBy === actorId ? "Put down" : "Carry" });
     if (this.homeNear(actorId, a.kind)) actions.push({ id: "unsummon", label: "Unsummon" });
     actions.push({ id: "rename", label: "Rename" }, { id: "transfer", label: "Transfer" }, { id: "release", label: "Release" });
@@ -704,9 +706,8 @@ export class PetSystem implements System {
     const mp = this.mp;
     let id = 0;
     try {
-      // A dog comes out at its follow spot, so it never starts by walking back past its owner
-      const distance = rec.kind === "dog" ? FOLLOW_OFFSET : SPAWN_DISTANCE;
-      id = placeNpc(mp, ownerId, rec.baseDesc, locationNear(mp, ownerId, distance)) >>> 0;
+      const loc = rec.kind === "dog" ? locationForFollower(mp, ownerId) : locationNear(mp, ownerId, SPAWN_DISTANCE);
+      id = placeNpc(mp, ownerId, rec.baseDesc, loc) >>> 0;
     } catch (e) {
       this.log(`PetSystem: failed to place ${rec.baseDesc} for ${hex(ownerId)}: ${e}`);
       return 0;
@@ -831,18 +832,17 @@ export class PetSystem implements System {
     }
   }
 
-  // An out dog is moved behind its owner across a load door or a long distance, the way a companion is
+  // An out dog its owner's client cannot have (a load door, a long ride) is brought in front of them, the way a companion is
   private followOwner(a: Active): void {
     if (a.kind !== "dog" || a.diedAt || a.fleeSince || a.carriedBy || a.ridingBy || a.pending) return;
-    if (!this.active.has(a.id) || isNear(this.mp, a.id, a.ownerId, FOLLOW_TELEPORT_DISTANCE)) return;
+    if (!this.active.has(a.id) || isStreamedTo(this.mp, a.id, a.ownerId)) return;
     try {
-      const loc = locationNear(this.mp, a.ownerId, FOLLOW_OFFSET);
-      this.mp.set(a.id, "locationalData", loc);
-      this.mp.set(a.id, "spawnPoint", loc);
+      moveNpc(this.mp, a.id, locationForFollower(this.mp, a.ownerId));
     } catch (e) {
       this.log(`PetSystem: ${a.name} ${hex(a.id)} could not be moved to ${hex(a.ownerId)}: ${e}`);
       return;
     }
+    this.log(`PetSystem: ${a.name} ${hex(a.id)} brought to ${hex(a.ownerId)}`);
     // A move with no host reaches no client
     this.hosting.assign(a.id, a.ownerId, "owner");
   }

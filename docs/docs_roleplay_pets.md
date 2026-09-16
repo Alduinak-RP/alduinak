@@ -20,10 +20,11 @@ menu reaches them.
 | horse | a stable (any Stable map marker within `petAnchorRadius`) | mounts it; anyone can mount a horse, and doing so takes it from its owner. In the saddle E always dismounts, whatever the crosshair found, and the prompt reads Dismount | Trade (its inventory) |
 | livestock | a farm (any Farm or Wheat Mill marker) | harvests: cows and goats give a Jug of Milk, chickens an egg, once per `petHarvestHours` real hours, counted while the owner is offline (a timestamp on the record, checked on the attempt) | none |
 | dog | the owner's own house (any door they claimed) | command mode (see below); dogs never sit on furniture | Trade (its inventory) |
-| conjured companion | anywhere | command mode | only Pet and Unsummon (= dismiss) |
+| conjured companion | anywhere | command mode | only Pet, Follow and Unsummon (= dismiss) |
 
 The X menu on a pet you own: **Trade** opens its inventory in the vanilla container window (the search system's occupant path), **Pet** plays the
-tanning-rack idle on you, **Carry** picks it up with the player carry system (not horses; the animal freezes, and your client, which hosts it meanwhile, holds it in
+tanning-rack idle on you, **Follow** (dogs that are not carried, and summons) calls it off its fight and back to following, the same order as
+E in command mode, **Carry** picks it up with the player carry system (not horses; the animal freezes, and your client, which hosts it meanwhile, holds it in
 your arms), **Unsummon** stores it (only when you stand near its home, see the table), **Rename** (24 characters, letters, numbers, spaces, `'`,
 `_`, `-`), **Transfer** hands it to the player you look at next, who must accept the prompt and have room under the caps, **Release** sets it free: it wanders, hosted by
 whoever is nearest, and is deleted for good after `petReleaseSeconds`; anyone who mounts a released horse keeps it. Taking a
@@ -39,9 +40,9 @@ their own list from the admin panel (NPCs > Pets) and hand it over with Transfer
 
 An out dog is handed to `CompanionService`, so it follows and fights on exactly the code summons use (`docs_roleplay_companions.md`).
 
-- **Following:** it keeps a spot 128 units behind its owner, facing where it walks. A dog comes out at that spot, so it never starts by backing past its owner. If it ends up more than 4096 units away or in another cell (a load door, a long ride), the server moves it behind its owner and re-hosts it there, never while it is carried, ridden, fleeing or dead. A pet put down after a carry is re-hosted by its owner at once.
-- **Fighting:** the dog turns on anyone who damages its owner, any other pet or companion of theirs, or the dog itself, and on anyone its owner hits with a weapon or a hostile spell. It never targets its owner or anything else of its owner's. It drops the target when that target dies, goes beyond 6144 units, or when the dog is picked up, stored, sent home or released. Horses and livestock never fight.
-- **Command mode:** E on your own dog or summon starts it. The crosshair prompt on a living actor then reads `{pet name} Attack`, and pressing the interact key again sends the pet in. Command mode ends with that one order, like vanilla, and also on Escape, after 30 s, if the pet dies, or if you stop hosting it. You cannot order an attack on yourself, on the pet you are commanding, or on any other pet or summon of yours. A summon order carries its `companionId`, so only the commanded one goes.
+- **Following:** it keeps a spot 128 units behind its owner, facing where it walks. A dog comes out 64 units in front of its owner, 96 units above their feet, so on a slope it drops onto the ground instead of starting inside it (behind the owner at their door can be the door or the street's rising ground). When the owner's client can no longer have a copy of it, because the owner is in another cell (a load door) or outside the 3x3 grid of 4096-unit cells the server streams around the dog (a long ride), the server moves it to that same spot in front of the owner, logs `PetSystem: {name} {id} brought to {owner}` and re-hosts it there once. It is never moved while it is carried, ridden, fleeing or dead. A pet put down after a carry is re-hosted by its owner at once.
+- **Fighting:** the dog turns on anyone who damages its owner, any other pet or companion of theirs, or the dog itself, and on anyone its owner hits with a weapon or a hostile spell. Only a hit the server lets land counts: one refused by god or ghost mode or a carrier, or one dealing no damage, starts no fight. It never targets its owner or anything else of its owner's. It drops the target when that target dies, goes beyond 6144 units, when its owner orders it to follow, or when the dog is picked up, stored, sent home or released. Horses and livestock never fight.
+- **Command mode:** E on your own dog or summon starts it. The crosshair prompt on a living actor then reads `{pet name} Attack`, and pressing E again sends the pet in. On the commanded pet itself the prompt reads `{pet name} Follow`, and E there drops its target, ends the fight its copy is in and sends it back to following (logged as `CompanionSystem: {id} of {owner} ordered to follow` when it had a target). Command mode ends with that one order, like vanilla, and also on Escape, after 30 s, if the pet dies, or if you stop hosting it. You cannot order an attack on yourself, on the pet you are commanding, or on any other pet or summon of yours. A summon order carries its `companionId`, so only the commanded one goes. Moving to a spot and sitting are left to the engine and are not supported yet.
 
 Lifecycle:
 
@@ -87,7 +88,8 @@ entry the server no longer agrees with is answered by a HostStop instead of leav
 Client to server `petRequest {action, target, ...}`: `menu`, `use`, `mount` (plus `mounted: true|false` in the rider's reports), `trade`, `pet`,
 `carry`, `unsummon`, `rename {name}`, `transfer {recipient}`, `release`, `attack {victim}`, `list {door}`, `summon {uid, door}`. A transfer's
 consent reuses `captureConsentRequest` / `captureConsentResult` with request ids from 1,000,000,000 up. A commanded summon is ordered through
-`companionCommand` instead, not through `petRequest`.
+`companionCommand` instead, not through `petRequest`. Follow, from command mode or from the menu, is `companionCommand` / `follow` with a
+`companionId` for dogs and summons alike, since both fight through `CompanionSystem`.
 
 A dog's combat target is not part of `petState`: it travels in the `allies` array of `companionState`, because the fight itself is
 `CompanionSystem`'s (`docs_roleplay_companions.md`, Allies).

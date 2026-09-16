@@ -174,30 +174,36 @@ interface GroundSample {
   pos: NiPoint3;
   isInJumpState: boolean;
   grade: number;
+  // Height change since the previous sample, the most the extrapolation may add or remove
+  dz: number;
 }
 
 // Last received position per clone and the ground grade (dz per horizontal unit) it implies
 const groundSamples = new Map<number, GroundSample>();
 const maxGroundGrade = 1.2;
+// Over a shorter step the height noise outweighs the slope, so the previous grade is kept
+const minGradeDistance = 16;
 
-const getGroundGrade = (refrId: number, m: Movement): number => {
+const getGroundSample = (refrId: number, m: Movement): GroundSample => {
   const prev = groundSamples.get(refrId);
   let grade = 0;
   if (prev && !prev.isInJumpState && !m.isInJumpState) {
     const dxy = ObjectReferenceEx.getDistanceNoZ(prev.pos, m.pos);
-    if (dxy < 4) {
+    if (dxy < minGradeDistance) {
       grade = prev.grade;
     } else if (dxy <= 512) {
       const rawGrade = (m.pos[2] - prev.pos[2]) / dxy;
       grade = Math.max(-maxGroundGrade, Math.min(maxGroundGrade, rawGrade));
     }
   }
-  groundSamples.set(refrId, {
+  const sample: GroundSample = {
     pos: [m.pos[0], m.pos[1], m.pos[2]],
     isInJumpState: m.isInJumpState,
     grade,
-  });
-  return grade;
+    dz: prev ? Math.abs(m.pos[2] - prev.pos[2]) : 0,
+  };
+  groundSamples.set(refrId, sample);
+  return sample;
 };
 
 const translateTo = (refr: ObjectReference, m: Movement) => {
@@ -206,7 +212,7 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
     time = 0.2;
   }
 
-  const groundGrade = getGroundGrade(refr.getFormID(), m);
+  const ground = getGroundSample(refr.getFormID(), m);
 
   // Local lag compensation
   // TODO: Remove "|| 0" hack (added to support old MpClientPlugin)
@@ -222,7 +228,7 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
     gTempTargetPos[0] += Math.sin(direction / 180 * Math.PI) * distanceAdd;
     gTempTargetPos[1] += Math.cos(direction / 180 * Math.PI) * distanceAdd;
     // Keep the extrapolated point on the slope instead of inside the hill
-    gTempTargetPos[2] += groundGrade * distanceAdd;
+    gTempTargetPos[2] += Math.max(-ground.dz, Math.min(ground.dz, ground.grade * distanceAdd));
   }
 
   const refrRealPos = ObjectReferenceEx.getPos(refr);

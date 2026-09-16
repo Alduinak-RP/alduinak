@@ -1,9 +1,9 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
-import { placeNpc, placeAtMe, locationNear, HOSTILE_PROP, FOLLOW_OFFSET, FOLLOW_TELEPORT_DISTANCE } from "./npcPlacement";
+import { placeNpc, placeAtMe, moveNpc, locationNear, locationForFollower, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, hex, baseIdOf, destroyLeftovers, destroyRef, isDoorRef } from "./actorUtil";
+import { userOf, isAlive, isNear, isStreamedTo, hex, baseIdOf, destroyLeftovers, destroyRef, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -285,6 +285,8 @@ export class CompanionSystem implements System {
     if (!f) return false;
     if (f.targetId) {
       this.setTarget(f, 0, Date.now());
+      this.lastTargetLogAt.delete(f.id);
+      this.log(`CompanionSystem: ${hex(f.id)} of ${hex(f.ownerId)} ordered to follow`);
       this.sendState(f.ownerId);
     }
     return true;
@@ -426,10 +428,11 @@ export class CompanionSystem implements System {
     }
     c.ownerAwaySince = 0;
     if (KIND_RULES[c.kind].commanded && !isAlive(mp, c.ownerId)) return this.end(c, "owner died", false);
-    if (!isNear(mp, c.id, c.ownerId, FOLLOW_TELEPORT_DISTANCE)) {
-      const loc = locationNear(mp, c.ownerId, FOLLOW_OFFSET);
-      mp.set(c.id, "locationalData", loc);
-      mp.set(c.id, "spawnPoint", loc);
+    // The owner's client has no copy to move across a load door or a long ride, so the server brings it in front of them
+    if (!isStreamedTo(mp, c.id, c.ownerId)) {
+      moveNpc(mp, c.id, locationForFollower(mp, c.ownerId));
+      this.log(`CompanionSystem: ${hex(c.id)} brought to ${hex(c.ownerId)}`);
+      this.hosting?.assign(c.id, c.ownerId, "owner");
     }
     if (c.targetId && !this.isValidTarget(c.ownerId, c.targetId, TARGET_KEEP_RANGE)) {
       c.targetId = 0;
@@ -542,7 +545,7 @@ export class CompanionSystem implements System {
     try { this.mp.sendCustomPacket(user, JSON.stringify({ customPacketType: "companionState", companions, allies })); } catch { }
   }
 
-  // Only the owner hosts a companion; nothing of an owner's damages the owner's own companions or pets; a hit on an owner or on one of theirs calls defend
+  // Only the owner hosts a companion; nothing of an owner's damages the owner's own companions or pets; a damaging hit that lands on an owner or on one of theirs calls defend
   private installHooks(): void {
     const mp = this.mp;
     const chain = (previous: ((...args: unknown[]) => unknown) | null, args: unknown[]): boolean => {
@@ -574,12 +577,15 @@ export class CompanionSystem implements System {
       // A hit pet is defended by the rest of its owner's, so both sides resolve through companions and allies alike
       const targetOwner = this.ownerOfPet(targetId >>> 0) || targetId >>> 0;
       if (aggressorOwner && aggressorOwner === targetOwner) return false;
+      // A hit refused further down (god or ghost mode, a carrier) or dealing no damage starts no fight
+      const allowed = chain(previousHit, [aggressorId, targetId, sourceId, damage]);
+      if (!allowed || !(damage > 0)) return allowed;
       try {
         this.defend(targetOwner, aggressorId >>> 0);
       } catch (e) {
         this.log(`CompanionSystem: defend failed: ${e}`);
       }
-      return chain(previousHit, [aggressorId, targetId, sourceId, damage]);
+      return true;
     };
   }
 

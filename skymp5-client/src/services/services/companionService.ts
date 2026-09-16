@@ -96,6 +96,18 @@ export class CompanionService extends ClientListener {
     this.pruneLocal();
   }
 
+  // A follow order drops the target here at once, ahead of the server's companionState, and ends whatever fight the copy is in
+  recall(remoteId: number): void {
+    const companion = this.companions.find((c) => c.id === remoteId);
+    if (companion) companion.target = 0;
+    if (this.allyTargets.has(remoteId)) this.allyTargets.set(remoteId, 0);
+    const state = this.local.get(remoteId);
+    const actor = state && isRemoteHostedByMe(remoteId) ? this.sp.Actor.from(this.sp.Game.getFormEx(state.localId)) : null;
+    if (!state || !actor) return;
+    actor.stopCombat();
+    state.fightingTarget = 0;
+  }
+
   private pruneLocal(): void {
     Array.from(this.local.entries()).forEach(([id, state]) => {
       if (!this.companions.some((c) => c.id === id) && !this.extraFollowers.includes(id)) {

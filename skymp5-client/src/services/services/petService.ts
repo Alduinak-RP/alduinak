@@ -264,6 +264,26 @@ export class PetService extends ClientListener {
     return kind === "" || kind === "horse-foreign";
   }
 
+  canFollow(remoteId: number): boolean {
+    return !!this.commandingName() && !!remoteId && remoteId === this.commanded;
+  }
+
+  // E on the commanded pet itself calls it off its fight and back to following
+  orderFollow(remoteId: number, ref: ObjectReference): boolean {
+    if (!this.canFollow(remoteId)) return false;
+    blockActivation(ref);
+    this.recall(remoteId);
+    return true;
+  }
+
+  // Dogs and summons both drop their target through companionCommand, since a dog fights through CompanionSystem too
+  private recall(remoteId: number): void {
+    sendCustomPacket(this.controller, { customPacketType: "companionCommand", action: "follow", companionId: remoteId });
+    this.controller.lookupListener(CompanionService).recall(remoteId);
+    if (remoteId === this.commanded) this.endCommandMode();
+    logTrace(this, `Follow ordered for`, remoteId.toString(16));
+  }
+
   // E on a valid target while commanding; a summon is ordered through its own companionCommand
   orderAttack(remoteId: number, ref: ObjectReference): boolean {
     if (!this.canAttack(remoteId)) return false;
@@ -352,6 +372,9 @@ export class PetService extends ClientListener {
       case "transfer":
         this.pendingTransfer = { target: this.menuTarget, expiresAt: Date.now() + PENDING_RECIPIENT_MS };
         notifyNextUpdate(this.controller, this.sp, "Look at the player who should receive it and press the interact key.");
+        break;
+      case "follow":
+        this.recall(this.menuTarget);
         break;
       case "pet":
       case "carry":
