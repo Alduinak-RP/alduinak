@@ -439,7 +439,9 @@ export class FormView {
             const movement: Movement = mounted || isNewMovement || !this.movState.everApplied || !ac
               ? model.movement
               : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
-            applyMovement(refr, movement, !!model.isMyClone, mounted);
+            // The first apply also runs on the host, where a self offset would replace the follow its service just issued
+            const ownOffset = !model.isHostedByOther && keepsOwnOffset(this.remoteRefrId);
+            applyMovement(refr, movement, !!model.isMyClone, mounted, ownOffset);
             if (!mounted) {
               restoreSitCollisionIfMoving(refr, movement);
             }

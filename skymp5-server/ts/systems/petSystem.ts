@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
-import { placeNpc, NpcLocation, HOSTILE_PROP } from "./npcPlacement";
+import { placeNpc, locationNear, HOSTILE_PROP, FOLLOW_OFFSET, FOLLOW_TELEPORT_DISTANCE } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
@@ -22,6 +22,7 @@ type Mp = any;
 // Client -> server: { customPacketType: "petRequest", action, target, ... }
 //   menu {target}                       the X menu on a pet or conjured companion -> petMenu
 //   use {target}                        E: horse -> mount handshake, livestock -> harvest, dog / companion -> petCommand
+//   attack {target, victim}             E in command mode: the dog goes after that actor
 //   mount {target, mounted?}            E on a horse, then the client's mounted:true/false report -> petMount / petDismount
 //   trade | pet | carry | unsummon | release {target}
 //   rename {target, name}
@@ -95,7 +96,6 @@ const MOUNT_FF = "ff_mount";
 const REGISTRY_FILE = "./pets.json";
 const UPDATE_MS = 1000;
 const SPAWN_DISTANCE = 160;
-const SPAWN_LIFT = 32;
 const MAX_NAME = 24;
 // Consent ids above the capture system's own counter so both share the client prompt
 const CONSENT_ID_BASE = 1_000_000_000;
@@ -232,6 +232,7 @@ export class PetSystem implements System {
         case "unsummon": return this.onUnsummon(userId, actorId, target);
         case "rename": return this.onRename(userId, actorId, target, content["name"]);
         case "transfer": return this.onTransfer(userId, actorId, target, toFormId(content["recipient"]));
+        case "attack": return this.onAttack(userId, actorId, target, toFormId(content["victim"]));
         case "release": return this.onRelease(userId, actorId, target);
         case "list": return this.onList(userId, actorId, toFormId(content["door"]));
         case "summon": return this.onSummon(userId, actorId, String(content["uid"] ?? ""), toFormId(content["door"]));
@@ -309,6 +310,21 @@ export class PetSystem implements System {
     return this.active.has(actorId >>> 0) || this.released.has(actorId >>> 0);
   }
 
+  // Out dogs that may join their owner's fights, for CompanionSystem's targeting
+  fighters(): { id: number; ownerId: number }[] {
+    const out: { id: number; ownerId: number }[] = [];
+    for (const a of this.active.values()) {
+      if (a.kind !== "dog" || a.diedAt || a.carriedBy || a.ridingBy || a.pending || a.fleeSince) continue;
+      out.push({ id: a.id, ownerId: a.ownerId });
+    }
+    return out;
+  }
+
+  // The owner of a pet in the world, 0 for a released one or anything else
+  ownerOf(actorId: number): number {
+    return this.active.get(actorId >>> 0)?.ownerId ?? 0;
+  }
+
   // ── Menu and E ───────────────────────────────────────────────────────────────
 
   private onMenu(userId: number, actorId: number, target: number): void {
@@ -342,6 +358,14 @@ export class PetSystem implements System {
     if (!this.mine(userId, actorId, target)) return;
     if (a.kind === "livestock") return this.harvest(userId, actorId, a);
     this.send(userId, { customPacketType: "petCommand", target });
+  }
+
+  // Command mode: the dog is sent at a target CompanionSystem validates the way it validates a summon order
+  private onAttack(userId: number, actorId: number, target: number, victimId: number): void {
+    const a = this.active.get(target);
+    if (!a || a.ownerId !== actorId || a.kind !== "dog") return;
+    if (a.diedAt || a.carriedBy || a.ridingBy || a.pending || a.fleeSince || !isAlive(this.mp, a.id)) return;
+    if (!this.companions.orderAttack(a.id, victimId)) this.notice(userId, `${a.name} cannot go after that.`);
   }
 
   private harvest(userId: number, actorId: number, a: Active): void {
@@ -502,6 +526,8 @@ export class PetSystem implements System {
     if (!a || !a.carriedBy) return;
     a.carriedBy = 0;
     this.pushFf(a);
+    // Back to its owner's client at once instead of waiting for the hosting audit
+    if (!a.diedAt && !a.ridingBy) this.hosting.assign(a.id, a.ownerId, "owner");
   }
 
   private onUnsummon(userId: number, actorId: number, target: number): void {
@@ -656,7 +682,9 @@ export class PetSystem implements System {
     const mp = this.mp;
     let id = 0;
     try {
-      id = placeNpc(mp, ownerId, rec.baseDesc, this.locationInFrontOf(ownerId)) >>> 0;
+      // A dog comes out at its follow spot, so it never starts by walking back past its owner
+      const distance = rec.kind === "dog" ? FOLLOW_OFFSET : SPAWN_DISTANCE;
+      id = placeNpc(mp, ownerId, rec.baseDesc, locationNear(mp, ownerId, distance)) >>> 0;
     } catch (e) {
       this.log(`PetSystem: failed to place ${rec.baseDesc} for ${hex(ownerId)}: ${e}`);
       return 0;
@@ -768,6 +796,7 @@ export class PetSystem implements System {
         this.pushFf(a);
       }
       if (a.fleeSince && now - a.fleeSince >= this.cfg.petFleeSeconds * 1000) this.store(a, "fled home");
+      this.followOwner(a);
     }
     for (const r of Array.from(this.released.values())) {
       let alive = true;
@@ -778,6 +807,22 @@ export class PetSystem implements System {
         this.save();
       }
     }
+  }
+
+  // An out dog is moved behind its owner across a load door or a long distance, the way a companion is
+  private followOwner(a: Active): void {
+    if (a.kind !== "dog" || a.diedAt || a.fleeSince || a.carriedBy || a.ridingBy || a.pending) return;
+    if (!this.active.has(a.id) || isNear(this.mp, a.id, a.ownerId, FOLLOW_TELEPORT_DISTANCE)) return;
+    try {
+      const loc = locationNear(this.mp, a.ownerId, FOLLOW_OFFSET);
+      this.mp.set(a.id, "locationalData", loc);
+      this.mp.set(a.id, "spawnPoint", loc);
+    } catch (e) {
+      this.log(`PetSystem: ${a.name} ${hex(a.id)} could not be moved to ${hex(a.ownerId)}: ${e}`);
+      return;
+    }
+    // A move with no host reaches no client
+    this.hosting.assign(a.id, a.ownerId, "owner");
   }
 
   private onDeath(a: Active, now: number): void {
@@ -1095,18 +1140,6 @@ export class PetSystem implements System {
     const dx = Number(a[0]) - Number(b[0]), dy = Number(a[1]) - Number(b[1]), dz = Number(a[2]) - Number(b[2]);
     const max = this.cfg.petInteractMaxDistance * 2;
     return dx * dx + dy * dy + dz * dz <= max * max;
-  }
-
-  private locationInFrontOf(actorId: number): NpcLocation {
-    const mp = this.mp;
-    const p = mp.getActorPos(actorId);
-    const angleZ = Number(mp.get(actorId, "angle")?.[2]) || 0;
-    const rad = (angleZ * Math.PI) / 180;
-    return {
-      cellOrWorldDesc: String(mp.get(actorId, "worldOrCellDesc")),
-      pos: [p[0] + SPAWN_DISTANCE * Math.sin(rad), p[1] + SPAWN_DISTANCE * Math.cos(rad), p[2] + SPAWN_LIFT],
-      rot: [0, 0, angleZ],
-    };
   }
 
   // ── Bases and products ───────────────────────────────────────────────────────
