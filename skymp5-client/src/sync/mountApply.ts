@@ -135,8 +135,10 @@ const seatRefusal = (rider: Actor, horse: Actor): string => {
   return "";
 };
 
+// The parking spot is read off the horse, so the horse copy stands still from here until the seat is answered
 const park = (rider: Actor, horse: Actor, state: MountState, now: number): void => {
   stopMoving(rider);
+  stopMoving(horse);
   state.halted = true;
   const yaw = horse.getAngleZ() * Math.PI / 180;
   const horsePos = ObjectReferenceEx.getPos(horse);
@@ -161,8 +163,7 @@ const seat = (rider: Actor, horse: Actor, state: MountState, now: number): void 
   const riderId = rider.getFormID();
   const horseId = horse.getFormID();
   rider.stopTranslation();
-  horse.stopTranslation();
-  horse.clearKeepOffsetFromActor();
+  stopMoving(horse);
   state.tries++;
   state.lastTryMs = now;
 
