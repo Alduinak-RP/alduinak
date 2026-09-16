@@ -11,11 +11,21 @@ A companion is an NPC ally owned by one player. The server keeps the list; the o
 - A companion is a normal server actor, placed the same way as zone NPCs (`npcPlacement.ts`).
 - Only its owner may host it. The server refuses every other host attempt through the `onHostAttempt` gamemode event (`ActionListener.cpp`) and assigns the owner as host the moment the companion spawns (`HostingSystem`, see `docs_roleplay_npc_spawns.md`), instead of waiting for the owner's client to notice it after 1.5 s. So the owner's engine drives it, and everyone else sees it through the owner's movement and animation stream.
 - The owner's client makes it a teammate in the player faction (favors allowed, for the vanilla command mode), sets Assistance to help allies and Confidence to foolhardy so it joins the owner's fights and never flees, keeps it following the player (it runs once more than 256 units behind), and starts combat with the target the server recorded.
+- **Following:** the keep-offset holds the heading toward the follow point, 128 units behind the owner, so the follower turns and walks forward instead of reversing; within 128 units of that point it settles facing the owner's way. The call is re-issued whenever that heading turns by more than 20 degrees and at least every 2 s, because a respawn and the first movement apply of a new local copy both reset it. It stands aside while the copy fights on its own or is in the vanilla favor state.
 - Its hits go to the server like any hosted NPC's hits, and the server computes the damage. A companion never damages its owner or the owner's other companions (`onHitDamageAttempt`).
 - **Activations:** the owner's client sends a companion's activations with the companion as caster, and the server accepts them because the owner hosts it. The server lets a companion open doors only and refuses everything else (`onActivate`): a picked-up item would land in the companion's server inventory, which nobody can take from and which is destroyed with the companion, and a container it opened would stay occupied by it and closed to players nearby. So a command-mode "take this" or "open that" does nothing on the server.
-- **Ordering an attack:** when the owner hits a living actor with a weapon or a hostile spell, the client sends `companionCommand` / `attack`. The server checks ownership and range (4096 units, same cell), then records the target.
-- **Defending the owner:** when anyone damages the owner, every companion of that owner targets the attacker. A companion that is already fighting switches target at most once every 3 s.
+- **Ordering an attack:** when the owner hits a living actor with a weapon or a hostile spell, the client sends `companionCommand` / `attack`. The server checks ownership and range (4096 units, same cell), then records the target. Command mode sends the same packet with a `companionId`, so only the commanded one goes (`docs_roleplay_pets.md`).
+- **Defending the owner:** when anyone damages the owner, or any pet or companion of theirs, every companion and ally of that owner targets the attacker. One that is already fighting switches target at most once every 3 s. Nothing of the owner's is ever a valid target, and nothing of theirs can damage anything else of theirs.
 - **Following across cells:** if the owner changes cell or gets more than 4096 units away, the companion is moved behind them.
+
+## Allies (pets that fight)
+
+A pet has its own lifecycle and lives in `PetSystem`, so it is not a companion. It still fights through this system's targeting instead of a second copy of it.
+
+- `PetSystem` hands over two callbacks (`setAllySource`, wired in `ts/index.ts`): the pets that may fight right now (out dogs that are alive and not carried, ridden or fleeing) and the owner of any pet in the world. Both are called live, never cached, so a dog that is picked up or stored stops being a fighter in the same instant.
+- Allies share `defend`, the `companionCommand` handler, `orderAttack`, `orderFollow`, the 3 s retarget limit and the 6144-unit keep range. An ally's target is dropped when the target dies, leaves the range or the ally stops being offered, so a stored dog never resumes an old fight.
+- The owner of *any* pet, not only a fighting one, is resolved for the target rule, so an owner who hits their own horse does not send the dog after it.
+- Allies are sent in their own array, never in `companions`: the client's own-companion list, its NPC hostility and the world cleaner's burst all key on that one.
 
 ## API (call on the `CompanionSystem` instance)
 
@@ -23,9 +33,10 @@ A companion is an NPC ally owned by one player. The server keeps the list; the o
 |---|---|
 | `spawn(ownerId, baseId, opts)` | Places a companion of an NPC_ base near the owner. Returns its actor id, or `null`. |
 | `dismiss(companionId, reason?)` | Ends it now. |
-| `orderAttack(companionId, targetId)` | Fights that actor. Returns false if the target is invalid or out of range. |
-| `orderFollow(companionId)` | Drops the target and goes back to following. |
-| `defend(ownerId, aggressorId)` | Every companion of the owner targets the aggressor. Already runs on every damaging hit on an owner. |
+| `orderAttack(fighterId, targetId)` | That companion or ally fights that actor. Returns false if the target is invalid or out of range. |
+| `orderFollow(fighterId)` | Drops the target and goes back to following. |
+| `defend(ownerId, aggressorId)` | Every companion and ally of the owner targets the aggressor. Already runs on every damaging hit on an owner or on one of their pets. |
+| `setAllySource(fighters, ownerOf)` | Registers the pets that may fight and the owner lookup for every pet. See Allies. |
 | `list(ownerId)` / `info(companionId)` | `{ id, ownerId, baseId, kind, targetId, expiresAt, persistent, source }` |
 
 Do not call `spawn` or `dismiss` synchronously inside a native gamemode event about the same actor (`mp.onSpellHit`, `mp.onHitDamageAttempt` and the like). The C++ caller keeps using that actor after the handler returns, so destroying it there crashes the server. Defer the call with `setImmediate`, as `conjurationSystem.ts` does.
@@ -97,7 +108,7 @@ The C++ server fires `onSpellCast(caster, spell)` and `onSpellHit(aggressor, tar
 
 | Direction | Packet |
 |---|---|
-| server -> owner | `{ customPacketType: "companionState", companions: [{ id, target, kind }] }`, sent on every change and at login |
+| server -> owner | `{ customPacketType: "companionState", companions: [{ id, target, kind }], allies: [{ id, target }] }`, sent on every change and at login; every packet carries both arrays in full, because the client replaces its state from each one |
 | owner -> server | `{ customPacketType: "companionCommand", action: "attack", targetId, companionId? }` |
 | owner -> server | `{ customPacketType: "companionCommand", action: "follow", companionId? }` |
 | owner -> server | `{ customPacketType: "companionCommand", action: "dismiss", companionId }` |
