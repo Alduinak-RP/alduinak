@@ -55,7 +55,8 @@ export class HuntingSystem implements System {
     const all = s.allSettings as Record<string, unknown> | null;
     this.butcherChance = this.chance(all?.["huntingButcherChance"], DEFAULT_BUTCHER_CHANCE);
     this.trophyChance = this.chance(all?.["huntingTrophyChance"], DEFAULT_TROPHY_CHANCE);
-    this.peltsNeedHunter = all?.["huntingPeltsNeedHunter"] === undefined ? true : !!all["huntingPeltsNeedHunter"];
+    const peltRule = all?.["huntingPeltsNeedHunter"];
+    this.peltsNeedHunter = peltRule === undefined ? true : !!peltRule;
     this.harvestNeedsHunter = !!all?.["huntingHarvestNeedsHunter"];
     const meats = this.list(all?.["huntingMeats"], DEFAULT_MEATS);
     const pelts = this.list(all?.["huntingPelts"], DEFAULT_PELTS);
