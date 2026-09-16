@@ -55,14 +55,17 @@ Lifecycle:
 The server tells every client which horse a rider sits on through the neighbor-visible `ff_mount` property on the rider (the horse's id, 0
 when none). An observing client parks the rider's copy beside the horse copy, waits for it to get there, and then asks for the saddle with both
 copies standing still: the native `mountActor` export where the client has one, otherwise `activate` with default processing, the same call that
-opens server containers. The horse copy is left alone (no translation, no offset) around each attempt, and the rider's copy is off normal
-movement sync for the whole ride.
+opens server containers. The horse copy is stopped where the rider parks (no translation, no offset) and stands there until the seat is answered,
+and the rider's copy is off normal movement sync for the whole ride.
 
 Whether the engine seats a non-player rider is still unproven. When it refuses, after six tries or at once if `mountActor` says no, the copy is
 attached to the horse copy instead (`setVehicle`, and the `SaddleBone` node when the vehicle does not carry it). That rides along without a
-riding pose, but the copy is never dragged on the horse's back and never walks. Each outcome, including which clause refused and a missing horse
-copy, is written once per ride to `Documents\My Games\Skyrim Special Edition\Platform\skyrim-platform.log` on the observer's PC. The design, its
-fallbacks and the ordered test plan are in `alduinak-pet-system-2026-09-14/visible-riding-design.md` on the Desktop of the server box.
+riding pose, but the copy is never dragged on the horse's back and never walks. A refusal the seat cannot even be asked through, such as a copy
+whose 3D is not loaded, attaches the same way once it has lasted nine seconds, and lets go again if it clears. An observer with no copy of the
+horse at all puts the rider's copy back on normal movement sync after that same wait, rather than leaving it standing for the ride. Each outcome,
+including which clause refused and a missing horse copy, is written once per ride to `Documents\My Games\Skyrim Special
+Edition\Platform\skyrim-platform.log` on the observer's PC. The design, its fallbacks and the ordered test plan are in
+`alduinak-pet-system-2026-09-14/visible-riding-design.md` on the Desktop of the server box.
 
 ## Protocol (MsgType.CustomPacket JSON)
 
