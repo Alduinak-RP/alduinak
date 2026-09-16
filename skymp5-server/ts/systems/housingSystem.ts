@@ -3,6 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
+import { writeFileAtomic } from "./fileUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -837,12 +838,9 @@ export class HousingSystem implements System {
     }
   }
 
-  // Write through a temp file so an interrupted write cannot truncate the index.
   private saveRegistry(): void {
-    const tmp = REGISTRY_FILE + ".tmp";
     try {
-      fs.writeFileSync(tmp, JSON.stringify(this.claimed));
-      fs.renameSync(tmp, REGISTRY_FILE);
+      writeFileAtomic(REGISTRY_FILE, JSON.stringify(this.claimed));
     } catch (e) {
       this.log(`[housing] registry write failed: ${e}`);
     }

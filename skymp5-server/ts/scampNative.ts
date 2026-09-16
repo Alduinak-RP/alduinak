@@ -40,6 +40,8 @@ export interface ScampServer {
   sendCustomPacket(userId: number, jsonContent: string): void;
   setEnabled(actorId: number, enabled: boolean): void;
   respawnActor(actorId: number): void;
+  // Inventory matching tells copies of these bases apart by name, like property keys
+  setNamedItemBases(baseIds: number[]): void;
   // Moves the actor's AI to that player's client; 0 leaves it unhosted
   setHoster(actorId: number, hosterId: number): void;
   getHoster(actorId: number): number;

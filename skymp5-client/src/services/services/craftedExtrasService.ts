@@ -3,7 +3,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
 import { getPcInventory, holdPcInventoryApply, requestPcInventoryApply } from "./remoteServer";
 import {
-  Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, revertLocalExtras, sameEffects, sameItem,
+  Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, isNamedItemBase, revertLocalExtras, sameEffects, sameItem,
 } from "../../sync/inventory";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
@@ -60,8 +60,8 @@ export const getCraftReport = (server: Inventory, local: Inventory): CraftReport
     const g: Entry = { ...e, count: -e.count };
     const form = Game.getFormEx(g.baseId);
     const sources = lost.filter((l) => l.baseId === g.baseId);
-    // A soul the engine put in a gem is the soul trap system's to record
-    if ((form && isBoundItem(form)) || (g.soul && !hasCraftedExtras(g)) || (!sources.length && !hasCraftedExtras(g))) {
+    // A soul the engine put in a gem is the soul trap system's to record, and only the server names keys and writings
+    if ((form && isBoundItem(form)) || (g.soul && !hasCraftedExtras(g)) || (!sources.length && !hasCraftedExtras(g)) || isNamedItemBase(g.baseId)) {
       continue;
     }
     gained.push(withoutWorn(g));

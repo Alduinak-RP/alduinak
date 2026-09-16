@@ -54,6 +54,7 @@ const serverSettings = [
   { key: 'searchConsentTimeoutMs',     label: 'Search consent timeout (ms)',   type: 'number', group: 'Interactions', help: 'How long a search consent prompt waits for an answer. Default 20000.' },
   { key: 'searchConsentCooldownMs',    label: 'Search consent cooldown (ms)',  type: 'number', group: 'Interactions', help: 'Min gap before prompting the same target again. Default 15000.' },
   { key: 'bountyBoardCostGold',        label: 'Bounty board post cost',        type: 'number', group: 'Interactions', help: 'Gold taken for pinning a notice on a Missives board. 0 = free. Default 25.' },
+  { key: 'writingEnabled',             label: 'Writeable letters and books',   type: 'bool',   group: 'Interactions', help: 'Lets players write letters, journals and books. Keep off until the plugin with the writing records is in the manifest and players have re-downloaded. Read at startup. Default off.' },
 
   // Data & storage
   { key: 'dataDir',        label: 'Data directory', type: 'text',   group: 'Data & storage', placeholder: 'data', help: 'ESMs / ESPs / UI / scripts.' },

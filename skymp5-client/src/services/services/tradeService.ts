@@ -5,7 +5,7 @@ import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
-import { getInventory, Entry, EnchantmentEffect, effectsKey, isBoundItem, PROPERTY_KEY_BASE_ID } from "../../sync/inventory";
+import { getInventory, Entry, EnchantmentEffect, effectsKey, isBoundItem, isNamedItemBase } from "../../sync/inventory";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setters (executed inside the CEF browser)
@@ -46,9 +46,9 @@ interface UiItem {
   equipped?: boolean;
 }
 
-// Property keys (housing): the name is the credential
+// Property keys and writings: the name is the identity
 const keyName = (i: Item): string =>
-  (i.baseId >>> 0) === PROPERTY_KEY_BASE_ID && typeof i.name === 'string' ? i.name : '';
+  isNamedItemBase(i.baseId) && typeof i.name === 'string' ? i.name : '';
 
 // Tempering in tenths and enchantments by definition, same as the server's identityText
 const identityText = (k: typeof IDENTITY_KEYS[number], v: unknown): string => {

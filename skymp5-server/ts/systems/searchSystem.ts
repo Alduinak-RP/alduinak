@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
-import { KEY_BASE_ID } from "./housingSystem";
+import { isNamedItemBase } from "./inventoryExtras";
 import { isBound, isRestrained } from "./captureSystem";
 import { nameShownTo } from "./actorUtil";
 
@@ -105,10 +105,10 @@ export class SearchSystem implements System {
     this.installPutHook(ctx);
   }
 
-  // A property key's name is the housing credential, and a stack the window never showed is not there to move
+  // The window lists stacks without names, so property keys and writings stay put, and a stack the window never showed is not there to move
   private stuck(ctx: SystemContext, targetActorId: number, actorId: number, baseId: number): boolean {
     return this.isSearching(targetActorId, actorId)
-      && (baseId === KEY_BASE_ID || this.hidden(ctx, actorId, targetActorId, baseId));
+      && (isNamedItemBase(baseId) || this.hidden(ctx, actorId, targetActorId, baseId));
   }
 
   // Chains mp.onTakeItem like the other systems' activation hooks; a refused take never leaves the body

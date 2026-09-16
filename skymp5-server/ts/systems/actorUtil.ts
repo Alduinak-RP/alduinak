@@ -72,12 +72,19 @@ export const isStreamedTo = (mp: Mp, actorId: number, viewerId: number): boolean
   }
 };
 
-// The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
-export const nameShownTo = (mp: Mp, viewerActorId: number, subjectActorId: number): string => {
+// Introduced through the gamemode's ff_knownIds; without that list everyone counts as known
+export const isIntroduced = (mp: Mp, viewerActorId: number, subjectActorId: number): boolean => {
   try {
     const known = mp.get(viewerActorId, "ff_knownIds");
-    if (Array.isArray(known) && !known.includes(subjectActorId)) return "A stranger";
-  } catch { /* fall through to the real name */ }
+    return !Array.isArray(known) || known.includes(subjectActorId);
+  } catch {
+    return true;
+  }
+};
+
+// The subject's name as the viewer may see it: real once introduced, otherwise the anonymity placeholder
+export const nameShownTo = (mp: Mp, viewerActorId: number, subjectActorId: number): string => {
+  if (!isIntroduced(mp, viewerActorId, subjectActorId)) return "A stranger";
   try {
     const n = mp.getActorName(subjectActorId);
     if (typeof n === "string" && n.trim()) return n.trim();

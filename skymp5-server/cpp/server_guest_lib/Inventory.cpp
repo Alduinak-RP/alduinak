@@ -7,10 +7,18 @@
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 #include <tuple>
+#include <unordered_set>
 
 namespace {
 // Property keys (housing) are told apart by their name
 constexpr uint32_t kPropertyKeyBaseId = 0x000DB0E2;
+
+// Bases registered at startup whose copies are also told apart by name
+std::unordered_set<uint32_t>& NamedItemBases()
+{
+  static std::unordered_set<uint32_t> bases;
+  return bases;
+}
 
 bool NearlyEqual(float a, float b)
 {
@@ -130,7 +138,7 @@ bool Inventory::Entry::SameItemAs(const Entry& other) const
   if (baseId != other.baseId) {
     return false;
   }
-  if (baseId == kPropertyKeyBaseId &&
+  if (IsNamedItemBase(baseId) &&
       name.value_or("") != other.name.value_or("")) {
     return false;
   }
@@ -190,12 +198,12 @@ std::vector<Inventory::Entry> Inventory::FindEntriesFor(const Entry& described,
     return candidate.EqualExceptCount(unworn);
   });
   draw([&](const Entry& e) { return e.SameItemAs(described); });
-  if (described.HasIdentityExtras() && described.baseId != kPropertyKeyBaseId) {
+  if (described.HasIdentityExtras() && !IsNamedItemBase(described.baseId)) {
     draw([&](const Entry& e) {
       return e.baseId == described.baseId && !e.HasIdentityExtras();
     });
   }
-  if (anyExtras && described.baseId != kPropertyKeyBaseId) {
+  if (anyExtras && !IsNamedItemBase(described.baseId)) {
     draw([&](const Entry& e) { return e.baseId == described.baseId; });
   }
 
@@ -203,6 +211,17 @@ std::vector<Inventory::Entry> Inventory::FindEntriesFor(const Entry& described,
     return {};
   }
   return res;
+}
+
+void Inventory::SetNamedItemBases(const std::vector<uint32_t>& baseIds)
+{
+  NamedItemBases() =
+    std::unordered_set<uint32_t>(baseIds.begin(), baseIds.end());
+}
+
+bool Inventory::IsNamedItemBase(uint32_t baseId)
+{
+  return baseId == kPropertyKeyBaseId || NamedItemBases().count(baseId) > 0;
 }
 
 Inventory& Inventory::AddItem(uint32_t baseId, uint32_t count)

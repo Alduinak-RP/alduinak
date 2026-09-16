@@ -40,7 +40,7 @@ export interface Inventory {
   entries: InventoryEntry[];
 }
 
-// Extras that tell copies apart; charge drifts with use and names only matter on property keys
+// Extras that tell copies apart; charge drifts with use and names only matter on named item bases
 export const IDENTITY_KEYS = [
   'health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip',
   'soul', 'poisonId', 'poisonCount', 'enchantmentEffects',
@@ -51,6 +51,9 @@ export const EXTRA_KEYS: (keyof Extras)[] = [...IDENTITY_KEYS, 'chargePercent', 
 // Property keys (housing): the name is the credential.
 export const KEY_BASE_ID = 0x000db0e2;
 
+// Writings join the property keys once their plugin records resolve (Inventory::SetNamedItemBases on the native side)
+const namedItemBases = new Set<number>([KEY_BASE_ID]);
+
 const MAX_EFFECTS = 8;
 
 // Zero and empty extras mean nothing (armor enchantments carry maxCharge 0)
@@ -59,9 +62,18 @@ export const isSet = (v: unknown): boolean =>
 
 export const sameBase = (a: Item, b: Item): boolean => (a.baseId >>> 0) === (b.baseId >>> 0);
 
-export const isKeyItem = (i: Item): boolean => (i.baseId >>> 0) === KEY_BASE_ID;
+export const registerNamedItemBases = (baseIds: number[]): void => {
+  baseIds.forEach((id) => namedItemBases.add(id >>> 0));
+};
 
-export const keyName = (i: Item): string => (isKeyItem(i) && typeof i.name === 'string' ? i.name : '');
+export const namedItemBaseIds = (): number[] => Array.from(namedItemBases);
+
+// Copies of these bases are told apart by name: property keys and writings
+export const isNamedItemBase = (baseId: number): boolean => namedItemBases.has(baseId >>> 0);
+
+export const isNamedItem = (i: Item): boolean => isNamedItemBase(i.baseId);
+
+export const identityName = (i: Item): string => (isNamedItem(i) && typeof i.name === 'string' ? i.name : '');
 
 export const hasIdentityExtras = (i: Item): boolean => IDENTITY_KEYS.some((k) => isSet(i[k]));
 
@@ -102,7 +114,7 @@ function sameIdentityValue(key: keyof Extras, a: unknown, b: unknown): boolean {
 }
 
 export function sameItem(e: Item, item: Item): boolean {
-  return sameBase(e, item) && keyName(e) === keyName(item) && IDENTITY_KEYS.every((k) => sameIdentityValue(k, e[k], item[k]));
+  return sameBase(e, item) && identityName(e) === identityName(item) && IDENTITY_KEYS.every((k) => sameIdentityValue(k, e[k], item[k]));
 }
 
 function identityText(key: keyof Extras, v: unknown): string {
@@ -117,7 +129,7 @@ function identityText(key: keyof Extras, v: unknown): string {
 
 // Same shape as the client's lineKey in tradeService.ts
 export function lineKey(i: Item): string {
-  return [i.baseId >>> 0, keyName(i), ...IDENTITY_KEYS.map((k) => identityText(k, i[k]))].join('|');
+  return [i.baseId >>> 0, identityName(i), ...IDENTITY_KEYS.map((k) => identityText(k, i[k]))].join('|');
 }
 
 // Identical copies, charge and name included: the ones that may share one entry

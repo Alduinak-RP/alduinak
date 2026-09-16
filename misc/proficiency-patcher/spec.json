@@ -2215,5 +2215,130 @@
    "ref": "0A17D3:Skyrim.esm",
    "anchor": "0A17CD:Skyrim.esm"
   }
- ]
+ ],
+ "writing": {
+  "keywords": {
+   "written": "AldWritable",
+   "blank": "AldWritingBlank"
+  },
+  "books": [
+   {
+    "edid": "AldWritingParchmentBlank",
+    "name": "Blank Parchment",
+    "template": "dunWhiteRiverWatchNote",
+    "blank": true,
+    "value": 1,
+    "weight": 0.1,
+    "text": "A clean page, waiting for ink. Read it from your pack to write on it."
+   },
+   {
+    "edid": "AldWritingLetter",
+    "name": "Letter",
+    "template": "dunWhiteRiverWatchNote",
+    "value": 1,
+    "weight": 0.1,
+    "text": "The ink on this page answers only to its holder. Take it into your pack and read it there."
+   },
+   {
+    "edid": "AldWritingLetterSealed",
+    "name": "Sealed Letter",
+    "template": "DB04aSealedLetter",
+    "value": 1,
+    "weight": 0.1,
+    "text": "The ink on this page answers only to its holder. Take it into your pack and read it there."
+   },
+   {
+    "edid": "AldWritingJournalBlank",
+    "name": "Blank Journal",
+    "template": "dunWhiteRiverWatchHajvarrJournal",
+    "blank": true,
+    "value": 5,
+    "weight": 1.0,
+    "text": "A clean page, waiting for ink. Read it from your pack to write on it."
+   },
+   {
+    "edid": "AldWritingJournal",
+    "name": "Journal",
+    "template": "dunWhiteRiverWatchHajvarrJournal",
+    "value": 5,
+    "weight": 1.0,
+    "text": "The ink on this page answers only to its holder. Take it into your pack and read it there."
+   },
+   {
+    "edid": "AldWritingBookBlank",
+    "name": "Blank Book",
+    "template": "dunWhiteRiverWatchBlankBook",
+    "blank": true,
+    "value": 10,
+    "weight": 1.0,
+    "text": "A clean page, waiting for ink. Read it from your pack to write on it."
+   },
+   {
+    "edid": "AldWritingBook",
+    "name": "Book",
+    "template": "dunWhiteRiverWatchBlankBook",
+    "value": 10,
+    "weight": 1.0,
+    "text": "The ink on this page answers only to its holder. Take it into your pack and read it there."
+   }
+  ],
+  "misc": [
+   {
+    "edid": "AldSealingWax",
+    "name": "Sealing Wax",
+    "template": "GlazedCandles01",
+    "value": 2,
+    "weight": 0.1
+   }
+  ],
+  "recipes": [
+   {
+    "edid": "AldRecipeWriting_Parchment",
+    "bench": "CraftingTanningRack",
+    "output": "AldWritingParchmentBlank",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Novice",
+    "items": {
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWriting_Journal",
+    "bench": "CraftingTanningRack",
+    "output": "AldWritingJournalBlank",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Novice",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeWriting_Book",
+    "bench": "CraftingTanningRack",
+    "output": "AldWritingBookBlank",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Novice",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 4
+    }
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWax",
+    "bench": "CraftingSmelter",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    }
+   }
+  ]
+ }
 }

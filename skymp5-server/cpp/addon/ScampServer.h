@@ -48,6 +48,7 @@ public:
   Napi::Value GetActorsByProfileId(const Napi::CallbackInfo& info);
   Napi::Value SetEnabled(const Napi::CallbackInfo& info);
   Napi::Value SetInventoryOccupant(const Napi::CallbackInfo& info);
+  Napi::Value SetNamedItemBases(const Napi::CallbackInfo& info);
   Napi::Value RespawnActor(const Napi::CallbackInfo& info);
   Napi::Value SetHoster(const Napi::CallbackInfo& info);
   Napi::Value GetHoster(const Napi::CallbackInfo& info);

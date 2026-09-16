@@ -1,0 +1,182 @@
+// Paper reader, composer and buttons shared by the missive board and the writings; swap background-image art in on __read and __compose-text
+
+$fast: 140ms ease;
+
+// Placeholder parchment tones.
+$paper: #d8c9a3;
+$paper-edge: #b5a478;
+$ink: #2a2118;
+$ink-dim: rgba(42, 33, 24, 0.65);
+
+// Chrome shared with the other menus (black and gold).
+$gold: #c8b48a;
+$bg: rgba(10, 10, 10, 0.94);
+$border: rgba(200, 180, 138, 0.45);
+$text: #e8e0d0;
+$text-dim: rgba(232, 224, 208, 0.6);
+
+.parchment {
+  &__hint {
+    color: $text-dim;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+
+    &--end {
+      justify-content: flex-end;
+    }
+  }
+
+  &__button {
+    padding: 8px 18px;
+    background: $bg;
+    border: 1px solid $border;
+    color: $text;
+    font-family: inherit;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background $fast, color $fast;
+
+    &:hover:not(:disabled) {
+      background: $gold;
+      color: #101010;
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    &--primary {
+      border-color: $gold;
+      color: $gold;
+    }
+
+    &--primary:hover:not(:disabled) {
+      color: #101010;
+    }
+  }
+
+  &__shade {
+    position: absolute;
+    inset: 0;
+    // Above the papers, whose hover state raises them.
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  // A single opened paper; takes the paper graphic too.
+  &__read {
+    display: flex;
+    flex-direction: column;
+    width: min(520px, 80%);
+    max-height: 82%;
+    padding: 28px 26px 18px;
+    background: $paper;
+    border: 1px solid $paper-edge;
+    box-shadow: 0 18px 32px rgba(0, 0, 0, 0.7);
+    color: $ink;
+    font-family: Georgia, 'Times New Roman', serif;
+
+    &--wide {
+      width: min(720px, 88%);
+      min-height: 60%;
+    }
+  }
+
+  &__read-heading {
+    margin: 0 0 14px;
+    font-size: 22px;
+    font-weight: 400;
+    text-align: center;
+  }
+
+  &__read-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    overflow-y: auto;
+    font-size: 17px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  &__read-author {
+    margin: 14px 0 0;
+    font-style: italic;
+    text-align: right;
+  }
+
+  &__read-meta {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: $ink-dim;
+    text-align: right;
+  }
+
+  &__read &__actions {
+    margin-top: 14px;
+  }
+
+  &__compose {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(560px, 84%);
+    padding: 20px;
+    background: $bg;
+    border: 1px solid $border;
+    box-shadow: 0 18px 32px rgba(0, 0, 0, 0.7);
+
+    &--wide {
+      width: min(760px, 90%);
+    }
+  }
+
+  &__compose-title {
+    margin: 0;
+    color: $gold;
+    font-family: 'Bankir-Retro', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  &__compose-text {
+    height: 160px;
+    padding: 12px;
+    resize: none;
+    background: $paper;
+    border: 1px solid $paper-edge;
+    color: $ink;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    line-height: 1.4;
+
+    &:focus {
+      outline: 1px solid $gold;
+    }
+  }
+
+  &__compose--wide &__compose-text {
+    height: 320px;
+  }
+
+  &__compose-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+}

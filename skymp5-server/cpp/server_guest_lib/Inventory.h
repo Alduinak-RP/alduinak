@@ -113,7 +113,7 @@ public:
     void SetWorn(Worn worn);
     bool EqualExceptCount(const Entry& other) const;
 
-    // Same item as clients see it: charge, worn state, float noise and names (except on property keys) drift
+    // Same item as clients see it: charge, worn state, float noise and names (except on named item bases) drift
     bool SameItemAs(const Entry& other) const;
     bool HasIdentityExtras() const;
 
@@ -128,11 +128,15 @@ public:
     }
   };
 
+  // Property keys always count as named; the gamemode adds the writing bases once the plugin is read
+  static void SetNamedItemBases(const std::vector<uint32_t>& baseIds);
+  static bool IsNamedItemBase(uint32_t baseId);
+
   Inventory& AddItem(uint32_t baseId, uint32_t count);
   Inventory& AddItems(const std::vector<Entry>& entries);
   Inventory& RemoveItems(const std::vector<Entry>& entries);
 
-  // Own entries a client-described one stands for: exact extras (same worn state first), then the same item, then a plain copy for extras never recorded, then with anyExtras any copy of the base except property keys; empty if short
+  // Own entries a client-described one stands for: exact extras (same worn state first), then the same item, then a plain copy for extras never recorded, then with anyExtras any copy of the base except named item bases; empty if short
   std::vector<Entry> FindEntriesFor(const Entry& described,
                                     bool anyExtras = false) const;
 

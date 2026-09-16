@@ -2,8 +2,8 @@
 
 Rewrites `AlduinakAdditions.esp` with the proficiency (mastery) content: the rank marker abilities, the crafting
 keywords, the alchemy labs turned into crafting stations, the woodcrafting bench, the potion and charcoal
-recipes, and the tier conditions on every cooking, smithing, woodworking and tailoring recipe in the server
-load order. `spec.json` is the design; the program only resolves editor ids and writes records.
+recipes, the tier conditions on every cooking, smithing, woodworking and tailoring recipe in the server
+load order, and the writing items (blank and written letters, journals and books, sealing wax) with their recipes. `spec.json` is the design; the program only resolves editor ids and writes records.
 
 It is re-runnable: run it again on a fresh plugin from the Creation Kit and the same records come back
 (records are found by editor id, overrides by the record they override).
@@ -35,9 +35,9 @@ records). The first run restores the Mutagen NuGet package.
    one Windhelm exterior cell (the game keeps the last one, Mutagen refuses to load two);
 2. runs the C# patcher, which writes `AlduinakAdditions.esp`, `proficiency-report.md` (every record it
    created or changed, per tier) and `proficiency-ids.json` (the marker spells with their global form ids);
-3. verifies the output against the pre-cleaned input with `misc/esplib.py`: only KYWD, SPEL, MGEF, FURN and
-   COBJ records may be added or changed, plus the `AldMeadBench_` references and the overrides of the cells
-   `meadery` names, the ENCH overrides `enchantmentMagnitudes` names by editor id and the REFR overrides
+3. verifies the output against the pre-cleaned input with `misc/esplib.py`: only KYWD, SPEL, MGEF, FURN,
+   COBJ, BOOK and MISC records may be added or changed, plus the `AldMeadBench_` references and the overrides of
+   the cells `meadery` names, the ENCH overrides `enchantmentMagnitudes` names by editor id and the REFR overrides
    `placements` names by form key; everything else must be byte-identical up to Mutagen's known
    normalisations (`-0.0` floats, deleted records without subrecords). A changed master list renumbers every
    form id, so records are then matched by editor id and compared structurally. Exit code 3 on any other
@@ -64,6 +64,7 @@ records). The first run restores the Mutagen NuGet package.
 | `enchantmentMagnitudes` | One effect's magnitude on an enchantment (the Travelling Merchant Backpack's Fortify Carry Weight, 60). `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
 | `placements` | A placed reference (`ref`, a form key) moved to its `anchor`'s winning position plus the offset the defining plugin had between the two (the Windhelm Gray Quarter gate door back in the arch WindhelmSSE.esp moved). Refused when either record was rotated since. The override joins the plugin's own cell and world groups when it already has them. |
 | `woodworking` | Bow, arrow, bolt and shield recipes move from the forge to the woodcrafting keyword with their tier. |
+| `writing` | Keywords `AldWritable` (written items) and `AldWritingBlank` (blanks); `books` are new BOOK records copied from vanilla notes with their scripts and teaching removed, a new name, description text, value and weight; `misc` adds Sealing Wax; `recipes` puts the blanks on the tanning rack and the wax on the smelter, all Novice. The server finds every record by editor id (`docs/docs_roleplay_writing.md`). |
 | `tailoring` | The owner's list at the tanning rack with the ingredients from the spec; `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe (the bog blight masks and the five tanning-rack twins of the +40 unarmed Moon Monk gauntlets). |
 
 Tier conditions are `HasSpell(AldMastery_<Profession>_<Rank>) == 1`, Run On Subject. The server evaluates

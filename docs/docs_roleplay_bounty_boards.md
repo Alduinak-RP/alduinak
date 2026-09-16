@@ -9,8 +9,8 @@ server-side, refused if the player cannot pay), and a notice stays on the
 board for **7 days** before it fades on its own.
 
 - Client piece: `skymp5-client/src/services/services/bountyBoardService.ts` (default **N**, `bountyBoardMenuKeyCode`)
-- Front piece: `skymp5-front/src/features/bountyBoard/`
-- Server piece: `skymp5-server/ts/systems/bountyBoardSystem.ts`
+- Front piece: `skymp5-front/src/features/bountyBoard/`, with the opened paper, the compose dialog and the buttons from `features/parchment/` (shared with writings)
+- Server piece: `skymp5-server/ts/systems/bountyBoardSystem.ts`, with the name, sanitize and log helpers in `playerText.ts` (shared with writings)
 - Chat piece: `server-plugins/Suraru/bounty-board/` (`/board`, for clients without the hotkey)
 
 ---
@@ -120,8 +120,10 @@ Every message is a CustomPacket carrying JSON:
 
 The board frame and the papers are flat placeholder fills (brown wood,
 parchment beige) with the swap points marked in
-`skymp5-front/src/features/bountyBoard/styles.scss`; drop the real backdrop
-and paper art in as `background-image` there when it exists. Escape backs out
+`skymp5-front/src/features/bountyBoard/styles.scss` and, for the opened paper
+and the compose dialog, `skymp5-front/src/features/parchment/styles.scss`;
+drop the real backdrop and paper art in as `background-image` there when it
+exists. Escape backs out
 one layer at a time (compose dialog, opened paper, then the board), and the
 menu closes itself when the browser loses focus, like the mastery menu.
 

@@ -138,6 +138,7 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
                      &ScampServer::GetActorsByProfileId),
       InstanceMethod("setEnabled", &ScampServer::SetEnabled),
       InstanceMethod("setInventoryOccupant", &ScampServer::SetInventoryOccupant),
+      InstanceMethod("setNamedItemBases", &ScampServer::SetNamedItemBases),
       InstanceMethod("respawnActor", &ScampServer::RespawnActor),
       InstanceMethod("setHoster", &ScampServer::SetHoster),
       InstanceMethod("getHoster", &ScampServer::GetHoster),
@@ -792,6 +793,22 @@ Napi::Value ScampServer::SetInventoryOccupant(const Napi::CallbackInfo& info)
       auto& occupant = partOne->worldState.GetFormAt<MpActor>(occupantFormId);
       target.SetOccupant(&occupant);
     }
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// setNamedItemBases([baseFormId, ...]) - inventory matching tells copies of these bases apart by name, like property keys
+Napi::Value ScampServer::SetNamedItemBases(const Napi::CallbackInfo& info)
+{
+  try {
+    auto list = info[0].As<Napi::Array>();
+    std::vector<uint32_t> baseIds;
+    for (uint32_t i = 0; i < list.Length(); ++i) {
+      baseIds.push_back(list.Get(i).As<Napi::Number>().Uint32Value());
+    }
+    Inventory::SetNamedItemBases(baseIds);
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }

@@ -8,6 +8,7 @@ import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
 import { Hostable } from "./hostingSystem";
 import { destroyLeftovers } from "./actorUtil";
 import { loadNavmeshSpots, randomPointOn, NavmeshTarget, SpotKind, Spots } from "./navmeshSpots";
+import { writeFileAtomic } from "./fileUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -260,12 +261,10 @@ export class NpcSpawnSystem implements System {
     return { list, root: parsed as Record<string, unknown>, key, missing: false };
   }
 
-  // Temp file plus rename so an interrupted write cannot truncate the zone list; a wrapper object keeps its other keys
+  // A wrapper object keeps its other keys
   private writeZoneFile(file: ZoneFile, list: unknown[]): void {
-    const tmp = ZONES_FILE + ".tmp";
     if (file.root) file.root[file.key] = list;
-    fs.writeFileSync(tmp, JSON.stringify(file.root ?? list, null, 2));
-    fs.renameSync(tmp, ZONES_FILE);
+    writeFileAtomic(ZONES_FILE, JSON.stringify(file.root ?? list, null, 2));
   }
 
   // Zones whose name and definition did not change keep their NPCs, timers and players; the rest are despawned

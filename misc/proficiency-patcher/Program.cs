@@ -15,7 +15,7 @@ using Noggog;
 // Rewrites AlduinakAdditions.esp with the proficiency content described by spec.json: the rank marker abilities,
 // the crafting keywords, the alchemy lab and woodcrafting benches, the potion and charcoal recipes, the tier
 // conditions on cooking, smithing, tempering, woodworking and tailoring recipes, the meadery boiler benches, the hidden
-// and moved recipes, and the few enchantment and placed reference fixes the spec names.
+// and moved recipes, the few enchantment and placed reference fixes the spec names, and the writing items.
 // Run through patch.py, which pre-cleans the plugin, invokes this program and verifies the result.
 //   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>]
 
@@ -69,6 +69,7 @@ Steps.BenchKeywordRemovals(ctx);
 Steps.BenchMoves(ctx);
 Steps.EnchantmentMagnitudes(ctx);
 Steps.Placements(ctx);
+Steps.Writing(ctx);
 
 if (report.Errors.Count > 0)
 {
@@ -384,6 +385,7 @@ static class Steps
     static string Kind(string prefix) => prefix switch
     {
         "AldRecipeKiln_" => "kiln",
+        "AldRecipeWriting_" => "writing",
         "AldRecipeSmith_" => "smithing",
         "AldRecipeTailor_" => "tailoring",
         "AldRecipeMead_" => "mead",
@@ -662,6 +664,53 @@ static class Steps
         placed.MajorRecordFlagsRaw |= PersistentFlag;
         placed.Placement = new Placement { Position = position, Rotation = new P3Float(0, 0, rotZ * MathF.PI / 180) };
         c.Note($"Mead bench {edid} {placed.FormKey} in {cellEdid} at {position}, heading {rotZ}, {distance:0} units from boiler {boilerKey}");
+    }
+
+    // ---- writings: blank and written letters, journals and books copied from vanilla notes, plus sealing wax -------
+    public static void Writing(PatchContext c)
+    {
+        if (c.Spec["writing"] is not JsonObject w) return;
+        var written = c.OwnOrNew(c.Mod.Keywords, w["keywords"]!["written"]!.GetValue<string>()).FormKey;
+        var blank = c.OwnOrNew(c.Mod.Keywords, w["keywords"]!["blank"]!.GetValue<string>()).FormKey;
+        foreach (var spec in w["books"]!.AsArray().Select(x => x!.AsObject()))
+        {
+            var edid = spec["edid"]!.GetValue<string>();
+            var template = c.Winning<IBookGetter>(spec["template"]!.GetValue<string>());
+            var book = c.OwnOrNew(c.Mod.Books, edid);
+            var key = book.FormKey;
+            book.DeepCopyIn(template);
+            if (book.FormKey != key) throw new Exception("form key changed by DeepCopyIn");
+            book.EditorID = edid;
+            // Plain readable notes: no quest scripts, no skill or spell flag
+            book.VirtualMachineAdapter = null;
+            book.Teaches = new BookTeachesNothing { RawContent = 0xFFFFFFFF };
+            book.Name = spec["name"]!.GetValue<string>();
+            book.BookText = spec["text"]!.GetValue<string>();
+            book.Value = spec["value"]!.GetValue<uint>();
+            book.Weight = spec["weight"]!.GetValue<float>();
+            var tag = spec["blank"]?.GetValue<bool>() == true ? blank : written;
+            book.Keywords ??= new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
+            book.Keywords.RemoveAll(k => k.FormKey == written || k.FormKey == blank);
+            book.Keywords.Add(tag.ToLink<IKeywordGetter>());
+            c.Note($"Writing {edid} {key} from {template.EditorID}, keyword {c.EdidOf(tag)}");
+        }
+        foreach (var spec in w["misc"]!.AsArray().Select(x => x!.AsObject()))
+        {
+            var edid = spec["edid"]!.GetValue<string>();
+            var template = c.Winning<IMiscItemGetter>(spec["template"]!.GetValue<string>());
+            var misc = c.OwnOrNew(c.Mod.MiscItems, edid);
+            var key = misc.FormKey;
+            misc.DeepCopyIn(template);
+            if (misc.FormKey != key) throw new Exception("form key changed by DeepCopyIn");
+            misc.EditorID = edid;
+            misc.VirtualMachineAdapter = null;
+            misc.Name = spec["name"]!.GetValue<string>();
+            misc.Value = spec["value"]!.GetValue<uint>();
+            misc.Weight = spec["weight"]!.GetValue<float>();
+            c.Note($"Writing {edid} {key} from {template.EditorID}");
+        }
+        foreach (var r in w["recipes"]!.AsArray().Select(x => x!.AsObject()))
+            NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()), r["profession"]!.GetValue<string>(), "AldRecipeWriting_");
     }
 
     // Material editor id -> rank index, from the owner's ingot table

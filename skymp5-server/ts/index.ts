@@ -25,6 +25,7 @@ import { MasterySystem } from "./systems/masterySystem";
 import { GatheringSystem } from "./systems/gatheringSystem";
 import { HuntingSystem } from "./systems/huntingSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
+import { WritingSystem } from "./systems/writingSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { CraftedExtrasSystem } from "./systems/craftedExtrasSystem";
@@ -262,6 +263,7 @@ const main = async () => {
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
     new BountyBoardSystem(log),
+    new WritingSystem(log),
     new UntouchableSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
     hostingSystem,

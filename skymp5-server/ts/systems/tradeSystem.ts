@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import {
-  Item, InventoryEntry, Inventory, isKeyItem, sameBase, hasIdentityExtras, sameItem, lineKey,
+  Item, InventoryEntry, Inventory, isNamedItem, sameBase, hasIdentityExtras, sameItem, lineKey,
   readInventory, copyValidExtras, withCount, addEntries, describeExtras,
 } from "./inventoryExtras";
 
@@ -105,7 +105,7 @@ function resolveOffer(inv: Inventory, offer: Item[]): Resolution {
   };
   offer.forEach((item, i) => draw(i, (e) => sameItem(e, item)));
   const plain = offer.map((item, i) => {
-    if (need[i] <= 0 || !hasIdentityExtras(item) || isKeyItem(item)) {
+    if (need[i] <= 0 || !hasIdentityExtras(item) || isNamedItem(item)) {
       return false;
     }
     const before = need[i];

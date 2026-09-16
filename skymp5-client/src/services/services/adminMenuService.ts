@@ -16,7 +16,7 @@ declare const window: any;
 // Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
 // Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones and the Pets grant: adminAction petBases / petGrant) and the Item Spawner (adminAction itemSearch / itemSpawn); the Skills tab embeds the mastery menu.
+// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones and the Pets grant: adminAction petBases / petGrant), the Item Spawner (adminAction itemSearch / itemSpawn) and Writings (writingStaff); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -59,6 +59,9 @@ const events = {
   itemSpawn: "admin::itemspawn",
   petBases: "admin::petbases",
   petGrant: "admin::petgrant",
+  writingRead: "admin::writingread",
+  writingRename: "admin::writingrename",
+  writingDestroy: "admin::writingdestroy",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -68,6 +71,13 @@ const ZONE_ACTIONS: Record<string, string> = {
   [events.npcDelete]: "npcZoneDelete",
   [events.npcActivate]: "npcZoneActivate",
   [events.npcDeactivate]: "npcZoneDeactivate",
+};
+
+// Writings tab buttons -> writingStaff ops (writingSystem.ts); the target is the document id
+const WRITING_STAFF_OPS: Record<string, string> = {
+  [events.writingRead]: "read",
+  [events.writingRename]: "rename",
+  [events.writingDestroy]: "destroy",
 };
 
 // Actions that move the admin; their success reply closes the menu
@@ -478,6 +488,10 @@ export class AdminMenuService extends ClientListener {
     }
     if (kind === events.refresh) {
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+      return;
+    }
+    if (typeof kind === "string" && WRITING_STAFF_OPS[kind]) {
+      sendCustomPacket(this.controller, { customPacketType: "writingStaff", op: WRITING_STAFF_OPS[kind], id: str(e.arguments[1]), title: str(e.arguments[2]) });
       return;
     }
     if (kind === events.debugRefresh) {

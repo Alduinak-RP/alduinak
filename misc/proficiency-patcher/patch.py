@@ -16,7 +16,7 @@ from esplib import Plugin, Record, Group, edid  # noqa: E402
 DELETED = 0x20
 NEG_ZERO = b'\x00\x00\x00\x80'
 # Record types the patcher creates or overrides; anything else must survive untouched.
-PATCHED_TYPES = {'KYWD', 'SPEL', 'MGEF', 'FURN', 'COBJ'}
+PATCHED_TYPES = {'KYWD', 'SPEL', 'MGEF', 'FURN', 'COBJ', 'BOOK', 'MISC'}
 
 
 def preclean(src, dst):

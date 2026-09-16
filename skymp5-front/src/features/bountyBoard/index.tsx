@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import { PaperComposer, PaperReader, sendToClient as send, useCloseOnUnfocus, useEscapeLayer } from '../parchment';
 import './styles.scss';
 
 interface BoardNote {
@@ -26,17 +27,6 @@ export interface BountyBoardData {
   notes: BoardNote[];
   events: BoardEvents;
 }
-
-const send = (key: string, ...args: unknown[]): void => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).skyrimPlatform.sendMessage(key, ...args);
-  } catch (e) {
-    // Running outside the game (e.g. Storybook) - log instead.
-    // eslint-disable-next-line no-console
-    console.log('bountyBoard sendMessage', key, args);
-  }
-};
 
 const pinnedLabel = (ageHours: number): string => {
   if (ageHours < 24) return 'Pinned today';
@@ -73,25 +63,13 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
     if (t && notes.filter((n) => n.text === t).length) setDraft('');
   }, [notes, composing, draft]);
 
-  useEffect(() => {
-    const onUnfocused = () => send(ev.close);
-    window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
-    return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
-  }, [ev.close]);
+  useCloseOnUnfocus(ev.close);
 
-  // index.js fires menu:escape globally; while a paper or the compose dialog
-  // is up, Escape should back out one layer rather than close the board.
-  useEffect(() => {
-    if (!composing && selectedId === null) return undefined;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopImmediatePropagation();
-      if (composing) setComposing(false);
-      else setSelectedId(null);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [composing, selectedId]);
+  // While a paper or the compose dialog is up, Escape backs out one layer rather than closing the board.
+  useEscapeLayer(composing || selectedId !== null, () => {
+    if (composing) setComposing(false);
+    else setSelectedId(null);
+  });
 
   const full = notes.length >= data.maxNotes;
   const canAfford = data.gold >= data.costGold;
@@ -123,63 +101,46 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
         )}
 
         <div className="bountyBoard__footer">
-          <span className="bountyBoard__hint">
+          <span className="parchment__hint">
             {'A notice costs ' + data.costGold + ' gold and fades after ' + data.expiryDays + ' days. You carry ' + data.gold + ' gold.'}
           </span>
-          <div className="bountyBoard__actions">
+          <div className="parchment__actions">
             <button
-              className="bountyBoard__button bountyBoard__button--primary"
+              className="parchment__button parchment__button--primary"
               disabled={full || !canAfford}
               onClick={() => setComposing(true)}
             >
               {full ? 'The board is full' : canAfford ? 'Pin a notice' : 'Not enough gold'}
             </button>
-            <button className="bountyBoard__button" onClick={() => send(ev.close)}>Close</button>
+            <button className="parchment__button" onClick={() => send(ev.close)}>Close</button>
           </div>
         </div>
 
         {selected ? (
-          <div className="bountyBoard__shade" onClick={() => setSelectedId(null)}>
-            <div className="bountyBoard__read" onClick={(e) => e.stopPropagation()}>
-              <p className="bountyBoard__read-text">{selected.text}</p>
-              <p className="bountyBoard__read-author">&mdash; {selected.author}</p>
-              <p className="bountyBoard__read-age">
-                {pinnedLabel(selected.ageHours)} &middot; {fadesLabel(selected.ageHours, data.expiryDays)}
-              </p>
-              <button className="bountyBoard__button" onClick={() => setSelectedId(null)}>Back</button>
-            </div>
-          </div>
+          <PaperReader
+            text={selected.text}
+            byline={'\u2014 ' + selected.author}
+            meta={[pinnedLabel(selected.ageHours) + ' \u00b7 ' + fadesLabel(selected.ageHours, data.expiryDays)]}
+            onBack={() => setSelectedId(null)}
+          >
+            <button className="parchment__button" onClick={() => setSelectedId(null)}>Back</button>
+          </PaperReader>
         ) : null}
 
         {composing ? (
-          <div className="bountyBoard__shade">
-            <div className="bountyBoard__compose">
-              <h3 className="bountyBoard__compose-title">Pin a notice</h3>
-              <textarea
-                className="bountyBoard__compose-text"
-                value={draft}
-                maxLength={data.maxTextLen}
-                autoFocus
-                placeholder="What should the hold read here?"
-                onChange={(e) => setDraft(e.target.value)}
-              />
-              <div className="bountyBoard__compose-foot">
-                <span className="bountyBoard__hint">
-                  {draft.length + ' / ' + data.maxTextLen + ' · ' + data.costGold + ' gold'}
-                </span>
-                <div className="bountyBoard__actions">
-                  <button
-                    className="bountyBoard__button bountyBoard__button--primary"
-                    disabled={!trimmed}
-                    onClick={submit}
-                  >
-                    {'Post for ' + data.costGold + ' gold'}
-                  </button>
-                  <button className="bountyBoard__button" onClick={() => setComposing(false)}>Cancel</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <PaperComposer
+            heading="Pin a notice"
+            value={draft}
+            maxLength={data.maxTextLen}
+            placeholder="What should the hold read here?"
+            hint={draft.length + ' / ' + data.maxTextLen + ' · ' + data.costGold + ' gold'}
+            onChange={setDraft}
+          >
+            <button className="parchment__button parchment__button--primary" disabled={!trimmed} onClick={submit}>
+              {'Post for ' + data.costGold + ' gold'}
+            </button>
+            <button className="parchment__button" onClick={() => setComposing(false)}>Cancel</button>
+          </PaperComposer>
         ) : null}
       </div>
     </div>

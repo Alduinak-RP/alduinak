@@ -31,6 +31,10 @@ whoever is nearest, and is deleted for good after `petReleaseSeconds`; anyone wh
 horse (stealing or claiming a released one) needs room under `petMaxPets` and `petMaxOut`. A commanded pet, like a companion, only
 opens doors; containers and items refuse it.
 
+The Trade window refuses property keys and writings both ways, since it lists stacks without their names. Any a pet still holds
+(from an older build) go to the owner's pack when the pet is released, when its body is removed or it vanishes, and when its dead
+record is dropped at login (`rescueNamedItems`, see `docs_roleplay_writing.md`).
+
 Getting a pet out: at a door of the right kind (a stable door, a farm door or a door you own) the housing menu shows **Pets**; the list shows the
 pets kept there and a Summon button. Either side of a teleport door opens the list; horses and livestock come out only from the outside
 door, where the stable or farm is, so they can be unsummoned there again. At most `petMaxOut` pets are out at once and a character keeps at most `petMaxPets`. Admins add a pet to

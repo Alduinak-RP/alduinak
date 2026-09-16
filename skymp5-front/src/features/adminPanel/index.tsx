@@ -4,6 +4,7 @@ import Button from '../../constructorComponents/button';
 import { copyText } from '../../utils/copyText';
 import MasteryMenu, { MasteryData } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
+import WritingTools from './writingTools';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -134,7 +135,7 @@ const send = (key: string, ...args: unknown[]): void => {
 };
 
 type TopTab = 'admin' | 'faction' | 'skills' | 'debug';
-type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items';
+type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items' | 'writings';
 
 // Admin shows only to confirmed staff; the other three are open to every player
 const TOP_TABS: Array<{ id: TopTab; label: string }> = [
@@ -144,13 +145,14 @@ const TOP_TABS: Array<{ id: TopTab; label: string }> = [
   { id: 'debug', label: 'Debug' },
 ];
 
-// Each sub-tab needs its server-sent cap; Item Spawner needs it explicitly true
+// Each sub-tab needs its server-sent cap; Item Spawner needs it explicitly true, and Writings follows the players cap
 const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'players', label: 'Players' },
   { id: 'teleport', label: 'Teleport' },
   { id: 'modes', label: 'Modes' },
   { id: 'npcs', label: 'NPCs' },
   { id: 'items', label: 'Item Spawner' },
+  { id: 'writings', label: 'Writings' },
 ];
 
 // Teleport sections in display order; a missing or unknown group lands in Other
@@ -365,7 +367,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const ev = data.events || {};
   const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
-  const subVisible = (id: AdminSub): boolean => (id === 'items' ? caps.items === true : caps[id] !== false);
+  const subVisible = (id: AdminSub): boolean => (id === 'items' ? caps.items === true : caps[id === 'writings' ? 'players' : id] !== false);
   const shownSubs = ADMIN_SUBS.filter((t) => subVisible(t.id));
   const adminVisible = !!data.admin && shownSubs.length > 0;
   const shownTops = TOP_TABS.filter((t) => t.id !== 'admin' || adminVisible);
@@ -770,6 +772,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             refreshKey={refreshKey}
           />
         ) : null}
+
+        {view === 'writings' ? <WritingTools ev={ev} send={send} /> : null}
 
         {view === 'npcs' ? (
           <div className="admin-panel__body">

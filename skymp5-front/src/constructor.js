@@ -21,6 +21,7 @@ import EmoteWheel from './features/emoteWheel';
 import Housing from './features/housing';
 import MasteryMenu from './features/masteryMenu';
 import BountyBoard from './features/bountyBoard';
+import Writing from './features/writing';
 import InteractPrompt from './features/interactPrompt';
 import PetPrompt from './features/petPrompt';
 import PetList from './features/petList';
@@ -236,6 +237,8 @@ const Constructor = props => {
       return <MasteryMenu data={rend} />;
     case 'bountyBoard':
       return <BountyBoard data={rend} />;
+    case 'writing':
+      return <Writing data={rend} />;
     case 'interactPrompt':
       return <InteractPrompt data={rend} />;
     case 'petPrompt':

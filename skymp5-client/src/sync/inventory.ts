@@ -22,6 +22,7 @@ import {
   FormType,
   Form,
   Weapon,
+  Keyword,
 } from "skyrimPlatform";
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { createEnchantment } from "skyrimPlatform";
@@ -141,6 +142,27 @@ const namesEqual = (a: Entry, b: Entry): boolean => {
 // blindness would merge distinct keys and desync against the server.
 export const PROPERTY_KEY_BASE_ID = 0x000DB0E2; // TODO: Replace with mod key when ESP is made
 
+// Written letters, journals and books carry their document id in the name too
+export const WRITTEN_KEYWORD = "AldWritable";
+
+const namedBases = new Map<number, boolean>();
+
+// Copies of these bases are told apart by name, as on the server (inventoryExtras.ts isNamedItemBase)
+export const isNamedItemBase = (baseId: number): boolean => {
+  const id = baseId >>> 0;
+  if (id === PROPERTY_KEY_BASE_ID) {
+    return true;
+  }
+  let named = namedBases.get(id);
+  if (named === undefined) {
+    const keyword = Keyword.getKeyword(WRITTEN_KEYWORD);
+    const form = id ? Game.getFormEx(id) : null;
+    named = !!keyword && !!form && form.hasKeyword(keyword);
+    namedBases.set(id, named);
+  }
+  return named;
+};
+
 // Server floats pass through C++ float storage
 const sameFloat = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-3 * Math.max(1, Math.abs(a));
 
@@ -168,7 +190,7 @@ const extrasEqual = (a: Entry, b: Entry, ignoreWorn = false) => {
     !!a.removeEnchantmentOnUnequip === !!b.removeEnchantmentOnUnequip &&
     //a.chargePercent === b.chargePercent &&
     //namesEqual(a, b) &&
-    ((a.baseId >>> 0) !== PROPERTY_KEY_BASE_ID || (a.name || '') === (b.name || '')) &&
+    (!isNamedItemBase(a.baseId) || (a.name || '') === (b.name || '')) &&
     (a.soul || 0) === (b.soul || 0) &&
     (a.poisonId || 0) === (b.poisonId || 0) &&
     (a.poisonCount || 0) === (b.poisonCount || 0) &&

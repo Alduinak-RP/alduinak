@@ -6,7 +6,7 @@ import { SweetTaffySweetCantDropService } from "./sweetTaffySweetCantDropService
 import { WorldCleanerService } from "./worldCleanerService";
 import { logTrace } from "../../logging";
 import { notifyNextUpdate } from "./customPacketUtil";
-import { PROPERTY_KEY_BASE_ID, getDiff, getInventory, hasItemExtras } from "../../sync/inventory";
+import { PROPERTY_KEY_BASE_ID, getDiff, getInventory, hasItemExtras, isNamedItemBase } from "../../sync/inventory";
 import { getPcInventory } from "./remoteServer";
 
 export class DropItemService extends ClientListener {
@@ -78,9 +78,10 @@ export class DropItemService extends ClientListener {
                 return logTrace(this, "Ignoring item drop as false positive");
             }
 
-            // The server keeps a dropped property key in the pack; keys move by trade or chest
-            if ((baseId >>> 0) === PROPERTY_KEY_BASE_ID) {
-                notifyNextUpdate(this.controller, this.sp, "Keys cannot be dropped. Trade them or leave them in a chest.");
+            // The server keeps a dropped key or writing in the pack; they move by trade or chest
+            if (isNamedItemBase(baseId)) {
+                const what = (baseId >>> 0) === PROPERTY_KEY_BASE_ID ? "Keys" : "Writings";
+                notifyNextUpdate(this.controller, this.sp, `${what} cannot be dropped. Trade them or leave them in a chest.`);
                 return;
             }
 

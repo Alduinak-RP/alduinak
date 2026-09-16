@@ -11,6 +11,7 @@ import { SearchSystem } from "./searchSystem";
 import { CaptureSystem } from "./captureSystem";
 import { resolveEditorIds } from "./espmEditorIds";
 import { PET_ANCHORS } from "./adminMapMarkers";
+import { Inventory, addEntries, isNamedItem, readInventory, withCount } from "./inventoryExtras";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -656,6 +657,10 @@ export class PetSystem implements System {
     if (!this.writePets(actorId, pets)) return;
     this.endTrade(a.id);
     this.active.delete(a.id);
+    try {
+      const inv = readInventory(this.mp, a.id);
+      if (this.rescueNamedItems(actorId, inv)) this.mp.set(a.id, "inventory", { entries: inv.entries.filter((e) => !isNamedItem(e)) });
+    } catch { }
     this.released.set(a.id, { id: a.id, until: Date.now() + this.cfg.petReleaseSeconds * 1000 });
     try { this.mp.set(a.id, PET_PROP, { owner: 0, uid: a.uid, kind: a.kind, name: a.name, released: Date.now() }); } catch { }
     this.setFf(a.id, PET_FF, { kind: a.kind, name: a.name, owner: 0 });
@@ -867,12 +872,30 @@ export class PetSystem implements System {
   private forget(a: Active, reason: string): void {
     this.endTrade(a.id);
     this.active.delete(a.id);
-    try { destroyRef(this.mp, a.id); } catch { }
     const pets = this.readPets(a.ownerId);
+    let carried: unknown = pets?.find((p) => p.uid === a.uid)?.inventory;
+    try { carried = this.mp.get(a.id, "inventory"); } catch { }
+    this.rescueNamedItems(a.ownerId, carried);
+    try { destroyRef(this.mp, a.id); } catch { }
     if (pets) this.writePets(a.ownerId, pets.filter((p) => p.uid !== a.uid));
     this.save();
     this.sendState(a.ownerId);
     this.log(`PetSystem: ${a.name} ${hex(a.id)} forgotten (${reason})`);
+  }
+
+  // Property keys and writings never vanish with a pet; true when any went to the owner's pack
+  private rescueNamedItems(ownerId: number, inventory: unknown): boolean {
+    const entries = (inventory as Inventory | undefined)?.entries;
+    const named = Array.isArray(entries) ? entries.filter((e) => e && isNamedItem(e) && (e.count | 0) > 0).map((e) => withCount(e, e.count | 0)) : [];
+    if (!named.length) return false;
+    try {
+      this.mp.set(ownerId, "inventory", addEntries(readInventory(this.mp, ownerId), named));
+      this.log(`PetSystem: ${named.length} named item(s) from a pet moved to ${hex(ownerId)}`);
+      return true;
+    } catch (e) {
+      this.log(`PetSystem: named items for ${hex(ownerId)} could not be moved: ${e}`);
+      return false;
+    }
   }
 
   // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -921,6 +944,7 @@ export class PetSystem implements System {
     if (!pets) return;
     // Nothing survives a logout or a restart in the world, so every record starts stored; one that died is gone for good
     const kept = pets.filter((p) => !p.diedAt || this.active.has(p.actorId));
+    for (const p of pets) if (!kept.includes(p)) this.rescueNamedItems(actorId, p.inventory);
     let changed = kept.length !== pets.length;
     for (const p of kept) {
       if (p.actorId && !this.active.has(p.actorId)) {

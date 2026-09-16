@@ -1,8 +1,7 @@
-import * as fs from "fs";
-import * as path from "path";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
+import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -123,8 +122,7 @@ export class BountyBoardSystem implements System {
     const maxDistance = Number(all?.["bountyBoardMaxDistance"]);
     if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
 
-    this.logDir = process.env.ALDUINAK_LOG_DIR || String(all?.["logDir"] || "") || "C:\\logs";
-    try { fs.mkdirSync(this.logDir, { recursive: true }); } catch { /* appendFile will complain */ }
+    this.logDir = logDirOf(all);
 
     const mp = ctx.svr as Mp;
     for (const desc of BOARD_BASE_DESCS) {
@@ -315,7 +313,7 @@ export class BountyBoardSystem implements System {
       this.notice(ctx, userId, `A notice holds ${this.maxTextLen} characters at most.`);
       return;
     }
-    const text = this.sanitize(rawText);
+    const text = sanitize(rawText);
     if (!text) return;
     if (text.length > this.maxTextLen) {
       this.notice(ctx, userId, `A notice holds ${this.maxTextLen} characters at most.`);
@@ -337,11 +335,11 @@ export class BountyBoardSystem implements System {
       return;
     }
 
-    const author = this.displayNameOf(ctx, actorId);
+    const author = displayNameOf(ctx.svr, actorId);
     rec.notes.push({
       id: rec.nextId,
       author,
-      profileId: this.profileIdOf(ctx, actorId),
+      profileId: profileIdOf(ctx.svr, actorId),
       text,
       createdAt: now,
     });
@@ -349,12 +347,12 @@ export class BountyBoardSystem implements System {
     if (!this.write(ctx, session.primary, rec)) {
       // The board cannot hold the record; give the fee back.
       this.giveGold(ctx, actorId, this.costGold);
-      this.appendLog(`${this.describeActor(ctx, actorId)} failed to post on the ${session.name} board, fee refunded`);
+      this.appendLog(`${describeActor(ctx.svr, actorId)} failed to post on the ${session.name} board, fee refunded`);
       this.notice(ctx, userId, "The board would not take your notice.");
       return;
     }
 
-    this.appendLog(`${this.describeActor(ctx, actorId)} posted on the ${session.name} board (-${this.costGold} gold): ${JSON.stringify(text)}`);
+    this.appendLog(`${describeActor(ctx.svr, actorId)} posted on the ${session.name} board (-${this.costGold} gold): ${JSON.stringify(text)}`);
     this.notice(ctx, userId, "Your notice is pinned to the board.");
     this.refreshViewers(ctx, session.primary);
   }
@@ -565,57 +563,8 @@ export class BountyBoardSystem implements System {
     }
   }
 
-  // ── Names and audit ─────────────────────────────────────────────────────────
-
-  // While masked, appearance.name is already the placeholder and the real
-  // name sits in maskName (40_chat_commands.js), so the actor name is the
-  // name others see and a mask holds at the board.
-  private displayNameOf(ctx: SystemContext, actorId: number): string {
-    try { return String((ctx.svr as Mp).getActorName(actorId) || "Unknown"); } catch { return "Unknown"; }
-  }
-
-  // The stashed original while masked, for the audit trail only.
-  private realNameOf(ctx: SystemContext, actorId: number): string {
-    let stashed = "";
-    try { stashed = String((ctx.svr as Mp).get(actorId, "maskName") || "").trim(); } catch { /* unmasked */ }
-    return stashed || this.displayNameOf(ctx, actorId);
-  }
-
-  private profileIdOf(ctx: SystemContext, actorId: number): number {
-    try {
-      const profileId = Number((ctx.svr as Mp).get(actorId, "profileId"));
-      return Number.isFinite(profileId) ? profileId : -1;
-    } catch {
-      return -1;
-    }
-  }
-
-  // JSON-quoted real name plus a fixed-position profile id, so a crafted
-  // character name cannot forge another player's line.
-  private describeActor(ctx: SystemContext, actorId: number): string {
-    const real = this.realNameOf(ctx, actorId);
-    const shown = this.displayNameOf(ctx, actorId);
-    const mask = shown !== real ? ` (as ${JSON.stringify(shown)})` : "";
-    return `[profile ${this.profileIdOf(ctx, actorId)}] ${JSON.stringify(real)}${mask}`;
-  }
-
   private appendLog(text: string): void {
-    try {
-      fs.appendFile(path.join(this.logDir, "bounty.log"), new Date().toISOString() + " " + text + "\n", () => { });
-    } catch { /* log only */ }
-  }
-
-  // Keeps line breaks, drops every other control character.
-  private sanitize(raw: unknown): string {
-    if (typeof raw !== "string") return "";
-    let out = "";
-    for (const ch of raw) {
-      const code = ch.charCodeAt(0);
-      if (ch === "\n") { out += ch; continue; }
-      if (code < 0x20 || code === 0x7f) continue;
-      out += ch;
-    }
-    return out.replace(/\n{3,}/g, "\n\n").trim();
+    appendLog(this.logDir, "bounty.log", text);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -635,8 +584,7 @@ export class BountyBoardSystem implements System {
   }
 
   private send(ctx: SystemContext, userId: number, payload: Record<string, unknown>): void {
-    if (userId < 0) return;
-    try { (ctx.svr as Mp).sendCustomPacket(userId, JSON.stringify(payload)); } catch { /* user gone */ }
+    sendJson(ctx.svr, userId, payload);
   }
 
   private notice(ctx: SystemContext, userId: number, text: string): void {

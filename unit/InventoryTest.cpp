@@ -100,3 +100,40 @@ TEST_CASE("FindEntriesFor with anyExtras covers a plain take from copies "
   keys.entries.push_back(key);
   REQUIRE(keys.FindEntriesFor(Inventory::Entry(0xdb0e2, 1), true).empty());
 }
+
+TEST_CASE("FindEntriesFor tells copies of a named item base apart by name",
+          "[Inventory]")
+{
+  constexpr uint32_t kLetter = 0x2d000812;
+  struct Reset
+  {
+    ~Reset() { Inventory::SetNamedItemBases({}); }
+  } reset;
+
+  Inventory inv;
+  Inventory::Entry first(kLetter, 1);
+  first.name = "Letter to Ysolda (W1A7QZ)";
+  Inventory::Entry second(kLetter, 1);
+  second.name = "Sealed Letter (W2B8RX)";
+  inv.entries.push_back(first);
+  inv.entries.push_back(second);
+
+  REQUIRE(first.SameItemAs(second));
+  REQUIRE(inv.FindEntriesFor(Inventory::Entry(kLetter, 1), true).size() == 1);
+
+  Inventory::SetNamedItemBases({ kLetter });
+  REQUIRE(Inventory::IsNamedItemBase(kLetter));
+  REQUIRE(Inventory::IsNamedItemBase(0xdb0e2));
+  REQUIRE(!first.SameItemAs(second));
+  REQUIRE(inv.FindEntriesFor(Inventory::Entry(kLetter, 1)).empty());
+  REQUIRE(inv.FindEntriesFor(Inventory::Entry(kLetter, 1), true).empty());
+
+  auto found = inv.FindEntriesFor(second, true);
+  REQUIRE(found.size() == 1);
+  REQUIRE(found[0].name == second.name);
+  REQUIRE(found[0].count == 1);
+
+  Inventory::SetNamedItemBases({});
+  REQUIRE(!Inventory::IsNamedItemBase(kLetter));
+  REQUIRE(first.SameItemAs(second));
+}
