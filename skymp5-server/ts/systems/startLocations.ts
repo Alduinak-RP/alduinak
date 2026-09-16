@@ -37,7 +37,8 @@ export const INTRO_PAGES: IntroPage[] = [
     caption: "Welcome to Alduinak",
     text: [
       "Use [get alt interaction button] to open your personal menu to pick a profession.",
-      "Use [get voice key button] to speak to others. Alt + [get voice key button] changes your volume.",
+      "Use [get voice key button] to speak to others. Alt + [get voice key button] changes your voice range.",
+      "Use [get emote wheel button] to open the emote wheel.",
       "Use [get release mouse button] to hide/reveal the mouse",
       "Use [get hide interface button] to hide the UI for screenshots.",
       "Use [get activate chat button] to use the text chat, where you will also find additional settings.",

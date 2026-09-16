@@ -11,6 +11,7 @@ import { SinglePlayerService } from "./singlePlayerService";
 import { BrowserService } from "./browserService";
 import { VoiceService } from "./voiceService";
 import { PlayerActionService } from "./playerActionService";
+import { EmoteService } from "./emoteService";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -43,6 +44,7 @@ const INTRO_WIDGET_ID = 32;
 const INTRO_KEYS: [string, (controller: CombinedController) => number][] = [
   ["[get alt interaction button]", (c) => c.lookupListener(PlayerActionService).interactKeyCode],
   ["[get voice key button]", (c) => c.lookupListener(VoiceService).pushToTalkKeyCode],
+  ["[get emote wheel button]", (c) => c.lookupListener(EmoteService).menuKeyCode],
   ["[get release mouse button]", (c) => c.lookupListener(BrowserService).freeCursorKeyCode],
   ["[get hide interface button]", (c) => c.lookupListener(BrowserService).hideUiKeyCode],
   ["[get activate chat button]", (c) => c.lookupListener(BrowserService).chatKeyCode],

@@ -129,7 +129,8 @@ select panel) walks through:
    bracketed placeholder becomes the player's own key in brackets, read from
    the bindings the client acts on: `[get alt interaction button]` is
    `altInteractKeyCode` (PlayerActionService), `[get voice key button]` is
-   `voicePushToTalkKeyCode` (VoiceService), `[get release mouse button]` is
+   `voicePushToTalkKeyCode` (VoiceService), `[get emote wheel button]` is
+   `emoteWheelKeyCode` (EmoteService), `[get release mouse button]` is
    `freeCursorKeyCode`, `[get hide interface button]` is `hideUiKeyCode` and
    `[get activate chat button]` is the chat key from `chatFocusKeyCodes`, or
    Enter when only Enter is bound (BrowserService). Key names match launcher
