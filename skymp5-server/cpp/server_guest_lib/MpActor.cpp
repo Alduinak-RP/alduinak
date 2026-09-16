@@ -170,7 +170,6 @@ void MpActor::EquipBestWeapon()
   const Equipment eq = GetEquipment();
 
   Equipment newEq;
-  newEq.numChanges = eq.numChanges + 1;
   for (auto& entry : eq.inv.entries) {
     bool isEquipped = entry.GetWorn() != Inventory::Worn::None;
     bool isWeap =
@@ -201,6 +200,13 @@ void MpActor::EquipBestWeapon()
     bestEntry.SetWorn(Inventory::Worn::Right);
     newEq.inv.AddItems({ bestEntry });
   }
+
+  // Each send makes every client strip and re-equip its copy, and clients never apply numChanges 0
+  newEq.numChanges = eq.numChanges;
+  if (eq.numChanges > 0 && newEq == eq) {
+    return;
+  }
+  ++newEq.numChanges;
 
   SetEquipment(newEq);
 

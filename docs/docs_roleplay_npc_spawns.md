@@ -171,8 +171,14 @@ within `npcHostRange`:
   the NPC unless another is less than half as far away;
 - a host that is still a candidate never loses the NPC within 5 seconds of a
   switch, and that includes a claim its own client made;
-- a paused or dead host is no candidate, so another candidate takes the NPC at
-  the next audit without that 5 second wait;
+- the current host stays a candidate for 6 seconds after its last movement,
+  not 2, so a load screen does not cost it the NPC;
+- while the current host is still a candidate, a player who entered the NPC's
+  cell within the last 3 seconds (or whom the audit has only just seen) is not
+  picked over it. Companions and pets are exempt;
+- a host paused longer than that, dead, offline or in another cell is no
+  candidate, so another candidate takes the NPC at the next audit without that
+  5 second wait;
 - with no candidate, the current host keeps the NPC as long as the server
   still streams it to that player, because unhosting would only let that
   client claim it straight back. Once the host no longer receives the NPC it
@@ -196,6 +202,14 @@ for 60 seconds after another client claims it.
 Whoever starts hosting, by audit or by claim, gets `HostStart` and a second
 later the NPC's health, magicka and stamina percentages
 (`PartOne::StartHosting`), so its engine does not run the NPC on stale health.
+`StartHosting` also re-picks the NPC's best weapon (`MpActor::EquipBestWeapon`)
+and sends equipment only when that changes what the NPC wears. Every equipment
+update makes each client strip and re-equip its copy, the suspected trigger of
+the skeleton crashes (SkyrimSE.exe, WeaponBack bone) when several players
+entered a spawn zone together.
+A client also leaves an NPC copy alone when it already wears exactly the items
+sent, and does not draw or sheathe a copy it does not run until that copy's 3D
+has been loaded for a second.
 `mp.setHoster` refuses a player character (an actor with a user attached).
 
 `npcHostRange` (default 8192) and `npcAggroHostSeconds` (default 30) live in

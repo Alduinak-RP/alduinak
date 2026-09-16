@@ -65,6 +65,15 @@ const filterWorn = (inv: Inventory): Inventory => {
 
 export const countWorn = (inv: Inventory): number => filterWorn(inv).entries.length;
 
+const wornKeys = (inv: Inventory): string[] =>
+  filterWorn(inv).entries.map((e) => `${e.baseId}:${e.wornLeft ? "L" : "R"}`).sort();
+
+export const wearsExactly = (ac: Actor, eq: Equipment): boolean => {
+  const want = wornKeys(eq.inv);
+  const have = wornKeys(getInventory(ac));
+  return want.length === have.length && want.every((key, i) => key === have[i]);
+};
+
 // Saved bound items have no spell behind them after a reconnect and would never expire
 const withoutBoundItems = (inv: Inventory): Inventory => ({
   entries: inv.entries.filter((x) => {

@@ -1,7 +1,7 @@
 import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
-import { isBadMenuShown, applyEquipment } from "../sync/equipment";
+import { isBadMenuShown, applyEquipment, wearsExactly } from "../sync/equipment";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement } from "../sync/movementApply";
@@ -288,6 +288,7 @@ export class FormView {
     this.isOnScreen = false;
     this.lastNiNodeUpdateMs = 0;
     this.spawnMoment = 0;
+    this.loaded3DMoment = 0;
     this.dealtWithRef = false;
     const refrId = this.refrId;
     this.mountState = makeMountState();
@@ -431,6 +432,10 @@ export class FormView {
           if (forcedWeapDrawn === true || forcedWeapDrawn === false) {
             model.movement.isWeapDrawn = forcedWeapDrawn;
           }
+          // A copy this client does not run is not drawn or sheathed while its skeleton settles
+          if (ac && !alreadyHosted && this.isSettling(ac)) {
+            model.movement.isWeapDrawn = ac.isWeaponDrawn();
+          }
           // The server's death state wins over a host that never saw the death
           if (model.isDead) {
             model.movement.isDead = true;
@@ -569,7 +574,10 @@ export class FormView {
           this.spawnMoment > 0
         ) {
           //if (this.spawnMoment > 0 && Date.now() - this.spawnMoment > 5000) {
-          if (applyEquipment(ac, model.equipment)) {
+          // Stripping and re-equipping an NPC copy races the engine's skeleton update, so a copy already wearing the set is left alone
+          if (!model.appearance && wearsExactly(ac, model.equipment)) {
+            this.eqState.lastNumChanges = model.equipment.numChanges;
+          } else if (applyEquipment(ac, model.equipment)) {
             this.eqState.lastNumChanges = model.equipment.numChanges;
           }
           this.eqState.lastEqMoment = Date.now();
@@ -808,6 +816,18 @@ export class FormView {
     return this.leveledBaseId;
   }
 
+  // True until the copy's 3D has stayed loaded for copySettleMs
+  private isSettling(ac: Actor): boolean {
+    if (!ac.is3DLoaded()) {
+      this.loaded3DMoment = 0;
+      return true;
+    }
+    if (!this.loaded3DMoment) {
+      this.loaded3DMoment = Date.now();
+    }
+    return Date.now() - this.loaded3DMoment < FormView.copySettleMs;
+  }
+
   private getDefaultEquipState() {
     return { lastNumChanges: 0, lastEqMoment: 0 };
   };
@@ -864,6 +884,8 @@ export class FormView {
   private lastPcWorldOrCell = 0;
   private lastWorldOrCell = 0;
   private spawnMoment = 0;
+  private loaded3DMoment = 0;
+  private static readonly copySettleMs = 1000;
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   private mountState = makeMountState();

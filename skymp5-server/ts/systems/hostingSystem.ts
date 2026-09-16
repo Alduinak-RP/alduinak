@@ -30,6 +30,10 @@ const SWITCH_COOLDOWN_MS = 5000;
 const NEARER_FACTOR = 0.5;
 // A client that sent no movement for its own player this long is paused, alt-tabbed or loading; the C++ takeover rule uses 2 s too
 const LIVE_MS = 2000;
+// The current host stays a candidate this long after its last movement, so a load screen does not cost it the NPC
+const HOST_KEEP_MS = 6000;
+// A player who entered the NPC's cell this recently does not take it from a host that is still a candidate
+const ARRIVAL_MS = 3000;
 // A live host that lost the NPC to another client's claim did not run it; it is not given that NPC back for this long
 const SILENT_MS = 60000;
 
@@ -49,6 +53,11 @@ interface Silent {
   until: number;
 }
 
+interface InCell {
+  cell: number;
+  since: number;
+}
+
 export class HostingSystem implements System {
   systemName = "HostingSystem";
   constructor(private log: Log) { }
@@ -64,6 +73,8 @@ export class HostingSystem implements System {
   private silent = new Map<number, Silent>();
   // Per NPC: its hoster when a host attempt found that hoster paused, since it may resume before the audit sees the claim
   private pausedHost = new Map<number, number>();
+  // Per online player: the cell the audit last saw it in and since when
+  private inCell = new Map<number, InCell>();
   private hostRange = DEFAULT_HOST_RANGE;
   private aggroMs = DEFAULT_AGGRO_SEC * 1000;
   private supported = false;
@@ -173,7 +184,10 @@ export class HostingSystem implements System {
       return;
     }
     const players = playerIds.map((id) => this.locate(id)).filter((p): p is Located => !!p);
-    const ready = new Set(players.filter((p) => isAlive(mp, p.id) && this.isLive(p.id)).map((p) => p.id));
+    this.noteCells(players, now);
+    const alive = players.filter((p) => isAlive(mp, p.id));
+    const ready = new Set(alive.filter((p) => this.isLive(p.id)).map((p) => p.id));
+    const keeping = new Set(alive.filter((p) => this.isLive(p.id, HOST_KEEP_MS)).map((p) => p.id));
     const streamers = this.streamers(players);
     const range2 = this.hostRange * this.hostRange;
     for (const h of this.hostables.values()) {
@@ -192,7 +206,7 @@ export class HostingSystem implements System {
       const near: Nearby[] = [];
       for (const p of players) {
         // Only a client the server streams the NPC to can run its AI
-        if (p.cell !== at.cell || !listening?.has(p.id) || !ready.has(p.id)) continue;
+        if (p.cell !== at.cell || !listening?.has(p.id) || !(p.id === current ? keeping : ready).has(p.id)) continue;
         if (silent && silent.playerId === p.id && silent.until > now) continue;
         const dx = p.pos[0] - at.pos[0];
         const dy = p.pos[1] - at.pos[1];
@@ -200,12 +214,13 @@ export class HostingSystem implements System {
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 <= range2) near.push({ id: p.id, d2 });
       }
-      const { hoster, reason } = this.choose(h, near, current, now);
+      // A paused or dead host is no candidate, so it loses the NPC without the cooldown
+      const currentEligible = near.some((p) => p.id === current);
+      const candidates = currentEligible && !h.owner ? near.filter((p) => p.id === current || !this.arrivedRecently(p.id, now)) : near;
+      const { hoster, reason } = this.choose(h, candidates, current, now);
       if (hoster === current) continue;
       // Unhosting a host that still streams the NPC would only let its client claim it straight back
       if (!hoster && listening?.has(current)) continue;
-      // A paused or dead host is no candidate, so it loses the NPC without the cooldown
-      const currentEligible = near.some((p) => p.id === current);
       if (hoster && currentEligible && now - (this.switchedAt.get(h.id) ?? 0) < SWITCH_COOLDOWN_MS) continue;
       this.switchTo(h.id, hoster, reason);
     }
@@ -257,14 +272,28 @@ export class HostingSystem implements System {
   }
 
   // Without getMovementAgeMs everyone counts as live and a lost claim is the only sign of a paused host
-  private isLive(playerId: number): boolean {
+  private isLive(playerId: number, maxAgeMs = LIVE_MS): boolean {
     if (!this.liveness) return true;
     try {
       const age = Number(this.mp.getMovementAgeMs(playerId));
-      return age >= 0 && age <= LIVE_MS;
+      return age >= 0 && age <= maxAgeMs;
     } catch {
       return true;
     }
+  }
+
+  // A player first seen by the audit counts as just arrived
+  private noteCells(players: Located[], now: number): void {
+    const next = new Map<number, InCell>();
+    for (const p of players) {
+      const seen = this.inCell.get(p.id);
+      next.set(p.id, seen && seen.cell === p.cell ? seen : { cell: p.cell, since: now });
+    }
+    this.inCell = next;
+  }
+
+  private arrivedRecently(playerId: number, now: number): boolean {
+    return now - (this.inCell.get(playerId)?.since ?? -Infinity) < ARRIVAL_MS;
   }
 
   private switchTo(actorId: number, hosterId: number, reason: string): boolean {
