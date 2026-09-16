@@ -21,20 +21,24 @@ DATA = 'C:/GOG Games/Skyrim Anniversary Edition/Data/'
 SETTINGS = 'C:/Users/Administrator/Desktop/alduinak/build/dist/server/server-settings.json'
 SELF = 'AlduinakAdditions.esp'
 
+LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
+               'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
+# What the live copies hold today: the r7 plugin, deployed 2026-09-15. Re-pin after every deploy.
+DEPLOYED_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
+
 INPUTS = {
     'NEW': ('C:/Users/Administrator/Desktop/AlduinakAdditions.esp',
             '6017a624da193621020d2b583d7941a4ad4e51221f487fe302a30b26d00ba1ae'),
     'R4': (ESPFIX + 'r4/AlduinakAdditions.final.esp',
            'b1f185d4eb0b1cd2176788c318b2249b8459f90a7b7bd80d05dc38f4bd3afd72'),
+    # The pre-r7 proficiency plugin, the frozen reference the marker id checks compare against
     'LIVE': (ESPFIX + 'proficiency/AlduinakAdditions.esp',
              '5bddcc6854fb229e59172a20377cdc8c814fea47124b45d28261c2a4d1eaa508'),
+    # The plugin a new r7 output replaces, read back from the first live copy
+    'DEPLOYED': (LIVE_COPIES[0], DEPLOYED_SHA),
     'RAW': (ROOT + 'rollback-r3/AlduinakAdditions.data-1537.esp',
             '4d8476c758b83a831fe5f29a99763a95c1ed90fc2d2377e98982d6fb28cc509a'),
 }
-LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
-               'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
-# What the live copies hold today: the r7 plugin, deployed 2026-09-15. Re-pin after every deploy.
-DEPLOYED_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
 ATTRIBUTION = (R7 + 'attribution.json', '031388679ed48a92032cd7873302051b28cc37854ff1cd376305d148b44d880c')
 STAGE_SETTINGS_SHA = 'f9dce8d45661830ed8eb307542250da6ca1158d4eeb6f42e7b2416611417cb22'
 REMOVED_NAVM = (ESPFIX + 'tools/removed-navm.txt', '48763ffc1347aac94e6b35cb7cfe49b0ba20b8b8e1c921df1ef70af304ece7c8')
