@@ -10,7 +10,8 @@
     "merge": "node scripts/merge-files.js",
     "populate": "node scripts/populate-files.js",
     "build-client": "node scripts/populate-files.js && node scripts/merge-files.js",
-    "compile-manifest": "node scripts/compile-manifest.js"
+    "compile-manifest": "node scripts/compile-manifest.js",
+    "test": "node test/run-manager-tests.js"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",

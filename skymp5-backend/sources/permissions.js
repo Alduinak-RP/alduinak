@@ -3,6 +3,7 @@
 
 const fs   = require('fs')
 const path = require('path')
+const liveEnv = require('./liveEnv')
 
 const FILE = path.join(__dirname, '..', 'data', 'role-permissions.json')
 
@@ -68,10 +69,42 @@ function hasPermission(permissions, required) {
   return permissions.includes(required)
 }
 
+// Role permissions plus admin.* for the live DASHBOARD_DISCORD_IDS allow-list, sorted so snapshots compare
+function effectivePermissions(discordId, roleIds) {
+  const perms = new Set(resolvePermissions(roleIds || []))
+  if (discordId && liveEnv.list('DASHBOARD_DISCORD_IDS').includes(String(discordId))) perms.add('admin.*')
+  return [...perms].sort()
+}
+
+// Grants only admins may add or remove; server.access.manage picks the roles the bot hands out
+const PRIVILEGED_EXACT = ['factions.define', 'permissions.manage', 'server.access.manage']
+
+function isPrivilegedPermission(permission) {
+  const p = String(permission || '')
+  return p.startsWith('admin.') || p.startsWith('manager.') || PRIVILEGED_EXACT.includes(p)
+}
+
+/** Privileged permissions a Discord role holds in role-permissions.json. */
+function privilegedPermissionsOfRole(roleId) {
+  const entry = (_load().roles || {})[String(roleId || '').trim()]
+  return ((entry && entry.permissions) || []).filter(isPrivilegedPermission)
+}
+
+/** Privileged permissions a role change adds or removes. */
+function privilegedChanges(before, after) {
+  const was = new Set(before || [])
+  const now = new Set(after || [])
+  return [...new Set([...was, ...now])].filter(p => isPrivilegedPermission(p) && was.has(p) !== now.has(p)).sort()
+}
+
 module.exports = {
   listRolePermissions,
   setRolePermissions,
   deleteRolePermissions,
   resolvePermissions,
   hasPermission,
+  effectivePermissions,
+  isPrivilegedPermission,
+  privilegedPermissionsOfRole,
+  privilegedChanges,
 }

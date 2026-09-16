@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const config = require('../../config')
 const discordBot = require('../discord/bot')
+const permissions = require('../permissions')
 
 const FILE = path.join(__dirname, '..', '..', 'data', 'server-access.json')
 const WHITELIST_PATH = path.join(__dirname, '..', '..', 'data', 'whitelist.json')
@@ -54,6 +55,22 @@ function normalize(data) {
   }
 }
 
+// The bot adds and removes these roles for anyone with players.manage, so they must never carry privileged permissions
+function assertAssignableRole(roleId, label) {
+  const privileged = roleId ? permissions.privilegedPermissionsOfRole(roleId) : []
+  if (!privileged.length) return
+  const err = new Error(`the ${label} role ${roleId} holds ${privileged.join(', ')}, so the whitelist and bans may not assign it`)
+  err.status = 403
+  throw err
+}
+
+/** Role id fields an update would change; changing them needs an admin. */
+function changedRoleFields(input) {
+  const current = load()
+  const next = normalize({ ...current, ...(input || {}) })
+  return ['whitelistRoleId', 'bannedRoleId'].filter(k => next[k] !== current[k])
+}
+
 function update(input) {
   const current = load()
   const next = normalize({
@@ -62,6 +79,8 @@ function update(input) {
     lockedRoleIds: input && input.lockedRoleIds !== undefined ? input.lockedRoleIds : current.lockedRoleIds,
     lockedDiscordIds: input && input.lockedDiscordIds !== undefined ? input.lockedDiscordIds : current.lockedDiscordIds,
   })
+  if (next.whitelistRoleId !== current.whitelistRoleId) assertAssignableRole(next.whitelistRoleId, 'whitelist')
+  if (next.bannedRoleId !== current.bannedRoleId) assertAssignableRole(next.bannedRoleId, 'banned')
   save(next)
   return next
 }
@@ -121,6 +140,7 @@ function publicState() {
 async function setWhitelisted(discordId, enabled) {
   const settings = load()
   if (settings.whitelistRoleId) {
+    assertAssignableRole(settings.whitelistRoleId, 'whitelist')
     if (enabled) await discordBot.addMemberRole(discordId, settings.whitelistRoleId)
     else await discordBot.removeMemberRole(discordId, settings.whitelistRoleId)
     return { source: 'discord-role', roleId: settings.whitelistRoleId, whitelisted: enabled }
@@ -140,6 +160,7 @@ async function setBanned(discordId, enabled) {
     err.status = 400
     throw err
   }
+  assertAssignableRole(settings.bannedRoleId, 'banned')
   if (enabled) await discordBot.addMemberRole(discordId, settings.bannedRoleId)
   else await discordBot.removeMemberRole(discordId, settings.bannedRoleId)
   return { source: 'discord-role', roleId: settings.bannedRoleId, banned: enabled }
@@ -148,6 +169,7 @@ async function setBanned(discordId, enabled) {
 module.exports = {
   load,
   update,
+  changedRoleFields,
   publicState,
   getDiscordAccess,
   hasAnyRole,

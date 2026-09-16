@@ -19,7 +19,8 @@ function readEnv(key) {
   try {
     const txt = fs.readFileSync(path.join(repoRoot, 'skymp5-backend', '.env'), 'utf8')
     const m = txt.match(new RegExp('^\\s*' + key + '\\s*=\\s*(.*)\\s*$', 'm'))
-    return m ? m[1].trim() : ''
+    // Surrounding quotes are dropped as dotenv does, so the backend and the manager read the same secret
+    return m ? m[1].trim().replace(/^(['"])(.*)\1$/, '$2') : ''
   } catch { return '' }
 }
 
@@ -89,6 +90,13 @@ module.exports = {
     // No fallback secret: when RELAY_SECRET is unset the relay must fail auth
     // rather than silently authenticate with a well-known default.
     get secret() { return readEnv('RELAY_SECRET') },
+  },
+
+  // AlduinakManager agent: loopback port, backend shared secret, and the folder for its lock, jobs and audit (read live from the backend .env)
+  agent: {
+    get port()   { return parseInt(readEnv('MANAGER_AGENT_PORT') || '4003', 10) },
+    get secret() { return readEnv('MANAGER_AGENT_SECRET') },
+    get dir()    { return readEnv('MANAGER_LOG_DIR') || path.join(module.exports.logDir, 'manager') },
   },
 
   // GitHub Actions dispatch for the CI Rebuild button (needs a PAT with actions:write).

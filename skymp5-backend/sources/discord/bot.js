@@ -65,9 +65,38 @@ function ensureRoleLookupConfigured() {
 const ROLE_CACHE_TTL_MS = 60 * 1000
 const roleCache = new Map() // discordId -> { roles, expiresAt }
 
+const roleChangeListeners = []
+
+function onMemberRolesChanged(fn) {
+  roleChangeListeners.push(fn)
+}
+
+// roles is null when the member left the guild
+function emitRolesChanged(discordId, roles) {
+  roleCache.delete(discordId)
+  for (const fn of roleChangeListeners) {
+    try { fn(discordId, roles) } catch (err) { console.error('[discord-bot] role change listener failed:', err.message) }
+  }
+}
+
+client.on('guildMemberUpdate', (_old, member) => {
+  if (config.discordGuildId && member.guild.id !== config.discordGuildId) return
+  emitRolesChanged(member.id, [...member.roles.cache.keys()])
+})
+
+client.on('guildMemberRemove', member => {
+  if (config.discordGuildId && member.guild.id !== config.discordGuildId) return
+  emitRolesChanged(member.id, null)
+})
+
 async function getMemberRoles(discordId) {
-  if (!discordId) return []
-  if (!config.discordBotToken || !config.discordGuildId) return []
+  return (await lookupMemberRoles(discordId)) || []
+}
+
+// null when Discord cannot be asked, so callers can tell an outage from a member without roles
+async function lookupMemberRoles(discordId) {
+  if (!discordId) return null
+  if (!config.discordBotToken || !config.discordGuildId) return null
 
   const cached = roleCache.get(discordId)
   if (cached && cached.expiresAt > Date.now()) return cached.roles
@@ -94,7 +123,7 @@ async function getMemberRoles(discordId) {
     return roles
   } catch (err) {
     console.error('[discord-bot] HTTP fallback also failed:', err.message)
-    return []  // not cached: allows quick recovery once Discord is reachable
+    return null  // not cached: allows quick recovery once Discord is reachable
   }
 }
 
@@ -214,6 +243,8 @@ function start() {
 module.exports = {
   start,
   getMemberRoles,
+  lookupMemberRoles,
+  onMemberRolesChanged,
   isReady,
   memberHasRole,
   getMembersWithRole,

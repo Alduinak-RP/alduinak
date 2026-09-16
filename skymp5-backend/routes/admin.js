@@ -1,45 +1,32 @@
 'use strict'
-// Admin proxy: validates the bearer token then forwards to the SkyMP-Admin service, which binds to localhost only and stays off the public internet
+// Admin proxy: checks ADMIN_TOKEN or the server manager gate, then forwards to the SkyMP-Admin service, which binds to localhost only
 
 const { Router } = require('express')
 const http       = require('http')
 const https      = require('https')
-const crypto     = require('crypto')
 const config     = require('../config')
-const sessions   = require('../sources/dashboardSessions')
+const safeEqual  = require('../sources/safeEqual')
+const { bearerToken } = require('../sources/dashboardAuth')
+const { requireManager } = require('../middleware/requireManager')
+const { auditLog, requestActor } = require('../sources/manager/audit')
 
 const router = Router()
+const audit  = auditLog('backend')
 
-function validateToken(req, res) {
-  if (!config.adminToken) {
-    res.status(503).json({ error: 'admin service not configured (ADMIN_TOKEN not set)' })
-    return false
-  }
-  const auth     = req.headers['authorization'] ?? ''
-  const provided = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-  if (!provided) {
-    res.status(401).json({ error: 'missing authorization header' })
-    return false
-  }
-
-  // Accept a dashboard session only with an 'admin.*' or granular 'admin.<x>' grant; view-only roles must not control the game server, anything else falls through to ADMIN_TOKEN
-  const session = sessions.validate(provided)
-  if (session && (session.permissions || []).some(p => /^admin\./.test(p) || p === 'admin.*')) return true
-
-  // Fall back to static ADMIN_TOKEN
-  const expected = Buffer.from(config.adminToken)
-  const actual   = Buffer.from(provided)
-  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
-    res.status(401).json({ error: 'invalid token' })
-    return false
-  }
-  return true
+// The admin service can stop the game server, so a dashboard session needs everything the server manager needs
+function authorize(req, res, next) {
+  if (!config.adminToken) return res.status(503).json({ error: 'admin service not configured (ADMIN_TOKEN not set)' })
+  const provided = bearerToken(req)
+  if (!provided) return res.status(401).json({ error: 'missing authorization header' })
+  if (safeEqual(provided, config.adminToken)) return next()
+  requireManager(req, res, () => {
+    if (req.method !== 'GET') audit.append({ ...requestActor(req, req.managerSession), action: `admin-proxy ${req.method} ${req.path}`, outcome: 'forwarded' }, { mirror: true })
+    next()
+  })
 }
 
 // Forward any request under /api/admin/* to the admin service
-router.all('/*', (req, res) => {
-  if (!validateToken(req, res)) return
-
+router.all('/*', authorize, (req, res) => {
   const base     = new URL(config.adminUrl)
   const useHttps = base.protocol === 'https:'
   const lib      = useHttps ? https : http

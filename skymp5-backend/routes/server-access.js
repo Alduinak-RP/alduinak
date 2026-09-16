@@ -3,6 +3,7 @@
 const { Router }        = require('express')
 const requirePermission = require('../middleware/requirePermission')
 const serverAccess      = require('../sources/serverAccess')
+const { guardPrivilegedChange } = require('../middleware/requireManager')
 
 const router = Router()
 
@@ -10,8 +11,15 @@ router.get('/', requirePermission('server.access.view'), (_req, res) => {
   res.json(serverAccess.publicState())
 })
 
-router.put('/', requirePermission('server.access.manage'), (req, res) => {
-  res.json(serverAccess.update(req.body || {}))
+// The whitelist and banned roles are handed out by the bot, so choosing them is an admin change
+router.put('/', requirePermission('server.access.manage'), async (req, res) => {
+  const changed = serverAccess.changedRoleFields(req.body || {})
+  if (changed.length && !await guardPrivilegedChange(req, res, { action: 'server-access.put', target: changed.join(','), what: `change ${changed.join(' and ')}` })) return
+  try {
+    res.json(serverAccess.update(req.body || {}))
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to save server access' })
+  }
 })
 
 router.get('/check/:discordId', requirePermission('server.access.view'), async (req, res) => {

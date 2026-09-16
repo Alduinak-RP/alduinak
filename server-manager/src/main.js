@@ -5,13 +5,19 @@ const path = require('path')
 const fs   = require('fs')
 const http = require('http')
 const https = require('https')
-const WebSocket = require('ws')
+const os = require('os')
 const config = require('./config')
 const { Builder } = require('./build')
 const schema = require('./settingsSchema')
 const modsync = require('./modsync')
 const mongoPurge = require('./mongoPurge')
-const { LOCK_CODES, nssm, nativeModuleLocked } = require('./serviceCheck')
+const managerLock = require('./managerLock')
+const { createConsoleRelay } = require('./relayClient')
+const { LOCK_CODES, nssm } = require('./serviceCheck')
+const {
+  hooks: serviceHooks, serviceByKey, resolvedNames, serviceName, gameStatus, readServerSettings,
+  statusAll, doServiceAction, doServicesAction, discoverLogTargets, requireGameStopped,
+} = require('./services')
 
 let win = null
 
@@ -49,178 +55,7 @@ app.whenReady().then(() => {
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 	
-const serviceByKey = Object.fromEntries(config.services.map(s => [s.key, s]))
-
-// nssm start/stop returns before the service settles (exiting non-zero on the
-// transient *_PENDING states), so poll `nssm status` until the target state.
-async function awaitStatus(name, want) {
-  const deadline = Date.now() + 30000
-  for (;;) {
-    const status = await nssm('status', name)
-    if (status === want) return { ok: true }
-    if (!/^SERVICE_/.test(status) || Date.now() >= deadline) return { ok: false, status }
-    await new Promise(r => setTimeout(r, 1000))
-  }
-}
-
-// The live box may still run the pre-rename service names until
-// install-services.bat is re-run, so resolve which installed name to target:
-// canonical first, then legacyNames. Cached per key; re-probed if it vanishes.
-const resolvedNames = {}
-async function probeService(svc) {
-  const candidates = [...new Set([resolvedNames[svc.key], svc.name, ...(svc.legacyNames || [])].filter(Boolean))]
-  let firstStatus = ''
-  for (const name of candidates) {
-    const status = await nssm('status', name)
-    if (!firstStatus) firstStatus = status
-    if (/^SERVICE_/.test(status)) { resolvedNames[svc.key] = name; return { name, status } }
-  }
-  delete resolvedNames[svc.key]
-  return { name: svc.name, status: firstStatus || 'unknown' }
-}
-
-async function serviceName(svc) { return (await probeService(svc)).name }
-
-async function gameStatus() { return nssm('status', await serviceName(serviceByKey.game)) }
-
-// Until the purge ran, the database still holds ids encoded under the old load order
-function purgePending() {
-  let diff = null
-  try { diff = modsync.readDiff() } catch {}
-  if (!modsync.purgePending(diff)) return null
-  return 'refused: a MongoDB purge is pending for the new load order, run Purge MongoDB (or Restore last purge) first'
-}
-
-async function act(svc, verb) {
-  if (svc.key === 'game' && verb === 'start') {
-    const pending = purgePending()
-    if (pending) return { ok: false, text: pending }
-  }
-  const name = await serviceName(svc)
-  // Archive logs while the service is stopped (nssm frees the file handle),
-  // so a restart (stop then start) always begins a fresh log file.
-  if (verb === 'start' && await nssm('status', name) === 'SERVICE_STOPPED') {
-    await rotateServiceLogs(svc)
-  }
-  await nssm(verb, name)
-  const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
-  if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
-  return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
-}
-
-// ── Log rotation: datestamp on restart, archived into <dir>\YYYY-MM ────────────
-
-function pad2(n) { return String(n).padStart(2, '0') }
-function monthDirName(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}` }
-function datestamp(d) {
-  return `${monthDirName(d)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`
-}
-
-// chat.log lives wherever the gamemode writes it; mirror its resolution chain
-// (env var, then the optional logDir key in server-settings.json, then default).
-function chatLogDir() {
-  return process.env.ALDUINAK_LOG_DIR || readServerSettings().logDir || 'C:\\logs'
-}
-
-// The nssm-configured stdout/stderr files for a service, plus the gamemode's
-// chat.log for the game server (written directly, not via nssm).
-async function serviceLogFiles(svc) {
-  const name = await serviceName(svc)
-  const files = []
-  for (const stream of ['AppStdout', 'AppStderr']) {
-    const p = parseNssmPath(await nssm('get', name, stream))
-    if (p) files.push(p)
-  }
-  if (svc.key === 'game') {
-    for (const f of ['chat.log', 'admin.log', 'pvp.log', 'trading.log', 'bounty.log', 'writing.log']) {
-      files.push(path.join(chatLogDir(), f))
-    }
-  }
-  return files
-}
-
-// Rename the active log with a datestamp and file it under <dir>\YYYY-MM
-// (month taken from the file's last write, so a December log lands in December).
-function archiveLogFile(file) {
-  let stat
-  try { stat = fs.statSync(file) } catch { return }
-  if (!stat.isFile() || stat.size === 0) return
-  const ext = path.extname(file) || '.log'
-  const base = path.basename(file, ext)
-  const monthDir = path.join(path.dirname(file), monthDirName(stat.mtime))
-  try {
-    fs.mkdirSync(monthDir, { recursive: true })
-    fs.renameSync(file, path.join(monthDir, `${base}-${datestamp(stat.mtime)}${ext}`))
-    delete tailState[file] // fresh file: restart the tail from the top
-  } catch (err) {
-    send('console:relay', { kind: 'status', text: `log rotation skipped for ${file}: ${err.message}` })
-  }
-}
-
-// Sweep already-rotated siblings (ours and nssm's own size rotation, both named
-// <base>-<digits...>) into their month folder. "-<digit>" avoids eating other
-// active logs like gameserver-err.log.
-function sweepRotatedLogs(file) {
-  const dir = path.dirname(file)
-  const ext = path.extname(file) || '.log'
-  const base = path.basename(file, ext)
-  let entries = []
-  try { entries = fs.readdirSync(dir) } catch { return }
-  for (const entry of entries) {
-    if (!entry.startsWith(base + '-') || !entry.endsWith(ext)) continue
-    if (!/^\d/.test(entry.slice(base.length + 1))) continue
-    let stat
-    try { stat = fs.statSync(path.join(dir, entry)) } catch { continue }
-    if (!stat.isFile()) continue
-    const monthDir = path.join(dir, monthDirName(stat.mtime))
-    try {
-      fs.mkdirSync(monthDir, { recursive: true })
-      fs.renameSync(path.join(dir, entry), path.join(monthDir, entry))
-    } catch { /* locked or already moved, retry on the next restart */ }
-  }
-}
-
-async function rotateServiceLogs(svc) {
-  for (const file of await serviceLogFiles(svc)) {
-    sweepRotatedLogs(file)
-    archiveLogFile(file)
-  }
-}
-
-async function statusAll() {
-  const pairs = await Promise.all(config.services.map(async s => [s.key, (await probeService(s)).status]))
-  return Object.fromEntries(pairs)
-}
-
 ipcMain.handle('services:status', () => statusAll())
-
-// Act on a single service (per-service dropdowns and console commands).
-async function doServiceAction(key, action) {
-  const svc = serviceByKey[key]
-  if (!svc) return { ok: false, error: `unknown service ${key}` }
-  const steps = []
-  let ok = true
-  const step = async verb => { const r = await act(svc, verb); ok = ok && r.ok; steps.push(`${svc.label}: ${r.text}`); return r.ok }
-  if (action === 'stop') await step('stop')
-  else if (action === 'start') await step('start')
-  else if (action === 'restart') { if (await step('stop')) await step('start') }
-  else return { ok: false, error: `unknown action ${action}` }
-  return { ok, steps, status: await statusAll() }
-}
-
-// Act on every service in order (stop order reversed) - the "all" controls.
-async function doServicesAction(action) {
-  const steps = []
-  let ok = true
-  const step = async (s, verb) => { const r = await act(s, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
-  const doStop  = async () => { for (const s of [...config.services].reverse()) await step(s, 'stop') }
-  const doStart = async () => { for (const s of config.services)                await step(s, 'start') }
-  if (action === 'stop') await doStop()
-  else if (action === 'start') await doStart()
-  else if (action === 'restart') { await doStop(); await doStart() }
-  else return { ok: false, error: `unknown action ${action}` }
-  return { ok, steps, status: await statusAll() }
-}
 
 ipcMain.handle('service:action', (_e, key, action) => doServiceAction(key, action))
 ipcMain.handle('services:action', (_e, action) => doServicesAction(action))
@@ -228,33 +63,11 @@ ipcMain.handle('services:action', (_e, action) => doServicesAction(action))
 const tailState = {}   // file -> last byte offset
 let logTargets = []    // [{ file, label }]
 
-function parseNssmPath(s) {
-  const p = String(s || '').replace(/\u0000/g, '').trim().replace(/^"|"$/g, '')
-  return p && !/^reset|^\(|unknown|service/i.test(p) ? p : ''
-}
+serviceHooks.onRotated = file => { delete tailState[file] }
+serviceHooks.status = text => send('console:relay', { kind: 'status', text })
 
-async function discoverLogTargets() {
-  const targets = []
-  const seen = new Set()
-  const add = (file, label) => {
-    if (file && !seen.has(file)) { seen.add(file); targets.push({ file, label }) }
-  }
-  for (const s of config.services) {
-    const name = await serviceName(s)
-    for (const stream of ['AppStdout', 'AppStderr']) {
-      const p = parseNssmPath(await nssm('get', name, stream))
-      add(p, `${s.label}${stream === 'AppStderr' ? ' (err)' : ''}`)
-    }
-  }
-  // Fallbacks
-  const fallbacks = [
-    ['gameserver.log', 'Game'], ['gameserver-err.log', 'Game (err)'],
-    ['backend.log', 'Backend'], ['backend-err.log', 'Backend (err)'],
-  ]
-  for (const [name, label] of fallbacks) add(path.join(config.logDir, name), label)
-  for (const f of ['error.log', 'access.log']) add(path.join('C:\\nginx', 'logs', f), `Nginx (${f.replace('.log', '')})`)
-  // Keep only the files that actually exist right now (re-checked on each refresh).
-  logTargets = targets.filter(t => { try { return fs.statSync(t.file).isFile() } catch { return false } })
+async function refreshLogTargets() {
+  logTargets = await discoverLogTargets()
 }
 
 function pollLogs() {
@@ -278,61 +91,15 @@ function pollLogs() {
 }
 
 function startLogTail() {
-  discoverLogTargets()
+  refreshLogTargets()
   setInterval(pollLogs, 1500)
-  setInterval(discoverLogTargets, 30000)   // services may be re-installed/reconfigured
+  setInterval(refreshLogTargets, 30000)   // services may be re-installed/reconfigured
 }
 
-const consoleRelay = {
-  ws: null, connected: false, timer: null, pending: new Map(),
-  connect() {
-    if (this.ws) return
-    let ws
-    try { ws = new WebSocket(`ws://127.0.0.1:${config.relay.port}`) }
-    catch { return this.scheduleReconnect() }
-    this.ws = ws
-    ws.on('open', () => ws.send(JSON.stringify({ type: 'auth', role: 'console', secret: config.relay.secret })))
-    ws.on('message', raw => {
-      let m; try { m = JSON.parse(raw.toString()) } catch { return }
-      if (m.type === 'auth_ok') { this.connected = true; send('console:relay', { kind: 'status', text: 'connected to relay' }); return }
-      if (m.type === 'console_output' || m.type === 'console_log') {
-        const text = String(m.text ?? '')
-        // A marked reply line is consumed by its pending query, not shown in the
-        // console. Position 0 only: a marker mid-text could be player-supplied.
-        for (const [marker, p] of this.pending) {
-          if (text.startsWith(marker)) { this.pending.delete(marker); clearTimeout(p.timer); p.resolve(text.slice(marker.length).trim()); return }
-        }
-        send('console:relay', { kind: 'output', text })
-      }
-    })
-    ws.on('close', () => { this.connected = false; this.ws = null; this.scheduleReconnect() })
-    ws.on('error', () => { /* 'close' handles the retry */ })
-  },
-  scheduleReconnect() { if (this.timer) return; this.timer = setTimeout(() => { this.timer = null; this.connect() }, 4000) },
-  command(text) {
-    if (!this.connected || !this.ws) return { ok: false, error: 'relay not connected - is the backend running?' }
-    try { this.ws.send(JSON.stringify({ type: 'console_command', text })); return { ok: true } }
-    catch (err) { return { ok: false, error: err.message } }
-  },
-  // Send a command and resolve with the reply line following its marker.
-  // Same-marker queries are serialized: pending is keyed on the marker, so two
-  // in flight at once would clobber each other's resolver.
-  query(command, marker, timeoutMs = 2500) {
-    const queues = this.queues || (this.queues = new Map())
-    const next = (queues.get(marker) || Promise.resolve()).then(() => this.queryNow(command, marker, timeoutMs))
-    queues.set(marker, next)
-    return next
-  },
-  queryNow(command, marker, timeoutMs) {
-    return new Promise(resolve => {
-      if (!this.connected || !this.ws) return resolve({ ok: false, error: 'relay not connected' })
-      const timer = setTimeout(() => { this.pending.delete(marker); resolve({ ok: false, error: 'query timed out' }) }, timeoutMs)
-      this.pending.set(marker, { resolve: payload => resolve({ ok: true, payload }), timer })
-      try { this.ws.send(JSON.stringify({ type: 'console_command', text: command })) }
-      catch (err) { this.pending.delete(marker); clearTimeout(timer); resolve({ ok: false, error: err.message }) }
-    })
-  },
-}
+const consoleRelay = createConsoleRelay({
+  onStatus: text => send('console:relay', { kind: 'status', text }),
+  onOutput: text => send('console:relay', { kind: 'output', text }),
+})
 
 // Console box: manager commands are handled locally, anything else is
 // forwarded to the game server console over the WS relay (the gamemode).
@@ -379,7 +146,8 @@ async function tryLocalCommand(cmd) {
   }
   if (verb === 'build') {
     if (!BUILD_KINDS.includes(arg)) { consoleOut(`usage: build <${BUILD_KINDS.join('|')}>`); return { ok: true } }
-    if (busy) { consoleOut('a build or sync is already running - wait for it to finish'); return { ok: true } }
+    const holder = managerLock.holder()
+    if (holder) { consoleOut(`a build or sync is already running (${managerLock.describe(holder)}) - wait for it to finish`); return { ok: true } }
     consoleOut(`starting ${arg} build…`)
     // Not awaited: builds take minutes; progress streams via build:log and the
     // outcome is reported here when it lands.
@@ -400,11 +168,12 @@ ipcMain.handle('console:command', async (_e, text) => {
 // Builds stream to build:log, the Modlist tab's operations to modlist:log
 function builder(channel = 'build:log') { return new Builder(t => send(channel, t)) }
 
-// One build or sync at a time: console commands, the Build tab and the Modlist tab share this gate.
-let busy = false
+// One build or sync at a time: console commands, the Build tab, the Modlist tab and the web manager agent share this lock.
 async function exclusive(fn) {
-  if (busy) return { ok: false, error: 'a build or sync is already running' }
-  busy = true
+  let lock
+  try { lock = managerLock.acquire({ source: 'electron', kind: 'manager build or sync', actor: `local:${os.userInfo().username}` }) }
+  catch (err) { return { ok: false, error: `cannot take the build lock: ${err.message}` } }
+  if (!lock.ok) return { ok: false, error: `a build or sync is already running: ${managerLock.describe(lock.holder)}` }
   try {
     const r = await fn()
     // Let queued build:log messages land before the renderer prints the outcome, else the failure line appears above its error.
@@ -412,7 +181,7 @@ async function exclusive(fn) {
     return r
   } catch (err) {
     return { ok: false, error: err.message }
-  } finally { busy = false }
+  } finally { lock.release() }
 }
 
 function runBuild(kind, opts) {
@@ -554,11 +323,6 @@ function charFromCf(cf) {
 
 function readJsonOrNull(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null }
-}
-
-// Lenient read for the players and log tabs: {} when the file is missing or invalid
-function readServerSettings() {
-  try { return modsync.readSettingsFile(config.paths.serverSettings).settings } catch { return {} }
 }
 
 // Rename with retries: the backend may be streaming the target to a launcher at that moment
@@ -1134,15 +898,6 @@ ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
   if (!dryRun && r.ok) stampDiff({ syncedDataAt: new Date().toISOString() }, t => b.line(t))
   return r
 }))
-
-// A running game server re-upserts every loaded form, so database writes need it stopped; a dry run only warns
-async function requireGameStopped(log, dryRun) {
-  const status = await gameStatus()
-  const error = status === 'SERVICE_STOPPED' ? nativeModuleLocked() : `the game server is ${status || 'in an unknown state'}, stop it first`
-  if (!error) return null
-  if (dryRun) { log(`WARNING: ${error} (a dry run needs no stop)`); return null }
-  return { ok: false, error }
-}
 
 ipcMain.handle('modlist:purge', (_e, opts) => exclusive(async () => {
   const dryRun = Boolean(opts && opts.dryRun)

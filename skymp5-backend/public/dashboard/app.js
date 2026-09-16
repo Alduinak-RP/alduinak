@@ -1,6 +1,7 @@
 const config = window.ALDUINAK_DASHBOARD_CONFIG || {}
 const apiBaseUrl = (config.apiBaseUrl || '').replace(/\/$/, '')
 const tokenKey = 'alduinak.dashboard.token'
+const loginNonceKey = 'alduinak.dashboard.loginNonce'
 
 const state = {
   token: localStorage.getItem(tokenKey) || '',
@@ -186,27 +187,38 @@ async function api(path, options = {}) {
   const text = await res.text()
   const data = text ? JSON.parse(text) : null
   if (!res.ok) {
-    throw new Error(data?.error || `Request failed with ${res.status}`)
+    const err = new Error(data?.error || `Request failed with ${res.status}`)
+    err.status = res.status
+    throw err
   }
   return data
 }
 
+// A token in the fragment is only accepted with the nonce this tab stored when it started the login, so a crafted link cannot sign someone in
 function captureTokenFromUrl() {
   const url = new URL(window.location.href)
-  // Token arrives in the URL fragment; keep the legacy ?token= query as a
-  // fallback for one deploy cycle (older backends still redirect with it).
   const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''))
-  const token = hashParams.get('token') || url.searchParams.get('token')
+  const token = hashParams.get('token')
   if (!token) return
+  let expected = null
+  try {
+    expected = sessionStorage.getItem(loginNonceKey)
+    sessionStorage.removeItem(loginNonceKey)
+  } catch {}
+  window.history.replaceState({}, '', url.pathname)
+  if (!expected || hashParams.get('nonce') !== expected) {
+    toast('Login link ignored: start the login from this page')
+    return
+  }
   state.token = token
   localStorage.setItem(tokenKey, token)
-  // replaceState with the bare pathname drops both the query and the fragment.
-  window.history.replaceState({}, '', url.pathname)
 }
 
 async function login() {
   const redirect = `${window.location.origin}/`
-  const data = await fetch(`${apiBaseUrl}/auth/dashboard/url?redirect=${encodeURIComponent(redirect)}`)
+  const nonce = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('')
+  sessionStorage.setItem(loginNonceKey, nonce)
+  const data = await fetch(`${apiBaseUrl}/auth/dashboard/url?redirect=${encodeURIComponent(redirect)}&nonce=${nonce}`)
     .then(res => res.json())
   if (!data.url) throw new Error(data.error || 'OAuth URL unavailable')
   window.location.href = data.url

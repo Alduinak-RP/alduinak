@@ -3,9 +3,17 @@
 const fs   = require('fs')
 const path = require('path')
 const cp   = require('child_process')
+const crypto = require('crypto')
 const config = require('./config')
 
 const isWin = process.platform === 'win32'
+
+const sha256 = data => crypto.createHash('sha256').update(data).digest('hex')
+
+// One hash over sha256sum-style lines of the part files, recomputable from Get-FileHash output
+function extensionsManifest(files) {
+  return { sha256: sha256(files.map(f => `${f.sha256}  ${f.name}\n`).join('')), files }
+}
 
 // Most Build buttons are pure JS/packaging: bundle TypeScript, build the launcher, zip client files.
 // buildNative() compiles the C++ locally with CMake + MSVC (needs the VS 2022 C++ workload); the CI Rebuild button builds the same on GitHub.
@@ -341,33 +349,39 @@ class Builder {
     try { parts = fs.readdirSync(extDir).filter(f => f.endsWith('.js')).sort() } catch {}
     if (!parts.length) {
       this.line('[gamemode] no gamemode_extensions/*.js found - gamemode.js left untouched.')
-      return { ok: true }
+      return { ok: true, extensions: extensionsManifest([]) }
     }
     const bodies = []
+    const files = []
     for (const name of parts) {
       try {
-        bodies.push(fs.readFileSync(path.join(extDir, name), 'utf8').replace(/\r\n/g, '\n').replace(/\s+$/, ''))
-        this.line(`[gamemode] + ${name}`)
+        const raw = fs.readFileSync(path.join(extDir, name))
+        files.push({ name, sha256: sha256(raw) })
+        bodies.push(raw.toString('utf8').replace(/\r\n/g, '\n').replace(/\s+$/, ''))
+        this.line(`[gamemode] + ${name}  sha256 ${files[files.length - 1].sha256.slice(0, 16)}`)
       } catch (err) {
         return { ok: false, error: `gamemode: could not read ${name} (${err.message})` }
       }
     }
+    // gamemode_extensions is not in git, so the hashes are the only record of which parts were built
+    const extensions = extensionsManifest(files)
+    this.line(`[gamemode] extensions sha256 ${extensions.sha256}`)
     const banner = '// GENERATED from gamemode_extensions/ by the Server Manager - edit the parts, not this file.\n\n'
     const out = banner + bodies.join('\n\n') + '\n'
     // Compile without running: a part with a syntax error must never reach the live file.
     try { new (require('vm').Script)(out, { filename: 'gamemode.js' }) }
-    catch (err) { return { ok: false, error: `gamemode: syntax error in the concatenated output - ${err.message}` } }
+    catch (err) { return { ok: false, error: `gamemode: syntax error in the concatenated output - ${err.message}`, extensions } }
     let current = ''
     try { current = fs.readFileSync(target, 'utf8') } catch {}
     if (current === out) {
       this.line('[gamemode] gamemode.js already up to date.')
-      return { ok: true }
+      return { ok: true, extensions }
     }
     const tmp = target + '.tmp'
     fs.writeFileSync(tmp, out)
     fs.renameSync(tmp, target)
     this.line(`\n✓ gamemode.js built from ${parts.length} extension file(s); the server hot-reloads it within a second.`)
-    return { ok: true }
+    return { ok: true, extensions }
   }
 
   // GAME SERVER: bundle the TypeScript into build/dist/server/dist_back. The native
@@ -400,7 +414,7 @@ class Builder {
       this.line('\n[server] note: scam_native.node is not in build/dist/server - copy it from the CI "server-dist" artifact so the game server can start.')
     }
     this.line('\n✓ Game server TS bundle built into build/dist/server (native scam_native.node comes from CI).')
-    return { ok: true }
+    return { ok: true, extensions: gm.extensions }
   }
 
   // LAUNCHER: the Electron installer. Wipes the old output, installs deps, builds.

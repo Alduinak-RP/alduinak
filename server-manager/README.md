@@ -187,6 +187,17 @@ executes `help`, `status`, `players`, `say <text>`, `notify <name|all> <text>`,
 `RELAY_SECRET` from `skymp5-backend/.env` automatically. If the Console reports
 "game console offline", the game server (or its relay connection) is down.
 
+## Web agent (AlduinakManager service)
+
+The dashboard's **Server** tab runs its jobs through `src/agent.js`, a loopback-only
+nssm service installed by `Setup-Agent.bat` and running as the Administrator
+account. It reuses the same `Builder`, service control (`src/services.js`) and
+console relay (`src/relayClient.js`) as this app. Builds and syncs from this app and
+web jobs share the busy lock `C:\logs\manager\busy.lock`, so they never run at
+the same time. Restart the `AlduinakManager` service after changing
+`server-manager/src`, but never while a web job runs. See
+`docs/docs_web_server_manager.md` for the security model and runbook.
+
 ## Configuration (environment variables)
 
 | Var | Default | Purpose |
@@ -199,7 +210,8 @@ executes `help`, `status`, `players`, `say <text>`, `notify <name|all> <text>`,
 | `ALDUINAK_MO2_PROFILE` | `Default` | MO2 profile to compile |
 | `ALDUINAK_BUILD_DIR` | `<repo>\build` | Build output dir; the CI `dist/` payloads and the launcher land here |
 | `ALDUINAK_SERVER_KEEP` | *(none)* | Comma-separated extra names to preserve when pruning `build/dist/server` |
-| `ALDUINAK_NO_AUTO_INSTALL` | *(unset)* | Set to `1` to disable auto-installing prerequisites (Node/Git) via winget |
+| `ALDUINAK_NO_AUTO_INSTALL` | *(unset)* | Set to `1` to disable auto-installing prerequisites (Node/Git) via winget; the agent defaults it to `1` |
+| `ALDUINAK_EXTRA_PATH` | *(unset)* | Agent only: folders prepended to PATH, e.g. the Administrator npm folder holding yarn |
 
 The repo path, service names, and the WS relay port/secret (from the backend
 `.env`) are detected automatically.

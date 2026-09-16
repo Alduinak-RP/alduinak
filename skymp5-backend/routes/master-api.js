@@ -47,6 +47,7 @@ const serverAccess = require('../sources/serverAccess')
 const profiles = require('../sources/profiles')
 const players  = require('../sources/players')
 const bans     = require('../sources/bans')
+const safeEqual = require('../sources/safeEqual')
 
 // Persistent balance store: profileId -> coin balance
 
@@ -162,8 +163,7 @@ function checkKey(req, res) {
 }
 
 function checkWriteToken(req, res) {
-  const authToken = req.headers['x-auth-token']
-  if (!authToken || authToken !== config.masterApiAuthToken) {
+  if (!safeEqual(req.headers['x-auth-token'], config.masterApiAuthToken)) {
     res.status(403).json({ error: 'Invalid auth token.' })
     return false
   }

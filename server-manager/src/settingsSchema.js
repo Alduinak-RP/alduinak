@@ -148,6 +148,12 @@ const backendEnv = [
 
   // CI & tooling
   { key: 'ALDUINAK_GH_TOKEN',     label: 'GitHub token (PAT)',    type: 'secret', group: 'CI & tooling', help: 'PAT with actions:write - powers the manager CI Rebuild (workflow dispatch).' },
+
+  // Web Server Manager (dashboard) and its AlduinakManager agent
+  { key: 'MANAGER_AGENT_PORT',        label: 'Agent port',          type: 'number', group: 'Web manager', help: 'Loopback port of the AlduinakManager service. Default 4003. Restart the backend and the agent after a change.' },
+  { key: 'MANAGER_AGENT_SECRET',      label: 'Agent secret',        type: 'secret', group: 'Web manager', help: 'Shared secret the backend signs agent calls with, at least 32 characters.' },
+  { key: 'MANAGER_LOG_DIR',           label: 'Manager log folder',  type: 'text',   group: 'Web manager', placeholder: 'C:\\logs\\manager', help: 'Web jobs, their logs, the busy lock and the audit files.' },
+  { key: 'MANAGER_AUDIT_WEBHOOK_URL', label: 'Audit Discord webhook', type: 'secret', group: 'Web manager', help: 'Optional private staff channel webhook that mirrors manager actions and failed logins.' },
 ]
 
 module.exports = { serverSettings, backendEnv }

@@ -1,0 +1,96 @@
+.manager {
+  display: grid;
+  gap: 18px;
+}
+
+.manager-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.manager-tabs,
+.manager-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.manager-tab.active {
+  background: var(--panel-2);
+  border-color: var(--accent);
+}
+
+.manager-banner {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--panel);
+}
+
+.manager-banner.error,
+.manager-warning {
+  border: 1px solid rgba(217, 107, 107, .55);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #f3c4c4;
+  background: rgba(217, 107, 107, .12);
+}
+
+.manager-warning {
+  margin: 0 0 14px;
+}
+
+.manager-pre,
+.manager-json {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  background: #0c0f14;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.manager-pre {
+  min-height: 240px;
+  max-height: 60vh;
+}
+
+.manager-pre.tall {
+  min-height: 420px;
+  max-height: 70vh;
+  margin-top: 14px;
+}
+
+.manager-json {
+  max-height: 260px;
+  padding: 8px;
+}
+
+.manager-console-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.manager-settings {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.manager-settings td:first-child {
+  width: 30%;
+}
+
+@media (max-width: 620px) {
+  .manager-console-form {
+    grid-template-columns: 1fr;
+  }
+}
