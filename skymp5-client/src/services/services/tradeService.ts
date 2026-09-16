@@ -14,7 +14,7 @@ declare const window: any;
 const WIDGET_ID = 14; // the two-pane trade window (12 belongs to capture-consent)
 const INVITE_WIDGET_ID = 15; // the small "X wants to trade" prompt
 
-// Stacks larger than this prompt for a count when added/removed (vanilla-style); smaller stacks move whole.
+// Stacks larger than this prompt for a count; smaller stacks move one per click, like SkyUI's container window
 const STACK_PROMPT_THRESHOLD = 5;
 
 // Extras that tell copies apart, same as the server's IDENTITY_KEYS (tradeSystem.ts)
@@ -124,20 +124,21 @@ let inviteFrom = '';
  *   Server -> Client
  *     { customPacketType: "tradeInvite", fromName }
  *     { customPacketType: "tradeState", partnerName, myOffer, theirOffer,
- *         myLocked, theirLocked, bothLocked, iAccepted, theyAccepted }
+ *         myLocked, theirLocked, bothLocked, iAccepted, theyAccepted, mySeq }
  *     { customPacketType: "tradeCompleted" }
  *     { customPacketType: "tradeCancelled", reason }
  *     { customPacketType: "tradeNotice", text }
  *
  *   Client -> Server
  *     { customPacketType: "tradeRespond", accept }
- *     { customPacketType: "tradeSetOffer", items: [{ baseId, count, ...extras }] }
+ *     { customPacketType: "tradeSetOffer", items: [{ baseId, count, ...extras }], seq }
  *     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
  *
  * The window shows the player's own (offerable) inventory on the left and two
  * stacked boxes on the right: their own offer and the partner's. Offers and
- * lock/accept state are owned by the server; the client renders whatever the
- * latest `tradeState` says and only resolves item names locally.
+ * lock/accept state are owned by the server; the client renders the latest
+ * `tradeState`, shows its own offer until the server has seen it (seq/mySeq),
+ * and only resolves item names locally.
  */
 export class TradeService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -176,13 +177,17 @@ export class TradeService extends ClientListener {
       case "tradeState": {
         const prev = this.state;
         this.state = this.parseState(content);
+        // A reply to an older offer keeps the newer one shown; mySeq 0 means none from this trade arrived yet
+        const mySeq = Number(content["mySeq"]);
+        if (prev && mySeq > 0 && mySeq < this.offerSeq) {
+          this.state.myOffer = prev.myOffer;
+        }
         this.closeInvite();
         const wasLockPending = this.lockPending;
         this.lockPending = false;
         // Packet handlers run in tick context where inventory natives throw; defer to update
         this.controller.once("update", () => {
           if (!this.state) return;
-          this.renderWidget();
           if (wasLockPending) {
             // The server wipes the offer when a lock fails affordability; restore what we can still afford.
             if (!this.state.myLocked && this.state.myOffer.length === 0
@@ -190,6 +195,7 @@ export class TradeService extends ClientListener {
               this.restoreOffer(prev.myOffer);
             }
           }
+          this.renderWidget();
         });
         break;
       }
@@ -288,7 +294,7 @@ export class TradeService extends ClientListener {
     if (!this.state || !Number.isFinite(count) || count <= 0) {
       return;
     }
-    const offer = this.state.myOffer.map((i) => toItem(i, i.count));
+    const offer = this.state.myOffer.map((i) => ({ ...i }));
     const offered = offer.find((i) => lineKey(i) === lineId);
     const offeredCount = offered ? offered.count : 0;
     const owned = this.localLines().get(lineId);
@@ -309,9 +315,19 @@ export class TradeService extends ClientListener {
       offer.push(toItem(owned.item, delta));
     }
 
-    const next = offer.filter((i) => i.count > 0);
     this.lockPending = false;
-    sendCustomPacket(this.controller, { customPacketType: "tradeSetOffer", items: next });
+    this.sendOffer(offer.filter((i) => i.count > 0));
+    this.renderWidget();
+  }
+
+  // Applied locally at once so a quick second click builds on the first
+  private sendOffer(items: Item[]): void {
+    if (!this.state) {
+      return;
+    }
+    this.offerSeq++;
+    this.state.myOffer = items;
+    sendCustomPacket(this.controller, { customPacketType: "tradeSetOffer", items, seq: this.offerSeq });
   }
 
   // Re-send a wiped offer clamped to what the player still holds.
@@ -326,7 +342,7 @@ export class TradeService extends ClientListener {
       }
     }
     if (items.length > 0) {
-      sendCustomPacket(this.controller, { customPacketType: "tradeSetOffer", items });
+      this.sendOffer(items);
     }
   }
 
@@ -568,6 +584,8 @@ export class TradeService extends ClientListener {
   // ── Networking & misc ─────────────────────────────────────────────────────────
 
   private state: TradeState | null = null;
+  // Never reset: a dropped client gets no tradeCancelled, so a new trade must not match an old seq
+  private offerSeq = 0;
   private lockPending = false;
   private windowOpen = false;
   private invitePending = false;

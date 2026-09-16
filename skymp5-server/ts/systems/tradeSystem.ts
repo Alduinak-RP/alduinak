@@ -20,12 +20,13 @@ type Mp = any;
 //     { customPacketType: "tradeRequest", recipient: <remoteActorFormId> }
 //     { customPacketType: "tradeRespond", accept: <bool> }
 //     { customPacketType: "tradeSetOffer", items: [{ baseId, count, name?, health?, enchantmentId?, maxCharge?,
-//         removeEnchantmentOnUnequip?, chargePercent?, soul?, poisonId?, poisonCount?, enchantmentEffects? }] }
+//         removeEnchantmentOnUnequip?, chargePercent?, soul?, poisonId?, poisonCount?, enchantmentEffects? }], seq? }
 //     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
 //   Server -> Client
 //     { customPacketType: "tradeInvite", fromName }
 //     { customPacketType: "tradeState", partnerName, myOffer, theirOffer,
-//         myLocked, theirLocked, bothLocked, iAccepted, theyAccepted }
+//         myLocked, theirLocked, bothLocked, iAccepted, theyAccepted, mySeq }
+//       mySeq is the seq of my latest tradeSetOffer this trade (0 before any), accepted or refused;
 //       myOffer echoes my lines (plain: true when the server holds no copy with those extras);
 //       theirOffer lists the server entries that will actually arrive
 //     { customPacketType: "tradeCompleted" } | { customPacketType: "tradeCancelled", reason }
@@ -55,6 +56,8 @@ interface Session {
   acceptedB: boolean;
   active: boolean; // false while the invite is still pending the partner's reply
   inviteSeq: number; // bumped per (re-)invite so stale TTL timers no-op
+  offerSeqA: number; // latest tradeSetOffer seq from a, echoed as mySeq
+  offerSeqB: number;
 }
 
 // ── Pure inventory helpers (operate on the JSON shape of the inventory binding; identity lives in inventoryExtras.ts) ─
@@ -237,6 +240,7 @@ export class TradeSystem implements System {
       bothLocked,
       iAccepted: me ? s.acceptedA : s.acceptedB,
       theyAccepted: me ? s.acceptedB : s.acceptedA,
+      mySeq: me ? s.offerSeqA : s.offerSeqB,
     });
   }
 
@@ -416,6 +420,7 @@ export class TradeSystem implements System {
       acceptedA: false, acceptedB: false,
       active: false,
       inviteSeq: 0,
+      offerSeqA: 0, offerSeqB: 0,
     };
     if (!this.withinRange(mp, s)) {
       this.notice(mp, userId, 'You are too far away to trade.');
@@ -454,6 +459,11 @@ export class TradeSystem implements System {
     const s = this.sessions.get(userId);
     if (!s || !s.active) {
       return;
+    }
+    // Acknowledged even when refused, so the client drops its local copy for the server's
+    const seq = Number(content.seq);
+    if (Number.isInteger(seq)) {
+      if (s.a === userId) { s.offerSeqA = seq; } else { s.offerSeqB = seq; }
     }
     const offer = normalizeOffer(content.items);
     const inv = readInventory(mp, this.actorOf(mp, userId));
