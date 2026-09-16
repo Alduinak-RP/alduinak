@@ -130,13 +130,16 @@ straight to the hunter's inventory.
 Pelts belong to hunters at every rank, Novice included. `hidesFrom` is the one
 rule for it: `SearchSystem` leaves a pelt out of the loot window of a looter who
 is not a hunter and refuses their take of it, so the two can never disagree.
-There is no notice, the pelt is simply not there, and the profession is read
-again on every take, so a character who picks Hunter sees pelts at once. A pelt
+There is no notice, the pelt is simply not there. The profession is read again
+whenever a window opens and on every take, so a character who picks Hunter sees
+pelts from their next search on, with no restart and no relog. A pelt
 is any item carrying the `VendorItemAnimalHide` keyword, which covers mod hides
 too, plus the `huntingPelts` list for the two Dawnguard hides, which carry no
 keywords. The rule covers dead pets as well, since a pet horse or cow drops a
 hide like any other animal; the cost is that a non-hunter who owned the pet also
-stops seeing pelts they had stored in it. Meat stays open to everyone unless
+stops seeing pelts, or leather, which carries the same keyword, that they had
+stored in it. Nothing is destroyed: the items stay on the corpse, the rule only
+decides who is shown them. Meat stays open to everyone unless
 `huntingHarvestNeedsHunter` is turned on, which puts meat under the same rule.
 Turn the pelt rule off with `huntingPeltsNeedHunter` false.
 
