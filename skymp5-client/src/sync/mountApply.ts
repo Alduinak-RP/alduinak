@@ -11,6 +11,8 @@ import { logToPlatformLog } from "../logging";
 // seat leaves the clone attached to the horse instead, never back on normal movement sync. The rider's own client is services/mountService.ts.
 
 export interface MountState {
+  // The ride is remembered even while the horse has no local copy, so the clone is always let go of when ff_mount clears
+  horseRemoteId: number;
   horseLocalId: number;
   mounted: boolean;
   pending: boolean;
@@ -21,6 +23,8 @@ export interface MountState {
   // Carried by the horse clone because the engine refused the saddle
   attached: boolean;
   lastFollowMs: number;
+  // The clone's own walk was dropped for as long as it is left to the engine
+  halted: boolean;
   tries: number;
   lastTryMs: number;
   // Set when the clone was told to dismount; movement apply resumes once it is off the horse or after the grace
@@ -30,8 +34,8 @@ export interface MountState {
 }
 
 export const makeMountState = (): MountState => ({
-  horseLocalId: 0, mounted: false, pending: false, parking: false, parkTarget: [0, 0, 0], parkedAt: 0,
-  attached: false, lastFollowMs: 0, tries: 0, lastTryMs: 0, dismountAt: 0, gaveUp: false, logged: [],
+  horseRemoteId: 0, horseLocalId: 0, mounted: false, pending: false, parking: false, parkTarget: [0, 0, 0], parkedAt: 0,
+  attached: false, lastFollowMs: 0, halted: false, tries: 0, lastTryMs: 0, dismountAt: 0, gaveUp: false, logged: [],
 });
 
 const RETRY_MS = 1500;
@@ -90,11 +94,22 @@ const logOnce = (state: MountState, text: string): void => {
   logToPlatformLog("mountApply", text);
 };
 
+// The last normal apply left a self offset that keeps a clone walking, and a suppressed clone gets no translation to correct it
+const stopMoving = (ac: Actor): void => {
+  ac.clearKeepOffsetFromActor();
+  ac.stopTranslation();
+};
+
 // Keeps the riding and seating sets in step with the state; the result is what the movement apply must treat as mounted
-const track = (riderId: number, state: MountState, riding: boolean, now: number): boolean => {
+const track = (rider: Actor, riderId: number, state: MountState, riding: boolean, now: number): boolean => {
   if (riding) {
+    if (!state.halted) {
+      state.halted = true;
+      stopMoving(rider);
+    }
     ridingClones.set(riderId, state.horseLocalId);
   } else {
+    state.halted = false;
     ridingClones.delete(riderId);
   }
   if (state.horseLocalId) {
@@ -121,8 +136,8 @@ const seatRefusal = (rider: Actor, horse: Actor): string => {
 };
 
 const park = (rider: Actor, horse: Actor, state: MountState, now: number): void => {
-  rider.clearKeepOffsetFromActor();
-  rider.stopTranslation();
+  stopMoving(rider);
+  state.halted = true;
   const yaw = horse.getAngleZ() * Math.PI / 180;
   const horsePos = ObjectReferenceEx.getPos(horse);
   const target: NiPoint3 = [
@@ -185,8 +200,8 @@ const saddlePos = (horse: Actor): NiPoint3 => {
 // The engine refused the saddle, so the clone rides along carried by the horse clone instead of walking
 const attach = (rider: Actor, horse: Actor, state: MountState, now: number): void => {
   if (!state.attached) {
-    rider.clearKeepOffsetFromActor();
-    rider.stopTranslation();
+    stopMoving(rider);
+    state.halted = true;
     rider.setVehicle(horse);
     state.attached = true;
     state.lastFollowMs = now;
@@ -224,7 +239,7 @@ const unseat = (rider: Actor, state: MountState, now: number): void => {
 // Runs every apply; true while the clone is left to the engine (seating, seated, carried or climbing off)
 export const applyMount = (refr: ObjectReference, model: FormModel, state: MountState): boolean => {
   const horseRemoteId = mountOf(model);
-  if (!horseRemoteId && !state.horseLocalId && !state.dismountAt) {
+  if (!horseRemoteId && !state.horseRemoteId && !state.horseLocalId && !state.dismountAt) {
     return false;
   }
   const rider = Actor.from(refr);
@@ -238,30 +253,31 @@ export const applyMount = (refr: ObjectReference, model: FormModel, state: Mount
   if (state.horseLocalId && state.horseLocalId !== horseLocalId) {
     unseat(rider, state, now);
   }
+  state.horseRemoteId = horseRemoteId;
   if (state.dismountAt) {
     if (now - state.dismountAt < DISMOUNT_GRACE_MS && rider.isOnMount()) {
-      return track(riderId, state, true, now);
+      return track(rider, riderId, state, true, now);
     }
     state.dismountAt = 0;
   }
   // The ride is the property, not the seat: a clone with ff_mount never goes back on normal movement sync
   if (!horseRemoteId) {
-    return track(riderId, state, false, now);
+    return track(rider, riderId, state, false, now);
   }
   if (!horseLocalId) {
     logOnce(state, `${riderId.toString(16)} rides ${horseRemoteId.toString(16)}, which has no local horse`);
-    return track(riderId, state, true, now);
+    return track(rider, riderId, state, true, now);
   }
   const horse = Actor.from(Game.getFormEx(horseLocalId));
   if (!horse) {
     logOnce(state, `${horseLocalId.toString(16)} is no local actor`);
-    return track(riderId, state, true, now);
+    return track(rider, riderId, state, true, now);
   }
   state.horseLocalId = horseLocalId;
 
   if (state.mounted) {
     if (rider.isOnMount()) {
-      return track(riderId, state, true, now);
+      return track(rider, riderId, state, true, now);
     }
     // Thrown off by the engine; seated again below
     state.mounted = false;
@@ -272,10 +288,10 @@ export const applyMount = (refr: ObjectReference, model: FormModel, state: Mount
       state.mounted = true;
       state.tries = 0;
       logOnce(state, `${riderId.toString(16)} seated on ${horseLocalId.toString(16)}`);
-      return track(riderId, state, true, now);
+      return track(rider, riderId, state, true, now);
     }
     if (now - state.lastTryMs < RETRY_MS) {
-      return track(riderId, state, true, now);
+      return track(rider, riderId, state, true, now);
     }
     state.pending = false;
     if (state.tries >= MAX_TRIES) {
@@ -288,28 +304,28 @@ export const applyMount = (refr: ObjectReference, model: FormModel, state: Mount
       detach(rider, state);
       state.mounted = true;
       state.gaveUp = false;
-      return track(riderId, state, true, now);
+      return track(rider, riderId, state, true, now);
     }
     attach(rider, horse, state, now);
-    return track(riderId, state, true, now);
+    return track(rider, riderId, state, true, now);
   }
   if (state.parking) {
     const arrived = ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(rider), state.parkTarget) <= PARK_ARRIVED_UNITS;
     if (!arrived && now - state.parkedAt < PARK_WAIT_MS) {
-      return track(riderId, state, true, now);
+      return track(rider, riderId, state, true, now);
     }
     state.parking = false;
     seat(rider, horse, state, now);
-    return track(riderId, state, true, now);
+    return track(rider, riderId, state, true, now);
   }
 
   const refusal = seatRefusal(rider, horse);
   if (refusal) {
     logOnce(state, `${riderId.toString(16)} cannot be seated on ${horseLocalId.toString(16)}: ${refusal}`);
-    return track(riderId, state, true, now);
+    return track(rider, riderId, state, true, now);
   }
   park(rider, horse, state, now);
-  return track(riderId, state, true, now);
+  return track(rider, riderId, state, true, now);
 };
 
 // A seated or carried rider clone lets go of its horse before it is deleted or killed
