@@ -27,6 +27,8 @@ export interface MountState {
   halted: boolean;
   tries: number;
   lastTryMs: number;
+  // First moment the seat could not even be asked for: no horse copy, or a refusal
+  blockedSince: number;
   // Set when the clone was told to dismount; movement apply resumes once it is off the horse or after the grace
   dismountAt: number;
   gaveUp: boolean;
@@ -35,11 +37,13 @@ export interface MountState {
 
 export const makeMountState = (): MountState => ({
   horseRemoteId: 0, horseLocalId: 0, mounted: false, pending: false, parking: false, parkTarget: [0, 0, 0], parkedAt: 0,
-  attached: false, lastFollowMs: 0, halted: false, tries: 0, lastTryMs: 0, dismountAt: 0, gaveUp: false, logged: [],
+  attached: false, lastFollowMs: 0, halted: false, tries: 0, lastTryMs: 0, blockedSince: 0, dismountAt: 0, gaveUp: false, logged: [],
 });
 
 const RETRY_MS = 1500;
 const MAX_TRIES = 6;
+// A seat that cannot even be asked for waits out the same budget as the tries before the clone is carried or let walk
+const BLOCKED_MS = MAX_TRIES * RETRY_MS;
 const DISMOUNT_GRACE_MS = 2000;
 const SYNTHETIC_TTL_MS = 2000;
 // The engine mounts from the horse's left flank, so the rider is parked there
@@ -100,6 +104,14 @@ const stopMoving = (ac: Actor): void => {
   ac.stopTranslation();
 };
 
+// A missing horse copy or a standing refusal never reaches a try, so it is timed instead of counted
+const blockedTooLong = (state: MountState, now: number): boolean => {
+  if (!state.blockedSince) {
+    state.blockedSince = now;
+  }
+  return now - state.blockedSince >= BLOCKED_MS;
+};
+
 // Keeps the riding and seating sets in step with the state; the result is what the movement apply must treat as mounted
 const track = (rider: Actor, riderId: number, state: MountState, riding: boolean, now: number): boolean => {
   if (riding) {
@@ -156,6 +168,7 @@ const park = (rider: Actor, horse: Actor, state: MountState, now: number): void 
   state.parkTarget = target;
   state.parkedAt = now;
   state.parking = true;
+  state.blockedSince = 0;
 };
 
 // Asks the engine for the saddle with both actors standing still; the native export answers at once, the activation later
@@ -265,13 +278,16 @@ export const applyMount = (refr: ObjectReference, model: FormModel, state: Mount
   if (!horseRemoteId) {
     return track(rider, riderId, state, false, now);
   }
-  if (!horseLocalId) {
-    logOnce(state, `${riderId.toString(16)} rides ${horseRemoteId.toString(16)}, which has no local horse`);
-    return track(rider, riderId, state, true, now);
-  }
-  const horse = Actor.from(Game.getFormEx(horseLocalId));
+  const horse = horseLocalId ? Actor.from(Game.getFormEx(horseLocalId)) : null;
   if (!horse) {
-    logOnce(state, `${horseLocalId.toString(16)} is no local actor`);
+    logOnce(state, horseLocalId
+      ? `${horseLocalId.toString(16)} is no local actor`
+      : `${riderId.toString(16)} rides ${horseRemoteId.toString(16)}, which has no local horse`);
+    // With nothing to stand on the clone goes back on normal sync rather than standing still for the rest of the ride
+    if (blockedTooLong(state, now)) {
+      logOnce(state, `${riderId.toString(16)} walks on its own, with no copy of ${horseRemoteId.toString(16)} to ride`);
+      return track(rider, riderId, state, false, now);
+    }
     return track(rider, riderId, state, true, now);
   }
   state.horseLocalId = horseLocalId;
@@ -323,8 +339,14 @@ export const applyMount = (refr: ObjectReference, model: FormModel, state: Mount
   const refusal = seatRefusal(rider, horse);
   if (refusal) {
     logOnce(state, `${riderId.toString(16)} cannot be seated on ${horseLocalId.toString(16)}: ${refusal}`);
+    // A refusal that outlasts the budget is ridden out carried, and the saddle is asked for again if it clears
+    if (blockedTooLong(state, now)) {
+      logOnce(state, `${riderId.toString(16)} is carried by ${horseLocalId.toString(16)} while the saddle is refused`);
+      attach(rider, horse, state, now);
+    }
     return track(rider, riderId, state, true, now);
   }
+  detach(rider, state);
   park(rider, horse, state, now);
   return track(rider, riderId, state, true, now);
 };
