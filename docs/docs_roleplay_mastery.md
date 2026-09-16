@@ -67,7 +67,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Alchemist | Minor Healing, Minor Stamina, Minor Magicka, wine, ale, mead | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
 | Blacksmith | iron, corundum, leather | gold, steel, silver | orichalcum, dwarven, moonstone | malachite, quicksilver, ebony, daedric, dragon, stalhrim |
 | Cook | the cooked meats (each needs a Salt Pile), Steamed Mudcrab Legs | soups, stews, chowder, Sweet Roll, Potato Bread | Bread, Braided Bread, Chicken Dumpling, Beef Stew | pies, crostatas, dumplings, Garlic Bread, Elsweyr Fondue, Venison Stew |
-| Hunter | takes pelts and meat like everyone | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
+| Hunter | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
 | Miner | iron and corundum veins | gold and silver veins | orichalcum and moonstone veins | malachite, quicksilver and ebony veins |
 | Tailor | scarves, gaiter, short capes, rugged mask and cape | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels, Reinforced Mantle, Boiled Leather Cuirass, Robed Iron Armor, Leather Doublet, Sturdy Pouch | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
 | Warrior | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
@@ -125,9 +125,29 @@ records are read as the next regrowth time.
 `huntingSystem.ts` listens to the mastery kill relay. On an animal kill by an
 Expert hunter, every kind of meat the corpse dropped has a 25% chance to hand
 the hunter one more; a Master also rolls 15% per kind of pelt. The bonus goes
-straight to the hunter's inventory. With `huntingHarvestNeedsHunter` true, pelts
-and meat can only be taken off an animal corpse by a hunter (default off:
-everyone harvests, the Novice line of the design).
+straight to the hunter's inventory.
+
+Pelts belong to hunters at every rank, Novice included. `hidesFrom` is the one
+rule for it: `SearchSystem` leaves a pelt out of the loot window of a looter who
+is not a hunter and refuses their take of it, so the two can never disagree.
+There is no notice, the pelt is simply not there. The profession is read again
+whenever a window opens and on every take, so a character who picks Hunter sees
+pelts from their next search on, with no restart and no relog. A pelt
+is any item carrying the `VendorItemAnimalHide` keyword, which covers mod hides
+too, plus the `huntingPelts` list for the two Dawnguard hides, which carry no
+keywords. The rule covers dead pets as well, since a pet horse or cow drops a
+hide like any other animal; the cost is that a non-hunter who owned the pet also
+stops seeing pelts, or leather, which carries the same keyword, that they had
+stored in it. The rule itself destroys nothing, it only decides who is shown a
+stack, but a body is not forever: a dead pet is removed `petCorpseSeconds` after
+it dies (300 by default, `npcCorpseSeconds` for spawned and companion animals),
+and everything still on it goes with it. So a non-hunter owner does not merely
+lose sight of the pelts and the leather they had stored in a pet, they lose them
+for good once the body is gone. A put is refused for the same stacks a take is,
+so an item a searcher cannot see can never be parked back on the body either.
+Meat stays open to everyone unless `huntingHarvestNeedsHunter` is turned on,
+which puts meat under the same rule. Turn the pelt rule off with
+`huntingPeltsNeedHunter` false.
 
 ---
 

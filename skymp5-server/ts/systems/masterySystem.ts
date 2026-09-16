@@ -597,6 +597,11 @@ export class MasterySystem implements System {
     return this.actorHasAny(ctx, actorId, new Set([keywordId >>> 0]));
   }
 
+  // Whether a base record carries the keyword; the espm lookup is cached per base id.
+  baseHasKeyword(ctx: SystemContext, baseId: number, keywordId: number): boolean {
+    return !!baseId && !!keywordId && this.baseKeywords(ctx, baseId >>> 0).has(keywordId >>> 0);
+  }
+
   // ── Activity rules ──────────────────────────────────────────────────────────
 
   private async loadRules(ctx: SystemContext, raw: unknown, dataDir: string, loadOrder: string[]): Promise<void> {

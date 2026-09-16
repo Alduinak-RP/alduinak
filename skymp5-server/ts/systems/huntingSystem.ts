@@ -7,17 +7,21 @@ import { MasterySystem } from "./masterySystem";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Hunter rank bonuses on animal kills, and an optional gate on who may take pelts and meat off game.
+// Hunter rank bonuses on animal kills, and the gate on who may take pelts and meat off game.
 //
 // Butcher (Expert) rolls once per kind of meat the animal dropped, Trophy Hunter (Master) once per kind of pelt;
 // a win hands the hunter one more of that item directly, so a corpse looted by someone else changes nothing.
 // Kills reach this system through the mastery relay (gamemode 62_mastery.js -> globalThis.__alduinakMasteryEvent),
 // which fires before the engine adds the death items; the queue is drained a tick later, when they are there.
 //
+// hidesFrom is the one gate: SearchSystem asks it what to leave out of a looter's window and refuses any take of
+// what it left out, so the window and the server can never disagree. A gated item is simply absent, with no notice.
+//
 // server-settings.json keys (all optional):
 //   huntingButcherChance         chance of one extra meat per kind, default 0.25
 //   huntingTrophyChance          chance of one extra pelt per kind, default 0.15
-//   huntingHarvestNeedsHunter    true refuses pelts and meat from animal corpses to characters who are not hunters, default false
+//   huntingPeltsNeedHunter       true hides pelts on animal corpses from characters who are not hunters, default true
+//   huntingHarvestNeedsHunter    true hides meat on animal corpses from them as well, default false
 //   huntingMeats, huntingPelts   editor id lists replacing DEFAULT_MEATS / DEFAULT_PELTS
 
 const NOTICE_PACKET = "masteryNotice";
@@ -26,10 +30,11 @@ const DEFAULT_TROPHY_CHANCE = 0.15;
 const BUTCHER_RANK = 2;
 const TROPHY_RANK = 3;
 const MAX_QUEUED_KILLS = 1024;
-const DENY_NOTICE_MS = 1000;
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
 const ANIMAL_KEYWORD = "ActorTypeAnimal";
+// Every vanilla and mod hide carries it; the two Dawnguard hides have no keywords at all and stay on the list.
+const HIDE_KEYWORD = "VendorItemAnimalHide";
 
 // Raw meat and pelts the vanilla and DLC animals drop; VendorItemFoodRaw misses most of the meat, so they are listed.
 const DEFAULT_MEATS = ["FoodVenison", "FoodRabbit", "FoodBeef", "FoodGoatMeat", "FoodHorseMeat", "FoodHorkerMeat", "FoodMammothMeat", "FoodChicken", "FoodDogMeat", "BYOHFoodMudcrabLegs", "DLC2FoodBoarMeat", "DLC2FoodAshHopperLeg", "DLC2FoodAshHopperMeat"];
@@ -50,12 +55,15 @@ export class HuntingSystem implements System {
     const all = s.allSettings as Record<string, unknown> | null;
     this.butcherChance = this.chance(all?.["huntingButcherChance"], DEFAULT_BUTCHER_CHANCE);
     this.trophyChance = this.chance(all?.["huntingTrophyChance"], DEFAULT_TROPHY_CHANCE);
+    const peltRule = all?.["huntingPeltsNeedHunter"];
+    this.peltsNeedHunter = peltRule === undefined ? true : !!peltRule;
     this.harvestNeedsHunter = !!all?.["huntingHarvestNeedsHunter"];
     const meats = this.list(all?.["huntingMeats"], DEFAULT_MEATS);
     const pelts = this.list(all?.["huntingPelts"], DEFAULT_PELTS);
     await this.resolveItems(ctx, meats, pelts, s.dataDir, s.loadOrder);
-    this.installHooks(ctx);
-    this.log(`[hunting] ready, butcher ${Math.round(this.butcherChance * 100)}% on ${this.meats.size} meat(s), trophy ${Math.round(this.trophyChance * 100)}% on ${this.pelts.size} pelt(s), harvest ${this.harvestNeedsHunter ? "needs a hunter" : "open to everyone"}`);
+    this.installHooks();
+    const keyworded = Array.from(this.pelts).filter((id) => this.mastery.baseHasKeyword(ctx, id, this.hideKeyword)).length;
+    this.log(`[hunting] ready, butcher ${Math.round(this.butcherChance * 100)}% on ${this.meats.size} meat(s), trophy ${Math.round(this.trophyChance * 100)}% on ${this.pelts.size} listed pelt(s), ${keyworded} of them keyworded ${HIDE_KEYWORD} and any other item carrying it counts too, pelts ${this.peltsNeedHunter ? "need a hunter" : "open to everyone"}, meat ${this.harvestNeedsHunter ? "needs a hunter" : "open to everyone"}`);
   }
 
   private chance(raw: unknown, fallback: number): number {
@@ -68,7 +76,7 @@ export class HuntingSystem implements System {
   }
 
   private async resolveItems(ctx: SystemContext, meats: string[], pelts: string[], dataDir: string, loadOrder: string[]): Promise<void> {
-    const names = meats.concat(pelts, [ANIMAL_KEYWORD]);
+    const names = meats.concat(pelts, [ANIMAL_KEYWORD, HIDE_KEYWORD]);
     const scan = await resolveEditorIds(names.filter(isEditorId), dataDir, loadOrder, this.log, ["ALCH", "MISC", "KYWD"]);
     const mp = ctx.svr as Mp;
     const idOf = (name: string): number => {
@@ -92,11 +100,13 @@ export class HuntingSystem implements System {
     }
     this.animalKeyword = idOf(ANIMAL_KEYWORD);
     if (!this.animalKeyword) unresolved.push(ANIMAL_KEYWORD);
+    this.hideKeyword = idOf(HIDE_KEYWORD);
+    if (!this.hideKeyword) unresolved.push(HIDE_KEYWORD);
     if (unresolved.length) this.log(`[hunting] not in the load order, ignored: ${unresolved.join(", ")}`);
   }
 
-  // Kills ride the mastery relay; takes chain mp.onTakeItem like SearchSystem does.
-  private installHooks(ctx: SystemContext): void {
+  // Kills ride the mastery relay; the harvest gate rides SearchSystem, the only way a corpse opens.
+  private installHooks(): void {
     const g = globalThis as any;
     const previous = g.__alduinakMasteryEvent;
     g.__alduinakMasteryEvent = (kind: string, actorId: number, detail: any) => {
@@ -107,13 +117,6 @@ export class HuntingSystem implements System {
           this.kills.push({ killerId: Number(actorId) >>> 0, victimId: Number(detail.victimId) >>> 0 });
         }
       }
-    };
-
-    const mp = ctx.svr as Mp;
-    const previousTake = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
-    mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
-      if (this.refusesHarvest(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0)) return false;
-      return previousTake ? previousTake.call(mp, sourceId, actorId, baseId, count) !== false : true;
     };
   }
 
@@ -146,18 +149,20 @@ export class HuntingSystem implements System {
     }
   }
 
-  // Pelts and meat stay on an animal's corpse unless a hunter takes them, when the setting asks for it.
-  private refusesHarvest(ctx: SystemContext, sourceId: number, actorId: number, baseId: number): boolean {
-    if (!this.harvestNeedsHunter || (!this.meats.has(baseId) && !this.pelts.has(baseId))) return false;
-    if (this.isPlayer(ctx, sourceId) || !this.isDead(ctx, sourceId) || !this.isAnimal(ctx, sourceId)) return false;
-    if (this.mastery.rankOf(ctx, actorId, "hunter") >= 0) return false;
-    const userId = this.userOf(ctx, actorId);
-    const now = Date.now();
-    if (now - (this.lastDenyMs.get(userId) || 0) > DENY_NOTICE_MS) {
-      this.lastDenyMs.set(userId, now);
-      this.notice(ctx, userId, "Only a hunter knows how to take pelts and meat from game.");
-    }
-    return true;
+  // Pelts, and meat when the setting asks for it, are not there at all for a looter who is not a hunter.
+  // Owned pets count as game too, so a non-hunter also stops seeing pelts stored in one that died.
+  // Re-read per call, so a profession changed mid-session is honoured on the next take.
+  hidesFrom(ctx: SystemContext, viewerId: number, corpseId: number, baseId: number): boolean {
+    if (!this.peltsNeedHunter && !this.harvestNeedsHunter) return false;
+    // huntingHarvestNeedsHunter has always covered pelts as well as meat
+    if (!this.isPelt(ctx, baseId) && !(this.harvestNeedsHunter && this.meats.has(baseId))) return false;
+    if (this.isPlayer(ctx, corpseId) || !this.isDead(ctx, corpseId) || !this.isAnimal(ctx, corpseId)) return false;
+    return this.mastery.rankOf(ctx, viewerId, "hunter") < 0;
+  }
+
+  // The keyword covers vanilla, DLC and mod hides; the list carries the Dawnguard ones, which have no keywords.
+  private isPelt(ctx: SystemContext, baseId: number): boolean {
+    return this.pelts.has(baseId) || this.mastery.baseHasKeyword(ctx, baseId, this.hideKeyword);
   }
 
   private inventoryKinds(ctx: SystemContext, actorId: number): Set<number> {
@@ -199,10 +204,11 @@ export class HuntingSystem implements System {
 
   private butcherChance = DEFAULT_BUTCHER_CHANCE;
   private trophyChance = DEFAULT_TROPHY_CHANCE;
+  private peltsNeedHunter = true;
   private harvestNeedsHunter = false;
   private meats = new Set<number>();
   private pelts = new Set<number>();
   private animalKeyword = 0;
+  private hideKeyword = 0;
   private kills: Kill[] = [];
-  private lastDenyMs = new Map<number, number>();
 }
