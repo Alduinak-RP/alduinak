@@ -465,6 +465,33 @@ void SkyrimPlatform::PushToWorkerAndWait(
     lock, [] { return SkyrimPlatform::GetSingleton()->pImpl->complete; });
 }
 
+void SkyrimPlatform::PushToGameThreadAndWait(const std::function<void()>& task)
+{
+  std::mutex mutex;
+  std::condition_variable condition;
+  bool done = false;
+  std::exception_ptr error;
+
+  std::unique_lock<std::mutex> lock(mutex);
+
+  asio::post(pImpl->ioContext.get_executor(), [&] {
+    try {
+      task();
+    } catch (...) {
+      error = std::current_exception();
+    }
+    std::lock_guard<std::mutex> taskLock(mutex);
+    done = true;
+    condition.notify_all();
+  });
+
+  condition.wait(lock, [&done] { return done; });
+
+  if (error) {
+    std::rethrow_exception(error);
+  }
+}
+
 void SkyrimPlatform::PrepareWorker()
 {
   if (pImpl->ioContext.stopped()) {
