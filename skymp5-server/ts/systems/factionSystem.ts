@@ -665,7 +665,10 @@ export class FactionSystem implements System {
         this.definitionsError = "";
         if (!raw) return;
         const had = this.defs.size;
-        const reload = this.definitionsLoaded;
+        const signature = JSON.stringify(raw);
+        const changed = signature !== this.definitionsSignature;
+        this.definitionsSignature = signature;
+        const reload = this.definitionsLoaded && changed;
         this.defs = rules.buildFactions(raw);
         this.definitionsLoaded = true;
         if (had !== this.defs.size) this.log(`[factions] ${this.defs.size} faction(s) loaded from the backend`);
@@ -842,6 +845,7 @@ export class FactionSystem implements System {
   private definitionsDueAt = 0;
   private definitionsLoading: Promise<void> | null = null;
   private definitionsLoaded = false;
+  private definitionsSignature = "";
   private definitionsError = "";
   private menuError = "";
   private rosters = new Map<string, { at: number; rows: RosterRow[] }>();
