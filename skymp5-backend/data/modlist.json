@@ -6,13 +6,20 @@
     "source": "backend"
   },
   {
-    "name": "Alduinak Mesh Fixes",
+    "name": "DynDOLOD Resources SE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 32382
+  },
+  {
+    "name": "Alduinak",
     "required": true,
     "enabled": true,
     "source": "url"
   },
   {
-    "name": "Alduinak",
+    "name": "Alduinak Creations",
     "required": true,
     "enabled": true,
     "source": "url"
@@ -422,6 +429,13 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 63979
+  },
+  {
+    "name": "Simple Dual Sheath",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 50049
   },
   {
     "name": "Faster HDT-SMP",
