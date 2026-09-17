@@ -1267,10 +1267,17 @@ function creationDirs(gameRoot, searchDirs) {
   for (const rel of (Array.isArray(searchDirs) ? searchDirs : [])) {
     if (typeof rel === 'string' && !rel.split(/[\\/]/).includes('..')) add(path.join(gameRoot, ...rel.split(/[\\/]/)))
   }
+  // A quarantine folder may mirror the game root, so its own first level is searched too
+  const addWithSubdirs = dir => {
+    add(dir)
+    let subs = []
+    try { subs = fs.readdirSync(lp(dir), { withFileTypes: true }) } catch { return }
+    for (const s of subs) if (s.isDirectory()) add(path.join(dir, s.name))
+  }
   for (const parent of [gameRoot, path.join(gameRoot, 'Data')]) {
     let entries = []
     try { entries = fs.readdirSync(lp(parent), { withFileTypes: true }) } catch { continue }
-    for (const e of entries) if (e.isDirectory() && /disabled|kzl/i.test(e.name)) add(path.join(parent, e.name))
+    for (const e of entries) if (e.isDirectory() && /disabled|kzl/i.test(e.name)) addWithSubdirs(path.join(parent, e.name))
   }
   return out
 }

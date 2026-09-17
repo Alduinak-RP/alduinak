@@ -39,12 +39,13 @@ AdvDSGS.esm `07078406…` 812,873; AdvDSGS.bsa `7cbc4cb0…` 1,092,876,237.
 `runMO2Install` calls `ensureCreations` right after the manifest is validated, before any mod is installed:
 
 - **Where it looks:** a portable copy searches the original install (`skyrimPath`), a real install its own folder. The
-  folders are the manifest `searchDirs` (`Data`, `Data/disabled_by_kzl`, `disabled_by_kzl`, `disabled CC mods`) plus
-  any first-level folder of the game root or its Data whose name contains `disabled` or `kzl`.
+  folders are the manifest `searchDirs` (`Data`, `Data/_disabledByKzl`, `_disabledByKzl`, `Data/disabled_by_kzl`,
+  `disabled CC mods`) plus any first-level folder of the game root or its Data whose name contains `disabled` or
+  `kzl`, and the first level inside each of those, since a quarantine folder often mirrors the game root.
 - **What it accepts:** a plugin only when its sha256 and size are in `accept`. An archive of another store build is
   used when no folder has a known copy, with its hash written to the install log so it can be added to `extraAccept`.
 - **How it copies:** into `<game>/Data` through a `.alduinak-tmp` file checked against its source. A real install gets
-  files back from `disabled_by_kzl` as copies (Keizaal's copy stays), and from the launcher's own `disabled CC mods`
+  files back from `_disabledByKzl` as copies (Keizaal's copy stays), and from the launcher's own `disabled CC mods`
   by a move. `creations-complete.json` in the game folder records size and mtime, so later runs do not re-hash.
 - **When a file is missing:** the install fails with the Creation names, their files, the folders searched and how to
   restore them (verify the game in Steam or GOG Galaxy, or move the files back). There is no download source.

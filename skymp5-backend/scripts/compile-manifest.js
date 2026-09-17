@@ -49,8 +49,8 @@ const DATA_DIR    = path.join(__dirname, '..', 'data')
 const OUT         = args.out ? path.resolve(args.out) : path.join(DATA_DIR, 'install-manifest.json')
 const MODLIST_OUT = path.join(DATA_DIR, 'modlist.json')
 
-// Where the launcher looks for Creation files, relative to the game root; Keizaal's launcher parks them in disabled_by_kzl
-const CREATION_SEARCH_DIRS = ['Data', 'Data/disabled_by_kzl', 'disabled_by_kzl', 'disabled CC mods']
+// Where the launcher looks for Creation files, relative to the game root; Keizaal's launcher parks them in _disabledByKzl
+const CREATION_SEARCH_DIRS = ['Data', 'Data/_disabledByKzl', '_disabledByKzl', 'Data/disabled_by_kzl', 'disabled CC mods']
 const CREATION_TITLES = {
   'ccbgssse001-fish.esm': 'Fishing',
   'ccqdrsse001-survivalmode.esl': 'Survival Mode',
