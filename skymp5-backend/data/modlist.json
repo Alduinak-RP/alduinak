@@ -19,12 +19,6 @@
     "source": "url"
   },
   {
-    "name": "Alduinak Creations",
-    "required": true,
-    "enabled": true,
-    "source": "url"
-  },
-  {
     "name": "The Great Town of Karthwasten SSE",
     "required": true,
     "enabled": true,
