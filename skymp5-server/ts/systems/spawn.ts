@@ -5,6 +5,7 @@ import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
+import { kickWithReason } from "./kickUtil";
 
 type Mp = any;
 
@@ -389,9 +390,13 @@ export class Spawn implements System {
       if (this.startLocations.length) {
         loc = this.startLocations.find((l) => l.id === start);
         if (!loc) {
-          // No start location at all means the client never showed the intro, so its files are behind the server
-          this.log("Refusing character creation in slot", slot, "with unknown start location", String(start).slice(0, 64),
-            start === undefined ? "(the client sent none: out of date client files)" : "");
+          // A client that never showed the intro sends none, and would sit on this refusal forever
+          if (start === undefined) {
+            this.log("Kicking user", userId, "on character creation: the client sent no start location, its files are out of date");
+            kickWithReason(mp, userId, "Your game files are out of date, so this server cannot create your character. Open the Alduinak launcher, run Repair Client Files, then play again.");
+            return;
+          }
+          this.log("Refusing character creation in slot", slot, "with unknown start location", String(start).slice(0, 64));
           this.sendCharacterList(ctx, userId, auth.profileId);
           return;
         }
