@@ -19,7 +19,7 @@ const SPELL_SLOTS = ['leftSpell', 'rightSpell', 'voiceSpell', 'instantSpell']
 const DYNAMIC_IDS = {
   'private.housing': { refs: ['primary', 'partner'], lists: [] },
   'private.mastery': { refs: [], lists: ['granted'] },
-  'private.needs': { refs: ['stageSpell'], lists: [] },
+  'private.needs': { refs: ['stageSpell', 'fatigueSpell'], lists: [] },
 }
 
 function hex8(n) { return '0x' + (n >>> 0).toString(16).toUpperCase().padStart(8, '0') }

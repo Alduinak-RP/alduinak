@@ -5,6 +5,7 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { onWidgetsCleared } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
+import { applyNeedsPenalties } from "../../sync/attributePenalty";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -16,6 +17,10 @@ interface NeedsState {
   stage: number;
   stageName: string;
   fatigue: number;
+  fatigueStage: number;
+  fatigueStageName: string;
+  staminaPenalty: number;
+  magickaPenalty: number;
 }
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
@@ -23,11 +28,13 @@ let needs: NeedsState | null = null;
 
 /**
  * Hunger and fatigue HUD. The server (NeedsSystem) owns both values and pushes needsState whenever they change; this
- * service only draws them and closes the Crafting Menu when the server refused a craft for fatigue. The widget lives in
+ * service draws them, applies the max stamina (hunger) and max magicka (fatigue) penalty shares the server sends, and
+ * closes the Crafting Menu when the server refused a craft for fatigue. The widget lives in
  * the CEF page, so it hides with the interface and under blocking menus like every other widget.
  *
  *   Client -> Server: { "customPacketType": "needsRequest" }
- *   Server -> Client: { "customPacketType": "needsState", "hunger", "stage", "stageName", "fatigue", "closeCrafting"? }
+ *   Server -> Client: { "customPacketType": "needsState", "hunger", "stage", "stageName", "fatigue", "fatigueStage",
+ *                       "fatigueStageName", "staminaPenalty", "magickaPenalty", "closeCrafting"? }
  */
 export class NeedsService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -48,6 +55,10 @@ export class NeedsService extends ClientListener {
       stage: Number(content["stage"]) || 0,
       stageName: typeof content["stageName"] === "string" ? content["stageName"] as string : "",
       fatigue: Number(content["fatigue"]) || 0,
+      fatigueStage: Number(content["fatigueStage"]) || 0,
+      fatigueStageName: typeof content["fatigueStageName"] === "string" ? content["fatigueStageName"] as string : "",
+      staminaPenalty: Number(content["staminaPenalty"]) || 0,
+      magickaPenalty: Number(content["magickaPenalty"]) || 0,
     };
     const closeCrafting = content["closeCrafting"] === true;
     this.controller.once("update", () => {
@@ -55,8 +66,15 @@ export class NeedsService extends ClientListener {
       if (closeCrafting && this.sp.Ui.isMenuOpen(Menu.Crafting)) {
         this.sp.callNative("TESModPlatform", "CloseMenu", undefined, Menu.Crafting);
       }
+      this.applyPenalties();
       this.draw();
     });
+  }
+
+  private applyPenalties(): void {
+    const player = this.sp.Game.getPlayer();
+    if (!needs || !player) return;
+    applyNeedsPenalties(player, needs.staminaPenalty, needs.magickaPenalty);
   }
 
   private draw(): void {
@@ -74,6 +92,9 @@ export class NeedsService extends ClientListener {
       stage: needs ? needs.stage : 0,
       stageName: needs ? needs.stageName : "",
       fatigue: needs ? needs.fatigue : 0,
+      fatigueStageName: needs ? needs.fatigueStageName : "",
+      staminaPenalty: needs ? needs.staminaPenalty : 0,
+      magickaPenalty: needs ? needs.magickaPenalty : 0,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));

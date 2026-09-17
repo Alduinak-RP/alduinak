@@ -10,9 +10,11 @@ export const getActorValues = (ac: Actor): ActorValues => {
   if (!ac) {
     return { health: 0, stamina: 0, magicka: 0 };
   }
-  let healthPercentage = (ac.isDead()) ? 0 : ac.getActorValuePercentage("health");
-  const staminaPercentage = ac.getActorValuePercentage("stamina");
-  const magickaPercentage = ac.getActorValuePercentage("magicka");
+  // A zero maximum must not send NaN or Infinity to the server
+  const finite = (v: number, fallback: number) => Number.isFinite(v) ? v : fallback;
+  let healthPercentage = (ac.isDead()) ? 0 : finite(ac.getActorValuePercentage("health"), 1);
+  const staminaPercentage = finite(ac.getActorValuePercentage("stamina"), 0);
+  const magickaPercentage = finite(ac.getActorValuePercentage("magicka"), 0);
 
   const resultActorValue: ActorValues = {
     health: healthPercentage,
@@ -32,7 +34,7 @@ export const getMaximumActorValue = (ac: Actor, avName: string): number => {
 export const setActorValuePercentage = (ac: Actor, avName: string, percentage: number): void => {
   // Actor value percentage for health may be below zero (-1.8 for example, it means u have -180% health)
   const currentPercentage = ac.getActorValuePercentage(avName);
-  if (currentPercentage === percentage) {
+  if (currentPercentage === percentage || !Number.isFinite(currentPercentage) || !Number.isFinite(percentage)) {
     return;
   }
 

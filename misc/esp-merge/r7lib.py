@@ -59,7 +59,7 @@ _R11_RUN = {
     # The r7 merged base the replay writes onto, and the staged r10 plugin the replay check compares with
     'BASE': (R7 + 'work/base/AlduinakAdditions.esp', '15ecf7a40cb3539da169045d77a6180d01a551966986ab98f11df5c0372fecc4'),
     'R10': (ESPFIX + 'r10/AlduinakAdditions.esp', 'ad651b18d2b068ca30267dc75ea929abb7807539a847e594b658949169ef47a9'),
-    'spec': 'ffdf692a9e6e3aa53d4deda450573a67461b32b21c8d155993b158c4d52a2b58',
+    'spec': '84a4eb15ddfb888151acf848a49c9884e0bf528c6512a0db871e4e779acf4b6d',
     'live_last_id': 0x2092, 'last_id': 0x20B4, 'own_records': 152, 'added': 1591,
     # Stages the Creation Club plugins of the patcher spec and builds AlduinakCreations.esp in step 3
     'creations': True,

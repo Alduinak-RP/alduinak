@@ -74,9 +74,11 @@ re-pins `AlduinakAdditions.esp` in it at step 5, after steps 4 and 4b, which add
 | Key | Effect |
 |---|---|
 | `creations.globals` | GLOB values pinned: Survival never switches on and its prompt never shows (its `DOBJ` keys `SRVE`, `SRVS`, `SRVT` point at these globals; no vanilla default object is changed, so the `DOBJ` itself is kept). |
-| `creations.stageAbilities` | The hunger stage abilities the server grants lose their `...ImodEffect` screen effect. |
+| `creations.stageAbilities` | The hunger and exhaustion stage abilities the server grants lose their `...ImodEffect` screen effect. |
 | `creations.revertTypes` | A Creation edit of a master record of these types is replaced by the record as it wins without the Creations. |
 | `creations.keepTypes` | Creation edits kept: `ALCH` (the Survival hunger effects the server reads), `DOBJ`, `NAVI` (overridden later by `AlduinakAdditions.esp` anyway). An edit of a type in neither list fails the run. |
+| `creations.keepEdits` | Editor ids of Creation edits kept although their type is in `revertTypes`: Survival's four `Survival_FoodRestoreHunger*` magic effects, whose `Survival_HungerRestoreEffectScript` `AmountToRestore` global is where the server reads what a food restores (the `Update.esm` records carry no script). Their `Survival_ModeEnabled == 1` condition keeps the script from running in game. |
+| `creations.foodHunger` | Hunger values for every food, written as ALCH overrides (see below). `effectPrefix` names the hunger effects, `effects` the effect of each category, `surveyedOrigins` the plugins Survival went through (their foods without an effect stay without one), `drinkSounds`, `bowlSounds`, `bowlMinWeight` and `snackMaxWeight` the category rule. |
 | `creations.recipes` | `cooking`, `smithing`, `woodworking`, `uncraftable` sections laid over the root spec for the Creation recipes only; `smithing.materials` adds to the root table. |
 
 Besides the keys, every run clears Start Game Enabled on each Creation quest, neutralises every Creation story manager
@@ -84,10 +86,26 @@ branch and quest node and every loading screen (a single `GetRandomPercent < 0` 
 without an enable parent on every reference a Creation places. Cells and worldspaces it touches carry the fields of
 their winner without the Creations, so no later city mod edit is undone.
 
+**Food hunger.** Two passes over the winning ingestibles, reported in `creations-report.md` and listed in
+`creations-food-hunger.md`:
+1. **Forwarding.** A food a Creation gives a hunger effect (Survival's 115 overrides and 12 soups, Fishing's 47 foods)
+   whose winner lacks one, because a later plugin overrides it, gets the Creation's effect entries appended to a copy
+   of that winner, so every other change of the winner stays.
+2. **Categories.** A winning ALCH with the Food Item flag, without the Poison flag and without a hunger effect, whose
+   record comes from a plugin outside `surveyedOrigins` (mod and Creation Club foods Survival never saw), gets one
+   effect by Survival's own categories, in this order: a consume sound in `drinkSounds` is a drink, VerySmall like
+   every Survival drink; a model shared with a food that carries exactly one hunger effect takes that food's category
+   (the first such food in load order, then form id, so `Bread01A.nif` follows `FoodBread01A`); a consume sound in
+   `bowlSounds` at `bowlMinWeight` or more is a stew, Large; `snackMaxWeight` or less is a snack, Small; anything else
+   is a meal, Medium. Ingredients (INGR) never get one, as in Survival.
+
 `verify_creations.py` re-reads every plugin with `misc/esp-merge/fastesp.py` and checks each record against its source:
 placed references differ only by the flag and the enable parent, reverted records equal the winner without the
 Creations (Mutagen's subrecord order, `-0.0` and `XPRM` rounding aside), quests only lose the flag, and every live
-Creation reference, start-game quest, loading screen and story manager node is covered.
+Creation reference, start-game quest, loading screen and story manager node is covered. Food overrides must be the
+winner with only hunger effect entries appended, the forwarded ones exactly the Creation's and the assigned one the
+category its own restatement of the rule gives; every food either pass should reach must carry its effect in the final
+order, every `keepEdits` record must win as the Creation edit and every stage ability must be overridden.
 
 ## What the spec describes
 

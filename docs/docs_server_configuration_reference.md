@@ -749,7 +749,9 @@ Named damage rules, each a multiplier applied when its conditions hold. Conditio
 
 ## Hunger and fatigue
 
-All optional; see `docs/docs_roleplay_creations_and_needs.md` for the system. Hunger uses Survival Mode's scale, 0 (full) to 1000.
+All optional; see `docs/docs_roleplay_creations_and_needs.md` for the system. Hunger uses Survival Mode's scale, 0 (full) to 1000, and
+fatigue maps onto its exhaustion scale, 0 (rested) to 960. What a food restores is not a setting: it comes from the food's
+Survival hunger effect in the plugins.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -757,13 +759,16 @@ All optional; see `docs/docs_roleplay_creations_and_needs.md` for the system. Hu
 | `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours) |
 | `needsHungerOffline` | `false` | `true` drains hunger while logged out too |
 | `needsHungerStart` | `145` | Hunger of a new character; 145 is Survival Mode's starting value, in the Satisfied stage |
-| `needsHungerStages` | `[80, 160, 340, 520, 770]` | Hunger at which Satisfied, Peckish, Hungry, Famished and Starving begin |
-| `needsHungerStageAbilities` | `true` | Grant the Survival stage ability of the current stage |
-| `needsFoodRestore` | `{ "VerySmall": 2, "Small": 18, "Medium": 220, "Large": 380, "LargeVampire": 380 }` | Hunger removed by a food carrying that Survival hunger effect |
+| `needsHungerStages` | `[80, 160, 340, 520, 770]` | Survival's stage values: Well Fed (after a meal empties hunger) ends at the first, Peckish, Hungry, Famished and Starving begin at the others; the second also starts the max stamina penalty |
+| `needsHungerStageAbilities` | `true` | Grant the Survival hunger stage ability of the current stage |
 | `needsFatigueCraftsPerHour` | `[6, 12, 18, 24]` | Recipes one full fatigue bar pays for at Novice, Adept, Expert, Master |
 | `needsFatigueRegenPerMinute` | `0.016` | Share of the bar refilled per minute |
 | `needsFatigueOfflineRegen` | `true` | `false` refills the bar only while online |
 | `needsFatigueFreeKeywords` | `["AldCraftingMead"]` | Bench keywords whose recipes cost no fatigue |
+| `needsFatigueStages` | `[80, 160, 340, 560, 800]` | Survival's exhaustion stage values: Drained, Tired, Weary and Debilitated begin at the last four (the first only ends a sleeping bonus the server never grants); the second also starts the max magicka penalty |
+| `needsFatigueStageAbilities` | `true` | Grant the Survival exhaustion stage ability of the current stage |
+| `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |
+| `needsAttributePenalties` | `true` | `false` sends no max stamina or max magicka penalty |
 
 ## Mastery, gathering and hunting
 

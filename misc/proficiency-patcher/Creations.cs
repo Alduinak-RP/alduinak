@@ -44,6 +44,7 @@ static class Creations
         run.StageAbilities();
         run.PlacedReferences(ccMods);
         run.Reverts(ccMods);
+        run.FoodHunger(ccMods);
         run.Recipes(spec, additions.ModKey);
         run.CellFields();
         run.CheckOverridesOnly();
@@ -66,6 +67,8 @@ static class Creations
         });
         Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes, {run.Mod.EnumerateMajorRecords().Count()} overrides)");
         run.Report.Write(reportDir, run.Mod, full, failed: false, reportName: "creations-report.md");
+        Directory.CreateDirectory(reportDir);
+        File.WriteAllText(Path.Combine(reportDir, "creations-food-hunger.md"), run.FoodTable());
         return true;
     }
 }
@@ -225,6 +228,7 @@ class CreationsRun
     {
         var revert = Codes("revertTypes");
         var keep = Codes("keepTypes");
+        var keepEdits = Codes("keepEdits");
         var done = new HashSet<FormKey>();
         foreach (var m in ccMods)
         {
@@ -240,13 +244,110 @@ class CreationsRun
                     continue;
                 }
                 if (type is "CELL" or "WRLD") { editedContainers.Add(r.FormKey); continue; }
-                if (keep.Contains(type)) { Report.Notes.Add($"{type} {r.FormKey} {r.EditorID}: Creation edit kept ({winner.ModKey})"); continue; }
+                if (keep.Contains(type) || keepEdits.Contains(r.EditorID ?? "")) { Report.Notes.Add($"{type} {r.FormKey} {r.EditorID}: Creation edit kept ({winner.ModKey})"); continue; }
                 if (!revert.Contains(type)) { Report.Errors.Add($"creations: {winner.ModKey} edits {type} {r.FormKey} {r.EditorID}, which is in neither revertTypes nor keepTypes"); continue; }
                 if (!baseline.TryResolveContext(r.FormKey, getter, out var before)) { Report.Errors.Add($"creations: {type} {r.FormKey} has no record without the Creations"); continue; }
                 before.GetOrAddAsOverride(Mod);
                 Report.Notes.Add($"{type} {r.FormKey} {r.EditorID}: reverted to {before.ModKey} (was {winner.ModKey})");
             }
         }
+    }
+
+    // ---- hunger values: every food a Creation gave one keeps it, and foods no survey covered get one by Survival's categories ----
+    readonly List<(string Key, string EditorId, string Winner, string Category, string Reason)> foodRows = new();
+
+    public void FoodHunger(List<ISkyrimModGetter> ccMods)
+    {
+        if (cs["foodHunger"] is not JsonObject fh) return;
+        var prefix = fh["effectPrefix"]!.GetValue<string>();
+        var hunger = fullOrder.PriorityOrder.MagicEffect().WinningOverrides().Where(m => (m.EditorID ?? "").StartsWith(prefix, StringComparison.Ordinal)).Select(m => m.FormKey).ToHashSet();
+        var category = new Dictionary<FormKey, string>();
+        var effectOf = new Dictionary<string, IMagicEffectGetter>();
+        foreach (var (cat, edid) in fh["effects"]!.AsObject().Select(kv => (kv.Key, kv.Value!.GetValue<string>())))
+        {
+            if (!full.TryResolve<IMagicEffectGetter>(edid, out var mgef)) { Report.Errors.Add($"creations: food hunger effect '{edid}' not found"); continue; }
+            category[mgef.FormKey] = cat;
+            effectOf[cat] = mgef;
+        }
+        bool HasHunger(IIngestibleGetter r) => r.Effects.Any(e => hunger.Contains(e.BaseEffect.FormKey));
+        string CategoryText(IIngestibleGetter r) => string.Join("+", r.Effects.Where(e => hunger.Contains(e.BaseEffect.FormKey))
+            .Select(e => category.TryGetValue(e.BaseEffect.FormKey, out var c) ? c : full.TryResolve<IMagicEffectGetter>(e.BaseEffect.FormKey, out var m) ? (m.EditorID ?? "").Substring(prefix.Length) : e.BaseEffect.FormKey.ToString()));
+
+        // A Creation's food whose winner lost its hunger effects gets them back on top of every other change of the winner
+        var forwarded = new HashSet<FormKey>();
+        foreach (var m in ccMods)
+        {
+            foreach (var r in m.Ingestibles)
+            {
+                var effects = r.Effects.Where(e => hunger.Contains(e.BaseEffect.FormKey)).ToList();
+                if (effects.Count == 0 || forwarded.Contains(r.FormKey)) continue;
+                var ctx = full.ResolveContext<IIngestible, IIngestibleGetter>(r.FormKey);
+                if (HasHunger(ctx.Record)) continue;
+                var o = ctx.GetOrAddAsOverride(Mod);
+                foreach (var e in effects) o.Effects.Add(e.DeepCopy());
+                forwarded.Add(r.FormKey);
+                foodRows.Add((r.FormKey.ToString(), r.EditorID ?? "", ctx.ModKey.FileName, CategoryText(o), $"forwarded from {m.ModKey.FileName}"));
+            }
+        }
+
+        // Survival's own category of a model: the first food in load order carrying exactly one hunger effect and that model
+        var position = fullOrder.ListedOrder.Select((l, i) => (l.ModKey, i)).ToDictionary(x => x.ModKey, x => x.i);
+        var ordered = fullOrder.PriorityOrder.Ingestible().WinningOverrides()
+            .OrderBy(w => position.GetValueOrDefault(w.FormKey.ModKey, int.MaxValue)).ThenBy(w => w.FormKey.ID).ToList();
+        var templates = new Dictionary<string, (string Category, string EditorId)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var w in ordered.Select(w => Mod.Ingestibles.TryGetValue(w.FormKey, out var o) ? o : w))
+        {
+            var effects = w.Effects.Where(e => hunger.Contains(e.BaseEffect.FormKey)).ToList();
+            var model = ModelPath(w);
+            if (effects.Count == 1 && category.TryGetValue(effects[0].BaseEffect.FormKey, out var cat) && model != "") templates.TryAdd(model, (cat, w.EditorID ?? ""));
+        }
+
+        var surveyed = (fh["surveyedOrigins"]?.AsArray().Select(x => ModKey.FromNameAndExtension(x!.GetValue<string>())) ?? Enumerable.Empty<ModKey>()).ToHashSet();
+        var drinks = (fh["drinkSounds"]?.AsArray().Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var bowls = (fh["bowlSounds"]?.AsArray().Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var bowlMin = fh["bowlMinWeight"]!.GetValue<float>();
+        var snackMax = fh["snackMaxWeight"]!.GetValue<float>();
+        var carried = 0;
+        foreach (var w in ordered)
+        {
+            if (forwarded.Contains(w.FormKey)) continue;
+            if (HasHunger(w)) { carried++; continue; }
+            if (!w.Flags.HasFlag(Ingestible.Flag.FoodItem)) continue;
+            var winner = full.ResolveSimpleContext<IIngestibleGetter>(w.FormKey).ModKey.FileName;
+            var skip = w.Flags.HasFlag(Ingestible.Flag.Poison) ? "poison" : surveyed.Contains(w.FormKey.ModKey) ? "Survival left it without hunger" : null;
+            if (skip != null)
+            {
+                foodRows.Add((w.FormKey.ToString(), w.EditorID ?? "", winner, "-", skip));
+                continue;
+            }
+            var sound = full.TryResolve<ISoundDescriptorGetter>(w.ConsumeSound.FormKey, out var snd) ? snd.EditorID ?? "" : "";
+            var model = ModelPath(w);
+            var (assigned, reason) = drinks.Contains(sound) ? ("VerySmall", $"drink ({sound})")
+                : model != "" && templates.TryGetValue(model, out var t) ? (t.Category, $"model of {t.EditorId}")
+                : bowls.Contains(sound) && w.Weight >= bowlMin ? ("Large", $"bowl ({sound}, weight {w.Weight:0.##})")
+                : w.Weight <= snackMax ? ("Small", $"snack (weight {w.Weight:0.##})")
+                : ("Medium", $"meal (weight {w.Weight:0.##})");
+            if (!effectOf.TryGetValue(assigned, out var effect)) { Report.Errors.Add($"creations: no food hunger effect for category {assigned}"); continue; }
+            var added = full.ResolveContext<IIngestible, IIngestibleGetter>(w.FormKey).GetOrAddAsOverride(Mod);
+            added.Effects.Add(new Effect { BaseEffect = effect.ToNullableLink(), Data = new EffectData { Magnitude = 0, Area = 0, Duration = 0 } });
+            foodRows.Add((w.FormKey.ToString(), w.EditorID ?? "", winner, assigned, reason));
+        }
+        var assignedCount = foodRows.Count(r => r.Category != "-" && !r.Reason.StartsWith("forwarded", StringComparison.Ordinal));
+        Report.Notes.Add($"food hunger: {carried} winning ingestibles carry a hunger effect, {forwarded.Count} forwarded, {assignedCount} assigned by category, {foodRows.Count(r => r.Category == "-")} foods left without one");
+        foreach (var r in foodRows) Report.Notes.Add($"ALCH {r.Key} {r.EditorId} ({r.Winner}): {(r.Category == "-" ? "no hunger" : r.Category)}, {r.Reason}");
+    }
+
+    static string ModelPath(IIngestibleGetter r) => r.Model?.File.GivenPath.Replace('/', '\\') ?? "";
+
+    public string FoodTable()
+    {
+        var md = new System.Text.StringBuilder();
+        md.Append("# Food hunger values set by AlduinakCreations.esp\n\n");
+        md.Append("Foods whose winning record already carries a Survival hunger effect are not listed; `-` marks a food left without one.\n\n");
+        md.Append("| Form key | Editor id | Winner | Category | Reason |\n|---|---|---|---|---|\n");
+        foreach (var r in foodRows.OrderBy(r => r.Category == "-").ThenBy(r => r.Winner, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.EditorId, StringComparer.OrdinalIgnoreCase))
+            md.Append($"| {r.Key} | {r.EditorId} | {r.Winner} | {r.Category} | {r.Reason} |\n");
+        return md.ToString();
     }
 
     HashSet<string> Codes(string field) =>

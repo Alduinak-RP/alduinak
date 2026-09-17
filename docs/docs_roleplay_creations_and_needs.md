@@ -6,8 +6,8 @@ Four free Creations join the load order for their items only: Fishing (`ccBGSSSE
 (`ccQDRSSE001-SurvivalMode.esl`), Rare Curios (`ccBGSSSE037-Curios.esl`) and Saints & Seducers
 (`ccBGSSSE025-AdvDSGS.esm`). Every Skyrim SE install since update 1.6 carries them, so no Anniversary Edition purchase is
 involved and the files are never redistributed. Their quests, world objects and edits to vanilla records are switched off
-by the generated `AlduinakCreations.esp`. Survival contributes its food effects and hunger stage abilities to a
-server-side hunger and fatigue system.
+by the generated `AlduinakCreations.esp`. Survival contributes its food hunger values, its hunger and exhaustion stage
+abilities and its attribute penalty rule to a server-side hunger and fatigue system; its own engine switches stay off.
 
 ## Delivery
 
@@ -112,15 +112,48 @@ plugin in the MO2 mod, and "Update manifest" fails with the changed plugins name
   mods, whose records already win.
 - Saints & Seducers: 15 vanilla references and the Solitude navmesh `0CAD79` around its Blue Palace entrance, 5
   activators, a container, a door and a static from Update.esm's Creation placeholders, and the fields of 8 cells.
-- Survival: 21 magic effects, 24 spells, 2 scrolls and the Extra Pockets perk (diseases, rest bonuses and flame cloak
+- Survival: 17 magic effects, 24 spells, 2 scrolls and the Extra Pockets perk (diseases, rest bonuses and flame cloak
   edits that only matter with Survival on).
 - Why the navmeshes: the references they were cut around are reverted too, and the winning `NAVI` (AlduinakAdditions.esp)
   never knew the Creation versions, so the vanilla geometry matches both.
 
 **Kept**
 - Survival's 115 food overrides: they add the hunger effects the server reads.
+- Survival's edits of the four `Survival_FoodRestoreHunger*` magic effects (`keepEdits`): they add the
+  `Survival_HungerRestoreEffectScript` whose `AmountToRestore` global is each effect's hunger value. The `Update.esm`
+  records have no script. The script never runs in game, since the edit's own `Survival_ModeEnabled == 1` condition fails.
 - `NAVI`: AlduinakAdditions.esp overrides it after all three Creations.
-- The hunger stage abilities, minus their screen effect (`...ImodEffect`).
+- The hunger stage abilities `Survival_HungerStage0-5` and exhaustion stage abilities `Survival_ExhaustionStage1-5`,
+  minus their screen effect (`...ImodEffect`).
+
+**Food hunger values** (`foodHunger`; the full list of each build is `creations-food-hunger.md` next to the report)
+- Forwarded: a food a Creation gives a hunger effect whose winning record lacks it (a later plugin overrides it) gets
+  the Creation's effect entries appended to a copy of the winner, keeping every other change. None in the r11 load
+  order: no plugin after the Creations overrides one of Survival's 115 foods, its 12 soups or Fishing's 47 foods. A
+  scratch load order with a test plugin overriding `FoodApple`, `FoodBeefStew` and `Survival_FoodHotBeefStew` without
+  the effect (and with other weights) came out with the three forwarded and the weights kept.
+- Assigned: foods Survival never saw (records from outside the five base game masters, without the Poison flag) get
+  one hunger effect by Survival's own categories. The rule, in order: a drinking sound (`ITMPotionUse`,
+  `ITMPoisonUse`) means VerySmall, like every Survival drink and mead. A model shared with a categorised food takes
+  that food's category (the first in load order). A soup sound (`NPCHumanEatSoup`) at weight 0.5 or more means Large,
+  like Survival's stews. Weight 0.25 or less means Small. Anything else is Medium.
+- Left without: base game foods Survival itself left out (`TGTQ02BalmoraBlue`, `DLC1FoodSoulHusk`), Rare Curios'
+  poisoned apples, and every ingredient (bird and hawk eggs, snowberries, Rare Curios' Alocasia fruit and scrib jerky),
+  as in Survival.
+
+The 22 foods assigned in the r11 load order:
+
+| Food | Plugin | Category | Rule |
+|---|---|---|---|
+| `ccBGSSSE001_MiscKhajiit_AgedFlin` | ccBGSSSE001-Fish.esm | VerySmall | drink |
+| `AleDUPLICATE001`, `tesfiendale`, `tesfiendmazte`, `tesfiendrotgut` | City of Dawnstar.esp | VerySmall | drink |
+| `tesfienddaggerrum`, `tesfiendflin`, `tesfiendghostrum` | City of Dawnstar.esp | VerySmall | drink (poison bottle sound) |
+| `tesfiendeelpie` | City of Dawnstar.esp | Medium | model of `FoodPie` |
+| `Eli_SpecialSweetroll` | RiftenExtensionNorth.esp | Small | model of `FoodSweetroll` |
+| `BYOHFoodWineBottle03WHSnow`, `BYOHFoodWineBottle03WHSnowJuice`, `FoodMeadWHBBReserve`, `FoodMeadWHBBSpecial`, `FoodMeadWHGuard`, `FoodMeadWHIceWater`, `FoodMeadWHSnowberry`, `FoodWineBottle02WHNew` | WindhelmSSE.esp | VerySmall | drink |
+| `BYOHFoodFlourWindhelm` | WindhelmSSE.esp | VerySmall | model of `BYOHFoodFlour` |
+| `WHWindhelmBread` | WindhelmSSE.esp | Small | model of `FoodBread01A` |
+| `MIMMadesomething`, `MIMRulltarta` | WindhelmSSE.esp | Small | snack, weight 0.1 |
 
 **Recipes** (the same tier steps as AlduinakAdditions.esp, CTDA gates the server cannot evaluate stripped)
 
@@ -153,17 +186,27 @@ this way:
 ## Hunger and fatigue
 
 `skymp5-server/ts/systems/needsSystem.ts`, before MasterySystem in the system list. Every number is a
-`server-settings.json` key, listed in `docs_server_configuration_reference.md`.
+`server-settings.json` key, listed in `docs_server_configuration_reference.md`. The rules follow Survival Mode's compiled
+scripts (`Survival_NeedBase`, `Survival_NeedHunger`, `Survival_NeedExhaustion`, `Survival_HungerRestoreEffectScript`
+in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
 
 **Hunger** runs from 0 (full) to 1000 on Survival's scale.
 - Drains 125 points per online hour (full to starving in about 8 online hours), frozen while logged out, unchanged by
   death; a new character starts at 145, the value Survival Mode starts a new game with (`Survival_HungerNeedValue`), in
   the Satisfied stage.
-- Food restores by the Survival effect it carries: VerySmall 2, Small 18, Medium 220, Large 380, LargeVampire 380. A food
-  the server refuses for its 10 second cooldown restores nothing.
-- Stages begin at 80/160/340/520/770: Well Fed, Satisfied, Peckish, Hungry, Famished, Starving. The character holds the
-  matching `Survival_HungerStage0-5` ability, granted through Papyrus `AddSpell`: +10% stamina regeneration when Well
-  Fed, then -30/-50/-70/-90% block and sneak and weapon speed 0.9 down to 0.6 from Peckish on.
+- A food restores what its hunger effect names. The server reads the effect's `Survival_HungerRestoreEffectScript`
+  property `AmountToRestore`, a global, and that global's value in the load order: VerySmall 2, Small 18, Medium 220,
+  Large 380. `LargeVampire` (the blood potion) restores the Large amount only to an actor with the `Vampire` keyword,
+  from its `HasKeyword` condition. Several hunger effects on one food add up, as their scripts would. A food the server
+  refuses for its 10 second cooldown restores nothing. Survival's gutworm disease multiplier is not applied (no disease).
+- Stages as in `Survival_NeedHunger.ApplyHungerStage`: Well Fed (0) only after a meal empties hunger, until it reaches
+  80; Satisfied (1) below 160; Peckish (2) from 160, Hungry (3) from 340, Famished (4) from 520, Starving (5) from 770.
+  The character holds `Survival_HungerStage<n>`, granted through Papyrus `AddSpell`: Well Fed +10% stamina
+  regeneration; Peckish to Starving -30/-50/-70/-90% block and sneak and weapon speed x0.9/0.8/0.7/0.6.
+- **Max stamina** is reduced by `clamp((hunger - 159) / 841, 0, 1)` of the total, Survival's `ApplyAttributePenalty`
+  with its stage 2 value 160 and maximum 1000. It is continuous, not per stage: 0 below 160, 4.9% at 200, 28.7% at
+  400, 52.4% at 600, 76.2% at 800, 100% at 1000. The client always leaves one point, so a starving character has max
+  stamina 1.
 
 **Fatigue** is a bar from 0 to 1 (the HUD shows it as a percentage).
 - Every recipe the server accepts costs `1 / needsFatigueCraftsPerHour[rank]`: 1/6, 1/12, 1/18, 1/24 of the bar, by the
@@ -176,21 +219,69 @@ this way:
   `closeCrafting`, resends the unchanged inventory to undo the recipe the vanilla menu already made locally, and shows
   "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." A bench the bar cannot pay one
   recipe at does not open.
+- The bar maps onto Survival's exhaustion scale as `(1 - fatigue) * 960` (`Survival_ExhaustionNeedMaxValue`), so a
+  Novice's six crafts land on 160, 320, 480, 640, 800 and 960.
+- Stages as in `Survival_NeedExhaustion.ApplyExhaustionStage` without sleep: Refreshed (1) below 160, Drained (2) from
+  160, Tired (3) from 340, Weary (4) from 560, Debilitated (5) from 800. Survival's stage 0 is its Rested bonus from
+  sleeping, which the server never grants. The character holds `Survival_ExhaustionStage<n>`: Drained to Debilitated
+  -25/-50/-75/-100% magicka and stamina regeneration, Tired to Debilitated also -10/-20/-40 disease resistance. The
+  "beneficial potions are less effective" line of their descriptions has no effect record in the plugin.
+- **Max magicka** is reduced by `clamp((exhaustion - 159) / 801, 0, 1)` of the total: about 0.1% after one Novice
+  craft, 20% after two, 40% after three, 60% after four, 80% after five and 100% after six. The last step is ordinary
+  play, not an edge case: a Novice who spends a full bar (six crafts, about an hour of work) is left with max magicka
+  1, the one point the client always keeps. It comes back as the bar refills, about 19% of the maximum per 10 minutes,
+  fully once the bar is past 83.4% (about 52 minutes from empty).
+
+**How the maximums are applied.** Skymp syncs health, stamina and magicka as percentages. The server's `MpActor` knows
+only the race and NPC base values (`GetBaseActorValues`, no spells or perks), each client applies percentages against
+its own engine maximum, and `ActionListener::OnChangeValues` caps any rise a client reports at the regeneration rate
+since its last report (`CropRegeneration`) and sends the capped value back. An ability cannot express a share of the
+total, and the server would not see its effect anyway. Survival's own penalty (its quests writing
+`Variable02`/`Variable03` and the `SRHP`/`SRSP` HUD globals, then recasting a zero-magnitude penalty spell) needs its
+quests running and Survival on. So the server sends the share (`staminaPenalty`, `magickaPenalty`, 0-1) in
+`needsState`, and `NeedsService` applies it like Survival's `ApplyAttributePenalty`
+(`skymp5-client/src/sync/attributePenalty.ts`):
+- The penalty already applied is read from the player's actor value Survival keeps it in: `Variable02` for stamina
+  (`HungerStaminaPenaltyAV`), `Variable03` for magicka (`ExhaustionMagickaPenaltyAV`). Total = current maximum + that
+  penalty; the new penalty is total x share, at most total - 1; the difference goes on as a permanent modifier
+  (`ModActorValue`) and the new penalty is written back to the actor value.
+- The record lives in the engine next to the modifier, so the two always reset together. A client hot reload keeps
+  both. A game load clears both: the client loads the template save after quitting to the main menu (60 seconds
+  without the server, or when its character is destroyed at character select), and the next `needsState` then applies
+  the whole penalty again instead of subtracting an amount the load already removed. In the staged load order only
+  NPCs use these actor values (spider web victims, guards, a cart driver); the Ebony Blade's absorb effect needs
+  `Variable02` below 50 on the actor it hits, so it skips a player carrying a hunger penalty of 50 stamina or more, as
+  under Survival.
+- The percentage is kept. A modifier moves the current value by the same amount as the maximum, so the client restores
+  or damages the difference: at 50 of 100, a 30% penalty leaves 35 of 70, and lifting it gives 50 of 100 back.
+  Survival keeps the current value instead (50 of 70), but that raises the percentage, and the server would cap the
+  rise and pull the bar below where it started. With the percentage unchanged the server has nothing to correct.
+- One point always remains, so the engine never works against a zero maximum. The percentage sync also never sends a
+  non-finite percentage and ignores one it receives (`skymp5-client/src/sync/actorvalues.ts`).
+
+The server's regeneration check knows only base rates, so it may hold a Well Fed character's stamina regeneration
+(+10%) back to the base rate, as it does for regeneration bonuses from gear. The vanilla HUD's red penalty segment
+needs Survival's globals, which stay off, so the needs HUD shows the penalty instead.
 
 Decisions inside the native `onCraft`, `onActivate` and `onEatItem` hooks are made from memory; property writes, Papyrus
-calls and packets wait for `updateAsync`. Online characters are brought up to date and saved every minute.
+calls and packets wait for `updateAsync`. Online characters are brought up to date and saved every minute; a stage
+change on either need swaps its ability and sends a notice from stage 2 up.
 
-**Persistence:** `private.needs` = `{ v, hunger, fatigue, at, stageSpell }` on the character.
+**Persistence:** `private.needs` = `{ v: 2, hunger, fatigue, at, stageSpell, fatigueSpell, wellFed }` on the character.
+The manager purge re-encodes `stageSpell` and `fatigueSpell`. A version 1 record reads as not Well Fed and holding no
+exhaustion ability.
 
 **Protocol**
 - Client -> Server: `{ customPacketType: "needsRequest" }`
-- Server -> Client: `{ customPacketType: "needsState", hunger, stage, stageName, fatigue, closeCrafting? }`; hunger and
-  fatigue are 0-100 (100 = full stomach, rested).
+- Server -> Client: `{ customPacketType: "needsState", hunger, stage, stageName, fatigue, fatigueStage, fatigueStageName,
+  staminaPenalty, magickaPenalty, closeCrafting? }`; hunger and fatigue are 0-100 (100 = full stomach, rested), the
+  penalties the 0-1 share of the maximum removed.
 - Notices reuse `masteryNotice`.
 
 **HUD:** `skymp5-client/src/services/services/needsService.ts` draws widget 34 (`skymp5-front/src/features/needsMeter`;
-32 is the new character intro, 33 the writing window),
-two thin bars at the lower left. It lives in the CEF page, so it hides with the interface and under blocking menus.
+32 is the new character intro, 33 the writing window), two thin bars at the lower left: the hunger stage and the
+fatigue stage with the bar's percentage, each followed by "Max stamina -N%" or "Max magicka -N%" while a penalty
+applies. It lives in the CEF page, so it hides with the interface and under blocking menus.
 
 ## Deploy runbook
 
@@ -201,7 +292,7 @@ One window, game service stopped, together with the other r11 plugin work (the p
 2. **Build the plugins** from the integrated branch with the esp-merge pipeline, run `r11` of
    `misc/esp-merge/r7lib.py` (from the graves-replay work), in `misc/esp-merge` with `ESP_MERGE_RUN=r11`:
    1. Keep the step 3 pins of `RUNS['r11']` in step with the tree: `spec` (sha256 of `misc/proficiency-patcher/spec.json`),
-      `added`, `own_records`, `last_id` and `slot`. The integrated tree pins spec `ffdf692a`, 1,591 added, 152 own
+      `added`, `own_records`, `last_id` and `slot`. The integrated tree pins spec `84a4eb15`, 1,591 added, 152 own
       records ending at `0x20B4` and slot `0x2D`; a spec change needs a trial step 3 and new pins.
    2. `python stage.py`: stages the live `loadOrder` with the four Creations inserted after `Dragonborn.esm` (taken from
       `spec.json`, whether or not the live order has them yet, `AlduinakCreations.esp` left out) and hardlinks their
@@ -259,6 +350,18 @@ None of these has been run yet.
 - An old launcher cannot install (update message) or join (`launcherOutdated` in the backend log).
 - Hunger falls over an online hour and the HUD stage changes; a new character starts Satisfied; eating a cooked meal
   raises it; the stage ability appears in Active Effects without a screen effect.
+- At hunger 400 (about 2 online hours from a new character) the stamina bar is about 29% shorter and the HUD says "Max
+  stamina -29%"; eating a stew brings the bar back at the same fill level. With the bar half empty, neither the
+  penalty growing nor a meal makes the bar jump back a second later (the server correcting a percentage).
+- Six Novice crafts: the magicka bar shrinks after each (about 20% per craft from the second), Active Effects shows
+  Drained, Tired, Weary, then Debilitated, and magicka stops regenerating at Debilitated; after the sixth, max magicka
+  is 1 point, spells fail to cast, and the client log shows no errors; resting 10 minutes restores 16% of the bar and
+  part of the magicka maximum.
+- With a stamina or magicka penalty on, stop the game service for over a minute (the client returns to the main menu)
+  or change character, then rejoin: the maximum matches the HUD penalty again, never shorter or longer than before. A
+  client hot reload leaves it unchanged.
+- A Windhelm mead, a City of Dawnstar eel pie and a Windhelm bread restore 2, 220 and 18 hunger (0.2%, 22% and 1.8% of
+  the bar).
 - The HUD bars hide with the interface toggle and under the inventory and map, and come back.
 - Crafting at a forge as a Novice outside Blacksmith costs 1/6; the seventh craft is refused and the menu closes; reopen
   the inventory: the refused item must be absent and its inputs present (the resent inventory corrects the client);

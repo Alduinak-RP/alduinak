@@ -2352,11 +2352,27 @@
    "Survival_ModeEnabledShared": 0
   },
   "stageAbilities": {
-   "spells": ["Survival_HungerStage0", "Survival_HungerStage1", "Survival_HungerStage2", "Survival_HungerStage3", "Survival_HungerStage4", "Survival_HungerStage5"],
+   "spells": ["Survival_HungerStage0", "Survival_HungerStage1", "Survival_HungerStage2", "Survival_HungerStage3", "Survival_HungerStage4", "Survival_HungerStage5",
+              "Survival_ExhaustionStage1", "Survival_ExhaustionStage2", "Survival_ExhaustionStage3", "Survival_ExhaustionStage4", "Survival_ExhaustionStage5"],
    "dropEffectsEndingWith": "ImodEffect"
   },
   "revertTypes": ["REFR", "ACHR", "NAVM", "NPC_", "FLOR", "FLST", "ACTI", "CONT", "DOOR", "STAT", "MISC", "LCTN", "MGEF", "SPEL", "SCRL", "PERK"],
   "keepTypes": ["ALCH", "DOBJ", "NAVI"],
+  "keepEdits": ["Survival_FoodRestoreHungerVerySmall", "Survival_FoodRestoreHungerSmall", "Survival_FoodRestoreHungerMedium", "Survival_FoodRestoreHungerLarge"],
+  "foodHunger": {
+   "effectPrefix": "Survival_FoodRestoreHunger",
+   "effects": {
+    "VerySmall": "Survival_FoodRestoreHungerVerySmall",
+    "Small": "Survival_FoodRestoreHungerSmall",
+    "Medium": "Survival_FoodRestoreHungerMedium",
+    "Large": "Survival_FoodRestoreHungerLarge"
+   },
+   "surveyedOrigins": ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"],
+   "drinkSounds": ["ITMPotionUse", "ITMPoisonUse"],
+   "bowlSounds": ["NPCHumanEatSoup"],
+   "bowlMinWeight": 0.5,
+   "snackMaxWeight": 0.25
+  },
   "recipes": {
    "cooking": {
     "tiers": {

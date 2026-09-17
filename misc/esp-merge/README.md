@@ -49,11 +49,11 @@ Run every step with `ESP_MERGE_RUN=r11`, in this order:
 | 1 | `attribute.py` | classifies all 7,702 own-index records of NEW against the live plugin be1cb8e3 and writes `attribution.json` and `delta.json`; exits 2 unless every count matches `PLANS['f8cefed9']` | done and pinned (8be20542, b76a9e75) |
 | 2 | `delta.py` | writes the 30 delta refs onto r7's base (17 replaced in place or refiled to their new cell, 13 added), deletes the stray portal-box marker 001F84 under the Windhelm arena, keeps masters and next id | done, `r11/work/base` ff7f1d0a |
 | 2v | `verify_replay.py` | independent of delta.py: base vs r7's base, each ref against its original, the load-order winner and live, no accidental re-enable | passes |
-| 3 | `proficiency.py` | `patch.py` with the integrated `spec.json` (ffdf692a): 1,591 added, 152 own records at 0x201D-0x20B4, `proficiency-ids.json` in slot 0x2D, `AlduinakCreations.esp` | done, 40ca3888 and 37cf0dfc |
+| 3 | `proficiency.py` | `patch.py` with the integrated `spec.json` (84a4eb15): 1,591 added, 152 own records at 0x201D-0x20B4, `proficiency-ids.json` in slot 0x2D, `AlduinakCreations.esp` | done, 40ca3888 and 7268d00a |
 | 4 | `masks.py` | the 8 mask ARMO lose EITM | done, 9bb88081 |
 | 4b | `thrones.py` | throne keyword override | done, 7e2ebcfb |
 | 4c | (other tracks) | any extra esplib or Mutagen pass; it reads the previous step's manifest tag and `finalise.py` must read its tag instead of `thrones` | none: the door placement runs inside step 3 |
-| 5 | `finalise.py` | `r11/AlduinakAdditions.esp`, `r11/AlduinakCreations.esp` with its inputs file re-pinned, and `r11/rollback/` = be1cb8e3 | done, 7e2ebcfb and 37cf0dfc |
+| 5 | `finalise.py` | `r11/AlduinakAdditions.esp`, `r11/AlduinakCreations.esp` with its inputs file re-pinned, and `r11/rollback/` = be1cb8e3 | done, 7e2ebcfb and 7268d00a (inputs cb0fee57) |
 
 The attribution handles what the 2026-09-16 save added to the known damage:
 

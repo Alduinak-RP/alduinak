@@ -30,6 +30,12 @@ $border: rgba(200, 180, 138, 0.45);
     letter-spacing: 0.05em;
   }
 
+  &__penalty {
+    margin-left: 8px;
+    color: #d08a7a;
+    font-size: 12px;
+  }
+
   &__bar {
     height: 6px;
     background: $track;
