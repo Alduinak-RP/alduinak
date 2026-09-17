@@ -389,7 +389,9 @@ export class Spawn implements System {
       if (this.startLocations.length) {
         loc = this.startLocations.find((l) => l.id === start);
         if (!loc) {
-          this.log("Refusing character creation in slot", slot, "with unknown start location", String(start).slice(0, 64));
+          // No start location at all means the client never showed the intro, so its files are behind the server
+          this.log("Refusing character creation in slot", slot, "with unknown start location", String(start).slice(0, 64),
+            start === undefined ? "(the client sent none: out of date client files)" : "");
           this.sendCharacterList(ctx, userId, auth.profileId);
           return;
         }
