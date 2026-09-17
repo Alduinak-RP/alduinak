@@ -21,6 +21,14 @@ interface PanelPlayer {
   online: boolean;
   ping: number | null;
   m?: PanelMastery; // online rows only, absent on older servers
+  av?: PanelAttrs; // online rows only, absent on older servers
+}
+
+// Permanent max attribute change of one character (adminSystem.ts attrBonus)
+interface PanelAttrs {
+  health: number;
+  magicka: number;
+  stamina: number;
 }
 
 // One character's profession standing (masterySystem.ts MasterySummary).
@@ -238,6 +246,21 @@ const MAX_GRANT_HOURS = 1000;
 const isGrantAmount = (text: string): boolean =>
   isNum(text) && Number.isInteger(Number(text)) && Number(text) !== 0 && Math.abs(Number(text)) <= MAX_GRANT_HOURS;
 
+const ATTR_FIELDS: Array<{ key: string; label: string }> = [
+  { key: 'health', label: 'Health' },
+  { key: 'magicka', label: 'Magicka' },
+  { key: 'stamina', label: 'Stamina' },
+];
+
+// Same bounds the server enforces for a max attribute change
+const MAX_ATTR_BONUS = 1000;
+
+const isAttrAmount = (text: string): boolean =>
+  isNum(text) && Number.isInteger(Number(text)) && Math.abs(Number(text)) <= MAX_ATTR_BONUS;
+
+const attrForm = (av: PanelAttrs | null | undefined): Record<string, string> =>
+  ({ health: String(av ? av.health : 0), magicka: String(av ? av.magicka : 0), stamina: String(av ? av.stamina : 0) });
+
 const masteryText = (m: PanelMastery | null | undefined): string => {
   if (!m) return 'unknown';
   if (!m.profession) return 'No craft chosen' + (m.hours ? ' (' + m.hours + ' h banked)' : '');
@@ -363,6 +386,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('none');
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
+  const [attrs, setAttrs] = useState<Record<string, string>>(attrForm(null));
   const [petKind, setPetKind] = useState<PetKind>('horse');
   const [petBase, setPetBase] = useState('');
   const [petName, setPetName] = useState('');
@@ -448,15 +472,19 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const canKick = caps.kick !== false;
   const canBan = caps.ban !== false;
 
-  const act = (key: string): void => {
-    if (selectedPlayer && selectedPlayer.a) send(key, selectedPlayer.a);
+  const act = (key: string, ...args: unknown[]): void => {
+    if (selectedPlayer && selectedPlayer.a) send(key, selectedPlayer.a, ...args);
   };
+
+  useEffect(() => { setAttrs(attrForm(selectedPlayer ? selectedPlayer.av : null)); }, [selected]);
 
   // Mastery rows: the admin's own character (actor id from the debug packet) and the selected online row
   const masteryRows: Array<{ key: string; who: string; target: string; m: PanelMastery | null | undefined }> = [];
   if (data.mastery && debug && debug.actorId) masteryRows.push({ key: 'me', who: 'You', target: debug.actorId, m: data.mastery });
   if (actionsEnabled && selectedPlayer && selectedPlayer.a) masteryRows.push({ key: 'sel', who: selectedPlayer.n || '(no name)', target: selectedPlayer.a, m: selectedPlayer.m });
   const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
+  // Filled from the selected row, so the fields show what the character carries now
+  const canSetAttrs = !!ev.attrSet && actionsEnabled && ATTR_FIELDS.every((f) => isAttrAmount(attrs[f.key]));
 
   const locFilter = locSearch.trim().toLowerCase();
   const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
@@ -654,6 +682,35 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     </div>
                   ))
                 )}
+              </div>
+            ) : null}
+            {ev.attrSet ? (
+              <div className="admin-panel__mastery">
+                <div className="admin-panel__mastery-row">
+                  <span className="admin-panel__mastery-who">Max attributes</span>
+                  {ATTR_FIELDS.map((f) => (
+                    <input
+                      key={f.key}
+                      className="admin-panel__input admin-panel__mastery-amount"
+                      placeholder={f.label}
+                      title={f.label}
+                      value={attrs[f.key]}
+                      onChange={(e) => setAttrs({ ...attrs, [f.key]: e.target.value })}
+                    />
+                  ))}
+                  <Button
+                    text="Apply"
+                    width={96}
+                    height={30}
+                    disabled={!canSetAttrs}
+                    onClick={() => act(ev.attrSet, Number(attrs.health), Number(attrs.magicka), Number(attrs.stamina))}
+                  />
+                </div>
+                <span className="admin-panel__hint">
+                  {actionsEnabled
+                    ? 'Health, magicka and stamina, permanent and kept through relogs; 0 leaves the character on its base values'
+                    : 'Select an online player to change their max attributes'}
+                </span>
               </div>
             ) : null}
             <div className="admin-panel__filters">

@@ -30,6 +30,7 @@ export const REQUEST_CAP: Record<string, AdminCap | null> = {
   kick: "kick",
   masteryGrant: "players",
   masteryReset: "players",
+  attrSet: "players",
   ban: "ban",
   teleportLoc: "teleport",
   toggleMode: "modes",

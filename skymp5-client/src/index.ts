@@ -50,6 +50,7 @@ import { PlayerActionService } from "./services/services/playerActionService";
 import { EmoteService } from "./services/services/emoteService";
 import { MasteryService } from "./services/services/masteryService";
 import { NeedsService } from "./services/services/needsService";
+import { AttributeBonusService } from "./services/services/attributeBonusService";
 import { BountyBoardService } from "./services/services/bountyBoardService";
 import { WritingService } from "./services/services/writingService";
 import { InteractionPromptService } from "./services/services/interactionPromptService";
@@ -149,6 +150,7 @@ const main = () => {
       new EmoteService(sp, controller),
       new MasteryService(sp, controller),
       new NeedsService(sp, controller),
+      new AttributeBonusService(sp, controller),
       new BountyBoardService(sp, controller),
       new WritingService(sp, controller),
       new InteractionPromptService(sp, controller),

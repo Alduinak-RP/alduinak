@@ -61,6 +61,7 @@ const events = {
   npcPos: "admin::npcpos",
   masteryGrant: "admin::masterygrant",
   masteryReset: "admin::masteryreset",
+  attrSet: "admin::attrset",
   tab: "admin::tab",
   skills: "admin::skills",
   skillChoose: "admin::skillchoose",
@@ -638,6 +639,19 @@ export class AdminMenuService extends ClientListener {
         base: str(grant["base"]),
         name: str(grant["name"]),
       });
+      return;
+    }
+    if (kind === events.attrSet) {
+      sendCustomPacket(this.controller, {
+        customPacketType: "adminAction",
+        action: "attrSet",
+        target: String(e.arguments[1] ?? ""),
+        health: Number(e.arguments[2]),
+        magicka: Number(e.arguments[3]),
+        stamina: Number(e.arguments[4]),
+      });
+      // The roster carries the values shown in the fields
+      sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
       return;
     }
     if (kind === events.masteryGrant || kind === events.masteryReset) {

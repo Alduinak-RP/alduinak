@@ -32,6 +32,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
+//                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..1000, self allowed
 //                     { customPacketType: "adminAction", action: "petBases" }  answered with petBases, the grantable pet bases per kind
@@ -42,8 +43,10 @@ type Mp = any;
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
 //                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
+//                       av: the online row's permanent max attribute change {health, magicka, stamina}
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
 //                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | other; the front files a missing or unknown group under Other
+//                     { customPacketType: "attributeBonus", health, magicka, stamina }  the character's permanent max attribute change, re-sent on every actor assign
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form or one end of the job form
@@ -56,6 +59,10 @@ type Mp = any;
 
 const MAX_USER_SLOTS = 1024;
 const PING_CACHE_MS = 3000;
+// Permanent max attribute change, kept per character and re-applied by the client on every spawn
+const ATTR_BONUS_PROP = "private.attrBonus";
+const ATTR_KEYS = ["health", "magicka", "stamina"] as const;
+const MAX_ATTR_BONUS = 1000;
 const MAX_ITEM_SPAWN = 1000;
 const SPAWN_COOLDOWN_MS = 250;
 
@@ -95,6 +102,8 @@ interface OnlinePlayer {
   profileId: number;
   name: string;
 }
+
+type AttrBonus = Record<typeof ATTR_KEYS[number], number>;
 
 export class AdminSystem implements System {
   systemName = "AdminSystem";
@@ -168,6 +177,8 @@ export class AdminSystem implements System {
         if (!actorId) return;
         mp.set(actorId, "consoleCommandsAllowed", false);
         this.resyncModes(mp, userId, actorId, this.isAdminActor(mp, actorId));
+        // A spawn re-reads the base attributes from the plugins, so the stored change is applied again
+        this.sendAttrBonus(mp, userId, actorId);
       } catch (e) {
         this.log(`AdminSystem: assign hook failed: ${e}`);
       }
@@ -316,6 +327,7 @@ export class AdminSystem implements System {
         online: true,
         ping: pings.get(p.userId) ?? null,
         m: this.mastery.summaryOf(ctx, p.actorId),
+        av: this.attrBonus(mp, p.actorId),
       };
       if (p.profileId > 0) byProfile.set(p.profileId, row);
       else extra.push(row);
@@ -324,6 +336,38 @@ export class AdminSystem implements System {
     const rows = Array.from(byProfile.values()).concat(extra);
     rows.sort((a, b) => (a.online === b.online) ? a.p - b.p : (a.online ? -1 : 1));
     return rows;
+  }
+
+  // Permanent max attribute change of one character, stored on the actor so it outlives the session
+  private attrBonus(mp: Mp, actorId: number): AttrBonus {
+    let raw: any = null;
+    try { raw = mp.get(actorId, ATTR_BONUS_PROP) ?? null; } catch { }
+    const read = (key: keyof AttrBonus): number => {
+      const value = Math.round(Number(raw?.[key]));
+      return Number.isFinite(value) ? Math.max(-MAX_ATTR_BONUS, Math.min(MAX_ATTR_BONUS, value)) : 0;
+    };
+    return { health: read("health"), magicka: read("magicka"), stamina: read("stamina") };
+  }
+
+  private sendAttrBonus(mp: Mp, userId: number, actorId: number): void {
+    try {
+      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "attributeBonus", ...this.attrBonus(mp, actorId) }));
+    } catch { }
+  }
+
+  // The client applies the change to the actor it was given, so a new value is pushed to its owner at once
+  private setAttrBonus(mp: Mp, target: OnlinePlayer, content: Content): AttrBonus | null {
+    const current = this.attrBonus(mp, target.actorId);
+    const next: AttrBonus = { ...current };
+    for (const key of ATTR_KEYS) {
+      if (content[key] === undefined) continue;
+      const value = Number(content[key]);
+      if (!Number.isInteger(value) || Math.abs(value) > MAX_ATTR_BONUS) return null;
+      next[key] = value;
+    }
+    mp.set(target.actorId, ATTR_BONUS_PROP, next);
+    this.sendAttrBonus(mp, target.userId, target.actorId);
+    return next;
   }
 
   private modesFor(adminProfile: number): Array<{ id: string; label: string; active: boolean }> {
@@ -519,6 +563,15 @@ export class AdminSystem implements System {
           const standing = summary.label ? `${summary.rankName} ${summary.label}` : "no craft chosen";
           this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name} (profile ${target.profileId}), now ${summary.hours}h, ${standing}`);
           this.reply(mp, userId, true, `${target.name}: ${summary.hours}h, ${standing}`);
+        }
+      } else if (action === "attrSet") {
+        const next = this.setAttrBonus(mp, target, content);
+        if (!next) {
+          this.reply(mp, userId, false, `Each attribute must be a whole number between -${MAX_ATTR_BONUS} and ${MAX_ATTR_BONUS}`);
+        } else {
+          const text = ATTR_KEYS.map(k => `${k} ${next[k] >= 0 ? "+" : ""}${next[k]}`).join(", ");
+          this.adminLog(`profile ${adminProfile} set the max attributes of ${target.name} (profile ${target.profileId}) to ${text}`);
+          this.reply(mp, userId, true, `${target.name}: ${text}`);
         }
       } else if (action === "masteryReset") {
         const ok = this.mastery.resetCharacter(ctx, target.actorId);

@@ -13,6 +13,16 @@ export interface PenaltyActor {
 export const HUNGER_PENALTY_AV = "Variable02";
 export const EXHAUSTION_PENALTY_AV = "Variable03";
 
+// A permanent modifier moves the current value by the same amount; the rest keeps the percentage the server holds
+const modMaximum = (actor: PenaltyActor, av: string, delta: number): void => {
+  const percentage = actor.getActorValuePercentage(av);
+  const keep = Number.isFinite(percentage) ? Math.max(0, Math.min(1, percentage)) : 1;
+  actor.modActorValue(av, delta);
+  const adjust = -delta * (1 - keep);
+  if (adjust > 0) actor.restoreActorValue(av, adjust);
+  else if (adjust < 0) actor.damageActorValue(av, -adjust);
+};
+
 // Survival_NeedBase.ApplyAttributePenalty with a permanent modifier in place of its penalty spell; returns the penalty now applied
 export const applyAttributePenalty = (actor: PenaltyActor, av: string, penaltyAv: string, share: number): number => {
   const applied = actor.getActorValue(penaltyAv);
@@ -21,15 +31,17 @@ export const applyAttributePenalty = (actor: PenaltyActor, av: string, penaltyAv
   const target = Math.max(0, Math.min(total - 1, total * Math.max(0, Math.min(1, share))));
   const delta = target - applied;
   if (Math.abs(delta) < 0.01) return applied;
-  const percentage = actor.getActorValuePercentage(av);
-  const keep = Number.isFinite(percentage) ? Math.max(0, Math.min(1, percentage)) : 1;
-  // A modifier moves the current value by the same amount; the rest keeps the percentage the server holds
-  actor.modActorValue(av, -delta);
-  const adjust = delta * (1 - keep);
-  if (adjust > 0) actor.restoreActorValue(av, adjust);
-  else if (adjust < 0) actor.damageActorValue(av, -adjust);
+  modMaximum(actor, av, -delta);
   actor.setActorValue(penaltyAv, target);
   return target;
+};
+
+// An admin's permanent max attribute change; the caller tracks what it applied to the actor it holds
+export const applyAttributeBonus = (actor: PenaltyActor, av: string, applied: number, bonus: number): number => {
+  const delta = Math.max(bonus - applied, 1 - actor.getActorValueMax(av));
+  if (Math.abs(delta) < 0.01) return applied;
+  modMaximum(actor, av, delta);
+  return applied + delta;
 };
 
 export const applyNeedsPenalties = (actor: PenaltyActor, staminaShare: number, magickaShare: number): void => {
