@@ -9,7 +9,8 @@ import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
 import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
 import { formDesc } from "../../lib/formDesc";
 import { isPlayerCharacterId } from "./playerActionService";
-import { ActiveEffectApplyRemoveEvent, Actor, BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
+import { ActiveEffectApplyRemoveEvent, Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
 
 declare const window: any;
 
@@ -22,6 +23,14 @@ const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
 const DEBUG_REFRESH_MS = 5000;
 const TARGET_REFRESH_MS = 250;
+// Looking around off the crosshair raises no event, so the facing scan runs on its own beat
+const FACING_REFRESH_MS = 1000;
+// The crosshair only picks activatable refs; everything else is matched by projecting the cell's refs onto the screen centre
+const FACING_TYPES = [FormType.Static, FormType.MovableStatic, FormType.Activator, FormType.Furniture, FormType.Door, FormType.Container, FormType.Tree, FormType.Flora, FormType.Light];
+const FACING_MAX_DIST = 4096;
+// Screen offset from the centre, as a fraction of the viewport
+const FACING_MAX_OFFSET = 0.06;
+const FACING_SCAN_LIMIT = 500;
 const FIRST_DYNAMIC_ID = 0xff000000;
 const EFFECTS_STORAGE_KEY = "adminDebugEffects";
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
@@ -216,7 +225,7 @@ export class AdminMenuService extends ClientListener {
     if (now - this.lastDebugAt >= DEBUG_REFRESH_MS) {
       this.refreshDebug();
       this.pushData();
-    } else if (this.crosshairMoved && now - this.lastTargetAt >= TARGET_REFRESH_MS) {
+    } else if (now - this.lastTargetAt >= (this.crosshairMoved ? TARGET_REFRESH_MS : FACING_REFRESH_MS)) {
       this.crosshairMoved = false;
       this.refreshTarget();
     }
@@ -422,7 +431,7 @@ export class AdminMenuService extends ClientListener {
   private readTarget(player: Actor): void {
     const sp = this.sp;
     this.lastTargetAt = Date.now();
-    const ref = safe(() => sp.Game.getCurrentCrosshairRef(), null);
+    const ref = safe(() => sp.Game.getCurrentCrosshairRef(), null) || this.facingRef(player);
     if (!ref) {
       if (this.target && this.menuOpen) this.target.live = false;
       else this.target = null;
@@ -457,6 +466,35 @@ export class AdminMenuService extends ClientListener {
       cellName: safe(() => ref.getParentCell()?.getName(), ""),
       pos: [safe(() => ref.getPositionX(), 0), safe(() => ref.getPositionY(), 0), safe(() => ref.getPositionZ(), 0)].map(Math.round),
     };
+  }
+
+  // Statics, trees and other scenery the crosshair ignores: the loaded cell's ref closest to the screen centre
+  private facingRef(player: Actor): ObjectReference | null {
+    const sp = this.sp;
+    const cell = safe(() => player.getParentCell(), null);
+    if (!cell) return null;
+    const from = ObjectReferenceEx.getPos(player);
+    let best: ObjectReference | null = null;
+    let bestOffset = FACING_MAX_OFFSET;
+    let scanned = 0;
+    for (const type of FACING_TYPES) {
+      const count = safe(() => cell.getNumRefs(type), 0);
+      for (let i = 0; i < count && scanned < FACING_SCAN_LIMIT; i++) {
+        scanned++;
+        const ref = safe(() => cell.getNthRef(i, type), null);
+        if (!ref) continue;
+        const pos = safe(() => ObjectReferenceEx.getPos(ref), null);
+        if (!pos || ObjectReferenceEx.getDistance(from, pos) > FACING_MAX_DIST) continue;
+        const point = safe(() => sp.worldPointToScreenPoint(pos)[0], null);
+        // A negative depth is behind the camera
+        if (!point || point[2] <= 0) continue;
+        const offset = Math.hypot(point[0] - 0.5, point[1] - 0.5);
+        if (offset >= bestOffset) continue;
+        bestOffset = offset;
+        best = ref;
+      }
+    }
+    return best;
   }
 
   // Pushes only when the target or its last seen state changed

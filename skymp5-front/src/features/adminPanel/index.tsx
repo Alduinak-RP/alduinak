@@ -332,7 +332,7 @@ const debugCells = (d: DebugData, now: number): DebugCell[] => {
     {
       label: 'Target Distance',
       value: t ? (t.name || hexId(t.baseId)) + ' ' + Math.round(t.dist) + ' u' : 'no target',
-      hint: t && !t.live ? 'Last seen' : 'Activatable references only',
+      hint: t && !t.live ? 'Last seen' : 'Whatever you face, objects included',
     },
     { label: 'Magicka / Health / Stamina', value: [av.magicka, av.health, av.stamina].map(pair).join(' | ') },
     { label: 'Game Time/Date', value: gameClock(d.gameTime), sub: gameDate(d.gameTime) },
@@ -417,7 +417,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     if (report) copyText(report).then((ok) => setCopied({ text: report, ok }));
   };
   const copyHint = !report
-    ? 'Aim at something and press X, or press F6 and look around'
+    ? 'Face something and press X, or press F6 and look around'
     : copied && copied.text === report
       ? copied.ok ? 'Copied' : 'Copy failed, select the ids instead'
       : 'Name, ids, cell and position';
