@@ -11,6 +11,8 @@ export interface StartLocation {
 export interface IntroPage {
   caption?: string;
   text: string;
+  // "left" suits a page of separate lines; pages are centered otherwise
+  align?: "left";
 }
 
 const TAMRIEL = 0x3c;
@@ -35,6 +37,7 @@ export const INTRO_PAGES: IntroPage[] = [
   },
   {
     caption: "Welcome to Alduinak",
+    align: "left",
     text: [
       "Use [get alt interaction button] to open your personal menu to pick a profession.",
       "Use [get voice key button] to speak to others. Alt + [get voice key button] changes your voice range.",

@@ -424,7 +424,7 @@ A character whose creation is unfinished (`private.creationPending`, set at crea
 }
 ```
 
-The synopsis text lives in `skymp5-server/ts/systems/startLocations.ts` (Build server). The client swaps its bracketed placeholders for the player's key bindings and leaves out a line whose key is unbound.
+The synopsis text lives in `skymp5-server/ts/systems/startLocations.ts` (Build server). The client swaps its bracketed placeholders for the player's key bindings and leaves out a line whose key is unbound. A page with `align: "left"` shows its lines left aligned, as the key list page does; other pages are centered.
 
 ## isPapyrusHotReloadEnabled
 

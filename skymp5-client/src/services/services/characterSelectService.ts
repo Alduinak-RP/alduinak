@@ -28,6 +28,7 @@ interface CharacterSlot {
 interface IntroPage {
   caption?: string;
   text: string;
+  align?: 'left';
 }
 
 // New character intro from the server: synopsis pages, then the start location question
@@ -39,6 +40,9 @@ interface StartIntro {
 
 const WIDGET_ID = 7;
 const INTRO_WIDGET_ID = 32;
+// Synopsis pages use larger text; the list id also aligns it left
+const INTRO_PAGE_WIDGET_ID = 35;
+const INTRO_LIST_WIDGET_ID = 36;
 
 // Synopsis placeholders and the live key bindings that fill them
 const INTRO_KEYS: [string, (controller: CombinedController) => number][] = [
@@ -141,7 +145,7 @@ function resetIntro(): void {
  *     { "customPacketType": "characterSelectMenu",
  *       "maxCharacters": 3,
  *       "characters": [ { "name": "Lydia", "info": "..." }, null, null ],
- *       "intro": { "pages": [ { "caption": "...", "text": "..." } ], "question": "...",
+ *       "intro": { "pages": [ { "caption": "...", "text": "...", "align": "left" } ], "question": "...",
  *                  "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ] } }
  *
  *   Server -> Client, close without a choice (optional):
@@ -315,6 +319,7 @@ export class CharacterSelectService extends ClientListener {
     return pages
       .map((page) => ({
         caption: page.caption,
+        align: page.align,
         text: page.text.split('\n')
           .filter((line) => keys.every((k) => k.code > 0 || line.indexOf(k.placeholder) < 0))
           .map((line) => keys.reduce((s, k) => s.split(k.placeholder).join(`[${keyLabel(k.code)}]`), line))
@@ -326,7 +331,7 @@ export class CharacterSelectService extends ClientListener {
   private menuArgs(): Record<string, unknown> {
     return {
       characters, maxCharacters, selectedSlot, confirmDeleteSlot, events, strings, WIDGET_ID,
-      intro, introScreen, introPages, introPage, introPick, INTRO_WIDGET_ID,
+      intro, introScreen, introPages, introPage, introPick, INTRO_WIDGET_ID, INTRO_PAGE_WIDGET_ID, INTRO_LIST_WIDGET_ID,
     };
   }
 
@@ -354,6 +359,7 @@ export class CharacterSelectService extends ClientListener {
       const form: any = { type: "form", id: INTRO_WIDGET_ID, elements: [] as any[] };
       if (introScreen === "page") {
         const page = introPages[introPage];
+        form.id = page.align === "left" ? INTRO_LIST_WIDGET_ID : INTRO_PAGE_WIDGET_ID;
         if (page.caption) form.caption = page.caption;
         form.elements.push({ type: "text", text: page.text, tags: [] });
         form.elements.push({ type: "button", text: strings.back, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introBack) });

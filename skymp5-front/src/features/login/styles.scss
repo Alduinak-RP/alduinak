@@ -279,9 +279,11 @@ dothatopcheck {  0% {
   }
 }
 
-// Character select (form widget 7) and the new character intro (32): a red/black panel that reads over the main menu video
+// Character select (form widget 7) and the new character intro (32, 35, 36): a red/black panel that reads over the main menu video
 .login.login--w7,
-.login.login--w32 {
+.login.login--w32,
+.login.login--w35,
+.login.login--w36 {
   .login-form {
     background:
       linear-gradient(180deg, rgba(8, 4, 4, 0.92), rgba(0, 0, 0, 0.88)),
@@ -330,7 +332,9 @@ dothatopcheck {  0% {
 }
 
 // New character intro: wrapped multi-line text, scrolling inside the panel when the screen is short
-.login.login--w32 {
+.login.login--w32,
+.login.login--w35,
+.login.login--w36 {
   .login-form--content_main {
     max-height: calc(100vh - 180px);
     overflow-x: hidden;
@@ -357,4 +361,32 @@ dothatopcheck {  0% {
       width: auto;
     }
   }
+}
+
+// Intro synopsis pages (35, and 36 aligned left): text half again as large, scrolling above the buttons
+.login.login--w35,
+.login.login--w36 {
+  .login-form--content_header {
+    font-size: 48px;
+    line-height: 1.1;
+  }
+  .skyrimText {
+    width: 1080px;
+    max-width: calc(100vw - 160px);
+    max-height: calc(100vh - 300px);
+    font-size: 36px;
+    padding-bottom: 0.2em;
+    overflow-x: hidden;
+    overflow-y: auto;
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(180, 60, 50, 0.45);
+    }
+  }
+}
+
+.login.login--w36 .skyrimText {
+  text-align: left;
 }

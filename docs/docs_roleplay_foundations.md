@@ -101,7 +101,7 @@ All messages use `MsgType.CustomPacket` with a JSON dump in `contentJsonDump`.
   "intro": {
     "pages": [
       { "text": "In 4E 210, ..." },
-      { "caption": "Welcome to Alduinak", "text": "Use [get alt interaction button] to ...\nUse [get voice key button] to ..." }
+      { "caption": "Welcome to Alduinak", "align": "left", "text": "Use [get alt interaction button] to ...\nUse [get voice key button] to ..." }
     ],
     "question": "Where will your journey begin?",
     "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ]
@@ -122,10 +122,14 @@ empty slots offer **create**.
 #### New character intro
 
 Pressing Play on an Empty slot while the menu carries `intro` does not create
-the character at once. The panel (form widget 32, styled like the character
-select panel) walks through:
+the character at once. The panel (form widgets 32, 35 and 36, styled like the
+character select panel) walks through:
 
-1. One screen per synopsis page, each with **Back** and **Continue**. Every
+1. One screen per synopsis page, each with **Back** and **Continue**. A page
+   (widget 35) shows its caption and text half again as large as the question
+   screens, and the text scrolls above the buttons when it does not fit the
+   screen. A page with `"align": "left"` (widget 36) aligns its lines left, as
+   the key list page does. Every
    bracketed placeholder becomes the player's own key in brackets, read from
    the bindings the client acts on: `[get alt interaction button]` is
    `altInteractKeyCode` (PlayerActionService), `[get voice key button]` is
@@ -188,5 +192,6 @@ The slot layout and the intro screens are built in `characterSelectService.ts`
 (`browsersideWidgetSetter`) using the existing widget form system (`text` and
 `button` elements). Adjust there to add fields (e.g. portraits via `icon`
 elements) or change labels. Localised strings live in the `translations` map
-in the same file. The intro panel styles are the `.login--w32` rules in
+in the same file. The intro panel styles are the `.login--w32`, `.login--w35`
+and `.login--w36` rules in
 `skymp5-front/src/features/login/styles.scss`.
