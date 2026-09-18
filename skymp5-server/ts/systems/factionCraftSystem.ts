@@ -39,6 +39,8 @@ const DEFAULT_FACTIONS = [
   "hold:winterhold", "hold:the-rift", "hold:the-pale", "hold:whiterun",
   "faction:companions", "faction:thalmor", "faction:imperial-legion", "faction:stormcloaks",
   "faction:thieves-guild", "faction:dark-brotherhood", "faction:college-of-winterhold",
+  // No roster of their own yet; their markers are in the plugin, so their gear is ready to be handed out
+  "faction:dawnguard", "faction:forsworn", "faction:morag-tong", "faction:skaal",
 ];
 
 export const markerEdidOf = (factionId: string): string =>
