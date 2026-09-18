@@ -560,7 +560,7 @@ export class AdminMenuService extends ClientListener {
       return;
     }
     if (kind === events.itemSearch) {
-      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "itemSearch", query: String(e.arguments[1] ?? "").slice(0, ITEM_QUERY_MAX), kind: String(e.arguments[2] ?? "") });
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "itemSearch", query: String(e.arguments[1] ?? "").slice(0, ITEM_QUERY_MAX), kind: String(e.arguments[2] ?? ""), page: Number(e.arguments[3]) });
       return;
     }
     if (kind === events.itemSpawn) {

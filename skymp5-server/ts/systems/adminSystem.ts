@@ -34,7 +34,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
-//                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..1000, self allowed
+//                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..10000, self allowed
 //                     { customPacketType: "adminAction", action: "petBases" }  answered with petBases, the grantable pet bases per kind
 //                     { customPacketType: "adminAction", action: "petGrant", kind, base, name }  stores a pet of that kind for the admin's own character
 //                     { customPacketType: "adminAction", action: "jobList" }  answered with adminJobs
@@ -51,7 +51,7 @@ type Mp = any;
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form or one end of the job form
 //                     { customPacketType: "adminJobs", jobs: [JobSummary] }  after jobList and after every job mutation
-//                     { customPacketType: "adminItems", query, kind, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
+//                     { customPacketType: "adminItems", query, kind, page, pages, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
 //                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp, jobTp), which closes the menu
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
@@ -63,7 +63,8 @@ const PING_CACHE_MS = 3000;
 const ATTR_BONUS_PROP = "private.attrBonus";
 const ATTR_KEYS = ["health", "magicka", "stamina"] as const;
 const MAX_ATTR_BONUS = 1000;
-const MAX_ITEM_SPAWN = 1000;
+const MAX_ITEM_SPAWN = 10000;
+const ITEM_PAGE_SIZE = 50;
 const SPAWN_COOLDOWN_MS = 250;
 
 const ADMIN_MODES: Array<{ id: string; label: string }> = [
@@ -606,12 +607,18 @@ export class AdminSystem implements System {
     this.ensureCatalog();
     const query = normaliseQuery(content["query"]);
     const kind = normaliseKind(content["kind"]);
-    const found = this.catalog ? searchItems(this.catalog, query, kind) : { total: 0, rows: [] };
+    const all = this.catalog ? searchItems(this.catalog, query, kind, 0) : { total: 0, rows: [] };
+    const pages = Math.max(1, Math.ceil(all.total / ITEM_PAGE_SIZE));
+    const requested = Number(content["page"]);
+    const page = Number.isInteger(requested) ? Math.min(pages, Math.max(1, requested)) : 1;
+    const found = this.catalog ? searchItems(this.catalog, query, kind, ITEM_PAGE_SIZE, (page - 1) * ITEM_PAGE_SIZE) : all;
     try {
       mp.sendCustomPacket(userId, JSON.stringify({
         customPacketType: "adminItems",
         query,
         kind,
+        page,
+        pages,
         ready: !!this.catalog,
         total: found.total,
         items: found.rows.map(({ desc, name, edid, type, plugin }) => ({ desc, name, edid, type, plugin })),

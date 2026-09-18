@@ -93,13 +93,13 @@ export const normaliseQuery = (query: unknown): string => String(query ?? "").tr
 export const normaliseKind = normaliseQuery;
 
 // Every token must appear; ranks an exact name, then a name prefix, then a name word starting with the first token
-export function searchItems(items: CatalogItem[], query: string, kind: string, limit = 50): { total: number; rows: CatalogItem[] } {
+export function searchItems(items: CatalogItem[], query: string, kind: string, limit = 50, offset = 0): { total: number; rows: CatalogItem[] } {
   const q = normaliseQuery(query);
   const type = normaliseKind(kind).toUpperCase();
   if (q.length < 2 && !type) return { total: 0, rows: [] };
   const tokens = q.split(/\s+/).filter(Boolean);
   const matches = items.filter((it) => (!type || it.type === type) && tokens.every((t) => it.hay.includes(t)));
-  if (!tokens.length) return { total: matches.length, rows: matches.slice(0, limit) };
+  if (!tokens.length) return { total: matches.length, rows: matches.slice(offset, offset + limit) };
   const phrase = tokens.join(" ");
   const rank = (it: CatalogItem): number => {
     const name = it.name.toLowerCase();
@@ -109,5 +109,5 @@ export function searchItems(items: CatalogItem[], query: string, kind: string, l
   };
   const ranked = matches.map((it) => ({ it, r: rank(it) }));
   ranked.sort((a, b) => a.r - b.r || a.it.name.length - b.it.name.length || collate(a.it.name, b.it.name));
-  return { total: matches.length, rows: ranked.slice(0, limit).map((x) => x.it) };
+  return { total: matches.length, rows: ranked.slice(offset, offset + limit).map((x) => x.it) };
 }

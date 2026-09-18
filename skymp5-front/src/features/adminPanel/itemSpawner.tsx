@@ -16,6 +16,8 @@ export interface ItemResults {
   kind: string;
   ready: boolean; // false while the server still builds its catalog
   total: number;
+  page: number;
+  pages: number;
   rows: ItemRow[];
 }
 
@@ -44,7 +46,7 @@ const KINDS: Array<{ id: string; label: string }> = [
 ];
 
 // Same bound the server enforces per spawn
-const MAX_SPAWN_COUNT = 1000;
+const MAX_SPAWN_COUNT = 10000;
 
 // Same cut the server applies before echoing the query
 const MAX_QUERY_LENGTH = 64;
@@ -67,6 +69,7 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
   const [pick, setPick] = useState<ItemRow | null>(lastPick);
   const [count, setCount] = useState('1');
   const [toPlayer, setToPlayer] = useState(lastToPlayer);
+  const [page, setPage] = useState(1);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,7 +79,7 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
 
   const searchable = normQuery(query).length >= 2 || kind !== '';
   const search = (): void => {
-    if (searchable && ev.itemSearch) send(ev.itemSearch, query.trim(), kind);
+    if (searchable && ev.itemSearch) send(ev.itemSearch, query.trim(), kind, page);
   };
 
   useEffect(() => {
@@ -85,10 +88,12 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
     if (!searchable) return undefined;
     const timer = setTimeout(search, 250);
     return () => clearTimeout(timer);
-  }, [query, kind, refreshKey]);
+  }, [query, kind, page, refreshKey]);
+
+  useEffect(() => { setPage(1); }, [query, kind]);
 
   // A reply for an older query or kind is never shown
-  const shown = items && normQuery(items.query || '') === normQuery(query) && (items.kind || '').toUpperCase() === kind ? items : null;
+  const shown = items && normQuery(items.query || '') === normQuery(query) && (items.kind || '').toUpperCase() === kind && Number(items.page || 1) === page ? items : null;
   const loading = !!shown && shown.ready === false;
   const rows = shown && Array.isArray(shown.rows) ? shown.rows : [];
 
@@ -177,7 +182,11 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
         )}
       </div>
       {shown && !loading && shown.total > rows.length ? (
-        <span className="admin-panel__hint">Showing {rows.length} of {shown.total}, refine the search</span>
+        <div className="admin-panel__actions">
+          <span className="admin-panel__hint">Page {shown.page || page} of {shown.pages || 1}, {shown.total} items</span>
+          <Button text="Previous" width={92} height={30} disabled={page <= 1} onClick={() => setPage(page - 1)} />
+          <Button text="Next" width={72} height={30} disabled={page >= (shown.pages || 1)} onClick={() => setPage(page + 1)} />
+        </div>
       ) : null}
       <div className="admin-panel__actions admin-panel__spawn">
         <span className="admin-panel__spawn-item" title={pick ? pick.desc : undefined}>
