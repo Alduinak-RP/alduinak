@@ -2318,6 +2318,174 @@
    "anchor": "0A17CD:Skyrim.esm"
   }
  ],
+ "factions": {
+  "benches": [
+   "CraftingSmithingForge",
+   "CraftingSmithingSkyforge",
+   "DLC2CraftingSmithingSkaalForge",
+   "DLC1CraftingDawnguard",
+   "DLC1LD_CraftingForgeAetherium",
+   "CraftingTanningRack",
+   "MCE_CraftingLoom",
+   "AldCraftingWoodcrafting"
+  ],
+  "list": [
+   {
+    "id": "hold:haafingar",
+    "name": "Guard of Haafingar",
+    "all": [
+     "Guard",
+     "Solitude"
+    ]
+   },
+   {
+    "id": "hold:the-reach",
+    "name": "Guard of the Reach",
+    "all": [
+     "Guard",
+     "Markarth"
+    ]
+   },
+   {
+    "id": "hold:falkreath",
+    "name": "Guard of Falkreath",
+    "all": [
+     "Guard",
+     "Falkreath"
+    ]
+   },
+   {
+    "id": "hold:hjaalmarch",
+    "name": "Guard of Hjaalmarch",
+    "all": [
+     "Guard",
+     "Hjaalmarch"
+    ]
+   },
+   {
+    "id": "hold:eastmarch",
+    "name": "Guard of Eastmarch",
+    "all": [
+     "Guard",
+     "Windhelm"
+    ]
+   },
+   {
+    "id": "hold:winterhold",
+    "name": "Guard of Winterhold",
+    "all": [
+     "Guard",
+     "Winterhold"
+    ]
+   },
+   {
+    "id": "hold:the-rift",
+    "name": "Guard of the Rift",
+    "all": [
+     "Guard",
+     "Riften"
+    ]
+   },
+   {
+    "id": "hold:the-pale",
+    "name": "Guard of the Pale",
+    "all": [
+     "Guard",
+     "Dawnstar"
+    ]
+   },
+   {
+    "id": "hold:whiterun",
+    "name": "Guard of Whiterun",
+    "all": [
+     "Guard",
+     "Whiterun"
+    ]
+   },
+   {
+    "id": "faction:companions",
+    "name": "The Companions",
+    "match": [
+     "Companions",
+     "Wolf Armor",
+     "Wolf Boots",
+     "Wolf Gauntlets",
+     "Wolf Helmet",
+     "Ulfhedinn",
+     "Nord Hero",
+     "Nordic Carved"
+    ]
+   },
+   {
+    "id": "faction:thalmor",
+    "name": "Thalmor",
+    "match": [
+     "Thalmor"
+    ]
+   },
+   {
+    "id": "faction:imperial-legion",
+    "name": "Imperial Legion",
+    "match": [
+     "Imperial",
+     "Penitus",
+     "Titus Mede"
+    ],
+    "except": [
+     "Moon Monk",
+     "Imperial Emissary",
+     "War Horn",
+     "ImperialWarHorn"
+    ]
+   },
+   {
+    "id": "faction:stormcloaks",
+    "name": "Stormcloaks",
+    "match": [
+     "Stormcloak",
+     "Einherjar"
+    ],
+    "except": [
+     "Fur Boots",
+     "Fur Gauntlets"
+    ]
+   },
+   {
+    "id": "faction:thieves-guild",
+    "name": "Thieves Guild",
+    "match": [
+     "ThievesGuild",
+     "Thieves Guild",
+     "Nightingale",
+     "Guild Master's",
+     "Karliah"
+    ]
+   },
+   {
+    "id": "faction:dark-brotherhood",
+    "name": "Dark Brotherhood",
+    "match": [
+     "Dark Brotherhood",
+     "DarkBrotherhood",
+     "Shrouded",
+     "MCERecipeClothesDB",
+     "MCERecipeArmorDB",
+     "Jester's"
+    ]
+   },
+   {
+    "id": "faction:college-of-winterhold",
+    "name": "College of Winterhold",
+    "match": [
+     "Archmage",
+     "College of Winterhold",
+     "MCERecipeClothesCollege",
+     "MCERecipeClothesMG",
+     "CapeRecipe_CoW"
+    ]
+   }
+  ]
+ },
  "racial": {
   "benches": [
    "CraftingSmithingForge",

@@ -71,6 +71,7 @@ Steps.Cooking(ctx);
 Steps.Smithing(ctx);
 Steps.Tempering(ctx);
 Steps.Tailoring(ctx);
+Steps.Factions(ctx);
 Steps.Uncraftable(ctx);
 Steps.Meadery(ctx);
 Steps.BenchKeywordRemovals(ctx);
@@ -178,6 +179,8 @@ class PatchContext
     private readonly Dictionary<string, IMajorRecord> ownByEdid = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<FormKey, int>? materialTiers;
     private Dictionary<string, Route>? routes;
+    // Recipes a faction rule gated, which the uncraftable list must then leave alone
+    public readonly HashSet<string> Claimed = new(StringComparer.OrdinalIgnoreCase);
 
     public PatchContext(SkyrimMod mod, ILinkCache cache, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, JsonObject spec, Report report,
                         ModKey? markerKey = null, Func<IMajorRecordGetter, bool>? includes = null)
@@ -651,7 +654,8 @@ static class Steps
     public static void Uncraftable(PatchContext c)
     {
         if (c.Spec["uncraftable"] is not JsonObject u) return;
-        Park(c, u["recipes"]!.AsArray().Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>()),
+        // A faction rule claiming a recipe releases it: it is gated by membership now, not hidden
+        Park(c, u["recipes"]!.AsArray().Select(x => x!.GetValue<string>()).Where(e => !c.Claimed.Contains(e)), c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>()),
              "uncraftable", u["profession"]!.GetValue<string>());
     }
 
@@ -975,6 +979,61 @@ static class Steps
         if (t["disableRecipes"] is JsonArray disable)
             Park(c, disable.Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(t["disabledBench"]!.GetValue<string>()), "tailoring", profession);
     }
+
+    // ---- faction gear: only a member of that faction may make it --------------------------------------------------
+    //
+    // The game's own factions mean nothing here: membership lives in the backend, so each craft faction gets an
+    // Ability marker of its own that the server grants and revokes (skymp5-server/ts/systems/factionCraftSystem.ts),
+    // and its recipes carry the same HasSpell condition the rank markers use.
+    public static void Factions(PatchContext c)
+    {
+        if (c.Spec["factions"] is not JsonObject spec) return;
+        var benches = Edids(c, spec["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var rules = spec["list"]!.AsArray().Select(x => x!.AsObject())
+            .Select(x => (Id: x["id"]!.GetValue<string>(),
+                          Name: x["name"]!.GetValue<string>(),
+                          Match: Edids(c, x["match"]).ToList(),
+                          All: Edids(c, x["all"]).ToList(),
+                          Except: Edids(c, x["except"]).ToList())).ToList();
+        var marker = new Dictionary<string, FormKey>();
+        foreach (var r in rules)
+        {
+            var spell = c.OwnOrNew(c.Mod.Spells, MarkerEdidOf(r.Id));
+            spell.Name = $"Faction: {r.Name}";
+            spell.Type = SpellType.Ability;
+            spell.CastType = CastType.ConstantEffect;
+            spell.TargetType = TargetType.Self;
+            spell.Flags |= SpellDataFlag.ManualCostCalc;
+            marker[r.Id] = spell.FormKey;
+        }
+        var counts = rules.ToDictionary(r => r.Id, _ => 0);
+        foreach (var (key, cobj) in FinalRecipes(c))
+        {
+            if (!benches.Contains(cobj.Bench)) continue;
+            var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
+            var text = $"{cobj.Edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
+            var hit = rules.FirstOrDefault(r => (r.Match.Count > 0 && r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
+                                                 || r.All.Count > 0 && r.All.All(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)))
+                                             && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)));
+            if (hit.Id == null) continue;
+            if (!c.TryWinning<IConstructibleObjectGetter>(cobj.Edid, out var winning)) { c.Error($"factions: recipe '{cobj.Edid}' not found"); continue; }
+            var rec = c.Override(c.Mod.ConstructibleObjects, winning);
+            var spell = marker[hit.Id];
+            rec.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey == spell);
+            if (rec.Conditions.Count > 0) rec.Conditions[^1].Flags &= ~Condition.Flag.OR;
+            var data = new HasSpellConditionData { RunOnType = Condition.RunOnType.Subject };
+            data.Spell.Link.SetTo(spell);
+            rec.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = data });
+            counts[hit.Id] += 1;
+            c.Claimed.Add(cobj.Edid);
+            c.Report.Recipes.Add(new RecipeLine("faction", cobj.Edid, c.NameOf(cobj.Product), hit.Name, "-", Items(c, rec), note: $"only {hit.Name}"));
+        }
+        c.Note($"Faction gear: {string.Join(", ", counts.Select(kv => $"{kv.Value} {kv.Key}"))}");
+    }
+
+    // The server finds the markers by this editor id; the faction id's punctuation has no place in one
+    public static string MarkerEdidOf(string factionId) =>
+        "AldFaction_" + new string(factionId.Where(char.IsLetterOrDigit).ToArray());
 
     // ---- racial gear: only a smith of that people may make it -----------------------------------------------------
     //

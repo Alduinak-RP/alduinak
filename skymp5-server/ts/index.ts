@@ -24,6 +24,7 @@ import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
 import { NeedsSystem } from "./systems/needsSystem";
 import { GatheringSystem } from "./systems/gatheringSystem";
+import { FactionCraftSystem } from "./systems/factionCraftSystem";
 import { HuntingSystem } from "./systems/huntingSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { WritingSystem } from "./systems/writingSystem";
@@ -277,6 +278,7 @@ const main = async () => {
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
     new GatheringSystem(log, masterySystem, needsSystem),
+    new FactionCraftSystem(log),
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
     bountyBoardSystem,
