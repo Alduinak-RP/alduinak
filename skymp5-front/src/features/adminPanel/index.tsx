@@ -4,7 +4,6 @@ import Button from '../../constructorComponents/button';
 import { copyText } from '../../utils/copyText';
 import MasteryMenu, { MasteryData } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
-import WritingTools from './writingTools';
 import FactionTab, { FactionMenuData } from './factionTab';
 import Jobs, { AdminPos, JobRow } from './jobs';
 import './styles.scss';
@@ -147,7 +146,7 @@ const send = (key: string, ...args: unknown[]): void => {
 };
 
 type TopTab = 'admin' | 'faction' | 'skills' | 'debug';
-type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items' | 'writings';
+type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items';
 
 // Admin shows only to confirmed staff; the other three are open to every player
 const TOP_TABS: Array<{ id: TopTab; label: string }> = [
@@ -157,14 +156,13 @@ const TOP_TABS: Array<{ id: TopTab; label: string }> = [
   { id: 'debug', label: 'Debug' },
 ];
 
-// Each sub-tab needs its server-sent cap; Item Spawner needs it explicitly true, and Writings follows the players cap
+// Each sub-tab needs its server-sent cap; Item Spawner needs it explicitly true
 const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'players', label: 'Players' },
   { id: 'teleport', label: 'Teleport' },
   { id: 'modes', label: 'Modes' },
   { id: 'npcs', label: 'NPCs' },
   { id: 'items', label: 'Item Spawner' },
-  { id: 'writings', label: 'Writings' },
 ];
 
 // Teleport sections in display order; a missing or unknown group lands in Other
@@ -387,6 +385,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
   const [attrs, setAttrs] = useState<Record<string, string>>(attrForm(null));
+  const [factionRank, setFactionRank] = useState('');
   const [petKind, setPetKind] = useState<PetKind>('horse');
   const [petBase, setPetBase] = useState('');
   const [petName, setPetName] = useState('');
@@ -396,7 +395,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const ev = data.events || {};
   const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
-  const subVisible = (id: AdminSub): boolean => (id === 'items' ? caps.items === true : caps[id === 'writings' ? 'players' : id] !== false);
+  const subVisible = (id: AdminSub): boolean => (id === 'items' ? caps.items === true : caps[id] !== false);
   const shownSubs = ADMIN_SUBS.filter((t) => subVisible(t.id));
   const adminVisible = !!data.admin && shownSubs.length > 0;
   const shownTops = TOP_TABS.filter((t) => t.id !== 'admin' || adminVisible);
@@ -478,13 +477,15 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   useEffect(() => { setAttrs(attrForm(selectedPlayer ? selectedPlayer.av : null)); }, [selected]);
 
-  // Mastery rows: the admin's own character (actor id from the debug packet) and the selected online row
+  // Mastery rows stay tied to the selected character.
   const masteryRows: Array<{ key: string; who: string; target: string; m: PanelMastery | null | undefined }> = [];
-  if (data.mastery && debug && debug.actorId) masteryRows.push({ key: 'me', who: 'You', target: debug.actorId, m: data.mastery });
   if (actionsEnabled && selectedPlayer && selectedPlayer.a) masteryRows.push({ key: 'sel', who: selectedPlayer.n || '(no name)', target: selectedPlayer.a, m: selectedPlayer.m });
   const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
   // Filled from the selected row, so the fields show what the character carries now
   const canSetAttrs = !!ev.attrSet && actionsEnabled && ATTR_FIELDS.every((f) => isAttrAmount(attrs[f.key]));
+  const factionDetail = data.faction?.detail || null;
+  const factionRankOptions = factionDetail?.ranks || [];
+  const pickedFactionRank = factionRankOptions.some((r) => r.slug === factionRank) ? factionRank : factionRankOptions[factionRankOptions.length - 1]?.slug || '';
 
   const locFilter = locSearch.trim().toLowerCase();
   const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
@@ -659,7 +660,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               {canKick ? <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} /> : null}
               {canBan ? <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
             </div>
-            {ev.masteryGrant && data.mastery ? (
+            {ev.masteryGrant && selectedPlayer ? (
               <div className="admin-panel__mastery">
                 <div className="admin-panel__mastery-row">
                   <span className="admin-panel__mastery-who">Mastery hours</span>
@@ -684,7 +685,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 )}
               </div>
             ) : null}
-            {ev.attrSet ? (
+            {ev.attrSet && selectedPlayer ? (
               <div className="admin-panel__mastery">
                 <div className="admin-panel__mastery-row">
                   <span className="admin-panel__mastery-who">Max attributes</span>
@@ -711,6 +712,44 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     ? 'Health, magicka and stamina, permanent and kept through relogs; 0 leaves the character on its base values'
                     : 'Select an online player to change their max attributes'}
                 </span>
+              </div>
+            ) : null}
+            {selectedPlayer ? (
+              <div className="admin-panel__mastery">
+                <div className="admin-panel__mastery-row">
+                  <span className="admin-panel__mastery-who">Faction</span>
+                  <select
+                    className="admin-panel__input admin-panel__faction-pick"
+                    value={factionDetail?.id || ''}
+                    onChange={(e) => ev.factionMenu && send(ev.factionMenu, e.target.value)}
+                  >
+                    {!factionDetail ? <option value="">Loading factions</option> : null}
+                    {(data.faction?.factions || []).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                  <select
+                    className="admin-panel__input admin-panel__faction-pick"
+                    value={pickedFactionRank}
+                    disabled={!factionDetail}
+                    onChange={(e) => setFactionRank(e.target.value)}
+                  >
+                    {factionRankOptions.map((r) => <option key={r.slug} value={r.slug}>{r.name}</option>)}
+                  </select>
+                  <Button
+                    text="Add"
+                    width={72}
+                    height={30}
+                    disabled={!actionsEnabled || !factionDetail || !pickedFactionRank}
+                    onClick={() => selectedPlayer.a && send(ev.faction, JSON.stringify({ action: 'adminAdd', factionId: factionDetail?.id, rank: pickedFactionRank, target: parseInt(selectedPlayer.a, 16) }))}
+                  />
+                  <Button
+                    text="Remove"
+                    width={88}
+                    height={30}
+                    disabled={!actionsEnabled || !factionDetail}
+                    onClick={() => selectedPlayer.a && send(ev.faction, JSON.stringify({ action: 'adminRemove', factionId: factionDetail?.id, target: parseInt(selectedPlayer.a, 16) }))}
+                  />
+                </div>
+                <span className="admin-panel__hint">Choose a faction and role, then add or remove the selected online character.</span>
               </div>
             ) : null}
             <div className="admin-panel__filters">
@@ -837,7 +876,6 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
           />
         ) : null}
 
-        {view === 'writings' ? <WritingTools ev={ev} send={send} /> : null}
 
         {view === 'npcs' ? (
           <div className="admin-panel__body">

@@ -306,7 +306,6 @@ export class AdminSystem implements System {
     }
     const extra: any[] = [];
     for (const p of this.onlinePlayers(mp)) {
-      if (p.actorId === myActorId) continue;
       const base = byProfile.get(p.profileId);
       let discordId = "";
       try { discordId = String(mp.get(p.actorId, "private.skympDiscordId") ?? ""); } catch { }
@@ -333,7 +332,6 @@ export class AdminSystem implements System {
       if (p.profileId > 0) byProfile.set(p.profileId, row);
       else extra.push(row);
     }
-    byProfile.delete(adminProfile);
     const rows = Array.from(byProfile.values()).concat(extra);
     rows.sort((a, b) => (a.online === b.online) ? a.p - b.p : (a.online ? -1 : 1));
     return rows;

@@ -195,6 +195,8 @@ export class FactionSystem implements System {
 
     switch (action) {
       case "invite": await this.invite(userId, actorId, faction, auth, content); return;
+      case "adminAdd":
+      case "adminRemove": await this.adminMemberAction(userId, actorId, faction, action, content); break;
       case "leave": await this.leave(userId, actorId, faction, access); break;
       case "chat": this.setChat(userId, actorId, faction, access); break;
       case "promote":
@@ -205,6 +207,38 @@ export class FactionSystem implements System {
       default: return;
     }
     await this.sendMenu(userId, faction.id);
+  }
+
+  private async adminMemberAction(userId: number, actorId: number, faction: rules.FactionDef, action: string, content: Content): Promise<void> {
+    if (!this.isStaff(actorId)) return this.notice(userId, "You cannot manage factions.");
+    const target = this.onlineByActor(Number(content["target"]) >>> 0);
+    if (!target) return this.notice(userId, "Select an online player.");
+    const backend = this.backend()!;
+    const name = this.realName(target.actorId);
+    if (action === "adminAdd") {
+      const rank = rules.rankOf(faction, String(content["rank"] ?? ""));
+      if (!rank) return this.notice(userId, "Choose a faction role.");
+      if (rank.capacity !== null && (await this.roster(faction.id, true)).filter((m) => m.rankSlug === rank.slug).length >= rank.capacity) {
+        return this.notice(userId, `${rank.name} is full.`);
+      }
+      const payload = await backend.assign(target.profileId, rank.id, name, target.slot, this.who(actorId));
+      this.applyAccess(target.profileId, payload);
+      this.invalidateRoster(faction.id);
+      this.notice(target.userId, `You are now ${rank.name} of ${faction.name}.`);
+      this.notice(userId, `${name} is now ${rank.name} of ${faction.name}.`);
+      this.staffLog(`${this.who(actorId)} added ${this.who(target.actorId)} to ${faction.name} as ${rank.name}`);
+      return;
+    }
+    const access = filterAccessForSlot(await backend.fetchAccess(target.profileId), target.slot);
+    const rows = rules.membershipsOf(access).filter((m) => m.factionId === faction.id);
+    if (!rows.length) return this.notice(userId, `${name} is not in ${faction.name}.`);
+    let payload: AccessPayload | null = null;
+    for (const row of rows) payload = await backend.remove(target.profileId, `${faction.id}:${row.rankSlug}`, target.slot);
+    if (payload) this.applyAccess(target.profileId, payload);
+    this.invalidateRoster(faction.id);
+    this.notice(target.userId, `You were removed from ${faction.name}.`);
+    this.notice(userId, `${name} was removed from ${faction.name}.`);
+    this.staffLog(`${this.who(actorId)} removed ${this.who(target.actorId)} from ${faction.name}`);
   }
 
   private async invite(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, content: Content): Promise<void> {
