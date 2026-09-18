@@ -49,6 +49,10 @@ type Mp = any;
 //   needsExhaustionMax            exhaustion of an empty fatigue bar, default 960 (Survival_ExhaustionNeedMaxValue)
 //   needsKillFatigue              exhaustion a kill costs, in the same points as the stages, default 10
 //   needsKillFatigueWarrior       what a warrior pays instead, default 5
+//   needsChopFatigue              exhaustion a swing of the woodcutter's axe costs, default 20
+//   needsChopFatigueWoodworker    what a woodworker pays instead, default 10
+//   needsMineFatigue              exhaustion one ore off a vein costs, default 20
+//   needsMineFatigueMiner         what a miner pays instead, default 10
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
 
 const NEEDS_PROP = "private.needs";
@@ -83,6 +87,9 @@ const DEFAULT_EXHAUSTION_MAX = 960;
 // Exhaustion a kill adds, in stage points; the fatigue meter players read is a percentage of the max above
 const DEFAULT_KILL_FATIGUE = 10;
 const DEFAULT_KILL_FATIGUE_WARRIOR = 5;
+// Gathering is heavier work than a kill, and the trade that lives by it pays half.
+const DEFAULT_WORK_FATIGUE = 20;
+const DEFAULT_WORK_FATIGUE_OWN_TRADE = 10;
 const DEFAULT_CRAFTS_PER_HOUR = [6, 12, 18, 24];
 
 interface NeedsRecord {
@@ -158,6 +165,10 @@ export class NeedsSystem implements System {
     this.exhaustionMax = num("needsExhaustionMax", DEFAULT_EXHAUSTION_MAX, 1);
     this.killFatigue = num("needsKillFatigue", DEFAULT_KILL_FATIGUE, 0);
     this.killFatigueWarrior = num("needsKillFatigueWarrior", DEFAULT_KILL_FATIGUE_WARRIOR, 0);
+    this.chopFatigue = num("needsChopFatigue", DEFAULT_WORK_FATIGUE, 0);
+    this.chopFatigueOwn = num("needsChopFatigueWoodworker", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
+    this.mineFatigue = num("needsMineFatigue", DEFAULT_WORK_FATIGUE, 0);
+    this.mineFatigueOwn = num("needsMineFatigueMiner", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
     this.penalties = all["needsAttributePenalties"] !== false;
     const free = Array.isArray(all["needsFatigueFreeKeywords"]) ? (all["needsFatigueFreeKeywords"] as unknown[]).filter((k) => typeof k === "string") as string[] : ["AldCraftingMead"];
 
@@ -329,11 +340,25 @@ export class NeedsSystem implements System {
 
   // A kill costs exhaustion points off the same bar crafting spends; warriors pay the smaller price
   applyKillFatigue(ctx: SystemContext, actorId: number, warrior: boolean): void {
+    this.applyExhaustion(ctx, actorId, warrior ? this.killFatigueWarrior : this.killFatigue);
+  }
+
+  // A swing of the woodcutter's axe; woodworkers pay the smaller price
+  applyChopFatigue(ctx: SystemContext, actorId: number, woodworker: boolean): void {
+    this.applyExhaustion(ctx, actorId, woodworker ? this.chopFatigueOwn : this.chopFatigue);
+  }
+
+  // One ore off a vein; miners pay the smaller price
+  applyMineFatigue(ctx: SystemContext, actorId: number, miner: boolean): void {
+    this.applyExhaustion(ctx, actorId, miner ? this.mineFatigueOwn : this.mineFatigue);
+  }
+
+  // Exhaustion points off the bar crafting spends, on the stage scale
+  private applyExhaustion(ctx: SystemContext, actorId: number, points: number): void {
     const entry = this.online.get(actorId);
-    if (!entry || !this.enabled) return;
+    if (!entry || !this.enabled || points <= 0) return;
     this.advance(entry.rec, Date.now(), true);
-    const cost = (warrior ? this.killFatigueWarrior : this.killFatigue) / this.exhaustionMax;
-    entry.rec.fatigue = clamp(entry.rec.fatigue - cost, 0, 1);
+    entry.rec.fatigue = clamp(entry.rec.fatigue - points / this.exhaustionMax, 0, 1);
     this.write(ctx, actorId, entry.rec);
     this.syncStages(ctx, actorId, entry);
     this.sendState(ctx, actorId, false);
@@ -567,6 +592,10 @@ export class NeedsSystem implements System {
   private exhaustionMax = DEFAULT_EXHAUSTION_MAX;
   private killFatigue = DEFAULT_KILL_FATIGUE;
   private killFatigueWarrior = DEFAULT_KILL_FATIGUE_WARRIOR;
+  private chopFatigue = DEFAULT_WORK_FATIGUE;
+  private chopFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
+  private mineFatigue = DEFAULT_WORK_FATIGUE;
+  private mineFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
   private penalties = true;
 
   private hungerSpells: number[] = [];

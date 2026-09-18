@@ -4,6 +4,7 @@ import { espmContainerEntries, espmFieldFormIds, espmLinkedRefId, readVmadScript
 import { addItemTo, holdsItem } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { MasterySystem, RANK_NAMES } from "./masterySystem";
+import { NeedsSystem } from "./needsSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -21,6 +22,8 @@ type Mp = any;
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 60
 //
+// A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
+// needsMineFatigue); woodworkers and miners pay the smaller price for their own trade.
 // Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
 // Ores above Novice need the miner profession at that rank; everything else is open to anyone with a pickaxe.
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
@@ -106,7 +109,7 @@ type Verdict = undefined | false | (() => void) | (() => false);
 export class GatheringSystem implements System {
   systemName = "GatheringSystem";
 
-  constructor(private log: Log, private mastery: MasterySystem) { }
+  constructor(private log: Log, private mastery: MasterySystem, private needs: NeedsSystem) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -392,6 +395,7 @@ export class GatheringSystem implements System {
     if (count > 0) {
       this.addItem(ctx, s.actorId, s.resource, count);
       s.given += count;
+      this.needs.applyChopFatigue(ctx, s.actorId, this.mastery.rankOf(ctx, s.actorId, "woodworker") >= 0);
     }
     if (s.given >= s.cap) this.finish(ctx, s, "");
   }
@@ -403,6 +407,7 @@ export class GatheringSystem implements System {
     if (s.strikesLeft > 0) return;
     s.strikesLeft = s.strikesPer;
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
+    this.needs.applyMineFatigue(ctx, s.actorId, this.mastery.rankOf(ctx, s.actorId, "miner") >= 0);
     state.left -= 1;
     if (!state.regenAt) state.regenAt = now + this.regenPer(s.cap);
     this.writeVein(ctx, s.veinId, state);
