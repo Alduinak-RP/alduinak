@@ -14,8 +14,8 @@ type Mp = any;
 // Hunger runs from 0 (full) to 1000 and drains only while the character is online; eating a food takes it down by the
 // amount its Survival hunger effect names (the effect's Survival_HungerRestoreEffectScript AmountToRestore global).
 // Fatigue is a bar from 0 to 1 that every accepted recipe draws on, by the crafter's rank in the profession owning the
-// recipe's bench (Novice outside it), and that refills at a flat rate online and offline; it maps onto Survival's
-// exhaustion scale as (1 - fatigue) * 960. A craft the bar cannot pay for is refused before the native craft runs, and the
+// recipe's bench (Novice outside it), and that a kill draws on too (needsKillFatigue, less for warriors); it refills at a
+// flat rate online and offline and maps onto Survival's exhaustion scale as (1 - fatigue) * 960. A craft the bar cannot pay for is refused before the native craft runs, and the
 // client's local craft is undone by resending its inventory.
 // Each need holds the Survival stage ability of its stage (screen effects stripped by AlduinakCreations.esp) and reduces a
 // maximum like Survival_NeedBase.ApplyAttributePenalty: hunger max stamina, fatigue max magicka, by
@@ -47,6 +47,8 @@ type Mp = any;
 //   needsFatigueStages            exhaustion at which stages 1-5 begin, default [80, 160, 340, 560, 800]
 //   needsFatigueStageAbilities    false grants no Survival exhaustion stage abilities, default true
 //   needsExhaustionMax            exhaustion of an empty fatigue bar, default 960 (Survival_ExhaustionNeedMaxValue)
+//   needsKillFatigue              exhaustion a kill costs, in the same points as the stages, default 10
+//   needsKillFatigueWarrior       what a warrior pays instead, default 5
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
 
 const NEEDS_PROP = "private.needs";
@@ -78,6 +80,9 @@ const DEFAULT_FATIGUE_STAGES = [80, 160, 340, 560, 800];
 // Survival_HungerNeedValue, the hunger Survival Mode starts a new game with
 const DEFAULT_HUNGER_START = 145;
 const DEFAULT_EXHAUSTION_MAX = 960;
+// Exhaustion a kill adds, in stage points; the fatigue meter players read is a percentage of the max above
+const DEFAULT_KILL_FATIGUE = 10;
+const DEFAULT_KILL_FATIGUE_WARRIOR = 5;
 const DEFAULT_CRAFTS_PER_HOUR = [6, 12, 18, 24];
 
 interface NeedsRecord {
@@ -151,6 +156,8 @@ export class NeedsSystem implements System {
     this.fatigueStages = numberList(all["needsFatigueStages"], DEFAULT_FATIGUE_STAGES.length) || DEFAULT_FATIGUE_STAGES.slice();
     this.fatigueAbilities = all["needsFatigueStageAbilities"] !== false;
     this.exhaustionMax = num("needsExhaustionMax", DEFAULT_EXHAUSTION_MAX, 1);
+    this.killFatigue = num("needsKillFatigue", DEFAULT_KILL_FATIGUE, 0);
+    this.killFatigueWarrior = num("needsKillFatigueWarrior", DEFAULT_KILL_FATIGUE_WARRIOR, 0);
     this.penalties = all["needsAttributePenalties"] !== false;
     const free = Array.isArray(all["needsFatigueFreeKeywords"]) ? (all["needsFatigueFreeKeywords"] as unknown[]).filter((k) => typeof k === "string") as string[] : ["AldCraftingMead"];
 
@@ -320,11 +327,13 @@ export class NeedsSystem implements System {
     }
   }
 
+  // A kill costs exhaustion points off the same bar crafting spends; warriors pay the smaller price
   applyKillFatigue(ctx: SystemContext, actorId: number, warrior: boolean): void {
     const entry = this.online.get(actorId);
     if (!entry || !this.enabled) return;
     this.advance(entry.rec, Date.now(), true);
-    entry.rec.fatigue = clamp(entry.rec.fatigue - (warrior ? 0.05 : 0.1), 0, 1);
+    const cost = (warrior ? this.killFatigueWarrior : this.killFatigue) / this.exhaustionMax;
+    entry.rec.fatigue = clamp(entry.rec.fatigue - cost, 0, 1);
     this.write(ctx, actorId, entry.rec);
     this.syncStages(ctx, actorId, entry);
     this.sendState(ctx, actorId, false);
@@ -556,6 +565,8 @@ export class NeedsSystem implements System {
   private fatigueStages = DEFAULT_FATIGUE_STAGES.slice();
   private fatigueAbilities = true;
   private exhaustionMax = DEFAULT_EXHAUSTION_MAX;
+  private killFatigue = DEFAULT_KILL_FATIGUE;
+  private killFatigueWarrior = DEFAULT_KILL_FATIGUE_WARRIOR;
   private penalties = true;
 
   private hungerSpells: number[] = [];
