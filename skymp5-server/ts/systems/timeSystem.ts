@@ -4,17 +4,18 @@ import { System, Log, SystemContext, Content } from "./system";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Game time is this box's local wall clock at 1:1 (Windows time zone, DST included); the client applies it to the calendar globals.
+// Game time is this box's local wall clock plus three hours at 1:1; the client applies it to the calendar globals.
 // Pushed on connect, on request, every minute against client clock drift, and within one poll of a UTC offset change.
 //
 //   Server -> Client: { customPacketType: "gameTime", serverTime, tzOffsetMin, year, timeScale }  serverTime: epoch ms, tzOffsetMin: Date.getTimezoneOffset()
 //   Client -> Server: { customPacketType: "gameTimeRequest" }
 //
 // server-settings.json keys:
-//   gameYear  in-game year of every date, never rolls over (default 226)
+//   gameYear  in-game year of every date, never rolls over (default 210)
 
-const DEFAULT_YEAR = 226;
+const DEFAULT_YEAR = 210;
 const TIME_SCALE = 1;
+const TIME_OFFSET_MS = 3 * 60 * 60 * 1000;
 const POLL_MS = 5000;
 const BROADCAST_MS = 60000;
 const MAX_USER_SLOTS = 1024;
@@ -31,7 +32,7 @@ export class TimeSystem implements System {
     const all = (await Settings.get()).allSettings as Record<string, any> | null;
     const year = Number(all?.["gameYear"]);
     if (Number.isInteger(year) && year > 0) this.year = year;
-    this.log(`TimeSystem: game time follows ${new Date().toString()}, year ${this.year}, timescale ${TIME_SCALE}`);
+    this.log(`TimeSystem: game time follows ${new Date(Date.now() + TIME_OFFSET_MS).toString()}, year ${this.year}, timescale ${TIME_SCALE}`);
   }
 
   connect(userId: number, ctx: SystemContext): void {
@@ -60,7 +61,7 @@ export class TimeSystem implements System {
     try {
       mp.sendCustomPacket(userId, JSON.stringify({
         customPacketType: "gameTime",
-        serverTime: Date.now(),
+        serverTime: Date.now() + TIME_OFFSET_MS,
         tzOffsetMin: new Date().getTimezoneOffset(),
         year: this.year,
         timeScale: TIME_SCALE,
