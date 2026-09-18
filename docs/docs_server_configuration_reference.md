@@ -276,6 +276,40 @@ those forms. `[]` disables the check.
 }
 ```
 
+## doorTeleportOverrides
+
+Load doors that send the player somewhere other than their plugin data says,
+one entry per door. `door` is the placed reference of the door that is pressed,
+`cellOrWorldDesc` the interior cell or the worldspace it leads to; both take a
+number, a `"0x..."` string or a `"hex:File.esp"` descriptor. `pos` is the
+arrival point in game units and `rot` its angles in degrees, `[0, 0, 0]` when
+omitted. An entry the load order has no form for is skipped and logged at boot.
+
+Defaults to the Thalmor Embassy party room's south west door (`7C98E:Skyrim.esm`),
+whose vanilla pair leaves the player in the room, redirecting it to the courtyard
+outside the embassy front door. Giving the key replaces that list; `[]` turns the
+overrides off.
+
+The override applies only to the connected player who pressed the door, only
+once the lock, faction and job checks of the normal door path have allowed the
+activation, and it replaces the door's own teleport rather than adding to it. A
+pet or a companion following its owner through keeps the plugin destination.
+
+```json5
+{
+  // ...
+  "doorTeleportOverrides": [
+    {
+      "door": "7C98E:Skyrim.esm",
+      "cellOrWorldDesc": "3c:Skyrim.esm",
+      "pos": [-79858.25, 114377.65, -2273.45],
+      "rot": [0, 0, 159.95]
+    }
+  ]
+  // ...
+}
+```
+
 ## exteriorScriptAllowlist
 
 Vanilla Papyrus scripts that still run on exterior references. The server

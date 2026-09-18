@@ -37,6 +37,7 @@ import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
 import { TimeSystem } from "./systems/timeSystem";
 import { FurnitureSeatSystem } from "./systems/furnitureSeatSystem";
+import { DoorTeleportSystem } from "./systems/doorTeleportSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
@@ -256,6 +257,8 @@ const main = async () => {
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
+    // First activation hook, so it is the last one called: a door refused by any other system never reaches the override
+    new DoorTeleportSystem(log),
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing
     adminSystem,
     captureSystem,
