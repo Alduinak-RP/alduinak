@@ -2305,6 +2305,66 @@
    "anchor": "0A17CD:Skyrim.esm"
   }
  ],
+ "racial": {
+  "benches": [
+   "CraftingSmithingForge",
+   "CraftingSmithingSkyforge",
+   "DLC2CraftingSmithingSkaalForge",
+   "DLC1CraftingDawnguard",
+   "DLC1LD_CraftingForgeAetherium",
+   "CraftingSmithingArmorTable",
+   "CraftingSmithingSharpeningWheel",
+   "CraftingTanningRack",
+   "MCE_CraftingLoom",
+   "AldCraftingWoodcrafting"
+  ],
+  "races": [
+   {
+    "name": "Orsimer",
+    "races": [ "OrcRace", "OrcRaceVampire" ],
+    "match": [ "Orcish" ]
+   },
+   {
+    "name": "Altmer",
+    "races": [ "HighElfRace", "HighElfRaceVampire" ],
+    "match": [ "Elven" ]
+   },
+   {
+    "name": "Khajiit",
+    "races": [ "KhajiitRace", "KhajiitRaceVampire" ],
+    "match": [ "Khajiit", "Moon Monk" ]
+   },
+   {
+    "name": "Redguard",
+    "races": [ "RedguardRace", "RedguardRaceVampire" ],
+    "match": [ "Alikr", "Alik'r", "Rihad" ]
+   },
+   {
+    "name": "Argonian",
+    "races": [ "ArgonianRace", "ArgonianRaceVampire" ],
+    "match": [ "Argonian", "Saxhleel" ]
+   },
+   {
+    "name": "Bosmer",
+    "races": [ "WoodElfRace", "WoodElfRaceVampire" ],
+    "match": [ "Bosmer", "WoodElf", "Wood Elf" ]
+   },
+   {
+    "name": "Dunmer",
+    "races": [ "DarkElfRace", "DarkElfRaceVampire" ],
+    "match": [
+     "Vvardenfell", "Morrowind", "Ashlander", "Velothi", "Redoran", "Telvanni",
+     "Indoril", "Hlaalu", "Bonemold", "Chitin", "DarkElf", "Dark Elf"
+    ]
+   },
+   {
+    "name": "Nord",
+    "races": [ "NordRace", "NordRaceVampire", "DLC1NordRace" ],
+    "match": [ "Nordic", "Nord Hero", "Skyforge" ],
+    "except": [ "Nordic Vanguard", "Nordic Iron" ]
+   }
+  ]
+ },
  "craftingCategories": {
   "file": "AlduinakAdditions.json",
   "section": "Alduinak",

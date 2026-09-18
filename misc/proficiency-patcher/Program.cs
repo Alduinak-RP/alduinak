@@ -78,6 +78,7 @@ Steps.BenchMoves(ctx);
 Steps.EnchantmentMagnitudes(ctx);
 Steps.Placements(ctx);
 Steps.Writing(ctx);
+Steps.Racial(ctx);
 var categories = Steps.Categories(ctx);
 
 if (report.Errors.Count > 0)
@@ -962,6 +963,66 @@ static class Steps
             Park(c, disable.Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(t["disabledBench"]!.GetValue<string>()), "tailoring", profession);
     }
 
+    // ---- racial gear: only a smith of that people may make it -----------------------------------------------------
+    //
+    // GetIsRace is one of the few condition functions the server implements, so the crafting menu and CraftService
+    // agree on it. The race conditions form one OR group after the rank condition: [rank] AND [race or race...].
+    public static void Racial(PatchContext c)
+    {
+        if (c.Spec["racial"] is not JsonObject spec) return;
+        var benches = Edids(c, spec["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var rules = spec["races"]!.AsArray().Select(x => x!.AsObject())
+            .Select(x => (Name: x["name"]!.GetValue<string>(),
+                          Races: Edids(c, x["races"]).Select(c.KeyOf<IRaceGetter>).ToList(),
+                          Match: Edids(c, x["match"]).ToList(),
+                          Except: Edids(c, x["except"]).ToList())).ToList();
+        var counts = rules.ToDictionary(r => r.Name, _ => 0);
+        foreach (var (key, cobj) in FinalRecipes(c))
+        {
+            if (!benches.Contains(cobj.Bench)) continue;
+            var edid = cobj.Edid;
+            var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
+            var text = $"{edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
+            var hit = rules.FirstOrDefault(r => r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
+                                             && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)));
+            if (hit.Name == null) continue;
+            if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"racial: recipe '{edid}' not found"); continue; }
+            var rec = c.Override(c.Mod.ConstructibleObjects, winning);
+            rec.Conditions.RemoveAll(cond => cond.Data is IGetIsRaceConditionDataGetter);
+            if (rec.Conditions.Count > 0) rec.Conditions[^1].Flags &= ~Condition.Flag.OR;
+            for (int i = 0; i < hit.Races.Count; i++)
+            {
+                var data = new GetIsRaceConditionData();
+                data.Race.Link.SetTo(hit.Races[i]);
+                rec.Conditions.Add(new ConditionFloat
+                {
+                    CompareOperator = CompareOperator.EqualTo,
+                    ComparisonValue = 1f,
+                    Data = data,
+                    Flags = i < hit.Races.Count - 1 ? Condition.Flag.OR : default,
+                });
+            }
+            counts[hit.Name] += 1;
+            c.Report.Recipes.Add(new RecipeLine("racial", edid, c.NameOf(cobj.Product), hit.Name, "-", Items(c, rec), note: $"only {hit.Name}"));
+        }
+        c.Note($"Racial gear: {string.Join(", ", counts.Select(kv => $"{kv.Value} {kv.Key}"))}");
+    }
+
+    record FinalRecipe(string Edid, FormKey Bench, FormKey Product);
+
+    // Every recipe as it stands after the earlier steps: the plugin's own overrides win over the load order's.
+    static IEnumerable<KeyValuePair<FormKey, FinalRecipe>> FinalRecipes(PatchContext c)
+    {
+        var final = new Dictionary<FormKey, FinalRecipe>();
+        foreach (var w in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
+            if (c.Includes(w) && !string.IsNullOrEmpty(w.EditorID))
+                final[w.FormKey] = new FinalRecipe(w.EditorID!, w.WorkbenchKeyword.FormKey, w.CreatedObject.FormKey);
+        foreach (var own in c.Mod.ConstructibleObjects)
+            if (!string.IsNullOrEmpty(own.EditorID))
+                final[own.FormKey] = new FinalRecipe(own.EditorID!, own.WorkbenchKeyword.FormKey, own.CreatedObject.FormKey);
+        return final;
+    }
+
     // ---- crafting categories: the filter tabs the CraftingCategories SKSE plugin draws ----------------------------
     //
     // It reads keywords off the created object, so a category is a keyword of the plugin's own added to every item a
@@ -972,11 +1033,7 @@ static class Steps
         if (c.Spec["craftingCategories"] is not JsonObject spec) return config;
         var section = spec["section"]!.GetValue<string>();
         var categories = new JsonObject();
-        // The bench a recipe ends up at: the plugin's own override when it has one, the load order's winner otherwise
-        var final = new Dictionary<FormKey, (FormKey Bench, FormKey Product)>();
-        foreach (var w in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
-            if (c.Includes(w)) final[w.FormKey] = (w.WorkbenchKeyword.FormKey, w.CreatedObject.FormKey);
-        foreach (var own in c.Mod.ConstructibleObjects) final[own.FormKey] = (own.WorkbenchKeyword.FormKey, own.CreatedObject.FormKey);
+        var final = FinalRecipes(c).Select(kv => kv.Value).ToList();
         foreach (var group in spec["groups"]!.AsArray().Select(x => x!.AsObject()))
         {
             var bench = c.KeyOf<IKeywordGetter>(group["bench"]!.GetValue<string>());
@@ -992,7 +1049,7 @@ static class Steps
             foreach (var r in rules)
                 categories[r.Name] = new JsonObject { ["section"] = section, ["keywords"] = new JsonArray(r.Edid) };
             var counts = rules.ToDictionary(r => r.Name, _ => 0);
-            foreach (var (product, _) in final.Values.Where(v => v.Bench == bench).Select(v => (v.Product, 0)).Distinct())
+            foreach (var product in final.Where(v => v.Bench == bench).Select(v => v.Product).Distinct())
             {
                 if (!c.Cache.TryResolve<IMajorRecordGetter>(product, out var made)) continue;
                 var kws = ProductKeywords(c, product, out var kind);
