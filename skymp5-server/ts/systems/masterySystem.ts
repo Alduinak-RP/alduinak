@@ -137,7 +137,8 @@ const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
     craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge", "DLC1CraftingDawnguard", "DLC1LD_CraftingForgeAetherium"],
     craftStations: ["isBlacksmithForge", "isBlacksmithAnvil", "isSmelter"],
   },
-  cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"] },
+  // A brew at a meadery boiler is open to everyone and counts for the cook as well as the alchemist.
+  cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: ["AldCraftingMead"] },
   hunter: { killKeywords: ["ActorTypeAnimal"] },
   // Veins hand the swing to a linked PickaxeMining*Marker furniture.
   miner: { activatePrefixes: ["MineOre", "PickaxeMining"] },
