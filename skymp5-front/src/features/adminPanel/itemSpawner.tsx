@@ -30,6 +30,15 @@ interface ItemSpawnerProps {
   refreshKey: number; // bumped by the header Refresh to search again
 }
 
+// Pages offered in the picker; a huge result set is thinned so the dropdown stays usable and Previous/Next reach the rest
+const pageNumbers = (pages: number): number[] => {
+  const step = pages > 1000 ? Math.ceil(pages / 1000) : 1;
+  const out: number[] = [];
+  for (let n = 1; n <= pages; n += step) out.push(n);
+  if (out[out.length - 1] !== pages) out.push(pages);
+  return out;
+};
+
 const KINDS: Array<{ id: string; label: string }> = [
   { id: '', label: 'All' },
   { id: 'WEAP', label: 'Weapons' },
@@ -181,9 +190,21 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
           ))
         )}
       </div>
-      {shown && !loading && shown.total > rows.length ? (
-        <div className="admin-panel__actions">
-          <span className="admin-panel__hint">Page {shown.page || page} of {shown.pages || 1}, {shown.total} items</span>
+      {shown && !loading && (shown.pages || 1) > 1 ? (
+        <div className="admin-panel__actions admin-panel__pager">
+          <span className="admin-panel__hint">{shown.total} items, {shown.pages} pages</span>
+          <label className="admin-panel__checkbox">
+            Page
+            <select
+              className="admin-panel__input admin-panel__pager-page"
+              value={String(shown.page || page)}
+              onChange={(e) => setPage(Number(e.target.value))}
+            >
+              {pageNumbers(shown.pages).map((n) => (
+                <option key={n} value={String(n)}>{n}</option>
+              ))}
+            </select>
+          </label>
           <Button text="Previous" width={92} height={30} disabled={page <= 1} onClick={() => setPage(page - 1)} />
           <Button text="Next" width={72} height={30} disabled={page >= (shown.pages || 1)} onClick={() => setPage(page + 1)} />
         </div>

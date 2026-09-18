@@ -548,6 +548,16 @@ $admin-row-gutter: 16px;
     font-size: 16px;
   }
 
+  &__pager {
+    align-items: center;
+  }
+
+  &__pager-page {
+    flex: 0 0 76px;
+    min-width: 0;
+    text-align: center;
+  }
+
   // Inside a label an input keeps its intrinsic width unless min-width is cleared
   &__spawn-count {
     flex: 0 0 64px;

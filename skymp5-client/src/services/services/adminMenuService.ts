@@ -171,6 +171,8 @@ function parseItems(content: Record<string, unknown>) {
   return {
     query: str(content["query"]),
     kind: str(content["kind"]),
+    page: Number(content["page"]) || 1,
+    pages: Number(content["pages"]) || 1,
     ready: content["ready"] !== false,
     total: Number(content["total"]) || 0,
     rows: rows
