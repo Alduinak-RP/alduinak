@@ -596,6 +596,7 @@ export class FormView {
         && playerActor.getDistance(refr) <= maxNicknameDrawDistance
         && playerActor.hasLOS(refr)
         && !this.isSweetHidePerson(refr)
+        && !this.isInvisible(refr)
         && FormView.adminViewOf(model) !== "hidden";
       if (isVisibleByPlayer) {
         const headScreenPos = worldPointToScreenPoint([
@@ -654,6 +655,12 @@ export class FormView {
   // Real name once introduced to the local player, else "Stranger"
   private tagName(refr: ObjectReference): string {
     return knowsCharacter(this.getRemoteRefrId()) ? refr.getDisplayName() : "Stranger";
+  }
+
+  // Every invisibility effect carries MagicInvisibility, the spell and the potion alike
+  private isInvisible(refr: ObjectReference): boolean {
+    const actor = Actor.from(refr);
+    return !!actor && actor.hasMagicEffectWithKeyword(Keyword.getKeyword('MagicInvisibility'));
   }
 
   private isSweetHidePerson(refr: ObjectReference): boolean {
