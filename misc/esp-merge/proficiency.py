@@ -20,6 +20,8 @@ LIVE_DIR = ESPFIX + 'proficiency/'
 # LIVE_LAST_ID ends the block LIVE shipped; the woodcutter's axe recipe took the next id
 NEXT_ID, LIVE_LAST_ID, LAST_ID = 0x201D, RUN['live_last_id'], RUN['last_id']
 OWN_RECORDS, ADDED, SLOT = RUN['own_records'], RUN['added'], RUN['slot']
+# Own records LIVE shipped that this run's spec deliberately drops; anything else missing is a mistake
+DROPPED = set(RUN.get('dropped', ()))
 OUT = WORK + 'prof/'
 _CREATIONS_NAME = (json.load(open(SPEC[0], encoding='utf-8')).get('creations') or {}).get('pluginName')
 # AlduinakCreations.esp and its inputs file, built by the same patch.py run when the spec has a creations section
@@ -83,8 +85,19 @@ def main():
         types = {}
         for _, t, _ in mine:
             types[t] = types.get(t, 0) + 1
-        check(f'{OWN_RECORDS} own records at 0x{NEXT_ID:X}-0x{LAST_ID:X}, LIVE\'s ids unmoved by type, id and editor id',
-              mine[:len(live)] == live and len(mine) == OWN_RECORDS, str(types))
+        # The ids that must never move are the ones something outside the plugin names: the marker spells and the
+        # keywords, effects, furniture, books and items around them. A recipe is only ever named by its own editor
+        # id, so a spec that drops or reorders recipes may move COBJ ids; it may not lose a record silently.
+        by_edid = {e: (i, t) for i, t, e in mine}
+        lost = sorted(e for _, _, e in live if e not in by_edid and e not in DROPPED)
+        stale = sorted(e for e in DROPPED if e in by_edid)
+        moved = sorted(f'{e} {i:04X}->{by_edid[e][0]:04X}' for i, t, e in live if t != 'COBJ' and e in by_edid and by_edid[e][0] != i)
+        retyped = sorted(e for i, t, e in live if e in by_edid and by_edid[e][1] != t)
+        check(f"{OWN_RECORDS} own records at 0x{NEXT_ID:X}-0x{LAST_ID:X}, every record LIVE shipped still there, no non-recipe id moved",
+              not lost and not stale and not moved and not retyped and len(mine) == OWN_RECORDS,
+              '; '.join(x for x in (f'lost {lost}' if lost else '', f'not dropped after all {stale}' if stale else '',
+                                    f'moved {moved}' if moved else '', f'retyped {retyped}' if retyped else '',
+                                    f'{len(mine)} records {types}') if x))
         check(f'added records match the spec ({OWN_RECORDS} own + {ADDED - OWN_RECORDS} overrides)', f' added {ADDED}' in verify_counts(OUT + 'verify.txt'),
               f'{RUN_NAME}: {verify_counts(OUT + "verify.txt")}; LIVE: {verify_counts(LIVE_DIR + "verify.txt")}')
         lines.append(f'masters: {len(pl["masters"])}')

@@ -22,8 +22,8 @@ SELF = 'AlduinakAdditions.esp'
 
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
-# What the live copies hold today: the r11 plugin, deployed 2026-09-16. Re-pin after every deploy.
-DEPLOYED_SHA = '7e2ebcfba42bd5d851ddd789fd99a60596b732155d1458f3c617598198331a25'
+# What the live copies hold today: the r13 plugin, deployed 2026-09-18. Re-pin after every deploy.
+DEPLOYED_SHA = 'e62b8fe24db516c1ed0f651823ab70c18e40f53f5e807c68a23e8e109fe87e71'
 # The r7 plugin, which the r11 run merged from and still pins
 R7_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
 
@@ -89,6 +89,13 @@ RUNS = {
     'r12': dict(_R11_RUN, dir=ESPFIX + 'r12/', chain='r11', merge=True, hedr_offset=51,
                 spec='7fa5937bc041cbd6045e4ad824857203fc804bddd6ab9f874b624986b05214c4',
                 last_id=0x20B4, own_records=152, added=1593),
+    # r12's pipeline with the professions spec: bench routing, the Anyone tier, the tools and instruments,
+    # the crafting categories, and the race and faction gates. Same base, stage and step 4c as r12.
+    'r13': dict(_R11_RUN, dir=ESPFIX + 'r13/', chain='r11', merge=True, hedr_offset=51,
+                spec='4ed169367aa1f3e3171ee859054ff13f5835126410385260c797096c6ec132a3',
+                last_id=0x2100, own_records=190, added=2848,
+                # Ale, wine and Nord mead left the alchemy table for the meadery keyword, as AldRecipeMead_*
+                dropped=('AldRecipeAlchemy_Ale', 'AldRecipeAlchemy_FoodMead', 'AldRecipeAlchemy_FoodWineBottle02')),
 }
 RUN_NAME = os.environ.get('ESP_MERGE_RUN', 'r7')
 assert RUN_NAME in RUNS, f'ESP_MERGE_RUN {RUN_NAME} is not one of {sorted(RUNS)}'

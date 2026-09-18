@@ -20,7 +20,8 @@ whose input is missing from the run's manifest reads it from the run named by `c
 | `r10` | `r10/` | `r7/` | r7's merged base through steps 3-5 with the woodcutter's axe spec; staged ad651b18, never deployed |
 | `r11` | `r11/` | `r11/` | Graves's 2026-09-16 save replayed onto r7's merged base, then steps 3-5 with the integrated r11 spec |
 | `r11-graves` | `r11/graves-replay/` | `r11/graves-replay/` | The replay check: r11's replayed base through steps 3-5 with r10's spec, compared with r10 |
-| `r12` | `r12/` | `r11/` | r11's base through steps 3-5 with the charcoal spec, plus step 4c: one merged plugin, no `AlduinakCreations.esp` |
+| `r12` | `r12/` | `r11/` | r11's base through steps 3-5 with the charcoal spec, plus step 4c: one merged plugin, no `AlduinakCreations.esp`; never run |
+| `r13` | `r13/` | `r11/` | r12's pipeline with the professions spec; deployed 2026-09-18 as e62b8fe2 |
 
 The Desktop copy of the 2026-09-14 save (6017a624) was overwritten, so r7's steps 1, 2a and 2b can no longer run; its
 padded copy (db02e960) is the frozen input r7 and r10 check.
@@ -128,6 +129,28 @@ pinned to r11 through `chain`, and the stage folder is r11's, so `python stage.p
 - **Deploy.** One plugin to the three live copies and to `C:/MO2/mods/Alduinak`, with `AlduinakAdditions.inputs.json`
   next to it; the `Alduinak Creations` MO2 mod, its `plugins.txt` line and the `AlduinakCreations.esp` entry of the
   server `loadOrder` all go away. Re-pin `DEPLOYED_SHA` afterwards.
+
+## r13 pipeline: the professions spec
+
+r13 is r12's pipeline (r11's base, steps 3-5 with step 4c) run with the professions spec: bench routing, the
+`Anyone` tier, the tools and instruments, the crafting categories, and the race and faction gates. Run every step
+with `ESP_MERGE_RUN=r13`; steps 1 and 2 stay pinned to r11 through `chain`, and the stage folder is r11's.
+
+- **Step 3.** 190 own records at 0x201D-0x20D9 plus the hoe pinned at 0x2100, 2,848 added records, and
+  `proficiency-ids.json` again equal to LIVE's with only the slot at 0x2D. The `AldMastery_` ids are unmoved, so
+  the live `damageMultConditionalFormulaSettings` needed no edit.
+- **The id check.** The spec moves ale, wine and Nord mead off the alchemy table to the meadery keyword, so the
+  three `AldRecipeAlchemy_*` recipes are gone and every COBJ after them shifts by three. Step 3's check used to
+  demand LIVE's whole block byte for byte; it now demands that every record LIVE shipped still exists (or is named
+  in the run's `dropped` pin), that none of them changed type, and that no **non-recipe** id moved. Recipes are
+  only ever named by editor id, so their ids may move; a marker spell's may not.
+- **`CraftingCategories/AlduinakAdditions.json`.** Written by step 3 beside the plugin and installed as
+  `C:/MO2/mods/Alduinak/SKSE/Plugins/CraftingCategories/AlduinakAdditions.json`. Without it the category keywords
+  are inert.
+- **Deploy (done 2026-09-18).** The merged plugin to the three live copies, `AlduinakAdditions.inputs.json` beside
+  it in the MO2 mod, and `AlduinakCreations.esp` and its inputs file out of all three (kept in `r13/retired/`),
+  off the MO2 profile's `plugins.txt` and out of the server `loadOrder`, which now matches the staged one exactly.
+  `r13/rollback/` holds the r11 plugin, the old `plugins.txt` and the old `server-settings.json`.
 
 ## Graves's next save
 
