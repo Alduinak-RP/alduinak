@@ -15,7 +15,6 @@ key carries its property:
 - Server piece: `skymp5-server/ts/systems/writingSystem.ts` (rules, packets, staff tools) and `writingStore.ts` (storage)
 - Client piece: `skymp5-client/src/services/services/writingService.ts` (widget 33)
 - Front piece: `skymp5-front/src/features/writing/`, built on the paper widgets in `features/parchment/` that the missive board uses too
-- Staff tab: Personal Menu, Admin, **Writings** (`features/adminPanel/writingTools.tsx`)
 - Plugin records: the `writing` section of `misc/proficiency-patcher/spec.json`
 
 The feature stays off until `writingEnabled` is `true` in
@@ -180,17 +179,11 @@ tells the player how many days until the next slot frees.
 
 ## Staff
 
-Personal Menu, Admin, **Writings**, for tiers with the `players` cap:
-
-- **Read** opens any document by id, destroyed ones included, without touching
-  a seal, with real names, profile ids and dates.
-- **Rename** changes the title; the packs of online players are renamed at
-  once, other copies on their next read.
-- **Destroy** (click twice) marks the document destroyed and removes it from
-  online packs; other copies crumble when next read.
-
-Every use goes to `admin.log` through the gamemode's `__alduinakAdminLog`
-bridge. Replies arrive as the usual admin toasts.
+The Writings tab was removed from the Personal Menu. The server still answers
+the `writingStaff` packet (`read`, `rename`, `destroy` by document id, for
+tiers with the `players` cap) and still writes every use to `admin.log`
+through the gamemode's `__alduinakAdminLog` bridge, so a tool can drive it,
+but nothing in the game sends it.
 
 ## Logging
 
