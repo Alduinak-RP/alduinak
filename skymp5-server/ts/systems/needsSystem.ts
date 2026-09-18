@@ -320,6 +320,16 @@ export class NeedsSystem implements System {
     }
   }
 
+  applyKillFatigue(ctx: SystemContext, actorId: number, warrior: boolean): void {
+    const entry = this.online.get(actorId);
+    if (!entry || !this.enabled) return;
+    this.advance(entry.rec, Date.now(), true);
+    entry.rec.fatigue = clamp(entry.rec.fatigue - (warrior ? 0.05 : 0.1), 0, 1);
+    this.write(ctx, actorId, entry.rec);
+    this.syncStages(ctx, actorId, entry);
+    this.sendState(ctx, actorId, false);
+  }
+
   async updateAsync(ctx: SystemContext): Promise<void> {
     await new Promise((r) => setTimeout(r, POLL_MS));
     if (!this.enabled) return;

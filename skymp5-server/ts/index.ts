@@ -225,6 +225,7 @@ const main = async () => {
   const hostingSystem = new HostingSystem(log);
   const npcSpawnSystem = new NpcSpawnSystem(log);
   const masterySystem = new MasterySystem(log);
+  const needsSystem = new NeedsSystem(log, masterySystem);
   const companionSystem = new CompanionSystem(log, hostingSystem);
   // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
   hostingSystem.addProvider(() => npcSpawnSystem.liveNpcs());
@@ -232,7 +233,7 @@ const main = async () => {
   const captureSystem = new CaptureSystem(log);
   const housingSystem = new HousingSystem(log);
   const searchSystem = new SearchSystem(log);
-  const huntingSystem = new HuntingSystem(log, masterySystem);
+  const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
   // Pelts on game are a hunter's, so a search neither shows nor gives them to anyone else
   searchSystem.hidesItem = (ctx, viewerId, targetId, baseId) => huntingSystem.hidesFrom(ctx, viewerId, targetId, baseId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
@@ -266,7 +267,7 @@ const main = async () => {
     new TimeSystem(log),
     new FurnitureSeatSystem(log),
     // Before mastery, whose hooks wrap this one's, so a craft refused for fatigue is never credited
-    new NeedsSystem(log, masterySystem),
+    needsSystem,
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
     new GatheringSystem(log, masterySystem),
