@@ -1185,7 +1185,7 @@
    {
     "edid": "RecipeArmorevgsmpclothcloakarmor",
     "name": "Short Cloth Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1195,7 +1195,7 @@
    {
     "edid": "RecipeArmorevgsmpclothcloakDARKarmor",
     "name": "Short Cloth Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1205,7 +1205,7 @@
    {
     "edid": "RecipeArmorevgsmpclothcloakBLUEarmor",
     "name": "Short Cloth Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1215,7 +1215,7 @@
    {
     "edid": "RecipeArmorevgsmpclothcloakREDarmor",
     "name": "Short Cloth Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1302,7 +1302,7 @@
    {
     "edid": "RecipeArmorevgsmpruggedcapearmor",
     "name": "Rugged Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1312,7 +1312,7 @@
    {
     "edid": "RecipeArmorevgsmpruggedcapeDARKarmor",
     "name": "Rugged Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1322,7 +1322,7 @@
    {
     "edid": "RecipeArmorevgsmpruggedcapeLIGHTarmor",
     "name": "Rugged Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1332,7 +1332,7 @@
    {
     "edid": "RecipeArmorevgsmpruggedcapeREDarmor",
     "name": "Rugged Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
@@ -1342,7 +1342,7 @@
    {
     "edid": "RecipeArmorevgsmpruggedcapeBLUEarmor",
     "name": "Rugged Cape",
-    "tier": "Novice",
+    "tier": "Anyone",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 2,
