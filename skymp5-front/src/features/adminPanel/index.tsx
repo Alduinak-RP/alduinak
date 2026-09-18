@@ -123,7 +123,7 @@ export interface AdminPanelData {
   debug?: DebugData | null;
   npcZones?: PanelNpcZone[]; // absent on older clients
   npcZonesAt?: number; // Date.now() when npcZones arrived, the countdown base
-  caps?: Partial<Record<AdminSub | 'kick' | 'ban', boolean>>; // server-resolved tier capabilities, absent on older servers
+  caps?: Partial<Record<AdminSub | 'kick' | 'ban' | 'factions', boolean>>; // server-resolved tier capabilities, absent on older servers
   tier?: string; // "senior" | "developer" | "gm", absent on older servers
   mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
   npcPos?: AdminPos | null; // the admin's server-side location for the Add form or one end of the job form
@@ -714,7 +714,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 </span>
               </div>
             ) : null}
-            {selectedPlayer ? (
+            {selectedPlayer && caps.factions !== false ? (
               <div className="admin-panel__mastery">
                 <div className="admin-panel__mastery-row">
                   <span className="admin-panel__mastery-who">Faction</span>

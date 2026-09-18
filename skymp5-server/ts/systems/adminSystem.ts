@@ -523,7 +523,7 @@ export class AdminSystem implements System {
     }
 
     const targetId = parseInt(String(content["target"] ?? ""), 16);
-    // Only currently-online player actors are valid targets; the admin's own row is absent from the roster, but mastery testing may target self
+    // Only currently-online player actors are valid targets; the roster carries the admin's own row too, so self is allowed for everything but kick and ban
     const target = this.onlinePlayers(mp).find(p => p.actorId === targetId);
     if (!target) {
       this.reply(mp, userId, false, "Target is no longer online");
@@ -540,6 +540,7 @@ export class AdminSystem implements System {
         this.adminLog(`profile ${adminProfile} summoned ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, true, `Summoned ${target.name}`);
       } else if (action === "kick") {
+        if (target.actorId === myActorId) return this.reply(mp, userId, false, "You cannot kick yourself");
         // Disable boots to the menu; kick drops the connection so they can't re-enter from character select
         ctx.svr.setEnabled(target.actorId, false);
         try { kickWithReason(mp, target.userId, "You were kicked from the server by an admin."); } catch { }
@@ -547,6 +548,7 @@ export class AdminSystem implements System {
         this.adminLog(`profile ${adminProfile} kicked ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, true, `Kicked ${target.name}`);
       } else if (action === "ban") {
+        if (target.actorId === myActorId) return this.reply(mp, userId, false, "You cannot ban yourself");
         if (!caps.ban) {
           this.log(`AdminSystem: profile ${adminProfile} (${tier}) refused a ban on profile ${target.profileId} (${target.name})`);
           this.adminLog(`profile ${adminProfile} (${tier}) was refused a ban on ${target.name} (profile ${target.profileId})`);

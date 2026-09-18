@@ -229,11 +229,14 @@ export class FactionSystem implements System {
       this.staffLog(`${this.who(actorId)} added ${this.who(target.actorId)} to ${faction.name} as ${rank.name}`);
       return;
     }
-    const access = filterAccessForSlot(await backend.fetchAccess(target.profileId), target.slot);
-    const rows = rules.membershipsOf(access).filter((m) => m.factionId === faction.id);
+    // An account-wide rank is stored with slot null, so each membership is removed with the slot it was granted on
+    const rows = (await this.roster(faction.id, true)).filter((m) => m.profileId === target.profileId && (m.slot === null || m.slot === target.slot));
     if (!rows.length) return this.notice(userId, `${name} is not in ${faction.name}.`);
     let payload: AccessPayload | null = null;
-    for (const row of rows) payload = await backend.remove(target.profileId, `${faction.id}:${row.rankSlug}`, target.slot);
+    for (const row of rows) {
+      const rank = rules.rankOf(faction, row.rankSlug);
+      payload = await backend.remove(target.profileId, rank ? rank.id : `${faction.id}:${row.rankSlug}`, row.slot);
+    }
     if (payload) this.applyAccess(target.profileId, payload);
     this.invalidateRoster(faction.id);
     this.notice(target.userId, `You were removed from ${faction.name}.`);
@@ -797,7 +800,11 @@ export class FactionSystem implements System {
     };
     const hold = holdByBoard[boardName];
     if (!hold) return false;
-    return rules.membershipsOf(this.cachedAccess(actorId)).some((m) => m.factionId === `hold:${hold}` && m.rankSlug !== "citizen");
+    if (this.isStaff(actorId)) return true;
+    const faction = this.defs.get(`hold:${hold}`);
+    // The lowest rank of the hold is its citizenry; every rank above it may clear the board
+    const lowest = faction && faction.ranks.length ? faction.ranks[faction.ranks.length - 1].slug : "citizen";
+    return rules.membershipsOf(this.cachedAccess(actorId)).some((m) => m.factionId === `hold:${hold}` && m.rankSlug !== lowest);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
