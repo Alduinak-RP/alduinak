@@ -676,6 +676,19 @@ static class Steps
         {
             var bench = m["bench"]!.GetValue<string>();
             var recipes = m["recipes"]!.AsArray().Select(x => x!.GetValue<string>()).ToList();
+            // A move may also claim recipes by what they make, at the benches it names in from
+            var match = Edids(c, m["match"]).ToList();
+            if (match.Count > 0)
+            {
+                var from = Edids(c, m["from"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+                foreach (var r in FinalRecipes(c).Select(kv => kv.Value).Where(r => from.Contains(r.Bench)))
+                {
+                    var made = c.Cache.TryResolve<IMajorRecordGetter>(r.Product, out var x) ? x : null;
+                    var text = $"{r.Edid}|{made?.EditorID}|{c.NameOf(r.Product)}";
+                    if (match.Any(t => text.Contains(t, StringComparison.OrdinalIgnoreCase)) && !parked.Contains(r.Edid) && !recipes.Contains(r.Edid))
+                        recipes.Add(r.Edid);
+                }
+            }
             foreach (var edid in recipes.Where(parked.Contains)) c.Error($"bench move: '{edid}' is also in uncraftable");
             var key = c.KeyOf<IKeywordGetter>(bench);
             Park(c, recipes.Where(e => !parked.Contains(e)), key, "bench move", m["profession"]!.GetValue<string>(), "moved", $"moved to {bench}");

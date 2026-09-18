@@ -2255,6 +2255,19 @@
   {
    "bench": "CraftingSmithingSkyforge",
    "profession": "blacksmith",
+   "from": [
+    "CraftingSmithingForge",
+    "DLC2CraftingSmithingSkaalForge",
+    "DLC1CraftingDawnguard",
+    "DLC1LD_CraftingForgeAetherium",
+    "AldCraftingWoodcrafting"
+   ],
+   "match": [
+    "Steel Plate",
+    "Nord Hero",
+    "Skyforge Steel",
+    "Nordic Carved"
+   ],
    "recipes": [
     "DLC2RecipeArmorNordicHeavyBoots",
     "DLC2RecipeArmorNordicHeavyCuirass",
