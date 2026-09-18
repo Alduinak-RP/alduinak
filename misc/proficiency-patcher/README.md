@@ -115,12 +115,12 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 
 | Key | Effect |
 |---|---|
-| `professions`, `ranks` | One Ability spell `AldMastery_<Profession>_<Rank>` per pair. The server grants them by rank; recipes carry `HasSpell` conditions on them. |
+| `professions`, `ranks` | One Ability spell `AldMastery_<Profession>_<Rank>` per pair. The server grants them by rank; recipes carry `HasSpell` conditions on them. A recipe's `tier` is one of the four ranks or `Anyone`, the only tier that writes no condition: Novice is a real gate, so a character outside the profession makes nothing of it. |
 | `abilities` | Vanilla perks (`MagicEffect.PerkToApply`) and a flat stamina bonus carried by a rank's ability. A perk with `untilRank` switches off once that higher marker is held, so ranked perks do not stack. |
 | `keywords` | `AldCraftingAlchemy`, `AldCraftingKiln`, `AldCraftingWoodcrafting`: the bench keywords of the new recipes. |
 | `alchemyLabs` | FURN records switched from the alchemy menu to the crafting menu with the alchemy keyword. |
-| `alchemy.recipes` | Potion, drink, poison and salt recipes at the alchemy keyword. Novice recipes carry no condition. |
-| `kilnRecipes` | The charcoal recipe. `bench` names the keyword it sits on (`CraftingSmelter`); `keywords.kiln` is the fallback and waits for a kiln mod carrying `AldCraftingKiln`. An entry without `profession` is a common recipe: it must be Novice and named `AldRecipeCommon_*`, any character makes it, and the server's mastery system credits no hours for that prefix. The lute, flute, drum and broom (Woodcrafting Bench) and the two war horns (forge) are common recipes, reported under `common`. |
+| `alchemy.recipes` | Potion, poison and salt recipes at the alchemy keyword. |
+| `kilnRecipes` | The charcoal recipe. `bench` names the keyword it sits on (`CraftingSmelter`); `keywords.kiln` is the fallback and waits for a kiln mod carrying `AldCraftingKiln`. An entry without `profession` is a common recipe: it must be `Anyone` and named `AldRecipeCommon_*`, any character makes it, and the server's mastery system credits no hours for that prefix. The lute, flute, drum and broom (Woodcrafting Bench) and the two war horns (forge) are common recipes, reported under `common`. |
 | `woodcraftingBench` | A new FURN copied from the Hearthfire carpenter's workbench, plus existing benches that also get the woodcrafting keyword. |
 | `cooking` | Vanilla cooking recipes keep their benches; `needsSalt` adds a Salt Pile where it is missing; `tiers` sets the rank. |
 | `stripConditions` | CTDA functions `CraftService` has no implementation for. Every recipe the patcher tiers loses them, so the menu and the server agree; an unregistered function answers true server-side. |
@@ -135,7 +135,7 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 | `writing` | Keywords `AldWritable` (written items) and `AldWritingBlank` (blanks); `books` are new BOOK records copied from vanilla notes with their scripts and teaching removed, a new name, description text, value and weight; `misc` adds Sealing Wax; `recipes` puts the blanks on the tanning rack and the wax on the smelter, all Novice. The server finds every record by editor id (`docs/docs_roleplay_writing.md`). |
 | `tailoring` | The owner's list at the tanning rack with the ingredients from the spec; `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe (the bog blight masks and the five tanning-rack twins of the +40 unarmed Moon Monk gauntlets). |
 
-Tier conditions are `HasSpell(AldMastery_<Profession>_<Rank>) == 1`, Run On Subject. The server evaluates
+Tier conditions are `HasSpell(AldMastery_<Profession>_<Rank>) == 1`, Run On Subject; a recipe tiered `Anyone` carries none. The server evaluates
 the same condition in `CraftService`, which is why perks are never used (see `docs/docs_roleplay_mastery.md`).
 
 ## After a run

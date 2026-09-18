@@ -793,7 +793,7 @@
    "bench": "AldCraftingWoodcrafting",
    "output": "Lute",
    "count": 1,
-   "tier": "Novice",
+   "tier": "Anyone",
    "items": {
     "Firewood01": 2,
     "LeatherStrips": 2
@@ -804,7 +804,7 @@
    "bench": "AldCraftingWoodcrafting",
    "output": "Flute",
    "count": 1,
-   "tier": "Novice",
+   "tier": "Anyone",
    "items": {
     "Firewood01": 1
    }
@@ -814,7 +814,7 @@
    "bench": "AldCraftingWoodcrafting",
    "output": "Drum",
    "count": 1,
-   "tier": "Novice",
+   "tier": "Anyone",
    "items": {
     "Firewood01": 2,
     "Leather01": 1
@@ -825,7 +825,7 @@
    "bench": "AldCraftingWoodcrafting",
    "output": "Broom01",
    "count": 1,
-   "tier": "Novice",
+   "tier": "Anyone",
    "items": {
     "Firewood01": 1,
     "BYOHMaterialStraw": 1
@@ -836,7 +836,7 @@
    "bench": "CraftingSmithingForge",
    "output": "ImperialWarHorn",
    "count": 1,
-   "tier": "Novice",
+   "tier": "Anyone",
    "items": {
     "MammothTusk": 1,
     "IngotIron": 1,
@@ -848,7 +848,7 @@
    "bench": "CraftingSmithingForge",
    "output": "NordWarHorn",
    "count": 1,
-   "tier": "Novice",
+   "tier": "Anyone",
    "items": {
     "MammothTusk": 1,
     "IngotIron": 1,

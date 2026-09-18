@@ -178,6 +178,8 @@ class PatchContext
             if (!string.IsNullOrEmpty(rec.EditorID)) ownByEdid[rec.EditorID] = rec;
     }
 
+    // The pseudo-tier of a recipe no profession owns: SetTier writes no marker condition for it.
+    public const string AnyoneTier = "Anyone";
     public string[] Ranks => Spec["ranks"]!.AsArray().Select(r => r!.GetValue<string>()).ToArray();
     public Dictionary<FormKey, int> MaterialTiers => materialTiers ??= Steps.MaterialTiers(this);
     public IEnumerable<KeyValuePair<string, string>> Professions => Spec["professions"]!.AsObject().Select(p => new KeyValuePair<string, string>(p.Key, p.Value!.GetValue<string>()));
@@ -398,14 +400,14 @@ static class Steps
     // The server's mastery system credits no hours for recipes under this prefix
     const string CommonRecipePrefix = "AldRecipeCommon_";
 
-    // A recipe without a profession is a common one: Novice, so anyone makes it, and named for the mastery exemption
+    // A recipe without a profession is a common one: Anyone, so every character makes it, and named for the mastery exemption
     static void NewRecipe(PatchContext c, JsonObject r, FormKey bench, string? profession, string prefix)
     {
         var outputEdid = r["output"]!.GetValue<string>();
         if (!c.TryWinning<IMajorRecordGetter>(outputEdid, out var output)) { c.Error($"recipe output '{outputEdid}' not found"); return; }
         var edid = r["edid"]?.GetValue<string>() ?? (profession == null ? CommonRecipePrefix : prefix) + outputEdid;
-        if (profession == null && (r["tier"]!.GetValue<string>() != c.Ranks[0] || !edid.StartsWith(CommonRecipePrefix)))
-            throw new SpecException($"recipe {edid}: a recipe without a profession must be {c.Ranks[0]} and named {CommonRecipePrefix}*");
+        if (profession == null && (r["tier"]!.GetValue<string>() != PatchContext.AnyoneTier || !edid.StartsWith(CommonRecipePrefix)))
+            throw new SpecException($"recipe {edid}: a recipe without a profession must be {PatchContext.AnyoneTier} and named {CommonRecipePrefix}*");
         var cobj = c.OwnOrNew(c.Mod.ConstructibleObjects, edid);
         cobj.WorkbenchKeyword.SetTo(bench);
         cobj.CreatedObject.SetTo(output.FormKey);
@@ -451,7 +453,7 @@ static class Steps
             var tier = tierOf.GetValueOrDefault(edid, "Novice");
             var addSalt = needsSalt.Contains(edid) && !(winning.Items ?? new List<IContainerEntryGetter>()).Any(i => i.Item.Item.FormKey == salt);
             var stripped = winning.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
-            if (tier == "Novice" && !addSalt && !stripped && !HasAldCondition(c, winning)) { c.Report.Recipes.Add(new RecipeLine("cooking", edid, c.NameOf(winning.CreatedObject.FormKey), profession, "Novice", Items(c, winning), untouched: true)); continue; }
+            if (tier == PatchContext.AnyoneTier && !addSalt && !stripped && !HasAldCondition(c, winning)) { c.Report.Recipes.Add(new RecipeLine("cooking", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true)); continue; }
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
             cobj.Items ??= new ExtendedList<ContainerEntry>();
             if (addSalt) cobj.Items.Add(new ContainerEntry { Item = new ContainerItem { Item = salt.ToLink<IItemGetter>(), Count = 1 } });
@@ -489,7 +491,7 @@ static class Steps
             var stripped = winning.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
             var extra = addItems[edid]?.AsObject();
             if (extra != null) extended.Add(edid);
-            if (tier == "Novice" && extra == null && !stripped && !HasAldCondition(c, winning))
+            if (tier == PatchContext.AnyoneTier && extra == null && !stripped && !HasAldCondition(c, winning))
             {
                 c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
                 continue;
@@ -531,7 +533,7 @@ static class Steps
             var edid = winning.EditorID ?? "";
             var tier = ranks[MaterialTierOf(winning, c.MaterialTiers)];
             var marker = crafter.GetValueOrDefault(winning.CreatedObject.FormKey, profession);
-            if (tier == ranks[0] && !HasAldCondition(c, winning))
+            if (tier == PatchContext.AnyoneTier && !HasAldCondition(c, winning))
             {
                 c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(winning.CreatedObject.FormKey), marker, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
                 continue;
@@ -900,12 +902,12 @@ static class Steps
     static bool HasAldCondition(PatchContext c, IConstructibleObjectGetter cobj) =>
         cobj.Conditions.Any(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey);
 
-    // Replace every existing marker condition by the one for this tier; Novice means no condition at all.
+    // Replace every existing marker condition by the one for this tier; only Anyone leaves a recipe ungated.
     static void SetTier(PatchContext c, ConstructibleObject cobj, string profession, string tier)
     {
-        if (Array.IndexOf(c.Ranks, tier) < 0) throw new SpecException($"unknown tier '{tier}' on {cobj.EditorID}");
+        if (tier != PatchContext.AnyoneTier && Array.IndexOf(c.Ranks, tier) < 0) throw new SpecException($"unknown tier '{tier}' on {cobj.EditorID}");
         cobj.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey);
-        if (tier == c.Ranks[0]) return;
+        if (tier == PatchContext.AnyoneTier) return;
         // A trailing OR would let the marker join that group and the gate would pass without it
         if (cobj.Conditions.Count > 0) cobj.Conditions[^1].Flags &= ~Condition.Flag.OR;
         var marker = c.Winning<ISpellGetter>(c.MarkerEdid(profession, tier));
@@ -974,7 +976,7 @@ class Report
             md.Add("");
             md.Add("| tier | recipe | output | origin | items | flags |");
             md.Add("|---|---|---|---|---|---|");
-            foreach (var r in group.OrderBy(r => Array.IndexOf(new[] { "Novice", "Adept", "Expert", "Master", "disabled" }, r.Tier)).ThenBy(r => r.Output))
+            foreach (var r in group.OrderBy(r => Array.IndexOf(new[] { "Anyone", "Novice", "Adept", "Expert", "Master", "disabled" }, r.Tier)).ThenBy(r => r.Output))
             {
                 var flags = new List<string>();
                 if (r.untouched) flags.Add("untouched");
