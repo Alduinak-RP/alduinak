@@ -78,6 +78,7 @@ Steps.BenchMoves(ctx);
 Steps.EnchantmentMagnitudes(ctx);
 Steps.Placements(ctx);
 Steps.Writing(ctx);
+var categories = Steps.Categories(ctx);
 
 if (report.Errors.Count > 0)
 {
@@ -98,6 +99,14 @@ mod.WriteToBinary(outPath, new BinaryWriteParameters
     NextFormID = NextFormIDOption.Iterate,
 });
 Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes)");
+if (spec["craftingCategories"] is JsonObject cat)
+{
+    var dir = Path.Combine(opts.Out, "CraftingCategories");
+    Directory.CreateDirectory(dir);
+    var file = Path.Combine(dir, cat["file"]!.GetValue<string>());
+    File.WriteAllText(file, categories.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine($"wrote {file}; install it as SKSE/Plugins/CraftingCategories/{cat["file"]!.GetValue<string>()}");
+}
 report.Write(opts.ReportDir, mod, env.LoadOrder, failed: false);
 if (creationKeys.Count > 0 && !opts.NoCreations && !Creations.Build(spec, creationsSpec!, env.LoadOrder.ListedOrder, mod, creationKeys, opts.Out, opts.ReportDir))
     return 2;
@@ -951,6 +960,76 @@ static class Steps
         }
         if (t["disableRecipes"] is JsonArray disable)
             Park(c, disable.Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(t["disabledBench"]!.GetValue<string>()), "tailoring", profession);
+    }
+
+    // ---- crafting categories: the filter tabs the CraftingCategories SKSE plugin draws ----------------------------
+    //
+    // It reads keywords off the created object, so a category is a keyword of the plugin's own added to every item a
+    // bench's recipes make, plus a json config naming the keyword. Runs last, when every bench keyword is final.
+    public static JsonObject Categories(PatchContext c)
+    {
+        var config = new JsonObject();
+        if (c.Spec["craftingCategories"] is not JsonObject spec) return config;
+        var section = spec["section"]!.GetValue<string>();
+        var categories = new JsonObject();
+        // The bench a recipe ends up at: the plugin's own override when it has one, the load order's winner otherwise
+        var final = new Dictionary<FormKey, (FormKey Bench, FormKey Product)>();
+        foreach (var w in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
+            if (c.Includes(w)) final[w.FormKey] = (w.WorkbenchKeyword.FormKey, w.CreatedObject.FormKey);
+        foreach (var own in c.Mod.ConstructibleObjects) final[own.FormKey] = (own.WorkbenchKeyword.FormKey, own.CreatedObject.FormKey);
+        foreach (var group in spec["groups"]!.AsArray().Select(x => x!.AsObject()))
+        {
+            var bench = c.KeyOf<IKeywordGetter>(group["bench"]!.GetValue<string>());
+            var rules = group["categories"]!.AsArray().Select(x => x!.AsObject())
+                .Select(x => (Name: x["name"]!.GetValue<string>(),
+                              Key: c.OwnOrNew(c.Mod.Keywords, x["keyword"]!.GetValue<string>()).FormKey,
+                              Edid: x["keyword"]!.GetValue<string>(),
+                              Slots: Edids(c, x["slots"]).Select(int.Parse).ToList(),
+                              Kinds: Edids(c, x["kinds"]).ToHashSet(StringComparer.OrdinalIgnoreCase),
+                              Keywords: Edids(c, x["keywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet(),
+                              Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
+                              Match: Edids(c, x["match"]).ToList())).ToList();
+            foreach (var r in rules)
+                categories[r.Name] = new JsonObject { ["section"] = section, ["keywords"] = new JsonArray(r.Edid) };
+            var counts = rules.ToDictionary(r => r.Name, _ => 0);
+            foreach (var (product, _) in final.Values.Where(v => v.Bench == bench).Select(v => (v.Product, 0)).Distinct())
+            {
+                if (!c.Cache.TryResolve<IMajorRecordGetter>(product, out var made)) continue;
+                var kws = ProductKeywords(c, product, out var kind);
+                var slots = made is IArmorGetter { BodyTemplate: { } body } ? (uint)body.FirstPersonFlags : 0u;
+                var edid = made.EditorID ?? "";
+                var hit = rules.FirstOrDefault(r =>
+                    (r.Slots.Count == 0 || r.Slots.Any(sl => (slots & (1u << (sl - 30))) != 0))
+                    && (r.Kinds.Count == 0 || r.Kinds.Contains(kind))
+                    && (r.Keywords.Count == 0 || kws.Overlaps(r.Keywords))
+                    && (r.Items.Count == 0 || r.Items.Contains(product))
+                    && (r.Match.Count == 0 || r.Match.Any(m => edid.Contains(m, StringComparison.OrdinalIgnoreCase)))
+                    && (r.Slots.Count + r.Kinds.Count + r.Keywords.Count + r.Items.Count + r.Match.Count > 0 || r.Name == rules[^1].Name));
+                if (hit.Name == null) continue;
+                Tag(c, made, hit.Key);
+                counts[hit.Name] += 1;
+            }
+            c.Note($"Crafting categories at {group["bench"]!.GetValue<string>()}: {string.Join(", ", counts.Select(kv => $"{kv.Value} {kv.Key}"))}");
+        }
+        config["sections"] = new JsonObject { [section] = new JsonObject { ["priority"] = 15 } };
+        config["categories"] = categories;
+        return config;
+    }
+
+    // Add a keyword to an override of a created object, whatever record type it is
+    static void Tag(PatchContext c, IMajorRecordGetter made, FormKey keyword)
+    {
+        IKeyworded<IKeywordGetter>? rec = made switch
+        {
+            IArmorGetter a => c.Override(c.Mod.Armors, a),
+            IWeaponGetter w => c.Override(c.Mod.Weapons, w),
+            IAmmunitionGetter m => c.Override(c.Mod.Ammunitions, m),
+            IMiscItemGetter m => c.Override(c.Mod.MiscItems, m),
+            _ => null,
+        };
+        if (rec == null) { c.Warn($"crafting categories: {made.EditorID} is a {made.Registration.Name}, which carries no keywords"); return; }
+        rec.Keywords ??= new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
+        if (!rec.Keywords.Any(k => k.FormKey == keyword)) rec.Keywords.Add(keyword.ToLink<IKeywordGetter>());
     }
 
     // ---- helpers -------------------------------------------------------------------------------------------------

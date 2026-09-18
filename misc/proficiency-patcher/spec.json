@@ -2305,6 +2305,32 @@
    "anchor": "0A17CD:Skyrim.esm"
   }
  ],
+ "craftingCategories": {
+  "file": "AlduinakAdditions.json",
+  "section": "Alduinak",
+  "groups": [
+   {
+    "bench": "MCE_CraftingLoom",
+    "categories": [
+     { "name": "Headgear", "keyword": "AldCatHeadgear", "slots": ["30", "31", "42"] },
+     { "name": "Footwear", "keyword": "AldCatFootwear", "slots": ["37"] },
+     { "name": "Robes", "keyword": "AldCatRobes", "slots": ["32"], "match": ["Robe"] },
+     { "name": "Aprons", "keyword": "AldCatAprons", "slots": ["32"], "match": ["BlackSmith", "Chef", "BarKeeper", "Farm", "Miner"] },
+     { "name": "Clothes", "keyword": "AldCatClothes", "slots": ["32"] },
+     { "name": "Other", "keyword": "AldCatOther" }
+    ]
+   },
+   {
+    "bench": "AldCraftingWoodcrafting",
+    "categories": [
+     { "name": "Arrows", "keyword": "AldCatArrows", "kinds": ["ammo"] },
+     { "name": "Shields", "keyword": "AldCatShields", "keywords": ["ArmorShield"] },
+     { "name": "Bows", "keyword": "AldCatBows", "keywords": ["WeapTypeBow"] },
+     { "name": "Instruments", "keyword": "AldCatInstruments", "items": ["Lute", "Flute", "Drum"] }
+    ]
+   }
+  ]
+ },
  "writing": {
   "keywords": {
    "written": "AldWritable",
