@@ -6,7 +6,7 @@ import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 
-// Game time is the server box's local wall clock at 1:1, taken from the server's gameTime packet (TimeSystem)
+// Game time is the server box's local wall clock plus the server's offset at 1:1, taken from its gameTime packet (TimeSystem)
 
 const GAME_YEAR = 0x35;
 const GAME_MONTH = 0x36;
@@ -16,7 +16,7 @@ const GAME_DAYS_PASSED = 0x39;
 const TIME_SCALE = 0x3a;
 const SYNC_MS = 2000;
 const DAY_MS = 86400000;
-const DEFAULT_YEAR = 226;
+const DEFAULT_YEAR = 210;
 // About five real seconds
 const MAX_DRIFT_HOURS = 5 / 3600;
 const MAX_DRIFT_DAYS = MAX_DRIFT_HOURS / 24;

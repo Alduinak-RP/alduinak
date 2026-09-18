@@ -8,6 +8,7 @@ import { JobSystem } from "./jobSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, userOf } from "./actorUtil";
+import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -396,7 +397,7 @@ export class AdminSystem implements System {
       mp.sendCustomPacket(userId, JSON.stringify({
         customPacketType: "debugInfo",
         serverName: this.serverName,
-        serverTime: Date.now(),
+        serverTime: gameTimeNow(),
         serverTzOffsetMin: new Date().getTimezoneOffset(),
         actorId: actorId.toString(16),
         profileId,

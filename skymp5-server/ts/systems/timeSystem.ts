@@ -11,14 +11,20 @@ type Mp = any;
 //   Client -> Server: { customPacketType: "gameTimeRequest" }
 //
 // server-settings.json keys:
-//   gameYear  in-game year of every date, never rolls over (default 210)
+//   gameYear             in-game year of every date, never rolls over (default 210)
+//   gameTimeOffsetHours  hours the game clock runs ahead of the box clock (default 3, may be negative)
 
 const DEFAULT_YEAR = 210;
 const TIME_SCALE = 1;
-const TIME_OFFSET_MS = 3 * 60 * 60 * 1000;
+const DEFAULT_OFFSET_HOURS = 3;
 const POLL_MS = 5000;
 const BROADCAST_MS = 60000;
 const MAX_USER_SLOTS = 1024;
+
+let offsetMs = DEFAULT_OFFSET_HOURS * 60 * 60 * 1000;
+
+// The clock every game-facing timestamp uses, so the Debug tab and the calendar never disagree
+export const gameTimeNow = (): number => Date.now() + offsetMs;
 
 export class TimeSystem implements System {
   systemName = "TimeSystem";
@@ -32,7 +38,9 @@ export class TimeSystem implements System {
     const all = (await Settings.get()).allSettings as Record<string, any> | null;
     const year = Number(all?.["gameYear"]);
     if (Number.isInteger(year) && year > 0) this.year = year;
-    this.log(`TimeSystem: game time follows ${new Date(Date.now() + TIME_OFFSET_MS).toString()}, year ${this.year}, timescale ${TIME_SCALE}`);
+    const hours = Number(all?.["gameTimeOffsetHours"]);
+    if (Number.isFinite(hours) && Math.abs(hours) <= 24) offsetMs = hours * 60 * 60 * 1000;
+    this.log(`TimeSystem: box clock ${new Date().toString()}, game time ${offsetMs / 3600000}h ahead, year ${this.year}, timescale ${TIME_SCALE}`);
   }
 
   connect(userId: number, ctx: SystemContext): void {
@@ -61,7 +69,7 @@ export class TimeSystem implements System {
     try {
       mp.sendCustomPacket(userId, JSON.stringify({
         customPacketType: "gameTime",
-        serverTime: Date.now() + TIME_OFFSET_MS,
+        serverTime: gameTimeNow(),
         tzOffsetMin: new Date().getTimezoneOffset(),
         year: this.year,
         timeScale: TIME_SCALE,
