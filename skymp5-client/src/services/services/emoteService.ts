@@ -25,6 +25,8 @@ const PROPS: Record<string, PropNeed> = {
   flute: { label: "a flute", items: ["daba7:Skyrim.esm", "105177:Skyrim.esm", "105109:Skyrim.esm"] },
   drum: { label: "a drum", items: ["daba9:Skyrim.esm"] },
   broom: { label: "a broom", items: ["6717f:Skyrim.esm"] },
+  // The plugin's own hoe, pinned to 0x2100 by proficiency-patcher/spec.json
+  hoe: { label: "a hoe", items: ["2100:AlduinakAdditions.esp"] },
   imperialHorn: { label: "an Imperial war horn", items: ["200ba:Skyrim.esm"] },
   // Nord War Horn, Torygg's War Horn, Vrage's Horn
   nordHorn: { label: "a Nord war horn", items: ["200b6:Skyrim.esm", "e77bb:Skyrim.esm", "1252be:WindhelmSSE.esp"] },
@@ -107,7 +109,7 @@ const GROUPS: EmoteGroup[] = [
       { anim: 'IdleDrink', label: 'Drink', prop: true },
       { anim: 'IdleEatingStandingStart', label: 'Eating', prop: true },
       { anim: 'IdleLooseSweepingStart', label: 'Sweeping', prop: true, needs: PROPS.broom },
-      { anim: 'IdleHoe', label: 'Use Hoe', prop: true },
+      { anim: 'IdleHoe', label: 'Use Hoe', prop: true, needs: PROPS.hoe },
       { anim: 'IdleRitualStart', label: 'Ritual' },
       { anim: 'IdleNoteRead', label: 'Read Note', prop: true },
       { anim: 'IdleBook_PageTurn', label: 'Read Book', prop: true },

@@ -61,6 +61,7 @@ if (opts.NextFormId is uint pinned)
 Console.WriteLine($"{pluginName}: position {position} in the load order, full slot {loadIndex:X2}, {mod.ModHeader.MasterReferences.Count} masters, next form id {mod.ModHeader.Stats.NextFormID:X}");
 
 Steps.Keywords(ctx);
+Steps.Items(ctx);
 Steps.MarkerAbilities(ctx);
 Steps.WoodcraftingBench(ctx);
 Steps.AlchemyLabs(ctx);
@@ -207,8 +208,19 @@ class PatchContext
     public FormKey KeyOf<T>(string edid) where T : class, IMajorRecordGetter => Winning<T>(edid).FormKey;
 
     // Own record by editor id, created when missing (idempotent re-runs reuse it).
-    public T OwnOrNew<T>(IGroup<T> group, string edid, Action<T>? init = null) where T : class, IMajorRecord =>
-        OwnOrNew(edid, () => group.AddNew(edid), init);
+    // formId pins the record's local id, for the few the client names by "<hex>:<plugin>".
+    public T OwnOrNew<T>(IGroup<T> group, string edid, Action<T>? init = null, uint? formId = null) where T : class, IMajorRecord =>
+        OwnOrNew(edid, () => formId is uint id ? AddAt(group, edid, id) : group.AddNew(edid), init);
+
+    T AddAt<T>(IGroup<T> group, string edid, uint id) where T : class, IMajorRecord
+    {
+        var key = new FormKey(Key, id);
+        if (Mod.EnumerateMajorRecords().Any(r => r.FormKey == key))
+            throw new SpecException($"'{edid}' wants the pinned id {key}, which another record already holds");
+        var rec = group.AddNew(key);
+        rec.EditorID = edid;
+        return rec;
+    }
 
     // Same for records outside a top-level group, such as placed references; create adds the record to its container
     public T OwnOrNew<T>(string edid, Func<T> create, Action<T>? init = null) where T : class, IMajorRecord
@@ -430,6 +442,7 @@ static class Steps
         "AldRecipeKiln_" => "kiln",
         "AldRecipeWriting_" => "writing",
         "AldRecipeSmith_" => "smithing",
+        "AldRecipeWood_" => "woodworking",
         "AldRecipeTailor_" => "tailoring",
         "AldRecipeMead_" => "mead",
         "AldRecipeCook_" => "cooking",
@@ -825,23 +838,34 @@ static class Steps
             book.Keywords.Add(tag.ToLink<IKeywordGetter>());
             c.Note($"Writing {edid} {key} from {template.EditorID}, keyword {c.EdidOf(tag)}");
         }
-        foreach (var spec in w["misc"]!.AsArray().Select(x => x!.AsObject()))
-        {
-            var edid = spec["edid"]!.GetValue<string>();
-            var template = c.Winning<IMiscItemGetter>(spec["template"]!.GetValue<string>());
-            var misc = c.OwnOrNew(c.Mod.MiscItems, edid);
-            var key = misc.FormKey;
-            misc.DeepCopyIn(template);
-            if (misc.FormKey != key) throw new Exception("form key changed by DeepCopyIn");
-            misc.EditorID = edid;
-            misc.VirtualMachineAdapter = null;
-            misc.Name = spec["name"]!.GetValue<string>();
-            misc.Value = spec["value"]!.GetValue<uint>();
-            misc.Weight = spec["weight"]!.GetValue<float>();
-            c.Note($"Writing {edid} {key} from {template.EditorID}");
-        }
+        foreach (var spec in w["misc"]!.AsArray().Select(x => x!.AsObject())) MakeMisc(c, spec, "Writing");
         foreach (var r in w["recipes"]!.AsArray().Select(x => x!.AsObject()))
             NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()), r["profession"]!.GetValue<string>(), "AldRecipeWriting_");
+    }
+
+    // ---- the plugin's own carryable items (the hoe) ---------------------------------------------------------------
+    public static void Items(PatchContext c)
+    {
+        foreach (var spec in (c.Spec["items"]?["misc"] as JsonArray ?? new JsonArray()).Select(x => x!.AsObject()))
+            MakeMisc(c, spec, "Item");
+    }
+
+    // A new MISC copied from a template, optionally with another mesh and a pinned form id
+    static void MakeMisc(PatchContext c, JsonObject spec, string kind)
+    {
+        var edid = spec["edid"]!.GetValue<string>();
+        var template = c.Winning<IMiscItemGetter>(spec["template"]!.GetValue<string>());
+        var misc = c.OwnOrNew(c.Mod.MiscItems, edid, formId: spec["formId"] is JsonNode id ? Convert.ToUInt32(id.GetValue<string>(), 16) : null);
+        var key = misc.FormKey;
+        misc.DeepCopyIn(template);
+        if (misc.FormKey != key) throw new Exception("form key changed by DeepCopyIn");
+        misc.EditorID = edid;
+        misc.VirtualMachineAdapter = null;
+        misc.Name = spec["name"]!.GetValue<string>();
+        misc.Value = spec["value"]!.GetValue<uint>();
+        misc.Weight = spec["weight"]!.GetValue<float>();
+        if (spec["model"] is JsonNode model && misc.Model != null) misc.Model.File = model.GetValue<string>();
+        c.Note($"{kind} {edid} {key} from {template.EditorID}");
     }
 
     // Material editor id -> rank index, from the owner's ingot table

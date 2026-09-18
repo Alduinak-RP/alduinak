@@ -16,6 +16,19 @@
   "Expert",
   "Master"
  ],
+ "items": {
+  "misc": [
+   {
+    "edid": "AldToolHoe",
+    "name": "Hoe",
+    "template": "Broom01",
+    "model": "Clutter\\Common\\Hoe.nif",
+    "formId": "2100",
+    "value": 5,
+    "weight": 5.0
+   }
+  ]
+ },
  "keywords": {
   "alchemy": "AldCraftingAlchemy",
   "kiln": "AldCraftingKiln",
@@ -783,41 +796,45 @@
    "output": "Charcoal",
    "count": 1,
    "profession": "woodworker",
-   "tier": "Novice",
+   "tier": "Anyone",
    "items": {
     "Firewood01": 2
    }
   },
   {
-   "edid": "AldRecipeCommon_Lute",
+   "edid": "AldRecipeWood_Lute",
    "bench": "AldCraftingWoodcrafting",
    "output": "Lute",
    "count": 1,
-   "tier": "Anyone",
+   "profession": "woodworker",
+   "tier": "Master",
    "items": {
-    "Firewood01": 2,
+    "Firewood01": 4,
     "LeatherStrips": 2
    }
   },
   {
-   "edid": "AldRecipeCommon_Flute",
+   "edid": "AldRecipeWood_Flute",
    "bench": "AldCraftingWoodcrafting",
    "output": "Flute",
    "count": 1,
-   "tier": "Anyone",
+   "profession": "woodworker",
+   "tier": "Expert",
    "items": {
     "Firewood01": 1
    }
   },
   {
-   "edid": "AldRecipeCommon_Drum",
+   "edid": "AldRecipeWood_Drum",
    "bench": "AldCraftingWoodcrafting",
    "output": "Drum",
    "count": 1,
-   "tier": "Anyone",
+   "profession": "woodworker",
+   "tier": "Adept",
    "items": {
     "Firewood01": 2,
-    "Leather01": 1
+    "Leather01": 1,
+    "LeatherStrips": 2
    }
   },
   {
@@ -975,14 +992,53 @@
   ],
   "newRecipes": [
    {
-    "edid": "AldRecipeSmith_Axe01",
-    "bench": "CraftingSmithingForge",
+    "edid": "AldRecipeWood_Axe01",
+    "bench": "AldCraftingWoodcrafting",
     "output": "Axe01",
     "count": 1,
+    "profession": "woodworker",
     "tier": "Novice",
     "items": {
      "IngotIron": 1,
-     "LeatherStrips": 1
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_Pickaxe",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "weapPickaxe",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "IngotIron": 1,
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_Hoe",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "AldToolHoe",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "IngotIron": 1,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeSmith_Hoe",
+    "bench": "CraftingSmithingForge",
+    "output": "AldToolHoe",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "IngotIron": 1,
+     "Firewood01": 1
     }
    }
   ]
