@@ -893,6 +893,13 @@
    "RecipeFoodVenisonCooked"
   ],
   "tiers": {
+   "Anyone": [
+    "RecipeFoodSalmonCooked",
+    "RecipeFoodRabbitCooked",
+    "RecipeFoodPheasantCooked",
+    "RecipeFoodChickenCooked",
+    "AldRecipeCook_FoodHoney"
+   ],
    "Adept": [
     "RecipeFoodStewAppleCabbage",
     "RecipeFoodSoupCabbagePotato",
@@ -900,28 +907,28 @@
     "BYOHRecipeFoodSoupClamChowder",
     "RecipeFoodStewHorker",
     "DLC2RecipeFoodStewHorkerAshYam",
-    "BYOHRecipeFoodPotatoBread",
     "RecipeFoodSoupPotato",
-    "BYOHRecipeFoodSweetRoll",
     "RecipeFoodSoupTomato",
-    "RecipeFoodSoupVegetable"
+    "RecipeFoodSoupVegetable",
+    "RecipeFoodStewBeef",
+    "RecipeFoodStewVenison"
    ],
    "Expert": [
-    "RecipeFoodStewBeef",
-    "BYOHRecipeFoodBraidedBread",
     "BYOHRecipeFoodBread",
-    "BYOHRecipeFoodChickenDumplings"
+    "BYOHRecipeFoodBraidedBread",
+    "BYOHRecipeFoodGarlicBread",
+    "BYOHRecipeFoodPotatoBread",
+    "BYOHRecipeFoodSweetRoll",
+    "BYOHRecipeFoodChickenDumplings",
+    "BYOHRecipeFoodAppleDumplings",
+    "BYOHRecipeFoodLavenderDumplings"
    ],
    "Master": [
-    "BYOHRecipeFoodAppleDumplings",
     "BYOHRecipeFoodApplePie",
-    "RecipeFoodElsweyrFondue",
-    "BYOHRecipeFoodGarlicBread",
     "BYOHRecipeFoodJazbayCrostata",
     "BYOHRecipeFoodJuniperberryCrostata",
-    "BYOHRecipeFoodLavenderDumplings",
     "BYOHRecipeFoodSnowberryCrostata",
-    "RecipeFoodStewVenison"
+    "RecipeFoodElsweyrFondue"
    ]
   }
  },
@@ -2409,8 +2416,7 @@
    "cooking": {
     "tiers": {
      "Adept": [
-      "ccBGSSSE001_RecipeFoodAnglerCooked",
-      "ccBGSSSE001_RecipeFoodCrabStew",
+        "ccBGSSSE001_RecipeFoodCrabStew",
       "ccBGSSSE001_RecipeFoodCreamyCrabBisque",
       "ccBGSSSE001_RecipeFoodPotatoCrabChowder",
       "ccBGSSSE001_RecipeFoodRoastedTomatoCrabBisque",
@@ -2420,8 +2426,7 @@
       "ccBGSSSE001_RecipeFoodRoastedTomatoCrabBisqueHOT",
       "Survival_RecipeFoodStewHorker",
       "Survival_DLC2RecipeFoodStewCabbage",
-      "Survival_RecipeFoodElsweyrFondue",
-      "Survival_RecipeFoodSoupPotato",
+        "Survival_RecipeFoodSoupPotato",
       "Survival_RecipeFoodStewVenison",
       "Survival_BYOHRecipeFoodSoupClamChowder",
       "Survival_RecipeFoodStewAppleCabbage",
@@ -2430,6 +2435,9 @@
       "Survival_RecipeFoodSoupCabbagePotato",
       "Survival_DLC2RecipeFoodStewHorkerAshYam",
       "Survival_RecipeFoodStewBeef"
+     ],
+     "Master": [
+      "Survival_RecipeFoodElsweyrFondue"
      ]
     }
    },
