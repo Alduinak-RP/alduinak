@@ -17,7 +17,7 @@ type Mp = any;
 //   gatheringChopYield           firewood one swing hands over, default 2
 //   gatheringVeinRespawnMinutes  how long a fully mined vein takes to grow back, default 1440
 //   gatheringVeinRegenMinutes    minutes per ore collection grown back, default respawn / vein total
-//   miningVeinTiers              { "<ore editor id or hex id>": "Adept" | rank index } overriding DEFAULT_VEIN_TIERS
+//   miningVeinTiers              { "<ore editor id or hex id>": "Novice" | rank index | "Anyone" } overriding DEFAULT_VEIN_TIERS
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 60
@@ -25,7 +25,7 @@ type Mp = any;
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
 // needsMineFatigue); woodworkers and miners pay the smaller price for their own trade.
 // Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
-// Ores above Novice need the miner profession at that rank; everything else is open to anyone with a pickaxe.
+// Every ore but iron needs the miner profession at its rank; iron is open to anyone with a pickaxe.
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the plant keeps its unpicked model until the cell reloads.
@@ -55,11 +55,12 @@ const VEIN_DEFAULT_TOTAL = 3;
 const VEIN_DEFAULT_STRIKES = 1;
 
 // Mining rank needed per ore, by the ore item editor id; unlisted ores are open to everyone.
+const OPEN_TO_ALL = -1;
 const DEFAULT_VEIN_TIERS: Record<string, number> = {
-  OreIron: 0, OreCorundum: 0,
+  OreIron: OPEN_TO_ALL, OreCorundum: 0,
   OreGold: 1, OreSilver: 1,
-  OreOrichalcum: 2, OreMoonstone: 2,
-  OreMalachite: 3, OreQuicksilver: 3, OreEbony: 3,
+  OreOrichalcum: 2, OreMoonstone: 2, OreQuicksilver: 2,
+  OreMalachite: 3, OreEbony: 3,
 };
 
 // Placed containers open empty on this server, so the honeycomb for the honey recipe comes from here.
@@ -141,13 +142,13 @@ export class GatheringSystem implements System {
     if (raw && typeof raw === "object") {
       for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
         const tier = typeof value === "string" ? RANK_NAMES.indexOf(value) : Number(value);
-        if (Number.isInteger(tier) && tier >= 0 && tier < RANK_NAMES.length) merged[name] = tier;
+        if (Number.isInteger(tier) && tier >= OPEN_TO_ALL && tier < RANK_NAMES.length) merged[name] = tier;
         else this.log(`[gathering] miningVeinTiers.${name}: unknown rank ${JSON.stringify(value)}, ignored`);
       }
     }
     const names = Object.keys(merged);
     const ids = await this.resolveIds(ctx, names, ["MISC"], dataDir, loadOrder);
-    for (const [name, id] of ids) if (merged[name] > 0) this.veinTiers.set(id, merged[name]);
+    for (const [name, id] of ids) if (merged[name] >= 0) this.veinTiers.set(id, merged[name]);
     const unresolved = names.filter((n) => !ids.has(n));
     if (unresolved.length) this.log(`[gathering] ore(s) not in the load order, left open to everyone: ${unresolved.join(", ")}`);
   }
@@ -357,8 +358,8 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["mineoretoolslist"])) {
       return this.deny(ctx, actorId, "You need a pickaxe to mine this vein.");
     }
-    const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) || 0;
-    if (tier > 0 && this.mastery.rankOf(ctx, actorId, "miner") < tier) {
+    const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) ?? OPEN_TO_ALL;
+    if (tier >= 0 && this.mastery.rankOf(ctx, actorId, "miner") < tier) {
       return this.deny(ctx, actorId, `Only a miner of ${RANK_NAMES[tier]} rank or better can work this vein.`);
     }
     if (this.veinState(ctx, veinId, this.veinTotal(props)).left <= 0) {
