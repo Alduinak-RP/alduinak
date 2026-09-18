@@ -955,6 +955,18 @@
     "DaedraHeart"
    ]
   },
+  "addItems": {
+   "RecipeIngotIron": { "Charcoal": 1 },
+   "RecipeIngotCorundum": { "Charcoal": 2 },
+   "RecipeIngotSteel": { "Charcoal": 2 },
+   "RecipeIngotGold": { "Charcoal": 2 },
+   "RecipeIngotSilver": { "Charcoal": 2 },
+   "RecipeIngotOrichalcum": { "Charcoal": 2 },
+   "RecipeIngotMoonstone": { "Charcoal": 2 },
+   "RecipeIngotQuicksilver": { "Charcoal": 2 },
+   "RecipeIngotMalachite": { "Charcoal": 2 },
+   "RecipeIngotEbony": { "Charcoal": 2 }
+  },
   "stripPerkConditions": true,
   "exclude": [],
   "temperBenches": [
@@ -2405,6 +2417,10 @@
     "materials": {
      "Expert": ["ccBGSSSE025_IngotAmber", "ccBGSSSE025_OreAmber"],
      "Master": ["ccBGSSSE025_IngotMadness", "ccBGSSSE025_OreMadness"]
+    },
+    "addItems": {
+     "ccBGSSSE025_RecipeIngotAmber": { "Charcoal": 2 },
+     "ccBGSSSE025_RecipeIngotMadness": { "Charcoal": 2 }
     },
     "tiers": {
      "Novice": ["ccBGSSSE001_RecipeWeaponImperialFishingRod", "ccBGSSSE001_RecipeWeaponArgonianFishingRod", "ccBGSSSE001_RecipeWeaponAlikriFishingRod"],

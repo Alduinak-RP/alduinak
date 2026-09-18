@@ -382,6 +382,7 @@ class CreationsRun
         Set("cooking", "needsSalt", new JsonArray());
         Set("cooking", "stripConditions", true);
         Set("smithing", "tiers", new JsonObject());
+        Set("smithing", "addItems", new JsonObject());
         Set("smithing", "exclude", new JsonArray());
         Set("smithing", "newRecipes", new JsonArray());
         Set("woodworking", "recipes", new JsonObject());

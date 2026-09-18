@@ -474,6 +474,8 @@ static class Steps
         var ranks = c.Ranks;
         var woodworking = WoodworkingSet(c);
         var strip = StripSet(c, s["stripPerkConditions"]?.GetValue<bool>() ?? true);
+        var addItems = s["addItems"]?.AsObject() ?? new JsonObject();
+        var extended = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in s["newRecipes"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
             NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()), profession, "AldRecipeSmith_");
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
@@ -485,15 +487,33 @@ static class Steps
             if (forced.TryGetValue(edid, out var forcedTier)) tierIdx = Array.IndexOf(ranks, forcedTier);
             var tier = ranks[tierIdx];
             var stripped = winning.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
-            if (tier == "Novice" && !stripped && !HasAldCondition(c, winning))
+            var extra = addItems[edid]?.AsObject();
+            if (extra != null) extended.Add(edid);
+            if (tier == "Novice" && extra == null && !stripped && !HasAldCondition(c, winning))
             {
                 c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
                 continue;
             }
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
+            AddItems(c, cobj, extra);
             cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
             SetTier(c, cobj, profession, tier);
             c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
+        }
+        foreach (var (edid, _) in addItems.Where(kv => !extended.Contains(kv.Key)))
+            c.Error($"smithing: addItems recipe '{edid}' is not a winning smithing recipe in the load order");
+    }
+
+    // Ingredients an existing recipe should also cost; one the recipe already lists is left as it stands
+    static void AddItems(PatchContext c, ConstructibleObject cobj, JsonObject? extra)
+    {
+        if (extra == null) return;
+        cobj.Items ??= new ExtendedList<ContainerEntry>();
+        foreach (var (name, count) in extra)
+        {
+            var item = c.KeyOf<IMajorRecordGetter>(name);
+            if (cobj.Items.Any(i => i.Item.Item.FormKey == item)) continue;
+            cobj.Items.Add(new ContainerEntry { Item = new ContainerItem { Item = item.ToLink<IItemGetter>(), Count = count?.GetValue<int>() ?? 1 } });
         }
     }
 
