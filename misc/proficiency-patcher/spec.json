@@ -725,36 +725,6 @@
     }
    },
    {
-    "output": "FoodWineBottle02",
-    "name": "Wine",
-    "tier": "Novice",
-    "items": {
-     "FrostMirriam": 4,
-     "JazBay": 8
-    },
-    "proposedTier": true
-   },
-   {
-    "output": "Ale",
-    "name": "Ale",
-    "tier": "Novice",
-    "items": {
-     "Lavender": 3,
-     "Wheat": 6
-    },
-    "proposedTier": true
-   },
-   {
-    "output": "FoodMead",
-    "name": "Nord Mead",
-    "tier": "Novice",
-    "items": {
-     "Snowberry": 2,
-     "FoodHoney": 4
-    },
-    "proposedTier": true
-   },
-   {
     "output": "VoidSalts",
     "name": "Void Salts",
     "tier": "Adept",
@@ -897,8 +867,7 @@
     "RecipeFoodSalmonCooked",
     "RecipeFoodRabbitCooked",
     "RecipeFoodPheasantCooked",
-    "RecipeFoodChickenCooked",
-    "AldRecipeCook_FoodHoney"
+    "RecipeFoodChickenCooked"
    ],
    "Adept": [
     "RecipeFoodStewAppleCabbage",
@@ -2150,7 +2119,7 @@
     "recipe": {
      "output": "FoodHonningbrewMead",
      "name": "Honningbrew Mead",
-     "tier": "Novice",
+     "tier": "Anyone",
      "count": 1,
      "items": {
       "FoodApple": 1,
@@ -2173,7 +2142,7 @@
     "recipe": {
      "output": "FoodBlackBriarMead",
      "name": "Black-Briar Mead",
-     "tier": "Novice",
+     "tier": "Anyone",
      "count": 1,
      "items": {
       "Snowberry": 2,
@@ -2189,17 +2158,63 @@
     ]
    }
   ],
-  "honey": {
-   "output": "FoodHoney",
-   "name": "Honey",
-   "bench": "CraftingCookpot",
-   "profession": "cook",
-   "tier": "Novice",
-   "count": 1,
-   "items": {
-    "BeeHoneyComb": 1
+  "drinks": [
+   {
+    "output": "Ale",
+    "name": "Ale",
+    "tier": "Anyone",
+    "count": 1,
+    "items": {
+     "Lavender": 3,
+     "Wheat": 6
+    }
+   },
+   {
+    "output": "FoodMead",
+    "name": "Nord Mead",
+    "tier": "Anyone",
+    "count": 1,
+    "items": {
+     "Snowberry": 2,
+     "FoodHoney": 4
+    }
+   },
+   {
+    "output": "FoodWineBottle02",
+    "name": "Wine",
+    "tier": "Anyone",
+    "count": 1,
+    "items": {
+     "FrostMirriam": 4,
+     "JazBay": 8
+    }
    }
-  }
+  ],
+  "honey": [
+   {
+    "output": "FoodHoney",
+    "name": "Honey",
+    "bench": "CraftingCookpot",
+    "profession": "cook",
+    "tier": "Anyone",
+    "count": 1,
+    "items": {
+     "BeeHoneyComb": 1
+    }
+   },
+   {
+    "edid": "AldRecipeAlchemy_FoodHoney",
+    "output": "FoodHoney",
+    "name": "Honey",
+    "bench": "AldCraftingAlchemy",
+    "profession": "alchemist",
+    "tier": "Anyone",
+    "count": 1,
+    "items": {
+     "BeeHoneyComb": 1
+    }
+   }
+  ]
  },
  "benchMoves": [
   {

@@ -766,8 +766,11 @@ static class Steps
             foreach (var p in b["placements"]!.AsArray().Select(x => x!.AsObject()))
                 PlaceBench(c, b["cell"]!.GetValue<string>(), bench.FormKey, p);
         }
-        if (m["honey"] is JsonObject h)
-            NewRecipe(c, h, c.KeyOf<IKeywordGetter>(h["bench"]!.GetValue<string>()), h["profession"]!.GetValue<string>(), "AldRecipeCook_");
+        // Every other drink is brewed at any boiler, on the shared keyword
+        foreach (var r in (m["drinks"] as JsonArray ?? new JsonArray()).Select(x => x!.AsObject()))
+            NewRecipe(c, r, shared, profession, "AldRecipeMead_");
+        foreach (var h in (m["honey"] as JsonArray ?? new JsonArray()).Select(x => x!.AsObject()))
+            NewRecipe(c, h, c.KeyOf<IKeywordGetter>(h["bench"]!.GetValue<string>()), h["profession"]!.GetValue<string>(), h["edid"] != null ? "" : "AldRecipeCook_");
     }
 
     const int PersistentFlag = 0x400;
