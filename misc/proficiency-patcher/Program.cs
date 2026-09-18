@@ -898,22 +898,38 @@ static class Steps
         return idx;
     }
 
-    static HashSet<string> TailoringSet(PatchContext c) =>
-        c.Spec["tailoring"]!["recipes"]!.AsArray().Select(x => x!["edid"]!.GetValue<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    // Every recipe the tailoring step owns: the benches it sweeps plus the owner's list
+    static HashSet<string> TailoringSet(PatchContext c)
+    {
+        var t = c.Spec["tailoring"]!.AsObject();
+        var benches = Edids(c, t["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var set = c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides()
+            .Where(w => benches.Contains(w.WorkbenchKeyword.FormKey) && c.Includes(w))
+            .Select(w => w.EditorID ?? "").Where(e => e.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in t["recipes"]!.AsArray()) set.Add(r!["edid"]!.GetValue<string>());
+        return set;
+    }
 
-    // ---- tailoring: the owner's list, with ingredient corrections and three new recipes -----------------------------
+    // ---- tailoring: every recipe at the rack and the loom, the owner's list correcting ingredients and tiers --------
     public static void Tailoring(PatchContext c)
     {
         var t = c.Spec["tailoring"]!.AsObject();
         var profession = t["profession"]!.GetValue<string>();
         var strip = StripSet(c, true);
-        foreach (var r in t["recipes"]!.AsArray().Select(x => x!.AsObject()))
+        var listed = t["recipes"]!.AsArray().Select(x => x!.AsObject()).ToDictionary(r => r["edid"]!.GetValue<string>(), r => r, StringComparer.OrdinalIgnoreCase);
+        var tierOf = TierMap(t["tiers"]?.AsObject() ?? new JsonObject());
+        var benches = Edids(c, t["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        // The sweep reads the load order, so a recipe an earlier step routed to the rack keeps the tier that step gave it
+        var swept = c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides()
+            .Where(w => benches.Contains(w.WorkbenchKeyword.FormKey) && c.Includes(w))
+            .Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
+        foreach (var edid in swept.Concat(listed.Keys).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var edid = r["edid"]!.GetValue<string>();
+            var r = listed.GetValueOrDefault(edid);
             if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"tailoring recipe '{edid}' not found"); continue; }
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
-            if (r["bench"] != null) cobj.WorkbenchKeyword.SetTo(c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()));
-            if (r["items"] != null)
+            if (r?["bench"] != null) cobj.WorkbenchKeyword.SetTo(c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()));
+            if (r?["items"] != null)
             {
                 cobj.Items = new ExtendedList<ContainerEntry>();
                 foreach (var item in r["items"]!.AsObject())
@@ -924,7 +940,7 @@ static class Steps
             }
             var stripped = cobj.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
             cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
-            var tier = r["tier"]!.GetValue<string>();
+            var tier = r?["tier"]?.GetValue<string>() ?? tierOf.GetValueOrDefault(edid, c.Ranks[0]);
             SetTier(c, cobj, profession, tier);
             c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
         }

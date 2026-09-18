@@ -1069,6 +1069,31 @@
  },
  "tailoring": {
   "profession": "tailor",
+  "benches": [
+   "CraftingTanningRack",
+   "MCE_CraftingLoom"
+  ],
+  "tiers": {
+   "Anyone": [
+    "MCE_vol_CapeRecipe_Black", "MCE_vol_CapeRecipe_Blue", "MCE_vol_CapeRecipe_Green",
+    "MCE_vol_CapeRecipe_Leather", "MCE_vol_CapeRecipe_Purple", "MCE_vol_CapeRecipe_Red",
+    "MCE_vol_CapeRecipe_White", "MCE_vol_CapeRecipe_Yellow",
+    "MCE_vol_FurCloakRecipe_Black", "MCE_vol_FurCloakRecipe_Brown", "MCE_vol_FurCloakRecipe_White",
+    "MCE_vol_FurCloakRecipe_SnowSabre", "MCE_vol_FurCloakRecipe_ValeSabre",
+    "vol_CapeRecipe_Black", "vol_CapeRecipe_Blue", "vol_CapeRecipe_Green",
+    "vol_CapeRecipe_Leather", "vol_CapeRecipe_Purple", "vol_CapeRecipe_Red",
+    "vol_CapeRecipe_White", "vol_CapeRecipe_Yellow",
+    "vol_FurCloakRecipe_Black", "vol_FurCloakRecipe_Brown", "vol_FurCloakRecipe_White",
+    "vol_FurCloakRecipe_SnowSabre", "vol_FurCloakRecipe_ValeSabre",
+    "MCERecipeClothesBeggarBoots", "MCERecipeClothesBeggarHat", "MCERecipeClothesBeggarRobes",
+    "MCERecipeClothesPrisonerRags", "MCERecipeClothesPrisonerShoes", "MCERecipeClothesPrisonerTunic",
+    "MCERecipeClothesFarmBoots01", "MCERecipeClothesFarmBoots02", "MCERecipeClothesFarmBoots03",
+    "MCERecipeClothesFarmBoots04", "MCERecipeClothesFarmClothes01", "MCERecipeClothesFarmClothes02",
+    "MCERecipeClothesFarmClothes03", "MCERecipeClothesFarmClothes04", "MCERecipeClothesFarmHat01",
+    "MCERecipeClothesFarmHat02", "MCERecipeClothesFarmHat03",
+    "MCERecipeClothesMinerBoots", "MCERecipeClothesMinerClothes"
+   ]
+  },
   "recipes": [
    {
     "edid": "RecipeArmorevgsmpfastenedscarfarmor",
