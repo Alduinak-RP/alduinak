@@ -11,7 +11,9 @@ type Mp = any;
 // Tool check, yield and depletion of chopping blocks and ore veins; their vanilla scripts wait on animation events the server never receives.
 //
 // server-settings.json keys (all optional):
-//   gatheringStrikeSeconds       seconds of work per chop or pickaxe strike, default 5
+//   gatheringStrikeSeconds       seconds of work per pickaxe strike, default 5
+//   gatheringChopSeconds         seconds one swing of the axe takes before the firewood lands, default 8
+//   gatheringChopYield           firewood one swing hands over, default 2
 //   gatheringVeinRespawnMinutes  how long a fully mined vein takes to grow back, default 1440
 //   gatheringVeinRegenMinutes    minutes per ore collection grown back, default respawn / vein total
 //   miningVeinTiers              { "<ore editor id or hex id>": "Adept" | rank index } overriding DEFAULT_VEIN_TIERS
@@ -31,6 +33,9 @@ const SEAT_CLOSE_EVENT = "onPapyrusEvent:SkympOnActivateClose";
 const NOTICE_PACKET = "masteryNotice";
 
 const DEFAULT_STRIKE_SECONDS = 5;
+// One activation is one swing: the wood lands when the animation ends, never during it.
+const DEFAULT_CHOP_SECONDS = 8;
+const DEFAULT_CHOP_YIELD = 2;
 const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 const DEFAULT_PICK_MINUTES = 60;
 // Engine furniture reach is 256; a wall marker stands a little off its vein.
@@ -42,8 +47,6 @@ const DENY_NOTICE_MS = 1000;
 const INVALID_USER_ID = 65535;
 
 // Papyrus defaults of the vanilla scripts, used when a record leaves a property unset.
-const CHOP_DEFAULT_COUNT = 1;
-const CHOP_DEFAULT_MAX = 6;
 const VEIN_DEFAULT_COUNT = 1;
 const VEIN_DEFAULT_TOTAL = 3;
 const VEIN_DEFAULT_STRIKES = 1;
@@ -84,6 +87,8 @@ interface Session {
   given: number;
   strikesPer: number;
   strikesLeft: number;
+  // Chopping and mining work at different speeds.
+  intervalMs: number;
   exitIdle: number;
   startedAt: number;
   nextAt: number;
@@ -108,6 +113,10 @@ export class GatheringSystem implements System {
     const all = s.allSettings as Record<string, unknown> | null;
     const strike = Number(all?.["gatheringStrikeSeconds"]);
     if (Number.isFinite(strike) && strike > 0) this.strikeMs = strike * 1000;
+    const chop = Number(all?.["gatheringChopSeconds"]);
+    if (Number.isFinite(chop) && chop > 0) this.chopMs = chop * 1000;
+    const chopYield = Number(all?.["gatheringChopYield"]);
+    if (Number.isFinite(chopYield) && chopYield > 0) this.chopYield = Math.floor(chopYield);
     const respawn = Number(all?.["gatheringVeinRespawnMinutes"]);
     if (Number.isFinite(respawn) && respawn >= 0) this.respawnMs = respawn * 60000;
     const pick = Number(all?.["gatheringPickMinutes"]);
@@ -120,7 +129,7 @@ export class GatheringSystem implements System {
 
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
-    this.log(`[gathering] ready, one strike per ${this.strikeMs / 1000} s, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -240,7 +249,7 @@ export class GatheringSystem implements System {
         this.sessions.delete(s.actorId);
         continue;
       }
-      s.nextAt = now + this.strikeMs;
+      s.nextAt = now + s.intervalMs;
       try {
         if (s.kind === "chop") this.chopStrike(ctx, s);
         else this.mineStrike(ctx, s, now);
@@ -302,11 +311,10 @@ export class GatheringSystem implements System {
     if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, "Someone is already using this.");
     const resource = props["resource"] || 0;
     if (!resource || this.sessions.get(actorId)?.furnitureId === blockId) return undefined;
-    const max = props["maxresourceperactivation"] > 0 ? props["maxresourceperactivation"] : CHOP_DEFAULT_MAX;
     return () => this.startSession({
       actorId, furnitureId: blockId, kind: "chop", veinId: 0, resource,
-      perStrike: Math.max(1, props["resourcecount"] || CHOP_DEFAULT_COUNT),
-      cap: max, given: 0, strikesPer: 1, strikesLeft: 1,
+      perStrike: this.chopYield, cap: this.chopYield, given: 0, strikesPer: 1, strikesLeft: 1,
+      intervalMs: this.chopMs,
       exitIdle: props["idlewoodchopexit"] || 0, startedAt: 0, nextAt: 0,
     });
   }
@@ -337,6 +345,7 @@ export class GatheringSystem implements System {
       actorId, furnitureId: markerId, kind: "mine", veinId, resource: ore,
       perStrike: Math.max(1, vein.props["resourcecount"] || VEIN_DEFAULT_COUNT),
       cap: this.veinTotal(vein.props), given: 0, strikesPer: strikes, strikesLeft: strikes,
+      intervalMs: this.strikeMs,
       exitIdle: markerProps["pickaxeexit"] || 0, startedAt: 0, nextAt: 0,
     });
   }
@@ -366,7 +375,7 @@ export class GatheringSystem implements System {
   private startSession(s: Session): void {
     const now = Date.now();
     s.startedAt = now;
-    s.nextAt = now + this.strikeMs;
+    s.nextAt = now + s.intervalMs;
     this.sessions.set(s.actorId, s);
   }
 
@@ -598,6 +607,8 @@ export class GatheringSystem implements System {
   }
 
   private strikeMs = DEFAULT_STRIKE_SECONDS * 1000;
+  private chopMs = DEFAULT_CHOP_SECONDS * 1000;
+  private chopYield = DEFAULT_CHOP_YIELD;
   private respawnMs = DEFAULT_VEIN_RESPAWN_MINUTES * 60000;
   private regenMs = 0;
   private veinTiers = new Map<number, number>();
