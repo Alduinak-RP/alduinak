@@ -11,6 +11,7 @@ using Noggog;
 // Mutagen passes of the r7 AlduinakAdditions.esp merge (reports/r7-esp-merge-plan.md), run through merge.py and masks.py.
 //   dotnet run -c Release -- merge --settings <json> --new <padded esp> --new-sha <hex> --r4 <esp> --r4-sha <hex> --attribution <json> --attribution-sha <hex> --removed-navm <txt> --records <n> --out <dir>
 //   dotnet run -c Release -- armor-effects --settings <json> --plugin <esp> --plugin-sha <hex> --source <plugin> --effect <hex id> --expect <hex ids> --out <dir>
+//   dotnet run -c Release -- combine --settings <json> --plugin <esp> --plugin-sha <hex> --extra <esp> --extra-sha <hex> --out <dir>
 
 var opts = new Dictionary<string, string>();
 for (int i = 1; i + 1 < args.Length; i += 2) opts[args[i].TrimStart('-')] = args[i + 1];
@@ -18,7 +19,8 @@ return (args.Length > 0 ? args[0] : "") switch
 {
     "merge" => Merge.Run(opts),
     "armor-effects" => ArmorEffects.Run(opts),
-    _ => throw new Exception("usage: merge | armor-effects, see the header of Program.cs"),
+    "combine" => Combine.Run(opts),
+    _ => throw new Exception("usage: merge | armor-effects | combine, see the header of Program.cs"),
 };
 
 static class Shared
@@ -510,4 +512,70 @@ static class ArmorEffects
         Console.WriteLine($"wrote {path}; {targets.Count} ARMO overrides, master list unchanged ({after.Count})");
         return 0;
     }
+}
+
+static class Combine
+{
+    // Folds AlduinakCreations.esp into AlduinakAdditions.esp: every record keeps its FormKey, the Creation plugins join
+    // the master list in load order, and the result stays a full (non-ESL) plugin.
+    public static int Run(Dictionary<string, string> o)
+    {
+        Shared.CheckSha(o["plugin"], o["plugin-sha"]);
+        Shared.CheckSha(o["extra"], o["extra-sha"]);
+        var (env, order) = Shared.Environment(o["settings"]);
+        using var envScope = env;
+        var mod = SkyrimMod.CreateFromBinary(new ModPath(Shared.Self, o["plugin"]), Shared.Release);
+        var extraKey = ModKey.FromNameAndExtension(Path.GetFileName(o["extra"]));
+        var extra = SkyrimMod.CreateFromBinary(new ModPath(extraKey, o["extra"]), Shared.Release);
+        var before = mod.ModHeader.MasterReferences.Select(m => m.Master).ToList();
+        var extraMasters = extra.ModHeader.MasterReferences.Select(m => m.Master).ToList();
+        Shared.Require(!mod.ModHeader.Flags.HasFlag(SkyrimModHeader.HeaderFlag.Small), "the plugin is already ESL-flagged");
+        Shared.Require(extraMasters.Contains(Shared.Self), $"{extraKey} does not master {Shared.Self}");
+        Shared.Require(!before.Contains(extraKey) && !order.Contains(extraKey), $"{extraKey} is a master or a load order entry of the run");
+
+        var held = mod.EnumerateMajorRecords().Select(r => r.FormKey).ToHashSet();
+        var counts = new Dictionary<string, int>();
+        int addedRecords = 0, sharedRecords = 0, grids = 0;
+        foreach (var ctx in extra.EnumerateMajorRecordContexts<IMajorRecord, IMajorRecordGetter>(extra.ToImmutableLinkCache()))
+        {
+            var rec = ctx.Record;
+            Shared.Require(rec.FormKey.ModKey != extraKey, $"{rec.FormKey} is {extraKey}'s own record; it must hold overrides only");
+            var name = TypeName(rec);
+            var alreadyHeld = held.Contains(rec.FormKey);
+            if (alreadyHeld)
+            {
+                // Only the container records may be in both: the copy kept is the plugin's own, which already holds its children
+                Shared.Require(rec is ICellGetter or IWorldspaceGetter, $"{name} {rec.FormKey} is in both plugins; one version would be dropped");
+                sharedRecords++;
+            }
+            else
+            {
+                counts[name] = counts.GetValueOrDefault(name) + 1;
+                addedRecords++;
+            }
+            var copy = ctx.GetOrAddAsOverride(mod);
+            // A copied worldspace leaves its grid data behind, so the large references and the offset table are carried over by hand
+            if (!alreadyHeld && rec is IWorldspaceGetter src && copy is Worldspace dst)
+            {
+                dst.LargeReferences.SetTo(src.LargeReferences.Select(x => x.DeepCopy()));
+                if (src.OffsetData is { Length: > 0 } off) dst.OffsetData = new MemorySlice<byte>(off.ToArray());
+                grids++;
+            }
+        }
+        Console.WriteLine($"{extraKey}: {addedRecords} records added, {sharedRecords} already held by {Shared.Self} (containers), {grids} worldspace grids carried over");
+        foreach (var e in counts.OrderBy(x => x.Key)) Console.WriteLine($"  {e.Key} {e.Value}");
+
+        var path = Shared.Write(mod, o["out"], order);
+        var pos = order.IndexOf(Shared.Self);
+        var want = order.Take(pos).Where(k => before.Contains(k) || extraMasters.Contains(k)).ToList();
+        var after = Shared.Masters(path);
+        Shared.Require(after.SequenceEqual(want), $"master list {string.Join(", ", after)} is not the load order union {string.Join(", ", want)}");
+        Shared.Require(before.All(after.Contains) && extraMasters.Where(k => k != Shared.Self).All(after.Contains), "a master of an input is missing from the result");
+        var written = SkyrimMod.CreateFromBinaryOverlay(new ModPath(Shared.Self, path), Shared.Release);
+        Shared.Require(!written.ModHeader.Flags.HasFlag(SkyrimModHeader.HeaderFlag.Small), "the result is ESL-flagged");
+        Console.WriteLine($"wrote {path}; masters {before.Count} -> {after.Count} ({string.Join(", ", after.Except(before))} added), ESL flag off");
+        return 0;
+    }
+
+    static string TypeName(IMajorRecordGetter r) => ((Loqui.ILoquiObject)r).Registration.Name;
 }

@@ -58,9 +58,9 @@ const CREATION_TITLES = {
   'ccbgssse025-advdsgs.esm': 'Saints & Seducers',
 }
 
-// AlduinakCreations.esp copies whole cells, worldspaces and reverted records out of the plugins before it; its build pins them
-const CREATIONS_PLUGIN = 'AlduinakCreations.esp'
-const CREATIONS_INPUTS = 'AlduinakCreations.inputs.json'
+// AlduinakAdditions.esp holds the merged Creation content, copied whole out of the plugins before it; its build pins them
+const PINNED_PLUGIN = 'AlduinakAdditions.esp'
+const PLUGIN_INPUTS = 'AlduinakAdditions.inputs.json'
 const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm'])
 
 const INLINE_WARN = 50 * 1024 * 1024   // warn when inlining anything this large
@@ -213,8 +213,8 @@ async function creationsSection() {
   return { plugins: c.plugins, searchDirs: Array.isArray(c.searchDirs) ? c.searchDirs : CREATION_SEARCH_DIRS, files, hash }
 }
 
-// Refuses to publish an AlduinakCreations.esp built against other plugins than the ones this manifest loads before it
-function checkCreationsInputs(mods, plugins, creations, inputsFiles) {
+// Refuses to publish an AlduinakAdditions.esp built against other plugins than the ones this manifest loads before it
+function checkPluginInputs(mods, plugins, creations, inputsFiles) {
   const provider = new Map()
   for (const m of mods) {
     for (const f of m.files) {
@@ -225,19 +225,19 @@ function checkCreationsInputs(mods, plugins, creations, inputsFiles) {
   for (const f of (creations && creations.files) || []) {
     if (f.kind === 'plugin') provider.set(f.name.toLowerCase(), { sha256: f.accept[0].sha256, mod: 'the game' })
   }
-  const own = provider.get(CREATIONS_PLUGIN.toLowerCase())
+  const own = provider.get(PINNED_PLUGIN.toLowerCase())
   if (!own) return
   const fail = why => {
-    throw new Error(`${CREATIONS_PLUGIN} in mod "${own.mod}" ${why}. It copies whole cells and worldspaces from the plugins loaded before it: ` +
-      `rebuild it with misc/proficiency-patcher and copy the new plugin and ${CREATIONS_INPUTS} into that mod (docs/docs_roleplay_creations_and_needs.md)`)
+    throw new Error(`${PINNED_PLUGIN} in mod "${own.mod}" ${why}. It copies whole cells and worldspaces from the plugins loaded before it: ` +
+      `rebuild it with misc/esp-merge and copy the new plugin and ${PLUGIN_INPUTS} into that mod (docs/docs_roleplay_creations_and_needs.md)`)
   }
   const file = inputsFiles.get(own.mod)
-  if (!file) fail(`has no ${CREATIONS_INPUTS} next to it`)
+  if (!file) fail(`has no ${PLUGIN_INPUTS} next to it`)
   let pinned
-  try { pinned = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (err) { fail(`has an unreadable ${CREATIONS_INPUTS} (${err.message})`) }
-  if (pinned.sha256 !== own.sha256) fail(`does not match its ${CREATIONS_INPUTS}, which belongs to another build`)
+  try { pinned = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (err) { fail(`has an unreadable ${PLUGIN_INPUTS} (${err.message})`) }
+  if (pinned.sha256 !== own.sha256) fail(`does not match its ${PLUGIN_INPUTS}, which belongs to another build`)
   const enabled = plugins.filter(l => l.startsWith('*')).map(l => l.slice(1).trim())
-  const at = enabled.findIndex(n => n.toLowerCase() === CREATIONS_PLUGIN.toLowerCase())
+  const at = enabled.findIndex(n => n.toLowerCase() === PINNED_PLUGIN.toLowerCase())
   if (at < 0 || at !== enabled.length - 1) fail('is not the last enabled plugin in plugins.txt')
   const before = enabled.slice(0, at).filter(n => !VANILLA_MASTERS.has(n.toLowerCase()))
   const inputs = Array.isArray(pinned.inputs) ? pinned.inputs : []
@@ -251,7 +251,7 @@ function checkCreationsInputs(mods, plugins, creations, inputsFiles) {
     .map(i => ({ name: i.name, was: String(i.sha256), now: (provider.get(i.name.toLowerCase()) || {}).sha256 || 'missing' }))
     .filter(i => i.was !== i.now)
   if (stale.length) fail(`is stale, ${stale.length} plugin(s) changed since its build: ${stale.map(i => `${i.name} (built ${i.was.slice(0, 8)}, now ${i.now.slice(0, 8)})`).join(', ')}`)
-  console.log(`  ${CREATIONS_PLUGIN}: built against the ${built.length} plugins this manifest loads before it`)
+  console.log(`  ${PINNED_PLUGIN}: built against the ${built.length} plugins this manifest loads before it`)
 }
 
 // Main
@@ -364,9 +364,9 @@ async function main() {
     const modDir = path.join(MODS, modName)
     if (!fs.existsSync(modDir)) continue
     const all = walk(modDir)
-    if (all.some(r => r.toLowerCase() === CREATIONS_INPUTS.toLowerCase())) inputsFiles.set(modName, path.join(modDir, CREATIONS_INPUTS))
+    if (all.some(r => r.toLowerCase() === PLUGIN_INPUTS.toLowerCase())) inputsFiles.set(modName, path.join(modDir, PLUGIN_INPUTS))
     // The inputs file is build metadata for the check below, never installed
-    const rels = all.filter(r => r.toLowerCase() !== 'meta.ini' && r.toLowerCase() !== CREATIONS_INPUTS.toLowerCase())
+    const rels = all.filter(r => r.toLowerCase() !== 'meta.ini' && r.toLowerCase() !== PLUGIN_INPUTS.toLowerCase())
     if (rels.length === 0) continue
 
     const files = []
@@ -376,7 +376,7 @@ async function main() {
     mods.push({ name: modName, modId: readModId(modDir), files, hash: contentHash(files) })
   }
 
-  checkCreationsInputs(mods, plugins, creations, inputsFiles)
+  checkPluginInputs(mods, plugins, creations, inputsFiles)
 
   // 4. Optional game-root files (preloaders, etc.)
   const root = []

@@ -28,21 +28,30 @@ def creations_files(final_sha):
     own = [i for i in body['inputs'] if i['name'] == SELF]
     assert body['plugin'] == name and body['sha256'] == plugin_sha and len(own) == 1 and own[0]['sha256'] == prof_sha, f'{inputs} does not pin the step 3 plugins'
     assert not any(r.type in ('ARMO', 'FURN') for r, _ in Plugin(plugin).records()), f'{name} overrides ARMO or FURN records, which steps 4 and 4b change'
-    own[0]['sha256'] = final_sha
     out_dir = os.path.dirname(OUT)
-    with open(os.path.join(out_dir, name), 'wb') as f:
-        f.write(open(plugin, 'rb').read())
-    check_sha(os.path.join(out_dir, name), plugin_sha)
-    out_inputs = os.path.join(out_dir, os.path.basename(inputs))
+    if RUN.get('merge'):
+        # Step 4c folded the plugin in, so the pin moves to the merged plugin and loses the entry for itself
+        body['plugin'], body['sha256'] = SELF, final_sha
+        body['inputs'] = [i for i in body['inputs'] if i['name'] != SELF]
+        out_inputs = os.path.join(out_dir, os.path.splitext(SELF)[0] + '.inputs.json')
+        note = [f'output {out_inputs}: {len(body["inputs"])} plugins loaded before {SELF}, which is pinned at {final_sha[:8]} '
+                f'in place of {name} {plugin_sha[:8]}; {name} itself is not an output']
+    else:
+        own[0]['sha256'] = final_sha
+        with open(os.path.join(out_dir, name), 'wb') as f:
+            f.write(open(plugin, 'rb').read())
+        check_sha(os.path.join(out_dir, name), plugin_sha)
+        out_inputs = os.path.join(out_dir, os.path.basename(inputs))
+        note = [f'output {os.path.join(out_dir, name)} sha256 {plugin_sha}',
+                f'output {out_inputs}: {len(body["inputs"])} plugins, {SELF} re-pinned from step 3 {prof_sha[:8]} to {final_sha[:8]}']
     with open(out_inputs, 'w', encoding='utf-8') as f:
         json.dump(body, f, indent=1)
         f.write('\n')
-    return [f'output {os.path.join(out_dir, name)} sha256 {plugin_sha}',
-            f'output {out_inputs}: {len(body["inputs"])} plugins, {SELF} re-pinned from step 3 {prof_sha[:8]} to {final_sha[:8]}']
+    return note
 
 
 def main():
-    src, sha = step_input('thrones')
+    src, sha = step_input('combined' if RUN.get('merge') else 'thrones')
     b = open(src, 'rb').read()
     p = Plugin(buf=b)
     assert p.serialize() == b, 'round trip is not exact'
@@ -59,8 +68,9 @@ def main():
     deployed_buf = read_input('DEPLOYED')
     deployed = Plugin(buf=deployed_buf)
     deployed_offset = sum(deployed.counts()) - struct.unpack_from('<I', dict(deployed.header.subs())['HEDR'], 4)[0]
-    # Mutagen's record count leaves out the same number of groups in every plugin it writes, the deployed one included
-    assert recs + grps - count == deployed_offset, f'HEDR count {count} vs {recs} records + {grps} groups, deployed offset {deployed_offset}'
+    # Mutagen's record count leaves out a number of groups that depends on the plugin's shape; a run that changes the shape pins its own
+    offset = RUN.get('hedr_offset', deployed_offset)
+    assert recs + grps - count == offset, f'HEDR count {count} vs {recs} records + {grps} groups: offset {recs + grps - count}, expected {offset} (deployed {deployed_offset})'
     assert all(pos.get(m.lower(), 999) < pos[SELF.lower()] for m in masters), 'a master is not in the server loadOrder before AlduinakAdditions'
     assert all((r.fid >> 24) <= len(masters) for r, _ in p.records()), 'a record uses an index past the master list'
     assert max(own) < nxt, f'next id {nxt:X} is not above the highest own id {max(own):X}'
@@ -77,7 +87,7 @@ def main():
     chain = {}
     for m in reversed(manifests()):
         chain.update(m)
-    lines = [f'output {OUT}', f'sha256 {sha}', f'size {len(b)} bytes; {recs} records, {grps} groups; HEDR 1.71, count {count} (records + groups - {deployed_offset}, as deployed), next id {nxt:X}; TES4 flags 0, form version 44',
+    lines = [f'output {OUT}', f'sha256 {sha}', f'size {len(b)} bytes; {recs} records, {grps} groups; HEDR 1.71, count {count} (records + groups - {offset}), next id {nxt:X}; TES4 flags 0, form version 44',
              f'masters ({len(masters)}), each in the server loadOrder before AlduinakAdditions (position {pos[SELF.lower()]}):']
     lines += [f'  {i:02X} {m} (load order {pos[m.lower()]})' for i, m in enumerate(masters)]
     lines += ['step chain:'] + [f'  {k}: {v["path"]} {v["sha256"]}' for k, v in chain.items()]

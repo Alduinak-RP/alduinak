@@ -2,7 +2,7 @@
 # Checks AlduinakCreations.esp against the plugins it overrides, reading them with fastesp only (no Mutagen):
 #   python verify_creations.py --out <patch.py out dir> --settings <server-settings with the Creations> [--spec spec.json]
 # Writes verify-creations.txt next to the plugin; exit code 3 on any problem. A clean run also writes <plugin>.inputs.json,
-# the sha256 of every plugin loaded before it, which compile-manifest.js checks before it publishes the plugin.
+# the sha256 of every plugin loaded before it, which misc/esp-merge/finalise.py turns into the shipped AlduinakAdditions.inputs.json.
 import argparse
 import collections
 import hashlib

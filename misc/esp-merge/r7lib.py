@@ -22,8 +22,10 @@ SELF = 'AlduinakAdditions.esp'
 
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
-# What the live copies hold today: the r7 plugin, deployed 2026-09-15. Re-pin after every deploy.
-DEPLOYED_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
+# What the live copies hold today: the r11 plugin, deployed 2026-09-16. Re-pin after every deploy.
+DEPLOYED_SHA = '7e2ebcfba42bd5d851ddd789fd99a60596b732155d1458f3c617598198331a25'
+# The r7 plugin, which the r11 run merged from and still pins
+R7_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
 
 _R7_RUN = {
     'dir': R7,
@@ -50,8 +52,8 @@ _R11_RUN = {
     # Graves's 2026-09-16 CK save, frozen from the Desktop
     'NEW': (R11 + 'input/AlduinakAdditions.esp', 'f8cefed985c9f35c06d4cb8d0c687f746bcf88e44665580e9791b2a5298157e9'),
     # The live r7 plugin he started from, which is also the attribution's RAW
-    'R4': (R7 + 'AlduinakAdditions.esp', DEPLOYED_SHA),
-    'RAW': (R7 + 'AlduinakAdditions.esp', DEPLOYED_SHA),
+    'R4': (R7 + 'AlduinakAdditions.esp', R7_SHA),
+    'RAW': (R7 + 'AlduinakAdditions.esp', R7_SHA),
     'attribution': (R11 + 'attribution.json', '8be205420aa2cf909e17679010fd081428d78396c3db6d9a59a8b7c3e38dfcaa'),
     # The records attribute.py found to be Graves's own work; delta.py writes exactly these
     'delta': (R11 + 'delta.json', 'b76a9e758bed4876b30e9d3ff510375f537199662b5821fdfad65d1c1194f92c'),
@@ -77,6 +79,16 @@ RUNS = {
     'r11-graves': dict(_R11_RUN, dir=R11 + 'graves-replay/', stage=R11 + 'graves-replay/', chain='r11', creations=False, slot=0x2B,
                        stage_sha='619a0967dd4444cb4e3d33fbbb5278d9c5057832b6b01bd9771dfb40109c670d',
                        spec='dd510ba88a126f1b823c2b56eb3623c35a09ac28797a5f8b79fcfd5c87466512', last_id=0x2093, own_records=119, added=1546),
+    # r11's replayed base through steps 3-5 with the charcoal spec; 'merge' adds step 4c, which folds AlduinakCreations.esp
+    # into the plugin, and makes step 5 read the 'combined' tag and ship one plugin with AlduinakAdditions.inputs.json.
+    # PLACEHOLDERS to re-pin from the run before it is trusted: 'spec' (sha256 of proficiency-patcher/spec.json as it sits
+    # on disk, line endings included), 'added', 'own_records' and 'last_id' (step 3 prints the values it saw when a check
+    # fails, and work/prof/verify.txt has the counts), 'hedr_offset' (step 5 prints the offset it saw). The values below
+    # are r11's plus the offset of a trial merge of the r11 outputs, so a wrong one stops the run instead of shipping.
+    # added is r11's 1591 plus the two Novice ore recipes (iron, corundum) the charcoal rule now overrides
+    'r12': dict(_R11_RUN, dir=ESPFIX + 'r12/', chain='r11', merge=True, hedr_offset=51,
+                spec='7fa5937bc041cbd6045e4ad824857203fc804bddd6ab9f874b624986b05214c4',
+                last_id=0x20B4, own_records=152, added=1593),
 }
 RUN_NAME = os.environ.get('ESP_MERGE_RUN', 'r7')
 assert RUN_NAME in RUNS, f'ESP_MERGE_RUN {RUN_NAME} is not one of {sorted(RUNS)}'

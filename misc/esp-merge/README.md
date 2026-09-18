@@ -20,6 +20,7 @@ whose input is missing from the run's manifest reads it from the run named by `c
 | `r10` | `r10/` | `r7/` | r7's merged base through steps 3-5 with the woodcutter's axe spec; staged ad651b18, never deployed |
 | `r11` | `r11/` | `r11/` | Graves's 2026-09-16 save replayed onto r7's merged base, then steps 3-5 with the integrated r11 spec |
 | `r11-graves` | `r11/graves-replay/` | `r11/graves-replay/` | The replay check: r11's replayed base through steps 3-5 with r10's spec, compared with r10 |
+| `r12` | `r12/` | `r11/` | r11's base through steps 3-5 with the charcoal spec, plus step 4c: one merged plugin, no `AlduinakCreations.esp` |
 
 The Desktop copy of the 2026-09-14 save (6017a624) was overwritten, so r7's steps 1, 2a and 2b can no longer run; its
 padded copy (db02e960) is the frozen input r7 and r10 check.
@@ -35,6 +36,7 @@ padded copy (db02e960) is the frozen input r7 and r10 check.
 | 3 | `proficiency.py` | `../proficiency-patcher/patch.py --next-form-id 0x201D` on the merged base, accepted only if the ids match LIVE |
 | 4 | `masks.py` + `Program.cs armor-effects` | clears EITM on the 8 crafted Kad_BogBlightMask.esp masks |
 | 4b | `thrones.py` | esplib, after the last Mutagen pass: drops FurnitureForce3rdPerson from every winning throne FURN still carrying it (Viking's Longhouse.esp 000E75) |
+| 4c | `combine.py` + `Program.cs combine` | only a run with `merge`: folds `AlduinakCreations.esp` into the plugin (see below) |
 | 5 | `finalise.py` | header and master checks, `<run>/AlduinakAdditions.esp`, `<run>/rollback/` copy of the plugin the live copies hold (`DEPLOYED_SHA`) |
 
 ## r11 pipeline
@@ -91,6 +93,41 @@ the 17 replaced refs as the only other difference and every other record byte-eq
   AlduinakAdditions last; the two ESM-flagged Creations move its full slot from 0x2B to 0x2D. Steps 1 and 2 are pinned
   and need no rerun.
 - **Deploy.** `DEPLOYED_SHA` stays be1cb8e3 until the r11 plugin is live, then re-pin it.
+
+## r12 pipeline: one plugin
+
+r12 is r11's base through steps 3-5 again with the charcoal spec, plus step 4c, which folds `AlduinakCreations.esp` into
+`AlduinakAdditions.esp` so the server ships one plugin. Run every step with `ESP_MERGE_RUN=r12`; steps 1 and 2 stay
+pinned to r11 through `chain`, and the stage folder is r11's, so `python stage.py` only refills the slot.
+
+| Step | Script | Does |
+|---|---|---|
+| 0 | `stage.py` | unchanged: r11's `stage-data` and `server-settings.stage.json` (57ea2a7d) |
+| 3 | `proficiency.py` | `patch.py` with the charcoal spec; still builds `AlduinakCreations.esp` and its inputs file, still checked by `verify_creations.py` |
+| 4, 4b | `masks.py`, `thrones.py` | unchanged |
+| 4c | `combine.py` | `Program.cs combine`: every record of `AlduinakCreations.esp` joins `AlduinakAdditions.esp` with its form key, the four Creation plugins join the master list in load order, the ESL flag stays off |
+| 5 | `finalise.py` | reads the `combined` tag, writes `r12/AlduinakAdditions.esp` and `r12/AlduinakAdditions.inputs.json`; no `AlduinakCreations.esp` output |
+
+- **Step 4c.** The Creations plugin holds overrides only, so every record keeps its master's form id; only the plugin's
+  own index and the master indices move, because the Creation plugins sit after `Dragonborn.esm`. The two plugins share
+  only container records (68 CELL and 5 WRLD in the trial merge); the plugin's own copy is kept, which already holds its
+  children, and the step refuses any other record held by both, so no version is ever dropped silently. A copied
+  worldspace loses its large references and offset table on the way through Mutagen, so the step carries both over by
+  hand. `combine.py` then checks with esplib that the merged record set is exactly the union of the two inputs, that
+  every record is byte-equal to its source subrecord by subrecord with the master indices remapped and sits under the
+  same groups, that the shared containers match both versions, and that the own local ids, the next form id and the
+  header flags are unchanged.
+- **The inputs file.** `verify_creations.py` still writes `AlduinakCreations.inputs.json` in `work/prof`, so the food
+  and stage-ability checks are unchanged. Step 5 turns it into `AlduinakAdditions.inputs.json`: the same list of plugins
+  loaded before it, less the entry for `AlduinakAdditions.esp` itself, pinned to the merged plugin's sha256.
+  `skymp5-backend/scripts/compile-manifest.js` reads it under that name (`PINNED_PLUGIN`, `PLUGIN_INPUTS`) and refuses a
+  manifest whose plugins before `AlduinakAdditions.esp` differ, or where it is not the last enabled plugin. The old
+  file's self-entry is not lost information: step 4c proves the Creation records and the plugin's own records agree.
+- **Pins.** `RUNS['r12']` carries placeholders for `spec`, `added`, `own_records`, `last_id` and `hedr_offset`; every one
+  of them stops a run that disagrees, and the comment in `r7lib.py` says where the real value is printed.
+- **Deploy.** One plugin to the three live copies and to `C:/MO2/mods/Alduinak`, with `AlduinakAdditions.inputs.json`
+  next to it; the `Alduinak Creations` MO2 mod, its `plugins.txt` line and the `AlduinakCreations.esp` entry of the
+  server `loadOrder` all go away. Re-pin `DEPLOYED_SHA` afterwards.
 
 ## Graves's next save
 

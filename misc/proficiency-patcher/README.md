@@ -57,16 +57,20 @@ today, including Riverwood, Riften, Dawnstar and Solitude), 87 references, 4 nav
 their winner at build time, `AlduinakAdditions.esp` included, and it loads last, so a stale copy silently undoes a later
 edit of Graves's plugin or a city mod. `verify_creations.py` writes `AlduinakCreations.inputs.json` after a clean check:
 the plugin's sha256 and the name and sha256 of every plugin loaded before it except the five vanilla masters, in order.
-The file ships next to the plugin in the MO2 mod, and `skymp5-backend/scripts/compile-manifest.js` (manager "Update
-manifest") refuses to publish a manifest whose plugins before `AlduinakCreations.esp` differ from it by name, order or
-sha256, or where the plugin is not the last enabled one; the file itself is never installed. The esp-merge pipeline
-re-pins `AlduinakAdditions.esp` in it at step 5, after steps 4 and 4b, which add only ARMO and FURN overrides.
+From r12 the esp-merge pipeline folds this plugin into `AlduinakAdditions.esp` at step 4c, so only one plugin ships and
+`AlduinakCreations.esp` is an intermediate of `work/prof`. Step 5 turns its inputs file into
+`AlduinakAdditions.inputs.json`: the same list without the entry for `AlduinakAdditions.esp` itself, pinned to the merged
+plugin. That file ships next to the plugin in the MO2 mod, and `skymp5-backend/scripts/compile-manifest.js` (manager
+"Update manifest") refuses to publish a manifest whose plugins before `AlduinakAdditions.esp` differ from it by name,
+order or sha256, or where the plugin is not the last enabled one; the file itself is never installed.
 
 - `AlduinakAdditions.esp` is built from a load order without the Creations, so it gains no Creation Club master and
   stays byte-identical to a run without them (checked 2026-09-16: 35c9db43 both ways on r7's merged base). Its full
   slot, and so `proficiency-ids.json`, moves from `0x2B` to `0x2D`; `misc/esp-merge/proficiency.py` expects that shift.
 - `AlduinakCreations.esp` is ESL-flagged and holds overrides only, so it takes no full slot and shifts nothing. It
-  masters the Creations and `AlduinakAdditions.esp` (for the rank markers) and loads last.
+  masters the Creations and `AlduinakAdditions.esp` (for the rank markers) and loads last. Merged in at step 4c its
+  records keep their form ids, `AlduinakAdditions.esp` hard-masters the four Creation plugins, and the full slot stays
+  `0x2D`: dropping an ESL plugin that loaded after it moves no slot.
 - The Creation Club plugins are localized. Every DLC master keeps its strings in `Skyrim - Interface.bsa`, where
   Mutagen only looks for `Skyrim.esm`'s, so the program extracts that archive's strings to a temp folder first.
   The dataDir must hold the four Creation BSAs as well as their plugins.
