@@ -88,18 +88,84 @@ interface Profession {
   id: string;
   label: string;
   title: string;
+  // What each of the four ranks opens up, shown beside the ladder in the Skills tab.
+  blurbs: string[];
 }
 
 // Order matches the menu's left-hand column.
 const PROFESSIONS: Profession[] = [
-  { id: "alchemist", label: "Alchemist", title: "The Patient Hand" },
-  { id: "blacksmith", label: "Blacksmith", title: "The Forge-Bound" },
-  { id: "cook", label: "Cook", title: "The Hearthkeeper" },
-  { id: "hunter", label: "Hunter", title: "The Far Tracker" },
-  { id: "miner", label: "Miner", title: "The Deep Delver" },
-  { id: "tailor", label: "Tailor", title: "The Fine Thread" },
-  { id: "warrior", label: "Warrior", title: "The Steadfast Guardian" },
-  { id: "woodworker", label: "Woodworker", title: "The Grain Reader" },
+  {
+    id: "alchemist", label: "Alchemist", title: "The Patient Hand",
+    blurbs: [
+      "Minor potions of healing, magicka and stamina.",
+      "Full-strength potions, and the first poisons.",
+      "Draughts and philters, from the rarer reagents.",
+      "Philters and elixirs: the strongest work of the lab.",
+    ],
+  },
+  {
+    id: "blacksmith", label: "Blacksmith", title: "The Forge-Bound",
+    blurbs: [
+      "Iron and corundum at the forge, and the smelter.",
+      "Steel, silver and gold.",
+      "The arms and armour of your own people, and Dwarven.",
+      "Ebony, malachite and stalhrim, and the Skyforge.",
+    ],
+  },
+  {
+    id: "cook", label: "Cook", title: "The Hearthkeeper",
+    blurbs: [
+      "Steaks, roasts and grilled fish.",
+      "Soups and stews.",
+      "Baking: bread, sweet rolls and dumplings.",
+      "Gourmet dishes, pies and crostatas.",
+    ],
+  },
+  {
+    id: "hunter", label: "Hunter", title: "The Far Tracker",
+    blurbs: [
+      "The pelts and hides only a hunter can take whole.",
+      "A faster draw and a steadier aim afield.",
+      "A longer hold on a drawn bow.",
+      "The full craft of the chase.",
+    ],
+  },
+  {
+    id: "miner", label: "Miner", title: "The Deep Delver",
+    blurbs: [
+      "Corundum veins; iron is open to anyone.",
+      "Gold and silver.",
+      "Orichalcum, moonstone and quicksilver.",
+      "Ebony and malachite.",
+    ],
+  },
+  {
+    id: "tailor", label: "Tailor", title: "The Fine Thread",
+    blurbs: [
+      "Leather, hide and plain cloth at the rack and the loom.",
+      "Fine clothing, robes and the better leathers.",
+      "The dress and light armour of your own people.",
+      "The finest weaves, and the work of your guild or hold.",
+    ],
+  },
+  {
+    id: "warrior", label: "Warrior", title: "The Steadfast Guardian",
+    blurbs: [
+      "A surer footing in a fight.",
+      "A faster off hand, a shield carried at speed, and deeper wind.",
+      "The charge: with a shield, a blade or a greatsword.",
+      "The full stance, the sweeping blow, and a warmaster's reach.",
+    ],
+  },
+  {
+    id: "woodworker", label: "Woodworker", title: "The Grain Reader",
+    blurbs: [
+      "Tools, and iron bows, arrows and shields; charcoal is open to anyone.",
+      "Steel, silver and gold bows, arrows and shields, and drums.",
+      "Orichalcum and moonstone, and flutes.",
+      "Malachite, quicksilver and ebony, and lutes.",
+    ],
+  },
 ];
 
 const PROFESSION_IDS = PROFESSIONS.map((p) => p.id);

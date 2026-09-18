@@ -8,6 +8,8 @@ interface Profession {
   id: string;
   label: string;
   title: string;
+  // Per-rank blurbs from the server; RANK_BLURB below is the fallback.
+  blurbs?: string[];
 }
 
 interface MasteryEvents {
@@ -28,7 +30,7 @@ export interface MasteryData {
 
 const RANKS = ['Novice', 'Adept', 'Expert', 'Master'];
 
-// What each rank opens up, shown beside the ladder.
+// What each rank opens up when the profession names nothing of its own.
 const RANK_BLURB = [
   'The first recipes of the craft.',
   'Refined work, and better materials.',
@@ -176,7 +178,7 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
                 className={'mastery__rank' + (reached ? ' mastery__rank--reached' : '')}
               >
                 <h3 className="mastery__rank-name">{rankName}</h3>
-                <p className="mastery__rank-perk">{RANK_BLURB[i]}</p>
+                <p className="mastery__rank-perk">{(current.blurbs || [])[i] || RANK_BLURB[i]}</p>
                 <span className="mastery__rank-cost">
                   {thresholds[i] === 0 ? 'from the start' : thresholds[i] + ' hours'}
                 </span>

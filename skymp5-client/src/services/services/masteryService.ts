@@ -7,6 +7,7 @@ export interface Profession {
   id: string;
   label: string;
   title: string;
+  blurbs?: string[];
 }
 
 // The server's masteryMenu reply, rendered by the Personal Menu's Skills tab.
