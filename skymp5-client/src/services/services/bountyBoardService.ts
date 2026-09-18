@@ -14,6 +14,7 @@ const WIDGET_ID = 26;
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
   post: 'bountyBoard:post',
+  remove: 'bountyBoard:remove',
   close: 'bountyBoard:close',
 };
 
@@ -33,13 +34,14 @@ interface BoardInfo {
   maxTextLen: number;
   maxNotes: number;
   expiryDays: number;
+  canRemove: boolean;
   notes: BoardNote[];
 }
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
 let info: BoardInfo = {
   board: 0, boardName: "", costGold: 25, gold: 0,
-  maxTextLen: 500, maxNotes: 40, expiryDays: 7, notes: [],
+  maxTextLen: 500, maxNotes: 40, expiryDays: 7, canRemove: false, notes: [],
 };
 
 /**
@@ -103,6 +105,7 @@ export class BountyBoardService extends ClientListener {
           maxTextLen: Number(content["maxTextLen"]) || 500,
           maxNotes: Number(content["maxNotes"]) || 40,
           expiryDays: Number(content["expiryDays"]) || 7,
+          canRemove: content["canRemove"] === true,
           notes: notes as BoardNote[],
         };
         // A refresh (someone posted) updates the open menu but must never
@@ -144,6 +147,10 @@ export class BountyBoardService extends ClientListener {
         sendCustomPacket(this.controller, { customPacketType: "bountyBoardPost", board: info.board, text });
       }
     }
+    if (key === events.remove) {
+      const id = Number(e.arguments[1]);
+      if (Number.isInteger(id) && id > 0) sendCustomPacket(this.controller, { customPacketType: "bountyBoardRemove", board: info.board, id });
+    }
   }
 
   private openMenu(): void {
@@ -170,6 +177,7 @@ export class BountyBoardService extends ClientListener {
       maxTextLen: info.maxTextLen,
       maxNotes: info.maxNotes,
       expiryDays: info.expiryDays,
+      canRemove: info.canRemove,
       notes: info.notes,
       events: events,
     };

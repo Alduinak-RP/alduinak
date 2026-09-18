@@ -12,6 +12,7 @@ interface BoardNote {
 
 interface BoardEvents {
   post: string;
+  remove: string;
   close: string;
   [key: string]: string;
 }
@@ -24,6 +25,7 @@ export interface BountyBoardData {
   maxTextLen: number;
   maxNotes: number;
   expiryDays: number;
+  canRemove: boolean;
   notes: BoardNote[];
   events: BoardEvents;
 }
@@ -124,6 +126,7 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
             onBack={() => setSelectedId(null)}
           >
             <button className="parchment__button" onClick={() => setSelectedId(null)}>Back</button>
+            {data.canRemove ? <button className="parchment__button" onClick={() => send(ev.remove, selected.id)}>Remove notice</button> : null}
           </PaperReader>
         ) : null}
 

@@ -248,6 +248,9 @@ const main = async () => {
   const jobSystem = new JobSystem(log, captureSystem, masterySystem);
   captureSystem.jobLoadOf = (actorId) => jobSystem.loadOf(actorId);
   adminSystem.setJobSystem(jobSystem);
+  const factionSystem = new FactionSystem(log, housingSystem);
+  const bountyBoardSystem = new BountyBoardSystem(log);
+  bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
@@ -257,7 +260,7 @@ const main = async () => {
     adminSystem,
     captureSystem,
     housingSystem,
-    new FactionSystem(log, housingSystem),
+    factionSystem,
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
     searchSystem,
@@ -273,7 +276,7 @@ const main = async () => {
     new GatheringSystem(log, masterySystem),
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
-    new BountyBoardSystem(log),
+    bountyBoardSystem,
     new WritingSystem(log),
     new UntouchableSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it

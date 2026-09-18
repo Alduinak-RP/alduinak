@@ -20,11 +20,12 @@ type Mp = any;
 //   Client -> Server:
 //     { customPacketType: "bountyBoardOpenRequest" }
 //     { customPacketType: "bountyBoardPost", board: <refrId>, text }
+//     { customPacketType: "bountyBoardRemove", board: <refrId>, id }
 //     { customPacketType: "bountyBoardClose" }
 //   Server -> Client:
 //     { customPacketType: "bountyBoardMenu", board, boardName, reason,
 //       costGold, gold, maxTextLen, maxNotes, expiryDays,
-//       notes: [{ id, author, text, ageHours }] }
+//       canRemove, notes: [{ id, author, text, ageHours }] }
 //     { customPacketType: "bountyBoardNotice", text }
 //
 // Persistence: `private.bountyBoard` on the canonical board reference, which
@@ -105,6 +106,8 @@ export class BountyBoardSystem implements System {
   systemName = "BountyBoardSystem";
 
   constructor(private log: Log) { }
+
+  canRemove = (_actorId: number, _boardName: string): boolean => false;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -194,6 +197,7 @@ export class BountyBoardSystem implements System {
     switch (type) {
       case "bountyBoardOpenRequest": this.onOpenRequest(ctx, userId); break;
       case "bountyBoardPost": this.onPost(ctx, userId, content); break;
+      case "bountyBoardRemove": this.onRemove(ctx, userId, content); break;
       case "bountyBoardClose": this.sessions.delete(userId); break;
       default: break;
     }
@@ -356,6 +360,22 @@ export class BountyBoardSystem implements System {
     this.refreshViewers(ctx, session.primary);
   }
 
+  private onRemove(ctx: SystemContext, userId: number, content: Content): void {
+    const session = this.sessions.get(userId);
+    const id = Number(content["id"]);
+    if (!session || !Number.isInteger(id) || id < 1 || toFormId(content["board"]) !== session.primary) return;
+    const actorId = this.actorOf(ctx, userId);
+    if (!actorId || !this.withinReach(ctx, actorId, session.refr)) return;
+    if (!this.canRemove(actorId, session.name)) return this.notice(ctx, userId, "Only non-citizen members of this hold may remove notices.");
+    const rec = this.read(ctx, session.primary) || emptyRecord();
+    const at = rec.notes.findIndex((note) => note.id === id);
+    if (at < 0) return this.notice(ctx, userId, "That notice is no longer on this board.");
+    const [note] = rec.notes.splice(at, 1);
+    if (!this.write(ctx, session.primary, rec)) return this.notice(ctx, userId, "The board would not remove that notice.");
+    this.appendLog(`${describeActor(ctx.svr, actorId)} removed note ${note.id} from the ${session.name} board: ${JSON.stringify(note.text)}`);
+    this.refreshViewers(ctx, session.primary);
+  }
+
   // ── Menu ────────────────────────────────────────────────────────────────────
 
   private sendMenu(ctx: SystemContext, userId: number, reason: "open" | "refresh"): void {
@@ -376,6 +396,7 @@ export class BountyBoardSystem implements System {
       maxTextLen: this.maxTextLen,
       maxNotes: this.maxNotes,
       expiryDays: this.expiryDays,
+      canRemove: this.canRemove(actorId, session.name),
       notes: rec.notes.map((n) => ({
         id: n.id,
         author: n.author,

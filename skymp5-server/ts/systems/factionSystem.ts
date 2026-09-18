@@ -790,6 +790,16 @@ export class FactionSystem implements System {
     return !!tier && this.roleCfg.tierCaps[tier].factions === true;
   }
 
+  canRemoveBoardPosts(actorId: number, boardName: string): boolean {
+    const holdByBoard: Record<string, string> = {
+      Dawnstar: "the-pale", Falkreath: "falkreath", Markarth: "the-reach", Morthal: "hjaalmarch",
+      Riften: "the-rift", Solitude: "haafingar", Whiterun: "whiterun", Windhelm: "eastmarch", Winterhold: "winterhold",
+    };
+    const hold = holdByBoard[boardName];
+    if (!hold) return false;
+    return rules.membershipsOf(this.cachedAccess(actorId)).some((m) => m.factionId === `hold:${hold}` && m.rankSlug !== "citizen");
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   private online(): OnlineActor[] {
