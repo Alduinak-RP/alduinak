@@ -39,9 +39,11 @@ Common recipes (editor id `AldRecipeCommon_*`) never count, whatever bench
 they sit on.
 
 Markers are cumulative: a Master holds the Novice, Adept, Expert and Master
-abilities. Novice content carries no condition at all, so everyone can make
-it; the Novice marker exists only so professions with a Novice perk (the
-warrior's Fighting Stance) receive it on choosing.
+abilities. Novice is a real gate: a character outside the profession makes
+nothing of it. What everyone may make is tiered `Anyone` in the spec, the one
+tier that writes no condition - the common recipes, charcoal, every drink at a
+meadery boiler, honey, five cooked dishes, and the cloaks, capes and coarsest
+clothing at the rack and the loom.
 
 ## The professions
 
@@ -64,20 +66,34 @@ defined in `PROFESSIONS` in `masterySystem.ts`; edit them there and the menu fol
 Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 `misc/proficiency-patcher/out/proficiency-report.md` after a run.
 
-| Profession | Novice (everyone) | Adept | Expert | Master |
-|---|---|---|---|---|
-| Alchemist | Minor Healing, Minor Stamina, Minor Magicka, wine, ale, mead, and Honningbrew and Black-Briar mead at the meadery boilers | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
-| Blacksmith | iron, corundum, leather, the woodcutter's axe | gold, steel, silver | orichalcum, dwarven, moonstone | malachite, quicksilver, ebony, dragon, stalhrim, nordic (at the Skyforge only) |
-| Cook | the cooked meats (each needs a Salt Pile), Steamed Mudcrab Legs, Honey (from one Bee Honeycomb) | soups, stews, chowder, Sweet Roll, Potato Bread | Bread, Braided Bread, Chicken Dumpling, Beef Stew | pies, crostatas, dumplings, Garlic Bread, Elsweyr Fondue, Venison Stew |
-| Hunter | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
-| Miner | iron and corundum veins | gold and silver veins | orichalcum and moonstone veins | malachite, quicksilver and ebony veins |
-| Tailor | scarves, gaiter, short capes, rugged mask and cape | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels, Reinforced Mantle, Boiled Leather Cuirass, Robed Iron Armor, Leather Doublet, Sturdy Pouch | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
-| Warrior | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
-| Woodworker | Charcoal (at the smelter) | iron, steel, hide and orcish-free bows, arrows and shields | orcish, dwarven, elven arrows and shields, orcish and dwarven bows | glass, ebony, dragon, stalhrim bows, arrows and shields |
+| Profession | Anyone | Novice | Adept | Expert | Master |
+|---|---|---|---|---|---|
+| Alchemist | honey from a honeycomb, and every drink at a meadery boiler | Minor Healing, Minor Stamina, Minor Magicka | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
+| Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, dragon, stalhrim, and the Skyforge |
+| Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue |
+| Hunter | - | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
+| Miner | iron veins | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
+| Tailor | cloaks and capes, and the coarsest everyday clothing | everything else at the tanning rack and the weaving loom, leather and hide armour included | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels and the dress of the tailor's own people | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
+| Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
+| Woodworker | charcoal, the broom | the tools (woodcutter's axe, pickaxe, hoe) and the iron and wooden bows, arrows and shields | steel, silver and gold bows, arrows and shields, and the drum | orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass, dragon and stalhrim, and the lute |
 
 Smithing, tempering and woodworking tiers follow the materials: the highest
 material among a recipe's inputs and its product decides, so elven bows
 (quicksilver) land in Master. Recipes the lists do not mention stay Novice.
+
+**Which bench.** A recipe at a forge goes where its materials come from
+(`benchRouting`): bows, arrows, bolts and shields are the woodworker's whatever
+they are made of, then ore and the metals smelted from it keep a recipe at the
+forge, leather and pelts send it to the tanning rack and firewood to the
+woodcrafting bench. A recipe that turns finished gear into other finished gear
+stays put; anything that makes nothing of ore is parked.
+
+**Race and faction.** Racial gear (`racial`) carries a `GetIsRace` OR group
+beside its rank condition, vampire races included; Dwarven is in no rule.
+Faction gear (`factions`) carries a `HasSpell` on a marker of its own, handed
+out from the backend roster by `factionCraftSystem.ts`, so guard armour, the
+Legion, the Stormcloaks, the Thalmor, the Companions, the Thieves Guild, the
+Dark Brotherhood and the College each make their own.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in
@@ -166,12 +182,12 @@ Benches:
 - **Meadery boilers**: the three boilers of the north row in Honningbrew
   Meadery's boiler room and the two in Black-Briar Meadery's basement brew
   mead, see below.
-- **Common recipes** make the items the prop emotes need: the lute, flute, drum
-  and broom at the Woodcrafting Bench, the Imperial and Nord war horns at the
-  forge (costs in `docs_roleplay_emote_wheel.md`). Any character makes them at
-  Novice, whatever their profession, and they earn no hours: `masterySystem.ts`
-  skips every recipe named `AldRecipeCommon_*`. In the spec they are
-  `kilnRecipes` entries without a `profession`.
+- **Common recipes** make the broom at the Woodcrafting Bench and the Imperial
+  and Nord war horns at the forge (costs in `docs_roleplay_emote_wheel.md`). Any
+  character makes them, and they earn no hours: `masterySystem.ts` skips every
+  recipe named `AldRecipeCommon_*`. In the spec they are `kilnRecipes` entries
+  without a `profession`, tiered `Anyone`. The lute, flute and drum are no
+  longer common: they are the woodworker's Master, Expert and Adept work.
 - **Armour table and grindstone**: the Improve tab shows only what the character
   could have made. The rank comes from the material table, the profession from
   whoever crafts the item, so the 27 bow and shield entries ask for the
@@ -333,11 +349,11 @@ produces is:
   different amounts, so the door is put back at the arch's position plus the
   vanilla offset between the two, inside the plugin's existing cell and world
   groups.
-- `COBJ` records: the new alchemy, charcoal, woodcutter's axe and common
-  (instrument, broom and war horn) recipes;
+- `COBJ` records: the new alchemy, charcoal, tool (axe, pickaxe, hoe),
+  instrument, mead and common (broom and war horn) recipes;
   overrides of every cooking, smithing, tempering, woodworking and tailoring
   recipe with one condition, `HasSpell`, parameter the rank's marker, **Run On =
-  Subject**, `== 1`. Novice means no condition. `Run On` must be Subject:
+  Subject**, `== 1`. Only the `Anyone` tier writes no condition. `Run On` must be Subject:
   `ConditionsEvaluator` only accepts `Subject`, `Target` and `Reference`. The
   recipes listed under `uncraftable` keep their tier but sit on `MothNest1`;
   those under `benchMoves` keep their tier at their new bench keyword.
