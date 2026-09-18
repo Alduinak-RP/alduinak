@@ -75,7 +75,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Miner | iron veins | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
 | Tailor | cloaks and capes, and the coarsest everyday clothing | everything else at the tanning rack and the weaving loom, leather and hide armour included | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels and the dress of the tailor's own people | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
 | Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
-| Woodworker | charcoal, the broom | the tools (woodcutter's axe, pickaxe, hoe) and the iron and wooden bows, arrows and shields | steel, silver and gold bows, arrows and shields, and the drum | orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass, dragon and stalhrim, and the lute |
+| Woodworker | charcoal, the broom | the tools (woodcutter's axe, pickaxe, hoe), the blank parchment, journal and book, and the iron and wooden bows, arrows and shields | steel, silver and gold bows, arrows and shields, and the drum | orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass, dragon and stalhrim, and the lute |
 
 Smithing, tempering and woodworking tiers follow the materials: the highest
 material among a recipe's inputs and its product decides, so elven bows

@@ -2684,6 +2684,45 @@
     }
    },
    {
+    "edid": "AldRecipeWood_Parchment",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "AldWritingParchmentBlank",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_Journal",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "AldWritingJournalBlank",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_Book",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "AldWritingBookBlank",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
+   },
+   {
     "edid": "AldRecipeWriting_SealingWax",
     "bench": "CraftingSmelter",
     "output": "AldSealingWax",
