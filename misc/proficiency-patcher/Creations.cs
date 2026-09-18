@@ -363,7 +363,6 @@ class CreationsRun
             Steps.Cooking(ctx);
             Steps.Smithing(ctx);
             Steps.Tempering(ctx);
-            Steps.Woodworking(ctx);
             Steps.Uncraftable(ctx);
         }
         catch (SpecException e)
@@ -385,7 +384,6 @@ class CreationsRun
         Set("smithing", "addItems", new JsonObject());
         Set("smithing", "exclude", new JsonArray());
         Set("smithing", "newRecipes", new JsonArray());
-        Set("woodworking", "recipes", new JsonObject());
         Set("tailoring", "recipes", new JsonArray());
         Set("tailoring", "newRecipes", new JsonArray());
         (merged["tailoring"] as JsonObject)?.Remove("disableRecipes");

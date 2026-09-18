@@ -69,7 +69,6 @@ Steps.KilnRecipes(ctx);
 Steps.Cooking(ctx);
 Steps.Smithing(ctx);
 Steps.Tempering(ctx);
-Steps.Woodworking(ctx);
 Steps.Tailoring(ctx);
 Steps.Uncraftable(ctx);
 Steps.Meadery(ctx);
@@ -167,6 +166,7 @@ class PatchContext
     // Editor id -> record already in the mutable plugin (own records and overrides), refreshed as records are added.
     private readonly Dictionary<string, IMajorRecord> ownByEdid = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<FormKey, int>? materialTiers;
+    private Dictionary<string, Route>? routes;
 
     public PatchContext(SkyrimMod mod, ILinkCache cache, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, JsonObject spec, Report report,
                         ModKey? markerKey = null, Func<IMajorRecordGetter, bool>? includes = null)
@@ -182,6 +182,8 @@ class PatchContext
     public const string AnyoneTier = "Anyone";
     public string[] Ranks => Spec["ranks"]!.AsArray().Select(r => r!.GetValue<string>()).ToArray();
     public Dictionary<FormKey, int> MaterialTiers => materialTiers ??= Steps.MaterialTiers(this);
+    // Recipe editor id -> the bench and profession the routing rules give it
+    public Dictionary<string, Route> Routes => routes ??= Steps.Routes(this);
     public IEnumerable<KeyValuePair<string, string>> Professions => Spec["professions"]!.AsObject().Select(p => new KeyValuePair<string, string>(p.Key, p.Value!.GetValue<string>()));
 
     public string MarkerEdid(string profession, string rank) => $"AldMastery_{Cap(profession)}_{rank}";
@@ -465,7 +467,67 @@ static class Steps
             c.Error($"cooking: recipe '{edid}' is not a winning cooking recipe in the load order");
     }
 
-    // ---- smithing: tier by the highest material used; gates the server cannot evaluate removed --------------------
+    // ---- routing: a forge recipe belongs at the bench its materials come from -------------------------------------
+    //
+    // Bows, arrows, bolts and shields are the woodworker's whatever they are made of; everything else follows the
+    // first material rule it matches, so ore keeps a recipe at the forge, leather and pelts send it to the tanning
+    // rack and firewood to the woodcrafting bench. A recipe that takes a finished piece of gear and gives another
+    // (the closed helmets, the silver upgrades) is a conversion and stays where it is; anything left over is hidden.
+    public static Dictionary<string, Route> Routes(PatchContext c)
+    {
+        var r = c.Spec["benchRouting"]!.AsObject();
+        var product = r["products"]!.AsArray().Select(x => x!.AsObject())
+            .Select(x => (Rule: new Route(c.KeyOf<IKeywordGetter>(x["bench"]!.GetValue<string>()), x["bench"]!.GetValue<string>(), x["profession"]!.GetValue<string>()),
+                          Keywords: Edids(c, x["keywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet(),
+                          Kinds: Edids(c, x["kinds"]).ToHashSet(StringComparer.OrdinalIgnoreCase))).ToList();
+        var material = r["materials"]!.AsArray().Select(x => x!.AsObject())
+            .Select(x => (Rule: x["keep"]?.GetValue<bool>() == true ? null : new Route(c.KeyOf<IKeywordGetter>(x["bench"]!.GetValue<string>()), x["bench"]!.GetValue<string>(), x["profession"]!.GetValue<string>()),
+                          Profession: x["profession"]!.GetValue<string>(),
+                          Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
+                          Keywords: Edids(c, x["itemKeywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet())).ToList();
+        var conversion = r["conversions"]!["profession"]!.GetValue<string>();
+        var benches = Edids(c, r["from"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var routes = new Dictionary<string, Route>(StringComparer.OrdinalIgnoreCase);
+        foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
+        {
+            if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
+            var edid = winning.EditorID ?? "";
+            var made = ProductKeywords(c, winning.CreatedObject.FormKey, out var kind);
+            var hit = product.FirstOrDefault(p => p.Kinds.Contains(kind) || made.Overlaps(p.Keywords));
+            if (hit.Rule != null) { routes[edid] = hit.Rule; continue; }
+            var inputs = (winning.Items ?? new List<IContainerEntryGetter>()).Select(i => i.Item.Item.FormKey).ToList();
+            var by = material.FirstOrDefault(m => inputs.Any(i => m.Items.Contains(i) || ItemKeywords(c, i).Overlaps(m.Keywords)));
+            if (by.Profession != null) { routes[edid] = by.Rule ?? new Route(winning.WorkbenchKeyword.FormKey, c.EdidOf(winning.WorkbenchKeyword.FormKey), by.Profession); continue; }
+            // A conversion of finished gear keeps its bench; nothing else belongs at a forge
+            var parking = c.Spec["uncraftable"]!["bench"]!.GetValue<string>();
+            routes[edid] = inputs.Any(i => IsGear(c, i))
+                ? new Route(winning.WorkbenchKeyword.FormKey, c.EdidOf(winning.WorkbenchKeyword.FormKey), conversion)
+                : new Route(c.KeyOf<IKeywordGetter>(parking), parking, conversion, Hidden: true);
+        }
+        return routes;
+    }
+
+    static IEnumerable<string> Edids(PatchContext c, JsonNode? list) =>
+        (list as JsonArray)?.Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>();
+
+    // The keywords of a created object, with the coarse kind the product rules match on
+    static HashSet<FormKey> ProductKeywords(PatchContext c, FormKey key, out string kind)
+    {
+        kind = c.Cache.TryResolve<IAmmunitionGetter>(key, out _) ? "ammo"
+             : c.Cache.TryResolve<IArmorGetter>(key, out _) ? "armor"
+             : c.Cache.TryResolve<IWeaponGetter>(key, out _) ? "weapon" : "";
+        return ItemKeywords(c, key);
+    }
+
+    // IKeywordedGetter is not a lookup type of its own; the record is resolved and then asked
+    static bool IsGear(PatchContext c, FormKey key) =>
+        c.Cache.TryResolve<IArmorGetter>(key, out _) || c.Cache.TryResolve<IWeaponGetter>(key, out _);
+
+    static HashSet<FormKey> ItemKeywords(PatchContext c, FormKey key) =>
+        c.Cache.TryResolve<IMajorRecordGetter>(key, out var rec) && rec is IKeywordedGetter { Keywords: { } kws }
+            ? kws.Select(x => x.FormKey).ToHashSet() : new HashSet<FormKey>();
+
+    // ---- smithing: recipes routed to their bench and tiered by the highest material used --------------------------
     public static void Smithing(PatchContext c)
     {
         var s = c.Spec["smithing"]!.AsObject();
@@ -474,33 +536,39 @@ static class Steps
         var exclude = (s["exclude"]?.AsArray().Select(x => x!.GetValue<string>()) ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var forced = TierMap(s["tiers"]?.AsObject() ?? new JsonObject());
         var ranks = c.Ranks;
-        var woodworking = WoodworkingSet(c);
         var strip = StripSet(c, s["stripPerkConditions"]?.GetValue<bool>() ?? true);
         var addItems = s["addItems"]?.AsObject() ?? new JsonObject();
         var extended = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in s["newRecipes"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
-            NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()), profession, "AldRecipeSmith_");
+            NewRecipe(c, r, c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>()), r["profession"]?.GetValue<string>() ?? profession, "AldRecipeSmith_");
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
             if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
-            if (exclude.Contains(edid) || woodworking.Contains(edid)) continue;
-            var tierIdx = MaterialTierOf(winning, c.MaterialTiers);
-            if (forced.TryGetValue(edid, out var forcedTier)) tierIdx = Array.IndexOf(ranks, forcedTier);
-            var tier = ranks[tierIdx];
+            if (exclude.Contains(edid)) continue;
+            // Smelter recipes are not routed: they are how ore becomes metal in the first place
+            var route = c.Routes.GetValueOrDefault(edid);
+            var owner = route?.Profession ?? profession;
+            var moved = route != null && route.Bench != winning.WorkbenchKeyword.FormKey;
+            // A forced tier may be Anyone, which is no rank at all
+            var tier = route?.Hidden == true ? "disabled"
+                     : forced.TryGetValue(edid, out var forcedTier) ? forcedTier
+                     : ranks[MaterialTierOf(winning, c.MaterialTiers)];
             var stripped = winning.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
             var extra = addItems[edid]?.AsObject();
             if (extra != null) extended.Add(edid);
-            if (tier == PatchContext.AnyoneTier && extra == null && !stripped && !HasAldCondition(c, winning))
+            if (tier == PatchContext.AnyoneTier && extra == null && !moved && !stripped && !HasAldCondition(c, winning))
             {
-                c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(winning.CreatedObject.FormKey), profession, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
+                c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(winning.CreatedObject.FormKey), owner, tier, Items(c, winning), untouched: true, origin: winning.FormKey.ModKey.FileName));
                 continue;
             }
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
             AddItems(c, cobj, extra);
             cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
-            SetTier(c, cobj, profession, tier);
-            c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
+            if (route != null) cobj.WorkbenchKeyword.SetTo(route.Bench);
+            SetTier(c, cobj, owner, route?.Hidden == true ? PatchContext.AnyoneTier : tier);
+            c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(cobj.CreatedObject.FormKey), owner, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName,
+                                                note: route?.Hidden == true ? "makes nothing of ore, hidden" : moved ? $"moved to {route!.BenchEdid}" : null));
         }
         foreach (var (edid, _) in addItems.Where(kv => !extended.Contains(kv.Key)))
             c.Error($"smithing: addItems recipe '{edid}' is not a winning smithing recipe in the load order");
@@ -545,15 +613,14 @@ static class Steps
         }
     }
 
-    // Product -> the profession whose recipe list crafts it, so a temper entry asks for the rank that made the item
+    // Product -> the profession that makes it, so a temper entry asks for the rank that made the item
     static Dictionary<FormKey, string> CrafterOfProduct(PatchContext c)
     {
         var map = new Dictionary<FormKey, string>();
-        var lists = new[] { (c.Spec["woodworking"]!["profession"]!.GetValue<string>(), WoodworkingSet(c)),
-                            (c.Spec["tailoring"]!["profession"]!.GetValue<string>(), TailoringSet(c)) };
-        foreach (var (prof, edids) in lists)
-            foreach (var edid in edids)
-                if (c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)) map[recipe.CreatedObject.FormKey] = prof;
+        foreach (var (edid, route) in c.Routes)
+            if (c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)) map[recipe.CreatedObject.FormKey] = route.Profession;
+        foreach (var edid in TailoringSet(c))
+            if (c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)) map[recipe.CreatedObject.FormKey] = c.Spec["tailoring"]!["profession"]!.GetValue<string>();
         return map;
     }
 
@@ -804,37 +871,8 @@ static class Steps
         return idx;
     }
 
-    static HashSet<string> WoodworkingSet(PatchContext c)
-    {
-        var w = c.Spec["woodworking"]!["recipes"]!.AsObject();
-        return w.SelectMany(kv => kv.Value!.AsArray().Select(x => x!.GetValue<string>())).ToHashSet(StringComparer.OrdinalIgnoreCase);
-    }
-
     static HashSet<string> TailoringSet(PatchContext c) =>
         c.Spec["tailoring"]!["recipes"]!.AsArray().Select(x => x!["edid"]!.GetValue<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-    // ---- woodworking: bows, arrows and shields move to the woodcrafting bench --------------------------------------
-    public static void Woodworking(PatchContext c)
-    {
-        var w = c.Spec["woodworking"]!.AsObject();
-        var profession = w["profession"]!.GetValue<string>();
-        var bench = c.KeyOf<IKeywordGetter>(c.Spec["keywords"]!["woodcrafting"]!.GetValue<string>());
-        var strip = StripSet(c, w["stripPerkConditions"]?.GetValue<bool>() ?? true);
-        foreach (var (tier, list) in w["recipes"]!.AsObject().Select(kv => (kv.Key, kv.Value!.AsArray())))
-        {
-            foreach (var edid in list.Select(x => x!.GetValue<string>()))
-            {
-                if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"woodworking recipe '{edid}' not found"); continue; }
-                var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
-                var from = c.EdidOf(cobj.WorkbenchKeyword.FormKey);
-                cobj.WorkbenchKeyword.SetTo(bench);
-                var stripped = cobj.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
-                cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
-                SetTier(c, cobj, profession, tier);
-                c.Report.Recipes.Add(new RecipeLine("woodworking", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName, note: $"moved from {from}"));
-            }
-        }
-    }
 
     // ---- tailoring: the owner's list, with ingredient corrections and three new recipes -----------------------------
     public static void Tailoring(PatchContext c)
@@ -929,6 +967,9 @@ static class ContextExtensions
         return c.EdidOf(key);
     }
 }
+
+// Where a routed recipe ends up; Hidden parks it on the keyword no furniture carries.
+record Route(FormKey Bench, string BenchEdid, string Profession, bool Hidden = false);
 
 record RecipeLine(string Kind, string Edid, string Output, string Profession, string Tier, List<string> Items, bool untouched = false, bool salted = false, bool gatesStripped = false, string? origin = null, string? note = null);
 

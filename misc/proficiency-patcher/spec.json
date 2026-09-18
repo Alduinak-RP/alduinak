@@ -987,88 +987,52 @@
    }
   ]
  },
- "woodworking": {
-  "profession": "woodworker",
-  "stripPerkConditions": true,
-  "recipes": {
-   "Adept": [
-    "JS_RecipeImperialShield",
-    "RecipeArmorTH_Iron1Shield",
-    "RecipeHearthguardShield",
-    "DLC2RecipeWeaponAshlanderGreatbow",
-    "DLC2RecipeArrowAsh",
-    "RecipeHearthguardShieldClothless",
-    "MCERecipeArmorGuardShieldFalkreath",
-    "MCERecipeArmorGuardShieldHjaalmarch",
-    "MCERecipeArmorGuardShieldMarkarth",
-    "MCERecipeArmorGuardShieldPale",
-    "MCERecipeArmorGuardShieldRiften",
-    "MCERecipeArmorGuardShieldSolitude",
-    "MCERecipeArmorGuardShieldWhiterun",
-    "MCERecipeArmorGuardShieldWinterhold",
-    "MCERecipeArrowFalmer",
-    "MCERecipeArrowForsworn",
-    "MCERecipeWeaponFalmerBow",
-    "MCERecipeWeaponForswornBow",
-    "MCERecipeWeaponImperialBow",
-    "MCERecipeArmorGuardShieldEastmarch",
-    "RecipeArmorIronShieldToweraltdk",
-    "RecipeArmorLargeWoodShieldaltdk",
-    "RecipeArmorSteelRoundedShieldaltdk",
-    "RecipeArmorNordicVanguardShieldaltdk",
-    "RecipeArmorRihadShield",
-    "DLC1RecipeTechBoltSteel",
-    "DLC1RecipeTechBoltDwarvenExplodingShock",
-    "DLC1RecipeTechBoltDwarvenExplodingIce",
-    "DLC1RecipeTechBoltDwarvenExplodingFire",
-    "DLC1RecipeTechBoltSteelExplodingShock",
-    "DLC1RecipeTechBoltSteelExplodingIce",
-    "DLC1RecipeTechBoltSteelExplodingFire",
-    "DLC1RecipeArrowSteel",
-    "DLC1RecipeArrowIron",
-    "RecipeArmorImperialShieldLight",
-    "RecipeWeaponSkyforgeBow",
-    "RecipeArmorSteelShield",
-    "RecipeArmorIronBandedShield",
-    "RecipeArmorImperialShield",
-    "RecipeArmorHideShield",
-    "RecipeArmorIronShield"
-   ],
-   "Expert": [
-    "RecipeArmorDIS_Alikr_Shield1",
-    "RecipeArmorDIS_Alikr_Shield2",
-    "DLC1RecipeTechBoltDwarven",
-    "DLC1RecipeArrowElven",
-    "DLC1RecipeArrowOrcish",
-    "DLC1RecipeArrowDwarven",
-    "RecipeWeaponOrcishBow",
-    "RecipeWeaponDwarvenBow",
-    "RecipeArmorOrcishShield",
-    "RecipeArmorDwarvenShield",
-    "RecipeArmorElvenShield"
-   ],
-   "Master": [
-    "RecipeArmorEinherjarShield",
-    "RecipeArmorEinherjarShield2",
-    "RecipeArmorRedoranShield",
-    "RecipeArmorBonesaintShield",
-    "RecipeArmorEbonyShieldaltdk",
-    "RecipeArmorDaedricShieldaltdk",
-    "DLC2RecipeArrowStalhrim",
-    "DLC2RecipeArrowNordic",
-    "DLC1RecipeArrowDragonbone",
-    "DLC1RecipeArrowDaedric",
-    "DLC1RecipeArrowGlass",
-    "DLC1RecipeArrowEbony",
-    "RecipeWeaponGlassBow",
-    "RecipeWeaponElvenBow",
-    "RecipeWeaponEbonyBow",
-    "RecipeArmorDaedricShield",
-    "RecipeArmorDragonplateShield",
-    "RecipeArmorEbonyShield",
-    "RecipeArmorDragonscaleShield",
-    "RecipeArmorGlassShield"
-   ]
+ "benchRouting": {
+  "from": [
+   "CraftingSmithingForge",
+   "CraftingSmithingSkyforge",
+   "DLC2CraftingSmithingSkaalForge",
+   "DLC1CraftingDawnguard",
+   "DLC1LD_CraftingForgeAetherium"
+  ],
+  "products": [
+   {
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker",
+    "kinds": [ "ammo" ],
+    "keywords": [ "ArmorShield", "WeapTypeBow" ]
+   }
+  ],
+  "materials": [
+   {
+    "keep": true,
+    "profession": "blacksmith",
+    "items": [
+     "IngotIron", "IngotCorundum", "IngotSteel", "IngotGold", "ingotSilver", "IngotOrichalcum",
+     "IngotDwarven", "IngotIMoonstone", "IngotQuicksilver", "IngotMalachite", "IngotEbony",
+     "OreIron", "OreCorundum", "OreGold", "OreSilver", "OreOrichalcum", "OreMoonstone",
+     "OreQuicksilver", "OreMalachite", "OreEbony", "DLC2OreStalhrim",
+     "DwarvenScrapMetal", "DwarvenScrapBent", "DwarvenScrapLever", "DwarvenScrapLever02",
+     "DwarvenLargeScrap", "DwarvenLargeScrap2", "DwarvenLargeScrap3",
+     "DwarvenPlateMetalLarge", "DwarvenPlateMetalSmall",
+     "DragonBone", "DragonScales"
+    ]
+   },
+   {
+    "bench": "CraftingTanningRack",
+    "profession": "tailor",
+    "itemKeywords": [ "VendorItemAnimalHide" ],
+    "items": [ "ChaurusChitin" ]
+   },
+   {
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker",
+    "itemKeywords": [ "VendorItemFireword" ],
+    "items": []
+   }
+  ],
+  "conversions": {
+   "profession": "blacksmith"
   }
  },
  "tailoring": {
@@ -2425,13 +2389,6 @@
     "tiers": {
      "Novice": ["ccBGSSSE001_RecipeWeaponImperialFishingRod", "ccBGSSSE001_RecipeWeaponArgonianFishingRod", "ccBGSSSE001_RecipeWeaponAlikriFishingRod"],
      "Adept": ["ccBGSSSE001_RecipeWeaponDwarvenFishingRod"]
-    }
-   },
-   "woodworking": {
-    "recipes": {
-     "Adept": ["ccBGSSSE037_RecipeBoltIron", "ccBGSSSE037_RecipeBoltSilver", "ccBGSSSE037_RecipeBoltBonemold", "ccBGSSSE037_RecipeBoltCorkbulb", "ccBGSSSE037_RecipeArrowCorkbulb"],
-     "Expert": ["ccBGSSSE037_RecipeBoltOrcish", "ccBGSSSE025_RecipeAmmoAmberArrow", "ccBGSSSE025_RecipeWeaponAmberBow", "ccBGSSSE025_RecipeArmorAmberShield"],
-     "Master": ["ccBGSSSE025_RecipeAmmoMadnessArrow", "ccBGSSSE025_RecipeWeaponMadnessBow", "ccBGSSSE025_RecipeArmorMadnessShield"]
     }
    },
    "uncraftable": {
