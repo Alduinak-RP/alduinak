@@ -17,10 +17,13 @@ type Mp = any;
 //   miningVeinTiers              { "<ore editor id or hex id>": "Adept" | rank index } overriding DEFAULT_VEIN_TIERS
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
+//   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 60
 //
 // Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
 // Ores above Novice need the miner profession at that rank; everything else is open to anyone with a pickaxe.
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
+// Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
+// so the plant keeps its unpicked model until the cell reloads.
 
 const VEIN_PROP = "private.gathering";
 const SEAT_CLOSE_EVENT = "onPapyrusEvent:SkympOnActivateClose";
@@ -29,6 +32,7 @@ const NOTICE_PACKET = "masteryNotice";
 
 const DEFAULT_STRIKE_SECONDS = 5;
 const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
+const DEFAULT_PICK_MINUTES = 60;
 // Engine furniture reach is 256; a wall marker stands a little off its vein.
 const SEAT_REACH = 400;
 // Nobody works one sitting this long; a stuck session is dropped.
@@ -61,7 +65,7 @@ const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
   BeeHiveVacant: { BeeHoneyComb: 2, BeeHiveHusk: 2 },
 };
 
-type StationKind = "chop" | "vein" | "marker" | "produce";
+type StationKind = "chop" | "vein" | "marker" | "produce" | "pick";
 
 interface Station {
   kind: StationKind;
@@ -106,6 +110,8 @@ export class GatheringSystem implements System {
     if (Number.isFinite(strike) && strike > 0) this.strikeMs = strike * 1000;
     const respawn = Number(all?.["gatheringVeinRespawnMinutes"]);
     if (Number.isFinite(respawn) && respawn >= 0) this.respawnMs = respawn * 60000;
+    const pick = Number(all?.["gatheringPickMinutes"]);
+    if (Number.isFinite(pick) && pick >= 0) this.pickMs = pick * 60000;
     const regen = Number(all?.["gatheringVeinRegenMinutes"]);
     if (Number.isFinite(regen) && regen > 0) this.regenMs = regen * 60000;
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
@@ -114,7 +120,7 @@ export class GatheringSystem implements System {
 
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
-    this.log(`[gathering] ready, one strike per ${this.strikeMs / 1000} s, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s)`);
+    this.log(`[gathering] ready, one strike per ${this.strikeMs / 1000} s, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -256,6 +262,7 @@ export class GatheringSystem implements System {
       case "vein": return this.onVein(ctx, targetId, casterId, station.props);
       case "marker": return this.onMiningMarker(ctx, targetId, casterId, station.props);
       case "produce": return this.onProduce(ctx, targetId, casterId, station.props);
+      case "pick": return this.onPick(ctx, targetId, casterId, station.props);
       default: return undefined;
     }
   }
@@ -271,6 +278,19 @@ export class GatheringSystem implements System {
     return () => {
       for (const e of items) this.addItem(ctx, actorId, e.baseId, e.count);
       this.writeVein(ctx, containerId, { left: 0, regenAt: Date.now() + regrow });
+      return false;
+    };
+  }
+
+  // Nirnroot and bees: one ingredient on E, then nothing there for an hour
+  private onPick(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>): Verdict {
+    const item = props["item"];
+    if (!item) return undefined;
+    if (!this.withinReach(ctx, actorId, refrId)) return false;
+    if (this.veinState(ctx, refrId, 1, this.pickMs).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
+    return () => {
+      this.addItem(ctx, actorId, item, 1);
+      this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + this.pickMs });
       return false;
     };
   }
@@ -499,6 +519,8 @@ export class GatheringSystem implements System {
     else if (type === "ACTI" && scripts.has("mineorescript")) station = { kind: "vein", props: scripts.get("mineorescript")! };
     else if (type === "FURN" && scripts.has("mineorefurniturescript")) station = { kind: "marker", props: scripts.get("mineorefurniturescript")! };
     else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
+    else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0 } };
+    else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
     this.stationCache.set(baseId, station);
     return station;
   }
@@ -587,5 +609,6 @@ export class GatheringSystem implements System {
   private toolCache = new Map<number, Set<number>>();
   // Produce container base id -> ms until it has produce again
   private produceMs = new Map<number, number>();
+  private pickMs = DEFAULT_PICK_MINUTES * 60000;
   private produceYield = new Map<number, Array<{ baseId: number; count: number }>>();
 }
