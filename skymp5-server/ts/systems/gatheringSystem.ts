@@ -16,6 +16,7 @@ type Mp = any;
 //   gatheringVeinRegenMinutes    minutes per ore collection grown back, default respawn / vein total
 //   miningVeinTiers              { "<ore editor id or hex id>": "Adept" | rank index } overriding DEFAULT_VEIN_TIERS
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
+//   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //
 // Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
 // Ores above Novice need the miner profession at that rank; everything else is open to anyone with a pickaxe.
@@ -52,7 +53,13 @@ const DEFAULT_VEIN_TIERS: Record<string, number> = {
 };
 
 // Placed containers open empty on this server, so the honeycomb for the honey recipe comes from here.
-const DEFAULT_PRODUCE: Record<string, number> = { BeeHive: 60 };
+const DEFAULT_PRODUCE: Record<string, number> = { BeeHive: 60, BeeHiveVacant: 60 };
+
+// A hive holds one of each in the record; both kinds hand over this instead.
+const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
+  BeeHive: { BeeHoneyComb: 2, BeeHiveHusk: 2 },
+  BeeHiveVacant: { BeeHoneyComb: 2, BeeHiveHusk: 2 },
+};
 
 type StationKind = "chop" | "vein" | "marker" | "produce";
 
@@ -103,6 +110,7 @@ export class GatheringSystem implements System {
     if (Number.isFinite(regen) && regen > 0) this.regenMs = regen * 60000;
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
     await this.loadProduce(ctx, all?.["gatheringProduceContainers"], s.dataDir, s.loadOrder);
+    await this.loadProduceYield(ctx, all?.["gatheringProduceYield"], s.dataDir, s.loadOrder);
 
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
@@ -138,6 +146,28 @@ export class GatheringSystem implements System {
     for (const [name, id] of ids) this.produceMs.set(id, minutes[name] * 60000);
     const unresolved = names.filter((n) => !ids.has(n));
     if (unresolved.length) this.log(`[gathering] produce container(s) not in the load order: ${unresolved.join(", ")}`);
+  }
+
+  // What each produce container hands over, replacing its record contents; a container whose items do not resolve keeps them.
+  private async loadProduceYield(ctx: SystemContext, raw: unknown, dataDir: string, loadOrder: string[]): Promise<void> {
+    const yields: Record<string, Record<string, number>> = raw && typeof raw === "object" ? {} : { ...DEFAULT_PRODUCE_YIELD };
+    for (const [container, value] of Object.entries(raw && typeof raw === "object" ? raw as Record<string, unknown> : {})) {
+      if (value && typeof value === "object") yields[container] = value as Record<string, number>;
+      else this.log(`[gathering] gatheringProduceYield.${container}: ${JSON.stringify(value)} is not an item list, ignored`);
+    }
+    const containers = await this.resolveIds(ctx, Object.keys(yields), ["CONT"], dataDir, loadOrder);
+    for (const [container, containerId] of containers) {
+      const wanted = yields[container];
+      const items = await this.resolveIds(ctx, Object.keys(wanted), ["INGR", "MISC", "ALCH"], dataDir, loadOrder);
+      const entries: Array<{ baseId: number; count: number }> = [];
+      for (const [item, baseId] of items) {
+        const count = Math.floor(Number(wanted[item]));
+        if (count > 0) entries.push({ baseId, count });
+      }
+      const missing = Object.keys(wanted).filter((item) => !items.has(item));
+      if (missing.length) this.log(`[gathering] ${container} yield item(s) not in the load order, its record contents stand: ${missing.join(", ")}`);
+      else if (entries.length) this.produceYield.set(containerId, entries);
+    }
   }
 
   // Editor ids, hex ids and "hex:Plugin.esp" descs to global form ids; unresolved names are left out.
@@ -235,7 +265,8 @@ export class GatheringSystem implements System {
     // The engine never asks where an activator stands, so a forged packet from afar gathers nothing
     if (!this.withinReach(ctx, actorId, containerId)) return false;
     if (this.veinState(ctx, containerId, 1, regrow).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
-    const items = espmContainerEntries(this.lookup(ctx, props["base"])).filter((e) => e.count > 0 && String(this.lookup(ctx, e.baseId)?.record.type || "") !== "LVLI");
+    const items = this.produceYield.get(props["base"])
+      || espmContainerEntries(this.lookup(ctx, props["base"])).filter((e) => e.count > 0 && String(this.lookup(ctx, e.baseId)?.record.type || "") !== "LVLI");
     if (!items.length) return undefined;
     return () => {
       for (const e of items) this.addItem(ctx, actorId, e.baseId, e.count);
@@ -556,4 +587,5 @@ export class GatheringSystem implements System {
   private toolCache = new Map<number, Set<number>>();
   // Produce container base id -> ms until it has produce again
   private produceMs = new Map<number, number>();
+  private produceYield = new Map<number, Array<{ baseId: number; count: number }>>();
 }

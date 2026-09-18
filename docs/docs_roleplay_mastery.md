@@ -212,10 +212,12 @@ container loot are off:
   foes carry it.
 - Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
   open to everyone.
-- Bee Honeycomb: the vanilla beehives. `gatheringSystem.ts` keeps them shut and
-  hands over a honeycomb, a beehive husk and a bee on E, then the hive is empty
-  for an hour (`gatheringProduceContainers`). The state rides the hive as
-  `private.gathering`, like a vein.
+- Bee Honeycomb: the vanilla beehives, occupied and vacant. `gatheringSystem.ts`
+  keeps them shut and hands over two honeycomb and two beehive husks on E
+  (`gatheringProduceYield`), then the hive is empty for an hour
+  (`gatheringProduceContainers`). The state rides the hive as
+  `private.gathering`, like a vein. The bee ingredient comes from the bees
+  themselves.
 
 ### Vanilla perks through abilities
 
