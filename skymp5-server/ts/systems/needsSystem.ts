@@ -353,6 +353,23 @@ export class NeedsSystem implements System {
     this.applyExhaustion(ctx, actorId, miner ? this.mineFatigueOwn : this.mineFatigue);
   }
 
+  // Whether the bar can still pay for one swing, checked before the station opens
+  canChop(ctx: SystemContext, actorId: number, woodworker: boolean): boolean {
+    return this.canAfford(actorId, woodworker ? this.chopFatigueOwn : this.chopFatigue);
+  }
+
+  canMine(ctx: SystemContext, actorId: number, miner: boolean): boolean {
+    return this.canAfford(actorId, miner ? this.mineFatigueOwn : this.mineFatigue);
+  }
+
+  // An offline character or a server with needs switched off is never refused
+  private canAfford(actorId: number, points: number): boolean {
+    const entry = this.online.get(actorId);
+    if (!entry || !this.enabled || points <= 0) return true;
+    this.advance(entry.rec, Date.now(), true);
+    return entry.rec.fatigue + EPSILON >= points / this.exhaustionMax;
+  }
+
   // Exhaustion points off the bar crafting spends, on the stage scale
   private applyExhaustion(ctx: SystemContext, actorId: number, points: number): void {
     const entry = this.online.get(actorId);

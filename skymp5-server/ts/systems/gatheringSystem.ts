@@ -23,7 +23,8 @@ type Mp = any;
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 60
 //
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
-// needsMineFatigue); woodworkers and miners pay the smaller price for their own trade.
+// needsMineFatigue); woodworkers and miners pay the smaller price for their own trade, and a bar that cannot pay
+// for one more turns the station away.
 // Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
 // Every ore but iron needs the miner profession at its rank; iron is open to anyone with a pickaxe.
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
@@ -312,6 +313,9 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["requireditemlist"])) {
       return this.deny(ctx, actorId, "You need a woodcutter's axe to chop wood.");
     }
+    if (!this.needs.canChop(ctx, actorId, this.mastery.rankOf(ctx, actorId, "woodworker") >= 0)) {
+      return this.deny(ctx, actorId, "You are too tired to swing an axe. Rest a while.");
+    }
     if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, "Someone is already using this.");
     const resource = props["resource"] || 0;
     if (!resource || this.sessions.get(actorId)?.furnitureId === blockId) return undefined;
@@ -357,6 +361,9 @@ export class GatheringSystem implements System {
   private veinRefusal(ctx: SystemContext, veinId: number, actorId: number, props: Record<string, number>): false | undefined {
     if (!this.holdsTool(ctx, actorId, props["mineoretoolslist"])) {
       return this.deny(ctx, actorId, "You need a pickaxe to mine this vein.");
+    }
+    if (!this.needs.canMine(ctx, actorId, this.mastery.rankOf(ctx, actorId, "miner") >= 0)) {
+      return this.deny(ctx, actorId, "You are too tired to swing a pickaxe. Rest a while.");
     }
     const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) ?? OPEN_TO_ALL;
     if (tier >= 0 && this.mastery.rankOf(ctx, actorId, "miner") < tier) {
@@ -407,8 +414,11 @@ export class GatheringSystem implements System {
     s.strikesLeft -= 1;
     if (s.strikesLeft > 0) return;
     s.strikesLeft = s.strikesPer;
+    const miner = this.mastery.rankOf(ctx, s.actorId, "miner") >= 0;
+    // A sitting ends where an activation would be refused, rather than mining the bar into the ground
+    if (!this.needs.canMine(ctx, s.actorId, miner)) return this.finish(ctx, s, "You are too tired to keep mining. Rest a while.");
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
-    this.needs.applyMineFatigue(ctx, s.actorId, this.mastery.rankOf(ctx, s.actorId, "miner") >= 0);
+    this.needs.applyMineFatigue(ctx, s.actorId, miner);
     state.left -= 1;
     if (!state.regenAt) state.regenAt = now + this.regenPer(s.cap);
     this.writeVein(ctx, s.veinId, state);
