@@ -2542,6 +2542,43 @@
    }
   ]
  },
+ "disableReferences": {
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
+  "refs": [
+   "0A467D:Skyrim.esm",
+   "025D97:Skyrim.esm",
+   "0A7C47:Skyrim.esm",
+   "025D95:Skyrim.esm",
+   "0A7C48:Skyrim.esm",
+   "09EC17:Skyrim.esm",
+   "0A7C4A:Skyrim.esm",
+   "0A31E6:Skyrim.esm",
+   "0A7C4B:Skyrim.esm",
+   "0A31E7:Skyrim.esm",
+   "0A7C70:Skyrim.esm",
+   "14103F:JK's Whiterun's Outskirts.esp",
+   "141040:JK's Whiterun's Outskirts.esp",
+   "141049:JK's Whiterun's Outskirts.esp",
+   "2001F4:Warbirds Whiterun Metropolis.esp",
+   "2001F7:Warbirds Whiterun Metropolis.esp",
+   "2001F9:Warbirds Whiterun Metropolis.esp",
+   "2001FB:Warbirds Whiterun Metropolis.esp",
+   "2001FD:Warbirds Whiterun Metropolis.esp",
+   "200201:Warbirds Whiterun Metropolis.esp",
+   "200203:Warbirds Whiterun Metropolis.esp",
+   "200205:Warbirds Whiterun Metropolis.esp",
+   "200206:Warbirds Whiterun Metropolis.esp",
+   "001EFD:AlduinakAdditions.esp",
+   "0A31E5:Skyrim.esm",
+   "0116DA:AlduinakAdditions.esp",
+   "0116DB:AlduinakAdditions.esp",
+   "0116DC:AlduinakAdditions.esp",
+   "00C5C0:AlduinakAdditions.esp",
+   "00C5C1:AlduinakAdditions.esp",
+   "016805:AlduinakAdditions.esp",
+   "016807:AlduinakAdditions.esp"
+  ]
+ },
  "racial": {
   "benches": [
    "CraftingSmithingForge",

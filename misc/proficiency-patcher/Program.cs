@@ -80,6 +80,7 @@ Steps.EnchantmentMagnitudes(ctx);
 Steps.Placements(ctx);
 Steps.Writing(ctx);
 Steps.Racial(ctx);
+Steps.DisableReferences(ctx);
 var categories = Steps.Categories(ctx);
 
 if (report.Errors.Count > 0)
@@ -986,6 +987,33 @@ static class Steps
         if (t["disableRecipes"] is JsonArray disable)
             Park(c, disable.Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(t["disabledBench"]!.GetValue<string>()), "tailoring", profession);
     }
+
+    // ---- references the owner wants gone ---------------------------------------------------------------------------
+    //
+    // A deletion made in the Creation Kit does not survive: every plugin the server ships is regenerated from the
+    // merged base, so the edit is simply not there next time. The references are listed here instead and come back
+    // Initially Disabled on every run. Disabling rather than deleting is deliberate: a deleted reference other
+    // plugins or old saves still point at is worse than one that never enables.
+    public static void DisableReferences(PatchContext c)
+    {
+        if (c.Spec["disableReferences"] is not JsonObject spec) return;
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        int already = 0, disabled = 0;
+        foreach (var name in Edids(c, spec["refs"]))
+        {
+            var key = FormKey.Factory(name);
+            var contexts = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(key).ToList();
+            if (contexts.Count == 0) { c.Error($"disable reference: {name} not found"); continue; }
+            if ((contexts[0].Record.MajorRecordFlagsRaw & InitiallyDisabled) != 0) { already++; continue; }
+            var rec = contexts[0].GetOrAddAsOverride(c.Mod);
+            rec.MajorRecordFlagsRaw |= InitiallyDisabled;
+            disabled++;
+            c.Note($"Disabled reference {name} ({c.EdidOf(rec.Base.FormKey)}) from {contexts[0].ModKey}");
+        }
+        c.Note($"Disable references: {disabled} newly disabled, {already} already disabled");
+    }
+
+    const int InitiallyDisabled = 0x800;
 
     // ---- faction gear: only a member of that faction may make it --------------------------------------------------
     //
