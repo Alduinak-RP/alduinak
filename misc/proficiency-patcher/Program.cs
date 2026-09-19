@@ -663,7 +663,23 @@ static class Steps
     {
         if (c.Spec["uncraftable"] is not JsonObject u) return;
         // A faction rule claiming a recipe releases it: it is gated by membership now, not hidden
-        Park(c, u["recipes"]!.AsArray().Select(x => x!.GetValue<string>()).Where(e => !c.Claimed.Contains(e)), c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>()),
+        var named = u["recipes"]!.AsArray().Select(x => x!.GetValue<string>()).ToList();
+        // Whole families are easier named by what they make; a recipe a faction already gates is not hidden
+        var match = Edids(c, u["match"]).ToList();
+        var except = Edids(c, u["except"]).ToList();
+        if (match.Count > 0)
+        {
+            var benches = Edids(c, u["matchBenches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+            foreach (var (key, cobj) in FinalRecipes(c))
+            {
+                if (!benches.Contains(cobj.Bench) || c.Claimed.Contains(cobj.Edid) || named.Contains(cobj.Edid)) continue;
+                var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
+                var text = $"{cobj.Edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
+                if (match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
+                    && !except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))) named.Add(cobj.Edid);
+            }
+        }
+        Park(c, named.Where(e => !c.Claimed.Contains(e)), c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>()),
              "uncraftable", u["profession"]!.GetValue<string>());
     }
 
@@ -1082,6 +1098,8 @@ static class Steps
             .Select(x => (Name: x["name"]!.GetValue<string>(),
                           Races: Edids(c, x["races"]).Select(c.KeyOf<IRaceGetter>).ToList(),
                           Match: Edids(c, x["match"]).ToList(),
+                          // Ingredients that make a recipe that people's work whatever it is called
+                          Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
                           Except: Edids(c, x["except"]).ToList())).ToList();
         var counts = rules.ToDictionary(r => r.Name, _ => 0);
         foreach (var (key, cobj) in FinalRecipes(c))
@@ -1093,7 +1111,11 @@ static class Steps
             if (c.Claimed.Contains(edid)) continue;
             var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
             var text = $"{edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
-            var hit = rules.FirstOrDefault(r => r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
+            var inputs = c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)
+                ? (recipe.Items ?? new List<IContainerEntryGetter>()).Select(i => i.Item.Item.FormKey).ToList()
+                : new List<FormKey>();
+            var hit = rules.FirstOrDefault(r => (r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
+                                                 || r.Items.Count > 0 && inputs.Any(r.Items.Contains))
                                              && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)));
             if (hit.Name == null) continue;
             if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"racial: recipe '{edid}' not found"); continue; }

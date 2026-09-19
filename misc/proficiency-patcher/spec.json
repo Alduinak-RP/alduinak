@@ -950,21 +950,80 @@
    ]
   },
   "addItems": {
-   "RecipeIngotIron": { "Charcoal": 1 },
-   "RecipeIngotCorundum": { "Charcoal": 2 },
-   "RecipeIngotSteel": { "Charcoal": 2 },
-   "RecipeIngotGold": { "Charcoal": 2 },
-   "RecipeIngotSilver": { "Charcoal": 2 },
-   "RecipeIngotOrichalcum": { "Charcoal": 2 },
-   "RecipeIngotMoonstone": { "Charcoal": 2 },
-   "RecipeIngotQuicksilver": { "Charcoal": 2 },
-   "RecipeIngotMalachite": { "Charcoal": 2 },
-   "RecipeIngotEbony": { "Charcoal": 2 }
+   "RecipeIngotIron": {
+    "Charcoal": 1
+   },
+   "RecipeIngotCorundum": {
+    "Charcoal": 2
+   },
+   "RecipeIngotSteel": {
+    "Charcoal": 2
+   },
+   "RecipeIngotGold": {
+    "Charcoal": 2
+   },
+   "RecipeIngotSilver": {
+    "Charcoal": 2
+   },
+   "RecipeIngotOrichalcum": {
+    "Charcoal": 2
+   },
+   "RecipeIngotMoonstone": {
+    "Charcoal": 2
+   },
+   "RecipeIngotQuicksilver": {
+    "Charcoal": 2
+   },
+   "RecipeIngotMalachite": {
+    "Charcoal": 2
+   },
+   "RecipeIngotEbony": {
+    "Charcoal": 2
+   }
   },
   "stripPerkConditions": true,
   "tiers": {
    "Anyone": [
     "12RecipeSeaSaltPile"
+   ],
+   "Adept": [
+    "0RecipeArmorKhajiitBoots",
+    "0RecipeArmorKhajiitBootsDark",
+    "0RecipeArmorKhajiitBootsWhite",
+    "0RecipeArmorKhajiitBootsJadarri",
+    "0RecipeArmorKhajiitBootsBlack",
+    "0RecipeArmorKhajiitGauntlets",
+    "0RecipeArmorKhajiitGauntlets_Unenchanted",
+    "0RecipeArmorKhajiitGauntletsWhite",
+    "0RecipeArmorKhajiitGauntletsWhite_Unenchanted",
+    "0RecipeArmorKhajiitGauntletsJadarri",
+    "0RecipeArmorKhajiitGauntletsJadarri_Unenchanted",
+    "0RecipeArmorKhajiitGauntletsBlack",
+    "0RecipeArmorKhajiitGauntletsBlack_Unenchanted",
+    "0RecipeArmorKhajiitGauntletsWater",
+    "0RecipeArmorKhajiitGauntletsWater_Unenchanted",
+    "0RecipeArmorKhajiitMask",
+    "0RecipeArmorKhajiitMaskAnequina",
+    "0RecipeArmorKhajiitMaskLightRed",
+    "0RecipeArmorKhajiitMaskWhite",
+    "0RecipeArmorKhajiitMaskRed",
+    "0RecipeArmorKhajiitMaskJadarri",
+    "0RecipeArmorKhajiitMaskRakazra",
+    "0RecipeArmorKhajiitMaskBlack",
+    "0RecipeArmorKhajiitMaskRegal",
+    "0RecipeArmorKhajiitMaskWater",
+    "0RecipeArmorKhajiitRobes",
+    "0RecipeArmorKhajiitRobesAnequina",
+    "0RecipeArmorKhajiitRobesAssassin",
+    "0RecipeArmorKhajiitRobesLightRed",
+    "0RecipeArmorKhajiitRobesWhite",
+    "0RecipeArmorKhajiitRobesWaterALT",
+    "0RecipeArmorKhajiitRobesRed",
+    "0RecipeArmorKhajiitRobesJadarri",
+    "0RecipeArmorKhajiitRobesRakazra",
+    "0RecipeArmorKhajiitRobesBlack",
+    "0RecipeArmorKhajiitRobesRegal",
+    "0RecipeArmorKhajiitRobesWater"
    ]
   },
   "exclude": [],
@@ -1034,15 +1093,26 @@
    "DLC1LD_CraftingForgeAetherium"
   ],
   "recipes": {
-   "IWRecipeWeaponWoodenQuarterstaff": { "bench": "AldCraftingWoodcrafting", "profession": "woodworker" },
-   "IWRecipeWeaponWoodenClub": { "bench": "AldCraftingWoodcrafting", "profession": "woodworker" }
+   "IWRecipeWeaponWoodenQuarterstaff": {
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   "IWRecipeWeaponWoodenClub": {
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   }
   },
   "products": [
    {
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker",
-    "kinds": [ "ammo" ],
-    "keywords": [ "ArmorShield", "WeapTypeBow" ]
+    "kinds": [
+     "ammo"
+    ],
+    "keywords": [
+     "ArmorShield",
+     "WeapTypeBow"
+    ]
    }
   ],
   "materials": [
@@ -1050,26 +1120,57 @@
     "keep": true,
     "profession": "blacksmith",
     "items": [
-     "IngotIron", "IngotCorundum", "IngotSteel", "IngotGold", "ingotSilver", "IngotOrichalcum",
-     "IngotDwarven", "IngotIMoonstone", "IngotQuicksilver", "IngotMalachite", "IngotEbony",
-     "OreIron", "OreCorundum", "OreGold", "OreSilver", "OreOrichalcum", "OreMoonstone",
-     "OreQuicksilver", "OreMalachite", "OreEbony", "DLC2OreStalhrim",
-     "DwarvenScrapMetal", "DwarvenScrapBent", "DwarvenScrapLever", "DwarvenScrapLever02",
-     "DwarvenLargeScrap", "DwarvenLargeScrap2", "DwarvenLargeScrap3",
-     "DwarvenPlateMetalLarge", "DwarvenPlateMetalSmall",
-     "DragonBone", "DragonScales", "Gold001"
+     "IngotIron",
+     "IngotCorundum",
+     "IngotSteel",
+     "IngotGold",
+     "ingotSilver",
+     "IngotOrichalcum",
+     "IngotDwarven",
+     "IngotIMoonstone",
+     "IngotQuicksilver",
+     "IngotMalachite",
+     "IngotEbony",
+     "OreIron",
+     "OreCorundum",
+     "OreGold",
+     "OreSilver",
+     "OreOrichalcum",
+     "OreMoonstone",
+     "OreQuicksilver",
+     "OreMalachite",
+     "OreEbony",
+     "DLC2OreStalhrim",
+     "DwarvenScrapMetal",
+     "DwarvenScrapBent",
+     "DwarvenScrapLever",
+     "DwarvenScrapLever02",
+     "DwarvenLargeScrap",
+     "DwarvenLargeScrap2",
+     "DwarvenLargeScrap3",
+     "DwarvenPlateMetalLarge",
+     "DwarvenPlateMetalSmall",
+     "DragonBone",
+     "DragonScales",
+     "Gold001"
     ]
    },
    {
     "bench": "CraftingTanningRack",
     "profession": "tailor",
-    "itemKeywords": [ "VendorItemAnimalHide" ],
-    "items": [ "ChaurusChitin" ]
+    "itemKeywords": [
+     "VendorItemAnimalHide"
+    ],
+    "items": [
+     "ChaurusChitin"
+    ]
    },
    {
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker",
-    "itemKeywords": [ "VendorItemFireword" ],
+    "itemKeywords": [
+     "VendorItemFireword"
+    ],
     "items": []
    }
   ],
@@ -1085,23 +1186,102 @@
   ],
   "tiers": {
    "Anyone": [
-    "MCE_vol_CapeRecipe_Black", "MCE_vol_CapeRecipe_Blue", "MCE_vol_CapeRecipe_Green",
-    "MCE_vol_CapeRecipe_Leather", "MCE_vol_CapeRecipe_Purple", "MCE_vol_CapeRecipe_Red",
-    "MCE_vol_CapeRecipe_White", "MCE_vol_CapeRecipe_Yellow",
-    "MCE_vol_FurCloakRecipe_Black", "MCE_vol_FurCloakRecipe_Brown", "MCE_vol_FurCloakRecipe_White",
-    "MCE_vol_FurCloakRecipe_SnowSabre", "MCE_vol_FurCloakRecipe_ValeSabre",
-    "vol_CapeRecipe_Black", "vol_CapeRecipe_Blue", "vol_CapeRecipe_Green",
-    "vol_CapeRecipe_Leather", "vol_CapeRecipe_Purple", "vol_CapeRecipe_Red",
-    "vol_CapeRecipe_White", "vol_CapeRecipe_Yellow",
-    "vol_FurCloakRecipe_Black", "vol_FurCloakRecipe_Brown", "vol_FurCloakRecipe_White",
-    "vol_FurCloakRecipe_SnowSabre", "vol_FurCloakRecipe_ValeSabre",
-    "MCERecipeClothesBeggarBoots", "MCERecipeClothesBeggarHat", "MCERecipeClothesBeggarRobes",
-    "MCERecipeClothesPrisonerRags", "MCERecipeClothesPrisonerShoes", "MCERecipeClothesPrisonerTunic",
-    "MCERecipeClothesFarmBoots01", "MCERecipeClothesFarmBoots02", "MCERecipeClothesFarmBoots03",
-    "MCERecipeClothesFarmBoots04", "MCERecipeClothesFarmClothes01", "MCERecipeClothesFarmClothes02",
-    "MCERecipeClothesFarmClothes03", "MCERecipeClothesFarmClothes04", "MCERecipeClothesFarmHat01",
-    "MCERecipeClothesFarmHat02", "MCERecipeClothesFarmHat03",
-    "MCERecipeClothesMinerBoots", "MCERecipeClothesMinerClothes"
+    "MCE_vol_CapeRecipe_Black",
+    "MCE_vol_CapeRecipe_Blue",
+    "MCE_vol_CapeRecipe_Green",
+    "MCE_vol_CapeRecipe_Leather",
+    "MCE_vol_CapeRecipe_Purple",
+    "MCE_vol_CapeRecipe_Red",
+    "MCE_vol_CapeRecipe_White",
+    "MCE_vol_CapeRecipe_Yellow",
+    "MCE_vol_FurCloakRecipe_Black",
+    "MCE_vol_FurCloakRecipe_Brown",
+    "MCE_vol_FurCloakRecipe_White",
+    "MCE_vol_FurCloakRecipe_SnowSabre",
+    "MCE_vol_FurCloakRecipe_ValeSabre",
+    "vol_CapeRecipe_Black",
+    "vol_CapeRecipe_Blue",
+    "vol_CapeRecipe_Green",
+    "vol_CapeRecipe_Leather",
+    "vol_CapeRecipe_Purple",
+    "vol_CapeRecipe_Red",
+    "vol_CapeRecipe_White",
+    "vol_CapeRecipe_Yellow",
+    "vol_FurCloakRecipe_Black",
+    "vol_FurCloakRecipe_Brown",
+    "vol_FurCloakRecipe_White",
+    "vol_FurCloakRecipe_SnowSabre",
+    "vol_FurCloakRecipe_ValeSabre",
+    "MCERecipeClothesBeggarBoots",
+    "MCERecipeClothesBeggarHat",
+    "MCERecipeClothesBeggarRobes",
+    "MCERecipeClothesPrisonerRags",
+    "MCERecipeClothesPrisonerShoes",
+    "MCERecipeClothesPrisonerTunic",
+    "MCERecipeClothesFarmBoots01",
+    "MCERecipeClothesFarmBoots02",
+    "MCERecipeClothesFarmBoots03",
+    "MCERecipeClothesFarmBoots04",
+    "MCERecipeClothesFarmClothes01",
+    "MCERecipeClothesFarmClothes02",
+    "MCERecipeClothesFarmClothes03",
+    "MCERecipeClothesFarmClothes04",
+    "MCERecipeClothesFarmHat01",
+    "MCERecipeClothesFarmHat02",
+    "MCERecipeClothesFarmHat03",
+    "MCERecipeClothesMinerBoots",
+    "MCERecipeClothesMinerClothes"
+   ],
+   "Adept": [
+    "MCERecipeClothesFineClothes01",
+    "MCERecipeClothesFineClothes01Variant",
+    "MCERecipeClothesFineClothes02",
+    "MCERecipeClothesFineClothes02Variant",
+    "0RecipeArmorKhajiitBoots_Clothes",
+    "0RecipeArmorKhajiitBootsDark_Clothes",
+    "0RecipeArmorKhajiitBootsWhite_Clothes",
+    "0RecipeArmorKhajiitBootsJadarri_Clothes",
+    "0RecipeArmorKhajiitBootsBlack_Clothes",
+    "0RecipeArmorKhajiitGauntlets_Clothes",
+    "0RecipeArmorKhajiitGauntlets_Unenchanted_Clothes",
+    "0RecipeArmorKhajiitGauntletsWhite_Clothes",
+    "0RecipeArmorKhajiitGauntletsWhite_Unenchanted_Clothes",
+    "0RecipeArmorKhajiitGauntletsJadarri_Clothes",
+    "0RecipeArmorKhajiitGauntletsJadarri_Unenchanted_Clothes",
+    "0RecipeArmorKhajiitGauntletsBlack_Clothes",
+    "0RecipeArmorKhajiitGauntletsBlack_Unenchanted_Clothes",
+    "0RecipeArmorKhajiitGauntletsWater_Clothes",
+    "0RecipeArmorKhajiitGauntletsWater_Unenchanted_Clothes",
+    "0RecipeArmorKhajiitMask_Clothes",
+    "0RecipeArmorKhajiitMaskAnequina_Clothes",
+    "0RecipeArmorKhajiitMaskLightRed_Clothes",
+    "0RecipeArmorKhajiitMaskWhite_Clothes",
+    "0RecipeArmorKhajiitMaskRed_Clothes",
+    "0RecipeArmorKhajiitMaskJadarri_Clothes",
+    "0RecipeArmorKhajiitMaskRakazra_Clothes",
+    "0RecipeArmorKhajiitMaskBlack_Clothes",
+    "0RecipeArmorKhajiitMaskRegal_Clothes",
+    "0RecipeArmorKhajiitMaskWater_Clothes",
+    "0RecipeArmorKhajiitRobes_Clothes",
+    "0RecipeArmorKhajiitRobesAnequina_Clothes",
+    "0RecipeArmorKhajiitRobesAssassin_Clothes",
+    "0RecipeArmorKhajiitRobesLightRed_Clothes",
+    "0RecipeArmorKhajiitRobesWhite_Clothes",
+    "0RecipeArmorKhajiitRobesWaterALT_Clothes",
+    "0RecipeArmorKhajiitRobesRed_Clothes",
+    "0RecipeArmorKhajiitRobesJadarri_Clothes",
+    "0RecipeArmorKhajiitRobesRakazra_Clothes",
+    "0RecipeArmorKhajiitRobesBlack_Clothes",
+    "0RecipeArmorKhajiitRobesRegal_Clothes",
+    "0RecipeArmorKhajiitRobesWater_Clothes"
+   ],
+   "Expert": [
+    "MCERecipeClothesRobesMageApprenticeHood",
+    "MCERecipeClothesJarl_var1",
+    "MCERecipeClothesJarl03_var1",
+    "MCERecipeClothesJarl03",
+    "MCERecipeClothesJarl",
+    "MCERecipeClothesWeddingDress"
    ]
   },
   "recipes": [
@@ -2147,6 +2327,42 @@
    "RecipeMTSeekerSword",
    "RecipeArmorArmorCompanionsHelmet_CLS",
    "RecipeArmorArmorCompanionsHelmet_U_CLS"
+  ],
+  "matchBenches": [
+   "CraftingSmithingForge",
+   "CraftingSmithingSkyforge",
+   "DLC2CraftingSmithingSkaalForge",
+   "DLC1CraftingDawnguard",
+   "DLC1LD_CraftingForgeAetherium",
+   "CraftingSmithingArmorTable",
+   "CraftingSmithingSharpeningWheel",
+   "CraftingTanningRack",
+   "MCE_CraftingLoom",
+   "AldCraftingWoodcrafting"
+  ],
+  "match": [
+   "Daedric",
+   "BiPolar",
+   "Bipolar",
+   "Dragonbone",
+   "Dragon Bone Weapon",
+   "Dragonhide",
+   "Dragonscale",
+   "Dragonsteel",
+   "Madness",
+   "Pelt of Karhu",
+   "Boethiah",
+   "Cultist",
+   "Ulfric",
+   "Emperor's",
+   "Vaermina",
+   "Amber"
+  ],
+  "except": [
+   "Dragonbone Ebonsteel",
+   "Dragonscale Ebonsteel",
+   "Chamber",
+   "Ambergris"
   ]
  },
  "meadery": {
@@ -2175,9 +2391,33 @@
     },
     "cell": "HonningbrewMeadery03",
     "placements": [
-     { "boiler": "0C5B11:Skyrim.esm", "pos": [6829.2, -9011.9, -912.0], "rotZ": 0 },
-     { "boiler": "0C5AD8:Skyrim.esm", "pos": [7081.7, -9011.7, -912.0], "rotZ": 0 },
-     { "boiler": "0C5B12:Skyrim.esm", "pos": [7343.5, -8999.0, -912.0], "rotZ": 0 }
+     {
+      "boiler": "0C5B11:Skyrim.esm",
+      "pos": [
+       6829.2,
+       -9011.9,
+       -912.0
+      ],
+      "rotZ": 0
+     },
+     {
+      "boiler": "0C5AD8:Skyrim.esm",
+      "pos": [
+       7081.7,
+       -9011.7,
+       -912.0
+      ],
+      "rotZ": 0
+     },
+     {
+      "boiler": "0C5B12:Skyrim.esm",
+      "pos": [
+       7343.5,
+       -8999.0,
+       -912.0
+      ],
+      "rotZ": 0
+     }
     ]
    },
    {
@@ -2198,8 +2438,24 @@
     },
     "cell": "RiftenBlackBriarMeadery",
     "placements": [
-     { "boiler": "0A6310:Skyrim.esm", "pos": [1317.5, -4371.4, -128.0], "rotZ": 45 },
-     { "boiler": "0A6311:Skyrim.esm", "pos": [1235.4, -4378.5, -128.0], "rotZ": 315 }
+     {
+      "boiler": "0A6310:Skyrim.esm",
+      "pos": [
+       1317.5,
+       -4371.4,
+       -128.0
+      ],
+      "rotZ": 45
+     },
+     {
+      "boiler": "0A6311:Skyrim.esm",
+      "pos": [
+       1235.4,
+       -4378.5,
+       -128.0
+      ],
+      "rotZ": 315
+     }
     ]
    }
   ],
@@ -2288,7 +2544,8 @@
     "Steel Plate",
     "Nord Hero",
     "Skyforge Steel",
-    "Nordic Carved"
+    "Nordic Carved",
+    "Northern Plate"
    ],
    "recipes": [
     "DLC2RecipeArmorNordicHeavyBoots",
@@ -2374,6 +2631,9 @@
     "all": [
      "Guard",
      "Falkreath"
+    ],
+    "match": [
+     "Falkreath"
     ]
    },
    {
@@ -2452,7 +2712,9 @@
     "id": "faction:skaal",
     "name": "The Skaal",
     "match": [
-     "Skaal"
+     "Skaal",
+     "Stalhrim",
+     "Stahlrim"
     ]
    },
    {
@@ -2475,7 +2737,8 @@
     "id": "faction:thalmor",
     "name": "Thalmor",
     "match": [
-     "Thalmor"
+     "Thalmor",
+     "Justiciar"
     ]
    },
    {
@@ -2488,10 +2751,7 @@
     ],
     "except": [
      "Moon Monk",
-     "Imperial Emissary",
-     "War Horn",
-     "ImperialWarHorn",
-     "Steel Imperial"
+     "Imperial Emissary"
     ]
    },
    {
@@ -2499,7 +2759,8 @@
     "name": "Stormcloaks",
     "match": [
      "Stormcloak",
-     "Einherjar"
+     "Einherjar",
+     "Nord War Horn"
     ],
     "except": [
      "Fur Boots",
@@ -2537,7 +2798,77 @@
      "College of Winterhold",
      "MCERecipeClothesCollege",
      "MCERecipeClothesMG",
-     "CapeRecipe_CoW"
+     "CapeRecipe_CoW",
+     "Mage Robes",
+     "Mage Eye",
+     "Spellbinder",
+     "Witchplate"
+    ]
+   },
+   {
+    "id": "faction:blades",
+    "name": "The Blades",
+    "match": [
+     "Akaviri",
+     "Blades",
+     "Dragonguard"
+    ]
+   },
+   {
+    "id": "faction:camonna-tong",
+    "name": "Camonna Tong",
+    "match": [
+     "Camonna"
+    ]
+   },
+   {
+    "id": "faction:silver-hand",
+    "name": "The Silver Hand",
+    "match": [
+     "Silver Hand"
+    ]
+   },
+   {
+    "id": "faction:greybeards",
+    "name": "The Greybeards",
+    "match": [
+     "Greybeard"
+    ]
+   },
+   {
+    "id": "faction:psijic",
+    "name": "The Psijic Order",
+    "match": [
+     "Psijic",
+     "Psiijic"
+    ]
+   },
+   {
+    "id": "faction:mythic-dawn",
+    "name": "Mythic Dawn",
+    "match": [
+     "Mythic Dawn"
+    ]
+   },
+   {
+    "id": "hold:redoran",
+    "name": "House Redoran",
+    "match": [
+     "Hearthguard"
+    ]
+   },
+   {
+    "id": "hold:indoril",
+    "name": "House Indoril",
+    "match": [
+     "Bonesaint"
+    ]
+   },
+   {
+    "id": "hold:telvanni",
+    "name": "House Telvanni",
+    "match": [
+     "Ash Reader"
     ]
    }
   ]
@@ -2595,50 +2926,143 @@
   "races": [
    {
     "name": "Orsimer",
-    "races": [ "OrcRace", "OrcRaceVampire" ],
-    "match": [ "Orcish", "Orsimer" ]
+    "races": [
+     "OrcRace",
+     "OrcRaceVampire"
+    ],
+    "match": [
+     "Orcish",
+     "Orsimer"
+    ],
+    "items": [
+     "IngotOrichalcum",
+     "OreOrichalcum"
+    ]
    },
    {
     "name": "Altmer",
-    "races": [ "HighElfRace", "HighElfRaceVampire" ],
-    "match": [ "Elven" ]
+    "races": [
+     "HighElfRace",
+     "HighElfRaceVampire"
+    ],
+    "match": [
+     "Elven",
+     "Aldmeri"
+    ]
    },
    {
     "name": "Khajiit",
-    "races": [ "KhajiitRace", "KhajiitRaceVampire" ],
-    "match": [ "Khajiit", "Moon Monk" ]
+    "races": [
+     "KhajiitRace",
+     "KhajiitRaceVampire"
+    ],
+    "match": [
+     "Khajiit",
+     "Moon Monk"
+    ]
    },
    {
     "name": "Redguard",
-    "races": [ "RedguardRace", "RedguardRaceVampire" ],
-    "match": [ "Alikr", "Alik'r", "Rihad", "Redguard", "Hammerfell", "Stros M'Kai" ],
-    "except": [ "Dark Alik'r", "Dark Redguard", "Dark Hammerfell" ]
+    "races": [
+     "RedguardRace",
+     "RedguardRaceVampire"
+    ],
+    "match": [
+     "Alikr",
+     "Alik'r",
+     "Rihad",
+     "Redguard",
+     "Hammerfell",
+     "Stros M'Kai"
+    ],
+    "except": [
+     "Dark Alik'r",
+     "Dark Redguard",
+     "Dark Hammerfell"
+    ]
    },
    {
     "name": "Argonian",
-    "races": [ "ArgonianRace", "ArgonianRaceVampire" ],
-    "match": [ "Argonian", "Saxhleel" ]
+    "races": [
+     "ArgonianRace",
+     "ArgonianRaceVampire"
+    ],
+    "match": [
+     "Argonian",
+     "Saxhleel"
+    ]
    },
    {
     "name": "Bosmer",
-    "races": [ "WoodElfRace", "WoodElfRaceVampire" ],
-    "match": [ "Bosmer", "WoodElf", "Wood Elf" ]
+    "races": [
+     "WoodElfRace",
+     "WoodElfRaceVampire"
+    ],
+    "match": [
+     "Bosmer",
+     "WoodElf",
+     "Wood Elf"
+    ]
    },
    {
     "name": "Dunmer",
-    "races": [ "DarkElfRace", "DarkElfRaceVampire" ],
-    "match": [
-     "Vvardenfell", "Morrowind", "Ashlander", "Velothi", "Redoran", "Telvanni",
-     "Indoril", "Hlaalu", "Bonemold", "Chitin", "DarkElf", "Dark Elf",
-     "Tribunal", "Sixth House"
+    "races": [
+     "DarkElfRace",
+     "DarkElfRaceVampire"
     ],
-    "except": [ "Velothi Dwarven" ]
+    "match": [
+     "Vvardenfell",
+     "Morrowind",
+     "Ashlander",
+     "Velothi",
+     "Redoran",
+     "Telvanni",
+     "Indoril",
+     "Hlaalu",
+     "Bonemold",
+     "Chitin",
+     "DarkElf",
+     "Dark Elf",
+     "Tribunal",
+     "Sixth House",
+     "Saltplains"
+    ],
+    "except": [
+     "Velothi Dwarven"
+    ]
    },
    {
     "name": "Nord",
-    "races": [ "NordRace", "NordRaceVampire", "DLC1NordRace" ],
-    "match": [ "Nordic", "Nord Hero", "Skyforge", "Nord Mail", "Primitive Nord" ],
-    "except": [ "Nordic Vanguard", "Nordic Iron", "Steel Nordic", "Nordic Dwemer" ]
+    "races": [
+     "NordRace",
+     "NordRaceVampire",
+     "DLC1NordRace"
+    ],
+    "match": [
+     "Nordic",
+     "Nord Hero",
+     "Skyforge",
+     "Nord Mail",
+     "Primitive Nord"
+    ],
+    "except": [
+     "Nordic Vanguard",
+     "Nordic Iron",
+     "Nordic Dwemer"
+    ]
+   },
+   {
+    "name": "Breton",
+    "races": [
+     "BretonRace",
+     "BretonRaceVampire"
+    ],
+    "match": [
+     "Breton Knight",
+     "Paladin",
+     "Hedge Knight",
+     "Rugged Plate"
+    ]
    }
   ]
  },
@@ -2649,22 +3073,115 @@
    {
     "bench": "MCE_CraftingLoom",
     "categories": [
-     { "name": "Headgear", "keyword": "AldCatHeadgear", "slots": ["30", "31", "42"] },
-     { "name": "Footwear", "keyword": "AldCatFootwear", "slots": ["37"] },
-     { "name": "Robes", "keyword": "AldCatRobes", "slots": ["32"], "match": ["Robe"] },
-     { "name": "Aprons", "keyword": "AldCatAprons", "slots": ["32"], "match": ["BlackSmith", "Chef", "BarKeeper", "Farm", "Miner"] },
-     { "name": "Clothes", "keyword": "AldCatClothes", "slots": ["32"] },
-     { "name": "Other", "keyword": "AldCatOther" }
+     {
+      "name": "Khajiit",
+      "keyword": "AldCatKhajiit",
+      "match": [
+       "Khajiit"
+      ]
+     },
+     {
+      "name": "Headgear",
+      "keyword": "AldCatHeadgear",
+      "slots": [
+       "30",
+       "31",
+       "42"
+      ]
+     },
+     {
+      "name": "Footwear",
+      "keyword": "AldCatFootwear",
+      "slots": [
+       "37"
+      ]
+     },
+     {
+      "name": "Robes",
+      "keyword": "AldCatRobes",
+      "slots": [
+       "32"
+      ],
+      "match": [
+       "Robe"
+      ]
+     },
+     {
+      "name": "Aprons",
+      "keyword": "AldCatAprons",
+      "slots": [
+       "32"
+      ],
+      "match": [
+       "BlackSmith",
+       "Chef",
+       "BarKeeper",
+       "Farm",
+       "Miner"
+      ]
+     },
+     {
+      "name": "Clothes",
+      "keyword": "AldCatClothes",
+      "slots": [
+       "32"
+      ]
+     },
+     {
+      "name": "Other",
+      "keyword": "AldCatOther"
+     }
     ]
    },
    {
     "bench": "AldCraftingWoodcrafting",
     "categories": [
-     { "name": "Arrows", "keyword": "AldCatArrows", "kinds": ["ammo"] },
-     { "name": "Shields", "keyword": "AldCatShields", "keywords": ["ArmorShield"] },
-     { "name": "Bows", "keyword": "AldCatBows", "keywords": ["WeapTypeBow"] },
-     { "name": "Instruments", "keyword": "AldCatInstruments", "items": ["Lute", "Flute", "Drum"] },
-     { "name": "Tools and Writing", "keyword": "AldCatTools" }
+     {
+      "name": "Arrows",
+      "keyword": "AldCatArrows",
+      "kinds": [
+       "ammo"
+      ]
+     },
+     {
+      "name": "Shields",
+      "keyword": "AldCatShields",
+      "keywords": [
+       "ArmorShield"
+      ]
+     },
+     {
+      "name": "Bows",
+      "keyword": "AldCatBows",
+      "keywords": [
+       "WeapTypeBow"
+      ]
+     },
+     {
+      "name": "Instruments",
+      "keyword": "AldCatInstruments",
+      "items": [
+       "Lute",
+       "Flute",
+       "Drum"
+      ]
+     },
+     {
+      "name": "Tools and Writing",
+      "keyword": "AldCatTools"
+     }
+    ]
+   },
+   {
+    "bench": "CraftingTanningRack",
+    "categories": [
+     {
+      "name": "Khajiit",
+      "keyword": "AldCatKhajiit",
+      "match": [
+       "Khajiit"
+      ]
+     }
     ]
    }
   ]
@@ -2835,7 +3352,12 @@
  },
  "creations": {
   "pluginName": "AlduinakCreations.esp",
-  "plugins": ["ccBGSSSE001-Fish.esm", "ccQDRSSE001-SurvivalMode.esl", "ccBGSSSE037-Curios.esl", "ccBGSSSE025-AdvDSGS.esm"],
+  "plugins": [
+   "ccBGSSSE001-Fish.esm",
+   "ccQDRSSE001-SurvivalMode.esl",
+   "ccBGSSSE037-Curios.esl",
+   "ccBGSSSE025-AdvDSGS.esm"
+  ],
   "globals": {
    "Survival_ModeEnabled": 0,
    "Survival_ModeToggle": 0,
@@ -2844,13 +3366,50 @@
    "Survival_ModeEnabledShared": 0
   },
   "stageAbilities": {
-   "spells": ["Survival_HungerStage0", "Survival_HungerStage1", "Survival_HungerStage2", "Survival_HungerStage3", "Survival_HungerStage4", "Survival_HungerStage5",
-              "Survival_ExhaustionStage1", "Survival_ExhaustionStage2", "Survival_ExhaustionStage3", "Survival_ExhaustionStage4", "Survival_ExhaustionStage5"],
+   "spells": [
+    "Survival_HungerStage0",
+    "Survival_HungerStage1",
+    "Survival_HungerStage2",
+    "Survival_HungerStage3",
+    "Survival_HungerStage4",
+    "Survival_HungerStage5",
+    "Survival_ExhaustionStage1",
+    "Survival_ExhaustionStage2",
+    "Survival_ExhaustionStage3",
+    "Survival_ExhaustionStage4",
+    "Survival_ExhaustionStage5"
+   ],
    "dropEffectsEndingWith": "ImodEffect"
   },
-  "revertTypes": ["REFR", "ACHR", "NAVM", "NPC_", "FLOR", "FLST", "ACTI", "CONT", "DOOR", "STAT", "MISC", "LCTN", "MGEF", "SPEL", "SCRL", "PERK"],
-  "keepTypes": ["ALCH", "DOBJ", "NAVI"],
-  "keepEdits": ["Survival_FoodRestoreHungerVerySmall", "Survival_FoodRestoreHungerSmall", "Survival_FoodRestoreHungerMedium", "Survival_FoodRestoreHungerLarge"],
+  "revertTypes": [
+   "REFR",
+   "ACHR",
+   "NAVM",
+   "NPC_",
+   "FLOR",
+   "FLST",
+   "ACTI",
+   "CONT",
+   "DOOR",
+   "STAT",
+   "MISC",
+   "LCTN",
+   "MGEF",
+   "SPEL",
+   "SCRL",
+   "PERK"
+  ],
+  "keepTypes": [
+   "ALCH",
+   "DOBJ",
+   "NAVI"
+  ],
+  "keepEdits": [
+   "Survival_FoodRestoreHungerVerySmall",
+   "Survival_FoodRestoreHungerSmall",
+   "Survival_FoodRestoreHungerMedium",
+   "Survival_FoodRestoreHungerLarge"
+  ],
   "foodHunger": {
    "effectPrefix": "Survival_FoodRestoreHunger",
    "effects": {
@@ -2859,9 +3418,20 @@
     "Medium": "Survival_FoodRestoreHungerMedium",
     "Large": "Survival_FoodRestoreHungerLarge"
    },
-   "surveyedOrigins": ["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"],
-   "drinkSounds": ["ITMPotionUse", "ITMPoisonUse"],
-   "bowlSounds": ["NPCHumanEatSoup"],
+   "surveyedOrigins": [
+    "Skyrim.esm",
+    "Update.esm",
+    "Dawnguard.esm",
+    "HearthFires.esm",
+    "Dragonborn.esm"
+   ],
+   "drinkSounds": [
+    "ITMPotionUse",
+    "ITMPoisonUse"
+   ],
+   "bowlSounds": [
+    "NPCHumanEatSoup"
+   ],
    "bowlMinWeight": 0.5,
    "snackMaxWeight": 0.25
   },
@@ -2869,7 +3439,7 @@
    "cooking": {
     "tiers": {
      "Adept": [
-        "ccBGSSSE001_RecipeFoodCrabStew",
+      "ccBGSSSE001_RecipeFoodCrabStew",
       "ccBGSSSE001_RecipeFoodCreamyCrabBisque",
       "ccBGSSSE001_RecipeFoodPotatoCrabChowder",
       "ccBGSSSE001_RecipeFoodRoastedTomatoCrabBisque",
@@ -2879,7 +3449,7 @@
       "ccBGSSSE001_RecipeFoodRoastedTomatoCrabBisqueHOT",
       "Survival_RecipeFoodStewHorker",
       "Survival_DLC2RecipeFoodStewCabbage",
-        "Survival_RecipeFoodSoupPotato",
+      "Survival_RecipeFoodSoupPotato",
       "Survival_RecipeFoodStewVenison",
       "Survival_BYOHRecipeFoodSoupClamChowder",
       "Survival_RecipeFoodStewAppleCabbage",
@@ -2896,16 +3466,32 @@
    },
    "smithing": {
     "materials": {
-     "Expert": ["ccBGSSSE025_IngotAmber", "ccBGSSSE025_OreAmber"],
-     "Master": ["ccBGSSSE025_IngotMadness", "ccBGSSSE025_OreMadness"]
+     "Expert": [
+      "ccBGSSSE025_IngotAmber",
+      "ccBGSSSE025_OreAmber"
+     ],
+     "Master": [
+      "ccBGSSSE025_IngotMadness",
+      "ccBGSSSE025_OreMadness"
+     ]
     },
     "addItems": {
-     "ccBGSSSE025_RecipeIngotAmber": { "Charcoal": 2 },
-     "ccBGSSSE025_RecipeIngotMadness": { "Charcoal": 2 }
+     "ccBGSSSE025_RecipeIngotAmber": {
+      "Charcoal": 2
+     },
+     "ccBGSSSE025_RecipeIngotMadness": {
+      "Charcoal": 2
+     }
     },
     "tiers": {
-     "Novice": ["ccBGSSSE001_RecipeWeaponImperialFishingRod", "ccBGSSSE001_RecipeWeaponArgonianFishingRod", "ccBGSSSE001_RecipeWeaponAlikriFishingRod"],
-     "Adept": ["ccBGSSSE001_RecipeWeaponDwarvenFishingRod"]
+     "Novice": [
+      "ccBGSSSE001_RecipeWeaponImperialFishingRod",
+      "ccBGSSSE001_RecipeWeaponArgonianFishingRod",
+      "ccBGSSSE001_RecipeWeaponAlikriFishingRod"
+     ],
+     "Adept": [
+      "ccBGSSSE001_RecipeWeaponDwarvenFishingRod"
+     ]
     }
    },
    "uncraftable": {
@@ -2938,7 +3524,9 @@
      "ccBGSSSE025_RecipeWeaponGoldenSaintMace",
      "ccBGSSSE025_RecipeWeaponGoldenSaintSword",
      "ccBGSSSE025_RecipeWeaponGoldenSaintWarAxe",
-     "ccBGSSSE025_RecipeWeaponGoldenSaintWarhammer"
+     "ccBGSSSE025_RecipeWeaponGoldenSaintWarhammer",
+     "ccBGSSSE025_RecipeIngotAmber",
+     "ccBGSSSE025_RecipeIngotMadness"
     ]
    }
   }

@@ -101,8 +101,8 @@ RUNS = {
     # PLACEHOLDERS to re-pin from the run: 'stage_sha' (step 0 prints it), 'added', 'own_records', 'last_id'.
     'r14': dict(_R11_RUN, dir=ESPFIX + 'r14/', stage=ESPFIX + 'r14/', chain='r11', merge=True, hedr_offset=51,
                 stage_sha='2b62c107bbb92cbfb732802fe18d99988cd3a3afe8c478dc511587e48e25f3de', base_plugins=79, slot=0x32,
-                spec='75bf111ac95047e28a8ab7c3d6aad4be5e8e643868dba7b2e12118212308a27b',
-                last_id=0x2100, own_records=191, added=5775,
+                spec='b778f4fe5bc94b01a4e30be6f382d160e87f85d598f520a868bc3e2b5e4800b7',
+                last_id=0x2100, own_records=201, added=5807,
                 dropped=('AldRecipeAlchemy_Ale', 'AldRecipeAlchemy_FoodMead', 'AldRecipeAlchemy_FoodWineBottle02')),
 }
 RUN_NAME = os.environ.get('ESP_MERGE_RUN', 'r7')
