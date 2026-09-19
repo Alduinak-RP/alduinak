@@ -19,6 +19,13 @@
     "source": "url"
   },
   {
+    "name": "Sea Salt Deposits",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 7300
+  },
+  {
     "name": "The Great Town of Karthwasten SSE",
     "required": true,
     "enabled": true,
@@ -236,6 +243,20 @@
     "nexusId": 75264
   },
   {
+    "name": "Eyepatch and Eyewear Collection",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 145242
+  },
+  {
+    "name": "Immersive Armors",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 3479
+  },
+  {
     "name": "Argonian Funerary Masks",
     "required": true,
     "enabled": true,
@@ -304,6 +325,20 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 100985
+  },
+  {
+    "name": "Immersive Weapons",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 16788
+  },
+  {
+    "name": "Immersive Armors Retexture and Mesh Fixes SE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 75891
   },
   {
     "name": "More Craftable Equipment",
@@ -402,6 +437,27 @@
     "enabled": true,
     "source": "nexus",
     "nexusId": 142655
+  },
+  {
+    "name": "Cuyi's Bosmeri Antlers - SSE",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 26173
+  },
+  {
+    "name": "Hvergelmir's Aesthetics - Beards",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 1067
+  },
+  {
+    "name": "Beards of Power",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 42635
   },
   {
     "name": "Apachii Sky Hair SSE",
