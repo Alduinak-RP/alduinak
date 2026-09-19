@@ -519,7 +519,26 @@ const nexusTopbarSlot = document.getElementById('nexus-topbar-slot')
 
 let nexusUser = null
 
+const PREMIUM_URL = 'https://www.nexusmods.com/premium'
+
+// The notice between Latest News and Modlist: only while the account signed in has no premium.
+// Signed out counts as no premium, since that is when the manual-download warning matters most.
+function renderPremiumNotice() {
+  const box = document.getElementById('premium-notice')
+  if (!box) return
+  box.hidden = !!(nexusUser && nexusUser.isPremium)
+}
+
+const premiumLink = document.getElementById('premium-link')
+if (premiumLink) {
+  premiumLink.addEventListener('click', e => {
+    e.preventDefault()
+    window.electronAPI.openExternal(PREMIUM_URL)
+  })
+}
+
 function renderTopbarNexus() {
+  renderPremiumNotice()
   nexusTopbarSlot.innerHTML = ''
 
   if (nexusUser) {

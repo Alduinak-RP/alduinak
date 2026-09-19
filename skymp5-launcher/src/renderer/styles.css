@@ -223,7 +223,7 @@ html, body {
   gap: 0;
 }
 
-/* Status + read-more row */
+/* Status row */
 .main-header {
   display: flex;
   align-items: center;
@@ -284,18 +284,6 @@ html, body {
   color: rgba(232, 224, 208, 0.55);
 }
 
-.read-more {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(11px * var(--text-scale));
-  font-weight: 500;
-  letter-spacing: 2.5px;
-  color: rgba(201, 162, 39, 0.55);
-  cursor: pointer;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.read-more:hover { color: var(--gold-bright); }
 
 /* Section heading */
 .section-header {
@@ -447,6 +435,48 @@ html, body {
   display: flex;
   flex-direction: column;
 }
+
+/* Nexus Premium notice, between the news and the modlist */
+.premium-section {
+  width: 268px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.premium-section[hidden] { display: none; }
+
+.premium-box {
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  background: rgba(20, 17, 12, 0.72);
+  padding: 14px 16px;
+}
+
+.premium-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: calc(14px * var(--text-scale));
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--gold-bright);
+  margin-bottom: 8px;
+}
+
+.premium-text {
+  font-size: calc(12px * var(--text-scale));
+  line-height: 1.5;
+  color: rgba(226, 217, 199, 0.8);
+  margin: 0 0 8px;
+}
+
+.premium-link {
+  font-size: calc(12px * var(--text-scale));
+  color: rgba(201, 162, 39, 0.9);
+  cursor: pointer;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.premium-link:hover { color: var(--gold-bright); text-decoration: underline; }
 
 /* News grid */
 .news-grid {
