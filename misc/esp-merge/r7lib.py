@@ -23,7 +23,7 @@ SELF = 'AlduinakAdditions.esp'
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
 # What the live copies hold today: the r14 plugin, deployed 2026-09-18. Re-pin after every deploy.
-DEPLOYED_SHA = 'b562f6f061c926637d6631595f614705aac09c0213bcefbd4699f9b7eb93d8bd'
+DEPLOYED_SHA = 'b861bd88bac909b575432f5f38198873d7c15bd88a98fd19fb565fbe0a922fd6'
 # The r7 plugin, which the r11 run merged from and still pins
 R7_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
 
@@ -101,8 +101,8 @@ RUNS = {
     # PLACEHOLDERS to re-pin from the run: 'stage_sha' (step 0 prints it), 'added', 'own_records', 'last_id'.
     'r14': dict(_R11_RUN, dir=ESPFIX + 'r14/', stage=ESPFIX + 'r14/', chain='r11', merge=True, hedr_offset=51,
                 stage_sha='2b62c107bbb92cbfb732802fe18d99988cd3a3afe8c478dc511587e48e25f3de', base_plugins=79, slot=0x32,
-                spec='b778f4fe5bc94b01a4e30be6f382d160e87f85d598f520a868bc3e2b5e4800b7',
-                last_id=0x2100, own_records=202, added=5808,
+                spec='c7f6fa1f94ade0d21bd5f8dae9413732fe1dcdd639c3021e83117f0b75fa5068',
+                last_id=0x2215, own_records=224, added=5839,
                 dropped=('AldRecipeAlchemy_Ale', 'AldRecipeAlchemy_FoodMead', 'AldRecipeAlchemy_FoodWineBottle02')),
 }
 RUN_NAME = os.environ.get('ESP_MERGE_RUN', 'r7')

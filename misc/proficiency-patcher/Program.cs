@@ -78,6 +78,7 @@ Steps.BenchKeywordRemovals(ctx);
 Steps.BenchMoves(ctx);
 Steps.EnchantmentMagnitudes(ctx);
 Steps.Placements(ctx);
+Steps.World(ctx);
 Steps.Writing(ctx);
 Steps.Racial(ctx);
 Steps.DisableReferences(ctx);
@@ -835,6 +836,56 @@ static class Steps
             c.Note($"Placement {refKey} ({c.EdidOf(rec.Base.FormKey)}): {rec.Placement!.Position} from {refs[0].ModKey} -> {target}, anchor {anchorKey} at {anchorWin.Position} from {anchors[0].ModKey}");
             rec.Placement.Position = target;
         }
+    }
+
+    // ---- world changes: the references of AlduinakWorldChanges.esp, carried as spec data --------------------------
+    //
+    // Graves built that plugin in a Creation Kit that dropped its .esp master and rewrote every cell it opened, so
+    // only its references are merged. misc/esp-merge/worldchanges.py classifies it and writes this section.
+    public static void World(PatchContext c)
+    {
+        if (c.Spec["world"] is not JsonObject w) return;
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        foreach (var p in w["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        {
+            var edid = p["edid"]!.GetValue<string>();
+            var cellKey = FormKey.Factory(p["cell"]!.GetValue<string>());
+            if (!cache.TryResolveContext<ICell, ICellGetter>(cellKey, out var cellCtx)) { c.Error($"world: cell {cellKey} not found"); continue; }
+            var name = p["base"]!.GetValue<string>();
+            // An editor id names one of the plugin's own records, a form key one of the load order's
+            var baseKey = name.Contains(':') ? FormKey.Factory(name) : c.KeyOf<IMajorRecordGetter>(name);
+            if (name.Contains(':') && !cache.TryResolve<IMajorRecordGetter>(baseKey, out _)) { c.Error($"world: base object {name} not found"); continue; }
+            var id = Convert.ToUInt32(p["formId"]!.GetValue<string>(), 16);
+            var cell = cellCtx.GetOrAddAsOverride(c.Mod);
+            var placed = c.OwnOrNew(edid, () =>
+            {
+                var key = new FormKey(c.Key, id);
+                if (c.Mod.EnumerateMajorRecords().Any(r => r.FormKey == key)) throw new SpecException($"world: '{edid}' wants the pinned id {key}, which another record already holds");
+                var r = new PlacedObject(key, SkyrimRelease.SkyrimSE) { EditorID = edid };
+                cell.Temporary.Add(r);
+                return r;
+            });
+            placed.Base.SetTo(baseKey);
+            placed.Placement = new Placement { Position = Vec3(p["pos"]), Rotation = Vec3(p["rot"]) };
+            if (p["scale"] != null) placed.Scale = p["scale"]!.GetValue<float>();
+            c.Note($"World reference {edid} {placed.FormKey}: {c.EdidOf(baseKey)} in cell {cellKey} at {placed.Placement.Position}");
+        }
+        foreach (var mv in w["moves"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        {
+            var key = FormKey.Factory(mv["ref"]!.GetValue<string>());
+            var refs = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(key).ToList();
+            if (refs.Count == 0 || refs[0].Record.Placement == null) { c.Error($"world: reference {key} is not a placed object"); continue; }
+            var rec = refs[0].GetOrAddAsOverride(c.Mod);
+            var from = rec.Placement!.Position;
+            rec.Placement.Position = Vec3(mv["pos"]);
+            c.Note($"World move {key} ({c.EdidOf(rec.Base.FormKey)}): {from} in {refs[0].ModKey} -> {rec.Placement.Position}");
+        }
+    }
+
+    static P3Float Vec3(JsonNode? n)
+    {
+        var a = n!.AsArray().Select(v => v!.GetValue<float>()).ToArray();
+        return new P3Float(a[0], a[1], a[2]);
     }
 
     // ---- meadery: invisible stirring benches at the boilers, each offering its own mead, plus the honey recipe --------

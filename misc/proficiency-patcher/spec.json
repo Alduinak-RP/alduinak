@@ -2597,6 +2597,398 @@
    "anchor": "0A17CD:Skyrim.esm"
   }
  ],
+ "world": {
+  "comment": "AlduinakWorldChanges.esp (9776cba3), merged as spec data. Its Creation Kit dropped the Warbirds Whiterun Metropolis.esp master and rewrote every cell it opened, so only the references are carried: the new ones here, the nudges under \"moves\", and one disable under \"disableReferences\". misc/esp-merge/worldchanges.py regenerates and checks this section.",
+  "placements": [
+   {
+    "edid": "AldWorldRef_00AA00",
+    "formId": "0x2200",
+    "base": "018199:Skyrim.esm",
+    "cell": "0095B9:Skyrim.esm",
+    "pos": [
+     40879.09,
+     2568.3,
+     -4359.74
+    ],
+    "rot": [
+     0.11783,
+     0.0483,
+     0.24875
+    ],
+    "scale": 0.68
+   },
+   {
+    "edid": "AldWorldRef_00FAFB",
+    "formId": "0x2201",
+    "base": "AldWoodcraftingBench",
+    "cell": "009713:Skyrim.esm",
+    "pos": [
+     20112.09,
+     -42871.34,
+     -127.18
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     6.08319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_00FAFC",
+    "formId": "0x2202",
+    "base": "AldWoodcraftingBench",
+    "cell": "00BBCB:Skyrim.esm",
+    "pos": [
+     162168.89,
+     -61540.08,
+     7486.16
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     3.48319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C2F",
+    "formId": "0x2203",
+    "base": "AldWoodcraftingBench",
+    "cell": "038382:Skyrim.esm",
+    "pos": [
+     132064.64,
+     36791.2,
+     -12269.82
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     1.58255
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C30",
+    "formId": "0x2204",
+    "base": "AldWoodcraftingBench",
+    "cell": "03837E:Skyrim.esm",
+    "pos": [
+     138205.94,
+     40405.64,
+     -12224.93
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     3.18255
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C3B",
+    "formId": "0x2205",
+    "base": "AldWoodcraftingBench",
+    "cell": "042247:Skyrim.esm",
+    "pos": [
+     172557.92,
+     -96018.39,
+     11127.65
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     1.58255
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C3C",
+    "formId": "0x2206",
+    "base": "AldWoodcraftingBench",
+    "cell": "020EED:Skyrim.esm",
+    "pos": [
+     -175811.09,
+     1835.02,
+     -3311.71
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     6.06574
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C43",
+    "formId": "0x2207",
+    "base": "AldWoodcraftingBench",
+    "cell": "037EE8:Skyrim.esm",
+    "pos": [
+     -62846.85,
+     107041.91,
+     -7937.46
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     3.68255
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C44",
+    "formId": "0x2208",
+    "base": "AldWoodcraftingBench",
+    "cell": "00934A:Skyrim.esm",
+    "pos": [
+     -102503.61,
+     80486.05,
+     -12518.07
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     3.88255
+    ]
+   },
+   {
+    "edid": "AldWorldRef_019D60",
+    "formId": "0x2209",
+    "base": "AldWoodcraftingBench",
+    "cell": "01A280:Skyrim.esm",
+    "pos": [
+     20281.21,
+     -9160.59,
+     -3559.85
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     3.58319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_019D61",
+    "formId": "0x220A",
+    "base": "AldWoodcraftingBench",
+    "cell": "01A272:Skyrim.esm",
+    "pos": [
+     28782.66,
+     -2550.88,
+     -2132.35
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     4.08319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_019D62",
+    "formId": "0x220B",
+    "base": "AldWoodcraftingBench",
+    "cell": "009576:Skyrim.esm",
+    "pos": [
+     -84053.97,
+     8642.2,
+     -4068.72
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     0.7
+    ]
+   },
+   {
+    "edid": "AldWorldRef_019D63",
+    "formId": "0x220C",
+    "base": "AldWoodcraftingBench",
+    "cell": "0097A0:Skyrim.esm",
+    "pos": [
+     75777.65,
+     -61793.39,
+     10542.38
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     4.68319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE64",
+    "formId": "0x220D",
+    "base": "AldWoodcraftingBench",
+    "cell": "008EB5:Skyrim.esm",
+    "pos": [
+     31019.25,
+     103820.23,
+     -13838.3
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     4.6832
+    ]
+   },
+   {
+    "edid": "AldWorldRef_023F65",
+    "formId": "0x220E",
+    "base": "AldWoodcraftingBench",
+    "cell": "009648:Skyrim.esm",
+    "pos": [
+     87896.09,
+     -18038.96,
+     -9415.45
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     3.78319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_029067",
+    "formId": "0x220F",
+    "base": "AldWoodcraftingBench",
+    "cell": "008EA1:Skyrim.esm",
+    "pos": [
+     112868.84,
+     103905.83,
+     -8976.0
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     0.9
+    ]
+   },
+   {
+    "edid": "AldWorldRef_02E168",
+    "formId": "0x2210",
+    "base": "AldWoodcraftingBench",
+    "cell": "009C80:Skyrim.esm",
+    "pos": [
+     -31113.14,
+     -88306.44,
+     -3025.84
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     3.08319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_02E169",
+    "formId": "0x2211",
+    "base": "AldWoodcraftingBench",
+    "cell": "009C5F:Skyrim.esm",
+    "pos": [
+     -30354.4,
+     -83874.05,
+     -3135.22
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     2.1832
+    ]
+   },
+   {
+    "edid": "AldWorldRef_03326A",
+    "formId": "0x2212",
+    "base": "AldWoodcraftingBench",
+    "cell": "0093BD:Skyrim.esm",
+    "pos": [
+     -36660.21,
+     63222.28,
+     -13809.97
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     2.58319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_03836B",
+    "formId": "0x2213",
+    "base": "AldWoodcraftingBench",
+    "cell": "009736:Skyrim.esm",
+    "pos": [
+     128765.77,
+     -49551.72,
+     1276.17
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     4.98319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_03836C",
+    "formId": "0x2214",
+    "base": "AldWoodcraftingBench",
+    "cell": "009737:Skyrim.esm",
+    "pos": [
+     124864.78,
+     -50203.72,
+     1179.45
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     1.0
+    ]
+   },
+   {
+    "edid": "AldWorldRef_03D46D",
+    "formId": "0x2215",
+    "base": "AldWoodcraftingBench",
+    "cell": "009BB6:Skyrim.esm",
+    "pos": [
+     -16366.81,
+     -62562.7,
+     706.66
+    ],
+    "rot": [
+     0.0,
+     -0.0,
+     1.5
+    ]
+   }
+  ],
+  "moves": [
+   {
+    "ref": "0383C3:Skyrim.esm",
+    "pos": [
+     132139.92,
+     37024.51,
+     -12573.11
+    ]
+   },
+   {
+    "ref": "0383C5:Skyrim.esm",
+    "pos": [
+     132094.61,
+     36581.25,
+     -12509.41
+    ]
+   },
+   {
+    "ref": "101FB6:Skyrim.esm",
+    "pos": [
+     132064.81,
+     36827.09,
+     -12998.4
+    ]
+   },
+   {
+    "ref": "001932:Update.esm",
+    "pos": [
+     75752.05,
+     -61761.66,
+     10372.44
+    ]
+   }
+  ]
+ },
  "factions": {
   "benches": [
    "CraftingSmithingForge",
@@ -2907,7 +3299,8 @@
    "00C5C0:AlduinakAdditions.esp",
    "00C5C1:AlduinakAdditions.esp",
    "016805:AlduinakAdditions.esp",
-   "016807:AlduinakAdditions.esp"
+   "016807:AlduinakAdditions.esp",
+   "1115B9:Warbirds Whiterun Metropolis.esp"
   ]
  },
  "racial": {

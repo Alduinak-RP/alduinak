@@ -196,6 +196,20 @@ Run every step with `ESP_MERGE_RUN=r14`; steps 1 and 2 stay pinned to r11 throug
   (`AldMasteryMarkerEffect` at 0x20E5, the first free id, so nothing else moved) and added 5807 -> 5808.
   Deployed as b562f6f0; `r14/rollback/` holds d4f8f33c.
 
+- **AlduinakWorldChanges.esp (2026-09-18).** Graves's world-changes plugin, 9776cba3, frozen at `r14/input/`.
+  It arrived with the usual damage: five vanilla masters, its own records at index 6 because the Creation Kit
+  dropped the `Warbirds Whiterun Metropolis.esp` master, and all 33 of the cells and worldspaces it opened
+  rewritten (delocalized names, dropped `RNAM` and `OFST` tables, recalculated `MHDT`, reordered regions, a
+  location link into the dropped master). Merging it as a plugin would have meant a load-order change and
+  another purge, so `worldchanges.py` classifies it and writes the `world` section of the patcher spec instead:
+  22 new references (21 carpenter benches, which become `AldWoodcraftingBench`, and one rock), four position
+  nudges and one `disableReferences` entry. It drops the containers and the 15 re-owned Warbirds references,
+  14 of which the plugin already disables; carrying those would only have moved disabled clutter and lost the
+  `XOWN` the Creation Kit stripped from six of them. Run it with `ESP_MERGE_RUN=r14 python worldchanges.py`
+  before step 3; without `--write` it checks that the section still matches the plugin.
+  The merged plugin gains `Vernim Wood.esp` as a master, which loads at 63 of 83, well before it. Own records
+  202 -> 224 (the references take a pinned block at 0x2200) and added 5808 -> 5839. Deployed as b861bd88.
+
 ## Graves's next save
 
 Every raw save repeats this damage. Before his next session he needs a CK that keeps `.esp` masters (Creation Kit Platform

@@ -110,6 +110,20 @@ def spec_overrides(spec):
     return lambda k, rec: (k[0], k[1].lower(), k[2]) in refs or (k[0] == 'ENCH' and edid(rec).lower() in enchs)
 
 
+def world_allowed(spec):
+    # The world section adds its own references, the overrides of the cells holding them and the references it moves
+    w = json.load(open(spec, encoding='utf-8')).get('world', {})
+    def key(text):
+        local, plugin = text.split(':', 1)
+        return plugin.lower(), int(local, 16)
+    cells = {key(p['cell']) for p in w.get('placements', [])}
+    edids = {p['edid'] for p in w.get('placements', [])}
+    moves = {key(m['ref']) for m in w.get('moves', [])}
+    return lambda k, rec: (k[0] == 'REFR' and k[1] == 'self' and k[2] in edids) \
+        or (k[0] == 'CELL' and (k[1].lower(), k[2]) in cells) \
+        or (k[0] == 'REFR' and (k[1].lower(), k[2]) in moves)
+
+
 def verify(original, patched, log, allowed=lambda k, rec: False):
     po, pp = Plugin(original), Plugin(patched)
     ro, go = index(po)
@@ -201,8 +215,8 @@ def main():
     out_esp = os.path.join(a.out, os.path.basename(a.plugin))
     if a.skip_verify:
         sys.exit(0)
-    meadery, named = meadery_allowed(a.spec), spec_overrides(a.spec)
-    problems = verify(pre, out_esp, log, lambda k, rec: meadery(k, rec) or named(k, rec))
+    meadery, named, world = meadery_allowed(a.spec), spec_overrides(a.spec), world_allowed(a.spec)
+    problems = verify(pre, out_esp, log, lambda k, rec: meadery(k, rec) or named(k, rec) or world(k, rec))
     with open(os.path.join(a.out, 'verify.txt'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(log + [''] + problems) + '\n')
     print('\n'.join(log))
