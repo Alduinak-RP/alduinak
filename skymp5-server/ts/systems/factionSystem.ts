@@ -111,7 +111,7 @@ const noticeText = (err: unknown): string => {
   if (msg.includes("already has this rank")) return "They already hold that rank.";
   if (msg.includes("nobody leads two factions")) return "They already lead another faction.";
   if (msg.includes("cannot also lead")) return "They are a regent of another faction.";
-  if (msg.includes("belongs to one")) return `They ${msg.slice(msg.indexOf("already in"))}`;
+  if (msg.includes("belongs to one")) return "They already belong to a faction of that type.";
   return "The faction records are unavailable, try again shortly.";
 };
 
