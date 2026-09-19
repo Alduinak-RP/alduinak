@@ -81,7 +81,9 @@ Steps.Placements(ctx);
 Steps.Writing(ctx);
 Steps.Racial(ctx);
 Steps.DisableReferences(ctx);
+Steps.Orphans(ctx);
 var categories = Steps.Categories(ctx);
+Steps.MarkerEffects(ctx);
 
 if (report.Errors.Count > 0)
 {
@@ -334,6 +336,23 @@ static class Steps
                 }
             }
         }
+    }
+
+    // ---- marker effects: an ability with no effect at all is an invalid record ------------------------------------
+    //
+    // Runs last: a new own record takes the next free local id, and the marker ids are named from outside the plugin
+    // (server-settings damageMultConditionalFormulaSettings holds AldMastery_Hunter_Master).
+    public static void MarkerEffects(PatchContext c)
+    {
+        var empty = c.Mod.Spells.Where(s => s.Effects.Count == 0).ToList();
+        if (empty.Count == 0) return;
+        var mgef = c.OwnOrNew(c.Mod.MagicEffects, "AldMasteryMarkerEffect");
+        ConfigureMgef(mgef, "Mastery", "A mark of what this character has learned.");
+        mgef.Archetype = new MagicEffectArchetype { Type = MagicEffectArchetype.TypeEnum.Script, ActorValue = ActorValue.None };
+        mgef.PerkToApply.SetToNull();
+        foreach (var spell in empty)
+            spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = 0, Area = 0, Duration = 0 } });
+        c.Note($"Marker effect: {empty.Count} markers with no perk of their own carry the inert {mgef.EditorID}");
     }
 
     static void ConfigureMgef(MagicEffect mgef, string name, string description)
@@ -693,6 +712,23 @@ static class Steps
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
             cobj.WorkbenchKeyword.SetTo(bench);
             c.Report.Recipes.Add(new RecipeLine(kind, edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: note));
+        }
+    }
+
+    // ---- orphan recipes: a recipe with no workbench keyword is an invalid record ------------------------------------
+    //
+    // The Creation Kit left one in the base plugin. No bench ever offered it, so it is parked where the hidden
+    // recipes go rather than given a bench it never had.
+    public static void Orphans(PatchContext c)
+    {
+        if (c.Spec["uncraftable"] is not JsonObject u) return;
+        var bench = c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>());
+        foreach (var cobj in c.Mod.ConstructibleObjects.Where(x => x.WorkbenchKeyword.FormKey == FormKey.Null).ToList())
+        {
+            cobj.WorkbenchKeyword.SetTo(bench);
+            c.Note($"Orphan recipe: {cobj.EditorID} had no workbench keyword, parked");
+            c.Report.Recipes.Add(new RecipeLine("uncraftable", cobj.EditorID!, c.NameOf(cobj.CreatedObject.FormKey), u["profession"]!.GetValue<string>(),
+                                                "disabled", Items(c, cobj), note: "no workbench keyword of its own, parked"));
         }
     }
 

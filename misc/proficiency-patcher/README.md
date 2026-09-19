@@ -142,6 +142,12 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 Tier conditions are `HasSpell(AldMastery_<Profession>_<Rank>) == 1`, Run On Subject; a recipe tiered `Anyone` carries none. The server evaluates
 the same condition in `CraftService`, which is why perks are never used (see `docs/docs_roleplay_mastery.md`).
 
+Two steps exist for the record format alone and run last. Every marker ability with no perk of its own carries the inert
+`AldMasteryMarkerEffect`, because a `SPEL` with no effects at all is an invalid record, and any recipe left without a
+workbench keyword is parked on `MothNest1` like the hidden ones (the Creation Kit dropped one in the base plugin, and no
+bench ever offered it). Running last keeps the ids of everything before them, which the marker spells need: the live
+`server-settings.json` names `AldMastery_Hunter_Master` by form id.
+
 ## After a run
 
 - The output plugin must reach the server Data folder, `C:/MO2/mods/Alduinak`, `build/dist/client/Data` and

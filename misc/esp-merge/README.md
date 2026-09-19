@@ -189,6 +189,13 @@ Run every step with `ESP_MERGE_RUN=r14`; steps 1 and 2 stay pinned to r11 throug
   for slot 0x32 either way. After Sync Data the settings `loadOrder` must equal
   `r14/server-settings.stage.json`: 83 entries with `AlduinakAdditions.esp` last.
 
+- **The xEdit errors (2026-09-18).** "Check for Errors" found 47: 46 marker abilities whose effect list was
+  empty, and `RecipeArmorTH_Fur1Shield`, a `Sentinel.esp` recipe the base plugin overrode with no workbench
+  keyword. Both are record-format faults, not content, and both are fixed in the patcher rather than by hand
+  (`Steps.MarkerEffects` and `Steps.Orphans`); the run is otherwise r14 unchanged. Own records 201 -> 202
+  (`AldMasteryMarkerEffect` at 0x20E5, the first free id, so nothing else moved) and added 5807 -> 5808.
+  Deployed as b562f6f0; `r14/rollback/` holds d4f8f33c.
+
 ## Graves's next save
 
 Every raw save repeats this damage. Before his next session he needs a CK that keeps `.esp` masters (Creation Kit Platform
