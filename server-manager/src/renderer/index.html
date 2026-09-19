@@ -14,6 +14,7 @@
     <button class="tab" data-tab="factions">Factions</button>
     <button class="tab" data-tab="build">Build</button>
     <button class="tab" data-tab="modlist">Modlist</button>
+    <button class="tab" data-tab="news">News</button>
     <button class="tab" data-tab="settings">Settings</button>
   </nav>
 
@@ -107,6 +108,22 @@
       <div id="modlist-diff" class="cards"></div>
       <div id="modlist-stamps" class="stamps"></div>
       <pre id="modlist-log" class="log"></pre>
+    </section>
+
+    <section id="news" class="panel">
+      <div class="row">
+        <button id="news-refresh" class="action">Reload</button>
+        <button id="news-new" class="action go">New entry</button>
+        <span id="news-status" class="status"></span>
+      </div>
+      <small>The launcher's Latest News. Entries are shown newest first, exactly in this order. A save reaches
+        the launcher straight away - the backend re-reads the file and does not need restarting.</small>
+      <div class="split">
+        <ul id="news-list" class="players"></ul>
+        <div id="news-detail" class="detail">
+          <p class="muted">Select an entry to edit it, or start a new one.</p>
+        </div>
+      </div>
     </section>
 
     <section id="settings" class="panel">

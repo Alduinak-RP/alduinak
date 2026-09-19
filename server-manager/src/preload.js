@@ -45,6 +45,12 @@ contextBridge.exposeInMainWorld('mgr', {
   settingsRead:   (key)                => ipcRenderer.invoke('settings:read', key),
   settingsWrite:  (key, values, extra, mtimeMs) => ipcRenderer.invoke('settings:write', key, values, extra, mtimeMs),
 
+  // News tab
+  newsList:     ()          => ipcRenderer.invoke('news:list'),
+  newsSave:     (i, item)   => ipcRenderer.invoke('news:save', i, item),
+  newsDelete:   (i)         => ipcRenderer.invoke('news:delete', i),
+  newsAddImage: ()          => ipcRenderer.invoke('news:addImage'),
+
   // Modlist tab
   modlistRead:           () => ipcRenderer.invoke('modlist:read'),
   modlistUpdateManifest: () => ipcRenderer.invoke('modlist:updateManifest'),

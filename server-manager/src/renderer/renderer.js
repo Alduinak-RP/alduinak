@@ -45,6 +45,8 @@ $$('.tab').forEach(tab => {
     $$('.panel').forEach(p => p.classList.remove('active'))
     tab.classList.add('active')
     $('#' + tab.dataset.tab).classList.add('active')
+    // The News tab reads the file the first time it is opened
+    if (tab.dataset.tab === 'news' && !newsLoaded) { newsLoaded = true; loadNews() }
   })
 })
 
@@ -930,3 +932,137 @@ $('#settings-save').addEventListener('click', async () => {
   if (r.ok && r.mtimeMs !== undefined) settingsMtimeMs = r.mtimeMs
   $('#settings-status').textContent = r.ok ? `Saved ${r.path}` : `Error: ${r.error}`
 })
+
+// News tab
+
+let newsLoaded = false
+let newsItems = []
+let newsImages = []
+let newsSelected = null   // index into newsItems, or 'new'
+
+function newsSetStatus(text, bad) {
+  const node = $('#news-status')
+  node.textContent = text || ''
+  node.classList.toggle('bad', !!bad)
+}
+
+function renderNewsList() {
+  const list = $('#news-list')
+  list.innerHTML = ''
+  if (!newsItems.length) {
+    list.appendChild(el('li', { className: 'muted' }, 'No entries yet.'))
+    return
+  }
+  newsItems.forEach((item, i) => {
+    const li = el('li', { className: 'player' + (newsSelected === i ? ' selected' : '') })
+    li.innerHTML = `<strong>${esc(item.title)}</strong><br><small>${esc(item.tag || 'UPDATE')} &middot; ${esc(item.date || '')}</small>`
+    li.addEventListener('click', () => { newsSelected = i; renderNews() })
+    list.appendChild(li)
+  })
+}
+
+function renderNewsDetail() {
+  const box = $('#news-detail')
+  if (newsSelected === null) {
+    box.innerHTML = '<p class="muted">Select an entry to edit it, or start a new one.</p>'
+    return
+  }
+  const isNew = newsSelected === 'new'
+  const item = isNew ? { title: '', body: '', tag: 'UPDATE', date: '', image: '' } : newsItems[newsSelected]
+  const options = ['<option value="">(no image)</option>']
+    .concat(newsImages.map(p => `<option value="${esc(p)}"${item.image === p ? ' selected' : ''}>${esc(p)}</option>`))
+  // An entry may carry an http(s) image that is not in the folder; keep it selectable
+  if (item.image && !newsImages.includes(item.image)) {
+    options.push(`<option value="${esc(item.image)}" selected>${esc(item.image)}</option>`)
+  }
+  box.innerHTML = `
+    <h3>${isNew ? 'New entry' : 'Edit entry'}</h3>
+    <label>Title<input id="news-title" type="text" maxlength="120" value="${esc(item.title)}" /></label>
+    <label>Body<textarea id="news-body" rows="6" maxlength="4000">${esc(item.body || '')}</textarea></label>
+    <label>Tag<input id="news-tag" type="text" maxlength="24" value="${esc(item.tag || 'UPDATE')}" /></label>
+    <label>Date<input id="news-date" type="text" maxlength="40" placeholder="today's date when left empty" value="${esc(item.date || '')}" /></label>
+    <label>Image<select id="news-image">${options.join('')}</select></label>
+    <div class="row">
+      <button id="news-image-add" class="action small">Add image…</button>
+      <button id="news-save" class="action go">Save</button>
+      ${isNew ? '' : '<button id="news-delete" class="action small stop">Delete</button>'}
+      <button id="news-cancel" class="action small">Cancel</button>
+    </div>
+    <div id="news-preview" class="muted"></div>`
+
+  const preview = $('#news-preview')
+  // The panel's CSP is default-src 'self', so the image itself cannot be shown here; the launcher is where it renders
+  const showPreview = () => {
+    const v = $('#news-image').value
+    preview.textContent = v ? `The launcher loads this from ${v}` : 'No image: the card renders without one.'
+  }
+  $('#news-image').addEventListener('change', showPreview)
+
+  $('#news-image-add').addEventListener('click', async () => {
+    newsSetStatus('choosing…')
+    const r = await window.mgr.newsAddImage()
+    if (r.cancelled) return newsSetStatus('')
+    if (!r.ok) return newsSetStatus(r.error, true)
+    newsImages = r.images
+    const keep = { ...item, image: r.image }
+    if (isNew) { newsSelected = 'new'; newsItems = newsItems } // keep the form open
+    renderNewsDetail()
+    $('#news-image').value = keep.image
+    $('#news-title').value = keep.title
+    $('#news-body').value = keep.body || ''
+    newsSetStatus(`Added ${r.image}`)
+  })
+
+  $('#news-save').addEventListener('click', async () => {
+    const entry = {
+      title: $('#news-title').value,
+      body:  $('#news-body').value,
+      tag:   $('#news-tag').value,
+      date:  $('#news-date').value,
+      image: $('#news-image').value,
+    }
+    newsSetStatus('saving…')
+    const r = await window.mgr.newsSave(isNew ? undefined : newsSelected, entry)
+    if (!r.ok) return newsSetStatus(r.error, true)
+    newsItems = r.items
+    newsImages = r.images
+    newsSelected = isNew ? 0 : newsSelected
+    renderNews()
+    newsSetStatus('Saved')
+  })
+
+  if (!isNew) {
+    $('#news-delete').addEventListener('click', async () => {
+      if (!confirm(`Delete "${item.title}"? The launcher stops showing it at once.`)) return
+      newsSetStatus('deleting…')
+      const r = await window.mgr.newsDelete(newsSelected)
+      if (!r.ok) return newsSetStatus(r.error, true)
+      newsItems = r.items
+      newsImages = r.images
+      newsSelected = null
+      renderNews()
+      newsSetStatus('Deleted')
+    })
+  }
+
+  $('#news-cancel').addEventListener('click', () => { newsSelected = null; renderNews(); newsSetStatus('') })
+  showPreview()
+}
+
+function renderNews() {
+  renderNewsList()
+  renderNewsDetail()
+}
+
+async function loadNews() {
+  newsSetStatus('loading…')
+  const r = await window.mgr.newsList()
+  if (!r.ok) return newsSetStatus(r.error, true)
+  newsItems = r.items
+  newsImages = r.images
+  renderNews()
+  newsSetStatus(`${newsItems.length} ${newsItems.length === 1 ? 'entry' : 'entries'}`)
+}
+
+$('#news-refresh').addEventListener('click', loadNews)
+$('#news-new').addEventListener('click', () => { newsSelected = 'new'; renderNews(); newsSetStatus('') })

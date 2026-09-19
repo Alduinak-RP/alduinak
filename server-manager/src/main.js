@@ -18,6 +18,7 @@ const {
   statusAll, doServiceAction, doServicesAction, discoverLogTargets, requireGameStopped,
 } = require('./services')
 const { backendRequest, factionsRequest } = require('./backendApi')
+const news = require('./news')
 
 let win = null
 
@@ -768,6 +769,25 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw, mtimeMs) => {
     return { ok: false, error: 'unknown config' }
   } catch (err) { return { ok: false, error: err.message } }
 })
+
+// News tab
+
+const newsResult = (fn) => { try { return fn() } catch (err) { return { ok: false, error: err.message } } }
+
+ipcMain.handle('news:list',     ()            => newsResult(() => news.list()))
+ipcMain.handle('news:save',     (_e, i, item) => newsResult(() => news.save(i === undefined ? null : i, item)))
+ipcMain.handle('news:delete',   (_e, i)       => newsResult(() => news.remove(i)))
+ipcMain.handle('news:addImage', async () => {
+  const { dialog } = require('electron')
+  const r = await dialog.showOpenDialog({
+    title: 'Choose a news image',
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+  })
+  if (r.canceled || !r.filePaths.length) return { ok: false, cancelled: true }
+  return newsResult(() => news.addImage(r.filePaths[0]))
+})
+
 
 // Modlist tab
 
