@@ -1,9 +1,16 @@
 [
   {
+    "title": "Server Launches 10/1",
+    "body": "After 3 months of hard work, we are please to announce the server will officially launch to the public October First. \n\nStarting Tuesday, 9/22, players who are whitelisted will be able to access the closed beta a week before the server is released to the public. The final wipe will be Monday the 21st, after that date everything is live.",
+    "date": "Sep 18, 2026",
+    "tag": "UPDATE",
+    "image": "/images/news-world.gif"
+  },
+  {
     "title": "The Launcher Has Arrived",
-    "body":  "The SkyMP launcher is now available. Stay tuned for further updates.",
-    "date":  "Jun 11, 2026",
-    "tag":   "UPDATE",
+    "body": "The SkyMP launcher is now available. Stay tuned for further updates.",
+    "date": "Jun 11, 2026",
+    "tag": "UPDATE",
     "image": "/images/news-launcher-release.gif"
   }
 ]
