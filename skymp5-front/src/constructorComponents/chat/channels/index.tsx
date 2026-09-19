@@ -19,15 +19,10 @@ export const CHAT_CHANNELS: ChatChannel[] = [
   // Admin-to-admin chat, hidden from normal players.
   { id: 'admin',    label: 'Admin',    cmd: '/admin ',   className: 'channel-admin' },
   { id: 'personal', label: 'Personal', cmd: '/pm ',      className: 'channel-pm' },
-  // Faction chat, shown only to faction members (window.__alduinakFaction, set by the client's factionState).
-  { id: 'faction',  label: 'Faction',  cmd: '/f ',       className: 'channel-faction' },
 ];
 
 // Tabs only admins may see/use.
 export const ADMIN_ONLY_CHANNELS = ['admin'];
-
-// Tabs only faction members may see/use.
-export const FACTION_ONLY_CHANNELS = ['faction'];
 
 // The read-only notifications tab.
 export const SYSTEM_CHANNEL = 'system';
@@ -37,7 +32,6 @@ export const DEFAULT_CHANNEL = CHAT_CHANNELS[0].id; // 'local'
 // Slash-commands routed to the Personal and Admin tabs
 const PERSONAL_CMDS = ['pm', 'dm', 'to', 'too'];
 const ADMIN_CMDS = ['admin'];
-const FACTION_CMDS = ['f', 'faction'];
 const LOCAL_CMDS = [
   'say', 'low', 'l', 'whisper', 'w', 'wide', 'long', 'shout', 's', 'y', 'yell',
   'me', 'melow', 'mel', 'melong', 'mewide', 'mew',
@@ -63,7 +57,6 @@ export const channelForMessage = (text: string): string | null => {
   const cmd = (i < 0 ? text : text.slice(0, i)).slice(1).toLowerCase();
   if (PERSONAL_CMDS.includes(cmd)) return 'personal';
   if (ADMIN_CMDS.includes(cmd)) return (window as any).__alduinakAdmin ? 'admin' : null;
-  if (FACTION_CMDS.includes(cmd)) return (window as any).__alduinakFaction ? 'faction' : null;
   if (LOCAL_CMDS.includes(cmd)) return 'local';
   return null;
 };
@@ -77,7 +70,6 @@ const Channels = (props: {
     <div className="chat-channels">
       {CHAT_CHANNELS
         .filter((channel) => !ADMIN_ONLY_CHANNELS.includes(channel.id) || (window as any).__alduinakAdmin)
-        .filter((channel) => !FACTION_ONLY_CHANNELS.includes(channel.id) || (window as any).__alduinakFaction)
         .map((channel) => (
           <button
             key={channel.id}
