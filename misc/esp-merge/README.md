@@ -22,6 +22,7 @@ whose input is missing from the run's manifest reads it from the run named by `c
 | `r11-graves` | `r11/graves-replay/` | `r11/graves-replay/` | The replay check: r11's replayed base through steps 3-5 with r10's spec, compared with r10 |
 | `r12` | `r12/` | `r11/` | r11's base through steps 3-5 with the charcoal spec, plus step 4c: one merged plugin, no `AlduinakCreations.esp`; never run |
 | `r13` | `r13/` | `r11/` | r12's pipeline with the professions spec; deployed 2026-09-18 as e62b8fe2 |
+| `r14` | `r14/` | `r14/` | r13 rebuilt for the owner's 2026-09-18 mod additions and re-sorted load order; its own stage, full slot 0x32 |
 
 The Desktop copy of the 2026-09-14 save (6017a624) was overwritten, so r7's steps 1, 2a and 2b can no longer run; its
 padded copy (db02e960) is the frozen input r7 and r10 check.
@@ -151,6 +152,42 @@ with `ESP_MERGE_RUN=r13`; steps 1 and 2 stay pinned to r11 through `chain`, and 
   it in the MO2 mod, and `AlduinakCreations.esp` and its inputs file out of all three (kept in `r13/retired/`),
   off the MO2 profile's `plugins.txt` and out of the server `loadOrder`, which now matches the staged one exactly.
   `r13/rollback/` holds the r11 plugin, the old `plugins.txt` and the old `server-settings.json`.
+
+## r14 pipeline: a changed load order
+
+The owner added Immersive Armors, Immersive Weapons, two beard mods, an eyewear mod, Cuyi's antlers and
+salt deposits, and re-sorted the load order. `compile-manifest.js` refused the manifest because
+`AlduinakAdditions.inputs.json` still pinned the old order, which is the check doing its job: the plugin
+copies whole cells and worldspaces from the plugins before it, so a changed order means a rebuild.
+
+Run every step with `ESP_MERGE_RUN=r14`; steps 1 and 2 stay pinned to r11 through `chain`.
+
+- **Its own stage.** The load order grew from 71 base plugins to 79 and the order itself moved, so r14
+  stages into `r14/` rather than reusing r11's folder. `stage.py`'s plugin-count check is now the run's
+  `base_plugins` pin instead of a literal 71.
+- **Before staging**, the seven new plugins have to be in the game Data folder and the live
+  `server-settings.json` `loadOrder` has to be the new one: `stage.py` reads the live settings and
+  hardlinks from Data. None of the seven is localized, so their BSAs are not needed for the build.
+- **The full slot moved from 0x2D to 0x32** - five more full plugins load before `AlduinakAdditions.esp`
+  (the four new full ones plus `Saltdeposits.esp`, which was enabled in MO2 but had never reached the
+  server load order). Every `AldMastery_` global id moves with it, so the live
+  `damageMultConditionalFormulaSettings.hunterOverDraw` parameter went from `0x2D002032` to `0x32002032`.
+  The plugin's own local ids are unchanged: still 190 own records at 0x201D-0x20D9 plus the hoe at 0x2100.
+- **Fifty of the seventy-five plugins changed slot**, so every global form id in them moved. That is what
+  the manager's `manifest-diff.json` `purgeNeeded` and the MongoDB purge exist for; see the deploy note.
+- **New content joins the rules automatically.** The new mods contribute 2,814 recipes, all at benches the
+  patcher already sweeps (smelter, forge, armour table, grindstone, tanning rack, Skyforge), so routing,
+  tiers, race and faction gates and the category keywords all apply to them without new rules. Added
+  records rise from 2,848 to 5,775. Where the rules misfired on names they had never seen, the spec was
+  corrected rather than the rules loosened (see the professions commit).
+- **Deploy (done 2026-09-18).** Plugin `44b09cea` to the three live copies, `AlduinakAdditions.inputs.json`
+  and `SKSE/Plugins/CraftingCategories/AlduinakAdditions.json` into the MO2 mod. The live
+  `server-settings.json` keeps the **old** `loadOrder` on purpose: `modsync.computeDiff` treats the settings
+  order as the one the database was written under, so advancing it by hand would make `purgeNeeded` come out
+  false and the MongoDB purge would never be prompted for. Sync Data writes the new order and records the
+  shift. Only `damageMultConditionalFormulaSettings` was edited ahead of time, because the plugin is built
+  for slot 0x32 either way. After Sync Data the settings `loadOrder` must equal
+  `r14/server-settings.stage.json`: 83 entries with `AlduinakAdditions.esp` last.
 
 ## Graves's next save
 

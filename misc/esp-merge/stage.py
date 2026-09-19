@@ -40,7 +40,7 @@ def main():
     data_dir, live = live_load_order()
     assert data_dir.replace('\\', '/').rstrip('/') + '/' == DATA, f'live dataDir is {data_dir}'
     base, order = staged_order(live)
-    assert len(base) == 71 and base[-1] == SELF and len(set(n.lower() for n in order)) == len(order), 'unexpected live loadOrder'
+    assert len(base) == RUN.get('base_plugins', 71) and base[-1] == SELF and len(set(n.lower() for n in order)) == len(order), f'unexpected live loadOrder: {len(base)} plugins'
     log.append(f'live loadOrder {len(live)} plugins, staged {len(order)}: ' + ', '.join(order[5:5 + len(order) - len(base)]) + ' after Dragonborn.esm')
     os.makedirs(STAGE, exist_ok=True)
 

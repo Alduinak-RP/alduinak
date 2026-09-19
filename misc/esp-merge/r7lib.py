@@ -22,8 +22,8 @@ SELF = 'AlduinakAdditions.esp'
 
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
-# What the live copies hold today: the r13 plugin, deployed 2026-09-18. Re-pin after every deploy.
-DEPLOYED_SHA = 'e62b8fe24db516c1ed0f651823ab70c18e40f53f5e807c68a23e8e109fe87e71'
+# What the live copies hold today: the r14 plugin, deployed 2026-09-18. Re-pin after every deploy.
+DEPLOYED_SHA = '44b09ceac80703a9ec87ad879d7af850e656b4932abf22368227009f55992fb4'
 # The r7 plugin, which the r11 run merged from and still pins
 R7_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
 
@@ -95,6 +95,14 @@ RUNS = {
                 spec='4ed169367aa1f3e3171ee859054ff13f5835126410385260c797096c6ec132a3',
                 last_id=0x2100, own_records=190, added=2848,
                 # Ale, wine and Nord mead left the alchemy table for the meadery keyword, as AldRecipeMead_*
+                dropped=('AldRecipeAlchemy_Ale', 'AldRecipeAlchemy_FoodMead', 'AldRecipeAlchemy_FoodWineBottle02')),
+    # The owner's 2026-09-18 mod additions (Immersive Armors and Weapons, beards, eyewear, antlers, salt deposits)
+    # and a re-sorted load order: 79 base plugins instead of 71, its own stage, and the full slot at 0x32.
+    # PLACEHOLDERS to re-pin from the run: 'stage_sha' (step 0 prints it), 'added', 'own_records', 'last_id'.
+    'r14': dict(_R11_RUN, dir=ESPFIX + 'r14/', stage=ESPFIX + 'r14/', chain='r11', merge=True, hedr_offset=51,
+                stage_sha='2b62c107bbb92cbfb732802fe18d99988cd3a3afe8c478dc511587e48e25f3de', base_plugins=79, slot=0x32,
+                spec='75bf111ac95047e28a8ab7c3d6aad4be5e8e643868dba7b2e12118212308a27b',
+                last_id=0x2100, own_records=191, added=5775,
                 dropped=('AldRecipeAlchemy_Ale', 'AldRecipeAlchemy_FoodMead', 'AldRecipeAlchemy_FoodWineBottle02')),
 }
 RUN_NAME = os.environ.get('ESP_MERGE_RUN', 'r7')
