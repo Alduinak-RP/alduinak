@@ -213,8 +213,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
       <div className="admin-panel__columns">
         {main.map((c) => (
           <div key={c.id} className="admin-panel__column">
-            <span className="admin-panel__faction-name" style={{ color: '#' + c.color }}>{c.name}</span>
-            <div className="admin-panel__column-row"><span>Name:</span><span>{c.name}</span></div>
+            <div className="admin-panel__column-row"><span>Name:</span><span style={{ color: '#' + c.color }}>{c.name}</span></div>
             <div className="admin-panel__column-row"><span>Type:</span><span>{TYPE_LABEL[c.type] || c.type}{ZONES[c.zone] ? ' (' + ZONES[c.zone] + ')' : ''}</span></div>
             <div className="admin-panel__column-row"><span>Rank:</span><span>{c.rankName}</span></div>
             <div className="admin-panel__column-row"><span>Leader:</span><span>{c.leaderName}</span></div>
@@ -277,6 +276,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
               <div
                 key={m.key}
                 className={'admin-panel__row admin-panel__row--faction' + (m.online ? '' : ' admin-panel__row--offline')}
+                onClick={(e) => openMenu(e, m, '')}
                 onContextMenu={(e) => openMenu(e, m, '')}
               >
                 <span className={'admin-panel__dot' + (m.online ? ' admin-panel__dot--online' : '')} />
@@ -305,7 +305,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
           </div>
         ) : null}
         <span className="admin-panel__hint">
-          Right click a member to promote, remove or seat them. You can also look at a player and press the interact key to Recruit.
+          Click a member to promote, remove or seat them. You can also look at a player and press the interact key to Recruit.
         </span>
       </>
     );
@@ -356,6 +356,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
                 onDragStart={() => setDrag(s.key)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => dropSeat(s.key)}
+                onClick={(e) => openMenu(e, null, s.key)}
                 onContextMenu={(e) => openMenu(e, null, s.key)}
               >
                 <span className={'admin-panel__dot' + (s.online ? ' admin-panel__dot--online' : '')} />
@@ -365,7 +366,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
             ))
           )}
         </div>
-        <span className="admin-panel__hint">Drag a regent to change the order of succession, right click to remove them.</span>
+        <span className="admin-panel__hint">Drag a regent to change the order of succession, click one to remove them.</span>
       </>
     );
   };

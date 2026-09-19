@@ -33,7 +33,7 @@ This covers:
 - **4. House claiming** — players claim the door to an interior cell.
 - **5. Locks** — owners lock/unlock doors and containers inside cells they own.
 - **6. Factions**: hold courts, armies and guilds with per-character ranks,
-  invitations, faction chat, uniforms and faction-only doors and containers.
+  recruitment, regency, titles, uniforms and faction-only doors and containers.
 
 As before, the **client** ships the interaction UI in this repo and the
 **gamemode** owns all policy and persistence. None of this needs an ESP.
@@ -125,133 +125,175 @@ re-evaluated on activation, not cached on the client.
 
 ## 6. Factions
 
-**Model.** A faction is a hold court, an army or a guild. Membership and ranks
-are stored per character in the backend (`skymp5-backend/data/faction-whitelist.json`,
-gitignored); the game server keeps a copy on the character
-(`private.skympAccess`, narrowed to the character's slot) for lookups between
-requests. Hold courts are independent groups: their political zone (West, East,
-Neutral) is only a label. Nothing applies Skyrim engine factions, so vanilla NPCs
-treat members like anyone else, and arrests stay open to anyone with manacles.
+**Model.** A faction is a hold court, an army or a guild, and its `type` says
+which (`hold`, `military`, `guild`). A character belongs to **at most one
+faction of each type**, leads **at most one faction anywhere**, and shows **at
+most one title**. Membership and ranks are stored per character in the backend
+(`skymp5-backend/data/faction-whitelist.json`, gitignored); the game server keeps
+a copy on the character (`private.skympAccess`, narrowed to the character's slot)
+for lookups between requests. Hold courts are independent groups: their political
+zone (West, East, Neutral) is only a label. Nothing applies Skyrim engine
+factions, so vanilla NPCs treat members like anyone else.
+
+Ids keep the old `hold:` and `faction:` prefixes (the craft marker spells in the
+plugin are named from them), so `type` rather than the prefix is what the game
+groups by: `hold:whiterun` is a hold, `faction:stormcloaks` a military faction
+and `faction:companions` a guild.
 
 Server: `skymp5-server/ts/systems/factionSystem.ts` (rules in `factionRules.ts`,
 backend calls in `backendFactionApi.ts`). Client: `factionService.ts` and the
-Personal Menu's Faction tab (`skymp5-front/src/features/adminPanel/factionTab.tsx`).
-Chat: `server-plugins/Alduinak/faction-chat`.
+Personal Menu's Faction tabs (`skymp5-front/src/features/adminPanel/factionTab.tsx`).
+
+### Permissions
+
+Every rank row carries `order` (0 is the top of the ladder), `capacity` (null is
+open), `permission` (always the rank id with dots, such as `hold.whiterun.jarl`,
+sent to the game server with the member's access) and what its holders may do:
+
+| Field | Meaning | Default |
+|---|---|---|
+| `leader` | every permission of the faction, held in only one faction at a time | `true` for the rank at order 0 |
+| `recruit` | rank ids an outsider may be recruited into; Recruit takes the lowest | `[]` |
+| `promote` | rank ids a member below this rank may be moved to, up or down | `[]` |
+| `remove` | may remove members it reaches | `false` |
+| `craft` | carries the faction's craft marker, so its unique gear can be made | `false` |
+| `housing` | manages the hold's property (hold courts only) | `true` for Jarl and Steward |
+| `arrest` | may craft prisoner cuffs and lock or unlock dungeon cells | `false` |
+| `execute` | may PK another player through the execute script | `false` |
+| `factionAccess` | passes the faction's doors and chests | `true` |
+| `issuesUniform` | hands out the faction uniform | `false` |
+| `title`, `titleFemale` | what Show Title puts in front of the name | the rank name |
+
+`arrest` and `execute` are carried and shown, but the cuff recipes, the cell
+locks and the execute script are not built yet; nothing reads them in game.
+
+A rank **acts on** members strictly below it on the ladder, and lands them on a
+rank from its own `promote` list. Leaders, staff and a regent standing in for an
+absent leader act from above the whole ladder and carry every permission.
+Nobody acts on their own row: members step down with **Leave Faction**.
 
 ### Launch factions and ranks
 
-The committed seed `skymp5-backend/seeds/faction-whitelist.json` holds 16
-factions: the nine hold courts (West: Haafingar, the Reach, Falkreath,
-Hjaalmarch; East: Eastmarch, Winterhold, the Rift, the Pale; Neutral: Whiterun),
-the Imperial Legion (West), the Stormcloaks (East), the College of Winterhold,
-the Companions, the Dark Brotherhood, the Thieves Guild and the Thalmor.
+The committed seed `skymp5-backend/seeds/faction-whitelist.json` holds 19
+factions: nine hold courts (West: Haafingar, the Reach, Falkreath, Hjaalmarch;
+East: Eastmarch, Winterhold, the Rift, the Pale; Neutral: Whiterun), five
+military factions (Imperial Legion, Stormcloaks, Thalmor, the Forsworn, the
+Dawnguard) and five guilds (the Companions, the College of Winterhold, the
+Thieves Guild, the Dark Brotherhood, the Bards College). The Bards College
+ladder (a leader and 19 members) is the template for any faction added later.
 
-Every rank row carries `order` (0 is the leader), `capacity` (null is open),
-`permission` (always the rank id with dots, such as `hold.whiterun.jarl`, sent
-to the game server with the member's access) and what its holders may do:
+Every hold uses one ladder:
 
-| Field | Meaning | When absent |
+| Rank | Cap | Permissions |
 |---|---|---|
-| `appoints` | rank ids a holder may invite into, acts on and demotes members to | only the leader acts |
-| `promotes` | rank ids a holder may promote members to | same as `appoints` |
-| `demotes` | rank ids whose holders a holder may demote | same as `appoints` |
-| `removes` | rank ids whose holders a holder may remove | same as `appoints` |
-| `invites` | may invite new members at all | `true` |
-| `managesProperty` | manages the hold's property (hold courts only) | `true` for Jarl and Steward |
-| `factionAccess` | passes the faction's doors and chests | `true` |
-| `issuesUniform` | hands out the faction uniform | `false` |
-
-The seed sets only `appoints` and `issuesUniform`, so every other field keeps
-its default and the in-game rules are unchanged until staff edit a rank. Hold
-courts use SkyRP's ladder with the `HoldClaims.cpp` caps and appoint matrix
-(`skymp5-server/tools/test-faction-rules.js` checks the seed against it):
-
-| Rank | Cap | Appoints |
-|---|---|---|
-| Jarl | 1 | every rank below |
-| Steward | 4 | Lord/Lady, Citizen |
-| Captain of the Guard | 4 | Guard (also issues uniforms) |
-| Court Wizard | 4 | none |
-| Thane | 5 | Housecarl, Guard, Village Elder, Lord/Lady, Citizen |
-| Housecarl | open | Guard |
-| Village Elder | 5 | Lord/Lady, Citizen |
-| Guard | open | none |
-| Lord/Lady | open | Citizen |
+| Jarl | 1 | leader |
+| Noble | open | none; the title is Lord or Lady by the character's sex, and the Jarl seats them |
+| Steward | 4 | housing, recruit Citizen, promote to Chieftan and Courtier |
+| Captain | 4 | craft, arrest, execute, recruit Guard |
+| Courtier | 10 | craft |
+| Thane | 5 | recruit Citizen, promote to Housecarl and Guard |
+| Housecarl | 10 | craft, arrest |
+| Guard | 40 | craft, arrest |
+| Chieftan | 5 | recruit Citizen |
 | Citizen | open | none |
 
-Armies and guilds get an ordered ladder whose leader is capped at 1; the leader
-and the next two ranks appoint everything below themselves, and the leader and
-second rank issue uniforms. The names are editable data:
+Armies hold 20 members in the small ones and 50 in the large, plus an uncapped
+recruit rank where trainees wait for a seat:
 
-| Faction | Ladder (leader first) |
+| Faction | Ladder (top first, capacity in brackets) |
 |---|---|
-| Imperial Legion | General, Legate (3), Tribune, Praefect, Quaestor, Auxiliary |
-| Stormcloaks | General, Stormblade (3), Snow-Hammer, Bone-Breaker, Ice-Veins, Unblooded |
-| College of Winterhold | Arch-Mage, Master Wizard (2), Wizard, Apprentice, Novice |
-| The Companions | Harbinger, Circle Member (5), Shield-Sibling, Whelp |
-| Dark Brotherhood | Listener, Speaker (4), Silencer, Assassin, Murderer, Associate |
-| Thieves Guild | Guild Master, Master Thief (3), Shadowfoot, Cat Burglar, Footpad, Pickpocket |
-| Thalmor | First Emissary, Justiciar (4), Agent, Soldier |
+| Imperial Legion | General (1, leader), Legate (1, leader), Tribune (3, leader), Prefect (1), Centurion (5), Optio (1), Decanus (3), Evocatus (5), Penitus Oculatus (10), Legionnaire (20), Auxiliary (open) |
+| Stormcloaks | Commander (1, leader), Soldier (49) |
+| Thalmor | Emissary (2, leader), Justiciar (3), Inquisitor (5), Speculatore (5), Enforcer (5), Initiate (open) |
+| The Forsworn | Leader (1), Reachman (19) |
+| The Dawnguard | Commander (1), Warden (19) |
 
-The seed also sets uniforms from vanilla gear, checked against Skyrim.esm: each
-hold court issues its city guard armour, helmet and shield (Eastmarch: Stormcloak
-cuirass, Eastmarch guard helmet, Windhelm shield); the Legion and the Stormcloaks
-issue their soldier sets, with officer sets for the two top ranks; the College
-issues College robes and a mage hood (Archmage robes for the Arch-Mage, mantled
-robes for Apprentices and Novices); the Companions issue Wolf armour to the
-Harbinger and the Circle only; the Dark Brotherhood issues Shrouded armour; the
-Thieves Guild its guild armour (the Guild Master set for the leader); the Thalmor
-their robes, hooded for the two top ranks. Imperial gear is not craftable (r11
-forge hides), so the Legion uniform is its source.
+The Legion's Prefect and Optio recruit Auxiliaries and promote everything below
+themselves; the Thalmor's Justiciar and Inquisitor recruit Initiates, promote
+everything below themselves, craft and execute.
+
+Guilds hold 20:
+
+| Faction | Ladder (top first, capacity in brackets) |
+|---|---|
+| The Companions | Guildmaster (1), Member (19) |
+| College of Winterhold | Arch-Mage (1), Master-Wizard (1), Headmaster (3), College Staff (5), Student (10) |
+| Thieves Guild | Guildmaster (1), Shadowmaster (2), Councilor (2), Thief (5), Runner (10), Initiate (open) |
+| Dark Brotherhood | Speaker (1), Assassin (19, execute) |
+| Bards College | Leader (1), Member (19) |
+
+The College's Master-Wizard and Headmaster recruit Students, remove members and
+craft; the Master-Wizard also promotes everything below itself.
+
+Uniforms come from vanilla gear, checked against Skyrim.esm: each hold court
+issues its city guard armour, helmet and shield; the Legion and the Stormcloaks
+their soldier sets; the College its robes and hood; the Dark Brotherhood
+Shrouded armour; the Thieves Guild its guild armour; the Thalmor their robes.
+The Forsworn, the Dawnguard and the Bards College have no uniform yet.
 
 ### Rules
 
-- **Joining** is by invitation only, from ranks with `invites`. An officer looks
-  at a player, presses the interact key and picks **Invite to faction** (shown
-  only when they may invite anyone), then a faction and rank, or picks a player
-  from the Faction tab's
-  list of players in range. The target gets the shared Yes/No prompt;
-  invitation ids start at 2,000,000,000 and only the prompted player's answer
-  counts. The target must be within `factionInviteMaxDistance`.
-- **Rank changes**: moving a member up needs the member's rank in the officer's
-  `appoints` and the new rank in `promotes`; moving a member down needs the
-  member's rank in `demotes` and the new rank in `appoints`. Set rank offers
-  exactly those ranks, and Promote and Demote step to the nearest one. Remove
-  needs the member's rank in `removes`. The leader acts on anyone below the
-  leader; its `appoints` and `promotes` still choose where it invites, demotes
-  and promotes to. Nobody acts on their own row: members step down with Leave.
-- **Leaders** are placed by staff only (dashboard or in game with the `factions`
-  cap). An inactive leader is removed by staff by hand. There are no regents.
-- **Staff** whose tier has the `factions` cap (senior and gm by default) see every
-  faction in the Faction tab and may do everything, the leader rank included.
+- **Joining** is by recruitment only. Someone with a `recruit` list looks at a
+  player, presses the interact key and picks **Recruit** (shown only when they
+  may recruit at all), or picks a player from the type tab's list of players in
+  range. The target gets the shared Yes/No prompt and joins at the **lowest**
+  rank the recruiter may recruit into; invitation ids start at 2,000,000,000 and
+  only the prompted player's answer counts. The target must be within
+  `factionInviteMaxDistance` and must not already belong to a faction of that
+  type.
+- **Rank changes**: a right click on a member offers every rank the viewer may
+  move them to, up or down, plus the uniform, **Add Regent** and removal. The
+  backend refuses a promotion into a leader seat when the member already leads a
+  faction or holds a regency seat elsewhere, and refuses any rank whose capacity
+  is full.
+- **Leaders** hold a rank with `leader`; the Legion has three such ranks and the
+  Thalmor two, so any of them counts. Staff place leaders (dashboard, or in game
+  with the `factions` cap).
+- **Regency** replaces the old "staff remove an inactive leader by hand". The
+  leader's **Regency** tab seats members, drags them into the order of
+  succession, removes them and switches regency on or off. While regency is on
+  and no leader of that faction is online, the first seated regent who is online
+  acts with the leader's permissions and is called **Lord Regent** in a hold,
+  **Acting Commander** in a military faction and **Acting Guildmaster** in a
+  guild. A leader never takes a regency seat, and a regent never leads another
+  faction. A seat disappears with the membership behind it.
+- **Show Title** is one checkbox per Main tab column and at most one at a time;
+  unchecking it hides the title again. The title is the rank's `title` (a
+  Noble's is Lord or Lady by the character's sex), or the regent title while
+  acting. The game server writes it to the actor property `ff_factionTitle`,
+  registered in the gamemode next to the other `ff_` properties; clients put it
+  in front of the floating name above the character, and the gamemode's
+  `nameFor` puts it in front of chat names.
+- **Staff** whose tier has the `factions` cap (senior and gm by default) see
+  every faction in the type tabs and may do everything, the leader rank included.
 - **Deleted and perma-dead characters** lose their ranks automatically: the
   character's own rows at once, and the rows shared by every character of the
   account once no living character is left. Each removal writes a staff log line.
-- **Uniforms**: the leader and ranks with `issuesUniform` hand the faction's item
-  list (or the member's rank list, which replaces it) to an online member, once
-  per `factionUniformCooldownHours` per character and faction.
-- **Hold property**: ranks with `managesProperty` (by default the Jarl and the
-  Steward, who also count until the game server has loaded the definitions)
-  manage the claims in their hold's registered interior cells (`HOLD_CELLS` in
+- **Uniforms**: leaders and ranks with `issuesUniform` hand the faction's item
+  list (or the member's rank list, which replaces it) to an online member from
+  the member's right-click menu, once per `factionUniformCooldownHours` per
+  character and faction.
+- **Faction crafting**: only ranks with `craft` carry the `AldFaction_<id>`
+  marker spell the recipes test, so gear follows the rank rather than plain
+  membership.
+- **Hold property**: ranks with `housing` (by default the Jarl and the Steward,
+  who also count until the game server has loaded the definitions) manage the
+  claims in their hold's registered interior cells (`HOLD_CELLS` in
   `housingSystem.ts`); backend hold ids like `the-rift` match the housing
   table's `rift`.
-- **Faction chat**: `/f <text>` (or `/faction`) reaches the online members of one
-  faction, tagged `[[F]]` into the chat's Faction tab, which only members see.
-  A member of several factions picks the one `/f` speaks to with **Use for /f**.
-  Inside the faction everyone goes by their real character name, masked or not.
 - **Faction-only doors and containers** are listed in the live file
   `faction-access.json` next to `gamemode.js` (re-read within 10 seconds of a
   change). An entry with a rank list admits exactly those ranks; an entry
   without one admits every rank with `factionAccess` (every member until the
-  game server has loaded the definitions). Outsiders are refused and told who owns it, the housing menu shows the
-  faction as the owner and nobody can claim it; staff and NPCs pass. Either half
-  of a teleport door matches. A faction chest is simply a container listed with
-  the ranks that may open it. The committed seed
-  `skymp5-server/seeds/faction-access.json` gates the faction headquarters, each
-  door checked in Skyrim.esm with its teleport partner: both Dark Brotherhood
-  sanctuaries (Black Doors and the Dawnstar passage), the Cistern (Ragged Flagon
-  door and both graveyard ladders), the Underforge (Harbinger and Circle only)
-  and the Arch-Mage's Quarters (Arch-Mage only).
+  game server has loaded the definitions). Outsiders are refused and told who
+  owns it, the housing menu shows the faction as the owner and nobody can claim
+  it; staff and NPCs pass. Either half of a teleport door matches. A faction
+  chest is simply a container listed with the ranks that may open it. The
+  committed seed `skymp5-server/seeds/faction-access.json` gates the faction
+  headquarters, each door checked in Skyrim.esm with its teleport partner: both
+  Dark Brotherhood sanctuaries (Black Doors and the Dawnstar passage), the
+  Cistern (Ragged Flagon door and both graveyard ladders), the Underforge and
+  the Arch-Mage's Quarters.
 
 ```json
 {
@@ -267,19 +309,35 @@ The ids above are placeholders. `ref` takes a load-order form id or a desc (the
 Debug tab's target report shows both); `ranks` is either one list for every
 listed faction or a list per faction (a faction left out admits every rank).
 
+### The Faction menu
+
+The Personal Menu's Faction tab holds up to five tabs of its own:
+
+- **Main** says "Not apart of any factions." when the character is in none.
+  Otherwise it shows one column per faction with its name, type, the
+  character's rank, the current leader (or the acting regent when the seat is
+  empty), the member count and the tenure taken from the membership's
+  `createdAt`, plus the **Show Title** checkbox and a **Leave Faction** button
+  behind a confirmation.
+- **Hold**, **Military** and **Guild** each appear only while the character
+  belongs to a faction of that type (staff always see all three, with a picker).
+  Each lists the faction's members sorted by rank, with their tenure and whether
+  they hold or are currently filling a regency seat; clicking or right clicking
+  a member opens what the viewer may do to them.
+- **Regency** appears only for a leader and is described under Rules.
+
 ### Editing factions (dashboard and Server Manager)
 
 One editor, `skymp5-backend/public/dashboard/faction-editor.js`, runs in the
 dashboard's Factions view (Definitions) and in the Server Manager's **Factions**
-tab. It creates, edits and deletes factions (group, display name, zone, colour),
-their ranks (name, ladder order, capacity) and each rank's lists and flags from
-the table above. In the dashboard it also edits the faction and rank uniform
-item lists (one item per line with a count); the Server Manager tab leaves
-uniforms alone. Faction doors and chests stay in the game server's hand-edited
-`faction-access.json`. Assignments still
-pick a character slot in the dashboard's Assignments panel; the character names
-come from the game server, which reports every account's slots whenever the
-character select list is sent.
+tab. It creates, edits and deletes factions (type, group, display name, zone,
+colour), their ranks (name, title, ladder order, capacity) and each rank's lists
+and flags from the table above. In the dashboard it also edits the faction and
+rank uniform item lists (one item per line with a count); the Server Manager tab
+leaves uniforms alone. Faction doors and chests stay in the game server's
+hand-edited `faction-access.json`. Assignments still pick a character slot in the
+dashboard's Assignments panel; the character names come from the game server,
+which reports every account's slots whenever the character select list is sent.
 
 - **Who**: reads need `factions.view`, every definition write needs
   `factions.define`, which `admin.*` covers and no role has by default
@@ -288,15 +346,15 @@ character select list is sent.
   a direct loopback connection (socket on 127.0.0.1 or ::1, a loopback `Host`,
   and no `X-Forwarded-For`, `X-Real-IP`, `Forwarded` or `X-Forwarded-Host`
   header, which nginx always adds). The dashboard always uses its Bearer session.
-- **Ids**: a faction id is `<scope>:<slug of the group>` with scope `hold` or
-  `faction`; a hold court's group must name one of the nine holds and each hold
-  has one court. Rank ids are the slug of the first rank name. Ids never change,
-  and deleted ids are kept in `retired` and never reused, so a door entry,
-  uniform record, log line or permission string naming an old id can never grant
-  a new faction. A deleted court retires its hold under both spellings
-  (`hold:the-rift` also blocks `hold:rift`), so that hold never gets a new
-  court; only removing the id from `retired` by hand, with the backend stopped,
-  allows it again.
+- **Ids**: a faction id is `<scope>:<slug of the group>` with scope `hold` for a
+  court and `faction` for everything else; a hold court's group must name one of
+  the nine holds and each hold has one court. Rank ids are the slug of the first
+  rank name. Ids never change, and deleted ids are kept in `retired` and never
+  reused, so a door entry, uniform record, log line or permission string naming
+  an old id can never grant a new faction. A deleted court retires its hold under
+  both spellings (`hold:the-rift` also blocks `hold:rift`), so that hold never
+  gets a new court; only removing the id from `retired` by hand, with the backend
+  stopped, allows it again.
 - **Revisions**: every write names the faction's `rev`; a stale one is refused
   with the current faction and the editor reloads it.
 - **Deleting** a faction or rank that nobody holds takes a second click. When
@@ -305,9 +363,9 @@ character select list is sent.
   which sends the count it showed and is refused again if it changed. Before
   removing memberships the backend copies the file to
   `faction-whitelist.json.bak`. Deleting a rank also takes it out of every other
-  rank's lists.
-- **Audit**: every definition change and every membership added, changed or
-  removed (dashboard, manager, cascade or in game) writes a line to
+  rank's lists and drops the regency seats behind it.
+- **Audit**: every definition change, regency change and every membership added,
+  changed or removed (dashboard, manager, cascade or in game) writes a line to
   `faction.log` in `BAN_LOG_DIR`, next to `ban.log`.
 - **Game server**: FactionSystem asks for the definitions every 20 seconds with
   `If-None-Match`, so an unchanged table is a 304, and on a change reloads the
@@ -323,48 +381,55 @@ character select list is sent.
 
 | Method and path | Body | Answer |
 |---|---|---|
-| `GET /api/factions` | | `{ factions: [{ id, scope, group, name, zone, color, uniform, rev, members, ranks }], retired, scopes, zones, holds, canDefine }` |
-| `GET /api/factions/:scope/:group/members` | | `{ members: [{ discordId, profileId, playerName, rank, rankSlug, slot }] }` |
-| `POST /api/factions` | `{ scope, group, name?, zone?, color? }` | 201 `{ faction }` |
-| `PATCH /api/factions/:scope/:group` | `{ rev, name?, zone?, color?, uniform? }` | `{ faction }` |
+| `GET /api/factions` | | `{ factions: [{ id, scope, type, group, name, zone, color, uniform, regencyEnabled, regents, rev, members, ranks }], retired, scopes, zones, holds, canDefine }` |
+| `GET /api/factions/:scope/:group/members` | | `{ members: [{ discordId, profileId, playerName, rank, rankSlug, slot, since }] }` |
+| `POST /api/factions` | `{ type, group, name?, zone?, color? }` | 201 `{ faction }` |
+| `PATCH /api/factions/:scope/:group` | `{ rev, name?, type?, zone?, color?, uniform? }` | `{ faction }` |
 | `DELETE /api/factions/:scope/:group` | `{ rev, removeMembers?, expectedMembers? }` | `{ deleted, removedMembers }` |
-| `POST /api/factions/:scope/:group/ranks` | `{ rev, rank, capacity?, appoints?, promotes?, demotes?, removes?, invites?, managesProperty?, factionAccess?, issuesUniform?, uniform? }` | 201 `{ faction }` |
-| `PUT /api/factions/:scope/:group/ranks` | `{ rev, ranks: [rankId, ...] }` (leader first) | `{ faction }` |
+| `POST /api/factions/:scope/:group/ranks` | `{ rev, rank, capacity?, title?, titleFemale?, recruit?, promote?, leader?, remove?, craft?, housing?, arrest?, execute?, factionAccess?, issuesUniform?, uniform? }` | 201 `{ faction }` |
+| `PUT /api/factions/:scope/:group/ranks` | `{ rev, ranks: [rankId, ...] }` (top first) | `{ faction }` |
 | `PATCH /api/factions/:scope/:group/ranks/:rank` | `{ rev, ...rank fields }` | `{ faction }` |
 | `DELETE /api/factions/:scope/:group/ranks/:rank` | `{ rev, removeMembers?, expectedMembers? }` | `{ faction, removedMembers }` |
 
 Refusals answer `{ error }`, plus `stale` and `faction` on a revision mismatch
 or `hasMembers`, `members` and `sample` on a delete that would remove
-memberships. A `permission` field other than the rank's own string is refused. Tests: `node skymp5-backend/scripts/test-factions.js` (store,
-routes and the loopback-only token), `node skymp5-server/tools/test-faction-rules.js`
-(rules) and `node server-manager/tools/test-factions-proxy.js` (the manager proxy).
+memberships. A `permission` field other than the rank's own string is refused.
+Tests: `node skymp5-backend/scripts/test-factions.js` (store, routes and the
+loopback-only token), `node skymp5-server/tools/test-faction-rules.js` (rules)
+and `node server-manager/tools/test-factions-proxy.js` (the manager proxy).
 
 ### Protocol
 
 ```json
 // Client -> Server
 { "customPacketType": "factionMenuRequest", "factionId": "hold:whiterun" }
-{ "customPacketType": "factionInviteOptionsRequest", "target": 4278190101 }
-{ "customPacketType": "factionRequest", "action": "invite", "factionId": "hold:whiterun", "rank": "guard", "target": 4278190101 }
-{ "customPacketType": "factionRequest", "action": "promote", "factionId": "hold:whiterun", "profileId": 7, "slot": 0 }
-{ "customPacketType": "factionRequest", "action": "setRank", "factionId": "hold:whiterun", "profileId": 7, "slot": 0, "rank": "steward" }
-// action also: demote | remove | uniform {profileId, slot} and leave | chat {factionId}; slot null is the account-wide row
+{ "customPacketType": "factionRecruitRequest", "target": 4278190101 }
+{ "customPacketType": "factionRequest", "action": "recruit", "factionId": "hold:whiterun", "target": 4278190101 }
+{ "customPacketType": "factionRequest", "action": "promote", "factionId": "hold:whiterun", "profileId": 7, "slot": 0, "rank": "steward" }
+{ "customPacketType": "factionRequest", "action": "regentOrder", "factionId": "hold:whiterun", "order": [{ "profileId": 7, "slot": 0 }] }
+// action also: remove | uniform | regentAdd | regentRemove {profileId, slot}, regency {enabled},
+// title {}, leave {}, and the staff-only adminAdd {target, rank} and adminRemove {target}; slot null is the account-wide row
 
 // Server -> Client
-{ "customPacketType": "factionMenu", "available": true, "factions": [{ "id", "name", "zone", "color", "rank" }],
-  "selected": "hold:whiterun", "chat": "hold:whiterun",
-  "detail": { "id", "name", "zone", "color", "myRank", "staff", "canLeave",
+{ "customPacketType": "factionMenu", "available": true, "staff": false, "titleFactionId": "hold:whiterun",
+  "main": [{ "id", "name", "type", "zone", "color", "rankName", "title", "leaderName", "members", "tenure", "titleShown" }],
+  "byType": { "hold": "hold:whiterun" },
+  "factions": [{ "id", "name", "type", "zone", "color", "rank" }],
+  "selected": "hold:whiterun",
+  "detail": { "id", "name", "type", "zone", "color", "myRank", "acting", "staff", "canLeave",
               "ranks": [{ "slug", "name", "capacity", "count" }],
-              "members": [{ "key", "profileId", "slot", "name", "rankSlug", "rankName", "online", "self",
-                            "promote", "demote", "setRanks", "canRemove", "canUniform" }],
-              "inviteRanks": [{ "slug", "name" }], "nearby": [{ "target", "name" }] } }
-{ "customPacketType": "factionInviteOptions", "target", "targetName", "options": [{ "factionId", "name", "ranks": [{ "slug", "name" }] }] }
-{ "customPacketType": "factionState", "factions": [{ "id", "name" }], "chat": "hold:whiterun", "canInvite": true }
+              "members": [{ "key", "profileId", "slot", "name", "rankSlug", "rankName", "online", "self", "tenure",
+                            "regent", "acting", "promote": [{ "slug", "name" }], "canRemove", "canUniform", "canRegent" }],
+              "recruitRank": { "slug", "name" }, "nearby": [{ "target", "name" }] },
+  "regency": { "factionId", "name", "type", "enabled", "regentTitle",
+               "seats": [{ "key", "profileId", "slot", "name", "rankName", "online", "acting" }] } }
+{ "customPacketType": "factionState", "factions": [{ "id", "name", "type" }], "canRecruit": true }
 { "customPacketType": "factionNotice", "text": "Lydia is now Guard." }
 ```
 
-Backend (master key plus `X-Auth-Token`): `GET /api/servers/:key/factions` (ETag, 304 when unchanged),
-`GET /api/servers/:key/groups/:scope/:group/roster`,
+Backend (master key plus `X-Auth-Token`): `GET /api/servers/:key/factions` (ETag, 304 when unchanged,
+regency seats translated to profile ids), `GET /api/servers/:key/groups/:scope/:group/roster`,
+`PUT /api/servers/:key/groups/:scope/:group/regency` (`{ enabled?, regents?: [{ profileId, slot }], by }`),
 `POST /api/servers/:key/profiles/:profileId/factions` (`{ requirementId, slot, playerName, by }`),
 `DELETE /api/servers/:key/profiles/:profileId/factions/:assignmentId`,
 `DELETE /api/servers/:key/profiles/:profileId/characters/:slot/factions[?accountWide=1]`,
@@ -378,12 +443,11 @@ Backend (master key plus `X-Auth-Token`): `GET /api/servers/:key/factions` (ETag
 | --- | --- | --- |
 | `propertyRequest` `{ action, target, recipient? }` | Client → Server | Claim/abandon/lock/unlock/transfer the targeted door/container |
 | `propertyNotice` `{ text }` | Server → Client | Housing feedback notification |
-| `factionMenuRequest` `{ factionId? }` | Client → Server | Ask for the Faction tab |
-| `factionMenu` `{ available, factions, selected, chat, detail }` | Server → Client | Faction tab data |
-| `factionInviteOptionsRequest` `{ target }` | Client → Server | Ranks the player may invite the target to |
-| `factionInviteOptions` `{ target, targetName, options }` | Server → Client | Rank picker for an invitation |
-| `factionRequest` `{ action, factionId, ... }` | Client → Server | invite, promote, demote, setRank, remove, uniform, leave, chat |
-| `factionState` `{ factions, chat, canInvite }` | Server → Client | Chat tab and Invite to faction visibility |
+| `factionMenuRequest` `{ factionId? }` | Client → Server | Ask for the Faction tabs |
+| `factionMenu` `{ available, staff, titleFactionId, main, byType, factions, selected, detail, regency }` | Server → Client | Faction tab data |
+| `factionRecruitRequest` `{ target }` | Client → Server | Recruit the targeted player from the interaction menu |
+| `factionRequest` `{ action, factionId, ... }` | Client → Server | recruit, promote, remove, uniform, regentAdd, regentRemove, regentOrder, regency, title, leave |
+| `factionState` `{ factions, canRecruit }` | Server → Client | Recruit visibility in the interaction menu |
 | `factionNotice` `{ text }` | Server → Client | Faction feedback notification |
 | `restraintState` `{ boundHands }` | Server → victim client | Apply arrest (anyone with manacles) |
 

@@ -44,7 +44,7 @@ async function run() {
   const list = await factionsRequest('GET', '')
   assert.equal(list.ok, true, list.error)
   assert.equal(list.data.canDefine, true)
-  assert.equal(list.data.factions.length, 16)
+  assert.equal(list.data.factions.length, 19)
 
   const before = hits
   assert.equal((await factionsRequest('GET', '/../servers/key/players')).ok, false)
