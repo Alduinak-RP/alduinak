@@ -42,7 +42,7 @@ const ACTIONS: PlayerAction[] = [
   { id: 'capture', label: 'Restrain' },
   { id: 'carry', label: 'Carry' },
   { id: 'release', label: 'Release' },
-  { id: 'factionInvite', label: 'Invite to faction' },
+  { id: 'factionRecruit', label: 'Recruit' },
 ];
 
 // Every action goes to the server systems as a custom packet (by server form id).
@@ -52,7 +52,7 @@ const PACKET_ACTIONS: Record<string, string> = {
   capture: 'captureRequest',
   carry: 'carryRequest',
   release: 'releaseRequest',
-  factionInvite: 'factionInviteOptionsRequest',
+  factionRecruit: 'factionRecruitRequest',
 };
 
 // While a passive job load is carried: Put down joins the menu, and the interact key on nothing opens this one first
@@ -256,8 +256,8 @@ export class PlayerActionService extends ClientListener {
   private menuArgs(): Record<string, unknown> {
     // No carry chains and no bound carriers: a carrying, carried or bound player is never offered Carry
     const noCarry = this.controller.lookupListener(RestraintService).isPoseLocked;
-    const canInvite = this.controller.lookupListener(FactionService).canInvite;
-    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease) && (a.id !== 'factionInvite' || canInvite));
+    const canRecruit = this.controller.lookupListener(FactionService).canRecruit;
+    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease) && (a.id !== 'factionRecruit' || canRecruit));
     if (this.controller.lookupListener(JobService).load) actions.push(PUT_DOWN);
     return { ACTIONS: actions, targetName, hideTrade: false, events, WIDGET_ID };
   }

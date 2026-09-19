@@ -532,7 +532,7 @@ export class AdminMenuService extends ClientListener {
       return;
     }
     if (kind === events.faction) {
-      // The front sends {action, factionId, profileId?, slot?, rank?, target?} as a JSON string; the server checks every right
+      // The front sends {action, factionId, profileId?, slot?, rank?, target?, enabled?, order?} as a JSON string; the server checks every right
       let req: Record<string, unknown> = {};
       try {
         const parsed = JSON.parse(str(e.arguments[1]));
@@ -548,6 +548,14 @@ export class AdminMenuService extends ClientListener {
         slot: Number.isInteger(req["slot"]) ? req["slot"] : null,
         rank: str(req["rank"]),
         target: Number(req["target"]) || 0,
+        enabled: req["enabled"] === true,
+        // Regency order: the seats as the leader dragged them, first in line first
+        order: Array.isArray(req["order"])
+          ? (req["order"] as unknown[]).map((seat) => {
+            const row = (seat || {}) as Record<string, unknown>;
+            return { profileId: Number(row["profileId"]) || 0, slot: Number.isInteger(row["slot"]) ? row["slot"] : null };
+          })
+          : [],
       });
       return;
     }

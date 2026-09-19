@@ -533,6 +533,88 @@ $admin-row-gutter: 16px;
     justify-content: space-between;
     padding: 3px 0;
   }
+
+  // Regency: rows carry the line of succession and are dragged into order
+  &__row--drag {
+    cursor: grab;
+  }
+
+  // Main tab: one column per faction the character belongs to
+  &__columns {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  &__column {
+    flex: 1 1 200px;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+    background: $admin-pane-bg;
+    border: 1px solid $admin-border;
+  }
+
+  &__column-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 15px;
+
+    span:first-child {
+      color: $admin-gold-dim;
+    }
+  }
+
+  &__check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    color: $admin-gold;
+    cursor: pointer;
+  }
+
+  // Right click menu over a member row or a regency seat
+  &__menu {
+    position: fixed;
+    z-index: 40;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    background: $admin-pane-bg;
+    border: 1px solid $admin-gold;
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.7);
+  }
+
+  &__menu-item {
+    background: none;
+    border: none;
+    color: $admin-gold;
+    font-family: inherit;
+    font-size: 15px;
+    text-align: left;
+    padding: 7px 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(200, 180, 138, 0.16);
+    }
+
+    &--danger {
+      color: #ce7b7b;
+    }
+  }
+
+  &__menu-empty {
+    padding: 7px 12px;
+    font-size: 14px;
+    font-style: italic;
+    color: $admin-gold-dim;
+  }
   &__cell--desc { flex: 0 0 170px; }
 
   &__spawn {

@@ -609,7 +609,7 @@ export class FormView {
         const textYPos = Math.round((1 - headScreenPos[1]) * resolution.height);
 
         if (!this.textNameId && headScreenPos[2] > 0) {
-          this.createdTagName = this.tagName(refr);
+          this.createdTagName = this.tagName(refr, model);
           this.createdActorIdLine = FormView.isDisplayingActorIds;
           this.textNameId = createText(textXPos, textYPos, this.createdTagName, [1, 1, 1, 0.8]);
           setTextSize(this.textNameId, 0.5);
@@ -634,7 +634,7 @@ export class FormView {
           }
           // Rename (/mask), a fresh introduction or a toggled id line: recreate
           if (this.textNameId
-            && (this.tagName(refr) !== this.createdTagName || this.createdActorIdLine !== FormView.isDisplayingActorIds)) {
+            && (this.tagName(refr, model) !== this.createdTagName || this.createdActorIdLine !== FormView.isDisplayingActorIds)) {
             this.removeNickname();
           }
           if (this.textNameId) {
@@ -652,9 +652,12 @@ export class FormView {
     }
   }
 
-  // Real name once introduced to the local player, else "Stranger"
-  private tagName(refr: ObjectReference): string {
-    return knowsCharacter(this.getRemoteRefrId()) ? refr.getDisplayName() : "Stranger";
+  // Real name once introduced to the local player, else "Stranger"; Show Title puts the faction title in front of it
+  private tagName(refr: ObjectReference, model: FormModel): string {
+    if (!knowsCharacter(this.getRemoteRefrId())) return "Stranger";
+    const name = refr.getDisplayName();
+    const title = (model as Record<string, unknown>)["ff_factionTitle"];
+    return typeof title === "string" && title ? `${title} ${name}` : name;
   }
 
   // Every invisibility effect carries MagicInvisibility, the spell and the potion alike
