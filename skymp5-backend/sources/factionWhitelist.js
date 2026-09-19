@@ -14,14 +14,18 @@ const AUDIT_FILE = 'faction.log'
 // characterSelectMaxCharacters allows 1-10 characters, so slots run 0-9
 const MAX_SLOT = 9
 const SCOPES = ['hold', 'faction']
+// What the game groups factions by; a character joins at most one faction of each type. scope stays the id prefix
+const TYPES = ['hold', 'military', 'guild']
 const ZONES = ['', 'west', 'east', 'neutral']
 // Hold keys as housing names them; a court's group may carry the article, as in the-rift
 const HOLDS = ['haafingar', 'reach', 'falkreath', 'hjaalmarch', 'eastmarch', 'winterhold', 'rift', 'pale', 'whiterun']
-// Hold ranks that manage property when the rank has no managesProperty flag
+// Hold ranks that manage property when the rank carries no housing flag
 const HOLD_MANAGER_RANKS = ['jarl', 'steward']
-// promotes, demotes and removes fall back to appoints while absent
-const RANK_LISTS = ['appoints', 'promotes', 'demotes', 'removes']
-const RANK_FLAGS = ['invites', 'managesProperty', 'factionAccess', 'issuesUniform']
+// recruit: the ranks a holder may bring outsiders in at; promote: the ranks it may move a lower member to
+const RANK_LISTS = ['recruit', 'promote']
+// leader carries every permission of its faction, and nobody leads two factions at once
+const RANK_FLAGS = ['leader', 'remove', 'craft', 'housing', 'arrest', 'execute', 'factionAccess', 'issuesUniform']
+const MAX_REGENTS = 10
 const COLOR_RE = /^[0-9a-f]{6}$/
 const MAX_TEXT = 48
 const MAX_FACTIONS = 64
@@ -44,6 +48,20 @@ const arr = value => (Array.isArray(value) ? value : [])
 
 // A rank's permission string is its id with dots, so it can never copy another rank's or outlive a retired id
 const permissionOf = requirementId => String(requirementId || '').split(':').join('.')
+
+// Ordered leader stand-ins of one faction; a row that is no longer a member is ignored when the ladder is read
+function normalizeRegents(raw) {
+  const out = []
+  for (const entry of arr(raw)) {
+    const discordId = normalizeDiscordId(entry && entry.discordId)
+    if (!discordId) continue
+    const slot = entry && Number.isInteger(entry.slot) ? entry.slot : null
+    if (out.some(r => r.discordId === discordId && r.slot === slot)) continue
+    out.push({ discordId, slot })
+    if (out.length >= MAX_REGENTS) break
+  }
+  return out
+}
 
 // Unknown top-level keys survive a write
 function normalize(data) {
@@ -109,6 +127,9 @@ function normalizeSlot(value) {
   return n
 }
 
+// null names every character of the account, so it overlaps any character's own rows
+const overlapsSlot = (a, b) => a === null || a === undefined || b === null || b === undefined || a === b
+
 function cleanText(value, max = MAX_TEXT) {
   return String(value ?? '').replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
 }
@@ -126,6 +147,9 @@ function rankSlugOf(requirementId) {
 }
 
 const holdKey = groupSlug => String(groupSlug || '').replace(/^the-/, '')
+
+// Factions written before types existed: a court is a hold, anything else a guild until it is set
+const defaultType = scope => (String(scope) === 'hold' ? 'hold' : 'guild')
 
 function normalizeUniform(raw) {
   if (raw === null || raw === undefined) return null
@@ -151,17 +175,22 @@ function decorateRequirements(data) {
     const fid = factionIdOf(req.id)
     const position = positions[fid] = (positions[fid] ?? -1) + 1
     const assigned = counts[req.id] || 0
-    const appoints = Array.isArray(req.appoints) ? req.appoints.map(String) : null
+    const order = Number.isInteger(req.order) && req.order >= 0 ? req.order : position
     return {
       ...req,
       capacity: Number.isInteger(req.capacity) && req.capacity > 0 ? req.capacity : null,
-      order: Number.isInteger(req.order) && req.order >= 0 ? req.order : position,
-      appoints,
-      ...Object.fromEntries(RANK_LISTS.slice(1).map(key => [key, Array.isArray(req[key]) ? req[key].map(String) : appoints])),
-      invites: req.invites !== false,
-      managesProperty: typeof req.managesProperty === 'boolean' ? req.managesProperty : fid.startsWith('hold:') && HOLD_MANAGER_RANKS.includes(rankSlugOf(req.id)),
+      order,
+      leader: typeof req.leader === 'boolean' ? req.leader : order === 0,
+      ...Object.fromEntries(RANK_LISTS.map(key => [key, Array.isArray(req[key]) ? req[key].map(String) : []])),
+      remove: req.remove === true,
+      craft: req.craft === true,
+      housing: typeof req.housing === 'boolean' ? req.housing : fid.startsWith('hold:') && HOLD_MANAGER_RANKS.includes(rankSlugOf(req.id)),
+      arrest: req.arrest === true,
+      execute: req.execute === true,
       factionAccess: req.factionAccess !== false,
       issuesUniform: req.issuesUniform === true,
+      title: cleanText(req.title) || null,
+      titleFemale: cleanText(req.titleFemale) || null,
       uniform: Array.isArray(req.uniform) ? req.uniform : null,
       factionId: fid,
       assigned,
@@ -175,21 +204,26 @@ function effectiveFactions(data) {
   const byId = new Map()
   for (const f of data.factions) {
     if (!f || typeof f.id !== 'string') continue
+    const scope = String(f.scope || f.id.split(':')[0])
     byId.set(f.id, {
       id: f.id,
-      scope: String(f.scope || f.id.split(':')[0]),
+      scope,
+      type: TYPES.includes(f.type) ? f.type : defaultType(scope),
       group: String(f.group || ''),
       name: String(f.name || f.group || f.id),
       zone: ZONES.includes(f.zone) ? f.zone : '',
       color: COLOR_RE.test(String(f.color || '')) ? f.color : '',
       uniform: Array.isArray(f.uniform) ? f.uniform : [],
+      regencyEnabled: f.regencyEnabled === true,
+      regents: normalizeRegents(f.regents),
       rev: Number.isInteger(f.rev) ? f.rev : 0,
     })
   }
   for (const req of data.requirements) {
     const id = factionIdOf(req.id)
     if (!id || byId.has(id)) continue
-    byId.set(id, { id, scope: String(req.scope || id.split(':')[0]), group: String(req.group || ''), name: String(req.group || id), zone: '', color: '', uniform: [], rev: 0 })
+    const scope = String(req.scope || id.split(':')[0])
+    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), zone: '', color: '', uniform: [], regencyEnabled: false, regents: [], rev: 0 })
   }
   return [...byId.values()]
 }
@@ -339,6 +373,7 @@ function rosterRows(data, assignments) {
       slot: a.slot ?? null,
       rank: req ? req.rank : null,
       rankSlug: rankSlugOf(a.requirementId),
+      since: a.createdAt || null,
     }
   })
 }
@@ -357,8 +392,10 @@ function confirmCascade(data, members, input) {
 
 function createFaction(input, actor) {
   const data = load(true)
-  const scope = String(input.scope || '').trim().toLowerCase()
-  if (!SCOPES.includes(scope)) throw fail(400, `scope must be ${SCOPES.join(' or ')}`)
+  const type = String(input.type || '').trim().toLowerCase()
+  if (!TYPES.includes(type)) throw fail(400, `type must be ${TYPES.join(', ')}`)
+  // Hold courts keep the hold: prefix the housing tables read; armies and guilds share the faction: one
+  const scope = type === 'hold' ? 'hold' : 'faction'
   const group = requireName(input.group, 'group name')
   const groupSlug = slug(group)
   if (!groupSlug) throw fail(400, 'group name needs letters or digits')
@@ -382,8 +419,10 @@ function createFaction(input, actor) {
 
   const now = new Date().toISOString()
   data.factions.push({
-    id, scope, group, name,
+    id, scope, type, group, name,
     zone: normalizeZone(input.zone),
+    regencyEnabled: false,
+    regents: [],
     color: normalizeColor(input.color),
     uniform: normalizeUniform(input.uniform) || [],
     rev: 1,
@@ -400,7 +439,13 @@ function updateFaction(id, input, actor) {
   checkRev(data, faction, input.rev)
   const now = new Date().toISOString()
   const record = recordFor(data, faction, actor, now)
-  const before = { name: faction.name, zone: faction.zone, color: faction.color, uniform: faction.uniform }
+  const before = { name: faction.name, type: faction.type, zone: faction.zone, color: faction.color, uniform: faction.uniform }
+  if (input.type !== undefined) {
+    const type = String(input.type || '').trim().toLowerCase()
+    if (!TYPES.includes(type)) throw fail(400, `type must be ${TYPES.join(', ')}`)
+    if ((type === 'hold') !== (faction.scope === 'hold')) throw fail(400, 'a hold court cannot become an army or guild, nor the other way round')
+    record.type = type
+  }
   if (input.name !== undefined) {
     const name = requireName(input.name, 'name')
     if (effectiveFactions(data).some(f => f.id !== id && f.name.toLowerCase() === name.toLowerCase())) throw fail(409, `another faction is already named ${name}`)
@@ -448,33 +493,35 @@ function applyRank(req, input, faction, ranks) {
   const permission = String(input.permission ?? '').trim()
   if (permission && permission !== req.permission) throw fail(400, `the permission string follows the rank id (${req.permission}) and cannot be changed`)
   const slugs = ranks.map(r => rankSlugOf(r.id))
-  // Staff place leaders, so the leader rank is never a target
-  const leader = slugs[0]
+  // Outsiders are never recruited straight into a leader seat; the ladder and staff place those
+  const leaderSlugs = ranks.filter(r => r.leader === true || r.order === 0).map(r => rankSlugOf(r.id))
   for (const key of RANK_LISTS) {
     const value = input[key]
     if (value === undefined) continue
     if (value === null) {
-      if (key === 'appoints') req.appoints = null
-      else delete req[key]
+      req[key] = []
       continue
     }
     if (!Array.isArray(value)) throw fail(400, `${key} must be a list of rank ids`)
     const unknown = value.map(String).filter(s => !slugs.includes(s))
     if (unknown.length) throw fail(400, `${key} names ranks ${faction.name} does not have: ${unknown.join(', ')}`)
-    req[key] = [...new Set(value.map(String))].filter(s => s !== leader)
+    const wanted = [...new Set(value.map(String))]
+    req[key] = key === 'recruit' ? wanted.filter(s => !leaderSlugs.includes(s)) : wanted
   }
   for (const key of RANK_FLAGS) {
     if (input[key] === undefined) continue
     if (typeof input[key] !== 'boolean') throw fail(400, `${key} must be true or false`)
-    if (key === 'managesProperty' && input[key] && faction.scope !== 'hold') throw fail(400, 'only hold court ranks manage hold property')
+    if (key === 'housing' && input[key] && faction.scope !== 'hold') throw fail(400, 'only hold court ranks manage hold property')
     req[key] = input[key]
   }
+  if (input.title !== undefined) req.title = cleanText(input.title) || undefined
+  if (input.titleFemale !== undefined) req.titleFemale = cleanText(input.titleFemale) || undefined
   if (input.uniform !== undefined) req.uniform = normalizeUniform(input.uniform)
 }
 
 const ladderOf = (data, factionId) => decorateRequirements(data).filter(r => r.factionId === factionId).sort((a, b) => a.order - b.order)
 
-const rankSnapshot = req => Object.fromEntries(['rank', 'capacity', ...RANK_LISTS, ...RANK_FLAGS, 'uniform'].map(key => [key, req[key] === undefined ? null : req[key]]))
+const rankSnapshot = req => Object.fromEntries(['rank', 'capacity', 'title', 'titleFemale', ...RANK_LISTS, ...RANK_FLAGS, 'uniform'].map(key => [key, req[key] === undefined ? null : req[key]]))
 
 function createRank(factionId, input, actor) {
   const data = load(true)
@@ -496,7 +543,9 @@ function createRank(factionId, input, actor) {
     capacity: null,
     permission: permissionOf(id),
     order: ladder.reduce((next, r) => Math.max(next, r.order + 1), 0),
-    appoints: [],
+    leader: false,
+    recruit: [],
+    promote: [],
     issuesUniform: false,
   }
   applyRank(req, input, faction, [...ladder, req])
@@ -555,6 +604,7 @@ function deleteRank(rankId, input, actor) {
   if (members.length) backup()
   const rankSlug = rankSlugOf(rankId)
   data.assignments = data.assignments.filter(a => !members.includes(a))
+  pruneRegents(data)
   data.requirements = data.requirements.filter(req => req.id !== rankId)
   for (const other of data.requirements) {
     if (factionIdOf(other.id) !== faction.id) continue
@@ -586,6 +636,30 @@ function createAssignment(input, actorId) {
 
   if (data.assignments.some(item => item.requirementId === requirement.id && item.discordId === discordId && (item.slot ?? null) === slot)) {
     throw fail(409, 'player already has this rank')
+  }
+
+  const factionId = factionIdOf(requirement.id)
+  const byFactionId = new Map(effectiveFactions(data).map(f => [f.id, f]))
+  const faction = byFactionId.get(factionId)
+  const ranksById = new Map(decorateRequirements(data).map(r => [r.id, r]))
+  // Rows of this character plus the account-wide ones that also cover it
+  const held = data.assignments.filter(item => item.discordId === discordId && overlapsSlot(item.slot ?? null, slot))
+
+  if (faction) {
+    const clash = held.find(item => {
+      const other = byFactionId.get(factionIdOf(item.requirementId))
+      return other && other.id !== factionId && other.type === faction.type
+    })
+    if (clash) {
+      throw fail(409, `already in ${byFactionId.get(factionIdOf(clash.requirementId)).name}; a character belongs to one ${faction.type} faction at a time`)
+    }
+  }
+
+  if ((ranksById.get(requirement.id) || {}).leader) {
+    const leads = held.find(item => factionIdOf(item.requirementId) !== factionId && (ranksById.get(item.requirementId) || {}).leader)
+    if (leads) throw fail(409, `already leads ${(byFactionId.get(factionIdOf(leads.requirementId)) || {}).name || 'another faction'}; nobody leads two factions`)
+    const regentOf = [...byFactionId.values()].find(f => f.id !== factionId && f.regents.some(r => r.discordId === discordId && overlapsSlot(r.slot, slot)))
+    if (regentOf) throw fail(409, `a regent of ${regentOf.name} cannot also lead a faction`)
   }
 
   if (Number.isInteger(requirement.capacity) && requirement.capacity > 0) {
@@ -645,6 +719,7 @@ function deleteAssignment(id, actorId) {
   const idx = data.assignments.findIndex(item => item.id === id)
   if (idx === -1) throw fail(404, 'assignment not found')
   const [removed] = data.assignments.splice(idx, 1)
+  pruneRegents(data)
   save(data)
   auditRemovals(actorId, [removed], 'removed')
 }
@@ -658,10 +733,51 @@ function releaseCharacter(discordId, slot, accountWide, actorId) {
   const removed = data.assignments.filter(a => a.discordId === normalized && ((a.slot ?? null) === s || (accountWide && (a.slot ?? null) === null)))
   if (removed.length) {
     data.assignments = data.assignments.filter(a => !removed.includes(a))
+    pruneRegents(data)
     save(data)
     auditRemovals(actorId, removed, 'character deleted or perma-dead')
   }
   return removed.map(a => decorateAssignment(a, getRequirement(data, a.requirementId)))
+}
+
+// Regency seats whose holder left the faction are dropped wherever memberships disappear
+function pruneRegents(data) {
+  for (const record of data.factions) {
+    if (!record || typeof record.id !== 'string' || !Array.isArray(record.regents)) continue
+    const prefix = `${record.id}:`
+    const kept = normalizeRegents(record.regents).filter(regent =>
+      data.assignments.some(a => a.discordId === regent.discordId && (a.slot ?? null) === regent.slot && String(a.requirementId || '').startsWith(prefix)))
+    if (kept.length !== record.regents.length) record.regents = kept
+  }
+}
+
+// The ordered stand-ins of one faction and whether they may act; written from the game's Regency tab
+function setRegency(factionId, input, actor) {
+  const data = load(true)
+  const faction = findFaction(data, factionId)
+  const now = new Date().toISOString()
+  const record = recordFor(data, faction, actor, now)
+  const before = { regencyEnabled: faction.regencyEnabled, regents: faction.regents }
+  if (input.enabled !== undefined) record.regencyEnabled = truthy(input.enabled)
+  if (input.regents !== undefined) {
+    const prefix = `${faction.id}:`
+    const ranksById = new Map(decorateRequirements(data).map(r => [r.id, r]))
+    const wanted = normalizeRegents(input.regents)
+    for (const regent of wanted) {
+      const row = data.assignments.find(a => a.discordId === regent.discordId && (a.slot ?? null) === regent.slot && String(a.requirementId || '').startsWith(prefix))
+      if (!row) throw fail(400, 'a regent must already be a member of the faction')
+      if ((ranksById.get(row.requirementId) || {}).leader) throw fail(400, 'the leader does not need a regency seat')
+      const leads = data.assignments.find(a => a.discordId === regent.discordId && overlapsSlot(a.slot ?? null, regent.slot) && (ranksById.get(a.requirementId) || {}).leader)
+      if (leads) throw fail(409, 'a faction leader cannot be a regent')
+    }
+    record.regents = wanted
+  }
+  const changes = changesBetween(before, { regencyEnabled: record.regencyEnabled, regents: record.regents })
+  if (!Object.keys(changes).length) return { faction: factionView(data, faction) }
+  bump(record, actor, now)
+  save(data)
+  audit(actor, 'faction.regency', { faction: faction.id, rev: record.rev, enabled: record.regencyEnabled, regents: record.regents.length })
+  return { faction: factionView(data, findFaction(data, faction.id)) }
 }
 
 function decorateAssignment(assignment, requirement) {
@@ -733,6 +849,7 @@ function namedRoster(rows, withDiscordId = false) {
       rank: member.rank,
       rankSlug: member.rankSlug,
       slot: member.slot,
+      since: member.since,
     }
   })
 }
@@ -764,6 +881,8 @@ module.exports = {
   getPlayerAssignments,
   getFactionRoster,
   getHoldRoster,
+  setRegency,
+  TYPES,
   namedRoster,
   slug,
 }

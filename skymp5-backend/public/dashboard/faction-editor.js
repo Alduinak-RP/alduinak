@@ -3,17 +3,20 @@
 // Faction and rank definition editor shared by the dashboard Factions view and the Server Manager Factions tab; the host supplies request(method, path, body)
 ;(function () {
   const RANK_LISTS = [
-    ['appoints', 'Appoint'],
-    ['promotes', 'Promote to'],
-    ['demotes', 'Demote from'],
-    ['removes', 'Remove'],
+    ['recruit', 'Recruit into'],
+    ['promote', 'Promote to'],
   ]
   const RANK_FLAGS = [
-    ['invites', 'Invites new members', false],
-    ['managesProperty', 'Manages hold property', true],
+    ['leader', 'Leader (every permission)', false],
+    ['remove', 'Removes members', false],
+    ['craft', 'Crafts faction gear', false],
+    ['housing', 'Manages hold property', true],
+    ['arrest', 'Arrests (cuffs and cells)', false],
+    ['execute', 'Executes players', false],
     ['factionAccess', 'Opens faction doors and chests', false],
     ['issuesUniform', 'Issues uniforms', false],
   ]
+  const TYPE_NAMES = { hold: 'Hold', military: 'Military', guild: 'Guild' }
   const SCOPE_NAMES = { hold: 'Hold court', faction: 'Army or guild' }
   const ZONE_NAMES = { '': 'None', west: 'West', east: 'East', neutral: 'Neutral' }
   const HOLD_NAMES = { reach: 'The Reach', rift: 'The Rift', pale: 'The Pale' }
@@ -174,7 +177,7 @@
         : !shown.length ? `<li class="fe-empty">${q ? 'No matches.' : 'No factions yet.'}</li>`
           : shown.map(f => `
             <li data-act="select" data-id="${esc(f.id)}" class="${f.id === state.selected ? 'fe-selected' : ''}">
-              <div class="fe-line">${swatch(f.color)}<span class="fe-name">${esc(f.name)}</span><span class="fe-badge">${esc(SCOPE_NAMES[f.scope] || f.scope)}</span></div>
+              <div class="fe-line">${swatch(f.color)}<span class="fe-name">${esc(f.name)}</span><span class="fe-badge">${esc(TYPE_NAMES[f.type] || f.type || SCOPE_NAMES[f.scope])}</span></div>
               <div class="fe-sub">${esc(f.id)} · ${plural(f.ranks.length, 'rank', 'ranks')} · ${plural(f.members, 'member', 'members')}</div>
             </li>`).join('')
     }
@@ -210,7 +213,7 @@
             ${colorFields(faction.color)}
           </div>
           ${uniforms ? `<label class="fe-field">Uniform <textarea name="uniform" rows="4" placeholder="${UNIFORM_HINT}" data-write>${esc(uniformText(faction.uniform))}</textarea></label>` : ''}
-          <p class="fe-muted">Kind ${esc(SCOPE_NAMES[faction.scope] || faction.scope)}, group ${esc(faction.group || faction.id)}.${uniforms ? '' : ` Uniform: ${plural((faction.uniform || []).length, 'item', 'items')}.`}</p>
+          <p class="fe-muted">Type ${esc(TYPE_NAMES[faction.type] || faction.type)}, group ${esc(faction.group || faction.id)}.${uniforms ? '' : ` Uniform: ${plural((faction.uniform || []).length, 'item', 'items')}.`}</p>
           <div class="fe-row"><button class="fe-btn fe-primary" type="submit" data-write>Save faction</button></div>
         </form>
         ${ranksCard(faction)}
@@ -257,35 +260,35 @@
         </section>`
     }
 
-    // The leader acts on everyone below it, so only its appoint and promote ticks change anything
-    const listsFor = (faction, rank) => (faction.ranks[0] === rank ? RANK_LISTS.slice(0, 2) : RANK_LISTS)
+    const listsFor = () => RANK_LISTS
 
-    // A null list means only the leader acts, so the leader shows every rank below it
+    // A leader carries every permission, so its own ticks are shown filled and change nothing
     function effectiveList(faction, rank, key) {
-      const leader = faction.ranks[0] === rank
-      const list = rank[key]
-      return Array.isArray(list) ? list : leader ? faction.ranks.slice(1).map(slugOf) : []
+      if (rank.leader) return faction.ranks.filter(r => !r.leader).map(slugOf)
+      return Array.isArray(rank[key]) ? rank[key] : []
     }
 
     function rankCard(faction) {
       const rank = faction.ranks.find(r => slugOf(r) === state.rank)
       if (!rank) return ''
-      const leader = faction.ranks[0] === rank
-      const targets = faction.ranks.slice(1)
+      const leader = rank.leader === true
+      const targets = faction.ranks.filter(r => r !== rank)
       return `
         <form class="fe-card" data-form="rank">
           <h4>Rank: ${esc(rank.rank)} <code>${esc(rank.id)}</code></h4>
           <div class="fe-grid">
             <label>Name <input name="rank" value="${esc(rank.rank)}" maxlength="48" required data-write></label>
             <label>Capacity <input name="capacity" type="number" min="0" max="999" value="${rank.capacity === null ? '' : rank.capacity}" placeholder="open" data-write></label>
+            <label>Title <input name="title" value="${esc(rank.title || '')}" maxlength="48" placeholder="${esc(rank.rank)}" data-write></label>
+            <label>Title (female) <input name="titleFemale" value="${esc(rank.titleFemale || '')}" maxlength="48" placeholder="same as title" data-write></label>
           </div>
           <p class="fe-muted">Permission string <code>${esc(rank.permission || '')}</code>, fixed by the rank id.</p>
           <div class="fe-flags">${RANK_FLAGS.filter(([, , holdOnly]) => !holdOnly || faction.scope === 'hold').map(([key, label]) => `
             <label class="fe-check"><input type="checkbox" name="${key}" ${rank[key] ? 'checked' : ''} data-write> ${esc(label)}</label>`).join('')}
           </div>
           <p class="fe-muted">${leader
-            ? 'The leader may promote, demote, set and remove anyone below it and always issues uniforms. Appoint picks the ranks it invites into and demotes to; Promote to picks the ranks it promotes to.'
-            : 'Appoint: invite into that rank and act on its holders. Promote to: move a holder of an appointed rank up to that rank. Demote from: move a holder of that rank down to an appointed rank. Remove: remove its holders. Set rank follows the same ticks. Nobody acts on the leader; staff place leaders.'}</p>
+            ? 'A leader carries every permission of the faction: it recruits, promotes, removes, crafts, arrests and executes, and the ticks below are ignored. Nobody leads two factions at once.'
+            : 'Recruit into: the ranks this rank may bring outsiders in at; Recruit takes the lowest of them. Promote to: the ranks it may move a member below it to. Removes members covers the whole faction.'}</p>
           ${targets.length ? `
           <table class="fe-table fe-matrix">
             <thead><tr><th>Rank</th>${listsFor(faction, rank).map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead>
@@ -336,13 +339,13 @@
     function createForm() {
       const courts = new Set([...state.factions.map(f => f.id), ...state.retiredFactions].filter(id => id.startsWith('hold:')).map(id => holdKey(id.split(':')[1])))
       const free = state.holds.filter(h => !courts.has(h))
-      const scope = free.length ? 'hold' : 'faction'
+      const scope = free.length ? 'hold' : 'guild'
       return `
         <form class="fe-card" data-form="create">
           <h4>New faction</h4>
           ${state.canDefine ? '' : readOnlyNote()}
           <div class="fe-grid">
-            <label>Kind <select name="scope" data-write>${Object.entries(SCOPE_NAMES).map(([k, v]) => `<option value="${k}"${k === scope ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+            <label>Type <select name="scope" data-write>${Object.entries(TYPE_NAMES).map(([k, v]) => `<option value="${k}"${k === scope ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
             <label data-scope="hold"${scope === 'hold' ? '' : ' hidden'}>Hold <select name="hold" data-write>${free.map(h => `<option value="${esc(h)}">${esc(holdName(h))}</option>`).join('')}</select></label>
             <label data-scope="faction"${scope === 'faction' ? '' : ' hidden'}>Group <input name="group" maxlength="48" placeholder="Vigilants of Stendarr" data-write></label>
             <label>Display name <input name="name" maxlength="48" placeholder="Same as the group" data-write></label>
@@ -359,7 +362,7 @@
 
     function syncCreateScope(form) {
       const scope = form.elements.scope.value
-      form.querySelectorAll('[data-scope]').forEach(node => { node.hidden = node.dataset.scope !== scope })
+      form.querySelectorAll('[data-scope]').forEach(node => { node.hidden = (node.dataset.scope === 'hold') !== (scope === 'hold') })
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -374,10 +377,10 @@
     }
 
     function createFaction(form) {
-      const scope = form.elements.scope.value
-      const group = scope === 'hold' ? holdName(form.elements.hold.value || '') : form.elements.group.value
+      const type = form.elements.scope.value
+      const group = type === 'hold' ? holdName(form.elements.hold.value || '') : form.elements.group.value
       return run('Creating…', async () => {
-        const data = await call('POST', '', { scope, group, name: form.elements.name.value, zone: form.elements.zone.value, color: colorValue(form) })
+        const data = await call('POST', '', { type, group, name: form.elements.name.value, zone: form.elements.zone.value, color: colorValue(form) })
         replaceFaction(data.faction)
         state.creating = false
         state.selected = data.faction.id
@@ -429,6 +432,7 @@
       const rank = faction.ranks.find(r => slugOf(r) === state.rank)
       const body = { rev: faction.rev, rank: form.elements.rank.value, capacity: form.elements.capacity.value }
       for (const [key] of RANK_FLAGS) if (form.elements[key]) body[key] = form.elements[key].checked
+      for (const key of ['title', 'titleFemale']) if (form.elements[key]) body[key] = form.elements[key].value
       const lists = listsFor(faction, rank)
       const ticked = Object.fromEntries(lists.map(([key]) => [key, [...form.querySelectorAll(`input[data-list="${key}"]:checked`)].map(i => i.value)]))
       // Lists are sent together once any tick changed, so what was shown is what is saved

@@ -1,16 +1,20 @@
 {
   "_readme": [
     "Seed for skymp5-backend/data/faction-whitelist.json. Copy it there only while that file is missing or has no assignments.",
-    "Rank order 0 is the leader. appoints lists the rank ids a holder may invite into, act on and demote to; promotes (up to), demotes (holders of) and removes follow appoints until a rank sets its own.",
-    "permission is always the rank id with dots. The leader may also promote, demote, set and remove anyone below it. issuesUniform lets a rank hand out the faction uniform; capacity null means open.",
-    "Optional rank flags: invites (default true), managesProperty (default true for a hold's jarl and steward), factionAccess (default true).",
-    "uniform entries are { \"item\": \"13ed9:Skyrim.esm\" or \"0x00013ED9\", \"count\": 1 }; a rank uniform replaces the faction one.",
-    "Names, caps, ladders, rank lists and flags are edited in the dashboard Factions view or the Server Manager Factions tab; uniforms in the dashboard Factions view."
+    "type is hold, military or guild; a character belongs to at most one faction of each type. scope stays the id prefix (hold: or faction:).",
+    "Rank order 0 is the top of the ladder. leader carries every permission of the faction and may be held in one faction at a time.",
+    "recruit lists the rank ids a holder may bring outsiders in at; Recruit takes the lowest of them. promote lists the ranks it may move a lower member to.",
+    "remove, craft, housing, arrest and execute are the remaining permissions. capacity null means open. permission is always the rank id with dots.",
+    "title (and titleFemale) override the rank name when Show Title prefixes a character's name; the rank name is used when they are absent.",
+    "issuesUniform lets a rank hand out the faction uniform; uniform entries are { \"item\": \"13ed9:Skyrim.esm\", \"count\": 1 } and a rank uniform replaces the faction one.",
+    "regencyEnabled and regents (ordered, discordId + slot) are written from the game's Regency tab; a regent acts as leader while no leader is online.",
+    "Names, caps, ladders, rank lists and flags are edited in the dashboard Factions view or the Server Manager Factions tab."
   ],
   "factions": [
     {
       "id": "hold:haafingar",
       "scope": "hold",
+      "type": "hold",
       "group": "Haafingar",
       "name": "Court of Haafingar",
       "zone": "west",
@@ -28,11 +32,15 @@
           "item": "214f4:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:the-reach",
       "scope": "hold",
+      "type": "hold",
       "group": "The Reach",
       "name": "Court of the Reach",
       "zone": "west",
@@ -50,11 +58,15 @@
           "item": "214dc:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:falkreath",
       "scope": "hold",
+      "type": "hold",
       "group": "Falkreath",
       "name": "Court of Falkreath",
       "zone": "west",
@@ -72,11 +84,15 @@
           "item": "214ed:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:hjaalmarch",
       "scope": "hold",
+      "type": "hold",
       "group": "Hjaalmarch",
       "name": "Court of Hjaalmarch",
       "zone": "west",
@@ -94,11 +110,15 @@
           "item": "214ef:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:eastmarch",
       "scope": "hold",
+      "type": "hold",
       "group": "Eastmarch",
       "name": "Court of Eastmarch",
       "zone": "east",
@@ -116,11 +136,15 @@
           "item": "214eb:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:winterhold",
       "scope": "hold",
+      "type": "hold",
       "group": "Winterhold",
       "name": "Court of Winterhold",
       "zone": "east",
@@ -138,11 +162,15 @@
           "item": "214f1:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:the-rift",
       "scope": "hold",
+      "type": "hold",
       "group": "The Rift",
       "name": "Court of the Rift",
       "zone": "east",
@@ -160,11 +188,15 @@
           "item": "214ba:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:the-pale",
       "scope": "hold",
+      "type": "hold",
       "group": "The Pale",
       "name": "Court of the Pale",
       "zone": "east",
@@ -182,11 +214,15 @@
           "item": "214f7:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "hold:whiterun",
       "scope": "hold",
+      "type": "hold",
       "group": "Whiterun",
       "name": "Court of Whiterun",
       "zone": "neutral",
@@ -204,11 +240,15 @@
           "item": "214e0:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "faction:imperial-legion",
       "scope": "faction",
+      "type": "military",
       "group": "Imperial Legion",
       "name": "Imperial Legion",
       "zone": "west",
@@ -234,11 +274,15 @@
           "item": "135ba:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "faction:stormcloaks",
       "scope": "faction",
+      "type": "military",
       "group": "Stormcloaks",
       "name": "Stormcloaks",
       "zone": "east",
@@ -260,11 +304,15 @@
           "item": "a6d79:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "faction:college-of-winterhold",
       "scope": "faction",
+      "type": "guild",
       "group": "College of Winterhold",
       "name": "College of Winterhold",
       "zone": "",
@@ -278,20 +326,28 @@
           "item": "d3de8:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "faction:companions",
       "scope": "faction",
+      "type": "guild",
       "group": "Companions",
       "name": "The Companions",
       "zone": "",
       "color": "b8872f",
-      "uniform": []
+      "uniform": [],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "faction:dark-brotherhood",
       "scope": "faction",
+      "type": "guild",
       "group": "Dark Brotherhood",
       "name": "Dark Brotherhood",
       "zone": "",
@@ -313,11 +369,15 @@
           "item": "d2842:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "faction:thieves-guild",
       "scope": "faction",
+      "type": "guild",
       "group": "Thieves Guild",
       "name": "Thieves Guild",
       "zone": "",
@@ -339,11 +399,15 @@
           "item": "d3ac5:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     },
     {
       "id": "faction:thalmor",
       "scope": "faction",
+      "type": "military",
       "group": "Thalmor",
       "name": "Thalmor",
       "zone": "",
@@ -361,7 +425,49 @@
           "item": "65bb3:Skyrim.esm",
           "count": 1
         }
-      ]
+      ],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
+    },
+    {
+      "id": "faction:forsworn",
+      "scope": "faction",
+      "type": "military",
+      "group": "Forsworn",
+      "name": "The Forsworn",
+      "zone": "west",
+      "color": "4f6236",
+      "uniform": [],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
+    },
+    {
+      "id": "faction:dawnguard",
+      "scope": "faction",
+      "type": "military",
+      "group": "Dawnguard",
+      "name": "The Dawnguard",
+      "zone": "",
+      "color": "6b5330",
+      "uniform": [],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
+    },
+    {
+      "id": "faction:bards-college",
+      "scope": "faction",
+      "type": "guild",
+      "group": "Bards College",
+      "name": "Bards College",
+      "zone": "",
+      "color": "a86fb0",
+      "uniform": [],
+      "regencyEnabled": false,
+      "regents": [],
+      "rev": 1
     }
   ],
   "requirements": [
@@ -373,18 +479,35 @@
       "capacity": 1,
       "permission": "hold.haafingar.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:haafingar:noble",
+      "scope": "hold",
+      "group": "Haafingar",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.haafingar.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:haafingar:steward",
@@ -393,35 +516,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.haafingar.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:haafingar:captain-of-the-guard",
+      "id": "hold:haafingar:captain",
       "scope": "hold",
       "group": "Haafingar",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.haafingar.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.haafingar.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:haafingar:court-wizard",
+      "id": "hold:haafingar:courtier",
       "scope": "hold",
       "group": "Haafingar",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.haafingar.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.haafingar.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -431,14 +577,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.haafingar.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -446,26 +598,17 @@
       "scope": "hold",
       "group": "Haafingar",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.haafingar.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:haafingar:village-elder",
-      "scope": "hold",
-      "group": "Haafingar",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.haafingar.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -473,23 +616,37 @@
       "scope": "hold",
       "group": "Haafingar",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.haafingar.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:haafingar:lord-lady",
+      "id": "hold:haafingar:chieftan",
       "scope": "hold",
       "group": "Haafingar",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.haafingar.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.haafingar.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -500,7 +657,14 @@
       "capacity": null,
       "permission": "hold.haafingar.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -511,18 +675,35 @@
       "capacity": 1,
       "permission": "hold.the-reach.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:the-reach:noble",
+      "scope": "hold",
+      "group": "The Reach",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.the-reach.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:the-reach:steward",
@@ -531,35 +712,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.the-reach.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:the-reach:captain-of-the-guard",
+      "id": "hold:the-reach:captain",
       "scope": "hold",
       "group": "The Reach",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.the-reach.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.the-reach.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:the-reach:court-wizard",
+      "id": "hold:the-reach:courtier",
       "scope": "hold",
       "group": "The Reach",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.the-reach.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.the-reach.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -569,14 +773,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.the-reach.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -584,26 +794,17 @@
       "scope": "hold",
       "group": "The Reach",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.the-reach.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:the-reach:village-elder",
-      "scope": "hold",
-      "group": "The Reach",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.the-reach.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -611,23 +812,37 @@
       "scope": "hold",
       "group": "The Reach",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.the-reach.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:the-reach:lord-lady",
+      "id": "hold:the-reach:chieftan",
       "scope": "hold",
       "group": "The Reach",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.the-reach.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.the-reach.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -638,7 +853,14 @@
       "capacity": null,
       "permission": "hold.the-reach.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -649,18 +871,35 @@
       "capacity": 1,
       "permission": "hold.falkreath.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:falkreath:noble",
+      "scope": "hold",
+      "group": "Falkreath",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.falkreath.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:falkreath:steward",
@@ -669,35 +908,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.falkreath.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:falkreath:captain-of-the-guard",
+      "id": "hold:falkreath:captain",
       "scope": "hold",
       "group": "Falkreath",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.falkreath.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.falkreath.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:falkreath:court-wizard",
+      "id": "hold:falkreath:courtier",
       "scope": "hold",
       "group": "Falkreath",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.falkreath.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.falkreath.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -707,14 +969,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.falkreath.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -722,26 +990,17 @@
       "scope": "hold",
       "group": "Falkreath",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.falkreath.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:falkreath:village-elder",
-      "scope": "hold",
-      "group": "Falkreath",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.falkreath.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -749,23 +1008,37 @@
       "scope": "hold",
       "group": "Falkreath",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.falkreath.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:falkreath:lord-lady",
+      "id": "hold:falkreath:chieftan",
       "scope": "hold",
       "group": "Falkreath",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.falkreath.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.falkreath.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -776,7 +1049,14 @@
       "capacity": null,
       "permission": "hold.falkreath.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -787,18 +1067,35 @@
       "capacity": 1,
       "permission": "hold.hjaalmarch.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:hjaalmarch:noble",
+      "scope": "hold",
+      "group": "Hjaalmarch",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.hjaalmarch.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:hjaalmarch:steward",
@@ -807,35 +1104,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.hjaalmarch.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:hjaalmarch:captain-of-the-guard",
+      "id": "hold:hjaalmarch:captain",
       "scope": "hold",
       "group": "Hjaalmarch",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.hjaalmarch.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.hjaalmarch.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:hjaalmarch:court-wizard",
+      "id": "hold:hjaalmarch:courtier",
       "scope": "hold",
       "group": "Hjaalmarch",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.hjaalmarch.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.hjaalmarch.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -845,14 +1165,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.hjaalmarch.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -860,26 +1186,17 @@
       "scope": "hold",
       "group": "Hjaalmarch",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.hjaalmarch.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:hjaalmarch:village-elder",
-      "scope": "hold",
-      "group": "Hjaalmarch",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.hjaalmarch.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -887,23 +1204,37 @@
       "scope": "hold",
       "group": "Hjaalmarch",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.hjaalmarch.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:hjaalmarch:lord-lady",
+      "id": "hold:hjaalmarch:chieftan",
       "scope": "hold",
       "group": "Hjaalmarch",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.hjaalmarch.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.hjaalmarch.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -914,7 +1245,14 @@
       "capacity": null,
       "permission": "hold.hjaalmarch.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -925,18 +1263,35 @@
       "capacity": 1,
       "permission": "hold.eastmarch.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:eastmarch:noble",
+      "scope": "hold",
+      "group": "Eastmarch",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.eastmarch.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:eastmarch:steward",
@@ -945,35 +1300,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.eastmarch.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:eastmarch:captain-of-the-guard",
+      "id": "hold:eastmarch:captain",
       "scope": "hold",
       "group": "Eastmarch",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.eastmarch.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.eastmarch.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:eastmarch:court-wizard",
+      "id": "hold:eastmarch:courtier",
       "scope": "hold",
       "group": "Eastmarch",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.eastmarch.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.eastmarch.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -983,14 +1361,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.eastmarch.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -998,26 +1382,17 @@
       "scope": "hold",
       "group": "Eastmarch",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.eastmarch.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:eastmarch:village-elder",
-      "scope": "hold",
-      "group": "Eastmarch",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.eastmarch.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1025,23 +1400,37 @@
       "scope": "hold",
       "group": "Eastmarch",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.eastmarch.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:eastmarch:lord-lady",
+      "id": "hold:eastmarch:chieftan",
       "scope": "hold",
       "group": "Eastmarch",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.eastmarch.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.eastmarch.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1052,7 +1441,14 @@
       "capacity": null,
       "permission": "hold.eastmarch.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1063,18 +1459,35 @@
       "capacity": 1,
       "permission": "hold.winterhold.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:winterhold:noble",
+      "scope": "hold",
+      "group": "Winterhold",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.winterhold.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:winterhold:steward",
@@ -1083,35 +1496,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.winterhold.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:winterhold:captain-of-the-guard",
+      "id": "hold:winterhold:captain",
       "scope": "hold",
       "group": "Winterhold",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.winterhold.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.winterhold.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:winterhold:court-wizard",
+      "id": "hold:winterhold:courtier",
       "scope": "hold",
       "group": "Winterhold",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.winterhold.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.winterhold.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1121,14 +1557,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.winterhold.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1136,26 +1578,17 @@
       "scope": "hold",
       "group": "Winterhold",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.winterhold.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:winterhold:village-elder",
-      "scope": "hold",
-      "group": "Winterhold",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.winterhold.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1163,23 +1596,37 @@
       "scope": "hold",
       "group": "Winterhold",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.winterhold.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:winterhold:lord-lady",
+      "id": "hold:winterhold:chieftan",
       "scope": "hold",
       "group": "Winterhold",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.winterhold.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.winterhold.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1190,7 +1637,14 @@
       "capacity": null,
       "permission": "hold.winterhold.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1201,18 +1655,35 @@
       "capacity": 1,
       "permission": "hold.the-rift.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:the-rift:noble",
+      "scope": "hold",
+      "group": "The Rift",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.the-rift.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:the-rift:steward",
@@ -1221,35 +1692,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.the-rift.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:the-rift:captain-of-the-guard",
+      "id": "hold:the-rift:captain",
       "scope": "hold",
       "group": "The Rift",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.the-rift.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.the-rift.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:the-rift:court-wizard",
+      "id": "hold:the-rift:courtier",
       "scope": "hold",
       "group": "The Rift",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.the-rift.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.the-rift.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1259,14 +1753,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.the-rift.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1274,26 +1774,17 @@
       "scope": "hold",
       "group": "The Rift",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.the-rift.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:the-rift:village-elder",
-      "scope": "hold",
-      "group": "The Rift",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.the-rift.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1301,23 +1792,37 @@
       "scope": "hold",
       "group": "The Rift",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.the-rift.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:the-rift:lord-lady",
+      "id": "hold:the-rift:chieftan",
       "scope": "hold",
       "group": "The Rift",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.the-rift.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.the-rift.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1328,7 +1833,14 @@
       "capacity": null,
       "permission": "hold.the-rift.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1339,18 +1851,35 @@
       "capacity": 1,
       "permission": "hold.the-pale.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:the-pale:noble",
+      "scope": "hold",
+      "group": "The Pale",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.the-pale.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:the-pale:steward",
@@ -1359,35 +1888,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.the-pale.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:the-pale:captain-of-the-guard",
+      "id": "hold:the-pale:captain",
       "scope": "hold",
       "group": "The Pale",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.the-pale.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.the-pale.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:the-pale:court-wizard",
+      "id": "hold:the-pale:courtier",
       "scope": "hold",
       "group": "The Pale",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.the-pale.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.the-pale.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1397,14 +1949,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.the-pale.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1412,26 +1970,17 @@
       "scope": "hold",
       "group": "The Pale",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.the-pale.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:the-pale:village-elder",
-      "scope": "hold",
-      "group": "The Pale",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.the-pale.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1439,23 +1988,37 @@
       "scope": "hold",
       "group": "The Pale",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.the-pale.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:the-pale:lord-lady",
+      "id": "hold:the-pale:chieftan",
       "scope": "hold",
       "group": "The Pale",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.the-pale.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.the-pale.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1466,7 +2029,14 @@
       "capacity": null,
       "permission": "hold.the-pale.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1477,18 +2047,35 @@
       "capacity": 1,
       "permission": "hold.whiterun.jarl",
       "order": 0,
-      "appoints": [
-        "steward",
-        "captain-of-the-guard",
-        "court-wizard",
-        "thane",
-        "housecarl",
-        "village-elder",
-        "guard",
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "hold:whiterun:noble",
+      "scope": "hold",
+      "group": "Whiterun",
+      "rank": "Noble",
+      "capacity": null,
+      "permission": "hold.whiterun.noble",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "title": "Lord",
+      "titleFemale": "Lady",
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "hold:whiterun:steward",
@@ -1497,35 +2084,58 @@
       "rank": "Steward",
       "capacity": 4,
       "permission": "hold.whiterun.steward",
-      "order": 1,
-      "appoints": [
-        "lord-lady",
+      "order": 2,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "chieftan",
+        "courtier"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": true,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:whiterun:captain-of-the-guard",
+      "id": "hold:whiterun:captain",
       "scope": "hold",
       "group": "Whiterun",
-      "rank": "Captain of the Guard",
+      "rank": "Captain",
       "capacity": 4,
-      "permission": "hold.whiterun.captain-of-the-guard",
-      "order": 2,
-      "appoints": [
+      "permission": "hold.whiterun.captain",
+      "order": 3,
+      "recruit": [
         "guard"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": true,
       "issuesUniform": true
     },
     {
-      "id": "hold:whiterun:court-wizard",
+      "id": "hold:whiterun:courtier",
       "scope": "hold",
       "group": "Whiterun",
-      "rank": "Court Wizard",
-      "capacity": 4,
-      "permission": "hold.whiterun.court-wizard",
-      "order": 3,
-      "appoints": [],
+      "rank": "Courtier",
+      "capacity": 10,
+      "permission": "hold.whiterun.courtier",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1535,14 +2145,20 @@
       "rank": "Thane",
       "capacity": 5,
       "permission": "hold.whiterun.thane",
-      "order": 4,
-      "appoints": [
-        "housecarl",
-        "guard",
-        "village-elder",
-        "lord-lady",
+      "order": 5,
+      "recruit": [
         "citizen"
       ],
+      "promote": [
+        "housecarl",
+        "guard"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1550,26 +2166,17 @@
       "scope": "hold",
       "group": "Whiterun",
       "rank": "Housecarl",
-      "capacity": null,
+      "capacity": 10,
       "permission": "hold.whiterun.housecarl",
-      "order": 5,
-      "appoints": [
-        "guard"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "hold:whiterun:village-elder",
-      "scope": "hold",
-      "group": "Whiterun",
-      "rank": "Village Elder",
-      "capacity": 5,
-      "permission": "hold.whiterun.village-elder",
       "order": 6,
-      "appoints": [
-        "lord-lady",
-        "citizen"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1577,23 +2184,37 @@
       "scope": "hold",
       "group": "Whiterun",
       "rank": "Guard",
-      "capacity": null,
+      "capacity": 40,
       "permission": "hold.whiterun.guard",
       "order": 7,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": true,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "hold:whiterun:lord-lady",
+      "id": "hold:whiterun:chieftan",
       "scope": "hold",
       "group": "Whiterun",
-      "rank": "Lord/Lady",
-      "capacity": null,
-      "permission": "hold.whiterun.lord-lady",
+      "rank": "Chieftan",
+      "capacity": 5,
+      "permission": "hold.whiterun.chieftan",
       "order": 8,
-      "appoints": [
+      "recruit": [
         "citizen"
       ],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1604,7 +2225,14 @@
       "capacity": null,
       "permission": "hold.whiterun.citizen",
       "order": 9,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1615,110 +2243,194 @@
       "capacity": 1,
       "permission": "faction.imperial-legion.general",
       "order": 0,
-      "appoints": [
-        "legate",
-        "tribune",
-        "praefect",
-        "quaestor",
-        "auxiliary"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "136d5:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136d6:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136d4:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136cf:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "135ba:Skyrim.esm",
-          "count": 1
-        }
-      ]
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": true
     },
     {
       "id": "faction:imperial-legion:legate",
       "scope": "faction",
       "group": "Imperial Legion",
       "rank": "Legate",
-      "capacity": 3,
+      "capacity": 1,
       "permission": "faction.imperial-legion.legate",
       "order": 1,
-      "appoints": [
-        "tribune",
-        "praefect",
-        "quaestor",
-        "auxiliary"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "136d5:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136d6:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136d4:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136cf:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "135ba:Skyrim.esm",
-          "count": 1
-        }
-      ]
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "faction:imperial-legion:tribune",
       "scope": "faction",
       "group": "Imperial Legion",
       "rank": "Tribune",
-      "capacity": null,
+      "capacity": 3,
       "permission": "faction.imperial-legion.tribune",
       "order": 2,
-      "appoints": [
-        "praefect",
-        "quaestor",
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:imperial-legion:prefect",
+      "scope": "faction",
+      "group": "Imperial Legion",
+      "rank": "Prefect",
+      "capacity": 1,
+      "permission": "faction.imperial-legion.prefect",
+      "order": 3,
+      "recruit": [
         "auxiliary"
       ],
+      "promote": [
+        "centurion",
+        "optio",
+        "decanus",
+        "evocatus",
+        "penitus-oculatus",
+        "legionnaire",
+        "auxiliary"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:imperial-legion:praefect",
+      "id": "faction:imperial-legion:centurion",
       "scope": "faction",
       "group": "Imperial Legion",
-      "rank": "Praefect",
-      "capacity": null,
-      "permission": "faction.imperial-legion.praefect",
-      "order": 3,
-      "appoints": [],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:imperial-legion:quaestor",
-      "scope": "faction",
-      "group": "Imperial Legion",
-      "rank": "Quaestor",
-      "capacity": null,
-      "permission": "faction.imperial-legion.quaestor",
+      "rank": "Centurion",
+      "capacity": 5,
+      "permission": "faction.imperial-legion.centurion",
       "order": 4,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:imperial-legion:optio",
+      "scope": "faction",
+      "group": "Imperial Legion",
+      "rank": "Optio",
+      "capacity": 1,
+      "permission": "faction.imperial-legion.optio",
+      "order": 5,
+      "recruit": [
+        "auxiliary"
+      ],
+      "promote": [
+        "decanus",
+        "evocatus",
+        "penitus-oculatus",
+        "legionnaire",
+        "auxiliary"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:imperial-legion:decanus",
+      "scope": "faction",
+      "group": "Imperial Legion",
+      "rank": "Decanus",
+      "capacity": 3,
+      "permission": "faction.imperial-legion.decanus",
+      "order": 6,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:imperial-legion:evocatus",
+      "scope": "faction",
+      "group": "Imperial Legion",
+      "rank": "Evocatus",
+      "capacity": 5,
+      "permission": "faction.imperial-legion.evocatus",
+      "order": 7,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:imperial-legion:penitus-oculatus",
+      "scope": "faction",
+      "group": "Imperial Legion",
+      "rank": "Penitus Oculatus",
+      "capacity": 10,
+      "permission": "faction.imperial-legion.penitus-oculatus",
+      "order": 8,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:imperial-legion:legionnaire",
+      "scope": "faction",
+      "group": "Imperial Legion",
+      "rank": "Legionnaire",
+      "capacity": 20,
+      "permission": "faction.imperial-legion.legionnaire",
+      "order": 9,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1728,125 +2440,51 @@
       "rank": "Auxiliary",
       "capacity": null,
       "permission": "faction.imperial-legion.auxiliary",
-      "order": 5,
-      "appoints": [],
+      "order": 10,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:stormcloaks:general",
+      "id": "faction:stormcloaks:commander",
       "scope": "faction",
       "group": "Stormcloaks",
-      "rank": "General",
+      "rank": "Commander",
       "capacity": 1,
-      "permission": "faction.stormcloaks.general",
+      "permission": "faction.stormcloaks.commander",
       "order": 0,
-      "appoints": [
-        "stormblade",
-        "snow-hammer",
-        "bone-breaker",
-        "ice-veins",
-        "unblooded"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "8697e:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "86981:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "86983:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "86985:Skyrim.esm",
-          "count": 1
-        }
-      ]
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": true
     },
     {
-      "id": "faction:stormcloaks:stormblade",
+      "id": "faction:stormcloaks:soldier",
       "scope": "faction",
       "group": "Stormcloaks",
-      "rank": "Stormblade",
-      "capacity": 3,
-      "permission": "faction.stormcloaks.stormblade",
+      "rank": "Soldier",
+      "capacity": 49,
+      "permission": "faction.stormcloaks.soldier",
       "order": 1,
-      "appoints": [
-        "snow-hammer",
-        "bone-breaker",
-        "ice-veins",
-        "unblooded"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "8697e:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "86981:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "86983:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "86985:Skyrim.esm",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "id": "faction:stormcloaks:snow-hammer",
-      "scope": "faction",
-      "group": "Stormcloaks",
-      "rank": "Snow-Hammer",
-      "capacity": null,
-      "permission": "faction.stormcloaks.snow-hammer",
-      "order": 2,
-      "appoints": [
-        "bone-breaker",
-        "ice-veins",
-        "unblooded"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:stormcloaks:bone-breaker",
-      "scope": "faction",
-      "group": "Stormcloaks",
-      "rank": "Bone-Breaker",
-      "capacity": null,
-      "permission": "faction.stormcloaks.bone-breaker",
-      "order": 3,
-      "appoints": [],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:stormcloaks:ice-veins",
-      "scope": "faction",
-      "group": "Stormcloaks",
-      "rank": "Ice-Veins",
-      "capacity": null,
-      "permission": "faction.stormcloaks.ice-veins",
-      "order": 4,
-      "appoints": [],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:stormcloaks:unblooded",
-      "scope": "faction",
-      "group": "Stormcloaks",
-      "rank": "Unblooded",
-      "capacity": null,
-      "permission": "faction.stormcloaks.unblooded",
-      "order": 5,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
@@ -1857,441 +2495,509 @@
       "capacity": 1,
       "permission": "faction.college-of-winterhold.arch-mage",
       "order": 0,
-      "appoints": [
-        "master-wizard",
-        "wizard",
-        "apprentice",
-        "novice"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "7c932:Skyrim.esm",
-          "count": 1
-        }
-      ]
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": true
     },
     {
       "id": "faction:college-of-winterhold:master-wizard",
       "scope": "faction",
       "group": "College of Winterhold",
-      "rank": "Master Wizard",
-      "capacity": 2,
+      "rank": "Master-Wizard",
+      "capacity": 1,
       "permission": "faction.college-of-winterhold.master-wizard",
       "order": 1,
-      "appoints": [
-        "wizard",
-        "apprentice",
-        "novice"
+      "recruit": [
+        "student"
       ],
-      "issuesUniform": true
-    },
-    {
-      "id": "faction:college-of-winterhold:wizard",
-      "scope": "faction",
-      "group": "College of Winterhold",
-      "rank": "Wizard",
-      "capacity": null,
-      "permission": "faction.college-of-winterhold.wizard",
-      "order": 2,
-      "appoints": [
-        "apprentice",
-        "novice"
+      "promote": [
+        "headmaster",
+        "college-staff",
+        "student"
       ],
+      "leader": false,
+      "remove": true,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:college-of-winterhold:apprentice",
+      "id": "faction:college-of-winterhold:headmaster",
       "scope": "faction",
       "group": "College of Winterhold",
-      "rank": "Apprentice",
-      "capacity": null,
-      "permission": "faction.college-of-winterhold.apprentice",
-      "order": 3,
-      "appoints": [],
-      "issuesUniform": false,
-      "uniform": [
-        {
-          "item": "d3de9:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d3de8:Skyrim.esm",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "id": "faction:college-of-winterhold:novice",
-      "scope": "faction",
-      "group": "College of Winterhold",
-      "rank": "Novice",
-      "capacity": null,
-      "permission": "faction.college-of-winterhold.novice",
-      "order": 4,
-      "appoints": [],
-      "issuesUniform": false,
-      "uniform": [
-        {
-          "item": "d3de9:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d3de8:Skyrim.esm",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "id": "faction:companions:harbinger",
-      "scope": "faction",
-      "group": "Companions",
-      "rank": "Harbinger",
-      "capacity": 1,
-      "permission": "faction.companions.harbinger",
-      "order": 0,
-      "appoints": [
-        "circle-member",
-        "shield-sibling",
-        "whelp"
+      "rank": "Headmaster",
+      "capacity": 3,
+      "permission": "faction.college-of-winterhold.headmaster",
+      "order": 2,
+      "recruit": [
+        "student"
       ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "cae15:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "cee7c:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "cee7e:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "4c3d0:Skyrim.esm",
-          "count": 1
-        }
-      ]
+      "promote": [],
+      "leader": false,
+      "remove": true,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
-      "id": "faction:companions:circle-member",
+      "id": "faction:college-of-winterhold:college-staff",
       "scope": "faction",
-      "group": "Companions",
-      "rank": "Circle Member",
+      "group": "College of Winterhold",
+      "rank": "College Staff",
       "capacity": 5,
-      "permission": "faction.companions.circle-member",
-      "order": 1,
-      "appoints": [
-        "shield-sibling",
-        "whelp"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "cae15:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "cee7c:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "cee7e:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "4c3d0:Skyrim.esm",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "id": "faction:companions:shield-sibling",
-      "scope": "faction",
-      "group": "Companions",
-      "rank": "Shield-Sibling",
-      "capacity": null,
-      "permission": "faction.companions.shield-sibling",
-      "order": 2,
-      "appoints": [
-        "whelp"
-      ],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:companions:whelp",
-      "scope": "faction",
-      "group": "Companions",
-      "rank": "Whelp",
-      "capacity": null,
-      "permission": "faction.companions.whelp",
+      "permission": "faction.college-of-winterhold.college-staff",
       "order": 3,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:dark-brotherhood:listener",
+      "id": "faction:college-of-winterhold:student",
       "scope": "faction",
-      "group": "Dark Brotherhood",
-      "rank": "Listener",
+      "group": "College of Winterhold",
+      "rank": "Student",
+      "capacity": 10,
+      "permission": "faction.college-of-winterhold.student",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:companions:guildmaster",
+      "scope": "faction",
+      "group": "Companions",
+      "rank": "Guildmaster",
       "capacity": 1,
-      "permission": "faction.dark-brotherhood.listener",
+      "permission": "faction.companions.guildmaster",
       "order": 0,
-      "appoints": [
-        "speaker",
-        "silencer",
-        "assassin",
-        "murderer",
-        "associate"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
+    },
+    {
+      "id": "faction:companions:member",
+      "scope": "faction",
+      "group": "Companions",
+      "rank": "Member",
+      "capacity": 19,
+      "permission": "faction.companions.member",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
     },
     {
       "id": "faction:dark-brotherhood:speaker",
       "scope": "faction",
       "group": "Dark Brotherhood",
       "rank": "Speaker",
-      "capacity": 4,
+      "capacity": 1,
       "permission": "faction.dark-brotherhood.speaker",
-      "order": 1,
-      "appoints": [
-        "silencer",
-        "assassin",
-        "murderer",
-        "associate"
-      ],
+      "order": 0,
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
-    },
-    {
-      "id": "faction:dark-brotherhood:silencer",
-      "scope": "faction",
-      "group": "Dark Brotherhood",
-      "rank": "Silencer",
-      "capacity": null,
-      "permission": "faction.dark-brotherhood.silencer",
-      "order": 2,
-      "appoints": [
-        "assassin",
-        "murderer",
-        "associate"
-      ],
-      "issuesUniform": false
     },
     {
       "id": "faction:dark-brotherhood:assassin",
       "scope": "faction",
       "group": "Dark Brotherhood",
       "rank": "Assassin",
-      "capacity": null,
+      "capacity": 19,
       "permission": "faction.dark-brotherhood.assassin",
-      "order": 3,
-      "appoints": [],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:dark-brotherhood:murderer",
-      "scope": "faction",
-      "group": "Dark Brotherhood",
-      "rank": "Murderer",
-      "capacity": null,
-      "permission": "faction.dark-brotherhood.murderer",
-      "order": 4,
-      "appoints": [],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:dark-brotherhood:associate",
-      "scope": "faction",
-      "group": "Dark Brotherhood",
-      "rank": "Associate",
-      "capacity": null,
-      "permission": "faction.dark-brotherhood.associate",
-      "order": 5,
-      "appoints": [],
-      "issuesUniform": false
-    },
-    {
-      "id": "faction:thieves-guild:guild-master",
-      "scope": "faction",
-      "group": "Thieves Guild",
-      "rank": "Guild Master",
-      "capacity": 1,
-      "permission": "faction.thieves-guild.guild-master",
-      "order": 0,
-      "appoints": [
-        "master-thief",
-        "shadowfoot",
-        "cat-burglar",
-        "footpad",
-        "pickpocket"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "e35d7:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "e35d6:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "e35d8:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "e35d9:Skyrim.esm",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "id": "faction:thieves-guild:master-thief",
-      "scope": "faction",
-      "group": "Thieves Guild",
-      "rank": "Master Thief",
-      "capacity": 3,
-      "permission": "faction.thieves-guild.master-thief",
       "order": 1,
-      "appoints": [
-        "shadowfoot",
-        "cat-burglar",
-        "footpad",
-        "pickpocket"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": true,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:thieves-guild:guildmaster",
+      "scope": "faction",
+      "group": "Thieves Guild",
+      "rank": "Guildmaster",
+      "capacity": 1,
+      "permission": "faction.thieves-guild.guildmaster",
+      "order": 0,
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": true
     },
     {
-      "id": "faction:thieves-guild:shadowfoot",
+      "id": "faction:thieves-guild:shadowmaster",
       "scope": "faction",
       "group": "Thieves Guild",
-      "rank": "Shadowfoot",
-      "capacity": null,
-      "permission": "faction.thieves-guild.shadowfoot",
+      "rank": "Shadowmaster",
+      "capacity": 2,
+      "permission": "faction.thieves-guild.shadowmaster",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:thieves-guild:councilor",
+      "scope": "faction",
+      "group": "Thieves Guild",
+      "rank": "Councilor",
+      "capacity": 2,
+      "permission": "faction.thieves-guild.councilor",
       "order": 2,
-      "appoints": [
-        "cat-burglar",
-        "footpad",
-        "pickpocket"
-      ],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:thieves-guild:cat-burglar",
+      "id": "faction:thieves-guild:thief",
       "scope": "faction",
       "group": "Thieves Guild",
-      "rank": "Cat Burglar",
-      "capacity": null,
-      "permission": "faction.thieves-guild.cat-burglar",
+      "rank": "Thief",
+      "capacity": 5,
+      "permission": "faction.thieves-guild.thief",
       "order": 3,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:thieves-guild:footpad",
+      "id": "faction:thieves-guild:runner",
       "scope": "faction",
       "group": "Thieves Guild",
-      "rank": "Footpad",
-      "capacity": null,
-      "permission": "faction.thieves-guild.footpad",
+      "rank": "Runner",
+      "capacity": 10,
+      "permission": "faction.thieves-guild.runner",
       "order": 4,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:thieves-guild:pickpocket",
+      "id": "faction:thieves-guild:initiate",
       "scope": "faction",
       "group": "Thieves Guild",
-      "rank": "Pickpocket",
+      "rank": "Initiate",
       "capacity": null,
-      "permission": "faction.thieves-guild.pickpocket",
+      "permission": "faction.thieves-guild.initiate",
       "order": 5,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     },
     {
-      "id": "faction:thalmor:first-emissary",
+      "id": "faction:thalmor:emissary",
       "scope": "faction",
       "group": "Thalmor",
-      "rank": "First Emissary",
-      "capacity": 1,
-      "permission": "faction.thalmor.first-emissary",
+      "rank": "Emissary",
+      "capacity": 2,
+      "permission": "faction.thalmor.emissary",
       "order": 0,
-      "appoints": [
-        "justiciar",
-        "agent",
-        "soldier"
-      ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "10c698:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "65bac:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "65bb3:Skyrim.esm",
-          "count": 1
-        }
-      ]
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": true
     },
     {
       "id": "faction:thalmor:justiciar",
       "scope": "faction",
       "group": "Thalmor",
       "rank": "Justiciar",
-      "capacity": 4,
+      "capacity": 3,
       "permission": "faction.thalmor.justiciar",
       "order": 1,
-      "appoints": [
-        "agent",
-        "soldier"
+      "recruit": [
+        "initiate"
       ],
-      "issuesUniform": true,
-      "uniform": [
-        {
-          "item": "10c698:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "65bac:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "65bb3:Skyrim.esm",
-          "count": 1
-        }
-      ]
-    },
-    {
-      "id": "faction:thalmor:agent",
-      "scope": "faction",
-      "group": "Thalmor",
-      "rank": "Agent",
-      "capacity": null,
-      "permission": "faction.thalmor.agent",
-      "order": 2,
-      "appoints": [
-        "soldier"
+      "promote": [
+        "inquisitor",
+        "speculatore",
+        "enforcer",
+        "initiate"
       ],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": true,
       "issuesUniform": false
     },
     {
-      "id": "faction:thalmor:soldier",
+      "id": "faction:thalmor:inquisitor",
       "scope": "faction",
       "group": "Thalmor",
-      "rank": "Soldier",
-      "capacity": null,
-      "permission": "faction.thalmor.soldier",
+      "rank": "Inquisitor",
+      "capacity": 5,
+      "permission": "faction.thalmor.inquisitor",
+      "order": 2,
+      "recruit": [
+        "initiate"
+      ],
+      "promote": [
+        "speculatore",
+        "enforcer",
+        "initiate"
+      ],
+      "leader": false,
+      "remove": false,
+      "craft": true,
+      "housing": false,
+      "arrest": false,
+      "execute": true,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:thalmor:speculatore",
+      "scope": "faction",
+      "group": "Thalmor",
+      "rank": "Speculatore",
+      "capacity": 5,
+      "permission": "faction.thalmor.speculatore",
       "order": 3,
-      "appoints": [],
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:thalmor:enforcer",
+      "scope": "faction",
+      "group": "Thalmor",
+      "rank": "Enforcer",
+      "capacity": 5,
+      "permission": "faction.thalmor.enforcer",
+      "order": 4,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:thalmor:initiate",
+      "scope": "faction",
+      "group": "Thalmor",
+      "rank": "Initiate",
+      "capacity": null,
+      "permission": "faction.thalmor.initiate",
+      "order": 5,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:forsworn:leader",
+      "scope": "faction",
+      "group": "Forsworn",
+      "rank": "Leader",
+      "capacity": 1,
+      "permission": "faction.forsworn.leader",
+      "order": 0,
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": true
+    },
+    {
+      "id": "faction:forsworn:reachman",
+      "scope": "faction",
+      "group": "Forsworn",
+      "rank": "Reachman",
+      "capacity": 19,
+      "permission": "faction.forsworn.reachman",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:dawnguard:commander",
+      "scope": "faction",
+      "group": "Dawnguard",
+      "rank": "Commander",
+      "capacity": 1,
+      "permission": "faction.dawnguard.commander",
+      "order": 0,
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": true
+    },
+    {
+      "id": "faction:dawnguard:warden",
+      "scope": "faction",
+      "group": "Dawnguard",
+      "rank": "Warden",
+      "capacity": 19,
+      "permission": "faction.dawnguard.warden",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": false
+    },
+    {
+      "id": "faction:bards-college:leader",
+      "scope": "faction",
+      "group": "Bards College",
+      "rank": "Leader",
+      "capacity": 1,
+      "permission": "faction.bards-college.leader",
+      "order": 0,
+      "recruit": [],
+      "promote": [],
+      "leader": true,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
+      "issuesUniform": true
+    },
+    {
+      "id": "faction:bards-college:member",
+      "scope": "faction",
+      "group": "Bards College",
+      "rank": "Member",
+      "capacity": 19,
+      "permission": "faction.bards-college.member",
+      "order": 1,
+      "recruit": [],
+      "promote": [],
+      "leader": false,
+      "remove": false,
+      "craft": false,
+      "housing": false,
+      "arrest": false,
+      "execute": false,
       "issuesUniform": false
     }
   ],
-  "assignments": []
+  "assignments": [],
+  "retired": {
+    "factions": [],
+    "ranks": []
+  }
 }

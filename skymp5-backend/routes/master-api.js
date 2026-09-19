@@ -28,6 +28,9 @@
  *     Removes one official backend faction slot.
  *   GET /api/servers/:key/factions  (X-Auth-Token)
  *     Faction and rank definitions without member counts: { factions, requirements }; Express's ETag answers If-None-Match with 304
+ *     Each faction carries its type (hold|military|guild), regencyEnabled and regents as [{ profileId, slot }] in regency order
+ *   PUT /api/servers/:key/groups/:scope/:group/regency  (X-Auth-Token)
+ *     Rewrites one faction's regency. Body: { enabled?, regents?: [{ profileId, slot }], by? }
  *   GET /api/servers/:key/groups/:scope/:group/roster  (X-Auth-Token)
  *     Every member of one faction, online or not: { members: [{ profileId, playerName, rank, rankSlug, slot }] }
  *   DELETE /api/servers/:key/profiles/:profileId/characters/:slot/factions  (X-Auth-Token)
@@ -413,9 +416,43 @@ router.get('/:key/factions', (req, res) => {
   if (!checkKey(req, res) || !checkWriteToken(req, res)) return
 
   try {
-    res.json(factionWhitelist.listDefinitions())
+    const definitions = factionWhitelist.listDefinitions()
+    const profileMap = profiles.load().map
+    // The game server knows profile ids, never discord ids, so regency seats are translated here
+    definitions.factions = definitions.factions.map(faction => ({
+      ...faction,
+      regents: (faction.regents || [])
+        .map(regent => ({ profileId: profileMap[regent.discordId] || null, slot: regent.slot ?? null }))
+        .filter(regent => regent.profileId),
+    }))
+    res.json(definitions)
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'failed to load factions' })
+  }
+})
+
+// PUT /api/servers/:key/groups/:scope/:group/regency
+
+router.put('/:key/groups/:scope/:group/regency', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+
+  try {
+    const factionId = `${factionWhitelist.slug(req.params.scope)}:${factionWhitelist.slug(req.params.group)}`
+    const body = req.body || {}
+    const input = { enabled: body.enabled }
+    if (body.regents !== undefined) {
+      if (!Array.isArray(body.regents)) return res.status(400).json({ error: 'regents must be a list' })
+      input.regents = body.regents.map(regent => ({
+        discordId: profiles.getDiscordIdByProfileId(parseInt(regent && regent.profileId, 10)) || '',
+        slot: regent && Number.isInteger(regent.slot) ? regent.slot : null,
+      }))
+      if (input.regents.some(regent => !regent.discordId)) return res.status(404).json({ error: 'profileNotFound' })
+    }
+    const by = String(body.by || '').replace(/\p{Cc}/gu, ' ').trim().slice(0, 80)
+    const result = factionWhitelist.setRegency(factionId, input, by ? `skymp-server (${by})` : 'skymp-server')
+    res.json({ ok: true, regencyEnabled: result.faction.regencyEnabled, regents: result.faction.regents.length })
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to set regency' })
   }
 })
 
