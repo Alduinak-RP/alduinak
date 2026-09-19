@@ -278,7 +278,7 @@ const main = async () => {
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
     new GatheringSystem(log, masterySystem, needsSystem),
-    new FactionCraftSystem(log),
+    new FactionCraftSystem(log, factionSystem),
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
     bountyBoardSystem,

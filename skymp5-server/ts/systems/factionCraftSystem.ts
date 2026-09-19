@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, ACCESS_REFRESHED_EVENT } from "./system";
 import { resolveEditorIds } from "./espmEditorIds";
 import { addSpellTo, removeSpellFrom } from "./actorUtil";
-import { membershipsOf } from "./factionRules";
+import { FactionSystem } from "./factionSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -15,7 +15,7 @@ type Mp = any;
 // crafting menu and the server's CraftService both honour. Membership itself
 // lives in the backend, never in the game's own factions, so this system is
 // what ties the two together: it hands a character the marker of every faction
-// it belongs to and takes back the rest.
+// whose rank carries the craft permission and takes back the rest.
 //
 // The editor id drops the punctuation of the faction id, so "hold:the-rift"
 // becomes AldFaction_holdtherift, exactly as the patcher writes it.
@@ -49,7 +49,7 @@ export const markerEdidOf = (factionId: string): string =>
 export class FactionCraftSystem implements System {
   systemName = "FactionCraftSystem";
 
-  constructor(private log: Log) { }
+  constructor(private log: Log, private factions: FactionSystem) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -100,14 +100,14 @@ export class FactionCraftSystem implements System {
     if (actorId !== undefined) this.pending.delete(actorId);
   }
 
-  // Hand over the markers of every faction the character belongs to, take back the rest.
+  // Hand over the markers of every faction whose rank may craft, take back the rest.
   private sync(ctx: SystemContext, actorId: number): void {
     if (!this.enabled) return;
     const mp = ctx.svr as Mp;
     let wanted: Set<number>;
     try {
-      wanted = new Set(membershipsOf(mp.get(actorId, "private.skympAccess"))
-        .map((m) => this.spells.get(m.factionId))
+      wanted = new Set(this.factions.factionsWith(actorId, "craft")
+        .map((id) => this.spells.get(id))
         .filter((id): id is number => !!id));
     } catch {
       return;

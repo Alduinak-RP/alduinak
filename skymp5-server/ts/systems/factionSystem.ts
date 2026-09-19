@@ -13,25 +13,31 @@ import * as rules from "./factionRules";
 type Mp = any;
 
 // Factions: hold courts, armies and guilds whose ranks live in the backend (skymp5-backend data/faction-whitelist.json, one row per
-// character and slot). This system runs the rules in game: the Personal Menu Faction tab, invitations with consent, rank changes,
-// uniforms, faction chat, faction-only doors and containers, and removing a deleted or perma-dead character's ranks.
+// character and slot). A character joins at most one faction of each type, leads at most one faction anywhere, and shows at most one
+// faction title. This system runs the rules in game: the Personal Menu Faction tabs, recruiting with consent, rank changes, removals,
+// regency, uniforms, faction-only doors and containers, and releasing a deleted or perma-dead character's ranks.
 // Docs: docs/docs_roleplay_property_factions.md section 6.
 //
 // Client -> server:
 //   factionMenuRequest {factionId?}                          -> factionMenu
-//   factionInviteOptionsRequest {target}                     -> factionInviteOptions (the interaction menu's Invite to faction)
+//   factionRecruitRequest {target}                           the interaction menu's Recruit, prompts the target
 //   factionRequest {action, factionId, ...}
-//     invite {target, rank}                                  consent prompt to the target, then the rank is granted
-//     promote | demote | remove | uniform {profileId, slot}  slot null = the row shared by every character
-//     setRank {profileId, slot, rank}
-//     leave | chat                                           chat: the faction /f speaks to
+//     recruit {target}                                       consent prompt, then the lowest rank the actor may recruit to
+//     promote {profileId, slot, rank}                        any rank the actor may move that member to, up or down
+//     remove | uniform {profileId, slot}                     slot null = the row shared by every character
+//     regentAdd | regentRemove {profileId, slot}
+//     regentOrder {order: [{profileId, slot}]}               regency order, first in line first
+//     regency {enabled}                                      leader's regent-status switch
+//     title {}                                               show this faction's title, or none when factionId is already shown
+//     leave
+//     adminAdd {target, rank} | adminRemove {target}         staff only
 //   captureConsentResult {requestId, accepted}               ids from CONSENT_ID_BASE up are ours
 // Server -> client:
-//   factionMenu {available, factions: [{id, name, zone, color, rank}], selected, chat, detail}   detail: roster with per-member rights, inviteRanks, nearby
-//   factionInviteOptions {target, targetName, options: [{factionId, name, ranks: [{slug, name}]}]}
-//   factionState {factions: [{id, name}], chat, canInvite}   drives the chat tab and the interaction menu
+//   factionMenu {available, staff, main, byType, factions, selected, detail, regency, titleFactionId}
+//   factionState {factions: [{id, name, type}], canRecruit}  drives the interaction menu's Recruit entry
 //   factionNotice {text}, captureConsentRequest {requestId, text}
-// Chat: the Alduinak/faction-chat plugin calls globalThis.__alduinakFactionChat(actorId, text) and delivers the [[F]] line it returns.
+// Titles: the actor property ff_factionTitle carries the prefix Show Title puts before a character's name; clients read it for the
+// floating name tag, and it is registered in the gamemode next to the other ff_ properties.
 // Live file ./faction-access.json (server folder, optional, re-read when it changes; seed in skymp5-server/seeds):
 //   { "refs": [{ "ref": "0x0001A6F4" | "1A6F4:Skyrim.esm", "label"?, "factions": ["hold:haafingar"], "ranks"?: ["jarl"] | { "<factionId>": ["jarl"] } }] }
 // Settings (optional): factionInviteMaxDistance (default 1024), factionUniformCooldownHours (default 24).
@@ -48,12 +54,15 @@ const DEFINITIONS_TTL_MS = 20000;
 const DEFINITIONS_RETRY_MS = 15000;
 const ROSTER_TTL_MS = 3000;
 const ACCESS_FILE_CHECK_MS = 10000;
+// How often a leader logging out hands the seat to the next regent in line
+const REGENCY_CHECK_MS = 5000;
 const RELEASE_RETRIES = 5;
 const RELEASE_RETRY_MS = 30000;
 const MAX_QUEUED = 3;
 const MAX_USER_SLOTS = 1024;
 const UNIFORM_PROP = "private.factionUniformAt";
-const CHAT_PROP = "private.factionChat";
+const TITLE_PROP = "private.factionTitle";
+const TITLE_FF = "ff_factionTitle";
 const RELEASED_PROP = "private.factionsReleased";
 
 interface OnlineActor {
@@ -86,23 +95,36 @@ interface MemberView {
   rankName: string;
   online: boolean;
   self: boolean;
-  promote: string;
-  demote: string;
-  setRanks: string[];
+  tenure: string;
+  regent: boolean;
+  acting: boolean;
+  // Ranks this viewer may move them to, both directions
+  promote: Array<{ slug: string; name: string }>;
   canRemove: boolean;
   canUniform: boolean;
+  canRegent: boolean;
 }
 
 const noticeText = (err: unknown): string => {
   const msg = String((err as Error)?.message || err);
   if (msg.includes("slot is already filled")) return "That rank is full.";
   if (msg.includes("already has this rank")) return "They already hold that rank.";
+  if (msg.includes("nobody leads two factions")) return "They already lead another faction.";
+  if (msg.includes("cannot also lead")) return "They are a regent of another faction.";
+  if (msg.includes("belongs to one")) return `They ${msg.slice(msg.indexOf("already in"))}`;
   return "The faction records are unavailable, try again shortly.";
 };
 
-// Names and labels inside a chat line cannot open tags or colours
-const chatSafe = (text: string): string =>
-  text.replace(/\p{Cc}/gu, " ").replace(/#\{/g, "# {").replace(/\[\[/g, "[ [").replace(/\|/g, "/").trim().slice(0, 60);
+// "3 days", "2 months"; whole units, rounded down
+const tenureText = (since: number): string => {
+  if (!since) return "Unknown";
+  const days = Math.floor((Date.now() - since) / 86400000);
+  if (days < 1) return "Today";
+  if (days < 60) return `${days} day${days === 1 ? "" : "s"}`;
+  const months = Math.floor(days / 30);
+  if (months < 24) return `${months} months`;
+  return `${Math.floor(days / 365)} years`;
+};
 
 export class FactionSystem implements System {
   systemName = "FactionSystem";
@@ -122,7 +144,6 @@ export class FactionSystem implements System {
 
     this.housing.factionGate = (actorId, refrId) => this.gate(actorId, refrId);
     this.housing.factionDef = (factionId) => (this.definitionsLoaded ? this.defs.get(factionId) ?? null : undefined);
-    (globalThis as any).__alduinakFactionChat = (actorId: number, text: string) => this.chat(actorId >>> 0, String(text ?? "").trim());
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
@@ -135,7 +156,7 @@ export class FactionSystem implements System {
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     switch (type) {
       case "factionMenuRequest": void this.queued(userId, () => this.sendMenu(userId, String(content["factionId"] ?? ""))); break;
-      case "factionInviteOptionsRequest": void this.queued(userId, () => this.sendInviteOptions(userId, content)); break;
+      case "factionRecruitRequest": void this.queued(userId, () => this.recruitFromCrosshair(userId, content)); break;
       case "factionRequest": void this.queued(userId, () => this.onRequest(userId, content)); break;
       case "captureConsentResult": this.onConsentResult(userId, content); break;
       default: break;
@@ -151,11 +172,16 @@ export class FactionSystem implements System {
     if (this.backend() && now >= this.definitionsDueAt && !this.definitionsLoading) {
       this.ensureDefinitions().catch(() => undefined);
     }
+    if (now - this.lastRegencyCheck >= REGENCY_CHECK_MS) {
+      this.lastRegencyCheck = now;
+      this.refreshTitles();
+    }
   }
 
   disconnect(userId: number): void {
     this.queues.delete(userId);
     this.queueDepth.delete(userId);
+    this.acting.clear();
   }
 
   // ── Requests ────────────────────────────────────────────────────────────────
@@ -194,14 +220,16 @@ export class FactionSystem implements System {
     const auth = this.authorityOf(actorId, faction, access);
 
     switch (action) {
-      case "invite": await this.invite(userId, actorId, faction, auth, content); return;
+      case "recruit": await this.recruit(userId, actorId, faction, auth, Number(content["target"]) >>> 0); return;
       case "adminAdd":
       case "adminRemove": await this.adminMemberAction(userId, actorId, faction, action, content); break;
       case "leave": await this.leave(userId, actorId, faction, access); break;
-      case "chat": this.setChat(userId, actorId, faction, access); break;
+      case "title": this.setTitle(userId, actorId, faction, access); break;
+      case "regency":
+      case "regentAdd":
+      case "regentRemove":
+      case "regentOrder": await this.regencyAction(userId, actorId, faction, auth, action, content); break;
       case "promote":
-      case "demote":
-      case "setRank":
       case "remove":
       case "uniform": await this.memberAction(userId, actorId, faction, auth, action, content); break;
       default: return;
@@ -244,10 +272,31 @@ export class FactionSystem implements System {
     this.staffLog(`${this.who(actorId)} removed ${this.who(target.actorId)} from ${faction.name}`);
   }
 
-  private async invite(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, content: Content): Promise<void> {
-    const rank = rules.rankOf(faction, String(content["rank"] ?? ""));
+  // The interaction menu's Recruit: the actor's own faction of whichever type they may recruit for
+  private async recruitFromCrosshair(userId: number, content: Content): Promise<void> {
+    const actorId = this.actorOf(userId);
+    if (!actorId) return;
+    if (!this.backend()) return this.notice(userId, "Factions are unavailable right now.");
     const targetId = Number(content["target"]) >>> 0;
-    if (!rank || !rules.canInvite(faction, auth, rank)) return this.notice(userId, "You cannot invite anyone to that rank.");
+    const refusal = this.inviteTargetRefusal(actorId, targetId);
+    if (refusal) return this.notice(userId, refusal);
+    await this.ensureDefinitions();
+    const access = await this.refreshActorAccess(actorId);
+    const faction = this.recruitingFaction(actorId, access);
+    if (!faction) return this.notice(userId, "You cannot recruit anyone.");
+    await this.recruit(userId, actorId, faction, this.authorityOf(actorId, faction, access), targetId);
+  }
+
+  // The first faction the actor may recruit into; a character belongs to one faction of each type, so this is unambiguous in practice
+  private recruitingFaction(actorId: number, access: unknown): rules.FactionDef | null {
+    const mine = rules.membershipsOf(access).map((m) => this.defs.get(m.factionId)).filter((f): f is rules.FactionDef => !!f);
+    const shown = this.isStaff(actorId) ? Array.from(this.defs.values()) : mine;
+    return shown.find((f) => rules.recruitRankFor(f, this.authorityOf(actorId, f, access))) || null;
+  }
+
+  private async recruit(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, targetId: number): Promise<void> {
+    const rank = rules.recruitRankFor(faction, auth);
+    if (!rank) return this.notice(userId, `You cannot recruit anyone into ${faction.name}.`);
     const refusal = this.inviteTargetRefusal(actorId, targetId);
     if (refusal) return this.notice(userId, refusal);
     for (const p of this.invites.values()) {
@@ -259,9 +308,12 @@ export class FactionSystem implements System {
 
     const target = this.onlineByActor(targetId)!;
     const targetAccess = filterAccessForSlot(await this.backend()!.fetchAccess(target.profileId), target.slot);
-    if (rules.membershipsOf(targetAccess).some((m) => m.factionId === faction.id)) {
-      return this.notice(userId, `They already belong to ${faction.name}. Change their rank from the Faction tab.`);
+    const held = rules.membershipsOf(targetAccess);
+    if (held.some((m) => m.factionId === faction.id)) {
+      return this.notice(userId, `They already belong to ${faction.name}.`);
     }
+    const sameType = held.map((m) => this.defs.get(m.factionId)).find((f) => f && f.type === faction.type);
+    if (sameType) return this.notice(userId, `They already belong to ${sameType.name}; nobody joins two ${faction.type} factions.`);
     if (rank.capacity !== null && (await this.roster(faction.id, true)).filter((m) => m.rankSlug === rank.slug).length >= rank.capacity) {
       return this.notice(userId, `${rank.name} is full.`);
     }
@@ -278,14 +330,14 @@ export class FactionSystem implements System {
     this.send(target.userId, {
       customPacketType: "captureConsentRequest",
       requestId,
-      text: `${nameShownTo(this.mp, targetId, actorId)} invites you to join ${faction.name} as ${rank.name}. Accept?`,
+      text: `${nameShownTo(this.mp, targetId, actorId)} recruits you into ${faction.name} as ${rank.name}. Accept?`,
     });
     this.notice(userId, `Waiting for ${nameShownTo(this.mp, actorId, targetId)} to accept…`);
   }
 
-  // A player standing close, connected, and not the inviter
+  // A player standing close, connected, and not the recruiter
   private inviteTargetRefusal(actorId: number, targetId: number): string {
-    if (!targetId || targetId === actorId || !isPlayerActor(this.mp, targetId) || !this.onlineByActor(targetId)) return "Look at the player you want to invite.";
+    if (!targetId || targetId === actorId || !isPlayerActor(this.mp, targetId) || !this.onlineByActor(targetId)) return "Look at the player you want to recruit.";
     if (!isNear(this.mp, actorId, targetId, this.inviteDistance)) return "They are too far away.";
     return "";
   }
@@ -313,17 +365,17 @@ export class FactionSystem implements System {
     const rank = faction && rules.rankOf(faction, invite.rankSlug);
     const target = this.onlineByActor(invite.targetId);
     if (!backend || !faction || !rank || !target) return this.notice(userId, "The invitation can no longer be accepted.");
-    // The inviter may have lost the rank while the prompt was open
+    // The recruiter may have lost the rank while the prompt was open
     const inviter = this.onlineByActor(invite.inviterId);
     const inviterAuth = inviter ? this.authorityOf(invite.inviterId, faction, await this.refreshActorAccess(invite.inviterId)) : null;
-    if (!inviterAuth || !rules.canInvite(faction, inviterAuth, rank)) return this.notice(userId, "The invitation is no longer valid.");
+    if (!inviterAuth || rules.recruitRankFor(faction, inviterAuth)?.slug !== rank.slug) return this.notice(userId, "The invitation is no longer valid.");
 
     const payload = await backend.assign(target.profileId, rank.id, this.realName(target.actorId), target.slot, this.who(invite.inviterId));
     this.applyAccess(target.profileId, payload);
     this.invalidateRoster(faction.id);
     this.notice(userId, `You joined ${faction.name} as ${rank.name}.`);
     this.notice(inviterUser, `${this.realName(target.actorId)} joined ${faction.name} as ${rank.name}.`);
-    this.staffLog(`${this.who(invite.inviterId)} brought ${this.who(target.actorId)} into ${faction.name} as ${rank.name}${inviterAuth.staff && !inviterAuth.rank ? " (staff)" : ""}`);
+    this.staffLog(`${this.who(invite.inviterId)} recruited ${this.who(target.actorId)} into ${faction.name} as ${rank.name}${inviterAuth.staff && !inviterAuth.rank ? " (staff)" : ""}`);
     if (inviterUser >= 0) await this.sendMenu(inviterUser, faction.id);
   }
 
@@ -353,11 +405,12 @@ export class FactionSystem implements System {
       return;
     }
 
-    const target = action === "promote" ? rules.promotionFor(faction, auth, memberRank)
-      : action === "demote" ? rules.demotionFor(faction, auth, memberRank)
-        : rules.rankOf(faction, String(content["rank"] ?? ""));
+    const target = rules.rankOf(faction, String(content["rank"] ?? ""));
     if (!target || !rules.canSetRank(faction, auth, memberRank, target)) {
       return this.notice(userId, "You cannot give them that rank.");
+    }
+    if (target.capacity !== null && (await this.roster(faction.id, true)).filter((m) => m.rankSlug === target.slug).length >= target.capacity) {
+      return this.notice(userId, `${target.name} is full.`);
     }
     const payload = await backend.assign(profileId, target.id, name, slot, this.who(actorId));
     this.applyAccess(profileId, payload);
@@ -409,15 +462,136 @@ export class FactionSystem implements System {
     for (const row of rows) payload = await this.backend()!.remove(self.profileId, `${faction.id}:${row.rankSlug}`, row.slot);
     if (payload) this.applyAccess(self.profileId, payload);
     this.invalidateRoster(faction.id);
+    if (this.titleFactionOf(actorId) === faction.id) this.storeTitleChoice(actorId, "");
     this.notice(userId, `You left ${faction.name}.`);
     this.staffLog(`${this.who(actorId)} left ${faction.name}, was ${rows.map((r) => rules.rankOf(faction, r.rankSlug)?.name || r.rankSlug).join(", ")}`);
   }
 
-  private setChat(userId: number, actorId: number, faction: rules.FactionDef, access: unknown): void {
+  // Show Title is a single choice: picking the faction already shown turns it off again
+  private setTitle(userId: number, actorId: number, faction: rules.FactionDef, access: unknown): void {
     if (!rules.membershipsOf(access).some((m) => m.factionId === faction.id)) return this.notice(userId, `You are not in ${faction.name}.`);
-    try { this.mp.set(actorId, CHAT_PROP, faction.id); } catch { return; }
-    this.notice(userId, `/f now speaks to ${faction.name}.`);
-    this.sendState(userId, actorId);
+    const next = this.titleFactionOf(actorId) === faction.id ? "" : faction.id;
+    this.storeTitleChoice(actorId, next);
+    this.notice(userId, next ? `Your ${faction.name} title is shown with your name.` : "Your title is hidden.");
+  }
+
+  // ── Regency ─────────────────────────────────────────────────────────────────
+
+  private async regencyAction(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, action: string, content: Content): Promise<void> {
+    if (!rules.canManageRegency(auth)) return this.notice(userId, "Only the leader seats regents.");
+    const backend = this.backend()!;
+    const seats = faction.regents.slice();
+    const sameSeat = (a: rules.RegentSeat, b: rules.RegentSeat) => a.profileId === b.profileId && a.slot === b.slot;
+    let enabled: boolean | undefined;
+    let next: rules.RegentSeat[] | undefined;
+
+    if (action === "regency") {
+      enabled = content["enabled"] === true;
+    } else if (action === "regentOrder") {
+      const wanted = this.seatList(content["order"]);
+      // A reorder may only shuffle the seats that are already there
+      if (wanted.length !== seats.length || !wanted.every((s) => seats.some((o) => sameSeat(o, s)))) return this.notice(userId, "The regency list changed, reopen the tab.");
+      next = wanted;
+    } else {
+      const seat: rules.RegentSeat = { profileId: Number(content["profileId"]), slot: Number.isInteger(content["slot"]) ? (content["slot"] as number) : null };
+      if (!seat.profileId) return this.notice(userId, "Pick a member.");
+      if (action === "regentAdd") {
+        if (seats.some((o) => sameSeat(o, seat))) return this.notice(userId, "They already hold a regency seat.");
+        const member = (await this.roster(faction.id, true)).find((m) => m.profileId === seat.profileId && m.slot === seat.slot);
+        if (!member) return this.notice(userId, "They are no longer in the faction.");
+        next = seats.concat([seat]);
+      } else {
+        next = seats.filter((o) => !sameSeat(o, seat));
+        if (next.length === seats.length) return this.notice(userId, "They do not hold a regency seat.");
+      }
+    }
+
+    await backend.setRegency(faction.id, { enabled, regents: next }, this.who(actorId));
+    if (enabled !== undefined) faction.regencyEnabled = enabled;
+    if (next) faction.regents = next;
+    this.acting.clear();
+    this.refreshTitles();
+    this.notice(userId, enabled !== undefined
+      ? `Regency is ${enabled ? "on" : "off"} for ${faction.name}.`
+      : `The regency of ${faction.name} was updated.`);
+    this.staffLog(`${this.who(actorId)} changed the regency of ${faction.name}: ${action}${enabled === undefined ? "" : ` ${enabled}`}, ${(next || seats).length} seat(s)`);
+  }
+
+  private seatList(raw: unknown): rules.RegentSeat[] {
+    return (Array.isArray(raw) ? raw : [])
+      .map((r) => r as Record<string, unknown>)
+      .filter((r) => Number.isInteger(r?.profileId) && (r.profileId as number) > 0)
+      .map((r) => ({ profileId: r.profileId as number, slot: Number.isInteger(r.slot) ? (r.slot as number) : null }));
+  }
+
+  // The regent standing in for an absent leader: the first seat in line whose character is online, while no leader is
+  private actingRegent(faction: rules.FactionDef): OnlineActor | null {
+    if (!faction.regencyEnabled || !faction.regents.length) return null;
+    const cached = this.acting.get(faction.id);
+    if (cached !== undefined) return cached;
+    const everyone = this.online();
+    const rankOfActor = (o: OnlineActor) => {
+      const m = this.membershipsOfActor(o.actorId).find((x) => x.factionId === faction.id);
+      return m ? rules.rankOf(faction, m.rankSlug) : null;
+    };
+    let found: OnlineActor | null = null;
+    if (!everyone.some((o) => rankOfActor(o)?.leader)) {
+      for (const seat of faction.regents) {
+        const online = everyone.find((o) => o.profileId === seat.profileId && (seat.slot === null || seat.slot === o.slot));
+        if (online && rankOfActor(online)) {
+          found = online;
+          break;
+        }
+      }
+    }
+    this.acting.set(faction.id, found);
+    return found;
+  }
+
+  // ── Titles ──────────────────────────────────────────────────────────────────
+
+  private titleFactionOf(actorId: number): string {
+    try { return String(this.mp.get(actorId, TITLE_PROP) ?? ""); } catch { return ""; }
+  }
+
+  private storeTitleChoice(actorId: number, factionId: string): void {
+    try { this.mp.set(actorId, TITLE_PROP, factionId); } catch { return; }
+    this.applyTitle(actorId);
+  }
+
+  // ff_factionTitle is what clients prefix to the floating name; empty means no title is shown
+  private applyTitle(actorId: number): void {
+    const factionId = this.titleFactionOf(actorId);
+    const faction = factionId ? this.defs.get(factionId) : null;
+    let title = "";
+    if (faction) {
+      const membership = this.membershipsOfActor(actorId).find((m) => m.factionId === faction.id);
+      const rank = membership && rules.rankOf(faction, membership.rankSlug);
+      if (rank) title = rules.titleOf(faction, rank, this.actingRegent(faction)?.actorId === actorId, this.isFemale(actorId));
+    }
+    if (this.titles.get(actorId) === title) return;
+    this.titles.set(actorId, title);
+    try { this.mp.set(actorId, TITLE_FF, title); } catch { this.titles.delete(actorId); }
+  }
+
+  // A leader logging in or out moves the regency, which changes what every member of that faction is called
+  private refreshTitles(): void {
+    this.acting.clear();
+    const live = new Set<number>();
+    for (const o of this.online()) {
+      live.add(o.actorId);
+      this.applyTitle(o.actorId);
+    }
+    for (const actorId of Array.from(this.titles.keys())) if (!live.has(actorId)) this.titles.delete(actorId);
+  }
+
+  private isFemale(actorId: number): boolean {
+    try { return this.mp.get(actorId, "appearance")?.isFemale === true; } catch { return false; }
+  }
+
+  // The title shown next to a character's name in server-built lists, "" when none
+  titleOfActor(actorId: number): string {
+    return this.titles.get(actorId) || "";
   }
 
   // ── Menu ────────────────────────────────────────────────────────────────────
@@ -426,7 +600,7 @@ export class FactionSystem implements System {
   private async sendMenu(userId: number, wanted: string): Promise<void> {
     const actorId = this.actorOf(userId);
     if (!actorId) return;
-    const unavailable = { customPacketType: "factionMenu", available: false, factions: [] as unknown[], selected: "", chat: "", detail: null as unknown };
+    const unavailable = { customPacketType: "factionMenu", available: false, staff: false, main: [] as unknown[], byType: {}, factions: [] as unknown[], selected: "", detail: null as unknown, regency: null as unknown, titleFactionId: "" };
     if (!this.backend()) return this.send(userId, unavailable);
     try {
       await this.ensureDefinitions();
@@ -435,17 +609,25 @@ export class FactionSystem implements System {
       const staff = this.isStaff(actorId);
       const shown = staff ? Array.from(this.defs.values()) : mine.map((m) => this.defs.get(m.factionId)!).filter((f, i, all) => all.indexOf(f) === i);
       const selected = shown.find((f) => f.id === wanted) || shown.find((f) => f.id === mine[0]?.factionId) || shown[0] || null;
+      const byType: Record<string, string> = {};
+      for (const m of mine) byType[this.defs.get(m.factionId)!.type] = m.factionId;
       const rankName = (f: rules.FactionDef) => {
         const m = mine.find((x) => x.factionId === f.id);
         return m ? rules.rankOf(f, m.rankSlug)?.name || m.rankSlug : "";
       };
+      const main = [];
+      for (const m of mine) main.push(await this.column(actorId, this.defs.get(m.factionId)!, m));
       this.send(userId, {
         customPacketType: "factionMenu",
         available: true,
-        factions: shown.map((f) => ({ id: f.id, name: f.name, zone: f.zone, color: f.color, rank: rankName(f) })),
+        staff,
+        titleFactionId: this.titleFactionOf(actorId),
+        main,
+        byType,
+        factions: shown.map((f) => ({ id: f.id, name: f.name, type: f.type, zone: f.zone, color: f.color, rank: rankName(f) })),
         selected: selected ? selected.id : "",
-        chat: this.chatFactionOf(actorId, mine),
         detail: selected ? await this.detail(actorId, selected, access, staff) : null,
+        regency: await this.regencyView(access),
       });
       this.menuError = "";
     } catch (e) {
@@ -455,15 +637,44 @@ export class FactionSystem implements System {
     }
   }
 
+  // One Main tab column: the standing of this character in one faction
+  private async column(actorId: number, faction: rules.FactionDef, membership: rules.Membership): Promise<Record<string, unknown>> {
+    const roster = await this.roster(faction.id, false);
+    const everyone = this.online();
+    const acting = this.actingRegent(faction);
+    const leaders = roster.filter((row) => rules.rankOf(faction, row.rankSlug)?.leader);
+    const rank = rules.rankOf(faction, membership.rankSlug);
+    return {
+      id: faction.id,
+      name: faction.name,
+      type: faction.type,
+      zone: faction.zone,
+      color: faction.color,
+      rankName: rank ? rank.name : membership.rankSlug,
+      title: rank ? rules.titleOf(faction, rank, acting?.actorId === actorId, this.isFemale(actorId)) : "",
+      leaderName: leaders.length
+        ? leaders.map((row) => this.memberName(row, everyone)).join(", ")
+        : acting
+          ? `${this.realName(acting.actorId)} (${rules.titleOf(faction, faction.ranks[0], true, false)})`
+          : "Vacant",
+      members: roster.length,
+      tenure: tenureText(membership.since),
+      titleShown: this.titleFactionOf(actorId) === faction.id,
+    };
+  }
+
   private async detail(actorId: number, faction: rules.FactionDef, access: unknown, staff: boolean): Promise<Record<string, unknown>> {
     const auth = this.authorityOf(actorId, faction, access);
     const self = this.onlineByActor(actorId);
     const roster = await this.roster(faction.id, false);
     const everyone = this.online();
+    const acting = this.actingRegent(faction);
+    const seated = (row: RosterRow) => faction.regents.some((seat) => seat.profileId === row.profileId && seat.slot === row.slot);
     const members: MemberView[] = roster
       .map((row) => {
         const rank = rules.rankOf(faction, row.rankSlug);
         const isSelf = !!self && row.profileId === self.profileId && (row.slot === null || row.slot === self.slot);
+        const online = this.onlineMember(row, everyone);
         return {
           key: `${row.profileId}:${row.slot === null ? "all" : row.slot}`,
           profileId: row.profileId ?? 0,
@@ -471,55 +682,80 @@ export class FactionSystem implements System {
           name: this.memberName(row, everyone),
           rankSlug: row.rankSlug,
           rankName: rank ? rank.name : row.rank || row.rankSlug,
-          online: !!this.onlineMember(row, everyone),
+          online: !!online,
           self: isSelf,
-          promote: rank && !isSelf ? rules.promotionFor(faction, auth, rank)?.slug || "" : "",
-          demote: rank && !isSelf ? rules.demotionFor(faction, auth, rank)?.slug || "" : "",
-          setRanks: rank && !isSelf ? rules.rankTargets(faction, auth, rank).map((r) => r.slug) : [],
+          tenure: tenureText(Date.parse(String(row.since || "")) || 0),
+          regent: seated(row),
+          acting: !!acting && !!online && acting.actorId === online.actorId,
+          promote: rank && !isSelf ? rules.promoteTargets(faction, auth, rank).map((r) => ({ slug: r.slug, name: r.name })) : [],
           canRemove: !!rank && !isSelf && rules.canRemove(faction, auth, rank),
           canUniform: !!rank && rules.canIssueUniform(faction, auth) && rules.uniformFor(faction, rank).length > 0,
+          canRegent: !!rank && !isSelf && !rank.leader && !seated(row) && rules.canManageRegency(auth),
         };
       })
       .filter((m) => m.profileId > 0)
       .sort((a, b) => (rules.rankOf(faction, a.rankSlug)?.order ?? 99) - (rules.rankOf(faction, b.rankSlug)?.order ?? 99) || a.name.localeCompare(b.name));
-    const inviteRanks = rules.invitableRanks(faction, auth).map((r) => ({ slug: r.slug, name: r.name }));
-    // Players close enough to invite who are not in the faction yet
-    const nearby = !inviteRanks.length ? [] : everyone
+    const recruitRank = rules.recruitRankFor(faction, auth);
+    // Players close enough to recruit who are not in the faction yet
+    const nearby = !recruitRank ? [] : everyone
       .filter((o) => o.actorId !== actorId && isNear(this.mp, actorId, o.actorId, this.inviteDistance))
       .filter((o) => !roster.some((row) => row.profileId === o.profileId && (row.slot === null || row.slot === o.slot)))
       .map((o) => ({ target: o.actorId, name: nameShownTo(this.mp, actorId, o.actorId) }));
     return {
       id: faction.id,
       name: faction.name,
+      type: faction.type,
       zone: faction.zone,
       color: faction.color,
       myRank: auth.rank ? auth.rank.name : "",
+      acting: auth.acting,
       staff,
       ranks: faction.ranks.map((r) => ({ slug: r.slug, name: r.name, capacity: r.capacity, count: roster.filter((m) => m.rankSlug === r.slug).length })),
       members,
       canLeave: !!auth.rank,
-      inviteRanks,
+      recruitRank: recruitRank ? { slug: recruitRank.slug, name: recruitRank.name } : null,
       nearby,
     };
   }
 
-  private async sendInviteOptions(userId: number, content: Content): Promise<void> {
-    const actorId = this.actorOf(userId);
-    if (!actorId) return;
-    if (!this.backend()) return this.notice(userId, "Factions are unavailable right now.");
-    const targetId = Number(content["target"]) >>> 0;
-    const refusal = this.inviteTargetRefusal(actorId, targetId);
-    if (refusal) return this.notice(userId, refusal);
-    await this.ensureDefinitions();
-    const access = await this.refreshActorAccess(actorId);
-    const staff = this.isStaff(actorId);
-    const mine = new Set(rules.membershipsOf(access).map((m) => m.factionId));
-    const options = Array.from(this.defs.values())
-      .filter((f) => staff || mine.has(f.id))
-      .map((f) => ({ factionId: f.id, name: f.name, ranks: rules.invitableRanks(f, this.authorityOf(actorId, f, access)).map((r) => ({ slug: r.slug, name: r.name })) }))
-      .filter((o) => o.ranks.length > 0);
-    if (!options.length) return this.notice(userId, "You cannot invite anyone to a faction.");
-    this.send(userId, { customPacketType: "factionInviteOptions", target: targetId, targetName: nameShownTo(this.mp, actorId, targetId), options });
+  // The Regency tab, shown only to the leader of a faction; nobody leads two, so there is at most one
+  private async regencyView(access: unknown): Promise<Record<string, unknown> | null> {
+    let led: rules.FactionDef | null = null;
+    for (const m of rules.membershipsOf(access)) {
+      const faction = this.defs.get(m.factionId);
+      if (faction && rules.rankOf(faction, m.rankSlug)?.leader) {
+        led = faction;
+        break;
+      }
+    }
+    if (!led) return null;
+    const roster = await this.roster(led.id, false);
+    const everyone = this.online();
+    const acting = this.actingRegent(led);
+    const seats = led.regents
+      .map((seat) => {
+        const row = roster.find((m) => m.profileId === seat.profileId && m.slot === seat.slot);
+        if (!row) return null;
+        const online = this.onlineMember(row, everyone);
+        return {
+          key: `${seat.profileId}:${seat.slot === null ? "all" : seat.slot}`,
+          profileId: seat.profileId,
+          slot: seat.slot,
+          name: this.memberName(row, everyone),
+          rankName: rules.rankOf(led, row.rankSlug)?.name || row.rankSlug,
+          online: !!online,
+          acting: !!acting && !!online && acting.actorId === online.actorId,
+        };
+      })
+      .filter(Boolean);
+    return {
+      factionId: led.id,
+      name: led.name,
+      type: led.type,
+      enabled: led.regencyEnabled,
+      regentTitle: rules.titleOf(led, led.ranks[0], true, false),
+      seats,
+    };
   }
 
   private sendState(userId: number, actorId: number): void {
@@ -528,38 +764,12 @@ export class FactionSystem implements System {
     try { access = this.mp.get(actorId, "private.skympAccess"); } catch { return; }
     const mine = rules.membershipsOf(access).filter((m, i, all) => all.findIndex((x) => x.factionId === m.factionId) === i);
     const staff = this.isStaff(actorId);
-    const canInvite = Array.from(this.defs.values()).some((f) => (staff || mine.some((m) => m.factionId === f.id)) && rules.invitableRanks(f, this.authorityOf(actorId, f, access)).length > 0);
+    const canRecruit = Array.from(this.defs.values()).some((f) => (staff || mine.some((m) => m.factionId === f.id)) && !!rules.recruitRankFor(f, this.authorityOf(actorId, f, access)));
     this.send(userId, {
       customPacketType: "factionState",
-      factions: mine.map((m) => ({ id: m.factionId, name: this.defs.get(m.factionId)?.name || m.factionId })),
-      chat: this.chatFactionOf(actorId, mine),
-      canInvite,
+      factions: mine.map((m) => ({ id: m.factionId, name: this.defs.get(m.factionId)?.name || m.factionId, type: this.defs.get(m.factionId)?.type || "" })),
+      canRecruit,
     });
-  }
-
-  // ── Chat ────────────────────────────────────────────────────────────────────
-
-  private chat(actorId: number, text: string): { error?: string; recipients?: number[]; line?: string } {
-    const mine = this.membershipsOfActor(actorId);
-    if (!mine.length) return { error: "You are not in a faction." };
-    const chatId = this.chatFactionOf(actorId, mine);
-    const faction = this.defs.get(chatId);
-    const label = faction ? faction.name : chatId;
-    if (!text) return { error: `Usage: /f <message> speaks to ${label}. Pick another faction in the Personal Menu Faction tab.` };
-    const own = mine.find((m) => m.factionId === chatId)!;
-    const rank = faction ? rules.rankOf(faction, own.rankSlug) : null;
-    const recipients = this.online()
-      .filter((o) => this.membershipsOfActor(o.actorId).some((m) => m.factionId === chatId))
-      .map((o) => o.actorId);
-    const speaker = `${rank ? chatSafe(rank.name) + " " : ""}${chatSafe(this.realName(actorId))}`;
-    return { recipients, line: `[[F]]#{${faction ? faction.color : "c9a36b"}}[${chatSafe(label)}] ${speaker}: ${text}` };
-  }
-
-  // The chosen faction while still a member, otherwise the first one
-  private chatFactionOf(actorId: number, mine: rules.Membership[]): string {
-    let chosen = "";
-    try { chosen = String(this.mp.get(actorId, CHAT_PROP) ?? ""); } catch { /* actor gone */ }
-    return mine.some((m) => m.factionId === chosen) ? chosen : mine[0]?.factionId || "";
   }
 
   // ── Doors and containers ────────────────────────────────────────────────────
@@ -630,6 +840,8 @@ export class FactionSystem implements System {
         this.log(`[factions] could not refresh ranks at spawn: ${e}`);
       }
     }
+    this.acting.clear();
+    this.refreshTitles();
     this.sendState(userId, actorId);
   }
 
@@ -708,6 +920,7 @@ export class FactionSystem implements System {
         const reload = this.definitionsLoaded && changed;
         this.defs = rules.buildFactions(raw);
         this.definitionsLoaded = true;
+        this.acting.clear();
         if (had !== this.defs.size) this.log(`[factions] ${this.defs.size} faction(s) loaded from the backend`);
         if (reload) this.refreshOnlineAccess();
       })
@@ -768,6 +981,8 @@ export class FactionSystem implements System {
       try { this.mp.set(o.actorId, "private.skympAccess", filterAccessForSlot(payload, o.slot)); } catch { continue; }
       this.sendState(o.userId, o.actorId);
     }
+    this.acting.clear();
+    this.refreshTitles();
     this.ctx.gm.emit(ACCESS_REFRESHED_EVENT, profileId, payload);
   }
 
@@ -785,12 +1000,29 @@ export class FactionSystem implements System {
       .map((m) => rules.rankOf(faction, m.rankSlug))
       .filter((r): r is rules.RankDef => !!r)
       .sort((a, b) => a.order - b.order)[0] || null;
-    return { staff: this.isStaff(actorId), rank: own };
+    return { staff: this.isStaff(actorId), rank: own, acting: !!own && this.actingRegent(faction)?.actorId === actorId };
   }
 
   private isStaff(actorId: number): boolean {
     const tier = adminTierOf(this.mp, actorId, this.roleCfg);
     return !!tier && this.roleCfg.tierCaps[tier].factions === true;
+  }
+
+  // Whether the character carries one faction permission anywhere; other systems gate on it
+  hasFactionPermission(actorId: number, key: rules.Permission): boolean {
+    return this.factionsWith(actorId, key).length > 0;
+  }
+
+  // The factions whose rank gives this character the permission; FactionCraftSystem gates the craft markers on it
+  factionsWith(actorId: number, key: rules.Permission): string[] {
+    const access = this.cachedAccess(actorId);
+    // Definitions not in yet: no permission is granted rather than all of them
+    return rules.membershipsOf(access)
+      .filter((m) => {
+        const faction = this.defs.get(m.factionId);
+        return !!faction && rules.hasPermission(this.authorityOf(actorId, faction, access), key);
+      })
+      .map((m) => m.factionId);
   }
 
   canRemoveBoardPosts(actorId: number, boardName: string): boolean {
@@ -903,6 +1135,10 @@ export class FactionSystem implements System {
   private accessByRef = new Map<number, AccessEntry>();
   private accessMtime = -1;
   private lastAccessCheck = 0;
+  private lastRegencyCheck = 0;
+  // factionId -> the regent acting for an absent leader, cleared whenever memberships or logins change
+  private acting = new Map<string, OnlineActor | null>();
+  private titles = new Map<number, string>();
   private invites = new Map<number, PendingInvite>();
   private inviteCooldown = new Map<string, number>();
   private nextConsentId = CONSENT_ID_BASE;

@@ -40,6 +40,13 @@ export interface RosterRow {
   rank: string | null;
   rankSlug: string;
   slot: number | null;
+  // ISO date the membership was granted, for tenure; null on a row written before it was recorded
+  since: string | null;
+}
+
+export interface RegentSeatInput {
+  profileId: number;
+  slot: number | null;
 }
 
 export interface CharacterReport {
@@ -55,6 +62,8 @@ export interface FactionBackend {
   fetchDefinitions(): Promise<{ factions: unknown[]; requirements: unknown[] } | null>;
   fetchRoster(factionId: string): Promise<RosterRow[]>;
   assign(profileId: number, requirementId: string, playerName: string, slot: number | null, by: string): Promise<AccessPayload>;
+  // Rewrites one faction's regency; an absent field is left alone
+  setRegency(factionId: string, change: { enabled?: boolean; regents?: RegentSeatInput[] }, by: string): Promise<void>;
   remove(profileId: number, requirementId: string, slot: number | null): Promise<AccessPayload>;
   releaseCharacter(profileId: number, slot: number, accountWide: boolean): Promise<{ removed: { requirementId: string; rank: string | null; group: string | null }[]; payload: AccessPayload }>;
   reportCharacters(profileId: number, characters: CharacterReport[]): Promise<void>;
@@ -162,6 +171,14 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
         factions: Array.isArray(data?.factions) ? data.factions : [],
         requirements: Array.isArray(data?.requirements) ? data.requirements : [],
       };
+    },
+
+    setRegency: async (factionId, change, by) => {
+      const [scope, group] = factionId.split(":");
+      const body: Record<string, unknown> = { by };
+      if (change.enabled !== undefined) body.enabled = change.enabled;
+      if (change.regents !== undefined) body.regents = change.regents;
+      await request("PUT", `/groups/${encodeURIComponent(scope)}/${encodeURIComponent(group)}/regency`, body);
     },
 
     fetchRoster: async (factionId) => {
