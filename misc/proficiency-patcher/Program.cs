@@ -512,12 +512,19 @@ static class Steps
                           Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
                           Keywords: Edids(c, x["itemKeywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet())).ToList();
         var conversion = r["conversions"]!["profession"]!.GetValue<string>();
+        // Recipes the rules cannot read from their materials, named outright
+        var named = (r["recipes"] as JsonObject ?? new JsonObject()).ToDictionary(
+            kv => kv.Key,
+            kv => new Route(c.KeyOf<IKeywordGetter>(kv.Value!["bench"]!.GetValue<string>()),
+                            kv.Value!["bench"]!.GetValue<string>(), kv.Value!["profession"]!.GetValue<string>()),
+            StringComparer.OrdinalIgnoreCase);
         var benches = Edids(c, r["from"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
         var routes = new Dictionary<string, Route>(StringComparer.OrdinalIgnoreCase);
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
             if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
+            if (named.TryGetValue(edid, out var forcedRoute)) { routes[edid] = forcedRoute; continue; }
             var made = ProductKeywords(c, winning.CreatedObject.FormKey, out var kind);
             var hit = product.FirstOrDefault(p => p.Kinds.Contains(kind) || made.Overlaps(p.Keywords));
             if (hit.Rule != null) { routes[edid] = hit.Rule; continue; }
@@ -1053,6 +1060,9 @@ static class Steps
         {
             if (!benches.Contains(cobj.Bench)) continue;
             var edid = cobj.Edid;
+            // A recipe a faction already owns is that faction's, whatever people its gear is styled after;
+            // gating it twice would ask for the race and the membership at once
+            if (c.Claimed.Contains(edid)) continue;
             var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
             var text = $"{edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
             var hit = rules.FirstOrDefault(r => r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
@@ -1154,6 +1164,7 @@ static class Steps
             IWeaponGetter w => c.Override(c.Mod.Weapons, w),
             IAmmunitionGetter m => c.Override(c.Mod.Ammunitions, m),
             IMiscItemGetter m => c.Override(c.Mod.MiscItems, m),
+            IBookGetter b => c.Override(c.Mod.Books, b),
             _ => null,
         };
         if (rec == null) { c.Warn($"crafting categories: {made.EditorID} is a {made.Registration.Name}, which carries no keywords"); return; }

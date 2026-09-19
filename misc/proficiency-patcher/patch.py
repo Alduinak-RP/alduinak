@@ -103,6 +103,9 @@ def spec_overrides(spec):
     # Overrides of other types the spec names: placed references by form key, enchantments by editor id
     s = json.load(open(spec, encoding='utf-8'))
     refs = {('REFR', p['ref'].split(':')[1].lower(), int(p['ref'].split(':')[0], 16)) for p in s.get('placements', [])}
+    # References the spec disables: the same form-key spelling, plus the plugin's own, which are changed in place
+    for r in s.get('disableReferences', {}).get('refs', []):
+        refs.add(('REFR', r.split(':', 1)[1].lower(), int(r.split(':', 1)[0], 16)))
     enchs = {e['enchantment'].lower() for e in s.get('enchantmentMagnitudes', [])}
     return lambda k, rec: (k[0], k[1].lower(), k[2]) in refs or (k[0] == 'ENCH' and edid(rec).lower() in enchs)
 

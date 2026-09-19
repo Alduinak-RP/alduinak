@@ -727,7 +727,7 @@
    {
     "output": "VoidSalts",
     "name": "Void Salts",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "SoulGemPetty": 2,
      "SaltPile": 3,
@@ -738,7 +738,7 @@
    {
     "output": "FireSalts",
     "name": "Fire Salts",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "SoulGemPetty": 2,
      "SaltPile": 5,
@@ -749,7 +749,7 @@
    {
     "output": "FrostSalts",
     "name": "Frost Salts",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "SoulGemPetty": 2,
      "SaltPile": 4,
@@ -936,6 +936,7 @@
     "DwarvenScrapMetal"
    ],
    "Master": [
+    "IAMIIngotGlacialCrystal",
     "IngotMalachite",
     "IngotQuicksilver",
     "IngotEbony",
@@ -961,6 +962,11 @@
    "RecipeIngotEbony": { "Charcoal": 2 }
   },
   "stripPerkConditions": true,
+  "tiers": {
+   "Anyone": [
+    "12RecipeSeaSaltPile"
+   ]
+  },
   "exclude": [],
   "temperBenches": [
    "CraftingSmithingArmorTable",
@@ -1027,6 +1033,10 @@
    "DLC1CraftingDawnguard",
    "DLC1LD_CraftingForgeAetherium"
   ],
+  "recipes": {
+   "IWRecipeWeaponWoodenQuarterstaff": { "bench": "AldCraftingWoodcrafting", "profession": "woodworker" },
+   "IWRecipeWeaponWoodenClub": { "bench": "AldCraftingWoodcrafting", "profession": "woodworker" }
+  },
   "products": [
    {
     "bench": "AldCraftingWoodcrafting",
@@ -1047,7 +1057,7 @@
      "DwarvenScrapMetal", "DwarvenScrapBent", "DwarvenScrapLever", "DwarvenScrapLever02",
      "DwarvenLargeScrap", "DwarvenLargeScrap2", "DwarvenLargeScrap3",
      "DwarvenPlateMetalLarge", "DwarvenPlateMetalSmall",
-     "DragonBone", "DragonScales"
+     "DragonBone", "DragonScales", "Gold001"
     ]
    },
    {
@@ -2253,6 +2263,18 @@
  },
  "benchMoves": [
   {
+   "comment": "Immersive Armors puts its Apotheus set on the Skyforge; the Skyforge keeps only the three sets below",
+   "bench": "CraftingSmithingForge",
+   "profession": "blacksmith",
+   "from": [
+    "CraftingSmithingSkyforge"
+   ],
+   "match": [
+    "Apotheus"
+   ],
+   "recipes": []
+  },
+  {
    "bench": "CraftingSmithingSkyforge",
    "profession": "blacksmith",
    "from": [
@@ -2442,6 +2464,8 @@
      "Wolf Boots",
      "Wolf Gauntlets",
      "Wolf Helmet",
+     "Wolf Shield",
+     "Jorrvaskr",
      "Ulfhedinn",
      "Nord Hero",
      "Nordic Carved"
@@ -2466,7 +2490,8 @@
      "Moon Monk",
      "Imperial Emissary",
      "War Horn",
-     "ImperialWarHorn"
+     "ImperialWarHorn",
+     "Steel Imperial"
     ]
    },
    {
@@ -2534,7 +2559,7 @@
    {
     "name": "Orsimer",
     "races": [ "OrcRace", "OrcRaceVampire" ],
-    "match": [ "Orcish" ]
+    "match": [ "Orcish", "Orsimer" ]
    },
    {
     "name": "Altmer",
@@ -2549,7 +2574,8 @@
    {
     "name": "Redguard",
     "races": [ "RedguardRace", "RedguardRaceVampire" ],
-    "match": [ "Alikr", "Alik'r", "Rihad" ]
+    "match": [ "Alikr", "Alik'r", "Rihad", "Redguard", "Hammerfell", "Stros M'Kai" ],
+    "except": [ "Dark Alik'r", "Dark Redguard", "Dark Hammerfell" ]
    },
    {
     "name": "Argonian",
@@ -2566,14 +2592,16 @@
     "races": [ "DarkElfRace", "DarkElfRaceVampire" ],
     "match": [
      "Vvardenfell", "Morrowind", "Ashlander", "Velothi", "Redoran", "Telvanni",
-     "Indoril", "Hlaalu", "Bonemold", "Chitin", "DarkElf", "Dark Elf"
-    ]
+     "Indoril", "Hlaalu", "Bonemold", "Chitin", "DarkElf", "Dark Elf",
+     "Tribunal", "Sixth House"
+    ],
+    "except": [ "Velothi Dwarven" ]
    },
    {
     "name": "Nord",
     "races": [ "NordRace", "NordRaceVampire", "DLC1NordRace" ],
-    "match": [ "Nordic", "Nord Hero", "Skyforge" ],
-    "except": [ "Nordic Vanguard", "Nordic Iron" ]
+    "match": [ "Nordic", "Nord Hero", "Skyforge", "Nord Mail", "Primitive Nord" ],
+    "except": [ "Nordic Vanguard", "Nordic Iron", "Steel Nordic", "Nordic Dwemer" ]
    }
   ]
  },
@@ -2598,7 +2626,8 @@
      { "name": "Arrows", "keyword": "AldCatArrows", "kinds": ["ammo"] },
      { "name": "Shields", "keyword": "AldCatShields", "keywords": ["ArmorShield"] },
      { "name": "Bows", "keyword": "AldCatBows", "keywords": ["WeapTypeBow"] },
-     { "name": "Instruments", "keyword": "AldCatInstruments", "items": ["Lute", "Flute", "Drum"] }
+     { "name": "Instruments", "keyword": "AldCatInstruments", "items": ["Lute", "Flute", "Drum"] },
+     { "name": "Tools and Writing", "keyword": "AldCatTools" }
     ]
    }
   ]
