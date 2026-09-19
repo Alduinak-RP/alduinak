@@ -117,7 +117,7 @@
    {
     "output": "FortifySkillAlteration01",
     "name": "Potion of Alteration",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "SpikyGrass01": 3,
      "Taproot": 1
@@ -126,7 +126,7 @@
    {
     "output": "FortifySkillAlteration02",
     "name": "Draught of Alteration",
-    "tier": "Expert",
+    "tier": "Master",
     "items": {
      "SpikyGrass01": 5,
      "ChaurusEggs": 5,
@@ -221,7 +221,7 @@
    {
     "output": "FortifySkillIllusion01",
     "name": "Potion of Illusion",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "DragonsTongue": 7,
      "MoraTapinellaBits": 4
@@ -230,7 +230,7 @@
    {
     "output": "FortifySkillIllusion02",
     "name": "Draught of Illusion",
-    "tier": "Expert",
+    "tier": "Master",
     "items": {
      "DragonsTongue": 9,
      "MoraTapinellaBits": 6
@@ -260,7 +260,7 @@
    {
     "output": "FortifySkillMarksman01",
     "name": "Potion of True Shot",
-    "tier": "Master",
+    "tier": "Expert",
     "items": {
      "CanisRoot01": 5,
      "SpiderEgg": 3,
@@ -270,7 +270,7 @@
    {
     "output": "FortifySkillOneHanded01",
     "name": "Potion of the Warrior",
-    "tier": "Master",
+    "tier": "Expert",
     "items": {
      "SabrecatTooth": 5,
      "BirdEgg01": 8
@@ -288,7 +288,7 @@
    {
     "output": "FortifySkillTwoHanded01",
     "name": "Potion of the Berserker",
-    "tier": "Master",
+    "tier": "Expert",
     "items": {
      "BearClaws": 2,
      "BirdEgg01": 3,
@@ -327,7 +327,7 @@
    {
     "output": "FortifyHealRate01",
     "name": "Potion of Regeneration",
-    "tier": "Master",
+    "tier": "Expert",
     "items": {
      "Garlic": 5,
      "JuniperBerries": 7,
@@ -549,7 +549,7 @@
    {
     "output": "CurePoison",
     "name": "Cure Poison",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "deathBell": 4,
      "ChaurusEggs": 5,
@@ -559,7 +559,7 @@
    {
     "output": "CureDisease",
     "name": "Potion of Cure Disease",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "ChaurusEggs": 7,
      "deathBell": 6,
@@ -609,7 +609,7 @@
    {
     "output": "TGTQ02BalmoraBlue",
     "name": "Balmora Blue",
-    "tier": "Expert",
+    "tier": "Master",
     "items": {
      "MoonSugar": 5,
      "Nightshade": 12,
@@ -630,7 +630,7 @@
    {
     "output": "DA14Water",
     "name": "Holy Water",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "GiantToes": 2,
      "MountainFlower01Blue": 8
@@ -639,7 +639,7 @@
    {
     "output": "DLC1RedwaterDenSkooma",
     "name": "Redwater Skooma",
-    "tier": "Expert",
+    "tier": "Master",
     "items": {
      "MoonSugar": 5,
      "Nightshade": 12,
@@ -649,7 +649,7 @@
    {
     "output": "Skooma",
     "name": "Skooma",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "MoonSugar": 5,
      "Nightshade": 12
@@ -687,7 +687,7 @@
    {
     "output": "WeaknessFire01",
     "name": "Weak Aversion to Fire",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "Mushroom02": 7,
      "JuniperBerries": 5,
@@ -697,7 +697,7 @@
    {
     "output": "WeaknessFrost01",
     "name": "Weak Aversion to Frost",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "ElvesEar": 7,
      "FireSalts": 1,
@@ -707,7 +707,7 @@
    {
     "output": "WeaknessMagic01",
     "name": "Weak Aversion to Magic",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "CreepClusterRoot": 7,
      "DwarvenOil": 1,
@@ -717,7 +717,7 @@
    {
     "output": "WeaknessShock01",
     "name": "Weak Aversion to Shock",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "VoidSalts": 1,
      "HagravenFeathers": 2,
@@ -727,7 +727,7 @@
    {
     "output": "VoidSalts",
     "name": "Void Salts",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "SoulGemPetty": 2,
      "SaltPile": 3,
@@ -738,7 +738,7 @@
    {
     "output": "FireSalts",
     "name": "Fire Salts",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "SoulGemPetty": 2,
      "SaltPile": 5,
@@ -749,7 +749,7 @@
    {
     "output": "FrostSalts",
     "name": "Frost Salts",
-    "tier": "Adept",
+    "tier": "Expert",
     "items": {
      "SoulGemPetty": 2,
      "SaltPile": 4,

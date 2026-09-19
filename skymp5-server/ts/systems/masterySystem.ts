@@ -98,9 +98,9 @@ const PROFESSIONS: Profession[] = [
     id: "alchemist", label: "Alchemist", title: "The Patient Hand",
     blurbs: [
       "Minor potions of healing, magicka and stamina.",
-      "Full-strength potions, and the first poisons.",
-      "Draughts and philters, from the rarer reagents.",
-      "Philters and elixirs: the strongest work of the lab.",
+      "Weak poisons, and the weak aversions.",
+      "The plain potions of every school, attribute and resistance.",
+      "Draughts, philters and elixirs: the strongest work of the lab.",
     ],
   },
   {

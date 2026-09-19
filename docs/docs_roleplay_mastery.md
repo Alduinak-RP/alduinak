@@ -68,7 +68,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 
 | Profession | Anyone | Novice | Adept | Expert | Master |
 |---|---|---|---|---|---|
-| Alchemist | honey from a honeycomb, and every drink at a meadery boiler | Minor Healing, Minor Stamina, Minor Magicka | Cure Disease, Cure Poison, Potion of Alteration, Potion of Illusion, Skooma, Holy Water, the weak poisons, the three salts | the plain Potions of each school and attribute, resist potions, Balmora Blue, Redwater Skooma, the weak aversions | Draughts, Philters, Elixirs, Warrior and Berserker, True Shot, Regeneration, Double-Distilled Skooma, the Plentiful potions |
+| Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions | the plain Potions of each school, attribute and resistance, Cure Disease, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma |
 | Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, dragon, stalhrim, and the Skyforge |
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue |
 | Hunter | - | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
