@@ -23,7 +23,7 @@ SELF = 'AlduinakAdditions.esp'
 LIVE_COPIES = ['C:/MO2/mods/Alduinak/AlduinakAdditions.esp', DATA + SELF,
                'C:/Users/Administrator/Desktop/alduinak/build/dist/client/Data/AlduinakAdditions.esp']
 # What the live copies hold today: the r14 plugin, deployed 2026-09-18. Re-pin after every deploy.
-DEPLOYED_SHA = '44b09ceac80703a9ec87ad879d7af850e656b4932abf22368227009f55992fb4'
+DEPLOYED_SHA = 'd4f8f33c95d382e32b0930a0b5f0837f3088ff7efd433bda1aea6b8afa8d7d2f'
 # The r7 plugin, which the r11 run merged from and still pins
 R7_SHA = 'be1cb8e313d06877b4e585340cd9fb0659ad843f243b84c6dd4594dc93c726c9'
 
