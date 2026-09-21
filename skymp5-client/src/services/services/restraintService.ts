@@ -36,10 +36,10 @@ const POSE_REAPPLY_MIN_MS = 500;
 // Lets the single-slot animation sync relay a layer exit before the next pose
 const POSE_SWAP_DELAY_S = 0.1;
 
-// Carried body is held ahead of and above the carrier, turned across their arms; the server may override these
+// Carried body is held ahead of and above the carrier, turned 45 degrees from their facing; the server may override these
 const CARRY_FORWARD = 30;
 const CARRY_UP = 40;
-const CARRY_YAW = 90;
+const CARRY_YAW = 45;
 
 // Carried body chases the carrier's clone locally; the server's drift snap is only a backstop
 const CARRY_FOLLOW_TIME_S = 0.2;
@@ -82,11 +82,12 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   // The restrained player (captive); carrier is the carrier's server actor id, 0 when not carried:
  *   { "customPacketType": "restraintState", "boundHands": true }
  *   { "customPacketType": "restraintState", "carried": true, "carrier": 4278190090, "anim": "OffsetBoundStandingStart",
- *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 30, "carryUp": 40, "carryYaw": 90 }
+ *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 30, "carryUp": 40, "carryYaw": 45 }
  *   { "customPacketType": "restraintState", "boundHands": false, "carried": false, "carrier": 0 }
  *
  *   // The carrier (pose only, no control change); target is the carried actor's server id, an NPC's clone is posed here, 0 for a passive job load:
- *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart", "target": 4278190090 }
+ *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart", "target": 4278190090,
+ *     "carryForward": 30, "carryUp": 40, "carryYaw": 45 }
  *   { "customPacketType": "carryState", "carrying": false }
  *
  *   // A player at 0 health (BleedoutSystem); died skips the stand-up:
@@ -221,9 +222,7 @@ export class RestraintService extends ClientListener {
       if (typeof content["carriedAnim"] === "string" && content["carriedAnim"]) {
         this.carriedAnim = content["carriedAnim"] as string;
       }
-      this.carryForward = finiteOr(content["carryForward"], this.carryForward);
-      this.carryUp = finiteOr(content["carryUp"], this.carryUp);
-      this.carryYaw = finiteOr(content["carryYaw"], this.carryYaw);
+      this.readCarryOffsets(content);
       logTrace(this, `restraintState boundHands=${this.boundHands} carried=${this.carried} carrier=${this.carrierId.toString(16)}`);
       this.applyState();
     } else if (type === "carryState") {
@@ -233,6 +232,7 @@ export class RestraintService extends ClientListener {
       if (typeof content["anim"] === "string" && content["anim"]) {
         this.carrierAnim = content["anim"] as string;
       }
+      this.readCarryOffsets(content);
       // A carried player poses itself through restraintState; only an NPC's clone is posed by the carrier
       const target = typeof content["target"] === "number" ? content["target"] as number : 0;
       this.carriedNpcId = this.carrying && target >= FIRST_DYNAMIC_REMOTE_ID && !isPlayerCharacterId(this.controller, target) ? target : 0;
@@ -346,7 +346,13 @@ export class RestraintService extends ClientListener {
     this.holdAt(npc, player);
   }
 
-  // Held ahead of and above the carrier, turned across its arms
+  private readCarryOffsets(content: Record<string, unknown>): void {
+    this.carryForward = finiteOr(content["carryForward"], this.carryForward);
+    this.carryUp = finiteOr(content["carryUp"], this.carryUp);
+    this.carryYaw = finiteOr(content["carryYaw"], this.carryYaw);
+  }
+
+  // Held ahead of and above the carrier, turned carryYaw from its facing
   private holdAt(held: Actor, carrier: ObjectReference): void {
     const carrierYaw = carrier.getAngleZ();
     const yawRad = carrierYaw * Math.PI / 180;

@@ -406,6 +406,17 @@ All optional; see `docs/docs_roleplay_survival_loop.md` section 8 for the system
 | `executionerOffset` | `{ "forward": -40, "right": 70, "up": 0, "yaw": -90 }` | Where Execute puts the executioner, relative to the block. Unmeasured default |
 | `executionChopMs` | `3000` | Milliseconds from the chop to the prisoner's death |
 
+## Carry pose
+
+A carried player or pet sits in a vanilla chair idle held in the carrier's arms. `CaptureSystem` sends the pose to the carried player's client, and to the carrier's client for a carried pet or NPC, and uses it for its drift snap. Every key is optional and read at server start, so a change needs a game service restart and no build.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `carriedAnimEvent` | `IdleChairEnterInstant` | Animation event the carried body plays |
+| `carryOffsetForward` | `30` | Units ahead of the carrier |
+| `carryOffsetUp` | `40` | Units above the carrier's feet |
+| `carryYawOffset` | `45` | Degrees the body is turned from the carrier's facing; `90` lies it across the arms, `0` faces forward |
+
 ## npcAggroHostSeconds
 
 For this many seconds after a player and a zone NPC exchanged a damaging hit, that player may host the NPC, so its AI runs on the client that is fighting it. Only hits the other handlers allowed (god mode, ghost mode and the capture carrier rule refuse some) and that deal damage count. A host that is itself inside its window keeps the NPC when another player hits it, so a group fight does not move the AI between clients. Default 30; `0` disables the aggro rule and leaves nearest-player hosting.

@@ -34,7 +34,7 @@ type Mp = any;
 //   Server -> Client:
 //     { customPacketType: "playerMenuState", target, canRelease, ...flags } // -> the requester only: whether their Release applies, plus menuFlagProviders' flags
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
-//     { customPacketType: "carryState",      carrying, anim }              // -> carrier's RestraintService (pose only)
+//     { customPacketType: "carryState",      carrying, anim, target, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, and where a carried NPC is held)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
 //     { customPacketType: "captureNotice",   text }                        // -> corner notification
 
@@ -80,11 +80,11 @@ const CARRY_FOLLOW_INTERVAL_MS = 350;
 const CARRY_FOLLOW_MIN_MOVE_SQ = 96 * 96;
 const CARRY_MAX_DRIFT_SQ = 256 * 256;
 
-// Carried pose: a vanilla chair sit idle held across the carrier's arms. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
+// Carried pose: a vanilla chair sit idle held in the carrier's arms, turned 45 degrees from their facing. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
 const DEFAULT_CARRIED_ANIM = "IdleChairEnterInstant";
 const DEFAULT_CARRY_FORWARD = 30;
 const DEFAULT_CARRY_UP = 40;
-const DEFAULT_CARRY_YAW = 90;
+const DEFAULT_CARRY_YAW = 45;
 
 // A consent prompt lapses if the target doesn't answer in time. Overridable via "captureConsentTimeoutMs".
 const DEFAULT_CONSENT_TIMEOUT_MS = 20000;
@@ -803,6 +803,9 @@ export class CaptureSystem implements System {
       carrying,
       anim: this.carrierAnim,
       target: npcTarget,
+      carryForward: this.carryForward,
+      carryUp: this.carryUp,
+      carryYaw: this.carryYaw,
     }));
   }
 
