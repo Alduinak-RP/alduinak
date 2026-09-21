@@ -40,7 +40,9 @@ never by form id.
 | `AldWritingBook` | Book | `dunWhiteRiverWatchBlankBook` | `AldWritable` |
 | `AldSealingWax` (MISC) | Sealing Wax | `GlazedCandles01` | |
 
-Recipes, all Novice:
+Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or, from
+1 Leather, 1 Leather Strips and 1 Firewood, at the woodcrafting bench; the
+Sealing Wax is Novice blacksmith work:
 
 | Output | Bench | Ingredients |
 |---|---|---|

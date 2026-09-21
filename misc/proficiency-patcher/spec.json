@@ -4085,7 +4085,7 @@
     "output": "AldWritingParchmentBlank",
     "count": 1,
     "profession": "tailor",
-    "tier": "Novice",
+    "tier": "Anyone",
     "items": {
      "LeatherStrips": 1
     }
@@ -4096,7 +4096,7 @@
     "output": "AldWritingJournalBlank",
     "count": 1,
     "profession": "tailor",
-    "tier": "Novice",
+    "tier": "Anyone",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -4108,7 +4108,7 @@
     "output": "AldWritingBookBlank",
     "count": 1,
     "profession": "tailor",
-    "tier": "Novice",
+    "tier": "Anyone",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 4
@@ -4120,7 +4120,7 @@
     "output": "AldWritingParchmentBlank",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Novice",
+    "tier": "Anyone",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 1,
@@ -4133,7 +4133,7 @@
     "output": "AldWritingJournalBlank",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Novice",
+    "tier": "Anyone",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 1,
@@ -4146,7 +4146,7 @@
     "output": "AldWritingBookBlank",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Novice",
+    "tier": "Anyone",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 1,
