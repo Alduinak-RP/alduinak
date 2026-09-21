@@ -157,7 +157,8 @@ grindstone included:
 - the Falmer Double Axe, plain and honed, and the Ancient Falmer boots, cuirass
   and gauntlets;
 - the Daedra (Dremora) Halberd of Immersive Weapons, whose name escapes the
-  Daedric term.
+  Daedric term;
+- the Alduin Scale boots, cuirass, gauntlets and helmet of Immersive Armors.
 
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
