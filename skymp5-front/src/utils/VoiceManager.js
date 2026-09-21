@@ -166,11 +166,11 @@ class VoiceManager {
     this.emitSpeaking();
   }
 
-  // activeSpeakers lags PTT release and keeps leavers, so also need a live mic and, for remotes, presence and range
+  // activeSpeakers lags PTT release and keeps leavers, so also need a live mic and, for remotes, presence, a subscribed track and range
   isTalking(p) {
     if (!p.isMicrophoneEnabled) return false;
     if (p.isLocal) return this.ptt;
-    return this.room.remoteParticipants.get(p.identity) === p && this.gainFor(p.identity) > 0;
+    return this.room.remoteParticipants.get(p.identity) === p && this.audioEls.has(p.identity) && this.gainFor(p.identity) > 0;
   }
 
   // Lip sync feed: own voice while transmitting, remote voices while in range; repeats while non-empty, the empty list goes out once

@@ -12,6 +12,8 @@ const PLAYER_FORM_ID = 0x14;
 const FIRST_PERSON_CAMERA = 0;
 // Open-mouth phoneme slots of Actor.setExpressionPhoneme: Aah, BigAah, Eee, Eh, I, Oh, OohQ
 const MOUTH_PHONEMES = [0, 1, 5, 6, 8, 11, 12];
+// A face that stops talking is reset again after this, once any blend toward the last shape has settled
+const RESET_REPEAT_MS = 400;
 
 interface Mouth {
   localId: number;
@@ -36,6 +38,8 @@ export class LipSyncService extends ClientListener {
   private nextTickAt = 0;
   private playerFaceOpen = false;
   private playerCloseOwed = false;
+  // local id -> when its face gets the repeated reset
+  private resetsDue = new Map<number, number>();
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
     if (e.arguments[0] !== "voice::speaking") return;
@@ -71,10 +75,11 @@ export class LipSyncService extends ClientListener {
       } else if (this.mouths.size > 0 && now - this.lastReportAt > REPORT_TTL_MS) {
         this.reconcile(new Map());
       }
-      if (now < this.nextTickAt || (this.mouths.size === 0 && !this.playerCloseOwed)) return;
+      if (now < this.nextTickAt || (this.mouths.size === 0 && !this.playerCloseOwed && this.resetsDue.size === 0)) return;
       this.nextTickAt = now + TICK_MS;
       if (this.playerCloseOwed && !this.isFirstPerson()) this.closeFace(PLAYER_FORM_ID);
       this.mouths.forEach((mouth, remoteId) => this.animate(remoteId, mouth));
+      this.runDueResets(now);
     } catch (err) {
       logError(this, `onUpdate failed: ${err}`);
     }
@@ -117,6 +122,7 @@ export class LipSyncService extends ClientListener {
     const actor = this.actorOf(mouth.localId);
     if (!actor) {
       // Clone despawned mid-sentence; the next report re-adds it if it comes back
+      this.resetsDue.set(mouth.localId, Date.now() + RESET_REPEAT_MS);
       this.mouths.delete(remoteId);
       return;
     }
@@ -124,6 +130,7 @@ export class LipSyncService extends ClientListener {
     // A clone can respawn under a new local id while still speaking
     const localId = this.localIdFor(remoteId);
     if (localId && localId !== mouth.localId) {
+      this.closeFace(mouth.localId);
       mouth.localId = localId;
       mouth.phoneme = -1;
       return;
@@ -146,14 +153,30 @@ export class LipSyncService extends ClientListener {
     if (mouth.localId === PLAYER_FORM_ID) this.playerFaceOpen = true;
   }
 
-  // Zeroes every slot this service opens; an open player face is redone after first person, where the write may miss the body's face
+  // Zeroes every slot this service opens and resets the face; an open player face is redone after first person, where the write may miss the body's face
   private closeFace(localId: number): void {
     if (localId === PLAYER_FORM_ID) this.playerFaceOpen = this.playerCloseOwed = this.playerFaceOpen && this.isFirstPerson();
+    this.resetsDue.set(localId, Date.now() + RESET_REPEAT_MS);
     try {
       const actor = this.actorOf(localId);
       MOUTH_PHONEMES.forEach((phoneme) => actor?.setExpressionPhoneme(phoneme, 0));
+      actor?.resetExpressionOverrides();
     } catch (err) {
       logTrace(this, `closeFace failed: ${err}`);
     }
+  }
+
+  // A face that started talking again is left to the animation
+  private runDueResets(now: number): void {
+    this.resetsDue.forEach((dueAt, localId) => {
+      if (now < dueAt) return;
+      this.resetsDue.delete(localId);
+      if (Array.from(this.mouths.values()).some((mouth) => mouth.localId === localId)) return;
+      try {
+        this.actorOf(localId)?.resetExpressionOverrides();
+      } catch (err) {
+        logTrace(this, `reset failed: ${err}`);
+      }
+    });
   }
 }
