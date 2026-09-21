@@ -944,66 +944,9 @@ html, body {
   color: rgba(220, 60, 60, 0.9);
 }
 
-/* Metrics modal */
+/* Wide modal */
 .modal-box--wide {
   width: 680px;
-}
-
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.metrics-loading {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: rgba(232,224,208,0.3);
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(13px * var(--text-scale));
-  letter-spacing: 2px;
-  padding: 24px 0;
-}
-
-.metric-card {
-  background: rgba(6, 4, 2, 0.5);
-  border: 1px solid var(--glass-border);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.metric-card--error {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: rgba(210, 80, 70, 0.8);
-  padding: 24px;
-}
-
-.metric-label {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(9px * var(--text-scale));
-  font-weight: 500;
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  color: rgba(201, 162, 39, 0.5);
-}
-
-.metric-value {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(26px * var(--text-scale));
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: var(--parchment);
-  line-height: 1;
-}
-
-.metric-sub {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(10px * var(--text-scale));
-  letter-spacing: 1px;
-  color: rgba(232, 224, 208, 0.3);
 }
 
 /* Discord topbar widget */

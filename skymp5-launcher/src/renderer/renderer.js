@@ -7,6 +7,7 @@ document.getElementById('btn-close').addEventListener('click',    () => window.e
 const EXTERNAL_URLS = {
   website: 'https://alduinak.com/',           // e.g. 'https://example.com'
   discord: 'https://discord.gg/Pkxdgt6W8q',   // e.g. 'https://discord.gg/...'
+  patreon: 'https://www.patreon.com/cw/Alduinak',
 }
 
 document.querySelectorAll('.topnav-link[data-href]').forEach(link => {
@@ -1543,92 +1544,6 @@ async function loadModlist() {
 
   const enabled = currentModlist.filter(m => m.enabled).length
   count.textContent = `${enabled} / ${currentModlist.length} enabled`
-}
-
-// Metrics modal
-const modalMetrics  = document.getElementById('modal-metrics')
-const metricsGrid   = document.getElementById('metrics-grid')
-
-document.getElementById('btn-stats').addEventListener('click', () => {
-  modalMetrics.hidden = false
-  loadMetrics()
-})
-
-document.getElementById('metrics-close').addEventListener('click', () => {
-  modalMetrics.hidden = true
-})
-
-modalMetrics.addEventListener('click', e => {
-  if (e.target === modalMetrics) modalMetrics.hidden = true
-})
-
-function metricCard(label, value, sub) {
-  const card = document.createElement('div')
-  card.className = 'metric-card'
-
-  const lEl = document.createElement('div')
-  lEl.className   = 'metric-label'
-  lEl.textContent = label
-
-  const vEl = document.createElement('div')
-  vEl.className   = 'metric-value'
-  vEl.textContent = value
-
-  card.appendChild(lEl)
-  card.appendChild(vEl)
-
-  if (sub != null) {
-    const sEl = document.createElement('div')
-    sEl.className   = 'metric-sub'
-    sEl.textContent = sub
-    card.appendChild(sEl)
-  }
-
-  return card
-}
-
-async function loadMetrics() {
-  metricsGrid.innerHTML = ''
-  const loadEl = document.createElement('div')
-  loadEl.className   = 'metrics-loading'
-  loadEl.textContent = 'Loading…'
-  metricsGrid.appendChild(loadEl)
-
-  const result = await window.electronAPI.fetchMetrics()
-
-  metricsGrid.innerHTML = ''
-
-  if (!result || !result.ok) {
-    const err = document.createElement('div')
-    err.className   = 'metric-card metric-card--error'
-    err.textContent = 'Server statistics are currently unavailable.'
-    if (result?.error) err.title = result.error
-    metricsGrid.appendChild(err)
-    return
-  }
-
-  const m = result.metrics
-
-  const connects    = m['skymp_connects_total']    ?? null
-  const disconnects = m['skymp_disconnects_total'] ?? null
-  const online      = (connects !== null && disconnects !== null)
-    ? Math.max(0, connects - disconnects)
-    : null
-
-  const logins      = m['skymp_logins_total']       ?? null
-  const loginErrors = m['skymp_login_errors_total'] ?? null
-  const rpcs        = m['skymp_rpc_calls_total']    ?? null
-  const tickAvg     = m['skymp_tick_duration_seconds_sum'] != null && m['skymp_tick_duration_seconds_count']
-    ? (m['skymp_tick_duration_seconds_sum'] / m['skymp_tick_duration_seconds_count'] * 1000)
-    : null
-
-  const fmt = v => v != null ? v.toLocaleString() : '—'
-  const fmtMs = v => v != null ? `${v.toFixed(1)} ms` : '—'
-
-  metricsGrid.appendChild(metricCard('Online Now',       fmt(online),      online !== null ? `${fmt(connects)} connects / ${fmt(disconnects)} disconnects` : null))
-  metricsGrid.appendChild(metricCard('Total Logins',     fmt(logins),      loginErrors !== null ? `${fmt(loginErrors)} errors` : null))
-  metricsGrid.appendChild(metricCard('RPC Calls',        fmt(rpcs),        null))
-  metricsGrid.appendChild(metricCard('Avg Tick Duration', fmtMs(tickAvg),  null))
 }
 
 // Init

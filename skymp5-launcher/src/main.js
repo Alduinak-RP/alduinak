@@ -1357,15 +1357,6 @@ function seedProfilePrefs(skyrimPath) {
   log('[isolated] no source SkyrimPrefs.ini found to seed')
 }
 
-// Metrics
-ipcMain.handle('api:metrics', async () => {
-  try {
-    const data = await fetchJSON(`${config.apiUrl}/api/metrics`)
-    return { ok: true, ...data }
-  }
-  catch { return { ok: false, error: 'Backend unreachable' } }
-})
-
 // Servers
 ipcMain.handle('api:servers', async () => {
   try {

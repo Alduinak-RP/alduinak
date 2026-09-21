@@ -29,7 +29,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchStatus:     () => ipcRenderer.invoke('api:status'),
   fetchNews:       () => ipcRenderer.invoke('api:news'),
   fetchServerInfo: () => ipcRenderer.invoke('api:serverinfo'),
-  fetchMetrics:    () => ipcRenderer.invoke('api:metrics'),
   fetchModlist:    () => ipcRenderer.invoke('api:modlist'),
   fetchServers:    () => ipcRenderer.invoke('api:servers'),
 
