@@ -5,6 +5,7 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { WorldCleanerService } from "./worldCleanerService";
 import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { normalizeAngle } from "../../sync/movementApply";
 
 // Owner side of the server companion library (companionSystem.ts, docs/docs_roleplay_companions.md).
 // The owner hosts its companions, so this engine's AI drives them: teammate setup, following, and combat with the server's target.
@@ -29,8 +30,6 @@ interface LocalState {
   followAt: number;
   fightingTarget: number;
 }
-
-const normalizeAngle = (deg: number): number => ((deg % 360) + 540) % 360 - 180;
 
 export const isOwnCompanion = (remoteId: number | undefined): boolean => {
   const ids = storage[COMPANION_IDS_KEY];

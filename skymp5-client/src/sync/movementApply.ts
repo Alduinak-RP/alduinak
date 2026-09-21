@@ -13,6 +13,10 @@ import { isInSitPose } from "./animation";
 
 const sqr = (x: number) => x * x;
 
+export const normalizeAngle = (deg: number): number => ((deg % 360) + 540) % 360 - 180;
+
+export const wrappedAngleDiff = (a: number, b: number): number => Math.abs(normalizeAngle(a - b));
+
 // A standing actor this far above or below the reported height sank or floated locally
 const standingMaxDeltaZ = 64;
 
@@ -252,6 +256,10 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
     }
 
     if (!actor || !actor.isDead()) {
+      // TranslateTo's angle does not turn an actor posed in a sit idle
+      if (isInSitPose(refr.getFormID()) && wrappedAngleDiff(m.rot[2], refr.getAngleZ()) > 3) {
+        refr.setAngle(refr.getAngleX(), refr.getAngleY(), m.rot[2]);
+      }
       refr.translateTo(
         gTempTargetPos[0],
         gTempTargetPos[1],

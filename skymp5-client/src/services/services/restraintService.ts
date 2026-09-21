@@ -6,6 +6,7 @@ import { logTrace } from "../../logging";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement, NiPoint3 } from "../../sync/movement";
+import { wrappedAngleDiff } from "../../sync/movementApply";
 import { isInSitPose, needsEmptyHands, setRefrCollision } from "../../sync/animation";
 import { isPlayerCharacterId } from "./playerActionService";
 import { MountService } from "./mountService";
@@ -356,10 +357,14 @@ export class RestraintService extends ClientListener {
       carrierPos[2] + this.carryUp,
     ];
     const targetYaw = carrierYaw + this.carryYaw;
-    const yawDiff = Math.abs(((targetYaw - held.getAngleZ()) % 360 + 540) % 360 - 180);
+    const yawDiff = wrappedAngleDiff(targetYaw, held.getAngleZ());
     const dist = ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(held), target);
     if (dist > CARRY_FOLLOW_MAX_DIST || (dist < CARRY_FOLLOW_DEADZONE && yawDiff < CARRY_FOLLOW_YAW_DEADZONE)) {
       return;
+    }
+    // The sit idle ignores TranslateTo's angle
+    if (yawDiff >= CARRY_FOLLOW_YAW_DEADZONE) {
+      held.setAngle(held.getAngleX(), held.getAngleY(), targetYaw);
     }
     held.translateTo(
       target[0], target[1], target[2],
