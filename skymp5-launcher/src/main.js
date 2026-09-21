@@ -54,7 +54,7 @@ nexus.setLogger(log)
 const store = new Store({
   defaults: {
     skyrimPath:        '',
-    activeServerIndex: 0,
+    activeServerId:    'alduinak',
     cachedServers:     [],   // last-known server list fetched from /api/servers
     filesVersion:      '',   // version tag from last successful file download
     discordUser:       null,
@@ -81,14 +81,20 @@ function send(channel, ...args) {
 }
 
 // Active server helper
-// Returns the currently selected game server from the cached API list,
+// Returns the currently selected game server from the cached API list (the first one when the choice is gone),
 // or null if no servers have been fetched yet.
 function activeServer() {
   const servers = store.get('cachedServers') || []
-  if (servers.length === 0) return null
-  const idx = Math.min(store.get('activeServerIndex') || 0, servers.length - 1)
-  return servers[idx]
+  return servers.find(s => s.id && s.id === store.get('activeServerId')) || servers[0] || null
 }
+
+// The main server answers the plain URLs; any other selected server is named in the query
+function serverQuery() {
+  const srv = activeServer()
+  const main = (store.get('cachedServers') || [])[0]
+  return srv && srv.id && srv.id !== main.id ? `?server=${encodeURIComponent(srv.id)}` : ''
+}
+const serverInfoUrl = () => `${config.apiUrl}/api/serverinfo${serverQuery()}`
 
 // Effective game path
 // Creates an isolated copy, this keeps the base directory clean
@@ -301,7 +307,7 @@ ipcMain.handle('settings:load', async () => {
   return {
     skyrimPath:        store.get('skyrimPath'),
     baseDirPath:       store.get('baseDirPath') || DEFAULT_BASE_DIR,
-    activeServerIndex: store.get('activeServerIndex'),
+    activeServerId:    (activeServer() || {}).id || '',
     mo2Enabled:        store.get('mo2Enabled'),
     isolatedGame:      store.get('isolatedGame'),
     servers,
@@ -310,7 +316,7 @@ ipcMain.handle('settings:load', async () => {
   }
 })
 ipcMain.handle('settings:save', (_e, data) => {
-  const allowed = ['skyrimPath', 'baseDirPath', 'activeServerIndex', 'mo2Enabled', 'isolatedGame']
+  const allowed = ['skyrimPath', 'baseDirPath', 'activeServerId', 'mo2Enabled', 'isolatedGame']
   const clean = {}
   for (const k of allowed) if (k in data) clean[k] = data[k]
   store.set(clean)
@@ -770,7 +776,7 @@ ipcMain.handle('api:news', async () => {
 // Server status
 ipcMain.handle('api:status', async () => {
   try {
-    const data = await fetchJSON(`${config.apiUrl}/api/status`)
+    const data = await fetchJSON(`${config.apiUrl}/api/status${serverQuery()}`)
     return { ok: true, ...data }
   } catch {
     return { ok: false }
@@ -783,7 +789,7 @@ ipcMain.handle('api:status', async () => {
 ipcMain.handle('api:serverinfo', async () => {
   const session = store.get('gameSession')
   const headers = session ? { 'x-session': session } : {}
-  try { return await fetchJSON(`${config.apiUrl}/api/serverinfo`, headers) }
+  try { return await fetchJSON(serverInfoUrl(), headers) }
   catch { return null }
 })
 
@@ -1101,7 +1107,7 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
 
     // configuration
     let serverInfo = null
-    try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+    try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
     mo2.ensureInstance(dst, serverInfo?.loadOrder)
     mo2.registerNxmHandler()
     seedProfilePrefs(src)
@@ -1992,7 +1998,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
   const srv = activeServer()
   let serverInfo = null
   if (srv) {
-    try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+    try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
   }
 
   // Non-portable installs play from the user's real Skyrim folder: quarantine
@@ -2227,7 +2233,7 @@ ipcMain.handle('install:mo2only', async (_e, opts) => {
       const gamePath = effectiveGamePath()
       if (gamePath && fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))) {
         let serverInfo = null
-        try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+        try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
         mo2.ensureInstance(gamePath, serverInfo?.loadOrder)
         mo2.registerNxmHandler()
         applyForcedServerDefaults(gamePath)
@@ -2574,7 +2580,7 @@ async function checkFilesImpl() {
       // Every launch rewrites plugins.txt from the server load order, so that rendering counts as intact too.
       // MO2 appends disabled entries for plugins it discovers, so only the enabled sequence is compared.
       let serverInfo = null
-      try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+      try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
       const enabled  = lines => lines.filter(l => l.startsWith('*')).join('\n')
       const accepted = [manifest.plugins, mo2.serverPluginLines(serverInfo?.loadOrder)].filter(a => a.length).map(enabled)
       if (!accepted.includes(enabled(plugins))) add('corrupt', `profiles/${mo2.PROFILE}/plugins.txt (load order drift)`, 'modlist')
@@ -2786,7 +2792,7 @@ async function runDirectInstall(force = false) {
   const warning = [integrity.warning, masters.warning].filter(Boolean).join(' | ')
 
   let serverInfo = null
-  try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+  try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
 
   const core = await installClientFilesCore(skyrimPath, srv, serverInfo, force)
   if (core.success) applyForcedServerDefaults(skyrimPath)
@@ -2883,7 +2889,7 @@ async function runMO2Install(opts = {}) {
       send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
 
     let serverInfo = null
-    try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
+    try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
     mo2.ensureInstance(skyrimPath, serverInfo?.loadOrder)
     mo2.registerNxmHandler()
     seedProfilePrefs(store.get('skyrimPath') || skyrimPath)
@@ -3226,7 +3232,7 @@ function writeClientSettings(destPath, srv, serverInfo) {
   const offlineMode = serverInfo?.offlineMode ?? false
 
   settings['master']            = serverInfo?.masterUrl || ''
-  settings['server-master-key'] = serverInfo?.masterKey || null
+  settings['server-master-key'] = srv.masterKey || serverInfo?.masterKey || null
 
   if (offlineMode) {
     const profileId = store.get('gameProfileId')

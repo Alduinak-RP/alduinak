@@ -232,7 +232,7 @@ router.post('/me/play/:serverKey', (req, res) => {
   const token = req.headers['authorization']
   if (!token) return res.status(401).json({ error: 'Missing authorization header.' })
 
-  if (req.params.serverKey !== config.serverMasterKey) {
+  if (!config.serverByKey(req.params.serverKey)) {
     return res.status(403).json({ error: 'Invalid server key.' })
   }
 

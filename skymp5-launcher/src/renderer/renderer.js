@@ -337,8 +337,12 @@ function setPathWarning(msg) {
 const footerServerName   = document.getElementById('footer-server-name')
 const footerServerSelect = document.getElementById('footer-server-select')
 
-footerServerSelect.addEventListener('change', () => {
-  window.electronAPI.saveSettings({ activeServerIndex: parseInt(footerServerSelect.value, 10) })
+// Status, lock and PLAY state follow the selected server
+footerServerSelect.addEventListener('change', async () => {
+  await window.electronAPI.saveSettings({ activeServerId: footerServerSelect.value })
+  checkServerStatus()
+  loadServerInfo()
+  refreshPlayState()
 })
 
 // MO2 fields
@@ -400,13 +404,13 @@ async function loadSettings() {
     footerServerName.hidden   = true
     footerServerSelect.hidden = false
     footerServerSelect.innerHTML = ''
-    s.servers.forEach((srv, i) => {
+    for (const srv of s.servers) {
       const opt = document.createElement('option')
-      opt.value       = i
+      opt.value       = srv.id || ''
       opt.textContent = srv.name
-      opt.selected    = i === (s.activeServerIndex || 0)
+      opt.selected    = srv.id === s.activeServerId
       footerServerSelect.appendChild(opt)
-    })
+    }
   } else {
     footerServerName.hidden   = false
     footerServerSelect.hidden = true
@@ -1290,11 +1294,9 @@ async function loadServerInfo() {
     discSep.hidden = false
   }
 
-  if (info.locked) {
-    serverLocked   = true
-    lockEl.hidden  = false
-    lockSep.hidden = false
-  }
+  serverLocked   = !!info.locked
+  lockEl.hidden  = !serverLocked
+  lockSep.hidden = !serverLocked
 
   // `allowed` is session-aware: false only when a session was sent and the
   // backend rejected it (locked/not whitelisted).  Without a session it
@@ -1306,8 +1308,8 @@ async function loadServerInfo() {
     discordUser   = null
     serverAllowed = true
     renderTopbarDiscord()
-  } else if (info.allowed === false) {
-    serverAllowed = false
+  } else {
+    serverAllowed = info.allowed !== false
   }
 
   updateLockState()

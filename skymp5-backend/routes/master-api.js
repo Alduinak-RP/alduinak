@@ -155,10 +155,11 @@ function launchGateStatus(entry) {
   return { ok: true }
 }
 
-// Helper: validate server master key
+// Helper: validate a game server's master key; sets req.server to that server
 
 function checkKey(req, res) {
-  if (req.params.key !== config.serverMasterKey) {
+  req.server = config.serverByKey(req.params.key)
+  if (!req.server) {
     res.status(403).json({ error: 'Invalid master key.' })
     return false
   }

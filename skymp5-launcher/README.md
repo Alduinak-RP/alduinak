@@ -87,6 +87,16 @@ In online mode the session credentials are written separately to
 `Data/Platform/PluginsNoLoad/auth-data-no-load.js` so the in-game SkyMP client
 skips its own Discord OAuth dialog.
 
+## Server selection
+
+When `/api/servers` lists more than one server (the Test Server appears once
+the backend has its `TEST_SERVER_*` keys), the footer shows a dropdown, with
+Alduinak selected by default. The choice is stored as `activeServerId`; the
+status badge, the lock state and every serverinfo call then ask for that server,
+and the client settings get its address, port and `server-master-key`. The
+SkyMP client asks `/api/servers/<master key>/serverinfo` for the host and port
+it joins, so the master key is what really picks the server.
+
 ## Game version
 
 The client is built against Skyrim SE/AE **1.6.1170.0** (Steam). `gameversion.js`
@@ -187,7 +197,7 @@ the `files[]` list written by the backend's `npm run merge`.
 | `baseDirPath` | string | Alduinak base dir: MO2 root, with the game copy at `<base>\skyrim` |
 | `isolatedGame` | boolean | Play from the isolated game copy instead of `skyrimPath` |
 | `mo2Enabled` | boolean | Launch the game through the managed portable MO2 |
-| `activeServerIndex` | number | Index into the cached server list |
+| `activeServerId` | string | Id of the selected server in the cached list (`alduinak` by default; the first entry when it is gone) |
 | `cachedServers` | array | Last-known server list (offline fallback) |
 | `filesVersion` | string | Version tag of installed client files |
 | `installedRootHash` | string | Manifest root-hash of the installed game-root components |
@@ -201,9 +211,9 @@ the `files[]` list written by the backend's `npm run merge`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/servers` | Server list |
-| GET | `/api/status` | Online/offline + player count |
-| GET | `/api/serverinfo` | Name, max players, lock status, auth config |
+| GET | `/api/servers` | Server list `{ id, name, address, port, masterKey, online, maxPlayers, lastSeen }`, main server first |
+| GET | `/api/status` | Online/offline + player count (`?server=<id>` for a server other than the main one) |
+| GET | `/api/serverinfo` | Name, max players, lock status, auth config, load order (`?server=<id>` as above) |
 | GET | `/api/news` | News cards |
 | GET | `/api/modlist` | Mod list with Nexus links |
 | GET | `/api/files/version` | Current client files version tag |

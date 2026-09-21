@@ -1,41 +1,23 @@
 const router      = require('express').Router()
-const http        = require('http')
 const config      = require('../config')
 const { lookupSession, isDiscordWhitelisted } = require('./master-api')
-const { getHeartbeat }  = require('./servers')
+const { getHeartbeat, fetchGameJson } = require('./servers')
 const { publishedSchema } = require('./install-manifest')
 const fs          = require('fs')
 const path        = require('path')
 
 const PUBLIC_KEYS_PATH = path.join(__dirname, '..', 'data', 'public-keys.json')
 
-// Load order. Checks data/manifest.json from server
-let loadOrderCache = { value: null, expiresAt: 0 }
+// Load order per server id, from the data/manifest.json each game server publishes
+const loadOrderCache = new Map()
 
-function fetchGameJson(pathname) {
-  return new Promise(resolve => {
-    const req = http.get(
-      { host: config.skyrimServerHost, port: config.skympUiPort, path: pathname, timeout: 3000 },
-      res => {
-        if (res.statusCode !== 200) { res.resume(); return resolve(null) }
-        let data = ''
-        res.on('data', c => { data += c })
-        res.on('end', () => {
-          try { resolve(JSON.parse(data)) } catch { resolve(null) }
-        })
-      }
-    )
-    req.on('error',   () => resolve(null))
-    req.on('timeout', () => { req.destroy(); resolve(null) })
-  })
-}
+async function getGameLoadOrder(server = config.servers[0]) {
+  const cached = loadOrderCache.get(server.id) || { value: null, expiresAt: 0 }
+  if (cached.expiresAt > Date.now()) return cached.value
 
-async function getGameLoadOrder() {
-  if (loadOrderCache.expiresAt > Date.now()) return loadOrderCache.value
-
-  const manifest = (await fetchGameJson('/manifest.json')) || (await fetchGameJson('/data/manifest.json'))
-  const value = Array.isArray(manifest?.loadOrder) ? manifest.loadOrder : loadOrderCache.value
-  loadOrderCache = { value, expiresAt: Date.now() + 60_000 }
+  const manifest = (await fetchGameJson('/manifest.json', server.uiPort)) || (await fetchGameJson('/data/manifest.json', server.uiPort))
+  const value = Array.isArray(manifest?.loadOrder) ? manifest.loadOrder : cached.value
+  loadOrderCache.set(server.id, { value, expiresAt: Date.now() + 60_000 })
   return value
 }
 
@@ -44,7 +26,9 @@ function loadPublicKeys() {
   catch { return null }
 }
 
+// ?server=<id> answers for another game server; the lock and the whitelist are global
 router.get('/', async (req, res) => {
+  const server = config.serverById(req.query.server) || config.servers[0]
   const token = req.headers['x-session']
 
   let sessionValid = false
@@ -69,21 +53,21 @@ router.get('/', async (req, res) => {
     }
   }
 
-  const hb = getHeartbeat()
+  const hb = getHeartbeat(server.id)
 
   res.json({
-    name:                hb?.name       ?? config.serverName,
+    name:                hb?.name       ?? server.name,
     maxPlayers:          hb?.maxPlayers ?? config.serverMaxPlayers,
-    port:                config.skyrimServerPort,
+    port:                server.port,
     offlineMode:         config.serverOfflineMode,
     npcEnabled:          config.serverNpcEnabled,
     gamemode:            config.serverGamemode,
     discordAuthRequired: !!config.discordClientId,
-    masterKey:           config.serverMasterKey  || null,
+    masterKey:           server.masterKey  || null,
     masterUrl:           config.masterUrl         || null,
     locked:              config.serverLocked,
     // Server's esp/esm load order (basenames, in order); null if offline
-    loadOrder:           await getGameLoadOrder(),
+    loadOrder:           await getGameLoadOrder(server),
     // Schema of the install manifest; a launcher that cannot read it must update before installing or playing
     manifestSchema:      publishedSchema(),
     // lockedAllowList intentionally omitted: never expose the allow-list to clients.

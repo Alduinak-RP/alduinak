@@ -6,7 +6,7 @@ const path = require('path')
 
 const SKYMP_PORT = parseInt(process.env.SKYMP_PORT || '7777', 10)
 
-module.exports = {
+const config = module.exports = {
   // Client files bucket
   clientFilesDir: process.env.CLIENT_FILES_DIR
     || path.join(__dirname, '..', 'build', 'client-files'),
@@ -80,3 +80,27 @@ module.exports = {
   // Discord role used as the gameplay ban list. Users with this role cannot join.
   bannedRoleId: process.env.BANNED_ROLE_ID || process.env.BAN_ROLE_ID || '',
 }
+
+// Game servers, main first; each is known by its public master key (serverinfo, manifest, heartbeat, master API)
+config.servers = [{
+  id: 'alduinak', name: config.serverName, host: config.skyrimServerHost, address: config.skyrimServerAddress,
+  port: config.skyrimServerPort, uiPort: config.skympUiPort, masterKey: config.serverMasterKey,
+}]
+
+// The test server is listed only when TEST_SERVER_PORT and TEST_SERVER_MASTER_KEY are set and clash with nothing live
+const TEST_PORT = parseInt(process.env.TEST_SERVER_PORT, 10) || 0
+const TEST_KEY  = process.env.TEST_SERVER_MASTER_KEY || ''
+if (TEST_PORT && TEST_KEY) {
+  const test = {
+    id: 'test', name: process.env.TEST_SERVER_NAME || 'Test Server', host: config.skyrimServerHost,
+    address: process.env.TEST_SERVER_ADDRESS || config.skyrimServerAddress,
+    port: TEST_PORT, uiPort: parseInt(process.env.TEST_SERVER_UI_PORT, 10) || TEST_PORT + 1, masterKey: TEST_KEY,
+  }
+  const live = [config.skyrimServerPort, config.skympUiPort]
+  if (TEST_KEY === config.serverMasterKey) console.warn('[config] TEST_SERVER_MASTER_KEY equals SERVER_MASTER_KEY: test server not listed')
+  else if (live.includes(test.port) || live.includes(test.uiPort)) console.warn(`[config] test server ports ${test.port}/${test.uiPort} collide with the live server (${live.join('/')}): test server not listed`)
+  else config.servers.push(test)
+}
+
+config.serverByKey = key => (key && config.servers.find(s => s.masterKey === key)) || null
+config.serverById  = id => config.servers.find(s => s.id === id) || null

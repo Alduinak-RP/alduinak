@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximize: () => ipcRenderer.send('window:maximize'),
   close:    () => ipcRenderer.send('window:close'),
 
-  // User settings (skyrimPath, activeServerIndex, mo2Enabled, isolatedGame)
+  // User settings (skyrimPath, activeServerId, mo2Enabled, isolatedGame)
   loadSettings: ()     => ipcRenderer.invoke('settings:load'),
   saveSettings: (data) => ipcRenderer.invoke('settings:save', data),
 

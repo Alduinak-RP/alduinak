@@ -43,9 +43,10 @@ function probeGameServer(host, uiPort) {
 // server heartbeats every ~5s; allow a few misses before calling it offline
 const HEARTBEAT_TTL_MS = 20_000
 
-router.get('/', async (_req, res) => {
-  const { skyrimServerHost: host, skympUiPort: uiPort } = config
-  const hb = getHeartbeat()
+// ?server=<id> reports another game server
+router.get('/', async (req, res) => {
+  const server = config.serverById(req.query.server) || config.servers[0]
+  const hb = getHeartbeat(server.id)
 
   // a fresh heartbeat proves the process is up; probe the metrics port only when no heartbeat has been seen since backend start
   let online  = null
@@ -56,7 +57,7 @@ router.get('/', async (_req, res) => {
   }
 
   if (online === null || (online && players === null)) {
-    const probe = await probeGameServer(host, uiPort)
+    const probe = await probeGameServer(server.host, server.uiPort)
     if (online === null) online = probe.reachable
     if (online && players === null) players = probe.players
   }

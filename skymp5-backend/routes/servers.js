@@ -4,27 +4,30 @@ const router = require('express').Router()
 const http   = require('http')
 const config = require('../config')
 
-// Last heartbeat received from the game server via POST /:key
-let heartbeat = null
+// Last heartbeat from each game server via POST /:key, by server id
+const heartbeats = new Map()
+const getHeartbeat = (id = config.servers[0].id) => heartbeats.get(id) || null
 
 router.get('/', (_req, res) => {
-  res.json([
-    {
-      name:    heartbeat?.name    ?? config.serverName,
-      address: config.skyrimServerAddress,
-      port:    config.skyrimServerPort,
-      online:  heartbeat?.online  ?? null,
-      maxPlayers: heartbeat?.maxPlayers ?? config.serverMaxPlayers,
-      lastSeen:   heartbeat?.lastSeen   ?? null,
-    },
-  ])
+  res.json(config.servers.map(server => {
+    const hb = getHeartbeat(server.id)
+    return {
+      id:         server.id,
+      name:       hb?.name ?? server.name,
+      address:    server.address,
+      port:       server.port,
+      masterKey:  server.masterKey || null,
+      online:     hb?.online ?? null,
+      maxPlayers: hb?.maxPlayers ?? config.serverMaxPlayers,
+      lastSeen:   hb?.lastSeen ?? null,
+    }
+  }))
 })
 
 // Called by the SkyMP in-game client for the game server's host/port; sessionValid/allowed are extra UI hints when X-Session is sent
 router.get('/:key/serverinfo', async (req, res) => {
-  if (req.params.key !== config.serverMasterKey) {
-    return res.status(403).json({ error: 'Invalid master key.' })
-  }
+  const server = config.serverByKey(req.params.key)
+  if (!server) return res.status(403).json({ error: 'Invalid master key.' })
 
   // Optional session validation for the allowed/sessionValid hints
   const { lookupSession, isDiscordWhitelisted } = require('./master-api')
@@ -51,13 +54,14 @@ router.get('/:key/serverinfo', async (req, res) => {
     }
   }
 
+  const hb = getHeartbeat(server.id)
   res.json({
-    host:        config.skyrimServerAddress,
-    port:        config.skyrimServerPort,
-    name:        heartbeat?.name       ?? config.serverName,
-    maxPlayers:  heartbeat?.maxPlayers ?? config.serverMaxPlayers,
+    host:        server.address,
+    port:        server.port,
+    name:        hb?.name       ?? server.name,
+    maxPlayers:  hb?.maxPlayers ?? config.serverMaxPlayers,
     offlineMode: config.serverOfflineMode,
-    masterKey:   config.serverMasterKey || null,
+    masterKey:   server.masterKey || null,
     masterUrl:   config.masterUrl       || null,
     locked:      config.serverLocked,
     sessionValid,
@@ -65,11 +69,11 @@ router.get('/:key/serverinfo', async (req, res) => {
   })
 })
 
-// Fetch a JSON file the game server publishes on its UI port.
-function fetchGameJson(pathname) {
+// Fetch a JSON file a game server publishes on its UI port (the main server's by default).
+function fetchGameJson(pathname, uiPort = config.skympUiPort) {
   return new Promise(resolve => {
     const req = http.get(
-      { host: config.skyrimServerHost, port: config.skympUiPort, path: pathname, timeout: 3000 },
+      { host: config.skyrimServerHost, port: uiPort, path: pathname, timeout: 3000 },
       res => {
         if (res.statusCode !== 200) { res.resume(); return resolve(null) }
         let data = ''
@@ -84,25 +88,27 @@ function fetchGameJson(pathname) {
   })
 }
 
-let modsCache = { value: null, expiresAt: 0 }
+// Mods per server id
+const modsCache = new Map()
 
-// Called by the SkyMP client for its load-order check; proxies the game server's real manifest.
+// Called by the SkyMP client for its load-order check; proxies that game server's real manifest.
 // BSAs and .esl files are filtered out: the client counts only full plugins (Game.getModCount excludes light plugins).
 router.get('/:key/manifest.json', async (req, res) => {
-  if (req.params.key !== config.serverMasterKey) {
-    return res.status(403).json({ error: 'Invalid master key.' })
-  }
+  const server = config.serverByKey(req.params.key)
+  if (!server) return res.status(403).json({ error: 'Invalid master key.' })
   const now = Date.now()
-  if (!modsCache.value || now >= modsCache.expiresAt) {
-    const manifest = await fetchGameJson('/manifest.json') || await fetchGameJson('/data/manifest.json')
+  let cached = modsCache.get(server.id)
+  if (!cached || now >= cached.expiresAt) {
+    const manifest = await fetchGameJson('/manifest.json', server.uiPort) || await fetchGameJson('/data/manifest.json', server.uiPort)
     const mods = Array.isArray(manifest?.mods)
       ? manifest.mods.filter(m => m && typeof m.filename === 'string' && !/\.(bsa|esl)$/i.test(m.filename))
       : []
     // Only cache a real answer; an empty list means the game server was down
-    if (mods.length) modsCache = { value: mods, expiresAt: now + 60000 }
-    else return res.json({ versionMajor: 1, mods: [] })
+    if (!mods.length) return res.json({ versionMajor: 1, mods: [] })
+    cached = { value: mods, expiresAt: now + 60000 }
+    modsCache.set(server.id, cached)
   }
-  res.json({ versionMajor: 1, mods: modsCache.value })
+  res.json({ versionMajor: 1, mods: cached.value })
 })
 
 // Called by MasterClient every 5 s: POST /api/servers/:key  (X-Auth-Token)
@@ -112,15 +118,16 @@ router.post('/:key', (req, res) => {
   if (!checkKey(req, res) || !checkWriteToken(req, res)) return
 
   const { name, maxPlayers, online } = req.body || {}
-  heartbeat = {
-    name:       typeof name       === 'string' ? name       : config.serverName,
+  heartbeats.set(req.server.id, {
+    name:       typeof name       === 'string' ? name       : req.server.name,
     maxPlayers: typeof maxPlayers === 'number' ? maxPlayers : config.serverMaxPlayers,
     online:     typeof online     === 'number' ? online     : null,
     lastSeen:   new Date().toISOString(),
-  }
+  })
 
   res.json({ ok: true })
 })
 
 module.exports = router
-module.exports.getHeartbeat = () => heartbeat
+module.exports.getHeartbeat = getHeartbeat
+module.exports.fetchGameJson = fetchGameJson
