@@ -2411,6 +2411,32 @@
      "level": 1
     }
    ]
+  },
+  {
+   "list": "LootDwarvenScrapSpider",
+   "chanceNone": 50
+  },
+  {
+   "list": "LootDwarvenScrapSphere",
+   "chanceNone": 50
+  },
+  {
+   "list": "DeathItemDwarvenSphere",
+   "remove": [
+    "LootDwarvenScrap25"
+   ]
+  },
+  {
+   "list": "DeathItemDwarvenCenturion",
+   "remove": [
+    "LootDwarvenScrap25"
+   ]
+  },
+  {
+   "list": "DeathItemDwarvenBallista",
+   "remove": [
+    "LootDwarvenScrap25"
+   ]
   }
  ],
  "meadery": {

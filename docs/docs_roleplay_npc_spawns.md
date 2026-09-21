@@ -104,7 +104,9 @@ outfit when it is placed, and its death item when it dies, both rolled by the
 server at level 1. A list whose chance comes from a global is never rolled.
 Loot changes are overrides of those lists in `AlduinakAdditions.esp`, written
 by the `leveledItems` section of `misc/proficiency-patcher/spec.json`: giants
-drop exactly 20 gold and no weapon. Bodies that already exist keep their loot.
+drop exactly 20 gold and no weapon, and every dwemer construct (spider, sphere,
+centurion, ballista) has a 50% chance of one dwemer scrap piece; the centurion
+keeps its Dynamo Core. Bodies that already exist keep their loot.
 
 ## State machine
 
