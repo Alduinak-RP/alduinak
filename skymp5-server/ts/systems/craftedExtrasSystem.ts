@@ -1,7 +1,7 @@
 import { System, Log, SystemContext, Content } from "./system";
 import { espmFieldFormIds, readFormIdField, toFormId } from "./formIdUtil";
 import {
-  EnchantmentEffect, Inventory, InventoryEntry, addEntries, copyValidExtras, describeExtras, healthStep,
+  EnchantmentEffect, Inventory, InventoryEntry, Item, addEntries, copyValidExtras, describeExtras, healthStep,
   isEnchanted, isSet, readInventory, sameBase, sameEffects, sameFloat, sameItem, withCount,
 } from "./inventoryExtras";
 
@@ -148,7 +148,11 @@ export class CraftedExtrasSystem implements System {
       try {
         const baseId = Number(args[1]) >>> 0;
         poison = this.isPoison(ctx, baseId);
-        if (poison && verdict !== false) this.addPoisonCredit(Number(args[0]) >>> 0, baseId);
+        if (poison && verdict !== false) {
+          const actorId = Number(args[0]) >>> 0;
+          this.addPoisonCredit(actorId, baseId);
+          setImmediate(() => this.applyPoisonToWorn(ctx, actorId, baseId));
+        }
       } catch (e) {
         this.log(`[crafted] poison credit failed: ${e}`);
       }
@@ -199,7 +203,11 @@ export class CraftedExtrasSystem implements System {
       for (let unit = 0; unit < Math.min(g.count, MAX_UNITS); unit++) {
         const plan = this.findPlan(ctx, g, pool, souls, station, credits);
         if (!plan) {
-          if (this.isCraftClaim(g, pool)) refused.add(g.baseId >>> 0);
+          if (this.isCraftClaim(g, pool)) {
+            refused.add(g.baseId >>> 0);
+            const sources = pool.filter((p) => sameBase(p.entry, g)).map((p) => `{${describeExtras(p.entry).join(", ")}}`);
+            this.log(`[crafted] ${hex(actorId)} ${hex(g.baseId)}: refused {${describeExtras(g).join(", ")}} from ${sources.join(" ") || "nothing"}`);
+          }
           break;
         }
         this.commit(plan, added);
@@ -354,14 +362,20 @@ export class CraftedExtrasSystem implements System {
     const fromUses = s.poisonCount || 0;
     const toUses = g.poisonCount || 0;
     if (fromPoison !== toPoison || fromUses !== toUses) {
-      if (!fromPoison && toPoison) {
+      // A poison OnEquip already consumed pays first, so a stale lost line never costs a second one
+      const findCredit = (): PoisonCredit | null => credits.find((c) => !c.used && c.baseId === toPoison) || null;
+      if (toPoison && toPoison !== fromPoison) {
         if (info.type !== "WEAP" || !this.isPoison(ctx, toPoison)) return null;
-        // A poison OnEquip already consumed pays first, so a stale lost line never costs a second one
-        credit = credits.find((c) => !c.used && c.baseId === toPoison) || null;
+        credit = findCredit();
         if (!credit && !this.reserveUnit(pool, reserve, (e) => (e.baseId >>> 0) === toPoison && !isSet(e.poisonId))) return null;
         out.poisonId = toPoison;
         out.poisonCount = Math.max(1, Math.min(toUses || 1, MAX_POISON_USES));
-        notes.push(`poisoned with ${hex(toPoison)}`);
+        notes.push(`${fromPoison ? "poison replaced with" : "poisoned with"} ${hex(toPoison)}`);
+      } else if (fromPoison && toPoison === fromPoison && toUses > fromUses) {
+        credit = findCredit();
+        if (!credit) return null;
+        out.poisonCount = Math.min(toUses, MAX_POISON_USES);
+        notes.push(`poison up to ${out.poisonCount}`);
       } else if (fromPoison && !toPoison) {
         delete out.poisonId;
         delete out.poisonCount;
@@ -391,6 +405,33 @@ export class CraftedExtrasSystem implements System {
     }
 
     return notes.length ? { entry: out, reserve, soul, credit, notes } : null;
+  }
+
+  // The engine poisons the right hand weapon, else the left, so the server's copy of it takes the poison OnEquip consumed
+  private applyPoisonToWorn(ctx: SystemContext, actorId: number, poisonId: number): void {
+    const mp = ctx.svr as Mp;
+    try {
+      const worn: InventoryEntry[] = (mp.get(actorId, "equipment")?.inv?.entries || [])
+        .filter((e: InventoryEntry) => this.itemInfo(ctx, e.baseId).type === "WEAP");
+      const hand = worn.find((e) => e.worn) || worn.find((e) => e.wornLeft);
+      if (!hand) return;
+      const inv = readInventory(mp, actorId);
+      const bare = (i: Item): Item => ({ ...i, poisonId: undefined, poisonCount: undefined });
+      let index = inv.entries.findIndex((e) => sameItem(e, hand));
+      if (index < 0) index = inv.entries.findIndex((e) => !isSet(e.poisonId) && sameItem(bare(e), bare(hand)));
+      if (index < 0) return;
+      const source = inv.entries[index];
+      if ((source.poisonId || 0) === poisonId) return;
+      const credit = this.creditsOf(actorId).find((c) => !c.used && c.baseId === poisonId);
+      if (!credit) return;
+
+      const entries = inv.entries.map((e, i) => (i === index ? withCount(e, e.count - 1) : e)).filter((e) => e.count > 0);
+      mp.set(actorId, "inventory", addEntries({ entries }, [{ ...withCount(source, 1), poisonId, poisonCount: 1 }]));
+      credit.used = true;
+      this.log(`[crafted] ${hex(actorId)} ${hex(source.baseId)}: poisoned at apply with ${hex(poisonId)}`);
+    } catch (e) {
+      this.log(`[crafted] poisoning the worn weapon of ${hex(actorId)} failed: ${e}`);
+    }
   }
 
   // Something vanilla pays for (an enchantment, tempering, a new poison) rather than wear from use or Soul Siphon charge
