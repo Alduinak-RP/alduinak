@@ -653,12 +653,14 @@ export class FormView {
     }
   }
 
-  // Real name once introduced to the local player, else "Stranger"; Show Title puts the faction title in front of it
+  // Real name once introduced to the local player, else "Stranger"; Show Title puts the faction title in front of it, and a talking player gets the VOIP glyph
   private tagName(refr: ObjectReference, model: FormModel): string {
-    if (!knowsCharacter(this.getRemoteRefrId())) return "Stranger";
+    const remoteId = this.getRemoteRefrId();
+    const voip = (FormView.speakingUntil.get(remoteId) ?? 0) > Date.now() ? `${FormView.voipGlyph} ` : "";
+    if (!knowsCharacter(remoteId)) return `${voip}Stranger`;
     const name = refr.getDisplayName();
     const title = (model as Record<string, unknown>)["ff_factionTitle"];
-    return typeof title === "string" && title ? `${title} ${name}` : name;
+    return voip + (typeof title === "string" && title ? `${title} ${name}` : name);
   }
 
   // Every invisibility effect carries MagicInvisibility, the spell and the potion alike
@@ -913,4 +915,8 @@ export class FormView {
 
   public static isDisplayingNicknames: boolean = true;
   public static isDisplayingActorIds: boolean = true;
+  // remote id -> until when its name tag shows the VOIP glyph, fed by LipSyncService
+  public static speakingUntil = new Map<number, number>();
+  // Private-use glyph added to the Tavern font by misc/voip-glyph
+  private static readonly voipGlyph = "\uE000";
 }

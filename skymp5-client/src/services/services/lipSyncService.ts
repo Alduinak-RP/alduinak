@@ -2,6 +2,7 @@ import { Actor, BrowserMessageEvent, Game } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RemoteServer } from "./remoteServer";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
+import { FormView } from "../../view/formView";
 import { logError, logTrace } from "../../logging";
 
 // Drives Actor.setExpressionPhoneme from the front's voice::speaking reports, contract in docs/alduinak_voice_chat.md
@@ -14,6 +15,8 @@ const FIRST_PERSON_CAMERA = 0;
 const MOUTH_PHONEMES = [0, 1, 5, 6, 8, 11, 12];
 // A face that stops talking is reset again after this, once any blend toward the last shape has settled
 const RESET_REPEAT_MS = 400;
+// Bridges LiveKit's gaps between words so the name tag glyph does not flicker
+const SPEAKING_HOLD_MS = 500;
 
 interface Mouth {
   localId: number;
@@ -86,6 +89,7 @@ export class LipSyncService extends ClientListener {
   }
 
   private reconcile(report: Map<number, number>): void {
+    this.markSpeakers(report);
     this.mouths.forEach((mouth, remoteId) => {
       if (report.has(remoteId)) return;
       this.closeFace(mouth.localId);
@@ -101,6 +105,17 @@ export class LipSyncService extends ClientListener {
       if (!localId) return;
       this.mouths.set(remoteId, { localId, phoneme: -1, level });
       logTrace(this, `lips on for ${remoteId.toString(16)}`);
+    });
+  }
+
+  private markSpeakers(report: Map<number, number>): void {
+    const now = Date.now();
+    const me = this.controller.lookupListener(RemoteServer).getMyRemoteRefrId();
+    FormView.speakingUntil.forEach((until, remoteId) => {
+      if (until <= now) FormView.speakingUntil.delete(remoteId);
+    });
+    report.forEach((_level, remoteId) => {
+      if (remoteId !== me) FormView.speakingUntil.set(remoteId, now + SPEAKING_HOLD_MS);
     });
   }
 

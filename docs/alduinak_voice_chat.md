@@ -54,7 +54,10 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
   client's `LipSyncService` turns it into face phonemes on those actors. A
   speaker who leaves the report (release, out of range, track gone) or whose
   reports stop for 600 ms gets the phonemes zeroed and a full expression
-  reset (`resetExpressionOverrides`), repeated 400 ms later. Any future
+  reset (`resetExpressionOverrides`), repeated 400 ms later. The same feed
+  puts the VOIP glyph (U+E000 in the Tavern font, `misc/voip-glyph`) in front
+  of a talking remote player's name tag for 500 ms after each report; the tag
+  already reads "Stranger" for unknown characters. Any other
   speaking-indicator UI built on it must gate names through ff_knownIds or
   it will leak masks.
 - **Dead players can talk and hear.** No isDead gate on PTT or listening yet.
