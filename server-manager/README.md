@@ -78,6 +78,8 @@ fails it prints a direct download URL - save that zip as
   stored in `skymp5-backend/data/manifest-diff.json` and reloaded on startup;
   it also records the `loadOrder` the database was last written under, which
   the purge re-encodes ids from, and keeps carrying it until that purge ran.
+  A `skymp5-client-settings.txt` in any mod folder is left out of the
+  manifest: under MO2 it would shadow the per-player file the launcher writes.
   Modlist output goes to the tab's own log.
   - **Sync server settings** rewrites `loadOrder` in `server-settings.json` to
     the five vanilla masters followed by the manifest's enabled plugins (each as

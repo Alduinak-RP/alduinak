@@ -31,7 +31,10 @@ system; its own engine switches stay off.
 `*cc...` lines first in the manifest's `plugins`, so the order is right whatever the MO2 profile says, and raises the
 manifest `schema` to 3. `extraAccept` adds the hashes of other store builds: `{ "<file name>": [{ "sha256", "size" }] }`.
 
-Hashes on the GOG box: Fish.esm `0036c3bb…` 1,425,176; Fish.bsa `b865e818…` 377,675,522; SurvivalMode.esl `0aeb0734…`
+The box's Data holds the plugins cleaned by Simple Cleaned Masters, so `extraAccept` must list the store hashes
+below for Fish.esm, AdvDSGS.esm and SurvivalMode.esl, or every install fails at the Creation step.
+
+Store hashes of the uncleaned files: Fish.esm `0036c3bb…` 1,425,176; Fish.bsa `b865e818…` 377,675,522; SurvivalMode.esl `0aeb0734…`
 240,724; SurvivalMode.bsa `d951bdc1…` 12,835,601; Curios.esl `75209dbb…` 37,476; Curios.bsa `641aef57…` 111,740,475;
 AdvDSGS.esm `07078406…` 812,873; AdvDSGS.bsa `7cbc4cb0…` 1,092,876,237.
 

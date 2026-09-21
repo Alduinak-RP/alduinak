@@ -63,6 +63,9 @@ const PINNED_PLUGIN = 'AlduinakAdditions.esp'
 const PLUGIN_INPUTS = 'AlduinakAdditions.inputs.json'
 const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm'])
 
+// The launcher writes the client settings into the real Data; a mod copy would shadow it under MO2
+const CLIENT_SETTINGS_FILE = 'skymp5-client-settings.txt'
+
 const INLINE_WARN = 50 * 1024 * 1024   // warn when inlining anything this large
 // Hard cap on total inlined base64: the launcher parses the manifest as one
 // JSON string, which V8 caps at ~512 MB. Fail fast with the offenders listed
@@ -367,6 +370,7 @@ async function main() {
     if (all.some(r => r.toLowerCase() === PLUGIN_INPUTS.toLowerCase())) inputsFiles.set(modName, path.join(modDir, PLUGIN_INPUTS))
     // The inputs file is build metadata for the check below, never installed
     const rels = all.filter(r => r.toLowerCase() !== 'meta.ini' && r.toLowerCase() !== PLUGIN_INPUTS.toLowerCase())
+      .filter(r => path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE)
     if (rels.length === 0) continue
 
     const files = []
