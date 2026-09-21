@@ -120,18 +120,39 @@ def spell_of(rec):
     return zstr(subs.get('EDID', b'')), struct.unpack_from('<I', subs['SPIT'], 8)[0] if 'SPIT' in subs else -1
 
 
+def damage_of(rec):
+    data = dict(rec.subs()).get('DATA', b'')
+    return struct.unpack_from('<H', data, 8)[0] if len(data) >= 10 else None
+
+
 def spell_list(pl, data):
     return [pl.key(struct.unpack('<I', v)[0]) for t, v in parse_subs(data) if t == 'SPLO']
 
 
-def check_race(ck, spec, spells, src, flags, data, out, q):
-    # None when the race only lost the spells the races section removes
-    why = ck.compare('RACE', src, flags, data, out, q.data(), skip=('SPLO', 'SPCT'))
+def check_race(ck, spec, spells, weapons, src, flags, data, out, q):
+    # None when the race differs from its winner only as the races section says
+    race = edid(q)
+    p = next((x for x in spec.get('passives', []) if race in x['races']), {})
+    description = spec.get('descriptions', {}).get(race)
+    why = ck.compare('RACE', src, flags, data, out, q.data(), skip=('SPLO', 'SPCT', 'DATA') + (('DESC',) if description else ()))
     if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED:
         return why or f'flags {flags:#x} -> {q.flags:#x}'
+    # DATA: starting health, magicka and stamina at 36, unarmed damage at 96
+    want, got = bytearray(dict(parse_subs(data))['DATA']), dict(parse_subs(q.data()))['DATA']
+    for i, stat in enumerate(('startingHealth', 'startingMagicka', 'startingStamina')):
+        if stat in p:
+            struct.pack_into('<f', want, 36 + 4 * i, p[stat])
+    if 'unarmedDamageFrom' in p:
+        struct.pack_into('<f', want, 96, weapons[p['unarmedDamageFrom']])
+    elif 'unarmedDamage' in p:
+        struct.pack_into('<f', want, 96, p['unarmedDamage'])
+    if patch.norm_zero(bytes(want)) != patch.norm_zero(got):
+        return f"DATA is not the winner's with the passives of the spec: {bytes(want).hex()} -> {got.hex()}"
+    if description and zstr(dict(parse_subs(q.data())).get('DESC', b'')) != description:
+        return 'description is not the spec text'
     types = {SPELL_TYPES[x] for x in spec.get('removeSpellTypes', [])}
     keep = set(spec.get('keepSpells', []))
-    removable = lambda s: spells.get(s, ('', -1))[1] in types and spells[s][0] not in keep
+    removable = lambda s: spells.get(s, ('', -1))[1] in types and spells[s][0] not in keep or spells.get(s, ('',))[0] in p.get('removeSpells', [])
     before, after = spell_list(src, data), spell_list(out, q.data())
     if any(s not in before for s in after):
         return f'spells added: {[spells.get(s, s) for s in after if s not in before]}'
@@ -190,7 +211,7 @@ def main():
     disable_refs = {form_key(x) for x in spec.get('disableReferences', {}).get('refs', [])}
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
-    winners, actors, parents, spells, races, slot = {}, {}, {}, {}, {}, 0
+    winners, actors, parents, spells, races, weapons, slot = {}, {}, {}, {}, {}, {}, 0
     for n in order[:here]:
         pl = Plugin(os.path.join(stage['dataDir'], n))
         if not (pl.flags & ESL or n.lower().endswith('.esl')):
@@ -204,6 +225,8 @@ def main():
                 actors[k] = (n, r.flags, parents[k][2])
             if r.type == 'SPEL':
                 spells[k] = spell_of(r)
+            if r.type == 'WEAP':
+                weapons[edid(r)] = damage_of(r)
             if r.type == 'RACE':
                 races[edid(r)] = spell_list(pl, r.data())
             if ((r.type, k) in ro or r.type == 'REFR' and k in disable_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
@@ -216,6 +239,8 @@ def main():
             actors[k] = (name, r.flags, parents[k][2])
         if t == 'SPEL':
             spells[k] = spell_of(r)
+        if t == 'WEAP':
+            weapons[edid(r)] = damage_of(r)
         if t == 'RACE':
             races[edid(r)] = spell_list(out, r.data())
     ck = Checker(order, known)
@@ -264,7 +289,7 @@ def main():
         elif t in ('CELL', 'WRLD'):
             problems.append(f'{label}: a record the input already held changed ({diff})')
         elif t == 'RACE' and edid(q) in spec.get('races', {}).get('races', []):
-            why = check_race(ck, spec['races'], spells, *ref[:3], out, q)
+            why = check_race(ck, spec['races'], spells, weapons, *ref[:3], out, q)
             if why:
                 problems.append(f'{label}: {why}')
             checked['races checked against the races section'] += 1

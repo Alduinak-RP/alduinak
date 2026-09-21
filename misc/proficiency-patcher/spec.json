@@ -3501,7 +3501,7 @@
   ]
  },
  "races": {
-  "comment": "The playable races and their vampire forms lose every racial power the game hands a character (greater powers and the vampires' Hunter's Sight); only Khajiit Night Eye stays.",
+  "comment": "The playable races and their vampire forms lose every racial power the game hands a character (greater powers and the vampires' Hunter's Sight); only Khajiit Night Eye stays. passives sets what the owner's list changes (starting attributes, unarmed damage read from a weapon at run time, abilities removed), descriptions is the race menu text, spells the magnitudes of a racial ability. Dunmer, Nord and Redguard already match the list; Argonians drop to the common unarmed damage of 4, and Khajiit lose the client-only claws ability so their unarmed damage is the race's alone.",
   "races": [
    "NordRace",
    "NordRaceVampire",
@@ -3530,6 +3530,82 @@
   ],
   "keepSpells": [
    "PowerKhajiitNightEye"
+  ],
+  "passives": [
+   {
+    "races": [
+     "BretonRace",
+     "BretonRaceVampire"
+    ],
+    "startingMagicka": 75,
+    "removeSpells": [
+     "RaceBreton"
+    ]
+   },
+   {
+    "races": [
+     "HighElfRace",
+     "HighElfRaceVampire"
+    ],
+    "startingMagicka": 100,
+    "removeSpells": [
+     "AbHighElfMagicka"
+    ]
+   },
+   {
+    "races": [
+     "OrcRace",
+     "OrcRaceVampire"
+    ],
+    "startingStamina": 100
+   },
+   {
+    "races": [
+     "KhajiitRace",
+     "KhajiitRaceVampire"
+    ],
+    "unarmedDamageFrom": "SteelDagger",
+    "removeSpells": [
+     "RaceKhajiitClaws"
+    ]
+   },
+   {
+    "races": [
+     "ArgonianRace",
+     "ArgonianRaceVampire"
+    ],
+    "unarmedDamage": 4
+   },
+   {
+    "races": [
+     "ImperialRace",
+     "ImperialRaceVampire"
+    ],
+    "removeSpells": [
+     "RaceImperial"
+    ]
+   }
+  ],
+  "descriptions": {
+   "ArgonianRace": "The reptilian people of Black Marsh, at home in its swamps and bayous. Argonians breathe underwater and resist 50% of disease.",
+   "BretonRace": "The people of High Rock, of mixed human and elven blood, with a natural gift for the arcane. Bretons have 25 more Magicka.",
+   "DarkElfRace": "The Dunmer of Morrowind, a proud and hardy people shaped by an ashen homeland. Dark Elves resist 50% of fire damage.",
+   "HighElfRace": "The Altmer of the Summerset Isles, long-lived and steeped in magic. High Elves have 50 more Magicka.",
+   "ImperialRace": "The people of Cyrodiil, heart of the Empire, known for their discipline, trade and industry. Imperials spend 25% less fatigue on their professions.",
+   "KhajiitRace": "The cat-folk of Elsweyr, quick and keen-eyed. A Khajiit's claws strike as hard as a steel dagger, and Night Eye lets them see in the dark.",
+   "NordRace": "The tall, fair-haired people of Skyrim, hardened by its long winters. Nords resist 50% of frost damage.",
+   "OrcRace": "The Orsimer of Wrothgar and the mountain strongholds, famed as warriors and smiths. Orcs have 50 more Stamina.",
+   "RedguardRace": "The people of Hammerfell, the most naturally gifted warriors in Tamriel. Redguards resist 50% of poison.",
+   "WoodElfRace": "The Bosmer of Valenwood, nimble woodland hunters. Wood Elves resist 25% of poison and 25% of disease."
+  },
+  "spells": [
+   {
+    "spell": "RaceWoodElf",
+    "effects": {
+     "AbResistPoison": 25,
+     "AbResistDisease": 25
+    }
+   }
   ]
  },
  "craftingCategories": {

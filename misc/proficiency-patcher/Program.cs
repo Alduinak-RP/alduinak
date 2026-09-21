@@ -801,11 +801,17 @@ static class Steps
             var shared = carriers[ench].Except(armors.Select(a => a.FormKey)).ToList();
             if (shared.Count > 0) { c.Error($"enchantment {edid} is also carried by {string.Join(", ", shared.Select(c.EdidOf))}"); continue; }
             var rec = c.Override(c.Mod.ObjectEffects, winning);
-            var hits = rec.Effects.Where(x => x.BaseEffect.FormKey == effect && x.Data != null).ToList();
-            if (hits.Count != 1) { c.Error($"enchantment {edid}: {hits.Count} effects of {c.EdidOf(effect)}, expected 1"); continue; }
-            c.Note($"Enchantment {edid} ({ench}): {c.EdidOf(effect)} magnitude {hits[0].Data!.Magnitude} -> {magnitude} on {string.Join(", ", armors.Select(a => a.EditorID))}");
-            hits[0].Data!.Magnitude = magnitude;
+            SetMagnitude(c, rec.Effects, effect, magnitude, $"Enchantment {edid} ({ench}) on {string.Join(", ", armors.Select(a => a.EditorID))}");
         }
+    }
+
+    // The magnitude of the one effect of a kind in a list; an error when there is not exactly one
+    static void SetMagnitude(PatchContext c, IList<Effect> effects, FormKey effect, float magnitude, string label)
+    {
+        var hits = effects.Where(x => x.BaseEffect.FormKey == effect && x.Data != null).ToList();
+        if (hits.Count != 1) { c.Error($"{label}: {hits.Count} effects of {c.EdidOf(effect)}, expected 1"); return; }
+        c.Note($"{label}: {c.EdidOf(effect)} magnitude {hits[0].Data!.Magnitude} -> {magnitude}");
+        hits[0].Data!.Magnitude = magnitude;
     }
 
     // ---- placements: a placed reference keeps the offset to its anchor that the defining plugin gave it -------------
@@ -1160,21 +1166,45 @@ static class Steps
         c.Note($"Disable actors by winning plugin: {string.Join(", ", disabled.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key.FileName} {kv.Value}"))}");
     }
 
-    // ---- races: the powers the game hands every character of a race -------------------------------------------------
+    // ---- races: the powers and passives the game hands every character of a race -----------------------------------
+    //
+    // The server reads the starting attributes and the unarmed damage from the race as well, so both sides agree.
     public static void Races(PatchContext c)
     {
         if (c.Spec["races"] is not JsonObject spec) return;
         var types = Edids(c, spec["removeSpellTypes"]).Select(x => Enum.Parse<SpellType>(x)).ToHashSet();
         var keep = Edids(c, spec["keepSpells"]).Select(c.KeyOf<ISpellGetter>).ToHashSet();
+        var passives = (spec["passives"]?.AsArray() ?? []).Select(x => x!.AsObject())
+            .SelectMany(p => Edids(c, p["races"]).Select(r => (Race: r, Spec: p))).ToDictionary(x => x.Race, x => x.Spec);
         foreach (var edid in Edids(c, spec["races"]))
         {
             var winning = c.Winning<IRaceGetter>(edid);
+            var p = passives.GetValueOrDefault(edid);
+            var named = Edids(c, p?["removeSpells"]).Select(c.KeyOf<ISpellGetter>).ToHashSet();
             var drop = (winning.ActorEffect ?? []).Select(s => s.FormKey)
-                .Where(k => !keep.Contains(k) && c.Cache.TryResolve<ISpellGetter>(k, out var spell) && types.Contains(spell.Type)).ToHashSet();
-            if (drop.Count == 0) continue;
+                .Where(k => named.Contains(k) || !keep.Contains(k) && c.Cache.TryResolve<ISpellGetter>(k, out var spell) && types.Contains(spell.Type)).ToHashSet();
+            var starting = new[] { BasicStat.Health, BasicStat.Magicka, BasicStat.Stamina }
+                .Where(s => p?[$"starting{s}"] != null).ToDictionary(s => s, s => p![$"starting{s}"]!.GetValue<float>());
+            var unarmed = p?["unarmedDamageFrom"] is JsonNode weapon ? c.Winning<IWeaponGetter>(weapon.GetValue<string>()).BasicStats!.Damage : p?["unarmedDamage"]?.GetValue<float>();
+            var description = spec["descriptions"]?[edid]?.GetValue<string>();
+            var changes = drop.Select(k => $"{c.EdidOf(k)} removed")
+                .Concat(starting.Where(s => winning.Starting[s.Key] != s.Value).Select(s => $"starting {s.Key} {winning.Starting[s.Key]} -> {s.Value}"))
+                .Concat(unarmed is float u && winning.UnarmedDamage != u ? [$"unarmed damage {winning.UnarmedDamage} -> {u}{(p!["unarmedDamageFrom"] is JsonNode w ? $" ({w})" : "")}"] : [])
+                .Concat(description != null && winning.Description?.String != description ? ["description"] : []).ToList();
+            if (changes.Count == 0) continue;
             var race = c.Override(c.Mod.Races, winning);
-            race.ActorEffect!.RemoveAll(s => drop.Contains(s.FormKey));
-            c.Note($"Race {edid}: {string.Join(", ", drop.Select(c.EdidOf))} removed");
+            race.ActorEffect?.RemoveAll(s => drop.Contains(s.FormKey));
+            foreach (var (stat, value) in starting) race.Starting[stat] = value;
+            if (unarmed is float damage) race.UnarmedDamage = damage;
+            if (description != null) race.Description = description;
+            c.Note($"Race {edid}: {string.Join(", ", changes)}");
+        }
+        // Passive abilities shared by a race and its vampire form
+        foreach (var s in (spec["spells"]?.AsArray() ?? []).Select(x => x!.AsObject()))
+        {
+            var spell = c.Override(c.Mod.Spells, c.Winning<ISpellGetter>(s["spell"]!.GetValue<string>()));
+            foreach (var (effect, magnitude) in s["effects"]!.AsObject())
+                SetMagnitude(c, spell.Effects, c.KeyOf<IMagicEffectGetter>(effect), magnitude!.GetValue<float>(), $"Race ability {spell.EditorID}");
         }
     }
 
