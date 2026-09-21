@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
+import Dropdown from './dropdown';
 
 export interface ItemRow {
   desc: string; // espm desc, e.g. 12eb7:Skyrim.esm
@@ -195,15 +196,12 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
           <span className="admin-panel__hint">{shown.total} items, {shown.pages} pages</span>
           <label className="admin-panel__checkbox">
             Page
-            <select
-              className="admin-panel__input admin-panel__pager-page"
+            <Dropdown
+              className="admin-panel__pager-page"
               value={String(shown.page || page)}
-              onChange={(e) => setPage(Number(e.target.value))}
-            >
-              {pageNumbers(shown.pages).map((n) => (
-                <option key={n} value={String(n)}>{n}</option>
-              ))}
-            </select>
+              options={pageNumbers(shown.pages).map((n) => ({ value: String(n), label: String(n) }))}
+              onChange={(n) => setPage(Number(n))}
+            />
           </label>
           <Button text="Previous" width={92} height={30} disabled={page <= 1} onClick={() => setPage(page - 1)} />
           <Button text="Next" width={72} height={30} disabled={page >= (shown.pages || 1)} onClick={() => setPage(page + 1)} />

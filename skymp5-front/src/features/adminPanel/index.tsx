@@ -5,6 +5,7 @@ import { copyText } from '../../utils/copyText';
 import MasteryMenu, { MasteryData } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
 import FactionTab, { FactionMenuData } from './factionTab';
+import Dropdown from './dropdown';
 import Jobs, { AdminPos, JobRow } from './jobs';
 import './styles.scss';
 
@@ -718,22 +719,21 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               <div className="admin-panel__mastery">
                 <div className="admin-panel__mastery-row">
                   <span className="admin-panel__mastery-who">Faction</span>
-                  <select
-                    className="admin-panel__input admin-panel__faction-pick"
+                  <Dropdown
+                    className="admin-panel__faction-pick"
                     value={factionDetail?.id || ''}
-                    onChange={(e) => ev.factionMenu && send(ev.factionMenu, e.target.value)}
-                  >
-                    {!factionDetail ? <option value="">Loading factions</option> : null}
-                    {(data.faction?.factions || []).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-                  </select>
-                  <select
-                    className="admin-panel__input admin-panel__faction-pick"
+                    placeholder={data.faction?.factions?.length ? 'Choose a faction' : 'Loading factions'}
+                    disabled={!data.faction?.factions?.length}
+                    options={(data.faction?.factions || []).map((f) => ({ value: f.id, label: f.name }))}
+                    onChange={(id) => ev.factionMenu && send(ev.factionMenu, id)}
+                  />
+                  <Dropdown
+                    className="admin-panel__faction-pick"
                     value={pickedFactionRank}
                     disabled={!factionDetail}
-                    onChange={(e) => setFactionRank(e.target.value)}
-                  >
-                    {factionRankOptions.map((r) => <option key={r.slug} value={r.slug}>{r.name}</option>)}
-                  </select>
+                    options={factionRankOptions.map((r) => ({ value: r.slug, label: r.name }))}
+                    onChange={setFactionRank}
+                  />
                   <Button
                     text="Add"
                     width={72}

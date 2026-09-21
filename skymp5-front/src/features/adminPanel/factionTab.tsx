@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
+import Dropdown from './dropdown';
 
 export type FactionType = 'hold' | 'military' | 'guild';
 
@@ -244,9 +245,12 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
       <>
         <div className="admin-panel__filters">
           {data.staff && data.factions.filter((f) => f.type === type).length > 1 ? (
-            <select className="admin-panel__input admin-panel__faction-pick" value={detail.id} onChange={(e) => send(ev.factionMenu, e.target.value)}>
-              {data.factions.filter((f) => f.type === type).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
+            <Dropdown
+              className="admin-panel__faction-pick"
+              value={detail.id}
+              options={data.factions.filter((f) => f.type === type).map((f) => ({ value: f.id, label: f.name }))}
+              onChange={(id) => send(ev.factionMenu, id)}
+            />
           ) : null}
           <span className="admin-panel__faction-name" style={{ color: '#' + detail.color }}>{detail.name}</span>
           <span className="admin-panel__hint">
