@@ -34,12 +34,17 @@
       "src/**/*",
       "assets/**/*",
       "!assets/7zip/**",
+      "!assets/xdelta/**",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "assets/7zip",
         "to": "7zip"
+      },
+      {
+        "from": "assets/xdelta",
+        "to": "xdelta"
       }
     ],
     "win": {

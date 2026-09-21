@@ -25,11 +25,12 @@ src/
   nexus.js         Nexus Mods API (key validation, premium downloads, SSO)
   ini.js           Minimal INI reader/writer for SkyrimPrefs.ini
   gameversion.js   SkyrimSE.exe version gate (1.6.1170.0) + Reliquary downgrade popup
+  cleanmasters.js  Simple Cleaned Masters patch table (sizes, patch and output sha256)
   renderer/
     index.html     UI shell: topbar, content grid, modals
     renderer.js    Event listeners, API calls, settings, news/modlist rendering
     styles.css     Dark theme, glass effects, custom fonts
-assets/            App icon (icon.ico), background.gif, controlmap.txt
+assets/            App icon (icon.ico), background.gif, controlmap.txt, 7zip/ and xdelta/ (shipped as extraResources)
 ```
 
 ## Development
@@ -99,6 +100,26 @@ installs (Galaxy64.dll / goggame-* present) are accepted at **1.6.1179.0**, the
 GOG build of the same generation. An unreadable version never blocks, it is
 only logged.
 
+## Cleaned masters
+
+The server's masters and three Creation plugins are cleaned with Simple Cleaned
+Masters, and every client loads the same bytes. `ensureCleanedMasters` runs
+after the game copy is made (`createIsolatedImpl`), after the Creation files are
+copied on every install pass (`runMO2Install`), after the vanilla check in the
+direct install, and from **Repair Cleaned Masters**. Each file's size tells
+whether it is already cleaned (skipped, so existing installs are patched on
+their next PLAY and never twice), which GOG or Steam patch it takes, or that no
+patch knows the build (a warning; the file stays as shipped). Patches download
+once from `/files/cleaned-masters/<name>.vcdiff` into `downloads/cleaned-masters`
+and are checked by sha256. The bundled `assets/xdelta/xdelta3.exe` is the mod's
+own build, which refuses a source whose BLAKE3 differs from the one in the
+patch; a stock xdelta3 would not. A real install (Portable Skyrim Mode off)
+keeps the originals in `Data/Original ESMs backups`, like the mod's patcher.
+The vanilla size check accepts a cleaned size, so it never reverts them.
+On the automatic passes a failed download or patch is only a warning and the
+file stays as shipped, so PLAY is never blocked; only **Repair Cleaned Masters**
+reports it as an error.
+
 ## Repair tab
 
 Settings > Repair replaces the old Installation tab. Every button fully
@@ -107,7 +128,8 @@ install): **Repair MO2** wipes MO2's own files (mods, downloads, profiles, the
 game copy and the instance inis stay) and unpacks it again, **Repair Game Copy**
 re-copies every vanilla file, **Repair SKSE** re-downloads the archive and
 replaces the root files, **Repair Client Files** re-downloads the client zip,
-**Repair Modlist** rebuilds every mod from the install manifest. **Repair All**
+**Repair Modlist** rebuilds every mod from the install manifest, **Repair Cleaned
+Masters** restores the original masters and patches them again. **Repair All**
 chains them in that order; **Check Files** (`install:check`) is a read-only scan
 that lists every missing/corrupt/extra/outdated file with the button that fixes
 it. It compares client files by size + sha256 when `/api/files/version` carries

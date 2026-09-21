@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Standalone install steps (progress arrives via install:progress)
   installMo2Only: (opts) => ipcRenderer.invoke('install:mo2only', opts),
   installSkse:    (opts) => ipcRenderer.invoke('install:skse', opts),
+  installMasters: (opts) => ipcRenderer.invoke('install:masters', opts),
   // Read-only scan of every section - { ok, issues: [{ kind, path, fix }], notes }
   checkFiles:     () => ipcRenderer.invoke('install:check'),
   onInstallProgress: (cb) =>

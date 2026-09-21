@@ -16,7 +16,7 @@ const crypto = require('crypto')
 const zlib   = require('zlib')
 const http   = require('http')
 const https  = require('https')
-const { spawn, execFileSync } = require('child_process')
+const { spawn, execFile, execFileSync } = require('child_process')
 const Store  = require('electron-store')
 const AdmZip = require('adm-zip')
 const config = require('./config')
@@ -24,6 +24,7 @@ const mo2    = require('./mo2')
 const nexus  = require('./nexus')
 const ini    = require('./ini')
 const gameversion = require('./gameversion')
+const cleanmasters = require('./cleanmasters')
 
 const isDev = process.argv.includes('--dev')
 
@@ -1079,6 +1080,9 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
     } else {
       log('[isolated] reusing existing game copy at ' + dst)
     }
+    send('isolated:progress', 'Cleaning the Skyrim masters…')
+    const masters = await ensureCleanedMasters(dst, { portable: true })
+    if (masters.warning) log(`[isolated] ${masters.warning}`)
 
     // configuration
     let serverInfo = null
@@ -1195,13 +1199,14 @@ async function copyGameDir(src, dst) {
 }
 
 // Vanilla files in the game copy that are missing or the wrong size compared
-// to the original install.
+// to the original install; a cleaned master counts as intact.
 function vanillaMismatches(src, dir) {
   const sizeOf = p => { try { return fs.statSync(p).size } catch { return -1 } }
   const bad = []
   for (const job of vanillaJobs(src)) {
     const want = sizeOf(path.join(src, job.sub, job.rel))
-    if (want >= 0 && sizeOf(path.join(dir, job.sub, job.rel)) !== want) bad.push(job)
+    const have = sizeOf(path.join(dir, job.sub, job.rel))
+    if (want >= 0 && have !== want && !cleanmasters.cleanedSizes(job.rel).includes(have)) bad.push(job)
   }
   return bad
 }
@@ -1741,6 +1746,88 @@ async function ensureCreations(manifest, gamePath) {
   return { ok: true, warning: warnings.length ? `Creation Club: ${warnings.join('; ')}` : null }
 }
 
+function bundledXdelta() {
+  return [
+    process.resourcesPath ? path.join(process.resourcesPath, 'xdelta', 'xdelta3.exe') : null,
+    path.join(__dirname, '..', 'assets', 'xdelta', 'xdelta3.exe'),
+  ].find(p => p && fs.existsSync(p)) || null
+}
+
+// Downloads a Simple Cleaned Masters patch once into the MO2 downloads folder, verified by sha256
+async function cleanedMasterPatch(v) {
+  const dir = path.join(mo2.getDownloadsDir(), 'cleaned-masters')
+  const file = path.join(dir, v.patch)
+  if (fs.existsSync(file) && await mo2.sha256FileAsync(file) === v.patchSha256) return file
+  fs.mkdirSync(dir, { recursive: true })
+  await downloadToFile(`${config.apiUrl}/files/cleaned-masters/${encodeURIComponent(v.patch)}`, file)
+  if (await mo2.sha256FileAsync(file) !== v.patchSha256) {
+    try { fs.rmSync(file, { force: true }) } catch {}
+    throw new Error(`${v.patch} failed its checksum after download`)
+  }
+  return file
+}
+
+// Cleans the masters and Creation plugins in gamePath/Data; real installs back up the originals, strict turns failures into errors
+async function ensureCleanedMasters(gamePath, { force = false, portable = !!store.get('isolatedGame') && gamePath === isolatedGameDir(), strict = false } = {}) {
+  const dataDir  = path.join(gamePath, 'Data')
+  const original = store.get('skyrimPath')
+  const unknown  = []
+  const failed   = []
+  let cleaned = 0
+  for (const m of cleanmasters.MASTERS) {
+    const file   = path.join(dataDir, m.name)
+    const backup = path.join(dataDir, cleanmasters.BACKUP_DIR, m.name)
+    const restoreFrom = portable ? (original && path.join(original, 'Data', m.name)) : backup
+    if (force && restoreFrom && fs.existsSync(restoreFrom) && fs.existsSync(file)) {
+      await fs.promises.copyFile(restoreFrom, file)
+      log(`[masters] restored ${m.name} from ${restoreFrom}`)
+    }
+    let size = -1
+    try { size = fs.statSync(file).size } catch { continue }   // masters and Creations are installed by their own steps
+    const v = cleanmasters.classify(m.name, size)
+    if (v === 'cleaned') continue
+    if (!v) { unknown.push(`${m.name} (size ${size})`); continue }
+
+    send('install:progress', { phase: 'download', file: `Cleaning ${m.name} (${v.edition})…`, index: cleaned, total: 0, skipped: false })
+    const xdelta = bundledXdelta()
+    if (!xdelta) {
+      const error = 'xdelta3.exe is missing from the launcher install. Reinstall the launcher.'
+      if (strict) return { ok: false, error }
+      log(`[masters] ${error}`)
+      failed.push(m.name)
+      break
+    }
+    const tmp = `${file}.alduinak-tmp`
+    try {
+      const patch = await cleanedMasterPatch(v)
+      const failure = await new Promise(resolve => execFile(xdelta, ['-d', '-f', '-s', file, patch, tmp], { windowsHide: true, timeout: 10 * 60 * 1000 },
+        (err, _out, stderr) => resolve(err ? (String(stderr || '').trim() || err.message) : null)))
+      if (failure) throw new Error(failure)
+      if (fs.statSync(tmp).size !== v.dstSize || (v.dstSha256 && await mo2.sha256FileAsync(tmp) !== v.dstSha256)) throw new Error('the patched file does not match the cleaned master')
+      if (!portable && !fs.existsSync(backup)) {
+        fs.mkdirSync(path.dirname(backup), { recursive: true })
+        await fs.promises.copyFile(file, backup)
+      }
+      fs.renameSync(tmp, file)
+    } catch (err) {
+      try { fs.rmSync(tmp, { force: true }) } catch {}
+      const error = `Could not clean ${m.name}: ${err.message}`
+      if (strict) return { ok: false, error }
+      log(`[masters] ${error}`)
+      failed.push(m.name)
+      continue
+    }
+    cleaned++
+    log(`[masters] cleaned ${m.name} (${v.edition})`)
+  }
+  if (unknown.length) log(`[masters] no cleaning patch for this build of ${unknown.join(', ')}`)
+  const warning = [
+    unknown.length ? `No cleaned-master patch for ${unknown.join(', ')}; they stay as shipped.` : null,
+    failed.length ? `Could not clean ${failed.join(', ')}; they stay as shipped (see install.log, or use Repair Cleaned Masters).` : null,
+  ].filter(Boolean).join(' ') || null
+  return { ok: true, cleaned, warning }
+}
+
 // Adds two missing folders to prevent a code 2 crash
 function ensureClientDirs(gamePath) {
   if (!gamePath) return
@@ -2082,22 +2169,44 @@ ipcMain.handle('install:mo2only', async (_e, opts) => {
   }
 })
 
-// SKSE only: download the edition-matched SKSE and install it into the game root. force drops the cached archive so a fresh copy is fetched.
-ipcMain.handle('install:skse', async (_e, opts) => {
-  if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
-  // With isolation on, SKSE must land in the portable copy, never the original install
+// The game folder a Repair step works on; with isolation on it is the portable copy, never the original install
+function repairGamePath(what) {
   let gamePath
   if (store.get('isolatedGame')) {
     gamePath = isolatedGameDir()
     if (!isolatedGameReady()) {
-      return { success: false, error: 'Install the game copy first - SKSE belongs in the portable copy, not your original Skyrim.' }
+      return { error: `Install the game copy first - ${what} belongs in the portable copy, not your original Skyrim.` }
     }
   } else {
     gamePath = effectiveGamePath()
   }
   if (!gamePath || !fs.existsSync(path.join(gamePath, 'SkyrimSE.exe'))) {
-    return { success: false, error: 'No game folder found - install the game copy or set a valid Skyrim path first.' }
+    return { error: 'No game folder found - install the game copy or set a valid Skyrim path first.' }
   }
+  return { gamePath }
+}
+
+// Cleaned masters only; force restores the original masters and patches them again.
+ipcMain.handle('install:masters', async (_e, opts) => {
+  if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
+  const { gamePath, error } = repairGamePath('the cleaned masters')
+  if (error) return { success: false, error }
+  installing = true
+  try {
+    const r = await ensureCleanedMasters(gamePath, { force: !!(opts && opts.force), strict: true })
+    return r.ok ? { success: true, cleaned: r.cleaned, warning: r.warning } : { success: false, error: r.error }
+  } catch (err) {
+    return { success: false, error: err.message }
+  } finally {
+    installing = false
+  }
+})
+
+// SKSE only: download the edition-matched SKSE and install it into the game root. force drops the cached archive so a fresh copy is fetched.
+ipcMain.handle('install:skse', async (_e, opts) => {
+  if (installing) return { success: false, error: 'An install is already running - cancel it first.' }
+  const { gamePath, error } = repairGamePath('SKSE')
+  if (error) return { success: false, error }
   installing = true
   try {
     if (opts && opts.force) {
@@ -2141,7 +2250,7 @@ function crc32File(p) {
   })
 }
 
-// Issues carry { kind: missing|corrupt|extra|outdated, path, fix: mo2|game|skse|client|modlist }; notes explain skipped checks.
+// Issues carry { kind: missing|corrupt|extra|outdated, path, fix: mo2|game|masters|skse|client|modlist }; notes explain skipped checks.
 async function checkFilesImpl() {
   const issues = []
   const notes  = []
@@ -2212,6 +2321,20 @@ async function checkFilesImpl() {
       if (!fs.existsSync(marker)) add('missing', show(marker), 'game')
       const ccc = sizeOf(path.join(gamePath, 'Skyrim.ccc'))
       if (ccc !== 0) add(ccc === -1 ? 'missing' : 'corrupt', `${show(path.join(gamePath, 'Skyrim.ccc'))}${ccc > 0 ? ' (must be empty)' : ''}`, 'game')
+    }
+    await yieldNow()
+  }
+
+  if (gameOk) {
+    progress('Checking the cleaned masters…')
+    for (const m of cleanmasters.MASTERS) {
+      const full = path.join(gamePath, 'Data', m.name)
+      const size = sizeOf(full)
+      if (size === -1) continue
+      const v = cleanmasters.classify(m.name, size)
+      if (v === 'cleaned') continue
+      if (v) add('outdated', `${show(full)} (not cleaned)`, 'masters')
+      else notes.push(`Cleaned masters: ${show(full)} is a build no patch knows (size ${size}), so it stays as shipped.`)
     }
     await yieldNow()
   }
@@ -2559,6 +2682,8 @@ async function runDirectInstall(force = false) {
   // Vanilla integrity (repairs portable copies, warns for the real install).
   const integrity = await ensureVanillaIntegrity(skyrimPath)
   if (!integrity.ok) return fail(integrity.error)
+  const masters = await ensureCleanedMasters(skyrimPath)
+  const warning = [integrity.warning, masters.warning].filter(Boolean).join(' | ')
 
   let serverInfo = null
   try { serverInfo = await fetchJSON(`${config.apiUrl}/api/serverinfo`) } catch {}
@@ -2566,7 +2691,7 @@ async function runDirectInstall(force = false) {
   const core = await installClientFilesCore(skyrimPath, srv, serverInfo, force)
   if (core.success) applyForcedServerDefaults(skyrimPath)
   send('install:complete', core.success
-    ? { success: true, upToDate: core.upToDate, ...(integrity.warning ? { warning: integrity.warning } : {}) }
+    ? { success: true, upToDate: core.upToDate, ...(warning ? { warning } : {}) }
     : { success: false, error: core.error })
   installing = false
 }
@@ -2690,7 +2815,8 @@ async function runMO2Install(opts = {}) {
     // Creation Club files from the player's own install, before any mod: the load order needs them either way
     const creations = await ensureCreations(manifest, skyrimPath)
     if (!creations.ok) return fail(creations.error)
-    const setupWarning = [vanillaWarning, creations.warning].filter(Boolean).join(' | ') || null
+    const masters = await ensureCleanedMasters(skyrimPath)
+    const setupWarning = [vanillaWarning, creations.warning, masters.warning].filter(Boolean).join(' | ') || null
 
     const finishOrder = () => {
       const order = (Array.isArray(manifest.order) && manifest.order.length)

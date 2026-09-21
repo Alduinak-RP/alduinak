@@ -613,12 +613,13 @@ const isolatedText     = document.getElementById('isolated-status-text')
 const fieldIsolated    = document.getElementById('setting-isolated-game')
 const btnRepairMo2     = document.getElementById('btn-repair-mo2')
 const btnRepairGame    = document.getElementById('btn-repair-game')
+const btnRepairMasters = document.getElementById('btn-repair-masters')
 const btnRepairSkse    = document.getElementById('btn-repair-skse')
 const btnRepairClient  = document.getElementById('btn-repair-client')
 const btnRepairModlist = document.getElementById('btn-repair-modlist')
 const btnRepairAll     = document.getElementById('btn-repair-all')
 const btnCheckFiles    = document.getElementById('btn-check-files')
-const REPAIR_BUTTONS   = [btnRepairMo2, btnRepairGame, btnRepairSkse, btnRepairClient, btnRepairModlist, btnRepairAll, btnCheckFiles]
+const REPAIR_BUTTONS   = [btnRepairMo2, btnRepairGame, btnRepairMasters, btnRepairSkse, btnRepairClient, btnRepairModlist, btnRepairAll, btnCheckFiles]
 const isolatedGroup    = document.getElementById('isolated-install-group')
 
 // locks the modlist repair until there's a game to manage
@@ -845,6 +846,14 @@ async function repairMo2() {
   return r.success
 }
 
+async function repairMasters() {
+  installLog('Repairing the cleaned masters…')
+  const r = await window.electronAPI.installMasters({ force: true })
+  if (r.success && r.warning) installLog(`⚠ ${r.warning}`)
+  installLog(r.success ? `Cleaned masters ready ✓ (${r.cleaned} cleaned)` : `Error: ${r.error}`)
+  return r.success
+}
+
 async function repairSkse() {
   installLog('Repairing SKSE…')
   const r = await window.electronAPI.installSkse({ force: true })
@@ -887,7 +896,7 @@ async function repairModlist() {
 }
 
 // Check Files: one line per issue, capped so the 300-line log keeps the summary; main writes every line to install.log.
-const CHECK_FIX_LABELS = { mo2: 'MO2', game: 'Game Copy', skse: 'SKSE', client: 'Client Files', modlist: 'Modlist' }
+const CHECK_FIX_LABELS = { mo2: 'MO2', game: 'Game Copy', masters: 'Cleaned Masters', skse: 'SKSE', client: 'Client Files', modlist: 'Modlist' }
 const CHECK_LOG_CAP = 250
 
 function formatCheckIssue(issue) {
@@ -927,6 +936,7 @@ async function withRepairLock(fn) {
 
 btnRepairMo2.addEventListener('click', () => withRepairLock(repairMo2))
 btnRepairGame.addEventListener('click', () => withRepairLock(repairGameCopy))
+btnRepairMasters.addEventListener('click', () => withRepairLock(repairMasters))
 btnRepairSkse.addEventListener('click', () => withRepairLock(repairSkse))
 btnRepairClient.addEventListener('click', () => withRepairLock(repairClientFiles))
 btnRepairModlist.addEventListener('click', () => {
@@ -943,6 +953,7 @@ btnRepairAll.addEventListener('click', () => withRepairLock(async () => {
   const steps = [
     ['MO2', repairMo2],
     ...(fieldIsolated.checked ? [['Game Copy', repairGameCopy]] : []),
+    ['Cleaned Masters', repairMasters],
     ['SKSE', repairSkse],
     ['Client Files', repairClientFiles],
     ['Modlist', repairModlist],

@@ -68,6 +68,8 @@ app.use(express.json({
 
 // Static file serving: root/ is installed into Skyrim/ (Data/ sub-dir)
 app.use('/files/root', express.static(path.join(config.clientFilesDir, 'root')))
+// Simple Cleaned Masters .vcdiff patches the launcher applies to the player's masters
+app.use('/files/cleaned-masters', express.static(path.join(config.clientFilesDir, 'cleaned-masters')))
 
 // News images: served at /images/<filename>
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')))
