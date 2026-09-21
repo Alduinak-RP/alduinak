@@ -92,6 +92,9 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   { "customPacketType": "bleedoutState", "downed": true, "seconds": 15 }
  *   { "customPacketType": "bleedoutState", "downed": false, "died": false }
  *
+ *   // A prisoner at an execution block (ExecutionSystem); "" leaves the block:
+ *   { "customPacketType": "executionState", "pose": "IdleExecutioneeIdleEnterInstant" }
+ *
  *   // Timed work such as stabilizing or harvesting (actorUtil.sendActionLock); a new lock replaces the old one:
  *   { "customPacketType": "actionLock", "anim": "IdleKneeling", "seconds": 5, "exitAnim": "IdleForceDefaultState" }
  *
@@ -107,6 +110,8 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   - downed: kneels in the bleedout pose, cannot move, fight, sneak, activate
  *     or open menus, and is a ghost locally so no local hit lands; the camera
  *     stays free. Carried wins over downed, downed over bound.
+ *   - executionState: kneels at the block in the given pose, held in place like
+ *     a downed player but with menus; wins over bound, the cuffs stay on.
  *   - actionLock: plays anim (hands emptied first when its copies would sheathe)
  *     and holds the player still without fighting, sneaking or activation for
  *     the seconds, then plays exitAnim. Going down or dying ends it early,
@@ -148,9 +153,10 @@ export class RestraintService extends ClientListener {
         this.carrying = false;
         this.applyCarryAnim();
       }
-      if (this.downed || this.lock) {
+      if (this.downed || this.lock || this.executionPose) {
         this.downed = false;
         this.lock = null;
+        this.executionPose = "";
         this.applyState();
       }
     });
@@ -158,9 +164,9 @@ export class RestraintService extends ClientListener {
     this.controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
   }
 
-  // True while a restraint, carry, bleedout or action pose owns the player's animation.
+  // True while a restraint, carry, bleedout, execution or action pose owns the player's animation.
   get isPoseLocked(): boolean {
-    return this.boundHands || this.carried || this.carrying || this.downed || !!this.lock;
+    return this.boundHands || this.carried || this.carrying || this.downed || !!this.executionPose || !!this.lock;
   }
 
   get isCarried(): boolean {
@@ -177,7 +183,7 @@ export class RestraintService extends ClientListener {
 
   // Observers must see a held pose: no locomotion, and the server keeps the last animation only for Standing
   filterOwnMovement(movement: Movement): Movement {
-    if (this.carried || this.downed || this.lock) {
+    if (this.carried || this.downed || this.executionPose || this.lock) {
       movement.runMode = "Standing";
       movement.direction = 0;
       movement.isInJumpState = false;
@@ -231,6 +237,10 @@ export class RestraintService extends ClientListener {
       this.carriedNpcId = this.carrying && target >= FIRST_DYNAMIC_REMOTE_ID && !isPlayerCharacterId(this.controller, target) ? target : 0;
       logTrace(this, `carryState carrying=${this.carrying} npc=${this.carriedNpcId.toString(16)}`);
       this.applyCarryAnim();
+    } else if (type === "executionState" && typeof content["pose"] === "string") {
+      this.executionPose = content["pose"];
+      logTrace(this, `executionState pose=${this.executionPose}`);
+      this.applyState();
     } else if (type === "actionLock" && typeof content["anim"] === "string" && content["anim"]) {
       const anim = content["anim"];
       const seconds = finiteOr(content["seconds"], 0);
@@ -261,12 +271,13 @@ export class RestraintService extends ClientListener {
     this.applyStateNow();
   }
 
-  // Death ends a bleedout or an action lock without the stand-up
+  // Death ends a bleedout, an execution pose or an action lock without the stand-up
   private onApplyDeathState(e: ApplyDeathStateEvent): void {
-    if (!e.isDead || !(this.downed || this.lock) || e.actor.getFormID() !== PLAYER_FORM_ID) return;
-    if (this.appliedPose === BLEEDOUT_ANIM_START || this.appliedPose === this.lock?.anim) this.appliedPose = OFFSET_STOP_ANIM;
+    if (!e.isDead || !(this.downed || this.lock || this.executionPose) || e.actor.getFormID() !== PLAYER_FORM_ID) return;
+    if ([BLEEDOUT_ANIM_START, this.lock?.anim, this.executionPose].includes(this.appliedPose)) this.appliedPose = OFFSET_STOP_ANIM;
     this.downed = false;
     this.lock = null;
+    this.executionPose = "";
     this.applyState();
   }
 
@@ -391,7 +402,7 @@ export class RestraintService extends ClientListener {
 
   // Must run on update; forces every held pose to be sent again
   private reapplyPoses(): void {
-    if (this.boundHands || this.carried || this.downed || this.lock) {
+    if (this.boundHands || this.carried || this.downed || this.executionPose || this.lock) {
       this.appliedPose = "";
       this.applyStateNow();
     }
@@ -413,9 +424,9 @@ export class RestraintService extends ClientListener {
       return;
     }
 
-    // Carried shows the sitting pose, downed the bleedout kneel, bound the captive pose, then an action lock's pose, otherwise clear it; only fire on transition.
-    const desiredPose = this.carried ? this.carriedAnim : this.downed ? BLEEDOUT_ANIM_START : this.boundHands ? this.captiveAnim
-      : this.lock ? this.lock.anim : OFFSET_STOP_ANIM;
+    // Carried shows the sitting pose, downed the bleedout kneel, then the execution pose, bound the captive pose, then an action lock's pose, otherwise clear it; only fire on transition.
+    const desiredPose = this.carried ? this.carriedAnim : this.downed ? BLEEDOUT_ANIM_START : this.executionPose ? this.executionPose
+      : this.boundHands ? this.captiveAnim : this.lock ? this.lock.anim : OFFSET_STOP_ANIM;
     if (desiredPose === this.lock?.anim && needsEmptyHands(desiredPose) && player.isWeaponDrawn()) {
       // The tick poses once the sheathe has settled
       player.sheatheWeapon();
@@ -442,7 +453,7 @@ export class RestraintService extends ClientListener {
       this.carriedControlsApplied = false;
       this.sp.Game.enablePlayerControls(true, false, true, false, false, false, false, false, 0);
     }
-    if (this.downed || this.lock) {
+    if (this.downed || this.executionPose || this.lock) {
       // Held in place: no walking, fighting, sneaking or activation, and no menus while downed; the camera stays free
       this.stillControlsApplied = true;
       this.sp.Game.disablePlayerControls(true, true, false, false, true, this.downed, true, false, 0);
@@ -596,6 +607,7 @@ export class RestraintService extends ClientListener {
   private poseToken = 0;
   private carriedControlsApplied = false;
   private downed = false;
+  private executionPose = "";
   private lock: ActionLock | null = null;
   private stillControlsApplied = false;
   private ghostApplied = false;

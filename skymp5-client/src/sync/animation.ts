@@ -75,13 +75,15 @@ const actorGetUpAnimsLowerCase = [
   'idleforcedefaultstate'
 ];
 
-// Bound, carried, carry-hold and bleedout poses; the carrier's own client sheathes before its pose
+// Bound, carried, carry-hold, bleedout and headsman poses; the carrier's own client sheathes before its pose, the headsman keeps the axe
 const restraintPosesLowerCase = new Set<string>([
   'offsetboundstandingstart',
   'offsetcarrybasketstart',
   'idlechairenterinstant',
   'bleedoutstart',
   'bleedoutstop',
+  'idleexecutioneridleenterinstant',
+  'idleexecutionerchop',
 ]);
 
 // It's critical for values to be the correct case, not just lowercase, otherwise 'allowedIdles' check will break

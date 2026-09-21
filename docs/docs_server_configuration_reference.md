@@ -393,7 +393,7 @@ The faction system (`docs_roleplay_property_factions.md` section 6) needs `maste
 
 Faction-only doors and containers come from `faction-access.json` next to `gamemode.js`, not from this file.
 
-## Bleedout
+## Bleedout and execution
 
 All optional; see `docs/docs_roleplay_survival_loop.md` section 8 for the system. A player at 0 health bleeds out only with the native server build that fires `onKillAttempt`.
 
@@ -401,6 +401,10 @@ All optional; see `docs/docs_roleplay_survival_loop.md` section 8 for the system
 |---|---|---|
 | `bleedoutSeconds` | `15` | Seconds a downed player has before dying, unless healed, captured or carried |
 | `bleedoutHealedHealth` | `0.25` | Share of max health that ends a bleedout when healed back to it |
+| `executionBlockBaseIds` | `[0x2E8EB, 0xFE549]` | Base form ids (numbers or `"0x..."` strings) of the furniture that counts as an execution block |
+| `executionBlockOffset` | `{ "forward": 0, "right": 0, "up": 0, "yaw": 0 }` | Where Prepare Execution puts the prisoner, relative to the block: along its facing, across it, up, and degrees added to its yaw. Unmeasured default |
+| `executionerOffset` | `{ "forward": -40, "right": 70, "up": 0, "yaw": -90 }` | Where Execute puts the executioner, relative to the block. Unmeasured default |
+| `executionChopMs` | `3000` | Milliseconds from the chop to the prisoner's death |
 
 ## npcAggroHostSeconds
 

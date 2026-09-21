@@ -78,6 +78,25 @@ behaviour-graph events — no ESP required.**
   killmove is sent to both players and to everyone whose client has a copy of
   the victim (`PairedIdleService`), and both copies leave the movement and
   animation sync while it plays.
+- **Execution** (`executionSystem.ts`): the same right works at a headsman's
+  block, the `ExecutionerChoppingBlock` furniture (FURN 2E8EB) already placed
+  at Helgen, Solitude and in the Falkreath and Dragon Bridge city mods, plus
+  any base listed in `executionBlockBaseIds`. Standing within 300 units of a
+  block, **Prepare Execution** on a cuffed prisoner in reach moves them onto
+  the block (`executionBlockOffset`) where they kneel
+  (`IdleExecutioneeIdleEnterInstant`) and cannot move. **Execute** moves the
+  executioner beside it (`executionerOffset`) and plays the vanilla headsman
+  idles in two stages (`IdleExecutionerIdleEnterInstant`, then
+  `IdleExecutionerChop` with the prisoner's `IdleExecutioneeChop`), with a
+  melee weapon in hand that stays drawn; after `executionChopMs` the prisoner
+  dies and goes to Sovngarde, the same PK as a finish off (`pk.log`,
+  `pvp.log`, the `execute` alert), and their body is freed from the cuffs. A
+  prisoner who logs out while the axe falls is executed at once. **Release** from anyone who is not bound pulls a
+  prisoner off the block, even while the axe is raised; the cuffs stay on and
+  unbinding stays the captor's. A carry also takes them off the block. The
+  offsets are unmeasured starting points: measure them at a block with
+  `getpos`/`getangle` and set them in `server-settings.json`. Static bloody
+  blocks do not count, the server never loads statics.
 - **Logs**: deaths the native kill does not report (timer, damage over time,
   logout, a light finishing hit) go to `pvp.log` when another player downed or
   hit them; every bleedout event is logged as `[bleedout] ...`.
@@ -177,8 +196,10 @@ prisoner can also be carried).
 | `stabilizeRequest` `{ target }` | Rescuer client → server | Stabilize a downed player |
 | `finishOffRequest` `{ target }` | Client → server | Finish off a downed player |
 | `pairedIdle` `{ attacker, target, idle, ms }` | Server → both players and viewers | Play a killmove on both copies |
+| `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
+| `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose, `""` leaves it |
 | `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting) |
-| `playerMenuState` `{ target, canRelease, stabilize, finishOff, ... }` | Server → requester | Which flagged X menu actions apply to the target |
+| `playerMenuState` `{ target, canRelease, stabilize, finishOff, prepareExecution, execute }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 
 All restraint/bleedout **rules, timers, permissions and persistence are

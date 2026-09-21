@@ -28,7 +28,7 @@ type Mp = any;
 //     { customPacketType: "captureRequest",  target: <actorFormId> }
 //     { customPacketType: "carryRequest",    target: <actorFormId> }
 //     { customPacketType: "putdownRequest",  target: <actorFormId> }   // stop carrying, keep any binding (older clients' Put down)
-//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // one step per press: set a carried captive down, else free their binds (captor or last carrier)
+//     { customPacketType: "releaseRequest",  target: <actorFormId> }   // one step per press: free a prisoner from an execution block (anyone not bound), set a carried captive down, else free their binds (captor or last carrier)
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
 //     { customPacketType: "playerMenuRequest", target: <actorFormId> }  // the player menu opened on target
 //   Server -> Client:
@@ -66,6 +66,10 @@ export function isRestrained(mp: Mp, actorId: number): boolean {
 // Bound hands only: a player who is just carried keeps their consent prompts
 export function isBound(mp: Mp, actorId: number): boolean {
   return restraintOf(mp, actorId)?.boundHands === true;
+}
+
+export function isCarried(mp: Mp, actorId: number): boolean {
+  return restraintOf(mp, actorId)?.carried === true;
 }
 
 // 0 = no item requirement; set manaclesFormId in server-settings.json to gate arrests behind a carryable item
@@ -148,6 +152,9 @@ export class CaptureSystem implements System {
   rescueRefusal: ((actorId: number) => string) | null = null;
   // Other systems' player menu actions: each adds flags saying which apply to this requester and target
   menuFlagProviders: Array<(requesterActorId: number, targetActorId: number) => Record<string, boolean>> = [];
+  // Set by ExecutionSystem: whether a prisoner kneels at an execution block, and taking them off it
+  onBlock: ((actorId: number) => boolean) | null = null;
+  releaseFromBlock: ((actorId: number) => void) | null = null;
   private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
   private refusalLogAt = new Map<number, number>();
@@ -472,6 +479,16 @@ export class CaptureSystem implements System {
       return;
     }
     const name = nameShownTo(ctx.svr, requesterActorId, targetActorId);
+    if (step === "block") {
+      if (!this.nearEnough(ctx, requesterActorId, targetActorId)) {
+        this.notice(ctx, userId, `${name} is out of reach.`);
+        return;
+      }
+      this.releaseFromBlock?.(targetActorId);
+      this.notice(ctx, userId, `You pulled ${name} away from the block.`);
+      this.notice(ctx, this.userOf(ctx, targetActorId), `${nameShownTo(ctx.svr, targetActorId, requesterActorId)} pulled you away from the block.`);
+      return;
+    }
     if (step === "putdown") {
       this.stopCarry(ctx, targetActorId);
       this.notice(ctx, userId, `You set ${name} down.`);
@@ -511,10 +528,13 @@ export class CaptureSystem implements System {
     return this.interactMaxDistance;
   }
 
-  // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release or the requester is bound
-  private releaseStep(requesterActorId: number, targetActorId: number): "putdown" | "release" | null {
+  // What the requester's next Release does: anyone takes a prisoner off an execution block, a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release or the requester is bound
+  private releaseStep(requesterActorId: number, targetActorId: number): "block" | "putdown" | "release" | null {
     if (this.restraints.get(requesterActorId)?.boundHands) {
       return null;
+    }
+    if (this.onBlock?.(targetActorId)) {
+      return "block";
     }
     const info = this.restraints.get(targetActorId);
     const isCaptor = info?.captorActorId === requesterActorId;
@@ -670,6 +690,7 @@ export class CaptureSystem implements System {
 
   private applyCarry(ctx: SystemContext, targetActorId: number, carrierActorId: number): void {
     if (isBleedingOut(ctx.svr, targetActorId)) this.rescueDowned?.(targetActorId);
+    if (this.onBlock?.(targetActorId)) this.releaseFromBlock?.(targetActorId);
     const info = this.restraints.get(targetActorId)
       ?? { boundHands: false, carried: false, captorActorId: carrierActorId };
     info.carried = true;
@@ -707,6 +728,11 @@ export class CaptureSystem implements System {
       }
     }
     this.mirrorState(ctx, targetActorId);
+  }
+
+  // Frees an executed prisoner's body, so no bound corpse is left behind
+  freeCaptive(ctx: SystemContext, targetActorId: number): void {
+    if (this.restraints.has(targetActorId)) this.releaseTarget(ctx, targetActorId);
   }
 
   // Fully free a captive: clear arrest + carry and restore their controls.

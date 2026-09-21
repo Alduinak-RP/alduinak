@@ -44,6 +44,8 @@ const ACTIONS: PlayerAction[] = [
   { id: 'release', label: 'Release' },
   { id: 'stabilize', label: 'Stabilize' },
   { id: 'finishOff', label: 'Finish Off' },
+  { id: 'prepareExecution', label: 'Prepare Execution' },
+  { id: 'execute', label: 'Execute' },
   { id: 'factionRecruit', label: 'Recruit' },
 ];
 
@@ -56,6 +58,8 @@ const PACKET_ACTIONS: Record<string, string> = {
   release: 'releaseRequest',
   stabilize: 'stabilizeRequest',
   finishOff: 'finishOffRequest',
+  prepareExecution: 'prepareExecutionRequest',
+  execute: 'executeRequest',
   factionRecruit: 'factionRecruitRequest',
 };
 
@@ -64,6 +68,8 @@ const SERVER_FLAGS: Record<string, string> = {
   release: 'canRelease',
   stabilize: 'stabilize',
   finishOff: 'finishOff',
+  prepareExecution: 'prepareExecution',
+  execute: 'execute',
 };
 
 // While a passive job load is carried: Put down joins the menu, and the interact key on nothing opens this one first
