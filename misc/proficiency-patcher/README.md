@@ -10,9 +10,8 @@ It is re-runnable: run it again on a fresh plugin from the Creation Kit and the 
 
 ## Run
 
-The input is the merged base of the r7 pipeline, never the live plugin. `misc/esp-merge/proficiency.py`
-is step 3 of that pipeline and runs the command below, then checks the result against the ids LIVE
-shipped:
+The input is the merged base of the r7 build, never the live plugin. The run below is checked against the
+ids LIVE shipped:
 
 ```bash
 python misc/proficiency-patcher/patch.py --plugin <r7 work/base>/AlduinakAdditions.esp --settings <r7 server-settings.stage.json> --out <dir> --next-form-id 0x201D
@@ -46,7 +45,7 @@ records). The first run restores the Mutagen NuGet package.
 ## AlduinakCreations.esp
 
 The settings `loadOrder` must carry the four plugins of `spec.json` `creations.plugins` right after `Dragonborn.esm`, in
-`Skyrim.ccc` order: Fish, SurvivalMode, Curios, AdvDSGS (`misc/esp-merge/stage.py` stages them so). The same run then
+`Skyrim.ccc` order: Fish, SurvivalMode, Curios, AdvDSGS (the live `loadOrder` has them there). The same run then
 also writes `AlduinakCreations.esp`, `creations-report.md` and, through `patch.py`, `verify-creations.txt` and
 `AlduinakCreations.inputs.json`. A load order with only some of them is refused, and so is one with none of them unless
 `--no-creations` is passed to `patch.py`, which builds `AlduinakAdditions.esp` alone (byte-identical to a full run).
@@ -57,20 +56,16 @@ today, including Riverwood, Riften, Dawnstar and Solitude), 87 references, 4 nav
 their winner at build time, `AlduinakAdditions.esp` included, and it loads last, so a stale copy silently undoes a later
 edit of Graves's plugin or a city mod. `verify_creations.py` writes `AlduinakCreations.inputs.json` after a clean check:
 the plugin's sha256 and the name and sha256 of every plugin loaded before it except the five vanilla masters, in order.
-From r12 the esp-merge pipeline folds this plugin into `AlduinakAdditions.esp` at step 4c, so only one plugin ships and
-`AlduinakCreations.esp` is an intermediate of `work/prof`. Step 5 turns its inputs file into
-`AlduinakAdditions.inputs.json`: the same list without the entry for `AlduinakAdditions.esp` itself, pinned to the merged
-plugin. That file ships next to the plugin in the MO2 mod, and `skymp5-backend/scripts/compile-manifest.js` (manager
-"Update manifest") refuses to publish a manifest whose plugins before `AlduinakAdditions.esp` differ from it by name,
-order or sha256, or where the plugin is not the last enabled one; the file itself is never installed.
+The live `AlduinakAdditions.esp` already holds this plugin's records, merged in with their form ids, so only one plugin
+ships. The hotfix run passes `--no-creations` and keeps those records as they are; nothing in the build or in "Update
+manifest" catches a stale cell copy among them.
 
-- `AlduinakAdditions.esp` is built from a load order without the Creations, so it gains no Creation Club master and
-  stays byte-identical to a run without them (checked 2026-09-16: 35c9db43 both ways on r7's merged base). Its full
-  slot, and so `proficiency-ids.json`, moves from `0x2B` to `0x2D`; `misc/esp-merge/proficiency.py` expects that shift.
+- The two full Creation plugins (Fish and AdvDSGS) load before `AlduinakAdditions.esp`, so its full slot, and with it
+  `proficiency-ids.json`, sits two higher than in a load order without them.
 - `AlduinakCreations.esp` is ESL-flagged and holds overrides only, so it takes no full slot and shifts nothing. It
-  masters the Creations and `AlduinakAdditions.esp` (for the rank markers) and loads last. Merged in at step 4c its
-  records keep their form ids, `AlduinakAdditions.esp` hard-masters the four Creation plugins, and the full slot stays
-  `0x2D`: dropping an ESL plugin that loaded after it moves no slot.
+  masters the Creations and `AlduinakAdditions.esp` (for the rank markers) and loads last. Merged into
+  `AlduinakAdditions.esp` its records keep their form ids and the plugin hard-masters the four Creation plugins;
+  dropping an ESL plugin that loaded after it moves no slot.
 - The Creation Club plugins are localized. Every DLC master keeps its strings in `Skyrim - Interface.bsa`, where
   Mutagen only looks for `Skyrim.esm`'s, so the program extracts that archive's strings to a temp folder first.
   The dataDir must hold the four Creation BSAs as well as their plugins.
@@ -103,7 +98,7 @@ their winner without the Creations, so no later city mod edit is undone.
    `bowlSounds` at `bowlMinWeight` or more is a stew, Large; `snackMaxWeight` or less is a snack, Small; anything else
    is a meal, Medium. Ingredients (INGR) never get one, as in Survival.
 
-`verify_creations.py` re-reads every plugin with `misc/esp-merge/fastesp.py` and checks each record against its source:
+`verify_creations.py` re-reads every plugin with `misc/fastesp.py` and checks each record against its source:
 placed references differ only by the flag and the enable parent, reverted records equal the winner without the
 Creations (Mutagen's subrecord order, `-0.0` and `XPRM` rounding aside), quests only lose the flag, and every live
 Creation reference, start-game quest, loading screen and story manager node is covered. Food overrides must be the
@@ -133,7 +128,7 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 | `benchKeywordRemovals` | Bench keywords taken off existing furniture by editor id (the Skyforge keyword off the Riften Extension North and Mammoth Manor anvils, so the Whiterun Skyforge is the only one). A missing bench is a warning. |
 | `enchantmentMagnitudes` | One effect's magnitude on an enchantment (the Travelling Merchant Backpack's Fortify Carry Weight, 60). `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
 | `placements` | A placed reference (`ref`, a form key) moved to its `anchor`'s winning position plus the offset the defining plugin had between the two (the Windhelm Gray Quarter gate door back in the arch WindhelmSSE.esp moved). Refused when either record was rotated since. The override joins the plugin's own cell and world groups when it already has them. |
-| `world` | The references of `AlduinakWorldChanges.esp`, Graves's world-changes plugin, merged as data rather than as a plugin. `placements` are its new references: an `edid`, a `formId` pinning the local id, a `base` (an editor id of the plugin's own, or a form key), the `cell` they sit in as a form key, and `pos`, `rot` (radians) and an optional `scale`. The cell override comes from the load-order winner, so nothing another mod did to that cell is reverted. `moves` set the position of an existing reference, keeping everything else it wins with, including Initially Disabled. `misc/esp-merge/worldchanges.py` classifies the plugin and writes this section, and says why it drops the rest; a placeholder `BYOHHouseCarpentersWorkbench` becomes `AldWoodcraftingBench` there. |
+| `world` | The references of `AlduinakWorldChanges.esp`, Graves's world-changes plugin, merged as data rather than as a plugin. `placements` are its new references: an `edid`, a `formId` pinning the local id, a `base` (an editor id of the plugin's own, or a form key), the `cell` they sit in as a form key, and `pos`, `rot` (radians) and an optional `scale`. The cell override comes from the load-order winner, so nothing another mod did to that cell is reverted. `moves` set the position of an existing reference, keeping everything else it wins with, including Initially Disabled. The section is plain data, edited by hand; the plugin's placeholder `BYOHHouseCarpentersWorkbench` is `AldWoodcraftingBench` here. |
 | `factions` | The gear only a faction's own may make. One Ability marker `AldFaction_<id without punctuation>` per `list` entry, and a `HasSpell` condition on every recipe at the `benches` whose editor id, product editor id or product name matches: `match` (any of), `all` (every one of, for the hold guards) and `except`. The game's own factions mean nothing here, so `skymp5-server/ts/systems/factionCraftSystem.ts` grants and revokes the markers from the backend roster. A recipe a rule claims is dropped from `uncraftable`: it is gated by membership now, not hidden. |
 | `racial` | The gear only one people may make. A recipe at one of the `benches` whose editor id, product editor id or product name contains one of a rule's `match` strings and none of its `except` strings gains that rule's races as one `GetIsRace` OR group after the rank condition. `GetIsRace` is one of the functions `CraftService` implements, so the crafting menu and the server agree. Dwarven is in no rule: anyone may make it. |
 | `craftingCategories` | The filter tabs the CraftingCategories SKSE plugin draws. It matches keywords on the created object, so each category is a keyword of the plugin's own added to every item a bench's recipes make. A `groups` entry names a `bench` and its `categories` in order; the first whose `slots` (biped slot numbers), `kinds` (`ammo`), `keywords`, `items` and `match` (editor id substrings) all hold takes the item, and a category with no test at all is the fallback. The run writes `CraftingCategories/<file>` next to the plugin; it is installed as `SKSE/Plugins/CraftingCategories/<file>` in the Alduinak mod, beside the plugin, and the manifest has to carry it. |

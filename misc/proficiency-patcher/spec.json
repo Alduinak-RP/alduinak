@@ -2598,7 +2598,7 @@
   }
  ],
  "world": {
-  "comment": "AlduinakWorldChanges.esp (9776cba3), merged as spec data. Its Creation Kit dropped the Warbirds Whiterun Metropolis.esp master and rewrote every cell it opened, so only the references are carried: the new ones here, the nudges under \"moves\", and one disable under \"disableReferences\". misc/esp-merge/worldchanges.py regenerates and checks this section.",
+  "comment": "AlduinakWorldChanges.esp (9776cba3), merged as spec data. Its Creation Kit dropped the Warbirds Whiterun Metropolis.esp master and rewrote every cell it opened, so only the references are carried: the new ones here, the nudges under \"moves\", and one disable under \"disableReferences\". The section is plain data, edited by hand.",
   "placements": [
    {
     "edid": "AldWorldRef_00AA00",

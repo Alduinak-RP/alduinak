@@ -841,7 +841,7 @@ static class Steps
     // ---- world changes: the references of AlduinakWorldChanges.esp, carried as spec data --------------------------
     //
     // Graves built that plugin in a Creation Kit that dropped its .esp master and rewrote every cell it opened, so
-    // only its references are merged. misc/esp-merge/worldchanges.py classifies it and writes this section.
+    // only its references are carried, as plain spec data.
     public static void World(PatchContext c)
     {
         if (c.Spec["world"] is not JsonObject w) return;

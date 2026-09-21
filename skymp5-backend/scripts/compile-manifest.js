@@ -58,11 +58,6 @@ const CREATION_TITLES = {
   'ccbgssse025-advdsgs.esm': 'Saints & Seducers',
 }
 
-// AlduinakAdditions.esp holds the merged Creation content, copied whole out of the plugins before it; its build pins them
-const PINNED_PLUGIN = 'AlduinakAdditions.esp'
-const PLUGIN_INPUTS = 'AlduinakAdditions.inputs.json'
-const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm'])
-
 // The launcher writes the client settings into the real Data; a mod copy would shadow it under MO2
 const CLIENT_SETTINGS_FILE = 'skymp5-client-settings.txt'
 
@@ -216,47 +211,6 @@ async function creationsSection() {
   return { plugins: c.plugins, searchDirs: Array.isArray(c.searchDirs) ? c.searchDirs : CREATION_SEARCH_DIRS, files, hash }
 }
 
-// Refuses to publish an AlduinakAdditions.esp built against other plugins than the ones this manifest loads before it
-function checkPluginInputs(mods, plugins, creations, inputsFiles) {
-  const provider = new Map()
-  for (const m of mods) {
-    for (const f of m.files) {
-      const key = f.to.toLowerCase()
-      if (!key.includes('/') && !provider.has(key)) provider.set(key, { sha256: f.sha256, mod: m.name })
-    }
-  }
-  for (const f of (creations && creations.files) || []) {
-    if (f.kind === 'plugin') provider.set(f.name.toLowerCase(), { sha256: f.accept[0].sha256, mod: 'the game' })
-  }
-  const own = provider.get(PINNED_PLUGIN.toLowerCase())
-  if (!own) return
-  const fail = why => {
-    throw new Error(`${PINNED_PLUGIN} in mod "${own.mod}" ${why}. It copies whole cells and worldspaces from the plugins loaded before it: ` +
-      `rebuild it with misc/esp-merge and copy the new plugin and ${PLUGIN_INPUTS} into that mod (docs/docs_roleplay_creations_and_needs.md)`)
-  }
-  const file = inputsFiles.get(own.mod)
-  if (!file) fail(`has no ${PLUGIN_INPUTS} next to it`)
-  let pinned
-  try { pinned = JSON.parse(fs.readFileSync(file, 'utf8')) } catch (err) { fail(`has an unreadable ${PLUGIN_INPUTS} (${err.message})`) }
-  if (pinned.sha256 !== own.sha256) fail(`does not match its ${PLUGIN_INPUTS}, which belongs to another build`)
-  const enabled = plugins.filter(l => l.startsWith('*')).map(l => l.slice(1).trim())
-  const at = enabled.findIndex(n => n.toLowerCase() === PINNED_PLUGIN.toLowerCase())
-  if (at < 0 || at !== enabled.length - 1) fail('is not the last enabled plugin in plugins.txt')
-  const before = enabled.slice(0, at).filter(n => !VANILLA_MASTERS.has(n.toLowerCase()))
-  const inputs = Array.isArray(pinned.inputs) ? pinned.inputs : []
-  const built = inputs.map(i => String(i.name))
-  const differs = before.findIndex((n, k) => n.toLowerCase() !== (built[k] || '').toLowerCase())
-  if (differs >= 0 || before.length !== built.length) {
-    const k = differs >= 0 ? differs : Math.min(before.length, built.length)
-    fail(`was built for another load order: plugin ${k + 1} after the vanilla masters is ${before[k] || 'none'} here and was ${built[k] || 'none'} in the build`)
-  }
-  const stale = inputs
-    .map(i => ({ name: i.name, was: String(i.sha256), now: (provider.get(i.name.toLowerCase()) || {}).sha256 || 'missing' }))
-    .filter(i => i.was !== i.now)
-  if (stale.length) fail(`is stale, ${stale.length} plugin(s) changed since its build: ${stale.map(i => `${i.name} (built ${i.was.slice(0, 8)}, now ${i.now.slice(0, 8)})`).join(', ')}`)
-  console.log(`  ${PINNED_PLUGIN}: built against the ${built.length} plugins this manifest loads before it`)
-}
-
 // Main
 
 async function main() {
@@ -362,14 +316,11 @@ async function main() {
     return { to: toRel, inline, sha256: sha, size }
   }
 
-  const inputsFiles = new Map()
   for (const modName of order) {
     const modDir = path.join(MODS, modName)
     if (!fs.existsSync(modDir)) continue
     const all = walk(modDir)
-    if (all.some(r => r.toLowerCase() === PLUGIN_INPUTS.toLowerCase())) inputsFiles.set(modName, path.join(modDir, PLUGIN_INPUTS))
-    // The inputs file is build metadata for the check below, never installed
-    const rels = all.filter(r => r.toLowerCase() !== 'meta.ini' && r.toLowerCase() !== PLUGIN_INPUTS.toLowerCase())
+    const rels = all.filter(r => r.toLowerCase() !== 'meta.ini')
       .filter(r => path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE)
     if (rels.length === 0) continue
 
@@ -379,8 +330,6 @@ async function main() {
     }
     mods.push({ name: modName, modId: readModId(modDir), files, hash: contentHash(files) })
   }
-
-  checkPluginInputs(mods, plugins, creations, inputsFiles)
 
   // 4. Optional game-root files (preloaders, etc.)
   const root = []

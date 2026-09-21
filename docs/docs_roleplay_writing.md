@@ -245,8 +245,9 @@ the server's copy.
 
 In this order:
 
-1. Plugin: run the patcher with the `writing` section inside the r11 esp-merge
-   pipeline, then deploy the plugin (MO2 mod folder, the game Data folder,
+1. Plugin: run the patcher's hotfix build (`--hotfix --stage`, see
+   `misc/proficiency-patcher/README.md`), which runs the `writing` step, then
+   deploy the plugin (MO2 mod folder, the game Data folder,
    `build/dist/client/Data`), manager **Update manifest**, **Sync Data**.
 2. Server natives: a native server build (`scam_native.node`) with the game
    service stopped, for `setNamedItemBases`.

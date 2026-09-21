@@ -48,4 +48,4 @@ player's next launch.
 To roll back, delete the loose NIF, then repeat steps 2 to 5.
 
 Leave the stairs and the disabled grate `051685EA` as they are in the plugin, because the mesh is the fix. If a Creation
-Kit save drops the grate override, run it through `misc/esp-merge` before deploying, or the grate closes the stairs again.
+Kit save drops the grate override, restore it before deploying, or the grate closes the stairs again.
