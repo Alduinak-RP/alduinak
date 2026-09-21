@@ -70,12 +70,12 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Writing, Steps.Racial,
-       Steps.DisableReferences,
+       Steps.DisableReferences, Steps.DisableActors,
        Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.DisableReferences, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
+       Steps.Racial, Steps.DisableReferences, Steps.DisableActors, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
 if (report.Errors.Count > 0)
@@ -1119,6 +1119,46 @@ static class Steps
     }
 
     const int InitiallyDisabled = 0x800;
+    const int Deleted = 0x20;
+
+    // ---- actors: no placed NPC, living or dead, ever shows ----------------------------------------------------------
+    //
+    // The server spawns none of them, but the game still loads them. An enable parent decides over the flag, so an actor
+    // with one gets the player as parent, opposite: always off, the xEdit idiom for a removed reference.
+    public static void DisableActors(PatchContext c)
+    {
+        if (c.Spec["disableActors"] is not JsonObject spec) return;
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        var player = FormKey.Factory("000014:Skyrim.esm");
+        var keep = Edids(c, spec["except"]).Select(x => FormKey.Factory(x)).Append(player).ToHashSet();
+        int already = 0, parents = 0;
+        var disabled = new Dictionary<ModKey, int>();
+        var worlds = c.Mod.Worldspaces.Select(w => w.FormKey).ToHashSet();
+        foreach (var ctx in c.LoadOrder.PriorityOrder.PlacedNpc().WinningContextOverrides(c.Cache).ToList())
+        {
+            var r = ctx.Record;
+            if (keep.Contains(r.FormKey) || (r.MajorRecordFlagsRaw & Deleted) != 0) continue;
+            var off = r.EnableParent == null || r.EnableParent.Reference.FormKey == player && r.EnableParent.Flags.HasFlag(EnableParent.Flag.SetEnableStateToOppositeOfParent);
+            if ((r.MajorRecordFlagsRaw & InitiallyDisabled) != 0 && off) { already++; continue; }
+            // The cell comes from its own winner, not from the plugin the actor wins in
+            if (ctx.Parent?.Record is ICellGetter cell) cache.ResolveContext<ICell, ICellGetter>(cell.FormKey).GetOrAddAsOverride(c.Mod);
+            var rec = ctx.GetOrAddAsOverride(c.Mod);
+            rec.MajorRecordFlagsRaw |= InitiallyDisabled;
+            if (!off)
+            {
+                rec.EnableParent = new EnableParent { Reference = player.ToLink<IPlacedGetter>(), Flags = EnableParent.Flag.SetEnableStateToOppositeOfParent };
+                parents++;
+            }
+            disabled[ctx.ModKey] = disabled.GetValueOrDefault(ctx.ModKey) + 1;
+        }
+        // A worldspace added for its cells takes the fields of its last winner the plugin may master; the offset table only fits the file it came from
+        var notFrom = Edids(c, spec["notFrom"]).Select(n => ModKey.FromNameAndExtension(n)).ToHashSet();
+        var mask = new Worldspace.TranslationMask(defaultOn: true) { TopCell = false, SubCells = false, SubCellsTimestamp = false, SubCellsUnknown = false, OffsetData = false };
+        foreach (var w in c.Mod.Worldspaces.Where(w => !worlds.Contains(w.FormKey)))
+            w.DeepCopyIn(cache.ResolveAllContexts<IWorldspace, IWorldspaceGetter>(w.FormKey).First(x => !notFrom.Contains(x.ModKey)).Record, mask);
+        c.Note($"Disable actors: {disabled.Values.Sum()} newly disabled, {parents} of them given the player as enable parent, opposite; {already} already disabled");
+        c.Note($"Disable actors by winning plugin: {string.Join(", ", disabled.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key.FileName} {kv.Value}"))}");
+    }
 
     // ---- faction gear: only a member of that faction may make it --------------------------------------------------
     //

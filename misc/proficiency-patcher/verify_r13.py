@@ -21,6 +21,7 @@ PLAYER_REF = ('skyrim.esm', 0x14)
 # A localized plugin holds a string id in these, the output the text itself
 LOCALIZED = {'FULL', 'DESC'}
 CELL_GROUPS, WORLD_GROUPS = (6, 8, 9, 10), (1,)
+PLACED = {'REFR', 'ACHR', 'PGRE', 'PMIS', 'PARW', 'PBAR', 'PBEA', 'PCON', 'PFLA', 'PHZD'}
 # Subrecords made of form ids alone, where one left unrenumbered is an error rather than data that looks like one
 PLACED_IDS = {'NAME', 'XESP', 'XOWN', 'XLCN', 'XEZN', 'XLKR', 'XLRT', 'XLRL', 'XMRC', 'INAM'}
 FORM_IDS = {'ACHR': PLACED_IDS, 'REFR': PLACED_IDS, 'CELL': {'XCLR', 'LTMP', 'XCWT', 'XCCM', 'XCAS', 'XCMO', 'XCIM', 'XILL', 'XOWN', 'XLCN', 'XEZN'},
@@ -105,6 +106,8 @@ class Checker:
 
 
 def enable_parent(pl, data):
+    if b'XESP' not in data:
+        return None
     for t, v in parse_subs(data):
         if t == 'XESP':
             return pl.key(struct.unpack_from('<I', v, 0)[0]), v[4] & 1
@@ -160,7 +163,9 @@ def main():
     # Winners before the plugin: the records the output overrides and every actor's state; every record key feeds the form id check
     known = {here << 24 | k[1] for _, k in list(ri) + list(ro) if k[0] == me}
     disable_refs = {form_key(x) for x in spec.get('disableReferences', {}).get('refs', [])}
-    winners, actors, slot = {}, {}, 0
+    # A worldspace override takes its fields from the last winner outside these
+    not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
+    winners, actors, parents, slot = {}, {}, {}, 0
     for n in order[:here]:
         pl = Plugin(os.path.join(stage['dataDir'], n))
         if not (pl.flags & ESL or n.lower().endswith('.esl')):
@@ -168,18 +173,23 @@ def main():
         for r in scan(pl.buf):
             k = pl.key(r.fid)
             known.add(pos.get(k[0], 255) << 24 | k[1])
+            if r.type in PLACED:
+                parents[k] = (r.type, r.flags, enable_parent(pl, r.data()))
             if r.type == 'ACHR':
-                actors[k] = (n, r.flags, enable_parent(pl, r.data()))
-            if (r.type, k) in ro or r.type == 'REFR' and k in disable_refs:
+                actors[k] = (n, r.flags, parents[k][2])
+            if ((r.type, k) in ro or r.type == 'REFR' and k in disable_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
                 winners[(r.type, k)] = (pl, r.flags, r.data(), pl.container(r, CELL_GROUPS if r.type != 'CELL' else WORLD_GROUPS))
         pl.buf = None
     for (t, k), r in ro.items():
+        if t in PLACED:
+            parents[k] = (t, r.flags, enable_parent(out, r.data()))
         if t == 'ACHR':
-            actors[k] = (name, r.flags, enable_parent(out, r.data()))
+            actors[k] = (name, r.flags, parents[k][2])
     ck = Checker(order, known)
 
     # Every changed or added record is one a spec section explains
     allowed = patch.spec_allowed(a.spec)
+    switched = set()
     for (t, k), q in ro.items():
         r = ri.get((t, k))
         diff = None if r is None else ck.compare(t, inp, r.flags, r.data(), out, q.data()) or (r.flags & ~COMPRESSED != q.flags & ~COMPRESSED and f'flags {r.flags:#x} -> {q.flags:#x}')
@@ -205,10 +215,12 @@ def main():
                 why = f'moved from cell {cell} to {where}'
             if why:
                 problems.append(f'{label}: not {src.name}\'s actor Initially Disabled ({why})')
+            switched.add(k)
             checked[f'actors disabled (from {"the input" if r is not None else "the load order"})'] += 1
         elif t in ('CELL', 'WRLD') and r is None:
             src, flags, data, world = ref
-            why = ck.compare(t, src, flags, data, out, q.data())
+            # The offset table only fits the file it came from
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('OFST',))
             if q.flags & ~COMPRESSED != flags & ~COMPRESSED:
                 why = f'flags {flags:#x} -> {q.flags:#x}'
             elif world != where:
@@ -216,6 +228,8 @@ def main():
             if why:
                 problems.append(f'{label}: not the {src.name} record ({why})')
             checked[f'new {t} overrides equal to the winner'] += 1
+        elif t in ('CELL', 'WRLD'):
+            problems.append(f'{label}: a record the input already held changed ({diff})')
         elif t == 'REFR' and k in disable_refs:
             src, flags, data, cell = ref
             why = ck.compare(t, src, flags, data, out, q.data())
@@ -246,6 +260,12 @@ def main():
             if not flags & DISABLED or parent not in (None, (PLAYER_REF, 1)):
                 problems.append(f'ACHR {show(k)} from {winner} can still be enabled (flags {flags:#x}, enable parent {parent})')
             checked['actors covered'] += 1
+        # A reference whose enable parent is an actor switched off here goes with it, unless it is set to the opposite state
+        for k, (t, flags, parent) in parents.items():
+            if parent and parent[0] in switched and not flags & DELETED:
+                checked[f'{t} whose enable parent is an actor switched off{", opposite" if parent[1] else ""}'] += 1
+                if parent[1] and t != 'ACHR':
+                    problems.append(f'{t} {show(k)} turns on when its enable parent, actor {show(parent[0])}, is disabled')
     for k in disable_refs:
         final = ro.get(('REFR', k)) or ro.get(('ACHR', k))
         flags = final.flags if final is not None else winners.get(('REFR', k), (None, 0))[1]

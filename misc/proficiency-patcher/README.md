@@ -22,18 +22,21 @@ python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAddi
   reads the plugin from `dataDir`, so the run stops with exit code 5 unless `<dataDir>/AlduinakAdditions.esp`
   is the same file as `--plugin`. Without `--stage`, `--settings` must already be cut that way.
 - `--hotfix` runs only the steps of the hotfix list at the top of `Program.cs`: cooking, smithing, tempering,
-  tailoring, factions, uncraftable, writing, racial, the disabled references and the marker effects. The live
-  plugin already holds what the others build. Their sweeps of the load order touch only recipes the plugin does not
-  override yet and none a Creation Club plugin defines, so the tiers it ships stay as they are; the factions,
-  uncraftable and racial rules still read every recipe, the plugin's own overrides included, and the tailoring
-  `tiers` lists apply to the recipes they name. A named cooking or `addItems` recipe the sweep skips is not an
-  error. No `CraftingCategories` json is written unless the list runs the categories step. A new step goes into
-  both lists, in the full run's order.
+  tailoring, factions, uncraftable, writing, racial, the disabled references and actors and the marker effects. The
+  live plugin already holds what the others build. Their sweeps of the load order touch only recipes the plugin
+  does not override yet and none a Creation Club plugin defines, so the tiers it ships stay as they are; the
+  factions, uncraftable and racial rules still read every recipe, the plugin's own overrides included, and the
+  tailoring `tiers` lists apply to the recipes they name. A named cooking or `addItems` recipe the sweep skips is
+  not an error. No `CraftingCategories` json is written unless the list runs the categories step. A new step goes
+  into both lists, in the full run's order.
 - `--no-creations` keeps the Creation plugins in the load order: the plugin has mastered them since r12, so
   every winner is the one the game loads before it.
 - No `--next-form-id`: every record is found by editor id and reused, and a new one takes the plugin's own next
   form id. `--next-form-id <hex>` pins new own records to a block and refuses a plugin that already holds
   them, so it does not suit the live plugin.
+- `disableActors` copies about 2,650 cell and 27 worldspace records from their winners at run time and masters
+  the city mods whose actors it disables. Rerun it whenever a plugin before `AlduinakAdditions.esp` changes
+  (a city mod update, a new `DynDOLOD.esm`), or the plugin reverts those cells to the old copy.
 
 After the run, `proficiency-report.md` notes the counts per faction and race rule; a new marker spell is
 listed under the new records, and `proficiency-ids.json` must show the same local ids as before. The full slot is
@@ -60,7 +63,7 @@ records). The first run restores the Mutagen NuGet package.
    renumbers every form id, so records are then matched by editor id and compared structurally. The plugin
    may never master `DynDOLOD.esm`, `DynDOLOD.esp` or `Occlusion.esp`. Exit code 3 on any other difference,
    and `verify.txt` lists it. A spec section that adds or changes records of other types brings an allow
-   rule of its own (`meadery_allowed`, `spec_overrides`, `world_allowed`), listed in `spec_allowed`;
+   rule of its own (`meadery_allowed`, `spec_overrides`, `world_allowed`, `actors_allowed`), listed in `spec_allowed`;
 4. with `--stage`, runs `verify_r13.py`, which reads every plugin of `settings.stage.json` with `misc/esplib.py`
    alone and compares the output with the input and with the load order before it, so it still holds when a new
    master renumbers every form id: the masters are a superset of the input's in load order and never a generated
@@ -68,9 +71,11 @@ records). The first run restores the Mutagen NuGet package.
    `AldMastery_` marker spells and `AldMasteryMarkerEffect` are unchanged; every other record is unchanged up to
    renumbered form ids (a form id left unrenumbered in a form id field fails), or is a type the patcher writes, or
    one the spec's allow rules name; a changed actor is its winner before the plugin with only Initially Disabled
-   added and an enable parent turned into the player, opposite; a new cell or worldspace override is its winner's
-   record; a `disableReferences` reference only gains Initially Disabled; and `proficiency-ids.json` carries the
-   plugin's full slot. Exit code 3 on any problem, and `verify-r13.txt` lists it.
+   added and an enable parent turned into the player, opposite, and with `disableActors` no actor can still be
+   enabled and no reference hangs on one switched off with the opposite state; a new cell or worldspace override is
+   its winner's record (a worldspace: the last winner outside `notFrom`, without the offset table); a
+   `disableReferences` reference only gains Initially Disabled; and `proficiency-ids.json` carries the plugin's
+   full slot. Exit code 3 on any problem, and `verify-r13.txt` lists it.
 
 ## AlduinakCreations.esp
 
@@ -158,6 +163,7 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 | `benchKeywordRemovals` | Bench keywords taken off existing furniture by editor id (the Skyforge keyword off the Riften Extension North and Mammoth Manor anvils, so the Whiterun Skyforge is the only one). A missing bench is a warning. |
 | `enchantmentMagnitudes` | One effect's magnitude on an enchantment (the Travelling Merchant Backpack's Fortify Carry Weight, 60). `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
 | `disableReferences` | Placed references (`refs`, form keys) turned Initially Disabled: an override of the winner, or the plugin's own reference changed in place; one already disabled is left alone. The beehives and Stonewall Terrace pieces, the collision box that stayed in the gateway of the iron gate in the Whiterun outer wall once the gate opened, and the ceiling rubble, hall collapse and collision box blocking the Helgen keep escape tunnel, which the opening quest would clear. |
+| `disableActors` | Every placed actor of the load order, living or dead, is Initially Disabled, so the game shows no vanilla or mod NPC and no corpse (the server spawns none of them anyway). One with an enable parent gets the player as parent, opposite, the xEdit idiom for a removed reference, so no quest or marker turns it back on; that includes the already disabled ones whose parent could. `except` names actors to leave alone. Every cell holding one is overridden from its own winner, and a worldspace from its last winner outside `notFrom` (`DynDOLOD.esm`, whose large references would make it a master), without the offset table. References whose enable parent is such an actor go with it: the carriages and driver seats of the hold stables. |
 | `placements` | A placed reference (`ref`, a form key) moved to its `anchor`'s winning position plus the offset the defining plugin had between the two (the Windhelm Gray Quarter gate door back in the arch WindhelmSSE.esp moved). Refused when either record was rotated since. The override joins the plugin's own cell and world groups when it already has them. |
 | `world` | The references of `AlduinakWorldChanges.esp`, Graves's world-changes plugin, merged as data rather than as a plugin. `placements` are its new references: an `edid`, a `formId` pinning the local id, a `base` (an editor id of the plugin's own, or a form key), the `cell` they sit in as a form key, and `pos`, `rot` (radians) and an optional `scale`. The cell override comes from the load-order winner, so nothing another mod did to that cell is reverted. `moves` set the position of an existing reference, keeping everything else it wins with, including Initially Disabled. The section is plain data, edited by hand; the plugin's placeholder `BYOHHouseCarpentersWorkbench` is `AldWoodcraftingBench` here. |
 | `factions` | The gear only a faction's own may make. One Ability marker `AldFaction_<id without punctuation>` per `list` entry, and a `HasSpell` condition on every recipe at the `benches` whose editor id, product editor id or product name matches: `match` (any of), `all` (every one of, for the hold guards) and `except`. The game's own factions mean nothing here, so `skymp5-server/ts/systems/factionCraftSystem.ts` grants and revokes the markers from the backend roster. A recipe a rule claims is dropped from `uncraftable`: it is gated by membership now, not hidden. The first matching rule wins. `also` names further faction ids whose members may make it too: the markers form one OR group after the rank condition (the College of Winterhold or the Synod), each id needs an entry of its own, and a marker takes its name from the entry without `also` (an entry with no `match` or `all` only creates its marker). A claimed recipe loses every older faction marker and its `GetInFaction`, `GetPCInFaction` and `GetIsRace` conditions. A Creation Club recipe is claimed only by a rule with `"creations": true`. |

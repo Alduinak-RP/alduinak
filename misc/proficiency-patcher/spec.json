@@ -3337,6 +3337,13 @@
    "10553D:Skyrim.esm"
   ]
  },
+ "disableActors": {
+  "comment": "Every placed actor, living or dead, of every plugin before this one is Initially Disabled, and one with an enable parent gets the player as parent, opposite, so no quest or marker turns it back on. The server spawns none of them; the game would. except names actors to leave alone, by form key. A worldspace override added for their cells takes the fields of its last winner outside notFrom: DynDOLOD.esm is generated, and its own large references would make it a master.",
+  "except": [],
+  "notFrom": [
+   "DynDOLOD.esm"
+  ]
+ },
  "racial": {
   "benches": [
    "CraftingSmithingForge",

@@ -127,9 +127,15 @@ def world_allowed(spec):
         or (k[0] == 'REFR' and (k[1].lower(), k[2]) in moves)
 
 
+def actors_allowed(spec):
+    # disableActors overrides placed actors and adds the cells and worldspaces holding them; verify_r13.py checks each against its winner
+    on = 'disableActors' in json.load(open(spec, encoding='utf-8'))
+    return lambda k, rec: on and k[0] in ('ACHR', 'CELL', 'WRLD')
+
+
 def spec_allowed(spec):
     # Each spec section that adds or changes records of other types brings its own rule; verify_r13.py applies the same
-    rules = [f(spec) for f in (meadery_allowed, spec_overrides, world_allowed)]
+    rules = [f(spec) for f in (meadery_allowed, spec_overrides, world_allowed, actors_allowed)]
     return lambda k, rec: any(rule(k, rec) for rule in rules)
 
 
