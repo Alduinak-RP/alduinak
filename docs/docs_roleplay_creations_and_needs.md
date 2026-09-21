@@ -219,6 +219,10 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
 - Every recipe the server accepts costs `1 / needsFatigueCraftsPerHour[rank]`: 1/6, 1/12, 1/18, 1/24 of the bar, by the
   crafter's rank in the profession owning the recipe's bench (MasterySystem's craft keywords), Novice outside it. One
   recipe use is one craft, arrow bundles included.
+- A member of the bench's profession pays `needsFatigueMemberMult` (0.5) of that, so 12/24/36/48 crafts per bar by
+  rank; a non-member pays the full Novice cost. Imperials (`appearance.raceId` Imperial or the Imperial child race)
+  pay a further `needsFatigueImperialMult` (0.75) of every own-profession cost: crafts, a warrior's kill, a
+  woodworker's swing and a miner's ore. This is the Imperial racial passive; the plugin carries no effect for it.
 - Free: recipes at benches carrying `AldCraftingMead`, tempering (never sent to the server), and crafts whose inputs the
   crafter does not hold (MasterySystem's `holdsInputs`; the native side handles those as before).
 - Refills 1.6% per minute, online and offline, with no bed or inn bonus; a full bar may be spent at once.
@@ -227,7 +231,7 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." A bench the bar cannot pay one
   recipe at does not open.
 - The bar maps onto Survival's exhaustion scale as `(1 - fatigue) * 960` (`Survival_ExhaustionNeedMaxValue`), so a
-  Novice's six crafts land on 160, 320, 480, 640, 800 and 960.
+  non-member's six crafts land on 160, 320, 480, 640, 800 and 960.
 - Stages as in `Survival_NeedExhaustion.ApplyExhaustionStage` without sleep: Refreshed (1) below 160, Drained (2) from
   160, Tired (3) from 340, Weary (4) from 560, Debilitated (5) from 800. Survival's stage 0 is its Rested bonus from
   sleeping, which the server never grants. The character holds `Survival_ExhaustionStage<n>`: Drained to Debilitated

@@ -21,6 +21,9 @@ const IMPERIAL_CHILD = 0x2c659;
 const REDGUARD_CHILD = 0x2c658;
 const BRETON_CHILD = 0x2c65c;
 
+// Imperial and its child race, which Nibenese, Colovian and Akaviri children use
+export const IMPERIAL_RACES = new Set([IMPERIAL, IMPERIAL_CHILD]);
+
 export interface RaceEntry {
   speciesId: string;
   raceId: number;

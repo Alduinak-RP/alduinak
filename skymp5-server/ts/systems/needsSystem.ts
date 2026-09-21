@@ -5,6 +5,7 @@ import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
 import { keywordConditionsPass } from "./espmMagic";
 import { addSpellTo, removeSpellFrom, hex } from "./actorUtil";
 import { MasterySystem } from "./masterySystem";
+import { IMPERIAL_RACES } from "./charCreatorData";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -14,7 +15,7 @@ type Mp = any;
 // Hunger runs from 0 (full) to 1000 and drains only while the character is online; eating a food takes it down by the
 // amount its Survival hunger effect names (the effect's Survival_HungerRestoreEffectScript AmountToRestore global).
 // Fatigue is a bar from 0 to 1 that every accepted recipe draws on, by the crafter's rank in the profession owning the
-// recipe's bench (Novice outside it), and that a kill draws on too (needsKillFatigue, less for warriors); it refills at a
+// recipe's bench (Novice outside it, members pay half, Imperials less on own-profession work), and that a kill draws on too (needsKillFatigue, less for warriors); it refills at a
 // flat rate online and offline and maps onto Survival's exhaustion scale as (1 - fatigue) * 960. A craft the bar cannot pay for is refused before the native craft runs, and the
 // client's local craft is undone by resending its inventory.
 // Each need holds the Survival stage ability of its stage (screen effects stripped by AlduinakCreations.esp) and reduces a
@@ -41,6 +42,8 @@ type Mp = any;
 //   needsHungerStages             hunger at which stages 1-5 begin, default [80, 160, 340, 520, 770]
 //   needsHungerStageAbilities     false grants no Survival hunger stage abilities, default true
 //   needsFatigueCraftsPerHour     crafts one full bar pays for by rank [Novice, Adept, Expert, Master], default [6, 12, 18, 24]
+//   needsFatigueMemberMult        what a member of the bench's profession pays of that cost, default 0.5
+//   needsFatigueImperialMult      what an Imperial pays of any own-profession fatigue cost, default 0.75
 //   needsFatigueRegenPerMinute    bar fraction refilled per minute, default 0.016
 //   needsFatigueOfflineRegen      false refills only while online, default true
 //   needsFatigueFreeKeywords      bench keywords whose recipes cost nothing, default ["AldCraftingMead"]
@@ -158,6 +161,8 @@ export class NeedsSystem implements System {
     this.stageAbilities = all["needsHungerStageAbilities"] !== false;
     const crafts = numberList(all["needsFatigueCraftsPerHour"], DEFAULT_CRAFTS_PER_HOUR.length);
     this.craftsPerHour = crafts && crafts.every((c) => c > 0) ? crafts : DEFAULT_CRAFTS_PER_HOUR.slice();
+    this.memberMult = num("needsFatigueMemberMult", 0.5);
+    this.imperialMult = num("needsFatigueImperialMult", 0.75);
     this.regenPerMinute = num("needsFatigueRegenPerMinute", 0.016);
     this.fatigueOffline = all["needsFatigueOfflineRegen"] !== false;
     this.fatigueStages = numberList(all["needsFatigueStages"], DEFAULT_FATIGUE_STAGES.length) || DEFAULT_FATIGUE_STAGES.slice();
@@ -177,7 +182,7 @@ export class NeedsSystem implements System {
       return;
     }
     const probe = await this.resolveForms(ctx, free, s.dataDir, s.loadOrder);
-    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food amounts from the records (${PROBE_EFFECT} ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank, +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s)`);
+    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food amounts from the records (${PROBE_EFFECT} ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank (members x${this.memberMult}, Imperials x${this.imperialMult}), +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s)`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
@@ -340,26 +345,43 @@ export class NeedsSystem implements System {
 
   // A kill costs exhaustion points off the same bar crafting spends; warriors pay the smaller price
   applyKillFatigue(ctx: SystemContext, actorId: number, warrior: boolean): void {
-    this.applyExhaustion(ctx, actorId, warrior ? this.killFatigueWarrior : this.killFatigue);
+    this.applyExhaustion(ctx, actorId, warrior ? this.killFatigueWarrior * this.professionMult(ctx, actorId) : this.killFatigue);
   }
 
   // A swing of the woodcutter's axe; woodworkers pay the smaller price
   applyChopFatigue(ctx: SystemContext, actorId: number, woodworker: boolean): void {
-    this.applyExhaustion(ctx, actorId, woodworker ? this.chopFatigueOwn : this.chopFatigue);
+    this.applyExhaustion(ctx, actorId, this.chopPoints(ctx, actorId, woodworker));
   }
 
   // One ore off a vein; miners pay the smaller price
   applyMineFatigue(ctx: SystemContext, actorId: number, miner: boolean): void {
-    this.applyExhaustion(ctx, actorId, miner ? this.mineFatigueOwn : this.mineFatigue);
+    this.applyExhaustion(ctx, actorId, this.minePoints(ctx, actorId, miner));
   }
 
   // Whether the bar can still pay for one swing, checked before the station opens
   canChop(ctx: SystemContext, actorId: number, woodworker: boolean): boolean {
-    return this.canAfford(actorId, woodworker ? this.chopFatigueOwn : this.chopFatigue);
+    return this.canAfford(actorId, this.chopPoints(ctx, actorId, woodworker));
   }
 
   canMine(ctx: SystemContext, actorId: number, miner: boolean): boolean {
-    return this.canAfford(actorId, miner ? this.mineFatigueOwn : this.mineFatigue);
+    return this.canAfford(actorId, this.minePoints(ctx, actorId, miner));
+  }
+
+  private chopPoints(ctx: SystemContext, actorId: number, woodworker: boolean): number {
+    return woodworker ? this.chopFatigueOwn * this.professionMult(ctx, actorId) : this.chopFatigue;
+  }
+
+  private minePoints(ctx: SystemContext, actorId: number, miner: boolean): number {
+    return miner ? this.mineFatigueOwn * this.professionMult(ctx, actorId) : this.mineFatigue;
+  }
+
+  // The Imperial racial passive: less fatigue for work in their own profession
+  private professionMult(ctx: SystemContext, actorId: number): number {
+    try {
+      return IMPERIAL_RACES.has(Number((ctx.svr as Mp).get(actorId, "appearance")?.raceId) >>> 0) ? this.imperialMult : 1;
+    } catch {
+      return 1;
+    }
   }
 
   // An offline character or a server with needs switched off is never refused
@@ -451,8 +473,9 @@ export class NeedsSystem implements System {
 
   private craftCost(ctx: SystemContext, actorId: number, bench: number): number {
     const profession = this.mastery.professionOfBench(bench);
-    const rank = profession ? Math.max(0, this.mastery.rankOf(ctx, actorId, profession)) : 0;
-    return 1 / this.craftsPerHour[Math.min(rank, this.craftsPerHour.length - 1)];
+    const rank = profession ? this.mastery.rankOf(ctx, actorId, profession) : -1;
+    const base = 1 / this.craftsPerHour[clamp(rank, 0, this.craftsPerHour.length - 1)];
+    return rank >= 0 ? base * this.memberMult * this.professionMult(ctx, actorId) : base;
   }
 
   // Survival_NeedHunger.ApplyHungerStage: Well Fed only while the bonus lasts, otherwise Satisfied below the stage 2 value
@@ -602,6 +625,8 @@ export class NeedsSystem implements System {
   private stages = DEFAULT_STAGES.slice();
   private stageAbilities = true;
   private craftsPerHour = DEFAULT_CRAFTS_PER_HOUR.slice();
+  private memberMult = 0.5;
+  private imperialMult = 0.75;
   private regenPerMinute = 0.016;
   private fatigueOffline = true;
   private fatigueStages = DEFAULT_FATIGUE_STAGES.slice();

@@ -836,6 +836,8 @@ Survival hunger effect in the plugins.
 | `needsHungerStages` | `[80, 160, 340, 520, 770]` | Survival's stage values: Well Fed (after a meal empties hunger) ends at the first, Peckish, Hungry, Famished and Starving begin at the others; the second also starts the max stamina penalty |
 | `needsHungerStageAbilities` | `true` | Grant the Survival hunger stage ability of the current stage |
 | `needsFatigueCraftsPerHour` | `[6, 12, 18, 24]` | Recipes one full fatigue bar pays for at Novice, Adept, Expert, Master |
+| `needsFatigueMemberMult` | `0.5` | Share of that cost a member of the bench's profession pays |
+| `needsFatigueImperialMult` | `0.75` | Share an Imperial pays of every own-profession fatigue cost (crafts, warrior kills, woodworker swings, miner ore) |
 | `needsFatigueRegenPerMinute` | `0.016` | Share of the bar refilled per minute |
 | `needsFatigueOfflineRegen` | `true` | `false` refills the bar only while online |
 | `needsFatigueFreeKeywords` | `["AldCraftingMead"]` | Bench keywords whose recipes cost no fatigue |
