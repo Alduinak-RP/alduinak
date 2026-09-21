@@ -1,0 +1,1 @@
+Added a `setFov` method that writes the live player camera field of view (world and optionally first person, clamped to 20-170), serving as a binding for the `worldFOV` and `firstPersonFOV` fields of CommonLibSSE's PlayerCamera. Changing the INI settings alone does not reach the camera once the game is loaded. It returns the applied world FOV.

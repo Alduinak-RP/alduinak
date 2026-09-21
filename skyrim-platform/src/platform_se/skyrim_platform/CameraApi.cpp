@@ -13,6 +13,21 @@ Napi::Value CameraApi::SetFreeCameraMode(const Napi::CallbackInfo& info)
   return Napi::Boolean::New(info.Env(), camera->IsInFreeCameraMode());
 }
 
+// Writes the live camera FOV, which the engine does not re-read from the INI after load; returns the applied world FOV
+Napi::Value CameraApi::SetFov(const Napi::CallbackInfo& info)
+{
+  float world = NapiHelper::ExtractFloat(info[0], "worldFov");
+  float firstPerson = info[1].IsUndefined()
+    ? world
+    : NapiHelper::ExtractFloat(info[1], "firstPersonFov");
+  auto camera = RE::PlayerCamera::GetSingleton();
+  if (!camera)
+    throw NullPointerException("camera");
+  camera->worldFOV = std::clamp(world, 20.f, 170.f);
+  camera->firstPersonFOV = std::clamp(firstPerson, 20.f, 170.f);
+  return Napi::Number::New(info.Env(), camera->worldFOV);
+}
+
 Napi::Value CameraApi::WorldPointToScreenPoint(const Napi::CallbackInfo& info)
 {
   auto camera = RE::PlayerCamera::GetSingleton();

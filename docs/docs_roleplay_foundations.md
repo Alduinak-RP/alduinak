@@ -49,6 +49,11 @@ Rules:
   chat settings: **hide player names** (off by default, hides the whole
   nametag over other players) and **show form ids** (on by default, the
   `ffxxxxxx` line under the name).
+- It also has a **field of view** slider (70-170), and `/fov <70-170>` typed in
+  chat sets the same value without sending anything. The value is written into
+  the live camera through SkyrimPlatform's `setFov` after every load. Whichever
+  of this slider and the launcher's FOV slider was moved last wins; a player who
+  never moved either keeps their own INI value.
 
 Definition: `skymp5-front/src/constructorComponents/chat/channels/index.tsx`
 (`CHAT_CHANNELS`, `applyChannel`). To add/rename a channel, edit that array.

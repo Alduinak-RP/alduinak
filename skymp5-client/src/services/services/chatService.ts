@@ -3,6 +3,8 @@ import { logTrace } from "../../logging";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { MsgType } from "../../messages";
 import { FormView, getScreenResolution } from "../../view/formView";
+import { FovSettingsService } from "./fovSettingsService";
+import { readClientSettingNumber } from "./widgetMenuUtil";
 
 declare const window: any;
 
@@ -351,20 +353,24 @@ export class ChatService extends ClientListener {
     try {
       // @ts-expect-error (TODO: Remove in 2.10.0)
       const data = this.sp.getPluginSourceCode(this.pluginChatSettingsName, "PluginsNoLoad");
-      if (!data) return "{}";
+      if (!data) return JSON.stringify({ fov: FovSettingsService.currentFov(this.sp) ?? undefined });
       const parsed = JSON.parse(data.slice(2));
       if (!parsed || typeof parsed !== "object") return "{}";
-      this.applyNametagSettings(parsed);
-      return JSON.stringify(parsed);
+      this.applyChatSettings(parsed);
+      return JSON.stringify({ ...parsed, fov: FovSettingsService.currentFov(this.sp) ?? undefined });
     } catch (e) {
       return "{}";
     }
   }
 
-  // Nametag toggles live in the chat settings JSON; missing keys keep the defaults
-  private applyNametagSettings(parsed: Record<string, unknown>): void {
+  // Nametag toggles and the FOV live in the chat settings JSON; missing keys keep the defaults
+  private applyChatSettings(parsed: Record<string, unknown>): void {
     FormView.isDisplayingNicknames = parsed["hidePlayerNames"] !== true;
     FormView.isDisplayingActorIds = parsed["showFormIds"] !== false;
+    // A launcher slider moved since the chat FOV was saved wins over it
+    const launcherFov = readClientSettingNumber(this.sp, "fov", 0);
+    if (launcherFov > 0 && parsed["fovLauncher"] !== launcherFov) delete parsed["fov"];
+    FovSettingsService.setChatFov(typeof parsed["fov"] === "number" ? parsed["fov"] : null);
   }
 
   // Persist settings sent from the chat UI to disk so they survive a relaunch.
@@ -373,7 +379,8 @@ export class ChatService extends ClientListener {
     try {
       const parsed = JSON.parse(json);
       if (!parsed || typeof parsed !== "object") return;
-      this.applyNametagSettings(parsed);
+      parsed["fovLauncher"] = readClientSettingNumber(this.sp, "fov", 0);
+      this.applyChatSettings(parsed);
       this.sp.writePlugin(
         this.pluginChatSettingsName,
         "//" + JSON.stringify(parsed),

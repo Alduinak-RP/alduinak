@@ -16,8 +16,11 @@ const MAX_SHOUT_LENGTH = 100;
 const MAX_HISTORY_LENGTH = 20;
 
 const SHOUTREGEXP = /№(.*?)№/gi;
+const FOV_COMMAND = /^\/fov\s+(\d{2,3})$/i;
+const FOV_MIN = 70;
+const FOV_MAX = 170;
 
-// Chat settings (font size, transparency, lock, highlights, nametag toggles, window pos/size) persist via window.__alduinakChatSettings: the client injects saved values on mount and writes changes under Data/Platform since localStorage/CEF cache do not survive a relaunch
+// Chat settings (font size, transparency, lock, highlights, nametag toggles, field of view, window pos/size) persist via window.__alduinakChatSettings: the client injects saved values on mount and writes changes under Data/Platform since localStorage/CEF cache do not survive a relaunch
 const loadChatSettings = () => {
   try { return window.__alduinakChatSettings || {}; }
   catch (e) { return {}; }
@@ -50,6 +53,7 @@ const Chat = (props) => {
   const [fadeSeconds, setFadeSeconds] = useState(saved.fadeSeconds != null ? saved.fadeSeconds : 10);
   const [hidePlayerNames, setHidePlayerNames] = useState(saved.hidePlayerNames != null ? saved.hidePlayerNames : false);
   const [showFormIds, setShowFormIds] = useState(saved.showFormIds != null ? saved.showFormIds : true);
+  const [fov, setFov] = useState(saved.fov != null ? saved.fov : null);
   const [idle, setIdle] = useState(false);
   const idleTimerRef = useRef();
   const browserFocusedRef = useRef(false);
@@ -122,6 +126,14 @@ const Chat = (props) => {
   };
 
   const sendMessage = useCallback((text) => {
+    const fovCommand = text.trim().match(FOV_COMMAND);
+    if (fovCommand) {
+      setFov(Math.min(FOV_MAX, Math.max(FOV_MIN, Number(fovCommand[1]))));
+      updateInput('');
+      inputRef.current.textContent = '';
+      releaseFocus();
+      return;
+    }
     if (channel === SYSTEM_CHANNEL) return;
     const shout = text.match(SHOUTREGEXP);
     const shoutLen = shout
@@ -299,8 +311,9 @@ const Chat = (props) => {
 
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
-    persistChatSettings({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds });
-  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds]);
+    // Fov is saved once chat or the launcher supplies one; the client stamps it so a later launcher change wins
+    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds }, fov != null ? { fov } : {}));
+  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds, fov]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -463,6 +476,8 @@ const Chat = (props) => {
           setFadeSeconds={setFadeSeconds}
           customHighlights={customHighlights}
           setCustomHighlights={setCustomHighlights}
+          fov={fov}
+          setFov={setFov}
           onBack={() => {
             setSettingsOpened(false);
             if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) {
