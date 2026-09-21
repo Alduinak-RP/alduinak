@@ -103,7 +103,7 @@ For now, this should be all you need.
     "CONT": 86400000
   },
   
-  "forbiddenReloot": ["MISC", "WEAP", "SLGM", "SCRL", "ALCH", "INGR", "BOOK", "ARMO", "AMMO"]
+  "forbiddenReloot": ["MISC", "WEAP", "SLGM", "SCRL", "ALCH", "INGR", "BOOK", "ARMO", "AMMO", "LIGH"]
     
   "discordAuth": {
     "botToken": "[insert token here]",

@@ -220,11 +220,12 @@ Record types (see [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format)) t
 - Item types (`MISC`, `WEAP`, `BOOK`, ...) and `FLOR`/`TREE`: plugin-placed refs of that type can't be picked up or harvested at all. Player-dropped items stay lootable.
 - `CONT`: an emptied container never refills. Players can use any container as storage. A container reloot already pending in the database is dropped when the container loads. What a container holds on its first open is set by [`emptyContainers`](#emptycontainers).
 - `KEYM`: plugin-placed keys are never loaded by the server, so they are untouchable either way. Listing it documents that.
+- `LIGH`: plugin-placed torches, lanterns and other carryable lights stay where they are. Wall sconces are covered by [`untouchableBaseIds`](#untouchablebaseids).
 
 ```json5
 {
   // ...
-  "forbiddenReloot": ["MISC", "WEAP", "SLGM", "SCRL", "ALCH", "INGR", "BOOK", "ARMO", "AMMO", "KEYM", "CONT"]
+  "forbiddenReloot": ["MISC", "WEAP", "SLGM", "SCRL", "ALCH", "INGR", "BOOK", "ARMO", "AMMO", "KEYM", "CONT", "LIGH"]
   // ...
 }
 ```
@@ -263,10 +264,11 @@ Container base records that keep their plugin loot while `emptyContainers` is on
 ## untouchableBaseIds
 
 Base forms nobody can activate, as numbers or `"0x..."` strings. Defaults to the
-vanilla coin purses (flora that hands out leveled gold and respawns) and the
-loose salmon (`0x000F5ECA`, `0x000F5ECB`) and the Stones of Barenziah
+vanilla coin purses (flora that hands out leveled gold and respawns), the
+loose salmon (`0x000F5ECA`, `0x000F5ECB`), the Stones of Barenziah
 (`0x0007F8E1`, whose script would otherwise hand the stone to the first taker
-and disable it for everyone). The server sends the list to every
+and disable it for everyone) and the wall torch sconce with its torch
+(`0x0009151E`, `0x0009151F`). The server sends the list to every
 client on connect, which then blocks engine activation and shows no prompt for
 those forms. `[]` disables the check.
 

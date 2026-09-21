@@ -5,13 +5,15 @@ import { espmRefrFieldId, toFormId } from "./formIdUtil";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Vetoes activation of untouchableBaseIds (default: the vanilla coin purses, loose salmon and Stones of Barenziah); docs in docs_server_configuration_reference.md
+// Vetoes activation of untouchableBaseIds (default: the vanilla coin purses, loose salmon, Stones of Barenziah and wall torch sconces); docs in docs_server_configuration_reference.md
 const DEFAULT_UNTOUCHABLE_BASE_IDS = [
   0x000d790c, 0x000d8e7f, 0x000d8e80, 0x000d8e8a, 0x000d8e8b, 0x000d8e8c,
   // DeadSalmon01NoNail, DeadSalmon02NoNail
   0x000f5eca, 0x000f5ecb,
   // TGCrownGemActivator, the Stones of Barenziah; the veto also stops their take-and-disable script
   0x0007f8e1,
+  // RemovableTorchSconce01 and the RemovableTorch01 it places
+  0x0009151e, 0x0009151f,
 ];
 const MAX_ESPM_CACHE = 4096;
 
