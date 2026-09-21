@@ -27,9 +27,9 @@ type Mp = any;
 // Wire protocol - CustomPacket JSON:
 //   Client -> Server: { customPacketType: "needsRequest" }
 //   Server -> Client: { customPacketType: "needsState", hunger, stage, stageName, fatigue, fatigueStage, fatigueStageName,
-//                       staminaPenalty, magickaPenalty, closeCrafting? }
+//                       staminaPenalty, magickaPenalty, survivalMode, closeCrafting? }
 //                     hunger and fatigue are 0-100 (100 = full stomach, rested); the penalties are the 0-1 share of the
-//                     maximum removed; closeCrafting closes the Crafting Menu
+//                     maximum removed; survivalMode sets the client's Survival_ModeEnabled; closeCrafting closes the Crafting Menu
 //                     { customPacketType: "masteryNotice", text }
 //
 // Persistence: `private.needs` = { v, hunger, fatigue, at, stageSpell, fatigueSpell, wellFed } on the character's actor form.
@@ -57,6 +57,7 @@ type Mp = any;
 //   needsMineFatigue              exhaustion one ore off a vein costs, default 20
 //   needsMineFatigueMiner         what a miner pays instead, default 10
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
+//   needsSurvivalModeFlag         true sets the client's Survival_ModeEnabled to 1, if the HUD penalty segments need it, default false
 //   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
 //   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
 
@@ -177,6 +178,7 @@ export class NeedsSystem implements System {
     this.mineFatigue = num("needsMineFatigue", DEFAULT_WORK_FATIGUE, 0);
     this.mineFatigueOwn = num("needsMineFatigueMiner", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
     this.penalties = all["needsAttributePenalties"] !== false;
+    this.survivalModeFlag = all["needsSurvivalModeFlag"] === true;
     const free = Array.isArray(all["needsFatigueFreeKeywords"]) ? (all["needsFatigueFreeKeywords"] as unknown[]).filter((k) => typeof k === "string") as string[] : ["AldCraftingMead"];
 
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05));
@@ -597,6 +599,7 @@ export class NeedsSystem implements System {
       fatigueStageName: FATIGUE_STAGE_NAMES[fatigueStage],
       staminaPenalty: this.penalties ? share(attributePenaltyShare(entry.rec.hunger, this.stages[1], HUNGER_MAX)) : 0,
       magickaPenalty: this.penalties ? share(attributePenaltyShare(this.exhaustion(entry.rec), this.fatigueStages[1], this.exhaustionMax)) : 0,
+      survivalMode: this.survivalModeFlag,
     };
     const key = JSON.stringify(payload);
     if (!closeCrafting && !force && key === entry.sent) return;
@@ -669,6 +672,7 @@ export class NeedsSystem implements System {
   private mineFatigue = DEFAULT_WORK_FATIGUE;
   private mineFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
   private penalties = true;
+  private survivalModeFlag = false;
 
   private hungerSpells: number[] = [];
   private fatigueSpells: number[] = [];

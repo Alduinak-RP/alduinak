@@ -25,7 +25,6 @@ import Writing from './features/writing';
 import InteractPrompt from './features/interactPrompt';
 import PetPrompt from './features/petPrompt';
 import PetList from './features/petList';
-import NeedsMeter from './features/needsMeter';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -246,8 +245,6 @@ const Constructor = props => {
       return <PetPrompt data={rend} />;
     case 'petList':
       return <PetList data={rend} />;
-    case 'needsMeter':
-      return <NeedsMeter data={rend} />;
     case 'death':
       return (
         <DeathScreen seconds={rend.seconds} onChoice={rend.onChoice} />

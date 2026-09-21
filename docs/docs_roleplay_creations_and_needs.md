@@ -106,7 +106,7 @@ the merged plugin in the MO2 mod; "Update manifest" fails with the changed plugi
 - Survival's switch: `Survival_ModeEnabled`, `Survival_ModeToggle`, `Survival_ModeCanBeEnabled` and
   `Survival_ModeEnabledShared` at 0, `Survival_PlayerHasBeenPrompted` at 1. Survival's `DOBJ` override only adds the
   keys `SRVE`, `SRVS`, `SRVT` (these globals) and `SRCP`, `SRHP`, `SRSP`, `SRTP` (Update.esm penalty globals) and changes
-  no vanilla default object, so it is kept.
+  no vanilla default object, so it is kept; the HUD's red penalty segments rely on those keys.
 - Every reference the Creations place (5,733 REFR and 83 ACHR not already disabled, all 70 fishing spots included):
   Initially Disabled, enable parent removed.
 
@@ -215,7 +215,7 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   400, 52.4% at 600, 76.2% at 800, 100% at 1000. The client always leaves one point, so a starving character has max
   stamina 1.
 
-**Fatigue** is a bar from 0 to 1 (the HUD shows it as a percentage).
+**Fatigue** is a bar from 0 to 1 (notices show it as a percentage).
 - Every recipe the server accepts costs `1 / needsFatigueCraftsPerHour[rank]`: 1/6, 1/12, 1/18, 1/24 of the bar, by the
   crafter's rank in the profession owning the recipe's bench (MasterySystem's craft keywords), Novice outside it. One
   recipe use is one craft, arrow bundles included.
@@ -271,8 +271,7 @@ quests running and Survival on. So the server sends the share (`staminaPenalty`,
   non-finite percentage and ignores one it receives (`skymp5-client/src/sync/actorvalues.ts`).
 
 The server's regeneration check knows only base rates, so it may hold a Well Fed character's stamina regeneration
-(+10%) back to the base rate, as it does for regeneration bonuses from gear. The vanilla HUD's red penalty segment
-needs Survival's globals, which stay off, so the needs HUD shows the penalty instead.
+(+10%) back to the base rate, as it does for regeneration bonuses from gear.
 
 Decisions inside the native `onCraft`, `onActivate` and `onEatItem` hooks are made from memory; property writes, Papyrus
 calls and packets wait for `updateAsync`. Online characters are brought up to date and saved every minute; a stage
@@ -290,14 +289,21 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
 **Protocol**
 - Client -> Server: `{ customPacketType: "needsRequest" }`
 - Server -> Client: `{ customPacketType: "needsState", hunger, stage, stageName, fatigue, fatigueStage, fatigueStageName,
-  staminaPenalty, magickaPenalty, closeCrafting? }`; hunger and fatigue are 0-100 (100 = full stomach, rested), the
-  penalties the 0-1 share of the maximum removed.
+  staminaPenalty, magickaPenalty, survivalMode, closeCrafting? }`; hunger and fatigue are 0-100 (100 = full stomach,
+  rested), the penalties the 0-1 share of the maximum removed; survivalMode sets the client's `Survival_ModeEnabled`
+  (`needsSurvivalModeFlag`).
 - Notices reuse `masteryNotice`.
 
-**HUD:** `skymp5-client/src/services/services/needsService.ts` draws widget 34 (`skymp5-front/src/features/needsMeter`;
-32 is the new character intro, 33 the writing window), two thin bars at the lower left: the hunger stage and the
-fatigue stage with the bar's percentage, each followed by "Max stamina -N%" or "Max magicka -N%" while a penalty
-applies. It lives in the CEF page, so it hides with the interface and under blocking menus.
+**HUD:** there is no needs widget. As in vanilla Survival, the penalty shows as a red segment at the end of the stamina
+bar (hunger) and the magicka bar (fatigue). `needsService.ts` writes the share into the Update.esm globals the Survival
+`DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent` (0x2EDF, `SRHP`) and
+`Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100, `Survival_ColdAttributePenaltyPercent`
+(0x2EDE, `SRCP`) at 0. Only when `needsSurvivalModeFlag` is on (default off) does it also set the Creation's
+`Survival_ModeEnabled` (`SRVE`, esl 0x826) to 1, for the case where the HUD draws the segments only in Survival mode;
+Survival's quests stay disabled. That flag can bring Survival side effects on each client (arrow and lockpick weight
+counting towards carry weight, a Warmth readout, sleep and wait menus, the food effects' hunger script), so turn it on
+only if the console check below needs it. `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
+The segments follow Survival's curve, starting at stage 2, and the stage notices remain the text cue.
 
 ## Deploy runbook
 
@@ -369,21 +375,22 @@ None of these has been run yet.
   around the Blue Palace. Load each, walk it, watch an NPC path, and send the client log of any crash.
 - The load order check passes on a Steam install.
 - An old launcher cannot install (update message) or join (`launcherOutdated` in the backend log).
-- Hunger falls over an online hour and the HUD stage changes; a new character starts Satisfied; eating a cooked meal
+- Hunger falls over an online hour and the stage notice changes; a new character starts Satisfied; eating a cooked meal
   raises it; the stage ability appears in Active Effects without a screen effect.
-- At hunger 400 (about 2 online hours from a new character) the stamina bar is about 29% shorter and the HUD says "Max
-  stamina -29%"; eating a stew brings the bar back at the same fill level. With the bar half empty, neither the
+- At hunger 400 (about 2 online hours from a new character) the stamina bar is about 29% shorter and its last 29% is red; eating a stew brings the bar back at the same fill level. With the bar half empty, neither the
   penalty growing nor a meal makes the bar jump back a second later (the server correcting a percentage).
 - Six Novice crafts: the magicka bar shrinks after each (about 20% per craft from the second), Active Effects shows
   Drained, Tired, Weary, then Debilitated, and magicka stops regenerating at Debilitated; after the sixth, max magicka
   is 1 point, spells fail to cast, and the client log shows no errors; resting 10 minutes restores 16% of the bar and
   part of the magicka maximum.
 - With a stamina or magicka penalty on, stop the game service for over a minute (the client returns to the main menu)
-  or change character, then rejoin: the maximum matches the HUD penalty again, never shorter or longer than before. A
+  or change character, then rejoin: the maximum matches the red segment again, never shorter or longer than before. A
   client hot reload leaves it unchanged.
 - A Windhelm mead, a City of Dawnstar eel pie and a Windhelm bread restore 2, 220 and 18 hunger (0.2%, 22% and 1.8% of
   the bar).
-- The HUD bars hide with the interface toggle and under the inventory and map, and come back.
+- Console `set Survival_HungerAttributePenaltyPercent to 30` shows red on the stamina bar; if it only shows with
+  `Survival_ModeEnabled` at 1 set `needsSurvivalModeFlag` to true, then check that arrows add no carry weight. The
+  health bar shows no red.
 - Crafting at a forge as a Novice outside Blacksmith costs 1/6; the seventh craft is refused and the menu closes; reopen
   the inventory: the refused item must be absent and its inputs present (the resent inventory corrects the client);
   logging out for 10 minutes refills 16%.

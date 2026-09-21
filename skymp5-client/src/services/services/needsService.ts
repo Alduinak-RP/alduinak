@@ -4,37 +4,30 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { onWidgetsCleared } from "./widgetMenuUtil";
-import { FunctionInfo } from "../../lib/functionInfo";
 import { applyNeedsPenalties } from "../../sync/attributePenalty";
 
-// for the browser-side widget setter (executed inside the CEF browser)
-declare const window: any;
-
-const WIDGET_ID = 34;
+// Globals the Survival DOBJ keys name: the HUD draws their 0-100 value as the red end of a meter
+const UPDATE_ESM = "Update.esm";
+const HUNGER_PENALTY_GLOBAL = 0x2edf;
+const EXHAUSTION_PENALTY_GLOBAL = 0x2ee0;
+const COLD_PENALTY_GLOBAL = 0x2ede;
+const SURVIVAL_PLUGIN = "ccQDRSSE001-SurvivalMode.esl";
+const SURVIVAL_MODE_GLOBAL = 0x826;
 
 interface NeedsState {
-  hunger: number;
-  stage: number;
-  stageName: string;
-  fatigue: number;
-  fatigueStage: number;
-  fatigueStageName: string;
   staminaPenalty: number;
   magickaPenalty: number;
+  survivalMode: boolean;
 }
 
-// Module-level so the browser-side widget setter can read it (runtime injection).
-let needs: NeedsState | null = null;
-
 /**
- * Hunger and fatigue HUD. The server (NeedsSystem) owns both values and pushes needsState whenever they change; this
- * service draws them, applies the max stamina (hunger) and max magicka (fatigue) penalty shares the server sends, and
- * closes the Crafting Menu when the server refused a craft for fatigue. The widget lives in
- * the CEF page, so it hides with the interface and under blocking menus like every other widget.
+ * Hunger and fatigue on the vanilla HUD. The server (NeedsSystem) owns both values and pushes needsState whenever they
+ * change; this service applies the max stamina (hunger) and max magicka (fatigue) penalty shares the server sends, shows
+ * them as Survival's red meter segments, and closes the Crafting Menu when the server refused a craft for fatigue.
  *
  *   Client -> Server: { "customPacketType": "needsRequest" }
  *   Server -> Client: { "customPacketType": "needsState", "hunger", "stage", "stageName", "fatigue", "fatigueStage",
- *                       "fatigueStageName", "staminaPenalty", "magickaPenalty", "closeCrafting"? }
+ *                       "fatigueStageName", "staminaPenalty", "magickaPenalty", "survivalMode", "closeCrafting"? }
  */
 export class NeedsService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -42,7 +35,6 @@ export class NeedsService extends ClientListener {
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     // Login resets every widget, and a front reload drops them silently
     onWidgetsCleared(this.controller, () => this.controller.once("update", () => {
-      this.draw();
       sendCustomPacket(this.controller, { customPacketType: "needsRequest" });
     }));
   }
@@ -50,15 +42,10 @@ export class NeedsService extends ClientListener {
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
     const content = parseCustomPacket(event);
     if (!content || content["customPacketType"] !== "needsState") return;
-    needs = {
-      hunger: Number(content["hunger"]) || 0,
-      stage: Number(content["stage"]) || 0,
-      stageName: typeof content["stageName"] === "string" ? content["stageName"] as string : "",
-      fatigue: Number(content["fatigue"]) || 0,
-      fatigueStage: Number(content["fatigueStage"]) || 0,
-      fatigueStageName: typeof content["fatigueStageName"] === "string" ? content["fatigueStageName"] as string : "",
+    this.needs = {
       staminaPenalty: Number(content["staminaPenalty"]) || 0,
       magickaPenalty: Number(content["magickaPenalty"]) || 0,
+      survivalMode: content["survivalMode"] === true,
     };
     const closeCrafting = content["closeCrafting"] === true;
     this.controller.once("update", () => {
@@ -67,36 +54,27 @@ export class NeedsService extends ClientListener {
         this.sp.callNative("TESModPlatform", "CloseMenu", undefined, Menu.Crafting);
       }
       this.applyPenalties();
-      this.draw();
     });
   }
 
   private applyPenalties(): void {
     const player = this.sp.Game.getPlayer();
-    if (!needs || !player) return;
-    applyNeedsPenalties(player, needs.staminaPenalty, needs.magickaPenalty);
+    if (!this.needs || !player) return;
+    applyNeedsPenalties(player, this.needs.staminaPenalty, this.needs.magickaPenalty);
+    this.setSurvivalHud(this.needs);
   }
 
-  private draw(): void {
-    if (!needs) return;
-    this.sp.browser.executeJavaScript(new FunctionInfo(this.needsWidgetSetter).getText({ needs, WIDGET_ID }));
-  }
-
-  // Runs inside the CEF browser. Only injected vars + window are available.
-  // No spread syntax: it breaks after FunctionInfo stringification (8d7c0c05).
-  private needsWidgetSetter = () => {
-    const widget = {
-      type: "needsMeter",
-      id: WIDGET_ID,
-      hunger: needs ? needs.hunger : 0,
-      stage: needs ? needs.stage : 0,
-      stageName: needs ? needs.stageName : "",
-      fatigue: needs ? needs.fatigue : 0,
-      fatigueStageName: needs ? needs.fatigueStageName : "",
-      staminaPenalty: needs ? needs.staminaPenalty : 0,
-      magickaPenalty: needs ? needs.magickaPenalty : 0,
+  // Never Survival_ModeEnabledShared: vanilla Update.esm scripts read that one
+  private setSurvivalHud(needs: NeedsState): void {
+    const set = (id: number, plugin: string, value: number): void => {
+      const global = this.sp.GlobalVariable.from(this.sp.Game.getFormFromFile(id, plugin));
+      if (global) global.setValue(value);
     };
-    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
-    window.skyrimPlatform.widgets.set(others.concat([widget]));
-  };
+    set(HUNGER_PENALTY_GLOBAL, UPDATE_ESM, Math.round(needs.staminaPenalty * 100));
+    set(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM, Math.round(needs.magickaPenalty * 100));
+    set(COLD_PENALTY_GLOBAL, UPDATE_ESM, 0);
+    set(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN, needs.survivalMode ? 1 : 0);
+  }
+
+  private needs: NeedsState | null = null;
 }
