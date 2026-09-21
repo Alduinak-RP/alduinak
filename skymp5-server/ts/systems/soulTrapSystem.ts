@@ -7,7 +7,7 @@ import { AfterlifeSystem } from "./afterlifeSystem";
 type Mp = any;
 
 // Soul Trap: a hit carrying a soul trap effect marks its target, and a death before the effect ends fills one of the caster's soul gems.
-// Players have black souls, so only an empty black soul gem takes them; a player whose soul was taken is sent to the Soul Cairn (AfterlifeSystem).
+// Players have black souls, so only an empty black soul gem takes them; a player whose soul an executioner or staff took is sent to the Soul Cairn (AfterlifeSystem).
 
 const HIT_EVENT = "onPapyrusEvent:OnHit";
 // Only marked actors are polled, and a respawn takes seconds.
@@ -67,7 +67,12 @@ const viewOf = (d: Uint8Array): DataView => new DataView(d.buffer, d.byteOffset,
 export class SoulTrapSystem implements System {
   systemName = "SoulTrapSystem";
 
-  constructor(private log: Log, private companions?: { isCompanionActor(actorId: number): boolean }, private afterlife?: AfterlifeSystem) { }
+  constructor(
+    private log: Log,
+    private companions?: { isCompanionActor(actorId: number): boolean },
+    private afterlife?: AfterlifeSystem,
+    private factions?: { canExecute(actorId: number): boolean },
+  ) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
@@ -135,8 +140,8 @@ export class SoulTrapSystem implements System {
     }
     notifyActor(mp, casterId, "Soul captured!");
     // The victim is dead here, so it is only marked and its respawn takes it to the Soul Cairn
-    if (player) this.afterlife?.sendToSoulCairn(targetId, `soul trapped by ${hex(casterId)}`);
-    this.log(`[soultrap] ${hex(casterId)} trapped the ${kind} soul of ${hex(targetId)} in gem ${hex(gemId)}`);
+    const sent = player && !!this.factions?.canExecute(casterId) && !!this.afterlife?.sendToSoulCairn(targetId, `soul trapped by ${hex(casterId)}`);
+    this.log(`[soultrap] ${hex(casterId)} trapped the ${kind} soul of ${hex(targetId)} in gem ${hex(gemId)}${player && !sent ? ", the player stays unmarked" : ""}`);
   }
 
   // Smallest empty gem that holds the soul: black souls need a gem that can hold NPC souls, white souls a regular one

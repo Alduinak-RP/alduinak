@@ -111,6 +111,8 @@ type TranslationStrings = { [K in keyof typeof translations['ru']]: string };
 let strings: TranslationStrings = translations['en'];
 let characters: (CharacterSlot | null)[] = [];
 let maxCharacters = 3;
+// Empty slots the server will not create in while the living limit is reached; hidden
+let lockedSlots: number[] = [];
 let selectedSlot: number | null = null;
 let confirmDeleteSlot: number | null = null;
 let intro: StartIntro | null = null;
@@ -145,6 +147,7 @@ function resetIntro(): void {
  *     { "customPacketType": "characterSelectMenu",
  *       "maxCharacters": 3,
  *       "characters": [ { "name": "Lydia", "info": "..." }, null, null ],
+ *       "lockedSlots": [ 2 ],
  *       "intro": { "pages": [ { "caption": "...", "text": "...", "align": "left" } ], "question": "...",
  *                  "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ] } }
  *
@@ -182,6 +185,7 @@ export class CharacterSelectService extends ClientListener {
       case 'characterSelectMenu':
         characters = Array.isArray(content["characters"]) ? content["characters"] as (CharacterSlot | null)[] : [];
         maxCharacters = typeof content["maxCharacters"] === 'number' ? content["maxCharacters"] : Math.max(characters.length, 1);
+        lockedSlots = Array.isArray(content["lockedSlots"]) ? (content["lockedSlots"] as unknown[]).filter((i): i is number => Number.isInteger(i)) : [];
         selectedSlot = null;
         confirmDeleteSlot = null;
         intro = parseIntro(content["intro"]);
@@ -208,7 +212,7 @@ export class CharacterSelectService extends ClientListener {
     switch (eventKey) {
       case events.select:
         // Dead slots can't be selected; they are only deletable.
-        if (Number.isInteger(slot) && !characters[slot]?.dead) { selectedSlot = slot; this.renderMenu(); }
+        if (Number.isInteger(slot) && !characters[slot]?.dead && lockedSlots.indexOf(slot) < 0) { selectedSlot = slot; this.renderMenu(); }
         break;
       case events.play:
         // Play loads the selection or starts creation if empty; dead slots refused, server is the authority.
@@ -330,7 +334,7 @@ export class CharacterSelectService extends ClientListener {
 
   private menuArgs(): Record<string, unknown> {
     return {
-      characters, maxCharacters, selectedSlot, confirmDeleteSlot, events, strings, WIDGET_ID,
+      characters, maxCharacters, lockedSlots, selectedSlot, confirmDeleteSlot, events, strings, WIDGET_ID,
       intro, introScreen, introPages, introPage, introPick, INTRO_WIDGET_ID, INTRO_PAGE_WIDGET_ID, INTRO_LIST_WIDGET_ID,
     };
   }
@@ -388,7 +392,8 @@ export class CharacterSelectService extends ClientListener {
 
     for (let i = 0; i < maxCharacters; i++) {
       const character = characters[i];
-      const headerTags = i === 0 ? [] : ["ELEMENT_STYLE_MARGIN_EXTENDED"];
+      if (!character && lockedSlots.indexOf(i) >= 0) continue;
+      const headerTags = widget.elements.length === 0 ? [] : ["ELEMENT_STYLE_MARGIN_EXTENDED"];
 
       if (confirmDeleteSlot === i) {
         widget.elements.push({ type: "text", text: (character && character.name) || strings.unnamed, tags: headerTags });

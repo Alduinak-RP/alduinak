@@ -95,9 +95,10 @@ All messages use `MsgType.CustomPacket` with a JSON dump in `contentJsonDump`.
   "maxCharacters": 3,
   "characters": [
     { "name": "Lydia",  "info": "Level 3 Nord — Whiterun" },
-    null,
+    { "name": "Ulfric", "info": "In Sovngarde", "dead": false },
     null
   ],
+  "lockedSlots": [],
   "intro": {
     "pages": [
       { "text": "In 4E 210, ..." },
@@ -110,8 +111,12 @@ All messages use `MsgType.CustomPacket` with a JSON dump in `contentJsonDump`.
 ```
 
 - `maxCharacters` — number of slots to show (defaults to `characters.length`).
-- `characters[i]` — a `{ name, info }` summary for a filled slot, or `null`
-  for an empty slot. `info` is an optional one-line description.
+- `characters[i]` — a `{ name, info, dead }` summary for a filled slot, or
+  `null` for an empty slot. `info` is an optional one-line description; a
+  character in an afterlife shows "In Sovngarde" or "In the Soul Cairn" and
+  stays playable. `dead` rows are struck out and can only be deleted.
+- `lockedSlots` — empty slot indices the server will not create in (the living
+  limit is reached). The client hides them.
 - `intro` — optional new character intro. The server sends it while its
   `startLocations` list is not empty (see the server configuration reference).
 
@@ -226,3 +231,11 @@ to one stays playable but is confined to it.
   Sovngarde is closed by its data (the Skuldafn portal is initially disabled),
   so this catches staff teleports and the Soul Cairn portals. Staff must clear
   `private.afterlife` before moving such a character out.
+- **Soul trap**: only a caster with the faction `execute` permission, or staff
+  with the `factions` cap, sends a player to the Soul Cairn. Anyone else still
+  fills the black soul gem, and the player is not marked.
+- **An extra slot**: a character in an afterlife no longer counts toward
+  `characterSelectMaxCharacters`, so its profile may create another living
+  character. The character keeps its slot and stays playable. Its faction ranks
+  are released at once, as for a perma-death. The server refuses creation
+  while the living limit is reached, whatever the client shows.

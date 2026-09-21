@@ -266,7 +266,8 @@ The Forsworn, the Dawnguard and the Bards College have no uniform yet.
   `nameFor` puts it in front of chat names.
 - **Staff** whose tier has the `factions` cap (every tier by default) see
   every faction in the type tabs and may do everything, the leader rank included.
-- **Deleted and perma-dead characters** lose their ranks automatically: the
+- **Deleted and perma-dead characters**, and characters sent to Sovngarde or
+  the Soul Cairn, lose their ranks automatically: the
   character's own rows at once, and the rows shared by every character of the
   account once no living character is left. Each removal writes a staff log line.
 - **Uniforms**: leaders and ranks with `issuesUniform` hand the faction's item

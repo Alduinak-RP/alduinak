@@ -6,6 +6,7 @@ import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
+import { REALMS, afterlifeOf, isFallen } from "./afterlifeSystem";
 
 type Mp = any;
 
@@ -14,8 +15,10 @@ function randomInteger(min: number, max: number) {
   return Math.floor(rand);
 }
 
-// Slots per player; override with the "characterSelectMaxCharacters" server setting (1-10)
+// Living characters per player; override with the "characterSelectMaxCharacters" server setting (1-10)
 const DEFAULT_MAX_CHARACTERS = 3;
+// Slot indices a character may keep; each fallen character opens one more slot up to this
+const MAX_SLOTS = 10;
 
 // Fresh characters start with a miner's outfit and pocket change (Skyrim.esm: ClothesMinerClothes, ClothesMinerBoots, Gold001).
 // Overridable via the "startingItems" server setting.
@@ -104,13 +107,13 @@ function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
 }
 
 // Character-select protocol (gated by the "characterSelect" server setting;
-// slot count via "characterSelectMaxCharacters", 1-10, default 3).
+// living characters via "characterSelectMaxCharacters", 1-10, default 3; each fallen character adds a slot).
 // When enabled the server no longer auto-spawns on connect; it sends the player
 // their character slots and waits for a selection (matches the client's
 // CharacterSelectService). Flag off (default) keeps the original
 // single-character behaviour, so enabling can never brick login on its own.
 //   Server -> Client:
-//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info} | null ], intro?: {pages, question, locations: [{id,label}]} }
+//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]} }
 //   Client -> Server:
 //     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot, start?: locationId }
 export class Spawn implements System {
@@ -289,28 +292,39 @@ export class Spawn implements System {
     } catch { return ""; }
   }
 
+  // Characters never change slot, since faction rows, character names and starter grants are keyed by it
   private slotMap(ctx: SystemContext, profileId: number): (number | undefined)[] {
     const mp = ctx.svr as unknown as Mp;
-    const slots: (number | undefined)[] = new Array(this.maxCharacters).fill(undefined);
+    const taken: (number | undefined)[] = [];
     const unassigned: number[] = [];
+    let fallen = 0;
     for (const a of ctx.svr.getActorsByProfileId(profileId)) {
       // Crash handle for deleting characters
       let s: unknown;
       try { s = mp.get(a, "private.charSlot"); }
       catch { continue; }
-      if (Number.isInteger(s) && (s as number) >= 0 && (s as number) < this.maxCharacters && slots[s as number] === undefined) {
-        slots[s as number] = a;
+      if (isFallen(mp, a)) fallen++;
+      if (Number.isInteger(s) && (s as number) >= 0 && (s as number) < MAX_SLOTS && taken[s as number] === undefined) {
+        taken[s as number] = a;
       } else {
         unassigned.push(a);
       }
     }
+    const size = Math.min(MAX_SLOTS, Math.max(this.maxCharacters + fallen, taken.length));
+    const slots = Array.from({ length: size }, (_, i) => taken[i]);
     for (const a of unassigned) {
-      const free = slots.indexOf(undefined);
+      let free = slots.indexOf(undefined);
+      if (free < 0 && slots.length < MAX_SLOTS) free = slots.push(undefined) - 1;
       if (free < 0) break;
       slots[free] = a;
       try { mp.set(a, "private.charSlot", free); } catch { /* form vanished */ }
     }
     return slots;
+  }
+
+  // Fallen characters do not count against the living limit
+  private canCreate(mp: Mp, slots: (number | undefined)[]): boolean {
+    return slots.filter((a) => a !== undefined && !isFallen(mp, a)).length < this.maxCharacters;
   }
 
   private isPermaDead(mp: Mp, actorId: number): boolean {
@@ -347,18 +361,21 @@ export class Spawn implements System {
   private sendCharacterList(ctx: SystemContext, userId: number, profileId: number): void {
     const mp = ctx.svr as unknown as Mp;
     const slots = this.slotMap(ctx, profileId);
-    const characters = slots.map((actorId, i) =>
-      actorId !== undefined
-        ? { name: this.characterName(ctx, actorId) || `Character ${i + 1}`, dead: this.isPermaDead(mp, actorId) }
-        : null);
+    const characters = slots.map((actorId, i) => {
+      if (actorId === undefined) return null;
+      const name = this.characterName(ctx, actorId) || `Character ${i + 1}`;
+      const realm = afterlifeOf(mp, actorId);
+      return realm ? { name, dead: false, info: `In ${REALMS[realm].label}` } : { name, dead: this.isPermaDead(mp, actorId) };
+    });
+    const lockedSlots = this.canCreate(mp, slots) ? [] : slots.flatMap((a, i) => (a === undefined ? [i] : []));
     const intro = this.startLocations.length
       ? { pages: INTRO_PAGES, question: INTRO_QUESTION, locations: this.startLocations.map(({ id, label }) => ({ id, label })) }
       : undefined;
     ctx.gm.emit(CHARACTER_LIST_EVENT, profileId, slots
-      .map((actorId, slot) => (actorId === undefined ? null : { slot, actorId, dead: this.isPermaDead(mp, actorId) }))
+      .map((actorId, slot) => (actorId === undefined ? null : { slot, actorId, dead: isFallen(mp, actorId) }))
       .filter((e) => e !== null));
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
-      customPacketType: "characterSelectMenu", maxCharacters: this.maxCharacters, characters, intro,
+      customPacketType: "characterSelectMenu", maxCharacters: slots.length, characters, lockedSlots, intro,
     }));
   }
 
@@ -370,16 +387,23 @@ export class Spawn implements System {
 
   private onSelectCharacter(ctx: SystemContext, userId: number, slot: number, start: unknown): void {
     const auth = this.pending.get(userId);
-    if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= this.maxCharacters) return;
+    if (!auth || !Number.isInteger(slot) || slot < 0) return;
 
     const mp = ctx.svr as unknown as Mp;
     const slots = this.slotMap(ctx, auth.profileId);
+    if (slot >= slots.length) return;
     let actorId = slots[slot];
     const isNew = actorId === undefined;
 
     // Permanently dead characters are locked: the body remains in the world but can never be played again
     if (!isNew && actorId !== undefined && this.isPermaDead(mp, actorId)) {
       this.log("Refusing to play permanently dead character", actorId.toString(16), "in slot", slot);
+      this.sendCharacterList(ctx, userId, auth.profileId);
+      return;
+    }
+
+    if (isNew && !this.canCreate(mp, slots)) {
+      this.log(`Refusing character creation in slot ${slot} for profile ${auth.profileId}: living limit reached`);
       this.sendCharacterList(ctx, userId, auth.profileId);
       return;
     }
@@ -671,7 +695,7 @@ export class Spawn implements System {
 
   private onDeleteCharacter(ctx: SystemContext, userId: number, slot: number): void {
     const auth = this.pending.get(userId);
-    if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= this.maxCharacters) return;
+    if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= MAX_SLOTS) return;
 
     const actorId = this.slotMap(ctx, auth.profileId)[slot];
     if (actorId !== undefined) {

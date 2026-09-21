@@ -1,12 +1,13 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, CharacterListEntry } from "./system";
+import { System, Log, SystemContext, Content, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, AFTERLIFE_EVENT, CharacterListEntry } from "./system";
 import { AccessPayload, FactionBackend, RosterRow, factionBackendOf, filterAccessForSlot } from "../backendFactionApi";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { addItemTo, isNear, isPlayerActor, nameShownTo, userOf } from "./actorUtil";
 import { formIdFromConfig } from "./formIdUtil";
 import { ITEM_TYPES } from "./itemCatalog";
 import { HousingSystem } from "./housingSystem";
+import { isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
 import { adminAudit } from "./discordAlerts";
 
@@ -152,6 +153,9 @@ export class FactionSystem implements System {
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
     ctx.gm.on(CHARACTER_RETIRED_EVENT, (profileId: number, slot: number, actorId: number) => this.release(profileId, slot, actorId, this.realName(actorId), "deletion", 0));
+    ctx.gm.on(AFTERLIFE_EVENT, (profileId: number, slot: number, actorId: number) => {
+      if (profileId > 0 && slot >= 0) this.release(profileId, slot, actorId, this.realName(actorId), "perma-death", 0);
+    });
 
     this.loadAccessFile();
     this.log(`[factions] ready, ${this.accessByRef.size} faction-only door(s) and container(s)`);
@@ -876,10 +880,7 @@ export class FactionSystem implements System {
     this.releasing.add(key);
     let othersAlive = false;
     try {
-      othersAlive = (this.mp.getActorsByProfileId(profileId) as number[]).some((a) => {
-        if (a >>> 0 === actorId) return false;
-        try { return this.mp.get(a, "private.permaDead") !== true; } catch { return false; }
-      });
+      othersAlive = (this.mp.getActorsByProfileId(profileId) as number[]).some((a) => a >>> 0 !== actorId && !isFallen(this.mp, a));
     } catch { /* keep the shared rows */ othersAlive = true; }
     backend.releaseCharacter(profileId, slot, !othersAlive)
       .then(({ removed, payload }) => {
@@ -1016,6 +1017,11 @@ export class FactionSystem implements System {
   // Whether the character carries one faction permission anywhere; other systems gate on it
   hasFactionPermission(actorId: number, key: rules.Permission): boolean {
     return this.factionsWith(actorId, key).length > 0;
+  }
+
+  // Staff count as holding the execute permission
+  canExecute(actorId: number): boolean {
+    return this.isStaff(actorId) || this.hasFactionPermission(actorId, "execute");
   }
 
   // The factions whose rank gives this character the permission; FactionCraftSystem gates the craft markers on it

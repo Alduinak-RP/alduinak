@@ -418,6 +418,10 @@ Searches for `index.js` if a directory specified.
 }
 ```
 
+## characterSelectMaxCharacters
+
+With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots.
+
 ## startPoints
 
 Contains a list of spawn points, one of which will be chosen at random. With `characterSelect` on, a new character only uses them when `startLocations` is `[]`; the single-character login path always uses them.
