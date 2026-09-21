@@ -142,6 +142,7 @@ export class SearchSystem implements System {
     const mp = ctx.svr as Mp;
     const previous = typeof mp.onPutItem === "function" ? mp.onPutItem : null;
     mp.onPutItem = (targetId: number, actorId: number, baseId: number, count: number): boolean => {
+      this.log(`[put] ${(actorId >>> 0).toString(16)} puts ${(baseId >>> 0).toString(16)} x${count} into ${(targetId >>> 0).toString(16)}`);
       if (this.stuck(ctx, targetId >>> 0, actorId >>> 0, baseId >>> 0)) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;

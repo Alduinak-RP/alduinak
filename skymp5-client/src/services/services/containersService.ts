@@ -9,6 +9,7 @@ import { PutItemMessage } from "../messages/putItemMessage";
 import { TakeItemMessage } from "../messages/takeItemMessage";
 import { SweetTaffySweetCantDropService } from "./sweetTaffySweetCantDropService";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { logTrace } from "../../logging";
 
 export class ContainersService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -41,12 +42,14 @@ export class ContainersService extends ClientListener {
                         printConsole(`[${i}] ${JSON.stringify(diff.entries[i])}`);
                     }
                     const msgs = diff.entries
-                        .filter((entry) =>
+                        .filter((entry) => {
                             // TODO: review this condition, seems to be incorrect
-                            entry.count > 0
-                                ? sweetCantDropService.canDropOrPutItem(entry.baseId)
-                                : true,
-                        )
+                            const allowed = entry.count > 0 ? sweetCantDropService.canDropOrPutItem(entry.baseId) : true;
+                            if (!allowed) {
+                                logTrace(this, "Not putting", entry.baseId.toString(16), "x" + entry.count);
+                            }
+                            return allowed;
+                        })
                         .filter((entry) => entry.count !== 0)
                         .map((entry) => {
                             const entryCopy = JSON.parse(JSON.stringify(entry)) as typeof entry;
@@ -64,10 +67,13 @@ export class ContainersService extends ClientListener {
                             return msg;
                         });
 
-                    msgs.forEach((msg) => this.controller.emitter.emit("sendMessage", {
-                        message: msg,
-                        reliability: "reliable"
-                    }));
+                    msgs.forEach((msg) => {
+                        logTrace(this, msg.t === MsgType.PutItem ? "Put" : "Take", msg.baseId.toString(16), "x" + msg.count, "target", msg.target.toString(16));
+                        this.controller.emitter.emit("sendMessage", {
+                            message: msg,
+                            reliability: "reliable"
+                        });
+                    });
 
                     // Turn 1,2,3,4,5 changes into 1,1,1,1,1 when moving items one by one
                     diff.entries.forEach((entry) => {
