@@ -195,8 +195,8 @@ const ACTOR_TYPES = ["ActorTypeNPC", "ActorTypeCreature", "ActorTypeUndead", "Ac
 const PLAYER_KEYWORD = "ActorTypeNPC";
 
 const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
-  // Potions are crafting-menu recipes at the lab since the proficiency plugin; the herbs, the tasting and any brew at a meadery boiler count too.
-  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: ["AldCraftingMead"], activateTypes: ["FLOR", "TREE"], activatePrefixes: ["CraftingAlchemyWorkbench"], eatIngredient: true },
+  // A brewed potion counts, opening the lab does not; herbs, tasting and meadery brews count too.
+  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: ["AldCraftingMead"], activateTypes: ["FLOR", "TREE"], eatIngredient: true },
   // Tempering never reaches the server as a craft, so the grindstone and the
   // workbench cannot count. Anything made at a forge, anvil or smelter counts, clothing included.
   blacksmith: {

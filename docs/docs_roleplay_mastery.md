@@ -165,7 +165,8 @@ Benches:
 
 - **Alchemy labs** open the crafting menu (keyword `AldCraftingAlchemy`) with
   the potion recipes; the vanilla brewing menu is gone from every lab of the
-  load order.
+  load order. Only a brewed potion counts as Alchemist work there; opening the
+  lab earns nothing.
 - **Woodcrafting Bench** (`AldWoodcraftingBench`, the Hearthfire carpenter's
   workbench model, keyword `AldCraftingWoodcrafting`) is a new furniture record
   for placing in the Creation Kit; the existing Hearthfire carpenter's
