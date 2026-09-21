@@ -216,6 +216,11 @@ the same time. Restart the `AlduinakManager` service after changing
 `server-manager/src`, but never while a web job runs. See
 `docs/docs_web_server_manager.md` for the security model and runbook.
 
+The agent also runs the daily game restart (`src/restartSchedule.js`): `say` warnings
+from 1 hour before `AUTO_RESTART_AT` (backend `.env`, default `04:00`, `off` disables
+it), then a Restart job that archives the logs. Test it with
+`node tools/test-restart-schedule.js`.
+
 ## Configuration (environment variables)
 
 | Var | Default | Purpose |

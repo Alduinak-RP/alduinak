@@ -154,6 +154,7 @@ const backendEnv = [
   { key: 'MANAGER_AGENT_SECRET',      label: 'Agent secret',        type: 'secret', group: 'Web manager', help: 'Shared secret the backend signs agent calls with, at least 32 characters.' },
   { key: 'MANAGER_LOG_DIR',           label: 'Manager log folder',  type: 'text',   group: 'Web manager', placeholder: 'C:\\logs\\manager', help: 'Web jobs, their logs, the busy lock and the audit files.' },
   { key: 'MANAGER_AUDIT_WEBHOOK_URL', label: 'Audit Discord webhook', type: 'secret', group: 'Web manager', help: 'Optional private staff channel webhook that mirrors manager actions and failed logins.' },
+  { key: 'AUTO_RESTART_AT',           label: 'Daily restart time',  type: 'text',   group: 'Web manager', placeholder: '04:00', help: 'Local HH:MM when the agent restarts the game server and archives the logs, with in-game warnings from 1 hour before. off disables it. Read live. Default 04:00.' },
 ]
 
 module.exports = { serverSettings, backendEnv }

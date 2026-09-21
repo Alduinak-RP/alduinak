@@ -13,6 +13,7 @@ const services = require('./services')
 const managerLock = require('./managerLock')
 const modsync = require('./modsync')
 const { createConsoleRelay } = require('./relayClient')
+const { createRestartSchedule } = require('./restartSchedule')
 const { maskSettings, secretValues, redactText } = require('./settingsMask')
 
 const backendModule = name => require(path.join(config.paths.backend, 'sources', name))
@@ -437,7 +438,16 @@ function createAgent(overrides = {}) {
       server.listen(port, host, () => {
         server.off('error', reject)
         markInterrupted()
-        if (!deps.relay) relay.connect()
+        if (!deps.relay) {
+          relay.connect()
+          createRestartSchedule({
+            at: () => config.autoRestartAt,
+            say: text => relay.command(`say ${text}`),
+            restart: () => startJob('game.restart', { discordId: 'scheduler', username: 'Daily restart', ip: '127.0.0.1' }),
+            gameRunning: async () => (await deps.statusAll()).game === 'SERVICE_RUNNING',
+            log: text => { console.log(`[schedule] ${text}`); pushConsole(`[schedule] ${text}`, 'status') },
+          }).start()
+        }
         resolve(server)
       })
     })

@@ -90,9 +90,10 @@ function chatLogDir() {
 }
 
 const GAME_LOG_FILES = ['chat.log', 'admin.log', 'pvp.log', 'pk.log', 'trading.log', 'bounty.log', 'writing.log']
+// The backend opens these per write, so they can be archived while it runs
+const AUDIT_LOG_FILES = ['ban.log', 'faction.log']
 
-// The nssm-configured stdout/stderr files for a service, plus the gamemode's
-// chat.log for the game server (written directly, not via nssm).
+// nssm stdout/stderr files plus, for the game server, the gamemode and backend audit logs
 async function serviceLogFiles(svc) {
   const name = await serviceName(svc)
   const files = []
@@ -104,6 +105,7 @@ async function serviceLogFiles(svc) {
     for (const f of GAME_LOG_FILES) {
       files.push(path.join(chatLogDir(), f))
     }
+    for (const f of AUDIT_LOG_FILES) files.push(path.join(config.auditLogDir, f))
   }
   return files
 }

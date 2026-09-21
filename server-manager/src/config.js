@@ -99,6 +99,12 @@ module.exports = {
     get dir()    { return readEnv('MANAGER_LOG_DIR') || path.join(module.exports.logDir, 'manager') },
   },
 
+  // Daily game restart time (local HH:MM, or off), read live from the backend .env
+  get autoRestartAt() { return readEnv('AUTO_RESTART_AT') || '04:00' },
+
+  // Backend audit logs (ban.log, faction.log), mirroring auditLog.js
+  get auditLogDir() { return readEnv('BAN_LOG_DIR') || module.exports.logDir },
+
   // GitHub Actions dispatch for the CI Rebuild button (needs a PAT with actions:write).
   // token is a getter so a PAT saved on the Settings tab works without a manager restart.
   github: {
