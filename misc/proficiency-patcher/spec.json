@@ -3128,6 +3128,18 @@
     ]
    },
    {
+    "id": "hold:winterhold",
+    "also": [
+     "faction:college-of-winterhold"
+    ],
+    "name": "Winterhold or the College",
+    "match": [
+     "Winterhold Battlemage",
+     "IARBucklerWinterhold",
+     "IARShieldWinterhold"
+    ]
+   },
+   {
     "id": "hold:haafingar",
     "name": "Guard of Haafingar",
     "all": [
