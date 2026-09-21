@@ -168,7 +168,10 @@ grindstone included:
 - the Wheel of Pain Amulet (IARConanAmulet);
 - Orgnum's Dagger of Immersive Weapons;
 - the Dragon Knight heavy and light armour of Immersive Armors: cuirasses,
-  boots, gauntlets, helmets and both shields.
+  boots, gauntlets, helmets and both shields;
+- the Dragonbone Ebonsteel set of Immersive Armors: the bulky breastplate,
+  boots and gauntlets, every heavy helm, the hood and the shield, which the
+  Dragonbone term no longer spares.
 
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
