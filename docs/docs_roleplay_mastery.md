@@ -166,7 +166,9 @@ grindstone included:
 - Immersive Armors' Vanguard Plate, open and closed helmet included (the
   AVExpansion Nordic Vanguard set stays craftable);
 - the Wheel of Pain Amulet (IARConanAmulet);
-- Orgnum's Dagger of Immersive Weapons.
+- Orgnum's Dagger of Immersive Weapons;
+- the Dragon Knight heavy and light armour of Immersive Armors: cuirasses,
+  boots, gauntlets, helmets and both shields.
 
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
