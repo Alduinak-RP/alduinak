@@ -34,12 +34,33 @@
     flex-direction: column;
     // Proper separators with breathing room between each option.
     > div {
-      padding: 16px 0;
+      padding: 8px 0;
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
     }
     > div:last-child {
       border-bottom: none;
     }
+  }
+  // Half-size variants of the shared slider and checkbox.
+  .skyrimSlider {
+    font-size: 16px;
+    height: 72px;
+  }
+  .skyrimSlider_slider {
+    margin-top: 12px;
+  }
+  .skyrimSlider_mark__number {
+    font-size: 16px;
+    margin-top: 6px;
+  }
+  .checkbox_text {
+    font-size: 16px;
+  }
+  .checkbox_container img {
+    height: 27px;
+  }
+  .checkbox {
+    zoom: 0.5;
   }
   .chat-highlights {
     display: flex;

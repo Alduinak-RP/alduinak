@@ -1,5 +1,6 @@
 import React from 'react';
 import { SkyrimFrameProps } from '../../interfaces/frame';
+import { assetUrl } from '../../utils/assetUrl';
 import './SkyrimFrame.scss';
 
 interface FrameItemProps {
@@ -18,7 +19,7 @@ const FrameItem = ({
   return (
         <div
             style={{
-              backgroundImage: `url(${require(`./img/${name}.svg`).default})`,
+              backgroundImage: `url(${assetUrl(require(`./img/${name}.svg`))})`,
               backgroundRepeat: 'repeat',
               height: `${height}px`,
               width: `${width}px`,
