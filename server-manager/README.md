@@ -152,7 +152,7 @@ Each Build button then does the JS/packaging work:
 | Button | Does |
 |--------|------|
 | **Game Server** | Bundles the TypeScript → `build/dist/server/dist_back/skymp5-server.js`, then prunes `build/dist/server` to the deploy set. `scam_native.node` (from CI) and `gamemode.js` are preserved. |
-| **Launcher** | Builds the Electron installer `AlduinakLauncher.exe` → `build/launcher`. |
+| **Launcher** | Builds the Electron installer `AlduinakLauncher.exe` → `build/launcher`, plus `AlduinakLauncher.zip` for the website (launchers from 2.4.0 update from the zip at `PACKAGE_URL` in `routes/version.js`; older ones from the nginx exe). |
 | **Client** | Runs the backend `build-client` script (`populate-files.js` + `merge-files.js`) to zip `build/dist/client/Data` into `skymp-client.zip` + `data/files-version.json` for the launcher to download. The version is taken from `CLIENT_VERSION` in the backend `.env` - set it from the **Client** version field before building. |
 
 **Missing prerequisites are installed automatically.** On Windows each build

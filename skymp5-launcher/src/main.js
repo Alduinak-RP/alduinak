@@ -1508,22 +1508,43 @@ function downloadToFile(url, dest, onProgress, redirectsLeft = 5) {
   })
 }
 
+// The website ships the installer inside a zip; a plain exe at the same URL still works
+function unpackUpdate(pkg, dest) {
+  const fd = fs.openSync(pkg, 'r')
+  const magic = Buffer.alloc(2)
+  try { fs.readSync(fd, magic, 0, 2, 0) } finally { fs.closeSync(fd) }
+  if (magic.toString('latin1') !== 'PK') {
+    fs.renameSync(pkg, dest)
+    return
+  }
+  send('update:progress', { phase: 'extract' })
+  const exes = new AdmZip(pkg).getEntries().filter(e => !e.isDirectory && /\.exe$/i.test(e.entryName))
+  const entry = exes.find(e => /(^|\/)AlduinakLauncher[^/]*\.exe$/i.test(e.entryName)) || (exes.length === 1 ? exes[0] : null)
+  if (!entry) throw new Error('The update package has no launcher installer.')
+  fs.writeFileSync(dest, entry.getData())
+  fs.rmSync(pkg, { force: true })
+}
+
 // In-app launcher update: download the new installer, run it silently, and let
 // it relaunch us (--force-run). Replaces the "open the download page" flow.
 ipcMain.handle('app:installUpdate', async () => {
   try {
     const data = await fetchJSON(`${config.apiUrl}/api/version`)
-    if (!data.downloadUrl) return { ok: false, error: 'No download URL is configured on the server.' }
+    const url = data.packageUrl || data.downloadUrl
+    if (!url) return { ok: false, error: 'No download URL is configured on the server.' }
     // The installer is executed with the user's privileges, so refuse to fetch
     // it over anything but HTTPS (no plain-http, no redirect downgrade).
-    if (!/^https:/i.test(data.downloadUrl)) {
+    if (!/^https:/i.test(url)) {
       return { ok: false, error: 'Refusing to install an update from a non-HTTPS URL.' }
     }
 
+    const pkg  = path.join(os.tmpdir(), 'AlduinakLauncher-update.pkg')
     const dest = path.join(os.tmpdir(), 'AlduinakLauncher-update.exe')
     send('update:progress', { phase: 'download', received: 0, total: 0 })
-    await downloadToFile(data.downloadUrl, dest, (received, total) =>
+    await downloadToFile(url, pkg, (received, total) =>
       send('update:progress', { phase: 'download', received, total }))
+    try { fs.rmSync(dest, { force: true }) } catch {}
+    unpackUpdate(pkg, dest)
 
     send('update:progress', { phase: 'install' })
     // /S silent + --force-run: NSIS replaces our files and relaunches the app.

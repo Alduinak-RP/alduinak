@@ -444,7 +444,14 @@ class Builder {
         fs.renameSync(path.join(config.paths.launcherOut, exe), path.join(config.paths.launcherOut, config.launcherArtifact))
       }
     } catch {}
-    this.line(`\n✓ Launcher built → ${path.join(config.paths.launcherOut, config.launcherArtifact)}`)
+    const exePath = path.join(config.paths.launcherOut, config.launcherArtifact)
+    this.line(`\n✓ Launcher built → ${exePath}`)
+    // The website serves the installer zipped; nginx keeps serving the exe to launchers up to 2.3.0
+    const zipPath = exePath.replace(/\.exe$/i, '.zip')
+    const zip = await this.run('powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', `Compress-Archive -Force -LiteralPath '${exePath}' -DestinationPath '${zipPath}'`],
+      config.paths.launcherOut, 'launcher: zip the installer for the website', null, false)
+    this.line(zip.ok ? `✓ Website package → ${zipPath}` : '[launcher] could not zip the installer - zip it by hand before uploading it to the website')
     return { ok: true, out: config.paths.launcherOut }
   }
 

@@ -1317,6 +1317,8 @@ window.electronAPI.onUpdateProgress(d => {
   if (!launcherVersionEl.dataset.updating) return
   if (d.phase === 'download' && d.total > 0) {
     launcherVersionEl.textContent = `Downloading update… ${Math.round(d.received / d.total * 100)}%`
+  } else if (d.phase === 'extract') {
+    launcherVersionEl.textContent = 'Unpacking update…'
   } else if (d.phase === 'install') {
     launcherVersionEl.textContent = 'Installing - the launcher will restart…'
   }

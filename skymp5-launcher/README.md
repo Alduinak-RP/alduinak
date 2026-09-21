@@ -9,8 +9,9 @@ Pre-built installers are available at **https://alduinak.com/**.
 
 1) Open the Server Manager (server-manager) and go to the Launcher tab
 2) Set the version if needed, then click "Rebuild"
-3) Collect the installer from build\launcher\AlduinakLauncher.exe (already named for distribution)
-4) nginx is already set up to route api.alduinak.com/download/AlduinakLauncher.exe, change this as needed
+3) Collect the installer from build\launcher\AlduinakLauncher.exe and the ready-made build\launcher\AlduinakLauncher.zip
+4) Upload the zip to the website and set PACKAGE_URL in skymp5-backend/routes/version.js if its link changed (no restart). Launchers from 2.4.0 update from that zip.
+   nginx keeps serving api.alduinak.com/downloads/AlduinakLauncher.exe (DOWNLOAD_URL) for launchers up to 2.3.0, so leave the exe in build\launcher
 5) Whenever you edit these files, rebuild from the Launcher tab. Also, check the Backend readme.md for more.
 
 ## Project structure
