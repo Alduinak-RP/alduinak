@@ -4,6 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
+import { holdsItem } from "./actorUtil";
 import { FactionDef, holdKey, holdRanksOf, managesHold } from "./factionRules";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -48,6 +49,9 @@ const REGISTRY_FILE = "./housing.json";
 
 // Vanilla key form; the name extra carries the credential.
 export const KEY_BASE_ID = 0x000db0e2;
+// HearthFires BYOHMaterialLock; claiming needs one in the inventory.
+const LOCK_DESC = "3012:HearthFires.esm";
+const LOCK_BASE_ID_FALLBACK = 0x03003012;
 
 const MAX_USER_SLOTS = 1024;
 const MAX_NAME_LEN = 32;
@@ -123,6 +127,7 @@ export class HousingSystem implements System {
     if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
 
     this.roleCfg = readAdminRoleConfig(all);
+    try { this.lockBaseId = ((ctx.svr as Mp).getIdFromDesc(LOCK_DESC) >>> 0) || LOCK_BASE_ID_FALLBACK; } catch { }
 
     this.claimed = this.loadRegistry();
     this.installActivationHook(ctx);
@@ -268,6 +273,10 @@ export class HousingSystem implements System {
     }
     if (rec.owner !== 0) {
       this.notice(ctx, userId, "Somebody already owns this.");
+      return;
+    }
+    if (!this.isAdmin(ctx, actorId) && !holdsItem(ctx.svr as Mp, actorId, (id) => id === this.lockBaseId)) {
+      this.notice(ctx, userId, "You need a lock to claim this.");
       return;
     }
     const profileId = this.profileOf(ctx, actorId);
@@ -924,6 +933,7 @@ export class HousingSystem implements System {
   private lastDenyMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxDistance = DEFAULT_MAX_DISTANCE;
+  private lockBaseId = LOCK_BASE_ID_FALLBACK;
   private decorDirty = false;
   private lastDecorMs = 0;
 }
