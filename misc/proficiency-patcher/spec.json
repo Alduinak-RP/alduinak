@@ -2063,6 +2063,26 @@
      "Firewood01": 2,
      "Leather01": 2
     }
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassThePale",
+    "name": "Pale Guard's Armor",
+    "tier": "Novice",
+    "bench": "CraftingTanningRack"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullPale",
+    "name": "Pale Guard's Helmet",
+    "tier": "Novice",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldPale",
+    "name": "Pale Guard's Shield",
+    "tier": "Novice",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
    }
   ],
   "newRecipes": [],
@@ -2122,13 +2142,11 @@
    "MCERecipeArmorGuardCuirassMarkarth",
    "MCERecipeArmorGuardCuirassRiften",
    "MCERecipeArmorGuardCuirassSolitude",
-   "MCERecipeArmorGuardCuirassThePale",
    "MCERecipeArmorGuardCuirassWhiterun",
    "MCERecipeArmorGuardCuirassWinterhold",
    "MCERecipeArmorGuardHelmetFullFalkreath",
    "MCERecipeArmorGuardHelmetFullHaafingar",
    "MCERecipeArmorGuardHelmetFullHjaalmarch",
-   "MCERecipeArmorGuardHelmetFullPale",
    "MCERecipeArmorGuardHelmetFullReach",
    "MCERecipeArmorGuardHelmetFullRift",
    "MCERecipeArmorGuardHelmetFullWhiterun",
@@ -2137,7 +2155,6 @@
    "MCERecipeArmorGuardShieldFalkreath",
    "MCERecipeArmorGuardShieldHjaalmarch",
    "MCERecipeArmorGuardShieldMarkarth",
-   "MCERecipeArmorGuardShieldPale",
    "MCERecipeArmorGuardShieldRiften",
    "MCERecipeArmorGuardShieldSolitude",
    "MCERecipeArmorGuardShieldWhiterun",
@@ -3204,6 +3221,9 @@
     "all": [
      "Guard",
      "Dawnstar"
+    ],
+    "match": [
+     "Pale Guard"
     ]
    },
    {
@@ -3263,7 +3283,8 @@
      "Jorrvaskr",
      "Ulfhedinn",
      "Nord Hero",
-     "Nordic Carved"
+     "Nordic Carved",
+     "Companion"
     ]
    },
    {
@@ -3415,6 +3436,23 @@
     "match": [
      "Crown Plate",
      "CrownPlate"
+    ]
+   },
+   {
+    "id": "faction:temple-of-the-divines",
+    "name": "Temple of the Divines",
+    "match": [
+     "PriestRobes",
+     "Priest Robes",
+     "Priest Hood",
+     "Priest Boots",
+     "PriestSandals",
+     "Priest Sandals"
+    ],
+    "except": [
+     "Daedr",
+     "Moth Priest",
+     "MothPriest"
     ]
    }
   ]

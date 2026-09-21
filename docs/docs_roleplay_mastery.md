@@ -106,6 +106,15 @@ the hold of Winterhold's craft ranks or the College. The four Sithis pieces, the
 Shield and Buckler of Sithis and Immersive Weapons' Sithis's Blade and Razor,
 are the Dark Brotherhood's; their vanilla faction gates go the same way.
 Redgarb's Crown Plate armour belongs to the Crowns (`faction:crowns`).
+Each hold's guard armour (the MCE set) is made only by that hold's craft ranks;
+the Pale's pieces, named after the Pale rather than Dawnstar, match through
+"Pale Guard" and are no longer parked. The priest robes, hoods, boots and
+sandals of Sentinel's Priests and Acolytes and of MCE, the Azura robes included,
+belong to the Temple of the Divines (`faction:temple-of-the-divines`); the monk
+tunics and the Moth Priest robes stay with any Novice tailor and the Daedric
+Robes stay parked. Sentinel's City Guards pieces come with no recipe and stay
+uncraftable. Sentinel's Companion and Wolf armour at the Skyforge is the
+Companions'.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in
