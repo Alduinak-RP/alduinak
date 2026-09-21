@@ -264,7 +264,9 @@ Container base records that keep their plugin loot while `emptyContainers` is on
 
 Base forms nobody can activate, as numbers or `"0x..."` strings. Defaults to the
 vanilla coin purses (flora that hands out leveled gold and respawns) and the
-loose salmon (`0x000F5ECA`, `0x000F5ECB`). The server sends the list to every
+loose salmon (`0x000F5ECA`, `0x000F5ECB`) and the Stones of Barenziah
+(`0x0007F8E1`, whose script would otherwise hand the stone to the first taker
+and disable it for everyone). The server sends the list to every
 client on connect, which then blocks engine activation and shows no prompt for
 those forms. `[]` disables the check.
 

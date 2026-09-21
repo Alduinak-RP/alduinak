@@ -8,10 +8,10 @@ import { FormTypeEx } from "../../extensions/formTypeEx";
 import { logError, logTrace } from "../../logging";
 
 // World clutter is frozen as its cell or 3D loads so local havok cannot move it
-const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora, FormType.Activator, FormType.Furniture, FormType.Static, ...FormTypeEx.itemTypes];
+const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora, FormType.Activator, FormType.Furniture, FormType.Static, FormType.Container, ...FormTypeEx.itemTypes];
 
-// Mods often place havok-enabled item meshes as statics; only those model folders are worth a native call
-const HAVOK_STATIC_MODEL = /(^|[\\/])clutter[\\/]|^(meshes[\\/])?plants[\\/]/i;
+// Mods place havok item meshes as statics and containers, so those are frozen unless the model sits in a folder that never carries havok
+const NON_HAVOK_MODEL = /^(meshes[\\/])?(architecture|landscape|dungeons|lod|terrain|markers?|effects)[\\/]|^marker/i;
 
 const SWEEP_MS = 200;
 // Refs looked at per sweep tick
@@ -49,12 +49,19 @@ export class StaticRefsService extends ClientListener {
 
   // A cell reports itself loaded before its refs stream their 3D in, so it is swept for a while
   private onCellFullyLoaded(e: CellFullyLoadedEvent): void {
-    if (e.cell) this.trackCell(e.cell, Date.now() + SWEEP_WINDOW_MS);
+    if (e.cell) this.trackCell(e.cell, Date.now() + SWEEP_WINDOW_MS, true);
   }
 
   private onObjectLoaded(e: ObjectLoadedEvent): void {
-    if (!e.isLoaded) return;
     try {
+      const id = e.object?.getFormID();
+      if (id === undefined) return;
+      this.frozen.delete(id);
+      if (!e.isLoaded) {
+        // Runtime ids get reused for other refs
+        if (id >= 0xff000000) this.ignored.delete(id);
+        return;
+      }
       const ref = ObjectReference.from(e.object);
       if (ref) this.freeze(ref);
     } catch (err) {
@@ -77,11 +84,15 @@ export class StaticRefsService extends ClientListener {
     }
   }
 
-  private trackCell(cell: Cell, until: number): void {
+  private trackCell(cell: Cell, until: number, restart = false): void {
     const id = cell.getFormID();
     const tracked = this.sweeps.find((sweep) => sweep.id === id);
     if (tracked) {
       tracked.until = Math.max(tracked.until, until);
+      if (restart) {
+        tracked.type = 0;
+        tracked.index = 0;
+      }
       return;
     }
     this.sweeps.push({ id, cell, type: 0, index: 0, froze: 0, until });
@@ -161,17 +172,18 @@ export class StaticRefsService extends ClientListener {
   }
 
   private isFrozenBase(base: Form, type: number): boolean {
-    if (type !== FormType.Static) return FROZEN_TYPES.includes(type);
+    if (type !== FormType.Static && type !== FormType.Container) return FROZEN_TYPES.includes(type);
     const id = base.getFormID();
-    let frozen = this.havokStatics.get(id);
+    let frozen = this.havokModels.get(id);
     if (frozen === undefined) {
-      frozen = HAVOK_STATIC_MODEL.test(base.getWorldModelPath() || "");
-      this.havokStatics.set(id, frozen);
+      const model = base.getWorldModelPath() || "";
+      frozen = model !== "" && !NON_HAVOK_MODEL.test(model);
+      this.havokModels.set(id, frozen);
     }
     return frozen;
   }
 
-  private havokStatics = new Map<number, boolean>();
+  private havokModels = new Map<number, boolean>();
   private sweeps: CellSweep[] = [];
   private nextSweepAt = 0;
   private frozen = new Set<number>();

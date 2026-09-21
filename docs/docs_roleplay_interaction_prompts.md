@@ -49,7 +49,9 @@ keeps its display name with a verb picked from its base form type.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
   when harvested; coin purses, loose salmon and any other `untouchableBaseIds`
-  form get no prompt at all and are activation-blocked), item types Take. The board base (`12cb:Missives.esp`,
+  form get no prompt at all and are activation-blocked), item types Take. Items
+  and books placed by a plugin show no prompt, since the server refuses them
+  (`forbiddenReloot`); only runtime refs such as player drops read Take or Read. The board base (`12cb:Missives.esp`,
   resolved through `Game.getFormFromFile` so load order cannot break it)
   gets Read + "Notice Board".
 - **Passive job offers** (`docs_roleplay_jobs.md`): with nothing under the

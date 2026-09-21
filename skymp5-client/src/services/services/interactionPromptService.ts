@@ -204,6 +204,8 @@ export class InteractionPromptService extends ClientListener {
   }
 
   private verbFor(ref: ObjectReference, type: number): string | null {
+    // The server refuses plugin-placed pickups; only runtime refs such as player drops can be taken
+    const placed = ref.getFormID() < 0xff000000;
     switch (type) {
       case FormType.Door:
         return ref.isLocked() ? "Unlock" : "Open";
@@ -215,7 +217,7 @@ export class InteractionPromptService extends ClientListener {
       case FormType.Furniture:
         return "Use";
       case FormType.Book:
-        return "Read";
+        return placed ? null : "Read";
       case FormType.Flora:
       case FormType.Tree:
         return ref.isHarvested() ? null : "Harvest";
@@ -229,7 +231,7 @@ export class InteractionPromptService extends ClientListener {
       case FormType.Key:
       case FormType.ScrollItem:
       case FormType.Light:
-        return "Take";
+        return placed ? null : "Take";
       default:
         return null;
     }
