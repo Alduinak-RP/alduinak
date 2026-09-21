@@ -70,6 +70,7 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Writing, Steps.Racial,
+       Steps.DisableReferences,
        Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Meadery,

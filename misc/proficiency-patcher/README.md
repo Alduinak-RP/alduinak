@@ -22,13 +22,13 @@ python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAddi
   reads the plugin from `dataDir`, so the run stops with exit code 5 unless `<dataDir>/AlduinakAdditions.esp`
   is the same file as `--plugin`. Without `--stage`, `--settings` must already be cut that way.
 - `--hotfix` runs only the steps of the hotfix list at the top of `Program.cs`: cooking, smithing, tempering,
-  tailoring, factions, uncraftable, writing, racial and the marker effects. The live plugin already holds what
-  the others build. Their sweeps of the load order touch only recipes the plugin does not override yet and none
-  a Creation Club plugin defines, so the tiers it ships stay as they are; the factions, uncraftable and racial
-  rules still read every recipe, the plugin's own overrides included, and the tailoring `tiers` lists apply to
-  the recipes they name. A named cooking or `addItems` recipe the sweep skips is not an error. No
-  `CraftingCategories` json is written unless the list runs the categories step. A new step goes into both
-  lists, in the full run's order.
+  tailoring, factions, uncraftable, writing, racial, the disabled references and the marker effects. The live
+  plugin already holds what the others build. Their sweeps of the load order touch only recipes the plugin does not
+  override yet and none a Creation Club plugin defines, so the tiers it ships stay as they are; the factions,
+  uncraftable and racial rules still read every recipe, the plugin's own overrides included, and the tailoring
+  `tiers` lists apply to the recipes they name. A named cooking or `addItems` recipe the sweep skips is not an
+  error. No `CraftingCategories` json is written unless the list runs the categories step. A new step goes into
+  both lists, in the full run's order.
 - `--no-creations` keeps the Creation plugins in the load order: the plugin has mastered them since r12, so
   every winner is the one the game loads before it.
 - No `--next-form-id`: every record is found by editor id and reused, and a new one takes the plugin's own next
@@ -157,6 +157,7 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 | `benchMoves` | Existing recipes moved to another bench keyword with their tier kept. `recipes` names them, and `match` claims any recipe at one of the `from` benches by its editor id, product editor id or product name, skipping parked ones. The Skyforge move takes the Steel Plate, Nord Hero and Nordic Carved sets, which is all it then offers. A named recipe may not also be `uncraftable`. The report notes every furniture still carrying the keyword. |
 | `benchKeywordRemovals` | Bench keywords taken off existing furniture by editor id (the Skyforge keyword off the Riften Extension North and Mammoth Manor anvils, so the Whiterun Skyforge is the only one). A missing bench is a warning. |
 | `enchantmentMagnitudes` | One effect's magnitude on an enchantment (the Travelling Merchant Backpack's Fortify Carry Weight, 60). `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
+| `disableReferences` | Placed references (`refs`, form keys) turned Initially Disabled: an override of the winner, or the plugin's own reference changed in place; one already disabled is left alone. The beehives and Stonewall Terrace pieces, and the collision box that stayed in the gateway of the iron gate in the Whiterun outer wall once the gate opened. |
 | `placements` | A placed reference (`ref`, a form key) moved to its `anchor`'s winning position plus the offset the defining plugin had between the two (the Windhelm Gray Quarter gate door back in the arch WindhelmSSE.esp moved). Refused when either record was rotated since. The override joins the plugin's own cell and world groups when it already has them. |
 | `world` | The references of `AlduinakWorldChanges.esp`, Graves's world-changes plugin, merged as data rather than as a plugin. `placements` are its new references: an `edid`, a `formId` pinning the local id, a `base` (an editor id of the plugin's own, or a form key), the `cell` they sit in as a form key, and `pos`, `rot` (radians) and an optional `scale`. The cell override comes from the load-order winner, so nothing another mod did to that cell is reverted. `moves` set the position of an existing reference, keeping everything else it wins with, including Initially Disabled. The section is plain data, edited by hand; the plugin's placeholder `BYOHHouseCarpentersWorkbench` is `AldWoodcraftingBench` here. |
 | `factions` | The gear only a faction's own may make. One Ability marker `AldFaction_<id without punctuation>` per `list` entry, and a `HasSpell` condition on every recipe at the `benches` whose editor id, product editor id or product name matches: `match` (any of), `all` (every one of, for the hold guards) and `except`. The game's own factions mean nothing here, so `skymp5-server/ts/systems/factionCraftSystem.ts` grants and revokes the markers from the backend roster. A recipe a rule claims is dropped from `uncraftable`: it is gated by membership now, not hidden. The first matching rule wins. `also` names further faction ids whose members may make it too: the markers form one OR group after the rank condition (the College of Winterhold or the Synod), each id needs an entry of its own, and a marker takes its name from the entry without `also` (an entry with no `match` or `all` only creates its marker). A claimed recipe loses every older faction marker and its `GetInFaction`, `GetPCInFaction` and `GetIsRace` conditions. A Creation Club recipe is claimed only by a rule with `"creations": true`. |

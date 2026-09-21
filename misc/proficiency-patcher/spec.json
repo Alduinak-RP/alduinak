@@ -3290,7 +3290,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -3324,7 +3324,8 @@
    "00C5C1:AlduinakAdditions.esp",
    "016805:AlduinakAdditions.esp",
    "016807:AlduinakAdditions.esp",
-   "1115B9:Warbirds Whiterun Metropolis.esp"
+   "1115B9:Warbirds Whiterun Metropolis.esp",
+   "001E64:AlduinakAdditions.esp"
   ]
  },
  "racial": {
