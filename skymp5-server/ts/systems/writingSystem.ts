@@ -4,6 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { resolveEditorIds } from "./espmEditorIds";
 import { hex, isIntroduced } from "./actorUtil";
+import { adminAudit } from "./discordAlerts";
 import { AdminRoleConfig, adminTierOf, missingCap, readAdminRoleConfig } from "./adminRoles";
 import { InventoryEntry, Item, addEntries, isNamedItemBase, namedItemBaseIds, readInventory, registerNamedItemBases, sameExtras } from "./inventoryExtras";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, realNameOf, sanitize, sendJson } from "./playerText";
@@ -725,9 +726,8 @@ export class WritingSystem implements System {
     appendLog(this.logDir, LOG_FILE, text);
   }
 
-  // Routes into the gamemode's admin.log and staff channel when loaded
   private adminLog(text: string): void {
-    try { (globalThis as any).__alduinakAdminLog?.(text); } catch { /* log only */ }
+    adminAudit(text);
     this.log(`[writing] ${text}`);
   }
 

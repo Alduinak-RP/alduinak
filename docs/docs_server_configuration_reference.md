@@ -496,6 +496,28 @@ Lets every player run the server console commands (`additem`, `equipitem`, `plac
 }
 ```
 
+## discordAuth
+
+The Discord bot integration. `botToken` is the bot's token, so keep this key secret. For each entry in `guilds`, login checks membership and `banRoleId`, and `DiscordBanSystem` kicks players who get the ban role. `eventLogChannelId` receives the `Server Login` lines and the game alerts below. Leave `eventLogChannelId` out (or turn on `offlineMode`) on a test server, so it posts nothing to the live channel.
+
+Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews:
+
+- **[Death]** every player death, with the killer (player or NPC, if any) and the place: the nearest map marker outdoors, the cell indoors, then the raw location.
+- **[Execution]** execute and finish off. The killing code calls `globalThis.__alduinakMarkDeathAlerted(actorId)` first, so the same death posts no second [Death] line.
+- **[Admin]** every admin power (teleports, summon, kick, ban, item spawn, grants, npc zones, jobs, admin modes), staff writing actions, `/system` broadcasts, and faction changes made with staff powers rather than a rank of the actor's own.
+- **[Keyword]** any chat line, PMs included, that contains a word from `alert-keywords.json` in the server folder. Staff `/admin` and `/system` lines are not scanned. The server re-reads the file within 5 seconds of a save. It holds `keywords` (whole words or phrases, ignoring case; a trailing `*` matches any ending) and `cooldownSeconds` (default 60, per player and keyword). The seed with notes is `skymp5-server/seeds/alert-keywords.json`. Without the file, keyword alerts are off.
+
+```json5
+{
+  // ...
+  "discordAuth": {
+    "botToken": "<bot token>",
+    "guilds": [{ "guildId": "<guild id>", "banRoleId": "<role id>", "eventLogChannelId": "<channel id>" }]
+  }
+  // ...
+}
+```
+
 ## Admin roles
 
 Every player opens the Personal Menu with the interact key (X by default) while looking at nothing, a world NPC or anything else that is not a player, door or container. It has four tabs, in this order:

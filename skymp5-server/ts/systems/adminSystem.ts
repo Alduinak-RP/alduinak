@@ -8,6 +8,7 @@ import { JobSystem } from "./jobSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, userOf } from "./actorUtil";
+import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
 
@@ -381,9 +382,8 @@ export class AdminSystem implements System {
     } catch { }
   }
 
-  // Routes into the gamemode's admin.log + staff channel when loaded
-  private adminLog(text: string): void {
-    try { (globalThis as any).__alduinakAdminLog?.(text); } catch { }
+  private adminLog(text: string, alert = true): void {
+    adminAudit(text, alert);
   }
 
   // Any player with an actor may ask; the reply carries nothing about other players
@@ -856,7 +856,9 @@ export class AdminSystem implements System {
     const on = !!state[mode];
     if (MIRRORED_MODES.includes(mode)) this.writeModeMirror(mp, actorId, state);
     if (typeof reported !== "boolean") this.sendMode(mp, userId, mode, on);
-    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}${typeof reported === "boolean" ? " (client report)" : ""}`);
+    // Only freecam falling off on its own is reported by the client, and that repeats a toggle already alerted
+    const freecamReport = typeof reported === "boolean" && mode === "freecam" && !on;
+    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}${typeof reported === "boolean" ? " (client report)" : ""}`, !freecamReport);
   }
 
   // Registration lives in gamemode.js; a missing property must not break the toggle

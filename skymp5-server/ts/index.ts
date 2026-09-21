@@ -41,6 +41,7 @@ import { FurnitureSeatSystem } from "./systems/furnitureSeatSystem";
 import { DoorTeleportSystem } from "./systems/doorTeleportSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
+import { DiscordAlerts } from "./systems/discordAlerts";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
 import { CompanionSystem } from "./systems/companionSystem";
@@ -294,6 +295,7 @@ const main = async () => {
     petSystem,
     new KnowledgeSystem(log),
     new DiscordBanSystem(),
+    new DiscordAlerts(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
     // Last: its hit and activate hooks wrap every other one
     jobSystem,

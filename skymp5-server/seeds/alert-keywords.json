@@ -1,0 +1,15 @@
+{
+  "_readme": [
+    "Seed for alert-keywords.json next to server-settings.json. The game server re-reads the file within 5 seconds of a save, no rebuild or restart.",
+    "Any chat line except staff /admin and /system (PMs included) that contains a keyword posts a [Keyword] alert to the Discord event log channel.",
+    "Keywords match whole words or phrases, ignoring case. A trailing * matches any ending: dup* catches dupe, duping and duplicate.",
+    "cooldownSeconds (default 60) stops the same player repeating one keyword into more alerts. A broken edit keeps the previous list, see gameserver.log."
+  ],
+  "cooldownSeconds": 60,
+  "keywords": [
+    "exploit*",
+    "dup*",
+    "cheat*",
+    "hack*"
+  ]
+}

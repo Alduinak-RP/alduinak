@@ -8,6 +8,7 @@ import { formIdFromConfig } from "./formIdUtil";
 import { ITEM_TYPES } from "./itemCatalog";
 import { HousingSystem } from "./housingSystem";
 import * as rules from "./factionRules";
+import { adminAudit } from "./discordAlerts";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -64,6 +65,9 @@ const UNIFORM_PROP = "private.factionUniformAt";
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
 const RELEASED_PROP = "private.factionsReleased";
+
+// Acting through staff powers rather than a rank of their own
+const staffOnly = (auth: rules.Authority): boolean => auth.staff && !auth.rank;
 
 interface OnlineActor {
   userId: number;
@@ -254,7 +258,7 @@ export class FactionSystem implements System {
       this.invalidateRoster(faction.id);
       this.notice(target.userId, `You are now ${rank.name} of ${faction.name}.`);
       this.notice(userId, `${name} is now ${rank.name} of ${faction.name}.`);
-      this.staffLog(`${this.who(actorId)} added ${this.who(target.actorId)} to ${faction.name} as ${rank.name}`);
+      this.staffLog(`${this.who(actorId)} added ${this.who(target.actorId)} to ${faction.name} as ${rank.name}`, true);
       return;
     }
     // An account-wide rank is stored with slot null, so each membership is removed with the slot it was granted on
@@ -269,7 +273,7 @@ export class FactionSystem implements System {
     this.invalidateRoster(faction.id);
     this.notice(target.userId, `You were removed from ${faction.name}.`);
     this.notice(userId, `${name} was removed from ${faction.name}.`);
-    this.staffLog(`${this.who(actorId)} removed ${this.who(target.actorId)} from ${faction.name}`);
+    this.staffLog(`${this.who(actorId)} removed ${this.who(target.actorId)} from ${faction.name}`, true);
   }
 
   // The interaction menu's Recruit: the actor's own faction of whichever type they may recruit for
@@ -375,7 +379,8 @@ export class FactionSystem implements System {
     this.invalidateRoster(faction.id);
     this.notice(userId, `You joined ${faction.name} as ${rank.name}.`);
     this.notice(inviterUser, `${this.realName(target.actorId)} joined ${faction.name} as ${rank.name}.`);
-    this.staffLog(`${this.who(invite.inviterId)} recruited ${this.who(target.actorId)} into ${faction.name} as ${rank.name}${inviterAuth.staff && !inviterAuth.rank ? " (staff)" : ""}`);
+    const asStaff = staffOnly(inviterAuth);
+    this.staffLog(`${this.who(invite.inviterId)} recruited ${this.who(target.actorId)} into ${faction.name} as ${rank.name}${asStaff ? " (staff)" : ""}`, asStaff);
     if (inviterUser >= 0) await this.sendMenu(inviterUser, faction.id);
   }
 
@@ -401,7 +406,7 @@ export class FactionSystem implements System {
       this.invalidateRoster(faction.id);
       if (online) this.notice(online.userId, `You were removed from ${faction.name}.`);
       this.notice(userId, `${name} was removed from ${faction.name}.`);
-      this.staffLog(`${this.who(actorId)} removed ${name} (profile ${profileId}${slot === null ? "" : `, character ${slot + 1}`}) from ${faction.name}, was ${memberRank.name}`);
+      this.staffLog(`${this.who(actorId)} removed ${name} (profile ${profileId}${slot === null ? "" : `, character ${slot + 1}`}) from ${faction.name}, was ${memberRank.name}`, staffOnly(auth));
       return;
     }
 
@@ -417,7 +422,7 @@ export class FactionSystem implements System {
     this.invalidateRoster(faction.id);
     if (online) this.notice(online.userId, `You are now ${target.name} of ${faction.name}.`);
     this.notice(userId, `${name} is now ${target.name}.`);
-    this.staffLog(`${this.who(actorId)} made ${name} (profile ${profileId}${slot === null ? "" : `, character ${slot + 1}`}) ${target.name} of ${faction.name}, was ${memberRank.name}`);
+    this.staffLog(`${this.who(actorId)} made ${name} (profile ${profileId}${slot === null ? "" : `, character ${slot + 1}`}) ${target.name} of ${faction.name}, was ${memberRank.name}`, staffOnly(auth));
   }
 
   private issueUniform(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, name: string, memberRank: rules.RankDef, online: OnlineActor | null): void {
@@ -451,7 +456,7 @@ export class FactionSystem implements System {
     try { this.mp.set(online.actorId, UNIFORM_PROP, issued); } catch { /* actor gone */ }
     this.notice(online.userId, `You received the ${faction.name} uniform.`);
     if (online.userId !== userId) this.notice(userId, `Uniform issued to ${name}.`);
-    this.staffLog(`${this.who(actorId)} issued the ${faction.name} uniform to ${this.who(online.actorId)}: ${given.join(", ")}`);
+    this.staffLog(`${this.who(actorId)} issued the ${faction.name} uniform to ${this.who(online.actorId)}: ${given.join(", ")}`, staffOnly(auth));
   }
 
   private async leave(userId: number, actorId: number, faction: rules.FactionDef, access: unknown): Promise<void> {
@@ -514,7 +519,7 @@ export class FactionSystem implements System {
     this.notice(userId, enabled !== undefined
       ? `Regency is ${enabled ? "on" : "off"} for ${faction.name}.`
       : `The regency of ${faction.name} was updated.`);
-    this.staffLog(`${this.who(actorId)} changed the regency of ${faction.name}: ${action}${enabled === undefined ? "" : ` ${enabled}`}, ${(next || seats).length} seat(s)`);
+    this.staffLog(`${this.who(actorId)} changed the regency of ${faction.name}: ${action}${enabled === undefined ? "" : ` ${enabled}`}, ${(next || seats).length} seat(s)`, staffOnly(auth));
   }
 
   private seatList(raw: unknown): rules.RegentSeat[] {
@@ -1114,9 +1119,10 @@ export class FactionSystem implements System {
     this.send(userId, { customPacketType: "factionNotice", text });
   }
 
-  private staffLog(text: string): void {
+  // Also posted to Discord when staff authority did it
+  private staffLog(text: string, asStaff = false): void {
     this.log(`[factions] ${text}`);
-    try { (globalThis as any).__alduinakAdminLog?.(`[faction] ${text}`); } catch { /* gamemode not loaded */ }
+    adminAudit(`[faction] ${text}`, asStaff);
   }
 
   private ctx!: SystemContext;

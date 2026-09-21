@@ -28,7 +28,7 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `C:\logs` `admin`, `ban`, `bounty`, `chat`, `faction`, `pvp` and `trading` logs, plus their rotated copies in the log root and in the `C:\logs\YYYY-MM` archive folders | Moved into `C:\logs\pre-wipe-<yyyyMMdd-HHmm>\`. Archived copies keep their `YYYY-MM` subfolder. New characters reuse the old `0xff` ids, so pre-wipe log lines would point at the wrong people. |
 
 **Kept, untouched:**
-- **Server folder:** `server-settings.json` (you edit one value by hand in step 10), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the gamemode, plugins and `data/`.
+- **Server folder:** `server-settings.json` (you edit one value by hand in step 10), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the `alert-keywords.json` Discord keyword list, the gamemode, plugins and `data/`.
 - **Backend data:** `bans.json`, `profiles.json`, `players.json`, `role-permissions.json`, `news.json`, the install manifest files and `manifest-diff.json`. Only Purge MongoDB changes `manifest-diff.json`.
 - **Sessions:** `sessions.json`, `auth-states.json` and `dashboard-sessions.json` are never copied, changed or restored.
 - **Outside the repo:** Discord roles and `adminRoleIds` (staff rights come back at login), the service logs (`gameserver`, `backend` and the rest) and their archived copies in `C:\logs\YYYY-MM`.

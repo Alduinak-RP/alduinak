@@ -3,6 +3,7 @@ import { Settings } from "../settings";
 import * as fetchRetry from "fetch-retry";
 import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
 import { hasDiscordBanRole } from "./discordBanSystem";
+import { postEventLog } from "./discordAlerts";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
@@ -241,16 +242,9 @@ export class Login implements System {
           const ipToPrint = shouldHideIp ? "hidden" : ip;
           const actorIds = ctx.svr.getActorsByProfileId(profile.id).map(id => id.toString(16));
 
-          for (const guildConfig of discordAuth.guilds) {
-            if (guildConfig.eventLogChannelId) {
-              this.postServerLoginToDiscord(guildConfig.eventLogChannelId, discordAuth.botToken, {
-                userId,
-                ipToPrint,
-                actorIds,
-                profile,
-              });
-            }
-          }
+          const loginMessage = `Server Login: Server Slot ${userId}, IP ${ipToPrint}, Actor ID ${actorIds}, Master API ${profile.id}, Discord ID ${profile.discordId} <@${profile.discordId}>`;
+          console.log(loginMessage);
+          postEventLog(loginMessage);
         }
 
         const rolesToAssign = isMemberOfAny ? [...new Set(fetchedRoles)] : roles;
@@ -277,35 +271,6 @@ export class Login implements System {
     } else {
       this.log("No credentials found in gameData:", gameData);
     }
-  }
-
-  private postServerLoginToDiscord(eventLogChannelId: string, botToken: string, options: { userId: number, ipToPrint: string, actorIds: string[], profile: UserProfile }) {
-    const { userId, ipToPrint, actorIds, profile } = options;
-
-    const loginMessage = `Server Login: Server Slot ${userId}, IP ${ipToPrint}, Actor ID ${actorIds}, Master API ${profile.id}, Discord ID ${profile.discordId} <@${profile.discordId}>`;
-    console.log(loginMessage);
-
-    this.fetchRetry(`https://discord.com/api/channels/${eventLogChannelId}/messages`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bot ${botToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: loginMessage,
-        allowed_mentions: { parse: [] },
-      }),
-      ... this.getFetchOptions('discordAuth2'),
-    }).then((response) => {
-      if (!response.ok) {
-        throw new Error(`Error sending message to Discord: ${response.statusText}`);
-      }
-      return response.json();
-    }).then((_data): null => {
-      return null;
-    }).catch((err) => {
-      console.error("Error sending message to Discord:", err);
-    });
   }
 
   private emit(ctx: SystemContext, eventName: string, ...args: unknown[]) {
