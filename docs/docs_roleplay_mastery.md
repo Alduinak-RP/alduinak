@@ -150,6 +150,13 @@ craftable:
   Judgment and light helms, and the Companions Wolf Closed Helmet and Ulfhedinn
   Closed Helm.
 
+**Nor is the pre-release list.** These `uncraftable.match` terms park the
+recipes by what they make, their Improve entries at the armour table and the
+grindstone included:
+
+- the Falmer Double Axe, plain and honed, and the Ancient Falmer boots, cuirass
+  and gauntlets.
+
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
 `CraftingSmithingSkyforge` keyword with their blacksmith tier (`benchMoves`).
