@@ -160,7 +160,8 @@ grindstone included:
   Daedric term;
 - the Alduin Scale boots, cuirass, gauntlets and helmet of Immersive Armors;
 - Immersive Armors' Vanguard Plate, open and closed helmet included (the
-  AVExpansion Nordic Vanguard set stays craftable).
+  AVExpansion Nordic Vanguard set stays craftable);
+- the Wheel of Pain Amulet (IARConanAmulet).
 
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
