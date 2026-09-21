@@ -101,7 +101,9 @@ the Dawnguard's, the Creation Club Curios bolts included: that rule says
 `creations`, the only one that claims a Creation recipe, and the Curios bolts'
 own `GetInFaction` gate, which the menu read as false and the server as true, is
 dropped for the marker. The Winterhold Battlemage buckler and shield belong to
-the hold of Winterhold's craft ranks or the College.
+the hold of Winterhold's craft ranks or the College. The four Sithis pieces, the
+Shield and Buckler of Sithis and Immersive Weapons' Sithis's Blade and Razor,
+are the Dark Brotherhood's; their vanilla faction gates go the same way.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in
