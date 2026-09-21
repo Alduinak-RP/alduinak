@@ -41,6 +41,8 @@ const DEFAULT_FACTIONS = [
   "faction:thieves-guild", "faction:dark-brotherhood", "faction:college-of-winterhold",
   // No roster of their own yet; their markers are in the plugin, so their gear is ready to be handed out
   "faction:dawnguard", "faction:forsworn", "faction:morag-tong", "faction:skaal",
+  // Created in the dashboard; a marker the plugin does not carry yet is skipped at boot
+  "faction:synod", "faction:crowns", "faction:temple-of-the-divines",
 ];
 
 export const markerEdidOf = (factionId: string): string =>

@@ -3002,6 +3002,26 @@
   ],
   "list": [
    {
+    "id": "faction:college-of-winterhold",
+    "also": [
+     "faction:synod"
+    ],
+    "name": "College of Winterhold or the Synod",
+    "match": [
+     "Battle Staff",
+     "BattleStaff",
+     "Ethereal Axestaff",
+     "EtherealAxestaff",
+     "Chainmail Mage Hood",
+     "ChainmailHood",
+     "Dwarven Mage",
+     "DwarvenMage"
+    ],
+    "except": [
+     "Daedric"
+    ]
+   },
+   {
     "id": "hold:haafingar",
     "name": "Guard of Haafingar",
     "all": [
@@ -3262,6 +3282,10 @@
     "match": [
      "Ash Reader"
     ]
+   },
+   {
+    "id": "faction:synod",
+    "name": "The Synod"
    }
   ]
  },

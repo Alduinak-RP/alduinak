@@ -10,19 +10,33 @@ It is re-runnable: run it again on a fresh plugin from the Creation Kit and the 
 
 ## Run
 
-The input is the merged base of the r7 build, never the live plugin. The run below is checked against the
-ids LIVE shipped:
+The plugin is patched in place, as one hotfix run on a frozen copy of the live plugin:
 
 ```bash
-python misc/proficiency-patcher/patch.py --plugin <r7 work/base>/AlduinakAdditions.esp --settings <r7 server-settings.stage.json> --out <dir> --next-form-id 0x201D
+python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAdditions.esp> --settings build/dist/server/server-settings.json --out <dir> --no-creations --hotfix --stage
 ```
 
-`--next-form-id` pins the own records to the block at `0x201D` so the marker spell ids never move, and
-it refuses a plugin that already holds them ("own records already use ..."): the live plugin does, and
-`patch.py`'s pre-clean only drops duplicate LAND records, it does not strip the generated layer. Running
-against the live plugin without the pin is a hotfix route only. Every record is still found by editor id
-and reused, so nothing moves, but a record the spec adds would take the plugin's own next form id rather
-than the next id in the pinned block.
+- `--stage` writes `<out>/settings.stage.json`, the `--settings` file with `loadOrder` cut after
+  `AlduinakAdditions.esp`: `DynDOLOD.esp` and `Occlusion.esp` load after it and would leak their records into
+  the winners. `DynDOLOD.esm` loads before it and stays, and so do the Creation Club plugins. The load order
+  reads the plugin from `dataDir`, so the run stops with exit code 5 unless `<dataDir>/AlduinakAdditions.esp`
+  is the same file as `--plugin`. Without `--stage`, `--settings` must already be cut that way.
+- `--hotfix` runs only the steps of the hotfix list at the top of `Program.cs`: cooking, smithing, tempering,
+  tailoring, factions, uncraftable, writing, racial and the marker effects. The live plugin already holds what
+  the others build. Their sweeps of the load order touch only recipes the plugin does not override yet and none
+  a Creation Club plugin defines, so the tiers it ships stay as they are; the factions, uncraftable and racial
+  rules still read every recipe, the plugin's own overrides included, and the tailoring `tiers` lists apply to
+  the recipes they name. A named cooking or `addItems` recipe the sweep skips is not an error. No
+  `CraftingCategories` json is written unless the list runs the categories step. A new step goes into both
+  lists, in the full run's order.
+- `--no-creations` keeps the Creation plugins in the load order: the plugin has mastered them since r12, so
+  every winner is the one the game loads before it.
+- No `--next-form-id`: every record is found by editor id and reused, and a new one takes the plugin's own next
+  form id. `--next-form-id <hex>` pins new own records to a block and refuses a plugin that already holds
+  them, so it does not suit the live plugin.
+
+After the run, `proficiency-report.md` notes the counts per faction and race rule; a new marker spell is
+listed under the new records, and `proficiency-ids.json` must show the same global ids as before.
 
 Needs the .NET 9 SDK (`dotnet`), Python 3 and the game Data folder named by `dataDir` in the settings
 file, with every plugin of `loadOrder` present (Mutagen reads them to resolve editor ids and winning
@@ -38,9 +52,12 @@ records). The first run restores the Mutagen NuGet package.
    COBJ, BOOK and MISC records may be added or changed, plus the `AldMeadBench_` references and the overrides of
    the cells `meadery` names, the ENCH overrides `enchantmentMagnitudes` names by editor id and the REFR overrides
    `placements` names by form key; everything else must be byte-identical up to Mutagen's known
-   normalisations (`-0.0` floats, deleted records without subrecords). A changed master list renumbers every
-   form id, so records are then matched by editor id and compared structurally. Exit code 3 on any other
-   difference, and `verify.txt` lists it.
+   normalisations (`-0.0` floats, deleted records without subrecords). A record that only gains Initially
+   Disabled (header flag `0x800`) passes and is listed; one that loses it fails. A changed master list
+   renumbers every form id, so records are then matched by editor id and compared structurally. The plugin
+   may never master `DynDOLOD.esm`, `DynDOLOD.esp` or `Occlusion.esp`. Exit code 3 on any other difference,
+   and `verify.txt` lists it. A spec section that adds or changes records of other types brings an allow
+   rule of its own (`meadery_allowed`, `spec_overrides`, `world_allowed`), listed in `rules` in `main`.
 
 ## AlduinakCreations.esp
 
@@ -48,7 +65,7 @@ The settings `loadOrder` must carry the four plugins of `spec.json` `creations.p
 `Skyrim.ccc` order: Fish, SurvivalMode, Curios, AdvDSGS (the live `loadOrder` has them there). The same run then
 also writes `AlduinakCreations.esp`, `creations-report.md` and, through `patch.py`, `verify-creations.txt` and
 `AlduinakCreations.inputs.json`. A load order with only some of them is refused, and so is one with none of them unless
-`--no-creations` is passed to `patch.py`, which builds `AlduinakAdditions.esp` alone (byte-identical to a full run).
+`--no-creations` is passed to `patch.py`, which builds `AlduinakAdditions.esp` alone against the whole load order.
 `AlduinakCreations.esp` may appear last in the settings `loadOrder` or be absent: the run never reads it.
 
 **Rebuild it whenever any plugin before it changes.** It copies whole CELL and WRLD records (626 cells, 14 worldspaces
@@ -129,11 +146,11 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 | `enchantmentMagnitudes` | One effect's magnitude on an enchantment (the Travelling Merchant Backpack's Fortify Carry Weight, 60). `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
 | `placements` | A placed reference (`ref`, a form key) moved to its `anchor`'s winning position plus the offset the defining plugin had between the two (the Windhelm Gray Quarter gate door back in the arch WindhelmSSE.esp moved). Refused when either record was rotated since. The override joins the plugin's own cell and world groups when it already has them. |
 | `world` | The references of `AlduinakWorldChanges.esp`, Graves's world-changes plugin, merged as data rather than as a plugin. `placements` are its new references: an `edid`, a `formId` pinning the local id, a `base` (an editor id of the plugin's own, or a form key), the `cell` they sit in as a form key, and `pos`, `rot` (radians) and an optional `scale`. The cell override comes from the load-order winner, so nothing another mod did to that cell is reverted. `moves` set the position of an existing reference, keeping everything else it wins with, including Initially Disabled. The section is plain data, edited by hand; the plugin's placeholder `BYOHHouseCarpentersWorkbench` is `AldWoodcraftingBench` here. |
-| `factions` | The gear only a faction's own may make. One Ability marker `AldFaction_<id without punctuation>` per `list` entry, and a `HasSpell` condition on every recipe at the `benches` whose editor id, product editor id or product name matches: `match` (any of), `all` (every one of, for the hold guards) and `except`. The game's own factions mean nothing here, so `skymp5-server/ts/systems/factionCraftSystem.ts` grants and revokes the markers from the backend roster. A recipe a rule claims is dropped from `uncraftable`: it is gated by membership now, not hidden. |
-| `racial` | The gear only one people may make. A recipe at one of the `benches` whose editor id, product editor id or product name contains one of a rule's `match` strings and none of its `except` strings gains that rule's races as one `GetIsRace` OR group after the rank condition. `GetIsRace` is one of the functions `CraftService` implements, so the crafting menu and the server agree. Dwarven is in no rule: anyone may make it. |
+| `factions` | The gear only a faction's own may make. One Ability marker `AldFaction_<id without punctuation>` per `list` entry, and a `HasSpell` condition on every recipe at the `benches` whose editor id, product editor id or product name matches: `match` (any of), `all` (every one of, for the hold guards) and `except`. The game's own factions mean nothing here, so `skymp5-server/ts/systems/factionCraftSystem.ts` grants and revokes the markers from the backend roster. A recipe a rule claims is dropped from `uncraftable`: it is gated by membership now, not hidden. The first matching rule wins. `also` names further faction ids whose members may make it too: the markers form one OR group after the rank condition (the College of Winterhold or the Synod), each id needs an entry of its own, and a marker takes its name from the entry without `also` (an entry with no `match` or `all` only creates its marker). A claimed recipe loses every older faction marker and its `GetInFaction`, `GetPCInFaction` and `GetIsRace` conditions. A Creation Club recipe is claimed only by a rule with `"creations": true`. |
+| `racial` | The gear only one people may make. A recipe at one of the `benches` whose editor id, product editor id or product name contains one of a rule's `match` strings and none of its `except` strings gains that rule's races as one `GetIsRace` OR group after the rank condition; Creation Club recipes and recipes a faction claimed are skipped. `GetIsRace` is one of the functions `CraftService` implements, so the crafting menu and the server agree. Dwarven is in no rule: anyone may make it. |
 | `craftingCategories` | The filter tabs the CraftingCategories SKSE plugin draws. It matches keywords on the created object, so each category is a keyword of the plugin's own added to every item a bench's recipes make. A `groups` entry names a `bench` and its `categories` in order; the first whose `slots` (biped slot numbers), `kinds` (`ammo`), `keywords`, `items` and `match` (editor id substrings) all hold takes the item, and a category with no test at all is the fallback. The run writes `CraftingCategories/<file>` next to the plugin; it is installed as `SKSE/Plugins/CraftingCategories/<file>` in the Alduinak mod, beside the plugin, and the manifest has to carry it. |
 | `writing` | Keywords `AldWritable` (written items) and `AldWritingBlank` (blanks); `books` are new BOOK records copied from vanilla notes with their scripts and teaching removed, a new name, description text, value and weight; `misc` adds Sealing Wax; `recipes` puts the blanks on the tanning rack and the wax on the smelter, all Novice. The server finds every record by editor id (`docs/docs_roleplay_writing.md`). |
-| `tailoring` | Every winning recipe at the `benches` (the tanning rack and the loom) is the tailor's, Novice unless `tiers` says otherwise; `tiers.Anyone` is the open list (cloaks and capes, and the coarsest everyday clothing). `recipes` is the owner's list, correcting ingredients, bench and tier by editor id, and may name a recipe at any bench. `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe (the bog blight masks, the five tanning-rack twins of the +40 unarmed Moon Monk gauntlets and the children's clothes). The sweep reads the load order, so a recipe `benchRouting` moved to the rack keeps the tier the smithing step gave it. |
+| `tailoring` | Every winning recipe at the `benches` (the tanning rack and the loom) is the tailor's, Novice unless `tiers` says otherwise; `tiers.Anyone` is the open list (cloaks and capes, and the coarsest everyday clothing). `recipes` is the owner's list, correcting ingredients, bench and tier by editor id, and may name a recipe at any bench; its `profession` puts the recipe (and the temper entry of what it makes) under another profession's ranks, such as the Pale guard helmet at the forge. `disableRecipes` parks recipes on the `MothNest1` keyword, the plugin's convention for a hidden recipe (the bog blight masks, the five tanning-rack twins of the +40 unarmed Moon Monk gauntlets and the children's clothes). The sweep reads the load order, so a recipe `benchRouting` moved to the rack keeps the tier the smithing step gave it. |
 
 Tier conditions are `HasSpell(AldMastery_<Profession>_<Rank>) == 1`, Run On Subject; a recipe tiered `Anyone` carries none. The server evaluates
 the same condition in `CraftService`, which is why perks are never used (see `docs/docs_roleplay_mastery.md`).

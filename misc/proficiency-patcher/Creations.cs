@@ -11,13 +11,17 @@ using Mutagen.Bethesda.Skyrim;
 // AlduinakCreations.esp: ESL-flagged overrides keeping only the Creation Club items and tiering their recipes (see README.md)
 static class Creations
 {
-    // The Creation plugins of the spec the load order carries; none is an error unless skip leaves AlduinakCreations.esp out
+    public static HashSet<ModKey> Named(JsonObject? cs) =>
+        (cs?["plugins"]?.AsArray().Select(x => ModKey.FromNameAndExtension(x!.GetValue<string>())) ?? Enumerable.Empty<ModKey>()).ToHashSet();
+
+    // The Creation plugins to build apart; none when skip leaves AlduinakCreations.esp out, so they stay in the load order
     public static HashSet<ModKey> PluginKeys(JsonObject? cs, List<string> loadOrder, bool skip)
     {
         var names = cs?["plugins"]?.AsArray().Select(x => x!.GetValue<string>()).ToList() ?? new List<string>();
         if (skip && names.Count > 0) Console.WriteLine($"creations: --no-creations, {cs!["pluginName"]} is not built");
+        if (skip) return new HashSet<ModKey>();
         var present = names.Where(n => loadOrder.Any(l => string.Equals(l, n, StringComparison.OrdinalIgnoreCase))).ToList();
-        if (present.Count == 0 && names.Count > 0 && !skip)
+        if (present.Count == 0 && names.Count > 0)
             throw new Exception($"creations: the load order carries none of {string.Join(", ", names)}; insert them right after Dragonborn.esm, or pass --no-creations to leave {cs!["pluginName"]} out of this run");
         if (present.Count == 0) return new HashSet<ModKey>();
         if (present.Count != names.Count)

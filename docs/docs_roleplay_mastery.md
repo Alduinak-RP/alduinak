@@ -93,7 +93,10 @@ beside its rank condition, vampire races included; Dwarven is in no rule.
 Faction gear (`factions`) carries a `HasSpell` on a marker of its own, handed
 out from the backend roster by `factionCraftSystem.ts`, so guard armour, the
 Legion, the Stormcloaks, the Thalmor, the Companions, the Thieves Guild, the
-Dark Brotherhood and the College each make their own.
+Dark Brotherhood and the College each make their own. A rule may name further
+factions (`also`), and a member of any of them may then make it: the battle
+staffs, the Ethereal Axestaff, the Chainmail Mage Hoods and the Dwarven Mage
+sets belong to the College of Winterhold or the Synod.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in

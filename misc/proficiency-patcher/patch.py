@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Builds the proficiency version of AlduinakAdditions.esp: pre-cleans the plugin, runs the Mutagen patcher, verifies the output record by record.
-#   python patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --out out [--settings ../../build/dist/server/server-settings.json] [--spec spec.json] [--no-creations]
+#   python patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --out out [--settings ../../build/dist/server/server-settings.json] [--spec spec.json] [--no-creations] [--hotfix] [--stage]
 # The output is out/AlduinakAdditions.esp plus proficiency-report.md, proficiency-ids.json and verify.txt, and with a creations spec AlduinakCreations.esp, its inputs json and verify-creations.txt.
 import argparse
 import json
@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.join(HERE, '..'))
 from esplib import Plugin, Record, Group, edid  # noqa: E402
 
 DELETED = 0x20
+INITIALLY_DISABLED = 0x800
+# Generated from the whole load order; the plugin must never master them, and the last two load after it
+NEVER_MASTERS = ('dyndolod.esm', 'dyndolod.esp', 'occlusion.esp')
 NEG_ZERO = b'\x00\x00\x00\x80'
 # Record types the patcher creates or overrides; anything else must survive untouched.
 # ARMO, WEAP and AMMO join them for the crafting-category keywords the menu filters on.
@@ -71,8 +74,8 @@ def index(p):
 
 
 def benign_change(a, b):
-    # True when the only differences are Mutagen's known normalisations
-    if a.flags != b.flags:
+    # None when the only differences are Mutagen's known normalisations or a record turned Initially Disabled
+    if a.flags != b.flags and a.flags | INITIALLY_DISABLED != b.flags:
         return f'flags {a.flags:#x} -> {b.flags:#x}'
     sa, sb = a.subs(), b.subs()
     if a.flags & DELETED and not sb:
@@ -137,6 +140,9 @@ def verify(original, patched, log, allowed=lambda k, rec: False):
     for m in masters_o:
         if m not in masters_p:
             log.append(f'  master dropped: {m}')
+    for m in masters_p:
+        if m.lower() in NEVER_MASTERS:
+            problems.append(f'MASTER {m}: the settings loadOrder must stop at the plugin (see --stage)')
     remap = masters_o != masters_p
     if remap:
         log.append('  master list changed: form ids were renumbered, records are compared by editor id')
@@ -153,7 +159,7 @@ def verify(original, patched, log, allowed=lambda k, rec: False):
             problems.append(f'MISSING {k[0]} {r.fid:08X} {edid(r)}')
             continue
         q = kp[k]
-        if r.type in PATCHED_TYPES:
+        if r.type in PATCHED_TYPES or allowed(k, q):
             if r.serialize() != q.serialize():
                 changed.append(f'{r.type} {edid(r) or f"{r.fid:08X}"}')
             continue
@@ -167,6 +173,8 @@ def verify(original, patched, log, allowed=lambda k, rec: False):
         why = benign_change(r, q)
         if why:
             problems.append(f'CHANGED {r.type} {r.fid:08X} {edid(r)}: {why}')
+        elif q.flags & ~r.flags & INITIALLY_DISABLED:
+            changed.append(f'{r.type} {edid(r) or f"{r.fid:08X}"} Initially Disabled')
         else:
             untouched += 1
     for k, q in kp.items():
@@ -175,10 +183,21 @@ def verify(original, patched, log, allowed=lambda k, rec: False):
                 added.append(f'{q.type} {edid(q) or f"{q.fid:08X}"}')
             else:
                 problems.append(f'ADDED {q.type} {q.fid:08X} {edid(q)}')
-    log.append(f'records: {len(ro)} -> {len(rp)}; untouched {untouched}, patched-type records rewritten {len(changed)} (renumbered by the master list or edited, see proficiency-report.md), added {len(added)}')
+    log.append(f'records: {len(ro)} -> {len(rp)}; untouched {untouched}, records rewritten {len(changed)} (renumbered by the master list or edited, see proficiency-report.md), added {len(added)}')
     log.extend('  rewritten ' + c for c in changed)
     log.extend('  added ' + a for a in added)
     return problems
+
+
+def stage_settings(settings, plugin, out):
+    # The live settings cut after the plugin: the plugins after it would leak their records into the winners; DynDOLOD.esm loads before it and stays
+    s = json.load(open(settings, encoding='utf-8'))
+    names = [os.path.basename(p).lower() for p in s['loadOrder']]
+    order = [p for p in s['loadOrder'][:names.index(plugin.lower()) + 1] if os.path.basename(p).lower() not in NEVER_MASTERS[1:]]
+    path = os.path.join(out, 'settings.stage.json')
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump({'dataDir': s['dataDir'], 'loadOrder': order}, f, indent=1)
+    return path, s['dataDir']
 
 
 def main():
@@ -190,9 +209,19 @@ def main():
     ap.add_argument('--skip-verify', action='store_true')
     ap.add_argument('--next-form-id', help='first own form id to allocate, in hex; pins the marker spell ids')
     ap.add_argument('--no-creations', action='store_true', help='build AlduinakAdditions.esp without AlduinakCreations.esp')
+    ap.add_argument('--hotfix', action='store_true', help='apply the recipe gates to the live plugin, sweeping only recipes it does not override yet')
+    ap.add_argument('--stage', action='store_true', help='run on <out>/settings.stage.json, the --settings loadOrder cut after the plugin')
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     log = []
+    if a.stage:
+        name = json.load(open(a.spec, encoding='utf-8')).get('pluginName', 'AlduinakAdditions.esp')
+        a.settings, data_dir = stage_settings(a.settings, name, a.out)
+        # The load order reads the plugin from dataDir, so the winners are only right when that copy is the input
+        with open(a.plugin, 'rb') as f1, open(os.path.join(data_dir, name), 'rb') as f2:
+            if f1.read() != f2.read():
+                print(f'--stage: {os.path.join(data_dir, name)} is not the same file as {a.plugin}')
+                sys.exit(5)
     pre = os.path.join(a.out, 'AlduinakAdditions.preclean.esp')
     removed = preclean(a.plugin, pre)
     for r in removed:
@@ -207,6 +236,8 @@ def main():
         cmd += ['--next-form-id', a.next_form_id]
     if a.no_creations:
         cmd.append('--no-creations')
+    if a.hotfix:
+        cmd.append('--hotfix')
     print(' '.join(cmd))
     r = subprocess.run(cmd)
     if r.returncode != 0:
@@ -215,8 +246,9 @@ def main():
     out_esp = os.path.join(a.out, os.path.basename(a.plugin))
     if a.skip_verify:
         sys.exit(0)
-    meadery, named, world = meadery_allowed(a.spec), spec_overrides(a.spec), world_allowed(a.spec)
-    problems = verify(pre, out_esp, log, lambda k, rec: meadery(k, rec) or named(k, rec) or world(k, rec))
+    # Each spec section that adds or changes records of other types brings its own rule
+    rules = [f(a.spec) for f in (meadery_allowed, spec_overrides, world_allowed)]
+    problems = verify(pre, out_esp, log, lambda k, rec: any(rule(k, rec) for rule in rules))
     with open(os.path.join(a.out, 'verify.txt'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(log + [''] + problems) + '\n')
     print('\n'.join(log))
@@ -224,7 +256,7 @@ def main():
         print(f'VERIFY FAILED: {len(problems)} unexpected difference(s), first 20:')
         print('\n'.join(problems[:20]))
         sys.exit(3)
-    print(f'verified: only records of types {sorted(PATCHED_TYPES)}, the meadery bench references and cells and the spec\'s named overrides were added or changed; {out_esp}')
+    print(f'verified: only records of types {sorted(PATCHED_TYPES)}, the meadery bench references and cells, the spec\'s named overrides and newly Initially Disabled records were added or changed; {out_esp}')
     if cs and not a.no_creations:
         if not os.path.exists(creations):
             print(f'{creations} was not built')

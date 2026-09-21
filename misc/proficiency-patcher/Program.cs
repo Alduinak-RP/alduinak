@@ -18,7 +18,7 @@ using Noggog;
 // conditions on cooking, smithing, tempering, woodworking and tailoring recipes, the meadery boiler benches, the hidden
 // and moved recipes, the few enchantment and placed reference fixes the spec names, and the writing items.
 // Run through patch.py, which pre-cleans the plugin, invokes this program and verifies the result.
-//   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--no-creations]
+//   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--no-creations] [--hotfix]
 
 var opts = Cli.Parse(args);
 var spec = JsonNode.Parse(File.ReadAllText(opts.Spec))!.AsObject();
@@ -49,7 +49,12 @@ var mod = SkyrimMod.CreateFromBinary(new ModPath(pluginKey, opts.Plugin), Skyrim
 var loadIndex = env.LoadOrder.ListedOrder.Take(position).Count(l => l.Mod != null && ((int)l.Mod.ModHeader.Flags & 0x200) == 0);
 if (((int)mod.ModHeader.Flags & 0x200) != 0) throw new Exception($"{pluginName} is ESL-flagged, the global id rule below does not apply");
 var report = new Report(loadIndex, pluginKey);
-var ctx = new PatchContext(mod, cache, additionsOrder, spec, report);
+// A hotfix run sweeps only recipes the plugin does not override yet and none a Creation defines; the spec's named recipes are still applied
+var overridden = mod.ConstructibleObjects.Select(x => x.FormKey).ToHashSet();
+var creationRecipes = Creations.Named(creationsSpec);
+var ctx = new PatchContext(mod, cache, additionsOrder, spec, report,
+                           includes: opts.Hotfix ? r => !overridden.Contains(r.FormKey) && !creationRecipes.Contains(r.FormKey.ModKey) : null)
+          { Hotfix = opts.Hotfix, CreationKeys = creationRecipes };
 if (opts.NextFormId is uint pinned)
 {
     // Pinned ids keep the marker spells stable for learnedSpells and server-settings.json; AddNew does not check for collisions
@@ -60,31 +65,17 @@ if (opts.NextFormId is uint pinned)
 
 Console.WriteLine($"{pluginName}: position {position} in the load order, full slot {loadIndex:X2}, {mod.ModHeader.MasterReferences.Count} masters, next form id {mod.ModHeader.Stats.NextFormID:X}");
 
-Steps.Keywords(ctx);
-Steps.Items(ctx);
-Steps.MarkerAbilities(ctx);
-Steps.WoodcraftingBench(ctx);
-Steps.AlchemyLabs(ctx);
-Steps.AlchemyRecipes(ctx);
-Steps.KilnRecipes(ctx);
-Steps.Cooking(ctx);
-Steps.Smithing(ctx);
-Steps.Tempering(ctx);
-Steps.Tailoring(ctx);
-Steps.Factions(ctx);
-Steps.Uncraftable(ctx);
-Steps.Meadery(ctx);
-Steps.BenchKeywordRemovals(ctx);
-Steps.BenchMoves(ctx);
-Steps.EnchantmentMagnitudes(ctx);
-Steps.Placements(ctx);
-Steps.World(ctx);
-Steps.Writing(ctx);
-Steps.Racial(ctx);
-Steps.DisableReferences(ctx);
-Steps.Orphans(ctx);
-var categories = Steps.Categories(ctx);
-Steps.MarkerEffects(ctx);
+JsonObject? categories = null;
+Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
+// A hotfix run adds only these steps to the live plugin, which already holds everything the others build
+Action<PatchContext>[] steps = opts.Hotfix
+    ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Writing, Steps.Racial,
+       Steps.MarkerEffects]
+    : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
+       Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Meadery,
+       Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
+       Steps.Racial, Steps.DisableReferences, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
+foreach (var step in steps) step(ctx);
 
 if (report.Errors.Count > 0)
 {
@@ -105,7 +96,7 @@ mod.WriteToBinary(outPath, new BinaryWriteParameters
     NextFormID = NextFormIDOption.Iterate,
 });
 Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes)");
-if (spec["craftingCategories"] is JsonObject cat)
+if (spec["craftingCategories"] is JsonObject cat && categories != null)
 {
     var dir = Path.Combine(opts.Out, "CraftingCategories");
     Directory.CreateDirectory(dir);
@@ -120,16 +111,18 @@ return 0;
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir, uint? NextFormId, bool NoCreations)
+record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir, uint? NextFormId, bool NoCreations, bool Hotfix)
 {
     public static Cli Parse(string[] args)
     {
         string? settings = null, plugin = null, spec = null, outDir = null, reportDir = null;
         uint? nextFormId = null;
         var noCreations = false;
+        var hotfix = false;
         for (int i = 0; i < args.Length; i += 2)
         {
             if (args[i] == "--no-creations") { noCreations = true; i--; continue; }
+            if (args[i] == "--hotfix") { hotfix = true; i--; continue; }
             if (i + 1 >= args.Length) throw new Exception($"option {args[i]} needs a value");
             switch (args[i])
             {
@@ -143,8 +136,8 @@ record Cli(string Settings, string Plugin, string Spec, string Out, string Repor
             }
         }
         if (settings == null || plugin == null || spec == null || outDir == null)
-            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--next-form-id <hex>] [--no-creations]");
-        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir, nextFormId, noCreations);
+            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--next-form-id <hex>] [--no-creations] [--hotfix]");
+        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir, nextFormId, noCreations, hotfix);
     }
 }
 
@@ -198,6 +191,9 @@ class PatchContext
 
     // The pseudo-tier of a recipe no profession owns: SetTier writes no marker condition for it.
     public const string AnyoneTier = "Anyone";
+    public bool Hotfix { get; init; }
+    // Plugins of the Creation Club recipes: faction rules leave them alone unless they say "creations", race rules always do
+    public HashSet<ModKey> CreationKeys { get; init; } = new();
     public string[] Ranks => Spec["ranks"]!.AsArray().Select(r => r!.GetValue<string>()).ToArray();
     public Dictionary<FormKey, int> MaterialTiers => materialTiers ??= Steps.MaterialTiers(this);
     // Recipe editor id -> the bench and profession the routing rules give it
@@ -510,7 +506,7 @@ static class Steps
             SetTier(c, cobj, profession, tier);
             c.Report.Recipes.Add(new RecipeLine("cooking", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), salted: addSalt, gatesStripped: stripped));
         }
-        foreach (var edid in tierOf.Keys.Concat(needsSalt).Where(e => !seen.Contains(e)))
+        foreach (var edid in tierOf.Keys.Concat(needsSalt).Where(e => !seen.Contains(e) && !c.Hotfix))
             c.Error($"cooking: recipe '{edid}' is not a winning cooking recipe in the load order");
     }
 
@@ -624,7 +620,7 @@ static class Steps
             c.Report.Recipes.Add(new RecipeLine("smithing", edid, c.NameOf(cobj.CreatedObject.FormKey), owner, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName,
                                                 note: route?.Hidden == true ? "makes nothing of ore, hidden" : moved ? $"moved to {route!.BenchEdid}" : null));
         }
-        foreach (var (edid, _) in addItems.Where(kv => !extended.Contains(kv.Key)))
+        foreach (var (edid, _) in addItems.Where(kv => !extended.Contains(kv.Key) && !c.Hotfix))
             c.Error($"smithing: addItems recipe '{edid}' is not a winning smithing recipe in the load order");
     }
 
@@ -673,8 +669,11 @@ static class Steps
         var map = new Dictionary<FormKey, string>();
         foreach (var (edid, route) in c.Routes)
             if (c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)) map[recipe.CreatedObject.FormKey] = route.Profession;
+        var t = c.Spec["tailoring"]!.AsObject();
+        var own = t["recipes"]!.AsArray().Where(r => r!["profession"] != null)
+            .ToDictionary(r => r!["edid"]!.GetValue<string>(), r => r!["profession"]!.GetValue<string>(), StringComparer.OrdinalIgnoreCase);
         foreach (var edid in TailoringSet(c))
-            if (c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)) map[recipe.CreatedObject.FormKey] = c.Spec["tailoring"]!["profession"]!.GetValue<string>();
+            if (c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)) map[recipe.CreatedObject.FormKey] = own.GetValueOrDefault(edid, t["profession"]!.GetValue<string>());
         return map;
     }
 
@@ -1061,7 +1060,8 @@ static class Steps
         var swept = c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides()
             .Where(w => benches.Contains(w.WorkbenchKeyword.FormKey) && c.Includes(w))
             .Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
-        foreach (var edid in swept.Concat(listed.Keys).Distinct(StringComparer.OrdinalIgnoreCase))
+        // A hotfix run does not sweep the recipes the plugin already overrides, so the tier lists name theirs outright
+        foreach (var edid in swept.Concat(listed.Keys).Concat(c.Hotfix ? tierOf.Keys : Enumerable.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var r = listed.GetValueOrDefault(edid);
             if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"tailoring recipe '{edid}' not found"); continue; }
@@ -1079,8 +1079,9 @@ static class Steps
             var stripped = cobj.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
             cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
             var tier = r?["tier"]?.GetValue<string>() ?? tierOf.GetValueOrDefault(edid, c.Ranks[0]);
-            SetTier(c, cobj, profession, tier);
-            c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
+            var owner = r?["profession"]?.GetValue<string>() ?? profession;
+            SetTier(c, cobj, owner, tier);
+            c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), owner, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
         }
         foreach (var r in t["newRecipes"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
         {
@@ -1132,42 +1133,58 @@ static class Steps
                           Name: x["name"]!.GetValue<string>(),
                           Match: Edids(c, x["match"]).ToList(),
                           All: Edids(c, x["all"]).ToList(),
-                          Except: Edids(c, x["except"]).ToList())).ToList();
+                          Except: Edids(c, x["except"]).ToList(),
+                          // Further factions whose members may also make it, one OR group with the rule's own
+                          Also: Edids(c, x["also"]).ToList(),
+                          Creations: x["creations"]?.GetValue<bool>() == true)).ToList();
         var marker = new Dictionary<string, FormKey>();
-        foreach (var r in rules)
+        // A faction's marker takes its name from its own entry, not from a shared rule naming it
+        foreach (var g in rules.GroupBy(r => r.Id))
         {
-            var spell = c.OwnOrNew(c.Mod.Spells, MarkerEdidOf(r.Id));
-            spell.Name = $"Faction: {r.Name}";
+            var spell = c.OwnOrNew(c.Mod.Spells, MarkerEdidOf(g.Key));
+            spell.Name = $"Faction: {g.FirstOrDefault(r => r.Also.Count == 0).Name ?? g.First().Name}";
             spell.Type = SpellType.Ability;
             spell.CastType = CastType.ConstantEffect;
             spell.TargetType = TargetType.Self;
             spell.Flags |= SpellDataFlag.ManualCostCalc;
-            marker[r.Id] = spell.FormKey;
+            marker[g.Key] = spell.FormKey;
         }
-        var counts = rules.ToDictionary(r => r.Id, _ => 0);
+        foreach (var id in rules.SelectMany(r => r.Also).Where(id => !marker.ContainsKey(id)).Distinct())
+            c.Error($"factions: '{id}' is named in also but has no entry of its own");
+        var markers = marker.Values.ToHashSet();
+        var counts = rules.Select(r => r.Name).Distinct().ToDictionary(n => n, _ => 0);
         foreach (var (key, cobj) in FinalRecipes(c))
         {
             if (!benches.Contains(cobj.Bench)) continue;
             var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
             var text = $"{cobj.Edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
-            var hit = rules.FirstOrDefault(r => (r.Match.Count > 0 && r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
+            var creation = c.CreationKeys.Contains(key.ModKey);
+            var hit = rules.FirstOrDefault(r => (!creation || r.Creations)
+                                             && (r.Match.Count > 0 && r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
                                                  || r.All.Count > 0 && r.All.All(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)))
                                              && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)));
             if (hit.Id == null) continue;
             if (!c.TryWinning<IConstructibleObjectGetter>(cobj.Edid, out var winning)) { c.Error($"factions: recipe '{cobj.Edid}' not found"); continue; }
             var rec = c.Override(c.Mod.ConstructibleObjects, winning);
-            var spell = marker[hit.Id];
-            rec.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey == spell);
+            // The game's own factions and a people's gate mean nothing on faction gear; membership replaces them
+            rec.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && markers.Contains(hs.Spell.Link.FormKey)
+                                             || ClaimStrip.Contains(FunctionOf(cond)));
             if (rec.Conditions.Count > 0) rec.Conditions[^1].Flags &= ~Condition.Flag.OR;
-            var data = new HasSpellConditionData { RunOnType = Condition.RunOnType.Subject };
-            data.Spell.Link.SetTo(spell);
-            rec.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = data });
-            counts[hit.Id] += 1;
+            var ids = hit.Also.Prepend(hit.Id).Where(marker.ContainsKey).Distinct().ToList();
+            for (int i = 0; i < ids.Count; i++)
+            {
+                var data = new HasSpellConditionData { RunOnType = Condition.RunOnType.Subject };
+                data.Spell.Link.SetTo(marker[ids[i]]);
+                rec.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = data, Flags = i < ids.Count - 1 ? Condition.Flag.OR : default });
+            }
+            counts[hit.Name] += 1;
             c.Claimed.Add(cobj.Edid);
             c.Report.Recipes.Add(new RecipeLine("faction", cobj.Edid, c.NameOf(cobj.Product), hit.Name, "-", Items(c, rec), note: $"only {hit.Name}"));
         }
         c.Note($"Faction gear: {string.Join(", ", counts.Select(kv => $"{kv.Value} {kv.Key}"))}");
     }
+
+    static readonly HashSet<string> ClaimStrip = new(StringComparer.OrdinalIgnoreCase) { "GetInFaction", "GetPCInFaction", "GetIsRace" };
 
     // The server finds the markers by this editor id; the faction id's punctuation has no place in one
     public static string MarkerEdidOf(string factionId) =>
@@ -1191,7 +1208,7 @@ static class Steps
         var counts = rules.ToDictionary(r => r.Name, _ => 0);
         foreach (var (key, cobj) in FinalRecipes(c))
         {
-            if (!benches.Contains(cobj.Bench)) continue;
+            if (!benches.Contains(cobj.Bench) || c.CreationKeys.Contains(key.ModKey)) continue;
             var edid = cobj.Edid;
             // A recipe a faction already owns is that faction's, whatever people its gear is styled after;
             // gating it twice would ask for the race and the membership at once
