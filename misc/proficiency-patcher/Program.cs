@@ -69,11 +69,11 @@ JsonObject? categories = null;
 Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
-    ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Writing, Steps.Racial,
-       Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.DisableActors, categoriesStep,
+    ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
+       Steps.Racial, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.DisableActors, categoriesStep,
        Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
-       Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Meadery,
+       Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
        Steps.Racial, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.DisableActors, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
@@ -713,6 +713,46 @@ static class Steps
             var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
             cobj.WorkbenchKeyword.SetTo(bench);
             c.Report.Recipes.Add(new RecipeLine(kind, edid, c.NameOf(cobj.CreatedObject.FormKey), profession, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: note));
+        }
+    }
+
+    // ---- leveled items: the NPC loot lists the server rolls, re-weighted, trimmed or topped up ------------------------
+    public static void LeveledItems(PatchContext c)
+    {
+        foreach (var e in c.Spec["leveledItems"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        {
+            var edid = e["list"]!.GetValue<string>();
+            if (!c.TryWinning<ILeveledItemGetter>(edid, out var winning)) { c.Error($"leveled items: list '{edid}' not found"); continue; }
+            // The server reads a list with a chance-none global as always empty
+            if (!winning.Global.IsNull) { c.Error($"leveled items: {edid} takes its chance from a global, use chanceNone instead"); continue; }
+            var rec = c.Override(c.Mod.LeveledItems, winning);
+            rec.Entries ??= new ExtendedList<LeveledItemEntry>();
+            var changes = new List<string>();
+            if (e["chanceNone"] is JsonNode chance)
+            {
+                rec.ChanceNone = new Percent(chance.GetValue<int>() / 100.0);
+                changes.Add($"chance none {chance.GetValue<int>()}%");
+            }
+            foreach (var item in Edids(c, e["remove"]))
+            {
+                var key = c.KeyOf<IItemGetter>(item);
+                // Already gone on a re-run over a patched plugin
+                if (rec.Entries.RemoveAll(x => x.Data?.Reference.FormKey == key) == 0) c.Note($"Leveled list {edid}: already without {item}");
+                else changes.Add($"-{item}");
+            }
+            foreach (var a in e["add"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+            {
+                var item = a["item"]!.GetValue<string>();
+                var key = c.KeyOf<IItemGetter>(item);
+                var count = a["count"]?.GetValue<short>() ?? 1;
+                var level = a["level"]?.GetValue<short>() ?? 1;
+                if (rec.Entries.Any(x => x.Data?.Reference.FormKey == key && x.Data.Count == count && x.Data.Level == level)) continue;
+                var data = new LeveledItemEntryData { Level = level, Count = count };
+                data.Reference.SetTo(key);
+                rec.Entries.Add(new LeveledItemEntry { Data = data });
+                changes.Add($"+{count}x {item}");
+            }
+            c.Note($"Leveled list {edid} ({winning.FormKey}): {(changes.Count > 0 ? string.Join(", ", changes) : "unchanged")}");
         }
     }
 

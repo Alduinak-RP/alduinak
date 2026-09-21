@@ -97,6 +97,15 @@ is looked up in the loaded plugins when the file loads and
 must be an `NPC_` record; anything else (a leveled character, an item, a typo)
 is skipped with a log line. `00023A99` is `EncFalmer01MeleeA`, a Falmer.
 
+### Loot
+
+What a body holds comes from the plugin alone: the base's inventory and
+outfit when it is placed, and its death item when it dies, both rolled by the
+server at level 1. A list whose chance comes from a global is never rolled.
+Loot changes are overrides of those lists in `AlduinakAdditions.esp`, written
+by the `leveledItems` section of `misc/proficiency-patcher/spec.json`: giants
+drop exactly 20 gold and no weapon. Bodies that already exist keep their loot.
+
 ## State machine
 
 ```

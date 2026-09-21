@@ -2394,6 +2394,25 @@
    "Ambergris"
   ]
  },
+ "leveledItems": [
+  {
+   "list": "DeathItemGiant",
+   "remove": [
+    "LootGiantWeapon50",
+    "LootGiantGold",
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "add": [
+    {
+     "item": "Gold001",
+     "count": 20,
+     "level": 1
+    }
+   ]
+  }
+ ],
  "meadery": {
   "profession": "alchemist",
   "keyword": "AldCraftingMead",
