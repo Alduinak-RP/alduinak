@@ -53,7 +53,6 @@ const MAX_USER_SLOTS = 1024;
 const MAX_NAME_LEN = 32;
 const MAX_KEYS_CARRIED = 64;
 const MAX_ESPM_CACHE = 4096;
-const DEFAULT_MAX_CLAIMS = 8;
 const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
@@ -120,8 +119,6 @@ export class HousingSystem implements System {
     const s = await Settings.get();
     const all = s.allSettings as Record<string, unknown> | null;
 
-    const maxClaims = Number(all?.["housingMaxClaims"]);
-    if (Number.isFinite(maxClaims) && maxClaims > 0) this.maxClaims = maxClaims;
     const maxDistance = Number(all?.["housingMaxDistance"]);
     if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
 
@@ -278,10 +275,6 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "You cannot claim anything right now.");
       return;
     }
-    if (this.countClaims(ctx, profileId) >= this.maxClaims) {
-      this.notice(ctx, userId, `You already hold ${this.maxClaims} properties.`);
-      return;
-    }
     rec.owner = profileId;
     rec.ownerName = this.nameOf(ctx, actorId);
     rec.partner = this.partnerOf(ctx, primary);
@@ -397,10 +390,6 @@ export class HousingSystem implements System {
     }
     if (recipientProfile === rec.owner) {
       this.notice(ctx, userId, "They already own it.");
-      return;
-    }
-    if (this.countClaims(ctx, recipientProfile) >= this.maxClaims) {
-      this.notice(ctx, userId, "They hold too much property already.");
       return;
     }
     // Old keys must not open a new owner's door.
@@ -826,15 +815,6 @@ export class HousingSystem implements System {
     return this.write(ctx, primary, rec);
   }
 
-  private countClaims(ctx: SystemContext, profileId: number): number {
-    let n = 0;
-    for (const primary of this.claimed) {
-      const rec = this.read(ctx, primary);
-      if (rec && rec.owner === profileId) n++;
-    }
-    return n;
-  }
-
   // ── Registry file ───────────────────────────────────────────────────────────
   //
   // Only an index of which refs to touch on boot; the changeform holds the data.
@@ -943,7 +923,6 @@ export class HousingSystem implements System {
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
-  private maxClaims = DEFAULT_MAX_CLAIMS;
   private maxDistance = DEFAULT_MAX_DISTANCE;
   private decorDirty = false;
   private lastDecorMs = 0;
