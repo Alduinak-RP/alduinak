@@ -105,6 +105,7 @@ dropped for the marker. The Winterhold Battlemage buckler and shield belong to
 the hold of Winterhold's craft ranks or the College. The four Sithis pieces, the
 Shield and Buckler of Sithis and Immersive Weapons' Sithis's Blade and Razor,
 are the Dark Brotherhood's; their vanilla faction gates go the same way.
+Redgarb's Crown Plate armour belongs to the Crowns (`faction:crowns`).
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in

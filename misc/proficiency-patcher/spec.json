@@ -3408,6 +3408,14 @@
    {
     "id": "faction:synod",
     "name": "The Synod"
+   },
+   {
+    "id": "faction:crowns",
+    "name": "The Crowns",
+    "match": [
+     "Crown Plate",
+     "CrownPlate"
+    ]
    }
   ]
  },
