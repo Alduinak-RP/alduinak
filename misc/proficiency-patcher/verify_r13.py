@@ -21,6 +21,7 @@ PLAYER_REF = ('skyrim.esm', 0x14)
 # A localized plugin holds a string id in these, the output the text itself
 LOCALIZED = {'FULL', 'DESC'}
 CELL_GROUPS, WORLD_GROUPS = (6, 8, 9, 10), (1,)
+SPELL_TYPES = {'Spell': 0, 'Disease': 1, 'Power': 2, 'LesserPower': 3, 'Ability': 4, 'Poison': 5, 'Addiction': 10, 'Voice': 11}
 PLACED = {'REFR', 'ACHR', 'PGRE', 'PMIS', 'PARW', 'PBAR', 'PBEA', 'PCON', 'PFLA', 'PHZD'}
 # Subrecords made of form ids alone, where one left unrenumbered is an error rather than data that looks like one
 PLACED_IDS = {'NAME', 'XESP', 'XOWN', 'XLCN', 'XEZN', 'XLKR', 'XLRT', 'XLRL', 'XMRC', 'INAM'}
@@ -114,6 +115,30 @@ def enable_parent(pl, data):
     return None
 
 
+def spell_of(rec):
+    subs = dict(rec.subs())
+    return zstr(subs.get('EDID', b'')), struct.unpack_from('<I', subs['SPIT'], 8)[0] if 'SPIT' in subs else -1
+
+
+def spell_list(pl, data):
+    return [pl.key(struct.unpack('<I', v)[0]) for t, v in parse_subs(data) if t == 'SPLO']
+
+
+def check_race(ck, spec, spells, src, flags, data, out, q):
+    # None when the race only lost the spells the races section removes
+    why = ck.compare('RACE', src, flags, data, out, q.data(), skip=('SPLO', 'SPCT'))
+    if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED:
+        return why or f'flags {flags:#x} -> {q.flags:#x}'
+    types = {SPELL_TYPES[x] for x in spec.get('removeSpellTypes', [])}
+    keep = set(spec.get('keepSpells', []))
+    removable = lambda s: spells.get(s, ('', -1))[1] in types and spells[s][0] not in keep
+    before, after = spell_list(src, data), spell_list(out, q.data())
+    if any(s not in before for s in after):
+        return f'spells added: {[spells.get(s, s) for s in after if s not in before]}'
+    wrong = [spells.get(s, s) for s in before if (s in after) == removable(s)]
+    return f'spells kept or removed against the spec: {wrong}' if wrong else None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', required=True, help='the patch.py --stage output folder')
@@ -165,7 +190,7 @@ def main():
     disable_refs = {form_key(x) for x in spec.get('disableReferences', {}).get('refs', [])}
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
-    winners, actors, parents, slot = {}, {}, {}, 0
+    winners, actors, parents, spells, races, slot = {}, {}, {}, {}, {}, 0
     for n in order[:here]:
         pl = Plugin(os.path.join(stage['dataDir'], n))
         if not (pl.flags & ESL or n.lower().endswith('.esl')):
@@ -177,6 +202,10 @@ def main():
                 parents[k] = (r.type, r.flags, enable_parent(pl, r.data()))
             if r.type == 'ACHR':
                 actors[k] = (n, r.flags, parents[k][2])
+            if r.type == 'SPEL':
+                spells[k] = spell_of(r)
+            if r.type == 'RACE':
+                races[edid(r)] = spell_list(pl, r.data())
             if ((r.type, k) in ro or r.type == 'REFR' and k in disable_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
                 winners[(r.type, k)] = (pl, r.flags, r.data(), pl.container(r, CELL_GROUPS if r.type != 'CELL' else WORLD_GROUPS))
         pl.buf = None
@@ -185,6 +214,10 @@ def main():
             parents[k] = (t, r.flags, enable_parent(out, r.data()))
         if t == 'ACHR':
             actors[k] = (name, r.flags, parents[k][2])
+        if t == 'SPEL':
+            spells[k] = spell_of(r)
+        if t == 'RACE':
+            races[edid(r)] = spell_list(out, r.data())
     ck = Checker(order, known)
 
     # Every changed or added record is one a spec section explains
@@ -230,6 +263,11 @@ def main():
             checked[f'new {t} overrides equal to the winner'] += 1
         elif t in ('CELL', 'WRLD'):
             problems.append(f'{label}: a record the input already held changed ({diff})')
+        elif t == 'RACE' and edid(q) in spec.get('races', {}).get('races', []):
+            why = check_race(ck, spec['races'], spells, *ref[:3], out, q)
+            if why:
+                problems.append(f'{label}: {why}')
+            checked['races checked against the races section'] += 1
         elif t == 'REFR' and k in disable_refs:
             src, flags, data, cell = ref
             why = ck.compare(t, src, flags, data, out, q.data())
@@ -266,6 +304,13 @@ def main():
                 checked[f'{t} whose enable parent is an actor switched off{", opposite" if parent[1] else ""}'] += 1
                 if parent[1] and t != 'ACHR':
                     problems.append(f'{t} {show(k)} turns on when its enable parent, actor {show(parent[0])}, is disabled')
+    # Every listed race ends without the spells the races section removes
+    rs = spec.get('races', {})
+    types = {SPELL_TYPES[x] for x in rs.get('removeSpellTypes', [])}
+    for race in rs.get('races', []):
+        left = [spells[s][0] for s in races.get(race, []) if s in spells and spells[s][1] in types and spells[s][0] not in rs.get('keepSpells', [])]
+        if race not in races or left:
+            problems.append(f'RACE {race}: {"not found" if race not in races else f"still hands out {left}"}')
     for k in disable_refs:
         final = ro.get(('REFR', k)) or ro.get(('ACHR', k))
         flags = final.flags if final is not None else winners.get(('REFR', k), (None, 0))[1]

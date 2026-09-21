@@ -3500,6 +3500,38 @@
    }
   ]
  },
+ "races": {
+  "comment": "The playable races and their vampire forms lose every racial power the game hands a character (greater powers and the vampires' Hunter's Sight); only Khajiit Night Eye stays.",
+  "races": [
+   "NordRace",
+   "NordRaceVampire",
+   "BretonRace",
+   "BretonRaceVampire",
+   "ImperialRace",
+   "ImperialRaceVampire",
+   "RedguardRace",
+   "RedguardRaceVampire",
+   "HighElfRace",
+   "HighElfRaceVampire",
+   "DarkElfRace",
+   "DarkElfRaceVampire",
+   "WoodElfRace",
+   "WoodElfRaceVampire",
+   "OrcRace",
+   "OrcRaceVampire",
+   "ArgonianRace",
+   "ArgonianRaceVampire",
+   "KhajiitRace",
+   "KhajiitRaceVampire"
+  ],
+  "removeSpellTypes": [
+   "Power",
+   "LesserPower"
+  ],
+  "keepSpells": [
+   "PowerKhajiitNightEye"
+  ]
+ },
  "craftingCategories": {
   "file": "AlduinakAdditions.json",
   "section": "Alduinak",

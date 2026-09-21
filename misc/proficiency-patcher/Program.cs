@@ -70,12 +70,12 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Writing, Steps.Racial,
-       Steps.DisableReferences, Steps.DisableActors,
+       Steps.Races, Steps.DisableReferences, Steps.DisableActors,
        Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.DisableReferences, Steps.DisableActors, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
+       Steps.Racial, Steps.Races, Steps.DisableReferences, Steps.DisableActors, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
 if (report.Errors.Count > 0)
@@ -1158,6 +1158,24 @@ static class Steps
             w.DeepCopyIn(cache.ResolveAllContexts<IWorldspace, IWorldspaceGetter>(w.FormKey).First(x => !notFrom.Contains(x.ModKey)).Record, mask);
         c.Note($"Disable actors: {disabled.Values.Sum()} newly disabled, {parents} of them given the player as enable parent, opposite; {already} already disabled");
         c.Note($"Disable actors by winning plugin: {string.Join(", ", disabled.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key.FileName} {kv.Value}"))}");
+    }
+
+    // ---- races: the powers the game hands every character of a race -------------------------------------------------
+    public static void Races(PatchContext c)
+    {
+        if (c.Spec["races"] is not JsonObject spec) return;
+        var types = Edids(c, spec["removeSpellTypes"]).Select(x => Enum.Parse<SpellType>(x)).ToHashSet();
+        var keep = Edids(c, spec["keepSpells"]).Select(c.KeyOf<ISpellGetter>).ToHashSet();
+        foreach (var edid in Edids(c, spec["races"]))
+        {
+            var winning = c.Winning<IRaceGetter>(edid);
+            var drop = (winning.ActorEffect ?? []).Select(s => s.FormKey)
+                .Where(k => !keep.Contains(k) && c.Cache.TryResolve<ISpellGetter>(k, out var spell) && types.Contains(spell.Type)).ToHashSet();
+            if (drop.Count == 0) continue;
+            var race = c.Override(c.Mod.Races, winning);
+            race.ActorEffect!.RemoveAll(s => drop.Contains(s.FormKey));
+            c.Note($"Race {edid}: {string.Join(", ", drop.Select(c.EdidOf))} removed");
+        }
     }
 
     // ---- faction gear: only a member of that faction may make it --------------------------------------------------

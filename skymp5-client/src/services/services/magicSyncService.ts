@@ -20,7 +20,6 @@ export const BLOCKED_POWER_IDS = new Set([
     0x000E40CF, // PowerWoodElfCommandAnimal
     0x000E40D4, // PowerDarkElfFlameCloak (Ancestor's Wrath)
     0x000E40D5, // PowerArgonianHistskin
-    0x000AA01D, // PowerKhajiitNightEye
     0x000AA022, // PowerBretonAbsorbSpell (Dragonskin)
     0x000AA026, // RaceOrcBerserk (Berserker Rage)
 ]);

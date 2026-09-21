@@ -334,9 +334,10 @@ boot.
 ## playersInheritBaseSpells
 
 `true` (default) keeps the Player record's castable spells (Flames, Healing)
-and the race's greater power (Highborn, Battle Cry...) on every player
-character. `false` makes characters start without them; abilities such as the
-combat heal rate, racial passives and lesser powers (Khajiit Night Eye) stay,
+and the race's powers on every player character (`AlduinakAdditions.esp` leaves
+the playable races only Khajiit Night Eye). `false` makes characters start
+without them; abilities such as the combat heal rate, racial passives and
+lesser powers (Khajiit Night Eye) stay,
 and spells learned in play (tomes) are kept. The client drops the withheld spells from its own spell lists at
 spawn and after the race menu. Read by the native server at boot.
 
