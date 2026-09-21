@@ -96,7 +96,11 @@ Legion, the Stormcloaks, the Thalmor, the Companions, the Thieves Guild, the
 Dark Brotherhood and the College each make their own. A rule may name further
 factions (`also`), and a member of any of them may then make it: the battle
 staffs, the Ethereal Axestaff, the Chainmail Mage Hoods and the Dwarven Mage
-sets belong to the College of Winterhold or the Synod.
+sets belong to the College of Winterhold or the Synod. Crossbows and bolts are
+the Dawnguard's, the Creation Club Curios bolts included: that rule says
+`creations`, the only one that claims a Creation recipe, and the Curios bolts'
+own `GetInFaction` gate, which the menu read as false and the server as true, is
+dropped for the marker.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in
@@ -174,8 +178,9 @@ therefore also stop offering the Ancient Nord armour, the Nord Hero weapons and
 Sentinel's steel plate cuirass and bracers. The Nordic arrow stays at the
 woodcrafting bench, and the AVExpansion Nordic Vanguard set stays where it is.
 
-Stalhrim, the Dawnguard crossbows and bolts, the Blades armour and the Skyforge
-Bow stay craftable at their mastery tier. Tempering is untouched: a parked
+Stalhrim, the Blades armour and the Skyforge Bow stay craftable at their mastery
+tier. Every crossbow and bolt, the Dawnguard ones and the Curios bolts alike, is
+the Dawnguard's (see Race and faction). Tempering is untouched: a parked
 recipe's Improve entry still lists the item for anyone holding one.
 
 Benches:
