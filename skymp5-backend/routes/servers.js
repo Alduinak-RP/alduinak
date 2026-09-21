@@ -29,31 +29,8 @@ router.get('/:key/serverinfo', async (req, res) => {
   const server = config.serverByKey(req.params.key)
   if (!server) return res.status(403).json({ error: 'Invalid master key.' })
 
-  // Optional session validation for the allowed/sessionValid hints
-  const { lookupSession, isDiscordWhitelisted } = require('./master-api')
-  const token = req.headers['x-session']
-  let sessionValid = false
-  let allowed      = true
-
-  if (token) {
-    const entry = lookupSession(token)
-    if (!entry) {
-      sessionValid = false
-      allowed      = false
-    } else {
-      sessionValid = true
-      if (config.serverLocked) {
-        allowed = config.serverLockedAllowList.includes(entry.discordId)
-      } else {
-        try {
-          allowed = await isDiscordWhitelisted(entry.discordId)
-        } catch {
-          allowed = false
-        }
-      }
-    }
-  }
-
+  const { sessionHints } = require('./master-api')
+  const { locked, sessionValid, allowed } = await sessionHints(req.headers['x-session'])
   const hb = getHeartbeat(server.id)
   res.json({
     host:        server.address,
@@ -63,7 +40,7 @@ router.get('/:key/serverinfo', async (req, res) => {
     offlineMode: config.serverOfflineMode,
     masterKey:   server.masterKey || null,
     masterUrl:   config.masterUrl       || null,
-    locked:      config.serverLocked,
+    locked,
     sessionValid,
     allowed,
   })

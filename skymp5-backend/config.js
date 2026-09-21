@@ -65,7 +65,7 @@ const config = module.exports = {
   discordBotToken: process.env.DISCORD_BOT_TOKEN || '',
   discordGuildId:  process.env.DISCORD_GUILD_ID  || '',
 
-  // Server lockdown: when true only serverLockedAllowList IDs can connect; others get loginFailedServerLocked from the TS server and the launcher shows "Server locked"
+  // Server lockdown: when true only holders of a serverLockedRoleIds role or serverLockedAllowList IDs can connect; data/server-access.json overrides these
   serverLocked:          process.env.SERVER_LOCKED === 'true',
   // Comma-separated list of Discord snowflake IDs that may still connect.
   serverLockedAllowList: (process.env.SERVER_LOCKED_ALLOW || '')

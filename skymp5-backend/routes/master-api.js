@@ -589,16 +589,21 @@ router.post('/:key/sessions/:session/purchase', (req, res) => {
   res.json({ balanceSpent: balanceToSpend, success: true })
 })
 
-// Wraps getDiscordAccess for the serverinfo routes.
-async function isDiscordWhitelisted(discordId) {
-  const result = await serverAccess.getDiscordAccess(discordId)
-  return result.allowed === true
+// Launcher hints for the serverinfo routes: the lock state and, when X-Session is sent, whether that player may join
+async function sessionHints(token) {
+  const locked = serverAccess.load().serverLocked
+  if (!token) return { locked, sessionValid: false, allowed: true }
+  const entry = lookupSession(token)
+  if (!entry) return { locked, sessionValid: false, allowed: false }
+  let allowed = false
+  try { allowed = (await serverAccess.getDiscordAccess(entry.discordId)).allowed === true } catch {}
+  return { locked, sessionValid: true, allowed }
 }
 
 module.exports = router
 module.exports.lookupSession  = lookupSession
 module.exports.createSession  = createSession
-module.exports.isDiscordWhitelisted = isDiscordWhitelisted
+module.exports.sessionHints         = sessionHints
 module.exports.recordLaunchCheck    = recordLaunchCheck
 module.exports.recordSessionHwid    = recordSessionHwid
 module.exports.currentFilesVersion  = currentFilesVersion

@@ -1,6 +1,6 @@
 const router      = require('express').Router()
 const config      = require('../config')
-const { lookupSession, isDiscordWhitelisted } = require('./master-api')
+const { sessionHints } = require('./master-api')
 const { getHeartbeat, fetchGameJson } = require('./servers')
 const { publishedSchema } = require('./install-manifest')
 const fs          = require('fs')
@@ -29,30 +29,7 @@ function loadPublicKeys() {
 // ?server=<id> answers for another game server; the lock and the whitelist are global
 router.get('/', async (req, res) => {
   const server = config.serverById(req.query.server) || config.servers[0]
-  const token = req.headers['x-session']
-
-  let sessionValid = false
-  let allowed      = true   // true when no session provided (offline / launcher handles it)
-
-  if (token) {
-    const entry = lookupSession(token)
-    if (!entry) {
-      sessionValid = false
-      allowed      = false
-    } else {
-      sessionValid = true
-      if (config.serverLocked) {
-        allowed = config.serverLockedAllowList.includes(entry.discordId)
-      } else {
-        try {
-          allowed = await isDiscordWhitelisted(entry.discordId)
-        } catch {
-          allowed = false
-        }
-      }
-    }
-  }
-
+  const { locked, sessionValid, allowed } = await sessionHints(req.headers['x-session'])
   const hb = getHeartbeat(server.id)
 
   res.json({
@@ -65,7 +42,7 @@ router.get('/', async (req, res) => {
     discordAuthRequired: !!config.discordClientId,
     masterKey:           server.masterKey  || null,
     masterUrl:           config.masterUrl         || null,
-    locked:              config.serverLocked,
+    locked,
     // Server's esp/esm load order (basenames, in order); null if offline
     loadOrder:           await getGameLoadOrder(server),
     // Schema of the install manifest; a launcher that cannot read it must update before installing or playing
