@@ -1401,7 +1401,7 @@ ipcMain.handle('files:updateCheck', async () => {
   try {
     const vd = await fetchJSON(`${config.apiUrl}/api/files/version`)
     const gamePath   = effectiveGamePath()
-    const allPresent = clientFilesPresent(gamePath)
+    const allPresent = clientFilesPresent(gamePath, store.get('mo2Enabled'))
     // A failed modpack install also flips the Play button to UPDATE so one
     // click re-runs the install and self-heals the incomplete state.
     const modpackFailed = store.get('mo2Enabled') && store.get('modpackState') === 'failed'
@@ -1563,23 +1563,39 @@ ipcMain.handle('app:installUpdate', async () => {
 
 // Launch SKSE
 
-// Files that must exist before we allow launching
-const REQUIRED_FILES = [
-  path.join('Data', 'Platform', 'Plugins', 'skymp5-client.js'),
-  path.join('Data', 'SKSE', 'Plugins', 'SkyrimPlatform.dll'),
-  path.join('Data', 'SKSE', 'Plugins', 'MpClientPlugin.dll'),
-]
+// Data files that must exist before we allow launching
+const CLIENT_SCRIPT = 'Platform/Plugins/skymp5-client.js'
+const REQUIRED_FILES = [CLIENT_SCRIPT, 'SKSE/Plugins/SkyrimPlatform.dll', 'SKSE/Plugins/MpClientPlugin.dll']
 
 // Engine fixes preloader
 const PRELOADER_DLLS = ['d3dx9_42.dll', 'winhttp.dll']
 const preloaderPresent = (gamePath) =>
   !!gamePath && PRELOADER_DLLS.some(f => fs.existsSync(path.join(gamePath, f)))
 
+// Tells whether a Data-relative file is in the real Data or, under MO2, in any mod folder
+function dataFileFinder(gamePath, viaMO2) {
+  let modDirs = []
+  if (viaMO2) {
+    try {
+      modDirs = fs.readdirSync(mo2.getModsDir(), { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(e => path.join(mo2.getModsDir(), e.name))
+    } catch {}
+  }
+  return rel => [path.join(gamePath, 'Data'), ...modDirs].some(dir => fs.existsSync(path.join(dir, ...rel.split('/'))))
+}
+
 // True when every client-package file the launcher can check is on disk.
-const clientFilesPresent = (gamePath) =>
+const clientFilesPresent = (gamePath, viaMO2) =>
   !!gamePath &&
-  REQUIRED_FILES.every(f => fs.existsSync(path.join(gamePath, f))) &&
+  REQUIRED_FILES.every(dataFileFinder(gamePath, viaMO2)) &&
   preloaderPresent(gamePath)
+
+// The manifest mods that carry the SkyMP client; under MO2 they replace the backend's client zip
+function clientMods(manifest) {
+  const target = CLIENT_SCRIPT.toLowerCase()
+  return ((manifest && manifest.mods) || []).filter(m => (m.files || []).some(f => String(f.to).toLowerCase() === target))
+}
 
 ipcMain.handle('launch:skse', () => guardLaunch(async () => {
   const skyrimPath = effectiveGamePath()
@@ -1841,7 +1857,8 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   const problems = []
 
   // SkyMP / Skyrim Platform client files.
-  const missingFiles = REQUIRED_FILES.filter(f => !fs.existsSync(path.join(skyrimPath, f)))
+  const found = dataFileFinder(skyrimPath, viaMO2)
+  const missingFiles = REQUIRED_FILES.filter(f => !found(f))
   if (missingFiles.length > 0) {
     const names = missingFiles.map(f => path.basename(f)).join(', ')
     const hint  = viaMO2 ? 'run Repair Modlist in Settings' : 'run Repair Client Files in Settings'
@@ -1861,12 +1878,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
 
   // Server load order: every required plugin must be present.
   if (Array.isArray(serverInfo?.loadOrder) && serverInfo.loadOrder.length > 0) {
-    const missingPlugins = viaMO2
-      ? missingPluginsForMO2(skyrimPath, serverInfo.loadOrder)
-      : serverInfo.loadOrder
-          .map(f => path.basename(f))
-          .filter(f => !VANILLA_MASTERS.has(f.toLowerCase()) &&
-                       !fs.existsSync(path.join(skyrimPath, 'Data', f)))
+    const missingPlugins = missingServerPlugins(skyrimPath, serverInfo.loadOrder, viaMO2)
     if (missingPlugins.length > 0) {
       problems.push(`Required plugins missing (${missingPlugins.join(', ')}); install the server modlist first.`)
     }
@@ -1879,7 +1891,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
 
   // Fallback for engine fixes failure (like with AV software)
   if (!preloaderPresent(skyrimPath)) {
-    problems.push('The Engine Fixes preloader dll is missing from the game folder; press PLAY (it will show UPDATE) to reinstall the client files.')
+    problems.push('The Engine Fixes preloader dll is missing from the game folder; press PLAY (it will show UPDATE) to restore it.')
   }
 
   // Online servers need a launcher Discord login so auth-data-no-load.js can be seeded; without it SkyMP shows its own auth menu and never connects.
@@ -1947,7 +1959,7 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
   if (viaMO2) mo2.ensureInstance(skyrimPath, serverInfo?.loadOrder)
   if (Array.isArray(serverInfo?.loadOrder) && serverInfo.loadOrder.length > 0) {
     if (viaMO2) {
-      const missing = missingPluginsForMO2(skyrimPath, serverInfo.loadOrder)
+      const missing = missingServerPlugins(skyrimPath, serverInfo.loadOrder, true)
       if (missing.length > 0) {
         return {
           success: false,
@@ -2068,23 +2080,11 @@ function fixLoadOrder(skyrimPath, serverLoadOrder) {
   return { changed, missing: [] }
 }
 
-function missingPluginsForMO2(skyrimPath, serverLoadOrder) {
-  const dataDir = path.join(skyrimPath, 'Data')
-  const modsDir = mo2.getModsDir()
-
-  let modDirs = []
-  try {
-    modDirs = fs.readdirSync(modsDir, { withFileTypes: true })
-      .filter(e => e.isDirectory())
-      .map(e => path.join(modsDir, e.name))
-  } catch {}
-
+function missingServerPlugins(skyrimPath, serverLoadOrder, viaMO2) {
+  const found = dataFileFinder(skyrimPath, viaMO2)
   return serverLoadOrder
     .map(f => path.basename(f))
-    .filter(f => !VANILLA_MASTERS.has(f.toLowerCase()))
-    .filter(f =>
-      !fs.existsSync(path.join(dataDir, f)) &&
-      !modDirs.some(dir => fs.existsSync(path.join(dir, f))))
+    .filter(f => !VANILLA_MASTERS.has(f.toLowerCase()) && !found(f))
 }
 
 // Install files
@@ -2325,6 +2325,15 @@ async function checkFilesImpl() {
     await yieldNow()
   }
 
+  progress('Fetching the install manifest…')
+  let manifest = null
+  try { manifest = await fetchJSON(MANIFEST_URL()) }
+  catch (err) { notes.push(`Modlist: could not fetch the install manifest (${err.serverError || err.message}), section skipped.`) }
+  if (manifest && Number(manifest.schema) > MANIFEST_SCHEMA) {
+    notes.push(`Modlist: ${UPDATE_LAUNCHER_ERROR}`)
+    manifest = null
+  }
+
   if (gameOk) {
     progress('Checking the cleaned masters…')
     for (const m of cleanmasters.MASTERS) {
@@ -2381,10 +2390,19 @@ async function checkFilesImpl() {
     const files = vd && Array.isArray(vd.files)
       ? vd.files.filter(f => f && typeof f.path === 'string' && !f.path.split('/').includes('..'))
       : []
-    if (files.length === 0) {
+    const preloaderIssue = () => { if (!preloaderPresent(gamePath)) add('missing', `${show(path.join(gamePath, PRELOADER_DLLS[0]))} (Engine Fixes preloader)`, 'client') }
+    if (store.get('mo2Enabled') && clientMods(manifest).length > 0) {
+      notes.push('Client files: under MO2 they come from the modlist, which the Modlist section verifies.')
+      const settings = path.join(gamePath, 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
+      if (!fs.existsSync(settings)) add('missing', show(settings), 'client')
+      preloaderIssue()
+    } else if (files.length === 0) {
       if (vd) notes.push('Client files: the server publishes no per-file list, so only presence and version were checked.')
-      for (const f of REQUIRED_FILES) if (!fs.existsSync(path.join(gamePath, f))) add('missing', show(path.join(gamePath, f)), 'client')
-      if (!preloaderPresent(gamePath)) add('missing', `${show(path.join(gamePath, PRELOADER_DLLS[0]))} (Engine Fixes preloader)`, 'client')
+      for (const f of REQUIRED_FILES) {
+        const full = path.join(gamePath, 'Data', ...f.split('/'))
+        if (!fs.existsSync(full)) add('missing', show(full), 'client')
+      }
+      preloaderIssue()
     } else {
       const listed = new Set()
       for (let i = 0; i < files.length; i++) {
@@ -2416,14 +2434,6 @@ async function checkFilesImpl() {
   }
 
   // Modlist
-  progress('Fetching the install manifest…')
-  let manifest = null
-  try { manifest = await fetchJSON(MANIFEST_URL()) }
-  catch (err) { notes.push(`Modlist: could not fetch the install manifest (${err.serverError || err.message}), section skipped.`) }
-  if (manifest && Number(manifest.schema) > MANIFEST_SCHEMA) {
-    notes.push(`Modlist: ${UPDATE_LAUNCHER_ERROR}`)
-    manifest = null
-  }
   if (manifest && manifest.creations && Array.isArray(manifest.creations.files) && gameOk) {
     progress('Checking the Creation Club files…')
     for (const f of manifest.creations.files) {
@@ -2601,14 +2611,14 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo, force = false
       }
       if (force) return { success: false, error: 'Backend unreachable, client files were not reinstalled' }
       // Network error - play on cached files if they exist
-      const allPresent = clientFilesPresent(skyrimPath)
+      const allPresent = clientFilesPresent(skyrimPath, false)
       if (!allPresent) return { success: false, error: 'Backend unreachable and client files are not installed. Check your connection.' }
       log('[install] Backend unreachable - files already installed, updating settings only')
       writeClientSettings(clientSettingsPath, srv, serverInfo)
       return { success: true, upToDate: true }
     }
 
-    const allPresent    = clientFilesPresent(skyrimPath)
+    const allPresent    = clientFilesPresent(skyrimPath, false)
     const needsDownload = force || serverVersion !== store.get('filesVersion') || !allPresent
 
     if (!needsDownload) {
@@ -2725,7 +2735,7 @@ function openDownloadList(downloadsDir, missing) {
 }
 
 // MO2 install
-// Full modpack pipeline: MO2 itself → SkyMP client files → manifest replay.
+// Full modpack pipeline: MO2 itself → manifest replay, whose client mod carries the SkyMP client (else the backend zip).
 // Mods are reproduced from the backend's compiled install manifest (download +
 // verify each archive, extract once, apply per-file directives) so every player
 // gets the reference install's exact, byte-identical layout.
@@ -2787,15 +2797,7 @@ async function runMO2Install(opts = {}) {
     seedProfilePrefs(store.get('skyrimPath') || skyrimPath)
     applyForcedServerDefaults(skyrimPath)
 
-    // 2. SkyMP client files into the real Data/ (skipped by Repair Modlist)
-    let coreUpToDate = false
-    if (!modlistOnly) {
-      const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
-      if (!core.success) return fail(core.error)
-      coreUpToDate = !!core.upToDate
-    }
-
-    // 3. Mods from the compiled install manifest
+    // 2. Mods from the compiled install manifest
     let manifest
     try { manifest = await fetchJSON(MANIFEST_URL()) }
     catch (err) {
@@ -2818,6 +2820,20 @@ async function runMO2Install(opts = {}) {
     const masters = await ensureCleanedMasters(skyrimPath)
     const setupWarning = [vanillaWarning, creations.warning, masters.warning].filter(Boolean).join(' | ') || null
 
+    // 3. SkyMP client files: a manifest mod carries them under MO2; without one the backend zip goes into the real Data (skipped by Repair Modlist)
+    let coreUpToDate = false
+    let clientFilesVersion = null
+    if (clientMods(manifest).length > 0) {
+      try { clientFilesVersion = (await fetchJSON(`${config.apiUrl}/api/files/version`)).version } catch {}
+      ensureClientDirs(skyrimPath)
+      writeClientSettings(clientSettingsPath(), srv, serverInfo)
+      coreUpToDate = !!clientFilesVersion && clientFilesVersion === store.get('filesVersion')
+    } else if (!modlistOnly) {
+      const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
+      if (!core.success) return fail(core.error)
+      coreUpToDate = !!core.upToDate
+    }
+
     const finishOrder = () => {
       const order = (Array.isArray(manifest.order) && manifest.order.length)
         ? manifest.order.slice()
@@ -2826,6 +2842,8 @@ async function runMO2Install(opts = {}) {
       mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
       mo2.setPlugins(manifest.plugins)
       store.set('installedRootHash', manifest.rootHash || '')
+      // The launch gate compares this with the backend's files version
+      if (clientFilesVersion) store.set('filesVersion', clientFilesVersion)
     }
 
     if (manifest.mods.length === 0) {
@@ -2883,8 +2901,9 @@ async function runMO2Install(opts = {}) {
     }
     const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
-    const needsRoot      = force || !rootSetUp || rootChanged
-    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} force=${force} -> needsRoot=${needsRoot}`)
+    const rootMissing    = (manifest.root || []).some(f => !fs.existsSync(path.join(skyrimPath, ...String(f.to).split('/'))))
+    const needsRoot      = force || !rootSetUp || rootChanged || rootMissing
+    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} filesMissing=${rootMissing} force=${force} -> needsRoot=${needsRoot}`)
     const modsToInstall  = []
     for (let i = 0; i < manifest.mods.length; i++) {
       if (modChanged(manifest.mods[i])) modsToInstall.push(manifest.mods[i])

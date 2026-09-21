@@ -100,6 +100,29 @@ installs (Galaxy64.dll / goggame-* present) are accepted at **1.6.1179.0**, the
 GOG build of the same generation. An unreadable version never blocks, it is
 only logged.
 
+## Client files
+
+Under MO2 the SkyMP client (Platform/, SkyrimPlatform.dll, MpClientPlugin.dll)
+comes from the Nexus mod 'Alduinak Client Files' like any other mod: any
+manifest mod that carries `Platform/Plugins/skymp5-client.js` counts
+(`clientMods`). The launcher then only writes `skymp5-client-settings.txt` and
+the auth file into the real Data (the manifest never ships a settings file, or
+MO2 would let it shadow this one) and stores the backend's files version at the
+end of the run, so the launch gate still passes. The Engine Fixes preloader
+`d3dx9_42.dll` comes from the manifest's `root` list (`rootInclude` on the
+backend) and is restored whenever it goes missing. Launch checks find client
+files and plugins in the real Data or any mod folder (`dataFileFinder`).
+
+Without a client mod in the manifest, and in the direct (no MO2) install, the
+launcher still extracts the backend zip into the real Data. That is also the
+fallback if the client does not work through MO2's virtual file system: delete
+`Platform/` and `SKSE/Plugins/SkyrimPlatform.dll` / `MpClientPlugin.dll` from
+the client mod folder in the reference MO2, run Update manifest, and every
+launcher goes back to the zip on its next PLAY, with no launcher rebuild.
+
+From now on a client change reaches MO2 players only through a new Nexus file:
+Build Client, upload the Nexus file, then Update manifest.
+
 ## Cleaned masters
 
 The server's masters and three Creation plugins are cleaned with Simple Cleaned
