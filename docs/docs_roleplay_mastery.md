@@ -155,7 +155,9 @@ recipes by what they make, their Improve entries at the armour table and the
 grindstone included:
 
 - the Falmer Double Axe, plain and honed, and the Ancient Falmer boots, cuirass
-  and gauntlets.
+  and gauntlets;
+- the Daedra (Dremora) Halberd of Immersive Weapons, whose name escapes the
+  Daedric term.
 
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
