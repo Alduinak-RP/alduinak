@@ -126,22 +126,31 @@ export class SearchService extends ClientListener {
         sendCustomPacket(this.controller, { customPacketType: "searchEnd" });
         return;
       }
-      // Server count minus local count per base form
-      const delta = new Map<number, number>();
+      // Server count minus the engine's count, which also sees the base container items getInventory misses
+      const server = new Map<number, number>();
       for (const e of entries) {
-        delta.set(e.baseId, (delta.get(e.baseId) || 0) + e.count);
+        server.set(e.baseId, (server.get(e.baseId) || 0) + e.count);
       }
+      const ids = new Set<number>(server.keys());
       for (const e of getInventory(actor).entries) {
-        delta.set(e.baseId, (delta.get(e.baseId) || 0) - e.count);
+        ids.add(e.baseId);
       }
-      delta.forEach((d, baseId) => {
-        const form = d !== 0 ? this.sp.Game.getFormEx(baseId) : null;
+      const numItems = actor.getNumItems();
+      for (let i = 0; i < numItems; i++) {
+        const item = actor.getNthForm(i);
+        if (item) {
+          ids.add(item.getFormID());
+        }
+      }
+      ids.forEach((baseId) => {
+        const form = this.sp.Game.getFormEx(baseId);
         if (!form) {
           return;
         }
+        const d = (server.get(baseId) || 0) - actor.getItemCount(form);
         if (d > 0) {
           actor.addItem(form, d, true);
-        } else if (body) {
+        } else if (d < 0 && body) {
           actor.removeItem(form, -d, true, null);
         }
       });
