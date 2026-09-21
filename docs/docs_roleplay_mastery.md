@@ -42,8 +42,8 @@ Markers are cumulative: a Master holds the Novice, Adept, Expert and Master
 abilities. Novice is a real gate: a character outside the profession makes
 nothing of it. What everyone may make is tiered `Anyone` in the spec, the one
 tier that writes no condition - the common recipes, charcoal, every drink at a
-meadery boiler, honey, five cooked dishes, the blank parchment, journal and book,
-and the cloaks, capes and coarsest clothing at the rack and the loom.
+meadery boiler, honey, five cooked dishes and the blank parchment, journal and
+book. Cloaks, capes and every piece of clothing need a Novice tailor.
 
 ## The professions
 
@@ -73,7 +73,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue |
 | Hunter | - | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
 | Miner | iron veins | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
-| Tailor | cloaks and capes, the coarsest everyday clothing, the blank parchment, journal and book | everything else at the tanning rack and the weaving loom, leather and hide armour included | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels and the dress of the tailor's own people | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
+| Tailor | the blank parchment, journal and book | cloaks, capes, the belted tunic and the other everyday clothing, boots and hats, and everything else at the tanning rack and the weaving loom, leather and hide armour included | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels and the dress of the tailor's own people | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
 | Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
 | Woodworker | charcoal, the broom, the blank parchment, journal and book | the tools (woodcutter's axe, pickaxe, hoe) and the iron and wooden bows, arrows and shields | steel, silver and gold bows, arrows and shields, and the drum | orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass, dragon and stalhrim, and the lute |
 
