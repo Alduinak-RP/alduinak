@@ -89,7 +89,8 @@ woodcrafting bench. A recipe that turns finished gear into other finished gear
 stays put; anything that makes nothing of ore is parked.
 
 **Race and faction.** Racial gear (`racial`) carries a `GetIsRace` OR group
-beside its rank condition, vampire races included; Dwarven is in no rule.
+beside its rank condition, vampire races included; Dwarven is in no rule. The
+Alinor Saber of Immersive Weapons is the Altmer's, like Elven and Aldmeri gear.
 Faction gear (`factions`) carries a `HasSpell` on a marker of its own, handed
 out from the backend roster by `factionCraftSystem.ts`, so guard armour, the
 Legion, the Stormcloaks, the Thalmor, the Companions, the Thieves Guild, the
