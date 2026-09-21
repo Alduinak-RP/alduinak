@@ -1,3 +1,5 @@
+import { sendJson } from "./playerText";
+
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
@@ -11,6 +13,10 @@ export const userOf = (mp: Mp, actorId: number): number => {
     return -1;
   }
 };
+
+// Corner notification for an online player; offline actors are skipped
+export const notifyActor = (mp: Mp, actorId: number, text: string): void =>
+  sendJson(mp, userOf(mp, actorId), { customPacketType: "notification", text });
 
 export const baseIdOf = (mp: Mp, actorId: number): number => {
   try {
@@ -72,6 +78,23 @@ export const isAlive = (mp: Mp, actorId: number): boolean => {
   } catch {
     return false;
   }
+};
+
+// Wraps an mp.* event hook: the previous handler runs first, a false from either one vetoes, and a handler that throws is logged and never vetoes
+export const chainMpHook = (mp: Mp, event: string, fn: (...args: any[]) => unknown): void => {
+  const previous = typeof mp[event] === "function" ? mp[event] : null;
+  const run = (handler: (...args: unknown[]) => unknown, args: unknown[]): unknown => {
+    try {
+      return handler.apply(mp, args);
+    } catch (e) {
+      console.error(`[${event}] handler failed: ${e}`);
+      return undefined;
+    }
+  };
+  mp[event] = (...args: unknown[]): boolean => {
+    if (previous && run(previous, args) === false) return false;
+    return run(fn, args) !== false;
+  };
 };
 
 // Same cell or worldspace and within range

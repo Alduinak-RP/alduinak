@@ -26,6 +26,9 @@ export interface CharacterListEntry {
 // Emitted on SystemContext.gm (profileId, slot, actorId) just before a character is deleted
 export const CHARACTER_RETIRED_EVENT = "characterRetired";
 
+// Emitted on SystemContext.gm (profileId, slot, actorId, realm, reason) when AfterlifeSystem sends a character to Sovngarde or the Soul Cairn; slot is -1 when unknown
+export const AFTERLIFE_EVENT = "afterlife";
+
 // Emitted on SystemContext.gm (profileId, access) when a profile's faction access changed in game; access covers every character
 export const ACCESS_REFRESHED_EVENT = "accessRefreshed";
 

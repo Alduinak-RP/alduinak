@@ -195,3 +195,34 @@ elements) or change labels. Localised strings live in the `translations` map
 in the same file. The intro panel styles are the `.login--w32`, `.login--w35`
 and `.login--w36` rules in
 `skymp5-front/src/features/login/styles.scss`.
+
+---
+
+## 4. The afterlife (Sovngarde and the Soul Cairn)
+
+`skymp5-server/ts/systems/afterlifeSystem.ts` owns both realms. A character sent
+to one stays playable but is confined to it.
+
+- **Sending**: `AfterlifeSystem.sendToSovngarde(actorId, reason)` and
+  `sendToSoulCairn(actorId, reason)` write `private.afterlife`
+  (`{ realm, reason, at }`) on the character, tell the player, emit
+  `AFTERLIFE_EVENT` (`profileId, slot, actorId, realm, reason`) on
+  `SystemContext.gm` and log `[afterlife] ... sent to ...`. A living character is
+  moved to the realm at once; a dead one is only marked and its respawn takes it
+  there. Both return false for NPCs and for a character already in an afterlife.
+  Soul trapping a player's soul into a black soul gem sends them to the Soul
+  Cairn.
+- **Arrivals**: Sovngarde is the vanilla Hall of Valor (`95c44:Skyrim.esm`, at
+  its COC marker). The Soul Cairn is where the Castle Volkihar portal sets the
+  player down (`1408:Dawnguard.esm`).
+- **Respawn**: a player who dies in a realm (the Sovngarde world, either Hall of
+  Valor, the Soul Cairn, the Reaper's lair or the Boneyard), or who carries
+  `private.afterlife`, respawns at that realm's arrival instead of a temple. The
+  `onRespawn` hook swaps `spawnPoint` for that one respawn and logs
+  `[afterlife] ... respawns in ...`.
+- **Confinement**: every 2 seconds, and when a character is picked at character
+  select, a living character with `private.afterlife` outside its realm is
+  brought back to the arrival with "The dead cannot leave ...". Vanilla
+  Sovngarde is closed by its data (the Skuldafn portal is initially disabled),
+  so this catches staff teleports and the Soul Cairn portals. Staff must clear
+  `private.afterlife` before moving such a character out.

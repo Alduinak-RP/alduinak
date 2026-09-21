@@ -1,0 +1,161 @@
+import { System, Log, SystemContext, AFTERLIFE_EVENT } from "./system";
+import { chainMpHook, hex, isAlive, isPlayerActor, notifyActor } from "./actorUtil";
+
+// The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
+type Mp = any;
+
+// Afterlife: a character sent to Sovngarde or the Soul Cairn stays playable but is confined to its realm, and any player who dies inside a realm respawns at its arrival.
+// Senders (finish off, execution, soul trap) call sendToSovngarde / sendToSoulCairn; a dead actor is only marked and routed on its respawn.
+
+export type RealmId = "sovngarde" | "soulCairn";
+
+interface Realm {
+  label: string;
+  arrival: { cellOrWorldDesc: string; pos: number[]; rot: number[] };
+  spaces: Set<string>;
+}
+
+export const REALMS: Record<RealmId, Realm> = {
+  // The COC marker of the Hall of Valor (Skyrim.esm CELL 95C44, REFR 95F39); the hall's doors only lead to the Sovngarde world
+  sovngarde: {
+    label: "Sovngarde",
+    arrival: { cellOrWorldDesc: "95c44:Skyrim.esm", pos: [-590.44, -131.84, -357.73], rot: [0, 0, 359] },
+    // The Sovngarde world, the vanilla hall and the plugin's duplicate hall
+    spaces: new Set(["2ee41:Skyrim.esm", "95c44:Skyrim.esm", "815:AlduinakAdditions.esp"]),
+  },
+  // Where the Castle Volkihar portal (Dawnguard.esm door 0200289B) sets the player down in DLC01SoulCairn
+  soulCairn: {
+    label: "the Soul Cairn",
+    arrival: { cellOrWorldDesc: "1408:Dawnguard.esm", pos: [-19965.66, -15986.51, 2079.48], rot: [0, 0, 77.35] },
+    // The Soul Cairn and the places its doors reach: the Reaper's lair (CELL 02006429) and the Boneyard (WRLD 0200528D)
+    spaces: new Set(["1408:Dawnguard.esm", "6429:Dawnguard.esm", "528d:Dawnguard.esm"]),
+  },
+};
+
+// { realm, reason, at } on the character
+export const AFTERLIFE_PROP = "private.afterlife";
+
+const CONFINE_POLL_MS = 2000;
+
+export const afterlifeOf = (mp: Mp, actorId: number): RealmId | null => {
+  try {
+    const realm = mp.get(actorId, AFTERLIFE_PROP)?.realm;
+    return typeof realm === "string" && Object.prototype.hasOwnProperty.call(REALMS, realm) ? realm as RealmId : null;
+  } catch {
+    return null;
+  }
+};
+
+// Perma-dead or in an afterlife: the character no longer counts as a living one of its profile
+export const isFallen = (mp: Mp, actorId: number): boolean => {
+  try {
+    if (mp.get(actorId, "private.permaDead") === true) return true;
+  } catch {
+    return false;
+  }
+  return afterlifeOf(mp, actorId) !== null;
+};
+
+const realmAt = (mp: Mp, actorId: number): RealmId | null => {
+  const desc = String(mp.get(actorId, "worldOrCellDesc"));
+  return (Object.keys(REALMS) as RealmId[]).find((id) => REALMS[id].spaces.has(desc)) ?? null;
+};
+
+export class AfterlifeSystem implements System {
+  systemName = "AfterlifeSystem";
+
+  constructor(private log: Log) { }
+
+  async initAsync(ctx: SystemContext): Promise<void> {
+    this.ctx = ctx;
+    const mp = ctx.svr as Mp;
+    chainMpHook(mp, "onRespawn", (rawId: number) => {
+      const actorId = Number(rawId) >>> 0;
+      try {
+        if (!isPlayerActor(mp, actorId)) return;
+        const realm = afterlifeOf(mp, actorId) ?? realmAt(mp, actorId);
+        if (realm) this.routeRespawn(mp, actorId, realm);
+      } catch (e) {
+        this.log(`[afterlife] respawn routing of ${hex(actorId)} failed: ${e}`);
+      }
+    });
+    ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => this.confine(mp, actorId >>> 0));
+  }
+
+  async updateAsync(ctx: SystemContext): Promise<void> {
+    const now = Date.now();
+    if (now < this.nextPollAt) return;
+    this.nextPollAt = now + CONFINE_POLL_MS;
+    const mp = ctx.svr as Mp;
+    let players: unknown[] = [];
+    try { players = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
+    for (const id of players) this.confine(mp, Number(id) >>> 0);
+  }
+
+  sendToSovngarde(actorId: number, reason: string): boolean {
+    return this.send(actorId >>> 0, "sovngarde", reason);
+  }
+
+  sendToSoulCairn(actorId: number, reason: string): boolean {
+    return this.send(actorId >>> 0, "soulCairn", reason);
+  }
+
+  private send(actorId: number, realm: RealmId, reason: string): boolean {
+    const ctx = this.ctx;
+    if (!ctx) return false;
+    const mp = ctx.svr as Mp;
+    if (!isPlayerActor(mp, actorId) || isFallen(mp, actorId)) return false;
+    const { label, arrival } = REALMS[realm];
+    try {
+      mp.set(actorId, AFTERLIFE_PROP, { realm, reason, at: Date.now() });
+      if (isAlive(mp, actorId)) mp.set(actorId, "locationalData", arrival);
+    } catch (e) {
+      this.log(`[afterlife] sending ${hex(actorId)} to ${label} failed: ${e}`);
+      return false;
+    }
+    notifyActor(mp, actorId, `Your soul passes to ${label}.`);
+    let profileId = -1;
+    let slot: unknown;
+    try {
+      profileId = Number(mp.get(actorId, "profileId"));
+      slot = mp.get(actorId, "private.charSlot");
+    } catch { /* form vanished */ }
+    ctx.gm.emit(AFTERLIFE_EVENT, profileId, Number.isInteger(slot) ? slot : -1, actorId, realm, reason);
+    this.log(`[afterlife] ${hex(actorId)} of profile ${profileId} sent to ${label}: ${reason}`);
+    return true;
+  }
+
+  // The engine reads the respawn point right after this hook, so the realm's arrival stands in for this one respawn only
+  private routeRespawn(mp: Mp, actorId: number, realm: RealmId): void {
+    const { label, arrival } = REALMS[realm];
+    const home = mp.get(actorId, "spawnPoint");
+    mp.set(actorId, "spawnPoint", arrival);
+    setTimeout(() => {
+      try {
+        mp.set(actorId, "spawnPoint", home);
+      } catch (e) {
+        this.log(`[afterlife] restoring the spawn point of ${hex(actorId)} failed: ${e}`);
+      }
+    }, 0);
+    this.log(`[afterlife] ${hex(actorId)} respawns in ${label}`);
+  }
+
+  // A living character outside its realm (staff teleport, a portal, marked while away) is brought back to the arrival
+  private confine(mp: Mp, actorId: number): void {
+    const realm = afterlifeOf(mp, actorId);
+    if (!realm || !isAlive(mp, actorId)) return;
+    const { label, arrival, spaces } = REALMS[realm];
+    try {
+      if (spaces.has(String(mp.get(actorId, "worldOrCellDesc")))) return;
+      mp.set(actorId, "locationalData", arrival);
+    } catch (e) {
+      this.log(`[afterlife] returning ${hex(actorId)} to ${label} failed: ${e}`);
+      return;
+    }
+    notifyActor(mp, actorId, `The dead cannot leave ${label}.`);
+    this.log(`[afterlife] ${hex(actorId)} returned to ${label}`);
+  }
+
+  private ctx: SystemContext | null = null;
+  private nextPollAt = 0;
+}

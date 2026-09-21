@@ -33,6 +33,7 @@ import { TradeSystem } from "./systems/tradeSystem";
 import { CraftedExtrasSystem } from "./systems/craftedExtrasSystem";
 import { SearchSystem } from "./systems/searchSystem";
 import { SoulTrapSystem } from "./systems/soulTrapSystem";
+import { AfterlifeSystem } from "./systems/afterlifeSystem";
 import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
@@ -234,6 +235,8 @@ const main = async () => {
   hostingSystem.addProvider(() => npcSpawnSystem.liveNpcs());
   hostingSystem.addProvider(() => companionSystem.hostables());
   const captureSystem = new CaptureSystem(log);
+  // Sovngarde and the Soul Cairn: soul trap, finish off and execution send characters there
+  const afterlifeSystem = new AfterlifeSystem(log);
   const housingSystem = new HousingSystem(log);
   const searchSystem = new SearchSystem(log);
   const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
@@ -264,12 +267,13 @@ const main = async () => {
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing
     adminSystem,
     captureSystem,
+    afterlifeSystem,
     housingSystem,
     factionSystem,
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
     searchSystem,
-    new SoulTrapSystem(log, companionSystem),
+    new SoulTrapSystem(log, companionSystem, afterlifeSystem),
     new VoiceSystem(log),
     new AfkSystem(log),
     new TimeSystem(log),

@@ -1,17 +1,15 @@
 import { System, Log, SystemContext } from "./system";
 import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
+import { hex, notifyActor } from "./actorUtil";
+import { AfterlifeSystem } from "./afterlifeSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
 // Soul Trap: a hit carrying a soul trap effect marks its target, and a death before the effect ends fills one of the caster's soul gems.
-// Players have black souls, so only an empty black soul gem takes them; a player whose soul was taken, or who dies in the Soul Cairn, respawns there.
+// Players have black souls, so only an empty black soul gem takes them; a player whose soul was taken is sent to the Soul Cairn (AfterlifeSystem).
 
 const HIT_EVENT = "onPapyrusEvent:OnHit";
-const TRAPPED_PROP = "private.soulTrapped";
-const NOTICE_PACKET = "notification";
-// getUserByActor reports failure with Networking::InvalidUserId, not -1.
-const INVALID_USER_ID = 65535;
 // Only marked actors are polled, and a respawn takes seconds.
 const DEATH_POLL_MS = 100;
 
@@ -39,14 +37,6 @@ const FILLED_GEMS = new Map<number, number>([
   [0x0002e4fc, 0x0002e4ff], // Grand
   [0x0002e500, 0x0002e504], // Black
 ]);
-// Where the Castle Volkihar portal (Dawnguard.esm door 0200289B) sets the player down in DLC01SoulCairn.
-const SOUL_CAIRN_ARRIVAL = {
-  cellOrWorldDesc: "1408:Dawnguard.esm",
-  pos: [-19965.66, -15986.51, 2079.48],
-  rot: [0, 0, 77.35],
-};
-// The Soul Cairn and the places its doors reach: the Reaper's lair (CELL 02006429) and the Boneyard (WRLD 0200528D).
-const SOUL_CAIRN_SPACES = new Set(["1408:Dawnguard.esm", "6429:Dawnguard.esm", "528d:Dawnguard.esm"]);
 
 interface Trap {
   casterId: number;
@@ -72,13 +62,12 @@ interface GemEntry {
   wornLeft?: boolean;
 }
 
-const hex = (id: number): string => (id >>> 0).toString(16);
 const viewOf = (d: Uint8Array): DataView => new DataView(d.buffer, d.byteOffset, d.byteLength);
 
 export class SoulTrapSystem implements System {
   systemName = "SoulTrapSystem";
 
-  constructor(private log: Log, private companions?: { isCompanionActor(actorId: number): boolean }) { }
+  constructor(private log: Log, private companions?: { isCompanionActor(actorId: number): boolean }, private afterlife?: AfterlifeSystem) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
@@ -91,19 +80,6 @@ export class SoulTrapSystem implements System {
         this.log(`[soultrap] hit check failed: ${e}`);
       }
       return previousHit ? previousHit.apply(mp, args) : undefined;
-    };
-
-    const previousRespawn = typeof mp.onRespawn === "function" ? mp.onRespawn : null;
-    mp.onRespawn = (...args: unknown[]) => {
-      const result = previousRespawn ? previousRespawn.apply(mp, args) : undefined;
-      if (result !== false) {
-        try {
-          this.routeToSoulCairn(ctx, Number(args[0]) >>> 0);
-        } catch (e) {
-          this.log(`[soultrap] Soul Cairn respawn failed: ${e}`);
-        }
-      }
-      return result;
     };
   }
 
@@ -157,30 +133,10 @@ export class SoulTrapSystem implements System {
       this.log(`[soultrap] ${hex(targetId)} died soul trapped by ${hex(casterId)}, no empty gem holds its ${kind} soul`);
       return;
     }
-    this.notify(ctx, casterId, "Soul captured!");
-    if (player) {
-      mp.set(targetId, TRAPPED_PROP, true);
-      this.notify(ctx, targetId, "Your soul was trapped in a black soul gem.");
-    }
+    notifyActor(mp, casterId, "Soul captured!");
+    // The victim is dead here, so it is only marked and its respawn takes it to the Soul Cairn
+    if (player) this.afterlife?.sendToSoulCairn(targetId, `soul trapped by ${hex(casterId)}`);
     this.log(`[soultrap] ${hex(casterId)} trapped the ${kind} soul of ${hex(targetId)} in gem ${hex(gemId)}`);
-  }
-
-  // The engine reads the respawn point right after this hook, so the Soul Cairn stands in for this one respawn only
-  private routeToSoulCairn(ctx: SystemContext, actorId: number): void {
-    const mp = ctx.svr as Mp;
-    const trapped = mp.get(actorId, TRAPPED_PROP) === true;
-    if (trapped) mp.set(actorId, TRAPPED_PROP, false);
-    else if (!this.isPlayer(mp, actorId) || !SOUL_CAIRN_SPACES.has(String(mp.get(actorId, "worldOrCellDesc")))) return;
-    const home = mp.get(actorId, "spawnPoint");
-    mp.set(actorId, "spawnPoint", SOUL_CAIRN_ARRIVAL);
-    setTimeout(() => {
-      try {
-        mp.set(actorId, "spawnPoint", home);
-      } catch (e) {
-        this.log(`[soultrap] restoring the spawn point of ${hex(actorId)} failed: ${e}`);
-      }
-    }, 0);
-    this.log(`[soultrap] ${hex(actorId)} respawns in the Soul Cairn${trapped ? "" : ", where it died"}`);
   }
 
   // Smallest empty gem that holds the soul: black souls need a gem that can hold NPC souls, white souls a regular one
@@ -360,15 +316,6 @@ export class SoulTrapSystem implements System {
     } catch {
       return 0;
     }
-  }
-
-  private notify(ctx: SystemContext, actorId: number, text: string): void {
-    try {
-      const userId = ctx.svr.getUserByActor(actorId);
-      if (userId >= 0 && userId < INVALID_USER_ID) {
-        ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: NOTICE_PACKET, text }));
-      }
-    } catch { /* offline */ }
   }
 
   private fieldData(res: any, type: string): Uint8Array | null {
