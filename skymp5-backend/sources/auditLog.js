@@ -5,7 +5,7 @@
 const fs   = require('fs')
 const path = require('path')
 
-const LOG_DIR = process.env.BAN_LOG_DIR || 'C:\\Users\\Administrator\\Desktop\\logs'
+const LOG_DIR = process.env.BAN_LOG_DIR || process.env.ALDUINAK_LOG_DIR || 'C:\\logs'
 
 function append(fileName, line) {
   try {

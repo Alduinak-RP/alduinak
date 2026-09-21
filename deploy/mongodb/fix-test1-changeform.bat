@@ -32,6 +32,6 @@ net start AlduinakGameServer
 echo.
 echo Done. Give it ~20 seconds, then check: http://127.0.0.1:4000/api/status
 echo It should say "online". If it says "offline", send back the last lines of
-echo   C:\Users\Administrator\Desktop\logs\gameserver.log
+echo   C:\logs\gameserver.log
 echo.
 pause

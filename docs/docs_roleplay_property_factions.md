@@ -366,7 +366,7 @@ which reports every account's slots whenever the character select list is sent.
   rank's lists and drops the regency seats behind it.
 - **Audit**: every definition change, regency change and every membership added,
   changed or removed (dashboard, manager, cascade or in game) writes a line to
-  `faction.log` in `BAN_LOG_DIR`, next to `ban.log`.
+  `faction.log` in `BAN_LOG_DIR` (default `C:\logs`), next to `ban.log`.
 - **Game server**: FactionSystem asks for the definitions every 20 seconds with
   `If-None-Match`, so an unchanged table is a 304, and on a change reloads the
   ranks of every online character, so deletes and permission edits apply
