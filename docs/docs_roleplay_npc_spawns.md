@@ -126,10 +126,12 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
-- NPCs are placed with `PlaceAtMe` anchored on a player who is inside the zone,
-  so the actor starts in the right cell, then teleported to a random navmesh
-  spot, or its ring spot with `Spread: 0` (see Placement), which also becomes
-  its spawn point. `spawnDelay` is forced to `1e9` seconds
+- NPCs are placed disabled with `PlaceAtMe` anchored on a player who is inside
+  the zone, so the actor starts in the right cell, then teleported to a random
+  navmesh spot, or its ring spot with `Spread: 0` (see Placement), which also
+  becomes its spawn point, and only then enabled, so every client creates it
+  at its spot (a server teleport inside the same grid cell reaches no client).
+  `spawnDelay` is forced to `1e9` seconds
   (about 31 years) so the engine never revives them: a respawn is always a
   fresh copy from this system. Do not use larger values such as `1e12`: they
   overflow the engine's timer arithmetic and the actor respawns on the next

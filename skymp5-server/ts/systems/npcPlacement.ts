@@ -41,18 +41,20 @@ export const moveNpc = (mp: Mp, id: number, loc: NpcLocation): void => {
 };
 
 // PlaceAtMe needs a self ref (anchorId); the new reference starts at the anchor's position and cell; throws on failure
-export const placeAtMe = (mp: Mp, anchorId: number, baseDesc: string): number => {
+export const placeAtMe = (mp: Mp, anchorId: number, baseDesc: string, disabled = false): number => {
   const self = { type: "form", desc: mp.getDescFromId(anchorId) };
   const res = mp.callPapyrusFunction("method", "ObjectReference", "PlaceAtMe",
-    self, [{ type: "espm", desc: baseDesc }, 1, false, false]);
+    self, [{ type: "espm", desc: baseDesc }, 1, false, disabled]);
   if (!res?.desc) throw new Error("PlaceAtMe returned no reference");
   return mp.getIdFromDesc(res.desc);
 };
 
 // The anchor is usually a player nearby; the new actor then moves to loc and never respawns on its own
 export const placeNpc = (mp: Mp, anchorId: number, baseDesc: string, loc: NpcLocation): number => {
-  const id = placeAtMe(mp, anchorId, baseDesc);
+  // Enabled only at loc: a same-grid teleport never reaches clients, so they would create it at the anchor
+  const id = placeAtMe(mp, anchorId, baseDesc, true);
   moveNpc(mp, id, loc);
   mp.set(id, "spawnDelay", NEVER_RESPAWN);
+  mp.set(id, "isDisabled", false);
   return id;
 };
