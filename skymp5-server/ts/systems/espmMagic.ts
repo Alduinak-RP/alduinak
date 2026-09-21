@@ -41,14 +41,14 @@ const effectCache = new Map<number, SpellEffect[]>();
 const conditionCache = new Map<number, KeywordCondition[]>();
 const ashCache = new Map<number, boolean>();
 
-const fieldData = (lookup: any, type: string): Uint8Array | null => {
+export const fieldData = (lookup: any, type: string): Uint8Array | null => {
   const fields = lookup?.record?.fields;
   if (!Array.isArray(fields)) return null;
   const f = fields.find((x: any) => x && x.type === type && x.data instanceof Uint8Array);
   return f ? f.data : null;
 };
 
-const view = (data: Uint8Array): DataView => new DataView(data.buffer, data.byteOffset, data.byteLength);
+export const view = (data: Uint8Array): DataView => new DataView(data.buffer, data.byteOffset, data.byteLength);
 
 const toGlobal = (lookup: any, localId: number): number => {
   if (!localId || typeof lookup?.toGlobalRecordId !== "function") return 0;

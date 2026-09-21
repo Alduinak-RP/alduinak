@@ -31,9 +31,15 @@ export class SearchService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.on("menuOpen", (e) => {
+      if (e.name === "ContainerMenu" && this.searchWindowOpen) {
+        logTrace(this, `Search window opened`, Date.now() - this.approvedAt, `ms after approval`);
+      }
+    });
     this.controller.on("menuClose", (e) => {
       // The player closed the window themselves: a later searchClose must not tap Tab, and the target frees up for others
       if (e.name === "ContainerMenu" && this.searchWindowOpen) {
+        logTrace(this, `Search window closed`, Date.now() - this.approvedAt, `ms after approval`);
         this.searchWindowOpen = false;
         sendCustomPacket(this.controller, { customPacketType: "searchEnd" });
       }
@@ -69,6 +75,8 @@ export class SearchService extends ClientListener {
         if (typeof content["target"] === "number") {
           const entries = Array.isArray(content["entries"])
             ? (content["entries"] as { baseId: number, count: number }[]) : [];
+          this.approvedAt = Date.now();
+          logTrace(this, `Search approved for`, (content["target"] as number).toString(16), `with`, entries.length, `entries`);
           this.openTargetInventory(content["target"] as number, entries, content["body"] === true);
         }
         break;
@@ -199,4 +207,5 @@ export class SearchService extends ClientListener {
   private pendingRequestId: number | null = null;
   private expiryTimer?: number;
   private searchWindowOpen = false;
+  private approvedAt = 0;
 }

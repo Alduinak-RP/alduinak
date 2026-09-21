@@ -433,6 +433,19 @@ For this many seconds after a player and a zone NPC exchanged a damaging hit, th
 }
 ```
 
+## searchStartMaxDistance, searchKeepMaxDistance
+
+How far, in game units between actor roots, a player may be from another player or a body to start searching it (`searchStartMaxDistance`, default 256), and how far apart the pair may drift before the window closes with "They moved away." (`searchKeepMaxDistance`, default 512). A dead NPC adds the half length of its base's bounds (the NPC_ `OBND`, at most 512) to both, so a mammoth (264) can be searched from its head or tail; a base without bounds, such as the frost atronach, adds 128. Dead player characters get no extra reach. A refused search logs `[search] <searcher> refused <target>: dead .., distance .., reach ..`, and every session end logs `[search] <searcher> stops searching <target>: <reason>`.
+
+```json5
+{
+  // ...
+  "searchStartMaxDistance": 256,
+  "searchKeepMaxDistance": 512
+  // ...
+}
+```
+
 ## gamemodePath
 
 Contains a relative or an absolute path to a file or directory with a gamemode.

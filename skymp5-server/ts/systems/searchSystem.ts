@@ -3,7 +3,8 @@ import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { isNamedItemBase } from "./inventoryExtras";
 import { isBound, isRestrained } from "./captureSystem";
-import { isBleedingOut, nameShownTo } from "./actorUtil";
+import { baseIdOf, isBleedingOut, nameShownTo } from "./actorUtil";
+import { fieldData, view } from "./espmMagic";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -36,6 +37,9 @@ const DEFAULT_CONSENT_COOLDOWN_MS = 15000;
 const DEFAULT_START_MAX_DISTANCE = 256;
 // The window closes when the pair drifts further apart than this. Overridable via "searchKeepMaxDistance".
 const DEFAULT_KEEP_MAX_DISTANCE = 512;
+// A dead NPC adds the half length of its base's bounds (OBND) to both reaches, or this when the base has none
+const DEFAULT_BODY_EXTRA_REACH = 128;
+const MAX_BODY_EXTRA_REACH = 512;
 // Distance re-check cadence.
 const WATCH_INTERVAL_MS = 500;
 // Distinct items a dead player's body gives up before it is removed. Overridable via "searchPlayerBodyTakeLimit" (0 = no limit).
@@ -87,6 +91,8 @@ export class SearchSystem implements System {
   private startMaxDistance = DEFAULT_START_MAX_DISTANCE;
   private keepMaxDistance = DEFAULT_KEEP_MAX_DISTANCE;
   private playerBodyTakeLimit = DEFAULT_PLAYER_BODY_TAKE_LIMIT;
+  // NPC base id -> extra reach of its body
+  private bodyReachCache = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -184,7 +190,7 @@ export class SearchSystem implements System {
     for (const s of Array.from(this.sessions.values())) {
       // A side that lost its user (character switch, logout-grace park) ends the search
       if (this.userOf(ctx, s.searcherActorId) < 0 || (!s.body && !s.pet && this.userOf(ctx, s.targetActorId) < 0)) {
-        this.endSession(ctx, s, "");
+        this.endSession(ctx, s, "", "user gone");
         continue;
       }
       // Respawned, revived or despawned
@@ -200,7 +206,7 @@ export class SearchSystem implements System {
         this.endSession(ctx, s, "They are no longer restrained.");
         continue;
       }
-      if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, this.keepMaxDistance)) {
+      if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, this.keepMaxDistance + this.bodyReach(ctx, s.targetActorId))) {
         this.endSession(ctx, s, "They moved away.");
       }
     }
@@ -255,6 +261,10 @@ export class SearchSystem implements System {
     }
     const targetActorId = toFormId(content.target);
     if (!this.validTarget(ctx, searcherActorId, targetActorId)) {
+      if (targetActorId) {
+        const d = this.distance(ctx, searcherActorId, targetActorId);
+        this.log(`[search] ${searcherActorId.toString(16)} refused ${targetActorId.toString(16)}: dead ${this.isDead(ctx, targetActorId)}, distance ${Number.isFinite(d) ? Math.round(d) : "other cell"}, reach ${this.startMaxDistance + this.bodyReach(ctx, targetActorId)}`);
+      }
       this.notice(ctx, userId, "Look at a player or a body to search.");
       return;
     }
@@ -353,7 +363,7 @@ export class SearchSystem implements System {
     const targetActorId = searcherActorId === null ? undefined : this.searching.get(searcherActorId);
     const s = targetActorId === undefined ? undefined : this.sessions.get(targetActorId);
     if (s) {
-      this.endSession(ctx, s, "");
+      this.endSession(ctx, s, "", "window closed");
     }
   }
 
@@ -401,7 +411,8 @@ export class SearchSystem implements System {
 
   // ── Session teardown ────────────────────────────────────────────────────────
 
-  private endSession(ctx: SystemContext, s: SearchSession, reasonForSearcher: string): void {
+  private endSession(ctx: SystemContext, s: SearchSession, reasonForSearcher: string, logReason = reasonForSearcher): void {
+    this.log(`[search] ${s.searcherActorId.toString(16)} stops searching ${s.body ? "body " : ""}${s.targetActorId.toString(16)}: ${logReason || "ended"}`);
     this.sessions.delete(s.targetActorId);
     this.searching.delete(s.searcherActorId);
     this.setOccupant(ctx, s.targetActorId, 0);
@@ -532,21 +543,49 @@ export class SearchSystem implements System {
     if (this.isPermaDead(ctx.svr as Mp, targetActorId)) {
       return false;
     }
-    return this.nearEnough(ctx, selfActorId, targetActorId, this.startMaxDistance);
+    return this.nearEnough(ctx, selfActorId, targetActorId, this.startMaxDistance + this.bodyReach(ctx, targetActorId));
   }
 
   private nearEnough(ctx: SystemContext, aActorId: number, bActorId: number, max: number): boolean {
+    return this.distance(ctx, aActorId, bActorId) <= max;
+  }
+
+  // Between actor roots; Infinity across cells or worlds
+  private distance(ctx: SystemContext, aActorId: number, bActorId: number): number {
     try {
       if (ctx.svr.getActorCellOrWorld(aActorId) !== ctx.svr.getActorCellOrWorld(bActorId)) {
-        return false;
+        return Infinity;
       }
       const a = ctx.svr.getActorPos(aActorId);
       const b = ctx.svr.getActorPos(bActorId);
-      const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
-      return dx * dx + dy * dy + dz * dz <= max * max;
+      return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
     } catch {
-      return false;
+      return Infinity;
     }
+  }
+
+  // A big body's root sits far from the edge the searcher stands at, so dead NPCs reach further than players
+  private bodyReach(ctx: SystemContext, targetActorId: number): number {
+    if (!this.isDead(ctx, targetActorId) || this.isPlayerCharacter(ctx, targetActorId)) {
+      return 0;
+    }
+    const mp = ctx.svr as Mp;
+    const baseId = baseIdOf(mp, targetActorId);
+    let reach = this.bodyReachCache.get(baseId);
+    if (reach === undefined) {
+      reach = DEFAULT_BODY_EXTRA_REACH;
+      try {
+        const obnd = fieldData(mp.lookupEspmRecordById(baseId), "OBND");
+        if (obnd && obnd.byteLength >= 12) {
+          const v = view(obnd);
+          // Six int16 corners x1 y1 z1 x2 y2 z2; the largest horizontal one counts
+          const half = Math.max(...[0, 2, 6, 8].map((off) => Math.abs(v.getInt16(off, true))));
+          if (half > 0) reach = Math.min(half, MAX_BODY_EXTRA_REACH);
+        }
+      } catch { /* keep the default */ }
+      this.bodyReachCache.set(baseId, reach);
+    }
+    return reach;
   }
 
   private isDead(ctx: SystemContext, actorId: number): boolean {
