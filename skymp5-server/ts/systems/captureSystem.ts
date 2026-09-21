@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
-import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, chainMpHook } from "./actorUtil";
+import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -32,7 +32,7 @@ type Mp = any;
 //     { customPacketType: "captureConsentResult", requestId, accepted } // from the prompted target
 //     { customPacketType: "playerMenuRequest", target: <actorFormId> }  // the player menu opened on target
 //   Server -> Client:
-//     { customPacketType: "playerMenuState", target, canRelease }       // -> the requester only: whether their Release applies
+//     { customPacketType: "playerMenuState", target, canRelease, ...flags } // -> the requester only: whether their Release applies, plus menuFlagProviders' flags
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
 //     { customPacketType: "carryState",      carrying, anim }              // -> carrier's RestraintService (pose only)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
@@ -144,6 +144,8 @@ export class CaptureSystem implements System {
   jobLoadOf: ((actorId: number) => string) | null = null;
   // Set by BleedoutSystem: a capture or carry ends the target's bleedout
   rescueDowned: ((actorId: number) => void) | null = null;
+  // Other systems' player menu actions: each adds flags saying which apply to this requester and target
+  menuFlagProviders: Array<(requesterActorId: number, targetActorId: number) => Record<string, boolean>> = [];
   private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
   private refusalLogAt = new Map<number, number>();
@@ -479,13 +481,27 @@ export class CaptureSystem implements System {
     if (requesterActorId === null || !targetActorId) {
       return;
     }
+    const flags: Record<string, boolean> = {};
+    for (const provider of this.menuFlagProviders) {
+      try {
+        Object.assign(flags, provider(requesterActorId, targetActorId));
+      } catch (e) {
+        this.log(`[capture] menu flag provider failed: ${e}`);
+      }
+    }
     try {
       ctx.svr.sendCustomPacket(userId, JSON.stringify({
         customPacketType: MENU_STATE_PACKET,
         target: targetActorId,
         canRelease: this.releaseStep(requesterActorId, targetActorId) !== null,
+        ...flags,
       }));
     } catch { /* user gone */ }
+  }
+
+  // The capture and carry range, for other systems' player menu actions
+  get interactRange(): number {
+    return this.interactMaxDistance;
   }
 
   // What the requester's next Release does: a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release or the requester is bound
@@ -801,18 +817,7 @@ export class CaptureSystem implements System {
 
   // Same cell/worldspace and within interactMaxDistance; the target id is client-supplied, so this stops a modified client grabbing players across the map
   private nearEnough(ctx: SystemContext, selfActorId: number, targetActorId: number): boolean {
-    try {
-      if (ctx.svr.getActorCellOrWorld(selfActorId) !==
-        ctx.svr.getActorCellOrWorld(targetActorId)) {
-        return false;
-      }
-      const a = ctx.svr.getActorPos(selfActorId);
-      const b = ctx.svr.getActorPos(targetActorId);
-      const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
-      return dx * dx + dy * dy + dz * dz <= this.interactMaxDistance * this.interactMaxDistance;
-    } catch {
-      return false;
-    }
+    return isNear(ctx.svr as Mp, selfActorId, targetActorId, this.interactMaxDistance);
   }
 
   private isPermaDead(mp: Mp, actorId: number): boolean {

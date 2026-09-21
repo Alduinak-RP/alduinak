@@ -23,7 +23,7 @@ declare const window: any;
 const WIDGET_ID = 10;
 const PLAYER_FORM_ID = 0x14;
 const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
-// The menu waits up to this long for the server's Release answer so no row moves under the cursor; an older server never answers
+// The menu waits up to this long for the server's answer so no row moves under the cursor; an older server never answers
 const MENU_STATE_WAIT_MS = 500;
 
 // Server-spawned NPCs share the dynamic id space; only player characters carry an appearance
@@ -42,6 +42,7 @@ const ACTIONS: PlayerAction[] = [
   { id: 'capture', label: 'Restrain' },
   { id: 'carry', label: 'Carry' },
   { id: 'release', label: 'Release' },
+  { id: 'stabilize', label: 'Stabilize' },
   { id: 'factionRecruit', label: 'Recruit' },
 ];
 
@@ -52,7 +53,14 @@ const PACKET_ACTIONS: Record<string, string> = {
   capture: 'captureRequest',
   carry: 'carryRequest',
   release: 'releaseRequest',
+  stabilize: 'stabilizeRequest',
   factionRecruit: 'factionRecruitRequest',
+};
+
+// Actions shown only when the server's playerMenuState flag for this target says they apply; Release keeps its older flag name
+const SERVER_FLAGS: Record<string, string> = {
+  release: 'canRelease',
+  stabilize: 'stabilize',
 };
 
 // While a passive job load is carried: Put down joins the menu, and the interact key on nothing opens this one first
@@ -169,8 +177,8 @@ export class PlayerActionService extends ClientListener {
     }
     targetName = (ref.getName() || "").trim();
     this.playerTarget = remoteId;
-    // Release appears only when the server confirms it applies to this target
-    this.canRelease = false;
+    // Flagged actions appear only when the server confirms they apply to this target
+    this.menuFlags = {};
     sendCustomPacket(this.controller, { customPacketType: "playerMenuRequest", target: remoteId });
     // Names stay hidden until introduced (ff_knownIds owner prop)
     if (!targetName || !knowsCharacter(this.playerTarget)) {
@@ -184,9 +192,10 @@ export class PlayerActionService extends ClientListener {
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
     const content = parseCustomPacket(event);
     if (content?.["customPacketType"] !== "playerMenuState" || content["target"] !== this.playerTarget) return;
-    const canRelease = content["canRelease"] === true;
-    const changed = canRelease !== this.canRelease;
-    this.canRelease = canRelease;
+    const flags: Record<string, boolean> = {};
+    for (const [id, key] of Object.entries(SERVER_FLAGS)) flags[id] = content[key] === true;
+    const changed = Object.keys(flags).some((id) => flags[id] !== !!this.menuFlags[id]);
+    this.menuFlags = flags;
     const wait = this.menuWait;
     if (wait) {
       // Native calls are unsafe in the packet handler
@@ -196,7 +205,7 @@ export class PlayerActionService extends ClientListener {
     }
   }
 
-  // Opens once the Release answer is in or the wait ran out, unless another screen took over meanwhile
+  // Opens once the server's answer is in or the wait ran out, unless another screen took over meanwhile
   private openWaitingMenu(wait: number): void {
     if (wait !== this.menuWait) return;
     this.menuWait = 0;
@@ -257,7 +266,8 @@ export class PlayerActionService extends ClientListener {
     // No carry chains and no bound carriers: a carrying, carried or bound player is never offered Carry
     const noCarry = this.controller.lookupListener(RestraintService).isPoseLocked;
     const canRecruit = this.controller.lookupListener(FactionService).canRecruit;
-    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (a.id !== 'release' || this.canRelease) && (a.id !== 'factionRecruit' || canRecruit));
+    const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (!(a.id in SERVER_FLAGS) || this.menuFlags[a.id]) &&
+      (a.id !== 'factionRecruit' || canRecruit));
     if (this.controller.lookupListener(JobService).load) actions.push(PUT_DOWN);
     return { ACTIONS: actions, targetName, hideTrade: false, events, WIDGET_ID };
   }
@@ -283,8 +293,9 @@ export class PlayerActionService extends ClientListener {
 
   private menuOpen = false;
   private playerTarget = 0;
-  private canRelease = false;
-  // Token of the open waiting for the server's Release answer, 0 when none
+  // Action id -> whether the server's playerMenuState says it applies to the target
+  private menuFlags: Record<string, boolean> = {};
+  // Token of the open waiting for the server's answer, 0 when none
   private menuWait = 0;
   private menuWaitSeq = 0;
   private interactKey: number;

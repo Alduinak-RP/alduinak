@@ -18,6 +18,10 @@ export const userOf = (mp: Mp, actorId: number): number => {
 export const notifyActor = (mp: Mp, actorId: number, text: string): void =>
   sendJson(mp, userOf(mp, actorId), { customPacketType: "notification", text });
 
+// Plays anim on a player's own client and holds them still for the seconds, then plays exitAnim (RestraintService)
+export const sendActionLock = (mp: Mp, actorId: number, anim: string, seconds: number, exitAnim = "IdleForceDefaultState"): void =>
+  sendJson(mp, userOf(mp, actorId), { customPacketType: "actionLock", anim, seconds, exitAnim });
+
 export const baseIdOf = (mp: Mp, actorId: number): number => {
   try {
     const desc = mp.get(actorId, "baseDesc");

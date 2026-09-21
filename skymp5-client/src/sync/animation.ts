@@ -139,7 +139,7 @@ const isIdle = (animEventName: string) => {
 };
 
 // Exits, get-ups and restraint poses never wait, or a copy stays posed after its player moved on
-const needsEmptyHands = (animEventName: string): boolean => {
+export const needsEmptyHands = (animEventName: string): boolean => {
   const animEventNameLowerCase = animEventName.toLowerCase();
   if (
     animEventNameLowerCase.includes("exit") ||

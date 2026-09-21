@@ -54,6 +54,12 @@ behaviour-graph events — no ESP required.**
   stands the player up. A Restrain or Carry from the X menu takes a downed
   player at once, with no prompt, and ends the bleedout; they keep their low
   health.
+- **Stabilize**: anyone without magic can rescue a downed player. Stabilize
+  shows in the X menu on a downed player in reach. The rescuer kneels
+  (`IdleKneeling`) for 5 s, unable to move or fight, while the victim's timer
+  waits; then the victim stands up at 10% health. If the rescuer goes down,
+  dies or leaves first, the victim's timer resumes with the time that was left.
+  One rescuer at a time; a restrained or carrying player cannot stabilize.
 - **Logs**: deaths the native kill does not report (timer, damage over time,
   logout, a light finishing hit) go to `pvp.log` when another player downed or
   hit them; every bleedout event is logged as `[bleedout] ...`.
@@ -150,6 +156,9 @@ prisoner can also be carried).
 | --- | --- | --- |
 | `restraintState` `{ boundHands?, carried? }` | Server → victim client | Apply bound-hands / carried state |
 | `bleedoutState` `{ downed, seconds?, died? }` | Server → downed player's client | Kneel and lock controls, or stand up (no stand-up when `died`) |
+| `stabilizeRequest` `{ target }` | Rescuer client → server | Stabilize a downed player |
+| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting) |
+| `playerMenuState` `{ target, canRelease, stabilize, ... }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 
 All restraint/bleedout **rules, timers, permissions and persistence are

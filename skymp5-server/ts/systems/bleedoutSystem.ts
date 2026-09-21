@@ -1,7 +1,8 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, USER_MENU_QUIT_EVENT } from "./system";
-import { CaptureSystem } from "./captureSystem";
-import { BLEEDOUT_PROP, addItemTo, chainMpHook, hex, isAlive, isPlayerActor, nameShownTo, notifyActor, userOf } from "./actorUtil";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
+import { CaptureSystem, isRestrained } from "./captureSystem";
+import { toFormId } from "./formIdUtil";
+import { BLEEDOUT_PROP, addItemTo, chainMpHook, hex, isAlive, isNear, isPlayerActor, nameShownTo, notifyActor, sendActionLock, userOf } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson } from "./playerText";
 import { deathAlert, markDeathAlerted } from "./discordAlerts";
 
@@ -18,10 +19,17 @@ type Mp = any;
 // capture or carry (CaptureSystem.rescueDowned) ends the bleedout at once.
 // NPC hits on a downed player are refused. Deliberate kills use
 // mp.set isDead, which the gate never sees.
+// Stabilize (X menu) lets anyone tend a downed player without magic: the
+// rescuer kneels for 5 s while the victim's timer waits, then the victim
+// stands at 10% health. The rescuer going down, dying or leaving cancels it.
 //
-// Wire protocol, Server -> the downed player's RestraintService:
-//   { customPacketType: "bleedoutState", downed: true, seconds }
-//   { customPacketType: "bleedoutState", downed: false, died }   // died: no stand-up animation
+// Wire protocol:
+//   Client -> Server: { customPacketType: "stabilizeRequest", target }
+//   Server -> the downed player's RestraintService:
+//     { customPacketType: "bleedoutState", downed: true, seconds }
+//     { customPacketType: "bleedoutState", downed: false, died }   // died: no stand-up animation
+//   Server -> the rescuer: actionLock (sendActionLock)
+//   Server -> the requester: playerMenuState flag "stabilize" (CaptureSystem.menuFlagProviders)
 
 const STATE_PACKET = "bleedoutState";
 
@@ -37,11 +45,26 @@ const GRACE_MS = 1000;
 const DOT_DROP = 0.005;
 const TICK_MS = 250;
 
+const STABILIZE_SECONDS = 5;
+const STABILIZED_HEALTH = 0.1;
+// The rescuer's vanilla kneel (IDLE FB90B CheckCorpse)
+const STABILIZE_ANIM = "IdleKneeling";
+
 interface Downed {
   deadline: number;
   graceUntil: number;
   lastHealth: number;
   downerId: number;
+  // When a hold paused the timer, 0 while it runs
+  pausedAt: number;
+  hold?: Hold;
+}
+
+// Someone working on a downed player: the timer waits, and the tick completes or cancels the work
+interface Hold {
+  actorId: number;
+  until: number;
+  done: () => void;
 }
 
 export class BleedoutSystem implements System {
@@ -70,6 +93,7 @@ export class BleedoutSystem implements System {
       this.onHitDamageAttempt(aggressorId >>> 0, targetId >>> 0, damage));
 
     this.capture.rescueDowned = (actorId) => this.end(actorId, "rescued");
+    this.capture.menuFlagProviders.push((requesterId, targetId) => ({ stabilize: !this.stabilizeRefusal(requesterId, targetId) }));
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => this.onActorAssigned(actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.onLeave(actorId >>> 0));
   }
@@ -86,6 +110,10 @@ export class BleedoutSystem implements System {
         this.log(`[bleedout] tick of ${hex(actorId)} failed: ${e}`);
       }
     }
+  }
+
+  customPacket(userId: number, type: string, content: Content): void {
+    if (type === "stabilizeRequest") this.onStabilizeRequest(userId, toFormId(content.target, 0));
   }
 
   disconnect(userId: number): void {
@@ -105,7 +133,7 @@ export class BleedoutSystem implements System {
     // God and ghost admins never go down, and a smite kills outright
     if (this.isImmune(actorId)) return false;
     if (this.hasMode(killerId, "smite")) return true;
-    this.downed.set(actorId, { deadline: now + this.bleedoutMs, graceUntil: now + GRACE_MS, lastHealth: BLEEDOUT_HEALTH, downerId: killerId });
+    this.downed.set(actorId, { deadline: now + this.bleedoutMs, graceUntil: now + GRACE_MS, lastHealth: BLEEDOUT_HEALTH, downerId: killerId, pausedAt: 0 });
     // Outside the native hit call stack
     setTimeout(() => this.announceDown(actorId, killerId), 0);
     return false;
@@ -169,6 +197,10 @@ export class BleedoutSystem implements System {
       this.finish(actorId, true);
       return;
     }
+    if (state.hold) {
+      this.tickHold(actorId, state, now);
+      if (!this.downed.has(actorId)) return;
+    }
     const health = this.healthOf(actorId);
     if (health >= this.healedHealth) {
       this.end(actorId, "healed");
@@ -179,7 +211,82 @@ export class BleedoutSystem implements System {
       return;
     }
     state.lastHealth = health;
-    if (now >= state.deadline) this.die(actorId, "bled out");
+    if (!state.pausedAt && now >= state.deadline) this.die(actorId, "bled out");
+  }
+
+  // Timed work on a downed player (stabilize, finish off): the timer waits and done runs when it completes; the refusal, or "" once started
+  hold(victimId: number, actorId: number, ms: number, done: () => void): string {
+    const refusal = this.holdRefusal(victimId, actorId);
+    if (refusal) return refusal;
+    const now = Date.now();
+    const state = this.downed.get(victimId)!;
+    state.hold = { actorId, until: now + ms, done };
+    state.pausedAt = now;
+    return "";
+  }
+
+  private holdRefusal(victimId: number, actorId: number): string {
+    const state = this.downed.get(victimId);
+    if (!state || victimId === actorId) return "They are not bleeding out.";
+    if (state.hold) return "Someone is already tending to them.";
+    if (Array.from(this.downed.values()).some((s) => s.hold?.actorId === actorId)) return "You are already busy.";
+    return "";
+  }
+
+  // The worker must stay connected, alive and on their feet until the work is done
+  private tickHold(victimId: number, state: Downed, now: number): void {
+    const hold = state.hold!;
+    const mp = this.mp;
+    if (userOf(mp, hold.actorId) < 0 || !isAlive(mp, hold.actorId) || this.downed.has(hold.actorId)) {
+      this.resume(state, now);
+      notifyActor(mp, victimId, "Nobody is tending to your wounds any more.");
+      this.log(`[bleedout] ${hex(hold.actorId)} stopped tending to ${hex(victimId)}`);
+      return;
+    }
+    if (now < hold.until) return;
+    this.resume(state, now);
+    hold.done();
+  }
+
+  private resume(state: Downed, now: number): void {
+    if (state.pausedAt) state.deadline += now - state.pausedAt;
+    state.pausedAt = 0;
+    state.hold = undefined;
+  }
+
+  // Why the rescuer may not stabilize the target, "" when they may
+  private stabilizeRefusal(rescuerId: number, targetId: number): string {
+    const mp = this.mp;
+    if (!this.downed.has(targetId) || targetId === rescuerId) return "They are not bleeding out.";
+    if (!isAlive(mp, rescuerId) || this.downed.has(rescuerId) || isRestrained(mp, rescuerId) || this.capture.carriedOf(rescuerId)) {
+      return "You cannot do that now.";
+    }
+    if (!isNear(mp, rescuerId, targetId, this.capture.interactRange)) return "They are out of reach.";
+    return this.holdRefusal(targetId, rescuerId);
+  }
+
+  private onStabilizeRequest(userId: number, targetId: number): void {
+    const mp = this.mp;
+    let rescuerId = 0;
+    try { rescuerId = mp.getUserActor(userId) >>> 0; } catch { return; }
+    if (!rescuerId) return;
+    const refusal = this.stabilizeRefusal(rescuerId, targetId) ||
+      this.hold(targetId, rescuerId, STABILIZE_SECONDS * 1000, () => this.stabilized(targetId, rescuerId));
+    if (refusal) {
+      notifyActor(mp, rescuerId, refusal);
+      return;
+    }
+    sendActionLock(mp, rescuerId, STABILIZE_ANIM, STABILIZE_SECONDS);
+    notifyActor(mp, rescuerId, `You tend to ${nameShownTo(mp, rescuerId, targetId)}'s wounds.`);
+    notifyActor(mp, targetId, `${nameShownTo(mp, targetId, rescuerId)} is tending to your wounds.`);
+    this.log(`[bleedout] ${hex(rescuerId)} stabilizes ${hex(targetId)}`);
+  }
+
+  private stabilized(victimId: number, rescuerId: number): void {
+    const mp = this.mp;
+    this.standUp(victimId, "stabilized", STABILIZED_HEALTH);
+    notifyActor(mp, victimId, `${nameShownTo(mp, victimId, rescuerId)} stabilized you.`);
+    notifyActor(mp, rescuerId, `You stabilized ${nameShownTo(mp, rescuerId, victimId)}.`);
   }
 
   private announceDown(actorId: number, downerId: number): void {
@@ -197,15 +304,15 @@ export class BleedoutSystem implements System {
     this.log(`[bleedout] ${hex(actorId)} downed by ${hex(downerId)}`);
   }
 
-  // Healed or rescued: the player stands up where they knelt
-  private end(actorId: number, reason: "healed" | "rescued"): void {
+  // Healed, rescued or stabilized: the player stands up where they knelt
+  private end(actorId: number, reason: "healed" | "rescued" | "stabilized"): void {
     if (!this.downed.has(actorId)) return;
     this.finish(actorId, false);
     if (reason === "healed") notifyActor(this.mp, actorId, "Your wounds close and you get back up.");
     this.log(`[bleedout] ${hex(actorId)} ${reason}`);
   }
 
-  private standUp(actorId: number, reason: "healed", health: number): void {
+  private standUp(actorId: number, reason: "healed" | "stabilized", health: number): void {
     this.end(actorId, reason);
     try {
       const values = this.mp.get(actorId, "percentages");
