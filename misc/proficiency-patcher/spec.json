@@ -2589,6 +2589,100 @@
    "armors": [
     "SadrasBackpackDUPLICATE001"
    ]
+  },
+  {
+   "enchantment": "BP_Carry_75_Ench1",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "evgsmpreinforcedbackpackarmor",
+    "evgsmpreinforcedbackpackDARKarmor",
+    "evgsmpreinforcedbackpackLTHarmor",
+    "evgsmpreinforcedbackpackLIGHTarmor"
+   ]
+  },
+  {
+   "enchantment": "BPLantern_LightEnch1",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "evgsmpreinforcedbackpacklanternarmor",
+    "evgsmpreinforcedbackpacklanternDARKarmor",
+    "evgsmpreinforcedbackpacklanternLTHarmor",
+    "evgsmpreinforcedbackpacklanternLIGHTarmor"
+   ]
+  },
+  {
+   "enchantment": "Glowpack_LightEnch1Blue",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "evgsmpglowpackBLUEarmor"
+   ]
+  },
+  {
+   "enchantment": "Glowpack_LightEnch2Purple",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "evgsmpglowpackPURPLEarmor"
+   ]
+  },
+  {
+   "enchantment": "Glowpack_LightEnch3Beige",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "evgsmpglowpackBROWNarmor"
+   ]
+  },
+  {
+   "enchantment": "Satchel_Carry_50_Ench1",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 40,
+   "armors": [
+    "evgsmppatchworksatchelarmor",
+    "evgsmptoothlocksatchelarmor",
+    "evgsmptoothlocksatchelDARKarmor",
+    "evgsmppatchworksatchelDARKarmor",
+    "evgsmpreinforcedsatchelarmor",
+    "evgsmpreinforcedsatchelDARKarmor"
+   ]
+  },
+  {
+   "enchantment": "Pouch_Carry_25_Ench1",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 20,
+   "armors": [
+    "evgsmpsturdypouchLarmor",
+    "evgsmpsturdypouchLDARKarmor",
+    "evgsmpsturdypouchRarmor",
+    "evgsmpsturdypouchRDARKarmor",
+    "evgsmpbasicpouchLarmor",
+    "evgsmpbasicpouchLDARKarmor",
+    "evgsmpbasicpouchRarmor",
+    "evgsmpbasicpouchRDARKarmor"
+   ]
+  },
+  {
+   "enchantment": "TR_Carry_200_Ench1",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "evgsmptraderpackarmor",
+    "evgsmptraderpackGRAYarmor",
+    "evgsmptraderpackREDarmor"
+   ]
+  },
+  {
+   "enchantment": "TRLantern_LightEnch1",
+   "effect": "EnchFortifyCarryConstantSelf",
+   "magnitude": 60,
+   "armors": [
+    "evgsmptraderpacklanternarmor",
+    "evgsmptraderpacklanternGRAYarmor",
+    "evgsmptraderpacklanternREDarmor"
+   ]
   }
  ],
  "placements": [

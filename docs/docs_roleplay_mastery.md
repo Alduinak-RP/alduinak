@@ -346,8 +346,9 @@ produces is:
 - `ENCH` overrides of the Travelling Merchant Backpack's two enchantments
   (Armors of the Velothi): Fortify Carry Weight 60 instead of 100, on both
   variants. No other item carries them, and the step refuses one that is shared.
-  The bags of Nirn Necessities keep their own values (pouch 25, satchel 50,
-  backpacks 75, Trader's Resource 200).
+  The bags of Nirn Necessities are overridden the same way: every backpack
+  (Reinforced, lantern, glowdust and Trader's Resource) gives 60, a satchel 40
+  and a pouch 20.
 - One `REFR` override, the Windhelm Gray Quarter gate door (Skyrim.esm
   `000A17D3`): WindhelmSSE.esp moved the door and its arch `000A17CD` by
   different amounts, so the door is put back at the arch's position plus the

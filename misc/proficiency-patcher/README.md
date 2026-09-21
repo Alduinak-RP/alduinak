@@ -22,13 +22,13 @@ python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAddi
   reads the plugin from `dataDir`, so the run stops with exit code 5 unless `<dataDir>/AlduinakAdditions.esp`
   is the same file as `--plugin`. Without `--stage`, `--settings` must already be cut that way.
 - `--hotfix` runs only the steps of the hotfix list at the top of `Program.cs`: cooking, smithing, tempering,
-  tailoring, factions, uncraftable, writing, racial, the races, the disabled references and actors and the marker
-  effects. The live plugin already holds what the others build. Their sweeps of the load order touch only recipes
-  the plugin does not override yet and none a Creation Club plugin defines, so the tiers it ships stay as they are;
-  the factions, uncraftable and racial rules still read every recipe, the plugin's own overrides included, and the
-  tailoring `tiers` lists apply to the recipes they name. A named cooking or `addItems` recipe the sweep skips is
-  not an error. No `CraftingCategories` json is written unless the list runs the categories step. A new step goes
-  into both lists, in the full run's order.
+  tailoring, factions, uncraftable, writing, racial, the enchantment magnitudes, the races, the disabled references
+  and actors and the marker effects. The live plugin already holds what the others build. Their sweeps of the load
+  order touch only recipes the plugin does not override yet and none a Creation Club plugin defines, so the tiers
+  it ships stay as they are; the factions, uncraftable and racial rules still read every recipe, the plugin's own
+  overrides included, and the tailoring `tiers` lists apply to the recipes they name. A named cooking or `addItems`
+  recipe the sweep skips is not an error. No `CraftingCategories` json is written unless the list runs the
+  categories step. A new step goes into both lists, in the full run's order.
 - `--no-creations` keeps the Creation plugins in the load order: the plugin has mastered them since r12, so
   every winner is the one the game loads before it.
 - No `--next-form-id`: every record is found by editor id and reused, and a new one takes the plugin's own next
@@ -161,7 +161,7 @@ order, every `keepEdits` record must win as the Creation edit and every stage ab
 | `meadery` | The mead benches: `keyword` (`AldCraftingMead`, shared) and one keyword per bench, a FURN per bench copied from `template` with `removeKeywords` swapped for both keywords, its Novice `recipe` at its own keyword (`AldRecipeMead_<output>`), and one persistent `AldMeadBench_<boiler>` reference per `placements` entry (`pos`, `rotZ` in degrees) in an override of `cell`, refused further than 256 units from its `boiler`. `drinks` are the recipes brewed at any boiler, on the shared keyword (ale, wine and Nord mead, moved off the alchemy table); every drink is `Anyone`. `honey` is the Bee Honeycomb recipe, at the cooking pot (`AldRecipeCook_FoodHoney`) and at the alchemy bench, both `Anyone`. |
 | `benchMoves` | Existing recipes moved to another bench keyword with their tier kept. `recipes` names them, and `match` claims any recipe at one of the `from` benches by its editor id, product editor id or product name, skipping parked ones. The Skyforge move takes the Steel Plate, Nord Hero and Nordic Carved sets, which is all it then offers. A named recipe may not also be `uncraftable`. The report notes every furniture still carrying the keyword. |
 | `benchKeywordRemovals` | Bench keywords taken off existing furniture by editor id (the Skyforge keyword off the Riften Extension North and Mammoth Manor anvils, so the Whiterun Skyforge is the only one). A missing bench is a warning. |
-| `enchantmentMagnitudes` | One effect's magnitude on an enchantment (the Travelling Merchant Backpack's Fortify Carry Weight, 60). `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
+| `enchantmentMagnitudes` | One effect's magnitude on an enchantment: the Fortify Carry Weight of every bag, 60 for a backpack (the Travelling Merchant, Reinforced, lantern, glowdust and Trader's Resource backpacks), 40 for a satchel and 20 for a pouch. `armors` must be every winning ARMO and WEAP carrying it, otherwise the step refuses, and `enchantment` must be its editor id. |
 | `disableReferences` | Placed references (`refs`, form keys) turned Initially Disabled: an override of the winner, or the plugin's own reference changed in place; one already disabled is left alone. The beehives and Stonewall Terrace pieces, the collision box that stayed in the gateway of the iron gate in the Whiterun outer wall once the gate opened, and the ceiling rubble, hall collapse and collision box blocking the Helgen keep escape tunnel, which the opening quest would clear. |
 | `disableActors` | Every placed actor of the load order, living or dead, is Initially Disabled, so the game shows no vanilla or mod NPC and no corpse (the server spawns none of them anyway). One with an enable parent gets the player as parent, opposite, the xEdit idiom for a removed reference, so no quest or marker turns it back on; that includes the already disabled ones whose parent could. `except` names actors to leave alone. Every cell holding one is overridden from its own winner, and a worldspace from its last winner outside `notFrom` (`DynDOLOD.esm`, whose large references would make it a master), without the offset table. References whose enable parent is such an actor go with it: the carriages and driver seats of the hold stables. |
 | `placements` | A placed reference (`ref`, a form key) moved to its `anchor`'s winning position plus the offset the defining plugin had between the two (the Windhelm Gray Quarter gate door back in the arch WindhelmSSE.esp moved). Refused when either record was rotated since. The override joins the plugin's own cell and world groups when it already has them. |
