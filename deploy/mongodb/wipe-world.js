@@ -75,7 +75,7 @@ const FACTIONS_FILE = 'faction-whitelist.json'
 // Manifest state restore --with-settings puts back together with the old load order
 const MANIFEST_STATE = ['install-manifest.json', 'install-manifest.json.prev', 'manifest-diff.json', 'manifest-sources.json', 'modlist.json', 'data-sync.json', 'files-version.json']
 // Logs naming character and profile ids; service stdout and stderr logs stay
-const MODERATION_LOGS = ['admin.log', 'ban.log', 'bounty.log', 'chat.log', 'faction.log', 'pvp.log', 'trading.log']
+const MODERATION_LOGS = ['admin.log', 'ban.log', 'bounty.log', 'chat.log', 'faction.log', 'pk.log', 'pvp.log', 'trading.log']
 // The manager files rotated logs under <logDir>\YYYY-MM
 const LOG_MONTH_RE = /^\d{4}-\d{2}$/
 

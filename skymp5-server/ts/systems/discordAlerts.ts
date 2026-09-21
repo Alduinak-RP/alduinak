@@ -3,9 +3,8 @@ import * as path from "path";
 import { REST, Routes } from "discord.js";
 import { Settings } from "../settings";
 import { System, SystemContext } from "./system";
-import { describeActor, displayNameOf } from "./playerText";
+import { describeActor, displayNameOf, whereOf } from "./playerText";
 import { hex, isPlayerActor } from "./actorUtil";
-import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 
 type Mp = any;
 
@@ -23,7 +22,6 @@ const MAX_PENDING = 40;
 const KEYWORD_FILE = "alert-keywords.json";
 const KEYWORD_CHECK_MS = 5000;
 const DEFAULT_KEYWORD_COOLDOWN_S = 60;
-const NEAR_MARKER_DISTANCE = 8000;
 // Player links must not unfurl into previews
 const SUPPRESS_EMBEDS = 4;
 const DEATH_ALERTED_MS = 10000;
@@ -105,31 +103,6 @@ export function adminAudit(text: string, alert = true): void {
 
 const actorLabel = (mp: Mp, actorId: number): string =>
   isPlayerActor(mp, actorId) ? describeActor(mp, actorId) : `${JSON.stringify(displayNameOf(mp, actorId))} (${hex(actorId)})`;
-
-// "near <map marker>" outdoors, "in <cell>" indoors, then the raw location for a teleport
-export function whereOf(mp: Mp, actorId: number): string {
-  let loc: any = null;
-  try { loc = mp.get(actorId, "locationalData"); } catch { /* actor gone */ }
-  const desc = String(loc?.cellOrWorldDesc || "");
-  const pos = Array.isArray(loc?.pos) ? (loc.pos as unknown[]).map((v) => Math.round(Number(v))) : null;
-  if (!desc || !pos) return "at an unknown place";
-  let place = "";
-  try {
-    const id = mp.getIdFromDesc(desc) >>> 0;
-    const name = (globalThis as any).__alduinakItemName?.(id) || "";
-    if (String(mp.lookupEspmRecordById(id)?.record?.type ?? "") === "CELL") {
-      place = name ? `in ${name}` : "";
-    } else {
-      let best = NEAR_MARKER_DISTANCE;
-      for (const m of MAP_MARKER_LOCATIONS) {
-        const d = Math.hypot(m.pos[0] - pos[0], m.pos[1] - pos[1]);
-        if (m.cellOrWorldDesc.toLowerCase() === desc.toLowerCase() && d < best) { best = d; place = `near ${m.name}`; }
-      }
-      place ||= name ? `in ${name}` : "";
-    }
-  } catch { /* unknown form */ }
-  return `${place ? place + ", " : ""}at ${desc} (${pos.join(", ")})`;
-}
 
 const deathAlertedAt = new Map<number, number>();
 

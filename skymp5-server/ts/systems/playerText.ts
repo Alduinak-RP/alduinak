@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -38,6 +39,33 @@ export function profileIdOf(mp: Mp, actorId: number): number {
   } catch {
     return -1;
   }
+}
+
+const NEAR_MARKER_DISTANCE = 8000;
+
+// "near <map marker>" outdoors, "in <cell>" indoors, then the raw location for a teleport
+export function whereOf(mp: Mp, actorId: number): string {
+  let loc: any = null;
+  try { loc = mp.get(actorId, "locationalData"); } catch { /* actor gone */ }
+  const desc = String(loc?.cellOrWorldDesc || "");
+  const pos = Array.isArray(loc?.pos) ? (loc.pos as unknown[]).map((v) => Math.round(Number(v))) : null;
+  if (!desc || !pos) return "at an unknown place";
+  let place = "";
+  try {
+    const id = mp.getIdFromDesc(desc) >>> 0;
+    const name = (globalThis as any).__alduinakItemName?.(id) || "";
+    if (String(mp.lookupEspmRecordById(id)?.record?.type ?? "") === "CELL") {
+      place = name ? `in ${name}` : "";
+    } else {
+      let best = NEAR_MARKER_DISTANCE;
+      for (const m of MAP_MARKER_LOCATIONS) {
+        const d = Math.hypot(m.pos[0] - pos[0], m.pos[1] - pos[1]);
+        if (m.cellOrWorldDesc.toLowerCase() === desc.toLowerCase() && d < best) { best = d; place = `near ${m.name}`; }
+      }
+      place ||= name ? `in ${name}` : "";
+    }
+  } catch { /* unknown form */ }
+  return `${place ? place + ", " : ""}at ${desc} (${pos.join(", ")})`;
 }
 
 // JSON-quoted real name plus a fixed-position profile id, so a crafted character name cannot forge another player's line

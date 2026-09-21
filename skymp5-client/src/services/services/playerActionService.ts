@@ -43,6 +43,7 @@ const ACTIONS: PlayerAction[] = [
   { id: 'carry', label: 'Carry' },
   { id: 'release', label: 'Release' },
   { id: 'stabilize', label: 'Stabilize' },
+  { id: 'finishOff', label: 'Finish Off' },
   { id: 'factionRecruit', label: 'Recruit' },
 ];
 
@@ -54,6 +55,7 @@ const PACKET_ACTIONS: Record<string, string> = {
   carry: 'carryRequest',
   release: 'releaseRequest',
   stabilize: 'stabilizeRequest',
+  finishOff: 'finishOffRequest',
   factionRecruit: 'factionRecruitRequest',
 };
 
@@ -61,6 +63,7 @@ const PACKET_ACTIONS: Record<string, string> = {
 const SERVER_FLAGS: Record<string, string> = {
   release: 'canRelease',
   stabilize: 'stabilize',
+  finishOff: 'finishOff',
 };
 
 // While a passive job load is carried: Put down joins the menu, and the interact key on nothing opens this one first

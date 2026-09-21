@@ -9,27 +9,7 @@ import { deathAlert, markDeathAlerted } from "./discordAlerts";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// ── Bleedout ──────────────────────────────────────────────────────────────────
-//
-// Before a player dies at 0 health the native gate (MpActor::TryBleedout) fires
-// onKillAttempt; refusing it holds them at 1% health instead. A downed player
-// kneels and cannot move, fight, cast, activate or open menus. They die to a
-// further hit from a player, to damage over time, to a logout, or when the
-// timer runs out. Healing them to bleedoutHealedHealth stands them up, and a
-// capture or carry (CaptureSystem.rescueDowned) ends the bleedout at once.
-// NPC hits on a downed player are refused. Deliberate kills use
-// mp.set isDead, which the gate never sees.
-// Stabilize (X menu) lets anyone tend a downed player without magic: the
-// rescuer kneels for 5 s while the victim's timer waits, then the victim
-// stands at 10% health. The rescuer going down, dying or leaving cancels it.
-//
-// Wire protocol:
-//   Client -> Server: { customPacketType: "stabilizeRequest", target }
-//   Server -> the downed player's RestraintService:
-//     { customPacketType: "bleedoutState", downed: true, seconds }
-//     { customPacketType: "bleedoutState", downed: false, died }   // died: no stand-up animation
-//   Server -> the rescuer: actionLock (sendActionLock)
-//   Server -> the requester: playerMenuState flag "stabilize" (CaptureSystem.menuFlagProviders)
+// Players at 0 health kneel until healed, rescued, finished off or bled out (docs_roleplay_survival_loop.md section 8)
 
 const STATE_PACKET = "bleedoutState";
 
@@ -65,6 +45,8 @@ interface Hold {
   actorId: number;
   until: number;
   done: () => void;
+  // The work kills (finish off): nothing else touches the victim, and it lands even if they die or leave first
+  fatal: boolean;
 }
 
 export class BleedoutSystem implements System {
@@ -93,6 +75,7 @@ export class BleedoutSystem implements System {
       this.onHitDamageAttempt(aggressorId >>> 0, targetId >>> 0, damage));
 
     this.capture.rescueDowned = (actorId) => this.end(actorId, "rescued");
+    this.capture.rescueRefusal = (actorId) => this.downed.get(actorId)?.hold?.fatal ? "They are being finished off." : "";
     this.capture.menuFlagProviders.push((requesterId, targetId) => ({ stabilize: !this.stabilizeRefusal(requesterId, targetId) }));
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => this.onActorAssigned(actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.onLeave(actorId >>> 0));
@@ -112,6 +95,10 @@ export class BleedoutSystem implements System {
     }
   }
 
+  isDowned(actorId: number): boolean {
+    return this.downed.has(actorId >>> 0);
+  }
+
   customPacket(userId: number, type: string, content: Content): void {
     if (type === "stabilizeRequest") this.onStabilizeRequest(userId, toFormId(content.target, 0));
   }
@@ -129,7 +116,7 @@ export class BleedoutSystem implements System {
     const now = Date.now();
     const state = this.downed.get(actorId);
     // Another player's hit finishes at once; a report without one waits out the grace, so damage over time still kills
-    if (state) return (killerId !== 0 && killerId !== actorId) || now >= state.graceUntil;
+    if (state) return !state.hold?.fatal && ((killerId !== 0 && killerId !== actorId) || now >= state.graceUntil);
     // God and ghost admins never go down, and a smite kills outright
     if (this.isImmune(actorId)) return false;
     if (this.hasMode(killerId, "smite")) return true;
@@ -155,18 +142,19 @@ export class BleedoutSystem implements System {
 
   private onHitDamageAttempt(aggressorId: number, targetId: number, damage: number): boolean {
     if (this.downed.has(aggressorId)) return false;
-    const downed = this.downed.has(targetId);
+    const target = this.downed.get(targetId);
+    if (target?.hold?.fatal) return false;
     if (isPlayerActor(this.mp, targetId) && !this.isImmune(targetId)) {
       if (this.hasMode(aggressorId, "smite")) {
         setTimeout(() => { if (isAlive(this.mp, targetId)) this.die(targetId, "was smitten", aggressorId); }, 0);
         return true;
       }
-      if (downed && this.hasMode(aggressorId, "healhit")) {
+      if (target && this.hasMode(aggressorId, "healhit")) {
         setTimeout(() => this.standUp(targetId, "healed", 1), 0);
         return false;
       }
     }
-    if (!downed) return true;
+    if (!target) return true;
     // Only another player finishes a downed player; NPCs leave them be
     if (!isPlayerActor(this.mp, aggressorId)) return false;
     if (damage > 0) {
@@ -194,12 +182,13 @@ export class BleedoutSystem implements System {
       return;
     }
     if (dead) {
-      this.finish(actorId, true);
+      if (state.hold?.fatal) this.complete(state, now);
+      else this.finish(actorId, true);
       return;
     }
     if (state.hold) {
       this.tickHold(actorId, state, now);
-      if (!this.downed.has(actorId)) return;
+      if (!this.downed.has(actorId) || state.hold?.fatal) return;
     }
     const health = this.healthOf(actorId);
     if (health >= this.healedHealth) {
@@ -215,12 +204,12 @@ export class BleedoutSystem implements System {
   }
 
   // Timed work on a downed player (stabilize, finish off): the timer waits and done runs when it completes; the refusal, or "" once started
-  hold(victimId: number, actorId: number, ms: number, done: () => void): string {
+  hold(victimId: number, actorId: number, ms: number, done: () => void, fatal = false): string {
     const refusal = this.holdRefusal(victimId, actorId);
     if (refusal) return refusal;
     const now = Date.now();
     const state = this.downed.get(victimId)!;
-    state.hold = { actorId, until: now + ms, done };
+    state.hold = { actorId, until: now + ms, done, fatal };
     state.pausedAt = now;
     return "";
   }
@@ -233,17 +222,23 @@ export class BleedoutSystem implements System {
     return "";
   }
 
-  // The worker must stay connected, alive and on their feet until the work is done
+  // The worker must stay connected, alive, on their feet and close until the work is done
   private tickHold(victimId: number, state: Downed, now: number): void {
     const hold = state.hold!;
     const mp = this.mp;
-    if (userOf(mp, hold.actorId) < 0 || !isAlive(mp, hold.actorId) || this.downed.has(hold.actorId)) {
+    if (userOf(mp, hold.actorId) < 0 || !isAlive(mp, hold.actorId) || this.downed.has(hold.actorId) ||
+      !isNear(mp, hold.actorId, victimId, this.capture.interactRange * 2)) {
       this.resume(state, now);
       notifyActor(mp, victimId, "Nobody is tending to your wounds any more.");
       this.log(`[bleedout] ${hex(hold.actorId)} stopped tending to ${hex(victimId)}`);
       return;
     }
     if (now < hold.until) return;
+    this.complete(state, now);
+  }
+
+  private complete(state: Downed, now: number): void {
+    const hold = state.hold!;
     this.resume(state, now);
     hold.done();
   }
@@ -306,7 +301,9 @@ export class BleedoutSystem implements System {
 
   // Healed, rescued or stabilized: the player stands up where they knelt
   private end(actorId: number, reason: "healed" | "rescued" | "stabilized"): void {
-    if (!this.downed.has(actorId)) return;
+    const state = this.downed.get(actorId);
+    if (!state) return;
+    if (state.hold) notifyActor(this.mp, state.hold.actorId, `${nameShownTo(this.mp, state.hold.actorId, actorId)} no longer needs your help.`);
     this.finish(actorId, false);
     if (reason === "healed") notifyActor(this.mp, actorId, "Your wounds close and you get back up.");
     this.log(`[bleedout] ${hex(actorId)} ${reason}`);
@@ -323,7 +320,7 @@ export class BleedoutSystem implements System {
   }
 
   // A kill the gate never sees, downed or not; SetIsDead carries no killer, so a death caused by a player is written to pvp.log here
-  private die(actorId: number, how: string, killerId = 0): void {
+  die(actorId: number, how: string, killerId = 0): void {
     const state = this.downed.get(actorId);
     const mp = this.mp;
     // Posted before the kill, so the gamemode's [Death] line for it is skipped
@@ -352,9 +349,11 @@ export class BleedoutSystem implements System {
     this.send(actorId, { downed: false, died });
   }
 
-  // Logging out or leaving for character select while downed is a death, never an escape
+  // Logging out or leaving for character select while downed is a death, never an escape; a finish off under way lands
   private onLeave(actorId: number): void {
-    if (this.downed.has(actorId)) this.die(actorId, "logged out while bleeding out");
+    const state = this.downed.get(actorId);
+    if (state?.hold?.fatal) this.complete(state, Date.now());
+    else if (state) this.die(actorId, "logged out while bleeding out");
   }
 
   // The in-memory state does not outlive a restart, so a leftover mirror is cleared

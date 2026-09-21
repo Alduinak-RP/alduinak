@@ -216,7 +216,8 @@ to one stays playable but is confined to it.
   moved to the realm at once; a dead one is only marked and its respawn takes it
   there. Both return false for NPCs and for a character already in an afterlife.
   Soul trapping a player's soul into a black soul gem sends them to the Soul
-  Cairn.
+  Cairn; a finish off (`docs_roleplay_survival_loop.md` section 8) sends them
+  to Sovngarde.
 - **Arrivals**: Sovngarde is the vanilla Hall of Valor (`95c44:Skyrim.esm`, at
   its COC marker). The Soul Cairn is where the Castle Volkihar portal sets the
   player down (`1408:Dawnguard.esm`).

@@ -30,6 +30,7 @@ import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { WritingSystem } from "./systems/writingSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { BleedoutSystem } from "./systems/bleedoutSystem";
+import { ExecutionSystem } from "./systems/executionSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { CraftedExtrasSystem } from "./systems/craftedExtrasSystem";
 import { SearchSystem } from "./systems/searchSystem";
@@ -258,6 +259,8 @@ const main = async () => {
   captureSystem.jobLoadOf = (actorId) => jobSystem.loadOf(actorId);
   adminSystem.setJobSystem(jobSystem);
   const factionSystem = new FactionSystem(log, housingSystem);
+  // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
+  const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem);
   const bountyBoardSystem = new BountyBoardSystem(log);
   bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
   systems.push(
@@ -275,6 +278,7 @@ const main = async () => {
     afterlifeSystem,
     housingSystem,
     factionSystem,
+    executionSystem,
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
     searchSystem,

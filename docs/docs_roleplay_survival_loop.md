@@ -53,13 +53,31 @@ behaviour-graph events — no ESP required.**
 - **Getting up**: healing back to `bleedoutHealedHealth` (25%) of max health
   stands the player up. A Restrain or Carry from the X menu takes a downed
   player at once, with no prompt, and ends the bleedout; they keep their low
-  health.
+  health. While a Finish Off plays, Restrain and Carry are refused ("They are
+  being finished off."), and a rescuer whose patient is healed or taken first
+  is told they no longer need help.
 - **Stabilize**: anyone without magic can rescue a downed player. Stabilize
   shows in the X menu on a downed player in reach. The rescuer kneels
   (`IdleKneeling`) for 5 s, unable to move or fight, while the victim's timer
   waits; then the victim stands up at 10% health. If the rescuer goes down,
   dies or leaves first, the victim's timer resumes with the time that was left.
   One rescuer at a time; a restrained or carrying player cannot stabilize.
+- **Finish off** (`executionSystem.ts`): a holder of the faction `execute`
+  permission, or staff with the `factions` cap, sees Finish Off in the X menu
+  on a downed player in reach. With a melee weapon in hand (right hand first)
+  both play a vanilla bleedout killmove: `pa_KillMove1HMDecapBleedOut`
+  (IDLE F465D) for one-handed weapons, `pa_KillMove2HMDecapBleedOut` (F467F)
+  for two-handed ones; bows, staves and fists are refused. The victim's timer
+  waits for the 4.5 s killmove, then they die and their soul goes to Sovngarde
+  (`AfterlifeSystem.sendToSovngarde`): a PK. The line, with who, whom, where
+  and the faction that gave the right, goes to `pk.log`, `pvp.log` and the
+  staff Discord alert (`execute`). While the killmove plays nothing else can
+  hurt, heal or kill the victim, and a victim who logs out or dies meanwhile
+  still gets the PK. If the killer goes down, dies, leaves or moves away
+  first, the victim keeps bleeding out with the time that was left. The
+  killmove is sent to both players and to everyone whose client has a copy of
+  the victim (`PairedIdleService`), and both copies leave the movement and
+  animation sync while it plays.
 - **Logs**: deaths the native kill does not report (timer, damage over time,
   logout, a light finishing hit) go to `pvp.log` when another player downed or
   hit them; every bleedout event is logged as `[bleedout] ...`.
@@ -157,8 +175,10 @@ prisoner can also be carried).
 | `restraintState` `{ boundHands?, carried? }` | Server → victim client | Apply bound-hands / carried state |
 | `bleedoutState` `{ downed, seconds?, died? }` | Server → downed player's client | Kneel and lock controls, or stand up (no stand-up when `died`) |
 | `stabilizeRequest` `{ target }` | Rescuer client → server | Stabilize a downed player |
+| `finishOffRequest` `{ target }` | Client → server | Finish off a downed player |
+| `pairedIdle` `{ attacker, target, idle, ms }` | Server → both players and viewers | Play a killmove on both copies |
 | `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting) |
-| `playerMenuState` `{ target, canRelease, stabilize, ... }` | Server → requester | Which flagged X menu actions apply to the target |
+| `playerMenuState` `{ target, canRelease, stabilize, finishOff, ... }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 
 All restraint/bleedout **rules, timers, permissions and persistence are

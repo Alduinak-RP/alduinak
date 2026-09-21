@@ -66,12 +66,28 @@ const ridingClones = new Map<number, number>();
 // Horse clones left to the engine while it is asked to seat a rider, by local id, with the moment the wait lapses
 const seatingHorses = new Map<number, number>();
 
+// Clones playing a paired idle (a killmove), by local id, with the moment the suspension lapses
+const pairedClones = new Map<number, number>();
+
 const syntheticActivations: { caster: number; target: number; at: number }[] = [];
 
 export const isRiderClone = (localId: number): boolean => ridingClones.has(localId);
 
 // A horse being mounted must not be translated or offset by its own movement apply, or the seat starts while it slides
 export const isMountSuspended = (localId: number): boolean => (seatingHorses.get(localId) || 0) > Date.now();
+
+// A clone in a paired idle is left to the engine like a seated rider, or its own sync would pull it out of the pair
+export const suspendCloneMovement = (localId: number, ms: number): void => {
+  pairedClones.set(localId, Date.now() + ms);
+};
+
+export const isCloneMovementSuspended = (localId: number): boolean => {
+  const until = pairedClones.get(localId);
+  if (until === undefined) return false;
+  if (until > Date.now()) return true;
+  pairedClones.delete(localId);
+  return false;
+};
 
 // The forced activate raises the observer's activate event with the rider clone as caster; ActivationService drops it
 export const takeSyntheticActivation = (casterLocalId: number, targetLocalId: number): boolean => {

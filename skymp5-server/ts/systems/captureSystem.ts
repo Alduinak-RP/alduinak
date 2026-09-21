@@ -144,6 +144,8 @@ export class CaptureSystem implements System {
   jobLoadOf: ((actorId: number) => string) | null = null;
   // Set by BleedoutSystem: a capture or carry ends the target's bleedout
   rescueDowned: ((actorId: number) => void) | null = null;
+  // Set by BleedoutSystem: why a downed target may not be taken, "" when they may
+  rescueRefusal: ((actorId: number) => string) | null = null;
   // Other systems' player menu actions: each adds flags saying which apply to this requester and target
   menuFlagProviders: Array<(requesterActorId: number, targetActorId: number) => Record<string, boolean>> = [];
   private lastFollowMs = 0;
@@ -402,6 +404,11 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, "You need manacles to restrain someone.");
       return;
     }
+    const refusal = this.rescueRefusal?.(targetActorId);
+    if (refusal) {
+      this.notice(ctx, userId, refusal);
+      return;
+    }
     // A downed target can't answer a prompt: captured at once, which ends their bleedout
     if (isBleedingOut(mp, targetActorId)) {
       this.applyCapture(ctx, targetActorId, captorActorId);
@@ -550,6 +557,11 @@ export class CaptureSystem implements System {
     if (pend.kind === "capture") {
       if (!this.hasManacles(ctx.svr as Mp, pend.captorActorId)) {
         this.notice(ctx, captorUser, "You no longer have manacles.");
+        return;
+      }
+      const refusal = this.rescueRefusal?.(pend.targetActorId);
+      if (refusal) {
+        this.notice(ctx, captorUser, refusal);
         return;
       }
       this.applyCapture(ctx, pend.targetActorId, pend.captorActorId);
@@ -789,7 +801,7 @@ export class CaptureSystem implements System {
       : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anyone while bound."
       : this.carrying.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is carrying someone.`
       : this.carriedBy.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is already being carried.`
-      : "";
+      : this.rescueRefusal?.(targetActorId) || "";
     if (refusal) this.logRefusal(carrierActorId, `carry of ${targetActorId.toString(16)}`);
     return refusal;
   }

@@ -89,7 +89,7 @@ function chatLogDir() {
   return process.env.ALDUINAK_LOG_DIR || readServerSettings().logDir || 'C:\\logs'
 }
 
-const GAME_LOG_FILES = ['chat.log', 'admin.log', 'pvp.log', 'trading.log', 'bounty.log', 'writing.log']
+const GAME_LOG_FILES = ['chat.log', 'admin.log', 'pvp.log', 'pk.log', 'trading.log', 'bounty.log', 'writing.log']
 
 // The nssm-configured stdout/stderr files for a service, plus the gamemode's
 // chat.log for the game server (written directly, not via nssm).

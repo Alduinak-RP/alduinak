@@ -44,6 +44,18 @@ export const baseTypeOf = (mp: Mp, refId: number): string => {
 
 export const isDoorRef = (mp: Mp, refId: number): boolean => baseTypeOf(mp, refId) === "DOOR";
 
+// WEAP DNAM animation type (1-4 one-handed, 5-6 two-handed, 7 bow, 8 staff, 9 crossbow), -1 when not a weapon
+export const weaponAnimType = (mp: Mp, baseId: number): number => {
+  try {
+    const record = mp.lookupEspmRecordById(baseId >>> 0)?.record;
+    if (record?.type !== "WEAP") return -1;
+    const dnam = (record.fields || []).find((f: any) => f.type === "DNAM" && f.data?.byteLength);
+    return dnam ? dnam.data[0] : -1;
+  } catch {
+    return -1;
+  }
+};
+
 // Whether the inventory holds at least one item whose base id matches
 export const holdsItem = (mp: Mp, actorId: number, match: (baseId: number) => boolean): boolean => {
   try {

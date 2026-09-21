@@ -366,6 +366,10 @@ export class AnimationSource {
     if (ignoredAnims.has(animEventName)) {
       return;
     }
+    // Half of a paired idle replayed alone on a copy has no partner; PairedIdleService plays both halves everywhere
+    if (animEventName.toLowerCase().startsWith("pa_")) {
+      return;
+    }
 
     const lower = animEventName.toLowerCase();
 
