@@ -827,7 +827,7 @@ If "damageMultFormulaSettings" is not present, the server will use some default 
 
 ## damageMultConditionalFormulaSettings
 
-Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. The hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from `misc/proficiency-patcher/out/proficiency-ids.json`; it is `0x2D002032` with the Creation Club plugins in the load order, `0x2B002032` before them):
+Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. The hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from the `proficiency-ids.json` of the last plugin run: the full slot of `AlduinakAdditions.esp` followed by its local id `002032`, today `0x33002032` because `DynDOLOD.esm` is a full plugin loaded before it; a plugin added or removed before it moves the slot):
 
 ```json5
 {
@@ -836,7 +836,7 @@ Named damage rules, each a multiplier applied when its conditions hold. Conditio
     "hunterOverDraw": {
       "physicalDamageMultiplier": 1.2,
       "conditions": [
-        { "function": "HasSpell", "runsOn": "Subject", "comparison": "==", "value": 1, "parameter1": "0x2D002032", "parameter2": "0x0", "logicalOperator": "AND" },
+        { "function": "HasSpell", "runsOn": "Subject", "comparison": "==", "value": 1, "parameter1": "0x33002032", "parameter2": "0x0", "logicalOperator": "AND" },
         { "function": "SkympGetIsPlayer", "runsOn": "Target", "comparison": "==", "value": 0, "parameter1": "0x0", "parameter2": "0x0", "logicalOperator": "AND" },
         { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 7, "parameter1": "0", "parameter2": "0x0", "logicalOperator": "OR" },
         { "function": "GetEquippedItemType", "runsOn": "Subject", "comparison": "==", "value": 7, "parameter1": "1", "parameter2": "0x0", "logicalOperator": "OR" },

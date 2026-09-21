@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Builds the proficiency version of AlduinakAdditions.esp: pre-cleans the plugin, runs the Mutagen patcher, verifies the output record by record.
 #   python patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --out out [--settings ../../build/dist/server/server-settings.json] [--spec spec.json] [--no-creations] [--hotfix] [--stage]
-# The output is out/AlduinakAdditions.esp plus proficiency-report.md, proficiency-ids.json and verify.txt, and with a creations spec AlduinakCreations.esp, its inputs json and verify-creations.txt.
+# The output is out/AlduinakAdditions.esp plus proficiency-report.md, proficiency-ids.json and verify.txt (with --stage also verify-r13.txt), and with a creations spec AlduinakCreations.esp, its inputs json and verify-creations.txt.
 import argparse
 import json
 import os
@@ -127,6 +127,12 @@ def world_allowed(spec):
         or (k[0] == 'REFR' and (k[1].lower(), k[2]) in moves)
 
 
+def spec_allowed(spec):
+    # Each spec section that adds or changes records of other types brings its own rule; verify_r13.py applies the same
+    rules = [f(spec) for f in (meadery_allowed, spec_overrides, world_allowed)]
+    return lambda k, rec: any(rule(k, rec) for rule in rules)
+
+
 def verify(original, patched, log, allowed=lambda k, rec: False):
     po, pp = Plugin(original), Plugin(patched)
     ro, go = index(po)
@@ -246,9 +252,7 @@ def main():
     out_esp = os.path.join(a.out, os.path.basename(a.plugin))
     if a.skip_verify:
         sys.exit(0)
-    # Each spec section that adds or changes records of other types brings its own rule
-    rules = [f(a.spec) for f in (meadery_allowed, spec_overrides, world_allowed)]
-    problems = verify(pre, out_esp, log, lambda k, rec: any(rule(k, rec) for rule in rules))
+    problems = verify(pre, out_esp, log, spec_allowed(a.spec))
     with open(os.path.join(a.out, 'verify.txt'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(log + [''] + problems) + '\n')
     print('\n'.join(log))
@@ -256,7 +260,12 @@ def main():
         print(f'VERIFY FAILED: {len(problems)} unexpected difference(s), first 20:')
         print('\n'.join(problems[:20]))
         sys.exit(3)
-    print(f'verified: only records of types {sorted(PATCHED_TYPES)}, the meadery bench references and cells, the spec\'s named overrides and newly Initially Disabled records were added or changed; {out_esp}')
+    print(f'verified: only records of types {sorted(PATCHED_TYPES)}, the meadery bench references and cells, the spec\'s named overrides and newly Initially Disabled records were added or changed; {out_esp}', flush=True)
+    if a.stage:
+        # A new master turns the check above into a layout comparison; this one resolves every form id against the load order
+        r = subprocess.run([sys.executable, '-B', os.path.join(HERE, 'verify_r13.py'), '--out', a.out, '--spec', a.spec])
+        if r.returncode != 0:
+            sys.exit(r.returncode)
     if cs and not a.no_creations:
         if not os.path.exists(creations):
             print(f'{creations} was not built')

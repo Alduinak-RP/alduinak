@@ -36,7 +36,10 @@ python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAddi
   them, so it does not suit the live plugin.
 
 After the run, `proficiency-report.md` notes the counts per faction and race rule; a new marker spell is
-listed under the new records, and `proficiency-ids.json` must show the same global ids as before.
+listed under the new records, and `proficiency-ids.json` must show the same local ids as before. The full slot is
+`0x33` today: `DynDOLOD.esm` is a full plugin loaded before `AlduinakAdditions.esp`, so any change of the plugins
+before it moves the global ids, and the live `server-settings.json` must then take the Hunter Master id from the
+new `proficiency-ids.json`.
 
 Needs the .NET 9 SDK (`dotnet`), Python 3 and the game Data folder named by `dataDir` in the settings
 file, with every plugin of `loadOrder` present (Mutagen reads them to resolve editor ids and winning
@@ -57,7 +60,17 @@ records). The first run restores the Mutagen NuGet package.
    renumbers every form id, so records are then matched by editor id and compared structurally. The plugin
    may never master `DynDOLOD.esm`, `DynDOLOD.esp` or `Occlusion.esp`. Exit code 3 on any other difference,
    and `verify.txt` lists it. A spec section that adds or changes records of other types brings an allow
-   rule of its own (`meadery_allowed`, `spec_overrides`, `world_allowed`), listed in `rules` in `main`.
+   rule of its own (`meadery_allowed`, `spec_overrides`, `world_allowed`), listed in `spec_allowed`;
+4. with `--stage`, runs `verify_r13.py`, which reads every plugin of `settings.stage.json` with `misc/esplib.py`
+   alone and compares the output with the input and with the load order before it, so it still holds when a new
+   master renumbers every form id: the masters are a superset of the input's in load order and never a generated
+   plugin; every own record keeps its local id and new ones take ids past the input's next object id; the
+   `AldMastery_` marker spells and `AldMasteryMarkerEffect` are unchanged; every other record is unchanged up to
+   renumbered form ids (a form id left unrenumbered in a form id field fails), or is a type the patcher writes, or
+   one the spec's allow rules name; a changed actor is its winner before the plugin with only Initially Disabled
+   added and an enable parent turned into the player, opposite; a new cell or worldspace override is its winner's
+   record; a `disableReferences` reference only gains Initially Disabled; and `proficiency-ids.json` carries the
+   plugin's full slot. Exit code 3 on any problem, and `verify-r13.txt` lists it.
 
 ## AlduinakCreations.esp
 

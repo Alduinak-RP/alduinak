@@ -175,6 +175,43 @@ class Plugin:
         return nrec, ngrp
 
 
+class Header:
+    # A record found by scan(): a view into the plugin buffer, its body inflated on demand
+    __slots__ = ('buf', 'type', 'fid', 'flags', 'off', 'size', 'path')
+
+    def __init__(self, buf, t, fid, flags, off, size, path):
+        self.buf, self.type, self.fid, self.flags, self.off, self.size, self.path = buf, t, fid, flags, off, size, path
+
+    def data(self):
+        d = self.buf[self.off + 24:self.off + 24 + self.size]
+        return zlib.decompress(d[4:]) if self.flags & COMPRESSED else d
+
+    def subs(self):
+        return parse_subs(self.data())
+
+
+def scan(buf, types=None):
+    # Read-only walk of a large plugin: yields a Header per record of the given types, path = ((group type, label), ...)
+    i = 24 + struct.unpack_from('<I', buf, 4)[0]
+    stack, path = [], ()
+    while i < len(buf):
+        while stack and i >= stack[-1][0]:
+            stack.pop()
+            path = path[:-1]
+        t = buf[i:i + 4]
+        sz = struct.unpack_from('<I', buf, i + 4)[0]
+        if t == b'GRUP':
+            stack.append((i + sz,))
+            path += ((struct.unpack_from('<i', buf, i + 12)[0], struct.unpack_from('<I', buf, i + 8)[0]),)
+            i += 24
+            continue
+        name = t.decode('latin1')
+        if types is None or name in types:
+            flags, fid = struct.unpack_from('<II', buf, i + 8)
+            yield Header(buf, name, fid, flags, i, sz, path)
+        i += 24 + sz
+
+
 def zstr(b):
     return b.split(b'\0')[0].decode('latin1')
 
