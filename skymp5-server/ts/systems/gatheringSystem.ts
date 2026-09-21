@@ -1,10 +1,12 @@
+import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext } from "./system";
+import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { espmContainerEntries, espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
 import { addItemTo, holdsItem, sendActionLock } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
+import { writeFileAtomic } from "./fileUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -30,12 +32,16 @@ type Mp = any;
 // Every ore but iron needs the miner profession at its rank; iron is open to anyone with a pickaxe.
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
-// so the plant keeps its unpicked model until the cell reloads.
+// so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
 // Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs needsPickFatigue and kneels the picker for
 // gatheringHarvestSeconds, during which they cannot move or harvest again; the native harvest still hands over the plant's ingredient.
 // Catching a bee costs nothing and plays nothing.
 
 const VEIN_PROP = "private.gathering";
+// Picked refs still hidden, { "<ref id hex>": epoch ms it grows back }
+const PICKS_FILE = "./gathering-picks.json";
+// A ref that cannot be enabled yet (its cell not loaded) is tried again this much later
+const REGROW_RETRY_MS = 60000;
 const SEAT_CLOSE_EVENT = "onPapyrusEvent:SkympOnActivateClose";
 // Shown by the client's masteryService; gathering is profession work.
 const NOTICE_PACKET = "masteryNotice";
@@ -143,6 +149,8 @@ export class GatheringSystem implements System {
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
     await this.loadProduce(ctx, all?.["gatheringProduceContainers"], s.dataDir, s.loadOrder);
     await this.loadProduceYield(ctx, all?.["gatheringProduceYield"], s.dataDir, s.loadOrder);
+    this.loadPicks();
+    ctx.gm.once(WORLD_LOADED_EVENT, () => { this.worldLoaded = true; });
 
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
@@ -260,6 +268,7 @@ export class GatheringSystem implements System {
   async updateAsync(ctx: SystemContext): Promise<void> {
     // Papyrus calls run here, outside the native activation call stack.
     for (const p of this.pendingSeats.splice(0, this.pendingSeats.length)) this.activateFor(ctx, p.markerId, p.actorId);
+    this.regrowPicks(ctx);
     if (!this.sessions.size) return;
     const now = Date.now();
     for (const s of Array.from(this.sessions.values())) {
@@ -317,7 +326,10 @@ export class GatheringSystem implements System {
     if (!item) return undefined;
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if (this.veinState(ctx, refrId, 1, this.pickMs).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
-    const grant = () => this.addItem(ctx, actorId, item, 1);
+    const grant = () => {
+      this.addItem(ctx, actorId, item, 1);
+      this.hidePicked(ctx, refrId, Date.now() + this.pickMs);
+    };
     if (props["harvest"]) return this.harvest(ctx, refrId, actorId, this.pickMs, grant);
     return () => {
       grant();
@@ -511,6 +523,62 @@ export class GatheringSystem implements System {
     }
   }
 
+  // ── Picks ───────────────────────────────────────────────────────────────────
+
+  private hidePicked(ctx: SystemContext, refrId: number, regrowAt: number): void {
+    this.setShown(ctx, refrId, false);
+    this.picked.set(refrId, regrowAt);
+    this.savePicks();
+  }
+
+  private regrowPicks(ctx: SystemContext): void {
+    if (!this.worldLoaded || !this.picked.size) return;
+    const now = Date.now();
+    let changed = false;
+    for (const [refrId, at] of this.picked) {
+      if (at > now) continue;
+      if (this.setShown(ctx, refrId, true)) this.picked.delete(refrId);
+      else this.picked.set(refrId, now + REGROW_RETRY_MS);
+      changed = true;
+    }
+    if (changed) this.savePicks();
+  }
+
+  // Papyrus Enable/Disable, unlike the isDisabled property, also tells every client that has the ref
+  private setShown(ctx: SystemContext, refrId: number, shown: boolean): boolean {
+    const mp = ctx.svr as Mp;
+    try {
+      mp.callPapyrusFunction("method", "ObjectReference", shown ? "Enable" : "Disable", { type: "form", desc: mp.getDescFromId(refrId) }, [false]);
+      return true;
+    } catch (e) {
+      this.log(`[gathering] could not ${shown ? "show" : "hide"} ${refrId.toString(16)}: ${e}`);
+      return false;
+    }
+  }
+
+  private loadPicks(): void {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(fs.readFileSync(PICKS_FILE, "utf8"));
+    } catch {
+      return;
+    }
+    for (const [key, at] of Object.entries(raw && typeof raw === "object" ? raw as Record<string, unknown> : {})) {
+      const refrId = parseInt(key, 16) >>> 0;
+      if (refrId && Number.isFinite(Number(at))) this.picked.set(refrId, Number(at));
+    }
+  }
+
+  private savePicks(): void {
+    const out: Record<string, number> = {};
+    for (const [refrId, at] of this.picked) out[refrId.toString(16)] = at;
+    try {
+      writeFileAtomic(PICKS_FILE, JSON.stringify(out));
+    } catch (e) {
+      this.log(`[gathering] could not save ${PICKS_FILE}: ${e}`);
+    }
+  }
+
   // ── Veins ───────────────────────────────────────────────────────────────────
 
   private veinTotal(props: Record<string, number>): number {
@@ -687,5 +755,8 @@ export class GatheringSystem implements System {
   // Actor id -> epoch ms its harvest kneel ends
   private harvestUntil = new Map<number, number>();
   private reloot: Record<string, unknown> = {};
+  // Picked nirnroot and critter refs -> epoch ms they grow back
+  private picked = new Map<number, number>();
+  private worldLoaded = false;
   private produceYield = new Map<number, Array<{ baseId: number; count: number }>>();
 }

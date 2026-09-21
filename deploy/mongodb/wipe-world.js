@@ -54,6 +54,7 @@ const SERVER_RESET = {
   'companions.json': { active: [], corpses: [], stored: [] },
   'pets.json': { active: [], released: [] },
   'starter-grants.json': {},
+  'gathering-picks.json': {},
 }
 // One file per written document; new ids restart with the wiped private.writings counter
 const WRITINGS_DIR = 'writings'

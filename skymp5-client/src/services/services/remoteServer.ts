@@ -506,7 +506,7 @@ export class RemoteServer extends ClientListener {
 
             ModelApplyUtils.applyModelNodeTextureSet(refr, msg.props.setNodeTextureSet);
 
-            ModelApplyUtils.applyModelIsDisabled(refr, !!msg.props['disabled']);
+            ModelApplyUtils.applyModelIsDisabled(refr, !!(msg.props.isDisabled || msg.props['disabled']));
 
             // TODO: move to a separate module
             const animation = msg.props.lastAnimation;

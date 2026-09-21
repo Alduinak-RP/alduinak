@@ -22,6 +22,7 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `build/dist/server/companions.json` | Reset to `{"active":[],"corpses":[],"stored":[]}` |
 | `build/dist/server/pets.json` | Reset to `{"active":[],"released":[]}` |
 | `build/dist/server/starter-grants.json` | Reset to `{}`, so each account's first new character gets the starting kit and 50 gold again |
+| `build/dist/server/gathering-picks.json` | Reset to `{}`. It lists picked nirnroot and critters waiting to grow back, and their hidden state goes with the dropped changeForms |
 | `build/dist/server/writings/` | Emptied. Document ids restart with the wiped counter, so old files would collide with new ones. |
 | `skymp5-backend/data/characters.json` | Reset to `{}` (it names wiped characters) |
 | `skymp5-backend/data/faction-whitelist.json` | `assignments` cleared. `factions`, `requirements` and the `retired` ids are kept. |
