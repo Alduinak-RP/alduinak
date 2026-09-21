@@ -26,6 +26,7 @@
 - [Database Drivers](docs_database_drivers.md)
 - [Database Wipe Before a Deploy](docs_database_wipe.md)
 - [Web Server Manager (dashboard Server tab)](docs_web_server_manager.md)
+- [Test Server](docs_test_server.md)
 - [Serverside Scripting Reference](docs_serverside_scripting_reference.md)
 - [Clientside Scripting Reference](docs_clientside_scripting_reference.md)
 - [Properties System](docs_properties_system.md)

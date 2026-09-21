@@ -155,15 +155,24 @@ function launchGateStatus(entry) {
   return { ok: true }
 }
 
-// Helper: validate a game server's master key; sets req.server to that server
+// Helper: validate a game server's master key; sets req.server to that server. A read-only server may only read (and heartbeat)
 
-function checkKey(req, res) {
+function checkKey(req, res, { write = req.method !== 'GET' } = {}) {
   req.server = config.serverByKey(req.params.key)
   if (!req.server) {
     res.status(403).json({ error: 'Invalid master key.' })
     return false
   }
+  if (write && req.server.readOnly) {
+    res.status(403).json({ error: 'This server has read-only access.' })
+    return false
+  }
   return true
+}
+
+// A server with roleIds (the test server) admits only holders of one of them
+function allowedOnServer(server, roles) {
+  return !server || !server.roleIds || server.roleIds.some(id => (roles || []).includes(id))
 }
 
 function checkWriteToken(req, res) {
@@ -247,6 +256,9 @@ router.get('/:key/sessions/:session', async (req, res) => {
   if (!access.allowed) {
     return res.status(403).json({ error: access.error || 'accessDenied' })
   }
+  if (!allowedOnServer(req.server, access.roles)) {
+    return res.status(403).json({ error: 'staffOnly' })
+  }
 
   // Ban snapshots: refuse by discordId or hardware id even if the discord role is gone
   const playerRecord = players.load()[entry.discordId] || {}
@@ -300,6 +312,9 @@ router.get('/:key/profiles/:profileId/check', async (req, res) => {
 
   if (!access.allowed) {
     return res.status(403).json({ error: access.error || 'accessDenied' })
+  }
+  if (!allowedOnServer(req.server, access.roles)) {
+    return res.status(403).json({ error: 'staffOnly' })
   }
 
   res.json({
@@ -589,14 +604,17 @@ router.post('/:key/sessions/:session/purchase', (req, res) => {
   res.json({ balanceSpent: balanceToSpend, success: true })
 })
 
-// Launcher hints for the serverinfo routes: the lock state and, when X-Session is sent, whether that player may join
-async function sessionHints(token) {
+// Launcher hints for the serverinfo routes: the lock state and, when X-Session is sent, whether that player may join the server
+async function sessionHints(token, server) {
   const locked = serverAccess.load().serverLocked
   if (!token) return { locked, sessionValid: false, allowed: true }
   const entry = lookupSession(token)
   if (!entry) return { locked, sessionValid: false, allowed: false }
   let allowed = false
-  try { allowed = (await serverAccess.getDiscordAccess(entry.discordId)).allowed === true } catch {}
+  try {
+    const access = await serverAccess.getDiscordAccess(entry.discordId)
+    allowed = access.allowed === true && allowedOnServer(server, access.roles)
+  } catch {}
   return { locked, sessionValid: true, allowed }
 }
 

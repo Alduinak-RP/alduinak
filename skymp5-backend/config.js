@@ -95,7 +95,11 @@ if (TEST_PORT && TEST_KEY) {
     id: 'test', name: process.env.TEST_SERVER_NAME || 'Test Server', host: config.skyrimServerHost,
     address: process.env.TEST_SERVER_ADDRESS || config.skyrimServerAddress,
     port: TEST_PORT, uiPort: parseInt(process.env.TEST_SERVER_UI_PORT, 10) || TEST_PORT + 1, masterKey: TEST_KEY,
+    // Reads live backend state but never writes it, and admits only holders of these roles (none set: nobody)
+    readOnly: true,
+    roleIds: (process.env.TEST_SERVER_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean),
   }
+  if (!test.roleIds.length) console.warn('[config] TEST_SERVER_ROLE_IDS is empty: nobody can join the test server')
   const live = [config.skyrimServerPort, config.skympUiPort]
   if (TEST_KEY === config.serverMasterKey) console.warn('[config] TEST_SERVER_MASTER_KEY equals SERVER_MASTER_KEY: test server not listed')
   else if (live.includes(test.port) || live.includes(test.uiPort)) console.warn(`[config] test server ports ${test.port}/${test.uiPort} collide with the live server (${live.join('/')}): test server not listed`)

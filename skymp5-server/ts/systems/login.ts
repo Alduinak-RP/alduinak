@@ -4,6 +4,7 @@ import * as fetchRetry from "fetch-retry";
 import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
 import { hasDiscordBanRole } from "./discordBanSystem";
 import { postEventLog } from "./discordAlerts";
+import { kickWithReason } from "./kickUtil";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
@@ -57,6 +58,11 @@ export class Login implements System {
     if (!response.ok) {
       if (response.status === 404) {
         ctx.svr.sendCustomPacket(userId, loginFailedSessionNotFound);
+      } else if (response.status === 403) {
+        const body = await response.json().catch(() => null);
+        if (body && body.error === "staffOnly") {
+          kickWithReason(ctx.svr, userId, "This server is for staff only.");
+        }
       }
       throw new Error(`getUserProfile: HTTP error ${response.status}`);
     }

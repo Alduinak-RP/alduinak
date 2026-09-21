@@ -29,7 +29,7 @@ function loadPublicKeys() {
 // ?server=<id> answers for another game server; the lock and the whitelist are global
 router.get('/', async (req, res) => {
   const server = config.serverById(req.query.server) || config.servers[0]
-  const { locked, sessionValid, allowed } = await sessionHints(req.headers['x-session'])
+  const { locked, sessionValid, allowed } = await sessionHints(req.headers['x-session'], server)
   const hb = getHeartbeat(server.id)
 
   res.json({

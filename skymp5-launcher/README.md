@@ -95,7 +95,9 @@ Alduinak selected by default. The choice is stored as `activeServerId`; the
 status badge, the lock state and every serverinfo call then ask for that server,
 and the client settings get its address, port and `server-master-key`. The
 SkyMP client asks `/api/servers/<master key>/serverinfo` for the host and port
-it joins, so the master key is what really picks the server.
+it joins, so the master key is what really picks the server. The Test Server admits
+only Admins and Developers, so PLAY stays greyed out for everyone else there
+(docs/docs_test_server.md).
 
 ## Game version
 

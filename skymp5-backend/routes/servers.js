@@ -30,7 +30,7 @@ router.get('/:key/serverinfo', async (req, res) => {
   if (!server) return res.status(403).json({ error: 'Invalid master key.' })
 
   const { sessionHints } = require('./master-api')
-  const { locked, sessionValid, allowed } = await sessionHints(req.headers['x-session'])
+  const { locked, sessionValid, allowed } = await sessionHints(req.headers['x-session'], server)
   const hb = getHeartbeat(server.id)
   res.json({
     host:        server.address,
@@ -92,7 +92,7 @@ router.get('/:key/manifest.json', async (req, res) => {
 // Body: { name, maxPlayers, online }
 router.post('/:key', (req, res) => {
   const { checkKey, checkWriteToken } = require('./master-api')
-  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+  if (!checkKey(req, res, { write: false }) || !checkWriteToken(req, res)) return
 
   const { name, maxPlayers, online } = req.body || {}
   heartbeats.set(req.server.id, {
