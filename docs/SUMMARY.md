@@ -25,6 +25,7 @@
 - [Server Ports Usage](docs_server_ports_usage.md)
 - [Database Drivers](docs_database_drivers.md)
 - [Database Wipe Before a Deploy](docs_database_wipe.md)
+- [Launch Wipe, Lock and Daily Restart](docs_wipe_and_lock.md)
 - [Web Server Manager (dashboard Server tab)](docs_web_server_manager.md)
 - [Test Server](docs_test_server.md)
 - [Serverside Scripting Reference](docs_serverside_scripting_reference.md)
