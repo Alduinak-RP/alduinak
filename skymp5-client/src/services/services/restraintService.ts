@@ -8,6 +8,8 @@ import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement, NiPoint3 } from "../../sync/movement";
 import { isInSitPose, setRefrCollision } from "../../sync/animation";
 import { isPlayerCharacterId } from "./playerActionService";
+import { MountService } from "./mountService";
+import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 
 // Vanilla behaviour-graph "offset" overlay events (no ESP required), cleared with OffsetStop.
 // All three are whitelisted in sync/animation.ts (forcedSyncAnims) so the poses sync to other players.
@@ -18,8 +20,12 @@ const OFFSET_STOP_ANIM = "OffsetStop";
 // Vanilla chair sit idle; it plays without furniture, as on remote copies of seated players
 const CARRIED_ANIM_START = "IdleChairEnterInstant";
 const IDLE_EXIT_ANIM = "IdleForceDefaultState";
+// Vanilla bleedout kneel (IDLE 13ECC / 13ECE), its own graph layer with its own exit; whitelisted in sync/animation.ts
+const BLEEDOUT_ANIM_START = "bleedOutStart";
+const BLEEDOUT_ANIM_STOP = "bleedOutStop";
 const CARRY_OVERLOAD = 10000;
 const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
+const PLAYER_FORM_ID = 0x14;
 
 // Lowercase: BSFixedString pools are case-insensitive, so the engine's spelling can vary
 const JUMP_START_EVENTS = new Set(["jumpstandingstart", "jumpdirectionalstart"]);
@@ -51,12 +57,17 @@ const finiteOr = (value: unknown, fallback: number): number =>
 
 const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("idle");
 
+// Poses on different graph layers are left one at a time, each with its own exit
+const layerOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? "bleedout" : isStateIdle(anim) ? "idle" : "offset";
+
+const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT_ANIM_STOP : isStateIdle(anim) ? IDLE_EXIT_ANIM : OFFSET_STOP_ANIM;
+
 /**
- * Applies the local player's restraint state (bound hands, being carried, and
- * the captor's carry-hold pose) to controls and animation.
- * Server-authoritative: the gamemode's CaptureSystem owns who may bind/carry
- * whom, consent, bleedout timers and respawn; this service only reflects the
- * resulting state on the local client.
+ * Applies the local player's restraint state (bound hands, being carried,
+ * bleeding out, and the captor's carry-hold pose) to controls and animation.
+ * Server-authoritative: CaptureSystem owns who may bind/carry whom and consent,
+ * BleedoutSystem owns the bleedout timer and death; this service only reflects
+ * the resulting state on the local client.
  *
  * Protocol: Server -> Client, {@link MsgType.CustomPacket} with a JSON dump.
  * Fields are optional; only the ones present are changed:
@@ -71,6 +82,10 @@ const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("id
  *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart", "target": 4278190090 }
  *   { "customPacketType": "carryState", "carrying": false }
  *
+ *   // A player at 0 health (BleedoutSystem); died skips the stand-up:
+ *   { "customPacketType": "bleedoutState", "downed": true, "seconds": 15 }
+ *   { "customPacketType": "bleedoutState", "downed": false, "died": false }
+ *
  * Effects on the local player:
  *   - boundHands: plays the bound-hands pose and disables fighting/sneaking/
  *     activation. Movement stays enabled so the prisoner can be marched/walked.
@@ -80,10 +95,13 @@ const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("id
  *     carrier's clone stops colliding with the player meanwhile.
  *   - carrying: plays the carry-hold pose; fighting is disabled and a drawn
  *     weapon, fists or spell is sheathed. The carrier can still walk.
+ *   - downed: kneels in the bleedout pose, cannot move, fight, sneak, activate
+ *     or open menus, and is a ghost locally so no local hit lands; the camera
+ *     stays free. Carried wins over downed, downed over bound.
  *   - any of the above: jumping is blocked and the pose is re-applied after a fall.
  *
- * "Carry stops the respawn process" is enforced server-side (CaptureSystem stops
- * a downed target's bleedout when it captures/carries them).
+ * A capture or carry ends a downed target's bleedout server-side, so carried and
+ * downed never last together.
  *
  * The service is inert until the server sends a packet.
  */
@@ -110,22 +128,32 @@ export class RestraintService extends ClientListener {
       }
     });
 
-    // The server ends a disconnected carrier's carry but cannot tell this client
+    // The server ends a disconnected carrier's carry and kills a disconnected downed player but cannot tell this client
     this.controller.emitter.on("connectionDisconnect", () => {
       if (this.carrying) {
         this.carrying = false;
         this.applyCarryAnim();
       }
+      if (this.downed) {
+        this.downed = false;
+        this.applyState();
+      }
     });
+
+    this.controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
   }
 
-  // True while a restraint or carry pose owns the player's animation.
+  // True while a restraint, carry or bleedout pose owns the player's animation.
   get isPoseLocked(): boolean {
-    return this.boundHands || this.carried || this.carrying;
+    return this.boundHands || this.carried || this.carrying || this.downed;
   }
 
   get isCarried(): boolean {
     return this.carried;
+  }
+
+  get isDowned(): boolean {
+    return this.downed;
   }
 
   get isCarrying(): boolean {
@@ -134,7 +162,7 @@ export class RestraintService extends ClientListener {
 
   // Observers must see a held pose: no locomotion, and the server keeps the last animation only for Standing
   filterOwnMovement(movement: Movement): Movement {
-    if (this.carried) {
+    if (this.carried || this.downed) {
       movement.runMode = "Standing";
       movement.direction = 0;
       movement.isInJumpState = false;
@@ -188,7 +216,26 @@ export class RestraintService extends ClientListener {
       this.carriedNpcId = this.carrying && target >= FIRST_DYNAMIC_REMOTE_ID && !isPlayerCharacterId(this.controller, target) ? target : 0;
       logTrace(this, `carryState carrying=${this.carrying} npc=${this.carriedNpcId.toString(16)}`);
       this.applyCarryAnim();
+    } else if (type === "bleedoutState" && typeof content["downed"] === "boolean") {
+      this.downed = content["downed"];
+      // A death ends the kneel in a ragdoll, so no stand-up is sent
+      if (!this.downed && content["died"] === true && this.appliedPose === BLEEDOUT_ANIM_START) {
+        this.appliedPose = OFFSET_STOP_ANIM;
+      }
+      logTrace(this, `bleedoutState downed=${this.downed}`);
+      if (this.downed) {
+        this.controller.once("update", () => this.controller.lookupListener(MountService).dismountNow("bleedout"));
+      }
+      this.applyState();
     }
+  }
+
+  // Death ends a bleedout without the stand-up
+  private onApplyDeathState(e: ApplyDeathStateEvent): void {
+    if (!e.isDead || !this.downed || e.actor.getFormID() !== PLAYER_FORM_ID) return;
+    this.downed = false;
+    if (this.appliedPose === BLEEDOUT_ANIM_START) this.appliedPose = OFFSET_STOP_ANIM;
+    this.applyState();
   }
 
   // Throttled: landing detection (event-name independent) and the carried follow
@@ -308,7 +355,7 @@ export class RestraintService extends ClientListener {
 
   // Must run on update; forces every held pose to be sent again
   private reapplyPoses(): void {
-    if (this.boundHands || this.carried) {
+    if (this.boundHands || this.carried || this.downed) {
       this.appliedPose = "";
       this.applyStateNow();
     }
@@ -330,11 +377,12 @@ export class RestraintService extends ClientListener {
       return;
     }
 
-    // Carried shows the sitting pose, bound the captive pose, otherwise clear it; only fire on transition.
-    const desiredPose = this.carried ? this.carriedAnim : this.boundHands ? this.captiveAnim : OFFSET_STOP_ANIM;
+    // Carried shows the sitting pose, downed the bleedout kneel, bound the captive pose, otherwise clear it; only fire on transition.
+    const desiredPose = this.carried ? this.carriedAnim : this.downed ? BLEEDOUT_ANIM_START : this.boundHands ? this.captiveAnim : OFFSET_STOP_ANIM;
     if (desiredPose !== this.appliedPose) {
       this.setPose(player, desiredPose);
     }
+    this.applyDownedGhost(player);
 
     // Recompute the control lock each time. Argument order:
     // (movement, fighting, camSwitch, looking, sneaking, menu, activate, journalTabs, disablePOVType).
@@ -352,6 +400,17 @@ export class RestraintService extends ClientListener {
       this.carriedControlsApplied = false;
       this.sp.Game.enablePlayerControls(true, false, true, false, false, false, false, false, 0);
     }
+    if (this.downed) {
+      // Kneeling where they fell: no walking, fighting, sneaking, menus or activation; the camera stays free
+      this.stillControlsApplied = true;
+      this.sp.Game.disablePlayerControls(true, true, false, false, true, true, true, false, 0);
+      player.setDontMove(true);
+      return;
+    }
+    if (this.stillControlsApplied) {
+      this.stillControlsApplied = false;
+      this.sp.Game.enablePlayerControls(true, false, false, false, false, true, false, false, 0);
+    }
     if (this.boundHands) {
       // Can still walk / be marched, but can't fight, sneak or use hands.
       player.setDontMove(false);
@@ -363,17 +422,17 @@ export class RestraintService extends ClientListener {
     }
   }
 
-  // Overlays and state idles live on separate graph layers: the old one is left first, alone, so the sync relays both
+  // Overlays, state idles and the bleedout kneel live on separate graph layers: the old one is left first, alone, so the sync relays both
   private setPose(player: Actor, desired: string): void {
     const previous = this.appliedPose;
     this.appliedPose = desired;
     const token = ++this.poseToken;
-    const crossesLayer = !!previous && previous !== OFFSET_STOP_ANIM && isStateIdle(previous) !== isStateIdle(desired);
+    const crossesLayer = !!previous && previous !== OFFSET_STOP_ANIM && layerOf(previous) !== layerOf(desired);
     if (!crossesLayer) {
       this.sp.Debug.sendAnimationEvent(player, desired);
       return;
     }
-    this.sp.Debug.sendAnimationEvent(player, isStateIdle(previous) ? IDLE_EXIT_ANIM : OFFSET_STOP_ANIM);
+    this.sp.Debug.sendAnimationEvent(player, exitOf(previous));
     if (desired === OFFSET_STOP_ANIM) {
       return;
     }
@@ -401,8 +460,8 @@ export class RestraintService extends ClientListener {
     const desired = this.carrying ? this.carrierAnim : OFFSET_STOP_ANIM;
     // A drawn weapon is sheathed first; the tick sends the pose once the sheathe has settled
     if (desired !== this.appliedCarrierAnim && !(this.carrying && player.isWeaponDrawn())) {
-      // A bound or carried pose applied meanwhile owns the offset layer, so ending the carry must not stop it
-      if (this.carrying || !(this.boundHands || this.carried)) this.sp.Debug.sendAnimationEvent(player, desired);
+      // A bound, carried or downed pose applied meanwhile owns the player's animation, so ending the carry must not stop it
+      if (this.carrying || !(this.boundHands || this.carried || this.downed)) this.sp.Debug.sendAnimationEvent(player, desired);
       this.appliedCarrierAnim = desired;
     }
     // Carrying a body over-encumbers: blocks sprint/jump and forces walk.
@@ -441,13 +500,24 @@ export class RestraintService extends ClientListener {
     this.posedNpcLocalId = localId;
   }
 
+  // Hits on a downed player are the server's to judge, so local NPC swings and clone hits pass through; an admin's own ghost mode is left alone
+  private applyDownedGhost(player: Actor): void {
+    if (this.downed && !this.ghostApplied && !player.isGhost()) {
+      player.setGhost(true);
+      this.ghostApplied = true;
+    } else if (!this.downed && this.ghostApplied) {
+      player.setGhost(false);
+      this.ghostApplied = false;
+    }
+  }
+
   // A carrier cannot raise a weapon, fists or a spell; re-asserted every tick because other services re-enable controls
   private holdCarrierFightLock(player: Actor, now: number): void {
     if (!this.carrying) {
       if (this.fightLockApplied) {
         this.fightLockApplied = false;
-        // Bound and carried keep their own fighting lock
-        if (!this.boundHands && !this.carried) {
+        // Bound, carried and downed keep their own fighting lock
+        if (!this.boundHands && !this.carried && !this.downed) {
           this.sp.Game.enablePlayerControls(false, true, false, false, false, false, false, false, 0);
         }
       }
@@ -478,6 +548,9 @@ export class RestraintService extends ClientListener {
   private appliedPose = "";
   private poseToken = 0;
   private carriedControlsApplied = false;
+  private downed = false;
+  private stillControlsApplied = false;
+  private ghostApplied = false;
   private collisionOffId = 0;
   private nextCollisionRefreshMs = 0;
 

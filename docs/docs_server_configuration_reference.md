@@ -393,6 +393,15 @@ The faction system (`docs_roleplay_property_factions.md` section 6) needs `maste
 
 Faction-only doors and containers come from `faction-access.json` next to `gamemode.js`, not from this file.
 
+## Bleedout
+
+All optional; see `docs/docs_roleplay_survival_loop.md` section 8 for the system. A player at 0 health bleeds out only with the native server build that fires `onKillAttempt`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `bleedoutSeconds` | `15` | Seconds a downed player has before dying, unless healed, captured or carried |
+| `bleedoutHealedHealth` | `0.25` | Share of max health that ends a bleedout when healed back to it |
+
 ## npcAggroHostSeconds
 
 For this many seconds after a player and a zone NPC exchanged a damaging hit, that player may host the NPC, so its AI runs on the client that is fighting it. Only hits the other handlers allowed (god mode, ghost mode and the capture carrier rule refuse some) and that deal damage count. A host that is itself inside its window keeps the NPC when another player hits it, so a group fight does not move the AI between clients. Default 30; `0` disables the aggro rule and leaves nearest-player hosting.
@@ -506,7 +515,7 @@ The Discord bot integration. `botToken` is the bot's token, so keep this key sec
 
 Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews:
 
-- **[Death]** every player death, with the killer (player or NPC, if any) and the place: the nearest map marker outdoors, the cell indoors, then the raw location.
+- **[Death]** every player death, with the killer (player or NPC, if any) and the place: the nearest map marker outdoors, the cell indoors, then the raw location. A bleedout death says how it happened (bled out, died of their wounds while bleeding out, logged out while bleeding out, was finished off, was smitten) and names the player who landed the finishing hit.
 - **[Execution]** execute and finish off. The killing code calls `globalThis.__alduinakMarkDeathAlerted(actorId)` first, so the same death posts no second [Death] line.
 - **[Admin]** every admin power (teleports, summon, kick, ban, item spawn, grants, npc zones, jobs, admin modes), staff writing actions, `/system` broadcasts, and faction changes made with staff powers rather than a rank of the actor's own.
 - **[Staff call]** `/gm`, `/ticket`, `/pray` and `/prayer <message>`, with `@here` and a mention of the player. The same line goes to the in-game Admin tab, which players still cannot read, and each player may call once a minute. Staff and players may `/pm` each other without an introduction, so a ticket can go back and forth. For the `@here` to ping, the bot needs the Mention @everyone, @here and All Roles permission in that channel.

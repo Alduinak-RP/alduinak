@@ -80,6 +80,17 @@ export const isAlive = (mp: Mp, actorId: number): boolean => {
   }
 };
 
+// Mirrored by BleedoutSystem while a player kneels at 0 health: alive, but unable to act
+export const BLEEDOUT_PROP = "private.bleedout";
+
+export const isBleedingOut = (mp: Mp, actorId: number): boolean => {
+  try {
+    return !!mp.get(actorId, BLEEDOUT_PROP);
+  } catch {
+    return false;
+  }
+};
+
 // Wraps an mp.* event hook: the previous handler runs first, a false from either one vetoes, and a handler that throws is logged and never vetoes
 export const chainMpHook = (mp: Mp, event: string, fn: (...args: any[]) => unknown): void => {
   const previous = typeof mp[event] === "function" ? mp[event] : null;

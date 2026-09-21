@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { isNamedItemBase } from "./inventoryExtras";
 import { isBound, isRestrained } from "./captureSystem";
-import { nameShownTo } from "./actorUtil";
+import { isBleedingOut, nameShownTo } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -245,7 +245,7 @@ export class SearchSystem implements System {
       }
       return;
     }
-    if (this.isDead(ctx, searcherActorId)) {
+    if (this.isDead(ctx, searcherActorId) || isBleedingOut(ctx.svr, searcherActorId)) {
       return;
     }
     if (isRestrained(ctx.svr, searcherActorId)) {
@@ -384,7 +384,7 @@ export class SearchSystem implements System {
   // Opens a pet's inventory for its owner in the vanilla container window; empty result on success, else the refusal
   openPetInventory(ctx: SystemContext, viewerActorId: number, targetActorId: number): string {
     if (!this.hasOccupantNative(ctx)) return "Trading needs a newer server build.";
-    if (this.isDead(ctx, viewerActorId)) return "You cannot do that now.";
+    if (this.isDead(ctx, viewerActorId) || isBleedingOut(ctx.svr, viewerActorId)) return "You cannot do that now.";
     if (isRestrained(ctx.svr, viewerActorId)) return "You cannot trade while restrained.";
     if (this.sessions.has(targetActorId)) return "It is already being searched.";
     if (this.searching.has(viewerActorId)) return "You are already searching someone.";

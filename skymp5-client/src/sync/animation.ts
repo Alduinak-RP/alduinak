@@ -75,11 +75,13 @@ const actorGetUpAnimsLowerCase = [
   'idleforcedefaultstate'
 ];
 
-// Bound, carried and carry-hold poses; the carrier's own client sheathes before its pose
+// Bound, carried, carry-hold and bleedout poses; the carrier's own client sheathes before its pose
 const restraintPosesLowerCase = new Set<string>([
   'offsetboundstandingstart',
   'offsetcarrybasketstart',
   'idlechairenterinstant',
+  'bleedoutstart',
+  'bleedoutstop',
 ]);
 
 // It's critical for values to be the correct case, not just lowercase, otherwise 'allowedIdles' check will break
@@ -411,13 +413,15 @@ const ignoredAnims = new Set<string>([
 // Offset/overlay animations (carry, bound hands, ...) report
 // animationSucceeded === false but still need to be synced to other clients so
 // remote players see the pose. See carryAnimSystem.ts in the gamemode for the
-// carry case; bound-hands (arrest) reuses the same mechanism.
+// carry case; bound-hands (arrest) and the bleedout kneel reuse the same mechanism.
 const forcedSyncAnims = new Set<string>([
   "OffsetCarryBasketStart",
   "OffsetCarryLogStart",
   "OffsetBoundStandingStart",
   "OffsetArmsCrossedStart",
   "OffsetStop",
+  "bleedOutStart",
+  "bleedOutStop",
 ]);
 
 export const setupHooks = (): void => {

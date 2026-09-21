@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
-import { nameShownTo, isPlayerActor } from "./actorUtil";
+import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, chainMpHook } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -18,8 +18,8 @@ type Mp = any;
 // Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
 // in the captor's inventory, carrying needs no item. A conscious target must
 // accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
-// captured/carried instantly with no prompt, and doing so STOPS their bleedout
-// (mp.set isDead=false stands them up instead of a temple respawn).
+// captured/carried instantly with no prompt, and doing so ends their bleedout
+// (BleedoutSystem). A dead or downed player cannot restrain or carry anyone.
 // A restrained (bound) target is carried with no prompt as well and is told who carries them.
 // Texts name players as SearchSystem does: "A stranger" until introduced.
 //
@@ -142,6 +142,8 @@ export class CaptureSystem implements System {
   onNpcCarryEnd: ((carriedActorId: number, carrierActorId: number) => void) | null = null;
   // Set by JobSystem: the load a job carrier holds, "" when none
   jobLoadOf: ((actorId: number) => string) | null = null;
+  // Set by BleedoutSystem: a capture or carry ends the target's bleedout
+  rescueDowned: ((actorId: number) => void) | null = null;
   private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
   private refusalLogAt = new Map<number, number>();
@@ -188,19 +190,11 @@ export class CaptureSystem implements System {
   // A carrier cannot fight; onHitAttempt and onSpellCastAttempt need the native build, onHitDamageAttempt works on any
   private installCarrierFightBlock(mp: Mp): void {
     for (const event of ["onHitAttempt", "onHitDamageAttempt", "onSpellCastAttempt"]) {
-      const previous = typeof mp[event] === "function" ? mp[event] : null;
-      mp[event] = (actorId: number, ...rest: unknown[]): boolean => {
-        if (this.carrying.has(actorId >>> 0)) {
-          this.logRefusal(actorId >>> 0, event);
-          return false;
-        }
-        if (!previous) return true;
-        try {
-          return previous.call(mp, actorId, ...rest) !== false;
-        } catch {
-          return true;
-        }
-      };
+      chainMpHook(mp, event, (actorId: number) => {
+        if (!this.carrying.has(actorId >>> 0)) return true;
+        this.logRefusal(actorId >>> 0, event);
+        return false;
+      });
     }
   }
 
@@ -230,7 +224,7 @@ export class CaptureSystem implements System {
     const mp = ctx.svr as Mp;
     for (const [carrierActorId, carriedActorId] of Array.from(this.carrying)) {
       try {
-        // A dead carrier drops the body; a dead body slips free
+        // A dead or downed carrier drops the body; a dead or downed body slips free
         if (this.isDowned(mp, carrierActorId)) {
           this.stopCarry(ctx, carriedActorId);
           this.notice(ctx, this.userOf(ctx, carriedActorId), "Your carrier collapsed.");
@@ -389,7 +383,7 @@ export class CaptureSystem implements System {
 
   private onCaptureRequest(ctx: SystemContext, userId: number, content: Content): void {
     const mp = ctx.svr as Mp;
-    const captorActorId = this.resolveActor(ctx, userId);
+    const captorActorId = this.resolveAbleActor(ctx, userId);
     if (captorActorId === null) {
       return;
     }
@@ -406,9 +400,8 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, "You need manacles to restrain someone.");
       return;
     }
-    // A downed target can't answer a prompt: capture instantly and stop bleedout so the engine doesn't whisk them to a temple
-    if (this.isDowned(mp, targetActorId)) {
-      this.stopBleedout(ctx, targetActorId);
+    // A downed target can't answer a prompt: captured at once, which ends their bleedout
+    if (isBleedingOut(mp, targetActorId)) {
       this.applyCapture(ctx, targetActorId, captorActorId);
       this.notice(ctx, userId, `You restrained ${nameShownTo(mp, captorActorId, targetActorId)}.`);
       return;
@@ -418,7 +411,7 @@ export class CaptureSystem implements System {
 
   private onCarryRequest(ctx: SystemContext, userId: number, content: Content): void {
     const mp = ctx.svr as Mp;
-    const carrierActorId = this.resolveActor(ctx, userId);
+    const carrierActorId = this.resolveAbleActor(ctx, userId);
     if (carrierActorId === null) {
       return;
     }
@@ -432,10 +425,8 @@ export class CaptureSystem implements System {
       this.notice(ctx, userId, refusal);
       return;
     }
-    const downed = this.isDowned(mp, targetActorId);
     // Downed and restrained targets are picked up without a prompt
-    if (downed || this.restraints.has(targetActorId)) {
-      if (downed) this.stopBleedout(ctx, targetActorId);
+    if (isBleedingOut(mp, targetActorId) || this.restraints.has(targetActorId)) {
       this.applyCarry(ctx, targetActorId, carrierActorId);
       this.notice(ctx, userId, `You picked up ${nameShownTo(mp, carrierActorId, targetActorId)}.`);
       this.notice(ctx, this.userOf(ctx, targetActorId), `${nameShownTo(mp, targetActorId, carrierActorId)} is carrying you.`);
@@ -445,7 +436,7 @@ export class CaptureSystem implements System {
   }
 
   private onPutdownRequest(ctx: SystemContext, userId: number, content: Content): void {
-    const requesterActorId = this.resolveActor(ctx, userId);
+    const requesterActorId = this.resolveAbleActor(ctx, userId);
     if (requesterActorId === null) {
       return;
     }
@@ -460,7 +451,7 @@ export class CaptureSystem implements System {
   }
 
   private onReleaseRequest(ctx: SystemContext, userId: number, content: Content): void {
-    const requesterActorId = this.resolveActor(ctx, userId);
+    const requesterActorId = this.resolveAbleActor(ctx, userId);
     if (requesterActorId === null) {
       return;
     }
@@ -531,8 +522,8 @@ export class CaptureSystem implements System {
       this.notice(ctx, captorUser, `${targetName} refused.`);
       return;
     }
-    if (captorUser < 0) {
-      return; // captor left while we waited
+    if (captorUser < 0 || this.isDowned(ctx.svr as Mp, pend.captorActorId)) {
+      return; // captor left or went down while we waited
     }
     // They may have moved apart (or perma-died) while the prompt was open.
     if (!this.validTarget(ctx, pend.captorActorId, pend.targetActorId)) {
@@ -629,6 +620,7 @@ export class CaptureSystem implements System {
   }
 
   private applyCapture(ctx: SystemContext, targetActorId: number, captorActorId: number): void {
+    if (isBleedingOut(ctx.svr, targetActorId)) this.rescueDowned?.(targetActorId);
     // A bound player cannot carry, so a carrier drops their body first
     const carried = this.carrying.get(targetActorId);
     if (carried !== undefined) {
@@ -649,6 +641,7 @@ export class CaptureSystem implements System {
   }
 
   private applyCarry(ctx: SystemContext, targetActorId: number, carrierActorId: number): void {
+    if (isBleedingOut(ctx.svr, targetActorId)) this.rescueDowned?.(targetActorId);
     const info = this.restraints.get(targetActorId)
       ?? { boundHands: false, carried: false, captorActorId: carrierActorId };
     info.carried = true;
@@ -799,8 +792,9 @@ export class CaptureSystem implements System {
     if (this.userOf(ctx, targetActorId) < 0) {
       return false; // must be a connected player, not an NPC
     }
-    if (this.isPermaDead(ctx.svr as Mp, targetActorId)) {
-      return false; // a permadead corpse stays in-world but is untouchable
+    // Death is final: a body is searched, never restrained, carried or revived
+    if (this.isPermaDead(ctx.svr as Mp, targetActorId) || !isAlive(ctx.svr as Mp, targetActorId)) {
+      return false;
     }
     return this.nearEnough(ctx, selfActorId, targetActorId);
   }
@@ -919,33 +913,23 @@ export class CaptureSystem implements System {
     }
   }
 
-  // For players, isDead===true means "bleeding out" (they always respawn), the death-state we may instant-capture
+  // Dead, or bleeding out (BleedoutSystem)
   private isDowned(mp: Mp, actorId: number): boolean {
     try {
-      return mp.get(actorId, "isDead") === true;
+      return mp.get(actorId, "isDead") === true || isBleedingOut(mp, actorId);
     } catch {
       return false;
     }
   }
 
-  // Stand a bleeding-out player up in place (isDead=false, no teleport), cancelling temple respawn; also closes the death screen and clears the pending death choice right away instead of waiting on the respawn hook
-  private stopBleedout(ctx: SystemContext, actorId: number): void {
-    const mp = ctx.svr as Mp;
-    if (this.isPermaDead(mp, actorId)) {
-      return; // permadeath is final: never resurrect a locked corpse
+  // The requester's actor, or null when there is none or it is dead or downed
+  private resolveAbleActor(ctx: SystemContext, userId: number): number | null {
+    const actorId = this.resolveActor(ctx, userId);
+    if (actorId !== null && this.isDowned(ctx.svr as Mp, actorId)) {
+      this.notice(ctx, userId, "You cannot do that now.");
+      return null;
     }
-    try {
-      mp.set(actorId, "isDead", false);
-    } catch { /* already up / form gone */ }
-    try {
-      mp.set(actorId, "private.deathChoicePending", false);
-    } catch { /* form gone */ }
-    const u = this.userOf(ctx, actorId);
-    if (u >= 0) {
-      try {
-        ctx.svr.sendCustomPacket(u, JSON.stringify({ customPacketType: "deathScreen", hide: true }));
-      } catch { /* user gone */ }
-    }
+    return actorId;
   }
 
   private resolveActor(ctx: SystemContext, userId: number): number | null {

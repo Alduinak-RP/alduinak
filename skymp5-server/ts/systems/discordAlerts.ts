@@ -139,13 +139,13 @@ export function markDeathAlerted(actorId: number): void {
 }
 (globalThis as any).__alduinakMarkDeathAlerted = markDeathAlerted;
 
-export function deathAlert(mp: Mp, actorId: number, killerId: number): void {
+export function deathAlert(mp: Mp, actorId: number, killerId: number, how = "died"): void {
   const markedAt = deathAlertedAt.get(actorId);
   deathAlertedAt.delete(actorId);
   if (markedAt !== undefined && Date.now() - markedAt < DEATH_ALERTED_MS) return;
   if (!isPlayerActor(mp, actorId)) return;
   const killer = killerId && killerId !== actorId ? `, killed by ${actorLabel(mp, killerId)}` : "";
-  discordAlert("death", `${describeActor(mp, actorId)} died${killer}, ${whereOf(mp, actorId)}`);
+  discordAlert("death", `${describeActor(mp, actorId)} ${how}${killer}, ${whereOf(mp, actorId)}`);
 }
 
 interface KeywordState { checkedAt: number; mtimeMs: number; words: { word: string; re: RegExp }[]; cooldownMs: number }

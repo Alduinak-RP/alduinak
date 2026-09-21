@@ -1,5 +1,6 @@
 import { CombinedController, Sp } from "./clientListener";
 import { BrowserService } from "./browserService";
+import { RestraintService } from "./restraintService";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ButtonEvent, DxScanCode, InputDeviceType, Menu } from "skyrimPlatform";
 
@@ -65,9 +66,17 @@ export function isGameInputBlocked(sp: Sp, controller: CombinedController): bool
   }
 }
 
-// Menu hotkeys are also inert while the interface is hidden.
+// Menu hotkeys are also inert while the interface is hidden or the player is bleeding out.
 export function isMenuHotkeyBlocked(sp: Sp, controller: CombinedController): boolean {
-  return isUiHidden(controller) || isGameInputBlocked(sp, controller);
+  return isUiHidden(controller) || isGameInputBlocked(sp, controller) || isPlayerDowned(controller);
+}
+
+export function isPlayerDowned(controller: CombinedController): boolean {
+  try {
+    return controller.lookupListener(RestraintService).isDowned;
+  } catch {
+    return false;
+  }
 }
 
 export const CONSOLE_MENUS: string[] = [Menu.Console, Menu.ConsoleNativeUI];

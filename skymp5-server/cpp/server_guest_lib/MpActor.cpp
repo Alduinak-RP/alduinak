@@ -16,6 +16,7 @@
 #include "SpSnippetFunctionGen.h"
 #include "TempleRespawn.h"
 #include "WorldState.h"
+#include "gamemode_events/CustomEvent.h"
 #include "gamemode_events/DeathEvent.h"
 #include "gamemode_events/DropItemEvent.h"
 #include "gamemode_events/EatItemEvent.h"
@@ -98,6 +99,9 @@ struct MpActor::Impl
 namespace {
 
 constexpr auto kConsumeCooldown = std::chrono::seconds{ 10 };
+
+// A bleeding-out player is held here, so no client is ever told 0
+constexpr float kBleedoutHealth = 0.01f;
 
 void RestoreActorValuePatched(MpActor* actor, espm::ActorValue actorValue,
                               float value)
@@ -746,7 +750,17 @@ void MpActor::SetPercentage(espm::ActorValue av, float percentage)
     return;
   }
   if (av == espm::ActorValue::Health && percentage <= 0.f) {
-    Kill(nullptr);
+    if (!TryBleedout(nullptr)) {
+      Kill(nullptr);
+      return;
+    }
+    EditChangeForm([&](MpChangeForm& changeForm) {
+      changeForm.actorValues.healthPercentage = kBleedoutHealth;
+    });
+    pImpl->lastAttributesUpdateTimePoint = std::chrono::steady_clock::now();
+    NetSendChangeValues(
+      GetActorValues(),
+      std::vector<espm::ActorValue>{ espm::ActorValue::Health });
     return;
   }
   EditChangeForm([&](MpChangeForm& changeForm) {
@@ -856,8 +870,28 @@ void MpActor::NetSetPercentages(
   const ActorValues& actorValues, MpActor* aggressor,
   const std::optional<std::vector<espm::ActorValue>>& avFilter)
 {
+  // Checked before the send, so the victim's client never sees 0 health
+  if (actorValues.healthPercentage <= 0.f && !IsDead() &&
+      !pImpl->isRespawning && TryBleedout(aggressor)) {
+    ActorValues bleedoutValues = actorValues;
+    bleedoutValues.healthPercentage = kBleedoutHealth;
+    NetSendChangeValues(bleedoutValues, avFilter);
+    SetPercentages(bleedoutValues, aggressor);
+    return;
+  }
   NetSendChangeValues(actorValues, avFilter);
   SetPercentages(actorValues, aggressor);
+}
+
+bool MpActor::TryBleedout(MpActor* aggressor)
+{
+  if (!IsCreatedAsPlayer()) {
+    return false;
+  }
+  const uint32_t aggressorId = aggressor ? aggressor->GetFormId() : 0;
+  CustomEvent killAttempt(GetFormId(), "onKillAttempt",
+                          nlohmann::json::array({ aggressorId }).dump());
+  return !killAttempt.Fire(GetParent());
 }
 
 std::chrono::steady_clock::time_point

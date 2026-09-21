@@ -1,6 +1,9 @@
 #include "TestUtils.hpp"
 
 using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::WithinAbs;
+
+PartOne& GetPartOne();
 
 TEST_CASE("CreateActor/DestroyActor", "[PartOne]")
 {
@@ -256,4 +259,104 @@ TEST_CASE("'isRaceMenuOpen' property should present in 'createActor'",
   REQUIRE(partOne.Messages().size() == 1);
   REQUIRE(partOne.Messages()[0].j["t"] == MsgType::CreateActor);
   REQUIRE(partOne.Messages()[0].j["props"]["isRaceMenuOpen"] == true);
+}
+
+namespace {
+class KillAttemptListener : public PartOne::Listener
+{
+public:
+  void OnConnect(Networking::UserId) override {}
+  void OnDisconnect(Networking::UserId) override {}
+  void OnCustomPacket(Networking::UserId,
+                      const simdjson::dom::element&) override
+  {
+  }
+  bool OnMpApiEvent(const GameModeEvent& event) override
+  {
+    if (event.GetName() != std::string("onKillAttempt")) {
+      return true;
+    }
+    ++attempts;
+    return allowDeath;
+  }
+
+  bool allowDeath = true;
+  int attempts = 0;
+};
+}
+
+TEST_CASE("A refused onKillAttempt leaves a player bleeding out, not dead",
+          "[Bleedout]")
+{
+  PartOne& p = GetPartOne();
+  auto listener = std::make_shared<KillAttemptListener>();
+  p.AddListener(listener);
+
+  constexpr uint32_t kPlayer = 0xff000000;
+  constexpr uint32_t kNpc = 0xff000001;
+  constexpr uint32_t kEncDremoraMelee02 = 0x16ef0;
+  const std::vector<espm::ActorValue> kHealth = { espm::ActorValue::Health };
+
+  DoConnect(p, 0);
+  p.CreateActor(kPlayer, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, kPlayer);
+  auto& player = p.worldState.GetFormAt<MpActor>(kPlayer);
+
+  listener->allowDeath = false;
+  player.NetSetPercentages({ 0.f, 1.f, 1.f }, nullptr, kHealth);
+  REQUIRE(listener->attempts == 1);
+  REQUIRE(player.IsDead() == false);
+  REQUIRE_THAT(player.GetActorValues().healthPercentage,
+               WithinAbs(0.01f, 1e-6f));
+
+  player.SetPercentage(espm::ActorValue::Health, 0.f);
+  REQUIRE(listener->attempts == 2);
+  REQUIRE(player.IsDead() == false);
+  REQUIRE_THAT(player.GetActorValues().healthPercentage,
+               WithinAbs(0.01f, 1e-6f));
+
+  listener->allowDeath = true;
+  player.SetPercentage(espm::ActorValue::Health, 0.f);
+  REQUIRE(player.IsDead() == true);
+
+  player.SetIsDead(false);
+  player.NetSetPercentages({ 0.f, 1.f, 1.f }, nullptr, kHealth);
+  REQUIRE(player.IsDead() == true);
+
+  p.worldState.AddForm(
+    std::make_unique<MpActor>(
+      LocationalData{ { 0.f, 0.f, 0.f }, NiPoint3(), FormDesc::Tamriel() },
+      p.CreateFormCallbacks(), kEncDremoraMelee02),
+    kNpc);
+  auto& npc = p.worldState.GetFormAt<MpActor>(kNpc);
+  listener->allowDeath = false;
+  const int attemptsBefore = listener->attempts;
+  npc.NetSetPercentages({ 0.f, 1.f, 1.f }, nullptr, kHealth);
+  REQUIRE(listener->attempts == attemptsBefore);
+  REQUIRE(npc.IsDead() == true);
+
+  auto& listeners = p.worldState.listeners;
+  listeners.erase(std::remove(listeners.begin(), listeners.end(), listener),
+                  listeners.end());
+  p.DestroyActor(kNpc);
+  p.DestroyActor(kPlayer);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Without an onKillAttempt handler a player dies at 0 health",
+          "[Bleedout]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  auto& player = p.worldState.GetFormAt<MpActor>(0xff000000);
+
+  player.NetSetPercentages(
+    { 0.f, 1.f, 1.f }, nullptr,
+    std::vector<espm::ActorValue>{ espm::ActorValue::Health });
+  REQUIRE(player.IsDead() == true);
+
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
 }

@@ -29,6 +29,7 @@ import { HuntingSystem } from "./systems/huntingSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { WritingSystem } from "./systems/writingSystem";
 import { CaptureSystem } from "./systems/captureSystem";
+import { BleedoutSystem } from "./systems/bleedoutSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { CraftedExtrasSystem } from "./systems/craftedExtrasSystem";
 import { SearchSystem } from "./systems/searchSystem";
@@ -235,6 +236,8 @@ const main = async () => {
   hostingSystem.addProvider(() => npcSpawnSystem.liveNpcs());
   hostingSystem.addProvider(() => companionSystem.hostables());
   const captureSystem = new CaptureSystem(log);
+  // Players brought to 0 health bleed out; capture and carry rescue them
+  const bleedoutSystem = new BleedoutSystem(log, captureSystem);
   // Sovngarde and the Soul Cairn: soul trap, finish off and execution send characters there
   const afterlifeSystem = new AfterlifeSystem(log);
   const housingSystem = new HousingSystem(log);
@@ -267,6 +270,8 @@ const main = async () => {
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing
     adminSystem,
     captureSystem,
+    // Early, so the hit observers wrapped after it (hosting, companions) never see a refused hit on a downed player
+    bleedoutSystem,
     afterlifeSystem,
     housingSystem,
     factionSystem,

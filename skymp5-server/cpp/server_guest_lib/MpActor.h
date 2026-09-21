@@ -213,6 +213,9 @@ private:
 
   void SendAndSetDeathState(bool isDead, bool shouldTeleport);
 
+  // True when a player's death is refused by the gamemode's onKillAttempt, so they bleed out instead
+  bool TryBleedout(MpActor* aggressor);
+
   DeathStateContainerMessage GetDeathStateMsg(const LocationalData& position,
                                               bool isDead,
                                               bool shouldTeleport);

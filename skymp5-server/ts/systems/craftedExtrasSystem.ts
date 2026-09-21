@@ -143,15 +143,15 @@ export class CraftedExtrasSystem implements System {
     const mp = ctx.svr as Mp;
     const previous = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
     mp.onEatItem = (...args: unknown[]) => {
+      const verdict = previous ? previous.apply(mp, args) : undefined;
       let poison = false;
       try {
         const baseId = Number(args[1]) >>> 0;
         poison = this.isPoison(ctx, baseId);
-        if (poison) this.addPoisonCredit(Number(args[0]) >>> 0, baseId);
+        if (poison && verdict !== false) this.addPoisonCredit(Number(args[0]) >>> 0, baseId);
       } catch (e) {
         this.log(`[crafted] poison credit failed: ${e}`);
       }
-      const verdict = previous ? previous.apply(mp, args) : undefined;
       // A blocked eat skips only the effects, OnEquip still removes the poison
       return poison ? false : verdict;
     };

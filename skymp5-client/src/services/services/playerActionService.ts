@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
@@ -107,7 +107,7 @@ export class PlayerActionService extends ClientListener {
     const isActivate = e.userEventName === "Activate";
     const isInteract = !isActivate && code === this.interactKey;
     if ((!isActivate && !isInteract) || this.menuOpen || this.menuWait) return;
-    if (isGameInputBlocked(this.sp, this.controller)) return;
+    if (isGameInputBlocked(this.sp, this.controller) || isPlayerDowned(this.controller)) return;
     // A hidden interface must not trap a rider, so the saddle is checked before the rest of the hotkey block
     const mount = this.controller.lookupListener(MountService);
     if (isActivate && mount.isMounted) {

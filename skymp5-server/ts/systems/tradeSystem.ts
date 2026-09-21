@@ -4,6 +4,7 @@ import {
   Item, InventoryEntry, Inventory, isNamedItem, sameBase, hasIdentityExtras, sameItem, lineKey,
   readInventory, copyValidExtras, withCount, addEntries, describeExtras,
 } from "./inventoryExtras";
+import { isBleedingOut } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -296,7 +297,7 @@ export class TradeSystem implements System {
     }
   }
 
-  // Why a player may not trade right now, or null if they may: engine isDead (bleeding out) plus CaptureSystem's private.restrained mirror
+  // Why a player may not trade right now, or null if they may: dead, bleeding out, or CaptureSystem's private.restrained mirror
   private tradeBlockReason(mp: Mp, userId: number): string | null {
     const actorId = this.actorOf(mp, userId);
     if (!actorId) {
@@ -308,6 +309,9 @@ export class TradeSystem implements System {
       }
     } catch {
       /* form not loaded yet */
+    }
+    if (isBleedingOut(mp, actorId)) {
+      return 'bleeding out';
     }
     try {
       const r = mp.get(actorId, 'private.restrained');
