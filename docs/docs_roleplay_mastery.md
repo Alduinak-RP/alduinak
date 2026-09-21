@@ -158,7 +158,9 @@ grindstone included:
   and gauntlets;
 - the Daedra (Dremora) Halberd of Immersive Weapons, whose name escapes the
   Daedric term;
-- the Alduin Scale boots, cuirass, gauntlets and helmet of Immersive Armors.
+- the Alduin Scale boots, cuirass, gauntlets and helmet of Immersive Armors;
+- Immersive Armors' Vanguard Plate, open and closed helmet included (the
+  AVExpansion Nordic Vanguard set stays craftable).
 
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
