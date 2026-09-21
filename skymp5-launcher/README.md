@@ -123,6 +123,20 @@ launcher goes back to the zip on its next PLAY, with no launcher rebuild.
 From now on a client change reaches MO2 players only through a new Nexus file:
 Build Client, upload the Nexus file, then Update manifest.
 
+## Stray files in the game copy
+
+The portable copy (`<base>\skyrim`) holds only what the launcher puts there:
+the vanilla files (`vanillaJobs`), `Skyrim.ccc` and the copy and Creation
+stamps, the manifest's Creation and root files, the preloader, the SKSE
+`skse64_*` exe and dlls, the client settings, the auth file, `controlmap.txt`,
+logs, and the client zip's files when no manifest mod carries the client. Every
+other file is a stray (`gameCopyStrays`): the MO2 install pass deletes them and
+prunes empty folders, and Check Files lists them for Repair Game Copy. Nothing
+is deleted unless Portable Skyrim Mode and MO2 are both on, the folder is
+`<base>\skyrim` with `alduinak-instance.txt` in `<base>`, it does not overlap
+the original install, the original's `Skyrim.esm` is readable, and the manifest
+(and, for the zip, its file list) was fetched. Links are never followed.
+
 ## Cleaned masters
 
 The server's masters and three Creation plugins are cleaned with Simple Cleaned

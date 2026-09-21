@@ -1844,6 +1844,63 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
   return { ok: true, cleaned, warning }
 }
 
+// The client zip's file list when no manifest mod carries the client, [] when one does, null when the list is unknown
+function clientZipFiles(manifest, vd) {
+  if (clientMods(manifest).length > 0) return []
+  return vd && Array.isArray(vd.files) ? vd.files.map(f => String(f.path)) : null
+}
+
+// Matches the game-root-relative paths the launcher itself puts in the portable copy
+function gameCopyAllowlist(src, manifest, zipFiles) {
+  const keep = new Set([
+    ...vanillaJobs(src).map(j => path.join(j.sub, j.rel)),
+    'Skyrim.ccc', 'vanilla-copy-complete.json', CREATIONS_STAMP, ...PRELOADER_DLLS,
+    'Data/Platform/Plugins/skymp5-client-settings.txt',
+    'Data/Platform/PluginsNoLoad/auth-data-no-load.js',
+    'Data/Interface/Controls/PC/controlmap.txt',
+    ...((manifest.creations && manifest.creations.files) || []).map(f => f.to),
+    ...(manifest.root || []).map(f => f.to),
+    ...zipFiles,
+  ].map(p => String(p).split(path.sep).join('/').toLowerCase()))
+  return rel => {
+    const l = rel.toLowerCase()
+    return keep.has(l) || /^skse64_[^/]*\.(exe|dll)$/.test(l) || CLIENT_OWN_FILE_RES.some(re => re.test(l))
+  }
+}
+
+// Files in the portable game copy the launcher never installs; [] whenever a cleanup would not be safe
+function gameCopyStrays(gamePath, manifest, zipFiles) {
+  const src  = store.get('skyrimPath')
+  const base = store.get('baseDirPath')
+  const safe = !!(store.get('isolatedGame') && store.get('mo2Enabled') && base && gamePath === isolatedGameDir() &&
+    fs.existsSync(path.join(base, 'alduinak-instance.txt')) && src && !pathsOverlap(src, gamePath) &&
+    fs.existsSync(path.join(src, 'Data', 'Skyrim.esm')) && manifest && Array.isArray(zipFiles))
+  if (!safe) return []
+  const kept = gameCopyAllowlist(src, manifest, zipFiles)
+  return mo2.listFilesRel(gamePath).filter(rel => {
+    if (kept(rel)) return false
+    try { return !fs.lstatSync(path.join(gamePath, ...rel.split('/'))).isSymbolicLink() } catch { return false }
+  })
+}
+
+function removeGameCopyStrays(gamePath, manifest, zipFiles) {
+  const strays = gameCopyStrays(gamePath, manifest, zipFiles)
+  for (const rel of strays) {
+    const full = path.join(gamePath, ...rel.split('/'))
+    try {
+      fs.rmSync(mo2.lp(full), { force: true })
+      log(`[game] removed stray file ${rel}`)
+    } catch (err) {
+      log(`[game] could not remove stray file ${rel}: ${err.message}`)
+    }
+    for (let dir = path.dirname(full); dir.length > gamePath.length; dir = path.dirname(dir)) {
+      try { fs.rmdirSync(dir) } catch { break }
+    }
+  }
+  ensureClientDirs(gamePath)
+  return strays.length
+}
+
 // Adds two missing folders to prevent a code 2 crash
 function ensureClientDirs(gamePath) {
   if (!gamePath) return
@@ -2348,6 +2405,7 @@ async function checkFilesImpl() {
     await yieldNow()
   }
 
+  let vd = null
   if (!gameOk) {
     notes.push('SKSE and client files: no game folder found, both sections skipped.')
   } else {
@@ -2380,7 +2438,6 @@ async function checkFilesImpl() {
 
     // Client files
     progress('Checking client files…')
-    let vd = null
     try { vd = await fetchJSON(`${config.apiUrl}/api/files/version`) }
     catch (err) { notes.push(`Client files: could not read the server version (${err.message}), version and checksum checks skipped.`) }
     if (vd) {
@@ -2430,6 +2487,13 @@ async function checkFilesImpl() {
         notes.push(`Client files: ${extras.length} file(s) not in the server package were left alone: ${extras.slice(0, CHECK_NOTE_SAMPLE).join(', ')}${more}.`)
       }
     }
+    await yieldNow()
+  }
+
+  // Strays in the portable copy; PLAY and Repair Game Copy delete them
+  if (portable && gameOk) {
+    progress('Checking the game copy for stray files…')
+    for (const rel of gameCopyStrays(gamePath, manifest, clientZipFiles(manifest, vd))) add('extra', show(path.join(gamePath, ...rel.split('/'))), 'game')
     await yieldNow()
   }
 
@@ -2823,8 +2887,10 @@ async function runMO2Install(opts = {}) {
     // 3. SkyMP client files: a manifest mod carries them under MO2; without one the backend zip goes into the real Data (skipped by Repair Modlist)
     let coreUpToDate = false
     let clientFilesVersion = null
+    let vd = null
+    try { vd = await fetchJSON(`${config.apiUrl}/api/files/version`) } catch {}
     if (clientMods(manifest).length > 0) {
-      try { clientFilesVersion = (await fetchJSON(`${config.apiUrl}/api/files/version`)).version } catch {}
+      clientFilesVersion = vd && vd.version
       ensureClientDirs(skyrimPath)
       writeClientSettings(clientSettingsPath(), srv, serverInfo)
       coreUpToDate = !!clientFilesVersion && clientFilesVersion === store.get('filesVersion')
@@ -2833,6 +2899,8 @@ async function runMO2Install(opts = {}) {
       if (!core.success) return fail(core.error)
       coreUpToDate = !!core.upToDate
     }
+    const strays = removeGameCopyStrays(skyrimPath, manifest, clientZipFiles(manifest, vd))
+    if (strays) log(`[mo2-install] removed ${strays} stray file(s) from the game copy`)
 
     const finishOrder = () => {
       const order = (Array.isArray(manifest.order) && manifest.order.length)
