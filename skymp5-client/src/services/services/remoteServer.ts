@@ -27,7 +27,7 @@ import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '.
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
-import { dropUnlistedBaseSpells, learnSpells, removeAllSpells, SpellListNatives } from '../../sync/spell';
+import { dropUnlistedBaseSpells, learnSpells, removeAllSpells, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
@@ -671,6 +671,7 @@ export class RemoteServer extends ClientListener {
             dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, learnedSpells);
             removeAllSpells(player);
             learnSpells(player, learnedSpells);
+            syncRaceAbilities(player, learnedSpells);
             logTrace(this,
               `player learnedSpells:`, JSON.stringify(learnedSpells),
             );
@@ -921,6 +922,10 @@ export class RemoteServer extends ClientListener {
     if (i === this.getMyActorIndex() && newAppearance) {
       this.controller.once("update", () => {
         applyAppearanceToPlayer(newAppearance);
+        const player = Game.getPlayer();
+        if (player) {
+          syncRaceAbilities(player, []);
+        }
         logTrace(this, "Applied appearance to the player");
       });
     }
@@ -975,6 +980,7 @@ export class RemoteServer extends ClientListener {
         const player = Game.getPlayer();
         if (player) {
           dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, msgData as number[]);
+          syncRaceAbilities(player, msgData as number[]);
         }
       });
     }

@@ -12,7 +12,7 @@ import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage
 import { UpdateAnimVariablesMessageMsgData } from "../messages/updateAnimVariablesMessage";
 
 // Racial greater powers are disabled on this server (form ids verified against Skyrim.esm on the reference install)
-const BLOCKED_POWER_IDS = new Set([
+export const BLOCKED_POWER_IDS = new Set([
     0x000E40C3, // PowerNordBattleCry
     0x000E40C8, // PowerHighElfMagickaRegen (Highborn)
     0x000E40CA, // PowerImperialPacify (Voice of the Emperor)

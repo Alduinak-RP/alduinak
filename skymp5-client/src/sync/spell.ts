@@ -1,4 +1,5 @@
-import { Actor, ActorBase, Game, Spell, printConsole } from 'skyrimPlatform';
+import { Actor, ActorBase, Game, Race, Spell, printConsole } from 'skyrimPlatform';
+import { BLOCKED_POWER_IDS } from '../services/services/magicSyncService';
 
 export const removeAllSpells = (actor: Actor) => {
   let spellToRemove = new Array<Spell>();
@@ -74,4 +75,60 @@ export const learnSpells = (actor: Actor, spellsIds: Array<number>) => {
       );
     }
   }
+};
+
+const PLAYABLE_RACE_FIRST = 0x13740;
+const PLAYABLE_RACE_LAST = 0x13749;
+
+const raceSpells = (race: Race) => {
+  const spells = new Array<Spell>();
+  for (let i = 0; i < race.getSpellCount(); i++) {
+    const spell = race.getNthSpell(i);
+    if (spell) {
+      spells.push(spell);
+    }
+  }
+  return spells;
+};
+
+// A race set on the base never runs SwitchRace, so other races' abilities are dispelled and the current race's are added
+export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
+  const current = ActorBase.from(actor.getBaseObject())?.getRace();
+  if (!current) {
+    return;
+  }
+  const currentSpells = raceSpells(current);
+  const kept = new Set([...keep, ...currentSpells.map((spell) => spell.getFormID())]);
+
+  const others = new Array<Race>();
+  for (let id = PLAYABLE_RACE_FIRST; id <= PLAYABLE_RACE_LAST; id++) {
+    const race = Race.from(Game.getFormEx(id));
+    if (race) {
+      others.push(race);
+    }
+  }
+  const actorRace = actor.getRace();
+  if (actorRace && !others.some((race) => race.getFormID() === actorRace.getFormID())) {
+    others.push(actorRace);
+  }
+
+  for (const race of others) {
+    if (race.getFormID() === current.getFormID()) {
+      continue;
+    }
+    for (const spell of raceSpells(race)) {
+      if (kept.has(spell.getFormID())) {
+        continue;
+      }
+      actor.removeSpell(spell);
+      if (actor.dispelSpell(spell)) {
+        printConsole(`dispelledRaceSpell: ${spell.getFormID().toString(16)}, from: ${race.getFormID().toString(16)}`);
+      }
+    }
+  }
+
+  learnSpells(
+    actor,
+    currentSpells.map((spell) => spell.getFormID()).filter((id) => !BLOCKED_POWER_IDS.has(id)),
+  );
 };
