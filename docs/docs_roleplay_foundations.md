@@ -239,3 +239,7 @@ to one stays playable but is confined to it.
   character. The character keeps its slot and stays playable. Its faction ranks
   are released at once, as for a perma-death. The server refuses creation
   while the living limit is reached, whatever the client shows.
+- **Deleting a fallen character** closes its extra slot again, so no delete
+  ever gains a living character. The survivors keep their slots, and a gap left
+  before a living character is sent in `lockedSlots` while the living limit is
+  reached. The server logs `Deleted fallen character ... its extra slot closes`.

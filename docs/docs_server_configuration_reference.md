@@ -420,7 +420,7 @@ Searches for `index.js` if a directory specified.
 
 ## characterSelectMaxCharacters
 
-With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots.
+With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
 
 ## startPoints
 

@@ -699,11 +699,12 @@ export class Spawn implements System {
 
     const actorId = this.slotMap(ctx, auth.profileId)[slot];
     if (actorId !== undefined) {
-      // Perma-dead characters may be deleted too (destroying the body) so a perma-death cannot lock the slot forever
+      // Fallen characters may be deleted too (destroying the body); the extra slot they opened closes with them
+      const fallen = isFallen(ctx.svr as unknown as Mp, actorId);
       this.cancelPark(actorId);
       ctx.gm.emit(CHARACTER_RETIRED_EVENT, auth.profileId, slot, actorId);
       ctx.svr.destroyActor(actorId);
-      this.log("Deleted character", actorId.toString(16), "from slot", slot);
+      this.log(fallen ? `Deleted fallen character ${actorId.toString(16)} from slot ${slot}, its extra slot closes` : `Deleted character ${actorId.toString(16)} from slot ${slot}`);
     }
     this.sendCharacterList(ctx, userId, auth.profileId);
   }
