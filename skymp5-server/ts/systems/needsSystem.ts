@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./sys
 import { resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
 import { keywordConditionsPass } from "./espmMagic";
-import { addSpellTo, removeSpellFrom, hex } from "./actorUtil";
+import { addSpellTo, removeSpellFrom, hex, chainMpHook, isAlive } from "./actorUtil";
 import { MasterySystem } from "./masterySystem";
 import { IMPERIAL_RACES } from "./charCreatorData";
 
@@ -57,6 +57,8 @@ type Mp = any;
 //   needsMineFatigue              exhaustion one ore off a vein costs, default 20
 //   needsMineFatigueMiner         what a miner pays instead, default 10
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
+//   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
+//   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
 
 const NEEDS_PROP = "private.needs";
 const STATE_PACKET = "needsState";
@@ -177,6 +179,8 @@ export class NeedsSystem implements System {
     this.penalties = all["needsAttributePenalties"] !== false;
     const free = Array.isArray(all["needsFatigueFreeKeywords"]) ? (all["needsFatigueFreeKeywords"] as unknown[]).filter((k) => typeof k === "string") as string[] : ["AldCraftingMead"];
 
+    this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05));
+
     if (!this.enabled) {
       this.log("[needs] disabled by needsEnabled");
       return;
@@ -251,6 +255,32 @@ export class NeedsSystem implements System {
       }
       return verdict;
     };
+  }
+
+  // OnHit fires before the native hit writes the percentages it copied earlier, so the drain waits a tick
+  private installBlockStamina(ctx: SystemContext, cost: number, warriorCost: number): void {
+    const mp = ctx.svr as Mp;
+    if (cost <= 0 && warriorCost <= 0) return;
+    chainMpHook(mp, "onPapyrusEvent:OnHit", (...args: unknown[]) => {
+      if (args[7] !== true) return;
+      const desc = (args[2] as { desc?: unknown } | null)?.desc;
+      if (typeof desc !== "string") return;
+      // Ward blocks send a SPEL source
+      const type = String(lookup(mp, mp.getIdFromDesc(desc) >>> 0)?.record?.type ?? "");
+      if (type !== "WEAP" && type !== "ARMO") return;
+      const targetId = Number(args[0]) >>> 0;
+      setImmediate(() => {
+        try {
+          if (!isAlive(mp, targetId)) return;
+          const drain = this.mastery.rankOf(ctx, targetId, "warrior") >= 0 ? warriorCost : cost;
+          const p = mp.get(targetId, "percentages");
+          if (!p || drain <= 0) return;
+          mp.set(targetId, "percentages", { ...p, stamina: Math.max(0, Number(p.stamina) - drain) });
+        } catch (e) {
+          this.log(`[needs] block stamina for ${hex(targetId)} failed: ${e}`);
+        }
+      });
+    });
   }
 
   // False refuses the craft; crafts without the inputs in the bag are left to the native side uncharged

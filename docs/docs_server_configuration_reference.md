@@ -845,6 +845,8 @@ Survival hunger effect in the plugins.
 | `needsFatigueStageAbilities` | `true` | Grant the Survival exhaustion stage ability of the current stage |
 | `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |
 | `needsAttributePenalties` | `true` | `false` sends no max stamina or max magicka penalty |
+| `blockStaminaCost` | `0.1` | Share of max stamina a blocked weapon hit costs the blocker; applies with needs off too, `0` turns it off |
+| `blockStaminaCostWarrior` | `0.05` | What a warrior pays instead |
 
 ## Mastery, gathering and hunting
 

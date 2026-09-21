@@ -282,6 +282,11 @@ change on either need swaps its ability and sends a notice from stage 2 up.
 The manager purge re-encodes `stageSpell` and `fatigueSpell`. A version 1 record reads as not Well Fed and holding no
 exhaustion ability.
 
+**Blocking** a weapon hit (the server's `abHitBlocked`, shield or weapon; ward blocks of spells excluded) costs the
+blocker `blockStaminaCost` (10%) of max stamina, a warrior `blockStaminaCostWarrior` (5%). The drain is written a tick
+after the hit, because the native hit rewrites all three percentages from an earlier copy. Stamina stops at 0 and
+blocking still works there, as in vanilla. It applies to every actor and also with `needsEnabled` false.
+
 **Protocol**
 - Client -> Server: `{ customPacketType: "needsRequest" }`
 - Server -> Client: `{ customPacketType: "needsState", hunger, stage, stageName, fatigue, fatigueStage, fatigueStageName,
