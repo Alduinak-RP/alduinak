@@ -3703,121 +3703,253 @@
   ]
  },
  "craftingCategories": {
+  "comment": "The CraftingCategories SKSE plugin puts an item in one section and one category of that section, by keywords on the item. Every armour, weapon and ammunition the benches make gets the keyword of the first section it fits (a slot, the shields, the weapons, anything else worn) and one category keyword: its race when a racial rule gates the recipe, otherwise the material its recipes use most of (materials in order, a tie going to the earlier one; ignoreItems never count). The run writes the json the plugin reads.",
   "file": "AlduinakAdditions.json",
-  "section": "Alduinak",
-  "groups": [
+  "keywordPrefix": "AldCat",
+  "iconSource": "skyui/icons_item_psychosteve.swf",
+  "benches": [
+   "CraftingSmithingForge",
+   "CraftingSmithingSkyforge",
+   "DLC2CraftingSmithingSkaalForge",
+   "DLC1CraftingDawnguard",
+   "CraftingTanningRack",
+   "MCE_CraftingLoom",
+   "AldCraftingWoodcrafting"
+  ],
+  "sections": [
    {
-    "bench": "MCE_CraftingLoom",
-    "categories": [
-     {
-      "name": "Khajiit",
-      "keyword": "AldCatKhajiit",
-      "match": [
-       "Khajiit"
-      ]
-     },
-     {
-      "name": "Headgear",
-      "keyword": "AldCatHeadgear",
-      "slots": [
-       "30",
-       "31",
-       "42"
-      ]
-     },
-     {
-      "name": "Footwear",
-      "keyword": "AldCatFootwear",
-      "slots": [
-       "37"
-      ]
-     },
-     {
-      "name": "Robes",
-      "keyword": "AldCatRobes",
-      "slots": [
-       "32"
-      ],
-      "match": [
-       "Robe"
-      ]
-     },
-     {
-      "name": "Aprons",
-      "keyword": "AldCatAprons",
-      "slots": [
-       "32"
-      ],
-      "match": [
-       "BlackSmith",
-       "Chef",
-       "BarKeeper",
-       "Farm",
-       "Miner"
-      ]
-     },
-     {
-      "name": "Clothes",
-      "keyword": "AldCatClothes",
-      "slots": [
-       "32"
-      ]
-     },
-     {
-      "name": "Other",
-      "keyword": "AldCatOther"
-     }
+    "name": "Shields",
+    "priority": 15,
+    "icon": "armor_shield",
+    "slots": [
+     "39"
+    ],
+    "keywords": [
+     "ArmorShield"
     ]
    },
    {
-    "bench": "AldCraftingWoodcrafting",
-    "categories": [
-     {
-      "name": "Arrows",
-      "keyword": "AldCatArrows",
-      "kinds": [
-       "ammo"
-      ]
-     },
-     {
-      "name": "Shields",
-      "keyword": "AldCatShields",
-      "keywords": [
-       "ArmorShield"
-      ]
-     },
-     {
-      "name": "Bows",
-      "keyword": "AldCatBows",
-      "keywords": [
-       "WeapTypeBow"
-      ]
-     },
-     {
-      "name": "Instruments",
-      "keyword": "AldCatInstruments",
-      "items": [
-       "Lute",
-       "Flute",
-       "Drum"
-      ]
-     },
-     {
-      "name": "Tools and Writing",
-      "keyword": "AldCatTools"
-     }
+    "name": "Torso",
+    "priority": 12,
+    "icon": "armor_body",
+    "slots": [
+     "32"
     ]
    },
    {
-    "bench": "CraftingTanningRack",
-    "categories": [
-     {
-      "name": "Khajiit",
-      "keyword": "AldCatKhajiit",
-      "match": [
-       "Khajiit"
-      ]
-     }
+    "name": "Head",
+    "priority": 11,
+    "icon": "armor_head",
+    "slots": [
+     "30",
+     "31",
+     "41",
+     "42",
+     "43"
+    ]
+   },
+   {
+    "name": "Hands",
+    "priority": 13,
+    "icon": "armor_hands",
+    "slots": [
+     "33",
+     "34"
+    ]
+   },
+   {
+    "name": "Feet",
+    "priority": 14,
+    "icon": "armor_feet",
+    "slots": [
+     "37",
+     "38"
+    ]
+   },
+   {
+    "name": "Weapons",
+    "priority": 16,
+    "icon": "weapon_sword",
+    "kinds": [
+     "weapon",
+     "ammo"
+    ]
+   },
+   {
+    "name": "Accessories",
+    "priority": 17,
+    "icon": "armor_amulet",
+    "kinds": [
+     "armor"
+    ]
+   }
+  ],
+  "ignoreItems": [
+   "LeatherStrips"
+  ],
+  "materials": [
+   {
+    "name": "Dragon",
+    "items": [
+     "DragonBone",
+     "DragonScales"
+    ]
+   },
+   {
+    "name": "Daedric",
+    "items": [
+     "DaedraHeart"
+    ]
+   },
+   {
+    "name": "Stalhrim",
+    "items": [
+     "DLC2OreStalhrim"
+    ]
+   },
+   {
+    "name": "Ebony",
+    "items": [
+     "IngotEbony",
+     "OreEbony"
+    ]
+   },
+   {
+    "name": "Glass",
+    "items": [
+     "IngotMalachite",
+     "OreMalachite"
+    ]
+   },
+   {
+    "name": "Glacial",
+    "items": [
+     "IAMIIngotGlacialCrystal"
+    ]
+   },
+   {
+    "name": "Quicksilver",
+    "items": [
+     "IngotQuicksilver",
+     "OreQuicksilver"
+    ]
+   },
+   {
+    "name": "Moonstone",
+    "items": [
+     "IngotIMoonstone",
+     "OreMoonstone"
+    ]
+   },
+   {
+    "name": "Dwarven",
+    "items": [
+     "IngotDwarven",
+     "DwarvenLargeScrap",
+     "DwarvenLargeScrap2",
+     "DwarvenLargeScrap3",
+     "DwarvenPlateMetalLarge",
+     "DwarvenPlateMetalSmall",
+     "DwarvenScrapBent",
+     "DwarvenScrapLever",
+     "DwarvenScrapLever02",
+     "DwarvenScrapMetal"
+    ]
+   },
+   {
+    "name": "Orichalcum",
+    "items": [
+     "IngotOrichalcum",
+     "OreOrichalcum"
+    ]
+   },
+   {
+    "name": "Chitin",
+    "items": [
+     "DLC2ChitinPlate",
+     "ChaurusChitin",
+     "IAMIBoiledChitinPlate"
+    ]
+   },
+   {
+    "name": "Netch Leather",
+    "items": [
+     "DLC2NetchLeather"
+    ]
+   },
+   {
+    "name": "Silver",
+    "items": [
+     "ingotSilver",
+     "OreSilver"
+    ]
+   },
+   {
+    "name": "Gold",
+    "items": [
+     "IngotGold",
+     "OreGold"
+    ]
+   },
+   {
+    "name": "Corundum",
+    "items": [
+     "IngotCorundum",
+     "OreCorundum"
+    ]
+   },
+   {
+    "name": "Steel",
+    "items": [
+     "IngotSteel"
+    ]
+   },
+   {
+    "name": "Iron",
+    "items": [
+     "IngotIron",
+     "OreIron"
+    ]
+   },
+   {
+    "name": "Bone",
+    "items": [
+     "BoneMeal",
+     "BoneTrollSkull01",
+     "MammothTusk",
+     "HorkerTusk",
+     "AntlersLarge",
+     "SabrecatTooth",
+     "BearClaws"
+    ]
+   },
+   {
+    "name": "Leather",
+    "items": [
+     "Leather01"
+    ]
+   },
+   {
+    "name": "Fur",
+    "items": [
+     "IAMIFurPlate"
+    ],
+    "itemKeywords": [
+     "VendorItemAnimalHide"
+    ]
+   },
+   {
+    "name": "Cloth",
+    "items": [
+     "MCE_Thread",
+     "RuinsLinenPile01",
+     "TundraCotton"
+    ]
+   },
+   {
+    "name": "Wood",
+    "items": [
+     "Firewood01"
     ]
    }
   ]

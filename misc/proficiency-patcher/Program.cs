@@ -70,7 +70,7 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Writing, Steps.Racial,
-       Steps.EnchantmentMagnitudes, Steps.Races, Steps.DisableReferences, Steps.DisableActors,
+       Steps.EnchantmentMagnitudes, Steps.Races, Steps.DisableReferences, Steps.DisableActors, categoriesStep,
        Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Meadery,
@@ -1350,56 +1350,80 @@ static class Steps
 
     // ---- crafting categories: the filter tabs the CraftingCategories SKSE plugin draws ----------------------------
     //
-    // It reads keywords off the created object, so a category is a keyword of the plugin's own added to every item a
-    // bench's recipes make, plus a json config naming the keyword. Runs last, when every bench keyword is final.
+    // It reads keywords off the created object and puts an item in one section and one category of that section only,
+    // so every item the benches make gets one slot section keyword and one race or material keyword of the plugin's
+    // own, and the json names them. Runs last, when every bench keyword and race gate is final.
     public static JsonObject Categories(PatchContext c)
     {
         var config = new JsonObject();
         if (c.Spec["craftingCategories"] is not JsonObject spec) return config;
-        var section = spec["section"]!.GetValue<string>();
-        var categories = new JsonObject();
-        var final = FinalRecipes(c).Select(kv => kv.Value).ToList();
-        foreach (var group in spec["groups"]!.AsArray().Select(x => x!.AsObject()))
+        var prefix = spec["keywordPrefix"]!.GetValue<string>();
+        var benches = Edids(c, spec["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var sections = spec["sections"]!.AsArray().Select(x => x!.AsObject())
+            .Select(x => (Name: x["name"]!.GetValue<string>(), Priority: x["priority"]!.GetValue<int>(), Icon: x["icon"]!.GetValue<string>(),
+                          Slots: Edids(c, x["slots"]).Select(int.Parse).ToList(),
+                          Kinds: Edids(c, x["kinds"]).ToHashSet(StringComparer.OrdinalIgnoreCase),
+                          Keywords: Edids(c, x["keywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet())).ToList();
+        // A race category is the racial rule whose races gate the recipe
+        var races = c.Spec["racial"]!["races"]!.AsArray().Select(x => x!.AsObject())
+            .Select(x => (Name: x["name"]!.GetValue<string>(), Races: Edids(c, x["races"]).Select(c.KeyOf<IRaceGetter>).ToHashSet())).ToList();
+        var materials = spec["materials"]!.AsArray().Select(x => x!.AsObject())
+            .Select(x => (Name: x["name"]!.GetValue<string>(), Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
+                          Keywords: Edids(c, x["itemKeywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet())).ToList();
+        var ignore = Edids(c, spec["ignoreItems"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet();
+        var tagged = new List<(IMajorRecordGetter Made, int Section, string? Tab, string? Keyword)>();
+        foreach (var group in FinalRecipes(c).Select(kv => kv.Value).Where(r => benches.Contains(r.Bench)).GroupBy(r => r.Product))
         {
-            var bench = c.KeyOf<IKeywordGetter>(group["bench"]!.GetValue<string>());
-            var rules = group["categories"]!.AsArray().Select(x => x!.AsObject())
-                .Select(x => (Name: x["name"]!.GetValue<string>(),
-                              Key: c.OwnOrNew(c.Mod.Keywords, x["keyword"]!.GetValue<string>()).FormKey,
-                              Edid: x["keyword"]!.GetValue<string>(),
-                              Slots: Edids(c, x["slots"]).Select(int.Parse).ToList(),
-                              Kinds: Edids(c, x["kinds"]).ToHashSet(StringComparer.OrdinalIgnoreCase),
-                              Keywords: Edids(c, x["keywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet(),
-                              Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
-                              Match: Edids(c, x["match"]).ToList())).ToList();
-            foreach (var r in rules)
-                categories[r.Name] = new JsonObject { ["section"] = section, ["keywords"] = new JsonArray(r.Edid) };
-            var counts = rules.ToDictionary(r => r.Name, _ => 0);
-            foreach (var product in final.Where(v => v.Bench == bench).Select(v => v.Product).Distinct())
+            if (!c.Cache.TryResolve<IMajorRecordGetter>(group.Key, out var made)) continue;
+            var kws = ProductKeywords(c, group.Key, out var kind);
+            var slots = made is IArmorGetter { BodyTemplate: { } body } ? (uint)body.FirstPersonFlags : 0u;
+            var section = sections.FindIndex(x => x.Slots.Any(sl => (slots & (1u << (sl - 30))) != 0) || x.Kinds.Contains(kind) || kws.Overlaps(x.Keywords));
+            if (section < 0) continue;
+            var recipes = group.Select(r => c.Winning<IConstructibleObjectGetter>(r.Edid)).ToList();
+            var gate = recipes.SelectMany(r => r.Conditions).Select(cond => cond.Data).OfType<IGetIsRaceConditionDataGetter>().Select(d => d.Race.Link.FormKey).ToHashSet();
+            var race = races.FirstOrDefault(r => r.Races.Overlaps(gate)).Name;
+            if (race != null) { tagged.Add((made, section, race, $"{prefix}Race_{race}")); continue; }
+            // The material the recipes use most of; a tie goes to the one listed first
+            var used = new Dictionary<int, int>();
+            foreach (var entry in recipes.SelectMany(r => r.Items ?? []).Where(i => !ignore.Contains(i.Item.Item.FormKey)))
             {
-                if (!c.Cache.TryResolve<IMajorRecordGetter>(product, out var made)) continue;
-                var kws = ProductKeywords(c, product, out var kind);
-                var slots = made is IArmorGetter { BodyTemplate: { } body } ? (uint)body.FirstPersonFlags : 0u;
-                var edid = made.EditorID ?? "";
-                var hit = rules.FirstOrDefault(r =>
-                    (r.Slots.Count == 0 || r.Slots.Any(sl => (slots & (1u << (sl - 30))) != 0))
-                    && (r.Kinds.Count == 0 || r.Kinds.Contains(kind))
-                    && (r.Keywords.Count == 0 || kws.Overlaps(r.Keywords))
-                    && (r.Items.Count == 0 || r.Items.Contains(product))
-                    && (r.Match.Count == 0 || r.Match.Any(m => edid.Contains(m, StringComparison.OrdinalIgnoreCase)))
-                    && (r.Slots.Count + r.Kinds.Count + r.Keywords.Count + r.Items.Count + r.Match.Count > 0 || r.Name == rules[^1].Name));
-                if (hit.Name == null) continue;
-                Tag(c, made, hit.Key);
-                counts[hit.Name] += 1;
+                var m = materials.FindIndex(x => x.Items.Contains(entry.Item.Item.FormKey) || ItemKeywords(c, entry.Item.Item.FormKey).Overlaps(x.Keywords));
+                if (m >= 0) used[m] = used.GetValueOrDefault(m) + entry.Item.Count;
             }
-            c.Note($"Crafting categories at {group["bench"]!.GetValue<string>()}: {string.Join(", ", counts.Select(kv => $"{kv.Value} {kv.Key}"))}");
+            var material = used.Count == 0 ? null : materials[used.OrderByDescending(u => u.Value).ThenBy(u => u.Key).First().Key].Name;
+            tagged.Add((made, section, material, material == null ? null : $"{prefix}Mat_{new string(material.Where(char.IsLetterOrDigit).ToArray())}"));
         }
-        config["sections"] = new JsonObject { [section] = new JsonObject { ["priority"] = 15 } };
-        config["categories"] = categories;
+        var sectionKeys = sections.Select(x => c.OwnOrNew(c.Mod.Keywords, $"{prefix}Slot_{x.Name}").FormKey).ToList();
+        var tabKeys = tagged.Where(t => t.Keyword != null).Select(t => t.Keyword!).Distinct().ToDictionary(k => k, k => c.OwnOrNew(c.Mod.Keywords, k).FormKey);
+        // Older category keywords of the plugin's own leave the items that get new ones
+        var family = c.Mod.Keywords.Where(k => (k.EditorID ?? "").StartsWith(prefix, StringComparison.Ordinal)).Select(k => k.FormKey).ToHashSet();
+        foreach (var t in tagged)
+            Tag(c, t.Made, t.Keyword == null ? [sectionKeys[t.Section]] : [sectionKeys[t.Section], tabKeys[t.Keyword]], family);
+        var icons = spec["iconSource"]!.GetValue<string>();
+        config["sections"] = new JsonObject(sections.Select(x => KeyValuePair.Create(x.Name, (JsonNode?)new JsonObject
+        {
+            ["priority"] = x.Priority,
+            ["keywords"] = new JsonArray($"{prefix}Slot_{x.Name}"),
+            ["icon"] = new JsonObject { ["source"] = icons, ["label"] = x.Icon },
+        })));
+        // A label names one category per file, so the same race or material in a later section carries trailing spaces
+        config["categories"] = new JsonObject(tagged.Where(t => t.Keyword != null).Select(t => (t.Section, Tab: t.Tab!, Keyword: t.Keyword!)).Distinct()
+            .OrderBy(t => t.Section).ThenBy(t => t.Keyword.Contains("Race_") ? 0 : 1).ThenBy(t => t.Tab)
+            .Select(t => KeyValuePair.Create(t.Tab + new string(' ', t.Section), (JsonNode?)new JsonObject
+            {
+                ["section"] = sections[t.Section].Name,
+                ["keywords"] = new JsonArray(t.Keyword),
+            })));
+        foreach (var (x, i) in sections.Select((x, i) => (x, i)))
+        {
+            var items = tagged.Where(t => t.Section == i).ToList();
+            c.Note($"Crafting categories, {x.Name}: {items.Count} items; {string.Join(", ", items.GroupBy(t => t.Tab ?? "Other").OrderByDescending(g => g.Count()).Select(g => $"{g.Count()} {g.Key}"))}");
+        }
         return config;
     }
 
-    // Add a keyword to an override of a created object, whatever record type it is
-    static void Tag(PatchContext c, IMajorRecordGetter made, FormKey keyword)
+    // The category keywords on an override of a created object, whatever record type it is; its older ones of the family go
+    static void Tag(PatchContext c, IMajorRecordGetter made, ICollection<FormKey> keywords, ISet<FormKey> family)
     {
         IKeyworded<IKeywordGetter>? rec = made switch
         {
@@ -1412,7 +1436,9 @@ static class Steps
         };
         if (rec == null) { c.Warn($"crafting categories: {made.EditorID} is a {made.Registration.Name}, which carries no keywords"); return; }
         rec.Keywords ??= new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
-        if (!rec.Keywords.Any(k => k.FormKey == keyword)) rec.Keywords.Add(keyword.ToLink<IKeywordGetter>());
+        rec.Keywords.RemoveAll(k => family.Contains(k.FormKey) && !keywords.Contains(k.FormKey));
+        foreach (var keyword in keywords)
+            if (!rec.Keywords.Any(k => k.FormKey == keyword)) rec.Keywords.Add(keyword.ToLink<IKeywordGetter>());
     }
 
     // ---- helpers -------------------------------------------------------------------------------------------------

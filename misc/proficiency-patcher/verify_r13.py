@@ -21,6 +21,8 @@ PLAYER_REF = ('skyrim.esm', 0x14)
 # A localized plugin holds a string id in these, the output the text itself
 LOCALIZED = {'FULL', 'DESC'}
 CELL_GROUPS, WORLD_GROUPS = (6, 8, 9, 10), (1,)
+# Created objects the crafting categories tag with keywords
+ITEM_TYPES = {'ARMO', 'WEAP', 'AMMO', 'MISC', 'BOOK'}
 SPELL_TYPES = {'Spell': 0, 'Disease': 1, 'Power': 2, 'LesserPower': 3, 'Ability': 4, 'Poison': 5, 'Addiction': 10, 'Voice': 11}
 PLACED = {'REFR', 'ACHR', 'PGRE', 'PMIS', 'PARW', 'PBAR', 'PBEA', 'PCON', 'PFLA', 'PHZD'}
 # Subrecords made of form ids alone, where one left unrenumbered is an error rather than data that looks like one
@@ -123,6 +125,11 @@ def spell_of(rec):
 def damage_of(rec):
     data = dict(rec.subs()).get('DATA', b'')
     return struct.unpack_from('<H', data, 8)[0] if len(data) >= 10 else None
+
+
+def keywords_of(pl, data):
+    kwda = dict(parse_subs(data)).get('KWDA', b'')
+    return {pl.key(f) for f in struct.unpack(f'<{len(kwda) // 4}I', kwda)}
 
 
 def spell_list(pl, data):
@@ -248,6 +255,8 @@ def main():
     # Every changed or added record is one a spec section explains
     allowed = patch.spec_allowed(a.spec)
     switched = set()
+    prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
+    tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and prefix and edid(r).startswith(prefix)}
     for (t, k), q in ro.items():
         r = ri.get((t, k))
         diff = None if r is None else ck.compare(t, inp, r.flags, r.data(), out, q.data()) or (r.flags & ~COMPRESSED != q.flags & ~COMPRESSED and f'flags {r.flags:#x} -> {q.flags:#x}')
@@ -293,6 +302,13 @@ def main():
             if why:
                 problems.append(f'{label}: {why}')
             checked['races checked against the races section'] += 1
+        elif t in ITEM_TYPES and r is None and tags:
+            src, flags, data, _ = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('KWDA', 'KSIZ'))
+            before, after = keywords_of(src, data), keywords_of(out, q.data())
+            if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or not before <= after or not after - before <= tags:
+                problems.append(f'{label}: not {src.name}\'s item with only crafting category keywords added ({why or sorted(after ^ before)})')
+            checked['items overridden for their crafting category keywords'] += 1
         elif t == 'REFR' and k in disable_refs:
             src, flags, data, cell = ref
             why = ck.compare(t, src, flags, data, out, q.data())
