@@ -174,7 +174,10 @@ grindstone included:
   Dragonbone term no longer spares;
 - Dragonplate: the vanilla boots, cuirass, gauntlets, helmet and shield, the
   AVExpansion cuirass and helmet and the closed helmet, with the Improve entry
-  of the already parked Nidhogg helm.
+  of the already parked Nidhogg helm;
+- the Dragonscale Ebonsteel set of Immersive Armors: the sleek cuirass, boots
+  and gauntlets, every light helm, the hood and the shield, which the
+  Dragonscale term no longer spares.
 
 **Nordic Carved is made only at the Skyforge.** Its armour, shield, weapons (the
 Nordic Bow included) and closed helmet, 14 recipes, move to the
