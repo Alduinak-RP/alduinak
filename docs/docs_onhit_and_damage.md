@@ -46,3 +46,17 @@ armorRating = armorRating1 + armorRating2 + armorRating3 + ... + armorRatingN + 
 //magicArmorRating is sum of magnitudes of armors' enchantments with magic effect of damage resist
 receivedDamage = incomingDamage * 0.01 * (100 - std::min(armorRating * fArmorScalingFactor, fMaxArmorRating));
 ```
+
+Spell damage:
+```
+// every hostile or detrimental Health effect of the SPEL whose conditions hold (shouts count every effect)
+spellDamage = sum(magnitude * resistMult(effect's MGEF resist value));
+// resistance = magnitudes of the target's ability spells (learned, NPC_ and race SPLO) modifying that actor value,
+// detrimental ones (weaknesses) subtracted; capped at 85 like fPlayerMaxResistance
+resistMult = 1 - min(resistance, 85) / 100;
+```
+So racial passives such as Nord frost, Dunmer fire, Redguard and Bosmer poison, and Argonian and Bosmer disease
+resistance act on server spell damage straight from the plugin's race abilities. Only the resist value the effect
+names applies: magic resistance or armor rating abilities count for the few effects that name them (Vampiric Drain,
+some dragon and Wabbajack effects), and there is no general magic resistance on other spells. The server computes no
+weapon poison damage.

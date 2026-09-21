@@ -91,6 +91,8 @@ public:
     // primary actor value
     Flags flags;
     ActorValue primaryAV = espm::ActorValue::None;
+    // Resistance the target applies to this effect's magnitude
+    ActorValue resistAV = espm::ActorValue::None;
     EffectType effectType;
     // Raw (file-local) ids: cloak spell, bound weapon, summoned NPC_ or hazard
     uint32_t associatedItem = 0;

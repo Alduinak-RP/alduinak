@@ -16,6 +16,9 @@ MGEF::Data MGEF::GetData(
         result.data.flags = *reinterpret_cast<const Flags*>(data);
         result.data.associatedItem =
           *reinterpret_cast<const uint32_t*>(data + 0x08);
+        result.data.resistAV = ActorValue(
+          *reinterpret_cast<const std::underlying_type_t<ActorValue>*>(data +
+                                                                       0x10));
         result.data.projectile =
           *reinterpret_cast<const uint32_t*>(data + 0x48);
         result.data.effectType = EffectType{

@@ -632,6 +632,10 @@ TEST_CASE("MGEF parsing", "[espm]")
   MyEspmProvider provider;
   auto data = espm::GetData<espm::MGEF>(0x51B15, &provider);
   REQUIRE(data.data.primaryAV == espm::ActorValue::DamageResist);
+
+  auto frost = espm::GetData<espm::MGEF>(0x13CAA, &provider);
+  REQUIRE(frost.data.primaryAV == espm::ActorValue::Health);
+  REQUIRE(frost.data.resistAV == espm::ActorValue::FrostResist);
 }
 
 TEST_CASE("isFood flag is not set for heal potion", "[espm]")

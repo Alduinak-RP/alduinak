@@ -141,8 +141,9 @@ TEST_CASE("Spell damage sums the hostile Health effects of a spell",
   spellCastData.spell = 0x0001C789; // Fireball, 40 fire damage
   REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 40.f);
 
-  spellCastData.spell = 0x0002B96C; // Ice Spike, 25 frost damage plus a slow
-  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 25.f);
+  // Ice Spike, 25 frost damage plus a slow, halved by the Nord Player template's frost resistance
+  spellCastData.spell = 0x0002B96C;
+  REQUIRE(formula.CalculateDamage(ac, ac, spellCastData) == 12.5f);
 
   p.DestroyActor(0xff000000);
   DoDisconnect(p, 0);
@@ -159,6 +160,11 @@ TEST_CASE("Spell damage from a plugin loaded past its master count counts",
 
   TES5DamageFormula formula{};
   SpellCastData spellCastData{};
+
+  // Frost damage on a Breton, so no racial resistance applies
+  Appearance appearance;
+  appearance.raceId = 0x00013741;
+  ac.SetAppearance(&appearance);
 
   // Dragonborn Freeze: its raw effect 0x0202732E loads as 0x0402732E, 20 frost damage
   spellCastData.spell = 0x0402732D;
@@ -315,6 +321,40 @@ TEST_CASE("Spell damage reads HasKeyword from the race of the actor hit",
   target.SetAppearance(&appearance);
   REQUIRE(formula.CalculateDamage(caster, target, spellCastData) == 25.f);
   REQUIRE(formula.CalculateDamage(target, caster, spellCastData) == 0.f);
+
+  p.DestroyActor(0xff000001);
+  p.DestroyActor(0xff000000);
+  DoDisconnect(p, 0);
+}
+
+TEST_CASE("Spell damage applies the element resistances of the target's "
+          "race abilities",
+          "[TES5DamageFormula]")
+{
+  PartOne& p = GetPartOne();
+  DoConnect(p, 0);
+  p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, 0xff000000);
+  p.CreateActor(0xff000001, { 0, 0, 0 }, 0, 0x3c);
+  auto& caster = p.worldState.GetFormAt<MpActor>(0xff000000);
+  auto& target = p.worldState.GetFormAt<MpActor>(0xff000001);
+
+  TES5DamageFormula formula{};
+  SpellCastData firebolt{};
+  firebolt.spell = 0x00012FD0; // Firebolt, 25 fire damage
+  SpellCastData iceSpike{};
+  iceSpike.spell = 0x0002B96C; // Ice Spike, 25 frost damage
+
+  Appearance appearance;
+  appearance.raceId = 0x00013742; // DarkElfRace, RaceDarkElf resists fire 50
+  target.SetAppearance(&appearance);
+  REQUIRE(formula.CalculateDamage(caster, target, firebolt) == 12.5f);
+  REQUIRE(formula.CalculateDamage(caster, target, iceSpike) == 25.f);
+
+  appearance.raceId = 0x00013746; // NordRace, RaceNord resists frost 50
+  target.SetAppearance(&appearance);
+  REQUIRE(formula.CalculateDamage(caster, target, firebolt) == 25.f);
+  REQUIRE(formula.CalculateDamage(caster, target, iceSpike) == 12.5f);
 
   p.DestroyActor(0xff000001);
   p.DestroyActor(0xff000000);

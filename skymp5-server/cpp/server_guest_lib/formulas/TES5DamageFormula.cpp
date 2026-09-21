@@ -200,6 +200,7 @@ private:
 
 private:
   [[nodiscard]] float GetBaseSpellDamage() const;
+  [[nodiscard]] float GetResistMult(espm::ActorValue resistAV) const;
   [[nodiscard]] const MpActor* GetConditionActor(const espm::CTDA& ctda) const;
   [[nodiscard]] bool ConditionHolds(const espm::CTDA& ctda,
                                     const espm::LookupResult& owner) const;
@@ -355,7 +356,8 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
       if (isShout ||
           (ConditionsHold(effect.conditions, spellLookup) &&
            ConditionsHold(mgef.conditions, mgefLookup))) {
-        damage += effect.effectItem->magnitude;
+        damage +=
+          effect.effectItem->magnitude * GetResistMult(mgef.data.resistAV);
       }
     });
   if (!isSpell) {
@@ -363,6 +365,40 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
                  spellCastData.spell);
   }
   return damage;
+}
+
+// The target's abilities modifying the resist value (racial resistances, weaknesses), capped like fPlayerMaxResistance
+float TES5SpellDamageFormulaImpl::GetResistMult(
+  espm::ActorValue resistAV) const
+{
+  constexpr float kMaxResistance = 85.f;
+  if (resistAV == espm::ActorValue::None) {
+    return 1.f;
+  }
+  float resistance = 0.f;
+  for (uint32_t spellId : target.GetLearnedAndBaseSpells()) {
+    ForEachSpellEffectRecord(
+      espmProvider, spellId,
+      [&](const espm::LookupResult& spellLookup, const espm::SPEL::Data& spell,
+          const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
+          const espm::LookupResult& mgefLookup) {
+        const bool modifiesValue =
+          mgef.data.effectType == espm::MGEF::EffectType::ValueMod ||
+          mgef.data.effectType == espm::MGEF::EffectType::PeakValueMod;
+        if (!effect.effectItem || !spell.spellItem ||
+            spell.spellItem->type != espm::SPEL::SpellType::Ability ||
+            !modifiesValue || mgef.data.primaryAV != resistAV ||
+            !ConditionsHold(effect.conditions, spellLookup) ||
+            !ConditionsHold(mgef.conditions, mgefLookup)) {
+          return;
+        }
+        const float magnitude = effect.effectItem->magnitude;
+        resistance +=
+          mgef.data.IsFlagSet(espm::MGEF::Flags::Detrimental) ? -magnitude
+                                                              : magnitude;
+      });
+  }
+  return 1.f - std::min(resistance, kMaxResistance) / 100.f;
 }
 
 float TES5SpellDamageFormulaImpl::CalculateDamage() const
