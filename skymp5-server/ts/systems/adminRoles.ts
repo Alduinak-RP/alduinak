@@ -10,7 +10,7 @@ export type AdminCap = "players" | "teleport" | "modes" | "npcs" | "items" | "ki
 export const ADMIN_CAPS: AdminCap[] = ["players", "teleport", "modes", "npcs", "items", "kick", "ban", "factions"];
 export type AdminCaps = Record<AdminCap, boolean>;
 
-const allCaps = (moderation: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, kick: moderation, ban: moderation, factions: moderation });
+const allCaps = (moderation: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, kick: moderation, ban: moderation, factions: true });
 
 export const TIER_CAPS: Record<AdminTier, AdminCaps> = {
   senior: allCaps(true),

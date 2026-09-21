@@ -540,7 +540,7 @@ Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, 
 | Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` | `factions` |
 |---|---|---|---|---|---|---|---|---|
 | `senior` | yes | yes | yes | yes | yes | yes | yes | yes |
-| `developer` | yes | yes | yes | yes | yes | no | no | no |
+| `developer` | yes | yes | yes | yes | yes | no | no | yes |
 | `gm` | yes | yes | yes | yes | yes | yes | yes | yes |
 
 `players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab and `items` the Item Spawner. `kick` is the Kick button and `ban` the Ban button; both also need `players`. `factions` lets staff see and manage every faction in the Faction tab, the leader rank included. `adminTierCaps` changes the defaults per tier.
@@ -593,7 +593,7 @@ Master-api profile ids (numbers) that are always `senior`, regardless of Discord
 
 ### adminTierCaps
 
-Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `kick`, `ban` and `factions` for `developer`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items`, `kick`, `ban` and `factions` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
+Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `kick` and `ban` for `developer`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items`, `kick`, `ban` and `factions` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
 
 ```json5
 {

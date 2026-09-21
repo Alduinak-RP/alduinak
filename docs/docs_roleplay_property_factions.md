@@ -264,7 +264,7 @@ The Forsworn, the Dawnguard and the Bards College have no uniform yet.
   registered in the gamemode next to the other `ff_` properties; clients put it
   in front of the floating name above the character, and the gamemode's
   `nameFor` puts it in front of chat names.
-- **Staff** whose tier has the `factions` cap (senior and gm by default) see
+- **Staff** whose tier has the `factions` cap (every tier by default) see
   every faction in the type tabs and may do everything, the leader rank included.
 - **Deleted and perma-dead characters** lose their ranks automatically: the
   character's own rows at once, and the rows shared by every character of the
