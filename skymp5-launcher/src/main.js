@@ -1003,7 +1003,7 @@ ipcMain.handle('game:createIsolated', async (_e, baseDirOverride, opts) => {
   }
 })
 
-// force re-copies every vanilla file; SKSE, client files and the controlmap in the copy are other Repair sections and stay.
+// force re-copies vanilla and deletes the Creation files and strays; other Repair sections stay
 async function createIsolatedImpl(baseDirOverride, force = false) {
   const src = store.get('skyrimPath')
   if (!src || !fs.existsSync(path.join(src, 'SkyrimSE.exe'))) {
@@ -1063,6 +1063,8 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
     send('isolated:progress', 'Installing Mod Organizer 2…')
     await mo2.ensureInstalled(msg => send('isolated:progress', msg))
 
+    let manifest = null
+    let vd = null
     if (force) {
       // The copy folder could have become a link into the original install since the first check
       if (pathsOverlap(src, dst)) return { success: false, error: 'The game copy folder resolves into your original Skyrim install - remove the link before repairing.' }
@@ -1070,6 +1072,15 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
       try { fs.rmSync(path.join(dst, 'vanilla-copy-complete.json'), { force: true }) } catch {}
       for (const job of vanillaJobs(src)) {
         try { fs.rmSync(path.join(dst, job.sub, job.rel), { force: true }) } catch {}
+      }
+      try { manifest = await fetchJSON(MANIFEST_URL()) } catch (err) { log(`[isolated] no manifest, strays and Creation files stay: ${err.message}`) }
+      if (manifest && Number(manifest.schema) > MANIFEST_SCHEMA) manifest = null
+      try { vd = await fetchJSON(`${config.apiUrl}/api/files/version`) } catch {}
+      if (manifest) {
+        send('isolated:progress', 'Removing the Creation Club files…')
+        for (const rel of [CREATIONS_STAMP, ...((manifest.creations && manifest.creations.files) || []).map(f => f.to)]) {
+          try { fs.rmSync(path.join(dst, ...String(rel).split('/')), { force: true }) } catch {}
+        }
       }
     }
     // portable copy setup (re-copies when a previous copy was interrupted:
@@ -1079,6 +1090,10 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
       if (!copy.success) return copy
     } else {
       log('[isolated] reusing existing game copy at ' + dst)
+    }
+    if (manifest) {
+      const strays = removeGameCopyStrays(dst, manifest, clientZipFiles(manifest, vd))
+      if (strays) send('isolated:progress', `Removed ${strays} stray file(s) from the game copy`)
     }
     send('isolated:progress', 'Cleaning the Skyrim masters…')
     const masters = await ensureCleanedMasters(dst, { portable: true })
@@ -2149,7 +2164,7 @@ function missingServerPlugins(skyrimPath, serverLoadOrder, viaMO2) {
 let installing   = false
 let installAbort = null   // AbortController for the running install's waits
 
-// opts.force: 'client' re-downloads the zip, 'modlist' rebuilds every mod (Repair buttons).
+// opts.force: 'client' rebuilds the client mods under MO2 (else re-downloads the zip), 'modlist' rebuilds every mod (Repair buttons).
 ipcMain.on('install:start', (_e, mode, opts) => {
   if (installing) {
     // Never ignore the click silently: the user has no other way to know an
@@ -2168,7 +2183,7 @@ ipcMain.on('install:start', (_e, mode, opts) => {
 
   let fn
   if (mode === 'client') {
-    fn = runDirectInstall(force)
+    fn = store.get('mo2Enabled') ? runMO2Install({ clientOnly: true }) : runDirectInstall(force)
   } else if (mode === 'mo2') {
     fn = runMO2Install()
   } else if (mode === 'modlist') {
@@ -2268,6 +2283,9 @@ ipcMain.handle('install:skse', async (_e, opts) => {
   try {
     if (opts && opts.force) {
       try { fs.rmSync(path.join(mo2.getDownloadsDir(), mo2.skseSourceFor(gamePath).fileName), { force: true }) } catch {}
+      for (const name of fs.readdirSync(gamePath)) {
+        if (/^skse64_.*\.(exe|dll)$/i.test(name)) try { fs.rmSync(path.join(gamePath, name), { force: true }) } catch {}
+      }
       store.set('installedRootHash', '')
     }
     await installSkseIntoRoot(gamePath)
@@ -2666,9 +2684,11 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo, force = false
   try {
     // 1. Check whether a download is needed
     let serverVersion = null
+    let packaged = []
     try {
       const vd = await fetchJSON(`${config.apiUrl}/api/files/version`)
       serverVersion = vd.version
+      if (Array.isArray(vd.files)) packaged = vd.files.map(f => String(f.path)).filter(p => !p.split('/').includes('..'))
     } catch (err) {
       if (err.statusCode === 404) {
         return { success: false, error: 'Client files have not been packaged on the server yet. Ask the server admin to run `npm run build-client`.' }
@@ -2709,6 +2729,12 @@ async function installClientFilesCore(skyrimPath, srv, serverInfo, force = false
     try { settingsSnapshot = fs.readFileSync(clientSettingsPath, 'utf8') } catch { /* first install */ }
     // An interrupted extract must show as an update on the next Play
     store.set('filesVersion', '')
+    // A repair deletes the whole package first, so nothing stale survives the re-extract
+    if (force) {
+      const own = packaged.filter(p => !CLIENT_OWN_FILE_RES.some(re => re.test(p.toLowerCase())))
+      for (const p of own) { try { fs.rmSync(mo2.lp(path.join(skyrimPath, ...p.split('/'))), { force: true }) } catch {} }
+      log(`[install] removed ${own.length} packaged client file(s) before the re-extract`)
+    }
     const extracted = extractClientZip(tempZip, skyrimPath, (file, i, total) => {
       send('install:progress', { phase: 'extract', file, index: i, total, skipped: false })
     })
@@ -2820,9 +2846,11 @@ async function installSkseIntoRoot(skyrimPath) {
 }
 
 // opts.force rebuilds every mod and the SKSE root step from scratch (Repair Modlist).
+// opts.clientOnly rebuilds only the client mods, the root files and the client settings (Repair Client Files).
 async function runMO2Install(opts = {}) {
   const modlistOnly = opts.modlistOnly === true
   const force       = opts.force === true
+  const clientOnly  = opts.clientOnly === true
   _downloadListOpened = false
   const fail = (msg) => {
     log('[mo2-install] ABORT:', msg)
@@ -2877,6 +2905,12 @@ async function runMO2Install(opts = {}) {
       return fail('Install manifest is missing or malformed - run "npm run compile-manifest" on the backend.')
     }
     if (Number(manifest.schema) > MANIFEST_SCHEMA) return fail(UPDATE_LAUNCHER_ERROR)
+    if (force) {
+      // Every Creation file is hashed again and nothing stray in overwrite survives
+      try { fs.rmSync(path.join(skyrimPath, CREATIONS_STAMP), { force: true }) } catch {}
+      const wiped = mo2.cleanOverwrite()
+      if (wiped.length > 0) log(`[mo2-install] cleaned overwrite: ${wiped.join(', ')}`)
+    }
 
     // Creation Club files from the player's own install, before any mod: the load order needs them either way
     const creations = await ensureCreations(manifest, skyrimPath)
@@ -2895,7 +2929,7 @@ async function runMO2Install(opts = {}) {
       writeClientSettings(clientSettingsPath(), srv, serverInfo)
       coreUpToDate = !!clientFilesVersion && clientFilesVersion === store.get('filesVersion')
     } else if (!modlistOnly) {
-      const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
+      const core = await installClientFilesCore(skyrimPath, srv, serverInfo, clientOnly)
       if (!core.success) return fail(core.error)
       coreUpToDate = !!core.upToDate
     }
@@ -2943,7 +2977,9 @@ async function runMO2Install(opts = {}) {
       mo2.clearBuildCache()
       mo2.clearCache()
     }
+    const clientSet = new Set(clientMods(manifest))
     const modChanged = m => {
+      if (clientOnly) return clientSet.has(m)
       if (force) return true
       if (!fs.existsSync(modFolderPath(m))) return true
       if (!m.hash) return true                     // pre-hash manifest: be safe, reinstall
@@ -2970,8 +3006,10 @@ async function runMO2Install(opts = {}) {
     const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
     const rootMissing    = (manifest.root || []).some(f => !fs.existsSync(path.join(skyrimPath, ...String(f.to).split('/'))))
-    const needsRoot      = force || !rootSetUp || rootChanged || rootMissing
-    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} filesMissing=${rootMissing} force=${force} -> needsRoot=${needsRoot}`)
+    const needsRoot      = !clientOnly && (force || !rootSetUp || rootChanged || rootMissing)
+    // Root files (the preloader) come back on every root step and on Repair Client Files; SKSE only on the root step
+    const needsRootFiles = needsRoot || clientOnly
+    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} filesMissing=${rootMissing} force=${force} clientOnly=${clientOnly} -> needsRoot=${needsRoot}`)
     const modsToInstall  = []
     for (let i = 0; i < manifest.mods.length; i++) {
       if (modChanged(manifest.mods[i])) modsToInstall.push(manifest.mods[i])
@@ -2982,7 +3020,7 @@ async function runMO2Install(opts = {}) {
       await new Promise(r => setImmediate(r))
     }
 
-    if (modsToInstall.length === 0 && !needsRoot) {
+    if (modsToInstall.length === 0 && !needsRootFiles) {
       finishOrder()
       store.set('modpackState', 'ready')
       send('install:complete', {
@@ -2998,7 +3036,7 @@ async function runMO2Install(opts = {}) {
     // Acquire only the archives the to-install mods (and root files) reference.
     const neededArchiveIds = new Set()
     for (const m of modsToInstall) for (const f of m.files) if (f.archive) neededArchiveIds.add(f.archive)
-    if (needsRoot) for (const f of (manifest.root || [])) if (f.archive) neededArchiveIds.add(f.archive)
+    if (needsRootFiles) for (const f of (manifest.root || [])) if (f.archive) neededArchiveIds.add(f.archive)
 
     const locate = async (a) => {
       const names = []
@@ -3074,7 +3112,7 @@ async function runMO2Install(opts = {}) {
     const refCount = new Map()
     const bump = ids => { for (const id of ids) refCount.set(id, (refCount.get(id) || 0) + 1) }
     for (const m of modsToInstall) bump(new Set(m.files.filter(f => f.archive).map(f => f.archive)))
-    if (needsRoot) bump(new Set((manifest.root || []).filter(f => f.archive).map(f => f.archive)))
+    if (needsRootFiles) bump(new Set((manifest.root || []).filter(f => f.archive).map(f => f.archive)))
 
     mo2.clearCache()
     const extractedDirs = {}
@@ -3108,7 +3146,7 @@ async function runMO2Install(opts = {}) {
       release(ids)
     }
 
-    if (needsRoot && manifest.root && manifest.root.length > 0) {
+    if (needsRootFiles && manifest.root && manifest.root.length > 0) {
       const ids = [...new Set(manifest.root.filter(f => f.archive).map(f => f.archive))]
       try {
         ensureExtracted(ids)

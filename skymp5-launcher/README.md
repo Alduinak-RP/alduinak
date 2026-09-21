@@ -159,15 +159,22 @@ reports it as an error.
 
 ## Repair tab
 
-Settings > Repair replaces the old Installation tab. Every button fully
-reinstalls its section (`{ force: true }` over the same IPC as the Play-button
-install): **Repair MO2** wipes MO2's own files (mods, downloads, profiles, the
-game copy and the instance inis stay) and unpacks it again, **Repair Game Copy**
-re-copies every vanilla file, **Repair SKSE** re-downloads the archive and
-replaces the root files, **Repair Client Files** re-downloads the client zip,
-**Repair Modlist** rebuilds every mod from the install manifest, **Repair Cleaned
-Masters** restores the original masters and patches them again. **Repair All**
-chains them in that order; **Check Files** (`install:check`) is a read-only scan
+Settings > Repair replaces the old Installation tab. Every button deletes the
+files of its section and restores them (`{ force: true }` over the same IPC as
+the Play-button install): **Repair MO2** wipes MO2's own files (mods, downloads,
+profiles, the game copy and the instance inis stay) and unpacks it again,
+**Repair Game Copy** deletes and re-copies every vanilla file and deletes the
+Creation files and the strays (the next install pass copies the Creations back
+and cleans them), **Repair SKSE** deletes the root `skse64_*` exe and dlls and
+the cached archive, then downloads and installs it again, **Repair Client
+Files** under MO2 rebuilds only the manifest mods that carry the client plus the
+root files and rewrites the settings (without a client mod, and in the direct
+install, it deletes every packaged file and extracts the zip again), **Repair
+Modlist** clears the caches, the Creation stamp and the stray overwrite files
+and rebuilds every mod folder, **Repair Cleaned Masters** restores the original
+masters and patches them again. Mod archives are reused when their sha256 checks
+out and downloaded again only when missing or damaged. **Repair All** runs
+MO2, Game Copy, Cleaned Masters, SKSE, Client Files and Modlist in that order; **Check Files** (`install:check`) is a read-only scan
 that lists every missing/corrupt/extra/outdated file with the button that fixes
 it. It compares client files by size + sha256 when `/api/files/version` carries
 the `files[]` list written by the backend's `npm run merge`.

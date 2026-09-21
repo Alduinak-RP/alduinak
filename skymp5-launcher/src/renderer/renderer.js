@@ -837,7 +837,7 @@ function runInstall(mode, opts) {
   })
 }
 
-// Repair steps: each fully reinstalls its section and resolves true on success so Repair All can chain them.
+// Repair steps: each deletes its section, restores it and resolves true on success so Repair All can chain them.
 async function repairMo2() {
   installLog('Repairing Mod Organizer 2…')
   const r = await window.electronAPI.installMo2Only({ force: true })
@@ -864,8 +864,8 @@ async function repairSkse() {
 async function repairClientFiles() {
   if (installBusy()) return false
   installLog('Repairing client files…')
-  const { success, error, upToDate } = await runInstall('client', { force: true })
-  installLog(!success ? `Error: ${error}` : upToDate ? 'Client files up to date (not reinstalled)' : 'Client files reinstalled ✓')
+  const { success, error } = await runInstall('client', { force: true })
+  installLog(success ? 'Client files reinstalled ✓' : `Error: ${error}`)
   return success
 }
 
