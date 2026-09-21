@@ -859,6 +859,7 @@ Survival hunger effect in the plugins.
 | `needsFatigueStages` | `[80, 160, 340, 560, 800]` | Survival's exhaustion stage values: Drained, Tired, Weary and Debilitated begin at the last four (the first only ends a sleeping bonus the server never grants); the second also starts the max magicka penalty |
 | `needsFatigueStageAbilities` | `true` | Grant the Survival exhaustion stage ability of the current stage |
 | `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |
+| `needsPickFatigue` | `10` | Exhaustion harvesting a plant or a nirnroot costs, on the same scale; a bar that cannot pay refuses the harvest |
 | `needsAttributePenalties` | `true` | `false` sends no max stamina or max magicka penalty |
 | `needsSurvivalModeFlag` | `false` | `true` makes clients set the Creation's `Survival_ModeEnabled` to 1, only needed if the HUD draws the red penalty segments in Survival mode alone; it may bring Survival side effects such as arrow weight |
 | `blockStaminaCost` | `0.1` | Share of max stamina a blocked weapon hit costs the blocker; applies with needs off too, `0` turns it off |
@@ -881,6 +882,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `gatheringProduceContainers` | `{ "BeeHive": 60, "BeeHiveVacant": 60 }` | `{ "<container editor id>": minutes }`: placed containers of these bases never open; E hands over their yield and it grows back after the minutes. Replaces the default, `{}` turns it off |
 | `gatheringProduceYield` | `{ "BeeHive": { "BeeHoneyComb": 2, "BeeHiveHusk": 2 }, "BeeHiveVacant": { … } }` | `{ "<container>": { "<item editor id or hex id>": count } }` handed over instead of the container record's own contents. A container whose items do not resolve keeps its record contents |
 | `gatheringPickMinutes` | `60` | Minutes a picked nirnroot or ingredient-carrying critter (bees, fireflies) stays empty. Their vanilla scripts never run here, so the plant keeps its unpicked model until the cell reloads |
+| `gatheringHarvestSeconds` | `5` | Seconds harvesting a plant or a nirnroot holds the picker kneeling, unable to move or harvest again. `0` skips the kneel. Catching a bee costs no fatigue and plays nothing |
 | `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
 | `huntingTrophyChance` | `0.15` | Master hunter: chance of one extra pelt per kind |
 | `huntingPeltsNeedHunter` | `true` | Pelts on a dead animal, pets included, are left out of the loot window of anyone who is not a hunter, and a take or a put of one is refused. A pelt is any item carrying `VendorItemAnimalHide` plus the `huntingPelts` list. A non-hunter who owned the pet also stops seeing the pelts and leather they stored in it, and loses them when the body is removed on the `petCorpseSeconds` / `npcCorpseSeconds` timer |

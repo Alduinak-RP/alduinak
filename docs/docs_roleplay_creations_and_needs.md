@@ -230,6 +230,9 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   `closeCrafting`, resends the unchanged inventory to undo the recipe the vanilla menu already made locally, and shows
   "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." A bench the bar cannot pay one
   recipe at does not open.
+- Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs `needsPickFatigue` exhaustion points (10,
+  about 1% of the bar) and kneels the picker for `gatheringHarvestSeconds` (5), unable to move or harvest again. A bar
+  that cannot pay refuses the harvest ("You are too tired to gather"). Catching a bee is free.
 - The bar maps onto Survival's exhaustion scale as `(1 - fatigue) * 960` (`Survival_ExhaustionNeedMaxValue`), so a
   non-member's six crafts land on 160, 320, 480, 640, 800 and 960.
 - Stages as in `Survival_NeedExhaustion.ApplyExhaustionStage` without sleep: Refreshed (1) below 160, Drained (2) from

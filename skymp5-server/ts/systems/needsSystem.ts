@@ -56,6 +56,7 @@ type Mp = any;
 //   needsChopFatigueWoodworker    what a woodworker pays instead, default 10
 //   needsMineFatigue              exhaustion one ore off a vein costs, default 20
 //   needsMineFatigueMiner         what a miner pays instead, default 10
+//   needsPickFatigue              exhaustion harvesting a plant or nirnroot costs, default 10
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
 //   needsSurvivalModeFlag         true sets the client's Survival_ModeEnabled to 1, if the HUD penalty segments need it, default false
 //   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
@@ -96,6 +97,7 @@ const DEFAULT_KILL_FATIGUE_WARRIOR = 5;
 // Gathering is heavier work than a kill, and the trade that lives by it pays half.
 const DEFAULT_WORK_FATIGUE = 20;
 const DEFAULT_WORK_FATIGUE_OWN_TRADE = 10;
+const DEFAULT_PICK_FATIGUE = 10;
 const DEFAULT_CRAFTS_PER_HOUR = [6, 12, 18, 24];
 
 interface NeedsRecord {
@@ -177,6 +179,7 @@ export class NeedsSystem implements System {
     this.chopFatigueOwn = num("needsChopFatigueWoodworker", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
     this.mineFatigue = num("needsMineFatigue", DEFAULT_WORK_FATIGUE, 0);
     this.mineFatigueOwn = num("needsMineFatigueMiner", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
+    this.pickFatigue = num("needsPickFatigue", DEFAULT_PICK_FATIGUE, 0);
     this.penalties = all["needsAttributePenalties"] !== false;
     this.survivalModeFlag = all["needsSurvivalModeFlag"] === true;
     const free = Array.isArray(all["needsFatigueFreeKeywords"]) ? (all["needsFatigueFreeKeywords"] as unknown[]).filter((k) => typeof k === "string") as string[] : ["AldCraftingMead"];
@@ -390,6 +393,11 @@ export class NeedsSystem implements System {
     this.applyExhaustion(ctx, actorId, this.minePoints(ctx, actorId, miner));
   }
 
+  // Harvesting a plant or nirnroot
+  applyPickFatigue(ctx: SystemContext, actorId: number): void {
+    this.applyExhaustion(ctx, actorId, this.pickFatigue);
+  }
+
   // Whether the bar can still pay for one swing, checked before the station opens
   canChop(ctx: SystemContext, actorId: number, woodworker: boolean): boolean {
     return this.canAfford(actorId, this.chopPoints(ctx, actorId, woodworker));
@@ -414,6 +422,10 @@ export class NeedsSystem implements System {
     } catch {
       return 1;
     }
+  }
+
+  canPick(ctx: SystemContext, actorId: number): boolean {
+    return this.canAfford(actorId, this.pickFatigue);
   }
 
   // An offline character or a server with needs switched off is never refused
@@ -671,6 +683,7 @@ export class NeedsSystem implements System {
   private chopFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
   private mineFatigue = DEFAULT_WORK_FATIGUE;
   private mineFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
+  private pickFatigue = DEFAULT_PICK_FATIGUE;
   private penalties = true;
   private survivalModeFlag = false;
 

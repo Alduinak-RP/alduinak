@@ -60,8 +60,10 @@ export class ObjectReferenceEx {
   // Engine activation stays off for everything the server processes; the SP activate event still fires
   static wantsActivationBlock(base: Form): boolean {
     const t = base.getType();
-    // You can also block for t === FormType.Flora || t === FormType.Tree, but I don't think it's necessary.
+    // Flora waits for the server too, so a refused harvest never happens locally; an approved one arrives as activate(player, true)
     return t === FormType.Furniture
+      || t === FormType.Flora
+      || t === FormType.Tree
       || t === FormType.Activator
       || t === FormType.Container
       || FormTypeEx.isItem(t)

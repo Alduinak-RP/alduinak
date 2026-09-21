@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { espmContainerEntries, espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
-import { addItemTo, holdsItem } from "./actorUtil";
+import { addItemTo, holdsItem, sendActionLock } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
@@ -21,6 +21,7 @@ type Mp = any;
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 60
+//   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 5
 //
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
 // needsMineFatigue); woodworkers and miners pay the smaller price for their own trade, and a bar that cannot pay
@@ -30,6 +31,9 @@ type Mp = any;
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the plant keeps its unpicked model until the cell reloads.
+// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs needsPickFatigue and kneels the picker for
+// gatheringHarvestSeconds, during which they cannot move or harvest again; the native harvest still hands over the plant's ingredient.
+// Catching a bee costs nothing and plays nothing.
 
 const VEIN_PROP = "private.gathering";
 const SEAT_CLOSE_EVENT = "onPapyrusEvent:SkympOnActivateClose";
@@ -42,6 +46,10 @@ const DEFAULT_CHOP_SECONDS = 8;
 const DEFAULT_CHOP_YIELD = 2;
 const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 const DEFAULT_PICK_MINUTES = 60;
+const DEFAULT_HARVEST_SECONDS = 5;
+const HARVEST_ANIM = "IdleKneelingEnter";
+// The native flora reloot when server-settings names none
+const DEFAULT_PLANT_REGROW_MS = 3600000;
 // Engine furniture reach is 256; a wall marker stands a little off its vein.
 const SEAT_REACH = 400;
 // Nobody works one sitting this long; a stuck session is dropped.
@@ -73,7 +81,7 @@ const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
   BeeHiveVacant: { BeeHoneyComb: 2, BeeHiveHusk: 2 },
 };
 
-type StationKind = "chop" | "vein" | "marker" | "produce" | "pick";
+type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";
 
 interface Station {
   kind: StationKind;
@@ -126,6 +134,10 @@ export class GatheringSystem implements System {
     if (Number.isFinite(respawn) && respawn >= 0) this.respawnMs = respawn * 60000;
     const pick = Number(all?.["gatheringPickMinutes"]);
     if (Number.isFinite(pick) && pick >= 0) this.pickMs = pick * 60000;
+    const harvest = Number(all?.["gatheringHarvestSeconds"]);
+    if (Number.isFinite(harvest) && harvest >= 0) this.harvestMs = harvest * 1000;
+    const reloot = all?.["reloot"];
+    if (reloot && typeof reloot === "object") this.reloot = reloot as Record<string, unknown>;
     const regen = Number(all?.["gatheringVeinRegenMinutes"]);
     if (Number.isFinite(regen) && regen > 0) this.regenMs = regen * 60000;
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
@@ -134,7 +146,7 @@ export class GatheringSystem implements System {
 
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels for ${this.harvestMs / 1000} s`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -240,7 +252,9 @@ export class GatheringSystem implements System {
 
   disconnect(userId: number, ctx: SystemContext): void {
     const actorId = this.actorOf(ctx, userId);
-    if (actorId) this.sessions.delete(actorId);
+    if (!actorId) return;
+    this.sessions.delete(actorId);
+    this.harvestUntil.delete(actorId);
   }
 
   async updateAsync(ctx: SystemContext): Promise<void> {
@@ -277,6 +291,7 @@ export class GatheringSystem implements System {
       case "marker": return this.onMiningMarker(ctx, targetId, casterId, station.props);
       case "produce": return this.onProduce(ctx, targetId, casterId, station.props);
       case "pick": return this.onPick(ctx, targetId, casterId, station.props);
+      case "plant": return this.onPlant(ctx, targetId, casterId, station.props);
       default: return undefined;
     }
   }
@@ -302,10 +317,35 @@ export class GatheringSystem implements System {
     if (!item) return undefined;
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if (this.veinState(ctx, refrId, 1, this.pickMs).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
+    const grant = () => this.addItem(ctx, actorId, item, 1);
+    if (props["harvest"]) return this.harvest(ctx, refrId, actorId, this.pickMs, grant);
     return () => {
-      this.addItem(ctx, actorId, item, 1);
+      grant();
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + this.pickMs });
       return false;
+    };
+  }
+
+  // The native harvest hands over the ingredient; an already harvested plant is left to it for free
+  private onPlant(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>): Verdict {
+    if (this.veinState(ctx, refrId, 1, props["regrow"]).left <= 0) return undefined;
+    return this.harvest(ctx, refrId, actorId, props["regrow"]);
+  }
+
+  // Without grant the activation goes on to the native harvest
+  private harvest(ctx: SystemContext, refrId: number, actorId: number, readyMs: number, grant?: () => void): Verdict {
+    if (!this.withinReach(ctx, actorId, refrId)) return false;
+    if ((this.harvestUntil.get(actorId) || 0) > Date.now()) return false;
+    if (!this.needs.canPick(ctx, actorId)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    return () => {
+      grant?.();
+      this.needs.applyPickFatigue(ctx, actorId);
+      this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
+      if (this.harvestMs > 0) {
+        this.harvestUntil.set(actorId, Date.now() + this.harvestMs);
+        sendActionLock(ctx.svr as Mp, actorId, HARVEST_ANIM, this.harvestMs / 1000);
+      }
+      return grant ? false : undefined;
     };
   }
 
@@ -544,10 +584,16 @@ export class GatheringSystem implements System {
     else if (type === "ACTI" && scripts.has("mineorescript")) station = { kind: "vein", props: scripts.get("mineorescript")! };
     else if (type === "FURN" && scripts.has("mineorefurniturescript")) station = { kind: "marker", props: scripts.get("mineorefurniturescript")! };
     else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
-    else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0 } };
+    else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
+    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type) } };
     this.stationCache.set(baseId, station);
     return station;
+  }
+
+  private relootMs(type: string): number {
+    const ms = Number(this.reloot[type]);
+    return Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_PLANT_REGROW_MS;
   }
 
   // A station without a tool list asks for nothing.
@@ -637,5 +683,9 @@ export class GatheringSystem implements System {
   // Produce container base id -> ms until it has produce again
   private produceMs = new Map<number, number>();
   private pickMs = DEFAULT_PICK_MINUTES * 60000;
+  private harvestMs = DEFAULT_HARVEST_SECONDS * 1000;
+  // Actor id -> epoch ms its harvest kneel ends
+  private harvestUntil = new Map<number, number>();
+  private reloot: Record<string, unknown> = {};
   private produceYield = new Map<number, Array<{ baseId: number; count: number }>>();
 }
