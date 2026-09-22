@@ -19,8 +19,8 @@ const DEFAULT_HEALED_HEALTH = 0.25;
 
 // Health the native gate holds a downed player at (kBleedoutHealth in MpActor.cpp)
 const BLEEDOUT_HEALTH = 0.01;
-// A report of 0 without an aggressor this soon after the downing is the victim client's stale value, not a new wound
-const GRACE_MS = 1000;
+// A report of 0 without an aggressor this soon after the downing is the victim client's stale value, not a new wound; the client throttles reports to one per 2 s
+const GRACE_MS = 3000;
 // A reported drop this large while downed is damage over time
 const DOT_DROP = 0.005;
 const TICK_MS = 250;
@@ -119,7 +119,7 @@ export class BleedoutSystem implements System {
     if (state) return !state.hold?.fatal && ((killerId !== 0 && killerId !== actorId) || now >= state.graceUntil);
     // God and ghost admins never go down, and a smite kills outright
     if (this.isImmune(actorId)) return false;
-    if (this.hasMode(killerId, "smite")) return true;
+    if (killerId && this.hasMode(killerId, "smite")) return true;
     this.downed.set(actorId, { deadline: now + this.bleedoutMs, graceUntil: now + GRACE_MS, lastHealth: BLEEDOUT_HEALTH, downerId: killerId, pausedAt: 0 });
     // Outside the native hit call stack
     setTimeout(() => this.announceDown(actorId, killerId), 0);
@@ -332,7 +332,7 @@ export class BleedoutSystem implements System {
       this.log(`[bleedout] killing ${hex(actorId)} failed: ${e}`);
     }
     if (state) this.finish(actorId, true);
-    const downer = state && state.downerId !== actorId && isPlayerActor(mp, state.downerId) ? state.downerId : 0;
+    const downer = state && state.downerId && state.downerId !== actorId && isPlayerActor(mp, state.downerId) ? state.downerId : 0;
     if (killerId && isPlayerActor(mp, killerId)) {
       appendLog(this.logDir, "pvp.log", `${describeActor(mp, killerId)} killed ${describeActor(mp, actorId)}`);
     } else if (downer) {

@@ -42,8 +42,10 @@ behaviour-graph events — no ESP required.**
   fires and players die at once, as before.
 - **Dying**: a further hit from another player kills at once, and the
   gamemode's `onDeath` writes it to `pvp.log`. Damage over time kills after a
-  1 s grace (the victim's own stale report of 0 right after the downing does
-  not count). NPC hits on a downed player are refused. Logging out, or leaving
+  3 s grace (the victim's own stale report of 0 right after the downing does
+  not count; the client sends its values at most every 2 s, so a late report
+  of the downing blow never turns into an outright death). NPC hits on a
+  downed player are refused. Logging out, or leaving
   for character select, while downed is a death. After `bleedoutSeconds` (15)
   the player dies as usual: the normal respawn follows, at a temple or in the
   afterlife's hall.
