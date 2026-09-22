@@ -6,6 +6,11 @@ import { AnimationEventName, consumeAllowedAnim } from "../../sync/animation";
 import { dismountRiderOf, releaseRiderClone } from "../../sync/mountApply";
 import { RagdollService } from "./ragdollService";
 import { MountService } from "./mountService";
+import { logToPlatformLog } from "../../logging";
+
+// The get-up has blended in by then; the 3D rebuild restores a head an execution took
+const RESTORE_BODY_S = 1.5;
+const IDLE_EXIT_ANIM = "IdleForceDefaultState";
 
 export class DeathService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -115,11 +120,31 @@ export class DeathService extends ClientListener {
       this.sp.Utility.wait(7.5).then(() => this.busyForOtherReasonsCounter--);
       this.allowedPlayerAnimations = null;
       actor.setDontMove(false);
+      this.restoreLimbs(actor);
       this.ressurectWithPushKill(actor);
     } else {
       throw new RespawnNeededError("needs to be respawned");
     }
   };
+
+  // A killmove decapitation persists as dismembered-limb extra data that no respawn step clears; a whole body makes this a no-op
+  private restoreLimbs(actor: Actor): void {
+    let limbReset = "ok";
+    try {
+      actor.resetHealthAndLimbs();
+    } catch (e) {
+      limbReset = `err ${e}`;
+    }
+    logToPlatformLog(this, `restoreBody inKillMove=${actor.isInKillMove()} limbReset=${limbReset}`);
+  }
+
+  // DoReset3D rebuilds the head from the base's head parts, as the appearance apply does; a killmove flag the ragdoll cut short is cleared
+  private rebuildBody(formId: number): void {
+    const actor = Actor.from(this.sp.Game.getFormEx(formId));
+    if (!actor || this.playerDead) return;
+    actor.queueNiNodeUpdate();
+    if (actor.isInKillMove()) this.sp.Debug.sendAnimationEvent(actor, IDLE_EXIT_ANIM);
+  }
 
   private killWithPush = (actor: Actor): void => {
     this.allowedPlayerAnimations?.push(AnimationEventName.Ragdoll);
@@ -138,6 +163,7 @@ export class DeathService extends ClientListener {
       // TODO: use different iGetUpType if ressurecting under water
       this.sp.Game.getPlayer()!.setAnimationVariableInt("iGetUpType", 1);
       this.sp.Debug.sendAnimationEvent(actor, AnimationEventName.GetUpBegin);
+      this.sp.Utility.wait(RESTORE_BODY_S).then(() => this.controller.once("update", () => this.rebuildBody(formId)));
     });
   };
 

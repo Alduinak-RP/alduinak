@@ -118,6 +118,17 @@ behaviour-graph events — no ESP required.**
   offsets are unmeasured starting points: measure them at a block with
   `getpos`/`getangle` and set them in `server-settings.json`. Static bloody
   blocks do not count, the server never loads statics.
+- **Coming back whole** (`deathService.ts`): a finisher never decapitates,
+  an execution does, and a decapitation persists as the actor's
+  dismembered-limb extra data, which nothing on the respawn path cleared. So
+  every player respawn, whatever the death, runs `resetHealthAndLimbs`
+  before the get-up and a `queueNiNodeUpdate` 1.5 s after it (the 3D rebuild
+  the appearance apply already relies on), plus `IdleForceDefaultState` if
+  the engine's killmove flag is still set; on a whole body both are no-ops.
+  Each respawn writes one `restoreBody inKillMove=<bool> limbReset=ok/err`
+  line to `skyrim-platform.log`. If a test still shows a neck stump, the
+  next step is a re-apply of the stored appearance from `RemoteServer` in
+  the same callback.
 - **Logs**: deaths the native kill does not report (timer, damage over time,
   logout, a light finishing hit) go to `pvp.log` when another player downed or
   hit them; every bleedout event is logged as `[bleedout] ...`.
