@@ -8,7 +8,8 @@
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
 // Events back to the game (window.skyrimPlatform.sendMessage):
 //   'voice::ready', 'voice::micDenied', 'voice::error' <text>,
-//   'voice::speaking' <json array of {id, level}: own voice while PTT is held plus audible unmuted speakers, every 150 ms while anyone talks, [] once when quiet>
+//   'voice::speaking' <json array of {id, level}: own voice while PTT is held plus audible unmuted speakers, every 150 ms while anyone talks, [] once when quiet>,
+//   'voice::stopped' <identity hex: that voice ended (mute, track gone, left, out of range, own PTT released), so its mouth closes without waiting for a report>
 
 import { Room, RoomEvent, Track } from 'livekit-client';
 
@@ -93,11 +94,13 @@ class VoiceManager {
         if (track.kind !== Track.Kind.Audio) return;
         track.detach().forEach((el) => el.remove());
         this.audioEls.delete(participant.identity);
+        this.stopped(participant.identity);
       });
       room.on(RoomEvent.ParticipantDisconnected, (participant) => {
         const el = this.audioEls.get(participant.identity);
         if (el) { el.remove(); this.audioEls.delete(participant.identity); }
         delete this.peerRanges[participant.identity];
+        this.stopped(participant.identity);
         this.emitSpeaking();
       });
       room.on(RoomEvent.ParticipantConnected, () => {
@@ -126,7 +129,10 @@ class VoiceManager {
         }
       });
       room.on(RoomEvent.ActiveSpeakersChanged, () => this.emitSpeaking());
-      room.on(RoomEvent.TrackMuted, () => this.emitSpeaking());
+      room.on(RoomEvent.TrackMuted, (publication, participant) => {
+        if (participant) this.stopped(participant.identity);
+        this.emitSpeaking();
+      });
 
       await room.connect(url, token, { autoSubscribe: true });
       try { await room.startAudio(); } catch (e) { /* autoplay policy: unlocked by CEF switch */ }
@@ -194,6 +200,7 @@ class VoiceManager {
     if (this.ptt) this.showBanner(this.mode);
     else this.hideBanner();
     if (!this.room) return;
+    if (!this.ptt) this.stopped(this.room.localParticipant.identity);
     try {
       await this.room.localParticipant.setMicrophoneEnabled(this.ptt);
     } catch (e) {
@@ -234,7 +241,15 @@ class VoiceManager {
 
   applyVolume(identity) {
     const el = this.audioEls.get(identity);
-    if (el) el.volume = this.gainFor(identity);
+    if (!el) return;
+    const gain = this.gainFor(identity);
+    if (el.volume > 0 && gain === 0) this.stopped(identity);
+    el.volume = gain;
+  }
+
+  // The game closes that mouth at once instead of waiting for the next report or its 600 ms TTL
+  stopped(identity) {
+    if (identity) sendToGame('voice::stopped', identity);
   }
 
   setPeers(distances) {

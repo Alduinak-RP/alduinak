@@ -54,7 +54,32 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
   client's `LipSyncService` turns it into face phonemes on those actors. A
   speaker who leaves the report (release, out of range, track gone) or whose
   reports stop for 600 ms gets the phonemes zeroed and a full expression
-  reset (`resetExpressionOverrides`), repeated 400 ms later. The same feed
+  reset (`resetExpressionOverrides`), repeated 400 ms later. The front also
+  sends `voice::stopped <identity>` the moment a voice ends (track muted or
+  unsubscribed, participant left, gain dropped to 0, own PTT released), and
+  the client closes that mouth at once. Every face the service ever wrote
+  is kept in a touched list and re-closed by a 1 s sweep three more times
+  after its mouth left, then trusted shut; a cell change, a camera flip
+  between first and third person, a game load or a reconnect re-closes
+  every touched face again, because a face not being updated at the moment
+  of a close (own body in first person, a copy off-screen or with its 3D
+  unloaded) keeps the last phoneme. A copy re-created under a new local id
+  gets the re-closes on its new face and its old id is dropped after one
+  close; a copy that despawned, or a talker who left, is forgotten after
+  one close. The engine
+  rebuilds a copy's 3D when it comes back on screen, so a mouth stuck on a
+  copy heals when the viewer looks away and back: a useful check when it
+  happens. Evidence goes to `skyrim-platform.log` through
+  `logToPlatformLog`: `sweep re-close <id> ... actor present/gone,
+  first/third person`, `copy of <remote id> changed <old> -> <new>`,
+  `closeFace <id>: no actor`, `owed player close in
+  third person`, and `report keeps <id> at level 0` for a report that
+  lingers on a silent talker (that one mumbles, it does not stick). MfgFix
+  is deliberately not on the client mod list: it makes SKSE phoneme writes
+  persistent, so a missed close would become a permanent stick; it is the
+  next step only once the log shows a `sweep re-close` with the actor
+  present and the mouth still open (our resets ran and the face stayed).
+  The same feed
   puts the VOIP glyph (U+E000 in the Tavern font, `misc/voip-glyph`) in front
   of a talking remote player's name tag for 500 ms after each report; the tag
   already reads "Stranger" for unknown characters. With **show player names**
