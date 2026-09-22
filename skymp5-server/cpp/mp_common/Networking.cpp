@@ -82,7 +82,8 @@ public:
   ~Client() override
   {
     packetGuard.reset(); // Depends on peer, so must be reset first
-    peer->Shutdown(0);
+    // Waits briefly so the server gets the disconnect notification and frees the slot at once
+    peer->Shutdown(kShutdownBlockMs);
   }
 
   void Send(Networking::PacketData data, size_t length, bool reliable) override
@@ -126,6 +127,8 @@ private:
   const unsigned short port;
   const std::string password;
 
+  constexpr static unsigned int kShutdownBlockMs = 200;
+
   RakNetGUID serverGuid = UNASSIGNED_RAKNET_GUID;
   std::shared_ptr<RakPeerInterface> peer;
   std::unique_ptr<SocketDescriptor> socket;
@@ -136,7 +139,7 @@ private:
 class Server : public Networking::IServer
 {
 public:
-  constexpr static int timeoutTimeMs = 60000;
+  constexpr static int timeoutTimeMs = 10000;
 
   Server(const char* listenAddress, unsigned short port_,
          unsigned short maxConnections_, const char* password_,

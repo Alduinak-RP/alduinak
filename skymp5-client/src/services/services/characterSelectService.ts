@@ -283,6 +283,7 @@ export class CharacterSelectService extends ClientListener {
         break;
       case events.quit:
         logTrace(this, 'quit requested from character select');
+        this.controller.lookupListener(NetworkingService).close();
         this.sp.win32.exitProcess();
         break;
       default:

@@ -326,6 +326,7 @@ export class AuthService extends ClientListener {
         break;
       case events.quitGame:
         logTrace(this, 'quitGame requested, exiting process');
+        this.controller.lookupListener(NetworkingService).close();
         this.sp.win32.exitProcess();
         break;
       default:
