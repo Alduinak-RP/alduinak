@@ -1,70 +1,84 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { Menu } from "skyrimPlatform";
+import { KickService } from "./kickService";
 import { NetworkingService } from "./networkingService";
 import { SinglePlayerService } from "./singlePlayerService";
 import { showSystemNotification } from "./systemNotification";
 import { logTrace } from "../../logging";
 
-// Returns the player to the main menu when the server stays unreachable.
-// NetworkingService auto-reconnects forever; this adds the give-up path so players are not stuck in a frozen world.
+// Paces reconnects after a lost connection: five attempts 10 s apart, then the game closes
 
-const RETRY_NOTICE_MS = 10000;
-const MAX_ATTEMPTS = 6;
-const QUIT_AFTER_MS = RETRY_NOTICE_MS * MAX_ATTEMPTS;
+const ATTEMPT_EVERY_MS = 10000;
+const ATTEMPTS = 5;
+const GIVE_UP_MS = 60000;
 
 export class ConnectionWatchdogService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.emitter.on("connectionDisconnect", () => this.onConnectionLost());
     this.controller.emitter.on("connectionFailed", () => this.onConnectionLost());
+    this.controller.emitter.on("connectionDenied", () => this.onConnectionLost());
     this.controller.emitter.on("connectionAccepted", () => this.onConnectionRestored());
+    // "tick" keeps firing while a pausing menu is open, unlike "update"
     this.controller.on("tick", () => this.onTick());
   }
 
   private downSince = 0;
-  private attemptsNotified = 0;
-  private quitQueued = false;
+  private attemptsMade = 0;
+  private everConnected = false;
+  private gaveUp = false;
 
+  // A failure inside an attempt's slot is not a new loss
   private onConnectionLost() {
     if (this.downSince) return;
     if (this.controller.lookupListener(NetworkingService).isAutoReconnectBlocked()) return;
+    if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
     this.downSince = Date.now();
-    logTrace(this, "Connection lost, watchdog armed");
-    showSystemNotification(this.sp, "Connection to the server lost, reconnecting...");
+    this.attemptsMade = 0;
+    logTrace(this, `Connection ${this.everConnected ? "lost" : "not established"}, watchdog armed`);
   }
 
   private onConnectionRestored() {
-    if (this.downSince) showSystemNotification(this.sp, "Connection restored.");
+    if (this.downSince) {
+      logTrace(this, `Connection restored after ${this.attemptsMade} attempts`);
+      if (this.attemptsMade > 0) showSystemNotification(this.sp, "Connection restored.");
+    }
+    this.everConnected = true;
     this.downSince = 0;
-    this.attemptsNotified = 0;
-    this.quitQueued = false;
+    this.attemptsMade = 0;
   }
 
+  // The first attempt runs on the tick after the loss, so a denial blocked by another listener is never retried
   private onTick() {
-    if (!this.downSince || this.quitQueued) return;
-    const elapsed = Date.now() - this.downSince;
-    const attempt = Math.floor(elapsed / RETRY_NOTICE_MS);
-    if (attempt > this.attemptsNotified && attempt < MAX_ATTEMPTS) {
-      this.attemptsNotified = attempt;
-      showSystemNotification(
-        this.sp,
-        `Could not reconnect to the server, retrying (${attempt}/${MAX_ATTEMPTS - 1})...`,
-      );
+    if (!this.downSince || this.gaveUp) return;
+    const networking = this.controller.lookupListener(NetworkingService);
+    // A kick or a permanent denial arrived while armed
+    if (networking.isAutoReconnectBlocked()) {
+      this.downSince = 0;
+      return;
     }
-    if (elapsed < QUIT_AFTER_MS) return;
-    if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
-    this.quitQueued = true;
-    // "update" doesn't fire in the main menu, so re-check everything on fire
-    this.controller.once("update", () => {
-      if (!this.downSince) return;
-      if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
-      if (this.controller.lookupListener(NetworkingService).isConnected()) return;
-      try {
-        if (this.sp.Ui.isMenuOpen(Menu.Main)) return;
-      } catch { }
-      logTrace(this, "Server unreachable for 60s, quitting to main menu");
-      showSystemNotification(this.sp, "Could not reach the server, returning to the main menu.");
-      this.sp.Game.quitToMainMenu();
-    });
+    const elapsed = Date.now() - this.downSince;
+    if (this.everConnected && elapsed >= GIVE_UP_MS) return this.giveUp();
+    const due = Math.floor(elapsed / ATTEMPT_EVERY_MS) + 1;
+    if (due <= this.attemptsMade || (this.everConnected && due > ATTEMPTS)) return;
+    this.attemptsMade = due;
+    showSystemNotification(this.sp, this.attemptText(due));
+    logTrace(this, `Reconnect attempt ${due}`);
+    networking.reconnect();
+  }
+
+  // A server that was never reached (startup with the server down) is retried without limit
+  private attemptText(attempt: number) {
+    if (!this.everConnected) return "Could not reach Alduinak. Retrying...";
+    return attempt === 1
+      ? `Connection to Alduinak lost. Reconnecting (1/${ATTEMPTS})...`
+      : `Still reconnecting (${attempt}/${ATTEMPTS})...`;
+  }
+
+  private giveUp() {
+    if (this.controller.lookupListener(NetworkingService).isConnected()) return;
+    this.gaveUp = true;
+    logTrace(this, "Server unreachable for a minute, closing the game");
+    const kick = this.controller.lookupListener(KickService);
+    kick.showDisconnectedAndExit(kick.strings.unreachable);
   }
 }

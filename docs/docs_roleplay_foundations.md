@@ -22,6 +22,27 @@ the `quitGame` browser event, which the client handles by calling
 
 Localised strings: `quitGame`, `quitGameHint` (en/ru).
 
+### Lost connection (`connectionWatchdogService.ts`, `kickService.ts`)
+
+Fully client-side. The native client drops a silent server after 10 s
+(`MpClientPlugin.cpp` `kTimeoutMs`), which is the owner's 10 s warning; a server
+stop or kick is noticed at once. From that moment the watchdog paces the
+reconnects instead of `NetworkingService` retrying continuously: on the next
+tick the toast "Connection to Alduinak lost. Reconnecting (1/5)..." shows and the
+first attempt starts, then "Still reconnecting (n/5)..." every 10 s up to five
+attempts (a RakNet attempt takes about 6 s; its failure inside the slot is
+ignored). A `connectionAccepted` shows "Connection restored." and the
+login/character select flow resumes, where re-selecting the character cancels
+its logout park. After a full minute without a connection the kick dialog opens
+with "Could not reconnect to Alduinak for a minute." and the 10 s countdown, then
+the game closes (`win32.exitProcess`) so the player restarts it from the
+launcher. A game started while the server is down never had a connection to
+lose: it retries every 10 s without limit with the toast "Could not reach
+Alduinak. Retrying..." and never closes itself, so players waiting through a
+restart get in when the server is back. A server kick and an "Invalid password"
+denial block the retries (`NetworkingService.blockReconnect`); single-player
+mode never arms the watchdog.
+
 ---
 
 ## 2. Chat channels (`/say`, `/looc`, `/me`, `/admin`)

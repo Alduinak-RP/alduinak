@@ -606,6 +606,7 @@ export class AuthService extends ClientListener {
     this.authAttemptProgressIndicator = false;
 
     if (e.error.toLowerCase().includes("invalid password")) {
+      this.controller.lookupListener(NetworkingService).blockReconnect();
       this.controller.once("tick", () => {
         this.controller.lookupListener(NetworkingService).close();
       });

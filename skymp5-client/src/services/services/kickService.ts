@@ -20,13 +20,15 @@ const events = {
 const translations = {
   "ru": {
     disconnected: 'Отключено',
-    closing: 'Игра закроется через {s} с. Перезапустите её, чтобы вернуться.',
+    closing: 'Игра закроется через {s} с. Перезапустите её из лаунчера, чтобы вернуться.',
     quit: 'Выйти из игры',
+    unreachable: 'Не удалось переподключиться к Alduinak за минуту.',
   },
   "en": {
     disconnected: 'Disconnected',
-    closing: 'The game will close in {s} s. Restart it to play again.',
+    closing: 'The game will close in {s} s. Restart it from the launcher to play again.',
     quit: 'Quit game',
+    unreachable: 'Could not reconnect to Alduinak for a minute.',
   },
 } as const;
 
@@ -36,9 +38,13 @@ let strings: TranslationStrings = translations['en'];
 let reason = '';
 let closing = '';
 
-// Server kick (AFK, admin, ban): stay disconnected, show why, then close the game so the player must relaunch.
+// Server kick (AFK, admin, ban) or a lost server: stay disconnected, show why, then close the game so the player must relaunch.
 // Server -> Client: { "customPacketType": "kicked", "reason": "..." }
 export class KickService extends ClientListener {
+  get strings() {
+    return strings;
+  }
+
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
 
@@ -59,8 +65,15 @@ export class KickService extends ClientListener {
     const content = parseCustomPacket(event);
     if (!content || content["customPacketType"] !== "kicked") return;
 
-    reason = typeof content["reason"] === "string" ? content["reason"] : "";
-    logTrace(this, `Kicked by the server:`, reason);
+    const kickReason = typeof content["reason"] === "string" ? content["reason"] : "";
+    logTrace(this, `Kicked by the server:`, kickReason);
+    this.showDisconnectedAndExit(kickReason);
+  }
+
+  // Blocks reconnects, shows the countdown dialog and closes the game when it runs out
+  showDisconnectedAndExit(why: string): void {
+    if (this.exitAt) return;
+    reason = why;
     this.controller.lookupListener(NetworkingService).closeAfterKick();
     this.exitAt = Date.now() + EXIT_DELAY_MS;
     this.shownSeconds = this.secondsLeft();

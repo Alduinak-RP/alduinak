@@ -77,18 +77,19 @@ export class NetworkingService extends ClientListener {
 
   // Server kick: stay offline until the game closes
   closeAfterKick() {
-    this.autoReconnectBlocked = true;
+    this.blockReconnect();
     this.close();
     // The destroyed client never delivers its own disconnect
     this.controller.emitter.emit("connectionDisconnect", {});
   }
 
-  isAutoReconnectBlocked() {
-    return this.autoReconnectBlocked;
+  // A permanent denial: the watchdog must not retry it
+  blockReconnect() {
+    this.autoReconnectBlocked = true;
   }
 
-  private autoReconnect() {
-    if (!this.autoReconnectBlocked) this.createClientSafe();
+  isAutoReconnectBlocked() {
+    return this.autoReconnectBlocked;
   }
 
   isConnected() {
@@ -101,17 +102,15 @@ export class NetworkingService extends ClientListener {
         case "connectionAccepted":
           this.controller.emitter.emit("connectionAccepted", {});
           break;
+        // Reconnects are paced by ConnectionWatchdogService, not retried here
         case "connectionDenied":
           this.controller.emitter.emit("connectionDenied", { error });
-          this.autoReconnect();
           break;
         case "connectionFailed":
           this.controller.emitter.emit("connectionFailed", {});
-          this.autoReconnect();
           break;
         case "disconnect":
           this.controller.emitter.emit("connectionDisconnect", {});
-          this.autoReconnect();
           break;
         case "message":
           // TODO: in theory can be empty jsonContent and non-empty error
