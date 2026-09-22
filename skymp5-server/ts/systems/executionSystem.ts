@@ -25,6 +25,8 @@ const FINISHERS: Record<WeaponClass, number[]> = {
   twoHanded: [0xf4687],
   twoHandedHeavy: [],
 };
+// pa_1HMKillMoveBleedOutKill (ENAM pa_KillingBlow, loose, non-decapitating), stabbed down into the kneeling victim; the finisher for every weapon when "finishOffStandUp" is false
+const KILLMOVE_KNEELING = 0xf469e;
 // Killmove tree records whose own or parent conditions the engine may refuse; added by "finishOffExtendedPool"
 const EXTENDED_FINISHERS: Record<WeaponClass, number[]> = {
   oneHanded: [0x6440c, 0x5169f, 0x2ff92, 0x55706, 0x55707, 0x55708, 0x5570b, 0x5570c, 0x5570d],
@@ -69,7 +71,9 @@ interface Prisoner {
 interface Pair {
   attackerId: number;
   seq: number;
+  sentAt: number;
   until: number;
+  ended: boolean;
   done: () => void;
 }
 
@@ -104,6 +108,7 @@ export class ExecutionSystem implements System {
     const pairMaxMs = Number(all?.["finishOffMaxMs"]);
     if (Number.isFinite(pairMaxMs) && pairMaxMs > 0) this.pairMaxMs = pairMaxMs;
     this.extendedPool = all?.["finishOffExtendedPool"] === true;
+    this.standUp = all?.["finishOffStandUp"] !== false;
 
     this.capture.menuFlagProviders.push((requesterId, targetId) => ({
       finishOff: !this.finishOffRefusal(requesterId, targetId),
@@ -181,7 +186,7 @@ export class ExecutionSystem implements System {
       notifyActor(mp, killerId, refusal);
       return;
     }
-    this.playPair(killerId, victimId, idle, true, () => this.bleedout.completeHold(victimId, killerId));
+    this.playPair(killerId, victimId, idle, this.standUp, () => this.bleedout.completeHold(victimId, killerId));
     notifyActor(mp, victimId, `${nameShownTo(mp, victimId, killerId)} is finishing you off.`);
     this.log(`[execution] ${hex(killerId)} finishes off ${hex(victimId)}`);
   }
@@ -363,7 +368,7 @@ export class ExecutionSystem implements System {
     const now = Date.now();
     this.pairs.forEach((pair, id) => { if (now > pair.until) this.pairs.delete(id); });
     const seq = ++this.pairSeq;
-    this.pairs.set(targetId, { attackerId, seq, until: now + this.pairMaxMs, done });
+    this.pairs.set(targetId, { attackerId, seq, sentAt: now, until: now + this.pairMaxMs, ended: false, done });
     const payload = { customPacketType: "pairedIdle", attacker: attackerId, target: targetId, idle, ms: this.pairMaxMs, standUp, seq };
     let online: unknown[] = [];
     try { online = mp.get(0, "onlinePlayers") ?? []; } catch { /* no players */ }
@@ -375,19 +380,26 @@ export class ExecutionSystem implements System {
     }
   }
 
-  // The end of the pair as either participant's client saw it; the first report wins
+  // The end of the pair as either participant's client saw it; the first report wins, both are logged with their elapsed time
   private onPairedIdleDone(userId: number, targetId: number, seq: number): void {
     const pair = this.pairs.get(targetId);
-    const actorId = this.actorOf(userId);
-    if (!pair || pair.seq !== seq || (actorId !== pair.attackerId && actorId !== targetId)) return;
-    this.pairs.delete(targetId);
-    if (Date.now() <= pair.until) pair.done();
+    const reporterId = this.actorOf(userId);
+    if (!pair || pair.seq !== seq || (reporterId !== pair.attackerId && reporterId !== targetId)) {
+      this.log(`[execution] stale pair report from ${hex(reporterId)} on ${hex(targetId)} seq ${seq}`);
+      return;
+    }
+    const now = Date.now();
+    this.log(`[execution] pair ${seq} on ${hex(targetId)} ${pair.ended ? "also " : ""}ended by ${hex(reporterId)} after ${now - pair.sentAt} ms`);
+    if (pair.ended) return;
+    pair.ended = true;
+    if (now <= pair.until) pair.done();
   }
 
-  // A random finisher of the pool for the weapon in hand, 0 without a melee weapon
+  // A random finisher of the pool for the weapon in hand, 0 without a melee weapon; the kneeling stab when the victim is not stood up
   private pickFinisher(actorId: number): number {
     const held = this.weaponClassOf(actorId);
     if (!held) return 0;
+    if (!this.standUp) return KILLMOVE_KNEELING;
     let pool = this.extendedPool ? [...FINISHERS[held], ...EXTENDED_FINISHERS[held]] : FINISHERS[held];
     if (!pool.length) pool = FINISHERS.twoHanded;
     return pool[Math.floor(Math.random() * pool.length)];
@@ -438,6 +450,8 @@ export class ExecutionSystem implements System {
   private prisonerOffset = DEFAULT_PRISONER_OFFSET;
   private pairMaxMs = DEFAULT_PAIR_MAX_MS;
   private extendedPool = false;
+  // The finish off stands the victim up for a standing killmove; off, the kneeling stab plays at once
+  private standUp = true;
   private nextCheckAt = 0;
   // prisonerId -> the block they kneel at
   private prisoners = new Map<number, Prisoner>();

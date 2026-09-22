@@ -69,11 +69,12 @@ behaviour-graph events — no ESP required.**
   on a downed player in reach. It needs a drawn melee weapon: bows, staves
   and fists are refused ("You need a melee weapon in hand to finish them
   off."), a sheathed one too ("Draw your weapon first.", read through Papyrus
-  `Actor.IsWeaponDrawn`, so the killer's copies already show it). The victim
-  stands up out of the kneel (`bleedOutStop`, on their own client through
-  `RestraintService.standForPair` and on every copy) and 0.7 s later both
-  play a random vanilla paired killmove for the weapon in hand, none of them
-  decapitating: one-handed (WEAP animation type 1-4, right hand first)
+  `Actor.IsWeaponDrawn`, so the killer's copies already show it). With
+  `finishOffStandUp` (default true) the victim stands up out of the kneel
+  (`bleedOutStop`, on their own client through
+  `RestraintService.standForPair` and on every copy) and, once the get-up
+  has settled, both play a random vanilla paired killmove for the weapon in
+  hand, none of them decapitating: one-handed (WEAP animation type 1-4, right hand first)
   `pa_1HMKillMoveShortA-D` (IDLE F469A-F469D) and `ShortJ` (108A45), dual
   wield `pa_1HMKillMoveDualWieldA` (F469F), greatsword (type 5)
   `pa_2HMKillMoveStabA` (F4687); a battleaxe or warhammer (type 6) has no
@@ -82,7 +83,18 @@ behaviour-graph events — no ESP required.**
   `1HMKillMoveB-M`, `KillMove2HMStab` and the Update.esm slashes,
   `KillMove2HWB`/`ChopKick`/`HeadButt` for type 6, the dual-wield slashes),
   whose own and parent conditions the engine may refuse: a probe, off until a
-  test shows they play. The victim's timer waits while the pair plays: each
+  test shows they play. The get-up is an animation-driven clip longer than
+  any fixed wait, and a pair started while the victim's graph is still in it
+  never plays (the r15 finish off waited a fixed 0.7 s and died at the
+  4.5 s fallback), so each client polls the victim's graph every 100 ms and
+  starts the pair once `bAnimationDriven` and `bIsSynced` were both false on
+  two consecutive polls and at least 1.2 s passed, or at 3 s regardless.
+  With `finishOffStandUp` false (a game service restart, no build) the
+  victim stays kneeling and every weapon plays the one-handed
+  `pa_1HMKillMoveBleedOutKill` (F469E, `pa_KillingBlow`, no decapitation,
+  no variety; a two-hander stabs one-handed, no non-decapitating two-handed
+  bleedout record exists) in the packet's own update, the r13 shape. The
+  victim's timer waits while the pair plays: each
   participant's client polls both actors (`bIsSynced`, `IsInKillMove`) and
   reports the end (`pairedIdleDone`, first report wins), a pair the graph
   never showed as started counts as over after 4.5 s, and `finishOffMaxMs`
@@ -97,8 +109,16 @@ behaviour-graph events — no ESP required.**
   the grace a kill needs to land), or once the cap lapses. The killmove is sent to both players and to
   everyone whose client has a copy of the victim (`PairedIdleService`), and
   both copies leave the movement and animation sync until it ends. Each
-  client writes one `pairEnd` line to `skyrim-platform.log` saying which
-  signal ended the pair.
+  client writes one `pair <idle> start a=<killer> t=<victim> played=<bool>
+  waited=<ms> a[synced,killmove,drawn] t[synced,killmove,animDriven,pose]`
+  line to `skyrim-platform.log` (the graph flags at the moment of the play
+  call, `pose` on the victim's own client) and one `pairEnd ...
+  played=<bool>` line saying which signal ended the pair; the server logs
+  `[execution] pair <seq> on <victim> ended by <reporter> after <ms> ms`
+  for each participant's report (`also ended by` for the second) and
+  `stale pair report` for a rejected one, so the server log alone tells a
+  clip end (well under 4.5 s plus the wait) from the unseen fallback
+  (about 4.6-5.4 s after the request, what r15 showed).
 - **Execution** (`executionSystem.ts`): the same right works at a headsman's
   block, the `ExecutionerChoppingBlock` furniture (FURN 2E8EB) already placed
   at Helgen, Solitude and in the Falkreath and Dragon Bridge city mods, plus

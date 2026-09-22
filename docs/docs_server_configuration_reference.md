@@ -435,6 +435,7 @@ World floor (no setting): a living player below Z -40000 in Tamriel or below -30
 | `executionBlockOffset` | `{ "forward": 0, "right": 0, "up": 0, "yaw": 0 }` | Where Prepare Execution puts the prisoner, relative to the block: along its facing, across it, up, and degrees added to its yaw. Unmeasured default |
 | `finishOffMaxMs` | `9000` | Cap on a finish off or execution killmove: the victim dies when a participant's client reports the end of the pair, or after this |
 | `finishOffExtendedPool` | `false` | Adds the killmove tree records, whose conditions the engine may refuse, to the finisher pools; a probe, see docs_roleplay_survival_loop.md section 8 |
+| `finishOffStandUp` | `true` | The finish off stands the victim up and plays a standing killmove once the get-up settled; `false` keeps them kneeling and plays the one-handed KillingBlow stab at once (no decapitation, no variety). Read at start, so a change needs a game service restart and no build |
 
 ## Carry pose
 
