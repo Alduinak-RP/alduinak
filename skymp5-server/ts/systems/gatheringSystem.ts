@@ -86,8 +86,8 @@ const DEFAULT_PRODUCE: Record<string, number> = { BeeHive: 60, BeeHiveVacant: 60
 
 // A hive holds one of each in the record; both kinds hand over this instead.
 const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
-  BeeHive: { BeeHoneyComb: 2, BeeHiveHusk: 2 },
-  BeeHiveVacant: { BeeHoneyComb: 2, BeeHiveHusk: 2 },
+  BeeHive: { BeeHoneyComb: 2, CritterBeeIngredient: 2, BeeHiveHusk: 2 },
+  BeeHiveVacant: { BeeHoneyComb: 2, CritterBeeIngredient: 2, BeeHiveHusk: 2 },
 };
 
 type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";

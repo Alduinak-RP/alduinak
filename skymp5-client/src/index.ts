@@ -91,6 +91,7 @@ import { MenuMediaService } from "./services/services/menuMediaService";
 import { CharacterProgressService } from "./services/services/characterProgressService";
 import { StaticRefsService } from "./services/services/staticRefsService";
 import { CellAnimationsService } from "./services/services/cellAnimationsService";
+import { ActivatePickService } from "./services/services/activatePickService";
 import { LipSyncService } from "./services/services/lipSyncService";
 
 once("update", () => {
@@ -167,6 +168,7 @@ const main = () => {
       new LipSyncService(sp, controller),
       new StaticRefsService(sp, controller),
       new CellAnimationsService(sp, controller),
+      new ActivatePickService(sp, controller),
       new AdminMenuService(sp, controller),
       new AdminModeService(sp, controller),
       new FactionService(sp, controller),

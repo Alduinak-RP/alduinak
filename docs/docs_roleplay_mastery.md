@@ -284,11 +284,14 @@ container loot are off:
 - Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
   open to everyone.
 - Bee Honeycomb: the vanilla beehives, occupied and vacant. `gatheringSystem.ts`
-  keeps them shut and hands over two honeycomb and two beehive husks on E
-  (`gatheringProduceYield`), then the hive is empty for an hour
+  keeps them shut and hands over two honeycomb, two bees and two beehive husks
+  on E (`gatheringProduceYield`), then the hive is empty for an hour
   (`gatheringProduceContainers`). The state rides the hive as
-  `private.gathering`, like a vein. The bee ingredient comes from the bees
-  themselves.
+  `private.gathering`, like a vein. Bees also come from the bees themselves.
+  A hive is a small target: the client widens the engine's crosshair pick a
+  little at startup (`activatePickService.ts`, see
+  `docs_roleplay_interaction_prompts.md`). The tenth Warbirds hive in the
+  Whiterun exterior (`102001FF`) is disabled with its nine siblings.
 
 ### Vanilla perks through abilities
 

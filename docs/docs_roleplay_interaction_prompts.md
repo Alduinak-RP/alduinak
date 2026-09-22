@@ -82,6 +82,12 @@ keeps its display name with a verb picked from its base form type.
 
 - `customPrompts: false` in the `skymp5-client` settings block disables the
   service entirely (no GFx writes, no widget) - the vanilla rollover returns.
+- The target itself is the engine's crosshair pick, which `activatePickService.ts`
+  widens a little at startup so beehives and the invisible mead benches take the
+  prompt more readily: `fActivatePickRadius:Interface` grows by half and
+  `fActivatePickLength:Interface` to at least 200. `activatePickRadius` and
+  `activatePickLength` in the `skymp5-client` settings block set the values
+  outright; the platform log shows both before and after.
 - First in-game check after a client build: point at a door. Custom prompt
   visible, vanilla text gone. If the vanilla rollover survives, the GFx
   paths need adjusting for the shipped hudmenu - probe with
