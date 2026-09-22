@@ -72,7 +72,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, dragon, stalhrim, and the Skyforge |
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue |
 | Hunter | - | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
-| Miner | iron veins | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
+| Miner | iron veins and the sea salt deposits | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
 | Tailor | the blank parchment, journal and book | cloaks, capes, the belted tunic and the other everyday clothing, boots and hats, and everything else at the tanning rack and the weaving loom, leather and hide armour included | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels and the dress of the tailor's own people | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
 | Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
 | Woodworker | charcoal, the broom, the blank parchment, journal and book | the tools (woodcutter's axe, pickaxe, hoe) and the iron and wooden bows, arrows and shields | steel, silver and gold bows, arrows and shields, and the drum | orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass, dragon and stalhrim, and the lute |
@@ -310,7 +310,14 @@ on the Hunter Master marker, bows or crossbows, and a non-player target
 `gatheringSystem.ts` refuses a vein whose ore is above the character's miner
 rank ("Only a miner of Adept rank or better can work this vein"); iron and
 corundum stay open. Tiers are `DEFAULT_VEIN_TIERS` by ore editor id, with a
-`miningVeinTiers` override. Every vein holds **six ore** (`gatheringVeinTotal`,
+`miningVeinTiers` override. Any activator carrying `MineOreScript` is a vein,
+so the 41 **Sea Salt Deposits** of `Saltdeposits.esp` on the northern coasts
+count too: their script hands out Sea Salt Rock (`12SeaSaltOre`, weight 20,
+one rock refines into 50 Salt Pile at a smelter), each has its own pickaxe
+floor marker, and the ore sits in the tier table as open to anyone, so the
+boot line `[gathering] vein ores: ...` lists it with its resolved id and an
+`ore(s) not in the load order` line would name it if the mod went missing.
+Every vein holds **six ore** (`gatheringVeinTotal`,
 one per strike, so six strikes of five seconds) and **comes back whole 24 hours
 after its first ore was taken** (`gatheringVeinRespawnMinutes`), whether one
 ore or all six were mined; `gatheringVeinRegenMinutes` switches that to one

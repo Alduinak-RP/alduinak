@@ -30,7 +30,7 @@ type Mp = any;
 // needsMineFatigue); woodworkers and miners pay the smaller price for their own trade, and a bar that cannot pay
 // for one more turns the station away.
 // A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
-// Every ore but iron needs the miner profession at its rank; iron is open to anyone with a pickaxe.
+// Every ore but iron and sea salt needs the miner profession at its rank; those two are open to anyone with a pickaxe.
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
@@ -75,7 +75,7 @@ const VEIN_DEFAULT_STRIKES = 1;
 // Mining rank needed per ore, by the ore item editor id; unlisted ores are open to everyone.
 const OPEN_TO_ALL = -1;
 const DEFAULT_VEIN_TIERS: Record<string, number> = {
-  OreIron: OPEN_TO_ALL, OreCorundum: 0,
+  OreIron: OPEN_TO_ALL, "12SeaSaltOre": OPEN_TO_ALL, OreCorundum: 0,
   OreGold: 1, OreSilver: 1,
   OreOrichalcum: 2, OreMoonstone: 2, OreQuicksilver: 2,
   OreMalachite: 3, OreEbony: 3,
@@ -178,6 +178,7 @@ export class GatheringSystem implements System {
     for (const [name, id] of ids) if (merged[name] >= 0) this.veinTiers.set(id, merged[name]);
     const unresolved = names.filter((n) => !ids.has(n));
     if (unresolved.length) this.log(`[gathering] ore(s) not in the load order, left open to everyone: ${unresolved.join(", ")}`);
+    this.log(`[gathering] vein ores: ${Array.from(ids, ([name, id]) => `${name} ${id.toString(16)} ${merged[name] >= 0 ? RANK_NAMES[merged[name]] : "anyone"}`).join(", ")}`);
   }
 
   // Container base ids that hand out their contents and grow them back, from the defaults or the settings replacement.
