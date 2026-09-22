@@ -172,6 +172,62 @@ uint32_t GetParalysisSeconds(WorldState* worldState, uint32_t spellId)
   return damagesHealth ? 0 : seconds;
 }
 
+// The aggressor's poisoned copy of the weapon that hit, the twin of the worn entry when several differ
+std::optional<Inventory::Entry> FindPoisonedEntry(const MpActor& aggressor,
+                                                  uint32_t source)
+{
+  const auto worn = aggressor.GetEquippedWeapon();
+  const auto matchesWorn = [&](const Inventory::Entry& entry) {
+    return std::any_of(worn.begin(), worn.end(), [&](const auto& hand) {
+      if (!hand || hand->baseId != source) {
+        return false;
+      }
+      Inventory::Entry a = entry;
+      Inventory::Entry b = *hand;
+      a.poisonId.reset();
+      a.poisonCount.reset();
+      b.poisonId.reset();
+      b.poisonCount.reset();
+      return a.SameItemAs(b);
+    });
+  };
+  std::optional<Inventory::Entry> found;
+  for (const auto& entry : aggressor.GetInventory().entries) {
+    if (entry.baseId != source || entry.count == 0 ||
+        entry.poisonId.value_or(0) == 0) {
+      continue;
+    }
+    if (matchesWorn(entry)) {
+      return entry;
+    }
+    if (!found) {
+      found = entry;
+    }
+  }
+  return found;
+}
+
+// The attacker's engine spent the same charge on this swing, so the SetInventory it gets applies as a no-op
+uint32_t ConsumePoisonCharge(MpActor& aggressor,
+                             const Inventory::Entry& poisoned)
+{
+  Inventory inv = aggressor.GetInventory();
+  Inventory::Entry one = poisoned;
+  one.count = 1;
+  inv.RemoveItems({ one });
+  const uint32_t usesLeft =
+    poisoned.poisonCount.value_or(1) > 1 ? *poisoned.poisonCount - 1 : 0;
+  if (usesLeft > 0) {
+    one.poisonCount = usesLeft;
+  } else {
+    one.poisonId.reset();
+    one.poisonCount.reset();
+  }
+  inv.AddItems({ one });
+  aggressor.SetInventory(inv);
+  return usesLeft;
+}
+
 // Bound weapon spells equip a weapon (and the bound arrow) the inventory never holds
 bool IsGrantedBoundItem(const MpActor& actor, uint32_t itemId)
 {
@@ -2176,6 +2232,15 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 
   float damage = partOne.CalculateDamage(*aggressor, targetActor, hitData);
   damage = damage < 0.f ? 0.f : damage;
+  // A block stops the blade, not the poison on it; a bash never carries it
+  const auto poisoned = hitData.isBashAttack
+    ? std::nullopt
+    : FindPoisonedEntry(*aggressor, hitData.source);
+  PoisonHit poison;
+  if (poisoned) {
+    poison = CalculatePoisonHit(*aggressor, targetActor, *poisoned->poisonId);
+    damage += poison.health;
+  }
   // A fully blocked attack still asks the gamemode, so god mode and companions see it
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, &targetActor,
                           hitData.source, damage, hitData.isHitBlocked)) {
@@ -2204,6 +2269,21 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     "percentage now: {2}, base health: {4})",
     hitData.target, damage, currentActorValues.healthPercentage,
     healthPercentage, outBaseHealth);
+
+  if (poisoned) {
+    if (poison.stamina > 0.f) {
+      targetActor.DamageActorValue(espm::ActorValue::Stamina, poison.stamina);
+    }
+    if (poison.magicka > 0.f) {
+      targetActor.DamageActorValue(espm::ActorValue::Magicka, poison.magicka);
+    }
+    const uint32_t usesLeft = ConsumePoisonCharge(*aggressor, *poisoned);
+    spdlog::info("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health, {} "
+                 "stamina, {} magicka, {} effects ignored, {} uses left",
+                 aggressor->GetFormId(), targetActor.GetFormId(),
+                 *poisoned->poisonId, poison.health, poison.stamina,
+                 poison.magicka, poison.ignored, usesLeft);
+  }
 
   FireHitDamageEvent("onHitDamage", aggressor, &targetActor, hitData.source,
                      damage);

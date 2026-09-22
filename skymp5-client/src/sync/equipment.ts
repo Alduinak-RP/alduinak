@@ -97,7 +97,7 @@ export const equipEntries = (ac: Actor, entries: Entry[]): void => {
   entries.forEach((e) => ac.equipItemEx(Game.getFormEx(e.baseId), e.wornLeft ? 2 : 0, false, false));
 };
 
-const removeUnnecessaryExtra = (inv: Inventory, ignoreAmmo: boolean): Inventory => {
+const removeUnnecessaryExtra = (inv: Inventory, isPlayer: boolean): Inventory => {
   return {
     entries: inv.entries.map((x) => {
       const r: Entry = JSON.parse(JSON.stringify(x));
@@ -109,10 +109,13 @@ const removeUnnecessaryExtra = (inv: Inventory, ignoreAmmo: boolean): Inventory 
         r.enchantmentId = enchantment ? enchantment.getFormID() : undefined;
         delete r.enchantmentEffects;
       }
-      if (ignoreAmmo) {
+      if (isPlayer) {
         r.count = Ammo.from(Game.getFormEx(x.baseId)) ? r.count : 1;
       } else {
         r.count = Ammo.from(Game.getFormEx(x.baseId)) ? 1000 : 1;
+        // The server applies poisons on hit, a copy carrying one would poison its victim a second time
+        delete r.poisonId;
+        delete r.poisonCount;
       }
       delete r.name;
       return r;

@@ -58,6 +58,8 @@ const TEMPER_SUFFIX = /\s\((Fine|Superior|Exquisite|Flawless|Epic|Legendary)\)$/
 // A poison OnEquip consumed stays claimable this long, since the report can wait for the inventory menu to close
 const POISON_CREDIT_MS = 10 * 60 * 1000;
 const MAX_POISON_CREDITS = 8;
+// Concentrated Poison puts a second dose on the weapon the apply already poisoned, reported soon after
+const POISON_RAISE_MS = 15 * 1000;
 
 interface Cap {
   magnitude: number;
@@ -108,6 +110,8 @@ interface PoisonCredit {
   baseId: number;
   at: number;
   used: boolean;
+  // Set when the apply poisoned the worn copy itself, so the perk's second dose may still raise it
+  raiseUntil?: number;
 }
 
 interface Plan {
@@ -302,7 +306,10 @@ export class CraftedExtrasSystem implements System {
 
   private commit(plan: Plan, added: InventoryEntry[]): void {
     for (const r of plan.reserve) r.pool.left -= r.count;
-    if (plan.credit) plan.credit.used = true;
+    if (plan.credit) {
+      plan.credit.used = true;
+      delete plan.credit.raiseUntil;
+    }
     if (plan.soul) {
       plan.soul.used = true;
       plan.soul.from.left -= 1;
@@ -372,10 +379,10 @@ export class CraftedExtrasSystem implements System {
         out.poisonCount = Math.max(1, Math.min(toUses || 1, MAX_POISON_USES));
         notes.push(`${fromPoison ? "poison replaced with" : "poisoned with"} ${hex(toPoison)}`);
       } else if (fromPoison && toPoison === fromPoison && toUses > fromUses) {
-        credit = findCredit();
+        credit = findCredit() || credits.find((c) => c.baseId === toPoison && (c.raiseUntil || 0) > Date.now()) || null;
         if (!credit) return null;
         out.poisonCount = Math.min(toUses, MAX_POISON_USES);
-        notes.push(`poison up to ${out.poisonCount}`);
+        notes.push(`poison up to ${out.poisonCount}${credit.used ? " (perk)" : ""}`);
       } else if (fromPoison && !toPoison) {
         delete out.poisonId;
         delete out.poisonCount;
@@ -410,24 +417,27 @@ export class CraftedExtrasSystem implements System {
   // The engine poisons the right hand weapon, else the left, so the server's copy of it takes the poison OnEquip consumed
   private applyPoisonToWorn(ctx: SystemContext, actorId: number, poisonId: number): void {
     const mp = ctx.svr as Mp;
+    const extras = (i: Item): string => `${hex(i.baseId)} {${describeExtras(i).join(", ")}}`;
+    const skip = (why: string): void => this.log(`[crafted] ${hex(actorId)}: poison ${hex(poisonId)} not applied at apply, ${why}`);
     try {
       const worn: InventoryEntry[] = (mp.get(actorId, "equipment")?.inv?.entries || [])
         .filter((e: InventoryEntry) => this.itemInfo(ctx, e.baseId).type === "WEAP");
       const hand = worn.find((e) => e.worn) || worn.find((e) => e.wornLeft);
-      if (!hand) return;
+      if (!hand) return skip("no worn weapon");
       const inv = readInventory(mp, actorId);
       const bare = (i: Item): Item => ({ ...i, poisonId: undefined, poisonCount: undefined });
       let index = inv.entries.findIndex((e) => sameItem(e, hand));
       if (index < 0) index = inv.entries.findIndex((e) => !isSet(e.poisonId) && sameItem(bare(e), bare(hand)));
-      if (index < 0) return;
+      if (index < 0) return skip(`no inventory copy of worn ${extras(hand)}`);
       const source = inv.entries[index];
-      if ((source.poisonId || 0) === poisonId) return;
+      if ((source.poisonId || 0) === poisonId) return skip(`${extras(source)} already carries it`);
       const credit = this.creditsOf(actorId).find((c) => !c.used && c.baseId === poisonId);
-      if (!credit) return;
+      if (!credit) return skip(`no credit for ${extras(source)}`);
 
       const entries = inv.entries.map((e, i) => (i === index ? withCount(e, e.count - 1) : e)).filter((e) => e.count > 0);
       mp.set(actorId, "inventory", addEntries({ entries }, [{ ...withCount(source, 1), poisonId, poisonCount: 1 }]));
       credit.used = true;
+      credit.raiseUntil = Date.now() + POISON_RAISE_MS;
       this.log(`[crafted] ${hex(actorId)} ${hex(source.baseId)}: poisoned at apply with ${hex(poisonId)}`);
     } catch (e) {
       this.log(`[crafted] poisoning the worn weapon of ${hex(actorId)} failed: ${e}`);
@@ -655,10 +665,10 @@ export class CraftedExtrasSystem implements System {
     return recipes;
   }
 
-  // Unused, unexpired credits; the live list, so a committed plan marks its credit used
+  // Unused or still raisable, unexpired credits; the live list, so a committed plan marks its credit used
   private creditsOf(actorId: number): PoisonCredit[] {
     const now = Date.now();
-    const list = (this.poisonCredits.get(actorId) || []).filter((c) => !c.used && now - c.at < POISON_CREDIT_MS);
+    const list = (this.poisonCredits.get(actorId) || []).filter((c) => (!c.used || (c.raiseUntil || 0) > now) && now - c.at < POISON_CREDIT_MS);
     if (list.length) this.poisonCredits.set(actorId, list);
     else this.poisonCredits.delete(actorId);
     return list;

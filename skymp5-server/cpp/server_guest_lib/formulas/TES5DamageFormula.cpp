@@ -200,12 +200,6 @@ private:
 
 private:
   [[nodiscard]] float GetBaseSpellDamage() const;
-  [[nodiscard]] float GetResistMult(espm::ActorValue resistAV) const;
-  [[nodiscard]] const MpActor* GetConditionActor(const espm::CTDA& ctda) const;
-  [[nodiscard]] bool ConditionHolds(const espm::CTDA& ctda,
-                                    const espm::LookupResult& owner) const;
-  [[nodiscard]] bool ConditionsHold(const std::vector<espm::CTDA>& ctdas,
-                                    const espm::LookupResult& owner) const;
 };
 
 TES5SpellDamageFormulaImpl::TES5SpellDamageFormulaImpl(
@@ -265,8 +259,9 @@ bool CompareWithCtda(float value, const espm::CTDA& ctda)
 }
 
 // Subject is the actor hit, Target the caster, null for other run-ons or flags
-const MpActor* TES5SpellDamageFormulaImpl::GetConditionActor(
-  const espm::CTDA& ctda) const
+const MpActor* GetConditionActor(const espm::CTDA& ctda,
+                                 const MpActor& aggressor,
+                                 const MpActor& target)
 {
   const bool plainFlags = (static_cast<uint8_t>(ctda.GetFlags()) &
                            ~static_cast<uint8_t>(espm::CTDA::Flags::OR)) == 0;
@@ -280,8 +275,8 @@ const MpActor* TES5SpellDamageFormulaImpl::GetConditionActor(
 }
 
 // Condition form ids are relative to the owner record's plugin
-bool TES5SpellDamageFormulaImpl::ConditionHolds(
-  const espm::CTDA& ctda, const espm::LookupResult& owner) const
+bool ConditionHolds(const espm::CTDA& ctda, const espm::LookupResult& owner,
+                    const MpActor& aggressor, const MpActor& target)
 {
   constexpr uint16_t kHasPerk = 448;
   constexpr uint16_t kHasKeyword = 560;
@@ -290,7 +285,7 @@ bool TES5SpellDamageFormulaImpl::ConditionHolds(
     // The server holds no perk data
     return false;
   }
-  const MpActor* actor = GetConditionActor(ctda);
+  const MpActor* actor = GetConditionActor(ctda, aggressor, target);
   const uint32_t parameter = ctda.GetDefaultData().firstParameter;
   if (actor && ctda.functionIndex == kHasKeyword) {
     const bool hasKeyword =
@@ -300,6 +295,7 @@ bool TES5SpellDamageFormulaImpl::ConditionHolds(
   const auto av = static_cast<espm::ActorValue>(parameter);
   const bool trackedPercentage = av == espm::ActorValue::Health ||
     av == espm::ActorValue::Magicka || av == espm::ActorValue::Stamina;
+  WorldState* espmProvider = aggressor.GetParent();
   const auto& functions = espmProvider->conditionFunctionMap;
   if (actor && ctda.functionIndex == kGetActorValuePercent &&
       trackedPercentage &&
@@ -317,12 +313,14 @@ bool TES5SpellDamageFormulaImpl::ConditionHolds(
 }
 
 // CTDAs flagged OR join the next one into a group, and every group must hold
-bool TES5SpellDamageFormulaImpl::ConditionsHold(
-  const std::vector<espm::CTDA>& ctdas, const espm::LookupResult& owner) const
+bool ConditionsHold(const std::vector<espm::CTDA>& ctdas,
+                    const espm::LookupResult& owner, const MpActor& aggressor,
+                    const MpActor& target)
 {
   bool groupHolds = false;
   for (size_t i = 0; i < ctdas.size(); ++i) {
-    groupHolds = groupHolds || ConditionHolds(ctdas[i], owner);
+    groupHolds =
+      groupHolds || ConditionHolds(ctdas[i], owner, aggressor, target);
     const bool joinsNext = static_cast<uint8_t>(ctdas[i].GetFlags()) &
       static_cast<uint8_t>(espm::CTDA::Flags::OR);
     if (!joinsNext || i + 1 == ctdas.size()) {
@@ -333,6 +331,41 @@ bool TES5SpellDamageFormulaImpl::ConditionsHold(
     }
   }
   return true;
+}
+
+// The target's abilities modifying the resist value (racial resistances, weaknesses), capped like fPlayerMaxResistance
+float GetResistMult(espm::ActorValue resistAV, const MpActor& aggressor,
+                    const MpActor& target)
+{
+  constexpr float kMaxResistance = 85.f;
+  if (resistAV == espm::ActorValue::None) {
+    return 1.f;
+  }
+  float resistance = 0.f;
+  for (uint32_t spellId : target.GetLearnedAndBaseSpells()) {
+    ForEachSpellEffectRecord(
+      aggressor.GetParent(), spellId,
+      [&](const espm::LookupResult& spellLookup, const espm::SPEL::Data& spell,
+          const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
+          const espm::LookupResult& mgefLookup) {
+        const bool modifiesValue =
+          mgef.data.effectType == espm::MGEF::EffectType::ValueMod ||
+          mgef.data.effectType == espm::MGEF::EffectType::PeakValueMod;
+        if (!effect.effectItem || !spell.spellItem ||
+            spell.spellItem->type != espm::SPEL::SpellType::Ability ||
+            !modifiesValue || mgef.data.primaryAV != resistAV ||
+            !ConditionsHold(effect.conditions, spellLookup, aggressor,
+                            target) ||
+            !ConditionsHold(mgef.conditions, mgefLookup, aggressor, target)) {
+          return;
+        }
+        const float magnitude = effect.effectItem->magnitude;
+        resistance +=
+          mgef.data.IsFlagSet(espm::MGEF::Flags::Detrimental) ? -magnitude
+                                                              : magnitude;
+      });
+  }
+  return 1.f - std::min(resistance, kMaxResistance) / 100.f;
 }
 
 float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
@@ -354,10 +387,11 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
       const bool isShout = spell.spellItem &&
         spell.spellItem->type == espm::SPEL::SpellType::Voice;
       if (isShout ||
-          (ConditionsHold(effect.conditions, spellLookup) &&
-           ConditionsHold(mgef.conditions, mgefLookup))) {
-        damage +=
-          effect.effectItem->magnitude * GetResistMult(mgef.data.resistAV);
+          (ConditionsHold(effect.conditions, spellLookup, aggressor,
+                          target) &&
+           ConditionsHold(mgef.conditions, mgefLookup, aggressor, target))) {
+        damage += effect.effectItem->magnitude *
+          GetResistMult(mgef.data.resistAV, aggressor, target);
       }
     });
   if (!isSpell) {
@@ -367,45 +401,71 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
   return damage;
 }
 
-// The target's abilities modifying the resist value (racial resistances, weaknesses), capped like fPlayerMaxResistance
-float TES5SpellDamageFormulaImpl::GetResistMult(
-  espm::ActorValue resistAV) const
-{
-  constexpr float kMaxResistance = 85.f;
-  if (resistAV == espm::ActorValue::None) {
-    return 1.f;
-  }
-  float resistance = 0.f;
-  for (uint32_t spellId : target.GetLearnedAndBaseSpells()) {
-    ForEachSpellEffectRecord(
-      espmProvider, spellId,
-      [&](const espm::LookupResult& spellLookup, const espm::SPEL::Data& spell,
-          const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
-          const espm::LookupResult& mgefLookup) {
-        const bool modifiesValue =
-          mgef.data.effectType == espm::MGEF::EffectType::ValueMod ||
-          mgef.data.effectType == espm::MGEF::EffectType::PeakValueMod;
-        if (!effect.effectItem || !spell.spellItem ||
-            spell.spellItem->type != espm::SPEL::SpellType::Ability ||
-            !modifiesValue || mgef.data.primaryAV != resistAV ||
-            !ConditionsHold(effect.conditions, spellLookup) ||
-            !ConditionsHold(mgef.conditions, mgefLookup)) {
-          return;
-        }
-        const float magnitude = effect.effectItem->magnitude;
-        resistance +=
-          mgef.data.IsFlagSet(espm::MGEF::Flags::Detrimental) ? -magnitude
-                                                              : magnitude;
-      });
-  }
-  return 1.f - std::min(resistance, kMaxResistance) / 100.f;
-}
-
 float TES5SpellDamageFormulaImpl::CalculateDamage() const
 {
   return GetBaseSpellDamage();
 }
 
+}
+
+PoisonHit CalculatePoisonHit(const MpActor& aggressor, const MpActor& target,
+                             uint32_t poisonId)
+{
+  PoisonHit hit;
+  WorldState* espmProvider = aggressor.GetParent();
+  auto& browser = espmProvider->GetEspm().GetBrowser();
+  auto& cache = espmProvider->GetEspmCache();
+  const auto poisonLookup = browser.LookupById(poisonId);
+  const auto poison = espm::Convert<espm::ALCH>(poisonLookup.rec);
+  const auto poisonData = poison ? poison->GetData(cache) : espm::ALCH::Data();
+  if (!poison || !poisonData.isPoison) {
+    spdlog::warn("CalculatePoisonHit - {:#x} is not a poison, ignored",
+                 poisonId);
+    return hit;
+  }
+  for (const auto& effect : poisonData.effects) {
+    const auto mgefLookup =
+      browser.LookupById(poisonLookup.ToGlobalId(effect.effectId));
+    const auto mgef = espm::Convert<espm::MGEF>(mgefLookup.rec);
+    if (!mgef) {
+      ++hit.ignored;
+      continue;
+    }
+    const auto mgefData = mgef->GetData(cache);
+    const auto& data = mgefData.data;
+    float* value = nullptr;
+    switch (data.primaryAV) {
+      case espm::ActorValue::Health:
+        value = &hit.health;
+        break;
+      case espm::ActorValue::Stamina:
+        value = &hit.stamina;
+        break;
+      case espm::ActorValue::Magicka:
+        value = &hit.magicka;
+        break;
+      default:
+        break;
+    }
+    const bool harmful = data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
+      data.IsFlagSet(espm::MGEF::Flags::Detrimental);
+    // Paralysis, rate drains, weaknesses and influence have no server side effect
+    if (!value || !harmful ||
+        data.effectType != espm::MGEF::EffectType::ValueMod) {
+      ++hit.ignored;
+      continue;
+    }
+    if (!internal::ConditionsHold(mgefData.conditions, mgefLookup, aggressor,
+                                  target)) {
+      ++hit.ignored;
+      continue;
+    }
+    // A lingering poison lands as one burst, the hit path has no per victim timer
+    const float seconds = static_cast<float>(std::max(1u, effect.duration));
+    *value += effect.magnitude * seconds *
+      internal::GetResistMult(data.resistAV, aggressor, target);
+  }
+  return hit;
 }
 
 float TES5DamageFormula::CalculateDamage(const MpActor& aggressor,

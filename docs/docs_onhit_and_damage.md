@@ -58,5 +58,25 @@ resistMult = 1 - min(resistance, 85) / 100;
 So racial passives such as Nord frost, Dunmer fire, Redguard and Bosmer poison, and Argonian and Bosmer disease
 resistance act on server spell damage straight from the plugin's race abilities. Only the resist value the effect
 names applies: magic resistance or armor rating abilities count for the few effects that name them (Vampiric Drain,
-some dragon and Wabbajack effects), and there is no general magic resistance on other spells. The server computes no
-weapon poison damage.
+some dragon and Wabbajack effects), and there is no general magic resistance on other spells.
+
+Weapon poison:
+```
+// the aggressor's inventory copy of the weapon that hit carries poisonId/poisonCount (put there when the poison was applied)
+// every hostile or detrimental Health, Stamina or Magicka value effect of the ALCH:
+poisonDamage[av] = sum(magnitude * max(1, duration) * resistMult(effect's MGEF resist value));
+```
+The Health part joins the weapon damage, so `onHitDamageAttempt`, god mode and bleedout see one total, and a blocked
+swing still delivers the whole poison, while a bash (shield, bow or power bash) neither poisons nor spends a use, as in
+the engine. Stamina and Magicka drop separately on the target. A lingering poison lands as
+one burst (magnitude times seconds) because the hit path has no per-victim timer. Damage Health and Damage Magicka
+poisons name PoisonResist, so the Redguard and Bosmer passives halve them; the vanilla Damage Stamina poisons name no
+resist value and land in full. Paralysis, rate drains (Damage Stamina Rate), weaknesses (PeakValueMod) and influence
+effects, and any effect whose conditions fail, are only counted in the log line (`OnWeaponHit - <aggressor> poisons
+<target> with <alch>: ... effects ignored`). Applying a poison puts one use on the server's copy of the worn weapon at
+once; with Concentrated Poison the engine puts two, and the client's report within 15 s raises the copy to two on the
+same credit (`poison up to 2 (perk)` in the crafted log).
+Each landed hit spends one use of the poison on the server's copy and sends the attacker a SetInventory, which their
+engine already matches because it spent the same charge; a hit refused by the attack speed check or the gamemode leaves
+the charge, and the client's later crafted-extras report reconciles it. Copies of other players never carry the
+poison extra on the client, so the victim's own engine cannot apply it a second time.

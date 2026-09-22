@@ -451,6 +451,129 @@ TEST_CASE("A paralysed actor cannot attack or move", "[Hit]")
   DoDisconnect(p, 1);
 }
 
+namespace {
+constexpr uint32_t kIronDaggerId = 0x0001397e; // 4 damage
+constexpr uint32_t kDefaultPoison = 0x0005629e; // 10 poison damage, 1 s
+
+// A poisoned dagger worn by the aggressor and a hit on the target
+struct PoisonedDaggerFixture
+{
+  PoisonedDaggerFixture(PartOne& p_, uint32_t poisonCount)
+    : p(p_)
+  {
+    DoConnect(p, 0);
+    DoConnect(p, 1);
+    p.CreateActor(kAggressor, { 0, 100, 0 }, 0, 0x3c);
+    p.CreateActor(kTarget, { 0, 0, 0 }, 0, 0x3c);
+    p.SetUserActor(0, kAggressor);
+    p.SetUserActor(1, kTarget);
+
+    Inventory::ExtraData poisoned;
+    poisoned.poisonId = kDefaultPoison;
+    poisoned.poisonCount = poisonCount;
+    Inventory inv;
+    inv.entries.push_back(Inventory::Entry(kIronDaggerId, 1, poisoned));
+    aggressor().SetInventory(inv);
+    Equipment eq;
+    eq.inv.entries.push_back(
+      Inventory::Entry(kIronDaggerId, 1, kExtraWornTrue));
+    aggressor().SetEquipment(eq);
+
+    rawMsgData.userId = 0;
+    hit.data.aggressor = 0x14;
+    hit.data.target = kTarget;
+    hit.data.source = kIronDaggerId;
+  }
+
+  ~PoisonedDaggerFixture()
+  {
+    p.DestroyActor(kAggressor);
+    p.DestroyActor(kTarget);
+    DoDisconnect(p, 0);
+    DoDisconnect(p, 1);
+  }
+
+  MpActor& aggressor() { return p.worldState.GetFormAt<MpActor>(kAggressor); }
+  MpActor& target() { return p.worldState.GetFormAt<MpActor>(kTarget); }
+
+  float HealthLostToHit()
+  {
+    target().SetPercentages({ 1.f, 1.f, 1.f });
+    aggressor().SetLastHitTime(kTarget,
+                               std::chrono::steady_clock::now() - 10s);
+    p.GetActionListener().OnHit(rawMsgData, hit);
+    return 1.f - target().GetChangeForm().actorValues.healthPercentage;
+  }
+
+  float BaseHealth()
+  {
+    auto& t = target();
+    return GetBaseActorValues(&p.worldState, t.GetBaseId(), t.GetRaceId(),
+                              t.GetTemplateChain())
+      .health;
+  }
+
+  Inventory::Entry Dagger()
+  {
+    const auto& entries = aggressor().GetInventory().entries;
+    REQUIRE(entries.size() == 1);
+    return entries[0];
+  }
+
+  static constexpr uint32_t kAggressor = 0xff000000;
+  static constexpr uint32_t kTarget = 0xff000001;
+  PartOne& p;
+  RawMessageData rawMsgData;
+  HitMessage hit;
+};
+}
+
+TEST_CASE("A poisoned weapon adds the poison damage and spends one use",
+          "[Hit]")
+{
+  PoisonedDaggerFixture f(GetPartOne(), 2);
+  const float baseHealth = f.BaseHealth();
+  REQUIRE(baseHealth > 14.f);
+
+  REQUIRE(f.HealthLostToHit() == Catch::Approx(14.f / baseHealth));
+  REQUIRE(f.Dagger().poisonId == kDefaultPoison);
+  REQUIRE(f.Dagger().poisonCount == 1);
+
+  REQUIRE(f.HealthLostToHit() == Catch::Approx(14.f / baseHealth));
+  REQUIRE(!f.Dagger().poisonId);
+  REQUIRE(!f.Dagger().poisonCount);
+
+  REQUIRE(f.HealthLostToHit() == Catch::Approx(4.f / baseHealth));
+}
+
+TEST_CASE("A bash with a poisoned weapon neither poisons nor spends a use",
+          "[Hit]")
+{
+  PoisonedDaggerFixture f(GetPartOne(), 1);
+  const float baseHealth = f.BaseHealth();
+  REQUIRE(baseHealth > 4.f);
+
+  f.hit.data.isBashAttack = true;
+  REQUIRE(f.HealthLostToHit() == Catch::Approx(4.f / baseHealth));
+  REQUIRE(f.Dagger().poisonId == kDefaultPoison);
+  REQUIRE(f.Dagger().poisonCount == 1);
+}
+
+TEST_CASE("Poison damage respects the target's race poison resistance",
+          "[Hit][TES5DamageFormula]")
+{
+  PoisonedDaggerFixture f(GetPartOne(), 1);
+
+  Appearance appearance;
+  appearance.raceId = 0x00013749; // WoodElfRace, RaceWoodElf resists poison 50
+  f.target().SetAppearance(&appearance);
+  const float baseHealth = f.BaseHealth();
+  REQUIRE(baseHealth > 9.f);
+
+  REQUIRE(f.HealthLostToHit() == Catch::Approx(9.f / baseHealth));
+  REQUIRE(!f.Dagger().poisonId);
+}
+
 TEST_CASE("Healing Hands heals the actor its hits land on, not the caster",
           "[Hit][SpellCast][Restoration]")
 {
