@@ -5,10 +5,15 @@ const path = require('path')
 const cp   = require('child_process')
 const crypto = require('crypto')
 const config = require('./config')
+// Shared with the backend's populate and compile-manifest scripts so the key-file list lives in one place
+const clientPackage = require(path.join(config.paths.backend, 'scripts', 'client-package'))
 
 const isWin = process.platform === 'win32'
 
 const sha256 = data => crypto.createHash('sha256').update(data).digest('hex')
+
+// A Data-relative client path as the zip listing keys it
+const zipKey = rel => ('Data/' + rel).toLowerCase()
 
 // One hash over sha256sum-style lines of the part files, recomputable from Get-FileHash output
 function extensionsManifest(files) {
@@ -503,6 +508,70 @@ class Builder {
     return { ok: true }
   }
 
+  // data/files-version.json lists the last zip; entries are keyed by lower-cased path since dist and the zip come from a case-insensitive disk
+  readFilesVersion() {
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(config.paths.dataDir, 'files-version.json'), 'utf8'))
+      if (!Array.isArray(v.files)) return null
+      v.zipped = new Map(v.files.map(f => [f.path.toLowerCase(), f]))
+      return v
+    } catch { return null }
+  }
+
+  // Launchers download the zip only when CLIENT_VERSION changed, so a zip that would differ from the last one
+  // (a file added, removed or resized under Data, a key file's hash) needs a new version before it is rebuilt.
+  // Returns the dist hashes for the zip report.
+  async checkClientVersion(clientData) {
+    const hashes = new Map()
+    const missing = []
+    for (const rel of clientPackage.KEY_FILES) {
+      const p = path.join(clientData, rel)
+      if (fs.existsSync(p)) hashes.set(rel, await clientPackage.sha256File(p))
+      else missing.push(rel)
+    }
+    if (missing.length) return { ok: false, error: `client files missing from ${clientData}: ${missing.join(', ')} - rebuild the client (Native for a dll) before packaging` }
+    const prev = this.readFilesVersion()
+    if (!prev) return { ok: true, hashes }
+    const next = new Map(clientPackage.walkFiles(clientData).filter(f => !clientPackage.isModOwned(f.rel)).map(f => [zipKey(f.rel), f]))
+    const changed = new Map()
+    for (const [key, f] of prev.zipped) if (key.startsWith('data/') && !next.has(key)) changed.set(key, `${f.path} removed`)
+    for (const [key, f] of next) {
+      const z = prev.zipped.get(key)
+      if (!z) changed.set(key, `${f.rel} added`)
+      else if (z.size !== f.size) changed.set(key, `${f.rel} resized`)
+    }
+    for (const [rel, sha] of hashes) if (prev.zipped.get(zipKey(rel))?.sha256 !== sha) changed.set(zipKey(rel), `${rel} changed`)
+    const version = require(config.paths.versionRoute).readConst('CLIENT_VERSION', '')
+    if (!changed.size) {
+      if (version === prev.version) this.line(`[client] zip content unchanged since the ${prev.version} zip: launchers that hold ${prev.version} will not download it`)
+      return { ok: true, hashes }
+    }
+    const list = [...changed.values()]
+    this.line(`[client] ${list.length} file(s) differ from the ${prev.version} zip: ${list.slice(0, 12).join(', ')}${list.length > 12 ? ', ...' : ''}`)
+    if (version === prev.version) {
+      return { ok: false, error: `client files changed but the Client version is still ${prev.version}: launchers compare versions only and would keep the old files. Set a new Client version in the Build tab and Build Client again.` }
+    }
+    return { ok: true, hashes }
+  }
+
+  // files-version.json is hashed from the folder the zip was built from, so it stands in for reading the zip
+  reportClientZip(hashes) {
+    const v = this.readFilesVersion()
+    if (!v) return { ok: false, error: 'build-client wrote no data/files-version.json' }
+    let bad = 0
+    for (const [rel, sha] of hashes) {
+      const z = v.zipped.get(zipKey(rel))?.sha256
+      if (z === sha) { this.line(`✓ ${rel} in zip (sha ${sha.slice(0, 8)})`); continue }
+      bad++
+      this.line(z ? `STALE ${rel}: zip ${z.slice(0, 8)} dist ${sha.slice(0, 8)}` : `MISSING ${rel} in zip`)
+    }
+    const modOwned = v.files.filter(f => /^Data\//i.test(f.path) && clientPackage.isModOwned(f.path.slice(5))).map(f => f.path)
+    if (modOwned.length) { bad++; this.line(`MOD-OWNED in zip (the install manifest delivers these): ${modOwned.join(', ')}`) }
+    if (bad) return { ok: false, error: 'the client zip does not match build/dist/client - see the STALE, MISSING or MOD-OWNED lines' }
+    this.line(`\n✓ client zip ${v.version} built ${v.builtAt}, ${v.files.length} files, ${(v.zipSize / 1048576).toFixed(1)} MB`)
+    return { ok: true }
+  }
+
   // CLIENT: rebuild the client-side JS (front-end UI + skymp5-client.js) into
   // build/dist/client, then package the client files into the launcher's
   // redistributable (skymp-client.zip + data/files-version.json). The native
@@ -530,15 +599,19 @@ class Builder {
     const logic = await this.buildClientLogic()
     if (!logic.ok) return logic
 
+    const dep = await this.ensureDeps(config.paths.backend, 'backend', 'npm')
+    if (!dep.ok) return dep
+    const gate = await this.checkClientVersion(clientData)
+    if (!gate.ok) return gate
+
     // populate-files.js copies build/dist/client/Data into the backend file bucket,
     // merge-files.js builds skymp-client.zip + data/files-version.json (version from
     // CLIENT_VERSION in routes/version.js, set it from the Client version field).
-    const dep = await this.ensureDeps(config.paths.backend, 'backend', 'npm')
-    if (!dep.ok) return dep
     const r = await this.run('npm', ['run', 'build-client'], config.paths.backend, 'package client: npm run build-client')
     if (!r.ok) return { ok: false, error: 'build-client failed - see log (is build/dist/client complete?)' }
 
-    this.line('\n✓ Client files packaged into the launcher bucket (skymp-client.zip + files-version.json) from the CI build.')
+    const report = this.reportClientZip(gate.hashes)
+    if (!report.ok) return report
     return { ok: true, out: config.paths.clientOut }
   }
 }

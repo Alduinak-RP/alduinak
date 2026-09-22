@@ -3,28 +3,24 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
 
 /**
- * Merge pipeline: copies the client source into the bucket the launcher downloads and builds the zip.
+ * Zips the bucket the launcher downloads and writes its version manifest:
  *   build/dist/client (via `npm run populate`) -> build/client-files/root/ -> build/client-files/<zip> + data/files-version.json
  * SKSE is NOT included; the user manages it via the Vortex collection.
  * Run standalone: node scripts/merge-files.js. Called by scripts/setup-client.js and routes/webhook.js.
  */
 
-const path               = require('path')
-const fs                 = require('fs')
-const crypto             = require('crypto')
-const { execFileSync }   = require('child_process')
-const archiver           = require('archiver')
-const config             = require('../config')
+const path                     = require('path')
+const fs                       = require('fs')
+const { execFileSync }         = require('child_process')
+const archiver                 = require('archiver')
+const config                   = require('../config')
+const { walkFiles, sha256File } = require('./client-package')
 
 const ROOT = path.join(__dirname, '..')
 
-const CLIENT_SRC   = path.join(ROOT, 'sources', 'client')
 const OUTPUT_DIR   = path.join(config.clientFilesDir, 'root')
 const ZIP_PATH     = path.join(config.clientFilesDir, config.clientZipName)
 const VERSION_FILE = path.join(ROOT, 'data', 'files-version.json')
-
-// skymp5-client-settings.txt is the launcher's per-player file (server ip, hotkey rebinds): never copied and never listed in the manifest, since the launcher rewrites it on every launch
-const SKIP_ALWAYS = new Set(['.git', '.gitignore', '.gitattributes', 'skymp5-client-settings.txt'])
 
 // Version helpers
 
@@ -32,66 +28,21 @@ function routeClientVersion() {
   return require('../routes/version').readConst('CLIENT_VERSION', '').trim()
 }
 
-// Short git hash for the client files version: tries the legacy sources/client checkout, then the skyrp monorepo; changes only on new commits, 'nogit' if neither is a repo
+// Short git hash of the monorepo for the client files version; changes only on new commits, 'nogit' outside a repo
 function clientGitHash() {
-  for (const dir of [CLIENT_SRC, path.join(ROOT, '..')]) {
-    try {
-      return execFileSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], {
-        encoding: 'utf8',
-        stdio:    ['ignore', 'pipe', 'ignore'],
-      }).trim()
-    } catch { /* try next */ }
-  }
-  return 'nogit'
-}
-
-// File copy
-
-function copyDir(srcDir, destDir, skipNames = new Set()) {
-  if (!fs.existsSync(srcDir)) {
-    console.warn(`[merge] source not found, skipping: ${srcDir}`)
-    return 0
-  }
-  let count = 0
-  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    if (skipNames.has(entry.name)) continue
-    const src  = path.join(srcDir, entry.name)
-    const dest = path.join(destDir, entry.name)
-    if (entry.isDirectory()) {
-      fs.mkdirSync(dest, { recursive: true })
-      count += copyDir(src, dest, skipNames)
-    } else {
-      fs.mkdirSync(path.dirname(dest), { recursive: true })
-      fs.copyFileSync(src, dest)
-      count++
-    }
-  }
-  return count
+  try {
+    return execFileSync('git', ['-C', path.join(ROOT, '..'), 'rev-parse', '--short', 'HEAD'], {
+      encoding: 'utf8',
+      stdio:    ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch { return 'nogit' }
 }
 
 // Per-file manifest of the output dir (launcher-owned files excluded), so the launcher's Check Files can verify every client file by size + sha256.
 
-function sha256File(p) {
-  return new Promise((resolve, reject) => {
-    const h = crypto.createHash('sha256')
-    fs.createReadStream(p)
-      .on('data', d => h.update(d))
-      .on('end', () => resolve(h.digest('hex')))
-      .on('error', reject)
-  })
-}
-
-async function listFiles(dir, base = dir, out = []) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (SKIP_ALWAYS.has(e.name)) continue
-    const full = path.join(dir, e.name)
-    if (e.isDirectory()) { await listFiles(full, base, out); continue }
-    out.push({
-      path:   path.relative(base, full).split(path.sep).join('/'),
-      size:   fs.statSync(full).size,
-      sha256: await sha256File(full),
-    })
-  }
+async function listFiles(dir) {
+  const out = []
+  for (const f of walkFiles(dir)) out.push({ path: f.rel, size: f.size, sha256: await sha256File(f.full) })
   return out
 }
 
@@ -117,14 +68,8 @@ function buildZip(srcDir, zipPath) {
 async function mergeSourcesIntoRoot() {
   const startMs = Date.now()
 
-  console.log('[merge] Starting merge…')
-  console.log(`[merge]   client  : ${CLIENT_SRC}`)
-  console.log(`[merge]   output  : ${OUTPUT_DIR}`)
-
+  console.log(`[merge] Zipping ${OUTPUT_DIR}`)
   fs.mkdirSync(OUTPUT_DIR, { recursive: true })
-
-  const clientFiles = copyDir(CLIENT_SRC, OUTPUT_DIR, SKIP_ALWAYS)
-  console.log(`[merge] Files merged: ${clientFiles} total in ${Date.now() - startMs}ms`)
 
   console.log('[merge] Building zip…')
   const zipStart = Date.now()
@@ -140,13 +85,13 @@ async function mergeSourcesIntoRoot() {
   fs.writeFileSync(VERSION_FILE, JSON.stringify({
     version,
     builtAt:   new Date().toISOString(),
-    fileCount: clientFiles,
+    fileCount: files.length,
     zipSize,
     files,
   }, null, 2) + '\n')
-  console.log(`[merge] Version: ${version}`)
+  console.log(`[merge] Version: ${version}, ${files.length} files in ${Date.now() - startMs}ms`)
 
-  return { clientFiles, total: clientFiles, zipSize }
+  return { total: files.length, zipSize }
 }
 
 // CLI entry

@@ -7,7 +7,7 @@
 
 const fs   = require('fs')
 const path = require('path')
-const { REQUIRED } = require('./client-package')
+const { REQUIRED, isModOwned } = require('./client-package')
 
 // Source: the skymp build output Data/ directory
 const SKYMP_DATA = process.env.SKYMP_CLIENT_DATA
@@ -24,19 +24,19 @@ if (!fs.existsSync(SKYMP_DATA)) {
   process.exit(1)
 }
 
-// Plugins ship only through the MO2 install manifest; a zip copy lands in the real Data folder and drifts
-const PLUGIN_RE = /\.(esp|esm|esl)$/i
-const skippedPlugins = []
+// Plugins and the patcher's json files ship only through the MO2 install manifest; a zip copy lands in the real Data folder and drifts
+const skipped = []
 
 // Copy the whole Data/ tree
 let copied = 0
-function copyTree(src, dest) {
+function copyTree(src, dest, rel = '') {
   fs.mkdirSync(dest, { recursive: true })
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const s = path.join(src, entry.name)
     const d = path.join(dest, entry.name)
-    if (entry.isDirectory()) copyTree(s, d)
-    else if (src === SKYMP_DATA && PLUGIN_RE.test(entry.name)) skippedPlugins.push(entry.name)
+    const r = rel + entry.name + (entry.isDirectory() ? '/' : '')
+    if (isModOwned(r)) skipped.push(r)
+    else if (entry.isDirectory()) copyTree(s, d, r)
     else { fs.copyFileSync(s, d); copied++ }
   }
 }
@@ -44,8 +44,8 @@ function copyTree(src, dest) {
 console.log(`\nCopying client Data from\n  ${SKYMP_DATA}\nto\n  ${DATA_DEST}`)
 fs.rmSync(DATA_DEST, { recursive: true, force: true })
 copyTree(SKYMP_DATA, DATA_DEST)
-if (skippedPlugins.length > 0) {
-  console.log(`Skipped plugin(s) ${skippedPlugins.join(', ')}: the MO2 install manifest delivers plugins, not the client zip.`)
+if (skipped.length > 0) {
+  console.log(`Skipped ${skipped.join(', ')}: the MO2 install manifest delivers plugins and mod-owned json, not the client zip.`)
 }
 
 // Completeness check

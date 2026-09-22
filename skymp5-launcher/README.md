@@ -138,8 +138,9 @@ mod folder (`dataFileFinder`).
 A client change reaches players through the zip alone: set a new **Client
 version** in the manager's Build tab (launchers download the zip only when the
 version differs from the one they stored, `files:updateCheck` and
-`installClientFilesCore`), then Build Client. No Nexus upload and no Update
-manifest are needed for a client change.
+`installClientFilesCore`), then Build Client, which refuses to rebuild the zip
+when its content would differ from the last zip under an unchanged version. No Nexus upload and
+no Update manifest are needed for a client change.
 
 ## Stray files in the game copy
 

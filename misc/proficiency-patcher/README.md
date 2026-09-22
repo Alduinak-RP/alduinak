@@ -193,8 +193,9 @@ bench ever offered it). Running last keeps the ids of everything before them, wh
 - The output plugin must reach the server Data folder, `C:/MO2/mods/Alduinak`, `build/dist/client/Data` and
   the install manifest together (Server Manager "Update manifest", "Sync Data", "Build Client").
 - `CraftingCategories/AlduinakAdditions.json` goes to `SKSE/Plugins/CraftingCategories/` of the Alduinak Client
-  Files mod with the plugin. Without it the category keywords are inert. No other copy may ship: the launcher's
-  client zip must not carry `build/dist/client/Data/SKSE/Plugins/CraftingCategories/AlduinakAdditions.json`.
+  Files mod with the plugin. Without it the category keywords are inert. No other copy may ship: `populate-files.js`
+  leaves the `CraftingCategories` folder, the plugin and the top-level json files out of the launcher's client zip
+  even when they sit in `build/dist/client/Data`, and Build Client fails if the zip carries one anyway.
 - The server reads the plugin once at startup: restart the game service.
 - `proficiency-ids.json` holds the global ids the live `server-settings.json` needs for
   `damageMultConditionalFormulaSettings` (the hunter's Over Draw rule); `masterySpells` needs nothing, the

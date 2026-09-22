@@ -8,6 +8,7 @@
  */
 
 const fs     = require('fs')
+const path   = require('path')
 const crypto = require('crypto')
 
 const CLIENT_PACKAGE_PREFIXES = ['Platform/']
@@ -52,6 +53,20 @@ function isModOwned(rel) {
   return (!r.includes('/') && /\.(esp|esm|esl|json)$/.test(r)) || r.startsWith('skse/plugins/craftingcategories/')
 }
 
+// Repo files and the launcher's per-player settings file (rewritten on every launch) never enter the zip listing
+const ZIP_SKIP_NAMES = new Set(['.git', '.gitignore', '.gitattributes', 'skymp5-client-settings.txt'])
+
+// Stat-only walk with forward-slash paths relative to base, ZIP_SKIP_NAMES left out
+function walkFiles(dir, base = dir, out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (ZIP_SKIP_NAMES.has(e.name)) continue
+    const full = path.join(dir, e.name)
+    if (e.isDirectory()) walkFiles(full, base, out)
+    else out.push({ rel: path.relative(base, full).split(path.sep).join('/'), size: fs.statSync(full).size, full })
+  }
+  return out
+}
+
 // Streamed: libcef.dll is 190 MB and mod folders hold multi-GB BSAs
 function sha256File(p) {
   return new Promise((resolve, reject) => {
@@ -64,6 +79,6 @@ function sha256File(p) {
 }
 
 module.exports = {
-  CLIENT_PACKAGE_PREFIXES, CLIENT_PACKAGE_FILES, CLIENT_PACKAGE_LABEL, REQUIRED, KEY_FILES,
-  isClientPackage, isModOwned, sha256File,
+  CLIENT_PACKAGE_PREFIXES, CLIENT_PACKAGE_FILES, CLIENT_PACKAGE_LABEL, REQUIRED, KEY_FILES, ZIP_SKIP_NAMES,
+  isClientPackage, isModOwned, walkFiles, sha256File,
 }
