@@ -17,8 +17,9 @@ type Mp = any;
 //   gatheringStrikeSeconds       seconds of work per pickaxe strike, default 5
 //   gatheringChopSeconds         seconds one swing of the axe takes before the firewood lands, default 8
 //   gatheringChopYield           firewood one swing hands over, default 2
-//   gatheringVeinRespawnMinutes  how long a fully mined vein takes to grow back, default 1440
-//   gatheringVeinRegenMinutes    minutes per ore collection grown back, default respawn / vein total
+//   gatheringVeinTotal           ore collections every vein holds, default 6; 0 uses each record's resourcecounttotal
+//   gatheringVeinRespawnMinutes  minutes after the first ore taken until the whole vein is back, default 1440, 0 keeps it
+//   gatheringVeinRegenMinutes    set: minutes per ore collection grown back, one at a time, instead of the whole vein at once
 //   miningVeinTiers              { "<ore editor id or hex id>": "Novice" | rank index | "Anyone" } overriding DEFAULT_VEIN_TIERS
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
@@ -28,7 +29,7 @@ type Mp = any;
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
 // needsMineFatigue); woodworkers and miners pay the smaller price for their own trade, and a bar that cannot pay
 // for one more turns the station away.
-// Veins grow back one collection at a time, so a vein worked in the morning has a little to give by evening.
+// A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
 // Every ore but iron needs the miner profession at its rank; iron is open to anyone with a pickaxe.
 // Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
@@ -51,6 +52,8 @@ const DEFAULT_STRIKE_SECONDS = 5;
 const DEFAULT_CHOP_SECONDS = 8;
 const DEFAULT_CHOP_YIELD = 2;
 const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
+// Overrides the record's total on every vein; 0 keeps the record's own
+const DEFAULT_VEIN_TOTAL = 6;
 const DEFAULT_PICK_MINUTES = 30;
 const DEFAULT_HARVEST_SECONDS = 5;
 const HARVEST_ANIM = "IdleKneelingEnter";
@@ -137,7 +140,9 @@ export class GatheringSystem implements System {
     const chopYield = Number(all?.["gatheringChopYield"]);
     if (Number.isFinite(chopYield) && chopYield > 0) this.chopYield = Math.floor(chopYield);
     const respawn = Number(all?.["gatheringVeinRespawnMinutes"]);
-    if (Number.isFinite(respawn) && respawn >= 0) this.respawnMs = respawn * 60000;
+    if (Number.isFinite(respawn) && respawn > 0) this.respawnMs = respawn * 60000;
+    const veinTotal = Number(all?.["gatheringVeinTotal"]);
+    if (Number.isFinite(veinTotal) && veinTotal >= 0) this.veinTotalOverride = Math.floor(veinTotal);
     const pick = Number(all?.["gatheringPickMinutes"]);
     if (Number.isFinite(pick) && pick >= 0) this.pickMs = pick * 60000;
     const harvest = Number(all?.["gatheringHarvestSeconds"]);
@@ -153,8 +158,9 @@ export class GatheringSystem implements System {
     ctx.gm.once(WORLD_LOADED_EVENT, () => { this.worldLoaded = true; });
 
     this.installHooks(ctx);
-    const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `a full vein in ${this.respawnMs / 60000} min`;
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels for ${this.harvestMs / 1000} s`);
+    const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
+    const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels for ${this.harvestMs / 1000} s`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -472,7 +478,7 @@ export class GatheringSystem implements System {
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
     this.needs.applyMineFatigue(ctx, s.actorId, miner);
     state.left -= 1;
-    if (!state.regenAt) state.regenAt = now + this.regenPer(s.cap);
+    if (!state.regenAt) state.regenAt = now + this.regenPer();
     this.writeVein(ctx, s.veinId, state);
     if (state.left <= 0) this.finish(ctx, s, "The vein is depleted.");
   }
@@ -582,25 +588,31 @@ export class GatheringSystem implements System {
   // ── Veins ───────────────────────────────────────────────────────────────────
 
   private veinTotal(props: Record<string, number>): number {
-    return Math.max(1, props["resourcecounttotal"] || VEIN_DEFAULT_TOTAL);
+    return this.veinTotalOverride || Math.max(1, props["resourcecounttotal"] || VEIN_DEFAULT_TOTAL);
   }
 
-  // Time for one collection to grow back.
-  private regenPer(total: number): number {
-    return this.regenMs || Math.max(60000, Math.floor(this.respawnMs / Math.max(1, total)));
+  // Time for one collection to grow back, or for the whole vein when growth is not gradual.
+  private regenPer(): number {
+    return this.regenMs || this.respawnMs;
   }
 
   // Remaining collections ride the vein changeform, so a restart keeps a mined-out vein empty; growth is settled on read.
-  private veinState(ctx: SystemContext, veinId: number, total: number, per = this.regenPer(total)): VeinState {
+  private veinState(ctx: SystemContext, veinId: number, total: number, per = this.regenPer()): VeinState {
     let raw: any = null;
     try { raw = (ctx.svr as Mp).get(veinId, VEIN_PROP); } catch { /* never mined */ }
     let left = raw && Number.isFinite(Number(raw.left)) ? Math.min(Number(raw.left), total) : total;
     // Records from before growth carry resetAt, the moment the whole vein came back.
     let regenAt = raw ? Number(raw.regenAt) || Number(raw.resetAt) || 0 : 0;
     const now = Date.now();
-    while (left < total && regenAt && now >= regenAt) {
-      left += 1;
-      regenAt += per;
+    // Nothing growing back means the total rose since the record was written
+    if (left < total && !regenAt) left = total;
+    if (this.regenMs) {
+      while (left < total && now >= regenAt) {
+        left += 1;
+        regenAt += per;
+      }
+    } else if (left < total && now >= regenAt) {
+      left = total;
     }
     if (left >= total) return { left: total, regenAt: 0 };
     return { left, regenAt };
@@ -741,6 +753,7 @@ export class GatheringSystem implements System {
   private chopYield = DEFAULT_CHOP_YIELD;
   private respawnMs = DEFAULT_VEIN_RESPAWN_MINUTES * 60000;
   private regenMs = 0;
+  private veinTotalOverride = DEFAULT_VEIN_TOTAL;
   private veinTiers = new Map<number, number>();
   private sessions = new Map<number, Session>();
   private pendingSeats: Array<{ markerId: number; actorId: number }> = [];

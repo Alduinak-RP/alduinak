@@ -310,10 +310,14 @@ on the Hunter Master marker, bows or crossbows, and a non-player target
 `gatheringSystem.ts` refuses a vein whose ore is above the character's miner
 rank ("Only a miner of Adept rank or better can work this vein"); iron and
 corundum stay open. Tiers are `DEFAULT_VEIN_TIERS` by ore editor id, with a
-`miningVeinTiers` override. Veins **grow back one collection at a time**: a
-vein worked at noon has an ore again by evening. The state is
-`private.gathering = { left, regenAt }` on the vein; older `{ left, resetAt }`
-records are read as the next regrowth time.
+`miningVeinTiers` override. Every vein holds **six ore** (`gatheringVeinTotal`,
+one per strike, so six strikes of five seconds) and **comes back whole 24 hours
+after its first ore was taken** (`gatheringVeinRespawnMinutes`), whether one
+ore or all six were mined; `gatheringVeinRegenMinutes` switches that to one
+collection at a time. The state is `private.gathering = { left, regenAt }` on
+the vein; older `{ left, resetAt }` records are read as the next regrowth time,
+and a record with ore missing and no regrowth pending (written before the total
+rose from three to six) is read as full.
 
 ### Hunting
 

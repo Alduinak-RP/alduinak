@@ -924,8 +924,9 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `masterySpells` | plugin markers | `{ "<profession>": [novice, adept, expert, master] }` form ids; a profession left out uses the plugin's `AldMastery_<Profession>_<Rank>` spells |
 | `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
 | `gatheringStrikeSeconds` | `5` | Seconds per chop or pickaxe strike |
-| `gatheringVeinRespawnMinutes` | `1440` | Time for a fully mined vein to grow back |
-| `gatheringVeinRegenMinutes` | respawn / vein total | Minutes per ore collection grown back |
+| `gatheringVeinTotal` | `6` | Ore collections every vein holds, vanilla veins and the sea salt deposits alike; each pickaxe strike still gives the record's own count (1), so a vein is six strikes. `0` uses each record's `ResourceCountTotal` (3 for the vanilla veins) |
+| `gatheringVeinRespawnMinutes` | `1440` | Minutes after the first ore taken until the whole vein is back, at once, whether one ore or all six were taken. `0` keeps the default rather than making veins endless |
+| `gatheringVeinRegenMinutes` | unset | When set, veins grow back gradually instead: one collection per that many minutes, the first one that long after the first ore taken |
 | `miningVeinTiers` | iron, corundum open; gold, silver Adept; orichalcum, moonstone Expert; malachite, quicksilver, ebony Master | `{ "<ore editor id>": "Adept" }` overrides, by the ore item the vein hands out |
 | `gatheringProduceContainers` | `{ "BeeHive": 60, "BeeHiveVacant": 60 }` | `{ "<container editor id>": minutes }`: placed containers of these bases never open; E hands over their yield and it grows back after the minutes. Replaces the default, `{}` turns it off |
 | `gatheringProduceYield` | `{ "BeeHive": { "BeeHoneyComb": 2, "BeeHiveHusk": 2 }, "BeeHiveVacant": { … } }` | `{ "<container>": { "<item editor id or hex id>": count } }` handed over instead of the container record's own contents. A container whose items do not resolve keeps its record contents |
