@@ -1,10 +1,5 @@
 // Faction rank policy on top of the backend definitions; pure data, no mp calls
 
-export interface UniformItem {
-  item: string;
-  count: number;
-}
-
 // A character joins at most one faction of each type
 export type FactionType = "hold" | "military" | "guild";
 
@@ -30,8 +25,6 @@ export interface RankDef {
   arrest: boolean;
   execute: boolean;
   factionAccess: boolean;
-  issuesUniform: boolean;
-  uniform: UniformItem[] | null;
 }
 
 export type Permission = "remove" | "craft" | "housing" | "arrest" | "execute";
@@ -48,7 +41,6 @@ export interface FactionDef {
   name: string;
   zone: string;
   color: string;
-  uniform: UniformItem[];
   regencyEnabled: boolean;
   // Ordered stand-ins; the first one online acts while no leader is
   regents: RegentSeat[];
@@ -84,11 +76,6 @@ const DEFAULT_COLOR = "c9a36b";
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 const slugList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
-
-const uniformList = (v: unknown): UniformItem[] | null =>
-  Array.isArray(v)
-    ? v.filter((u) => u && typeof u.item === "string" && Number.isInteger(u.count) && u.count > 0).map((u) => ({ item: u.item, count: u.count }))
-    : null;
 
 const factionType = (v: unknown, scope: string): FactionType =>
   FACTION_TYPES.includes(v as FactionType) ? (v as FactionType) : scope === "hold" ? "hold" : "guild";
@@ -128,7 +115,6 @@ export function buildFactions(raw: { factions?: unknown[]; requirements?: unknow
       name: str(r.name) || str(r.group) || id,
       zone: str(r.zone),
       color: /^[0-9a-f]{6}$/.test(str(r.color)) ? str(r.color) : DEFAULT_COLOR,
-      uniform: uniformList(r.uniform) || [],
       regencyEnabled: r.regencyEnabled === true,
       regents: regentSeats(r.regents),
       ranks: [],
@@ -159,8 +145,6 @@ export function buildFactions(raw: { factions?: unknown[]; requirements?: unknow
       arrest: r.arrest === true,
       execute: r.execute === true,
       factionAccess: r.factionAccess !== false,
-      issuesUniform: r.issuesUniform === true,
-      uniform: uniformList(r.uniform),
     });
   }
   for (const faction of out.values()) faction.ranks.sort((a, b) => a.order - b.order);
@@ -234,13 +218,6 @@ export const canRemove = (faction: FactionDef, auth: Authority, memberRank: Rank
 
 // Only a leader (or staff) seats regents, and never in a second faction
 export const canManageRegency = (auth: Authority): boolean => auth.staff || !!auth.rank?.leader;
-
-export function canIssueUniform(faction: FactionDef, auth: Authority): boolean {
-  return hasFullAuthority(auth) || !!auth.rank?.issuesUniform;
-}
-
-// A rank's own list replaces the faction list
-export const uniformFor = (faction: FactionDef, rank: RankDef): UniformItem[] => rank.uniform && rank.uniform.length ? rank.uniform : faction.uniform;
 
 // The Show Title prefix: an acting regent carries the faction type's regent title, everyone else their rank's
 export function titleOf(faction: FactionDef, rank: RankDef, acting: boolean, female: boolean): string {

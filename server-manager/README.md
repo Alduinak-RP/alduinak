@@ -49,8 +49,8 @@ fails it prints a direct download URL - save that zip as
 - **Factions** - create, edit and delete factions (name, zone, colour), their
   ranks (name, ladder order, capacity) and what each rank may do: a tick matrix
   of the ranks it may appoint, promote to, demote from and remove, plus flags
-  for inviting, managing hold property, faction doors and chests, and issuing
-  uniforms. It is the same editor as the dashboard's Factions view
+  for inviting, crafting faction gear, managing hold property, and faction
+  doors and chests. It is the same editor as the dashboard's Factions view
   (`skymp5-backend/public/dashboard/faction-editor.js`, loaded by relative
   path, so run the manager from the repo checkout) and talks to the running
   backend's `/api/factions` routes: the backend is the only writer, so the
@@ -59,9 +59,8 @@ fails it prints a direct download URL - save that zip as
   `/api/factions` paths made of slugs; the backend honours that token only
   from loopback. Deleting a faction or rank that people hold first lists them
   and arms **Remove N memberships and delete**; deleted ids are never reused.
-  Edits reach the game server within about 20 seconds. Uniform item lists are
-  edited in the dashboard's Factions view, and faction doors and chests in the
-  game server's `faction-access.json`, not here. Test: `node tools/test-factions-proxy.js`.
+  Edits reach the game server within about 20 seconds. Faction doors and
+  chests are edited in the game server's `faction-access.json`, not here. Test: `node tools/test-factions-proxy.js`.
 - **Build** - three columns (**Game Server**, **Launcher**, **Client**) with their
   build buttons and version fields, sharing one build console. The buttons are
   **JS/packaging only** - the native code (`.dll` / `.node`) is compiled by the

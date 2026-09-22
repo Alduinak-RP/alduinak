@@ -418,7 +418,6 @@ The faction system (`docs_roleplay_property_factions.md` section 6) needs `maste
 | Key | Default | Meaning |
 |---|---|---|
 | `factionInviteMaxDistance` | `1024` | How close an officer must stand to invite someone, in game units |
-| `factionUniformCooldownHours` | `24` | Hours before the same character can be issued the same faction's uniform again |
 
 Faction-only doors and containers come from `faction-access.json` next to `gamemode.js`, not from this file.
 
@@ -607,7 +606,7 @@ Every player opens the Personal Menu with the interact key (X by default) while 
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`, grant pets, and place, teleport to either end of and delete the passive jobs of `Jobs.json`, see `docs_roleplay_jobs.md`;
   - Item Spawner, see below;
   - Weather: every weather region with its current weather, the time left, the players in it and the one the admin stands in; force a weather on a region until cleared or for a number of minutes, and clear it, see `docs_roleplay_weather.md`.
-- **Faction**: the character's factions with roster, promote, demote, set rank, remove, uniform, leave and the /f chat choice, see `docs_roleplay_property_factions.md`.
+- **Faction**: the character's factions with roster, promote, demote, set rank, remove, leave and the /f chat choice, see `docs_roleplay_property_factions.md`. Hold uniforms are crafted by the Captain (and the Jarl or an acting regent), never issued.
 - **Skills**: the mastery (craft) menu.
 - **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, the distance to whatever the player faces (the crosshair when it picks something, otherwise the loaded cell's ref nearest the screen centre, so statics, trees and other scenery read too; it re-reads once a second while the tab is open and within a quarter second of a crosshair change, and a target the crosshair leaves stays on screen marked "last seen" until the menu closes; a player character you were not introduced to reads Stranger or Body, as on the interaction prompt), the target's ref id with its `hex:Plugin` desc, server id and base id with its desc (a ref created in game shows the server's base from the world model, plus the client's own base when that differs; another player's character shows its ref and server ids to staff only, since those ids would follow a masked character), a Copy IDs button that puts one line on the clipboard (name, ref id, server id when different, base id, cell and position; the descs paste straight into the Item Spawner search), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
 

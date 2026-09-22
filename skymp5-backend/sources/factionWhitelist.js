@@ -24,15 +24,13 @@ const HOLD_MANAGER_RANKS = ['jarl', 'steward']
 // recruit: the ranks a holder may bring outsiders in at; promote: the ranks it may move a lower member to
 const RANK_LISTS = ['recruit', 'promote']
 // leader carries every permission of its faction, and nobody leads two factions at once
-const RANK_FLAGS = ['leader', 'remove', 'craft', 'housing', 'arrest', 'execute', 'factionAccess', 'issuesUniform']
+const RANK_FLAGS = ['leader', 'remove', 'craft', 'housing', 'arrest', 'execute', 'factionAccess']
 const MAX_REGENTS = 10
 const COLOR_RE = /^[0-9a-f]{6}$/
 const MAX_TEXT = 48
 const MAX_FACTIONS = 64
 const MAX_RANKS = 30
 const MAX_CAPACITY = 999
-const MAX_UNIFORM_ITEMS = 16
-const MAX_UNIFORM_COUNT = 100
 const MEMBER_SAMPLE = 10
 
 let unreadableLogged = false
@@ -151,19 +149,6 @@ const holdKey = groupSlug => String(groupSlug || '').replace(/^the-/, '')
 // Factions written before types existed: a court is a hold, anything else a guild until it is set
 const defaultType = scope => (String(scope) === 'hold' ? 'hold' : 'guild')
 
-function normalizeUniform(raw) {
-  if (raw === null || raw === undefined) return null
-  if (!Array.isArray(raw)) throw fail(400, 'uniform must be a list of { item, count }')
-  if (raw.length > MAX_UNIFORM_ITEMS) throw fail(400, `a uniform holds at most ${MAX_UNIFORM_ITEMS} items`)
-  return raw.map(entry => {
-    const item = cleanText(entry && entry.item, 96)
-    const count = entry && entry.count !== undefined ? Number(entry.count) : 1
-    if (!item) throw fail(400, 'every uniform item needs an item id, e.g. 0x0001391E or 13ED9:Skyrim.esm')
-    if (!Number.isInteger(count) || count < 1 || count > MAX_UNIFORM_COUNT) throw fail(400, `uniform counts run from 1 to ${MAX_UNIFORM_COUNT}`)
-    return { item, count }
-  })
-}
-
 // Ranks without an order keep their position in the file, which is ladder order
 function decorateRequirements(data) {
   const counts = data.assignments.reduce((acc, a) => {
@@ -188,10 +173,8 @@ function decorateRequirements(data) {
       arrest: req.arrest === true,
       execute: req.execute === true,
       factionAccess: req.factionAccess !== false,
-      issuesUniform: req.issuesUniform === true,
       title: cleanText(req.title) || null,
       titleFemale: cleanText(req.titleFemale) || null,
-      uniform: Array.isArray(req.uniform) ? req.uniform : null,
       factionId: fid,
       assigned,
       remaining: Number.isInteger(req.capacity) && req.capacity > 0 ? Math.max(0, req.capacity - assigned) : null,
@@ -213,7 +196,6 @@ function effectiveFactions(data) {
       name: String(f.name || f.group || f.id),
       zone: ZONES.includes(f.zone) ? f.zone : '',
       color: COLOR_RE.test(String(f.color || '')) ? f.color : '',
-      uniform: Array.isArray(f.uniform) ? f.uniform : [],
       regencyEnabled: f.regencyEnabled === true,
       regents: normalizeRegents(f.regents),
       rev: Number.isInteger(f.rev) ? f.rev : 0,
@@ -223,7 +205,7 @@ function effectiveFactions(data) {
     const id = factionIdOf(req.id)
     if (!id || byId.has(id)) continue
     const scope = String(req.scope || id.split(':')[0])
-    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), zone: '', color: '', uniform: [], regencyEnabled: false, regents: [], rev: 0 })
+    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), zone: '', color: '', regencyEnabled: false, regents: [], rev: 0 })
   }
   return [...byId.values()]
 }
@@ -320,7 +302,7 @@ function checkRev(data, faction, rev) {
 function recordFor(data, faction, actor, now) {
   let record = data.factions.find(f => f && f.id === faction.id)
   if (!record) {
-    record = { id: faction.id, scope: faction.scope, group: faction.group, name: faction.name, zone: '', color: '', uniform: [], createdAt: now, createdBy: actor || null }
+    record = { id: faction.id, scope: faction.scope, group: faction.group, name: faction.name, zone: '', color: '', createdAt: now, createdBy: actor || null }
     data.factions.push(record)
   }
   return record
@@ -424,7 +406,6 @@ function createFaction(input, actor) {
     regencyEnabled: false,
     regents: [],
     color: normalizeColor(input.color),
-    uniform: normalizeUniform(input.uniform) || [],
     rev: 1,
     createdAt: now, createdBy: actor || null, updatedAt: now, updatedBy: actor || null,
   })
@@ -439,7 +420,7 @@ function updateFaction(id, input, actor) {
   checkRev(data, faction, input.rev)
   const now = new Date().toISOString()
   const record = recordFor(data, faction, actor, now)
-  const before = { name: faction.name, type: faction.type, zone: faction.zone, color: faction.color, uniform: faction.uniform }
+  const before = { name: faction.name, type: faction.type, zone: faction.zone, color: faction.color }
   if (input.type !== undefined) {
     const type = String(input.type || '').trim().toLowerCase()
     if (!TYPES.includes(type)) throw fail(400, `type must be ${TYPES.join(', ')}`)
@@ -453,7 +434,6 @@ function updateFaction(id, input, actor) {
   }
   if (input.zone !== undefined) record.zone = normalizeZone(input.zone)
   if (input.color !== undefined) record.color = normalizeColor(input.color)
-  if (input.uniform !== undefined) record.uniform = normalizeUniform(input.uniform) || []
   const changes = changesBetween(before, record)
   if (!Object.keys(changes).length) return { faction: factionView(data, faction) }
   bump(record, actor, now)
@@ -516,12 +496,11 @@ function applyRank(req, input, faction, ranks) {
   }
   if (input.title !== undefined) req.title = cleanText(input.title) || undefined
   if (input.titleFemale !== undefined) req.titleFemale = cleanText(input.titleFemale) || undefined
-  if (input.uniform !== undefined) req.uniform = normalizeUniform(input.uniform)
 }
 
 const ladderOf = (data, factionId) => decorateRequirements(data).filter(r => r.factionId === factionId).sort((a, b) => a.order - b.order)
 
-const rankSnapshot = req => Object.fromEntries(['rank', 'capacity', 'title', 'titleFemale', ...RANK_LISTS, ...RANK_FLAGS, 'uniform'].map(key => [key, req[key] === undefined ? null : req[key]]))
+const rankSnapshot = req => Object.fromEntries(['rank', 'capacity', 'title', 'titleFemale', ...RANK_LISTS, ...RANK_FLAGS].map(key => [key, req[key] === undefined ? null : req[key]]))
 
 function createRank(factionId, input, actor) {
   const data = load(true)
@@ -546,7 +525,6 @@ function createRank(factionId, input, actor) {
     leader: false,
     recruit: [],
     promote: [],
-    issuesUniform: false,
   }
   applyRank(req, input, faction, [...ladder, req])
   data.requirements.push(req)

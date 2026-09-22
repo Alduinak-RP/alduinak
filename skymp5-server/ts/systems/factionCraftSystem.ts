@@ -15,7 +15,10 @@ type Mp = any;
 // crafting menu and the server's CraftService both honour. Membership itself
 // lives in the backend, never in the game's own factions, so this system is
 // what ties the two together: it hands a character the marker of every faction
-// whose rank carries the craft permission and takes back the rest.
+// whose rank carries the craft permission and takes back the rest. Hold
+// uniforms are never issued: the Captain rank carries craft (the Jarl and an
+// acting regent craft through leader authority), so only they make the guard
+// armour, helmet, shield and cloaks and hand them to their guards.
 //
 // The editor id drops the punctuation of the faction id, so "hold:the-rift"
 // becomes AldFaction_holdtherift, exactly as the patcher writes it.

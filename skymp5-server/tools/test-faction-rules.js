@@ -15,16 +15,16 @@ const rules = compiled.exports
 
 const seed = require('../../skymp5-backend/seeds/faction-whitelist.json')
 
-// The ladders of the 2026-09-19 spec: rank slug -> [capacity, permissions the rank carries]
+// The ladders of the 2026-09-19 spec, craft on the Captain only since r15: rank slug -> [capacity, permissions the rank carries]
 const HOLD_LADDER = [
   ['jarl', 1, ['leader']],
   ['noble', null, []],
   ['steward', 4, ['housing']],
   ['captain', 4, ['craft', 'arrest', 'execute']],
-  ['courtier', 10, ['craft']],
+  ['courtier', 10, []],
   ['thane', 5, []],
-  ['housecarl', 10, ['craft', 'arrest']],
-  ['guard', 40, ['craft', 'arrest']],
+  ['housecarl', 10, ['arrest']],
+  ['guard', 40, ['arrest']],
   ['chieftan', 5, []],
   ['citizen', null, []],
 ]

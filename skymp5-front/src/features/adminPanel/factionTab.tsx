@@ -20,7 +20,6 @@ export interface FactionMember {
   acting: boolean; // standing in for an absent leader right now
   promote: Array<{ slug: string; name: string }>; // ranks the viewer may move them to, up or down
   canRemove: boolean;
-  canUniform: boolean;
   canRegent: boolean;
 }
 
@@ -169,13 +168,6 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
         items.push(
           <button key={'r' + r.slug} className="admin-panel__menu-item" onClick={() => act(factionId, Object.assign({ action: 'promote', rank: r.slug }, target(m)))}>
             {'Set rank: ' + r.name}
-          </button>
-        );
-      }
-      if (m.canUniform && m.online) {
-        items.push(
-          <button key="uniform" className="admin-panel__menu-item" onClick={() => act(factionId, Object.assign({ action: 'uniform' }, target(m)))}>
-            Issue uniform
           </button>
         );
       }

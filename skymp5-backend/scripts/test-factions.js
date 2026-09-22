@@ -54,16 +54,16 @@ function resetSeed() {
   for (const f of ['faction.log', 'faction-whitelist.json.bak']) fs.rmSync(path.join(tmp, f), { force: true })
 }
 
-// The hold ladder of the 2026-09-19 spec: slug -> [capacity, recruit, promote, permissions]
+// The hold ladder of the 2026-09-19 spec, craft on the Captain only since r15: slug -> [capacity, recruit, promote, permissions]
 const HOLD_LADDER = {
   jarl: [1, [], [], ['leader']],
   noble: [null, [], [], []],
   steward: [4, ['citizen'], ['chieftan', 'courtier'], ['housing']],
   captain: [4, ['guard'], [], ['craft', 'arrest', 'execute']],
-  courtier: [10, [], [], ['craft']],
+  courtier: [10, [], [], []],
   thane: [5, ['citizen'], ['housecarl', 'guard'], []],
-  housecarl: [10, [], [], ['craft', 'arrest']],
-  guard: [40, [], [], ['craft', 'arrest']],
+  housecarl: [10, [], [], ['arrest']],
+  guard: [40, [], [], ['arrest']],
   chieftan: [5, ['citizen'], [], []],
   citizen: [null, [], [], []],
 }
@@ -116,20 +116,6 @@ async function run() {
     assert.equal(faction.rev, 1)
     assert.equal(status(() => store.updateFaction(faction.id, { name: 'X' }, ACTOR)).status, 400)
     assert.equal(store.updateFaction(faction.id, { rev: 2, name: 'The Vigilants' }, ACTOR).faction.rev, 3)
-  })
-
-  await test('uniform lists are edited through the API', () => {
-    resetSeed()
-    const id = 'faction:companions'
-    const uniform = [{ item: '0x00013ED9', count: 1 }, { item: '13ed9:Skyrim.esm', count: 2 }]
-    assert.equal(status(() => store.updateFaction(id, { rev: revOf(id), uniform: [{ item: '', count: 1 }] }, ACTOR)).status, 400)
-    assert.equal(status(() => store.updateFaction(id, { rev: revOf(id), uniform: [{ item: '0x1', count: 101 }] }, ACTOR)).status, 400)
-    const saved = store.updateFaction(id, { rev: revOf(id), uniform }, ACTOR).faction
-    assert.deepEqual(saved.uniform, uniform)
-    assert.equal(store.updateFaction(id, { rev: saved.rev, uniform }, ACTOR).faction.rev, saved.rev, 'an unchanged list is no edit')
-    const rank = store.updateRank(`${id}:guildmaster`, { rev: saved.rev, uniform: [{ item: '0x00012E4D', count: 1 }] }, ACTOR).faction.ranks.find(r => r.id === `${id}:guildmaster`)
-    assert.deepEqual(rank.uniform, [{ item: '0x00012E4D', count: 1 }])
-    assert.equal(store.updateRank(`${id}:guildmaster`, { rev: revOf(id), uniform: null }, ACTOR).faction.ranks.find(r => r.id === `${id}:guildmaster`).uniform, null)
   })
 
   await test('permission strings follow the rank id and cannot be set', () => {

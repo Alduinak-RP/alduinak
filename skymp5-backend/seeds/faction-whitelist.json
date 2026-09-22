@@ -5,8 +5,8 @@
     "Rank order 0 is the top of the ladder. leader carries every permission of the faction and may be held in one faction at a time.",
     "recruit lists the rank ids a holder may bring outsiders in at; Recruit takes the lowest of them. promote lists the ranks it may move a lower member to.",
     "remove, craft, housing, arrest and execute are the remaining permissions. capacity null means open. permission is always the rank id with dots.",
+    "Hold uniforms are crafted, not issued: only the Captain rank of a hold court carries craft (the Jarl and an acting regent craft through leader authority), so only they make the guard armour, helmet, shield and cloaks and hand them to their guards.",
     "title (and titleFemale) override the rank name when Show Title prefixes a character's name; the rank name is used when they are absent.",
-    "issuesUniform lets a rank hand out the faction uniform; uniform entries are { \"item\": \"13ed9:Skyrim.esm\", \"count\": 1 } and a rank uniform replaces the faction one.",
     "regencyEnabled and regents (ordered, discordId + slot) are written from the game's Regency tab; a regent acts as leader while no leader is online.",
     "Names, caps, ladders, rank lists and flags are edited in the dashboard Factions view or the Server Manager Factions tab."
   ],
@@ -19,20 +19,6 @@
       "name": "Court of Haafingar",
       "zone": "west",
       "color": "8c3b3b",
-      "uniform": [
-        {
-          "item": "c7f5b:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "c7f5c:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214f4:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -45,20 +31,6 @@
       "name": "Court of the Reach",
       "zone": "west",
       "color": "a0703c",
-      "uniform": [
-        {
-          "item": "21508:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "21613:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214dc:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -71,20 +43,6 @@
       "name": "Court of Falkreath",
       "zone": "west",
       "color": "5f7f4a",
-      "uniform": [
-        {
-          "item": "2151e:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "21619:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214ed:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -97,20 +55,6 @@
       "name": "Court of Hjaalmarch",
       "zone": "west",
       "color": "6f6a8a",
-      "uniform": [
-        {
-          "item": "21520:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "2161b:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214ef:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -123,20 +67,6 @@
       "name": "Court of Eastmarch",
       "zone": "east",
       "color": "4f6f9f",
-      "uniform": [
-        {
-          "item": "a6d7b:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "10559d:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214eb:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -149,20 +79,6 @@
       "name": "Court of Winterhold",
       "zone": "east",
       "color": "7fa6bf",
-      "uniform": [
-        {
-          "item": "21522:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "2161d:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214f1:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -175,20 +91,6 @@
       "name": "Court of the Rift",
       "zone": "east",
       "color": "a8864a",
-      "uniform": [
-        {
-          "item": "21507:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "21622:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214ba:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -201,20 +103,6 @@
       "name": "Court of the Pale",
       "zone": "east",
       "color": "9aa3a8",
-      "uniform": [
-        {
-          "item": "21525:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "2161f:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214f7:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -227,20 +115,6 @@
       "name": "Court of Whiterun",
       "zone": "neutral",
       "color": "c9a36b",
-      "uniform": [
-        {
-          "item": "2150d:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "21615:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "214e0:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -253,28 +127,6 @@
       "name": "Imperial Legion",
       "zone": "west",
       "color": "a83232",
-      "uniform": [
-        {
-          "item": "136d5:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136d6:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "136d4:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "13edc:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "135ba:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -287,24 +139,6 @@
       "name": "Stormcloaks",
       "zone": "east",
       "color": "3d6fb0",
-      "uniform": [
-        {
-          "item": "a6d7b:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "a6d7f:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "a6d7d:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "a6d79:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -317,16 +151,6 @@
       "name": "College of Winterhold",
       "zone": "",
       "color": "6a7fd6",
-      "uniform": [
-        {
-          "item": "d3dea:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d3de8:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -339,7 +163,6 @@
       "name": "The Companions",
       "zone": "",
       "color": "b8872f",
-      "uniform": [],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -352,24 +175,6 @@
       "name": "Dark Brotherhood",
       "zone": "",
       "color": "9b1c1c",
-      "uniform": [
-        {
-          "item": "d2844:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d2845:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d2843:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d2842:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -382,24 +187,6 @@
       "name": "Thieves Guild",
       "zone": "",
       "color": "6d8a5a",
-      "uniform": [
-        {
-          "item": "d3ac3:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d3ac2:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d3ac4:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "d3ac5:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -412,20 +199,6 @@
       "name": "Thalmor",
       "zone": "",
       "color": "c7b25a",
-      "uniform": [
-        {
-          "item": "65bbf:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "65bac:Skyrim.esm",
-          "count": 1
-        },
-        {
-          "item": "65bb3:Skyrim.esm",
-          "count": 1
-        }
-      ],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -438,7 +211,6 @@
       "name": "The Forsworn",
       "zone": "west",
       "color": "4f6236",
-      "uniform": [],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -451,7 +223,6 @@
       "name": "The Dawnguard",
       "zone": "",
       "color": "6b5330",
-      "uniform": [],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -464,7 +235,6 @@
       "name": "Bards College",
       "zone": "",
       "color": "a86fb0",
-      "uniform": [],
       "regencyEnabled": false,
       "regents": [],
       "rev": 1
@@ -486,8 +256,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:haafingar:noble",
@@ -506,8 +275,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:haafingar:steward",
@@ -529,8 +297,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:haafingar:captain",
@@ -549,8 +316,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:haafingar:courtier",
@@ -564,11 +330,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:haafingar:thane",
@@ -590,8 +355,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:haafingar:housecarl",
@@ -605,11 +369,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:haafingar:guard",
@@ -623,11 +386,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:haafingar:chieftan",
@@ -646,8 +408,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:haafingar:citizen",
@@ -664,8 +425,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:jarl",
@@ -682,8 +442,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:the-reach:noble",
@@ -702,8 +461,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:steward",
@@ -725,8 +483,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:captain",
@@ -745,8 +502,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:the-reach:courtier",
@@ -760,11 +516,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:thane",
@@ -786,8 +541,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:housecarl",
@@ -801,11 +555,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:guard",
@@ -819,11 +572,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:chieftan",
@@ -842,8 +594,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-reach:citizen",
@@ -860,8 +611,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:jarl",
@@ -878,8 +628,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:falkreath:noble",
@@ -898,8 +647,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:steward",
@@ -921,8 +669,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:captain",
@@ -941,8 +688,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:falkreath:courtier",
@@ -956,11 +702,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:thane",
@@ -982,8 +727,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:housecarl",
@@ -997,11 +741,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:guard",
@@ -1015,11 +758,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:chieftan",
@@ -1038,8 +780,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:falkreath:citizen",
@@ -1056,8 +797,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:jarl",
@@ -1074,8 +814,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:noble",
@@ -1094,8 +833,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:steward",
@@ -1117,8 +855,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:captain",
@@ -1137,8 +874,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:hjaalmarch:courtier",
@@ -1152,11 +888,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:thane",
@@ -1178,8 +913,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:housecarl",
@@ -1193,11 +927,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:guard",
@@ -1211,11 +944,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:chieftan",
@@ -1234,8 +966,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:hjaalmarch:citizen",
@@ -1252,8 +983,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:jarl",
@@ -1270,8 +1000,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:eastmarch:noble",
@@ -1290,8 +1019,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:steward",
@@ -1313,8 +1041,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:captain",
@@ -1333,8 +1060,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:eastmarch:courtier",
@@ -1348,11 +1074,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:thane",
@@ -1374,8 +1099,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:housecarl",
@@ -1389,11 +1113,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:guard",
@@ -1407,11 +1130,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:chieftan",
@@ -1430,8 +1152,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:eastmarch:citizen",
@@ -1448,8 +1169,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:jarl",
@@ -1466,8 +1186,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:winterhold:noble",
@@ -1486,8 +1205,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:steward",
@@ -1509,8 +1227,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:captain",
@@ -1529,8 +1246,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:winterhold:courtier",
@@ -1544,11 +1260,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:thane",
@@ -1570,8 +1285,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:housecarl",
@@ -1585,11 +1299,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:guard",
@@ -1603,11 +1316,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:chieftan",
@@ -1626,8 +1338,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:winterhold:citizen",
@@ -1644,8 +1355,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:jarl",
@@ -1662,8 +1372,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:the-rift:noble",
@@ -1682,8 +1391,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:steward",
@@ -1705,8 +1413,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:captain",
@@ -1725,8 +1432,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:the-rift:courtier",
@@ -1740,11 +1446,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:thane",
@@ -1766,8 +1471,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:housecarl",
@@ -1781,11 +1485,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:guard",
@@ -1799,11 +1502,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:chieftan",
@@ -1822,8 +1524,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-rift:citizen",
@@ -1840,8 +1541,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:jarl",
@@ -1858,8 +1558,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:the-pale:noble",
@@ -1878,8 +1577,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:steward",
@@ -1901,8 +1599,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:captain",
@@ -1921,8 +1618,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:the-pale:courtier",
@@ -1936,11 +1632,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:thane",
@@ -1962,8 +1657,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:housecarl",
@@ -1977,11 +1671,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:guard",
@@ -1995,11 +1688,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:chieftan",
@@ -2018,8 +1710,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:the-pale:citizen",
@@ -2036,8 +1727,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:jarl",
@@ -2054,8 +1744,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "hold:whiterun:noble",
@@ -2074,8 +1763,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:steward",
@@ -2097,8 +1785,7 @@
       "craft": false,
       "housing": true,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:captain",
@@ -2117,8 +1804,7 @@
       "craft": true,
       "housing": false,
       "arrest": true,
-      "execute": true,
-      "issuesUniform": true
+      "execute": true
     },
     {
       "id": "hold:whiterun:courtier",
@@ -2132,11 +1818,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:thane",
@@ -2158,8 +1843,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:housecarl",
@@ -2173,11 +1857,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:guard",
@@ -2191,11 +1874,10 @@
       "promote": [],
       "leader": false,
       "remove": false,
-      "craft": true,
+      "craft": false,
       "housing": false,
       "arrest": true,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:chieftan",
@@ -2214,8 +1896,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "hold:whiterun:citizen",
@@ -2232,8 +1913,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:general",
@@ -2250,8 +1930,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:legate",
@@ -2268,8 +1947,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:tribune",
@@ -2286,8 +1964,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:prefect",
@@ -2314,8 +1991,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:centurion",
@@ -2332,8 +2008,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:optio",
@@ -2358,8 +2033,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:decanus",
@@ -2376,8 +2050,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:evocatus",
@@ -2394,8 +2067,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:penitus-oculatus",
@@ -2412,8 +2084,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:legionnaire",
@@ -2430,8 +2101,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:imperial-legion:auxiliary",
@@ -2448,8 +2118,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:stormcloaks:commander",
@@ -2466,8 +2135,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:stormcloaks:soldier",
@@ -2484,8 +2152,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:college-of-winterhold:arch-mage",
@@ -2502,8 +2169,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:college-of-winterhold:master-wizard",
@@ -2526,8 +2192,7 @@
       "craft": true,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:college-of-winterhold:headmaster",
@@ -2546,8 +2211,7 @@
       "craft": true,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:college-of-winterhold:college-staff",
@@ -2564,8 +2228,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:college-of-winterhold:student",
@@ -2582,8 +2245,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:companions:guildmaster",
@@ -2600,8 +2262,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:companions:member",
@@ -2618,8 +2279,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:dark-brotherhood:speaker",
@@ -2636,8 +2296,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:dark-brotherhood:assassin",
@@ -2654,8 +2313,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": true,
-      "issuesUniform": false
+      "execute": true
     },
     {
       "id": "faction:thieves-guild:guildmaster",
@@ -2672,8 +2330,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:thieves-guild:shadowmaster",
@@ -2690,8 +2347,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:thieves-guild:councilor",
@@ -2708,8 +2364,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:thieves-guild:thief",
@@ -2726,8 +2381,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:thieves-guild:runner",
@@ -2744,8 +2398,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:thieves-guild:initiate",
@@ -2762,8 +2415,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:thalmor:emissary",
@@ -2780,8 +2432,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:thalmor:justiciar",
@@ -2805,8 +2456,7 @@
       "craft": true,
       "housing": false,
       "arrest": false,
-      "execute": true,
-      "issuesUniform": false
+      "execute": true
     },
     {
       "id": "faction:thalmor:inquisitor",
@@ -2829,8 +2479,7 @@
       "craft": true,
       "housing": false,
       "arrest": false,
-      "execute": true,
-      "issuesUniform": false
+      "execute": true
     },
     {
       "id": "faction:thalmor:speculatore",
@@ -2847,8 +2496,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:thalmor:enforcer",
@@ -2865,8 +2513,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:thalmor:initiate",
@@ -2883,8 +2530,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:forsworn:leader",
@@ -2901,8 +2547,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:forsworn:reachman",
@@ -2919,8 +2564,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:dawnguard:commander",
@@ -2937,8 +2581,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:dawnguard:warden",
@@ -2955,8 +2598,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     },
     {
       "id": "faction:bards-college:leader",
@@ -2973,8 +2615,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": true
+      "execute": false
     },
     {
       "id": "faction:bards-college:member",
@@ -2991,8 +2632,7 @@
       "craft": false,
       "housing": false,
       "arrest": false,
-      "execute": false,
-      "issuesUniform": false
+      "execute": false
     }
   ],
   "assignments": [],

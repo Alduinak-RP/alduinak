@@ -14,7 +14,6 @@
     ['arrest', 'Arrests (cuffs and cells)', false],
     ['execute', 'Executes players', false],
     ['factionAccess', 'Opens faction doors and chests', false],
-    ['issuesUniform', 'Issues uniforms', false],
   ]
   const TYPE_NAMES = { hold: 'Hold', military: 'Military', guild: 'Guild' }
   const SCOPE_NAMES = { hold: 'Hold court', faction: 'Army or guild' }
@@ -32,19 +31,6 @@
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
   const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x))
 
-  // One item per line with an optional count: "0x00013ED9 2" or "13ed9:Skyrim.esm"
-  const parseUniform = text => String(text || '')
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => {
-      const parts = line.split(/\s+/)
-      const count = parts.length > 1 && /^\d+$/.test(parts[parts.length - 1]) ? Number(parts.pop()) : 1
-      return { item: parts.join(' '), count }
-    })
-  const uniformText = list => (list || []).map(u => `${u.item} ${u.count}`).join('\n')
-  const UNIFORM_HINT = 'One item per line with a count: 0x00013ED9 1 or 13ED9:Skyrim.esm 1'
-
   // Faction ids are "<scope>:<group>" slugs, so paths never need encoding and cannot leave /api/factions
   function factionPath(id, suffix = '') {
     const [scope, group, extra] = String(id).split(':')
@@ -57,8 +43,7 @@
     return factionPath(faction.id, `/ranks/${slug}`)
   }
 
-  // uniforms: show the faction and rank uniform item lists (the dashboard does, the Server Manager tab does not)
-  function mount(root, { request, onSelectPlayer = null, onChange = null, uniforms = false } = {}) {
+  function mount(root, { request, onSelectPlayer = null, onChange = null } = {}) {
     const state = {
       factions: [], retiredFactions: [], zones: Object.keys(ZONE_NAMES), holds: [], canDefine: false, loaded: false,
       selected: '', rank: '', creating: false, filter: '', members: null, confirm: null, busy: false,
@@ -72,7 +57,7 @@
         <button class="fe-btn" type="button" data-act="refresh">Refresh</button>
         <span class="fe-status" role="status"></span>
       </div>
-      <p class="fe-note">Edits reach the game server within about 20 seconds. Faction doors and chests are listed in the game server's faction-access.json${uniforms ? '' : '; uniform item lists are edited in the dashboard Factions view'}.</p>
+      <p class="fe-note">Edits reach the game server within about 20 seconds. Faction doors and chests are listed in the game server's faction-access.json.</p>
       <div class="fe-split">
         <ul class="fe-list"></ul>
         <div class="fe-detail"></div>
@@ -212,8 +197,7 @@
             <label>Zone <select name="zone" data-write>${zoneOptions(faction.zone)}</select></label>
             ${colorFields(faction.color)}
           </div>
-          ${uniforms ? `<label class="fe-field">Uniform <textarea name="uniform" rows="4" placeholder="${UNIFORM_HINT}" data-write>${esc(uniformText(faction.uniform))}</textarea></label>` : ''}
-          <p class="fe-muted">Type ${esc(TYPE_NAMES[faction.type] || faction.type)}, group ${esc(faction.group || faction.id)}.${uniforms ? '' : ` Uniform: ${plural((faction.uniform || []).length, 'item', 'items')}.`}</p>
+          <p class="fe-muted">Type ${esc(TYPE_NAMES[faction.type] || faction.type)}, group ${esc(faction.group || faction.id)}.</p>
           <div class="fe-row"><button class="fe-btn fe-primary" type="submit" data-write>Save faction</button></div>
         </form>
         ${ranksCard(faction)}
@@ -298,7 +282,6 @@
               </tr>`).join('')}
             </tbody>
           </table>` : ''}
-          ${uniforms ? `<label class="fe-field">Rank uniform, replacing the faction uniform when set <textarea name="uniform" rows="3" placeholder="Empty uses the faction uniform. ${UNIFORM_HINT}" data-write>${esc(uniformText(rank.uniform))}</textarea></label>` : ''}
           <div class="fe-row">
             <button class="fe-btn fe-primary" type="submit" data-write>Save rank</button>
             <button class="fe-btn" type="button" data-act="close-rank">Close</button>
@@ -369,13 +352,6 @@
 
     const colorValue = form => String(form.elements.color.value || '').replace(/^#/, '').toLowerCase()
 
-    // The uniform goes out only when its text changed, so a save never rewrites an untouched list
-    function uniformEdit(form, current, body, empty) {
-      if (!form.elements.uniform) return
-      const list = parseUniform(form.elements.uniform.value)
-      if (uniformText(list) !== uniformText(current)) body.uniform = list.length ? list : empty
-    }
-
     function createFaction(form) {
       const type = form.elements.scope.value
       const group = type === 'hold' ? holdName(form.elements.hold.value || '') : form.elements.group.value
@@ -393,7 +369,6 @@
     function saveFaction(form) {
       const faction = current()
       const body = { rev: faction.rev, name: form.elements.name.value, zone: form.elements.zone.value, color: colorValue(form) }
-      uniformEdit(form, faction.uniform, body, [])
       return run('Saving…', async () => {
         const data = await call('PATCH', factionPath(faction.id), body)
         replaceFaction(data.faction)
@@ -437,7 +412,6 @@
       const ticked = Object.fromEntries(lists.map(([key]) => [key, [...form.querySelectorAll(`input[data-list="${key}"]:checked`)].map(i => i.value)]))
       // Lists are sent together once any tick changed, so what was shown is what is saved
       if (lists.some(([key]) => !sameSet(ticked[key], effectiveList(faction, rank, key)))) Object.assign(body, ticked)
-      uniformEdit(form, rank.uniform, body, null)
       return run('Saving rank…', async () => {
         const data = await call('PATCH', rankPath(faction, state.rank), body)
         replaceFaction(data.faction)

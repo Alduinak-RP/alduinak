@@ -517,7 +517,6 @@ function showFactionEditor() {
   if (!window.FactionEditor) return
   state.factionEditor = window.FactionEditor.mount(nodes.factionEditorRoot, {
     request: factionRequest,
-    uniforms: true,
     onChange: () => loadFactions().then(renderFactions).then(refreshPlayers).catch(err => toast(err.message)),
   })
 }

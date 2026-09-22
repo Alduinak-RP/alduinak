@@ -3,9 +3,8 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, AFTERLIFE_EVENT, CharacterListEntry } from "./system";
 import { AccessPayload, FactionBackend, RosterRow, factionBackendOf, filterAccessForSlot } from "../backendFactionApi";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
-import { addItemTo, isNear, isPlayerActor, nameShownTo, userOf } from "./actorUtil";
+import { isNear, isPlayerActor, nameShownTo, userOf } from "./actorUtil";
 import { formIdFromConfig } from "./formIdUtil";
-import { ITEM_TYPES } from "./itemCatalog";
 import { HousingSystem } from "./housingSystem";
 import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
@@ -17,7 +16,8 @@ type Mp = any;
 // Factions: hold courts, armies and guilds whose ranks live in the backend (skymp5-backend data/faction-whitelist.json, one row per
 // character and slot). A character joins at most one faction of each type, leads at most one faction anywhere, and shows at most one
 // faction title. This system runs the rules in game: the Personal Menu Faction tabs, recruiting with consent, rank changes, removals,
-// regency, uniforms, faction-only doors and containers, and releasing a deleted or perma-dead character's ranks.
+// regency, faction-only doors and containers, and releasing a deleted or perma-dead character's ranks. Hold uniforms are crafted
+// by the ranks carrying craft (FactionCraftSystem), never issued here.
 // Docs: docs/docs_roleplay_property_factions.md section 6.
 //
 // Client -> server:
@@ -26,7 +26,7 @@ type Mp = any;
 //   factionRequest {action, factionId, ...}
 //     recruit {target}                                       consent prompt, then the lowest rank the actor may recruit to
 //     promote {profileId, slot, rank}                        any rank the actor may move that member to, up or down
-//     remove | uniform {profileId, slot}                     slot null = the row shared by every character
+//     remove {profileId, slot}                               slot null = the row shared by every character
 //     regentAdd | regentRemove {profileId, slot}
 //     regentOrder {order: [{profileId, slot}]}               regency order, first in line first
 //     regency {enabled}                                      leader's regent-status switch
@@ -42,7 +42,7 @@ type Mp = any;
 // floating name tag, and it is registered in the gamemode next to the other ff_ properties.
 // Live file ./faction-access.json (server folder, optional, re-read when it changes; seed in skymp5-server/seeds):
 //   { "refs": [{ "ref": "0x0001A6F4" | "1A6F4:Skyrim.esm", "label"?, "factions": ["hold:haafingar"], "ranks"?: ["jarl"] | { "<factionId>": ["jarl"] } }] }
-// Settings (optional): factionInviteMaxDistance (default 1024), factionUniformCooldownHours (default 24).
+// Settings (optional): factionInviteMaxDistance (default 1024).
 
 const ACCESS_FILE = "./faction-access.json";
 // Disjoint from the capture counter (from 1) and the pet range (from 1e9)
@@ -50,7 +50,6 @@ const CONSENT_ID_BASE = 2_000_000_000;
 const CONSENT_TIMEOUT_MS = 20000;
 const INVITE_COOLDOWN_MS = 15000;
 const DEFAULT_INVITE_DISTANCE = 1024;
-const DEFAULT_UNIFORM_COOLDOWN_HOURS = 24;
 // Definition edits from the dashboard or the Server Manager reach the game this often, a 304 when nothing changed
 const DEFINITIONS_TTL_MS = 20000;
 const DEFINITIONS_RETRY_MS = 15000;
@@ -62,7 +61,6 @@ const RELEASE_RETRIES = 5;
 const RELEASE_RETRY_MS = 30000;
 const MAX_QUEUED = 3;
 const MAX_USER_SLOTS = 1024;
-const UNIFORM_PROP = "private.factionUniformAt";
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
 
@@ -105,7 +103,6 @@ interface MemberView {
   // Ranks this viewer may move them to, both directions
   promote: Array<{ slug: string; name: string }>;
   canRemove: boolean;
-  canUniform: boolean;
   canRegent: boolean;
 }
 
@@ -142,8 +139,6 @@ export class FactionSystem implements System {
     const all = s.allSettings as Record<string, unknown> | null;
     const distance = Number(all?.["factionInviteMaxDistance"]);
     if (Number.isFinite(distance) && distance > 0) this.inviteDistance = distance;
-    const hours = Number(all?.["factionUniformCooldownHours"]);
-    if (Number.isFinite(hours) && hours >= 0) this.uniformCooldownMs = hours * 3600 * 1000;
     this.roleCfg = readAdminRoleConfig(all);
 
     this.housing.factionGate = (actorId, refrId) => this.gate(actorId, refrId);
@@ -237,8 +232,7 @@ export class FactionSystem implements System {
       case "regentRemove":
       case "regentOrder": await this.regencyAction(userId, actorId, faction, auth, action, content); break;
       case "promote":
-      case "remove":
-      case "uniform": await this.memberAction(userId, actorId, faction, auth, action, content); break;
+      case "remove": await this.memberAction(userId, actorId, faction, auth, action, content); break;
       default: return;
     }
     await this.sendMenu(userId, faction.id);
@@ -395,12 +389,10 @@ export class FactionSystem implements System {
     const memberRank = member && rules.rankOf(faction, member.rankSlug);
     if (!member || !memberRank) return this.notice(userId, "They are no longer in the faction.");
     const self = this.onlineByActor(actorId);
-    if (self && self.profileId === profileId && (slot === null || slot === self.slot) && action !== "uniform") return this.notice(userId, "Use Leave to step down.");
+    if (self && self.profileId === profileId && (slot === null || slot === self.slot)) return this.notice(userId, "Use Leave to step down.");
     const everyone = this.online();
     const name = this.memberName(member, everyone);
     const online = this.onlineMember(member, everyone);
-
-    if (action === "uniform") return this.issueUniform(userId, actorId, faction, auth, name, memberRank, online);
 
     if (action === "remove") {
       if (!rules.canRemove(faction, auth, memberRank)) return this.notice(userId, "You cannot remove them.");
@@ -426,40 +418,6 @@ export class FactionSystem implements System {
     if (online) this.notice(online.userId, `You are now ${target.name} of ${faction.name}.`);
     this.notice(userId, `${name} is now ${target.name}.`);
     this.staffLog(`${this.who(actorId)} made ${name} (profile ${profileId}${slot === null ? "" : `, character ${slot + 1}`}) ${target.name} of ${faction.name}, was ${memberRank.name}`, staffOnly(auth));
-  }
-
-  private issueUniform(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, name: string, memberRank: rules.RankDef, online: OnlineActor | null): void {
-    if (!rules.canIssueUniform(faction, auth)) return this.notice(userId, "You cannot issue uniforms.");
-    if (!online) return this.notice(userId, "They must be in the world to receive a uniform.");
-    const items = rules.uniformFor(faction, memberRank);
-    if (!items.length) return this.notice(userId, `No uniform is set for ${memberRank.name} of ${faction.name}.`);
-    let issued: Record<string, number> = {};
-    try {
-      const raw = this.mp.get(online.actorId, UNIFORM_PROP);
-      if (raw && typeof raw === "object") issued = { ...raw };
-    } catch { /* actor gone */ }
-    const last = Number(issued[faction.id]) || 0;
-    const waitMs = last + this.uniformCooldownMs - Date.now();
-    if (waitMs > 0) return this.notice(userId, `${name} was issued a uniform recently, try again in ${Math.ceil(waitMs / 3600000)} hour(s).`);
-
-    const given: string[] = [];
-    for (const u of items) {
-      const itemId = formIdFromConfig(this.mp, u.item);
-      let type = "";
-      try { type = String(this.mp.lookupEspmRecordById(itemId)?.record?.type ?? ""); } catch { /* unknown form */ }
-      if (!itemId || !ITEM_TYPES.includes(type)) {
-        this.log(`[factions] uniform item ${u.item} of ${faction.id} is not an item, skipped`);
-        continue;
-      }
-      addItemTo(this.mp, online.actorId, itemId, u.count);
-      given.push(`${u.count}x ${u.item}`);
-    }
-    if (!given.length) return this.notice(userId, "The uniform list holds no valid items; ask staff to fix it.");
-    issued[faction.id] = Date.now();
-    try { this.mp.set(online.actorId, UNIFORM_PROP, issued); } catch { /* actor gone */ }
-    this.notice(online.userId, `You received the ${faction.name} uniform.`);
-    if (online.userId !== userId) this.notice(userId, `Uniform issued to ${name}.`);
-    this.staffLog(`${this.who(actorId)} issued the ${faction.name} uniform to ${this.who(online.actorId)}: ${given.join(", ")}`, staffOnly(auth));
   }
 
   private async leave(userId: number, actorId: number, faction: rules.FactionDef, access: unknown): Promise<void> {
@@ -697,7 +655,6 @@ export class FactionSystem implements System {
           acting: !!acting && !!online && acting.actorId === online.actorId,
           promote: rank && !isSelf ? rules.promoteTargets(faction, auth, rank).map((r) => ({ slug: r.slug, name: r.name })) : [],
           canRemove: !!rank && !isSelf && rules.canRemove(faction, auth, rank),
-          canUniform: !!rank && rules.canIssueUniform(faction, auth) && rules.uniformFor(faction, rank).length > 0,
           canRegent: !!rank && !isSelf && !rank.leader && !seated(row) && rules.canManageRegency(auth),
         };
       })
@@ -1134,7 +1091,6 @@ export class FactionSystem implements System {
   private mp: Mp;
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private inviteDistance = DEFAULT_INVITE_DISTANCE;
-  private uniformCooldownMs = DEFAULT_UNIFORM_COOLDOWN_HOURS * 3600 * 1000;
   private defs = new Map<string, rules.FactionDef>();
   private definitionsDueAt = 0;
   private definitionsLoading: Promise<void> | null = null;

@@ -36,7 +36,8 @@ This covers:
   it is not used up, and admins need none.
 - **5. Locks** — owners lock/unlock doors and containers inside cells they own.
 - **6. Factions**: hold courts, armies and guilds with per-character ranks,
-  recruitment, regency, titles, uniforms and faction-only doors and containers.
+  recruitment, regency, titles, crafted uniforms and faction-only doors and
+  containers.
 
 As before, the **client** ships the interaction UI in this repo and the
 **gamemode** owns all policy and persistence. None of this needs an ESP.
@@ -183,7 +184,6 @@ sent to the game server with the member's access) and what its holders may do:
 | `arrest` | may craft prisoner cuffs and lock or unlock dungeon cells | `false` |
 | `execute` | may PK another player through the execute script | `false` |
 | `factionAccess` | passes the faction's doors and chests | `true` |
-| `issuesUniform` | hands out the faction uniform | `false` |
 | `title`, `titleFemale` | what Show Title puts in front of the name | the rank name |
 
 `arrest` and `execute` are carried and shown, but the cuff recipes, the cell
@@ -247,11 +247,14 @@ Guilds hold 20:
 The College's Master-Wizard and Headmaster recruit Students, remove members and
 craft; the Master-Wizard also promotes everything below itself.
 
-Uniforms come from vanilla gear, checked against Skyrim.esm: each hold court
-issues its city guard armour, helmet and shield; the Legion and the Stormcloaks
-their soldier sets; the College its robes and hood; the Dark Brotherhood
-Shrouded armour; the Thieves Guild its guild armour; the Thalmor their robes.
-The Forsworn, the Dawnguard and the Bards College have no uniform yet.
+Hold uniforms are crafted, not issued: only the Captain rank of a hold court
+carries `craft` (the Jarl and an acting regent craft through leader authority),
+so only they see the hold's guard armour, helmet, shield and cloak recipes
+(`HasSpell AldFaction_hold<name>`, the vanilla city guard set of that hold) and
+hand them to their guards. Guards, housecarls and courtiers no longer carry
+`craft`. The Eastmarch captain's cuirass is the Stormcloak cuirass and the
+Eastmarch helmet had no recipe; the r15 plugin gives the Eastmarch court the
+cuirass recipe and a new `AldRecipeArmorGuardHelmetFullEastmarch`.
 
 ### Rules
 
@@ -264,7 +267,7 @@ The Forsworn, the Dawnguard and the Bards College have no uniform yet.
   `factionInviteMaxDistance` and must not already belong to a faction of that
   type.
 - **Rank changes**: a right click on a member offers every rank the viewer may
-  move them to, up or down, plus the uniform, **Add Regent** and removal. The
+  move them to, up or down, plus **Add Regent** and removal. The
   backend refuses a promotion into a leader seat when the member already leads a
   faction or holds a regency seat elsewhere, and refuses any rank whose capacity
   is full.
@@ -292,10 +295,6 @@ The Forsworn, the Dawnguard and the Bards College have no uniform yet.
   the Soul Cairn, lose their ranks automatically: the
   character's own rows at once, and the rows shared by every character of the
   account once no living character is left. Each removal writes a staff log line.
-- **Uniforms**: leaders and ranks with `issuesUniform` hand the faction's item
-  list (or the member's rank list, which replaces it) to an online member from
-  the member's right-click menu, once per `factionUniformCooldownHours` per
-  character and faction.
 - **Faction crafting**: only ranks with `craft` carry the `AldFaction_<id>`
   marker spell the recipes test, so gear follows the rank rather than plain
   membership.
@@ -355,10 +354,8 @@ One editor, `skymp5-backend/public/dashboard/faction-editor.js`, runs in the
 dashboard's Factions view (Definitions) and in the Server Manager's **Factions**
 tab. It creates, edits and deletes factions (type, group, display name, zone,
 colour), their ranks (name, title, ladder order, capacity) and each rank's lists
-and flags from the table above. In the dashboard it also edits the faction and
-rank uniform item lists (one item per line with a count); the Server Manager tab
-leaves uniforms alone. Faction doors and chests stay in the game server's
-hand-edited `faction-access.json`. Assignments still pick a character slot in the
+and flags from the table above. Faction doors and chests stay in the game
+server's hand-edited `faction-access.json`. Assignments still pick a character slot in the
 dashboard's Assignments panel; the character names come from the game server,
 which reports every account's slots whenever the character select list is sent.
 
@@ -373,7 +370,7 @@ which reports every account's slots whenever the character select list is sent.
   court and `faction` for everything else; a hold court's group must name one of
   the nine holds and each hold has one court. Rank ids are the slug of the first
   rank name. Ids never change, and deleted ids are kept in `retired` and never
-  reused, so a door entry, uniform record, log line or permission string naming
+  reused, so a door entry, log line or permission string naming
   an old id can never grant a new faction. A deleted court retires its hold under
   both spellings (`hold:the-rift` also blocks `hold:rift`), so that hold never
   gets a new court; only removing the id from `retired` by hand, with the backend
@@ -404,12 +401,12 @@ which reports every account's slots whenever the character select list is sent.
 
 | Method and path | Body | Answer |
 |---|---|---|
-| `GET /api/factions` | | `{ factions: [{ id, scope, type, group, name, zone, color, uniform, regencyEnabled, regents, rev, members, ranks }], retired, scopes, zones, holds, canDefine }` |
+| `GET /api/factions` | | `{ factions: [{ id, scope, type, group, name, zone, color, regencyEnabled, regents, rev, members, ranks }], retired, scopes, zones, holds, canDefine }` |
 | `GET /api/factions/:scope/:group/members` | | `{ members: [{ discordId, profileId, playerName, rank, rankSlug, slot, since }] }` |
 | `POST /api/factions` | `{ type, group, name?, zone?, color? }` | 201 `{ faction }` |
-| `PATCH /api/factions/:scope/:group` | `{ rev, name?, type?, zone?, color?, uniform? }` | `{ faction }` |
+| `PATCH /api/factions/:scope/:group` | `{ rev, name?, type?, zone?, color? }` | `{ faction }` |
 | `DELETE /api/factions/:scope/:group` | `{ rev, removeMembers?, expectedMembers? }` | `{ deleted, removedMembers }` |
-| `POST /api/factions/:scope/:group/ranks` | `{ rev, rank, capacity?, title?, titleFemale?, recruit?, promote?, leader?, remove?, craft?, housing?, arrest?, execute?, factionAccess?, issuesUniform?, uniform? }` | 201 `{ faction }` |
+| `POST /api/factions/:scope/:group/ranks` | `{ rev, rank, capacity?, title?, titleFemale?, recruit?, promote?, leader?, remove?, craft?, housing?, arrest?, execute?, factionAccess? }` | 201 `{ faction }` |
 | `PUT /api/factions/:scope/:group/ranks` | `{ rev, ranks: [rankId, ...] }` (top first) | `{ faction }` |
 | `PATCH /api/factions/:scope/:group/ranks/:rank` | `{ rev, ...rank fields }` | `{ faction }` |
 | `DELETE /api/factions/:scope/:group/ranks/:rank` | `{ rev, removeMembers?, expectedMembers? }` | `{ faction, removedMembers }` |
@@ -430,7 +427,7 @@ and `node server-manager/tools/test-factions-proxy.js` (the manager proxy).
 { "customPacketType": "factionRequest", "action": "recruit", "factionId": "hold:whiterun", "target": 4278190101 }
 { "customPacketType": "factionRequest", "action": "promote", "factionId": "hold:whiterun", "profileId": 7, "slot": 0, "rank": "steward" }
 { "customPacketType": "factionRequest", "action": "regentOrder", "factionId": "hold:whiterun", "order": [{ "profileId": 7, "slot": 0 }] }
-// action also: remove | uniform | regentAdd | regentRemove {profileId, slot}, regency {enabled},
+// action also: remove | regentAdd | regentRemove {profileId, slot}, regency {enabled},
 // title {}, leave {}, and the staff-only adminAdd {target, rank} and adminRemove {target}; slot null is the account-wide row
 
 // Server -> Client
@@ -442,7 +439,7 @@ and `node server-manager/tools/test-factions-proxy.js` (the manager proxy).
   "detail": { "id", "name", "type", "zone", "color", "myRank", "acting", "staff", "canLeave",
               "ranks": [{ "slug", "name", "capacity", "count" }],
               "members": [{ "key", "profileId", "slot", "name", "rankSlug", "rankName", "online", "self", "tenure",
-                            "regent", "acting", "promote": [{ "slug", "name" }], "canRemove", "canUniform", "canRegent" }],
+                            "regent", "acting", "promote": [{ "slug", "name" }], "canRemove", "canRegent" }],
               "recruitRank": { "slug", "name" }, "nearby": [{ "target", "name" }] },
   "regency": { "factionId", "name", "type", "enabled", "regentTitle",
                "seats": [{ "key", "profileId", "slot", "name", "rankName", "online", "acting" }] } }
@@ -469,7 +466,7 @@ regency seats translated to profile ids), `GET /api/servers/:key/groups/:scope/:
 | `factionMenuRequest` `{ factionId? }` | Client → Server | Ask for the Faction tabs |
 | `factionMenu` `{ available, staff, titleFactionId, main, byType, factions, selected, detail, regency }` | Server → Client | Faction tab data |
 | `factionRecruitRequest` `{ target }` | Client → Server | Recruit the targeted player from the interaction menu |
-| `factionRequest` `{ action, factionId, ... }` | Client → Server | recruit, promote, remove, uniform, regentAdd, regentRemove, regentOrder, regency, title, leave |
+| `factionRequest` `{ action, factionId, ... }` | Client → Server | recruit, promote, remove, regentAdd, regentRemove, regentOrder, regency, title, leave |
 | `factionState` `{ factions, canRecruit }` | Server → Client | Recruit visibility in the interaction menu |
 | `factionNotice` `{ text }` | Server → Client | Faction feedback notification |
 | `restraintState` `{ boundHands }` | Server → victim client | Apply arrest (anyone with manacles) |
