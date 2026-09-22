@@ -8,9 +8,10 @@ const EXTERNAL_URLS = {
   website: 'https://alduinak.com/',           // e.g. 'https://example.com'
   discord: 'https://discord.gg/Pkxdgt6W8q',   // e.g. 'https://discord.gg/...'
   patreon: 'https://www.patreon.com/cw/Alduinak',
+  legal: 'https://alduinak.com/legal/',
 }
 
-document.querySelectorAll('.topnav-link[data-href]').forEach(link => {
+document.querySelectorAll('.topnav-link[data-href], .legal-link[data-href]').forEach(link => {
   link.addEventListener('click', () => {
     const url = EXTERNAL_URLS[link.dataset.href]
     if (url) window.electronAPI.openExternal(url)

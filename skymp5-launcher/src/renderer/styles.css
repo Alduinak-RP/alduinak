@@ -223,6 +223,27 @@ html, body {
   margin-bottom: 18px;
 }
 
+.main-header-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.legal-link {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: calc(11px * var(--text-scale));
+  letter-spacing: 1px;
+  color: rgba(232, 224, 208, 0.5);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.legal-link:hover {
+  color: var(--gold, #c9a227);
+}
+
 .status-badges {
   display: flex;
   align-items: center;
