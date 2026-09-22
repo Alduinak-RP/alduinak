@@ -218,7 +218,7 @@ def main():
     disable_refs = {form_key(x) for x in spec.get('disableReferences', {}).get('refs', [])}
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
-    winners, actors, parents, spells, races, weapons, slot = {}, {}, {}, {}, {}, {}, 0
+    winners, actors, parents, spells, races, weapons, lists, slot = {}, {}, {}, {}, {}, {}, {}, 0
     for n in order[:here]:
         pl = Plugin(os.path.join(stage['dataDir'], n))
         if not (pl.flags & ESL or n.lower().endswith('.esl')):
@@ -234,6 +234,8 @@ def main():
                 spells[k] = spell_of(r)
             if r.type == 'WEAP':
                 weapons[edid(r)] = damage_of(r)
+            if r.type == 'FLST':
+                lists[edid(r)] = k
             if r.type == 'RACE':
                 races[edid(r)] = spell_list(pl, r.data())
             if ((r.type, k) in ro or r.type == 'REFR' and k in disable_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
@@ -255,6 +257,7 @@ def main():
     # Every changed or added record is one a spec section explains
     allowed = patch.spec_allowed(a.spec)
     switched = set()
+    head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and prefix and edid(r).startswith(prefix)}
     for (t, k), q in ro.items():
@@ -309,6 +312,13 @@ def main():
             if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or not before <= after or not after - before <= tags:
                 problems.append(f'{label}: not {src.name}\'s item with only crafting category keywords added ({why or sorted(after ^ before)})')
             checked['items overridden for their crafting category keywords'] += 1
+        elif t == 'HDPT' and edid(q) in head_parts:
+            src, flags, data, _ = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('RNAM',))
+            rnam = dict(parse_subs(q.data())).get('RNAM')
+            if why or not rnam or out.key(struct.unpack('<I', rnam)[0]) != lists.get(head_parts[edid(q)]):
+                problems.append(f'{label}: not {src.name}\'s head part offered to {head_parts[edid(q)]} ({why or "race list"})')
+            checked['head parts given their race list'] += 1
         elif t == 'REFR' and k in disable_refs:
             src, flags, data, cell = ref
             why = ck.compare(t, src, flags, data, out, q.data())

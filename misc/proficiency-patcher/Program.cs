@@ -70,12 +70,12 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Writing, Steps.Racial,
-       Steps.EnchantmentMagnitudes, Steps.Races, Steps.DisableReferences, Steps.DisableActors, categoriesStep,
+       Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.DisableActors, categoriesStep,
        Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Races, Steps.DisableReferences, Steps.DisableActors, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
+       Steps.Racial, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.DisableActors, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
 if (report.Errors.Count > 0)
@@ -1205,6 +1205,22 @@ static class Steps
             var spell = c.Override(c.Mod.Spells, c.Winning<ISpellGetter>(s["spell"]!.GetValue<string>()));
             foreach (var (effect, magnitude) in s["effects"]!.AsObject())
                 SetMagnitude(c, spell.Effects, c.KeyOf<IMagicEffectGetter>(effect), magnitude!.GetValue<float>(), $"Race ability {spell.EditorID}");
+        }
+    }
+
+    // ---- head parts: the races character creation offers a head part to --------------------------------------------
+    public static void HeadParts(PatchContext c)
+    {
+        foreach (var entry in (c.Spec["headParts"]?.AsArray() ?? []).Select(x => x!.AsObject()))
+        {
+            var races = c.KeyOf<IFormListGetter>(entry["validRaces"]!.GetValue<string>());
+            foreach (var edid in Edids(c, entry["parts"]))
+            {
+                var winning = c.Winning<IHeadPartGetter>(edid);
+                if (winning.ValidRaces.FormKey == races) continue;
+                c.Override(c.Mod.HeadParts, winning).ValidRaces.SetTo(races);
+                c.Note($"Head part {edid}: offered to {c.EdidOf(races)} instead of {c.EdidOf(winning.ValidRaces.FormKey)}");
+            }
         }
     }
 

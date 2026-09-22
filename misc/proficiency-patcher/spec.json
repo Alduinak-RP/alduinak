@@ -3702,6 +3702,18 @@
    }
   ]
  },
+ "headParts": [
+  {
+   "parts": [
+    "cuyBosmerAntlers01",
+    "cuyBosmerAntlers02",
+    "cuyBosmerAntlers03",
+    "cuyBosmerAntlers04",
+    "cuyBosmerAntlers05"
+   ],
+   "validRaces": "HeadPartsWoodElfandVampire"
+  }
+ ],
  "craftingCategories": {
   "comment": "The CraftingCategories SKSE plugin puts an item in one section and one category of that section, by keywords on the item. Every armour, weapon and ammunition the benches make gets the keyword of the first section it fits (a slot, the shields, the weapons, anything else worn) and one category keyword: its race when a racial rule gates the recipe, otherwise the material its recipes use most of (materials in order, a tie going to the earlier one; ignoreItems never count). The run writes the json the plugin reads.",
   "file": "AlduinakAdditions.json",
