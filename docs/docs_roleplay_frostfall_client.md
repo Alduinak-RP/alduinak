@@ -80,6 +80,10 @@ The `adminPanel` widget (AdminMenuService), four tabs in this order:
 - **Debug**: account, character, ids, position, cell, target, actor values,
   game time and tracked effects, refreshed every 5 s while it is the visible tab.
 
+The main tab row ends in the same knotwork rule as the header; every sub row
+(Admin, Faction, and Zones / Add / Pets / Jobs inside NPCs) sits under a thin
+gold line with a gap above and below it.
+
 Permissions are enforced **server-side** — unauthorized buttons just reply
 "No permission" in chat.
 

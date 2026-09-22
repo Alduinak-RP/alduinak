@@ -82,11 +82,19 @@ $admin-row-gutter: 16px;
   &__tabs {
     display: flex;
     gap: 6px;
+    padding-bottom: 8px;
     margin-bottom: 12px;
+    background-image: $admin-rule;
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: 100% 5px;
 
-    // Zones / Add switch inside the NPCs tab
+    // Sub rows: Admin, Faction and the Zones / Add / Pets / Jobs switch inside NPCs
     &--sub {
-      margin: 0 0 4px;
+      margin: 8px 0 12px;
+      padding-bottom: 6px;
+      background-image: none;
+      border-bottom: 1px solid rgba(200, 180, 138, 0.25);
 
       .admin-panel__tab {
         font-size: 15px;
