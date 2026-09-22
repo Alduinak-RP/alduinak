@@ -65,7 +65,7 @@ import {
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
 import { logTrace, logError, logToPlatformLog } from '../../logging';
-import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved } from '../../sync/equipment';
+import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved, resyncHandGraph } from '../../sync/equipment';
 import { isRiderClone } from '../../sync/mountApply';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
@@ -148,6 +148,8 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
   logToPlatformLog("RemoteServer", `spawn outfit settled: ${unworn.length} of ${getPlayerWorn(spawnEquipment).length} saved not worn, worn ${countWorn(getInventory(player))}, menu used ${spawnEquipmentMenuUsed},`, redress ? "re-dressing" : "done");
   if (!redress) {
     spawnEquipment = undefined;
+    // The report that follows lands inside the server's spawn guard like a manual re-equip
+    resyncHandGraph(player, (text) => logToPlatformLog("RemoteServer", text));
     requestWornEnchantmentReapply();
     return false;
   }

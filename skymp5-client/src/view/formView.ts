@@ -1,7 +1,8 @@
 import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
-import { isBadMenuShown, applyEquipment, wearsExactly } from "../sync/equipment";
+import { isBadMenuShown, applyEquipment, resyncHandGraph, wearsExactly } from "../sync/equipment";
+import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement } from "../sync/movementApply";
@@ -578,14 +579,25 @@ export class FormView {
           // Stripping and re-equipping an NPC copy races the engine's skeleton update, so a copy already wearing the set is left alone
           if (!model.appearance && wearsExactly(ac, model.equipment)) {
             this.eqState.lastNumChanges = model.equipment.numChanges;
+            this.eqState.resyncAt = Date.now() + FormView.handGraphCheckDelayMs;
           } else if (applyEquipment(ac, model.equipment)) {
             this.eqState.lastNumChanges = model.equipment.numChanges;
+            this.eqState.resyncAt = Date.now() + FormView.handGraphCheckDelayMs;
           }
           this.eqState.lastEqMoment = Date.now();
           //}
           //const res: boolean = applyEquipment(ac, model.equipment);
           //if (res) this.eqState.lastNumChanges = model.equipment.numChanges;
         }
+      }
+    }
+
+    // A recreated copy can hold its weapon while the graph still swings fists, once per equipment change after the apply settled
+    if (this.eqState.resyncAt && Date.now() >= this.eqState.resyncAt && !model.isMyClone && !mounted && !alreadyHosted) {
+      const ac = Actor.from(refr);
+      if (ac && refr.is3DLoaded() && !this.isSettling(ac)) {
+        this.eqState.resyncAt = 0;
+        resyncHandGraph(ac, (text) => logToPlatformLog("FormView", `${(this.remoteRefrId ?? 0).toString(16)} ${text}`));
       }
     }
 
@@ -832,7 +844,7 @@ export class FormView {
   }
 
   private getDefaultEquipState() {
-    return { lastNumChanges: 0, lastEqMoment: 0 };
+    return { lastNumChanges: 0, lastEqMoment: 0, resyncAt: 0 };
   };
 
   private getDefaultAppearanceState() {
@@ -889,6 +901,7 @@ export class FormView {
   private spawnMoment = 0;
   private loaded3DMoment = 0;
   private static readonly copySettleMs = 1000;
+  private static readonly handGraphCheckDelayMs = 1500;
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   private mountState = makeMountState();

@@ -5,6 +5,7 @@ import {
   ObjectReference,
   Spell,
   Ui,
+  Weapon,
   setInventory,
 } from 'skyrimPlatform';
 
@@ -95,6 +96,34 @@ export const getUnwornSaved = (ac: Actor, eq: Equipment): Entry[] => {
 // Equips without the strip applyEquipment does, so nothing leaves the inventory
 export const equipEntries = (ac: Actor, entries: Entry[]): void => {
   entries.forEach((e) => ac.equipItemEx(Game.getFormEx(e.baseId), e.wornLeft ? 2 : 0, false, false));
+};
+
+// A weapon in hand while the behaviour graph still reads fists is re-equipped, as the owner did by hand after a reconnect; true when a repair ran
+export const resyncHandGraph = (ac: Actor, log: (text: string) => void): boolean => {
+  const hands: { variable: string; slot: number; entry?: Entry }[] = [
+    { variable: "iRightHandType", slot: 0 },
+    { variable: "iLeftHandType", slot: 2 },
+  ];
+  getInventory(ac).entries.forEach((e) => {
+    if (!e.worn && !e.wornLeft) return;
+    const form = Game.getFormEx(e.baseId);
+    if (!form || !Weapon.from(form)) return;
+    hands[e.wornLeft ? 1 : 0].entry = e;
+  });
+  if (!hands.some((h) => h.entry)) {
+    return false;
+  }
+  const types = hands.map((h) => ac.getAnimationVariableInt(h.variable));
+  const worn = hands.map((h) => (h.entry ? h.entry.baseId.toString(16) : "-")).join("/");
+  // 0 is the vanilla graph's fists, anything else or an unreadable value is left alone
+  const broken = hands.filter((h, i) => h.entry && types[i] === 0);
+  log(`hand graph: right ${types[0]} left ${types[1]} drawn ${ac.isWeaponDrawn()} worn ${worn}${broken.length ? ", re-equipping" : ""}`);
+  broken.forEach((h) => {
+    const form = Game.getFormEx(h.entry!.baseId);
+    ac.unequipItemEx(form, h.slot, false);
+    ac.equipItemEx(form, h.slot, false, false);
+  });
+  return broken.length > 0;
 };
 
 const removeUnnecessaryExtra = (inv: Inventory, isPlayer: boolean): Inventory => {
