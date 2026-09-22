@@ -223,13 +223,6 @@ html, body {
   margin-bottom: 18px;
 }
 
-.main-header-left {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-}
-
 .legal-link {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: calc(11px * var(--text-scale));
