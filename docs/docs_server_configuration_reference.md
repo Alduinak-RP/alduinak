@@ -193,6 +193,8 @@ Name of a database driver which would be used to store server data. `file` by de
 
 A time before a game object restores its original state in milliseconds. Unlike Skyrim SE, Skyrim Multiplayer doesn't have a built-in Cell Reset mechanism. The server resets every object in the world every hour instead. With this option, you can change this time interval for every kind of game object. `"CONT"`, for example, means "Container" - chests, barrels, etc. See "record types" on [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format).
 
+`FLOR` and `TREE` are the alchemy plants (flowers, bushes, mushrooms, apple trees): a harvested plant grows back after that many milliseconds, natively, and `gatheringSystem.ts` reads the same numbers for its harvest kneel. The live file sets both to `1800000` (30 minutes) since r15; without an entry the native default is one hour.
+
 ```json5
 {
   // ...
@@ -927,7 +929,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `miningVeinTiers` | iron, corundum open; gold, silver Adept; orichalcum, moonstone Expert; malachite, quicksilver, ebony Master | `{ "<ore editor id>": "Adept" }` overrides, by the ore item the vein hands out |
 | `gatheringProduceContainers` | `{ "BeeHive": 60, "BeeHiveVacant": 60 }` | `{ "<container editor id>": minutes }`: placed containers of these bases never open; E hands over their yield and it grows back after the minutes. Replaces the default, `{}` turns it off |
 | `gatheringProduceYield` | `{ "BeeHive": { "BeeHoneyComb": 2, "BeeHiveHusk": 2 }, "BeeHiveVacant": { … } }` | `{ "<container>": { "<item editor id or hex id>": count } }` handed over instead of the container record's own contents. A container whose items do not resolve keeps its record contents |
-| `gatheringPickMinutes` | `60` | Minutes a picked nirnroot or ingredient-carrying critter (bees, fireflies) stays gone. The server disables the picked ref for everyone and enables it again when the time is up; `gathering-picks.json` in the server's working folder (beside `housing.json`) keeps the pending ones over a restart |
+| `gatheringPickMinutes` | `30` | Minutes a picked nirnroot or ingredient-carrying critter (bees, fireflies) stays gone. The server disables the picked ref for everyone and enables it again when the time is up; `gathering-picks.json` in the server's working folder (beside `housing.json`) keeps the pending ones over a restart |
 | `gatheringHarvestSeconds` | `5` | Seconds harvesting a plant or a nirnroot holds the picker kneeling, unable to move or harvest again. `0` skips the kneel. Catching a bee costs no fatigue and plays nothing |
 | `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
 | `huntingTrophyChance` | `0.15` | Master hunter: chance of one extra pelt per kind |

@@ -22,7 +22,7 @@ type Mp = any;
 //   miningVeinTiers              { "<ore editor id or hex id>": "Novice" | rank index | "Anyone" } overriding DEFAULT_VEIN_TIERS
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
-//   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 60
+//   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
 //   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 5
 //
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
@@ -51,7 +51,7 @@ const DEFAULT_STRIKE_SECONDS = 5;
 const DEFAULT_CHOP_SECONDS = 8;
 const DEFAULT_CHOP_YIELD = 2;
 const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
-const DEFAULT_PICK_MINUTES = 60;
+const DEFAULT_PICK_MINUTES = 30;
 const DEFAULT_HARVEST_SECONDS = 5;
 const HARVEST_ANIM = "IdleKneelingEnter";
 // The native flora reloot when server-settings names none

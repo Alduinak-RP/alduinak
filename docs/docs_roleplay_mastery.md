@@ -269,8 +269,11 @@ container loot are off:
 
 - Red and Green Apples: the 28 apple trees (22 red, 6 green) JK's Whiterun's
   Outskirts plants in the orchards north of Honningbrew. They are flora, so
-  they grow back like any plant (`reloot.FLOR`).
-- Lavender, Snowberries and Red Mountain Flower: flora across Skyrim.
+  they grow back like any plant (`reloot.FLOR`, 30 minutes live).
+- Lavender, Snowberries and Red Mountain Flower: flora across Skyrim, back 30
+  minutes after a harvest (`reloot.FLOR` and `reloot.TREE`); a picked nirnroot
+  or a caught bee or firefly is gone for everyone for `gatheringPickMinutes`,
+  30 as well.
 - Salt Pile: the salt every cooked meat needs as well. No recipe or plant makes
   it; only the vanilla loot lists of bandits, Forsworn, warlocks and other human
   foes carry it.
