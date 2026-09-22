@@ -21,4 +21,10 @@ module.exports = {
   nexusOauthClientId: process.env.NEXUS_OAUTH_CLIENT_ID || 'skyrp',
   nexusOauthPort:     parseInt(process.env.NEXUS_OAUTH_PORT || '48521', 10),
   nexusAppSlug:       process.env.NEXUS_APP_SLUG || 'skyrp',
+
+  // Rich Presence application id; a discordAppId in /api/serverinfo overrides it
+  discordAppId:       process.env.DISCORD_APP_ID || '1525331715613261934',
+  // Party max shown as "(N of 1200)" when no server reports its player cap
+  discordPartyMax:    parseInt(process.env.DISCORD_PARTY_MAX || '1200', 10),
+  websiteUrl:         process.env.WEBSITE_URL || 'https://alduinak.com/',
 }

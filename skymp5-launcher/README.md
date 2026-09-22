@@ -20,7 +20,8 @@ Pre-built installers are available at **https://alduinak.com/**.
 src/
   main.js          Main process: window, IPC handlers, OAuth flow, install, launch
   preload.js       Context-isolated bridge - exposes window.electronAPI to renderer
-  config.js        API_URL from env (defaults to https://api.alduinak.com)
+  config.js        API_URL from env (defaults to https://api.alduinak.com), Discord app id, website URL
+  discordPresence.js  Discord Rich Presence over the local IPC pipe (no library)
   mo2.js           Mod Organizer 2 portable install + manifest replay
   nexus.js         Nexus Mods API (key validation, premium downloads, SSO)
   ini.js           Minimal INI reader/writer for SkyrimPrefs.ini
@@ -216,6 +217,11 @@ the `files[]` list written by the backend's `npm run merge`.
 | `nexusApiKey` | string | Nexus Mods API key |
 | `nexusUser` | object | `{ name, isPremium }` from the last Nexus validation |
 | `fov` | number | The Field of View slider (70-170); every launch writes it as `fov` into `skymp5-client-settings.txt` |
+| `discordPresence` | boolean | Show "Playing Alduinak" on Discord while the game runs (default true) |
+
+## Discord Rich Presence
+
+`discordPresence.js` speaks Discord's local IPC itself (no library ships offline): it opens `\\.\pipe\discord-ipc-0..9`, sends the HANDSHAKE frame with the application id, answers PINGs and sends SET_ACTIVITY frames with a nonce; frames are a little-endian uint32 opcode, a uint32 length and JSON. Main starts it when the game process is first seen running and stops it (activity cleared, CLOSE sent) when the process is gone, the toggle is turned off or the launcher quits, so presence exists only while the game and the launcher both run. Every 10 s it reads `/api/status` for the player count and shows `details` "Playing Alduinak", `state` "N/1200 players online" (or "server offline"), a party of N of the server's `maxPlayers` so Discord prints "(N of 1200)", the elapsed time, the art assets `alduinak` (large) and `alduinaklogoofficial` (small) and a Website button; no join secret. The application id defaults to `config.discordAppId` (env `DISCORD_APP_ID` for dev builds) and a `discordAppId` in `/api/serverinfo` (backend `DISCORD_PRESENCE_APP_ID`) overrides it without a launcher build. Discord absent logs one `discord: no ipc pipe` line and retries every 15 s while the game runs. The player's Discord must have "Share your detected activities with others" on.
 
 ## Field of view
 
@@ -227,7 +233,7 @@ The slider stores `fov` and writes both profile ini keys (`saveFov`); each launc
 |--------|------|---------|
 | GET | `/api/servers` | Server list `{ id, name, address, port, masterKey, online, maxPlayers, lastSeen }`, main server first |
 | GET | `/api/status` | Online/offline + player count (`?server=<id>` for a server other than the main one) |
-| GET | `/api/serverinfo` | Name, max players, lock status, auth config, load order (`?server=<id>` as above) |
+| GET | `/api/serverinfo` | Name, max players, lock status, auth config, Rich Presence app id, load order (`?server=<id>` as above) |
 | GET | `/api/news` | News cards |
 | GET | `/api/modlist` | Mod list with Nexus links |
 | GET | `/api/files/version` | Current client files version tag |

@@ -433,6 +433,8 @@ async function loadSettings() {
   fieldIsolated.checked = !!s.isolatedGame
   refreshIsolatedStatus()
 
+  fieldDiscordPresence.checked = !!s.discordPresence
+
   return s
 }
 
@@ -615,6 +617,7 @@ window.electronAPI.nexusGetUser().then(user => {
 const isolatedDot      = document.getElementById('isolated-status-dot')
 const isolatedText     = document.getElementById('isolated-status-text')
 const fieldIsolated    = document.getElementById('setting-isolated-game')
+const fieldDiscordPresence = document.getElementById('setting-discord-presence')
 const btnRepairMo2     = document.getElementById('btn-repair-mo2')
 const btnRepairGame    = document.getElementById('btn-repair-game')
 const btnRepairMasters = document.getElementById('btn-repair-masters')
@@ -686,6 +689,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     baseDirPath:  fieldBaseDir.value.trim(),
     mo2Enabled:   fieldMo2Enabled.checked,
     isolatedGame: fieldIsolated.checked,
+    discordPresence: fieldDiscordPresence.checked,
   }
 
   await window.electronAPI.saveSettings(data)

@@ -40,6 +40,8 @@ router.get('/', async (req, res) => {
     npcEnabled:          config.serverNpcEnabled,
     gamemode:            config.serverGamemode,
     discordAuthRequired: !!config.discordClientId,
+    // Rich Presence application id for the launcher; null keeps the launcher's built-in one
+    discordAppId:        config.discordPresenceAppId || null,
     masterKey:           server.masterKey  || null,
     masterUrl:           config.masterUrl         || null,
     locked,

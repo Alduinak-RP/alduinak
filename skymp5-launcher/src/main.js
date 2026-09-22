@@ -25,6 +25,7 @@ const nexus  = require('./nexus')
 const ini    = require('./ini')
 const gameversion = require('./gameversion')
 const cleanmasters = require('./cleanmasters')
+const { DiscordPresence } = require('./discordPresence')
 
 const isDev = process.argv.includes('--dev')
 
@@ -59,6 +60,7 @@ const store = new Store({
     filesVersion:      '',   // version tag from last successful file download
     discordUser:       null,
     mo2Enabled:        true,   // launch the game through the managed portable MO2
+    discordPresence:   true,   // show "Playing Alduinak" on Discord while the game runs
     nexusApiKey:       '',     // Nexus API key (websocket SSO flow)
     nexusOauth:        null,   // { accessToken, refreshToken, expiresAt } (OAuth flow)
     nexusUser:         null,   // { name, isPremium } from the last validation
@@ -311,17 +313,62 @@ ipcMain.handle('settings:load', async () => {
     activeServerId:    (activeServer() || {}).id || '',
     mo2Enabled:        store.get('mo2Enabled'),
     isolatedGame:      store.get('isolatedGame'),
+    discordPresence:   store.get('discordPresence'),
     servers,
     multiServer:       servers.length > 1,
     discordUser:       store.get('discordUser') || null,
   }
 })
 ipcMain.handle('settings:save', (_e, data) => {
-  const allowed = ['skyrimPath', 'baseDirPath', 'activeServerId', 'mo2Enabled', 'isolatedGame']
+  const allowed = ['skyrimPath', 'baseDirPath', 'activeServerId', 'mo2Enabled', 'isolatedGame', 'discordPresence']
   const clean = {}
   for (const k of allowed) if (k in data) clean[k] = data[k]
   store.set(clean)
+  if ('discordPresence' in clean) setPresenceRunning(gameWasRunning)
 })
+
+// Discord Rich Presence: lives in the main process while the game runs and the toggle is on
+const presence = new DiscordPresence(log)
+let presenceStart = 0
+let presenceTimer = null
+let lastServerInfo = null
+function discordAppId() {
+  return (lastServerInfo && lastServerInfo.discordAppId) || config.discordAppId
+}
+async function updatePresence() {
+  let players = null
+  try {
+    const s = await fetchJSON(`${config.apiUrl}/api/status${serverQuery()}`)
+    if (s && s.status === 'online' && Number.isFinite(Number(s.players))) players = Number(s.players)
+  } catch { }
+  const srv = activeServer() || {}
+  const max = Number(srv.maxPlayers) || Number(lastServerInfo?.maxPlayers) || config.discordPartyMax
+  const activity = {
+    details: 'Playing Alduinak',
+    state: players === null ? 'server offline' : `${players}/${max} players online`,
+    timestamps: { start: presenceStart },
+    assets: { large_image: 'alduinak', large_text: 'Alduinak RP', small_image: 'alduinaklogoofficial', small_text: 'SkyMP' },
+    buttons: [{ label: 'Website', url: config.websiteUrl }],
+  }
+  // Discord refuses a party of fewer than one; the state line already carries the 0/max text
+  if (players) activity.party = { id: 'alduinak', size: [Math.min(players, max), max] }
+  presence.setActivity(activity)
+}
+function setPresenceRunning(running) {
+  const want = running && !!store.get('discordPresence')
+  if (want && !presenceStart) {
+    presenceStart = Date.now()
+    presence.start(discordAppId())
+    updatePresence()
+    presenceTimer = setInterval(updatePresence, 10_000)
+  } else if (!want && presenceStart) {
+    clearInterval(presenceTimer)
+    presenceTimer = null
+    presenceStart = 0
+    presence.stop()
+  }
+}
+app.on('before-quit', () => presence.stop())
 
 // Graphics / hotkey settings (Settings tab)
 // Graphics edit the MO2 portable profile's SkyrimPrefs.ini (FOV its Skyrim.ini). NOTE: this assumes
@@ -815,8 +862,10 @@ ipcMain.handle('api:status', async () => {
 ipcMain.handle('api:serverinfo', async () => {
   const session = store.get('gameSession')
   const headers = session ? { 'x-session': session } : {}
-  try { return await fetchJSON(serverInfoUrl(), headers) }
-  catch { return null }
+  try {
+    lastServerInfo = await fetchJSON(serverInfoUrl(), headers)
+    return lastServerInfo
+  } catch { return null }
 })
 
 // Discord OAuth
@@ -1474,6 +1523,7 @@ async function gameProcessRunning() {
   if (running) launchStartedAt = 0
   if (gameWasRunning && !running) adoptChatFov()
   gameWasRunning = running
+  setPresenceRunning(running)
   return running
 }
 
