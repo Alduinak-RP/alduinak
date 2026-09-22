@@ -1072,6 +1072,8 @@ async function pollGameRunning() {
     if (timedOut) showWarning(LAUNCH_TIMEOUT_WARNING)
     if (running && connectWarning.textContent === LAUNCH_TIMEOUT_WARNING) clearWarning()
     if (running !== gameRunning || timedOut) {
+      // The game may have changed the FOV; main adopted it on exit
+      if (gameRunning && !running && !modalOverlay.hidden) loadGameSettingsTab()
       gameRunning = running
       updatePlayButton()
     }

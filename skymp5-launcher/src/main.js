@@ -268,6 +268,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   ensureSkyrimPath()
+  adoptChatFov()
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -390,8 +391,33 @@ function readClientSettings() {
     return obj && typeof obj === 'object' ? obj : {}
   } catch { return {} }
 }
+// The in-game chat settings the client persists through writePlugin: "//" + JSON with fov and fovLauncher
+function chatSettingsPath() {
+  return path.join(effectiveGamePath() || '', 'Data', 'Platform', 'PluginsNoLoad', 'chat-settings-no-load.js')
+}
+function readChatSettings() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(chatSettingsPath(), 'utf8').replace(/^\/\//, ''))
+    return obj && typeof obj === 'object' ? obj : {}
+  } catch { return {} }
+}
+// Takes the in-game chat FOV into the slider when its fovLauncher stamp equals the stored slider value
+function adoptChatFov() {
+  try {
+    const c = readChatSettings()
+    const chat = clampFov(c.fov)
+    const stamp = clampFov(c.fovLauncher) ?? 0
+    const mine = clampFov(store.get('fov')) ?? 0
+    if (chat === null || stamp !== mine || chat === launcherFov()) return
+    saveFov(chat)
+    log('[fov] adopted in-game value', chat)
+  } catch (err) {
+    log('[fov] adopt failed:', err.message)
+  }
+}
 
 ipcMain.handle('graphics:load', () => {
+  adoptChatFov()
   try {
     const p = skyrimPrefsPath()
     const data = ini.read(p)
@@ -1441,10 +1467,13 @@ const LAUNCH_GRACE_MS = 90_000
 let launchInFlight = false
 let launchStartedAt = 0
 
+let gameWasRunning = false
 async function gameProcessRunning() {
   if (process.platform !== 'win32') return false
   const running = (await isProcessRunning('SkyrimSE.exe')) || (await isProcessRunning('skse64_loader.exe'))
   if (running) launchStartedAt = 0
+  if (gameWasRunning && !running) adoptChatFov()
+  gameWasRunning = running
   return running
 }
 

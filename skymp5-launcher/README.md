@@ -215,6 +215,11 @@ the `files[]` list written by the backend's `npm run merge`.
 | `gameSession` | string | Play-session token |
 | `nexusApiKey` | string | Nexus Mods API key |
 | `nexusUser` | object | `{ name, isPremium }` from the last Nexus validation |
+| `fov` | number | The Field of View slider (70-170); every launch writes it as `fov` into `skymp5-client-settings.txt` |
+
+## Field of view
+
+The slider stores `fov` and writes both profile ini keys (`saveFov`); each launch copies it into the client settings, where the in-game client applies it. The in-game chat settings can change the FOV too: the client saves it to `Data/Platform/PluginsNoLoad/chat-settings-no-load.js` together with the launcher value it saw (`fovLauncher`). `adoptChatFov` (at start, when the Settings tab loads and when the game process exits) takes that value into the slider when the stamp equals the stored slider value, which proves the in-game change is the newer one. A slider moved afterwards breaks that equality and the client then drops the stale chat FOV on its own, so the chat file is never rewritten by the launcher.
 
 ## Backend API endpoints used
 
