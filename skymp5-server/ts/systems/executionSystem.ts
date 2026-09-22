@@ -5,7 +5,7 @@ import { BleedoutSystem } from "./bleedoutSystem";
 import { FactionSystem } from "./factionSystem";
 import { AfterlifeSystem } from "./afterlifeSystem";
 import { toFormId } from "./formIdUtil";
-import { baseIdOf, hex, isAlive, isNear, isStreamedTo, nameShownTo, notifyActor, sendActionLock, userOf, weaponAnimType } from "./actorUtil";
+import { baseIdOf, hex, isAlive, isNear, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, sendActionLock, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -13,10 +13,27 @@ type Mp = any;
 
 // Finish off a downed player and behead a prisoner at a headsman's block, both a PK (docs_roleplay_survival_loop.md section 8)
 
-// pa_KillMove1HMDecapBleedOut and pa_KillMove2HMDecapBleedOut (Skyrim.esm IDLE, no conditions)
+// pa_KillMove1HMDecapBleedOut and pa_KillMove2HMDecapBleedOut (Skyrim.esm IDLE, no conditions), played on a kneeling victim
 const KILLMOVE_ONE_HANDED = 0xf465d;
 const KILLMOVE_TWO_HANDED = 0xf467f;
-const FINISH_OFF_MS = 4500;
+// The held weapon by its WEAP DNAM animation type: 1-4 in one hand or in both, 5 greatsword, 6 battleaxe and warhammer
+type WeaponClass = "oneHanded" | "dual" | "twoHanded" | "twoHandedHeavy";
+// Loose Skyrim.esm paired killmoves without conditions, none decapitating; type 6 has none, so it borrows the greatsword stab
+const FINISHERS: Record<WeaponClass, number[]> = {
+  oneHanded: [0xf469a, 0xf469b, 0xf469c, 0xf469d, 0x108a45],
+  dual: [0xf469f],
+  twoHanded: [0xf4687],
+  twoHandedHeavy: [],
+};
+// Killmove tree records whose own or parent conditions the engine may refuse; added by "finishOffExtendedPool"
+const EXTENDED_FINISHERS: Record<WeaponClass, number[]> = {
+  oneHanded: [0x6440c, 0x5169f, 0x2ff92, 0x55706, 0x55707, 0x55708, 0x5570b, 0x5570c, 0x5570d],
+  dual: [0x1bbc2, 0x0100082e, 0x0100082f],
+  twoHanded: [0xd3648, 0x01000828, 0x01000829, 0x0100082a],
+  twoHandedHeavy: [0x10d972, 0x01000824, 0x01000825],
+};
+// The victim dies when a participant's client reports the end of the pair, or at this cap. Overridable via "finishOffMaxMs"
+const DEFAULT_PAIR_MAX_MS = 9000;
 
 // ExecutionerChoppingBlock, placed at Helgen, Solitude and in the city mods, and its unplaced two-seat twin. Overridable via "executionBlockBaseIds"
 const DEFAULT_BLOCK_BASE_IDS = [0x2e8eb, 0xfe549];
@@ -52,6 +69,14 @@ interface Prisoner {
   timers: ReturnType<typeof setTimeout>[];
 }
 
+// A killmove under way on a victim; done runs once, when a participant's client reports the end
+interface Pair {
+  attackerId: number;
+  seq: number;
+  until: number;
+  done: () => void;
+}
+
 const offsetOf = (raw: unknown, fallback: Offset): Offset => {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const pick = (key: keyof Offset): number => typeof o[key] === "number" && Number.isFinite(o[key]) ? o[key] as number : fallback[key];
@@ -83,6 +108,9 @@ export class ExecutionSystem implements System {
     this.executionerOffset = offsetOf(all?.["executionerOffset"], DEFAULT_EXECUTIONER_OFFSET);
     const chopMs = Number(all?.["executionChopMs"]);
     if (Number.isFinite(chopMs) && chopMs > 0) this.chopMs = chopMs;
+    const pairMaxMs = Number(all?.["finishOffMaxMs"]);
+    if (Number.isFinite(pairMaxMs) && pairMaxMs > 0) this.pairMaxMs = pairMaxMs;
+    this.extendedPool = all?.["finishOffExtendedPool"] === true;
 
     this.capture.menuFlagProviders.push((requesterId, targetId) => ({
       finishOff: !this.finishOffRefusal(requesterId, targetId),
@@ -132,6 +160,7 @@ export class ExecutionSystem implements System {
     if (type === "finishOffRequest") this.onFinishOffRequest(userId, targetId);
     else if (type === "prepareExecutionRequest") this.onPrepareRequest(userId, targetId);
     else if (type === "executeRequest") this.onExecuteRequest(userId, targetId);
+    else if (type === "pairedIdleDone") this.onPairedIdleDone(userId, targetId, Number(content.seq));
   }
 
   // Why the killer may not finish the victim off, "" when they may; the weapon is checked on the request
@@ -148,15 +177,16 @@ export class ExecutionSystem implements System {
     const mp = this.mp;
     const killerId = this.actorOf(userId);
     if (!killerId) return;
-    const idle = this.killMoveOf(killerId);
+    const idle = this.pickFinisher(killerId);
     const refusal = this.finishOffRefusal(killerId, victimId) ||
       (idle ? "" : "You need a melee weapon in hand to finish them off.") ||
-      this.bleedout.hold(victimId, killerId, FINISH_OFF_MS, () => this.slay(victimId, killerId, "finished off"), true);
+      (isWeaponDrawn(mp, killerId) ? "" : "Draw your weapon first.") ||
+      this.bleedout.hold(victimId, killerId, this.pairMaxMs, () => this.slay(victimId, killerId, "finished off"), true);
     if (refusal) {
       notifyActor(mp, killerId, refusal);
       return;
     }
-    this.playPair(killerId, victimId, idle, FINISH_OFF_MS);
+    this.playPair(killerId, victimId, idle, true, () => this.bleedout.completeHold(victimId, killerId));
     notifyActor(mp, victimId, `${nameShownTo(mp, victimId, killerId)} is finishing you off.`);
     this.log(`[execution] ${hex(killerId)} finishes off ${hex(victimId)}`);
   }
@@ -345,10 +375,14 @@ export class ExecutionSystem implements System {
     this.log(`[execution] ${line}`);
   }
 
-  // Both players see the pair, and so does everyone whose client has a copy of the victim
-  private playPair(attackerId: number, targetId: number, idle: number, ms: number): void {
+  // Both players see the pair, and so does everyone whose client has a copy of the victim; a standing pair stands the victim up first
+  private playPair(attackerId: number, targetId: number, idle: number, standUp: boolean, done: () => void): void {
     const mp = this.mp;
-    const payload = { customPacketType: "pairedIdle", attacker: attackerId, target: targetId, idle, ms };
+    const now = Date.now();
+    this.pairs.forEach((pair, id) => { if (now > pair.until) this.pairs.delete(id); });
+    const seq = ++this.pairSeq;
+    this.pairs.set(targetId, { attackerId, seq, until: now + this.pairMaxMs, done });
+    const payload = { customPacketType: "pairedIdle", attacker: attackerId, target: targetId, idle, ms: this.pairMaxMs, standUp, seq };
     let online: unknown[] = [];
     try { online = mp.get(0, "onlinePlayers") ?? []; } catch { /* no players */ }
     for (const raw of online) {
@@ -359,17 +393,46 @@ export class ExecutionSystem implements System {
     }
   }
 
-  // The bleedout killmove for the weapon in hand (right hand first), 0 without a melee weapon
+  // The end of the pair as either participant's client saw it; the first report wins
+  private onPairedIdleDone(userId: number, targetId: number, seq: number): void {
+    const pair = this.pairs.get(targetId);
+    const actorId = this.actorOf(userId);
+    if (!pair || pair.seq !== seq || (actorId !== pair.attackerId && actorId !== targetId)) return;
+    this.pairs.delete(targetId);
+    if (Date.now() <= pair.until) pair.done();
+  }
+
+  // A random finisher of the pool for the weapon in hand, 0 without a melee weapon
+  private pickFinisher(actorId: number): number {
+    const held = this.weaponClassOf(actorId);
+    if (!held) return 0;
+    let pool = this.extendedPool ? [...FINISHERS[held], ...EXTENDED_FINISHERS[held]] : FINISHERS[held];
+    if (!pool.length) pool = FINISHERS.twoHanded;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // The bleedout killmove for the weapon in hand, 0 without a melee weapon
   private killMoveOf(actorId: number): number {
+    const held = this.weaponClassOf(actorId);
+    return held === "oneHanded" || held === "dual" ? KILLMOVE_ONE_HANDED : held ? KILLMOVE_TWO_HANDED : 0;
+  }
+
+  // By the melee weapon in hand, the right hand first; "" without one
+  private weaponClassOf(actorId: number): WeaponClass | "" {
     let entries: any[] = [];
-    try { entries = this.mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return 0; }
-    const held = entries.filter((e) => e.worn || e.wornLeft).sort((a, b) => Number(!!b.worn) - Number(!!a.worn));
-    for (const entry of held) {
-      const anim = weaponAnimType(this.mp, Number(entry.baseId));
-      if (anim >= 1 && anim <= 4) return KILLMOVE_ONE_HANDED;
-      if (anim === 5 || anim === 6) return KILLMOVE_TWO_HANDED;
+    try { entries = this.mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return ""; }
+    const animIn = (hand: "worn" | "wornLeft"): number =>
+      entries.filter((e) => e[hand]).map((e) => weaponAnimType(this.mp, Number(e.baseId))).find((anim) => anim >= 1) ?? -1;
+    const oneHanded = (anim: number): boolean => anim >= 1 && anim <= 4;
+    const right = animIn("worn");
+    const left = animIn("wornLeft");
+    if (oneHanded(right) && oneHanded(left)) return "dual";
+    for (const anim of [right, left]) {
+      if (oneHanded(anim)) return "oneHanded";
+      if (anim === 5) return "twoHanded";
+      if (anim === 6) return "twoHandedHeavy";
     }
-    return 0;
+    return "";
   }
 
   // Alive, on their feet, hands free
@@ -393,7 +456,12 @@ export class ExecutionSystem implements System {
   private prisonerOffset = DEFAULT_PRISONER_OFFSET;
   private executionerOffset = DEFAULT_EXECUTIONER_OFFSET;
   private chopMs = DEFAULT_CHOP_MS;
+  private pairMaxMs = DEFAULT_PAIR_MAX_MS;
+  private extendedPool = false;
   private nextCheckAt = 0;
   // prisonerId -> the block they kneel at
   private prisoners = new Map<number, Prisoner>();
+  // victimId -> the killmove playing on them
+  private pairs = new Map<number, Pair>();
+  private pairSeq = 0;
 }

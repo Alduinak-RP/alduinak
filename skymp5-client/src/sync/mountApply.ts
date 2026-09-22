@@ -81,6 +81,11 @@ export const suspendCloneMovement = (localId: number, ms: number): void => {
   pairedClones.set(localId, Date.now() + ms);
 };
 
+// The pair ended before its suspension lapsed
+export const releaseCloneMovement = (localId: number): void => {
+  pairedClones.delete(localId);
+};
+
 export const isCloneMovementSuspended = (localId: number): boolean => {
   const until = pairedClones.get(localId);
   if (until === undefined) return false;

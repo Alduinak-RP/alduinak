@@ -100,6 +100,15 @@ export const isAlive = (mp: Mp, actorId: number): boolean => {
   }
 };
 
+// Through Papyrus, which reads the drawn state the client's movement reports; false for an unknown form
+export const isWeaponDrawn = (mp: Mp, actorId: number): boolean => {
+  try {
+    return mp.callPapyrusFunction("method", "Actor", "IsWeaponDrawn", { type: "form", desc: mp.getDescFromId(actorId) }, []) === true;
+  } catch {
+    return false;
+  }
+};
+
 // Mirrored by BleedoutSystem while a player kneels at 0 health: alive, but unable to act
 export const BLEEDOUT_PROP = "private.bleedout";
 

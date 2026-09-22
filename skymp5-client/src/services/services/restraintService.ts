@@ -35,6 +35,8 @@ const JUMP_START_EVENTS = new Set(["jumpstandingstart", "jumpdirectionalstart"])
 
 const TICK_MS = 100;
 const POSE_REAPPLY_MIN_MS = 500;
+// After a pair ends the kill has this long to land before a surviving victim kneels again
+const PAIR_END_GRACE_MS = 1500;
 // Lets the single-slot animation sync relay a layer exit before the next pose
 const POSE_SWAP_DELAY_S = 0.1;
 
@@ -119,6 +121,9 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *     stays free. Carried wins over downed, downed over bound.
  *   - executionState: kneels at the block in the given pose, held in place like
  *     a downed player but with menus; wins over bound, the cuffs stay on.
+ *   - standForPair (PairedIdleService, a finish off with standUp): the kneel is
+ *     left for the length of the pair while the controls stay locked; a victim
+ *     who survives it kneels again shortly after pairEnded, or when it lapses.
  *   - actionLock: plays anim (hands emptied first when its copies would sheathe)
  *     and holds the player still without fighting, sneaking or activation for
  *     the seconds, then plays exitAnim. Going down or dying ends it early,
@@ -166,6 +171,7 @@ export class RestraintService extends ClientListener {
         this.downed = false;
         this.lock = null;
         this.executionPose = "";
+        this.pairedUntil = 0;
         this.applyState();
       }
     });
@@ -188,6 +194,21 @@ export class RestraintService extends ClientListener {
 
   get isCarrying(): boolean {
     return this.carrying;
+  }
+
+  // Must run on update: the kneel is left for the pair, the controls stay locked
+  standForPair(ms: number): void {
+    this.pairedUntil = Date.now() + ms;
+    this.applyStateNow();
+  }
+
+  // The pair is over on this client; the tick kneels a survivor again once the kill had its chance
+  pairEnded(): void {
+    if (this.pairedUntil) this.pairedUntil = Math.min(this.pairedUntil, Date.now() + PAIR_END_GRACE_MS);
+  }
+
+  private get paired(): boolean {
+    return Date.now() < this.pairedUntil;
   }
 
   // Observers must see a held pose: no locomotion, and the server keeps the last animation only for Standing
@@ -297,6 +318,7 @@ export class RestraintService extends ClientListener {
     this.downed = false;
     this.lock = null;
     this.executionPose = "";
+    this.pairedUntil = 0;
     this.applyState();
   }
 
@@ -319,6 +341,11 @@ export class RestraintService extends ClientListener {
     }
     if (this.lock && now >= this.lock.until) {
       this.lock = null;
+      this.applyStateNow();
+    }
+    // The pair lapsed without a death: a downed victim kneels again
+    if (this.pairedUntil && now >= this.pairedUntil) {
+      this.pairedUntil = 0;
       this.applyStateNow();
     }
 
@@ -432,7 +459,8 @@ export class RestraintService extends ClientListener {
   // Must run on update; forces every held pose to be sent again
   private reapplyPoses(): void {
     if (this.boundHands || this.carried || this.downed || this.executionPose || this.lock) {
-      this.appliedPose = "";
+      // A pair under way owns the animation; only the controls are re-asserted
+      if (!this.paired) this.appliedPose = "";
       this.applyStateNow();
     }
     if (this.carrying) {
@@ -453,8 +481,9 @@ export class RestraintService extends ClientListener {
       return;
     }
 
-    // Carried shows the sitting pose, downed the bleedout kneel, then the execution pose, bound the captive pose, then an action lock's pose, otherwise clear it; only fire on transition.
-    const desiredPose = this.carried ? this.carriedAnim : this.downed ? BLEEDOUT_ANIM_START : this.executionPose ? this.executionPose
+    // Carried shows the sitting pose, downed the bleedout kneel (left for a pair), then the execution pose, bound the captive pose, then an action lock's pose, otherwise clear it; only fire on transition.
+    const desiredPose = this.carried ? this.carriedAnim : this.paired && (this.downed || this.executionPose) ? OFFSET_STOP_ANIM
+      : this.downed ? BLEEDOUT_ANIM_START : this.executionPose ? this.executionPose
       : this.boundHands ? this.captiveAnim : this.lock ? this.lock.anim : OFFSET_STOP_ANIM;
     if (desiredPose === this.lock?.anim && needsEmptyHands(desiredPose) && player.isWeaponDrawn()) {
       // The tick poses once the sheathe has settled
@@ -637,6 +666,7 @@ export class RestraintService extends ClientListener {
   private carriedControlsApplied = false;
   private downed = false;
   private executionPose = "";
+  private pairedUntil = 0;
   private lock: ActionLock | null = null;
   private stillControlsApplied = false;
   private ghostApplied = false;

@@ -214,6 +214,12 @@ export class BleedoutSystem implements System {
     return "";
   }
 
+  // The work ended early, such as a finish off whose animation is over; done runs now if actorId still holds the victim
+  completeHold(victimId: number, actorId: number): void {
+    const state = this.downed.get(victimId);
+    if (state?.hold?.actorId === actorId) this.complete(state, Date.now());
+  }
+
   private holdRefusal(victimId: number, actorId: number): string {
     const state = this.downed.get(victimId);
     if (!state || victimId === actorId) return "They are not bleeding out.";

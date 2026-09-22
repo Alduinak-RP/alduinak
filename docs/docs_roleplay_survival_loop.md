@@ -66,20 +66,39 @@ behaviour-graph events — no ESP required.**
   One rescuer at a time; a restrained or carrying player cannot stabilize.
 - **Finish off** (`executionSystem.ts`): a holder of the faction `execute`
   permission, or staff with the `factions` cap, sees Finish Off in the X menu
-  on a downed player in reach. With a melee weapon in hand (right hand first)
-  both play a vanilla bleedout killmove: `pa_KillMove1HMDecapBleedOut`
-  (IDLE F465D) for one-handed weapons, `pa_KillMove2HMDecapBleedOut` (F467F)
-  for two-handed ones; bows, staves and fists are refused. The victim's timer
-  waits for the 4.5 s killmove, then they die and their soul goes to Sovngarde
+  on a downed player in reach. It needs a drawn melee weapon: bows, staves
+  and fists are refused ("You need a melee weapon in hand to finish them
+  off."), a sheathed one too ("Draw your weapon first.", read through Papyrus
+  `Actor.IsWeaponDrawn`, so the killer's copies already show it). The victim
+  stands up out of the kneel (`bleedOutStop`, on their own client through
+  `RestraintService.standForPair` and on every copy) and 0.7 s later both
+  play a random vanilla paired killmove for the weapon in hand, none of them
+  decapitating: one-handed (WEAP animation type 1-4, right hand first)
+  `pa_1HMKillMoveShortA-D` (IDLE F469A-F469D) and `ShortJ` (108A45), dual
+  wield `pa_1HMKillMoveDualWieldA` (F469F), greatsword (type 5)
+  `pa_2HMKillMoveStabA` (F4687); a battleaxe or warhammer (type 6) has no
+  loose non-decapitating killmove and plays the greatsword stab.
+  `finishOffExtendedPool` adds the killmove tree records (`KillMoveShortB`,
+  `1HMKillMoveB-M`, `KillMove2HMStab` and the Update.esm slashes,
+  `KillMove2HWB`/`ChopKick`/`HeadButt` for type 6, the dual-wield slashes),
+  whose own and parent conditions the engine may refuse: a probe, off until a
+  test shows they play. The victim's timer waits while the pair plays: each
+  participant's client polls both actors (`bIsSynced`, `IsInKillMove`) and
+  reports the end (`pairedIdleDone`, first report wins), a pair the graph
+  never showed as started counts as over after 4.5 s, and `finishOffMaxMs`
+  (9 s) caps it; then the victim dies and their soul goes to Sovngarde
   (`AfterlifeSystem.sendToSovngarde`): a PK. The line, with who, whom, where
   and the faction that gave the right, goes to `pk.log`, `pvp.log` and the
   staff Discord alert (`execute`). While the killmove plays nothing else can
   hurt, heal or kill the victim, and a victim who logs out or dies meanwhile
   still gets the PK. If the killer goes down, dies, leaves or moves away
-  first, the victim keeps bleeding out with the time that was left. The
-  killmove is sent to both players and to everyone whose client has a copy of
-  the victim (`PairedIdleService`), and both copies leave the movement and
-  animation sync while it plays.
+  first, the victim keeps bleeding out with the time that was left and kneels
+  again 1.5 s after their client saw the pair end (`RestraintService.pairEnded`,
+  the grace a kill needs to land), or once the cap lapses. The killmove is sent to both players and to
+  everyone whose client has a copy of the victim (`PairedIdleService`), and
+  both copies leave the movement and animation sync until it ends. Each
+  client writes one `pairEnd` line to `skyrim-platform.log` saying which
+  signal ended the pair.
 - **Execution** (`executionSystem.ts`): the same right works at a headsman's
   block, the `ExecutionerChoppingBlock` furniture (FURN 2E8EB) already placed
   at Helgen, Solitude and in the Falkreath and Dragon Bridge city mods, plus
@@ -197,7 +216,8 @@ prisoner can also be carried).
 | `bleedoutState` `{ downed, seconds?, died? }` | Server → downed player's client | Kneel and lock controls, or stand up (no stand-up when `died`) |
 | `stabilizeRequest` `{ target }` | Rescuer client → server | Stabilize a downed player |
 | `finishOffRequest` `{ target }` | Client → server | Finish off a downed player |
-| `pairedIdle` `{ attacker, target, idle, ms }` | Server → both players and viewers | Play a killmove on both copies |
+| `pairedIdle` `{ attacker, target, idle, ms, standUp, seq }` | Server → both players and viewers | Play a killmove on both copies, after the victim's stand-up when `standUp`; `ms` is the cap |
+| `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose, `""` leaves it |
 | `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting) |
