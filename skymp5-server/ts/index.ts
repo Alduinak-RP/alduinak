@@ -41,6 +41,7 @@ import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
 import { TimeSystem } from "./systems/timeSystem";
+import { WeatherSystem } from "./systems/weatherSystem";
 import { FurnitureSeatSystem } from "./systems/furnitureSeatSystem";
 import { DoorTeleportSystem } from "./systems/doorTeleportSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
@@ -294,6 +295,7 @@ const main = async () => {
     new VoiceSystem(log),
     new AfkSystem(log),
     new TimeSystem(log),
+    new WeatherSystem(log),
     new FurnitureSeatSystem(log),
     // Before mastery, whose hooks wrap this one's, so a craft refused for fatigue is never credited
     needsSystem,

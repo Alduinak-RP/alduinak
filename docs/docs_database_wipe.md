@@ -23,13 +23,14 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `build/dist/server/pets.json` | Reset to `{"active":[],"released":[]}` |
 | `build/dist/server/starter-grants.json` | Reset to `{}`, so each account's first new character gets the starting kit and 50 gold again |
 | `build/dist/server/gathering-picks.json` | Reset to `{}`. It lists picked nirnroot and critters waiting to grow back, and their hidden state goes with the dropped changeForms |
+| `build/dist/server/weather-state.json` | Reset to `{}`, so every region rolls a fresh weather on the next boot |
 | `build/dist/server/writings/` | Emptied. Document ids restart with the wiped counter, so old files would collide with new ones. |
 | `skymp5-backend/data/characters.json` | Reset to `{}` (it names wiped characters) |
 | `skymp5-backend/data/faction-whitelist.json` | `assignments` cleared. `factions`, `requirements` and the `retired` ids are kept. |
 | `C:\logs` `admin`, `ban`, `bounty`, `chat`, `faction`, `pk`, `pvp` and `trading` logs, plus their rotated copies in the log root and in the `C:\logs\YYYY-MM` archive folders | Moved into `C:\logs\pre-wipe-<yyyyMMdd-HHmm>\`. Archived copies keep their `YYYY-MM` subfolder. New characters reuse the old `0xff` ids, so pre-wipe log lines would point at the wrong people. |
 
 **Kept, untouched:**
-- **Server folder:** `server-settings.json` (you edit one value by hand in step 10), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the `alert-keywords.json` Discord keyword list, the gamemode, plugins and `data/`.
+- **Server folder:** `server-settings.json` (you edit one value by hand in step 10), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the optional `weather-regions.json` region list, the `alert-keywords.json` Discord keyword list, the gamemode, plugins and `data/`.
 - **Backend data:** `bans.json`, `profiles.json`, `players.json`, `role-permissions.json`, `news.json`, the install manifest files and `manifest-diff.json`. Only Purge MongoDB changes `manifest-diff.json`.
 - **Sessions:** `sessions.json`, `auth-states.json` and `dashboard-sessions.json` are never copied, changed or restored.
 - **Outside the repo:** Discord roles and `adminRoleIds` (staff rights come back at login), the service logs (`gameserver`, `backend` and the rest) and their archived copies in `C:\logs\YYYY-MM`.
@@ -70,7 +71,8 @@ Run every command from the main checkout: `cd C:\Users\Administrator\Desktop\ald
 wipe-backup.json      counts per collection and class, load order with light flags, git HEAD
 mongodump\skymp\      changeForms.bson and its metadata
 server\               housing, zone-spawns, companions, pets, starter-grants, writings\,
-                      server-settings.json, NPC-Spawns.json, Jobs.json, faction-access.json
+                      server-settings.json, NPC-Spawns.json, Jobs.json, faction-access.json,
+                      weather-regions.json
 backend-data\         everything in skymp5-backend\data except sessions, auth states and *.bak copies
 post-sync\            manifest-diff.json as it was at apply time (added by apply)
 SHA256SUMS.txt

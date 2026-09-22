@@ -55,13 +55,14 @@ const SERVER_RESET = {
   'pets.json': { active: [], released: [] },
   'starter-grants.json': {},
   'gathering-picks.json': {},
+  'weather-state.json': {},
 }
 // One file per written document; new ids restart with the wiped private.writings counter
 const WRITINGS_DIR = 'writings'
 // Settings and definitions copied into the backup and never changed by apply
-const SERVER_DEFINITIONS = ['server-settings.json', 'NPC-Spawns.json', 'Jobs.json', 'faction-access.json']
+const SERVER_DEFINITIONS = ['server-settings.json', 'NPC-Spawns.json', 'Jobs.json', 'faction-access.json', 'weather-regions.json']
 // Server folder entries apply leaves alone (lower case); anything unlisted makes apply refuse
-const SERVER_KEEP = new Set(['world', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'npc-spawns.json', 'jobs.json', 'faction-access.json', 'alert-keywords.json'])
+const SERVER_KEEP = new Set(['world', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'npc-spawns.json', 'jobs.json', 'faction-access.json', 'alert-keywords.json', 'weather-regions.json'])
 // Settings copies, timestamped purge and delete backups, interrupted atomic writes
 const SERVER_KEEP_RE = [/^server-settings[.-]/i, /-\d{13}\.json$/i, /\.tmp$/i]
 
