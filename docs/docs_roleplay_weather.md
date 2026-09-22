@@ -55,9 +55,10 @@ what it folded and skipped, and `--dump` lists every region with its priority,
 polygons and weather chances.
 
 Every city, town and fort marker of the Teleport tab resolves to a region
-(`scratch/r14-weather/harness.js` checks Whiterun, Riften, Solitude, Windhelm,
-Markarth and Raven Rock); a spot outside every polygon, such as far out at
-sea, keeps the last region the player stood in.
+(checked against the marker positions of Whiterun, Riften, Solitude,
+Windhelm, Markarth, Raven Rock, Falkreath, Winterhold, Riverwood, Morthal and
+Dawnstar); a spot outside every polygon, such as far out at sea, keeps the
+last region the player stood in.
 
 ## How a weather is picked
 
@@ -122,8 +123,10 @@ minutes after setActive` to `skyrim-platform.log`.
 ```
 
 It is rewritten atomically (temp file plus rename) on every roll and every
-admin change, a few times an hour. On boot an entry still running, or forced,
-continues; the rest roll fresh, and the boot line says how many of each:
+admin change, a few times an hour. On boot an entry still running, or forced
+until cleared, continues; the rest roll fresh (a timed force whose time
+passed while the server was down included), and the boot line says how many
+of each:
 `WeatherSystem: 45 regions over 16 worlds, 108 catalog weathers, 30-90 min,
 transition accelerate; ./weather-state.json: 12 kept, 33 rolled`. A missing or
 unreadable file rolls everything. `wipe-world.js` resets it to `{}`, and
@@ -153,13 +156,34 @@ All optional, in `server-settings.json`:
 ## Admin > Weather
 
 Every tier gets the sub-tab (`weather` cap, switchable per tier through
-`adminTierCaps`). It lists every region with its current weather, the time
-left (or "until cleared"), how many players stand in it and which region the
-admin is in. Force holds a chosen weather on a region until cleared, or for a
-number of minutes (1 to 1440), and Clear rolls a normal weather again; both
-are audited in admin.log. The weather picker offers the region's own list
-first, then the whole catalog, so staff can put a snowstorm on the Tundra for
-an event and take it off afterwards.
+`adminTierCaps`; a server without the cap never shows it). It lists every
+region, the admin's own first and marked "(here)", with the current weather
+in plain words (`SkyrimOvercastRainTU` reads "Overcast Rain (tundra)"), the
+time left or "until cleared", a lit dot while forced and how many players
+stand in it; the countdown ticks from the server's clock. Pick fills the
+form's Region from a row and Clear on a row releases it.
+
+The form: Region ("The region I am in" or any region), Weather (the picked
+region's own weathers with their chances first, then the whole catalog, the
+FX and editor weathers last), Minutes (blank holds until cleared, else 1 to
+1440). Force puts the weather on the region for everyone in it within one
+poll and Clear rolls one of the region's own weathers again with a fresh
+30 to 90 minute clock. Both toast the result and write an admin.log line:
+`profile 12 (gm) forced weather SkyrimStormSnow on region tundra until
+cleared`, `profile 12 (gm) cleared the weather on region tundra`. A forced
+weather survives restarts by design, so an event storm nobody cleared shows
+as forced until someone presses Clear.
+
+```
+Client -> Server  { customPacketType: "adminAction", action: "weatherList", catalog? }
+                  { customPacketType: "adminAction", action: "weatherSet", region, weather, minutes }
+                  { customPacketType: "adminAction", action: "weatherClear", region }
+Server -> Client  { customPacketType: "adminWeather", regions: [...], weathers?: [...], at }
+```
+
+`region` "" means the admin's own (refused with "You are not in a weather
+region" in Sovngarde); `weather` is a catalog desc or editor id; the catalog
+comes only with a `weatherList` that asks for it, the list after every change.
 
 ## Regenerating the data
 

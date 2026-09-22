@@ -602,7 +602,8 @@ Every player opens the Personal Menu with the interact key (X by default) while 
   - Teleport: named locations, map markers and temples in collapsible sections;
   - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`, grant pets, and place, teleport to either end of and delete the passive jobs of `Jobs.json`, see `docs_roleplay_jobs.md`;
-  - Item Spawner, see below.
+  - Item Spawner, see below;
+  - Weather: every weather region with its current weather, the time left, the players in it and the one the admin stands in; force a weather on a region until cleared or for a number of minutes, and clear it, see `docs_roleplay_weather.md`.
 - **Faction**: the character's factions with roster, promote, demote, set rank, remove, uniform, leave and the /f chat choice, see `docs_roleplay_property_factions.md`.
 - **Skills**: the mastery (craft) menu.
 - **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, the distance to whatever the player faces (the crosshair when it picks something, otherwise the loaded cell's ref nearest the screen centre, so statics, trees and other scenery read too; it re-reads once a second while the tab is open and within a quarter second of a crosshair change, and a target the crosshair leaves stays on screen marked "last seen" until the menu closes; a player character you were not introduced to reads Stranger or Body, as on the interaction prompt), the target's ref id with its `hex:Plugin` desc, server id and base id with its desc (a ref created in game shows the server's base from the world model, plus the client's own base when that differs; another player's character shows its ref and server ids to staff only, since those ids would follow a masked character), a Copy IDs button that puts one line on the clipboard (name, ref id, server id when different, base id, cell and position; the descs paste straight into the Item Spawner search), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
@@ -611,13 +612,13 @@ Admins also get the admin chat channel. Nobody gets the server console commands 
 
 Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, and the server refuses every request the tier lacks the cap for, with an admin.log line.
 
-| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` | `factions` |
-|---|---|---|---|---|---|---|---|---|
-| `senior` | yes | yes | yes | yes | yes | yes | yes | yes |
-| `developer` | yes | yes | yes | yes | yes | no | no | yes |
-| `gm` | yes | yes | yes | yes | yes | yes | yes | yes |
+| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` | `factions` | `weather` |
+|---|---|---|---|---|---|---|---|---|---|
+| `senior` | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `developer` | yes | yes | yes | yes | yes | no | no | yes | yes |
+| `gm` | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 
-`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab and `items` the Item Spawner. `kick` is the Kick button and `ban` the Ban button; both also need `players`. `factions` lets staff see and manage every faction in the Faction tab, the leader rank included. `adminTierCaps` changes the defaults per tier.
+`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab, `items` the Item Spawner and `weather` the Weather sub-tab (`weatherList`, `weatherSet`, `weatherClear`). `kick` is the Kick button and `ban` the Ban button; both also need `players`. `factions` lets staff see and manage every faction in the Faction tab, the leader rank included. `adminTierCaps` changes the defaults per tier.
 
 Teleporting yourself (TP to on a player, a Teleport location or an NPC zone's TP) closes the Personal Menu once the server confirms it. A refused teleport, Summon and every other action leave it open.
 

@@ -17,7 +17,7 @@ declare const window: any;
 // Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
 // Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), and the Item Spawner (adminAction itemSearch / itemSpawn); the Skills tab embeds the mastery menu.
+// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn) and Weather (adminAction weatherList / weatherSet / weatherClear); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -76,6 +76,9 @@ const events = {
   jobDelete: "admin::jobdelete",
   jobTp: "admin::jobtp",
   jobPos: "admin::jobpos",
+  weatherList: "admin::weatherlist",
+  weatherSet: "admin::weatherset",
+  weatherClear: "admin::weatherclear",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -136,7 +139,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, events };
 
 function hex(id: number): string {
   return id ? id.toString(16) : "";
@@ -248,12 +251,14 @@ export class AdminMenuService extends ClientListener {
         petBases: panelData.petBases,
         faction: panelData.faction,
         jobs: panelData.jobs,
+        weather: panelData.weather,
         events,
       };
       if (panelData.debug) panelData.debug.target = this.shownTarget();
       this.pushData();
       // The Pets sub-tab needs the grantable bases; only a server that resolves caps knows the action
       if (panelData.caps.npcs === true) sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "petBases" });
+      if (panelData.caps.weather === true) this.requestWeather();
     } else if (content["customPacketType"] === "masteryMenu") {
       if (!this.menuOpen) return;
       panelData.skills = parseMasteryMenu(content);
@@ -292,6 +297,16 @@ export class AdminMenuService extends ClientListener {
     } else if (content["customPacketType"] === "adminJobs") {
       panelData.jobs = Array.isArray(content["jobs"]) ? content["jobs"] : [];
       this.pushData();
+    } else if (content["customPacketType"] === "adminWeather") {
+      // The catalog only comes when asked for; at is the server clock the countdowns start from, receivedAt the client's
+      const prev = panelData.weather;
+      panelData.weather = {
+        regions: Array.isArray(content["regions"]) ? content["regions"] : [],
+        weathers: Array.isArray(content["weathers"]) ? content["weathers"] : prev ? prev.weathers : [],
+        at: Number(content["at"]) || Date.now(),
+        receivedAt: Date.now(),
+      };
+      this.pushData();
     } else if (content["customPacketType"] === "adminPos") {
       // at lets a second press on the same spot refill a form edited in between; end names the job end asked for, "" for the zone form
       panelData.npcPos = { id: String(content["cellOrWorldDesc"] ?? ""), pos: Array.isArray(content["pos"]) ? content["pos"] : [], at: Date.now(), end: this.posEnd };
@@ -319,6 +334,13 @@ export class AdminMenuService extends ClientListener {
     panelData.mastery = null;
     panelData.petBases = null;
     panelData.jobs = null;
+    panelData.weather = null;
+  }
+
+  // The catalog is about a hundred rows, so it is only asked for until the first reply carried it
+  private requestWeather(): void {
+    const w = panelData.weather;
+    sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "weatherList", catalog: !(w && w.weathers.length) });
   }
 
   private showMenu(): void {
@@ -598,6 +620,27 @@ export class AdminMenuService extends ClientListener {
     }
     if (kind === events.jobList) {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "jobList" });
+      return;
+    }
+    if (kind === events.weatherList) {
+      this.requestWeather();
+      return;
+    }
+    if (kind === events.weatherSet) {
+      // The front sends {region, weather, minutes} as a JSON string; region "" means the admin's own, minutes "" until cleared
+      let req: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(str(e.arguments[1]));
+        if (parsed && typeof parsed === "object") req = parsed;
+      } catch {
+        return;
+      }
+      const minutes = String(req["minutes"] ?? "").trim();
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "weatherSet", region: str(req["region"]), weather: str(req["weather"]), minutes: minutes ? Number(minutes) : null });
+      return;
+    }
+    if (kind === events.weatherClear) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "weatherClear", region: str(e.arguments[1]) });
       return;
     }
     if (kind === events.jobSave) {

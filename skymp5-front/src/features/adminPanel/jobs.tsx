@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
+import { isBlankOrNum, isNum, optionalNumber } from './util';
 
 interface JobEnd {
   id: string;
@@ -84,12 +85,6 @@ const JOB_FIELDS: Array<{ key: JobTextField; label: string; placeholder: string;
 // Closing the menu to walk to the other end remounts the panel, so the form and the last applied position live here
 let savedForm: JobForm = EMPTY_JOB_FORM;
 let appliedPosAt = 0;
-
-const isNum = (text: string): boolean => text.trim() !== '' && Number.isFinite(Number(text));
-
-const isBlankOrNum = (text: string): boolean => text.trim() === '' || isNum(text);
-
-const optionalNumber = (text: string): number | undefined => (text.trim() === '' ? undefined : Number(text));
 
 const optionalText = (text: string): string | undefined => text.trim() || undefined;
 

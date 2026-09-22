@@ -322,6 +322,15 @@ export class WeatherSystem implements System {
     return this.byDesc.get(desc.toLowerCase())?.edid ?? desc;
   }
 
+  // Editor id of a catalog desc or editor id, the value itself when unknown
+  weatherName(weather: string): string {
+    return this.edidOf(weather);
+  }
+
+  regionName(regionId: string): string {
+    return this.regions.get(regionId)?.def.name ?? regionId;
+  }
+
   private isWorld(mp: Mp, id: number): boolean {
     let known = this.worldCache.get(id);
     if (known === undefined) {

@@ -266,6 +266,9 @@ const main = async () => {
   const jobSystem = new JobSystem(log, captureSystem, masterySystem);
   captureSystem.jobLoadOf = (actorId) => jobSystem.loadOf(actorId);
   adminSystem.setJobSystem(jobSystem);
+  // Per-region weather; the admin panel's Weather sub-tab forces and clears it
+  const weatherSystem = new WeatherSystem(log);
+  adminSystem.setWeatherSystem(weatherSystem);
   const factionSystem = new FactionSystem(log, housingSystem);
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
   const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem);
@@ -295,7 +298,7 @@ const main = async () => {
     new VoiceSystem(log),
     new AfkSystem(log),
     new TimeSystem(log),
-    new WeatherSystem(log),
+    weatherSystem,
     new FurnitureSeatSystem(log),
     // Before mastery, whose hooks wrap this one's, so a craft refused for fatigue is never credited
     needsSystem,

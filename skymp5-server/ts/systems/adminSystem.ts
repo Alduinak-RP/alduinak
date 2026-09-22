@@ -5,6 +5,7 @@ import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
+import { WeatherSystem } from "./weatherSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, userOf } from "./actorUtil";
@@ -42,8 +43,11 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "jobList" }  answered with adminJobs
 //                     { customPacketType: "adminAction", action: "jobAdd", job }  job: JSON string of one Jobs.json entry, replacing the entry of that name
 //                     { customPacketType: "adminAction", action: "jobDelete", target } | { action: "jobTp", target, end }  target: job name, end: pickup | dropoff
+//                     { customPacketType: "adminAction", action: "weatherList", catalog? }  answered with adminWeather; catalog false leaves the weather list out
+//                     { customPacketType: "adminAction", action: "weatherSet", region, weather, minutes }  region "" = the admin's own; weather: catalog desc or editor id; minutes null = until cleared, else 1..1440
+//                     { customPacketType: "adminAction", action: "weatherClear", region }  rolls a normal weather again
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban}, mastery }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       av: the online row's permanent max attribute change {health, magicka, stamina}
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
@@ -53,6 +57,7 @@ type Mp = any;
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form or one end of the job form
 //                     { customPacketType: "adminJobs", jobs: [JobSummary] }  after jobList and after every job mutation
+//                     { customPacketType: "adminWeather", regions: [WeatherRegionRow], weathers?: [{desc, edid, kind}], at }  after weatherList (with the catalog) and after every weather change; at: server epoch ms
 //                     { customPacketType: "adminItems", query, kind, page, pages, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
 //                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp, jobTp), which closes the menu
 // The roster merges online actors with the backend's full player list (GET /:key/players);
@@ -122,6 +127,12 @@ export class AdminSystem implements System {
 
   setJobSystem(jobs: JobSystem): void {
     this.jobs = jobs;
+  }
+
+  private weather: WeatherSystem | null = null;
+
+  setWeatherSystem(weather: WeatherSystem): void {
+    this.weather = weather;
   }
 
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
@@ -504,6 +515,10 @@ export class AdminSystem implements System {
       this.jobAction(mp, userId, myActorId, adminProfile, action, content);
       return;
     }
+    if (action.startsWith("weather")) {
+      this.weatherAction(mp, userId, myActorId, adminProfile, tier, action, content);
+      return;
+    }
     if (action === "teleportLoc") {
       const name = String(content["target"] ?? "");
       const loc = this.locations.find(l => l.name === name);
@@ -840,6 +855,63 @@ export class AdminSystem implements System {
         this.log(`AdminSystem: jobTp '${name}' by profile ${adminProfile} failed: ${e}`);
         this.reply(mp, userId, false, "Teleport failed, see server log");
       }
+      return;
+    }
+    this.reply(mp, userId, false, `Unknown action '${action}'`);
+  }
+
+  private sendWeather(mp: Mp, userId: number, adminActorId: number, withCatalog: boolean): void {
+    try {
+      if (!this.weather || mp.getUserActor(userId) !== adminActorId) return;
+      const packet: Record<string, unknown> = { customPacketType: "adminWeather", regions: this.weather.listRegions(mp, adminActorId), at: Date.now() };
+      if (withCatalog) packet["weathers"] = this.weather.catalog();
+      mp.sendCustomPacket(userId, JSON.stringify(packet));
+    } catch (e) {
+      this.log(`AdminSystem: adminWeather reply failed: ${e}`);
+    }
+  }
+
+  // Weather: the regions with their current weather, a weather held on one, and the release back to the roll
+  private weatherAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, tier: AdminTier, action: string, content: Content): void {
+    const ws = this.weather;
+    if (!ws) {
+      this.reply(mp, userId, false, "Weather sync is not enabled");
+      return;
+    }
+    if (action === "weatherList") {
+      this.sendWeather(mp, userId, myActorId, content["catalog"] !== false);
+      return;
+    }
+    let region = String(content["region"] ?? "");
+    if (!region) region = ws.regionOf(mp, myActorId) ?? "";
+    if (!region) {
+      this.reply(mp, userId, false, "You are not in a weather region");
+      return;
+    }
+    if (action === "weatherSet") {
+      const raw = content["minutes"];
+      const minutes = raw === undefined || raw === null || raw === "" ? null : Number(raw);
+      const error = ws.force(region, String(content["weather"] ?? ""), minutes);
+      if (error) {
+        this.reply(mp, userId, false, error);
+        return;
+      }
+      const weather = ws.weatherName(String(content["weather"] ?? ""));
+      const hold = minutes ? `for ${minutes} min` : "until cleared";
+      this.adminLog(`profile ${adminProfile} (${tier}) forced weather ${weather} on region ${region} ${hold}`);
+      this.reply(mp, userId, true, `${weather} on ${ws.regionName(region)} ${hold}`);
+      this.sendWeather(mp, userId, myActorId, false);
+      return;
+    }
+    if (action === "weatherClear") {
+      const error = ws.clear(region);
+      if (error) {
+        this.reply(mp, userId, false, error);
+        return;
+      }
+      this.adminLog(`profile ${adminProfile} (${tier}) cleared the weather on region ${region}`);
+      this.reply(mp, userId, true, `${ws.regionName(region)} rolls its own weather again`);
+      this.sendWeather(mp, userId, myActorId, false);
       return;
     }
     this.reply(mp, userId, false, `Unknown action '${action}'`);

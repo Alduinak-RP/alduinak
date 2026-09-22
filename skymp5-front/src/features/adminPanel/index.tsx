@@ -7,6 +7,8 @@ import ItemSpawner, { ItemResults } from './itemSpawner';
 import FactionTab, { FactionMenuData } from './factionTab';
 import Dropdown from './dropdown';
 import Jobs, { AdminPos, JobRow } from './jobs';
+import WeatherTab, { WeatherMenuData } from './weatherTab';
+import { formatCountdown, isBlankOrNum, isNum, optionalNumber, pad2 } from './util';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -133,6 +135,7 @@ export interface AdminPanelData {
   petBases?: Partial<Record<PetKind, PetBase[]>> | null; // the petBases reply, absent until it arrives
   faction?: FactionMenuData | null; // the factionMenu reply, absent until it arrives
   jobs?: JobRow[] | null; // the adminJobs reply, absent until it arrives
+  weather?: WeatherMenuData | null; // the adminWeather reply, absent until it arrives
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -147,7 +150,7 @@ const send = (key: string, ...args: unknown[]): void => {
 };
 
 type TopTab = 'admin' | 'faction' | 'skills' | 'debug';
-type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items';
+type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items' | 'weather';
 
 // Admin shows only to confirmed staff; the other three are open to every player
 const TOP_TABS: Array<{ id: TopTab; label: string }> = [
@@ -157,13 +160,14 @@ const TOP_TABS: Array<{ id: TopTab; label: string }> = [
   { id: 'debug', label: 'Debug' },
 ];
 
-// Each sub-tab needs its server-sent cap; Item Spawner needs it explicitly true
+// Each sub-tab needs its server-sent cap; Item Spawner and Weather need it explicitly true
 const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'players', label: 'Players' },
   { id: 'teleport', label: 'Teleport' },
   { id: 'modes', label: 'Modes' },
   { id: 'npcs', label: 'NPCs' },
   { id: 'items', label: 'Item Spawner' },
+  { id: 'weather', label: 'Weather' },
 ];
 
 // Teleport sections in display order; a missing or unknown group lands in Other
@@ -237,8 +241,6 @@ const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: stri
   { key: 'respawn', label: 'Respawn (s)', placeholder: '1800' },
 ];
 
-const isNum = (text: string): boolean => text.trim() !== '' && Number.isFinite(Number(text));
-
 // Same bounds the server enforces for a mastery grant
 const MAX_GRANT_HOURS = 1000;
 
@@ -264,20 +266,6 @@ const masteryText = (m: PanelMastery | null | undefined): string => {
   if (!m) return 'unknown';
   if (!m.profession) return 'No craft chosen' + (m.hours ? ' (' + m.hours + ' h banked)' : '');
   return m.label + ' \u00b7 ' + m.rankName + ' \u00b7 ' + m.hours + (m.hours === 1 ? ' hour' : ' hours');
-};
-
-const isBlankOrNum = (text: string): boolean => text.trim() === '' || isNum(text);
-
-const optionalNumber = (text: string): number | undefined => (text.trim() === '' ? undefined : Number(text));
-
-const pad2 = (n: number): string => (n < 10 ? '0' : '') + n;
-
-// m:ss, or h:mm:ss past an hour
-const formatCountdown = (totalSec: number): string => {
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return h ? h + ':' + pad2(m) + ':' + pad2(s) : m + ':' + pad2(s);
 };
 
 const MONTHS = ['Morning Star', "Sun's Dawn", 'First Seed', "Rain's Hand", 'Second Seed', 'Midyear', "Sun's Height", 'Last Seed', 'Hearthfire', 'Frostfall', "Sun's Dusk", 'Evening Star'];
@@ -396,7 +384,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const ev = data.events || {};
   const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
-  const subVisible = (id: AdminSub): boolean => (id === 'items' ? caps.items === true : caps[id] !== false);
+  const subVisible = (id: AdminSub): boolean => (id === 'items' || id === 'weather' ? caps[id] === true : caps[id] !== false);
   const shownSubs = ADMIN_SUBS.filter((t) => subVisible(t.id));
   const adminVisible = !!data.admin && shownSubs.length > 0;
   const shownTops = TOP_TABS.filter((t) => t.id !== 'admin' || adminVisible);
@@ -405,8 +393,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const subTab: AdminSub = sub && subVisible(sub) ? sub : shownSubs.length ? shownSubs[0].id : 'players';
   const view = topTab === 'admin' ? subTab : topTab;
 
-  // The zone countdown and the debug clocks tick locally between server pushes
-  const ticking = view === 'npcs' || view === 'debug';
+  // The zone and weather countdowns and the debug clocks tick locally between server pushes
+  const ticking = view === 'npcs' || view === 'debug' || view === 'weather';
   useEffect(() => {
     if (!ticking) return undefined;
     setNow(Date.now());
@@ -452,6 +440,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       send(ev.refresh);
       setRefreshKey((k) => k + 1);
       if (view === 'npcs' && npcSub === 'jobs' && ev.jobList) send(ev.jobList);
+      if (view === 'weather' && ev.weatherList) send(ev.weatherList);
     }
     if (topTab === 'skills' && ev.skills) send(ev.skills);
     if (topTab === 'faction' && ev.factionMenu) send(ev.factionMenu, data.faction ? data.faction.selected : '');
@@ -509,12 +498,14 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     if (id === 'skills' && ev.skills) send(ev.skills);
     if (id === 'faction' && ev.factionMenu) send(ev.factionMenu, data.faction ? data.faction.selected : '');
     if (id === 'admin' && subTab === 'npcs' && ev.npcList) send(ev.npcList);
+    if (id === 'admin' && subTab === 'weather' && ev.weatherList) send(ev.weatherList);
   };
 
   const openSub = (id: AdminSub): void => {
     lastSub = id;
     setSub(id);
     if (id === 'npcs' && ev.npcList) send(ev.npcList);
+    if (id === 'weather' && ev.weatherList) send(ev.weatherList);
   };
 
   // Seconds left until the zone can fully respawn, -1 when it never will without a reset
@@ -875,6 +866,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             refreshKey={refreshKey}
           />
         ) : null}
+
+        {view === 'weather' ? <WeatherTab data={data.weather || null} now={now} ev={ev} send={send} /> : null}
 
 
         {view === 'npcs' ? (
