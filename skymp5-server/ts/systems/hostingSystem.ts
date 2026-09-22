@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
-import { isPlayerActor, isAlive, hex } from "./actorUtil";
+import { isPlayerActor, isAlive, hex, userOf } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -169,6 +169,8 @@ export class HostingSystem implements System {
 
   // A managed NPC only goes to a live client the server streams it to; every other NPC stays first come
   private mayHost(requesterId: number, npcId: number): boolean {
+    // A parked player body has no AI to run and keeps its logout pose; hits on it are server-resolved
+    if (isAlive(this.mp, npcId) && isPlayerActor(this.mp, npcId) && userOf(this.mp, npcId) < 0) return false;
     if (!this.hostables.has(npcId)) return true;
     this.noteAttempt(npcId);
     let ids: unknown[] = [];

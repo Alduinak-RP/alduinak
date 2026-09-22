@@ -1,4 +1,5 @@
 #include "LastAnimEventBinding.h"
+#include "NapiHelper.h"
 
 Napi::Value LastAnimEventBinding::Get(Napi::Env env, ScampServer& scampServer,
                                       uint32_t formId)
@@ -16,4 +17,24 @@ Napi::Value LastAnimEventBinding::Get(Napi::Env env, ScampServer& scampServer,
   }
 
   return env.Undefined();
+}
+
+void LastAnimEventBinding::Set(Napi::Env env, ScampServer& scampServer,
+                               uint32_t formId, Napi::Value newValue)
+{
+  auto& partOne = scampServer.GetPartOne();
+
+  auto& actor = partOne->worldState.GetFormAt<MpActor>(formId);
+
+  std::string animEventName;
+  if (!newValue.IsNull() && !newValue.IsUndefined()) {
+    animEventName = NapiHelper::ExtractString(newValue, "lastAnimEvent");
+  }
+
+  if (animEventName.empty()) {
+    actor.SetLastAnimEvent(std::nullopt);
+    return;
+  }
+
+  actor.SetLastAnimEventAndBroadcast(animEventName);
 }

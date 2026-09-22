@@ -205,6 +205,8 @@ public:
 
   void SetLastAnimEvent(const std::optional<AnimationData>& animationData);
   std::optional<AnimationData> GetLastAnimEvent() const;
+  // A server-originated animation: stored for later spawns and sent to the actor's listeners, never to its own user
+  void SetLastAnimEventAndBroadcast(const std::string& animEventName);
 
 private:
   struct Impl;

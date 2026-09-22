@@ -466,6 +466,10 @@ Searches for `index.js` if a directory specified.
 
 With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
 
+## logoutGraceMs, logoutPose
+
+A character's body stays in the world for `logoutGraceMs` (default `300000`, five minutes) after a disconnect, a quit to the main menu or a switch to another slot, so leaving is never an instant escape; re-selecting the character cancels the grace. For that time the body sits down in `logoutPose` (default `"IdleSitCrossLeggedEnter"`, the emote wheel's Sit Crossed; `""` leaves it standing), sent by the server to everyone who sees the body and to anyone who walks in later, with the line `[spawn] <id> parked in <pose>`. A downed, bound or carried body keeps its own pose. No client hosts a parked body (`HostingSystem.mayHost` refuses a living player character without a user), so a neighbour's engine never replaces the pose or clears it with a movement report; hits on the body are server-resolved and need no host. The pose needs the native server build that accepts `mp.set(actorId, "lastAnimEvent", ...)`; an older build logs `[spawn] parking pose ... failed` and the body stands.
+
 ## startPoints
 
 Contains a list of spawn points, one of which will be chosen at random. With `characterSelect` on, a new character only uses them when `startLocations` is `[]`; the single-character login path always uses them.

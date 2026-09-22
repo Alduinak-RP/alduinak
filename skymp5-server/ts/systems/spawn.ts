@@ -7,6 +7,8 @@ import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
 import { REALMS, afterlifeOf, isFallen } from "./afterlifeSystem";
+import { hex, isAlive, isBleedingOut } from "./actorUtil";
+import { isRestrained } from "./captureSystem";
 
 type Mp = any;
 
@@ -61,6 +63,8 @@ const ASSIGN_GRACE_MS = 10 * 1000;
 // Logout grace: the body stays in the world this long after disconnect/menu quit/character switch, so combat logging leaves a killable body; re-selecting cancels it
 // Overridable via the "logoutGraceMs" server setting.
 const DEFAULT_LOGOUT_GRACE_MS = 5 * 60 * 1000;
+// The parked body sits down for the grace (the emote wheel's Sit Crossed); overridable via "logoutPose", "" for none
+const DEFAULT_LOGOUT_POSE = "IdleSitCrossLeggedEnter";
 
 const DEFAULT_STAT_POOL = 120;
 
@@ -125,6 +129,7 @@ export class Spawn implements System {
   private startingItems = DEFAULT_STARTING_ITEMS;
   private startLocations = DEFAULT_START_LOCATIONS;
   private logoutGraceMs = DEFAULT_LOGOUT_GRACE_MS;
+  private logoutPose = DEFAULT_LOGOUT_POSE;
   private charCreator = parseCharCreatorSettings(undefined);
   private modHair: ModHairCatalog | null = null;
   private settingsObject!: Settings;
@@ -154,6 +159,7 @@ export class Spawn implements System {
     }
     const rawGrace = Number(all?.["logoutGraceMs"]);
     if (Number.isInteger(rawGrace) && rawGrace >= 0) this.logoutGraceMs = rawGrace;
+    if (typeof all?.["logoutPose"] === "string") this.logoutPose = (all["logoutPose"] as string).trim();
     this.charCreator = parseCharCreatorSettings(all?.["charCreator"]);
     if (this.charCreator.enabled) this.loadModHair();
     this.installAppearanceHook(ctx);
@@ -224,6 +230,19 @@ export class Spawn implements System {
       } catch { /* form vanished */ }
     }, this.logoutGraceMs);
     this.parkTimers.set(actorId, handle);
+    this.parkPose(ctx, actorId);
+  }
+
+  // Sits the lingering body down for everyone who sees it; a downed, bound or carried body keeps its pose, and re-selecting clears it
+  private parkPose(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as Mp;
+    if (!this.logoutPose || !isAlive(mp, actorId) || isBleedingOut(mp, actorId) || isRestrained(mp, actorId)) return;
+    try {
+      mp.set(actorId, "lastAnimEvent", this.logoutPose);
+      this.log(`[spawn] ${hex(actorId)} parked in ${this.logoutPose}`);
+    } catch (e) {
+      this.log(`[spawn] parking pose of ${hex(actorId)} failed: ${e}`);
+    }
   }
 
   private cancelPark(actorId: number): void {

@@ -38,6 +38,7 @@
 #include "ChangeValuesMessage.h"
 #include "CustomPacketMessage.h"
 #include "TeleportMessage.h"
+#include "UpdateAnimationMessage.h"
 #include "UpdateEquipmentMessage.h"
 #include <nlohmann/json.hpp>
 
@@ -82,6 +83,7 @@ struct MpActor::Impl
   uint32_t blockActiveCount = 0;
   std::vector<std::pair<uint32_t, MpObjectReference*>> droppedItemsQueue;
   std::optional<AnimationData> animationData;
+  uint32_t serverAnimChanges = 0;
 
   // this is a hot fix attempt to make permanent restoration potions work
   std::unordered_map<espm::ActorValue, std::chrono::system_clock::time_point>
@@ -245,6 +247,24 @@ void MpActor::SetLastAnimEvent(
 std::optional<AnimationData> MpActor::GetLastAnimEvent() const
 {
   return pImpl->animationData;
+}
+
+void MpActor::SetLastAnimEventAndBroadcast(const std::string& animEventName)
+{
+  // A high base keeps this counter clear of the owner's own numChanges
+  AnimationData data;
+  data.animEventName = animEventName;
+  data.numChanges = 0x40000000 + ++pImpl->serverAnimChanges;
+  SetLastAnimEvent(data);
+
+  UpdateAnimationMessage msg;
+  msg.idx = GetIdx();
+  msg.data = data;
+  for (auto listener : GetActorListeners()) {
+    if (listener != this) {
+      listener->GetActorToSendTo().SendToUser(msg, true);
+    }
+  }
 }
 
 void MpActor::SetRaceMenuOpen(bool isOpen)

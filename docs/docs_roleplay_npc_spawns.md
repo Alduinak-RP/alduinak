@@ -202,7 +202,9 @@ A client can still claim an NPC on its own: an unhosted one at once, a hosted
 one once its host has sent no movement for that NPC for 2 seconds. For zone
 NPCs the server refuses the claim (`onHostAttempt`) when the NPC is not
 streamed to that player or that player's game is paused. A companion accepts a
-claim only from its owner, and every other NPC stays first come. A claim over
+claim only from its owner, a living player character without a user (a body
+parked for its logout grace, `logoutPose`) is refused outright, and every
+other NPC stays first come. A claim over
 a host whose game was running when the claim arrived means that client did not
 run the NPC, so the audit does not give it that NPC back for 60 seconds. A
 paused host is not locked out: once its game runs again it is a candidate like

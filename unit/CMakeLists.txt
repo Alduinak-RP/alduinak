@@ -19,10 +19,10 @@ if(BUILD_UNIT_TESTS AND NOT EMSCRIPTEN)
   # unit executable
   #
 
-  file(GLOB src "${CMAKE_CURRENT_SOURCE_DIR}/*")
+  file(GLOB src CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*")
   list(APPEND src "${CMAKE_SOURCE_DIR}/.clang-format")
   if(TARGET platform_lib)
-    file(GLOB src_windows "${CMAKE_CURRENT_SOURCE_DIR}/platform_lib_tests/*")
+    file(GLOB src_windows CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/platform_lib_tests/*")
     list(APPEND src ${src_windows})
   endif()
 
