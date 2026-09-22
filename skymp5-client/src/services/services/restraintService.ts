@@ -99,7 +99,7 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   { "customPacketType": "bleedoutState", "downed": false, "died": false }
  *
  *   // A prisoner at an execution block (ExecutionSystem); "" leaves the block:
- *   { "customPacketType": "executionState", "pose": "IdleExecutioneeIdleEnterInstant" }
+ *   { "customPacketType": "executionState", "pose": "bleedOutStart" }
  *
  *   // Timed work such as stabilizing or harvesting (actorUtil.sendActionLock); a new lock replaces the old one:
  *   { "customPacketType": "actionLock", "anim": "IdleKneeling", "seconds": 5, "exitAnim": "IdleForceDefaultState" }

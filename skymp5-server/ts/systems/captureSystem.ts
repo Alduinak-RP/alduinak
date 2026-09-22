@@ -152,8 +152,9 @@ export class CaptureSystem implements System {
   rescueRefusal: ((actorId: number) => string) | null = null;
   // Other systems' player menu actions: each adds flags saying which apply to this requester and target
   menuFlagProviders: Array<(requesterActorId: number, targetActorId: number) => Record<string, boolean>> = [];
-  // Set by ExecutionSystem: whether a prisoner kneels at an execution block, and taking them off it
+  // Set by ExecutionSystem: whether a prisoner kneels at an execution block, why they may not be taken off it ("" when they may), and taking them off it
   onBlock: ((actorId: number) => boolean) | null = null;
+  blockRefusal: ((actorId: number) => string) | null = null;
   releaseFromBlock: ((actorId: number) => void) | null = null;
   private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
@@ -473,9 +474,9 @@ export class CaptureSystem implements System {
     }
     const targetActorId = toFormId(content.target, 0);
     const step = this.releaseStep(requesterActorId, targetActorId);
-    // One refusal for every case, so the reply says nothing about a target who may be far away
+    // One refusal for every case, so the reply says nothing about a target who may be far away; an execution under way is public anyway
     if (!step) {
-      this.notice(ctx, userId, "Only their captor or carrier can release them.");
+      this.notice(ctx, userId, this.blockRefusal?.(targetActorId) || "Only their captor or carrier can release them.");
       return;
     }
     const name = nameShownTo(ctx.svr, requesterActorId, targetActorId);
@@ -528,13 +529,13 @@ export class CaptureSystem implements System {
     return this.interactMaxDistance;
   }
 
-  // What the requester's next Release does: anyone takes a prisoner off an execution block, a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release or the requester is bound
+  // What the requester's next Release does: anyone takes a prisoner off an execution block (not while the axe falls), a carried captive is set down first, their binds come off on a later press by the captor or last carrier; null when not theirs to release or the requester is bound
   private releaseStep(requesterActorId: number, targetActorId: number): "block" | "putdown" | "release" | null {
     if (this.restraints.get(requesterActorId)?.boundHands) {
       return null;
     }
     if (this.onBlock?.(targetActorId)) {
-      return "block";
+      return this.blockRefusal?.(targetActorId) ? null : "block";
     }
     const info = this.restraints.get(targetActorId);
     const isCaptor = info?.captorActorId === requesterActorId;
@@ -830,7 +831,7 @@ export class CaptureSystem implements System {
       : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anyone while bound."
       : this.carrying.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is carrying someone.`
       : this.carriedBy.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is already being carried.`
-      : this.rescueRefusal?.(targetActorId) || "";
+      : this.blockRefusal?.(targetActorId) || this.rescueRefusal?.(targetActorId) || "";
     if (refusal) this.logRefusal(carrierActorId, `carry of ${targetActorId.toString(16)}`);
     return refusal;
   }

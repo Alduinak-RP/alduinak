@@ -104,20 +104,46 @@ behaviour-graph events — no ESP required.**
   at Helgen, Solitude and in the Falkreath and Dragon Bridge city mods, plus
   any base listed in `executionBlockBaseIds`. Standing within 300 units of a
   block, **Prepare Execution** on a cuffed prisoner in reach moves them onto
-  the block (`executionBlockOffset`) where they kneel
-  (`IdleExecutioneeIdleEnterInstant`) and cannot move. **Execute** moves the
-  executioner beside it (`executionerOffset`) and plays the vanilla headsman
-  idles in two stages (`IdleExecutionerIdleEnterInstant`, then
-  `IdleExecutionerChop` with the prisoner's `IdleExecutioneeChop`), with a
-  melee weapon in hand that stays drawn; after `executionChopMs` the prisoner
-  dies and goes to Sovngarde, the same PK as a finish off (`pk.log`,
-  `pvp.log`, the `execute` alert), and their body is freed from the cuffs. A
-  prisoner who logs out while the axe falls is executed at once. **Release** from anyone who is not bound pulls a
-  prisoner off the block, even while the axe is raised; the cuffs stay on and
-  unbinding stays the captor's. A carry also takes them off the block. The
+  the block (`executionBlockOffset`) where they kneel in the bleedout pose
+  (`bleedOutStart`, `executionState`) and cannot move but can open menus.
+  The vanilla headsman idles (`IdleExecutioneeIdleEnterInstant`,
+  `IdleExecutionerChop` and their pair) are furniture-state clips with no
+  own animation file: the engine only enters them by seating both actors in
+  the block furniture, and sent on the ground they play nothing, which is
+  what r13 shipped. **Execute** needs a drawn melee weapon ("Draw your
+  weapon first."), moves the executioner beside the block
+  (`executionerOffset`) and plays the bleedout beheading pair on the
+  kneeling prisoner through the same `pairedIdle` packet as a finish off:
+  `pa_KillMove1HMDecapBleedOut` (IDLE F465D) for one-handed and dual
+  weapons, `pa_KillMove2HMDecapBleedOut` (F467F) for two-handed ones, the
+  clips the finish off played in r13 and r14 (a battleaxe or warhammer plays
+  the greatsword clip). A beheading is the point of a block execution, and
+  the respawn rebuilds the body. The prisoner dies when a participant's
+  client reports the end of the pair, or at `finishOffMaxMs`, and goes to
+  Sovngarde, the same PK as a finish off (`pk.log`, `pvp.log`, the
+  `execute` alert); their body is freed from the cuffs. A prisoner who logs
+  out while the axe falls is executed at once. Once the pair is sent nothing
+  stops it: the clip has already beheaded the prisoner on every client, so
+  the executioner leaving, going down or being pulled away changes nothing,
+  and a Release or a carry meanwhile is refused ("The axe is already
+  falling."). Before that, **Release** from anyone who is not bound pulls a
+  prisoner off the block; the cuffs stay on and unbinding stays the
+  captor's. A carry also takes them off the block. The
   offsets are unmeasured starting points: measure them at a block with
   `getpos`/`getangle` and set them in `server-settings.json`. Static bloody
-  blocks do not count, the server never loads statics.
+  blocks do not count, the server never loads statics. The vanilla
+  head-on-the-block look is reachable only through the furniture; a later
+  probe at the Helgen block (`0xAA7CC`) decides it: (1) press E on the
+  block: does the engine kneel you with your head on it; (2) standing,
+  `player.sae IdleChairEnterInstant` then
+  `player.sae IdleExecutioneeIdleEnterInstant`: does the kneel appear (what
+  copies would use); (3) seated on the block from behind with a two-handed
+  axe, `player.sae IdleExecutionerIdleEnterInstant` then
+  `player.sae IdleExecutionerChop`. If (1) works the prisoner can be seated
+  through the Papyrus activate `gatheringSystem.activateFor` uses and
+  released with `IdleFurnitureExit`; if (3) works only for the vanilla
+  headsmen, the `isExecutioner` keyword (0x70C0A) on the Player record is
+  the ESP option.
 - **Coming back whole** (`deathService.ts`): a finisher never decapitates,
   an execution does, and a decapitation persists as the actor's
   dismembered-limb extra data, which nothing on the respawn path cleared. So
@@ -230,7 +256,7 @@ prisoner can also be carried).
 | `pairedIdle` `{ attacker, target, idle, ms, standUp, seq }` | Server → both players and viewers | Play a killmove on both copies, after the victim's stand-up when `standUp`; `ms` is the cap |
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
-| `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose, `""` leaves it |
+| `executionState` `{ pose, reapply }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it, `reapply` sends a held pose again |
 | `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting) |
 | `playerMenuState` `{ target, canRelease, stabilize, finishOff, prepareExecution, execute }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |

@@ -5,7 +5,7 @@ import { BleedoutSystem } from "./bleedoutSystem";
 import { FactionSystem } from "./factionSystem";
 import { AfterlifeSystem } from "./afterlifeSystem";
 import { toFormId } from "./formIdUtil";
-import { baseIdOf, hex, isAlive, isNear, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, sendActionLock, userOf, weaponAnimType } from "./actorUtil";
+import { baseIdOf, hex, isAlive, isNear, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -32,7 +32,7 @@ const EXTENDED_FINISHERS: Record<WeaponClass, number[]> = {
   twoHanded: [0xd3648, 0x01000828, 0x01000829, 0x0100082a],
   twoHandedHeavy: [0x10d972, 0x01000824, 0x01000825],
 };
-// The victim dies when a participant's client reports the end of the pair, or at this cap. Overridable via "finishOffMaxMs"
+// The victim of a finish off or an execution dies when a participant's client reports the end of the pair, or at this cap. Overridable via "finishOffMaxMs"
 const DEFAULT_PAIR_MAX_MS = 9000;
 
 // ExecutionerChoppingBlock, placed at Helgen, Solitude and in the city mods, and its unplaced two-seat twin. Overridable via "executionBlockBaseIds"
@@ -42,14 +42,11 @@ const BLOCK_REACH = 300;
 // Unmeasured starting points relative to the block. Overridable via "executionBlockOffset" and "executionerOffset"
 const DEFAULT_PRISONER_OFFSET: Offset = { forward: 0, right: 0, up: 0, yaw: 0 };
 const DEFAULT_EXECUTIONER_OFFSET: Offset = { forward: -40, right: 70, up: 0, yaw: -90 };
-// From the chop to the death. Overridable via "executionChopMs"
-const DEFAULT_CHOP_MS = 3000;
-const EXECUTIONER_STAGE_MS = 300;
-const PRISONER_KNEEL = "IdleExecutioneeIdleEnterInstant";
-const PRISONER_CHOP = "IdleExecutioneeChop";
-const EXECUTIONER_ENTER = "IdleExecutionerIdleEnterInstant";
-const EXECUTIONER_CHOP = "IdleExecutionerChop";
+// The vanilla headsman idles are furniture-state clips that never play on the ground, so the prisoner kneels in the bleedout pose the killmove is built for
+const PRISONER_KNEEL = "bleedOutStart";
 const STATE_PACKET = "executionState";
+// The pair beheads the prisoner on every client the moment it is sent, so nothing takes them off the block after that
+const AXE_FALLING = "The axe is already falling.";
 // { blockId, since } while a prisoner kneels at a block
 const ON_BLOCK_PROP = "private.onBlock";
 const PRISONER_CHECK_MS = 1000;
@@ -106,8 +103,6 @@ export class ExecutionSystem implements System {
     }
     this.prisonerOffset = offsetOf(all?.["executionBlockOffset"], DEFAULT_PRISONER_OFFSET);
     this.executionerOffset = offsetOf(all?.["executionerOffset"], DEFAULT_EXECUTIONER_OFFSET);
-    const chopMs = Number(all?.["executionChopMs"]);
-    if (Number.isFinite(chopMs) && chopMs > 0) this.chopMs = chopMs;
     const pairMaxMs = Number(all?.["finishOffMaxMs"]);
     if (Number.isFinite(pairMaxMs) && pairMaxMs > 0) this.pairMaxMs = pairMaxMs;
     this.extendedPool = all?.["finishOffExtendedPool"] === true;
@@ -118,6 +113,7 @@ export class ExecutionSystem implements System {
       execute: !this.executeRefusal(requesterId, targetId),
     }));
     this.capture.onBlock = (actorId) => this.prisoners.has(actorId);
+    this.capture.blockRefusal = (actorId) => this.prisoners.get(actorId)?.executorId ? AXE_FALLING : "";
     this.capture.releaseFromBlock = (actorId) => this.leaveBlock(actorId);
     // The block state does not outlive a restart, so a leftover mirror is cleared
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
@@ -128,7 +124,7 @@ export class ExecutionSystem implements System {
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.onLeave(actorId >>> 0));
   }
 
-  // A prisoner who died, left, lost their cuffs or was moved away is off the block
+  // A prisoner who died, left, lost their cuffs or was moved away is off the block; while the axe falls only death or a logout ends it early
   async updateAsync(): Promise<void> {
     if (this.prisoners.size === 0) return;
     const now = Date.now();
@@ -136,9 +132,10 @@ export class ExecutionSystem implements System {
     this.nextCheckAt = now + PRISONER_CHECK_MS;
     const mp = this.mp;
     for (const [prisonerId, prisoner] of Array.from(this.prisoners)) {
-      if (prisoner.executorId && userOf(mp, prisonerId) < 0) this.chop(prisonerId, prisoner.executorId);
-      else if (!isAlive(mp, prisonerId) || userOf(mp, prisonerId) < 0 || !isBound(mp, prisonerId) ||
-        this.distanceTo(prisonerId, prisoner.blockId) > BLOCK_REACH) {
+      const gone = !isAlive(mp, prisonerId) || userOf(mp, prisonerId) < 0;
+      if (prisoner.executorId) {
+        if (gone) this.chop(prisonerId, prisoner.executorId);
+      } else if (gone || !isBound(mp, prisonerId) || this.distanceTo(prisonerId, prisoner.blockId) > BLOCK_REACH) {
         this.leaveBlock(prisonerId);
       }
     }
@@ -210,7 +207,7 @@ export class ExecutionSystem implements System {
     if (!prisoner) return "They are not at the block.";
     if (!this.factions.canExecute(executorId)) return "You do not have the right to execute.";
     if (!this.isAble(executorId) || prisonerId === executorId) return "You cannot do that now.";
-    if (prisoner.executorId) return "The axe is already falling.";
+    if (prisoner.executorId) return AXE_FALLING;
     if (this.distanceTo(executorId, prisoner.blockId) > BLOCK_REACH) return "Stand at the block to execute them.";
     return "";
   }
@@ -244,8 +241,10 @@ export class ExecutionSystem implements System {
     const mp = this.mp;
     const executorId = this.actorOf(userId);
     if (!executorId) return;
+    const idle = this.killMoveOf(executorId);
     const refusal = this.executeRefusal(executorId, prisonerId) ||
-      (this.killMoveOf(executorId) ? "" : "You need a melee weapon in hand to execute them.");
+      (idle ? "" : "You need a melee weapon in hand to execute them.") ||
+      (isWeaponDrawn(mp, executorId) ? "" : "Draw your weapon first.");
     const prisoner = this.prisoners.get(prisonerId);
     if (refusal || !prisoner) {
       notifyActor(mp, executorId, refusal);
@@ -257,31 +256,22 @@ export class ExecutionSystem implements System {
     } catch (e) {
       this.log(`[execution] placing the executioner ${hex(executorId)} failed: ${e}`);
     }
-    const seconds = this.chopMs / 1000;
+    // The beheading is the finish off pair on the kneeling prisoner; the respawn rebuilds the body
     prisoner.executorId = executorId;
-    sendActionLock(mp, executorId, EXECUTIONER_ENTER, seconds);
-    prisoner.timers.push(setTimeout(() => {
-      sendActionLock(mp, executorId, EXECUTIONER_CHOP, seconds + 0.5);
-      this.sendPose(prisonerId, PRISONER_CHOP);
-    }, EXECUTIONER_STAGE_MS));
-    prisoner.timers.push(setTimeout(() => this.chop(prisonerId, executorId), EXECUTIONER_STAGE_MS + this.chopMs));
+    this.playPair(executorId, prisonerId, idle, false, () => this.chop(prisonerId, executorId));
+    prisoner.timers.push(setTimeout(() => this.chop(prisonerId, executorId), this.pairMaxMs));
     notifyActor(mp, prisonerId, `${nameShownTo(mp, prisonerId, executorId)} raises the axe.`);
     this.log(`[execution] ${hex(executorId)} executes ${hex(prisonerId)}`);
   }
 
-  // The axe lands unless the prisoner was pulled away or the executioner is gone or down
+  // The axe lands whatever became of the executioner meanwhile; a prisoner already dead by other means is only taken off the block
   private chop(prisonerId: number, executorId: number): void {
     const prisoner = this.prisoners.get(prisonerId);
     if (!prisoner || prisoner.executorId !== executorId) return;
-    const mp = this.mp;
     prisoner.timers.forEach(clearTimeout);
     prisoner.timers = [];
     prisoner.executorId = undefined;
-    if (userOf(mp, executorId) < 0 || !this.isAble(executorId) || !isAlive(mp, prisonerId)) {
-      this.sendPose(prisonerId, PRISONER_KNEEL);
-      return;
-    }
-    this.slay(prisonerId, executorId, "executed");
+    if (isAlive(this.mp, prisonerId)) this.slay(prisonerId, executorId, "executed");
     this.leaveBlock(prisonerId);
     if (this.ctx) this.capture.freeCaptive(this.ctx, prisonerId);
   }
@@ -455,7 +445,6 @@ export class ExecutionSystem implements System {
   private blockBases = new Set(DEFAULT_BLOCK_BASE_IDS);
   private prisonerOffset = DEFAULT_PRISONER_OFFSET;
   private executionerOffset = DEFAULT_EXECUTIONER_OFFSET;
-  private chopMs = DEFAULT_CHOP_MS;
   private pairMaxMs = DEFAULT_PAIR_MAX_MS;
   private extendedPool = false;
   private nextCheckAt = 0;
