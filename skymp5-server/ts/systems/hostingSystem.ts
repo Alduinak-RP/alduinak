@@ -153,6 +153,14 @@ export class HostingSystem implements System {
     if (aggressor && !aggressor.owner && isPlayerActor(this.mp, targetId)) this.engage(aggressorId, targetId);
   }
 
+  // Whether a player exchanged a damaging hit with the NPC within the aggro window
+  inCombat(npcId: number): boolean {
+    const hits = this.aggro.get(npcId >>> 0);
+    if (!hits) return false;
+    const since = Date.now() - this.aggroMs;
+    return Array.from(hits.values()).some((at) => at >= since);
+  }
+
   private engage(npcId: number, playerId: number): void {
     let hits = this.aggro.get(npcId);
     if (!hits) this.aggro.set(npcId, (hits = new Map()));

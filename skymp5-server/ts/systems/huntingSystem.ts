@@ -178,7 +178,7 @@ export class HuntingSystem implements System {
     return out;
   }
 
-  private isAnimal(ctx: SystemContext, actorId: number): boolean {
+  isAnimal(ctx: SystemContext, actorId: number): boolean {
     return !!this.animalKeyword && this.mastery.actorHasKeyword(ctx, actorId, this.animalKeyword);
   }
 

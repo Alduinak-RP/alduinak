@@ -26,7 +26,7 @@ const events = {
 let promptText = "";
 
 // Player-search plumbing: searchConsentRequest pops a Yes/No widget on the target; searchApproved opens the target's inventory for the searcher in the vanilla container window (TakeItem/PutItem server-authorized); searchClose force-closes it.
-// Protocol (MsgType.CustomPacket JSON): server sends searchConsentRequest{requestId,text}, searchApproved{target,body,entries}, searchClose, searchNotice{text}; client sends searchConsentResult{requestId,accepted} and searchEnd when the window closes.
+// Protocol (MsgType.CustomPacket JSON): server sends searchConsentRequest{requestId,text}, searchApproved{target,body,npc,entries}, searchClose, searchNotice{text}; client sends searchConsentResult{requestId,accepted} and searchEnd when the window closes.
 export class SearchService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -77,7 +77,7 @@ export class SearchService extends ClientListener {
             ? (content["entries"] as { baseId: number, count: number }[]) : [];
           this.approvedAt = Date.now();
           logTrace(this, `Search approved for`, (content["target"] as number).toString(16), `with`, entries.length, `entries`);
-          this.openTargetInventory(content["target"] as number, entries, content["body"] === true);
+          this.openTargetInventory(content["target"] as number, entries, content["body"] === true, content["npc"] === true);
         }
         break;
       case "searchClose":
@@ -111,8 +111,9 @@ export class SearchService extends ClientListener {
   }
 
   // Vanilla container window on the target's synced body; item moves ride the normal ContainersService PutItem/TakeItem sync the server just authorized for this pair.
-  // The local clone's bag is not the real one (players mirror equipment, NPC clones roll their own leveled items): missing stacks are topped up, and on bodies local-only extras are removed.
-  private openTargetInventory(remoteId: number, entries: { baseId: number, count: number }[], body: boolean): void {
+  // The local clone's bag is not the real one (players mirror equipment, NPC clones roll their own leveled items): missing stacks are topped up, and on bodies and living NPCs local-only extras are removed.
+  // A living NPC keeps what its clone wears: the server lists no gear for it and refuses a take of it, so the window shows the gear and a take snaps back.
+  private openTargetInventory(remoteId: number, entries: { baseId: number, count: number }[], body: boolean, npc: boolean): void {
     this.searchWindowOpen = true;
     this.controller.once("update", () => {
       if (!this.searchWindowOpen) {
@@ -150,7 +151,7 @@ export class SearchService extends ClientListener {
         const d = (server.get(baseId) || 0) - actor.getItemCount(form);
         if (d > 0) {
           actor.addItem(form, d, true);
-        } else if (d < 0 && body) {
+        } else if (d < 0 && (body || (npc && !actor.isEquipped(form)))) {
           actor.removeItem(form, -d, true, null);
         }
       });

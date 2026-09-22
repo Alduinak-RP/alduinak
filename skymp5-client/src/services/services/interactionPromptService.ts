@@ -1,7 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { closeWidget, isUiHidden } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
-import { Actor, CrosshairRefChangedEvent, Form, FormType, ObjectReference } from "skyrimPlatform";
+import { Actor, CrosshairRefChangedEvent, Form, FormType, Keyword, ObjectReference } from "skyrimPlatform";
 import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
@@ -29,6 +29,9 @@ const BOARD_BASE_LOCAL_ID = 0x0012cb;
 const BOARD_PLUGIN = "Missives.esp";
 
 const PROMPT_POLL_MS = 500;
+
+// Game is hunted, not searched; the server refuses it the same way (huntingSystem.isAnimal)
+const ANIMAL_KEYWORD = "ActorTypeAnimal";
 
 interface Prompt {
   verb: string;
@@ -170,14 +173,18 @@ export class InteractionPromptService extends ClientListener {
     if (order) {
       return { verb: pets.commandingName(), label: order };
     }
-    // Player characters and server-side bodies are ours; world and server-spawned NPCs keep their vanilla activation
+    // Player characters and server-side bodies are ours; world NPCs keep their vanilla activation
     if (!remoteId || remoteId < 0xff000000 || (!dead && !isPlayerCharacterId(this.controller, remoteId))) {
       // Local-only bodies have activation blocked by WorldCleanerService
       if (dead) return null;
       const pet = this.petPromptFor(ref, remoteId);
       if (pet) return pet;
       const name = (ref.getDisplayName() || "").trim();
-      return name ? { verb: "Talk", label: name } : null;
+      if (!name) return null;
+      if (remoteId < 0xff000000) return { verb: "Talk", label: name };
+      // A living server NPC is searched; no dialogue on the clone
+      try { ref.blockActivation(true); } catch { /* unloaded ref */ }
+      return { verb: this.isAnimal(ref) ? "" : "Search", label: name };
     }
     // The engine must not start a dialogue or a local loot window on the clone under our menu.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
@@ -201,6 +208,16 @@ export class InteractionPromptService extends ClientListener {
       : kind === "livestock" ? "Harvest"
       : kind === "dog" || kind === "companion" ? "Command" : "";
     return { verb, label };
+  }
+
+  // The keyword sits on the race, as the server reads it
+  private isAnimal(ref: ObjectReference): boolean {
+    try {
+      const keyword = Keyword.getKeyword(ANIMAL_KEYWORD);
+      return !!keyword && Actor.from(ref)?.getRace()?.hasKeyword(keyword) === true;
+    } catch {
+      return false;
+    }
   }
 
   private verbFor(ref: ObjectReference, type: number): string | null {

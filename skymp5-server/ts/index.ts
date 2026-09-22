@@ -245,13 +245,17 @@ const main = async () => {
   // Sovngarde and the Soul Cairn: soul trap, finish off and execution send characters there
   const afterlifeSystem = new AfterlifeSystem(log);
   const housingSystem = new HousingSystem(log);
-  const searchSystem = new SearchSystem(log);
+  // Living NPCs are searched too; hosting's aggro says whether one is fighting
+  const searchSystem = new SearchSystem(log, hostingSystem);
   const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
   // Pelts on game are a hunter's, so a search neither shows nor gives them to anyone else
   searchSystem.hidesItem = (ctx, viewerId, targetId, baseId) => huntingSystem.hidesFrom(ctx, viewerId, targetId, baseId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
   const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);
   hostingSystem.addProvider(() => petSystem.hostables());
+  // A living pet, companion or animal is not searched
+  searchSystem.ownedBy = (id) => petSystem.ownerOf(id) || (companionSystem.info(id)?.ownerId ?? 0);
+  searchSystem.isAnimal = (ctx, id) => huntingSystem.isAnimal(ctx, id);
   // Out dogs fight through the companion targeting, and no pet of the owner is ever a valid target
   companionSystem.setAllySource(() => petSystem.fighters(), (id) => petSystem.ownerOf(id));
   housingSystem.petCategoryOf = (actorId, refrId) => petSystem.categoryOfDoor(actorId, refrId);

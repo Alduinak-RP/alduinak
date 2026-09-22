@@ -91,9 +91,10 @@ let hideTrade = false;
  * every button event carries the live control map's user event name, so a
  * rebind applies at once on any device) and the interact key
  * (altInteractKeyCode, default X, launcher "Interact / Menus") open the
- * player interaction menu on a living player character and search a body;
- * the InteractionPromptService blocks the clone's engine activation so no
- * dialogue fires underneath. On a living pet or own summon the interact key
+ * player interaction menu on a living player character and search a body or
+ * a living server NPC (the server refuses others' pets, animals and NPCs in
+ * combat); the InteractionPromptService blocks the clone's engine activation
+ * so no dialogue fires underneath. On a living pet or own summon the interact key
  * opens the pet menu and Activate uses it (PetService). In the saddle Activate
  * always dismounts (MountService), whatever the crosshair found. Activate leaves
  * everything else to normal activation. The interact key also completes a
@@ -152,6 +153,12 @@ export class PlayerActionService extends ClientListener {
     if (ref && actor && !actor.isDead() && pets.kindOf(remoteId)) {
       if (isInteract) pets.openMenu(remoteId, ref);
       else pets.use(remoteId, ref);
+      return;
+    }
+    // Any other living server NPC is searched like a body
+    if (ref && actor && remoteId >= FIRST_DYNAMIC_REMOTE_ID) {
+      try { ref.blockActivation(true); } catch { /* unloaded ref */ }
+      sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
       return;
     }
     if (isActivate) return;

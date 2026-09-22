@@ -37,11 +37,26 @@ keeps its display name with a verb picked from its base form type.
   live control map gives it (`ButtonEvent.userEventName`), so the menu follows
   whatever Activate is bound to (default E) on keyboard, mouse or gamepad, and
   a rebind in Settings > Controls or the launcher's Game Hotkeys applies
-  immediately. Activate ignores anything that is not a player character, so
-  doors, containers and world NPCs keep vanilla activation; NPCs read "Talk"
-  over their name. The interact key (`X`, `altInteractKeyCode`) opens the same
-  menu on a player; on a door or container it opens the housing menu, and on
-  anything else, a world NPC included, the Personal Menu.
+  immediately. Activate ignores anything that is not a player character or a
+  server NPC, so doors, containers and world NPCs keep vanilla activation;
+  world NPCs read "Talk" over their name. The interact key (`X`,
+  `altInteractKeyCode`) opens the same menu on a player; on a door or
+  container it opens the housing menu, and on anything else, a world NPC
+  included, the Personal Menu.
+- **Living server NPCs** (spawned bandits, guards, Falmer and the like, remote
+  id in the `0xff` space): verb "Search" over their name; both Activate and
+  the interact key open the container window at once, no consent. A game
+  animal (race keyword `ActorTypeAnimal`) shows its name with no verb, since
+  it is hunted, not searched. The server refuses someone else's pet or
+  companion ("That is someone's companion."; a foreign companion still reads
+  Search, the client cannot tell it from a bandit), game animals, and an NPC
+  that exchanged a damaging hit with a player within `npcAggroHostSeconds`
+  ("They are fighting."; the window also closes when a fight starts or the
+  NPC dies, after which it reopens as a body). A living NPC gives up only
+  what it carries loose: gold, potions, ingredients, ammo, keys, books and
+  misc. Its weapons and armour still show, since the clone wears them, but a
+  weapon or armour piece moves neither way: a take of one and a put of one
+  are both refused and snap back, so a living NPC cannot be armed either.
 - **Pets** (`ff_pet` on a server NPC, see `docs_roleplay_pets.md`): the pet's name with
   Ride on any horse, Harvest on your own livestock, Command on your own dog or
   conjured companion, no verb on someone else's animal; X on your own pet opens
