@@ -89,6 +89,23 @@ In `server-settings.json` under the client settings (or the client's
   `X`; `0` reads as `X`). The old `housingMenuKeyCode` is no longer read.
 - `language` — `"en"` / `"ru"` for the menu labels.
 
+#### Container item sync (client)
+
+Moving an item between the player and a chest fires the engine's
+`containerChanged` event; `ContainersService` diffs the last known inventory
+against the real one and sends one PutItem or TakeItem per changed stack,
+printed to the console as `diff:` plus `Trace in ContainersService: Put|Take
+<base> x<n> target <id>`. SkyrimPlatform runs every event of a tick after one
+`update`, so the first diff of a tick already covers Take All and other
+same-tick moves. If a diff misses the move the event describes, the service
+adds a plain entry for the uncovered remainder (`Trace in ContainersService:
+Diff missed <base> x<n> put|take`), counted per tick so nothing is sent twice.
+One tick after a chest closes (so the closing frame's events have run),
+`Trace in RemoteServer: container residual [...]` lists any stack still out of
+step with the last known inventory, which means the engine never reported that
+move to JS. The server logs every put that arrives
+as `[put] <actor> puts <base> x<n> into <target>`.
+
 ### Gamemode TODO
 
 The `target` is a form id you can resolve with `mp.getDescFromId(target)` /

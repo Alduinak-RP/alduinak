@@ -39,6 +39,7 @@ import { RagdollService } from './ragdollService';
 import { RestraintService } from './restraintService';
 import { MountService } from './mountService';
 import { CloneSpellGuardService } from './cloneSpellGuardService';
+import { LastInvService } from './lastInvService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
 import { TeleportMessage } from '../messages/teleportMessage';
 import { DeathStateContainerMessage } from '../messages/deathStateContainerMessage';
@@ -407,6 +408,11 @@ export class RemoteServer extends ClientListener {
         while (functionChecker()) await Utility.wait(0.1);
 
         logTrace(this, "onOpenContainerMesage - menu closed", factName);
+        if (baseType === FormType.Container) {
+          // The closing frame's containerChanged events drain after this continuation, so check one tick later
+          await Utility.wait(0.1);
+          this.traceContainerResidual();
+        }
 
         const message: ActivateMessage = {
           t: messages.MsgType.Activate,
@@ -427,6 +433,15 @@ export class RemoteServer extends ClientListener {
         });
       })();
     });
+  }
+
+  // A move that never reached ContainersService leaves lastInv out of step with the real inventory
+  private traceContainerResidual(): void {
+    const lastInv = this.controller.lookupListener(LastInvService).lastInv;
+    const player = Game.getPlayer();
+    if (!lastInv || !player) return;
+    const residual = getDiff(lastInv, getInventory(player), false).entries;
+    if (residual.length > 0) logTrace(this, "container residual", JSON.stringify(residual));
   }
 
   private onTeleportMessage(event: ConnectionMessage<TeleportMessage> | ConnectionMessage<TeleportMessage2>): void {
