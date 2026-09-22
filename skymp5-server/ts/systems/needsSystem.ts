@@ -29,7 +29,7 @@ type Mp = any;
 //   Server -> Client: { customPacketType: "needsState", hunger, stage, stageName, fatigue, fatigueStage, fatigueStageName,
 //                       staminaPenalty, magickaPenalty, survivalMode, closeCrafting? }
 //                     hunger and fatigue are 0-100 (100 = full stomach, rested); the penalties are the 0-1 share of the
-//                     maximum removed; survivalMode sets the client's Survival_ModeEnabled; closeCrafting closes the Crafting Menu
+//                     maximum removed; survivalMode sets the client's Survival_ModeToggle; closeCrafting closes the Crafting Menu
 //                     { customPacketType: "masteryNotice", text }
 //
 // Persistence: `private.needs` = { v, hunger, fatigue, at, stageSpell, fatigueSpell, wellFed } on the character's actor form.
@@ -58,7 +58,7 @@ type Mp = any;
 //   needsMineFatigueMiner         what a miner pays instead, default 10
 //   needsPickFatigue              exhaustion harvesting a plant or nirnroot costs, default 10
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
-//   needsSurvivalModeFlag         true sets the client's Survival_ModeEnabled to 1, which the HUD needs to draw the penalty segments, default true
+//   needsSurvivalModeFlag         true sets the client's Survival_ModeToggle (SRVT, esl 0x828) to 1, the global HUDMenu polls each frame to draw the penalty segments, default true
 //   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
 //   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
 //   blockStaggerWithoutStamina    a blocker whose stamina is below the cost is staggered, default true
