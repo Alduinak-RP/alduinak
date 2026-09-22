@@ -294,9 +294,25 @@ function backendModule(name) {
   return require(path.join(config.paths.backend, 'sources', name))
 }
 
+// Living characters per player, the server's characterSelectMaxCharacters parse (1-10, default 3)
+function maxCharactersOf(settings) {
+  const raw = Number(settings.characterSelectMaxCharacters)
+  return Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : 3
+}
+
+// Afterlife state of a changeform, as afterlifeSystem.ts isFallen reads it: the realm label, 'perma-dead', or '' for a living character
+const REALM_LABELS = { sovngarde: 'Sovngarde', soulCairn: 'the Soul Cairn' }
+function fallenOf(cf) {
+  const d = (cf && cf.dynamicFields) || {}
+  if (d['private.permaDead'] === true) return 'perma-dead'
+  const realm = d['private.afterlife'] && d['private.afterlife'].realm
+  return REALM_LABELS[realm] || ''
+}
+
 // Build a character record from a changeform (file JSON or mongo doc); null if not a character.
+// A deleted character keeps its doc (isDeleted) until the id is reused; the server skips it at boot and so does this.
 function charFromCf(cf) {
-  if (!cf || cf.recType !== 1) return null            // 1 = ACHR (a character)
+  if (!cf || cf.recType !== 1 || cf.isDeleted) return null            // 1 = ACHR (a character)
   const profileId = Number(cf.profileId)
   if (!Number.isFinite(profileId) || profileId < 0) return null
   // The store embeds appearanceDump as an object; very old file saves held a JSON string.
@@ -310,6 +326,8 @@ function charFromCf(cf) {
     name,
     disabled: !!cf.isDisabled,
     dead: !!cf.isDead,
+    slot: (cf.dynamicFields && Number.isInteger(cf.dynamicFields['private.charSlot'])) ? cf.dynamicFields['private.charSlot'] : null,
+    fallen: fallenOf(cf),
     worldOrCell: cf.worldOrCellDesc,
     position: Array.isArray(cf.position) ? cf.position : null,
     health: cf.healthPercentage,
@@ -367,12 +385,18 @@ function* fileChangeForms(settings) {
 // Driver-aware: file reads world/changeForms/*.json, mongodb queries the collection.
 let _charCache = { at: 0, map: new Map() }
 let _charError = ''
+// Revives sent through the running server reach the store at its next save; until then their rows are patched here
+const _revivedPending = new Set()
 async function readCharactersByProfile() {
   if (Date.now() - _charCache.at < 3000) return _charCache.map
   const map = new Map()
   const add = cf => {
     const c = charFromCf(cf)
     if (!c) return
+    if (_revivedPending.has(c.formDesc)) {
+      if (c.fallen) Object.assign(c, { fallen: '', worldOrCell: REVIVE_ARRIVAL.worldOrCellDesc, position: REVIVE_ARRIVAL.position })
+      else _revivedPending.delete(c.formDesc)
+    }
     const list = map.get(c.profileId) || []
     list.push(c)
     map.set(c.profileId, list)
@@ -584,6 +608,69 @@ ipcMain.handle('chars:save', async (_e, formDesc, patch) => {
 ipcMain.handle('chars:delete', async (_e, formDesc) => {
   try { await deleteCharacter(formDesc); return { ok: true } }
   catch (err) { return { ok: false, error: err.message } }
+})
+
+// Where a revived character wakes (afterlifeSystem.ts REVIVE_ARRIVAL, the Temple of Kynareth)
+const REVIVE_ARRIVAL = { worldOrCellDesc: '165a7:Skyrim.esm', position: [223.24, 248.85, 54], angle: [0, 0, 0] }
+const REVIVE_PROPS = ['private.afterlife', 'private.permaDead', 'private.factionsReleased']
+
+// The server's own revive rules against the store: the doc must be a fallen character and its profile below the living limit
+function reviveRefusal(cf, docs, settings) {
+  if (!cf || cf.recType !== 1 || cf.isDeleted) return 'no such character'
+  if (!fallenOf(cf)) return 'They are not fallen'
+  if (cf.isDead) return 'They are dead right now, wait for the respawn'
+  const living = docs.filter(d => d.recType === 1 && !d.isDeleted && Number(d.profileId) === Number(cf.profileId) && !fallenOf(d)).length
+  if (living >= maxCharactersOf(settings)) return 'The extra slot is in use: delete the character created in it first'
+  return ''
+}
+
+// Clears the afterlife props and moves the body to the temple, written whole as the server's own save does
+function revivedFields(cf) {
+  const dynamicFields = { ...(cf.dynamicFields || {}) }
+  for (const k of REVIVE_PROPS) delete dynamicFields[k]
+  return { dynamicFields, ...REVIVE_ARRIVAL }
+}
+
+// Only while the game server is stopped: a running server owns the changeform in memory and would overwrite the edit at its next save
+async function reviveOffline(formDesc) {
+  if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
+  const settings = readServerSettings()
+  if ((settings.databaseDriver || 'file') === 'mongodb') {
+    await withMongoChangeForms(settings, async col => {
+      const docs = await col.find({ recType: 1 }).toArray()
+      const cf = docs.find(d => d.formDesc === formDesc)
+      const refusal = reviveRefusal(cf, docs, settings)
+      if (refusal) throw new Error(refusal)
+      await col.updateOne({ formDesc, recType: 1 }, { $set: revivedFields(cf) })
+    })
+  } else {
+    const all = [...fileChangeForms(settings)]
+    const hit = all.find(([, cf]) => cf.formDesc === formDesc)
+    const refusal = reviveRefusal(hit && hit[1], all.map(([, cf]) => cf), settings)
+    if (refusal) throw new Error(refusal)
+    fs.writeFileSync(hit[0], JSON.stringify(Object.assign(hit[1], revivedFields(hit[1])), null, 2))
+  }
+  _charCache = { at: 0, map: new Map() }
+}
+
+// Through the running server (it owns the changeform), straight to the store while it is stopped
+ipcMain.handle('chars:revive', async (_e, formDesc) => {
+  try {
+    if (await gameStatus() === 'SERVICE_RUNNING') {
+      // Player characters carry a bare hex formDesc; the gamemode resolves it with getIdFromDesc
+      if (!/^[0-9a-f]{1,8}$/i.test(String(formDesc || ''))) return { ok: false, error: 'not a player character' }
+      const r = await consoleRelay.query('__revivejson ' + formDesc, '__REVIVEJSON__', 5000)
+      if (!r.ok) return { ok: false, error: `${r.error}: start the backend, or stop the game server to revive in the database` }
+      let res
+      try { res = JSON.parse(r.payload) } catch { return { ok: false, error: 'bad revive payload' } }
+      if (!res.ok) return { ok: false, error: res.error || 'refused' }
+      _revivedPending.add(formDesc)
+    } else {
+      await reviveOffline(formDesc)
+    }
+    _charCache = { at: 0, map: new Map() }
+    return { ok: true }
+  } catch (err) { return { ok: false, error: err.message } }
 })
 
 // Ask the running backend to drop a user's sessions (they live in its memory).

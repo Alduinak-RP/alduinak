@@ -1,3 +1,4 @@
+import { Settings } from "../settings";
 import { System, Log, SystemContext, AFTERLIFE_EVENT } from "./system";
 import { chainMpHook, hex, isAlive, isPlayerActor, notifyActor } from "./actorUtil";
 
@@ -34,8 +35,19 @@ export const REALMS: Record<RealmId, Realm> = {
 
 // { realm, reason, at } on the character
 export const AFTERLIFE_PROP = "private.afterlife";
+// Set by FactionSystem once a fallen character's ranks were released
+export const RELEASED_PROP = "private.factionsReleased";
+// Where a revived character wakes: the Temple of Kynareth in Whiterun (TempleRespawn.cpp)
+export const REVIVE_ARRIVAL = { cellOrWorldDesc: "165a7:Skyrim.esm", pos: [223.24, 248.85, 54], rot: [0, 0, 0] };
 
 const CONFINE_POLL_MS = 2000;
+// Living characters per player; override with the "characterSelectMaxCharacters" server setting (1-10)
+const DEFAULT_MAX_CHARACTERS = 3;
+
+export const readMaxCharacters = (all: Record<string, unknown> | null): number => {
+  const raw = Number(all?.["characterSelectMaxCharacters"]);
+  return Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : DEFAULT_MAX_CHARACTERS;
+};
 
 export const afterlifeOf = (mp: Mp, actorId: number): RealmId | null => {
   try {
@@ -61,6 +73,22 @@ const realmAt = (mp: Mp, actorId: number): RealmId | null => {
   return (Object.keys(REALMS) as RealmId[]).find((id) => REALMS[id].spaces.has(desc)) ?? null;
 };
 
+const actorsOf = (mp: Mp, profileId: number): number[] => {
+  try { return (mp.getActorsByProfileId(profileId) as number[]).map((a) => a >>> 0); } catch { return []; }
+};
+
+export const livingCount = (mp: Mp, profileId: number): number =>
+  actorsOf(mp, profileId).filter((a) => !isFallen(mp, a)).length;
+
+export const fallenOf = (mp: Mp, profileId: number): number[] =>
+  actorsOf(mp, profileId).filter((a) => isFallen(mp, a));
+
+// "Sovngarde", "the Soul Cairn" or "perma-dead"
+export const fallenLabel = (mp: Mp, actorId: number): string => {
+  const realm = afterlifeOf(mp, actorId);
+  return realm ? REALMS[realm].label : "perma-dead";
+};
+
 export class AfterlifeSystem implements System {
   systemName = "AfterlifeSystem";
 
@@ -69,6 +97,8 @@ export class AfterlifeSystem implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     this.ctx = ctx;
     const mp = ctx.svr as Mp;
+    this.maxCharacters = readMaxCharacters((await Settings.get()).allSettings as Record<string, unknown> | null);
+    (globalThis as any).__alduinakRevive = (actorId: number, by: string) => this.revive(Number(actorId) >>> 0, String(by));
     chainMpHook(mp, "onRespawn", (rawId: number) => {
       const actorId = Number(rawId) >>> 0;
       try {
@@ -98,6 +128,31 @@ export class AfterlifeSystem implements System {
 
   sendToSoulCairn(actorId: number, reason: string): boolean {
     return this.send(actorId >>> 0, "soulCairn", reason);
+  }
+
+  // Returns the living: "" on success, else the refusal. Faction ranks released at death are not restored
+  revive(actorId: number, by: string): string {
+    const ctx = this.ctx;
+    if (!ctx) return "Server not ready";
+    const mp = ctx.svr as Mp;
+    if (!isPlayerActor(mp, actorId)) return "Not a player character";
+    if (!isFallen(mp, actorId)) return "They are not fallen";
+    if (!isAlive(mp, actorId)) return "They are dead right now, wait for the respawn";
+    let profileId = -1;
+    try { profileId = Number(mp.get(actorId, "profileId")); } catch { return "Character not found"; }
+    if (livingCount(mp, profileId) >= this.maxCharacters) return "The extra slot is in use: delete the character created in it first";
+    try {
+      mp.set(actorId, AFTERLIFE_PROP, null);
+      mp.set(actorId, "private.permaDead", null);
+      mp.set(actorId, RELEASED_PROP, null);
+      mp.set(actorId, "locationalData", REVIVE_ARRIVAL);
+    } catch (e) {
+      this.log(`[afterlife] reviving ${hex(actorId)} failed: ${e}`);
+      return "Revive failed, see server log";
+    }
+    notifyActor(mp, actorId, "You have been returned to the living.");
+    this.log(`[afterlife] ${hex(actorId)} of profile ${profileId} revived by ${by}`);
+    return "";
   }
 
   private send(actorId: number, realm: RealmId, reason: string): boolean {
@@ -158,4 +213,5 @@ export class AfterlifeSystem implements System {
 
   private ctx: SystemContext | null = null;
   private nextPollAt = 0;
+  private maxCharacters = DEFAULT_MAX_CHARACTERS;
 }

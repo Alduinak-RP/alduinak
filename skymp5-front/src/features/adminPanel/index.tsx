@@ -24,6 +24,16 @@ interface PanelPlayer {
   ping: number | null;
   m?: PanelMastery; // online rows only, absent on older servers
   av?: PanelAttrs; // online rows only, absent on older servers
+  f?: PanelFallen[]; // the profile's fallen characters, absent when none or on older servers
+  ok?: boolean; // a revive is allowed: the profile's living characters are below the limit
+}
+
+// One character in Sovngarde, the Soul Cairn or perma-dead (adminSystem.ts fallenRows)
+interface PanelFallen {
+  a: string; // actor id hex
+  n: string;
+  s: number | null; // character slot
+  r: string; // realm label or perma-dead
 }
 
 // Permanent max attribute change of one character (adminSystem.ts attrBonus)
@@ -703,6 +713,22 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   {actionsEnabled
                     ? 'Health, magicka and stamina, permanent and kept through relogs; 0 leaves the character on its base values'
                     : 'Select an online player to change their max attributes'}
+                </span>
+              </div>
+            ) : null}
+            {ev.revive && selectedPlayer && selectedPlayer.f && selectedPlayer.f.length ? (
+              <div className="admin-panel__mastery">
+                {selectedPlayer.f.map((c) => (
+                  <div key={c.a} className="admin-panel__mastery-row">
+                    <span className="admin-panel__mastery-who" title={c.n}>{c.n}</span>
+                    <span className="admin-panel__mastery-info">{c.r + (c.s != null ? ', character ' + (c.s + 1) : '')}</span>
+                    <Button text="Revive" width={96} height={30} disabled={selectedPlayer.ok === false} onClick={() => send(ev.revive, c.a)} />
+                  </div>
+                ))}
+                <span className="admin-panel__hint">
+                  {selectedPlayer.ok === false
+                    ? 'Delete the character made in the extra slot first'
+                    : 'A revived character wakes at the Temple of Kynareth; faction ranks are not given back'}
                 </span>
               </div>
             ) : null}

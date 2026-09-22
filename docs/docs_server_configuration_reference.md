@@ -489,7 +489,7 @@ Searches for `index.js` if a directory specified.
 
 ## characterSelectMaxCharacters
 
-With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
+With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again, and so does a staff revive (admin panel Players sub-tab or the Server Manager Players tab), which is refused while the living count is at this limit. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
 
 ## logoutGraceMs, logoutPose
 
@@ -601,7 +601,7 @@ Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted
 Every player opens the Personal Menu with the interact key (X by default) while looking at nothing, a world NPC or anything else that is not a player, door or container. It has four tabs, in this order:
 
 - **Admin**, shown only once the server confirms the player's admin tier, with the sub-tabs:
-  - Players: roster, teleport to, summon, kick, ban, mastery grant and reset, and a permanent max health, magicka and stamina change of the selected online character (-1000..1000 each, absolute not additive, 0 for the plugins' own values; it is stored on the character, survives a relog and the hunger and fatigue penalties recompute against the new maximum);
+  - Players: roster, teleport to, summon, kick, ban, mastery grant and reset, a permanent max health, magicka and stamina change of the selected online character (-1000..1000 each, absolute not additive, 0 for the plugins' own values; it is stored on the character, survives a relog and the hunger and fatigue penalties recompute against the new maximum), and Revive for the selected profile's fallen characters (Sovngarde, the Soul Cairn or perma-dead, online or not; refused while a character made in the extra slot is alive, see `docs_roleplay_survival_loop.md` section 8);
   - Teleport: named locations, map markers and temples in collapsible sections;
   - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit and Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`, grant pets, and place, teleport to either end of and delete the passive jobs of `Jobs.json`, see `docs_roleplay_jobs.md`;

@@ -155,6 +155,25 @@ behaviour-graph events — no ESP required.**
   line to `skyrim-platform.log`. If a test still shows a neck stump, the
   next step is a re-apply of the stored appearance from `RemoteServer` in
   the same callback.
+- **Revive** (`AfterlifeSystem.revive`): staff with the `players` cap return
+  a fallen character (Sovngarde, the Soul Cairn or perma-dead) to the living.
+  The admin panel's Players sub-tab lists the selected profile's fallen
+  characters with a Revive button (`adminAction revive`, the character's
+  actor id, online or not); the Server Manager's Players tab marks them
+  `fallen (Sovngarde)` and its character modal gets a Revive button that goes
+  through the running server (console verb `__revivejson`, so the backend
+  relay must be up) or writes the database directly while the game server is
+  stopped. The same rules apply on every path: the character must be fallen
+  and not dead at that moment (wait for the respawn), and the profile's
+  living characters must be below `characterSelectMaxCharacters`, so a
+  character created in the extra slot the fallen one opened must be deleted
+  first ("The extra slot is in use"). A revive clears `private.afterlife`,
+  `private.permaDead` and `private.factionsReleased` and moves the body to
+  the Temple of Kynareth in Whiterun (`REVIVE_ARRIVAL`), where it wakes at
+  the next login or at once when online; the extra slot closes with the next
+  character list. Faction ranks released at death are not given back; staff
+  re-assign them. Logged as `[afterlife] <id> of profile N revived by ...`
+  and in `admin.log`.
 - **Logs**: deaths the native kill does not report (timer, damage over time,
   logout, a light finishing hit) go to `pvp.log` when another player downed or
   hit them; every bleedout event is logged as `[bleedout] ...`.

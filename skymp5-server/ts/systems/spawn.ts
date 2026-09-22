@@ -6,7 +6,7 @@ import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
-import { REALMS, afterlifeOf, isFallen } from "./afterlifeSystem";
+import { REALMS, afterlifeOf, isFallen, readMaxCharacters } from "./afterlifeSystem";
 import { hex, isAlive, isBleedingOut } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
 
@@ -17,8 +17,6 @@ function randomInteger(min: number, max: number) {
   return Math.floor(rand);
 }
 
-// Living characters per player; override with the "characterSelectMaxCharacters" server setting (1-10)
-const DEFAULT_MAX_CHARACTERS = 3;
 // Slot indices a character may keep; each fallen character opens one more slot up to this
 const MAX_SLOTS = 10;
 
@@ -125,7 +123,7 @@ export class Spawn implements System {
   constructor(private log: Log) { }
 
   private characterSelect = false;
-  private maxCharacters = DEFAULT_MAX_CHARACTERS;
+  private maxCharacters = readMaxCharacters(null);
   private startingItems = DEFAULT_STARTING_ITEMS;
   private startLocations = DEFAULT_START_LOCATIONS;
   private logoutGraceMs = DEFAULT_LOGOUT_GRACE_MS;
@@ -148,8 +146,7 @@ export class Spawn implements System {
     this.characterSelect = !!(this.settingsObject.allSettings &&
       (this.settingsObject.allSettings as Record<string, unknown>)["characterSelect"]);
     const all = this.settingsObject.allSettings as Record<string, unknown> | null;
-    const rawMax = Number(all && all["characterSelectMaxCharacters"]);
-    if (Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= 10) this.maxCharacters = rawMax;
+    this.maxCharacters = readMaxCharacters(all);
     const parsedItems = parseStartingItems(all?.["startingItems"]);
     if (parsedItems) this.startingItems = parsedItems;
     if (all?.["startLocations"] !== undefined) {

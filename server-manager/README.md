@@ -41,7 +41,11 @@ fails it prints a direct download URL - save that zip as
   the right. Search matches **name, Discord ID, and character names**. The detail
   panel edits `username` / `displayName` / `notes` (persisted to the backend) and
   shows factions and the player's **characters** (read from the game server's save
-  store). No more pop-up.
+  store; deleted characters are left out). A fallen character carries a
+  `fallen (Sovngarde)` or `perma-dead` badge and its modal a **Revive** button:
+  through the running server (console verb `__revivejson`, so the backend relay
+  must be up) or straight to the store while the game server is stopped. It is
+  refused while a character created in the extra slot is alive. No more pop-up.
 - **Factions** - create, edit and delete factions (name, zone, colour), their
   ranks (name, ladder order, capacity) and what each rank may do: a tick matrix
   of the ranks it may appoint, promote to, demote from and remove, plus flags

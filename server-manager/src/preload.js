@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('mgr', {
   charsItemNames: (ids)           => ipcRenderer.invoke('chars:itemNames', ids),
   charsSave:      (formDesc, p)   => ipcRenderer.invoke('chars:save', formDesc, p),
   charsDelete:    (formDesc)      => ipcRenderer.invoke('chars:delete', formDesc),
+  charsRevive:    (formDesc)      => ipcRenderer.invoke('chars:revive', formDesc),
   playersDelete:  (profileId, o)  => ipcRenderer.invoke('players:delete', profileId, o),
 
   // Factions tab

@@ -7,7 +7,7 @@ import { addItemTo, isNear, isPlayerActor, nameShownTo, userOf } from "./actorUt
 import { formIdFromConfig } from "./formIdUtil";
 import { ITEM_TYPES } from "./itemCatalog";
 import { HousingSystem } from "./housingSystem";
-import { isFallen } from "./afterlifeSystem";
+import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
 import { adminAudit } from "./discordAlerts";
 
@@ -65,7 +65,6 @@ const MAX_USER_SLOTS = 1024;
 const UNIFORM_PROP = "private.factionUniformAt";
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
-const RELEASED_PROP = "private.factionsReleased";
 
 // Acting through staff powers rather than a rank of their own
 const staffOnly = (auth: rules.Authority): boolean => auth.staff && !auth.rank;

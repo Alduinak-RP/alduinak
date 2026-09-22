@@ -6,6 +6,7 @@ import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
 import { WeatherSystem } from "./weatherSystem";
+import { AfterlifeSystem, fallenLabel, fallenOf, livingCount, readMaxCharacters } from "./afterlifeSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, userOf } from "./actorUtil";
@@ -36,6 +37,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
+//                     { customPacketType: "adminAction", action: "revive", target }  target: a fallen character's actor id hex (online or not); refused while the profile's living limit is reached
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..10000, self allowed
 //                     { customPacketType: "adminAction", action: "petBases" }  answered with petBases, the grantable pet bases per kind
@@ -47,9 +49,10 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "weatherSet", region, weather, minutes }  region "" = the admin's own; weather: catalog desc or editor id; minutes null = until cleared, else 1..1440
 //                     { customPacketType: "adminAction", action: "weatherClear", region }  rolls a normal weather again
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather}, mastery }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?, av?, f?, ok?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather}, mastery }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       av: the online row's permanent max attribute change {health, magicka, stamina}
+//                       f: the profile's fallen characters [{a, n, s, r}] (actor id hex, name, slot, realm or perma-dead), ok: whether a revive is allowed (living characters below the limit); both only when f is not empty
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
 //                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | other; the front files a missing or unknown group under Other
 //                     { customPacketType: "attributeBonus", health, magicka, stamina }  the character's permanent max attribute change, re-sent on every actor assign
@@ -135,6 +138,14 @@ export class AdminSystem implements System {
     this.weather = weather;
   }
 
+  private afterlife: AfterlifeSystem | null = null;
+
+  setAfterlifeSystem(afterlife: AfterlifeSystem): void {
+    this.afterlife = afterlife;
+  }
+
+  private maxCharacters = readMaxCharacters(null);
+
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private masterUrl = "";
   private masterKey = "";
@@ -163,6 +174,7 @@ export class AdminSystem implements System {
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
     this.roleCfg = readAdminRoleConfig(all);
+    this.maxCharacters = readMaxCharacters(all);
     for (const warning of this.roleCfg.capWarnings) this.log(`AdminSystem: ${warning}`);
     // Configured entries first, in Temples unless they set a group; a generated row never shadows a name already listed
     const configured: any[] = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
@@ -346,8 +358,26 @@ export class AdminSystem implements System {
       else extra.push(row);
     }
     const rows = Array.from(byProfile.values()).concat(extra);
+    for (const row of rows) {
+      if (row.p > 0) Object.assign(row, this.fallenRows(ctx, row.p));
+    }
     rows.sort((a, b) => (a.online === b.online) ? a.p - b.p : (a.online ? -1 : 1));
     return rows;
+  }
+
+  // The profile's fallen characters and whether one may be revived; nothing when there are none
+  private fallenRows(ctx: SystemContext, profileId: number): { f?: any[]; ok?: boolean } {
+    const mp = ctx.svr as Mp;
+    const fallen = fallenOf(mp, profileId);
+    if (!fallen.length) return {};
+    const f = fallen.map((a) => {
+      let s: unknown = null;
+      try { s = mp.get(a, "private.charSlot"); } catch { }
+      let n = "";
+      try { n = String(ctx.svr.getActorName(a) ?? "").trim(); } catch { }
+      return { a: a.toString(16), n: n || "(no name)", s: Number.isInteger(s) ? s : null, r: fallenLabel(mp, a) };
+    });
+    return { f, ok: livingCount(mp, profileId) < this.maxCharacters };
   }
 
   // Permanent max attribute change of one character, stored on the actor so it outlives the session
@@ -519,6 +549,10 @@ export class AdminSystem implements System {
       this.weatherAction(mp, userId, myActorId, adminProfile, tier, action, content);
       return;
     }
+    if (action === "revive") {
+      this.revive(ctx, userId, adminProfile, String(content["target"] ?? ""));
+      return;
+    }
     if (action === "teleportLoc") {
       const name = String(content["target"] ?? "");
       const loc = this.locations.find(l => l.name === name);
@@ -603,6 +637,26 @@ export class AdminSystem implements System {
       this.log(`AdminSystem: action '${action}' by profile ${adminProfile} failed: ${e}`);
       this.reply(mp, userId, false, "Action failed, see server log");
     }
+  }
+
+  // The target may be offline: a fallen body keeps its form while its player is away
+  private revive(ctx: SystemContext, userId: number, adminProfile: number, targetHex: string): void {
+    const mp = ctx.svr as Mp;
+    const actorId = parseInt(targetHex, 16) >>> 0;
+    if (!this.afterlife || !actorId) return this.reply(mp, userId, false, "Unknown character");
+    let name = "";
+    let profileId = 0;
+    try {
+      name = String(ctx.svr.getActorName(actorId) ?? "").trim();
+      profileId = Number(mp.get(actorId, "profileId")) || 0;
+    } catch { return this.reply(mp, userId, false, "Unknown character"); }
+    const refusal = this.afterlife.revive(actorId, `profile ${adminProfile}`);
+    if (refusal) {
+      this.adminLog(`profile ${adminProfile} was refused a revive of ${name} (profile ${profileId}): ${refusal}`, false);
+      return this.reply(mp, userId, false, refusal);
+    }
+    this.adminLog(`profile ${adminProfile} revived ${name} (profile ${profileId}), they wake at the Temple of Kynareth`);
+    this.reply(mp, userId, true, `Revived ${name}`);
   }
 
   // Built once in the background on first use; a failed build is retried on the next call

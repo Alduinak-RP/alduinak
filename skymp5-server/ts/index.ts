@@ -262,6 +262,7 @@ const main = async () => {
   housingSystem.petCategoryOf = (actorId, refrId) => petSystem.categoryOfDoor(actorId, refrId);
   const adminSystem = new AdminSystem(log, npcSpawnSystem, masterySystem);
   adminSystem.setPetSystem(petSystem);
+  adminSystem.setAfterlifeSystem(afterlifeSystem);
   // Passive jobs: a job carrier neither carries nor is carried, and the admin panel places the jobs
   const jobSystem = new JobSystem(log, captureSystem, masterySystem);
   captureSystem.jobLoadOf = (actorId) => jobSystem.loadOf(actorId);

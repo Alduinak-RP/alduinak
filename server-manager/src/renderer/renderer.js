@@ -227,6 +227,7 @@ async function selectPlayer(discordId) {
     const badges =
       (onlineProfileIds.has(Number(c.profileId)) ? ' <span class="badge online">online</span>' : '') +
       (c.dead ? ' <span class="badge">dead</span>' : '') +
+      (c.fallen ? ` <span class="badge">${esc(c.fallen === 'perma-dead' ? 'perma-dead' : 'fallen (' + c.fallen + ')')}</span>` : '') +
       (c.disabled ? ' <span class="muted">(disabled)</span>' : '')
     return `<li data-idx="${idx}"><span class="cid">${esc(fmtFormDesc(c.formDesc))}</span><span class="cname">${esc(c.name)}</span>${badges}</li>`
   }
@@ -366,7 +367,9 @@ function openCharModal(c) {
   cmEntries = (c.inventory || []).map(e => ({ ...e }))
   cmItemNames = {}
   disarmConfirm($('#cm-delete')) // an armed delete must never carry over to another character
-  $('#cm-title').textContent = `${c.name} — ${fmtFormDesc(c.formDesc)}`
+  disarmConfirm($('#cm-revive'))
+  $('#cm-revive').hidden = !c.fallen
+  $('#cm-title').textContent = `${c.name} — ${fmtFormDesc(c.formDesc)}${c.fallen ? ` (${c.fallen})` : ''}`
   $('#cm-status').textContent = ''
   const pos = c.position ? c.position.map(n => Math.round(n)).join(', ') : '—'
   $('#cm-meta').textContent =
@@ -542,6 +545,16 @@ armConfirm($('#cm-delete'), 'Delete character', async () => {
   if (!r.ok) { $('#cm-status').textContent = `Error: ${r.error}`; return }
   closeCharModal()
   loadPlayers()
+  if (selectedDiscordId) selectPlayer(selectedDiscordId)
+})
+armConfirm($('#cm-revive'), 'Revive', async () => {
+  if (!cmChar) return
+  $('#cm-status').textContent = 'reviving…'
+  const r = await window.mgr.charsRevive(cmChar.formDesc)
+  if (!r.ok) { $('#cm-status').textContent = `Error: ${r.error}`; return }
+  $('#cm-status').textContent = 'Revived, they wake at the Temple of Kynareth.'
+  cmChar.fallen = ''
+  $('#cm-revive').hidden = true
   if (selectedDiscordId) selectPlayer(selectedDiscordId)
 })
 // Close only on a true backdrop click: a drag that starts in an input and ends

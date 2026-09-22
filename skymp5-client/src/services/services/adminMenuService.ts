@@ -62,6 +62,7 @@ const events = {
   masteryGrant: "admin::masterygrant",
   masteryReset: "admin::masteryreset",
   attrSet: "admin::attrset",
+  revive: "admin::revive",
   tab: "admin::tab",
   skills: "admin::skills",
   skillChoose: "admin::skillchoose",
@@ -690,6 +691,12 @@ export class AdminMenuService extends ClientListener {
         stamina: Number(e.arguments[4]),
       });
       // The roster carries the values shown in the fields
+      sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+      return;
+    }
+    if (kind === events.revive) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "revive", target: String(e.arguments[1] ?? "") });
+      // The roster carries the fallen list; ask for a fresh one
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
       return;
     }

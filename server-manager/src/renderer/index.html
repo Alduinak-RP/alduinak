@@ -145,11 +145,12 @@
       <div class="modal-head">
         <h3 id="cm-title">Character</h3>
         <span id="cm-status" class="status"></span>
+        <button id="cm-revive" class="action small go" hidden>Revive</button>
         <button id="cm-delete" class="action small stop">Delete character</button>
         <button id="cm-close" class="action small">Close</button>
       </div>
       <div id="cm-meta" class="muted"></div>
-      <small>Edits write straight to the character store. Apply them while the game server is stopped (or at least while this player is offline) - a running server can overwrite them at any time.</small>
+      <small>Edits write straight to the character store. Apply them while the game server is stopped (or at least while this player is offline) - a running server can overwrite them at any time. Revive goes through the running server, or straight to the database while the game server is stopped; it is refused while the extra slot the fallen character opened holds a living one.</small>
       <div class="modal-cols">
         <div class="modal-col" id="cm-appearance"></div>
         <div class="modal-col" id="cm-inventory"></div>
