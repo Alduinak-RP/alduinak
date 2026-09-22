@@ -31,7 +31,7 @@ type Mp = any;
 // for one more turns the station away.
 // A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
 // Every ore but iron and sea salt needs the miner profession at its rank; those two are open to anyone with a pickaxe.
-// Produce containers (beehives) never open: E hands over what the container record holds, then it grows back.
+// Produce containers (beehives and apiaries) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
 // Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs needsPickFatigue and kneels the picker for
@@ -82,12 +82,12 @@ const DEFAULT_VEIN_TIERS: Record<string, number> = {
 };
 
 // Placed containers open empty on this server, so the honeycomb for the honey recipe comes from here.
-const DEFAULT_PRODUCE: Record<string, number> = { BeeHive: 60, BeeHiveVacant: 60 };
+const DEFAULT_PRODUCE: Record<string, number> = { BeeHive: 60, BeeHiveVacant: 60, BYOHBYOHApiary: 60 };
 
-// A hive holds one of each in the record; both kinds hand over this instead.
+// The records hold their own mix; every kind, the Hearthfire apiary included, hands over this instead.
+const HIVE_YIELD: Record<string, number> = { BeeHoneyComb: 2, CritterBeeIngredient: 2, BeeHiveHusk: 2 };
 const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
-  BeeHive: { BeeHoneyComb: 2, CritterBeeIngredient: 2, BeeHiveHusk: 2 },
-  BeeHiveVacant: { BeeHoneyComb: 2, CritterBeeIngredient: 2, BeeHiveHusk: 2 },
+  BeeHive: HIVE_YIELD, BeeHiveVacant: HIVE_YIELD, BYOHBYOHApiary: HIVE_YIELD,
 };
 
 type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";

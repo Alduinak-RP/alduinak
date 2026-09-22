@@ -292,10 +292,11 @@ container loot are off:
   bandits, Forsworn, warlocks and other human foes carry it too.
 - Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
   open to everyone.
-- Bee Honeycomb: the vanilla beehives, occupied and vacant. `gatheringSystem.ts`
-  keeps them shut and hands over two honeycomb, two bees and two beehive husks
-  on E (`gatheringProduceYield`), then the hive is empty for an hour
-  (`gatheringProduceContainers`). The state rides the hive as
+- Bee Honeycomb: the vanilla beehives, occupied and vacant, and the Hearthfire
+  apiaries (`BYOHBYOHApiary`: Whiterun, Goldenglow and the Riften extension).
+  `gatheringSystem.ts` keeps them shut and hands over two honeycomb, two bees
+  and two beehive husks on E (`gatheringProduceYield`), then the hive is empty
+  for an hour (`gatheringProduceContainers`). The state rides the hive as
   `private.gathering`, like a vein. Bees also come from the bees themselves.
   A hive is a small target: the client widens the engine's crosshair pick a
   little at startup (`activatePickService.ts`, see
