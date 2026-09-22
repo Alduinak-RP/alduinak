@@ -516,7 +516,7 @@ export class FactionSystem implements System {
 
   // ── Titles ──────────────────────────────────────────────────────────────────
 
-  private titleFactionOf(actorId: number): string {
+  titleFactionOf(actorId: number): string {
     try { return String(this.mp.get(actorId, TITLE_PROP) ?? ""); } catch { return ""; }
   }
 
@@ -952,7 +952,7 @@ export class FactionSystem implements System {
     try { return this.mp.get(actorId, "private.skympAccess"); } catch { return null; }
   }
 
-  private membershipsOfActor(actorId: number): rules.Membership[] {
+  membershipsOfActor(actorId: number): rules.Membership[] {
     return rules.membershipsOf(this.cachedAccess(actorId));
   }
 

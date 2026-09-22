@@ -15,6 +15,7 @@ key carries its property:
 - Server piece: `skymp5-server/ts/systems/writingSystem.ts` (rules, packets, staff tools) and `writingStore.ts` (storage)
 - Client piece: `skymp5-client/src/services/services/writingService.ts` (widget 33)
 - Front piece: `skymp5-front/src/features/writing/`, built on the paper widgets in `features/parchment/` that the missive board uses too
+- Seal artwork: `skymp5-front/src/img/seals/<faction-slug>.png`, made from the owner's `Graphics\Seals` set by `misc/seal-icons.py`
 - Plugin records: the `writing` section of `misc/proficiency-patcher/spec.json`
 
 The feature stays off until `writingEnabled` is `true` in
@@ -101,6 +102,33 @@ rule as "A stranger"):
   or "An unfamiliar seal was broken.", shown on the sealed face and on the
   opened letter alike, so re-sealing cannot hide tampering.
 
+### Hold and faction marks
+
+A seal and a signature carry the mark of the sealer's or author's faction,
+recorded when the wax is pressed or the writing is made (`factionId` on the
+person record). The faction is the one whose title the character shows in the
+Faction tab (**Show Title** doubles as the "seal as" choice); with no title
+shown, or a title of a faction without artwork, the first of the character's
+factions with artwork is used, guilds and the Legion before the hold court,
+since nearly every character is a hold citizen. Artwork exists for the nine
+hold courts, the Imperial Legion, the College of Winterhold and the Dark
+Brotherhood (`SEAL_FACTIONS` in `writingSystem.ts`, the `SEALS` table in the
+front); the Stormcloaks and the other factions press no mark. The ids are the
+stable faction ids of `faction-whitelist.json`; renaming one there silently
+drops its mark.
+
+Heraldry is public: the sealed face shows the mark and its caption ("Court of
+Haafingar") above "Closed with an unfamiliar seal.", and the opened letter
+shows a small mark before "Signed in an unfamiliar hand", the same way a shown
+rank title already prefixes the floating name for everyone. Only the personal
+name follows the introductions rule. An unsigned writing carries no signature
+mark; a copy carries the original author's. Broken seals record the faction
+but stay text-only. Documents written before the marks existed carry none.
+
+A rank granted from the dashboard reaches an online character's memberships
+when the Faction tab next opens, at the next spawn or on a definition edit,
+so a fresh member opens the Faction tab once before sealing.
+
 ## Item identity
 
 Two letters of one base differ only by name, so every place that pairs items
@@ -146,7 +174,7 @@ The folder is created on the first write. The store sits behind the
     {
       "v": 1, "id": "W1A7QZ", "kind": "letter" | "journal" | "book",
       "title": "...", "pages": ["..."], "signed": true, "finished": false,
-      "author": { "actorId", "profileId", "realName", "shownName" },
+      "author": { "actorId", "profileId", "realName", "shownName", "factionId" },
       "scribe": { ... },          // who made this file: the author or a copier
       "copyOf": "",               // the original's id on a copy
       "createdAt", "updatedAt",
@@ -193,8 +221,10 @@ but nothing in the game sends it.
 else `C:\logs`), in `bounty.log`'s format: JSON-quoted real name with the
 profile id in a fixed position and the mask shown, and **the full text** of
 every new writing and of every changed page, sealed letters included. One
-line each for write, edit, finish, seal, break, copy, burn, duplicates cut
-back and staff renames and destructions. The manager rotates it with the other
+line each for write, edit, finish, seal (ending `as <factionId>` when a mark
+was pressed), break, copy, burn, duplicates cut back and staff renames and
+destructions. The staff reader's "Scribe" and "Sealed by" lines end the same
+way. The manager rotates it with the other
 gamemode logs. Only staff with access to the server may read it.
 
 ## Wire protocol
@@ -213,15 +243,17 @@ Every message is a CustomPacket carrying JSON:
       { customPacketType: "writingMenu", view: "compose" | "read" | "sealed" | "list",
         limits: { title, letter, page, journalPages, bookPages },
         compose?: { kind, blankName },
-        doc?: { id, kind, title, pages, byline, copy, finished, sealText, brokenSeals,
-                canEdit, canFinish, canSeal, canBreak, canCopy, canBurn, hasWax, blankBooks,
-                staff, staffLines },
+        doc?: { id, kind, title, pages, byline, copy, finished, sealText, sealFaction, signFaction,
+                brokenSeals, canEdit, canFinish, canSeal, canBreak, canCopy, canBurn, hasWax,
+                blankBooks, staff, staffLines },
         list?: [{ id, kind, title, sealed }] }
       { customPacketType: "writingClosed" }
       { customPacketType: "notification", text }
       { customPacketType: "adminActionResult", ok, text }   // staff requests
 
-A sealed letter's `writingMenu` carries no pages. The widget type is
+A sealed letter's `writingMenu` carries no pages; `sealFaction` is set only on
+the sealed face and `signFaction` only on a signed open writing, both faction
+ids the front maps to artwork. The widget type is
 `writing`, id 33; the client adds `seq`, the reply count, so the widget can
 end an edit on the reply to a save.
 
@@ -272,6 +304,19 @@ In this order:
   check the sealed face lists it.
 - A stranger sees "Signed in an unfamiliar hand" and "an unfamiliar seal"; after
   an introduction the names show.
+- Marks: a hold citizen (Faction tab opened once after the grant) signs a
+  letter: the wolf of Haafingar sits before "Signed, <name>" and, for a
+  stranger, before "Signed in an unfamiliar hand". Sealed, the face shows the
+  96 px mark with the caption "Court of Haafingar" above the seal line; broken,
+  the stamp leaves and the signature mark stays.
+- A Legionary who is also a hold citizen seals with the Legion mark until the
+  hold title is shown; a Stormcloak citizen with the Stormcloak title shown
+  seals with the hold mark; a Stormcloak alone or a factionless character
+  presses no mark and the CEF console shows no error.
+- The Legion mark is portrait: about 51 px wide at 96 px tall, not stretched.
+- A pre-change document opens as before, without marks; re-sealing one writes
+  `seal.factionId` and the `writing.log` line ends `as hold:...`.
+- The missive board's paper is unchanged.
 - Dropping a writing puts it back with the message; the search and pet windows
   refuse it.
 - Finish a book, copy it onto a Blank Book, read the copy ("A copy").

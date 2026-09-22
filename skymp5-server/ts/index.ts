@@ -310,7 +310,7 @@ const main = async () => {
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
     bountyBoardSystem,
-    new WritingSystem(log),
+    new WritingSystem(log, factionSystem),
     new UntouchableSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
     hostingSystem,

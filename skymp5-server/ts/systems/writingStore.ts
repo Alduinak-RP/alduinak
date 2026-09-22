@@ -17,6 +17,8 @@ export interface WritingPerson {
   realName: string;
   // The name others saw at the time, mask respected
   shownName: string;
+  // The faction whose mark the signature or seal carries, empty for none
+  factionId: string;
 }
 
 export interface WritingSeal extends WritingPerson {
@@ -74,6 +76,7 @@ function person(raw: any): WritingPerson {
     profileId: Number.isFinite(Number(raw?.profileId)) ? Number(raw.profileId) : -1,
     realName: text(raw?.realName, 100),
     shownName: text(raw?.shownName, 100),
+    factionId: text(raw?.factionId, 64),
   };
 }
 

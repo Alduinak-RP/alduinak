@@ -46,15 +46,20 @@ interface PaperReaderProps {
   wide?: boolean;
   // A click beside the paper
   onBack?: () => void;
+  // A seal pressed under the heading
+  stamp?: React.ReactNode;
+  // A mark in front of the byline
+  mark?: React.ReactNode;
   children?: React.ReactNode;
 }
 
-export const PaperReader = ({ heading, text, byline, meta, wide, onBack, children }: PaperReaderProps) => (
+export const PaperReader = ({ heading, text, byline, meta, wide, onBack, stamp, mark, children }: PaperReaderProps) => (
   <div className="parchment__shade" onClick={onBack}>
     <div className={'parchment__read' + (wide ? ' parchment__read--wide' : '')} onClick={(e) => e.stopPropagation()}>
       {heading ? <h3 className="parchment__read-heading">{heading}</h3> : null}
+      {stamp}
       <p className="parchment__read-text">{text}</p>
-      {byline ? <p className="parchment__read-author">{byline}</p> : null}
+      {byline || mark ? <p className="parchment__read-author">{mark}{byline}</p> : null}
       {(meta || []).map((line, i) => (
         <p key={i} className="parchment__read-meta">{line}</p>
       ))}

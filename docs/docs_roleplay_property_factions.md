@@ -288,7 +288,9 @@ cuirass recipe and a new `AldRecipeArmorGuardHelmetFullEastmarch`.
   acting. The game server writes it to the actor property `ff_factionTitle`,
   registered in the gamemode next to the other `ff_` properties; clients put it
   in front of the floating name above the character, and the gamemode's
-  `nameFor` puts it in front of chat names.
+  `nameFor` puts it in front of chat names. The same choice picks which
+  faction's mark a letter is sealed or signed with (see
+  `docs_roleplay_writing.md`, "Hold and faction marks").
 - **Staff** whose tier has the `factions` cap (every tier by default) see
   every faction in the type tabs and may do everything, the leader rank included.
 - **Deleted and perma-dead characters**, and characters sent to Sovngarde or

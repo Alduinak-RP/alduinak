@@ -6,6 +6,7 @@ import { resolveEditorIds } from "./espmEditorIds";
 import { hex, isIntroduced } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { AdminRoleConfig, adminTierOf, missingCap, readAdminRoleConfig } from "./adminRoles";
+import { FactionSystem } from "./factionSystem";
 import { InventoryEntry, Item, addEntries, isNamedItemBase, namedItemBaseIds, readInventory, registerNamedItemBases, sameExtras } from "./inventoryExtras";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, realNameOf, sanitize, sendJson } from "./playerText";
 import { JsonWritingStore, WRITING_ID, WritingDoc, WritingKind, WritingPerson, WritingSeal, WritingStore } from "./writingStore";
@@ -58,6 +59,13 @@ const SAVE_COOLDOWN_MS = 2000;
 const DAY_MS = 24 * 3600000;
 const MAX_USER_SLOTS = 1024;
 
+// Factions with a mark in skymp5-front/src/img/seals, guilds and the Legion before the hold courts
+const SEAL_FACTIONS = [
+  "faction:dark-brotherhood", "faction:college-of-winterhold", "faction:imperial-legion",
+  "hold:haafingar", "hold:the-reach", "hold:falkreath", "hold:hjaalmarch", "hold:eastmarch",
+  "hold:winterhold", "hold:the-rift", "hold:the-pale", "hold:whiterun",
+];
+
 type View = "compose" | "read" | "sealed" | "list";
 
 interface Session {
@@ -92,7 +100,7 @@ const plain = (baseId: number): Item => ({ baseId, count: 1 });
 
 export class WritingSystem implements System {
   systemName = "WritingSystem";
-  constructor(private log: Log) { }
+  constructor(private log: Log, private factions: FactionSystem) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -339,7 +347,7 @@ export class WritingSystem implements System {
     if (!this.rewrite(mp, actorId, [[carried.entry, 1], [plain(wax), 1]], [sealed])) return;
     doc.seal = { ...this.person(mp, actorId), at: Date.now() };
     this.persist(doc);
-    this.appendLog(`${describeActor(mp, actorId)} sealed letter ${id} ${JSON.stringify(doc.title)}`);
+    this.appendLog(`${describeActor(mp, actorId)} sealed letter ${id} ${JSON.stringify(doc.title)}${doc.seal.factionId ? ` as ${doc.seal.factionId}` : ""}`);
     this.notice(mp, userId, "You press your seal into the wax.");
     this.openDoc(mp, userId, actorId, id);
   }
@@ -527,6 +535,9 @@ export class WritingSystem implements System {
         copy: !!doc.copyOf,
         finished: doc.finished,
         sealText: hidden ? `Closed with ${sealName(doc.seal || { ...this.nobody(), at: 0 })}.` : "",
+        // Heraldry is public: the marks show to every reader, only the names follow the introductions rule
+        sealFaction: hidden ? doc.seal?.factionId || "" : "",
+        signFaction: !hidden && doc.signed ? doc.author.factionId : "",
         brokenSeals: doc.brokenSeals.map((b) => capitalise(`${sealName(b.seal)} was broken.`)),
         canEdit: editable,
         canFinish: editable && doc.kind === "book",
@@ -697,11 +708,22 @@ export class WritingSystem implements System {
   }
 
   private person(mp: Mp, actorId: number): WritingPerson {
-    return { actorId, profileId: profileIdOf(mp, actorId), realName: realNameOf(mp, actorId), shownName: displayNameOf(mp, actorId) };
+    return {
+      actorId, profileId: profileIdOf(mp, actorId), realName: realNameOf(mp, actorId), shownName: displayNameOf(mp, actorId),
+      factionId: this.sealFactionOf(actorId),
+    };
   }
 
   private nobody(): WritingPerson {
-    return { actorId: 0, profileId: -1, realName: "", shownName: "" };
+    return { actorId: 0, profileId: -1, realName: "", shownName: "", factionId: "" };
+  }
+
+  // The faction whose title the character shows, else the first of theirs with a mark
+  private sealFactionOf(actorId: number): string {
+    const mine = this.factions.membershipsOfActor(actorId).map((m) => m.factionId);
+    const shown = this.factions.titleFactionOf(actorId);
+    if (SEAL_FACTIONS.includes(shown) && mine.includes(shown)) return shown;
+    return SEAL_FACTIONS.find((id) => mine.includes(id)) || "";
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -747,4 +769,4 @@ export class WritingSystem implements System {
 const capitalise = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 const describePerson = (p: WritingPerson): string =>
-  `${JSON.stringify(p.realName)} (profile ${p.profileId}${p.shownName && p.shownName !== p.realName ? `, shown as ${JSON.stringify(p.shownName)}` : ""})`;
+  `${JSON.stringify(p.realName)} (profile ${p.profileId}${p.shownName && p.shownName !== p.realName ? `, shown as ${JSON.stringify(p.shownName)}` : ""})${p.factionId ? ` as ${p.factionId}` : ""}`;

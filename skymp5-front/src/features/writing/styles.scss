@@ -3,6 +3,7 @@
 $paper: #d8c9a3;
 $paper-edge: #b5a478;
 $ink: #2a2118;
+$ink-dim: rgba(42, 33, 24, 0.65);
 $gold: #c8b48a;
 $bg: rgba(10, 10, 10, 0.94);
 $border: rgba(200, 180, 138, 0.45);
@@ -67,6 +68,29 @@ $text: #e8e0d0;
     color: $text;
     font-size: 15px;
     letter-spacing: 0.04em;
+  }
+
+  // Sized by height only, so the portrait Legion mark keeps its shape
+  &__seal {
+    display: block;
+    height: 96px;
+    width: auto;
+    margin: 0 auto 4px;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+
+    &--small {
+      display: inline-block;
+      height: 32px;
+      margin: 0 8px 0 0;
+      vertical-align: middle;
+    }
+  }
+
+  &__seal-caption {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: $ink-dim;
+    text-align: center;
   }
 
   &__confirm {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { PaperComposer, PaperReader, sendToClient as send, useCloseOnUnfocus, useEscapeLayer } from '../parchment';
+import { assetUrl } from '../../utils/assetUrl';
 import './styles.scss';
 
 type Kind = 'letter' | 'journal' | 'book';
@@ -23,6 +24,9 @@ interface DocView {
   copy: boolean;
   finished: boolean;
   sealText: string;
+  // Faction ids whose marks the seal and the signature carry, empty for none
+  sealFaction: string;
+  signFaction: string;
   brokenSeals: string[];
   canEdit: boolean;
   canFinish: boolean;
@@ -68,6 +72,39 @@ const CONFIRM_TEXT: Record<Exclude<Confirm, ''>, string> = {
   burn: 'Burn this writing? It is gone for good.',
   break: 'Break the seal? Everyone who reads it later will see it was opened.',
   finish: 'Finish the book? Its pages can never be changed again, but it can be copied.',
+};
+
+// Factions with artwork in ../../img/seals, by the faction id the server records (writingSystem.ts SEAL_FACTIONS)
+const SEALS: Record<string, { file: string; label: string }> = {
+  'hold:haafingar': { file: 'haafingar', label: 'Court of Haafingar' },
+  'hold:the-reach': { file: 'the-reach', label: 'Court of the Reach' },
+  'hold:falkreath': { file: 'falkreath', label: 'Court of Falkreath' },
+  'hold:hjaalmarch': { file: 'hjaalmarch', label: 'Court of Hjaalmarch' },
+  'hold:eastmarch': { file: 'eastmarch', label: 'Court of Eastmarch' },
+  'hold:winterhold': { file: 'winterhold', label: 'Court of Winterhold' },
+  'hold:the-rift': { file: 'the-rift', label: 'Court of the Rift' },
+  'hold:the-pale': { file: 'the-pale', label: 'Court of the Pale' },
+  'hold:whiterun': { file: 'whiterun', label: 'Court of Whiterun' },
+  'faction:imperial-legion': { file: 'imperial-legion', label: 'Imperial Legion' },
+  'faction:college-of-winterhold': { file: 'college-of-winterhold', label: 'College of Winterhold' },
+  'faction:dark-brotherhood': { file: 'dark-brotherhood', label: 'Dark Brotherhood' },
+};
+
+// The pressed seal on a sealed face, or the small mark beside a signature; null without artwork
+const sealMark = (id: string, small?: boolean): React.ReactNode => {
+  const seal = SEALS[id];
+  if (!seal) return null;
+  return (
+    <>
+      <img
+        className={'writing__seal' + (small ? ' writing__seal--small' : '')}
+        src={assetUrl(require('../../img/seals/' + seal.file + '.png'))}
+        alt={seal.label}
+        title={seal.label}
+      />
+      {small ? null : <p className="writing__seal-caption">{seal.label}</p>}
+    </>
+  );
 };
 
 const maxPagesOf = (kind: Kind, l: Limits): number => (kind === 'letter' ? 1 : kind === 'journal' ? l.journalPages : l.bookPages);
@@ -255,7 +292,7 @@ const Writing = ({ data }: { data: WritingData }) => {
       <div className="writing">
         <div className="writing__fade" />
         <div className="writing__frame">
-          <PaperReader heading="Sealed Letter" text={doc.sealText} meta={doc.brokenSeals}>
+          <PaperReader heading="Sealed Letter" text={doc.sealText} meta={doc.brokenSeals} stamp={sealMark(doc.sealFaction)}>
             {confirmBar(doc.id) || (
               <>
                 {doc.canBreak ? <button className="parchment__button parchment__button--primary" onClick={() => setConfirm('break')}>Break the seal</button> : null}
@@ -280,7 +317,7 @@ const Writing = ({ data }: { data: WritingData }) => {
     <div className="writing">
       <div className="writing__fade" />
       <div className="writing__frame">
-        <PaperReader heading={doc.title} text={doc.pages[at] || ''} byline={doc.byline} meta={meta} wide>
+        <PaperReader heading={doc.title} text={doc.pages[at] || ''} byline={doc.byline} mark={sealMark(doc.signFaction, true)} meta={meta} wide>
           {confirmBar(doc.id) || (
             <>
               {count > 1 ? <button className="parchment__button" disabled={at === 0} onClick={() => setPage(at - 1)}>Previous</button> : null}
