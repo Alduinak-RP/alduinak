@@ -6,7 +6,7 @@ import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { ConnectionDenied } from "../events/connectionDenied";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { logTrace } from "../../logging";
+import { logTrace, logToPlatformLog } from "../../logging";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -98,7 +98,8 @@ export class QueueService extends ClientListener {
       return;
     }
     this.open = true;
-    logTrace(this, `Queued at ${position} of ${total}`);
+    // The skyrim-platform.log line is the proof the page rendered
+    logToPlatformLog(this, `queue page opened at ${position} of ${total}`);
     openFormMenu(this.sp, this.browsersideWidgetSetter, args, this.controller);
   }
 
@@ -126,6 +127,7 @@ export class QueueService extends ClientListener {
   private close(): void {
     if (!this.open) return;
     this.open = false;
+    logToPlatformLog(this, "queue page closed");
     closeFormMenu(this.sp, WIDGET_ID);
   }
 

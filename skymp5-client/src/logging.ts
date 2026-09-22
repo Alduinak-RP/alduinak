@@ -28,9 +28,10 @@ export function logTrace(service: ClientListener | string, ...rest: unknown[]) {
     printConsole(`Trace in ${typeof service !== "string" ? service.constructor.name : service}:`, ...restProcessed);
 }
 
-// printConsole never reaches a file and writeLogs needs a Data/Platform/Logs folder we do not ship, a throw from its own update reaches skyrim-platform.log
+// printConsole never reaches a file and writeLogs needs a Data/Platform/Logs folder we do not ship, a throw from its own tick reaches skyrim-platform.log
+// tick fires every frame, in the main menu and pausing menus too, where update does not
 export function logToPlatformLog(service: ClientListener | string, ...rest: unknown[]) {
     const name = typeof service !== "string" ? service.constructor.name : service;
     const text = rest.map(String).join(" ");
-    once("update", () => { throw new Error(`${name}: ${text}`); });
+    once("tick", () => { throw new Error(`${name}: ${text}`); });
 }

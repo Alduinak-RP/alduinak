@@ -69,6 +69,8 @@ const translations = {
     back: 'назад',
     quitGame: 'выйти из игры',
     quitGameHint: 'Закрыть игру и выйти на рабочий стол',
+    serverFull: 'Сервер полон, повторная попытка...',
+    unreachable: 'Сервер недоступен, повторная попытка...',
   },
   "en": {
     loginViaDiscord: 'log in via Discord',
@@ -97,6 +99,8 @@ const translations = {
     back: 'back',
     quitGame: 'quit game',
     quitGameHint: 'Close the game and return to desktop',
+    serverFull: 'The server is full, retrying...',
+    unreachable: 'Could not reach the server, retrying...',
   },
 } as const;
 
@@ -124,6 +128,7 @@ export class AuthService extends ClientListener {
     this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
     this.controller.emitter.on("connectionAccepted", () => this.handleConnectionAccepted());
     this.controller.emitter.on("connectionDenied", (e) => this.handleConnectionDenied(e));
+    this.controller.emitter.on("connectionFailed", () => this.setLoginComment(strings.unreachable));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("tick", () => this.onTick());
@@ -429,6 +434,19 @@ export class AuthService extends ClientListener {
     this.authDialogOpen = true;
   };
 
+  // Why the login widget is still retrying; the dots stop so the tick does not overwrite it
+  private setLoginComment(text: string) {
+    this.authAttemptProgressIndicator = false;
+    // refreshWidgets replaces every widget, and the OAuth texts own the slot until the next attempt
+    if (!this.authDialogOpen || !this.commentIsConnecting()) return;
+    browserState.comment = text;
+    this.refreshWidgets();
+  }
+
+  private commentIsConnecting() {
+    return [strings.connecting, strings.serverFull, strings.unreachable].some((s) => browserState.comment.startsWith(s));
+  }
+
   public readAuthDataFromDisk(): RemoteAuthGameData | null {
     logTrace(this, `Reading`, this.pluginAuthDataName, `from disk`);
 
@@ -618,12 +636,18 @@ export class AuthService extends ClientListener {
         this.sp.Game.disablePlayerControls(true, true, true, true, true, true, true, true, 0);
       });
       this.setListenBrowserMessage(true, 'connectionDenied event received');
+      return;
     }
+    // RakNet's cap (maxPlayers) refused the link before the queue could see it; the watchdog keeps retrying
+    const full = e.error.toLowerCase().includes("no free incoming connections");
+    this.setLoginComment(full ? strings.serverFull : strings.unreachable);
   }
 
   private handleConnectionAccepted() {
     this.setListenBrowserMessage(false, 'connectionAccepted event received');
     this.loggingStartMoment = Date.now();
+    // A retry got through: the dots take over from the retry text until the server answers the login
+    if (this.authDialogOpen && this.commentIsConnecting()) this.authAttemptProgressIndicator = true;
 
     const authData = this.sp.storage[authGameDataStorageKey] as AuthGameData | undefined;
     if (authData?.local) {

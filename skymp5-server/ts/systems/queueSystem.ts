@@ -14,8 +14,10 @@ type Mp = any;
 // memory: a restart re-queues the players in reconnect order.
 //
 // server-settings.json keys:
-//   playerSlots   verified logins that may play at once (default maxPlayers, queue off); the difference to maxPlayers is the queue room
-//   queueGraceMs  how long a disconnected player keeps their slot or queue place (default 120000)
+//   playerSlots       verified logins that may play at once (default maxPlayers, queue off); the difference to maxPlayers is the queue room
+//   queueGraceMs      how long a disconnected player keeps their slot or queue place (default 120000)
+//   queueStaffBypass  false makes staff wait like everyone, to test the queue with a staff account (default true)
+// maxPlayers is RakNet's own cap: a connection past it is refused before the queue sees it, so it is never the number to lower for a test.
 //
 // Server -> Client while waiting, every 5 s and on every change (the packet also keeps the idle RakNet link alive):
 //   { customPacketType: "queueStatus", position, total, waitedSec, etaSec | null }
@@ -52,6 +54,7 @@ export class QueueSystem implements System {
 
   private playerSlots = 0;
   private graceMs = DEFAULT_GRACE_MS;
+  private staffBypass = true;
   private roleCfg = readAdminRoleConfig(null);
   private queue: Entry[] = [];
   // userId -> the login holding a play slot, from admission to disconnect; staff hold none
@@ -69,10 +72,19 @@ export class QueueSystem implements System {
     this.playerSlots = readPlayerSlots(all, s.maxPlayers);
     const grace = Number(all?.["queueGraceMs"]);
     if (Number.isInteger(grace) && grace >= 0) this.graceMs = grace;
+    this.staffBypass = all?.["queueStaffBypass"] !== false;
     this.roleCfg = readAdminRoleConfig(all);
     (ctx.svr as any).getQueueLength = () => this.waiting().length;
     ctx.gm.on(LOGIN_VERIFIED_EVENT, (userId: number, profileId: number, ...args: unknown[]) => this.onLoginVerified(ctx, userId, profileId, args));
     this.log(`QueueSystem: ${this.playerSlots} play slots of ${s.maxPlayers} connections, ${this.graceMs / 1000} s grace`);
+    const raw = Number(all?.["playerSlots"]);
+    if (raw > s.maxPlayers) {
+      this.log(`[queue] playerSlots ${raw} is above maxPlayers ${s.maxPlayers}: clamped, RakNet refuses every connection past ${s.maxPlayers}`);
+    }
+    if (this.playerSlots === s.maxPlayers) {
+      this.log(`[queue] off: playerSlots ${raw > 0 ? "equals" : "unset, defaults to"} maxPlayers ${s.maxPlayers}; lower playerSlots, never maxPlayers, to test`);
+    }
+    if (!this.staffBypass) this.log("[queue] queueStaffBypass false: staff wait like everyone");
   }
 
   async updateAsync(ctx: SystemContext): Promise<void> {
@@ -131,7 +143,7 @@ export class QueueSystem implements System {
     const guid = this.guidOf(ctx, userId);
     if (guid === null) return;
     const roles = Array.isArray(args[0]) ? (args[0] as string[]) : [];
-    const staff = adminTierFor(profileId, roles, this.roleCfg) !== null;
+    const staff = this.staffBypass && adminTierFor(profileId, roles, this.roleCfg) !== null;
     const entry: Entry = { profileId, userId, guid, joinedAt: now, args, staff };
     const held = this.admitted.get(userId);
     if (held && held.profileId === profileId) {
@@ -181,7 +193,8 @@ export class QueueSystem implements System {
     if (entry.staff) this.staffProfiles.add(profileId); else this.staffProfiles.delete(profileId);
     const waited = Math.round((now - entry.joinedAt) / 1000);
     const waiting = this.waiting().length;
-    if (waited > 0 || waiting) this.log(`[queue] profile ${profileId} admitted (${why}) after ${waited} s, ${waiting} waiting`);
+    // Ordinary free-slot logins stay quiet at scale, every other admission prints
+    if (why !== "free slot" || waited > 0 || waiting) this.log(`[queue] profile ${profileId} admitted (${why}) after ${waited} s, ${waiting} waiting`);
     this.spawnAllowed(ctx, entry);
     return true;
   }

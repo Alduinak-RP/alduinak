@@ -4,7 +4,10 @@ const serverSettings = [
   // Identity
   { key: 'name',        label: 'Server name',  type: 'text',   group: 'Identity', help: 'Public name shown in the launcher / master list.' },
   { key: 'port',        label: 'Game port (UDP)', type: 'number', group: 'Identity', help: 'RakNet game port.' },
-  { key: 'maxPlayers',  label: 'Max players',  type: 'number', group: 'Identity' },
+  { key: 'maxPlayers',  label: 'Max connections', type: 'number', group: 'Identity', help: 'RakNet connection cap including the queue room, at most the native MAX_PLAYERS (1300). To test the queue lower Play slots, never this: a connection above this number is refused before the queue sees it.' },
+  { key: 'playerSlots', label: 'Play slots',   type: 'number', group: 'Identity', help: 'Verified logins that may play at once; logins above it wait in the queue up to Max connections. Empty = Max connections (queue off). Read at boot.' },
+  { key: 'queueGraceMs', label: 'Queue grace (ms)', type: 'number', group: 'Identity', help: 'How long a disconnected player keeps their slot or queue place. Default 120000.' },
+  { key: 'queueStaffBypass', label: 'Staff skip the queue', type: 'bool', group: 'Identity', help: 'On (default, also when unset): adminRoles tiers, adminRoleIds and adminProfileIds never wait. Turn off to test the queue with a staff account. Read at boot.' },
   { key: 'lang',        label: 'Language',     type: 'select', group: 'Identity',
     options: ['english', 'russian', 'german', 'french', 'spanish', 'italian', 'polish', 'chinese', 'japanese'] },
 
