@@ -78,6 +78,31 @@ keeps its display name with a verb picked from its base form type.
   activation; the server intercepts activations where it wants to (the
   bounty board does).
 
+## Frozen clutter
+
+Placed objects must not move when a player bumps into them. Every item-type
+ref the server streams is frozen on arrival (`ObjectReferenceEx.dealWithRef`,
+`setMotionType` Keyframed); `staticRefsService.ts` (client) freezes the rest:
+movable statics, flora, activators, furniture, containers and statics whose
+model sits outside the folders that never carry havok (`NON_HAVOK_MODEL`),
+and it blocks activation on placed items and untouchable decor. Since r15 it
+works from the engine's own events instead of a timed window: every
+`cellAttach` and `objectLoaded` freezes the ref at once, a ref of a base the
+service freezes whose 3D is not in yet goes on a pending list retried every
+200 ms (up to 50 times, at most 32 of the 128-refs-per-tick budget, the rest
+always goes to the cell sweep; actors, markers and other bases it never
+freezes are dismissed before the 3D check), and a ref frozen as it
+loaded gets one more `setMotionType` a second later, since the havok body
+attaches on the physics step after the 3D; `cellDetach` and unload forget the
+ref so it is frozen again when it comes back. Every attached cell stays in the
+sweep rotation until it detaches. The platform log carries one trace per pass
+(`froze N refs in cell X, pending M, K cells attached`, only when something
+froze or the pending count moved) and one `first freeze of type T: base ...
+model ...` line per base type, which is what to read when an object still
+moves: its console id and model folder tell whether it is a skipped
+`NON_HAVOK_MODEL` folder or a class the sweep never reaches. Player drops
+(`ff` ids) stay dynamic and pickable.
+
 ## Switches and verification
 
 - `customPrompts: false` in the `skymp5-client` settings block disables the
