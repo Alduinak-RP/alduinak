@@ -1,5 +1,5 @@
 # Downscales the hold and faction seal artwork to skymp5-front/src/img/seals; pure Python, no Pillow on the box.
-# python misc/seal-icons.py "C:\Users\Administrator\Desktop\Graphics\Seals" skymp5-front/src/img/seals --size 128
+# python misc/seal-icons.py "C:\Users\Administrator\Desktop\Graphics\Seals" skymp5-front/src/img/seals
 import argparse
 import math
 import os
@@ -144,7 +144,7 @@ def main():
     ap = argparse.ArgumentParser(description='Downscale the seal PNGs to the front image set, keeping aspect')
     ap.add_argument('src', help='folder with the SR-*.png artwork')
     ap.add_argument('dst', help='output folder, one <faction-slug>.png each')
-    ap.add_argument('--size', type=int, default=128, help='pixels on the long side (default 128)')
+    ap.add_argument('--size', type=int, default=256, help='pixels on the long side (default 256)')
     args = ap.parse_args()
     os.makedirs(args.dst, exist_ok=True)
     for name, slug in FILES.items():

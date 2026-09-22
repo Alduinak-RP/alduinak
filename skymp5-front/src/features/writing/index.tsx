@@ -90,19 +90,19 @@ const SEALS: Record<string, { file: string; label: string }> = {
   'faction:dark-brotherhood': { file: 'dark-brotherhood', label: 'Dark Brotherhood' },
 };
 
-// The pressed seal on a sealed face, or the small mark beside a signature; null without artwork
-const sealMark = (id: string, small?: boolean): React.ReactNode => {
+// The pressed seal on a sealed face, or the mark under a signature; null without artwork
+const sealMark = (id: string, sign?: boolean): React.ReactNode => {
   const seal = SEALS[id];
   if (!seal) return null;
   return (
     <>
       <img
-        className={'writing__seal' + (small ? ' writing__seal--small' : '')}
+        className={'writing__seal' + (sign ? ' writing__seal--sign' : '')}
         src={assetUrl(require('../../img/seals/' + seal.file + '.png'))}
         alt={seal.label}
         title={seal.label}
       />
-      {small ? null : <p className="writing__seal-caption">{seal.label}</p>}
+      {sign ? null : <p className="writing__seal-caption">{seal.label}</p>}
     </>
   );
 };

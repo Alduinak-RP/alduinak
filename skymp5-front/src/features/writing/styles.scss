@@ -70,7 +70,7 @@ $text: #e8e0d0;
     letter-spacing: 0.04em;
   }
 
-  // Sized by height only, so the portrait Legion mark keeps its shape
+  // The sealed-face stamp is sized by height only, so the portrait Legion mark keeps its shape
   &__seal {
     display: block;
     height: 96px;
@@ -78,11 +78,13 @@ $text: #e8e0d0;
     margin: 0 auto 4px;
     filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
 
-    &--small {
-      display: inline-block;
-      height: 32px;
-      margin: 0 8px 0 0;
-      vertical-align: middle;
+    // A third of the page, centred under the signature; height auto overrides the 96px above
+    &--sign {
+      width: 33%;
+      height: auto;
+      max-height: 240px;
+      margin: 10px auto 0;
+      object-fit: contain;
     }
   }
 

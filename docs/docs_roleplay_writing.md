@@ -15,7 +15,7 @@ key carries its property:
 - Server piece: `skymp5-server/ts/systems/writingSystem.ts` (rules, packets, staff tools) and `writingStore.ts` (storage)
 - Client piece: `skymp5-client/src/services/services/writingService.ts` (widget 33)
 - Front piece: `skymp5-front/src/features/writing/`, built on the paper widgets in `features/parchment/` that the missive board uses too
-- Seal artwork: `skymp5-front/src/img/seals/<faction-slug>.png`, made from the owner's `Graphics\Seals` set by `misc/seal-icons.py`
+- Seal artwork: `skymp5-front/src/img/seals/<faction-slug>.png`, 256 px on the long side, made from the owner's `Graphics\Seals` set by `misc/seal-icons.py`
 - Plugin records: the `writing` section of `misc/proficiency-patcher/spec.json`
 
 The feature stays off until `writingEnabled` is `true` in
@@ -119,7 +119,9 @@ drops its mark.
 
 Heraldry is public: the sealed face shows the mark and its caption ("Court of
 Haafingar") above "Closed with an unfamiliar seal.", and the opened letter
-shows a small mark before "Signed in an unfamiliar hand", the same way a shown
+shows a mark about a third of the page wide, centred under "Signed in an
+unfamiliar hand" (`writing__seal--sign`, width 33%, at most 240 px tall so the
+portrait Legion mark is not stretched), the same way a shown
 rank title already prefixes the floating name for everyone. Only the personal
 name follows the introductions rule. An unsigned writing carries no signature
 mark; a copy carries the original author's. Broken seals record the faction
@@ -305,15 +307,19 @@ In this order:
 - A stranger sees "Signed in an unfamiliar hand" and "an unfamiliar seal"; after
   an introduction the names show.
 - Marks: a hold citizen (Faction tab opened once after the grant) signs a
-  letter: the wolf of Haafingar sits before "Signed, <name>" and, for a
-  stranger, before "Signed in an unfamiliar hand". Sealed, the face shows the
-  96 px mark with the caption "Court of Haafingar" above the seal line; broken,
-  the stamp leaves and the signature mark stays.
+  letter: the wolf of Haafingar spans about a third of the page (about 220 px
+  of the 720 px reader), centred under "Signed, <name>" and, for a stranger,
+  under "Signed in an unfamiliar hand"; the text above still scrolls and the
+  buttons stay visible. Sealed, the face shows the 96 px mark with the caption
+  "Court of Haafingar" above the seal line; broken, the stamp leaves and the
+  signature mark stays.
 - A Legionary who is also a hold citizen seals with the Legion mark until the
   hold title is shown; a Stormcloak citizen with the Stormcloak title shown
   seals with the hold mark; a Stormcloak alone or a factionless character
   presses no mark and the CEF console shows no error.
-- The Legion mark is portrait: about 51 px wide at 96 px tall, not stretched.
+- The Legion mark is portrait: about 51 px wide at 96 px tall on the sealed
+  face, and under a signature it stays inside the 240 px height, centred, not
+  stretched.
 - A pre-change document opens as before, without marks; re-sealing one writes
   `seal.factionId` and the `writing.log` line ends `as hold:...`.
 - The missive board's paper is unchanged.

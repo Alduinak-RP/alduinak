@@ -48,7 +48,7 @@ interface PaperReaderProps {
   onBack?: () => void;
   // A seal pressed under the heading
   stamp?: React.ReactNode;
-  // A mark in front of the byline
+  // A mark under the byline
   mark?: React.ReactNode;
   children?: React.ReactNode;
 }
@@ -59,7 +59,7 @@ export const PaperReader = ({ heading, text, byline, meta, wide, onBack, stamp, 
       {heading ? <h3 className="parchment__read-heading">{heading}</h3> : null}
       {stamp}
       <p className="parchment__read-text">{text}</p>
-      {byline || mark ? <p className="parchment__read-author">{mark}{byline}</p> : null}
+      {byline || mark ? <p className="parchment__read-author">{byline}{mark}</p> : null}
       {(meta || []).map((line, i) => (
         <p key={i} className="parchment__read-meta">{line}</p>
       ))}
