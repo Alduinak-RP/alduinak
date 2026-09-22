@@ -996,7 +996,8 @@ static class Steps
         placed.Base.SetTo(bench);
         placed.MajorRecordFlagsRaw |= PersistentFlag;
         placed.Placement = new Placement { Position = position, Rotation = new P3Float(0, 0, rotZ * MathF.PI / 180) };
-        c.Note($"Mead bench {edid} {placed.FormKey} in {cellEdid} at {position}, heading {rotZ}, {distance:0} units from boiler {boilerKey}");
+        if (p["scale"] != null) placed.Scale = p["scale"]!.GetValue<float>();
+        c.Note($"Mead bench {edid} {placed.FormKey} in {cellEdid} at {position}, heading {rotZ}, scale {placed.Scale?.ToString() ?? "1"}, {distance:0} units from boiler {boilerKey}");
     }
 
     // ---- writings: blank and written letters, journals and books copied from vanilla notes, plus sealing wax -------

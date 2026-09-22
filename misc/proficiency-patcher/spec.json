@@ -2485,7 +2485,8 @@
        -9011.9,
        -912.0
       ],
-      "rotZ": 0
+      "rotZ": 0,
+      "scale": 1.5
      },
      {
       "boiler": "0C5AD8:Skyrim.esm",
@@ -2494,7 +2495,8 @@
        -9011.7,
        -912.0
       ],
-      "rotZ": 0
+      "rotZ": 0,
+      "scale": 1.5
      },
      {
       "boiler": "0C5B12:Skyrim.esm",
@@ -2503,7 +2505,8 @@
        -8999.0,
        -912.0
       ],
-      "rotZ": 0
+      "rotZ": 0,
+      "scale": 1.5
      }
     ]
    },
@@ -2532,7 +2535,8 @@
        -4371.4,
        -128.0
       ],
-      "rotZ": 45
+      "rotZ": 45,
+      "scale": 1.5
      },
      {
       "boiler": "0A6311:Skyrim.esm",
@@ -2541,7 +2545,8 @@
        -4378.5,
        -128.0
       ],
-      "rotZ": 315
+      "rotZ": 315,
+      "scale": 1.5
      }
     ]
    }
@@ -3584,7 +3589,28 @@
     "count": 50
    }
   ],
-  "refs": []
+  "refs": [
+   {
+    "ref": "AldMeadBench_0C5B11",
+    "scale": 1.5
+   },
+   {
+    "ref": "AldMeadBench_0C5AD8",
+    "scale": 1.5
+   },
+   {
+    "ref": "AldMeadBench_0C5B12",
+    "scale": 1.5
+   },
+   {
+    "ref": "AldMeadBench_0A6310",
+    "scale": 1.5
+   },
+   {
+    "ref": "AldMeadBench_0A6311",
+    "scale": 1.5
+   }
+  ]
  },
  "disableActors": {
   "comment": "Every placed actor, living or dead, of every plugin before this one is Initially Disabled, and one with an enable parent gets the player as parent, opposite, so no quest or marker turns it back on. The server spawns none of them; the game would. except names actors to leave alone, by form key. A worldspace override added for their cells takes the fields of its last winner outside notFrom: DynDOLOD.esm is generated, and its own large references would make it a master.",

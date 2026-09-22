@@ -246,11 +246,20 @@ Benches:
 
 The boilers are statics with no seat, so each one has an invisible stirring
 bench beside it: a copy of the vanilla `CraftingCookingPotInvisible` (one user,
-the cooking-pot stirring idle) whose small collision box sits against the lower
-front of the boiler. Aim there and the prompt reads "Use Honningbrew Boiler" or
-"Use Black-Briar Boiler". A Honningbrew brewer stands on the walkway facing the
-boiler; a Black-Briar brewer stands on the raised stone platform between the two
-boilers.
+the cooking-pot stirring idle) whose collision box, a pot about 64 by 74 by 98
+units, sits against the lower front of the boiler. Since r15 the five bench
+references are placed at scale 1.5 (spec `overrides.refs` and the `scale` of
+each `meadery` placement), so the box the crosshair must hit is about 96 by
+111 by 147 units, its top a little above hip height; aim at the lower half of
+the boiler from one or two metres and the prompt reads "Use Honningbrew
+Boiler" or "Use Black-Briar Boiler". The furniture marker scales with the
+reference, so the brewer stands about half the marker offset farther from the
+pot than before, still on the floor. A Honningbrew brewer stands on the
+walkway facing the boiler; a Black-Briar brewer stands on the raised stone
+platform between the two boilers. If the target still feels small, lower the
+scale to 1.3 or move the placement 10 to 20 units toward the boiler in the same
+spec entries; the client's wider crosshair pick (`activatePickService.ts`)
+helps here too.
 
 | Boiler | Mead (1 bottle) | Ingredients |
 |---|---|---|
