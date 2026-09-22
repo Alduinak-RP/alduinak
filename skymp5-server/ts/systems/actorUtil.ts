@@ -3,6 +3,11 @@ import { sendJson } from "./playerText";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
+// User ids stay below server-settings maxPlayers; set at boot so every connection scan covers the whole range
+let userSlots = 1024;
+export const setUserSlotCount = (n: number): void => { if (Number.isInteger(n) && n > 0) userSlots = n; };
+export const userSlotCount = (): number => userSlots;
+
 // Connected user of an actor, or -1
 export const userOf = (mp: Mp, actorId: number): number => {
   try {

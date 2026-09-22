@@ -1,4 +1,4 @@
-import { System, Log, Content, SystemContext } from "./system";
+import { System, Log, Content, SystemContext, LOGIN_VERIFIED_EVENT } from "./system";
 import { Settings } from "../settings";
 import * as fetchRetry from "fetch-retry";
 import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
@@ -261,7 +261,7 @@ export class Login implements System {
           gameFactions: (profile as any).gameFactions || [],
           factions: (profile as any).factions || [],
         };
-        this.emit(ctx, "spawnAllowed", userId, profile.id, rolesToAssign, profile.discordId, skympAccess);
+        this.emit(ctx, LOGIN_VERIFIED_EVENT, userId, profile.id, rolesToAssign, profile.discordId, skympAccess);
         loginsCounter.inc();
         this.log("Logged as " + profile.id);
       })()
@@ -271,7 +271,7 @@ export class Login implements System {
         });
     } else if (this.offlineMode === true && gameData && typeof gameData.profileId === "number") {
       const profileId = gameData.profileId;
-      this.emit(ctx, "spawnAllowed", userId, profileId, [], undefined);
+      this.emit(ctx, LOGIN_VERIFIED_EVENT, userId, profileId, [], undefined);
       loginsCounter.inc();
       this.log(userId + " logged as " + profileId);
     } else {

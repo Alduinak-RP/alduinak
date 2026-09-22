@@ -87,6 +87,7 @@ import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService
 import { NotificationService } from "./services/services/notificationService";
 import { ConnectionWatchdogService } from "./services/services/connectionWatchdogService";
 import { KickService } from "./services/services/kickService";
+import { QueueService } from "./services/services/queueService";
 import { MenuMediaService } from "./services/services/menuMediaService";
 import { CharacterProgressService } from "./services/services/characterProgressService";
 import { StaticRefsService } from "./services/services/staticRefsService";
@@ -131,6 +132,7 @@ const main = () => {
       new NetworkingService(sp, controller),
       new ConnectionWatchdogService(sp, controller),
       new KickService(sp, controller),
+      new QueueService(sp, controller),
       new RemoteServer(sp, controller),
       new SpSnippetService(sp, controller),
       new SettingsService(sp, controller),

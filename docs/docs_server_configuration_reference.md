@@ -81,7 +81,7 @@ This port would be used by player clients to connect to your server. At the curr
 
 ## maxPlayers
 
-Sets player limit of the server. Visible in launcher and on skymp.io.
+Sets the connection limit of the server, at most the native build's `MAX_PLAYERS` (1300, `skymp5-server/cpp/CMakeLists.txt`); a higher value refuses to start. With `playerSlots` set, the connections above it are queue room, and the master heartbeat reports `playerSlots` as the limit the launcher shows.
 
 ```json5
 {
@@ -495,6 +495,20 @@ With `characterSelect` on, how many living characters a profile may hold (1-10, 
 A character's body stays in the world for `logoutGraceMs` (default `300000`, five minutes) after a disconnect, a quit to the main menu or a switch to another slot, so leaving is never an instant escape; re-selecting the character cancels the grace. For that time the body sits down in `logoutPose` (default `"IdleSitCrossLeggedEnter"`, the emote wheel's Sit Crossed; `""` leaves it standing), sent by the server to everyone who sees the body and to anyone who walks in later, with the line `[spawn] <id> parked in <pose>`. A downed, bound or carried body keeps its own pose. No client hosts a parked body (`HostingSystem.mayHost` refuses a living player character without a user), so a neighbour's engine never replaces the pose or clears it with a movement report; hits on the body are server-resolved and need no host. The pose needs the native server build that accepts `mp.set(actorId, "lastAnimEvent", ...)`; an older build logs `[spawn] parking pose ... failed` and the body stands.
 
 The body sits the moment the server learns of the disconnect: at once on a quit to the main menu or a kick, and within about 10 s of a crash, an Alt+F4 or a dead link, because both the server and the client drop a silent connection after 10 s (`Networking.cpp` `timeoutTimeMs`, `MpClientPlugin.cpp` `kTimeoutMs`, RakNet's own default; keepalives run on RakNet's thread, so loading screens never trip it). A client that leaves on purpose destroys its RakNet peer with a 200 ms grace so the server receives the disconnect notification and frees the slot immediately instead of after the timeout.
+
+## playerSlots, queueGraceMs
+
+`playerSlots` (default `maxPlayers`, which turns the queue off) is how many verified logins may play at once; `maxPlayers` stays the connection cap, so the difference is the number of players the queue can hold (live: 1200 of 1300). A login past the limit waits in arrival order and sees "You are N of M in the queue", the time waited and a rough estimate instead of the character select; the server re-sends the place every 5 s, which also keeps the idle connection alive. Staff (`adminRoles` tiers, `adminRoleIds`, `adminProfileIds`) never wait, may exceed `playerSlots` up to `maxPlayers` and take no play slot, so a slot freed while staff are online still goes to the head of the queue. A slot is held from admission until the connection ends, so a player parked in the character select keeps it and a quit to the main menu holds it for the `logoutGraceMs` body as well. `queueGraceMs` (default `120000`) keeps a disconnected player's slot, or their queue place, for that long, so a crash inside it skips the queue on the way back; a second connection of the same account while the first still lingers takes the slot over at once. The heartbeat carries `playerSlots` as `maxPlayers` and the number of connected waiting players as `queued` (a place kept for a dropped player is not counted, nor shown in another player's total), so the launcher badge reads "N PLAYERS · Q QUEUED" and `/api/status` returns `queued`. The queue is in memory: a restart re-queues everyone in reconnect order. Log lines start with `[queue]`. To test, set `playerSlots` to 1 or 2 and use accounts without a staff role.
+
+```json5
+{
+  // ...
+  "maxPlayers": 1300,
+  "playerSlots": 1200,
+  "queueGraceMs": 120000
+  // ...
+}
+```
 
 ## startPoints
 

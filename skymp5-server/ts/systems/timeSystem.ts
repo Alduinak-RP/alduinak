@@ -1,5 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
+import { userSlotCount } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -19,7 +20,6 @@ const TIME_SCALE = 1;
 const DEFAULT_OFFSET_HOURS = 3;
 const POLL_MS = 5000;
 const BROADCAST_MS = 60000;
-const MAX_USER_SLOTS = 1024;
 
 let offsetMs = DEFAULT_OFFSET_HOURS * 60 * 60 * 1000;
 
@@ -60,7 +60,7 @@ export class TimeSystem implements System {
     this.tzOffsetMin = tz;
     this.nextBroadcastAt = now + BROADCAST_MS;
     const mp = ctx.svr as Mp;
-    for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
+    for (let userId = 0; userId < userSlotCount(); userId++) {
       try { if (mp.isConnected(userId)) this.send(mp, userId); } catch { /* slot gone */ }
     }
   }

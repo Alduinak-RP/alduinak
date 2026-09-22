@@ -4,7 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
-import { holdsItem } from "./actorUtil";
+import { holdsItem, userSlotCount } from "./actorUtil";
 import { FactionDef, holdKey, holdRanksOf, managesHold } from "./factionRules";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -53,7 +53,6 @@ export const KEY_BASE_ID = 0x000db0e2;
 const LOCK_DESC = "3012:HearthFires.esm";
 const LOCK_BASE_ID_FALLBACK = 0x03003012;
 
-const MAX_USER_SLOTS = 1024;
 const MAX_NAME_LEN = 32;
 const MAX_KEYS_CARRIED = 64;
 const MAX_ESPM_CACHE = 4096;
@@ -896,7 +895,7 @@ export class HousingSystem implements System {
   private onlineUsers(ctx: SystemContext): number[] {
     const mp = ctx.svr as Mp;
     const out: number[] = [];
-    for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
+    for (let userId = 0; userId < userSlotCount(); userId++) {
       try { if (mp.isConnected(userId)) out.push(userId); } catch { /* slot gone */ }
     }
     return out;

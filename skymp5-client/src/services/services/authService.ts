@@ -187,7 +187,8 @@ export class AuthService extends ClientListener {
 
     switch (msgContent["customPacketType"]) {
       case 'characterSelectMenu':
-        // Pauses actor kick while we choose character
+      case 'queueStatus':
+        // Pauses actor kick while we choose character or wait in the login queue
         this.loggingStartMoment = 0;
         this.authAttemptProgressIndicator = false;
         this.authDialogOpen = false;

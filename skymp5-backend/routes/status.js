@@ -51,9 +51,11 @@ router.get('/', async (req, res) => {
   // a fresh heartbeat proves the process is up; probe the metrics port only when no heartbeat has been seen since backend start
   let online  = null
   let players = null
+  let queued  = 0
   if (hb && hb.lastSeen) {
     online = (Date.now() - new Date(hb.lastSeen).getTime()) < HEARTBEAT_TTL_MS
     if (online && typeof hb.online === 'number') players = hb.online
+    if (online && typeof hb.queued === 'number') queued  = hb.queued
   }
 
   if (online === null || (online && players === null)) {
@@ -62,7 +64,7 @@ router.get('/', async (req, res) => {
     if (online && players === null) players = probe.players
   }
 
-  res.json({ status: online ? 'online' : 'offline', players })
+  res.json({ status: online ? 'online' : 'offline', players, queued })
 })
 
 module.exports = router

@@ -9,7 +9,7 @@ import { WeatherSystem } from "./weatherSystem";
 import { AfterlifeSystem, fallenLabel, fallenOf, livingCount, readMaxCharacters } from "./afterlifeSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
-import { addItemTo, userOf } from "./actorUtil";
+import { addItemTo, userOf, userSlotCount } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
@@ -67,7 +67,6 @@ type Mp = any;
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
 // Non-admin requests are ignored silently; every Personal Menu open sends adminMenuRequest, so that refusal is logged once per user slot.
 
-const MAX_USER_SLOTS = 1024;
 const PING_CACHE_MS = 3000;
 // Permanent max attribute change, kept per character and re-applied by the client on every spawn
 const ATTR_BONUS_PROP = "private.attrBonus";
@@ -252,7 +251,7 @@ export class AdminSystem implements System {
 
   private onlinePlayers(mp: Mp): OnlinePlayer[] {
     const out: OnlinePlayer[] = [];
-    for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
+    for (let userId = 0; userId < userSlotCount(); userId++) {
       try { if (!mp.isConnected(userId)) continue; } catch { continue; }
       let actorId = 0;
       try { actorId = mp.getUserActor(userId); } catch { continue; }

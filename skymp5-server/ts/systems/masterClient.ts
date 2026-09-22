@@ -3,7 +3,9 @@ import Axios from "axios";
 import { SystemContext } from "./system";
 import { ScampServer } from "../scampNative";
 import { Settings } from "../settings";
+import { readPlayerSlots } from "./queueSystem";
 
+// Heartbeat every 5 s: POST /api/servers/:key { name, maxPlayers, online, queued }; maxPlayers is the playable cap (playerSlots), queued the login queue length
 export class MasterClient implements System {
   systemName = "MasterClient";
 
@@ -19,6 +21,9 @@ export class MasterClient implements System {
   ) { }
 
   async initAsync(): Promise<void> {
+    const all = (await Settings.get()).allSettings;
+    this.playerSlots = readPlayerSlots(all, this.maxPlayers);
+
     if (!this.masterUrl) {
       this.log("No master server specified");
       return;
@@ -29,7 +34,7 @@ export class MasterClient implements System {
     this.endpoint = `${this.masterUrl}/api/servers/${this.masterKey}`;
     this.log(`Our endpoint on master is ${this.endpoint}`);
 
-    const token = (await Settings.get()).allSettings?.["masterApiAuthToken"];
+    const token = all?.["masterApiAuthToken"];
     this.authToken = typeof token === "string" ? token : "";
     if (!this.authToken) {
       this.log("masterApiAuthToken missing, the master will refuse heartbeats");
@@ -48,10 +53,11 @@ export class MasterClient implements System {
     await new Promise((r) => setTimeout(r, this.updateIntervalMs));
 
     if (this.endpoint) {
-      const { name, maxPlayers } = this;
+      const { name, playerSlots: maxPlayers } = this;
       const online = this.getCurrentOnline(ctx.svr);
+      const queued = (ctx.svr as any).getQueueLength?.() ?? 0;
       try {
-        await Axios.post(this.endpoint, { name, maxPlayers, online }, { headers: { "X-Auth-Token": this.authToken } });
+        await Axios.post(this.endpoint, { name, maxPlayers, online, queued }, { headers: { "X-Auth-Token": this.authToken } });
       } catch (e) {
         console.error(`Error updating info on master server: ${e}`);
       }
@@ -69,4 +75,5 @@ export class MasterClient implements System {
 
   private endpoint: string;
   private authToken = "";
+  private playerSlots = 0;
 }

@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, AFTERLIFE_EVENT, CharacterListEntry } from "./system";
 import { AccessPayload, FactionBackend, RosterRow, factionBackendOf, filterAccessForSlot } from "../backendFactionApi";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
-import { isNear, isPlayerActor, nameShownTo, userOf } from "./actorUtil";
+import { isNear, isPlayerActor, nameShownTo, userOf, userSlotCount } from "./actorUtil";
 import { formIdFromConfig } from "./formIdUtil";
 import { HousingSystem } from "./housingSystem";
 import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
@@ -60,7 +60,6 @@ const REGENCY_CHECK_MS = 5000;
 const RELEASE_RETRIES = 5;
 const RELEASE_RETRY_MS = 30000;
 const MAX_QUEUED = 3;
-const MAX_USER_SLOTS = 1024;
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
 
@@ -1010,7 +1009,7 @@ export class FactionSystem implements System {
 
   private online(): OnlineActor[] {
     const out: OnlineActor[] = [];
-    for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
+    for (let userId = 0; userId < userSlotCount(); userId++) {
       try { if (!this.mp.isConnected(userId)) continue; } catch { continue; }
       const actorId = this.actorOf(userId);
       if (!actorId) continue;

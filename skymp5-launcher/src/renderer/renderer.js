@@ -1245,7 +1245,8 @@ async function checkServerStatus() {
     badgeStatus.classList.add('online')
     badgeLabel.textContent = 'ONLINE'
     if (data.players != null) {
-      badgePlayers.textContent = `${data.players} PLAYERS`
+      const queued = data.queued > 0 ? ` · ${data.queued} QUEUED` : ''
+      badgePlayers.textContent = `${data.players} PLAYERS${queued}`
       badgePlayers.hidden = false
       // footerPlayers.textContent = `${data.players}`
     } else {

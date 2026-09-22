@@ -118,19 +118,24 @@ export function readAdminRoleConfig(all: Record<string, unknown> | null): AdminR
   };
 }
 
-// Reads private.discordRoles (written by spawn.ts at login), so a Discord role change needs a relog
-export function adminTierOf(mp: any, actorId: number, cfg: AdminRoleConfig): AdminTier | null {
-  let roles: string[] = [];
-  try {
-    const r = mp.get(actorId, "private.discordRoles");
-    if (Array.isArray(r)) roles = r.map(String);
-  } catch { }
-  try {
-    if (cfg.adminProfileIds.includes(Number(mp.get(actorId, "profileId")))) return "senior";
-  } catch { }
+// The tier of a login identity, usable before any actor exists (the queue bypass)
+export function adminTierFor(profileId: number, roles: string[], cfg: AdminRoleConfig): AdminTier | null {
+  if (cfg.adminProfileIds.includes(profileId)) return "senior";
   const has = (ids: string[]) => roles.some(r => ids.includes(r));
   for (const tier of TIER_ORDER) {
     if (has(cfg.tierRoles[tier])) return tier;
   }
   return has(cfg.adminRoleIds) ? "senior" : null;
+}
+
+// Reads private.discordRoles (written by spawn.ts at login), so a Discord role change needs a relog
+export function adminTierOf(mp: any, actorId: number, cfg: AdminRoleConfig): AdminTier | null {
+  let roles: string[] = [];
+  let profileId = NaN;
+  try {
+    const r = mp.get(actorId, "private.discordRoles");
+    if (Array.isArray(r)) roles = r.map(String);
+  } catch { }
+  try { profileId = Number(mp.get(actorId, "profileId")); } catch { }
+  return adminTierFor(profileId, roles, cfg);
 }

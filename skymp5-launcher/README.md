@@ -231,8 +231,8 @@ The slider stores `fov` and writes both profile ini keys (`saveFov`); each launc
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/servers` | Server list `{ id, name, address, port, masterKey, online, maxPlayers, lastSeen }`, main server first |
-| GET | `/api/status` | Online/offline + player count (`?server=<id>` for a server other than the main one) |
+| GET | `/api/servers` | Server list `{ id, name, address, port, masterKey, online, queued, maxPlayers, lastSeen }`, main server first; `maxPlayers` is the playable cap (`playerSlots`) and `queued` the login queue length from the heartbeat |
+| GET | `/api/status` | Online/offline + player count + login queue length (`?server=<id>` for a server other than the main one) |
 | GET | `/api/serverinfo` | Name, max players, lock status, auth config, Rich Presence app id, load order (`?server=<id>` as above) |
 | GET | `/api/news` | News cards |
 | GET | `/api/modlist` | Mod list with Nexus links |

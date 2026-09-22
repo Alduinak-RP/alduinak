@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { resolveEditorIds } from "./espmEditorIds";
-import { hex, isIntroduced } from "./actorUtil";
+import { hex, isIntroduced, userSlotCount } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { AdminRoleConfig, adminTierOf, missingCap, readAdminRoleConfig } from "./adminRoles";
 import { FactionSystem } from "./factionSystem";
@@ -57,7 +57,6 @@ const TAG = /\((W[0-9A-Z]{5})\)$/;
 const OPEN_COOLDOWN_MS = 1000;
 const SAVE_COOLDOWN_MS = 2000;
 const DAY_MS = 24 * 3600000;
-const MAX_USER_SLOTS = 1024;
 
 // Factions with a mark in skymp5-front/src/img/seals, guilds and the Legion before the hold courts
 const SEAL_FACTIONS = [
@@ -476,7 +475,7 @@ export class WritingSystem implements System {
 
   private onlineActors(mp: Mp): number[] {
     const out: number[] = [];
-    for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
+    for (let userId = 0; userId < userSlotCount(); userId++) {
       try {
         if (!mp.isConnected(userId)) continue;
         const actorId = mp.getUserActor(userId) >>> 0;

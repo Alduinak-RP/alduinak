@@ -20,6 +20,7 @@ import { System, WORLD_LOADED_EVENT } from "./systems/system";
 import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
+import { QueueSystem } from "./systems/queueSystem";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
 import { NeedsSystem } from "./systems/needsSystem";
@@ -56,6 +57,7 @@ import { ConjurationSystem } from "./systems/conjurationSystem";
 import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { FactionSystem } from "./systems/factionSystem";
 import { JobSystem } from "./systems/jobSystem";
+import { setUserSlotCount } from "./systems/actorUtil";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -226,6 +228,7 @@ const main = async () => {
   const {
     port, master, maxPlayers, name, masterKey, offlineMode, gamemodePath
   } = settingsObject;
+  setUserSlotCount(maxPlayers);
 
   const log = console.log;
   const systems = new Array<System>();
@@ -280,6 +283,8 @@ const main = async () => {
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     new Spawn(log),
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
+    // Holds verified logins while the play slots are full and releases them to Spawn in arrival order
+    new QueueSystem(log),
     // First activation hook, so it is the last one called: a door refused by any other system never reaches the override
     new DoorTeleportSystem(log),
     // Keep AdminSystem before capture/trade: its console grant/revoke is security-relevant and must not be skipped by an earlier listener throwing

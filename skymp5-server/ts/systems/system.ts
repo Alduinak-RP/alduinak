@@ -32,6 +32,9 @@ export const AFTERLIFE_EVENT = "afterlife";
 // Emitted on SystemContext.gm (profileId, access) when a profile's faction access changed in game; access covers every character
 export const ACCESS_REFRESHED_EVENT = "accessRefreshed";
 
+// Emitted on SystemContext.gm (userId, profileId, roles, discordId?, access?) by Login once the session is verified; QueueSystem re-emits it as "spawnAllowed" when a play slot is free
+export const LOGIN_VERIFIED_EVENT = "loginVerified";
+
 export interface System {
   systemName: string;
   initAsync?: (ctx: SystemContext) => Promise<void>;

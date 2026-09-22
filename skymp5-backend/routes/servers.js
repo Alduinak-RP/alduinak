@@ -18,6 +18,7 @@ router.get('/', (_req, res) => {
       port:       server.port,
       masterKey:  server.masterKey || null,
       online:     hb?.online ?? null,
+      queued:     hb?.queued ?? 0,
       maxPlayers: hb?.maxPlayers ?? config.serverMaxPlayers,
       lastSeen:   hb?.lastSeen ?? null,
     }
@@ -89,16 +90,17 @@ router.get('/:key/manifest.json', async (req, res) => {
 })
 
 // Called by MasterClient every 5 s: POST /api/servers/:key  (X-Auth-Token)
-// Body: { name, maxPlayers, online }
+// Body: { name, maxPlayers, online, queued }; maxPlayers is the playable cap (server-settings playerSlots), queued the login queue length
 router.post('/:key', (req, res) => {
   const { checkKey, checkWriteToken } = require('./master-api')
   if (!checkKey(req, res, { write: false }) || !checkWriteToken(req, res)) return
 
-  const { name, maxPlayers, online } = req.body || {}
+  const { name, maxPlayers, online, queued } = req.body || {}
   heartbeats.set(req.server.id, {
     name:       typeof name       === 'string' ? name       : req.server.name,
     maxPlayers: typeof maxPlayers === 'number' ? maxPlayers : config.serverMaxPlayers,
     online:     typeof online     === 'number' ? online     : null,
+    queued:     typeof queued     === 'number' ? queued     : 0,
     lastSeen:   new Date().toISOString(),
   })
 

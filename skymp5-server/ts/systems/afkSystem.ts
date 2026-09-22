@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { kickWithReason } from "./kickUtil";
+import { userSlotCount } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -13,7 +14,6 @@ type Mp = any;
 //   afkWarnMinutes  minutes before the kick to warn the player (default 2)
 
 const POLL_MS = 30000;
-const MAX_USER_SLOTS = 1024;
 
 // Automatic client packets that fire without player input
 const IDLE_PACKET_TYPES = new Set(["voiceTokenRequest", "gameTimeRequest", "knowledgeRequest"]);
@@ -63,7 +63,7 @@ export class AfkSystem implements System {
     const mp = ctx.svr as Mp;
     const now = Date.now();
 
-    for (let userId = 0; userId < MAX_USER_SLOTS; userId++) {
+    for (let userId = 0; userId < userSlotCount(); userId++) {
       try { if (!mp.isConnected(userId)) continue; } catch { continue; }
       const state = this.states.get(userId);
       if (!state) continue;
