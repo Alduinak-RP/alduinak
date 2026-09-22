@@ -260,6 +260,11 @@ def main():
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and prefix and edid(r).startswith(prefix)}
+    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, an own reference everything but its scale
+    over = spec.get('overrides', {})
+    over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
+    over_cobj = {form_key(r['recipe']): r['count'] for r in over.get('recipes', [])}
+    over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
     for (t, k), q in ro.items():
         r = ri.get((t, k))
         diff = None if r is None else ck.compare(t, inp, r.flags, r.data(), out, q.data()) or (r.flags & ~COMPRESSED != q.flags & ~COMPRESSED and f'flags {r.flags:#x} -> {q.flags:#x}')
@@ -305,6 +310,26 @@ def main():
             if why:
                 problems.append(f'{label}: {why}')
             checked['races checked against the races section'] += 1
+        elif t == 'MISC' and k in over_misc:
+            src, flags, data, _ = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('DATA',))
+            was, now = dict(parse_subs(data)).get('DATA', b''), dict(parse_subs(q.data())).get('DATA', b'')
+            if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or len(now) != 8 or was[:4] != now[:4] or abs(struct.unpack('<f', now[4:])[0] - over_misc[k]) > 1e-6:
+                problems.append(f'{label}: not {src.name}\'s item with only the weight set to {over_misc[k]} ({why or now.hex()})')
+            checked['items overridden for their weight'] += 1
+        elif t == 'COBJ' and k in over_cobj:
+            src, flags, data, _ = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('NAM1',))
+            nam1 = dict(parse_subs(q.data())).get('NAM1', b'')
+            if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or len(nam1) != 2 or struct.unpack('<H', nam1)[0] != over_cobj[k]:
+                problems.append(f'{label}: not {src.name}\'s recipe with only the created count set to {over_cobj[k]} ({why or nam1.hex()})')
+            checked['recipes overridden for their created count'] += 1
+        elif t == 'REFR' and k[0] == me and edid(q) in over_refs and r is not None:
+            why = ck.compare(t, inp, r.flags, r.data(), out, q.data(), skip=('XSCL',))
+            xscl = dict(parse_subs(q.data())).get('XSCL', b'')
+            if why or q.flags & ~COMPRESSED != r.flags & ~COMPRESSED or len(xscl) != 4 or abs(struct.unpack('<f', xscl)[0] - over_refs[edid(q)]) > 1e-6:
+                problems.append(f'{label}: not the input\'s reference with only the scale set to {over_refs[edid(q)]} ({why or xscl.hex()})')
+            checked['own references overridden for their scale'] += 1
         elif t in ITEM_TYPES and r is None and tags:
             src, flags, data, _ = ref
             why = ck.compare(t, src, flags, data, out, q.data(), skip=('KWDA', 'KSIZ'))

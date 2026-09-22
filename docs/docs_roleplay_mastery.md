@@ -274,9 +274,13 @@ container loot are off:
   minutes after a harvest (`reloot.FLOR` and `reloot.TREE`); a picked nirnroot
   or a caught bee or firefly is gone for everyone for `gatheringPickMinutes`,
   30 as well.
-- Salt Pile: the salt every cooked meat needs as well. No recipe or plant makes
-  it; only the vanilla loot lists of bandits, Forsworn, warlocks and other human
-  foes carry it.
+- Salt Pile: the salt every cooked meat needs as well. The Sea Salt Deposits
+  on the northern coasts (`Saltdeposits.esp`, mined like any vein, see Mining
+  below) give Sea Salt Rock, weight 20, and the smelter's `12RecipeSeaSaltPile`
+  refines one rock into 50 Salt Pile, open to everyone; `AlduinakAdditions.esp`
+  overrides the rock's weight and the recipe's count (spec `overrides`), which
+  makes `Saltdeposits.esp` one of its masters. The vanilla loot lists of
+  bandits, Forsworn, warlocks and other human foes carry it too.
 - Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
   open to everyone.
 - Bee Honeycomb: the vanilla beehives, occupied and vacant. `gatheringSystem.ts`

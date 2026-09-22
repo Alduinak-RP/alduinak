@@ -70,12 +70,13 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
-       Steps.Racial, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.DisableActors, categoriesStep,
-       Steps.MarkerEffects]
+       Steps.Racial, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors,
+       categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.DisableActors, Steps.Orphans, categoriesStep, Steps.MarkerEffects];
+       Steps.Racial, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
+       Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
 if (report.Errors.Count > 0)
@@ -453,7 +454,8 @@ static class Steps
         var edid = r["edid"]?.GetValue<string>() ?? (profession == null ? CommonRecipePrefix : prefix) + outputEdid;
         if (profession == null && (r["tier"]!.GetValue<string>() != PatchContext.AnyoneTier || !edid.StartsWith(CommonRecipePrefix)))
             throw new SpecException($"recipe {edid}: a recipe without a profession must be {PatchContext.AnyoneTier} and named {CommonRecipePrefix}*");
-        var cobj = c.OwnOrNew(c.Mod.ConstructibleObjects, edid);
+        // A pinned id keeps a recipe added later out of the block a hotfix run allocates in order, so the records after it keep their ids
+        var cobj = c.OwnOrNew(c.Mod.ConstructibleObjects, edid, formId: r["formId"] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null);
         cobj.WorkbenchKeyword.SetTo(bench);
         cobj.CreatedObject.SetTo(output.FormKey);
         cobj.CreatedObjectCount = (ushort)(r["count"]?.GetValue<int>() ?? 1);
@@ -1166,6 +1168,46 @@ static class Steps
 
     const int InitiallyDisabled = 0x800;
     const int Deleted = 0x20;
+
+    // ---- overrides: one field of a record another plugin defines, or of an own placed reference ---------------------
+    public static void Overrides(PatchContext c)
+    {
+        if (c.Spec["overrides"] is not JsonObject o) return;
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        foreach (var m in Entries(o["misc"]))
+        {
+            var key = FormKey.Factory(m["item"]!.GetValue<string>());
+            if (!cache.TryResolveContext<IMiscItem, IMiscItemGetter>(key, out var ctx)) { c.Error($"overrides: misc item {key} not found"); continue; }
+            var weight = m["weight"]!.GetValue<float>();
+            var from = ctx.Record.Weight;
+            ctx.GetOrAddAsOverride(c.Mod).Weight = weight;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): weight {from} -> {weight}");
+        }
+        foreach (var r in Entries(o["recipes"]))
+        {
+            var key = FormKey.Factory(r["recipe"]!.GetValue<string>());
+            if (!cache.TryResolveContext<IConstructibleObject, IConstructibleObjectGetter>(key, out var ctx)) { c.Error($"overrides: recipe {key} not found"); continue; }
+            var count = r["count"]!.GetValue<int>();
+            var from = ctx.Record.CreatedObjectCount;
+            ctx.GetOrAddAsOverride(c.Mod).CreatedObjectCount = (ushort)count;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): created object count {from} -> {count}");
+        }
+        foreach (var p in Entries(o["refs"]))
+        {
+            var edid = p["ref"]!.GetValue<string>();
+            if (!c.TryWinning<IPlacedObjectGetter>(edid, out var winning) || winning is not PlacedObject placed || placed.FormKey.ModKey != c.Key)
+            {
+                c.Error($"overrides: '{edid}' is not a placed reference of the plugin's own");
+                continue;
+            }
+            var scale = p["scale"]!.GetValue<float>();
+            c.Note($"Override {edid} ({placed.FormKey}): scale {placed.Scale?.ToString() ?? "1"} -> {scale}");
+            placed.Scale = scale;
+        }
+    }
+
+    static IEnumerable<JsonObject> Entries(JsonNode? list) =>
+        (list as JsonArray)?.Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>();
 
     // ---- actors: no placed NPC, living or dead, ever shows ----------------------------------------------------------
     //
