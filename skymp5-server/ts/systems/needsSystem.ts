@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./sys
 import { resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
 import { keywordConditionsPass } from "./espmMagic";
-import { addSpellTo, removeSpellFrom, hex, chainMpHook, isAlive } from "./actorUtil";
+import { addSpellTo, removeSpellFrom, hex, chainMpHook, isAlive, isBleedingOut, sendStagger, userOf } from "./actorUtil";
 import { MasterySystem } from "./masterySystem";
 import { IMPERIAL_RACES } from "./charCreatorData";
 
@@ -61,6 +61,8 @@ type Mp = any;
 //   needsSurvivalModeFlag         true sets the client's Survival_ModeEnabled to 1, if the HUD penalty segments need it, default false
 //   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
 //   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
+//   blockStaggerWithoutStamina    a blocker whose stamina is below the cost is staggered, default true
+//   blockStaggerMagnitude         staggerMagnitude of that stagger (0.1 to 1), default 0.5
 
 const NEEDS_PROP = "private.needs";
 const STATE_PACKET = "needsState";
@@ -99,6 +101,7 @@ const DEFAULT_WORK_FATIGUE = 20;
 const DEFAULT_WORK_FATIGUE_OWN_TRADE = 10;
 const DEFAULT_PICK_FATIGUE = 10;
 const DEFAULT_CRAFTS_PER_HOUR = [6, 12, 18, 24];
+const STAGGER_COOLDOWN_MS = 1000;
 
 interface NeedsRecord {
   v: number;
@@ -184,7 +187,8 @@ export class NeedsSystem implements System {
     this.survivalModeFlag = all["needsSurvivalModeFlag"] === true;
     const free = Array.isArray(all["needsFatigueFreeKeywords"]) ? (all["needsFatigueFreeKeywords"] as unknown[]).filter((k) => typeof k === "string") as string[] : ["AldCraftingMead"];
 
-    this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05));
+    this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
+      all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0);
 
     if (!this.enabled) {
       this.log("[needs] disabled by needsEnabled");
@@ -262,10 +266,12 @@ export class NeedsSystem implements System {
     };
   }
 
-  // OnHit fires before the native hit writes the percentages it copied earlier, so the drain waits a tick
-  private installBlockStamina(ctx: SystemContext, cost: number, warriorCost: number): void {
+  // OnHit fires before the native hit writes the percentages it copied earlier, so the drain waits a tick.
+  // A blocker who cannot pay the cost still blocks that hit but is staggered (staggerMagnitude 0 = off), at most once a second
+  private installBlockStamina(ctx: SystemContext, cost: number, warriorCost: number, staggerMagnitude: number): void {
     const mp = ctx.svr as Mp;
     if (cost <= 0 && warriorCost <= 0) return;
+    const lastStagger = new Map<number, number>();
     chainMpHook(mp, "onPapyrusEvent:OnHit", (...args: unknown[]) => {
       if (args[7] !== true) return;
       const desc = (args[2] as { desc?: unknown } | null)?.desc;
@@ -280,7 +286,14 @@ export class NeedsSystem implements System {
           const drain = this.mastery.rankOf(ctx, targetId, "warrior") >= 0 ? warriorCost : cost;
           const p = mp.get(targetId, "percentages");
           if (!p || drain <= 0) return;
+          const short = Number(p.stamina) < drain;
           mp.set(targetId, "percentages", { ...p, stamina: Math.max(0, Number(p.stamina) - drain) });
+          const now = Date.now();
+          if (!short || staggerMagnitude <= 0 || isBleedingOut(mp, targetId) || userOf(mp, targetId) < 0 ||
+            now - (lastStagger.get(targetId) ?? 0) < STAGGER_COOLDOWN_MS) return;
+          lastStagger.set(targetId, now);
+          sendStagger(mp, targetId, staggerMagnitude);
+          this.log(`[needs] ${hex(targetId)} staggered: blocked without stamina`);
         } catch (e) {
           this.log(`[needs] block stamina for ${hex(targetId)} failed: ${e}`);
         }

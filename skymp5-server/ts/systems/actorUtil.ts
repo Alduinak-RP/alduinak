@@ -22,6 +22,10 @@ export const notifyActor = (mp: Mp, actorId: number, text: string): void =>
 export const sendActionLock = (mp: Mp, actorId: number, anim: string, seconds: number, exitAnim = "IdleForceDefaultState"): void =>
   sendJson(mp, userOf(mp, actorId), { customPacketType: "actionLock", anim, seconds, exitAnim });
 
+// Staggers a player on their own client with the given staggerMagnitude (RestraintService); their copies relay it
+export const sendStagger = (mp: Mp, actorId: number, magnitude: number): void =>
+  sendJson(mp, userOf(mp, actorId), { customPacketType: "stagger", magnitude });
+
 export const baseIdOf = (mp: Mp, actorId: number): number => {
   try {
     const desc = mp.get(actorId, "baseDesc");

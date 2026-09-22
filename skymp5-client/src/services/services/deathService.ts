@@ -2,7 +2,7 @@ import { Actor } from "skyrimPlatform";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RespawnNeededError } from "../../lib/errors";
-import { AnimationEventName } from "../../sync/animation";
+import { AnimationEventName, consumeAllowedAnim } from "../../sync/animation";
 import { dismountRiderOf, releaseRiderClone } from "../../sync/mountApply";
 import { RagdollService } from "./ragdollService";
 import { MountService } from "./mountService";
@@ -44,10 +44,12 @@ export class DeathService extends ClientListener {
     );
   }
 
+  // Copies deal no damage, so a stagger their engine starts is phantom; one the sync relayed from the player is kept
   private hookDisableStagger() {
     this.sp.hooks.sendAnimationEvent.add(
       {
         enter(ctx) {
+          if (consumeAllowedAnim(ctx.selfId, ctx.animEventName)) return;
           ctx.animEventName = "";
         },
         leave() { },

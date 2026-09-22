@@ -39,6 +39,13 @@ export const SHEATHE_SETTLE_S = 0.3;
 const allowedIdles = new Array<[number, string]>();
 const refsWithDefaultAnimsDisabled = new Set<number>();
 const allowedAnims = new Set<string>();
+// A copy's graph starts with staggerMagnitude 0, which would make a relayed stagger invisible
+const STAGGER_ANIM = "staggerStart";
+const RELAYED_STAGGER_MAGNITUDE = 0.5;
+
+// Whether the sync itself sent this event to the copy; consumed, so a phantom event of the same name stays blocked
+export const consumeAllowedAnim = (refrId: number, animEventName: string): boolean =>
+  allowedAnims.delete(refrId + ":" + animEventName);
 // Refs whose collision a sit animation turned off, with the time it happened
 const sitCollisionDisabledAt = new Map<number, number>();
 
@@ -258,6 +265,12 @@ const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
     if (animEventNameLowerCase.includes("attack")) {
       allowedAnims.add(refr.getFormID() + ":" + anim.animEventName);
     }
+  }
+
+  // DeathService blanks every other stagger on a copy
+  if (anim.animEventName === STAGGER_ANIM) {
+    allowedAnims.add(refr.getFormID() + ":" + STAGGER_ANIM);
+    Actor.from(refr)?.setAnimationVariableFloat("staggerMagnitude", RELAYED_STAGGER_MAGNITUDE);
   }
 
   Debug.sendAnimationEvent(refr, anim.animEventName);

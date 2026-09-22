@@ -24,6 +24,8 @@ const IDLE_EXIT_ANIM = "IdleForceDefaultState";
 // Vanilla bleedout kneel (IDLE 13ECC / 13ECE), its own graph layer with its own exit; whitelisted in sync/animation.ts
 const BLEEDOUT_ANIM_START = "bleedOutStart";
 const BLEEDOUT_ANIM_STOP = "bleedOutStop";
+// Relayed to the player's copies through the animation sync, which lets a relayed stagger through
+const STAGGER_ANIM = "staggerStart";
 const CARRY_OVERLOAD = 10000;
 const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
 const PLAYER_FORM_ID = 0x14;
@@ -100,6 +102,9 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   // Timed work such as stabilizing or harvesting (actorUtil.sendActionLock); a new lock replaces the old one:
  *   { "customPacketType": "actionLock", "anim": "IdleKneeling", "seconds": 5, "exitAnim": "IdleForceDefaultState" }
  *
+ *   // A stagger the server decided, such as a block without the stamina for it (actorUtil.sendStagger):
+ *   { "customPacketType": "stagger", "magnitude": 0.5 }
+ *
  * Effects on the local player:
  *   - boundHands: plays the bound-hands pose and disables fighting/sneaking/
  *     activation. Movement stays enabled so the prisoner can be marched/walked.
@@ -119,6 +124,8 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *     the seconds, then plays exitAnim. Going down or dying ends it early,
  *     every other pose wins over it, and a mounted player or one another pose
  *     already holds ignores it.
+ *   - stagger: plays staggerStart with the magnitude on the player, whose
+ *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a fall.
  *
  * A capture or carry ends a downed target's bleedout server-side, so carried and
@@ -248,6 +255,9 @@ export class RestraintService extends ClientListener {
       const exitAnim = typeof content["exitAnim"] === "string" && content["exitAnim"] ? content["exitAnim"] : IDLE_EXIT_ANIM;
       logTrace(this, `actionLock ${anim} for ${seconds} s`);
       this.controller.once("update", () => this.startLock(anim, seconds, exitAnim));
+    } else if (type === "stagger") {
+      const magnitude = Math.min(1, Math.max(0.1, finiteOr(content["magnitude"], 0.5)));
+      this.controller.once("update", () => this.stagger(magnitude));
     } else if (type === "bleedoutState" && typeof content["downed"] === "boolean") {
       this.downed = content["downed"];
       if (this.downed) this.lock = null;
@@ -270,6 +280,14 @@ export class RestraintService extends ClientListener {
     if (seconds > 0 && (player.isDead() || player.isOnMount() || this.boundHands || this.carried || this.carrying || this.downed)) return;
     this.lock = seconds > 0 ? { anim, exitAnim, until: Date.now() + seconds * 1000 } : null;
     this.applyStateNow();
+  }
+
+  private stagger(magnitude: number): void {
+    const player = this.sp.Game.getPlayer();
+    if (!player || player.isDead() || player.isOnMount() || this.isPoseLocked || player.getFurnitureReference()) return;
+    logTrace(this, `stagger ${magnitude}`);
+    player.setAnimationVariableFloat("staggerMagnitude", magnitude);
+    this.sp.Debug.sendAnimationEvent(player, STAGGER_ANIM);
   }
 
   // Death ends a bleedout, an execution pose or an action lock without the stand-up
