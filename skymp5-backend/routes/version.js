@@ -4,9 +4,9 @@ const fs = require('fs')
 // Written by the manager Build tab. LATEST_VERSION = launcher app release (GET /api/version, update prompt)
 // CLIENT_VERSION = client files release (baked into data/files-version.json by merge-files.js)
 // SERVER_VERSION = game server release label (informational)
-const LATEST_VERSION = '2.4.1'
-const CLIENT_VERSION = '0.8.2'
-const SERVER_VERSION = '0.8.2'
+const LATEST_VERSION = '2.4.2'
+const CLIENT_VERSION = '0.8.3'
+const SERVER_VERSION = '0.8.3'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 // Launchers from 2.4.0 update from this zip; older ones only read DOWNLOAD_URL, so nginx keeps serving the exe
 const PACKAGE_URL    = 'https://alduinak.com/images/0/28177400/AlduinakLauncher-csOIfTHLcczP9Vcym9GSOQ.zip'
