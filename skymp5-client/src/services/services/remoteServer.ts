@@ -492,6 +492,7 @@ export class RemoteServer extends ClientListener {
           msg.rot[1],
           msg.rot[2],
         );
+        if (refrId === 0x14) this.controller.lookupListener(RestraintService).onTeleported();
       };
       const actor = Actor.from(refr);
       if (actor /*&& actor.getFormID() === 0x14*/) {

@@ -39,9 +39,8 @@ const DEFAULT_PAIR_MAX_MS = 9000;
 const DEFAULT_BLOCK_BASE_IDS = [0x2e8eb, 0xfe549];
 // How close the executioner must stand to the block, in game units
 const BLOCK_REACH = 300;
-// Unmeasured starting points relative to the block. Overridable via "executionBlockOffset" and "executionerOffset"
+// Unmeasured starting point relative to the block. Overridable via "executionBlockOffset"
 const DEFAULT_PRISONER_OFFSET: Offset = { forward: 0, right: 0, up: 0, yaw: 0 };
-const DEFAULT_EXECUTIONER_OFFSET: Offset = { forward: -40, right: 70, up: 0, yaw: -90 };
 // The vanilla headsman idles are furniture-state clips that never play on the ground, so the prisoner kneels in the bleedout pose the killmove is built for
 const PRISONER_KNEEL = "bleedOutStart";
 const STATE_PACKET = "executionState";
@@ -102,7 +101,6 @@ export class ExecutionSystem implements System {
       if (ids.length) this.blockBases = new Set(ids);
     }
     this.prisonerOffset = offsetOf(all?.["executionBlockOffset"], DEFAULT_PRISONER_OFFSET);
-    this.executionerOffset = offsetOf(all?.["executionerOffset"], DEFAULT_EXECUTIONER_OFFSET);
     const pairMaxMs = Number(all?.["finishOffMaxMs"]);
     if (Number.isFinite(pairMaxMs) && pairMaxMs > 0) this.pairMaxMs = pairMaxMs;
     this.extendedPool = all?.["finishOffExtendedPool"] === true;
@@ -250,13 +248,7 @@ export class ExecutionSystem implements System {
       notifyActor(mp, executorId, refusal);
       return;
     }
-    const spot = this.spotBy(prisoner.blockId, this.executionerOffset);
-    try {
-      if (spot) mp.set(executorId, "locationalData", spot);
-    } catch (e) {
-      this.log(`[execution] placing the executioner ${hex(executorId)} failed: ${e}`);
-    }
-    // The beheading is the finish off pair on the kneeling prisoner; the respawn rebuilds the body
+    // The pair aligns the two actors itself from wherever the executioner stands in reach; the respawn rebuilds the body
     prisoner.executorId = executorId;
     this.playPair(executorId, prisonerId, idle, false, () => this.chop(prisonerId, executorId));
     prisoner.timers.push(setTimeout(() => this.chop(prisonerId, executorId), this.pairMaxMs));
@@ -444,7 +436,6 @@ export class ExecutionSystem implements System {
   private logDir = "";
   private blockBases = new Set(DEFAULT_BLOCK_BASE_IDS);
   private prisonerOffset = DEFAULT_PRISONER_OFFSET;
-  private executionerOffset = DEFAULT_EXECUTIONER_OFFSET;
   private pairMaxMs = DEFAULT_PAIR_MAX_MS;
   private extendedPool = false;
   private nextCheckAt = 0;

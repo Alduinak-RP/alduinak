@@ -10,9 +10,12 @@ import { releaseCloneMovement, suspendCloneMovement } from "../../sync/mountAppl
 import { logToPlatformLog, logTrace } from "../../logging";
 
 const PLAYER_FORM_ID = 0x14;
+const BLEEDOUT_ANIM_START = "bleedOutStart";
 const BLEEDOUT_ANIM_STOP = "bleedOutStop";
 // The stand-up out of the bleedout kneel blends out before the pair starts
-const STAND_UP_S = 0.7;
+const STAND_UP_MS = 700;
+// A kneel sent again at pair start has this long to land before the pair plays on it
+const KNEEL_RESEND_MS = 1200;
 const POLL_MS = 100;
 // The engine's paired-animation flag, set on both actors while the pair plays
 const SYNCED_VAR = "bIsSynced";
@@ -31,6 +34,9 @@ interface Pair {
   ms: number;
   // This client plays one of the two, so it reports the end to the server
   participant: boolean;
+  // Not before this
+  playAt: number;
+  // 0 until the pair was played
   startedAt: number;
   nextPollAt: number;
   sawSynced: boolean;
@@ -60,6 +66,7 @@ export class PairedIdleService extends ClientListener {
     this.controller.once("update", () => this.start(attacker, target, idle, ms, seq, standUp));
   }
 
+  // A kneeling victim plays at once; a standing pair waits for the stand-up
   private start(attackerRemoteId: number, targetRemoteId: number, idleId: number, ms: number, seq: number, standUp: boolean): void {
     const attackerId = this.localIdOf(attackerRemoteId);
     const targetId = this.localIdOf(targetRemoteId);
@@ -69,16 +76,25 @@ export class PairedIdleService extends ClientListener {
     for (const id of [attackerId, targetId]) {
       if (id !== PLAYER_FORM_ID) suspendCloneMovement(id, ms);
     }
-    if (standUp) {
-      if (targetId === PLAYER_FORM_ID) this.controller.lookupListener(RestraintService).standForPair(ms);
-      else this.sp.Debug.sendAnimationEvent(target, BLEEDOUT_ANIM_STOP);
-    }
+    const now = Date.now();
     const pair: Pair = {
       attackerId, targetId, targetRemoteId, idleId, seq, ms,
       participant: attackerId === PLAYER_FORM_ID || targetId === PLAYER_FORM_ID,
-      startedAt: 0, nextPollAt: 0, sawSynced: false, sawKillMove: false, quietPolls: 0,
+      playAt: now, startedAt: 0, nextPollAt: 0, sawSynced: false, sawKillMove: false, quietPolls: 0,
     };
-    this.sp.Utility.wait(STAND_UP_S).then(() => this.controller.once("update", () => this.play(pair)));
+    const restraint = this.controller.lookupListener(RestraintService);
+    if (standUp) {
+      if (targetId === PLAYER_FORM_ID) restraint.standForPair(ms);
+      else this.sp.Debug.sendAnimationEvent(target, BLEEDOUT_ANIM_STOP);
+      pair.playAt = now + STAND_UP_MS;
+    } else if (targetId === PLAYER_FORM_ID && restraint.currentPose !== BLEEDOUT_ANIM_START) {
+      // The reattach after a server move can swallow the kneel; it is sent again and the pair waits for it
+      logToPlatformLog(this, `kneel missing at pair start, pose ${restraint.currentPose || "none"}`);
+      restraint.reapplyPoses();
+      pair.playAt = now + KNEEL_RESEND_MS;
+    }
+    this.pairs.push(pair);
+    if (pair.playAt <= now) this.play(pair);
   }
 
   private play(pair: Pair): void {
@@ -86,14 +102,13 @@ export class PairedIdleService extends ClientListener {
     const target = this.actorOf(pair.targetId);
     const idle = this.sp.Idle.from(this.sp.Game.getFormEx(pair.idleId));
     if (!attacker || !target || !idle) {
-      this.release(pair);
+      this.drop(pair);
       return;
     }
     const played = attacker.playIdleWithTarget(idle, target);
     logTrace(this, `pairedIdle ${pair.idleId.toString(16)} ${pair.attackerId.toString(16)} -> ${pair.targetId.toString(16)}: ${played}`);
     if (!played) logToPlatformLog(this, `pairedIdle ${pair.idleId.toString(16)} refused on ${pair.attackerId.toString(16)}`);
     pair.startedAt = Date.now();
-    this.pairs.push(pair);
   }
 
   private onUpdate(): void {
@@ -102,6 +117,10 @@ export class PairedIdleService extends ClientListener {
     for (const pair of this.pairs.slice()) {
       if (now < pair.nextPollAt) continue;
       pair.nextPollAt = now + POLL_MS;
+      if (!pair.startedAt) {
+        if (now >= pair.playAt) this.play(pair);
+        continue;
+      }
       const elapsed = now - pair.startedAt;
       const actors = [this.actorOf(pair.attackerId), this.actorOf(pair.targetId)];
       const synced = actors.some((actor) => actor?.getAnimationVariableBool(SYNCED_VAR));
@@ -116,15 +135,15 @@ export class PairedIdleService extends ClientListener {
   }
 
   private end(pair: Pair, elapsed: number): void {
-    this.pairs.splice(this.pairs.indexOf(pair), 1);
-    this.release(pair);
+    this.drop(pair);
     if (pair.participant) {
       sendCustomPacket(this.controller, { customPacketType: "pairedIdleDone", target: pair.targetRemoteId, seq: pair.seq });
     }
     logToPlatformLog(this, `pairEnd ${pair.idleId.toString(16)} after ${elapsed} ms, synced seen ${pair.sawSynced}, killmove seen ${pair.sawKillMove}`);
   }
 
-  private release(pair: Pair): void {
+  private drop(pair: Pair): void {
+    this.pairs.splice(this.pairs.indexOf(pair), 1);
     for (const id of [pair.attackerId, pair.targetId]) {
       if (id !== PLAYER_FORM_ID) releaseCloneMovement(id);
     }

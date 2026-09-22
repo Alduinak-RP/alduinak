@@ -2,7 +2,7 @@ import { Actor, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { logTrace } from "../../logging";
+import { logToPlatformLog, logTrace } from "../../logging";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement, NiPoint3 } from "../../sync/movement";
@@ -39,6 +39,8 @@ const POSE_REAPPLY_MIN_MS = 500;
 const PAIR_END_GRACE_MS = 1500;
 // Lets the single-slot animation sync relay a layer exit before the next pose
 const POSE_SWAP_DELAY_S = 0.1;
+// A server move reattaches the player's 3D a few frames after the packet; the held pose is sent again once that settled
+const TELEPORT_SETTLE_S = 0.5;
 
 // Carried body is held ahead of and above the carrier, turned 45 degrees from their facing; the server may override these
 const CARRY_FORWARD = 30;
@@ -131,7 +133,9 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *     already holds ignores it.
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
- *   - any of the above: jumping is blocked and the pose is re-applied after a fall.
+ *   - any of the above: jumping is blocked and the pose is re-applied after a
+ *     fall and after a server move (onTeleported), whose 3D reattach can
+ *     swallow a pose sent around it.
  *
  * A capture or carry ends a downed target's bleedout server-side, so carried and
  * downed never last together.
@@ -194,6 +198,23 @@ export class RestraintService extends ClientListener {
 
   get isCarrying(): boolean {
     return this.carrying;
+  }
+
+  // The pose last sent to the player, "" before any
+  get currentPose(): string {
+    return this.appliedPose;
+  }
+
+  // Must run on update, right after the move; a pose the reattach swallowed is never re-sent otherwise
+  onTeleported(): void {
+    if (!this.isPoseLocked) return;
+    this.sp.Utility.wait(TELEPORT_SETTLE_S).then(() => {
+      this.controller.once("update", () => {
+        if (!this.isPoseLocked) return;
+        this.reapplyPoses();
+        logToPlatformLog(this, `pose ${this.appliedPose} re-sent after teleport`);
+      });
+    });
   }
 
   // Must run on update: the kneel is left for the pair, the controls stay locked
@@ -457,7 +478,7 @@ export class RestraintService extends ClientListener {
   }
 
   // Must run on update; forces every held pose to be sent again
-  private reapplyPoses(): void {
+  reapplyPoses(): void {
     if (this.boundHands || this.carried || this.downed || this.executionPose || this.lock) {
       // A pair under way owns the animation; only the controls are re-asserted
       if (!this.paired) this.appliedPose = "";

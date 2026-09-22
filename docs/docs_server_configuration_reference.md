@@ -433,7 +433,6 @@ World floor (no setting): a living player below Z -40000 in Tamriel or below -30
 | `bleedoutHealedHealth` | `0.25` | Share of max health that ends a bleedout when healed back to it |
 | `executionBlockBaseIds` | `[0x2E8EB, 0xFE549]` | Base form ids (numbers or `"0x..."` strings) of the furniture that counts as an execution block |
 | `executionBlockOffset` | `{ "forward": 0, "right": 0, "up": 0, "yaw": 0 }` | Where Prepare Execution puts the prisoner, relative to the block: along its facing, across it, up, and degrees added to its yaw. Unmeasured default |
-| `executionerOffset` | `{ "forward": -40, "right": 70, "up": 0, "yaw": -90 }` | Where Execute puts the executioner, relative to the block. Unmeasured default |
 | `finishOffMaxMs` | `9000` | Cap on a finish off or execution killmove: the victim dies when a participant's client reports the end of the pair, or after this |
 | `finishOffExtendedPool` | `false` | Adds the killmove tree records, whose conditions the engine may refuse, to the finisher pools; a probe, see docs_roleplay_survival_loop.md section 8 |
 

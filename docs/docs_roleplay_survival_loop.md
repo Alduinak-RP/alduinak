@@ -106,14 +106,24 @@ behaviour-graph events — no ESP required.**
   block, **Prepare Execution** on a cuffed prisoner in reach moves them onto
   the block (`executionBlockOffset`) where they kneel in the bleedout pose
   (`bleedOutStart`, `executionState`) and cannot move but can open menus.
+  The move reattaches the prisoner's 3D on their client a few frames after
+  the packet (`moveRefrToPosition` after the ragdoll purge), which can
+  swallow the kneel sent around it, so `RestraintService.onTeleported` sends
+  the held pose again 0.5 s after every server move of a posed player
+  (`pose <pose> re-sent after teleport` in `skyrim-platform.log`); the
+  copies take it from the relayed event.
   The vanilla headsman idles (`IdleExecutioneeIdleEnterInstant`,
   `IdleExecutionerChop` and their pair) are furniture-state clips with no
   own animation file: the engine only enters them by seating both actors in
   the block furniture, and sent on the ground they play nothing, which is
   what r13 shipped. **Execute** needs a drawn melee weapon ("Draw your
-  weapon first."), moves the executioner beside the block
-  (`executionerOffset`) and plays the bleedout beheading pair on the
-  kneeling prisoner through the same `pairedIdle` packet as a finish off:
+  weapon first.") and plays the bleedout beheading pair at once on the
+  kneeling prisoner through the same `pairedIdle` packet as a finish off,
+  from wherever the executioner stands within reach of the block: nothing
+  moves the executioner (the pair aligns the two actors itself) and nothing
+  waits, the r13 shape. A prisoner's client with no kneel recorded when the
+  packet arrives sends it again and plays 1.2 s later (`kneel missing at
+  pair start`). The clips:
   `pa_KillMove1HMDecapBleedOut` (IDLE F465D) for one-handed and dual
   weapons, `pa_KillMove2HMDecapBleedOut` (F467F) for two-handed ones, the
   clips the finish off played in r13 and r14 (a battleaxe or warhammer plays
@@ -129,8 +139,8 @@ behaviour-graph events — no ESP required.**
   falling."). Before that, **Release** from anyone who is not bound pulls a
   prisoner off the block; the cuffs stay on and unbinding stays the
   captor's. A carry also takes them off the block. The
-  offsets are unmeasured starting points: measure them at a block with
-  `getpos`/`getangle` and set them in `server-settings.json`. Static bloody
+  offset is an unmeasured starting point: measure it at a block with
+  `getpos`/`getangle` and set it in `server-settings.json`. Static bloody
   blocks do not count, the server never loads statics. The vanilla
   head-on-the-block look is reachable only through the furniture; a later
   probe at the Helgen block (`0xAA7CC`) decides it: (1) press E on the
@@ -275,7 +285,7 @@ prisoner can also be carried).
 | `pairedIdle` `{ attacker, target, idle, ms, standUp, seq }` | Server → both players and viewers | Play a killmove on both copies, after the victim's stand-up when `standUp`; `ms` is the cap |
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
-| `executionState` `{ pose, reapply }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it, `reapply` sends a held pose again |
+| `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
 | `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting) |
 | `playerMenuState` `{ target, canRelease, stabilize, finishOff, prepareExecution, execute }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
