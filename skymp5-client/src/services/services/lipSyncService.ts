@@ -20,8 +20,13 @@ const SPEAKING_HOLD_MS = 500;
 // A face this service wrote is closed again once a second after its mouth left, this many times, then trusted shut
 const SWEEP_MS = 1000;
 const SWEEP_CLOSES = 3;
+// Every visible copy face without a talk report is zeroed this often, whatever wrote to it
+const SWEEP_ALL_MS = 1500;
+const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
 // A mouth the report keeps at level 0 this long is a lingering report, logged once
 const LINGER_MS = 5000;
+// A report entry with no local actor this long is logged once
+const UNMAPPED_MS = 2000;
 
 interface Mouth {
   localId: number;
@@ -58,6 +63,7 @@ export class LipSyncService extends ClientListener {
   private lastReportAt = 0;
   private nextTickAt = 0;
   private nextSweepAt = 0;
+  private nextSweepAllAt = 0;
   private playerFaceOpen = false;
   private playerCloseOwed = false;
   // local id -> when its face gets the repeated reset
@@ -66,6 +72,12 @@ export class LipSyncService extends ClientListener {
   private touched = new Map<number, Touched>();
   private wasFirstPerson = false;
   private lastCellId = 0;
+  // remote id -> since when the report names it without a local actor
+  private unmapped = new Map<number, number>();
+  // ids already logged this session, one line each
+  private unmappedLogged = new Set<number>();
+  // "<kind>:<local id>" already logged this session, one line each
+  private failedLogged = new Set<string>();
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
     const kind = e.arguments[0];
@@ -97,6 +109,10 @@ export class LipSyncService extends ClientListener {
     this.pending = new Map();
     this.touched.forEach((face) => { face.closes = 0; });
     this.nextSweepAt = 0;
+    this.nextSweepAllAt = 0;
+    this.unmapped.clear();
+    this.unmappedLogged.clear();
+    this.failedLogged.clear();
   }
 
   private onUpdate(): void {
@@ -114,6 +130,10 @@ export class LipSyncService extends ClientListener {
       if (now >= this.nextSweepAt) {
         this.nextSweepAt = now + SWEEP_MS;
         this.sweep(now);
+      }
+      if (now >= this.nextSweepAllAt) {
+        this.nextSweepAllAt = now + SWEEP_ALL_MS;
+        this.sweepAll();
       }
       if (now < this.nextTickAt || (this.mouths.size === 0 && !this.playerCloseOwed && this.resetsDue.size === 0)) return;
       this.nextTickAt = now + TICK_MS;
@@ -135,6 +155,9 @@ export class LipSyncService extends ClientListener {
       this.closeFace(mouth.localId);
       this.mouths.delete(remoteId);
     });
+    this.unmapped.forEach((_since, remoteId) => {
+      if (!report.has(remoteId)) this.unmapped.delete(remoteId);
+    });
     report.forEach((level, remoteId) => {
       const existing = this.mouths.get(remoteId);
       if (existing) {
@@ -148,10 +171,24 @@ export class LipSyncService extends ClientListener {
         return;
       }
       const localId = this.localIdFor(remoteId);
-      if (!localId) return;
+      if (!localId) {
+        this.noteUnmapped(remoteId, now);
+        return;
+      }
+      this.unmapped.delete(remoteId);
       this.mouths.set(remoteId, { localId, phoneme: -1, level, zeroSince: 0, lingerLogged: false });
       logTrace(this, `lips on for ${remoteId.toString(16)}`);
     });
+  }
+
+  // A talker with no copy on this client is normal out of range; one that lasts is logged once
+  private noteUnmapped(remoteId: number, now: number): void {
+    const since = this.unmapped.get(remoteId) ?? now;
+    this.unmapped.set(remoteId, since);
+    if (now - since > UNMAPPED_MS && !this.unmappedLogged.has(remoteId)) {
+      this.unmappedLogged.add(remoteId);
+      logToPlatformLog(this, `report names ${remoteId.toString(16)} with no local actor for over ${UNMAPPED_MS} ms`);
+    }
   }
 
   // The front's explicit stop closes the mouth without waiting for the next report
@@ -197,6 +234,35 @@ export class LipSyncService extends ClientListener {
     });
   }
 
+  // Every visible copy of a player without a mouth of its own is zeroed, whatever wrote to it; the own face too outside first person
+  private sweepAll(): void {
+    const open = new Set(Array.from(this.mouths.values()).map((mouth) => mouth.localId));
+    const ids = this.isFirstPerson() ? [] : [PLAYER_FORM_ID];
+    for (const form of this.controller.lookupListener(RemoteServer).getWorldModel().forms) {
+      if (!form || form.isMyClone || !form.appearance || (form.refrId ?? 0) < FIRST_DYNAMIC_REMOTE_ID) continue;
+      const localId = remoteIdToLocalId(form.refrId!);
+      if (localId) ids.push(localId);
+    }
+    for (const localId of ids) {
+      if (open.has(localId)) continue;
+      const actor = this.actorOf(localId);
+      if (!actor?.is3DLoaded()) continue;
+      this.guarded(localId, "close", () => MOUTH_PHONEMES.forEach((phoneme) => actor.setExpressionPhoneme(phoneme, 0)));
+    }
+  }
+
+  // A native that throws on one face must not cost the others their tick; logged once per face and kind
+  private guarded(localId: number, what: string, work: () => void): void {
+    try {
+      work();
+    } catch (err) {
+      const key = `${what}:${localId}`;
+      if (this.failedLogged.has(key)) return;
+      this.failedLogged.add(key);
+      logToPlatformLog(this, `${what} failed ${localId.toString(16)}: ${err}`);
+    }
+  }
+
   private markSpeakers(report: Map<number, number>): void {
     const now = Date.now();
     const me = this.controller.lookupListener(RemoteServer).getMyRemoteRefrId();
@@ -230,7 +296,8 @@ export class LipSyncService extends ClientListener {
       this.mouths.delete(remoteId);
       return;
     }
-    if (mouth.phoneme >= 0) actor.setExpressionPhoneme(mouth.phoneme, 0);
+    const previous = mouth.phoneme;
+    if (previous >= 0) this.guarded(mouth.localId, "phoneme write", () => actor.setExpressionPhoneme(previous, 0));
     // A clone can respawn under a new local id while still speaking
     const localId = this.localIdFor(remoteId);
     if (localId && localId !== mouth.localId) {
@@ -252,8 +319,9 @@ export class LipSyncService extends ClientListener {
     }
     // LiveKit audio levels sit around 0.05-0.3 for normal speech
     const strength = Math.min(0.9, 0.25 + mouth.level * 2.5) * (0.7 + Math.random() * 0.3);
-    mouth.phoneme = MOUTH_PHONEMES[Math.floor(Math.random() * MOUTH_PHONEMES.length)];
-    actor.setExpressionPhoneme(mouth.phoneme, strength);
+    const phoneme = MOUTH_PHONEMES[Math.floor(Math.random() * MOUTH_PHONEMES.length)];
+    mouth.phoneme = phoneme;
+    this.guarded(mouth.localId, "phoneme write", () => actor.setExpressionPhoneme(phoneme, strength));
     this.touched.set(mouth.localId, { remoteId, lastWriteAt: Date.now(), closes: 0 });
     if (mouth.localId === PLAYER_FORM_ID) this.playerFaceOpen = true;
   }
@@ -262,14 +330,15 @@ export class LipSyncService extends ClientListener {
   private closeFace(localId: number): void {
     if (localId === PLAYER_FORM_ID) this.playerFaceOpen = this.playerCloseOwed = this.playerFaceOpen && this.isFirstPerson();
     this.resetsDue.set(localId, Date.now() + RESET_REPEAT_MS);
-    try {
+    this.guarded(localId, "close", () => {
       const actor = this.actorOf(localId);
-      if (!actor) logToPlatformLog(this, `closeFace ${localId.toString(16)}: no actor`);
-      MOUTH_PHONEMES.forEach((phoneme) => actor?.setExpressionPhoneme(phoneme, 0));
-      actor?.resetExpressionOverrides();
-    } catch (err) {
-      logTrace(this, `closeFace failed: ${err}`);
-    }
+      if (!actor) {
+        logToPlatformLog(this, `closeFace ${localId.toString(16)}: no actor`);
+        return;
+      }
+      MOUTH_PHONEMES.forEach((phoneme) => actor.setExpressionPhoneme(phoneme, 0));
+      actor.resetExpressionOverrides();
+    });
   }
 
   // A face that started talking again is left to the animation
@@ -278,11 +347,7 @@ export class LipSyncService extends ClientListener {
       if (now < dueAt) return;
       this.resetsDue.delete(localId);
       if (Array.from(this.mouths.values()).some((mouth) => mouth.localId === localId)) return;
-      try {
-        this.actorOf(localId)?.resetExpressionOverrides();
-      } catch (err) {
-        logTrace(this, `reset failed: ${err}`);
-      }
+      this.guarded(localId, "reset", () => this.actorOf(localId)?.resetExpressionOverrides());
     });
   }
 }

@@ -66,19 +66,37 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
   unloaded) keeps the last phoneme. A copy re-created under a new local id
   gets the re-closes on its new face and its old id is dropped after one
   close; a copy that despawned, or a talker who left, is forgotten after
-  one close. The engine
+  one close. On top of that, every 1.5 s the service zeroes the seven
+  mouth phonemes on every visible copy of a player that has no talk report
+  at that moment (`sweepAll`: every world-model form with an appearance
+  and a loaded 3D that is not the local player's own clone, plus the own
+  face outside first person), whatever wrote to it and whether this
+  service ever touched it; no `resetExpressionOverrides` there, so nothing
+  else is fought, and no other service writes expressions today. Cost:
+  seven native writes per visible copy per 1.5 s. A native that throws on
+  one face no longer aborts that tick's lip work on the others: every
+  write is guarded per face and each of the three failure lines below is
+  logged once per local id. The engine
   rebuilds a copy's 3D when it comes back on screen, so a mouth stuck on a
   copy heals when the viewer looks away and back: a useful check when it
   happens. Evidence goes to `skyrim-platform.log` through
   `logToPlatformLog`: `sweep re-close <id> ... actor present/gone,
   first/third person`, `copy of <remote id> changed <old> -> <new>`,
   `closeFace <id>: no actor`, `owed player close in
-  third person`, and `report keeps <id> at level 0` for a report that
-  lingers on a silent talker (that one mumbles, it does not stick). MfgFix
+  third person`, `phoneme write failed <id>: <err>`, `close failed <id>:
+  <err>` and `reset failed <id>: <err>` for a native that threw on that
+  face, `report names <id> with no local actor for over 2000 ms` for a
+  talker this client has no copy of, and `report keeps <id> at level 0`
+  for a report that lingers on a silent talker (that one mumbles, it does
+  not stick). When a mouth sticks anyway, the next report needs three
+  things: whose face it was (your own in third person, or another
+  player's copy on your screen), whether looking away and back closed it,
+  and both machines' `skyrim-platform.log`. MfgFix
   is deliberately not on the client mod list: it makes SKSE phoneme writes
   persistent, so a missed close would become a permanent stick; it is the
-  next step only once the log shows a `sweep re-close` with the actor
-  present and the mouth still open (our resets ran and the face stayed).
+  next step only once a log shows the closes ran on a present actor (a
+  `sweep re-close ... actor present` line, or the sweepAll era with no
+  `failed` line for that face) and the mouth still stayed open.
   The same feed
   puts the VOIP glyph (U+E000 in the Tavern font, `misc/voip-glyph`) in front
   of a talking remote player's name tag for 500 ms after each report; the tag
