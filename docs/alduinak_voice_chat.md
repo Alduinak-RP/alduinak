@@ -57,7 +57,10 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
   reset (`resetExpressionOverrides`), repeated 400 ms later. The same feed
   puts the VOIP glyph (U+E000 in the Tavern font, `misc/voip-glyph`) in front
   of a talking remote player's name tag for 500 ms after each report; the tag
-  already reads "Stranger" for unknown characters. Any other
+  already reads "Stranger" for unknown characters. With **show player names**
+  off (the default) the glyph is drawn alone over the talker, never a name or
+  id. It is only ever drawn over other players: the local player has no name
+  tag and `LipSyncService` never marks it as speaking. Any other
   speaking-indicator UI built on it must gate names through ff_knownIds or
   it will leak masks.
 - **Dead players can talk and hear.** No isDead gate on PTT or listening yet.

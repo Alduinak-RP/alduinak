@@ -601,7 +601,8 @@ export class FormView {
       }
     }
 
-    if (FormView.isDisplayingNicknames && this.refrId && model.appearance?.name) {
+    const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId());
+    if (showTag && this.refrId && model.appearance?.name) {
       const headPart = "NPC Head [Head]";
       const maxNicknameDrawDistance = 1000;
       const playerActor = Game.getPlayer()!;
@@ -623,7 +624,7 @@ export class FormView {
 
         if (!this.textNameId && headScreenPos[2] > 0) {
           this.createdTagName = this.tagName(refr, model);
-          this.createdActorIdLine = FormView.isDisplayingActorIds;
+          this.createdActorIdLine = FormView.showsActorIdLine();
           this.textNameId = createText(textXPos, textYPos, this.createdTagName, [1, 1, 1, 0.8]);
           setTextSize(this.textNameId, 0.5);
           // Local (ffxxxxxx) actor id on a second line under the name
@@ -647,7 +648,7 @@ export class FormView {
           }
           // Rename (/mask), a fresh introduction or a toggled id line: recreate
           if (this.textNameId
-            && (this.tagName(refr, model) !== this.createdTagName || this.createdActorIdLine !== FormView.isDisplayingActorIds)) {
+            && (this.tagName(refr, model) !== this.createdTagName || this.createdActorIdLine !== FormView.showsActorIdLine())) {
             this.removeNickname();
           }
           if (this.textNameId) {
@@ -665,10 +666,11 @@ export class FormView {
     }
   }
 
-  // Real name once introduced to the local player, else "Stranger"; Show Title puts the faction title in front of it, and a talking player gets the VOIP glyph
+  // Real name once introduced to the local player, else "Stranger"; Show Title puts the faction title in front of it, and a talking player gets the VOIP glyph (the glyph alone while names are hidden)
   private tagName(refr: ObjectReference, model: FormModel): string {
     const remoteId = this.getRemoteRefrId();
-    const voip = (FormView.speakingUntil.get(remoteId) ?? 0) > Date.now() ? `${FormView.voipGlyph} ` : "";
+    if (!FormView.isDisplayingNicknames) return FormView.voipGlyph;
+    const voip = FormView.isSpeaking(remoteId) ? `${FormView.voipGlyph} ` : "";
     if (!knowsCharacter(remoteId)) return `${voip}Stranger`;
     const name = refr.getDisplayName();
     const title = (model as Record<string, unknown>)["ff_factionTitle"];
@@ -926,10 +928,20 @@ export class FormView {
   // Draugr, falmer, chaurus, frostbite spiders, dwarven automatons, spriggans and wolves: ambush AI can start them passive
   private static readonly ambushRaces = [0xd53, 0x131f4, 0x131eb, 0x4e507, 0x53477, 0x131f1, 0x131f2, 0x131f3, 0x2013b77, 0xf3903, 0x13204, 0x401b644, 0x9aa44, 0x1320a];
 
-  public static isDisplayingNicknames: boolean = true;
-  public static isDisplayingActorIds: boolean = true;
+  // Both off until the chat settings say otherwise, so a fresh player never sees a tag
+  public static isDisplayingNicknames: boolean = false;
+  public static isDisplayingActorIds: boolean = false;
   // remote id -> until when its name tag shows the VOIP glyph, fed by LipSyncService
   public static speakingUntil = new Map<number, number>();
   // Private-use glyph added to the Tavern font by misc/voip-glyph
   private static readonly voipGlyph = "\uE000";
+
+  public static isSpeaking(remoteId: number): boolean {
+    return (FormView.speakingUntil.get(remoteId) ?? 0) > Date.now();
+  }
+
+  // The id line never shows without the name above it
+  private static showsActorIdLine(): boolean {
+    return FormView.isDisplayingNicknames && FormView.isDisplayingActorIds;
+  }
 }

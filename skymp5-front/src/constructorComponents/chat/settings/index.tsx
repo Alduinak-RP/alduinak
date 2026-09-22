@@ -9,8 +9,8 @@ const Settings = (props: {
   setFontSize: (size: number) => void,
   lockChat: boolean,
   setLockChat: (value: boolean) => void,
-  hidePlayerNames: boolean,
-  setHidePlayerNames: (value: boolean) => void,
+  showPlayerNames: boolean,
+  setShowPlayerNames: (value: boolean) => void,
   showFormIds: boolean,
   setShowFormIds: (value: boolean) => void,
   chatTransparency: number,
@@ -46,7 +46,7 @@ const Settings = (props: {
         <SkyrimSlider text={'fade (seconds, 0 = never)'} name={'fadeSeconds'} min={0} max={60} setValue={(value) => props.setFadeSeconds(value)} sliderValue={props.fadeSeconds} marks={[0, 10, 20, 30, 45, 60]}/>
         <SkyrimSlider text={'field of view'} name={'fov'} min={70} max={170} setValue={(value) => props.setFov(value)} sliderValue={props.fov ?? 80} marks={[70, 90, 110, 130, 150, 170]}/>
         <CheckBox text={'lock chat'} initialValue={props.lockChat} setChecked={props.setLockChat} disabled={false} />
-        <CheckBox text={'hide player names'} initialValue={props.hidePlayerNames} setChecked={props.setHidePlayerNames} disabled={false} />
+        <CheckBox text={'show player names'} initialValue={props.showPlayerNames} setChecked={props.setShowPlayerNames} disabled={false} />
         <CheckBox text={'show form ids'} initialValue={props.showFormIds} setChecked={props.setShowFormIds} disabled={false} />
         <div className='chat-highlights'>
           <span className='chat-highlights-label'>highlight words</span>

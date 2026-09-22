@@ -46,9 +46,12 @@ Rules:
   `/me waves`, `/roll`, `/looc hi` typed by hand keep working.
 - The selected channel persists between messages.
 - The chat settings popup also has two nametag toggles saved with the other
-  chat settings: **hide player names** (off by default, hides the whole
-  nametag over other players) and **show form ids** (on by default, the
-  `ffxxxxxx` line under the name).
+  chat settings: **show player names** (off by default, draws the nametag
+  over other players) and **show form ids** (off by default, the `ffxxxxxx`
+  line under the name; it never shows while names are hidden). A settings
+  file from before the rename (no `showPlayerNames` key) counts as fresh for
+  both, so everyone starts hidden until they tick the boxes. With names
+  hidden, a talking player still shows the lone VOIP glyph over their head.
 - It also has a **field of view** slider (70-170), and `/fov <70-170>` typed in
   chat sets the same value without sending anything. The value is written into
   the live camera through SkyrimPlatform's `setFov` after every load. Whichever

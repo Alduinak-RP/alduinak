@@ -363,10 +363,11 @@ export class ChatService extends ClientListener {
     }
   }
 
-  // Nametag toggles and the FOV live in the chat settings JSON; missing keys keep the defaults
+  // Nametag toggles and the FOV live in the chat settings JSON; no showPlayerNames key means both toggles are off
   private applyChatSettings(parsed: Record<string, unknown>): void {
-    FormView.isDisplayingNicknames = parsed["hidePlayerNames"] !== true;
-    FormView.isDisplayingActorIds = parsed["showFormIds"] !== false;
+    const fresh = parsed["showPlayerNames"] == null;
+    FormView.isDisplayingNicknames = parsed["showPlayerNames"] === true;
+    FormView.isDisplayingActorIds = !fresh && parsed["showFormIds"] === true;
     // A launcher slider moved since the chat FOV was saved wins over it
     const launcherFov = readClientSettingNumber(this.sp, "fov", 0);
     if (launcherFov > 0 && parsed["fovLauncher"] !== launcherFov) delete parsed["fov"];
@@ -379,6 +380,7 @@ export class ChatService extends ClientListener {
     try {
       const parsed = JSON.parse(json);
       if (!parsed || typeof parsed !== "object") return;
+      delete parsed["hidePlayerNames"];
       parsed["fovLauncher"] = readClientSettingNumber(this.sp, "fov", 0);
       this.applyChatSettings(parsed);
       this.sp.writePlugin(

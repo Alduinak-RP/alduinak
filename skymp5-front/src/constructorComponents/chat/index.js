@@ -51,8 +51,10 @@ const Chat = (props) => {
   const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [fontSize, setFontSize] = useState(saved.fontSize != null ? saved.fontSize : 16);
   const [fadeSeconds, setFadeSeconds] = useState(saved.fadeSeconds != null ? saved.fadeSeconds : 10);
-  const [hidePlayerNames, setHidePlayerNames] = useState(saved.hidePlayerNames != null ? saved.hidePlayerNames : false);
-  const [showFormIds, setShowFormIds] = useState(saved.showFormIds != null ? saved.showFormIds : true);
+  // No showPlayerNames key: both toggles start off, whatever showFormIds says
+  const freshNametags = saved.showPlayerNames == null;
+  const [showPlayerNames, setShowPlayerNames] = useState(!freshNametags && saved.showPlayerNames === true);
+  const [showFormIds, setShowFormIds] = useState(!freshNametags && saved.showFormIds === true);
   const [fov, setFov] = useState(saved.fov != null ? saved.fov : null);
   const [idle, setIdle] = useState(false);
   const idleTimerRef = useRef();
@@ -312,8 +314,8 @@ const Chat = (props) => {
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
     // Fov is saved once chat or the launcher supplies one; the client stamps it so a later launcher change wins
-    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds }, fov != null ? { fov } : {}));
-  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, hidePlayerNames, showFormIds, fov]);
+    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, showPlayerNames, showFormIds }, fov != null ? { fov } : {}));
+  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, showPlayerNames, showFormIds, fov]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -466,8 +468,8 @@ const Chat = (props) => {
           setFontSize={setFontSize}
           lockChat={lockChat}
           setLockChat={setLockChat}
-          hidePlayerNames={hidePlayerNames}
-          setHidePlayerNames={setHidePlayerNames}
+          showPlayerNames={showPlayerNames}
+          setShowPlayerNames={setShowPlayerNames}
           showFormIds={showFormIds}
           setShowFormIds={setShowFormIds}
           chatTransparency={chatTransparency}
