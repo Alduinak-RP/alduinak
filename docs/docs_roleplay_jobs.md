@@ -290,6 +290,17 @@ load goes.
 - **Furniture**: activating furniture (chairs, benches, crafting stations,
   chopping blocks, mining markers) is refused with "Put the block of wood down first.",
   before any other activation handler, so no gathering session starts.
+- **Grain mills** (the vanilla `GrainMill`, `0009C6DF`): the wheel is driven by
+  the mill's own behaviour graph, which the engine feeds from its user's
+  animation; a remote player's copy only replays the player's events, so
+  observers saw a still wheel. `furnitureAnimationsService.ts` (client) keeps
+  a table of such furniture: when a copy plays `IdleGrainMillEnter`, the
+  nearest mill within 160 units gets `SlavePush` (through `playAnimation` and
+  `Debug.sendAnimationEvent`, retried until its 3D is in); any later event of
+  that copy, or the copy moving 96 units off or unloading, sends `SlaveIdle`.
+  The platform log traces each send. The local user's own mill is the engine's
+  business; if it turns out not to turn either, `furnitureSeatService` can send
+  the same pair on `seatClaim` and `seatRelease`.
 - Doors, containers, NPCs and trade work as usual.
 
 ## Anti-abuse

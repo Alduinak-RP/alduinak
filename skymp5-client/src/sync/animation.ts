@@ -49,6 +49,13 @@ export const consumeAllowedAnim = (refrId: number, animEventName: string): boole
 // Refs whose collision a sit animation turned off, with the time it happened
 const sitCollisionDisabledAt = new Map<number, number>();
 
+// Called with every event that reaches a copy's graph, after any override
+export type SendToGraphHook = (refr: ObjectReference, animEventName: string) => void;
+const sendToGraphHooks: SendToGraphHook[] = [];
+export const addSendToGraphHook = (hook: SendToGraphHook): void => {
+  sendToGraphHooks.push(hook);
+};
+
 const actorSitAnimsLowerCase = [
   'idlestoolenterplayer',
   'idlestoolenter',
@@ -291,6 +298,14 @@ const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
   if (actorGetUpAnimsLowerCase.find((x) => x === animEventNameLowerCase) !== undefined) {
     setCollision(refr.getFormID(), true);
     sitCollisionDisabledAt.delete(refr.getFormID());
+  }
+
+  for (const hook of sendToGraphHooks) {
+    try {
+      hook(refr, anim.animEventName);
+    } catch (e) {
+      printConsole(`sendToGraph hook failed: ${e}`);
+    }
   }
 };
 
