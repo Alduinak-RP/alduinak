@@ -6,17 +6,25 @@
     "source": "backend"
   },
   {
+    "name": "Alduinak Client Files",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 192557
+  },
+  {
+    "name": "DynDOLOD DLL NG",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 97720
+  },
+  {
     "name": "DynDOLOD Resources SE",
     "required": true,
     "enabled": true,
     "source": "nexus",
-    "nexusId": 32382
-  },
-  {
-    "name": "Alduinak",
-    "required": true,
-    "enabled": true,
-    "source": "url"
+    "nexusId": 52897
   },
   {
     "name": "Sea Salt Deposits",
