@@ -301,13 +301,20 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
 bar (hunger) and the magicka bar (fatigue). `needsService.ts` writes the share into the Update.esm globals the Survival
 `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent` (0x2EDF, `SRHP`) and
 `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100, `Survival_ColdAttributePenaltyPercent`
-(0x2EDE, `SRCP`) at 0. Only when `needsSurvivalModeFlag` is on (default off) does it also set the Creation's
-`Survival_ModeEnabled` (`SRVE`, esl 0x826) to 1, for the case where the HUD draws the segments only in Survival mode;
-Survival's quests stay disabled. That flag can bring Survival side effects on each client (arrow and lockpick weight
-counting towards carry weight, a Warmth readout, sleep and wait menus, the food effects' hunger script), so turn it on
-only if the HUD check in the test plan below needs it. The live `server-settings.json` carries the key explicitly (the
-manager Settings tab lists it under Gameplay as "Survival mode flag on clients"); it is read at boot, so restart the
-game service after a change. `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
+(0x2EDE, `SRCP`) at 0. With `needsSurvivalModeFlag` on (default on since r15) it also sets the Creation's
+`Survival_ModeEnabled` (`SRVE`, esl 0x826) to 1, and that global is what makes the segments show: the engine calls the
+HUD's `ShowSurvivalElements(abShow, ...)` with `abShow` taken from `SRVE`, and `hudmenu.swf` (disassembled for r15)
+forwards the penalty globals to `SetHungerPenaltyMeter` and `SetExhaustionPenaltyMeter` only when `abShow` is true;
+false calls them with no value, which sets the penalty share to 0 and redraws the bars without the red end. The swf
+never calls `ShowSurvivalElements` itself, so no client write to the penalty globals can show the segments while the
+flag is off (the r14 test: max stamina and magicka dropped, no red bar). Survival's quests stay disabled and Papyrus
+is blocked, so no hunger, cold or exhaustion effect starts from the global; the compass temperature icon stays at
+level 0 ("Neutral") either way, and the Settings > Gameplay Survival toggle stays hidden because it hangs on
+`Survival_ModeCanBeEnabled` (`SRVS`), kept at 0. The engine's own Survival extras do come with it on every client:
+arrows and bolts weigh 0.1 each and armour cards show a Warmth line; sleep-to-level is moot with skill advance off.
+The live `server-settings.json` carries the key explicitly (the manager Settings tab lists it under Gameplay as
+"Survival mode flag on clients"); it is read at boot, so restart the game service after a change.
+`Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
 The segments follow Survival's curve, starting at stage 2, and the stage notices remain the text cue.
 
 ## Deploy runbook
@@ -382,9 +389,13 @@ None of these has been run yet.
   segment of roughly (hunger-159)/841, about 13% after one hour. Without such a character, set `needsHungerStages` to
   `[10, 20, 30, 40, 50]` in `server-settings.json`, restart, log in (a fresh 145-hunger character is then stage 5 with
   12.8%) and restore the stages afterwards; run that alone or with `needsHungerStageAbilities` false, since every
-  player online gets the stage abilities meanwhile. Red with `needsSurvivalModeFlag` false: keep false. No red: set the
-  flag true (manager Settings > Gameplay > Survival mode flag on clients), restart, re-check; if red now shows keep
-  true and confirm arrows still weigh 0, no Warmth readout, no Survival sleep or wait menu. The health bar shows no red.
+  player online gets the stage abilities meanwhile. The red segment needs `needsSurvivalModeFlag` true (the default;
+  manager Settings > Gameplay > Survival mode flag on clients) and a game service restart after a change; with it,
+  arrows and bolts read 0.1 weight and armour cards a Warmth line, Settings > Gameplay shows no Survival toggle, and T
+  (wait) and beds behave as before. If no red shows with the flag on, the fallback is `needsService.ts` calling
+  `_root.HUDMovieBaseInstance.SetHungerPenaltyMeter` / `SetExhaustionPenaltyMeter` through `Ui.invokeFloatA` on every
+  update tick, the way `interactionPromptService` rewrites the rollover; that is a client build. The health bar shows
+  no red.
 - Owner-only stand-in for the old console check: a `<game>\Data\Platform\PluginsDev\survival-hud-test.js` that on F9
   sets `GlobalVariable.from(Game.getFormFromFile(0x2EDF, 'Update.esm'))` to 30 and on F10 sets 0x826 of
   `ccQDRSSE001-SurvivalMode.esl` to 1; SkyrimPlatform loads `PluginsDev`, the launcher never deletes it, and the value

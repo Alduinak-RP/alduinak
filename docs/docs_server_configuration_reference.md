@@ -905,7 +905,7 @@ Survival hunger effect in the plugins.
 | `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |
 | `needsPickFatigue` | `10` | Exhaustion harvesting a plant or a nirnroot costs, on the same scale; a bar that cannot pay refuses the harvest |
 | `needsAttributePenalties` | `true` | `false` sends no max stamina or max magicka penalty |
-| `needsSurvivalModeFlag` | `false` | `true` makes clients set the Creation's `Survival_ModeEnabled` to 1, only needed if the HUD draws the red penalty segments in Survival mode alone; it may bring Survival side effects such as arrow weight |
+| `needsSurvivalModeFlag` | `true` | Clients set the Creation's `Survival_ModeEnabled` to 1 with every `needsState`. The engine only calls the HUD's `ShowSurvivalElements(true)` under that global, and with `false` the HUD zeroes the red penalty segments whatever the penalty globals hold, so `false` hides them. `true` also brings the engine's own Survival extras on every client: arrows and bolts weigh 0.1, armour cards show a Warmth line. Survival's quests and scripts stay off, so no hunger, cold or exhaustion effect starts from it. Read at boot |
 | `blockStaminaCost` | `0.1` | Share of max stamina a blocked weapon hit costs the blocker; applies with needs off too, `0` turns it off |
 | `blockStaminaCostWarrior` | `0.05` | What a warrior pays instead |
 | `blockStaggerWithoutStamina` | `true` | A blocker whose stamina is below the block cost still blocks that hit but is staggered on their own screen and on their copies (at most once a second, never while downed, mounted or seated); logs `[needs] <id> staggered: blocked without stamina`. Needs the matching client |

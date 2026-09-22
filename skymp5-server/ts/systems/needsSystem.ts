@@ -58,7 +58,7 @@ type Mp = any;
 //   needsMineFatigueMiner         what a miner pays instead, default 10
 //   needsPickFatigue              exhaustion harvesting a plant or nirnroot costs, default 10
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
-//   needsSurvivalModeFlag         true sets the client's Survival_ModeEnabled to 1, if the HUD penalty segments need it, default false
+//   needsSurvivalModeFlag         true sets the client's Survival_ModeEnabled to 1, which the HUD needs to draw the penalty segments, default true
 //   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
 //   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
 //   blockStaggerWithoutStamina    a blocker whose stamina is below the cost is staggered, default true
@@ -184,7 +184,7 @@ export class NeedsSystem implements System {
     this.mineFatigueOwn = num("needsMineFatigueMiner", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
     this.pickFatigue = num("needsPickFatigue", DEFAULT_PICK_FATIGUE, 0);
     this.penalties = all["needsAttributePenalties"] !== false;
-    this.survivalModeFlag = all["needsSurvivalModeFlag"] === true;
+    this.survivalModeFlag = all["needsSurvivalModeFlag"] !== false;
     const free = Array.isArray(all["needsFatigueFreeKeywords"]) ? (all["needsFatigueFreeKeywords"] as unknown[]).filter((k) => typeof k === "string") as string[] : ["AldCraftingMead"];
 
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
@@ -698,7 +698,7 @@ export class NeedsSystem implements System {
   private mineFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
   private pickFatigue = DEFAULT_PICK_FATIGUE;
   private penalties = true;
-  private survivalModeFlag = false;
+  private survivalModeFlag = true;
 
   private hungerSpells: number[] = [];
   private fatigueSpells: number[] = [];
