@@ -41,6 +41,7 @@ const serverSettings = [
   { key: 'voiceChat',               label: 'Voice chat',            type: 'json',   group: 'Gameplay', help: 'LiveKit proximity voice: { enabled, url, apiKey, apiSecret, room, rangeUnits }. rangeUnits = MAX talk range (defaults to chatRanges.shout); speakers pick their range between chatRanges.whisper and this with V + mousewheel.' },
   { key: 'maskName',                label: 'Mask name',             type: 'text',   group: 'Gameplay', help: 'Name shown for a /mask-ed player. Default "Masked Person".' },
   { key: 'introduceCooldownMs',     label: 'Introduce cooldown (ms)', type: 'number', group: 'Gameplay', help: 'Min gap between /introduce prompts to the same target. Default 10000.' },
+  { key: 'needsSurvivalModeFlag',   label: 'Survival mode flag on clients', type: 'bool', group: 'Gameplay', help: 'Off (default): clients only write the hunger and fatigue penalty shares into the Survival HUD globals. On: clients also set the Creation\'s Survival_ModeEnabled to 1, needed only if the HUD draws the red segments in Survival mode alone; may add arrow and lockpick weight, a Warmth readout and Survival sleep and wait menus. Read at boot.' },
 
   // Interactions (capture / carry / search / trade tunables)
   { key: 'captureInteractMaxDistance', label: 'Capture range',                 type: 'number', group: 'Interactions', help: 'Max game-units distance to start a capture/carry. Default 256.' },

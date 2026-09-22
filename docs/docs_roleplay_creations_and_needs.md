@@ -305,7 +305,9 @@ bar (hunger) and the magicka bar (fatigue). `needsService.ts` writes the share i
 `Survival_ModeEnabled` (`SRVE`, esl 0x826) to 1, for the case where the HUD draws the segments only in Survival mode;
 Survival's quests stay disabled. That flag can bring Survival side effects on each client (arrow and lockpick weight
 counting towards carry weight, a Warmth readout, sleep and wait menus, the food effects' hunger script), so turn it on
-only if the console check below needs it. `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
+only if the HUD check in the test plan below needs it. The live `server-settings.json` carries the key explicitly (the
+manager Settings tab lists it under Gameplay as "Survival mode flag on clients"); it is read at boot, so restart the
+game service after a change. `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
 The segments follow Survival's curve, starting at stage 2, and the stage notices remain the text cue.
 
 ## Deploy runbook
@@ -374,9 +376,19 @@ None of these has been run yet.
   client hot reload leaves it unchanged.
 - A Windhelm mead, a City of Dawnstar eel pie and a Windhelm bread restore 2, 220 and 18 hunger (0.2%, 22% and 1.8% of
   the bar).
-- Console `set Survival_HungerAttributePenaltyPercent to 30` shows red on the stamina bar; if it only shows with
-  `Survival_ModeEnabled` at 1 set `needsSurvivalModeFlag` to true, then check that arrows add no carry weight. The
-  health bar shows no red.
+- HUD check without the console (the console stays closed for everyone, admins included): log in with a character
+  that played about an hour (its stage notice reads Peckish or beyond, hunger over 160, since hunger persists per
+  character and drains 125/h online); within a few seconds of the first `needsState` the stamina bar shows a red
+  segment of roughly (hunger-159)/841, about 13% after one hour. Without such a character, set `needsHungerStages` to
+  `[10, 20, 30, 40, 50]` in `server-settings.json`, restart, log in (a fresh 145-hunger character is then stage 5 with
+  12.8%) and restore the stages afterwards; run that alone or with `needsHungerStageAbilities` false, since every
+  player online gets the stage abilities meanwhile. Red with `needsSurvivalModeFlag` false: keep false. No red: set the
+  flag true (manager Settings > Gameplay > Survival mode flag on clients), restart, re-check; if red now shows keep
+  true and confirm arrows still weigh 0, no Warmth readout, no Survival sleep or wait menu. The health bar shows no red.
+- Owner-only stand-in for the old console check: a `<game>\Data\Platform\PluginsDev\survival-hud-test.js` that on F9
+  sets `GlobalVariable.from(Game.getFormFromFile(0x2EDF, 'Update.esm'))` to 30 and on F10 sets 0x826 of
+  `ccQDRSSE001-SurvivalMode.esl` to 1; SkyrimPlatform loads `PluginsDev`, the launcher never deletes it, and the value
+  holds until the next `needsState` (sent on change only). Delete the file after the test.
 - Crafting at a forge as a Novice outside Blacksmith costs 1/6; the seventh craft is refused and the menu closes; reopen
   the inventory: the refused item must be absent and its inputs present (the resent inventory corrects the client);
   logging out for 10 minutes refills 16%.
