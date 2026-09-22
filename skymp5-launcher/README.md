@@ -31,7 +31,7 @@ src/
     index.html     UI shell: topbar, content grid, modals
     renderer.js    Event listeners, API calls, settings, news/modlist rendering
     styles.css     Dark theme, glass effects, custom fonts
-assets/            App icon (icon.ico), background.gif, controlmap.txt, 7zip/ and xdelta/ (shipped as extraResources)
+assets/            App icon (icon.ico) and topbar logo (logo-96.png), both from misc/logo/make_logo.py; background.gif, controlmap.txt, 7zip/ and xdelta/ (shipped as extraResources)
 ```
 
 ## Development

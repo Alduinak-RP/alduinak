@@ -88,18 +88,10 @@ html, body {
 }
 
 .logo-emblem {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--glass-border-bright);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Cinzel Decorative', 'Cinzel', serif;
-  font-size: 16px;
-  font-weight: 700;
-  color: #ff2222;
-  background: rgba(255, 34, 34, 0.08);
-  box-shadow: 0 0 12px rgba(255, 34, 34, 0.15);
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(255, 34, 34, 0.25));
 }
 
 .logo-text-block {

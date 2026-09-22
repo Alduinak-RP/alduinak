@@ -60,12 +60,8 @@ button {
 .brand-mark {
   width: 42px;
   height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #17110a;
-  font-weight: 900;
+  object-fit: contain;
+  background: transparent;
 }
 
 .brand span,
