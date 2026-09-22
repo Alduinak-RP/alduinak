@@ -3503,7 +3503,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, the collision box left in the gateway of the iron gate in the Whiterun outer wall, and the ceiling rubble, the hall collapse and the collision box that block the Helgen keep escape tunnel (HelgenKeep01), whose opening quest never runs here. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -3538,16 +3538,7 @@
    "016805:AlduinakAdditions.esp",
    "016807:AlduinakAdditions.esp",
    "1115B9:Warbirds Whiterun Metropolis.esp",
-   "001E64:AlduinakAdditions.esp",
-   "0C7FA2:Skyrim.esm",
-   "0B15FD:Skyrim.esm",
-   "0B1604:Skyrim.esm",
-   "0B1605:Skyrim.esm",
-   "0B1606:Skyrim.esm",
-   "0B160C:Skyrim.esm",
-   "0B160D:Skyrim.esm",
-   "0B160E:Skyrim.esm",
-   "10553D:Skyrim.esm"
+   "001E64:AlduinakAdditions.esp"
   ]
  },
  "disableActors": {

@@ -90,6 +90,7 @@ import { KickService } from "./services/services/kickService";
 import { MenuMediaService } from "./services/services/menuMediaService";
 import { CharacterProgressService } from "./services/services/characterProgressService";
 import { StaticRefsService } from "./services/services/staticRefsService";
+import { CellAnimationsService } from "./services/services/cellAnimationsService";
 import { LipSyncService } from "./services/services/lipSyncService";
 
 once("update", () => {
@@ -165,6 +166,7 @@ const main = () => {
       new VoiceService(sp, controller),
       new LipSyncService(sp, controller),
       new StaticRefsService(sp, controller),
+      new CellAnimationsService(sp, controller),
       new AdminMenuService(sp, controller),
       new AdminModeService(sp, controller),
       new FactionService(sp, controller),
