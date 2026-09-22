@@ -16,6 +16,7 @@ const path    = require('path')
 const crypto  = require('crypto')
 const zlib    = require('zlib')
 const { execFileSync } = require('child_process')
+const { CLIENT_PACKAGE_LABEL, isClientPackage, sha256File } = require('./client-package')
 // Prefer a full 7-Zip: the standalone 7za from 7zip-bin has no Rar codec, so
 // .rar downloads would be silently skipped and their mods inlined instead.
 const SEVEN = [process.env.ALDUINAK_7Z, 'C:\\Program Files\\7-Zip\\7z.exe']
@@ -47,7 +48,8 @@ const MODS        = path.join(MO2, 'mods')
 const PROFILE_DIR = path.join(MO2, 'profiles', args.profile)
 const DATA_DIR    = path.join(__dirname, '..', 'data')
 const OUT         = args.out ? path.resolve(args.out) : path.join(DATA_DIR, 'install-manifest.json')
-const MODLIST_OUT = path.join(DATA_DIR, 'modlist.json')
+const MODLIST_OUT = path.join(path.dirname(OUT), 'modlist.json')
+const VERSION_FILE = path.join(DATA_DIR, 'files-version.json')
 
 // Where the launcher looks for Creation files, relative to the game root; Keizaal's launcher parks them in _disabledByKzl
 const CREATION_SEARCH_DIRS = ['Data', 'Data/_disabledByKzl', '_disabledByKzl', 'Data/disabled_by_kzl', 'disabled CC mods']
@@ -75,16 +77,6 @@ try {
 // Hash helpers
 
 function sha256Buf(buf)  { return crypto.createHash('sha256').update(buf).digest('hex') }
-
-function sha256File(p) {
-  return new Promise((resolve, reject) => {
-    const h = crypto.createHash('sha256')
-    fs.createReadStream(p)
-      .on('data', d => h.update(d))
-      .on('end', () => resolve(h.digest('hex')))
-      .on('error', reject)
-  })
-}
 
 // Streaming sha256 + CRC32 + size: mod folders hold multi-GB BSAs, so file
 // contents must never be loaded into memory just to hash them.
@@ -316,17 +308,36 @@ async function main() {
     return { to: toRel, inline, sha256: sha, size }
   }
 
+  // Data paths the last client zip carries, by sha256, to flag a mod copy that differs from it
+  let zipped = new Map()
+  try {
+    zipped = new Map(JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8')).files
+      .filter(f => /^Data\//i.test(f.path)).map(f => [f.path.slice(5).toLowerCase(), f.sha256]))
+  } catch { /* no zip built yet */ }
+  const zipDiffers = []
+  let packageDrops = 0, packageMods = 0
+
   for (const modName of order) {
     const modDir = path.join(MODS, modName)
     if (!fs.existsSync(modDir)) continue
     const all = walk(modDir)
-    const rels = all.filter(r => r.toLowerCase() !== 'meta.ini')
+    const kept = all.filter(r => r.toLowerCase() !== 'meta.ini')
       .filter(r => path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE)
+    // The client zip delivers the SkyMP package into the real Data; a mod copy would shadow it under MO2
+    const rels = kept.filter(r => !isClientPackage(r))
+    if (rels.length < kept.length) {
+      packageDrops += kept.length - rels.length
+      packageMods++
+      console.log(`  [client package] ${modName}: left out ${kept.length - rels.length} file(s) the client zip delivers (${CLIENT_PACKAGE_LABEL})`)
+    }
     if (rels.length === 0) continue
 
     const files = []
     for (const rel of rels) {
-      files.push(await directiveFor(path.join(modDir, rel.split('/').join(path.sep)), rel, modName))
+      const f = await directiveFor(path.join(modDir, rel.split('/').join(path.sep)), rel, modName)
+      const zipSha = zipped.get(rel.toLowerCase())
+      if (zipSha && zipSha !== f.sha256) zipDiffers.push(`${modName}: ${rel} differs from the client zip copy`)
+      files.push(f)
     }
     mods.push({ name: modName, modId: readModId(modDir), files, hash: contentHash(files) })
   }
@@ -396,7 +407,12 @@ async function main() {
   console.log(`creations:   ${creations ? `${creations.plugins.length} plugins, ${creations.files.length} files (schema 3)` : 'none'}`)
   console.log(`root files:  ${root.length}`)
   console.log(`directives:  ${mods.reduce((n, m) => n + m.files.length, 0) + root.length} (${inlineCount} inline)`)
+  console.log(`client package: ${packageDrops} file(s) left out of ${packageMods} mod(s)`)
 
+  if (zipDiffers.length) {
+    console.warn('\nMod files that differ from the client zip copy (the mod copy wins under MO2, the zip in the direct install):')
+    for (const w of zipDiffers) console.warn(`  - ${w}`)
+  }
   const manual = usedArchives.filter(a => a.source.type === 'manual')
   if (manual.length) {
     console.warn('\nReferenced archives with NO download source - the launcher cannot fetch these.')

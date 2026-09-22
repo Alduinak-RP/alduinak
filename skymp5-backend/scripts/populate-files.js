@@ -7,6 +7,7 @@
 
 const fs   = require('fs')
 const path = require('path')
+const { REQUIRED } = require('./client-package')
 
 // Source: the skymp build output Data/ directory
 const SKYMP_DATA = process.env.SKYMP_CLIENT_DATA
@@ -48,15 +49,6 @@ if (skippedPlugins.length > 0) {
 }
 
 // Completeness check
-const REQUIRED = [
-  'Platform/UI/index.html',                                   // CEF connect-window page
-  'Platform/UI/build.js',                                     // connect-menu front-end bundle
-  'Platform/Plugins/skymp5-client.js',                        // client logic
-  'SKSE/Plugins/SkyrimPlatform.dll',                          // JS/CEF host plugin
-  'SKSE/Plugins/MpClientPlugin.dll',                          // multiplayer plugin
-  'Platform/Distribution/RuntimeDependencies/libcef.dll',     // CEF runtime
-  'Platform/Distribution/RuntimeDependencies/SkyrimPlatformCEF.exe.hidden',
-]
 const missing = REQUIRED.filter(rel => !fs.existsSync(path.join(DATA_DEST, rel.replace(/\//g, path.sep))))
 
 console.log(`\nDone. ${copied} file(s) copied.`)

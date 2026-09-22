@@ -114,26 +114,32 @@ only logged.
 
 ## Client files
 
-Under MO2 the SkyMP client (Platform/, SkyrimPlatform.dll, MpClientPlugin.dll)
-comes from the Nexus mod 'Alduinak Client Files' like any other mod: any
-manifest mod that carries `Platform/Plugins/skymp5-client.js` counts
-(`clientMods`). The launcher then only writes `skymp5-client-settings.txt` and
-the auth file into the real Data (the manifest never ships a settings file, or
-MO2 would let it shadow this one) and stores the backend's files version at the
-end of the run, so the launch gate still passes. The Engine Fixes preloader
-`d3dx9_42.dll` comes from the manifest's `root` list (`rootInclude` on the
-backend) and is restored whenever it goes missing. Launch checks find client
-files and plugins in the real Data or any mod folder (`dataFileFinder`).
+The SkyMP client package (`Platform/**`, `SKSE/Plugins/SkyrimPlatform.dll`,
+`SKSE/Plugins/MpClientPlugin.dll`, `Scripts/MpClientPlugin.pex`,
+`Scripts/TESModPlatform.pex`; the list is `skymp5-backend/scripts/client-package.js`)
+comes from the backend zip (`/api/files/zip`, built by Build Client) and is
+extracted into the real Data, under MO2 and in the direct install alike.
+`compile-manifest.js` keeps those paths out of every manifest mod, whatever the
+mod folder holds, because under MO2 a mod copy shadows the real Data and a
+client build then never reaches players (the r13 play test ran a two-day-old
+client that way). The launcher still honours a manifest mod that carries
+`Platform/Plugins/skymp5-client.js` (`clientMods`), which no manifest built
+with the guard contains; the Nexus mod 'Alduinak Client Files' must never carry
+`Platform/` or the SkyMP dlls and pex files, only the plugin, the
+CraftingCategories json, meshes, scripts and Address Library's bins.
 
-Without a client mod in the manifest, and in the direct (no MO2) install, the
-launcher still extracts the backend zip into the real Data. That is also the
-fallback if the client does not work through MO2's virtual file system: delete
-`Platform/` and `SKSE/Plugins/SkyrimPlatform.dll` / `MpClientPlugin.dll` from
-the client mod folder in the reference MO2, run Update manifest, and every
-launcher goes back to the zip on its next PLAY, with no launcher rebuild.
+The launcher writes `skymp5-client-settings.txt` and the auth file into the real
+Data (the manifest never ships a settings file, or MO2 would let it shadow this
+one). The Engine Fixes preloader `d3dx9_42.dll` comes from the manifest's
+`root` list (`rootInclude` on the backend) and is restored whenever it goes
+missing. Launch checks find client files and plugins in the real Data or any
+mod folder (`dataFileFinder`).
 
-From now on a client change reaches MO2 players only through a new Nexus file:
-Build Client, upload the Nexus file, then Update manifest.
+A client change reaches players through the zip alone: set a new **Client
+version** in the manager's Build tab (launchers download the zip only when the
+version differs from the one they stored, `files:updateCheck` and
+`installClientFilesCore`), then Build Client. No Nexus upload and no Update
+manifest are needed for a client change.
 
 ## Stray files in the game copy
 

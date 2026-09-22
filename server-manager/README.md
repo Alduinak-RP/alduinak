@@ -80,6 +80,12 @@ fails it prints a direct download URL - save that zip as
   the purge re-encodes ids from, and keeps carrying it until that purge ran.
   A `skymp5-client-settings.txt` in any mod folder is left out of the
   manifest: under MO2 it would shadow the per-player file the launcher writes.
+  So is the SkyMP client package (`Platform/**`, the SkyrimPlatform and
+  MpClientPlugin dlls, the MpClientPlugin and TESModPlatform pex files, listed
+  in `skymp5-backend/scripts/client-package.js`): the client zip delivers it,
+  and a mod copy would shadow the zip's. The log names each mod that lost files
+  that way and warns about a remaining mod file whose sha256 differs from the
+  zip's copy of the same path.
   Modlist output goes to the tab's own log.
   - **Sync server settings** rewrites `loadOrder` in `server-settings.json` to
     the five vanilla masters followed by the manifest's enabled plugins (each as
