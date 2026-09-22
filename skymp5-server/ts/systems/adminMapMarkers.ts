@@ -50,7 +50,7 @@ export const MAP_MARKER_LOCATIONS = [
   { name: "Harmugstahl", kind: "Fort", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-137142.45, 55392.14, -7762.87], rot: [0, 0, 0] },
   { name: "Helgen", kind: "Town", group: "villages", cellOrWorldDesc: "3c:Skyrim.esm", pos: [18350.4, -79480.97, 9204.41], rot: [0, 0, 84.98] },
   { name: "Heljarchen Hall", kind: "Town", group: "villages", cellOrWorldDesc: "3c:Skyrim.esm", pos: [31439.17, 38616.27, -5746.75], rot: [0, 0, 0] },
-  { name: "High Hrothgar", kind: "Fort", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [52070.79, -36267.07, 22569.35], rot: [0, 0, 176.19] },
+  { name: "High Hrothgar", kind: "Fort", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [51870.79, -36267.07, 22799.35], rot: [0, 0, 176.19] },
   { name: "Highpoint Tower", kind: "Fort", group: "forts", cellOrWorldDesc: "800:Dragonborn.esm", pos: [49334.44, 38003.54, 4709.49], rot: [0, 0, 0] },
   { name: "Hjaalmarch Imperial Camp", kind: "Imperial Camp", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-19539.53, 79464.11, -13767.71], rot: [0, 0, 180.73] },
   { name: "Hjaalmarch Stormcloak Camp", kind: "Stormcloak Camp", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-10857.73, 84544.58, -12792], rot: [0, 0, 87.05] },

@@ -63,6 +63,9 @@ KINDS = {
     **{t: 'Castle' for t in range(35, 52, 2)},
 }
 
+# (name, kind) -> offset added to the marker position; High Hrothgar's marker sits under the courtyard in the entrance stairs
+NUDGES = {('High Hrothgar', 'Fort'): (-200.0, 0.0, 230.0)}
+
 TEMPLE = 'Temple'
 
 # Kind label -> Teleport tab section; the panel files anything else under Other
@@ -253,7 +256,8 @@ def main():
         if (m['name'], kind) in rows:
             print(f'duplicate {kind} {m["name"]} {desc(key)} skipped', file=sys.stderr)
             continue
-        rows[(m['name'], kind)] = (m['name'], kind, proper(m['place']), [num(v) for v in m['pos']], num(math.degrees(m['rz']) % 360), m['plugin'])
+        nudge = NUDGES.get((m['name'], kind), (0.0, 0.0, 0.0))
+        rows[(m['name'], kind)] = (m['name'], kind, proper(m['place']), [num(v + d) for v, d in zip(m['pos'], nudge)], num(math.degrees(m['rz']) % 360), m['plugin'])
     for label, cell, door in temples(places, doors):
         rows[(label, TEMPLE)] = (label, TEMPLE, proper(cell), [num(v) for v in door['pos']], num(math.degrees(door['rz']) % 360), door['plugin'])
         print(f'temple {label:40} {places[cell]["edid"]:32} {proper(cell):26} via door {proper(door["dest"])} <- {desc(door["place"])}', file=sys.stderr)
