@@ -30,6 +30,7 @@ import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { WritingSystem } from "./systems/writingSystem";
 import { CaptureSystem } from "./systems/captureSystem";
 import { BleedoutSystem } from "./systems/bleedoutSystem";
+import { WorldFloorSystem } from "./systems/worldFloorSystem";
 import { ExecutionSystem } from "./systems/executionSystem";
 import { TradeSystem } from "./systems/tradeSystem";
 import { CraftedExtrasSystem } from "./systems/craftedExtrasSystem";
@@ -239,6 +240,8 @@ const main = async () => {
   const captureSystem = new CaptureSystem(log);
   // Players brought to 0 health bleed out; capture and carry rescue them
   const bleedoutSystem = new BleedoutSystem(log, captureSystem);
+  // A fall through the world below a space's floor is a death and a temple respawn
+  const worldFloorSystem = new WorldFloorSystem(log, bleedoutSystem);
   // Sovngarde and the Soul Cairn: soul trap, finish off and execution send characters there
   const afterlifeSystem = new AfterlifeSystem(log);
   const housingSystem = new HousingSystem(log);
@@ -275,6 +278,7 @@ const main = async () => {
     captureSystem,
     // Early, so the hit observers wrapped after it (hosting, companions) never see a refused hit on a downed player
     bleedoutSystem,
+    worldFloorSystem,
     afterlifeSystem,
     housingSystem,
     factionSystem,

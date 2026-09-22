@@ -402,6 +402,8 @@ Faction-only doors and containers come from `faction-access.json` next to `gamem
 
 All optional; see `docs/docs_roleplay_survival_loop.md` section 8 for the system. A player at 0 health bleeds out only with the native server build that fires `onKillAttempt`.
 
+World floor (no setting): a living player below Z -40000 in Tamriel or below -30000 in any other cell or worldspace has fallen through the world. The server kills them (`[floor]` and `[bleedout] ... fell out of the world` log lines, the Discord death line) and they respawn in the nearest temple after `respawnSeconds`, also after a relog into a saved void position.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `bleedoutSeconds` | `15` | Seconds a downed player has before dying, unless healed, captured or carried |
