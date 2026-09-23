@@ -1,5 +1,7 @@
 import { Actor } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { TimersService } from "./timersService";
+import { logToPlatformLog } from "../../logging";
 
 export class RagdollService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -10,15 +12,27 @@ export class RagdollService extends ClientListener {
     // TODO: think about tracking ragdoll state of player
     public safeRemoveRagdollFromWorld = (
         actor: Actor,
-        afterRemoveCallback: () => void
+        afterRemoveCallback: (returned: boolean) => void,
+        deadlineMs?: number
     ) => {
+        let done = false;
+        const finish = (returned: boolean) => {
+            if (done) return;
+            done = true;
+            this.setLocalDamageMult(this.defaultLocalDamageMult);
+            afterRemoveCallback(returned);
+        };
         this.setLocalDamageMult(0);
-        actor.forceRemoveRagdollFromWorld().then(() => {
-            this.controller.once("update", () => {
-                this.setLocalDamageMult(this.defaultLocalDamageMult);
-                afterRemoveCallback();
-            });
-        });
+        actor.forceRemoveRagdollFromWorld().then(
+            () => this.controller.once("update", () => finish(true)),
+            (e) => {
+                logToPlatformLog(this, `forceRemoveRagdollFromWorld failed: ${e}`);
+                this.controller.once("update", () => finish(false));
+            },
+        );
+        if (deadlineMs !== undefined) {
+            this.controller.lookupListener(TimersService).setTimeout(() => this.controller.once("update", () => finish(false)), deadlineMs);
+        }
     };
 
     private onceUpdate() {

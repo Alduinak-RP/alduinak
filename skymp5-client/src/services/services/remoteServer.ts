@@ -25,7 +25,7 @@ import { setActorValuePercentage } from '../../sync/actorvalues';
 import { applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '../../sync/equipment';
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
-import { Movement } from '../../sync/movement';
+import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
 import { dropUnlistedBaseSpells, learnSpells, removeAllSpells, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
@@ -65,6 +65,7 @@ import {
   remoteIdToLocalId,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
+import { TimersService } from './timersService';
 import { logTrace, logError, logToPlatformLog } from '../../logging';
 import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved, resyncHandGraph } from '../../sync/equipment';
 import { isRiderClone } from '../../sync/mountApply';
@@ -73,7 +74,7 @@ import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
 import { MsgType } from '../../messages';
 import { CustomPacketMessage } from '../messages/customPacketMessage';
-import { parseCustomPacket } from './customPacketUtil';
+import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from './customPacketUtil';
 
 export const getPcInventory = (): Inventory | undefined => {
   const res = storage['pcInv'];
@@ -115,6 +116,24 @@ const requestWornEnchantmentReapply = (): void => {
   }
   wornEnchantmentReapplyAt = Math.min(now + WORN_ENCHANTMENT_REAPPLY_DELAY_MS, wornEnchantmentReapplyDeadline);
 };
+
+const PLAYER_TELEPORT_CHECK_MS = 3000;
+const PLAYER_TELEPORT_MOVES = 3;
+const PLAYER_TELEPORT_RAGDOLL_MS = 1000;
+const PLAYER_TELEPORT_RESYNC_MS = 3000;
+// The server's MovementValidation reach, so anything closer is accepted there
+const PLAYER_TELEPORT_REACH = 4096;
+// A repeat of the pending target, such as the TeleportMessage2 answering the first old-cell movement
+const PLAYER_TELEPORT_SAME = 256;
+
+interface PlayerTeleport {
+  pos: NiPoint3;
+  rot: NiPoint3;
+  worldOrCell: number;
+  moves: number;
+  nextCheckAt: number;
+  ragdollReturned: boolean;
+}
 
 const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
 let spawnEquipment: Equipment | undefined;
@@ -223,6 +242,10 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("updateAnimVariablesMessage", (e) => this.onUpdateAnimVariablesMessage(e));
 
     this.controller.on("update", () => this.sweepCloneCasts());
+    this.controller.on("update", () => this.checkPlayerTeleport());
+    this.controller.on("menuOpen", (e) => { if (e.name === Menu.RaceSex) this.raceMenuSeen = true; });
+    this.controller.emitter.on("gameLoad", () => { this.lastLoadAt = Date.now(); });
+    this.controller.emitter.on("connectionDisconnect", () => { this.playerTeleport = undefined; });
     // Diagnostic: whether the diagnosed clone's graph took the replayed cast event
     this.sp.hooks.sendAnimationEvent.add({
       enter: () => { },
@@ -480,6 +503,11 @@ export class RemoteServer extends ClientListener {
         }
       }
 
+      if (refrId === 0x14) {
+        this.beginPlayerTeleport(msg, Actor.from(refr));
+        return;
+      }
+
       const removeRagdollCallback = () => {
         TESModPlatform.moveRefrToPosition(
           ObjectReference.from(Game.getFormEx(refrId || 0)),
@@ -492,7 +520,6 @@ export class RemoteServer extends ClientListener {
           msg.rot[1],
           msg.rot[2],
         );
-        if (refrId === 0x14) this.controller.lookupListener(RestraintService).onTeleported();
       };
       const actor = Actor.from(refr);
       if (actor /*&& actor.getFormID() === 0x14*/) {
@@ -500,6 +527,103 @@ export class RemoteServer extends ClientListener {
       } else {
         removeRagdollCallback();
       }
+    });
+  }
+
+  private beginPlayerTeleport(msg: TeleportMessage | TeleportMessage2, player: Actor | null): void {
+    if (this.resyncing || !player) {
+      return;
+    }
+    const pos: NiPoint3 = [msg.pos[0], msg.pos[1], msg.pos[2]];
+    const pending = this.playerTeleport;
+    if (pending && pending.worldOrCell === msg.worldOrCell && ObjectReferenceEx.getDistance(pending.pos, pos) < PLAYER_TELEPORT_SAME) {
+      return;
+    }
+    const target: PlayerTeleport = {
+      pos,
+      rot: [msg.rot[0], msg.rot[1], msg.rot[2]],
+      worldOrCell: msg.worldOrCell,
+      moves: 0,
+      nextCheckAt: Infinity,
+      ragdollReturned: true,
+    };
+    this.playerTeleport = target;
+    this.controller.lookupListener(RagdollService).safeRemoveRagdollFromWorld(player, (returned) => {
+      if (this.playerTeleport !== target) {
+        return;
+      }
+      target.ragdollReturned = returned;
+      this.movePlayerTo(target);
+    }, PLAYER_TELEPORT_RAGDOLL_MS);
+  }
+
+  private movePlayerTo(target: PlayerTeleport): void {
+    target.moves++;
+    target.nextCheckAt = Date.now() + PLAYER_TELEPORT_CHECK_MS;
+    const place = Game.getFormEx(target.worldOrCell);
+    TESModPlatform.moveRefrToPosition(
+      Game.getPlayer(),
+      Cell.from(place),
+      WorldSpace.from(place),
+      target.pos[0],
+      target.pos[1],
+      target.pos[2],
+      target.rot[0],
+      target.rot[1],
+      target.rot[2],
+    );
+    this.controller.lookupListener(RestraintService).onTeleported();
+  }
+
+  private checkPlayerTeleport(): void {
+    const target = this.playerTeleport;
+    if (!target || target.moves === 0) {
+      return;
+    }
+    if (Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.RaceSex)) {
+      target.nextCheckAt = Date.now() + PLAYER_TELEPORT_CHECK_MS;
+      return;
+    }
+    if (Date.now() < target.nextCheckAt) {
+      return;
+    }
+    const player = Game.getPlayer();
+    if (!player) {
+      return;
+    }
+    const at = ObjectReferenceEx.getWorldOrCell(player);
+    const pos = ObjectReferenceEx.getPos(player);
+    if (at === target.worldOrCell && ObjectReferenceEx.getDistance(pos, target.pos) < PLAYER_TELEPORT_REACH) {
+      this.playerTeleport = undefined;
+      if (target.moves > 1 || !target.ragdollReturned) {
+        this.reportPlayerTeleport('recovered', target, at);
+      }
+      return;
+    }
+    if (target.moves < PLAYER_TELEPORT_MOVES) {
+      logToPlatformLog(this, `teleport to ${target.worldOrCell.toString(16)} did not take, player in ${at.toString(16)} at ${pos.map((v) => Math.round(v)).join(',')}, move ${target.moves + 1}`);
+      this.movePlayerTo(target);
+      return;
+    }
+    this.playerTeleport = undefined;
+    this.resyncing = true;
+    this.reportPlayerTeleport('stuck', target, at);
+    notifyNextUpdate(this.controller, this.sp, 'Your position fell out of sync with the server. Returning to character select, choose your character to continue.');
+    this.controller.lookupListener(TimersService).setTimeout(() => this.controller.once('update', () => { if (this.resyncing) Game.quitToMainMenu(); }), PLAYER_TELEPORT_RESYNC_MS);
+  }
+
+  private reportPlayerTeleport(outcome: 'recovered' | 'stuck', target: PlayerTeleport, at: number): void {
+    const sinceLoadS = this.lastLoadAt ? Math.round((Date.now() - this.lastLoadAt) / 1000) : -1;
+    logToPlatformLog(this, `teleport ${outcome}: to ${target.worldOrCell.toString(16)}, player in ${at.toString(16)}, ${target.moves} move(s), ragdoll wait ${target.ragdollReturned ? 'returned' : 'failed or timed out'}, race menu seen ${this.raceMenuSeen}, ${sinceLoadS} s since load`);
+    sendCustomPacket(this.controller, {
+      customPacketType: 'teleportReport',
+      outcome,
+      worldOrCell: target.worldOrCell,
+      clientWorldOrCell: at,
+      moves: target.moves,
+      ragdollReturned: target.ragdollReturned,
+      raceMenuSeen: this.raceMenuSeen,
+      sinceLoadS,
     });
   }
 
@@ -644,6 +768,8 @@ export class RemoteServer extends ClientListener {
     if (msg.isMe) {
       this.worldModel.playerCharacterFormIdx = i;
       this.worldModel.playerCharacterRefrId = msg.refrId || 0;
+      this.playerTeleport = undefined;
+      this.resyncing = false;
     }
 
     // A failed load leaves our 'update' callbacks queued; a newer spawn of ours drops them
@@ -1072,6 +1198,8 @@ export class RemoteServer extends ClientListener {
     this.worldModel.forms = [];
     this.worldModel.playerCharacterFormIdx = -1;
     this.worldModel.playerCharacterRefrId = 0;
+    this.playerTeleport = undefined;
+    this.resyncing = false;
 
     logTrace(this, "Handle connection accepted");
   }
@@ -1408,4 +1536,8 @@ export class RemoteServer extends ClientListener {
   private lastCloneCastReportAt = 0;
   private playerSpawnSeq = 0;
   private numSetInventory = 0;
+  private playerTeleport?: PlayerTeleport;
+  private resyncing = false;
+  private raceMenuSeen = false;
+  private lastLoadAt = 0;
 }

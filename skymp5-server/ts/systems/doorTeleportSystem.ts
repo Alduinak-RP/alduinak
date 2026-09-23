@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext } from "./system";
+import { System, Log, SystemContext, Content } from "./system";
 import { formIdFromConfig } from "./formIdUtil";
 import { hex, userOf } from "./actorUtil";
 
@@ -42,6 +42,10 @@ const DEFAULT_OVERRIDES: Record<string, unknown>[] = [
 // A held activate key fires repeatedly; one move per player per second is plenty.
 const MOVE_COOLDOWN_MS = 1000;
 
+// Client teleport reports are logged at most this often per user
+const LATE_REPORT_EVERY_MS = 30000;
+const STUCK_REPORT_EVERY_MS = 10000;
+
 interface DoorDestination {
   cellOrWorldDesc: string;
   pos: number[];
@@ -61,6 +65,8 @@ export class DoorTeleportSystem implements System {
 
   private destinations = new Map<number, DoorDestination>();
   private lastMoveMs = new Map<number, number>();
+  private lastLateReportMs = new Map<number, number>();
+  private lastStuckReportMs = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const raw = ((await Settings.get()).allSettings as Record<string, unknown> | null)?.["doorTeleportOverrides"];
@@ -72,6 +78,28 @@ export class DoorTeleportSystem implements System {
     }
     this.installActivationHook(ctx);
     this.log(`DoorTeleportSystem: ${this.destinations.size} door(s) redirected`);
+  }
+
+  customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
+    if (type !== "teleportReport") return;
+    const stuck = content.outcome === "stuck";
+    const lastReportMs = stuck ? this.lastStuckReportMs : this.lastLateReportMs;
+    const now = Date.now();
+    if (now - (lastReportMs.get(userId) || 0) < (stuck ? STUCK_REPORT_EVERY_MS : LATE_REPORT_EVERY_MS)) return;
+    lastReportMs.set(userId, now);
+    let actorId = 0;
+    let name = "";
+    try {
+      actorId = ctx.svr.getUserActor(userId);
+      name = String(ctx.svr.getActorName(actorId) ?? "");
+    } catch { /* no actor */ }
+    const what = stuck ? "did not follow a teleport and was sent to character select" : "followed a teleport late";
+    this.log(`[doors] ${hex(actorId)} (${name}) ${what}: target ${hex(Number(content.worldOrCell))}, client in ${hex(Number(content.clientWorldOrCell))}, ${Number(content.moves)} move(s), ragdoll wait ${content.ragdollReturned === false ? "failed or timed out" : "returned"}, race menu seen ${content.raceMenuSeen === true}, ${Number(content.sinceLoadS)} s since load`);
+  }
+
+  disconnect(userId: number): void {
+    this.lastLateReportMs.delete(userId);
+    this.lastStuckReportMs.delete(userId);
   }
 
   // An entry naming a door or a destination the load order has no form for is skipped and logged
