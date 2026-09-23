@@ -48,7 +48,7 @@ type Mp = any;
 //   needsFatigueRegenPerMinute    bar fraction refilled per minute, default 0.016
 //   needsFatigueOfflineRegen      false refills only while online, default true
 //   needsFatigueFreeKeywords      bench keywords whose recipes cost nothing, default ["AldCraftingMead"]
-//   needsFatigueFreeRecipes       recipe editor ids that cost nothing and keep their bench open, default ["AldRecipeKiln_Charcoal"]
+//   needsFatigueRecipeMult        { "<recipe editor id>": share of its bench's craft cost } merged over { AldRecipeKiln_Charcoal: 0.5 }; 0 is free
 //   needsFatigueStages            exhaustion at which stages 1-5 begin, default [80, 160, 340, 560, 800]
 //   needsFatigueStageAbilities    false grants no Survival exhaustion stage abilities, default true
 //   needsExhaustionMax            exhaustion of an empty fatigue bar, default 960 (Survival_ExhaustionNeedMaxValue)
@@ -113,7 +113,8 @@ const DEFAULT_PICK_FATIGUE = 10;
 const DEFAULT_CHOP_WOOD_PER_BAR = [12, 24, 48, 72, 96];
 const DEFAULT_CRAFTS_PER_HOUR = [6, 12, 18, 24];
 const DEFAULT_FREE_KEYWORDS = ["AldCraftingMead"];
-const DEFAULT_FREE_RECIPES = ["AldRecipeKiln_Charcoal"];
+// Charcoal is simple smelter work: half a craft
+const DEFAULT_RECIPE_MULT: Record<string, number> = { AldRecipeKiln_Charcoal: 0.5 };
 const STAGGER_COOLDOWN_MS = 1000;
 
 interface NeedsRecord {
@@ -157,6 +158,14 @@ const pct = (v: number): number => Math.round(v * 100);
 const share = (v: number): number => Math.round(v * 10000) / 10000;
 const numberList = (v: unknown, length: number): number[] | null =>
   Array.isArray(v) && v.length === length && v.every((x) => Number.isFinite(Number(x))) ? v.map(Number) : null;
+// A { name: number >= 0 } setting merged key by key over its defaults
+const numberMap = (v: unknown, defaults: Record<string, number>): Record<string, number> => {
+  const out = { ...defaults };
+  for (const [k, x] of Object.entries(v && typeof v === "object" ? v as Record<string, unknown> : {})) {
+    if (Number.isFinite(Number(x)) && Number(x) >= 0) out[k] = Number(x);
+  }
+  return out;
+};
 const lookup = (mp: Mp, id: number): any => {
   try { return id ? mp.lookupEspmRecordById(id) : null; } catch { return null; }
 };
@@ -184,11 +193,7 @@ export class NeedsSystem implements System {
     this.hungerStart = clamp(num("needsHungerStart", DEFAULT_HUNGER_START), 0, HUNGER_MAX);
     this.stages = numberList(all["needsHungerStages"], DEFAULT_STAGES.length) || DEFAULT_STAGES.slice();
     this.stageAbilities = all["needsHungerStageAbilities"] !== false;
-    const foodRaw = all["needsFoodHunger"];
-    const foodHunger: Record<string, number> = { ...DEFAULT_FOOD_HUNGER };
-    for (const [edid, v] of Object.entries(foodRaw && typeof foodRaw === "object" ? foodRaw as Record<string, unknown> : {})) {
-      if (Number.isFinite(Number(v)) && Number(v) >= 0) foodHunger[edid] = Number(v);
-    }
+    const foodHunger = numberMap(all["needsFoodHunger"], DEFAULT_FOOD_HUNGER);
     const crafts = numberList(all["needsFatigueCraftsPerHour"], DEFAULT_CRAFTS_PER_HOUR.length);
     this.craftsPerHour = crafts && crafts.every((c) => c > 0) ? crafts : DEFAULT_CRAFTS_PER_HOUR.slice();
     this.memberMult = num("needsFatigueMemberMult", 0.5);
@@ -208,7 +213,7 @@ export class NeedsSystem implements System {
     this.penalties = all["needsAttributePenalties"] !== false;
     this.survivalModeFlag = all["needsSurvivalModeFlag"] !== false;
     const freeKeywords = strings("needsFatigueFreeKeywords", DEFAULT_FREE_KEYWORDS);
-    const freeRecipes = strings("needsFatigueFreeRecipes", DEFAULT_FREE_RECIPES);
+    const recipeMult = numberMap(all["needsFatigueRecipeMult"], DEFAULT_RECIPE_MULT);
 
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
       all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0);
@@ -217,17 +222,18 @@ export class NeedsSystem implements System {
       this.log("[needs] disabled by needsEnabled");
       return;
     }
-    const probe = await this.resolveForms(ctx, freeKeywords, freeRecipes, foodHunger, s.dataDir, s.loadOrder);
+    const probe = await this.resolveForms(ctx, freeKeywords, recipeMult, foodHunger, s.dataDir, s.loadOrder);
+    const recipeLine = Object.entries(recipeMult).map(([edid, m]) => `${edid} x${m}`).join(", ");
     const foodLine = Object.entries(foodHunger).map(([edid, v]) => `${edid.replace(FOOD_EFFECT_PREFIX, "")} ${v}`).join(", ");
-    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank (members x${this.memberMult}, Imperials x${this.imperialMult}), +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s), ${this.freeRecipes.size} free recipe(s), firewood per bar ${this.chopWoodPerBar.join("/")} (outside the trade, then by woodworker rank)`);
+    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank (members x${this.memberMult}, Imperials x${this.imperialMult}), +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s), recipe costs ${recipeLine || "none"}, firewood per bar ${this.chopWoodPerBar.join("/")} (outside the trade, then by woodworker rank)`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
     this.installHooks(ctx);
   }
 
-  // Resolves the stage abilities, free bench keywords, free recipes and food effects; returns the probe effect's record amount, 0 when the records carry none
-  private async resolveForms(ctx: SystemContext, freeKeywords: string[], freeRecipes: string[], foodHunger: Record<string, number>, dataDir: string, loadOrder: string[]): Promise<number> {
+  // Resolves the stage abilities, free bench keywords, recipe costs and food effects; returns the probe effect's record amount, 0 when the records carry none
+  private async resolveForms(ctx: SystemContext, freeKeywords: string[], recipeMult: Record<string, number>, foodHunger: Record<string, number>, dataDir: string, loadOrder: string[]): Promise<number> {
     const mp = ctx.svr as Mp;
     const idOf = (scan: { resolved: Map<string, string> }, edid: string): number => {
       const desc = edid ? scan.resolved.get(edid.toLowerCase()) : undefined;
@@ -237,18 +243,23 @@ export class NeedsSystem implements System {
     const spells = await resolveEditorIds(spellNames, dataDir, loadOrder, this.log, ["SPEL"]);
     this.hungerSpells = HUNGER_SPELLS.map((edid) => idOf(spells, edid));
     this.fatigueSpells = FATIGUE_SPELLS.map((edid) => idOf(spells, edid));
-    const free = await resolveEditorIds([...freeKeywords, ...freeRecipes], dataDir, loadOrder, this.log, ["KYWD", "COBJ"]);
-    const idsOf = (edids: string[]): Set<number> => new Set(edids.map((edid) => idOf(free, edid)).filter((id) => id));
-    this.freeBenches = idsOf(freeKeywords);
-    this.freeRecipes = idsOf(freeRecipes);
-    this.freeRecipeBenches = new Set(Array.from(this.freeRecipes, (id) => this.mastery.recipeBench(ctx, id)).filter((k) => k));
+    const recipes = Object.keys(recipeMult);
+    const free = await resolveEditorIds([...freeKeywords, ...recipes], dataDir, loadOrder, this.log, ["KYWD", "COBJ"]);
+    this.freeBenches = new Set(freeKeywords.map((edid) => idOf(free, edid)).filter((id) => id));
+    for (const edid of recipes) {
+      const id = idOf(free, edid);
+      if (!id) continue;
+      this.recipeMult.set(id, recipeMult[edid]);
+      const bench = this.mastery.recipeBench(ctx, id);
+      if (bench) this.benchMult.set(bench, Math.min(this.benchMult.get(bench) ?? 1, recipeMult[edid]));
+    }
     const foodEdids = Object.keys(foodHunger);
     const effectNames = Array.from(new Set([PROBE_EFFECT, ...foodEdids]));
     const effects = await resolveEditorIds(effectNames, dataDir, loadOrder, this.log, ["MGEF"]);
     this.foodHunger = new Map(foodEdids.map((edid) => [idOf(effects, edid), foodHunger[edid]] as [number, number]).filter(([id]) => id));
     const probe = this.restoreAmountOf(mp, idOf(effects, PROBE_EFFECT));
     const missing = [...spellNames.filter((edid) => !spells.resolved.has(edid.toLowerCase())),
-      ...freeKeywords.concat(freeRecipes).filter((k) => !free.resolved.has(k.toLowerCase())),
+      ...freeKeywords.concat(recipes).filter((k) => !free.resolved.has(k.toLowerCase())),
       ...effectNames.filter((edid) => !effects.resolved.has(edid.toLowerCase()))];
     if (effects.resolved.has(PROBE_EFFECT.toLowerCase()) && !probe) this.log(`[needs] ${PROBE_EFFECT} carries no ${HUNGER_RESTORE_SCRIPT} amount in the load order: hunger effects outside needsFoodHunger restore nothing (AlduinakCreations.esp must keep Survival's effect edits)`);
     if (missing.length) this.log(`[needs] not in the load order, ignored: ${missing.join(", ")}`);
@@ -331,10 +342,11 @@ export class NeedsSystem implements System {
   // False refuses the craft; crafts without the inputs in the bag are left to the native side uncharged
   private chargeCraft(ctx: SystemContext, actorId: number, recipeId: number): boolean {
     const entry = this.online.get(actorId);
-    if (!entry || this.freeRecipes.has(recipeId) || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
+    const mult = this.recipeMult.get(recipeId) ?? 1;
+    if (!entry || mult <= 0 || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
     const bench = this.mastery.recipeBench(ctx, recipeId);
     if (this.freeBenches.has(bench)) return true;
-    const cost = this.craftCost(ctx, actorId, bench);
+    const cost = this.craftCost(ctx, actorId, bench) * mult;
     this.advance(entry.rec, Date.now(), true);
     if (entry.rec.fatigue + EPSILON < cost) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
@@ -346,15 +358,16 @@ export class NeedsSystem implements System {
     return true;
   }
 
-  // A bench the character cannot pay one recipe at never opens its menu, unless it offers a free recipe
+  // A bench never opens its menu to a character who cannot pay its cheapest recipe
   private tooTiredForBench(ctx: SystemContext, refrId: number, actorId: number): boolean {
     const entry = this.online.get(actorId);
     if (!entry) return false;
-    const keywords = this.mastery.stationKeywords(ctx, refrId);
-    if (!keywords.size || Array.from(keywords).some((k) => this.freeBenches.has(k) || this.freeRecipeBenches.has(k))) return false;
-    const bench = Array.from(keywords).filter((k) => this.mastery.professionOfBench(k))[0];
+    const keywords = Array.from(this.mastery.stationKeywords(ctx, refrId));
+    if (!keywords.length || keywords.some((k) => this.freeBenches.has(k))) return false;
+    const bench = keywords.filter((k) => this.mastery.professionOfBench(k))[0];
     if (!bench) return false;
-    const cost = this.craftCost(ctx, actorId, bench);
+    const cost = this.craftCost(ctx, actorId, bench) * Math.min(1, ...keywords.map((k) => this.benchMult.get(k) ?? 1));
+    if (cost <= 0) return false;
     this.advance(entry.rec, Date.now(), true);
     if (entry.rec.fatigue + EPSILON >= cost) return false;
     this.enqueue(ctx, { kind: "tired", actorId, cost });
@@ -747,8 +760,9 @@ export class NeedsSystem implements System {
   private hungerSpells: number[] = [];
   private fatigueSpells: number[] = [];
   private freeBenches = new Set<number>();
-  private freeRecipes = new Set<number>();
-  private freeRecipeBenches = new Set<number>();
+  // Recipe id -> share of its bench's craft cost, and bench keyword -> the smallest share of its recipes
+  private recipeMult = new Map<number, number>();
+  private benchMult = new Map<number, number>();
   // Hunger effect id -> hunger points, from needsFoodHunger
   private foodHunger = new Map<number, number>();
   private foodCache = new Map<number, FoodEffect[]>();

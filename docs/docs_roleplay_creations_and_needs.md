@@ -241,17 +241,19 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   rank; a non-member pays the full Novice cost. Imperials (`appearance.raceId` Imperial or the Imperial child race)
   pay a further `needsFatigueImperialMult` (0.75) of every own-profession cost: crafts, a warrior's kill, a
   woodworker's swing and a miner's ore. This is the Imperial racial passive; the plugin carries no effect for it.
-- Free: recipes at benches carrying `AldCraftingMead`, the charcoal recipe `AldRecipeKiln_Charcoal`
-  (`needsFatigueFreeRecipes`), tempering (never sent to the server), and crafts whose inputs the crafter does not hold
-  (MasterySystem's `holdsInputs`; the native side handles those as before).
+- Charcoal (`AldRecipeKiln_Charcoal`) costs half a smelter craft (`needsFatigueRecipeMult`): 1/12 of the bar outside
+  Blacksmith, then 1/24, 1/48, 1/72 and 1/96 by blacksmith rank (Imperial blacksmiths x0.75), so 12 to 96 charcoal per
+  bar.
+- Free: recipes at benches carrying `AldCraftingMead`, tempering (never sent to the server), and crafts whose inputs
+  the crafter does not hold (MasterySystem's `holdsInputs`; the native side handles those as before).
 - Refills 1.6% per minute, online and offline, with no bed or inn bonus; a full bar may be spent at once.
 - A craft the bar cannot pay for is refused before the native craft runs. The server sends `needsState` with
   `closeCrafting`, resends the unchanged inventory to undo the recipe the vanilla menu already made locally, and shows
   "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." The craft that leaves the bar
   unable to pay for another of its kind closes the menu the same way, with the same notice, and undoes nothing, so rapid
   clicking stops at the last craft the bar pays for. Both, and every fatigue update, go out as soon as the craft is
-  handled rather than on the next one-second poll. A bench the bar cannot pay one recipe at does not open, unless it
-  offers a free recipe (a smelter always opens for charcoal). Logs:
+  handled rather than on the next one-second poll. A bench does not open when the bar cannot pay its cheapest recipe
+  (a smelter opens while the bar pays for one charcoal; an ingot the bar cannot pay is then refused as above). Logs:
   `[needs] craft refused for <id>: fatigue X%, needs Y%`, `bench refused` for a bench kept shut,
   `bar spent, crafting closed` for the close after the last paid craft.
 - Chopping firewood costs each swing's share of the bar by woodworker rank (`needsChopWoodPerBar`): a full bar chops
@@ -453,4 +455,6 @@ None of these has been run yet.
   "too tired" notice and all six items stay, however fast the clicks come. A click that slips in before the close (high
   ping) is refused: reopen the inventory, the refused item must be absent and its inputs present (the resent inventory
   corrects the client); logging out for 10 minutes refills 16%.
+- Charcoal at a smelter outside Blacksmith costs 1/12 (8%) each; from a full bar the twelfth closes the menu with the
+  "too tired" notice, however fast the clicks come, and the smelter stays shut until the bar holds 8% again.
 - Admin Item Spawner finds Creation items by name ("Amber", "Fishing Rod", "Hot").

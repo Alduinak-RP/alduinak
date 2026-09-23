@@ -925,7 +925,7 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | `needsFatigueRegenPerMinute` | `0.016` | Share of the bar refilled per minute |
 | `needsFatigueOfflineRegen` | `true` | `false` refills the bar only while online |
 | `needsFatigueFreeKeywords` | `["AldCraftingMead"]` | Bench keywords whose recipes cost no fatigue |
-| `needsFatigueFreeRecipes` | `["AldRecipeKiln_Charcoal"]` | Recipe editor ids that cost no fatigue; a bench offering one opens however tired the crafter is |
+| `needsFatigueRecipeMult` | `{ "AldRecipeKiln_Charcoal": 0.5 }` | Recipe editor ids that cost a share of their bench's usual craft cost, merged key by key over the default; `0` makes a recipe free. A bench opens when the crafter can pay its cheapest recipe (a smelter for charcoal at half a craft; always, with a free one) |
 | `needsFatigueStages` | `[80, 160, 340, 560, 800]` | Survival's exhaustion stage values: Drained, Tired, Weary and Debilitated begin at the last four (the first only ends a sleeping bonus the server never grants); the second also starts the max magicka penalty |
 | `needsFatigueStageAbilities` | `true` | Grant the Survival exhaustion stage ability of the current stage |
 | `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |
