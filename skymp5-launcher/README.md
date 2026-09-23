@@ -190,15 +190,17 @@ profiles, the game copy and the instance inis stay) and unpacks it again,
 **Repair Game Copy** deletes and re-copies every vanilla file and deletes the
 Creation files and the strays (the next install pass copies the Creations back
 and cleans them), **Repair SKSE** deletes the root `skse64_*` exe and dlls and
-the cached archive, then downloads and installs it again, **Repair Client
-Files** under MO2 rebuilds only the manifest mods that carry the client plus the
-root files and rewrites the settings (without a client mod, and in the direct
-install, it deletes every packaged file and extracts the zip again), **Repair
-Modlist** clears the caches, the Creation stamp and the stray overwrite files
-and rebuilds every mod folder, **Repair Cleaned Masters** restores the original
-masters and patches them again. Mod archives are reused when their sha256 checks
-out and downloaded again only when missing or damaged. **Repair All** runs
-MO2, Game Copy, Cleaned Masters, SKSE, Client Files and Modlist in that order; **Check Files** (`install:check`) is a read-only scan
+the cached archive, then downloads and installs it again, **Repair SkyMP
+Client** deletes every file the client zip lists in `/api/files/version`,
+extracts the zip again into the real Data and rewrites the client settings
+(under MO2 it also restores the root files); it rebuilds no Nexus mod unless
+one carries the client, which the manifest guard prevents, so the Nexus mods
+are left to **Repair Modlist**, which clears the caches, the Creation stamp and
+the stray overwrite files and rebuilds every mod folder, **Repair Cleaned
+Masters** restores the original masters and patches them again. Mod archives
+are reused when their sha256 checks out and downloaded again only when missing
+or damaged. **Repair All** runs
+MO2, Game Copy, Cleaned Masters, SKSE, SkyMP Client and Modlist in that order; **Check Files** (`install:check`) is a read-only scan
 that lists every missing/corrupt/extra/outdated file with the button that fixes
 it. It compares client files by size + sha256 when `/api/files/version` carries
 the `files[]` list written by the backend's `npm run merge`.

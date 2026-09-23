@@ -872,9 +872,9 @@ async function repairSkse() {
 
 async function repairClientFiles() {
   if (installBusy()) return false
-  installLog('Repairing client files…')
+  installLog('Repairing the SkyMP client…')
   const { success, error } = await runInstall('client', { force: true })
-  installLog(success ? 'Client files reinstalled ✓' : `Error: ${error}`)
+  installLog(success ? 'SkyMP client reinstalled ✓' : `Error: ${error}`)
   return success
 }
 
@@ -905,7 +905,7 @@ async function repairModlist() {
 }
 
 // Check Files: one line per issue, capped so the 300-line log keeps the summary; main writes every line to install.log.
-const CHECK_FIX_LABELS = { mo2: 'MO2', game: 'Game Copy', masters: 'Cleaned Masters', skse: 'SKSE', client: 'Client Files', modlist: 'Modlist' }
+const CHECK_FIX_LABELS = { mo2: 'MO2', game: 'Game Copy', masters: 'Cleaned Masters', skse: 'SKSE', client: 'SkyMP Client', modlist: 'Modlist' }
 const CHECK_LOG_CAP = 250
 
 function formatCheckIssue(issue) {
@@ -964,7 +964,7 @@ btnRepairAll.addEventListener('click', () => withRepairLock(async () => {
     ...(fieldIsolated.checked ? [['Game Copy', repairGameCopy]] : []),
     ['Cleaned Masters', repairMasters],
     ['SKSE', repairSkse],
-    ['Client Files', repairClientFiles],
+    ['SkyMP Client', repairClientFiles],
     ['Modlist', repairModlist],
   ]
   installLog(`Repair All: ${steps.map(s => s[0]).join(', ')}`)

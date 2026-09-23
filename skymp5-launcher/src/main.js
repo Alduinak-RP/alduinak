@@ -2072,8 +2072,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   const missingFiles = REQUIRED_FILES.filter(f => !found(f))
   if (missingFiles.length > 0) {
     const names = missingFiles.map(f => path.basename(f)).join(', ')
-    const hint  = viaMO2 ? 'run Repair Modlist in Settings' : 'run Repair Client Files in Settings'
-    problems.push(`Client files missing (${names}); ${hint} first.`)
+    problems.push(`Client files missing (${names}); run Repair SkyMP Client in Settings first.`)
   }
 
   // SKSE runtime.
@@ -2644,7 +2643,7 @@ async function checkFilesImpl() {
         await verifyFile(full, f, show(full), 'client')
         if ((i + 1) % CHECK_PROGRESS_EVERY === 0) { progress(`Checking client files… ${i + 1}/${files.length}`); await yieldNow() }
       }
-      // Unlisted files are only reported: Repair Client Files re-extracts the zip and never deletes
+      // Unlisted files are only reported: Repair SkyMP Client re-extracts the zip and never deletes
       const extras = []
       for (const sub of ['Data/Platform', 'Data/SKSE/Plugins']) {
         for (const rel of mo2.listFilesRel(path.join(gamePath, ...sub.split('/')))) {
@@ -3000,7 +2999,7 @@ async function installSkseIntoRoot(skyrimPath) {
 }
 
 // opts.force rebuilds every mod and the SKSE root step from scratch (Repair Modlist).
-// opts.clientOnly rebuilds only the client mods, the root files and the client settings (Repair Client Files).
+// opts.clientOnly rebuilds only the client mods, the root files and the client settings (Repair SkyMP Client).
 async function runMO2Install(opts = {}) {
   const modlistOnly = opts.modlistOnly === true
   const force       = opts.force === true
@@ -3161,7 +3160,7 @@ async function runMO2Install(opts = {}) {
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
     const rootMissing    = (manifest.root || []).some(f => !fs.existsSync(path.join(skyrimPath, ...String(f.to).split('/'))))
     const needsRoot      = !clientOnly && (force || !rootSetUp || rootChanged || rootMissing)
-    // Root files (the preloader) come back on every root step and on Repair Client Files; SKSE only on the root step
+    // Root files (the preloader) come back on every root step and on Repair SkyMP Client; SKSE only on the root step
     const needsRootFiles = needsRoot || clientOnly
     log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} filesMissing=${rootMissing} force=${force} clientOnly=${clientOnly} -> needsRoot=${needsRoot}`)
     const modsToInstall  = []
