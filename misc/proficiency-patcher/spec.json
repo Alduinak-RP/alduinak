@@ -1031,6 +1031,38 @@
    "CraftingSmithingArmorTable",
    "CraftingSmithingSharpeningWheel"
   ],
+  "temperRecipes": [
+   {
+    "edid": "TemperWeaponLongBow",
+    "name": "Long Bow",
+    "profession": "woodworker",
+    "tier": "Novice"
+   },
+   {
+    "edid": "TemperWeaponHuntingBow",
+    "name": "Hunting Bow",
+    "profession": "woodworker",
+    "tier": "Adept"
+   },
+   {
+    "edid": "IWTemperWeaponColovianCompositeBow",
+    "name": "Colovian Composite Bow",
+    "profession": "woodworker",
+    "tier": "Adept"
+   },
+   {
+    "edid": "IWTemperWeaponColovianDarkCompositeBow",
+    "name": "Colovian Dark Composite Bow",
+    "profession": "woodworker",
+    "tier": "Expert"
+   },
+   {
+    "edid": "IWTemperWeaponSpringsteelBow",
+    "name": "Springsteel Bow",
+    "profession": "woodworker",
+    "tier": "Expert"
+   }
+  ],
   "newRecipes": [
    {
     "edid": "AldRecipeWood_Axe01",
@@ -2273,6 +2305,33 @@
      "IngotIron": 1,
      "LeatherStrips": 2
     }
+   },
+   {
+    "edid": "AldRecipeWood_LongBow",
+    "formId": "0x041259",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "LongBow",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "Firewood01": 2,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_HuntingBow",
+    "formId": "0x04125A",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "HuntingBow",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Adept",
+    "items": {
+     "Firewood01": 3,
+     "LeatherStrips": 2,
+     "IngotIron": 1
+    }
    }
   ]
  },
@@ -3273,6 +3332,27 @@
     "edid": "MCERecipeArmorGuardShieldPale",
     "name": "Pale Guard's Shield",
     "tier": "Novice",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "IWRecipeWeaponColovianCompositeBow",
+    "name": "Colovian Composite Bow",
+    "tier": "Adept",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "IWRecipeWeaponColovianDarkCompositeBow",
+    "name": "Colovian Dark Composite Bow",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "IWRecipeWeaponSpringsteelBow",
+    "name": "Springsteel Bow",
+    "tier": "Expert",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    }
@@ -4999,6 +5079,16 @@
      "Hedge Knight",
      "Rugged Plate"
     ]
+   },
+   {
+    "name": "Imperial",
+    "races": [
+     "ImperialRace",
+     "ImperialRaceVampire"
+    ],
+    "match": [
+     "Colovian"
+    ]
    }
   ]
  },
@@ -5127,6 +5217,9 @@
   "file": "AlduinakAdditions.json",
   "keywordPrefix": "AldCat",
   "iconSource": "skyui/icons_item_psychosteve.swf",
+  "formIds": {
+   "AldCatRace_Imperial": "0x04125B"
+  },
   "benches": [
    "CraftingSmithingForge",
    "CraftingSmithingSkyforge",

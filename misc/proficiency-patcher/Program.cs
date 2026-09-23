@@ -648,10 +648,14 @@ static class Steps
         var benches = (s["temperBenches"]?.AsArray().Select(x => c.KeyOf<IKeywordGetter>(x!.GetValue<string>())) ?? Enumerable.Empty<FormKey>()).ToHashSet();
         var crafter = CrafterOfProduct(c);
         var ranks = c.Ranks;
+        // Improve entries the material table cannot place, named with their profession and tier; a hotfix run applies them too
+        var named = (s["temperRecipes"] as JsonArray ?? new JsonArray()).Select(x => x!.AsObject())
+            .ToDictionary(r => r["edid"]!.GetValue<string>(), r => r, StringComparer.OrdinalIgnoreCase);
         foreach (var winning in c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides())
         {
             if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
+            if (named.ContainsKey(edid)) continue;
             var tier = ranks[MaterialTierOf(winning, c.MaterialTiers)];
             var marker = crafter.GetValueOrDefault(winning.CreatedObject.FormKey, profession);
             if (tier == PatchContext.AnyoneTier && !HasAldCondition(c, winning))
@@ -663,6 +667,15 @@ static class Steps
             SetTier(c, cobj, marker, tier);
             c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(cobj.CreatedObject.FormKey), marker, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName,
                                                 note: marker == profession ? null : $"{marker} rank"));
+        }
+        foreach (var (edid, r) in named)
+        {
+            if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"tempering: recipe '{edid}' not found"); continue; }
+            var cobj = c.Override(c.Mod.ConstructibleObjects, winning);
+            var owner = r["profession"]!.GetValue<string>();
+            var tier = r["tier"]!.GetValue<string>();
+            SetTier(c, cobj, owner, tier);
+            c.Report.Recipes.Add(new RecipeLine("tempering", edid, c.NameOf(cobj.CreatedObject.FormKey), owner, tier, Items(c, cobj), origin: winning.FormKey.ModKey.FileName, note: "named"));
         }
     }
 
@@ -1513,7 +1526,10 @@ static class Steps
             tagged.Add((made, section, material, material == null ? null : $"{prefix}Mat_{new string(material.Where(char.IsLetterOrDigit).ToArray())}"));
         }
         var sectionKeys = sections.Select(x => c.OwnOrNew(c.Mod.Keywords, $"{prefix}Slot_{x.Name}").FormKey).ToList();
-        var tabKeys = tagged.Where(t => t.Keyword != null).Select(t => t.Keyword!).Distinct().ToDictionary(k => k, k => c.OwnOrNew(c.Mod.Keywords, k).FormKey);
+        // A tab added later pins its id, so it cannot push the tabs created after it in first-use order
+        var pinned = spec["formIds"] as JsonObject ?? new JsonObject();
+        var tabKeys = tagged.Where(t => t.Keyword != null).Select(t => t.Keyword!).Distinct().ToDictionary(k => k,
+            k => c.OwnOrNew(c.Mod.Keywords, k, formId: pinned[k] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null).FormKey);
         // Older category keywords of the plugin's own leave the items that get new ones
         var family = c.Mod.Keywords.Where(k => (k.EditorID ?? "").StartsWith(prefix, StringComparison.Ordinal)).Select(k => k.FormKey).ToHashSet();
         foreach (var t in tagged)

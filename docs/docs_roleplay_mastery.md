@@ -98,17 +98,23 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Profession | Anyone | Novice | Adept | Expert | Master |
 |---|---|---|---|---|---|
 | Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions | the plain Potions of each school, attribute and resistance, Cure Disease, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma |
-| Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, dragon, stalhrim, and the Skyforge |
+| Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, stalhrim, the few pieces that take dragon bone or scales (Immersive Armors' Bosmer Hunt set), and the Skyforge |
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue |
 | Hunter | - | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
 | Miner | iron veins and the sea salt deposits | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
 | Tailor | the blank parchment, journal and book | cloaks, capes, the belted tunic and the other everyday clothing, boots and hats, and everything else at the tanning rack and the weaving loom, leather and hide armour included | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels and the dress of the tailor's own people | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
 | Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
-| Woodworker | charcoal, the broom, the blank parchment, journal and book | the tools (woodcutter's axe, pickaxe, hoe) and the iron and wooden bows, arrows and shields | steel, silver and gold bows, arrows and shields, and the drum | orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass, dragon and stalhrim, and the lute |
+| Woodworker | charcoal, the broom, the blank parchment, journal and book | the tools (woodcutter's axe, pickaxe, hoe), the Long Bow and the iron and wooden bows, arrows and shields | the Hunting Bow, the Colovian Composite Bow, steel, silver and gold bows, arrows and shields, and the drum | the Springsteel Bow, the Dark Colovian Composite Bow, orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass and stalhrim, and the lute |
 
 Smithing, tempering and woodworking tiers follow the materials: the highest
 material among a recipe's inputs and its product decides, so elven bows
 (quicksilver) land in Master. Recipes the lists do not mention stay Novice.
+The owner's bow list overrides the table: the Long Bow (2 Firewood, 1 Leather
+Strips) and the Hunting Bow (3 Firewood, 2 Leather Strips, 1 Iron Ingot), which
+had no recipe anywhere, are the plugin's own woodworker recipes at Novice and
+Adept; the Colovian Composite Bow is Adept, the Dark Colovian Composite Bow and
+the Springsteel Bow Expert. Their Improve entries ask for the same woodworker
+rank.
 
 **Which bench.** A recipe at a forge goes where its materials come from
 (`benchRouting`): bows, arrows, bolts and shields are the woodworker's whatever
@@ -120,6 +126,8 @@ stays put; anything that makes nothing of ore is parked.
 **Race and faction.** Racial gear (`racial`) carries a `GetIsRace` OR group
 beside its rank condition, vampire races included; Dwarven is in no rule. The
 Alinor Saber of Immersive Weapons is the Altmer's, like Elven and Aldmeri gear.
+Both Colovian composite bows of Immersive Weapons are the Imperials' (Imperial
+and Imperial vampire), with an Imperial tab of their own in the crafting menu.
 Faction gear (`factions`) carries a `HasSpell` on a marker of its own, handed
 out from the backend roster by `factionCraftSystem.ts`, so guard armour, the
 Legion, the Stormcloaks, the Thalmor, the Companions, the Thieves Guild, the
@@ -257,9 +265,11 @@ Benches:
   mastery hours follow the recipe's bench keyword.
 - **Kiln**: the keyword `AldCraftingKiln` stays in the plugin, unused. A kiln
   mod can claim it and the charcoal recipe moves back with one spec field.
-- **Forges** carry one added recipe, the woodcutter's axe (one iron ingot and
-  one leather strip, open to everyone). Every vanilla merchant on this server is
-  disabled, and without an axe no one can chop firewood.
+- **Woodcutter's axe**: there is no open forge recipe for it. A Novice
+  woodworker makes it at the Woodcrafting Bench (one iron ingot, one leather
+  strip, one firewood), and every woodworker starts with one. Every vanilla
+  merchant on this server is disabled, and without an axe no one can chop
+  firewood. The forge adds the blacksmith's hoe and the two common war horns.
 - **Meadery boilers**: the three boilers of the north row in Honningbrew
   Meadery's boiler room and the two in Black-Briar Meadery's basement brew
   mead, see below.
@@ -271,9 +281,10 @@ Benches:
   longer common: they are the woodworker's Master, Expert and Adept work.
 - **Armour table and grindstone**: the Improve tab shows only what the character
   could have made. The rank comes from the material table, the profession from
-  whoever crafts the item, so the 27 bow and shield entries ask for the
-  woodworker rank and everything else for the blacksmith rank. This is a menu
-  gate, nothing more (see below).
+  whoever crafts the item, so the bow and shield entries ask for the
+  woodworker rank and everything else for the blacksmith rank. The bows the
+  owner tiered by hand (`smithing.temperRecipes`) take their recipe's rank. This
+  is a menu gate, nothing more (see below).
 
 ### Mead
 
