@@ -260,9 +260,15 @@ hand them to their guards. Guards, housecarls and courtiers no longer carry
 Eastmarch helmet had no recipe; the r15 plugin gives the Eastmarch court the
 cuirass recipe and a new `AldRecipeArmorGuardHelmetFullEastmarch`. Since r17
 they also make their hold's Sentinel City Guards set (light and heavy armour,
-boots, gauntlets, helmets, shields, cloaks and the hold's sword or war axe) with
-no profession needed; the vanilla pieces above still ask for the matching
-profession at Novice.
+boots, gauntlets, helmets, shields, cloaks and the hold's sword or war axe).
+Since r18 every piece of hold gear, vanilla, MCE, Sentinel and Immersive
+Armors' Falkreath set alike, also asks for an Expert of the matching
+profession: shields an Expert woodworker, cloaks and capes an Expert tailor,
+armour, helmets and the hold weapons an Expert blacksmith at the forge (the
+leather guard cuirasses, boots and gauntlets moved there from the tanning
+rack). So the one who crafts must hold both the `craft` rank and the Expert
+rank; gear whose material is Master work (the Winterhold buckler and shield,
+the Falkreath Warhammer) stays Master.
 
 ### Rules
 

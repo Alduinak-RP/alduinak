@@ -1133,7 +1133,7 @@
     "output": "ArmorEastmarchHelmetFull",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Novice",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1142,11 +1142,11 @@
    {
     "edid": "AldRecipeGuardWhiterun_TH_WhiterunCuirass",
     "formId": "0x041201",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_WhiterunCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1159,7 +1159,7 @@
     "output": "TH_WhiterunCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1173,7 +1173,7 @@
     "output": "TH_WhiterunBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1187,7 +1187,7 @@
     "output": "TH_WhiterunCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1199,7 +1199,7 @@
     "output": "TH_WhiterunCloakCeremonial",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1211,7 +1211,7 @@
     "output": "TH_WhiterunGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1225,7 +1225,7 @@
     "output": "TH_WhiterunHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1238,7 +1238,7 @@
     "output": "TH_WhiterunHelmetCeremonial",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1252,7 +1252,7 @@
     "output": "TH_WhiterunHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1266,7 +1266,7 @@
     "output": "TH_WhiterunShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 4,
      "LeatherStrips": 1
@@ -1279,7 +1279,7 @@
     "output": "TH_WhiterunShieldHeavy",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1293,7 +1293,7 @@
     "output": "TH_SwordWhiterun",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1303,11 +1303,11 @@
    {
     "edid": "AldRecipeGuardHaafingar_TH_SolitudeCuirass",
     "formId": "0x04120D",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_SolitudeCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1320,7 +1320,7 @@
     "output": "TH_SolitudeCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1330,11 +1330,11 @@
    {
     "edid": "AldRecipeGuardHaafingar_TH_SolitudeBoots",
     "formId": "0x04120F",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_SolitudeBoots",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -1347,7 +1347,7 @@
     "output": "TH_SolitudeBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1361,7 +1361,7 @@
     "output": "TH_SolitudeCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1369,11 +1369,11 @@
    {
     "edid": "AldRecipeGuardHaafingar_TH_SolitudeGauntlets",
     "formId": "0x041212",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_SolitudeGauntlets",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -1386,7 +1386,7 @@
     "output": "TH_SolitudeGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1400,7 +1400,7 @@
     "output": "TH_SolitudeHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1413,7 +1413,7 @@
     "output": "TH_SolitudeHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1427,7 +1427,7 @@
     "output": "TH_SolitudeShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1441,7 +1441,7 @@
     "output": "TH_SwordSolitude",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1451,11 +1451,11 @@
    {
     "edid": "AldRecipeGuardEastmarch_TH_WindhelmCuirass",
     "formId": "0x041218",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_WindhelmCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1468,7 +1468,7 @@
     "output": "TH_WindhelmCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1482,7 +1482,7 @@
     "output": "TH_WindhelmCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1494,7 +1494,7 @@
     "output": "TH_WindhelmCloakP",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1506,7 +1506,7 @@
     "output": "TH_WindhelmHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1519,7 +1519,7 @@
     "output": "TH_WindhelmHelmetClosed",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1533,7 +1533,7 @@
     "output": "TH_WindhelmHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1547,7 +1547,7 @@
     "output": "TH_WindhelmShield1",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1561,7 +1561,7 @@
     "output": "TH_WindhelmShield2",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 4,
      "LeatherStrips": 1
@@ -1574,7 +1574,7 @@
     "output": "TH_SwordWindhelm",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1584,11 +1584,11 @@
    {
     "edid": "AldRecipeGuardReach_TH_MarkarthCuirass",
     "formId": "0x041222",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_MarkarthCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1601,7 +1601,7 @@
     "output": "TH_MarkarthCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1611,11 +1611,11 @@
    {
     "edid": "AldRecipeGuardReach_TH_MarkarthBoots",
     "formId": "0x041224",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_MarkarthBoots",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -1628,7 +1628,7 @@
     "output": "TH_MarkarthBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1642,7 +1642,7 @@
     "output": "TH_MarkarthCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1650,11 +1650,11 @@
    {
     "edid": "AldRecipeGuardReach_TH_MarkarthGauntlets",
     "formId": "0x041227",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_MarkarthGauntlets",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -1667,7 +1667,7 @@
     "output": "TH_MarkarthGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1681,7 +1681,7 @@
     "output": "TH_MarkarthHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1694,7 +1694,7 @@
     "output": "TH_MarkarthHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1708,7 +1708,7 @@
     "output": "TH_MarkarthShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1722,7 +1722,7 @@
     "output": "TH_SwordMarkarth",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1732,11 +1732,11 @@
    {
     "edid": "AldRecipeGuardRift_TH_RiftenCuirass",
     "formId": "0x04122D",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_RiftenCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1749,7 +1749,7 @@
     "output": "TH_RiftenCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1763,7 +1763,7 @@
     "output": "TH_RiftenBoots",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1777,7 +1777,7 @@
     "output": "TH_RiftenCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1789,7 +1789,7 @@
     "output": "TH_RiftenGauntlets",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1803,7 +1803,7 @@
     "output": "TH_RiftenHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1816,7 +1816,7 @@
     "output": "TH_RiftenHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1830,7 +1830,7 @@
     "output": "TH_RiftenShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1844,7 +1844,7 @@
     "output": "TH_SwordRiften",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1854,11 +1854,11 @@
    {
     "edid": "AldRecipeGuardPale_TH_DawnstarCuirass",
     "formId": "0x041236",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_DawnstarCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1871,7 +1871,7 @@
     "output": "TH_DawnstarCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1881,11 +1881,11 @@
    {
     "edid": "AldRecipeGuardPale_TH_DawnstarBoots",
     "formId": "0x041238",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_DawnstarBoots",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -1898,7 +1898,7 @@
     "output": "TH_DawnstarBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1912,7 +1912,7 @@
     "output": "TH_DawnstarCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1920,11 +1920,11 @@
    {
     "edid": "AldRecipeGuardPale_TH_DawnstarGauntlets",
     "formId": "0x04123B",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_DawnstarGauntlets",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -1937,7 +1937,7 @@
     "output": "TH_DawnstarGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1951,7 +1951,7 @@
     "output": "TH_DawnstarHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1964,7 +1964,7 @@
     "output": "TH_DawnstarHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1978,7 +1978,7 @@
     "output": "TH_DawnstarShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1992,7 +1992,7 @@
     "output": "TH_WarAxeDawnstar",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2002,11 +2002,11 @@
    {
     "edid": "AldRecipeGuardFalkreath_TH_FalkreathCuirass",
     "formId": "0x041241",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_FalkreathCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2019,7 +2019,7 @@
     "output": "TH_FalkreathCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -2029,11 +2029,11 @@
    {
     "edid": "AldRecipeGuardFalkreath_TH_FalkreathBoots",
     "formId": "0x041243",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_FalkreathBoots",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -2046,7 +2046,7 @@
     "output": "TH_FalkreathCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2054,11 +2054,11 @@
    {
     "edid": "AldRecipeGuardFalkreath_TH_FalkreathGauntlets",
     "formId": "0x041245",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_FalkreathGauntlets",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -2071,7 +2071,7 @@
     "output": "TH_FalkreathHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2084,7 +2084,7 @@
     "output": "TH_FalkreathHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2098,7 +2098,7 @@
     "output": "TH_FalkreathShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 4,
      "LeatherStrips": 1
@@ -2111,7 +2111,7 @@
     "output": "TH_FalkreathShieldHeavy",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2125,7 +2125,7 @@
     "output": "TH_WarAxeFalkreath",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2135,11 +2135,11 @@
    {
     "edid": "AldRecipeGuardHjaalmarch_TH_MorthalCuirass",
     "formId": "0x04124B",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_MorthalCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2152,7 +2152,7 @@
     "output": "TH_MorthalCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -2162,11 +2162,11 @@
    {
     "edid": "AldRecipeGuardHjaalmarch_TH_MorthalBoots",
     "formId": "0x04124D",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_MorthalBoots",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -2179,7 +2179,7 @@
     "output": "TH_MorthalCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2187,11 +2187,11 @@
    {
     "edid": "AldRecipeGuardHjaalmarch_TH_MorthalGauntlets",
     "formId": "0x04124F",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_MorthalGauntlets",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -2204,7 +2204,7 @@
     "output": "TH_MorthalHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2217,7 +2217,7 @@
     "output": "TH_MorthalHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2231,7 +2231,7 @@
     "output": "TH_MorthalShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2245,7 +2245,7 @@
     "output": "TH_WarAxeMorthal",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2255,11 +2255,11 @@
    {
     "edid": "AldRecipeGuardWinterhold_TH_WinterholdCuirass",
     "formId": "0x041254",
-    "bench": "CraftingTanningRack",
+    "bench": "CraftingSmithingForge",
     "output": "TH_WinterholdCuirass",
     "count": 1,
-    "profession": "tailor",
-    "tier": "Anyone",
+    "profession": "blacksmith",
+    "tier": "Expert",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2272,7 +2272,7 @@
     "output": "TH_WinterholdCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2284,7 +2284,7 @@
     "output": "TH_WinterholdHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2297,7 +2297,7 @@
     "output": "TH_WinterholdShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2311,7 +2311,7 @@
     "output": "TH_WarAxeWinterhold",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Anyone",
+    "tier": "Expert",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -3330,20 +3330,21 @@
    {
     "edid": "MCERecipeArmorGuardCuirassThePale",
     "name": "Pale Guard's Armor",
-    "tier": "Novice",
-    "bench": "CraftingTanningRack"
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullPale",
     "name": "Pale Guard's Helmet",
-    "tier": "Novice",
+    "tier": "Expert",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardShieldPale",
     "name": "Pale Guard's Shield",
-    "tier": "Novice",
+    "tier": "Expert",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
@@ -3380,6 +3381,306 @@
     "name": "Light Skyforge Shield",
     "tier": "Adept",
     "bench": "CraftingSmithingSkyforge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassFalkreath",
+    "name": "Falkreath Guard's Armor",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassHjaalmarch",
+    "name": "Hjaalmarch Guard's Armor",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassMarkarth",
+    "name": "Reach Guard's Armor",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassRiften",
+    "name": "Rift Guard's Armor",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassSolitude",
+    "name": "Solitude Guard's Armor",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassWhiterun",
+    "name": "Whiterun Guard's Armor",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardCuirassWinterhold",
+    "name": "Winterhold Guard's Armor",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorStormcloakCuirass",
+    "name": "Stormcloak Cuirass (Eastmarch guard)",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullFalkreath",
+    "name": "Falkreath Guard's Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullHaafingar",
+    "name": "Haafingar Guard's Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullHjaalmarch",
+    "name": "Hjaalmarch Guard's Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullReach",
+    "name": "Reach Guard's Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullRift",
+    "name": "Rift Guard's Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullWhiterun",
+    "name": "Whiterun Guard's Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardHelmetFullWinterhold",
+    "name": "Winterhold Guard's Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldEastmarch",
+    "name": "Eastmarch Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldFalkreath",
+    "name": "Falkreath Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldHjaalmarch",
+    "name": "Hjaalmarch Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldMarkarth",
+    "name": "Reach Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldRiften",
+    "name": "Rift Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldSolitude",
+    "name": "Solitude Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldWhiterun",
+    "name": "Whiterun Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "MCERecipeArmorGuardShieldWinterhold",
+    "name": "Winterhold Guard's Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Dawnstar",
+    "name": "Dawnstar Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Dawnstar",
+    "name": "Dawnstar Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Falkreath",
+    "name": "Falkreath Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Falkreath",
+    "name": "Falkreath Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Hjaalmarch",
+    "name": "Hjaalmarch Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Hjaalmarch",
+    "name": "Hjaalmarch Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Markarth",
+    "name": "Markarth Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Markarth",
+    "name": "Markarth Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Riften",
+    "name": "Riften Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Riften",
+    "name": "Riften Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Solitude",
+    "name": "Solitude Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Solitude",
+    "name": "Solitude Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Whiterun",
+    "name": "Whiterun Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Whiterun",
+    "name": "Whiterun Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Windhelm",
+    "name": "Windhelm Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Windhelm",
+    "name": "Windhelm Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "vol_GuardCapeRecipe_Winterhold",
+    "name": "Winterhold Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "MCE_vol_GuardCapeRecipe_Winterhold",
+    "name": "Winterhold Guard Cape",
+    "tier": "Expert"
+   },
+   {
+    "edid": "IARFalkreathBoots",
+    "name": "Falkreath Boots",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "IARFalkreathCrown",
+    "name": "Falkreath Crown",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "IARFalkreathCuirass",
+    "name": "Falkreath Cuirass",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "IARFalkreathGauntlets",
+    "name": "Falkreath Gauntlets",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "IARFalkreathHelmet",
+    "name": "Falkreath Helmet",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "IARFalkreathShield",
+    "name": "Falkreath Shield",
+    "tier": "Expert",
+    "bench": "AldCraftingWoodcrafting",
+    "profession": "woodworker"
+   },
+   {
+    "edid": "IWRecipeWeaponFalkreathBladeSword",
+    "name": "Falkreath Blade",
+    "tier": "Expert",
+    "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    }
   ],
