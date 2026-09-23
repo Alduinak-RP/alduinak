@@ -529,7 +529,7 @@ let nexusUser = null
 
 const PREMIUM_URL = 'https://www.nexusmods.com/premium'
 
-// The notice between Latest News and Modlist: only while the account signed in has no premium.
+// The notice above the modlist: only while the account signed in has no premium.
 // Signed out counts as no premium, since that is when the manual-download warning matters most.
 function renderPremiumNotice() {
   const box = document.getElementById('premium-notice')
