@@ -24,7 +24,7 @@ type Mp = any;
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
-//   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 5, never for fish
+//   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 2, never for fish
 //
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
 // needsMineFatigue); woodworkers and miners pay the smaller price for their own trade, and a bar that cannot pay
@@ -56,7 +56,7 @@ const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 // Overrides the record's total on every vein; 0 keeps the record's own
 const DEFAULT_VEIN_TOTAL = 6;
 const DEFAULT_PICK_MINUTES = 30;
-const DEFAULT_HARVEST_SECONDS = 5;
+const DEFAULT_HARVEST_SECONDS = 2;
 const HARVEST_ANIM = "IdleKneelingEnter";
 // The native flora reloot when server-settings names none
 const DEFAULT_PLANT_REGROW_MS = 3600000;
