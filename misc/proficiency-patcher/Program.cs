@@ -1170,7 +1170,7 @@ static class Steps
     const int InitiallyDisabled = 0x800;
     const int Deleted = 0x20;
 
-    // ---- overrides: one field of a record another plugin defines, or of an own placed reference ---------------------
+    // ---- overrides: one field of a record another plugin defines, a quest's scripts, or an own placed reference -----
     public static void Overrides(PatchContext c)
     {
         if (c.Spec["overrides"] is not JsonObject o) return;
@@ -1216,6 +1216,14 @@ static class Steps
             var scale = p["scale"]!.GetValue<float>();
             c.Note($"Override {edid} ({placed.FormKey}): scale {placed.Scale?.ToString() ?? "1"} -> {scale}");
             placed.Scale = scale;
+        }
+        foreach (var q in Entries(o["quests"]))
+        {
+            var key = FormKey.Factory(q["quest"]!.GetValue<string>());
+            if (!cache.TryResolveContext<IQuest, IQuestGetter>(key, out var ctx)) { c.Error($"overrides: quest {key} not found"); continue; }
+            var drop = q["dropScripts"]!.AsArray().Select(x => x!.GetValue<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var removed = ctx.GetOrAddAsOverride(c.Mod).VirtualMachineAdapter?.Scripts.RemoveAll(s => drop.Contains(s.Name)) ?? 0;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): {removed} script(s) dropped ({string.Join(", ", drop)})");
         }
     }
 

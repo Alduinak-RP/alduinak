@@ -112,11 +112,12 @@ def spec_overrides(spec):
     enchs = {e['enchantment'].lower() for e in s.get('enchantmentMagnitudes', [])}
     named = {('RACE', r.lower()) for r in s.get('races', {}).get('races', [])} | {('HDPT', p.lower()) for h in s.get('headParts', []) for p in h['parts']}
     named |= {('LVLI', e['list'].lower()) for e in s.get('leveledItems', [])}
-    # The overrides section: items, recipes and foods by form key, own placed references by editor id
+    # The overrides section: items, recipes, foods and quests by form key, own placed references by editor id
     o = s.get('overrides', {})
     keyed = {('MISC', m['item'].split(':', 1)[1].lower(), int(m['item'].split(':', 1)[0], 16)) for m in o.get('misc', [])}
     keyed |= {('COBJ', r['recipe'].split(':', 1)[1].lower(), int(r['recipe'].split(':', 1)[0], 16)) for r in o.get('recipes', [])}
     keyed |= {('ALCH', f['item'].split(':', 1)[1].lower(), int(f['item'].split(':', 1)[0], 16)) for f in o.get('foods', [])}
+    keyed |= {('QUST', q['quest'].split(':', 1)[1].lower(), int(q['quest'].split(':', 1)[0], 16)) for q in o.get('quests', [])}
     own = {('REFR', 'self', r['ref']) for r in o.get('refs', [])}
     return lambda k, rec: (k[0], k[1].lower(), k[2]) in refs or (k[0], k[1].lower(), k[2]) in keyed or k in own \
         or (k[0] == 'ENCH' and edid(rec).lower() in enchs) or (k[0], edid(rec).lower()) in named

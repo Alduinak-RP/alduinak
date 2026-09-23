@@ -3574,7 +3574,7 @@
   ]
  },
  "overrides": {
-  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). Runs in the hotfix list too.",
+  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). Runs in the hotfix list too.",
   "misc": [
    {
     "item": "0012C8:Saltdeposits.esp",
@@ -3647,6 +3647,15 @@
     "name": "Ash Yam",
     "from": "Survival_FoodRestoreHungerVerySmall",
     "hunger": "Survival_FoodRestoreHungerSmall"
+   }
+  ],
+  "quests": [
+   {
+    "quest": "000898:ccQDRSSE001-SurvivalMode.esl",
+    "name": "SurvivalModeMainQuest",
+    "dropScripts": [
+     "Survival_MainScript"
+    ]
    }
   ]
  },

@@ -107,6 +107,10 @@ newer edit, and neither the build nor "Update manifest" catches it.
   `Survival_ModeEnabledShared` at 0, `Survival_PlayerHasBeenPrompted` at 1. Survival's `DOBJ` override only adds the
   keys `SRVE`, `SRVS`, `SRVT` (these globals) and `SRCP`, `SRHP`, `SRSP`, `SRTP` (Update.esm penalty globals) and changes
   no vanilla default object, so it is kept; the HUD's red penalty segments rely on those keys.
+- `Survival_MainScript` dropped from `SurvivalModeMainQuest` (proficiency patcher `overrides.quests`, r17): its
+  `OnUpdate`, the one Papyrus event SkyrimPlatform lets through, polled `Survival_ModeToggle` every 5 s and started
+  Survival's needs once the client set the toggle for the HUD; they zeroed `Variable02`/`Variable03`, so every later
+  `needsState` stacked the whole penalty again.
 - Every reference the Creations place (5,733 REFR and 83 ACHR not already disabled, all 70 fishing spots included):
   Initially Disabled, enable parent removed.
 
@@ -321,17 +325,18 @@ the values to `SetHungerPenaltyMeter` and `SetExhaustionPenaltyMeter` only when 
 them with no value, which redraws the bars without the red end. With the toggle at 0 the engine calls it once with
 false after each save load and never again, so no client write to the penalty globals can show the segments while the
 flag is off (the r14 test: max stamina and magicka dropped, no red bar). `Survival_ModeEnabled` (`SRVE`, esl 0x826),
-which r13 to r15 wrote instead, is script-only: nothing in the engine reads it, and Papyrus is blocked, which is why
-the r15 live flip changed nothing on screen. Survival's quests stay disabled, so no hunger, cold or exhaustion effect
-starts from the global; the compass temperature icon stays at level 0 ("Neutral") either way, and the
-Settings > Gameplay Survival toggle stays hidden because it hangs on `Survival_ModeCanBeEnabled` (`SRVS`), kept at 0.
-The engine's own Survival extras do come with it on every client: arrows and bolts and the lockpick weigh their
-record weight (0.1 for ammo) and armour cards and the inventory bar show Warmth; sleep-to-level is moot with skill
-advance off. The red end lives inside the meter clip, so it fades with the bar when that is full and idle, as in
-single-player Survival: sprint or cast to see it. After each apply the client reads the three globals back and logs
-`NeedsService: survival hud toggle=<0|1|none> hunger=<pct> exhaustion=<pct>` to `skyrim-platform.log`, once per
-distinct triple; `none` means the form lookup failed. A load resets the engine's HUD cache, so the service re-applies
-its last state after `loadGame` as well.
+which r13 to r15 wrote instead, is script-only: nothing in the engine reads it, which is why the r15 live flip changed
+nothing on screen. Nothing is left that starts Survival's quests (`Survival_MainScript` is dropped), so no hunger, cold
+or exhaustion effect starts from the global; the compass temperature icon stays at level 0 ("Neutral") either way,
+and the Settings > Gameplay Survival toggle stays hidden because it hangs on `Survival_ModeCanBeEnabled` (`SRVS`),
+kept at 0. The engine's own Survival extras do come with it on every client: arrows and bolts and the lockpick weigh
+their record weight (0.1 for ammo) and armour cards and the inventory bar show Warmth; sleep-to-level is moot with
+skill advance off. The red end lives inside the meter clip, so it fades with the bar when that is full and idle, as in
+single-player Survival: sprint or cast to see it. After each apply the client reads the globals back and logs
+`NeedsService: survival hud toggle=<0|1|none> enabled=<0|1|none> hunger=<pct> exhaustion=<pct>` to
+`skyrim-platform.log`, once per distinct line; `none` means the form lookup failed, and `enabled=1` means vanilla
+Survival switched itself on. A load resets the engine's HUD cache, so the service re-applies its last state after
+`loadGame` as well.
 The live `server-settings.json` carries the key explicitly (the manager Settings tab lists it under Gameplay as
 "Survival mode flag on clients"); it is read at boot, so restart the game service after a change.
 `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
@@ -416,8 +421,9 @@ None of these has been run yet.
   manager Settings > Gameplay > Survival mode flag on clients) and a game service restart after a change; with it,
   arrows and bolts read 0.1 weight and armour cards a Warmth line, Settings > Gameplay shows no Survival toggle, and T
   (wait) and beds behave as before. `skyrim-platform.log` carries
-  `once('update'): NeedsService: survival hud toggle=1 hunger=<pct> exhaustion=<pct>` after every spawn (login,
-  respawn, relog) and after each change; `toggle=none` means the esl form lookup failed. If it reads toggle=1 and
+  `once('update'): NeedsService: survival hud toggle=1 enabled=0 hunger=<pct> exhaustion=<pct>` after every spawn
+  (login, respawn, relog) and after each change; `toggle=none` means the esl form lookup failed, and `enabled=1` means
+  vanilla Survival switched itself on (the plugin without the r17 `Survival_MainScript` drop). If it reads toggle=1 and
   still no red shows with the bar visible, the fallback is `needsService.ts` calling
   `_root.HUDMovieBaseInstance.SetHungerPenaltyMeter` / `SetExhaustionPenaltyMeter` through `Ui.invokeFloatA` (percent,
   force) on every `needsState`, after `loadGame` and on `HUD Menu` open, with the toggle left at 0 (none of the

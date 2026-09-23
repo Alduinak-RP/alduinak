@@ -262,10 +262,11 @@ def main():
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and prefix and edid(r).startswith(prefix)}
-    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale
+    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops
     over = spec.get('overrides', {})
     over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
     over_cobj = {form_key(r['recipe']): r['count'] for r in over.get('recipes', [])}
+    over_qust = {form_key(q['quest']): q['dropScripts'] for q in over.get('quests', [])}
     over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
     over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', [])}
     for (t, k), q in ro.items():
@@ -334,6 +335,14 @@ def main():
             if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or None in swap or now != [swap[1] if e == swap[0] else e for e in id_list(src, data, 'EFID')]:
                 problems.append(f'{label}: not {src.name}\'s food with only {swap[0]} swapped for {swap[1]} ({why or now})')
             checked['foods overridden for their hunger effect'] += 1
+        elif t == 'QUST' and k in over_qust:
+            src, flags, data, _ = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('VMAD',))
+            vmad = dict(parse_subs(q.data())).get('VMAD', b'')
+            left = [s for s in over_qust[k] if s.encode() in vmad]
+            if why or left or q.flags & ~COMPRESSED != flags & ~COMPRESSED:
+                problems.append(f'{label}: not {src.name}\'s quest with only {over_qust[k]} dropped ({why or left})')
+            checked['quests overridden without named scripts'] += 1
         elif t == 'REFR' and k[0] == me and edid(q) in over_refs and r is not None:
             why = ck.compare(t, inp, r.flags, r.data(), out, q.data(), skip=('XSCL',))
             xscl = dict(parse_subs(q.data())).get('XSCL', b'')

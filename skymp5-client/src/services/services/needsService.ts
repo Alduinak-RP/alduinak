@@ -15,6 +15,8 @@ const COLD_PENALTY_GLOBAL = 0x2ede;
 const SURVIVAL_PLUGIN = "ccQDRSSE001-SurvivalMode.esl";
 // Survival_ModeToggle, the switch HUDMenu polls for ShowSurvivalElements; Survival_ModeEnabled (0x826) is script-only
 const SURVIVAL_MODE_GLOBAL = 0x828;
+// Survival_ModeEnabled: only Survival_MainScript sets it, when vanilla Survival switches itself on
+const SURVIVAL_ENABLED_GLOBAL = 0x826;
 
 interface NeedsState {
   staminaPenalty: number;
@@ -79,7 +81,7 @@ export class NeedsService extends ClientListener {
     set(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN, needs.survivalMode ? 1 : 0);
     // Read back: "none" means the form lookup failed, so the HUD never saw the value
     const read = (id: number, plugin: string) => find(id, plugin)?.getValue() ?? "none";
-    const line = `survival hud toggle=${read(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN)} hunger=${read(HUNGER_PENALTY_GLOBAL, UPDATE_ESM)} exhaustion=${read(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM)}`;
+    const line = `survival hud toggle=${read(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN)} enabled=${read(SURVIVAL_ENABLED_GLOBAL, SURVIVAL_PLUGIN)} hunger=${read(HUNGER_PENALTY_GLOBAL, UPDATE_ESM)} exhaustion=${read(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM)}`;
     if (line === this.lastHudLog) return;
     this.lastHudLog = line;
     logToPlatformLog(this, line);
