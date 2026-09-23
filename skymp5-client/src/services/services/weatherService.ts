@@ -7,11 +7,13 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 // The sky follows the server's weather packet (WeatherSystem): one weather per region, shared by everyone standing in it.
 // The first weather after a load screen is set outright, so the template save's own sky never fades over; later ones fade
 // as the packet's transition says. Every 10 s (and after a cell load) the applied weather is re-set when a door, fast travel
-// or the engine dropped it, only once no fade is running. A packet without a region releases the override for the vanilla sky.
+// or the engine dropped it, outside only once no fade is running. A packet without a region releases the override for the vanilla sky.
+// Indoors it holds SkyrimClear, since Show Sky interiors (inns, ruins with open roofs) draw the sky; stepping outside sets the region's weather outright.
 
 const APPLY_MS = 1000;
 const RECHECK_MS = 10000;
 const SLOW_FADE_MS = 5 * 60000;
+const INDOOR_WEATHER = 0x81a;
 
 interface WeatherPacket {
   region: string | null;
@@ -25,7 +27,7 @@ export class WeatherService extends ClientListener {
     super();
     controller.on("update", () => this.onUpdate());
     controller.on("loadGame", () => this.onLoadGame());
-    controller.on("cellFullyLoaded", () => { this.recheckAt = 0; });
+    controller.on("cellFullyLoaded", () => { this.recheckAt = 0; this.nextApplyAt = 0; });
     controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
   }
 
@@ -57,6 +59,7 @@ export class WeatherService extends ClientListener {
     if (now < this.nextApplyAt) return;
     this.nextApplyAt = now + APPLY_MS;
     try {
+      this.trackInterior();
       if (this.dirty) this.apply(now);
       if (now >= this.recheckAt) {
         this.recheckAt = now + RECHECK_MS;
@@ -66,6 +69,18 @@ export class WeatherService extends ClientListener {
     } catch (e) {
       logError(this, `update failed: ${e}`);
     }
+  }
+
+  // A door between inside and outside sets the next sky outright
+  private trackInterior(): void {
+    const cell = this.sp.Game.getPlayer()?.getParentCell();
+    if (!cell) return;
+    const indoors = cell.isInterior();
+    if (indoors === this.indoors) return;
+    this.indoors = indoors;
+    this.fresh = true;
+    this.fadeSince = 0;
+    this.dirty = !!this.pending;
   }
 
   // Stays dirty while a native throws, so the next pass tries the packet again
@@ -78,39 +93,44 @@ export class WeatherService extends ClientListener {
         if (/^fWeatherTrans/.test(key) && Number.isFinite(value)) this.sp.Game.setGameSettingFloat(key, value);
       }
     }
-    if (!p.region || !p.weatherId) {
+    const target = !p.region || !p.weatherId ? 0 : this.indoors ? INDOOR_WEATHER : p.weatherId;
+    if (!target) {
       if (this.applied) this.sp.Weather.releaseOverride();
       this.applied = 0;
       this.fadeSince = 0;
-    } else if (p.weatherId !== this.applied) {
-      const weather = this.sp.Weather.from(this.sp.Game.getFormEx(p.weatherId));
+    } else if (target !== this.applied) {
+      const weather = this.sp.Weather.from(this.sp.Game.getFormEx(target));
       if (!weather) {
-        logError(this, `weather ${p.weatherId.toString(16)} of region ${p.region} is not in this load order`);
+        logError(this, `weather ${target.toString(16)} of region ${p.region} is not in this load order`);
         this.dirty = false;
         return;
       }
-      if (this.fresh || p.transition === "instant") {
+      if (this.fresh || this.indoors || p.transition === "instant") {
         weather.forceActive(true);
         this.fadeSince = 0;
       } else {
         weather.setActive(true, p.transition === "accelerate");
         this.fadeSince = now;
       }
-      this.applied = p.weatherId;
-      this.fresh = false;
+      this.applied = target;
     }
+    // A release sets no weather, so fresh waits for the next one
+    if (target) this.fresh = false;
     this.dirty = false;
   }
 
-  // Outside, with no fade running, the sky must show the applied weather; anything else reset it
+  // The sky must show the applied weather, outside once no fade is running, inside at once; anything else reset it
   private recheck(): void {
     if (!this.applied) return;
-    const player = this.sp.Game.getPlayer();
-    if (!player || player.getParentCell()?.isInterior()) return;
-    if (this.sp.Weather.getCurrentWeatherTransition() < 1) return;
     const current = this.sp.Weather.getCurrentWeather()?.getFormID();
-    const outgoing = this.sp.Weather.getOutgoingWeather()?.getFormID();
-    if (current === this.applied || outgoing === this.applied) return;
+    const settled = this.sp.Weather.getCurrentWeatherTransition() >= 1;
+    if (this.indoors) {
+      if (current === this.applied && settled) return;
+    } else {
+      if (!settled) return;
+      const outgoing = this.sp.Weather.getOutgoingWeather()?.getFormID();
+      if (current === this.applied || outgoing === this.applied) return;
+    }
     this.sp.Weather.from(this.sp.Game.getFormEx(this.applied))?.forceActive(true);
     this.fadeSince = 0;
   }
@@ -127,6 +147,7 @@ export class WeatherService extends ClientListener {
   private dirty = false;
   private applied = 0;
   private fresh = true;
+  private indoors = false;
   private gameSettingsApplied = false;
   private nextApplyAt = 0;
   private recheckAt = 0;
