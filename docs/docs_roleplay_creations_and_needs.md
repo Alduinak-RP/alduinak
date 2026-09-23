@@ -242,6 +242,11 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   offers a free recipe (a smelter always opens for charcoal). Logs:
   `[needs] craft refused for <id>: fatigue X%, needs Y%`, `bench refused` for a bench kept shut,
   `bar spent, crafting closed` for the close after the last paid craft.
+- Chopping firewood costs each swing's share of the bar by woodworker rank (`needsChopWoodPerBar`): a full bar chops
+  12 firewood outside the profession, 24 at Novice, 48 at Adept, 72 at Expert and 96 at Master, two per swing every
+  eight seconds, before the online refill. The chopper stays at the block across yields and stands up with "You are too
+  tired to swing an axe. Rest a while." once the bar cannot pay for another swing; a block the bar cannot pay one swing
+  at does not open. Mining ore costs `needsMineFatigue` (20, a miner 10) per ore.
 - Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs `needsPickFatigue` exhaustion points (10,
   about 1% of the bar) and kneels the picker for `gatheringHarvestSeconds` (2), unable to move or harvest again. Fish
   (leaping salmon, slaughterfish eggs, racked salmon and oarfish) cost the same fatigue but never kneel. A swimmer never

@@ -26,9 +26,9 @@ type Mp = any;
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
 //   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 2, never for fish
 //
-// A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopFatigue,
-// needsMineFatigue); woodworkers and miners pay the smaller price for their own trade, and a bar that cannot pay
-// for one more turns the station away.
+// A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopWoodPerBar by
+// woodworker rank, needsMineFatigue); miners pay the smaller price for their own trade, and a bar that cannot pay
+// for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
 // A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
 // Every ore but iron and sea salt needs the miner profession at its rank; those two are open to anyone with a pickaxe.
 // Produce containers (beehives and apiaries) never open: E hands over what the container record holds, then it grows back.
@@ -65,6 +65,7 @@ const SEAT_REACH = 400;
 // Nobody works one sitting this long; a stuck session is dropped.
 const MAX_SESSION_MS = 15 * 60000;
 const DENY_NOTICE_MS = 1000;
+const CHOP_TIRED = "You are too tired to swing an axe. Rest a while.";
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
 
@@ -107,7 +108,7 @@ interface Session {
   veinId: number;
   resource: number;
   perStrike: number;
-  // Chopping: most resources one sitting hands out. Mining: ore collections a full vein holds.
+  // Mining: ore collections a full vein holds. Chopping has none: the fatigue bar ends the sitting.
   cap: number;
   given: number;
   strikesPer: number;
@@ -376,15 +377,15 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["requireditemlist"])) {
       return this.deny(ctx, actorId, "You need a woodcutter's axe to chop wood.");
     }
-    if (!this.needs.canChop(ctx, actorId, this.mastery.rankOf(ctx, actorId, "woodworker") >= 0)) {
-      return this.deny(ctx, actorId, "You are too tired to swing an axe. Rest a while.");
+    if (!this.needs.canChop(ctx, actorId, this.mastery.rankOf(ctx, actorId, "woodworker"), this.chopYield)) {
+      return this.deny(ctx, actorId, CHOP_TIRED);
     }
     if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, "Someone is already using this.");
     const resource = props["resource"] || 0;
     if (!resource || this.sessions.get(actorId)?.furnitureId === blockId) return undefined;
     return () => this.startSession({
       actorId, furnitureId: blockId, kind: "chop", veinId: 0, resource,
-      perStrike: this.chopYield, cap: this.chopYield, given: 0, strikesPer: 1, strikesLeft: 1,
+      perStrike: this.chopYield, cap: 0, given: 0, strikesPer: 1, strikesLeft: 1,
       intervalMs: this.chopMs,
       exitIdle: props["idlewoodchopexit"] || 0, startedAt: 0, nextAt: 0,
     });
@@ -461,14 +462,14 @@ export class GatheringSystem implements System {
 
   // ── Work ────────────────────────────────────────────────────────────────────
 
+  // The chopper stays at the block across yields and stands up once the bar cannot pay for another swing
   private chopStrike(ctx: SystemContext, s: Session): void {
-    const count = Math.min(s.perStrike, s.cap - s.given);
-    if (count > 0) {
-      this.addItem(ctx, s.actorId, s.resource, count);
-      s.given += count;
-      this.needs.applyChopFatigue(ctx, s.actorId, this.mastery.rankOf(ctx, s.actorId, "woodworker") >= 0);
-    }
-    if (s.given >= s.cap) this.finish(ctx, s, "");
+    const rank = this.mastery.rankOf(ctx, s.actorId, "woodworker");
+    if (!this.needs.canChop(ctx, s.actorId, rank, s.perStrike)) return this.finish(ctx, s, CHOP_TIRED);
+    this.addItem(ctx, s.actorId, s.resource, s.perStrike);
+    s.given += s.perStrike;
+    this.needs.applyChopFatigue(ctx, s.actorId, rank, s.perStrike);
+    if (!this.needs.canChop(ctx, s.actorId, rank, s.perStrike)) this.finish(ctx, s, CHOP_TIRED);
   }
 
   private mineStrike(ctx: SystemContext, s: Session, now: number): void {

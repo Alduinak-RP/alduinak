@@ -402,6 +402,27 @@ the vein; older `{ left, resetAt }` records are read as the next regrowth time,
 and a record with ore missing and no regrowth pending (written before the total
 rose from three to six) is read as full.
 
+### Chopping
+
+A chopping block needs a woodcutter's axe. One swing takes eight seconds
+(`gatheringChopSeconds`) and hands over two firewood (`gatheringChopYield`);
+the chopper stays in the chopping animation across yields until the fatigue
+bar cannot pay for another swing, then stands up with "You are too tired to
+swing an axe. Rest a while." A full bar chops, before its online refill:
+
+| Woodworker rank | Firewood per full bar |
+|---|---|
+| none | 12 |
+| Novice | 24 |
+| Adept | 48 |
+| Expert | 72 |
+| Master | 96 |
+
+`needsChopWoodPerBar` sets the five numbers. The Imperial passive stretches a
+woodworker's bar by a third (Novice 32, Master 128). The bar refills 1.6% a
+minute meanwhile, so a long sitting runs a little past the table: an Adept
+gets about 50, an Expert 76 and a Master 106 from a full bar.
+
 ### Hunting
 
 `huntingSystem.ts` listens to the mastery kill relay. On an animal kill by an

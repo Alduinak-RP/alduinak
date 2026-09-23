@@ -53,8 +53,7 @@ type Mp = any;
 //   needsExhaustionMax            exhaustion of an empty fatigue bar, default 960 (Survival_ExhaustionNeedMaxValue)
 //   needsKillFatigue              exhaustion a kill costs, in the same points as the stages, default 10
 //   needsKillFatigueWarrior       what a warrior pays instead, default 5
-//   needsChopFatigue              exhaustion a swing of the woodcutter's axe costs, default 20
-//   needsChopFatigueWoodworker    what a woodworker pays instead, default 10
+//   needsChopWoodPerBar           firewood one full bar chops [non-woodworker, Novice, Adept, Expert, Master], default [12, 24, 48, 72, 96]
 //   needsMineFatigue              exhaustion one ore off a vein costs, default 20
 //   needsMineFatigueMiner         what a miner pays instead, default 10
 //   needsPickFatigue              exhaustion harvesting a plant or nirnroot costs, default 10
@@ -97,10 +96,12 @@ const DEFAULT_EXHAUSTION_MAX = 960;
 // Exhaustion a kill adds, in stage points; the fatigue meter players read is a percentage of the max above
 const DEFAULT_KILL_FATIGUE = 10;
 const DEFAULT_KILL_FATIGUE_WARRIOR = 5;
-// Gathering is heavier work than a kill, and the trade that lives by it pays half.
+// Mining is heavier work than a kill, and miners pay half.
 const DEFAULT_WORK_FATIGUE = 20;
 const DEFAULT_WORK_FATIGUE_OWN_TRADE = 10;
 const DEFAULT_PICK_FATIGUE = 10;
+// Firewood a full bar chops, outside the woodworker profession first, then by woodworker rank
+const DEFAULT_CHOP_WOOD_PER_BAR = [12, 24, 48, 72, 96];
 const DEFAULT_CRAFTS_PER_HOUR = [6, 12, 18, 24];
 const DEFAULT_FREE_KEYWORDS = ["AldCraftingMead"];
 const DEFAULT_FREE_RECIPES = ["AldRecipeKiln_Charcoal"];
@@ -185,8 +186,8 @@ export class NeedsSystem implements System {
     this.exhaustionMax = num("needsExhaustionMax", DEFAULT_EXHAUSTION_MAX, 1);
     this.killFatigue = num("needsKillFatigue", DEFAULT_KILL_FATIGUE, 0);
     this.killFatigueWarrior = num("needsKillFatigueWarrior", DEFAULT_KILL_FATIGUE_WARRIOR, 0);
-    this.chopFatigue = num("needsChopFatigue", DEFAULT_WORK_FATIGUE, 0);
-    this.chopFatigueOwn = num("needsChopFatigueWoodworker", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
+    const wood = numberList(all["needsChopWoodPerBar"], DEFAULT_CHOP_WOOD_PER_BAR.length);
+    this.chopWoodPerBar = wood && wood.every((w) => w > 0) ? wood : DEFAULT_CHOP_WOOD_PER_BAR.slice();
     this.mineFatigue = num("needsMineFatigue", DEFAULT_WORK_FATIGUE, 0);
     this.mineFatigueOwn = num("needsMineFatigueMiner", DEFAULT_WORK_FATIGUE_OWN_TRADE, 0);
     this.pickFatigue = num("needsPickFatigue", DEFAULT_PICK_FATIGUE, 0);
@@ -203,7 +204,7 @@ export class NeedsSystem implements System {
       return;
     }
     const probe = await this.resolveForms(ctx, freeKeywords, freeRecipes, s.dataDir, s.loadOrder);
-    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food amounts from the records (${PROBE_EFFECT} ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank (members x${this.memberMult}, Imperials x${this.imperialMult}), +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s), ${this.freeRecipes.size} free recipe(s)`);
+    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food amounts from the records (${PROBE_EFFECT} ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank (members x${this.memberMult}, Imperials x${this.imperialMult}), +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s), ${this.freeRecipes.size} free recipe(s), firewood per bar ${this.chopWoodPerBar.join("/")} (outside the trade, then by woodworker rank)`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
@@ -422,9 +423,9 @@ export class NeedsSystem implements System {
     this.applyExhaustion(ctx, actorId, warrior ? this.killFatigueWarrior * this.professionMult(ctx, actorId) : this.killFatigue);
   }
 
-  // A swing of the woodcutter's axe; woodworkers pay the smaller price
-  applyChopFatigue(ctx: SystemContext, actorId: number, woodworker: boolean): void {
-    this.applyExhaustion(ctx, actorId, this.chopPoints(ctx, actorId, woodworker));
+  // Firewood off a chopping block, priced by the woodworker rank (-1 outside the profession)
+  applyChopFatigue(ctx: SystemContext, actorId: number, rank: number, wood: number): void {
+    this.applyExhaustion(ctx, actorId, this.chopPoints(ctx, actorId, rank, wood));
   }
 
   // One ore off a vein; miners pay the smaller price
@@ -437,17 +438,19 @@ export class NeedsSystem implements System {
     this.applyExhaustion(ctx, actorId, this.pickFatigue);
   }
 
-  // Whether the bar can still pay for one swing, checked before the station opens
-  canChop(ctx: SystemContext, actorId: number, woodworker: boolean): boolean {
-    return this.canAfford(actorId, this.chopPoints(ctx, actorId, woodworker));
+  // Whether the bar can still pay for one swing's firewood
+  canChop(ctx: SystemContext, actorId: number, rank: number, wood: number): boolean {
+    return this.canAfford(actorId, this.chopPoints(ctx, actorId, rank, wood));
   }
 
   canMine(ctx: SystemContext, actorId: number, miner: boolean): boolean {
     return this.canAfford(actorId, this.minePoints(ctx, actorId, miner));
   }
 
-  private chopPoints(ctx: SystemContext, actorId: number, woodworker: boolean): number {
-    return woodworker ? this.chopFatigueOwn * this.professionMult(ctx, actorId) : this.chopFatigue;
+  // A full bar is exhaustionMax points and chops chopWoodPerBar firewood at the rank
+  private chopPoints(ctx: SystemContext, actorId: number, rank: number, wood: number): number {
+    const perBar = this.chopWoodPerBar[clamp(rank + 1, 0, this.chopWoodPerBar.length - 1)];
+    return this.exhaustionMax * wood / perBar * (rank >= 0 ? this.professionMult(ctx, actorId) : 1);
   }
 
   private minePoints(ctx: SystemContext, actorId: number, miner: boolean): number {
@@ -716,8 +719,7 @@ export class NeedsSystem implements System {
   private exhaustionMax = DEFAULT_EXHAUSTION_MAX;
   private killFatigue = DEFAULT_KILL_FATIGUE;
   private killFatigueWarrior = DEFAULT_KILL_FATIGUE_WARRIOR;
-  private chopFatigue = DEFAULT_WORK_FATIGUE;
-  private chopFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
+  private chopWoodPerBar = DEFAULT_CHOP_WOOD_PER_BAR.slice();
   private mineFatigue = DEFAULT_WORK_FATIGUE;
   private mineFatigueOwn = DEFAULT_WORK_FATIGUE_OWN_TRADE;
   private pickFatigue = DEFAULT_PICK_FATIGUE;
