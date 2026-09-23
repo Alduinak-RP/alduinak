@@ -237,6 +237,7 @@ const main = async () => {
   const npcSpawnSystem = new NpcSpawnSystem(log);
   const masterySystem = new MasterySystem(log);
   const needsSystem = new NeedsSystem(log, masterySystem);
+  const furnitureSeatSystem = new FurnitureSeatSystem(log);
   const companionSystem = new CompanionSystem(log, hostingSystem);
   // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
   hostingSystem.addProvider(() => npcSpawnSystem.liveNpcs());
@@ -310,12 +311,12 @@ const main = async () => {
     new AfkSystem(log),
     new TimeSystem(log),
     weatherSystem,
-    new FurnitureSeatSystem(log),
+    furnitureSeatSystem,
     // Before mastery, whose hooks wrap this one's, so a craft refused for fatigue is never credited
     needsSystem,
     masterySystem,
     // After mastery so a refused tool check is never credited as work.
-    new GatheringSystem(log, masterySystem, needsSystem),
+    new GatheringSystem(log, masterySystem, needsSystem, furnitureSeatSystem),
     new FactionCraftSystem(log, factionSystem),
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,

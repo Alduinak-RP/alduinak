@@ -8,6 +8,7 @@ import { logTrace } from "../../logging";
 
 // Sit state 3 is fully seated, so the engine has settled on a marker
 const SIT_STATE_SEATED = 3;
+const SIT_STATE_STANDING = 4;
 // FURN MNAM can enable at most 24 markers
 const MAX_MARKERS = 24;
 const TICK_MS = 250;
@@ -31,7 +32,8 @@ export class FurnitureSeatService extends ClientListener {
 
     const player = this.sp.Game.getPlayer();
     const furniture = player?.getFurnitureReference();
-    if (!player || !furniture) {
+    // Released as the exit starts, so the server stops counting a chopping swing at once
+    if (!player || !furniture || (this.claimedFurniture && player.getSitState() === SIT_STATE_STANDING)) {
       if (this.claimedFurniture) {
         this.claimedFurniture = 0;
         sendCustomPacket(this.controller, { customPacketType: "seatRelease" });

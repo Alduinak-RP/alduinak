@@ -408,7 +408,15 @@ A chopping block needs a woodcutter's axe. One swing takes eight seconds
 (`gatheringChopSeconds`) and hands over two firewood (`gatheringChopYield`);
 the chopper stays in the chopping animation across yields until the fatigue
 bar cannot pay for another swing, then stands up with "You are too tired to
-swing an axe. Rest a while." A full bar chops, before its online refill:
+swing an axe. Rest a while." A swing counts only when the chopper sat at the
+block for all of its eight seconds: the cycle starts when the client reports
+the player fully seated (`seatClaim`, FurnitureSeatSystem), and standing up
+before it ends (`seatRelease`, sent as the exit starts) ends the sitting with
+no firewood for that cycle; sitting down again starts a new cycle. So the
+first firewood lands eight seconds after the sit-down animation, not after
+the key press. A client that never sends the claim keeps the plain eight
+second timing, and the server logs `[gathering] <actor> chops at <block> with
+no seat claim` once per sitting. A full bar chops, before its online refill:
 
 | Woodworker rank | Firewood per full bar |
 |---|---|

@@ -950,7 +950,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
 | `masteryKits` | see `DEFAULT_KITS` in `masterySystem.ts` | `{ "<profession>": [{ baseId, count }] }` kit a character receives with its first profession, same shape as `startingItems`; a profession left out keeps its default, `[]` gives nothing, an unknown key or item is logged at boot |
 | `gatheringStrikeSeconds` | `5` | Seconds per pickaxe strike |
-| `gatheringChopSeconds` | `8` | Seconds per swing of the woodcutter's axe; the firewood lands when the swing ends |
+| `gatheringChopSeconds` | `8` | Seconds per swing of the woodcutter's axe; the firewood lands when the swing ends, counted from the moment the client reports the player seated, and only if they are still seated then |
 | `gatheringChopYield` | `2` | Firewood one swing hands over. A sitting at a chopping block has no cap: the chopper stays in the chopping animation, a yield every swing, and stands up with "You are too tired to swing an axe. Rest a while." once the fatigue bar cannot pay for another (`needsChopWoodPerBar`) |
 | `gatheringVeinTotal` | `6` | Ore collections every vein holds, vanilla veins and the sea salt deposits alike; each pickaxe strike still gives the record's own count (1), so a vein is six strikes. `0` uses each record's `ResourceCountTotal` (3 for the vanilla veins) |
 | `gatheringVeinRespawnMinutes` | `1440` | Minutes after the first ore taken until the whole vein is back, at once, whether one ore or all six were taken. `0` keeps the default rather than making veins endless |

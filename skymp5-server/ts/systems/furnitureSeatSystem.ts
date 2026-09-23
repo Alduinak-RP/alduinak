@@ -6,6 +6,7 @@ type Mp = any;
 
 // One seated player per furniture marker. The native side only caps a bench at its marker count;
 // remote seated players are just a sit idle on other clients, so their engine can pick a taken marker.
+// GatheringSystem reads the claims: a swing at a chopping block counts only while the block is claimed.
 //
 //   Client -> Server: { customPacketType: "seatClaim", furniture: <refr id>, marker: <index, -1 unknown> }  once fully seated
 //                     { customPacketType: "seatRelease" }
@@ -22,6 +23,8 @@ interface SeatClaim {
   marker: number;
   cell: number;
   pos: number[];
+  // Epoch ms the claim arrived
+  at: number;
 }
 
 const distance = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -34,6 +37,11 @@ export class FurnitureSeatSystem implements System {
   constructor(private log: Log) { }
 
   private claims = new Map<number, SeatClaim>();
+
+  // The furniture a user is fully seated at and since when, until the client releases it
+  seatOf(userId: number): { furniture: number; at: number } | undefined {
+    return this.claims.get(userId);
+  }
 
   disconnect(userId: number): void {
     this.claims.delete(userId);
@@ -74,7 +82,7 @@ export class FurnitureSeatSystem implements System {
     try {
       const actorId = mp.getUserActor(userId) >>> 0;
       if (!actorId || !furniture) return null;
-      return { actorId, furniture, marker, cell: mp.getActorCellOrWorld(actorId), pos: mp.getActorPos(actorId) };
+      return { actorId, furniture, marker, cell: mp.getActorCellOrWorld(actorId), pos: mp.getActorPos(actorId), at: Date.now() };
     } catch {
       return null;
     }

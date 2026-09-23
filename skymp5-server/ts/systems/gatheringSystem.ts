@@ -6,6 +6,7 @@ import { addItemTo, holdsItem, sendActionLock } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
+import { FurnitureSeatSystem } from "./furnitureSeatSystem";
 import { writeFileAtomic } from "./fileUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -29,6 +30,8 @@ type Mp = any;
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopWoodPerBar by
 // woodworker rank, needsMineFatigue); miners pay the smaller price for their own trade, and a bar that cannot pay
 // for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
+// A swing's firewood lands only after a whole cycle seated at the block (the client's seat claim, FurnitureSeatSystem);
+// standing up mid-cycle ends the sitting with nothing for that cycle, and sitting down again starts a new cycle.
 // A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
 // Every ore but iron and sea salt needs the miner profession at its rank; those two are open to anyone with a pickaxe.
 // Produce containers (beehives and apiaries) never open: E hands over what the container record holds, then it grows back.
@@ -118,6 +121,10 @@ interface Session {
   exitIdle: number;
   startedAt: number;
   nextAt: number;
+  // Chopping: when the seat claim of this sitting arrived, 0 before any
+  seatedAt: number;
+  // Chopping: a swing already landed with no seat claim, logged once
+  unseatedLogged?: boolean;
 }
 
 interface VeinState {
@@ -132,7 +139,7 @@ type Verdict = undefined | false | (() => void) | (() => false);
 export class GatheringSystem implements System {
   systemName = "GatheringSystem";
 
-  constructor(private log: Log, private mastery: MasterySystem, private needs: NeedsSystem) { }
+  constructor(private log: Log, private mastery: MasterySystem, private needs: NeedsSystem, private seats: FurnitureSeatSystem) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -284,6 +291,7 @@ export class GatheringSystem implements System {
     if (!this.sessions.size) return;
     const now = Date.now();
     for (const s of Array.from(this.sessions.values())) {
+      if (s.kind === "chop" && !this.stillSeated(ctx, s)) continue;
       if (now < s.nextAt) continue;
       if (!this.stillWorking(ctx, s, now)) {
         this.sessions.delete(s.actorId);
@@ -300,7 +308,7 @@ export class GatheringSystem implements System {
     }
   }
 
-  // ── Activation ──────────────────────────────────────────────────────────────
+  // â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): Verdict {
     if (!this.isPlayer(ctx, casterId)) return undefined;
@@ -387,7 +395,7 @@ export class GatheringSystem implements System {
       actorId, furnitureId: blockId, kind: "chop", veinId: 0, resource,
       perStrike: this.chopYield, cap: 0, given: 0, strikesPer: 1, strikesLeft: 1,
       intervalMs: this.chopMs,
-      exitIdle: props["idlewoodchopexit"] || 0, startedAt: 0, nextAt: 0,
+      exitIdle: props["idlewoodchopexit"] || 0, startedAt: 0, nextAt: 0, seatedAt: 0,
     });
   }
 
@@ -418,7 +426,7 @@ export class GatheringSystem implements System {
       perStrike: Math.max(1, vein.props["resourcecount"] || VEIN_DEFAULT_COUNT),
       cap: this.veinTotal(vein.props), given: 0, strikesPer: strikes, strikesLeft: strikes,
       intervalMs: this.strikeMs,
-      exitIdle: markerProps["pickaxeexit"] || 0, startedAt: 0, nextAt: 0,
+      exitIdle: markerProps["pickaxeexit"] || 0, startedAt: 0, nextAt: 0, seatedAt: 0,
     });
   }
 
@@ -460,10 +468,32 @@ export class GatheringSystem implements System {
     }
   }
 
-  // ── Work ────────────────────────────────────────────────────────────────────
+  // â”€â”€ Work â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  // False while a chopping cycle cannot land: the chopper left the block (the session ends) or a new sitting restarted the cycle
+  private stillSeated(ctx: SystemContext, s: Session): boolean {
+    const seat = this.seats.seatOf(this.userOf(ctx, s.actorId));
+    const at = seat && seat.furniture === s.furnitureId ? seat.at : 0;
+    if (!at) {
+      // Never claimed: a client without the seat claim keeps the plain timing
+      if (!s.seatedAt) return true;
+      this.sessions.delete(s.actorId);
+      return false;
+    }
+    if (at !== s.seatedAt) {
+      s.seatedAt = at;
+      s.nextAt = at + s.intervalMs;
+      return false;
+    }
+    return true;
+  }
 
   // The chopper stays at the block across yields and stands up once the bar cannot pay for another swing
   private chopStrike(ctx: SystemContext, s: Session): void {
+    if (!s.seatedAt && !s.unseatedLogged) {
+      s.unseatedLogged = true;
+      this.log(`[gathering] ${s.actorId.toString(16)} chops at ${s.furnitureId.toString(16)} with no seat claim, a swing is not checked against standing up`);
+    }
     const rank = this.mastery.rankOf(ctx, s.actorId, "woodworker");
     if (!this.needs.canChop(ctx, s.actorId, rank, s.perStrike)) return this.finish(ctx, s, CHOP_TIRED);
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
@@ -535,7 +565,7 @@ export class GatheringSystem implements System {
     }
   }
 
-  // ── Picks ───────────────────────────────────────────────────────────────────
+  // â”€â”€ Picks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private hidePicked(ctx: SystemContext, refrId: number, regrowAt: number): void {
     this.setShown(ctx, refrId, false);
@@ -591,7 +621,7 @@ export class GatheringSystem implements System {
     }
   }
 
-  // ── Veins ───────────────────────────────────────────────────────────────────
+  // â”€â”€ Veins â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private veinTotal(props: Record<string, number>): number {
     return this.veinTotalOverride || Math.max(1, props["resourcecounttotal"] || VEIN_DEFAULT_TOTAL);
@@ -653,7 +683,7 @@ export class GatheringSystem implements System {
     return found;
   }
 
-  // ── Records ─────────────────────────────────────────────────────────────────
+  // â”€â”€ Records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private stationOf(ctx: SystemContext, refrId: number): Station | null {
     const mp = ctx.svr as Mp;
@@ -704,7 +734,7 @@ export class GatheringSystem implements System {
     }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private addItem(ctx: SystemContext, actorId: number, itemId: number, count: number): void {
     addItemTo(ctx.svr as Mp, actorId, itemId, count);
