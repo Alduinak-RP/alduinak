@@ -254,7 +254,11 @@ so only they see the hold's guard armour, helmet, shield and cloak recipes
 hand them to their guards. Guards, housecarls and courtiers no longer carry
 `craft`. The Eastmarch captain's cuirass is the Stormcloak cuirass and the
 Eastmarch helmet had no recipe; the r15 plugin gives the Eastmarch court the
-cuirass recipe and a new `AldRecipeArmorGuardHelmetFullEastmarch`.
+cuirass recipe and a new `AldRecipeArmorGuardHelmetFullEastmarch`. Since r17
+they also make their hold's Sentinel City Guards set (light and heavy armour,
+boots, gauntlets, helmets, shields, cloaks and the hold's sword or war axe) with
+no profession needed; the vanilla pieces above still ask for the matching
+profession at Novice.
 
 ### Rules
 

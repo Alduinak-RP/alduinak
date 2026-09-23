@@ -140,9 +140,13 @@ the Pale's pieces, named after the Pale rather than Dawnstar, match through
 sandals of Sentinel's Priests and Acolytes and of MCE, the Azura robes included,
 belong to the Temple of the Divines (`faction:temple-of-the-divines`); the monk
 tunics and the Moth Priest robes stay with any Novice tailor and the Daedric
-Robes stay parked. Sentinel's City Guards pieces come with no recipe and stay
-uncraftable. Sentinel's Companion and Wolf armour at the Skyforge is the
-Companions'.
+Robes stay parked. Sentinel's City Guards pieces, which come with no recipe, get
+recipes of the plugin's own (`AldRecipeGuard<Hold>_<item>`, tier `Anyone`), so
+each hold's craft ranks make that hold's set whatever their profession: light
+armour, boots and gauntlets and the linen cloaks at the tanning rack, the heavy
+pieces, the helmets and the hold's sword or war axe at the forge, and the
+shields at the woodcrafting bench. Sentinel's Companion and Wolf armour at the
+Skyforge is the Companions'.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in

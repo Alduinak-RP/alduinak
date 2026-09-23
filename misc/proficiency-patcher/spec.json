@@ -1094,6 +1094,1185 @@
      "IngotIron": 3,
      "LeatherStrips": 2
     }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunCuirass",
+    "formId": "0x041201",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WhiterunCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunCuirassHeavy",
+    "formId": "0x041202",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WhiterunCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunBootsHeavy",
+    "formId": "0x041203",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WhiterunBootsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunCloak",
+    "formId": "0x041204",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WhiterunCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunCloakCeremonial",
+    "formId": "0x041205",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WhiterunCloakCeremonial",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunGauntletsHeavy",
+    "formId": "0x041206",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WhiterunGauntletsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunHelmet",
+    "formId": "0x041207",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WhiterunHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunHelmetCeremonial",
+    "formId": "0x041208",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WhiterunHelmetCeremonial",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunHelmetHeavy",
+    "formId": "0x041209",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WhiterunHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunShield",
+    "formId": "0x04120A",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_WhiterunShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 4,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_WhiterunShieldHeavy",
+    "formId": "0x04120B",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_WhiterunShieldHeavy",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWhiterun_TH_SwordWhiterun",
+    "formId": "0x04120C",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SwordWhiterun",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeCuirass",
+    "formId": "0x04120D",
+    "bench": "CraftingTanningRack",
+    "output": "TH_SolitudeCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeCuirassHeavy",
+    "formId": "0x04120E",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SolitudeCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeBoots",
+    "formId": "0x04120F",
+    "bench": "CraftingTanningRack",
+    "output": "TH_SolitudeBoots",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeBootsHeavy",
+    "formId": "0x041210",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SolitudeBootsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeCloak",
+    "formId": "0x041211",
+    "bench": "CraftingTanningRack",
+    "output": "TH_SolitudeCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeGauntlets",
+    "formId": "0x041212",
+    "bench": "CraftingTanningRack",
+    "output": "TH_SolitudeGauntlets",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeGauntletsHeavy",
+    "formId": "0x041213",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SolitudeGauntletsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeHelmet",
+    "formId": "0x041214",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SolitudeHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeHelmetHeavy",
+    "formId": "0x041215",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SolitudeHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SolitudeShield",
+    "formId": "0x041216",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_SolitudeShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHaafingar_TH_SwordSolitude",
+    "formId": "0x041217",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SwordSolitude",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmCuirass",
+    "formId": "0x041218",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WindhelmCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmCuirassHeavy",
+    "formId": "0x041219",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WindhelmCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmCloak",
+    "formId": "0x04121A",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WindhelmCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmCloakP",
+    "formId": "0x04121B",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WindhelmCloakP",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmHelmet",
+    "formId": "0x04121C",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WindhelmHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmHelmetClosed",
+    "formId": "0x04121D",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WindhelmHelmetClosed",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmHelmetHeavy",
+    "formId": "0x04121E",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WindhelmHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmShield1",
+    "formId": "0x04121F",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_WindhelmShield1",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_WindhelmShield2",
+    "formId": "0x041220",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_WindhelmShield2",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 4,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardEastmarch_TH_SwordWindhelm",
+    "formId": "0x041221",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SwordWindhelm",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthCuirass",
+    "formId": "0x041222",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MarkarthCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthCuirassHeavy",
+    "formId": "0x041223",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MarkarthCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthBoots",
+    "formId": "0x041224",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MarkarthBoots",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthBootsHeavy",
+    "formId": "0x041225",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MarkarthBootsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthCloak",
+    "formId": "0x041226",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MarkarthCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthGauntlets",
+    "formId": "0x041227",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MarkarthGauntlets",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthGauntletsHeavy",
+    "formId": "0x041228",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MarkarthGauntletsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthHelmet",
+    "formId": "0x041229",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MarkarthHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthHelmetHeavy",
+    "formId": "0x04122A",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MarkarthHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_MarkarthShield",
+    "formId": "0x04122B",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_MarkarthShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardReach_TH_SwordMarkarth",
+    "formId": "0x04122C",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SwordMarkarth",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenCuirass",
+    "formId": "0x04122D",
+    "bench": "CraftingTanningRack",
+    "output": "TH_RiftenCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenCuirassHeavy",
+    "formId": "0x04122E",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_RiftenCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenBoots",
+    "formId": "0x04122F",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_RiftenBoots",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenCloak",
+    "formId": "0x041230",
+    "bench": "CraftingTanningRack",
+    "output": "TH_RiftenCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenGauntlets",
+    "formId": "0x041231",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_RiftenGauntlets",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenHelmet",
+    "formId": "0x041232",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_RiftenHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenHelmetHeavy",
+    "formId": "0x041233",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_RiftenHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_RiftenShield",
+    "formId": "0x041234",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_RiftenShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardRift_TH_SwordRiften",
+    "formId": "0x041235",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_SwordRiften",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarCuirass",
+    "formId": "0x041236",
+    "bench": "CraftingTanningRack",
+    "output": "TH_DawnstarCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarCuirassHeavy",
+    "formId": "0x041237",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_DawnstarCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarBoots",
+    "formId": "0x041238",
+    "bench": "CraftingTanningRack",
+    "output": "TH_DawnstarBoots",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarBootsHeavy",
+    "formId": "0x041239",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_DawnstarBootsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarCloak",
+    "formId": "0x04123A",
+    "bench": "CraftingTanningRack",
+    "output": "TH_DawnstarCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarGauntlets",
+    "formId": "0x04123B",
+    "bench": "CraftingTanningRack",
+    "output": "TH_DawnstarGauntlets",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarGauntletsHeavy",
+    "formId": "0x04123C",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_DawnstarGauntletsHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarHelmet",
+    "formId": "0x04123D",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_DawnstarHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarHelmetHeavy",
+    "formId": "0x04123E",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_DawnstarHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_DawnstarShield",
+    "formId": "0x04123F",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_DawnstarShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardPale_TH_WarAxeDawnstar",
+    "formId": "0x041240",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WarAxeDawnstar",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathCuirass",
+    "formId": "0x041241",
+    "bench": "CraftingTanningRack",
+    "output": "TH_FalkreathCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathCuirassHeavy",
+    "formId": "0x041242",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_FalkreathCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathBoots",
+    "formId": "0x041243",
+    "bench": "CraftingTanningRack",
+    "output": "TH_FalkreathBoots",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathCloak",
+    "formId": "0x041244",
+    "bench": "CraftingTanningRack",
+    "output": "TH_FalkreathCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathGauntlets",
+    "formId": "0x041245",
+    "bench": "CraftingTanningRack",
+    "output": "TH_FalkreathGauntlets",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathHelmet",
+    "formId": "0x041246",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_FalkreathHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathHelmetHeavy",
+    "formId": "0x041247",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_FalkreathHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathShield",
+    "formId": "0x041248",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_FalkreathShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 4,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_FalkreathShieldHeavy",
+    "formId": "0x041249",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_FalkreathShieldHeavy",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardFalkreath_TH_WarAxeFalkreath",
+    "formId": "0x04124A",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WarAxeFalkreath",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalCuirass",
+    "formId": "0x04124B",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MorthalCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalCuirassHeavy",
+    "formId": "0x04124C",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MorthalCuirassHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 4,
+     "IngotIron": 1,
+     "LeatherStrips": 3
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalBoots",
+    "formId": "0x04124D",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MorthalBoots",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 2,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalCloak",
+    "formId": "0x04124E",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MorthalCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalGauntlets",
+    "formId": "0x04124F",
+    "bench": "CraftingTanningRack",
+    "output": "TH_MorthalGauntlets",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "Leather01": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalHelmet",
+    "formId": "0x041250",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MorthalHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalHelmetHeavy",
+    "formId": "0x041251",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_MorthalHelmetHeavy",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_MorthalShield",
+    "formId": "0x041252",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_MorthalShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardHjaalmarch_TH_WarAxeMorthal",
+    "formId": "0x041253",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WarAxeMorthal",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWinterhold_TH_WinterholdCuirass",
+    "formId": "0x041254",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WinterholdCuirass",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "LeatherStrips": 3,
+     "Leather01": 6
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWinterhold_TH_WinterholdCloak",
+    "formId": "0x041255",
+    "bench": "CraftingTanningRack",
+    "output": "TH_WinterholdCloak",
+    "count": 1,
+    "profession": "tailor",
+    "tier": "Anyone",
+    "items": {
+     "RuinsLinenPile01": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWinterhold_TH_WinterholdHelmet",
+    "formId": "0x041256",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WinterholdHelmet",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotIron": 3,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWinterhold_TH_WinterholdShield",
+    "formId": "0x041257",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "TH_WinterholdShield",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 3,
+     "IngotIron": 1,
+     "LeatherStrips": 1
+    }
+   },
+   {
+    "edid": "AldRecipeGuardWinterhold_TH_WarAxeWinterhold",
+    "formId": "0x041258",
+    "bench": "CraftingSmithingForge",
+    "output": "TH_WarAxeWinterhold",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Anyone",
+    "items": {
+     "IngotSteel": 2,
+     "IngotIron": 1,
+     "LeatherStrips": 2
+    }
    }
   ]
  },
