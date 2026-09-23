@@ -3,6 +3,7 @@
 #include "AnimVariableMasterGraphIndexes.h"
 #include "hkbVariableValueSet.h"
 
+#include <algorithm>
 #include <type_traits>
 #include <vector>
 
@@ -128,7 +129,7 @@ public:
       reinterpret_cast<hkbVariableValueSet<uint32_t>*>(
         pGraph->behaviorGraph->variableValueSet.get());
 
-    if (!pVariableSet) {
+    if (!pVariableSet || !IsMasterVariableSet(*pVariableSet)) {
       return;
     }
 
@@ -157,10 +158,6 @@ public:
 
   [[nodiscard]] bool ApplyVariablesToActor(const RE::Actor& actor) const
   {
-    if (variables.IsEmpty()) {
-      return false;
-    }
-
     RE::BSTSmartPointer<RE::BSAnimationGraphManager> pManager;
 
     if (actor.GetAnimationGraphManager(pManager) == false) {
@@ -191,6 +188,15 @@ public:
       return false;
     }
 
+    // Other graphs lack these variables, the caller goes on without them
+    if (!IsMasterVariableSet(*pVariableSet)) {
+      return true;
+    }
+
+    if (variables.IsEmpty()) {
+      return false;
+    }
+
     for (size_t i = 0; i < agDescriptor.boolVariableIndexes.size(); ++i) {
       *reinterpret_cast<AnimationVariables::BooleanAnimVarType*>(
         &pVariableSet->varSet[agDescriptor.boolVariableIndexes[i]]) =
@@ -217,6 +223,21 @@ private:
 
   AnimVariableMasterGraphIndexes agDescriptor =
     AnimVariableMasterGraphIndexes::CreateDefault();
+
+  // Creature graphs hold far fewer variables than the master indexes reach
+  [[nodiscard]] bool IsMasterVariableSet(
+    const hkbVariableValueSet<uint32_t>& variableSet) const
+  {
+    uint32_t maxIndex = 0;
+    for (const auto* indexes : { &agDescriptor.intVariableIndexes,
+                                 &agDescriptor.floatVariableIndexes,
+                                 &agDescriptor.boolVariableIndexes }) {
+      for (uint32_t index : *indexes) {
+        maxIndex = std::max(maxIndex, index);
+      }
+    }
+    return variableSet.varSet && variableSet.size > maxIndex;
+  }
 };
 
 namespace skymp {
