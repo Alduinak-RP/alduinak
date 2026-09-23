@@ -6,6 +6,7 @@
 #include <DirectXTK/SimpleMath.h>
 #include <DirectXTK/WICTextureLoader.h>
 #include <OverlayClient.h>
+#include <algorithm>
 #include <cmrc/cmrc.hpp>
 #include <codecvt>
 #include <filesystem>
@@ -100,11 +101,12 @@ void DX11RenderHandler::Render(
 
   if (Visible() && focusFlag) {
     if (m_pCursorTexture && m_cursorX >= 0 && m_cursorY >= 0) {
-      m_pSpriteBatch->Draw(
-        m_pCursorTexture.Get(),
-        DirectX::SimpleMath::Vector2(m_cursorX - 24, m_cursorY - 25), nullptr,
-        DirectX::Colors::White, 0.f, DirectX::SimpleMath::Vector2(0, 0),
-        m_width / 1920.f);
+      // Origin is the arrow tip of cursor.png
+      m_pSpriteBatch->Draw(m_pCursorTexture.Get(),
+                           DirectX::SimpleMath::Vector2(m_cursorX, m_cursorY),
+                           nullptr, DirectX::Colors::White, 0.f,
+                           DirectX::SimpleMath::Vector2(24.f, 25.f),
+                           (std::min)(m_width / 1920.f, m_height / 1080.f));
     }
   }
 
