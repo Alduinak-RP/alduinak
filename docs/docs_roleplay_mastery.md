@@ -43,7 +43,8 @@ abilities. Novice is a real gate: a character outside the profession makes
 nothing of it. What everyone may make is tiered `Anyone` in the spec, the one
 tier that writes no condition - the common recipes, charcoal, every drink at a
 meadery boiler, honey, five cooked dishes and the blank parchment, journal and
-book. Cloaks, capes and every piece of clothing need a Novice tailor.
+book. Cloaks, capes and every piece of clothing need a Novice tailor, except
+the hold guard gear below, which only a hold's craft ranks make.
 
 ## The professions
 
