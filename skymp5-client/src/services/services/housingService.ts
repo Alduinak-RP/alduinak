@@ -152,7 +152,7 @@ export class HousingService extends ClientListener {
       notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
       return;
     }
-    targetLabel = (ref.getName() || "Property").trim() || "Property";
+    targetLabel = (ref.getDisplayName() || "").trim() || "Property";
     logTrace(this, `Requesting property info for`, targetLabel, `(${this.target})`);
     this.awaitingAt = Date.now();
     sendCustomPacket(this.controller, { customPacketType: "propertyInfoRequest", target: this.target });

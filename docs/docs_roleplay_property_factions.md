@@ -55,6 +55,10 @@ Looking at a door or container, the player presses the **interact key** (default
 
 > **Manage: \<target name\>** — claim · abandon · lock · unlock · transfer · cancel
 
+The title is the property's name when it has one (Rename), else the door's or
+container's display name, as on the E prompt (Papyrus GetName is empty on any
+reference), else "Property".
+
 The service resolves the targeted reference to its **server-format form id** and
 sends the chosen action. It never opens for a person (the interact key opens the
 interaction menu on players instead) and is inert until the key is pressed.
