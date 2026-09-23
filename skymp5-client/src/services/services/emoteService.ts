@@ -145,8 +145,10 @@ const CANCEL_KEYS: DxScanCode[] = [
   DxScanCode.S,
   DxScanCode.D,
   DxScanCode.Spacebar,
-  DxScanCode.R,
 ];
+
+// The engine's draw events; each leaves the sheathed graph branch that every emote idle plays in
+const DRAW_EVENTS = new Set<string>(["weapequip", "magic_equip"]);
 
 /**
  * Emote wheel (default B). Opens a radial menu of vanilla idle animations;
@@ -159,7 +161,7 @@ export class EmoteService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("gameLoad", () => { this.activeEmote = ""; this.chainId++; });
+    this.controller.emitter.on("gameLoad", () => this.dropEmote());
     // A front reload drops the widget without an emote:close message.
     this.controller.emitter.on("browserWindowLoaded", () => { this.menuOpen = false; });
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
@@ -182,12 +184,16 @@ export class EmoteService extends ClientListener {
       this.controller.once("update", () => this.onInventory(inventory));
     });
 
-    // Records whether the graph accepted the exit event probed by tryExitChain.
+    // Records whether the graph accepted the exit event probed by tryExitChain; a draw ends an idle, but an offset overlay still needs OffsetStop
     this.sp.hooks.sendAnimationEvent.add({
       enter: () => { },
       leave: (ctx) => {
         if (this.probeAnim && ctx.animEventName === this.probeAnim) {
           this.probeSucceeded = ctx.animationSucceeded;
+        }
+        if (ctx.animationSucceeded && DRAW_EVENTS.has(ctx.animEventName.toLowerCase())) {
+          if (this.activeEmote.indexOf("Offset") === 0) this.stopActiveEmote();
+          else this.dropEmote();
         }
       },
     }, 0x14, 0x14);
@@ -316,6 +322,12 @@ export class EmoteService extends ClientListener {
     });
   }
 
+  // Also abandons any pending exit chain or follow-up emote
+  private dropEmote(): void {
+    this.activeEmote = "";
+    this.chainId++;
+  }
+
   private stopActiveEmote(): void {
     const anim = this.activeEmote;
     this.activeEmote = "";
@@ -372,6 +384,11 @@ export class EmoteService extends ClientListener {
       if (chain !== this.chainId) return;
       const player = this.sp.Game.getPlayer();
       if (!player) return;
+      // IdleForceDefaultState is a global wildcard into the sheathed branch, so drawn hands skip the exit
+      if (player.isWeaponDrawn()) {
+        if (onDone) onDone();
+        return;
+      }
       this.probeAnim = attempts[index];
       this.probeSucceeded = false;
       this.sp.Debug.sendAnimationEvent(player, attempts[index]);
