@@ -127,12 +127,18 @@ export class SearchSystem implements System {
         || (this.sessions.get(targetActorId)?.npc === true && this.isGear(ctx, baseId)));
   }
 
+  // A worn stack the searcher's copy still shows after another looter took it is not on the body
+  private goneFromBody(ctx: SystemContext, targetActorId: number, actorId: number, baseId: number, count: number): boolean {
+    return this.isSearching(targetActorId, actorId) && this.sessions.get(targetActorId)?.body === true
+      && this.heldCount(ctx, targetActorId, baseId) < count;
+  }
+
   // Chains mp.onTakeItem like the other systems' activation hooks; a refused take never leaves the body
   private installTakeHook(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
     const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
     mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
-      if (this.stuck(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0)) {
+      if (this.stuck(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0) || this.goneFromBody(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0, count)) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
@@ -499,8 +505,7 @@ export class SearchSystem implements System {
     if (taken.has(baseId)) {
       return;
     }
-    const held = this.simpleEntriesOf(ctx, targetActorId).reduce((sum, e) => sum + (e.baseId === baseId ? e.count : 0), 0);
-    if (held < count) {
+    if (this.heldCount(ctx, targetActorId, baseId) < count) {
       return;
     }
     taken.add(baseId);
@@ -679,6 +684,10 @@ export class SearchSystem implements System {
     } catch {
       return [];
     }
+  }
+
+  private heldCount(ctx: SystemContext, actorId: number, baseId: number): number {
+    return this.simpleEntriesOf(ctx, actorId).reduce((sum, e) => sum + (e.baseId === baseId ? e.count : 0), 0);
   }
 
   // On a body the client drops the stacks the server left out, so a hidden item is simply not in the window; a living NPC keeps its gear

@@ -111,7 +111,7 @@ export class SearchService extends ClientListener {
   }
 
   // Vanilla container window on the target's synced body; item moves ride the normal ContainersService PutItem/TakeItem sync the server just authorized for this pair.
-  // The local clone's bag is not the real one (players mirror equipment, NPC clones roll their own leveled items): missing stacks are topped up, and on bodies and living NPCs local-only extras are removed.
+  // The local clone's bag is not the real one (players mirror equipment, NPC clones roll their own leveled items): missing stacks are topped up, and on bodies and living NPCs local-only extras are removed unless worn.
   // A living NPC keeps what its clone wears: the server lists no gear for it and refuses a take of it, so the window shows the gear and a take snaps back.
   private openTargetInventory(remoteId: number, entries: { baseId: number, count: number }[], body: boolean, npc: boolean): void {
     this.searchWindowOpen = true;
@@ -151,7 +151,7 @@ export class SearchService extends ClientListener {
         const d = (server.get(baseId) || 0) - actor.getItemCount(form);
         if (d > 0) {
           actor.addItem(form, d, true);
-        } else if (d < 0 && (body || (npc && !actor.isEquipped(form)))) {
+        } else if (d < 0 && (body || npc) && !actor.isEquipped(form)) {
           actor.removeItem(form, -d, true, null);
         }
       });
