@@ -264,8 +264,10 @@ const main = async () => {
   companionSystem.setAllySource(() => petSystem.fighters(), (id) => petSystem.ownerOf(id));
   housingSystem.petCategoryOf = (actorId, refrId) => petSystem.categoryOfDoor(actorId, refrId);
   const adminSystem = new AdminSystem(log, npcSpawnSystem, masterySystem);
-  // Staff in NoClip may pass the world border
+  // Staff in NoClip may pass the world border, in play and at login
+  const spawn = new Spawn(log);
   worldFloorSystem.exempt = (mp, actorId) => adminSystem.hasMode(mp, actorId, "noclip");
+  spawn.exempt = worldFloorSystem.exempt;
   adminSystem.setPetSystem(petSystem);
   adminSystem.setAfterlifeSystem(afterlifeSystem);
   // Passive jobs: a job carrier neither carries nor is carried, and the admin panel places the jobs
@@ -284,7 +286,7 @@ const main = async () => {
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
-    new Spawn(log),
+    spawn,
     new Login(log, maxPlayers, master, port, masterKey, offlineMode),
     // Holds verified logins while the play slots are full and releases them to Spawn in arrival order
     new QueueSystem(log),

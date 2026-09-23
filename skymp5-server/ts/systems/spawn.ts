@@ -252,11 +252,14 @@ export class Spawn implements System {
     }
   }
 
+  // Players it returns true for may stay outside the border
+  exempt: ((mp: Mp, actorId: number) => boolean) | null = null;
+
   // Runs before setUserActor, so the client's loadGame already gets the spot inside
   private bringInsideBorder(mp: Mp, actorId: number): void {
     try {
       const loc = mp.get(actorId, "locationalData");
-      if (!loc || !isOutsideBorder(mp, loc)) return;
+      if (!loc || !isOutsideBorder(mp, loc) || this.exempt?.(mp, actorId)) return;
       const spot = insideSpot(mp, actorId, loc, this.startLocations.length ? this.startLocations : DEFAULT_START_LOCATIONS);
       if (!spot) return;
       mp.set(actorId, "locationalData", spot);
