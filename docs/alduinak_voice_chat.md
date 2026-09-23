@@ -8,6 +8,10 @@ The integration described as "future work" below has been built:
   (`MyChromiumApp.cpp` / `MyBrowserProcessHandler.cpp`). **Needs a CI flatrim
   rebuild**; until the new `SkyrimPlatform.dll` ships, players can hear but not
   speak.
+- **Keyboard guard**: opening the mic makes Chromium register raw keyboard
+  input for its key press monitor, which silences DirectInput until alt-tab;
+  `DInputHook.cpp` refuses libcef.dll's raw keyboard and mouse registrations
+  and logs "refused CEF raw ... input registration".
 - **Server**: `skymp5-server/ts/systems/voiceSystem.ts` mints LiveKit HS256
   tokens (identity = the player's actor id in hex, unspoofable). Config =
   `voiceChat` object in `server-settings.json` (enabled/url/apiKey/apiSecret/

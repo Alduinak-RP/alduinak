@@ -10,6 +10,7 @@
 #include <atomic>
 #include <iostream>
 #include <spdlog/spdlog.h>
+#include <vector>
 
 namespace {
 std::shared_ptr<IInputListener> g_listener;
@@ -372,6 +373,9 @@ using TDirectInput8Create = HRESULT(_stdcall*)(HINSTANCE, DWORD, REFIID,
 static TIDirectInputA_CreateDevice RealIDirectInputA_CreateDevice = nullptr;
 static TDirectInput8Create RealDirectInput8Create = nullptr;
 
+using TRegisterRawInputDevices = BOOL(WINAPI*)(PCRAWINPUTDEVICE, UINT, UINT);
+static TRegisterRawInputDevices RealRegisterRawInputDevices = nullptr;
+
 static Set<FakeIDirectInputDevice8A*> s_devices;
 
 HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceState(DWORD outDataLen,
@@ -605,10 +609,42 @@ static HRESULT _stdcall HookDirectInput8Create(HINSTANCE instance,
   return result;
 }
 
+// Chromium's key press monitor for an open mic would move the keyboard's raw input off DirectInput's window
+static BOOL WINAPI HookRegisterRawInputDevices(PCRAWINPUTDEVICE devices,
+                                               UINT count, UINT size)
+{
+  if (!devices || size != sizeof(RAWINPUTDEVICE)) {
+    return RealRegisterRawInputDevices(devices, count, size);
+  }
+  std::vector<RAWINPUTDEVICE> kept;
+  for (UINT i = 0; i < count; ++i) {
+    const RAWINPUTDEVICE& device = devices[i];
+    if (device.usUsagePage == 0x01 &&
+        (device.usUsage == 0x02 || device.usUsage == 0x06)) {
+      spdlog::info(
+        "DInputHook: refused CEF raw {} input registration, flags {:#x} on {}",
+        device.usUsage == 0x06 ? "keyboard" : "mouse", device.dwFlags,
+        DescribeWindow(device.hwndTarget));
+      continue;
+    }
+    kept.push_back(device);
+  }
+  if (kept.empty()) {
+    return TRUE;
+  }
+  return RealRegisterRawInputDevices(kept.data(),
+                                     static_cast<UINT>(kept.size()), size);
+}
+
 void DInputHook::Install(std::shared_ptr<IInputListener> listener) noexcept
 {
   g_listener = listener;
   TP_HOOK_IAT(DirectInput8Create, "dinput8.dll");
+  if (const HMODULE cef = GetModuleHandleA("libcef.dll")) {
+    TP_HOOK_IAT_IN(cef, RegisterRawInputDevices, "user32.dll");
+  }
+  spdlog::info("DInputHook: CEF raw input guard {}",
+               RealRegisterRawInputDevices ? "installed" : "missing");
 }
 
 DInputHook::DInputHook() noexcept

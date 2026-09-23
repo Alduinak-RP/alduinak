@@ -10,7 +10,7 @@
   ((PCHAR)(((PCHAR)(Base)) + ((ULONG_PTR)(Offset))))
 
 namespace CEFUtils {
-static void** GetImportedFunction(const char* acpLibraryName,
+static void** GetImportedFunction(HMODULE aModule, const char* acpLibraryName,
                                   const char* acpMethod) noexcept;
 
 FunctionHook::FunctionHook() noexcept
@@ -109,10 +109,10 @@ void FunctionHookManager::Add(FunctionHook aFunctionHook,
 
 void* FunctionHookManager::Add(void* apFunctionDetour,
                                const char* acpLibraryName,
-                               const char* acpMethod) noexcept
+                               const char* acpMethod, HMODULE aModule) noexcept
 {
   const auto pRealFunctionThunk =
-    GetImportedFunction(acpLibraryName, acpMethod);
+    GetImportedFunction(aModule, acpLibraryName, acpMethod);
 
   if (!pRealFunctionThunk)
     return nullptr;
@@ -127,10 +127,10 @@ void* FunctionHookManager::Add(void* apFunctionDetour,
   return pRealFunction;
 }
 
-static void** GetImportedFunction(const char* acpLibraryName,
+static void** GetImportedFunction(HMODULE aModule, const char* acpLibraryName,
                                   const char* acpMethod) noexcept
 {
-  const auto pBase = GetModuleHandle(nullptr);
+  const auto pBase = aModule ? aModule : GetModuleHandle(nullptr);
 
   const auto pImageDosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(pBase);
   auto pImageNtHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(

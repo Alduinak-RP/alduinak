@@ -45,7 +45,7 @@ public:
 
   void Add(FunctionHook aFunctionHook, bool aDelayed = false) noexcept;
   void* Add(void* apFunctionDetour, const char* acpLibraryName,
-            const char* acpMethod) noexcept;
+            const char* acpMethod, HMODULE aModule = nullptr) noexcept;
 
   template <class T, class U>
   void Add(T** aSystemFunction, U* aHookFunction,
@@ -110,10 +110,12 @@ Func HookVTable(T* pInstance, const size_t aIndex, Func aFunctionPtr)
 #define TP_HOOK_SYSTEM(libraryName, functionName, hookFunction)               \
   CEFUtils::FunctionHookManager::GetInstance().AddSystem(                     \
     libraryName, functionName, hookFunction)
-#define TP_HOOK_IAT(functionName, libraryName)                                \
+#define TP_HOOK_IAT_IN(moduleHandle, functionName, libraryName)               \
   Real##functionName =                                                        \
     (T##functionName)CEFUtils::FunctionHookManager::GetInstance().Add(        \
-      Hook##functionName, libraryName, #functionName)
+      Hook##functionName, libraryName, #functionName, moduleHandle)
+#define TP_HOOK_IAT(functionName, libraryName)                                \
+  TP_HOOK_IAT_IN(nullptr, functionName, libraryName)
 
 #define TP_HOOK_COMMIT                                                        \
   CEFUtils::FunctionHookManager::GetInstance().InstallDelayedHooks();
