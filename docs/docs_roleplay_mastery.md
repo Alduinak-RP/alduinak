@@ -244,6 +244,11 @@ therefore also stop offering the Ancient Nord armour, the Nord Hero weapons and
 Sentinel's steel plate cuirass and bracers. The Nordic arrow stays at the
 woodcrafting bench, and the AVExpansion Nordic Vanguard set stays where it is.
 
+Immersive Armors' Heavy and Light Skyforge Shields are made at the Skyforge
+too, not at the woodcrafting bench: blacksmith Adept work (steel and
+corundum), open to every people. Their Improve entries ask for the same rank,
+and the Nord rule's "Skyforge" match no longer gates them (`racial.clear`).
+
 Stalhrim, the Blades armour and the Skyforge Bow stay craftable at their mastery
 tier. Every crossbow and bolt, the Dawnguard ones and the Curios bolts alike, is
 the Dawnguard's (see Race and faction). Tempering is untouched: a parked

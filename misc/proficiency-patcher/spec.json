@@ -1061,6 +1061,18 @@
     "name": "Springsteel Bow",
     "profession": "woodworker",
     "tier": "Expert"
+   },
+   {
+    "edid": "IATShieldSkyforgeHeavy",
+    "name": "Heavy Skyforge Shield",
+    "profession": "blacksmith",
+    "tier": "Adept"
+   },
+   {
+    "edid": "IATShieldSkyforgeLight",
+    "name": "Light Skyforge Shield",
+    "profession": "blacksmith",
+    "tier": "Adept"
    }
   ],
   "newRecipes": [
@@ -3355,6 +3367,20 @@
     "tier": "Expert",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
+   },
+   {
+    "edid": "IARShieldSkyforgeHeavy",
+    "name": "Heavy Skyforge Shield",
+    "tier": "Adept",
+    "bench": "CraftingSmithingSkyforge",
+    "profession": "blacksmith"
+   },
+   {
+    "edid": "IARShieldSkyforgeLight",
+    "name": "Light Skyforge Shield",
+    "tier": "Adept",
+    "bench": "CraftingSmithingSkyforge",
+    "profession": "blacksmith"
    }
   ],
   "newRecipes": [],
@@ -4937,6 +4963,9 @@
    "CraftingTanningRack",
    "MCE_CraftingLoom",
    "AldCraftingWoodcrafting"
+  ],
+  "clear": [
+   "IAShieldSkyforge"
   ],
   "races": [
    {

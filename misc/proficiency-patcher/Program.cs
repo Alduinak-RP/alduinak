@@ -1427,6 +1427,8 @@ static class Steps
                           Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
                           Except: Edids(c, x["except"]).ToList())).ToList();
         var counts = rules.ToDictionary(r => r.Name, _ => 0);
+        // Gear open to every people although a rule's match would claim it; an older race gate on it is lifted
+        var clear = Edids(c, spec["clear"]).ToList();
         foreach (var (key, cobj) in FinalRecipes(c))
         {
             if (!benches.Contains(cobj.Bench) || c.CreationKeys.Contains(key.ModKey)) continue;
@@ -1436,6 +1438,15 @@ static class Steps
             if (c.Claimed.Contains(edid)) continue;
             var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
             var text = $"{edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
+            if (clear.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var gated) || !gated.Conditions.Any(cond => cond.Data is IGetIsRaceConditionDataGetter)) continue;
+                var open = c.Override(c.Mod.ConstructibleObjects, gated);
+                open.Conditions.RemoveAll(cond => cond.Data is IGetIsRaceConditionDataGetter);
+                if (open.Conditions.Count > 0) open.Conditions[^1].Flags &= ~Condition.Flag.OR;
+                c.Report.Recipes.Add(new RecipeLine("racial", edid, c.NameOf(cobj.Product), "anyone", "-", Items(c, open), note: "race gate lifted"));
+                continue;
+            }
             var inputs = c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)
                 ? (recipe.Items ?? new List<IContainerEntryGetter>()).Select(i => i.Item.Item.FormKey).ToList()
                 : new List<FormKey>();
