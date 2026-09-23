@@ -40,7 +40,7 @@ const toBaseId = (v: unknown): number | null => {
 };
 
 // Validate a "startingItems" setting into {baseId,count} stacks; null if absent or malformed
-function parseStartingItems(raw: unknown): { baseId: number; count: number }[] | null {
+export function parseStartingItems(raw: unknown): { baseId: number; count: number }[] | null {
   if (!Array.isArray(raw)) return null;
   const out: { baseId: number; count: number }[] = [];
   for (const e of raw) {

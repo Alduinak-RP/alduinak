@@ -2,7 +2,8 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
-import { addSpellTo, removeSpellFrom } from "./actorUtil";
+import { addItemTo, addSpellTo, hex, isCreationPending, removeSpellFrom } from "./actorUtil";
+import { parseStartingItems } from "./spawn";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -51,8 +52,13 @@ type Mp = any;
 //                                DEFAULT_ACTIVITIES key by key. Keywords take an
 //                                editor id ("CraftingSmithingForge"), a hex id
 //                                ("0x88105") or a desc ("88105:Skyrim.esm").
+//   masteryKits                  { "<professionId>": [{ baseId, count }] } overriding
+//                                DEFAULT_KITS key by key, same shape as startingItems;
+//                                [] gives that profession nothing.
 
 const MASTERY_PROP = "private.mastery";
+// Set with a character's first kit and never cleared, so a reset and a new pick bring no second one
+const KIT_PROP = "private.professionKit";
 // Plugin recipes any character makes at Novice (instruments, broom, war horns) are no one's work
 const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
 
@@ -215,6 +221,22 @@ const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
   woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter", "AldCraftingWoodcrafting", "AldCraftingKiln"] },
 };
 
+interface KitItem {
+  baseId: number;
+  count: number;
+}
+
+// Skyrim.esm: IngotIron, Leather01, LeatherStrips, Axe01, weapPickaxe, SaltPile, IronDagger, HuntingBow, IronArrow; alchemists start with nothing
+const DEFAULT_KITS: Record<string, KitItem[]> = {
+  blacksmith: [{ baseId: 0x0005ace4, count: 5 }],
+  tailor: [{ baseId: 0x000db5d2, count: 5 }, { baseId: 0x000800e4, count: 5 }],
+  woodworker: [{ baseId: 0x0002f2f4, count: 1 }],
+  miner: [{ baseId: 0x000e3c16, count: 1 }],
+  cook: [{ baseId: 0x00034cdf, count: 10 }],
+  warrior: [{ baseId: 0x0001397e, count: 1 }],
+  hunter: [{ baseId: 0x00013985, count: 1 }, { baseId: 0x0001397d, count: 20 }],
+};
+
 const ACTIVITY_KINDS = ["craft", "activate", "eat", "kill", "hit"] as const;
 type ActivityKind = typeof ACTIVITY_KINDS[number];
 
@@ -296,6 +318,7 @@ export class MasterySystem implements System {
       }
     }
 
+    this.loadKits(ctx, all?.["masteryKits"]);
     await this.loadRules(ctx, all?.["masteryActivities"], s.dataDir, s.loadOrder);
     await this.loadPluginSpells(ctx, s.dataDir, s.loadOrder);
 
@@ -488,7 +511,8 @@ export class MasterySystem implements System {
     // Spells already in the changeform ride the spawn message down on their
     // own; only a gap (new config, retuned rank) needs granting, and it has to
     // wait out the client's spawn-time removeAllSpells.
-    if (this.missingSpells(rec).length) {
+    // A craft taken before starting kits existed gets its kit on the same delay.
+    if (this.missingSpells(rec).length || !this.hasKit(ctx, actorId)) {
       this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
     }
   }
@@ -500,7 +524,9 @@ export class MasterySystem implements System {
       if (now < dueAt) return;
       this.pendingGrants.delete(actorId);
       const rec = this.read(ctx, actorId);
-      if (rec && rec.profession) this.applySpells(ctx, actorId, rec);
+      if (!rec || !rec.profession) return;
+      this.applySpells(ctx, actorId, rec);
+      this.giveKit(ctx, actorId, this.userOf(ctx, actorId), rec.profession);
     });
   }
 
@@ -518,12 +544,45 @@ export class MasterySystem implements System {
       this.notice(ctx, userId, `You have already given yourself to the ${this.labelOf(rec.profession)}.`);
       return;
     }
+    // Finishing creation cuts the inventory back to the starter clothes, which would take the kit with it
+    if (isCreationPending(ctx.svr as Mp, actorId)) {
+      this.notice(ctx, userId, "Finish creating your character before you choose a craft.");
+      return;
+    }
     rec.profession = professionId;
     rec.rank = this.rankFor(rec.points);
     this.write(ctx, actorId, rec);
     this.applySpells(ctx, actorId, rec);
     this.notice(ctx, userId, `You take up the craft of the ${this.labelOf(professionId)}.`);
+    this.giveKit(ctx, actorId, userId, professionId);
     this.sendMenu(ctx, userId);
+  }
+
+  // A read that throws counts as given, so a hiccup never hands out a second kit
+  private hasKit(ctx: SystemContext, actorId: number): boolean {
+    try { return !!(ctx.svr as Mp).get(actorId, KIT_PROP); } catch { return true; }
+  }
+
+  // Once per character; AddItem is not silent, so each stack shows its own "+ name (count)" line
+  private giveKit(ctx: SystemContext, actorId: number, userId: number, professionId: string): void {
+    if (this.hasKit(ctx, actorId)) return;
+    const mp = ctx.svr as Mp;
+    try {
+      mp.set(actorId, KIT_PROP, { profession: professionId, at: Date.now() });
+    } catch (e) {
+      this.log(`[mastery] kit flag failed for ${hex(actorId)}: ${e}`);
+      return;
+    }
+    const kit = this.kits[professionId] || [];
+    for (const item of kit) {
+      try {
+        addItemTo(mp, actorId, item.baseId, item.count);
+      } catch (e) {
+        this.log(`[mastery] kit item ${hex(item.baseId)} failed for ${hex(actorId)}: ${e}`);
+      }
+    }
+    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}`);
+    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
   }
 
   // ── Menu ────────────────────────────────────────────────────────────────────
@@ -674,6 +733,22 @@ export class MasterySystem implements System {
   stationKeywords(ctx: SystemContext, refrId: number): Set<number> {
     const base = this.baseOf(ctx, refrId);
     return base && (base.type === "FURN" || base.type === "ACTI") ? this.baseKeywords(ctx, base.id) : new Set<number>();
+  }
+
+  // Settings override the default kits profession by profession; a malformed list keeps the default
+  private loadKits(ctx: SystemContext, raw: unknown): void {
+    const overrides = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const unknown = Object.keys(overrides).filter((id) => PROFESSION_IDS.indexOf(id) === -1);
+    if (unknown.length) this.log(`[mastery] masteryKits keys that are no profession id: ${unknown.join(", ")}`);
+    for (const id of PROFESSION_IDS) {
+      const list = overrides[id];
+      if (list === undefined) continue;
+      const parsed = Array.isArray(list) && !list.length ? [] : parseStartingItems(list);
+      if (parsed) this.kits[id] = parsed;
+      else this.log(`[mastery] masteryKits.${id} is malformed, the default kit stays`);
+    }
+    const missing = PROFESSION_IDS.flatMap((id) => (this.kits[id] || []).filter((i) => !this.lookup(ctx, i.baseId)).map((i) => `${id} ${hex(i.baseId)}`));
+    if (missing.length) this.log(`[mastery] kit items not in the load order: ${missing.join(", ")}`);
   }
 
   // ── Activity rules ──────────────────────────────────────────────────────────
@@ -1011,6 +1086,7 @@ export class MasterySystem implements System {
   }
 
   private rankHours = DEFAULT_RANK_HOURS.slice();
+  private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
   private spells: Record<string, number[]> = {};
   private rules: Record<string, ResolvedRules> = {};

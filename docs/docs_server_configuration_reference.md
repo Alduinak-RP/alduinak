@@ -946,6 +946,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `masteryPointIntervalMinutes` | `60` | Minimum gap between two counted hours |
 | `masterySpells` | plugin markers | `{ "<profession>": [novice, adept, expert, master] }` form ids; a profession left out uses the plugin's `AldMastery_<Profession>_<Rank>` spells |
 | `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
+| `masteryKits` | see `DEFAULT_KITS` in `masterySystem.ts` | `{ "<profession>": [{ baseId, count }] }` kit a character receives with its first profession, same shape as `startingItems`; a profession left out keeps its default, `[]` gives nothing, an unknown key or item is logged at boot |
 | `gatheringStrikeSeconds` | `5` | Seconds per chop or pickaxe strike |
 | `gatheringVeinTotal` | `6` | Ore collections every vein holds, vanilla veins and the sea salt deposits alike; each pickaxe strike still gives the record's own count (1), so a vein is six strikes. `0` uses each record's `ResourceCountTotal` (3 for the vanilla veins) |
 | `gatheringVeinRespawnMinutes` | `1440` | Minutes after the first ore taken until the whole vein is back, at once, whether one ore or all six were taken. `0` keeps the default rather than making veins endless |

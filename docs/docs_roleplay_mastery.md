@@ -61,6 +61,34 @@ book. Cloaks, capes and every piece of clothing need a Novice tailor.
 Ids are the wire values and the keys in `masterySpells`. Labels and epithets are
 defined in `PROFESSIONS` in `masterySystem.ts`; edit them there and the menu follows.
 
+## Starting kits
+
+A character's first craft comes with a starting kit, `DEFAULT_KITS` in
+`masterySystem.ts` (Skyrim.esm items):
+
+| Profession | Kit |
+|---|---|
+| Alchemist | nothing |
+| Blacksmith | 5 Iron Ingot (`0x5ACE4`) |
+| Cook | 10 Salt Pile (`0x34CDF`) |
+| Hunter | Hunting Bow (`0x13985`), 20 Iron Arrow (`0x1397D`) |
+| Miner | Pickaxe (`0xE3C16`) |
+| Tailor | 5 Leather (`0xDB5D2`), 5 Leather Strips (`0x800E4`) |
+| Warrior | Iron Dagger (`0x1397E`) |
+| Woodworker | Woodcutter's Axe (`0x2F2F4`) |
+
+The items arrive with the choice, each with its "+ name (count)" notice, then
+"The Hunter's starting kit is in your pack." (for a hunter) and a
+`[mastery] <actor> starting kit for <id>: ...` log line.
+`private.professionKit` `{ profession, at }` marks the kit as given and nothing
+clears it, so an admin reset or a wiped `private.mastery` followed by a new pick
+brings no second kit; a new character gets its own. A character that took its
+craft before kits existed receives its craft's kit about five seconds after its
+next login. A choice sent while the character is still in creation is refused,
+because finishing creation cuts the inventory back to the starter clothes.
+`masteryKits` overrides a profession's kit (`[]` gives nothing), and the boot
+log names any kit item missing from the load order.
+
 ## What each rank unlocks
 
 Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
@@ -472,6 +500,7 @@ Decimal or hex-as-number both work, in rank order Novice, Adept, Expert, Master.
 
 `MasterySystem.resetCharacter(ctx, actorId)` clears the choice and revokes the
 markers so the character can pick again; the admin panel's mastery reset uses it.
+The starting kit is not given again: `private.professionKit` stays.
 
 ## Wire protocol
 
