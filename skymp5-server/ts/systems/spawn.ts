@@ -26,7 +26,7 @@ const MAX_SLOTS = 10;
 const DEFAULT_STARTING_ITEMS = [
   { baseId: 0x00080697, count: 1 },
   { baseId: 0x00080699, count: 1 },
-  { baseId: 0x0000000f, count: 50 },
+  { baseId: 0x0000000f, count: 100 },
 ];
 
 // Parse a base id that may arrive as a decimal number or a "0x..." hex string

@@ -21,7 +21,7 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `build/dist/server/housing.json`, `zone-spawns.json` | Reset to `[]` |
 | `build/dist/server/companions.json` | Reset to `{"active":[],"corpses":[],"stored":[]}` |
 | `build/dist/server/pets.json` | Reset to `{"active":[],"released":[]}` |
-| `build/dist/server/starter-grants.json` | Reset to `{}`, so each account's first new character gets the starting kit and 50 gold again |
+| `build/dist/server/starter-grants.json` | Reset to `{}`, so each account's first new character gets the starting kit and 100 gold again |
 | `build/dist/server/gathering-picks.json` | Reset to `{}`. It lists picked nirnroot and critters waiting to grow back, and their hidden state goes with the dropped changeForms |
 | `build/dist/server/weather-state.json` | Reset to `{}`, so every region rolls a fresh weather on the next boot |
 | `build/dist/server/writings/` | Emptied. Document ids restart with the wiped counter, so old files would collide with new ones. |
@@ -158,7 +158,7 @@ Do the steps in this order, in one sitting. The game server stays stopped until 
       - no espm errors and no `unknown editor ids`
     - **In game:**
       - A new character sees the synopsis and the spawn list.
-      - The starting inventory has both clothing pieces and 50 gold, and `starter-grants.json` holds one key.
+      - The starting inventory has both clothing pieces and 100 gold, and `starter-grants.json` holds one key.
       - A hunter with Over Draw deals 1.2x bow damage to NPCs.
       - Claiming a property adds one id to `housing.json`, and the lock survives a relog.
       - A summoned pet appears in `pets.json` `active`.
