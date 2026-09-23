@@ -132,8 +132,8 @@ def keywords_of(pl, data):
     return {pl.key(f) for f in struct.unpack(f'<{len(kwda) // 4}I', kwda)}
 
 
-def spell_list(pl, data):
-    return [pl.key(struct.unpack('<I', v)[0]) for t, v in parse_subs(data) if t == 'SPLO']
+def id_list(pl, data, tag):
+    return [pl.key(struct.unpack('<I', v)[0]) for t, v in parse_subs(data) if t == tag]
 
 
 def check_race(ck, spec, spells, weapons, src, flags, data, out, q):
@@ -160,7 +160,7 @@ def check_race(ck, spec, spells, weapons, src, flags, data, out, q):
     types = {SPELL_TYPES[x] for x in spec.get('removeSpellTypes', [])}
     keep = set(spec.get('keepSpells', []))
     removable = lambda s: spells.get(s, ('', -1))[1] in types and spells[s][0] not in keep or spells.get(s, ('',))[0] in p.get('removeSpells', [])
-    before, after = spell_list(src, data), spell_list(out, q.data())
+    before, after = id_list(src, data, 'SPLO'), id_list(out, q.data(), 'SPLO')
     if any(s not in before for s in after):
         return f'spells added: {[spells.get(s, s) for s in after if s not in before]}'
     wrong = [spells.get(s, s) for s in before if (s in after) == removable(s)]
@@ -218,7 +218,7 @@ def main():
     disable_refs = {form_key(x) for x in spec.get('disableReferences', {}).get('refs', [])}
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
-    winners, actors, parents, spells, races, weapons, lists, slot = {}, {}, {}, {}, {}, {}, {}, 0
+    winners, actors, parents, spells, races, weapons, lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
     for n in order[:here]:
         pl = Plugin(os.path.join(stage['dataDir'], n))
         if not (pl.flags & ESL or n.lower().endswith('.esl')):
@@ -236,8 +236,10 @@ def main():
                 weapons[edid(r)] = damage_of(r)
             if r.type == 'FLST':
                 lists[edid(r)] = k
+            if r.type == 'MGEF':
+                effects[edid(r)] = k
             if r.type == 'RACE':
-                races[edid(r)] = spell_list(pl, r.data())
+                races[edid(r)] = id_list(pl, r.data(), 'SPLO')
             if ((r.type, k) in ro or r.type == 'REFR' and k in disable_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
                 winners[(r.type, k)] = (pl, r.flags, r.data(), pl.container(r, CELL_GROUPS if r.type != 'CELL' else WORLD_GROUPS))
         pl.buf = None
@@ -251,7 +253,7 @@ def main():
         if t == 'WEAP':
             weapons[edid(r)] = damage_of(r)
         if t == 'RACE':
-            races[edid(r)] = spell_list(out, r.data())
+            races[edid(r)] = id_list(out, r.data(), 'SPLO')
     ck = Checker(order, known)
 
     # Every changed or added record is one a spec section explains
@@ -260,11 +262,12 @@ def main():
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and prefix and edid(r).startswith(prefix)}
-    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, an own reference everything but its scale
+    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale
     over = spec.get('overrides', {})
     over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
     over_cobj = {form_key(r['recipe']): r['count'] for r in over.get('recipes', [])}
     over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
+    over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', [])}
     for (t, k), q in ro.items():
         r = ri.get((t, k))
         diff = None if r is None else ck.compare(t, inp, r.flags, r.data(), out, q.data()) or (r.flags & ~COMPRESSED != q.flags & ~COMPRESSED and f'flags {r.flags:#x} -> {q.flags:#x}')
@@ -324,6 +327,13 @@ def main():
             if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or len(nam1) != 2 or struct.unpack('<H', nam1)[0] != over_cobj[k]:
                 problems.append(f'{label}: not {src.name}\'s recipe with only the created count set to {over_cobj[k]} ({why or nam1.hex()})')
             checked['recipes overridden for their created count'] += 1
+        elif t == 'ALCH' and k in over_food:
+            src, flags, data, _ = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('EFID',))
+            swap, now = over_food[k], id_list(out, q.data(), 'EFID')
+            if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or None in swap or now != [swap[1] if e == swap[0] else e for e in id_list(src, data, 'EFID')]:
+                problems.append(f'{label}: not {src.name}\'s food with only {swap[0]} swapped for {swap[1]} ({why or now})')
+            checked['foods overridden for their hunger effect'] += 1
         elif t == 'REFR' and k[0] == me and edid(q) in over_refs and r is not None:
             why = ck.compare(t, inp, r.flags, r.data(), out, q.data(), skip=('XSCL',))
             xscl = dict(parse_subs(q.data())).get('XSCL', b'')

@@ -1193,6 +1193,18 @@ static class Steps
             ctx.GetOrAddAsOverride(c.Mod).CreatedObjectCount = (ushort)count;
             c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): created object count {from} -> {count}");
         }
+        foreach (var f in Entries(o["foods"]))
+        {
+            var key = FormKey.Factory(f["item"]!.GetValue<string>());
+            if (!cache.TryResolveContext<IIngestible, IIngestibleGetter>(key, out var ctx)) { c.Error($"overrides: food {key} not found"); continue; }
+            var from = c.KeyOf<IMagicEffectGetter>(f["from"]!.GetValue<string>());
+            var to = c.KeyOf<IMagicEffectGetter>(f["hunger"]!.GetValue<string>());
+            // Matching the new effect too keeps a re-run on a patched plugin idempotent
+            var at = ctx.Record.Effects.Select((e, i) => e.BaseEffect.FormKey == from || e.BaseEffect.FormKey == to ? i : -1).Where(i => i >= 0).ToList();
+            if (at.Count != 1) { c.Error($"overrides: food {c.EdidOf(key)} ({key}) carries {at.Count} {c.EdidOf(from)} effects, expected 1"); continue; }
+            ctx.GetOrAddAsOverride(c.Mod).Effects[at[0]].BaseEffect.SetTo(to);
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): {c.EdidOf(from)} -> {c.EdidOf(to)}");
+        }
         foreach (var p in Entries(o["refs"]))
         {
             var edid = p["ref"]!.GetValue<string>();

@@ -203,9 +203,11 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   the Satisfied stage.
 - A food restores what its hunger effect names. The server reads the effect's `Survival_HungerRestoreEffectScript`
   property `AmountToRestore`, a global, and that global's value in the load order: VerySmall 2, Small 18, Medium 220,
-  Large 380. `LargeVampire` (the blood potion) restores the Large amount only to an actor with the `Vampire` keyword,
-  from its `HasKeyword` condition. Several hunger effects on one food add up, as their scripts would. A food the server
-  refuses for its 10 second cooldown restores nothing. Survival's gutworm disease multiplier is not applied (no disease).
+  Large 380. Raw cabbage, carrots, gourds, leeks, potatoes and ash yams, Very Small in Survival, carry its Small effect
+  instead, like raw apples and tomatoes (the patcher spec's `overrides.foods`). `LargeVampire` (the blood potion)
+  restores the Large amount only to an actor with the `Vampire` keyword, from its `HasKeyword` condition. Several hunger
+  effects on one food add up, as their scripts would. A food the server refuses for its 10 second cooldown restores
+  nothing. Survival's gutworm disease multiplier is not applied (no disease).
 - Stages as in `Survival_NeedHunger.ApplyHungerStage`: Well Fed (0) only after a meal empties hunger, until it reaches
   80; Satisfied (1) below 160; Peckish (2) from 160, Hungry (3) from 340, Famished (4) from 520, Starving (5) from 770.
   The character holds `Survival_HungerStage<n>`, granted through Papyrus `AddSpell`: Well Fed +10% stamina
@@ -401,6 +403,8 @@ None of these has been run yet.
   client hot reload leaves it unchanged.
 - A Windhelm mead, a City of Dawnstar eel pie and a Windhelm bread restore 2, 220 and 18 hunger (0.2%, 22% and 1.8% of
   the bar).
+- A raw cabbage, potato or ash yam restores 18 hunger like an apple and its card reads "Restore 18 points of Hunger.";
+  an ale still restores 2.
 - HUD check without the console (the console stays closed for everyone, admins included): log in with a character
   that played about an hour (its stage notice reads Peckish or beyond, hunger over 160, since hunger persists per
   character and drains 125/h online); within a few seconds of the first `needsState` the stamina bar shows a red
