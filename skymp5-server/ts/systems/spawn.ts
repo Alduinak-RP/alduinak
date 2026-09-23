@@ -7,7 +7,7 @@ import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
 import { REALMS, afterlifeOf, isFallen, readMaxCharacters } from "./afterlifeSystem";
-import { hex, isAlive, isBleedingOut } from "./actorUtil";
+import { hex, isAlive, isBleedingOut, isCreationPending } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
 
 type Mp = any;
@@ -516,18 +516,12 @@ export class Spawn implements System {
     catch { return false; }
   }
 
-  // private.creationPending: set at creation, cleared by finishCreation
-  private isCreationPending(mp: Mp, actorId: number): boolean {
-    try { return mp.get(actorId, "private.creationPending") === true; }
-    catch { return false; }
-  }
-
   // Vanilla race menu path: an accepted appearance (isRaceMenuOpen) is the creation-finished moment
   private installAppearanceHook(ctx: SystemContext): void {
     const mp = ctx.svr as unknown as Mp;
     const previous = typeof mp.onUpdateAppearanceAttempt === "function" ? mp.onUpdateAppearanceAttempt : null;
     mp.onUpdateAppearanceAttempt = (actorId: number, appearance: unknown, isAllowed: boolean): boolean => {
-      if (isAllowed && this.isCreationPending(mp, actorId >>> 0)) {
+      if (isAllowed && isCreationPending(mp, actorId >>> 0)) {
         try { this.finishCreation(ctx, actorId >>> 0); }
         catch (e) { this.log(`[spawn] finishCreation failed: ${e}`); }
       }
@@ -542,7 +536,7 @@ export class Spawn implements System {
     const mp = ctx.svr as unknown as Mp;
     const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
     mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      if (this.isCreationPending(mp, targetId >>> 0) || this.isCreationPending(mp, aggressorId >>> 0)) return false;
+      if (isCreationPending(mp, targetId >>> 0) || isCreationPending(mp, aggressorId >>> 0)) return false;
       if (!previous) return true;
       try { return previous.call(mp, aggressorId, targetId, sourceId, damage) !== false; }
       catch { return true; }

@@ -125,6 +125,15 @@ export const isBleedingOut = (mp: Mp, actorId: number): boolean => {
   }
 };
 
+// Set when a character is created, cleared once its race menu or creator is accepted
+export const isCreationPending = (mp: Mp, actorId: number): boolean => {
+  try {
+    return mp.get(actorId, "private.creationPending") === true;
+  } catch {
+    return false;
+  }
+};
+
 // Wraps an mp.* event hook: the previous handler runs first, a false from either one vetoes, and a handler that throws is logged and never vetoes
 export const chainMpHook = (mp: Mp, event: string, fn: (...args: any[]) => unknown): void => {
   const previous = typeof mp[event] === "function" ? mp[event] : null;

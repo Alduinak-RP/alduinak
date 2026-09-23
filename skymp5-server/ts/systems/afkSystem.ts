@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { kickWithReason } from "./kickUtil";
-import { userSlotCount } from "./actorUtil";
+import { userSlotCount, isCreationPending } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -70,8 +70,8 @@ export class AfkSystem implements System {
 
       let actorId = 0;
       try { actorId = mp.getUserActor(userId); } catch { }
-      if (!actorId) {
-        // Login/character select flows have their own pacing
+      if (!actorId || isCreationPending(mp, actorId)) {
+        // Login, character select and character creation have their own pacing
         this.touch(userId);
         continue;
       }
