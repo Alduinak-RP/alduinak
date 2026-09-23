@@ -101,6 +101,12 @@ rule as "A stranger"):
 - Every seal ever broken stays on the letter: "The seal of <name> was broken."
   or "An unfamiliar seal was broken.", shown on the sealed face and on the
   opened letter alike, so re-sealing cannot hide tampering.
+- The name carries the **Show Title** prefix the person showed when the
+  writing was made or the wax pressed (`title` on the person record, from
+  `FactionSystem.titleOfActor`), the same form as chat and the floating name:
+  "Signed, Jarl Sen Volun", "Closed with the seal of Jarl Sen Volun.". A
+  stranger still sees only the unfamiliar hand or seal, and documents written
+  before titles were recorded show the plain name.
 
 ### Hold and faction marks
 
@@ -176,7 +182,7 @@ The folder is created on the first write. The store sits behind the
     {
       "v": 1, "id": "W1A7QZ", "kind": "letter" | "journal" | "book",
       "title": "...", "pages": ["..."], "signed": true, "finished": false,
-      "author": { "actorId", "profileId", "realName", "shownName", "factionId" },
+      "author": { "actorId", "profileId", "realName", "shownName", "title", "factionId" },
       "scribe": { ... },          // who made this file: the author or a copier
       "copyOf": "",               // the original's id on a copy
       "createdAt", "updatedAt",
@@ -306,6 +312,11 @@ In this order:
   check the sealed face lists it.
 - A stranger sees "Signed in an unfamiliar hand" and "an unfamiliar seal"; after
   an introduction the names show.
+- Titles: with Show Title on, sign and seal a letter; the writer and an
+  introduced reader see "Signed, <Title> <name>" and "Closed with the seal of
+  <Title> <name>.", a stranger sees the unfamiliar lines; with Show Title off,
+  a new letter shows the plain name. `author.title` is in the document file
+  and survives a service restart.
 - Marks: a hold citizen (Faction tab opened once after the grant) signs a
   letter: the wolf of Haafingar spans about a third of the page (about 220 px
   of the 720 px reader), centred under "Signed, <name>" and, for a stranger,

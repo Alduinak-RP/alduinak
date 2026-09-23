@@ -8,7 +8,7 @@ import { adminAudit } from "./discordAlerts";
 import { AdminRoleConfig, adminTierOf, missingCap, readAdminRoleConfig } from "./adminRoles";
 import { FactionSystem } from "./factionSystem";
 import { InventoryEntry, Item, addEntries, isNamedItemBase, namedItemBaseIds, readInventory, registerNamedItemBases, sameExtras } from "./inventoryExtras";
-import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, realNameOf, sanitize, sendJson } from "./playerText";
+import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, realNameOf, sanitize, sendJson, titledName } from "./playerText";
 import { JsonWritingStore, WRITING_ID, WritingDoc, WritingKind, WritingPerson, WritingSeal, WritingStore } from "./writingStore";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -508,7 +508,7 @@ export class WritingSystem implements System {
     const nameFor = (who: WritingPerson): string => {
       if (staff) return `${who.realName || "someone unrecorded"} (profile ${who.profileId})`;
       const known = who.actorId === actorId || (!!who.actorId && isIntroduced(mp, actorId, who.actorId));
-      return known ? who.shownName : "";
+      return known ? titledName(who.title, who.shownName) : "";
     };
     const sealName = (seal: WritingSeal): string => {
       const name = nameFor(seal);
@@ -709,12 +709,12 @@ export class WritingSystem implements System {
   private person(mp: Mp, actorId: number): WritingPerson {
     return {
       actorId, profileId: profileIdOf(mp, actorId), realName: realNameOf(mp, actorId), shownName: displayNameOf(mp, actorId),
-      factionId: this.sealFactionOf(actorId),
+      title: this.factions.titleOfActor(actorId), factionId: this.sealFactionOf(actorId),
     };
   }
 
   private nobody(): WritingPerson {
-    return { actorId: 0, profileId: -1, realName: "", shownName: "", factionId: "" };
+    return { actorId: 0, profileId: -1, realName: "", shownName: "", title: "", factionId: "" };
   }
 
   // The faction whose title the character shows, else the first of theirs with a mark

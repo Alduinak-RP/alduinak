@@ -69,7 +69,10 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
   The fee is checked and taken only after every other check has passed; a
   player who cannot pay is refused with a notice and loses nothing.
 - Notices are signed with the name others see: `maskName` when set, the
-  actor's real name otherwise. The audit log always records the real name.
+  actor's real name otherwise, preceded by the poster's **Show Title** prefix
+  when one is shown (`FactionSystem.titleOfActor`, injected as `titleOf` in
+  `index.ts`), as in chat. Notices posted earlier keep the name they were
+  posted with. The audit log always records the real name.
 - Text is capped at `bountyBoardMaxTextLen` (default 500) characters; line
   breaks survive, every other control character is stripped.
 - One board holds `bountyBoardMaxNotes` (default 40) notices; a full board

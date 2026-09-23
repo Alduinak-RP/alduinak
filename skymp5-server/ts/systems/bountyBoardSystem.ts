@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
-import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson } from "./playerText";
+import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
 import { GOLD_BASE_ID } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -108,6 +108,7 @@ export class BountyBoardSystem implements System {
   constructor(private log: Log) { }
 
   canRemove = (_actorId: number, _boardName: string): boolean => false;
+  titleOf = (_actorId: number): string => "";
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -338,7 +339,7 @@ export class BountyBoardSystem implements System {
       return;
     }
 
-    const author = displayNameOf(ctx.svr, actorId);
+    const author = titledName(this.titleOf(actorId), displayNameOf(ctx.svr, actorId));
     rec.notes.push({
       id: rec.nextId,
       author,

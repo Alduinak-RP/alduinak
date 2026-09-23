@@ -17,6 +17,8 @@ export interface WritingPerson {
   realName: string;
   // The name others saw at the time, mask respected
   shownName: string;
+  // The Show Title prefix at the time, empty for none
+  title: string;
   // The faction whose mark the signature or seal carries, empty for none
   factionId: string;
 }
@@ -76,6 +78,7 @@ function person(raw: any): WritingPerson {
     profileId: Number.isFinite(Number(raw?.profileId)) ? Number(raw.profileId) : -1,
     realName: text(raw?.realName, 100),
     shownName: text(raw?.shownName, 100),
+    title: text(raw?.title, 64),
     factionId: text(raw?.factionId, 64),
   };
 }

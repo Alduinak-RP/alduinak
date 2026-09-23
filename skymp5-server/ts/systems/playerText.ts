@@ -25,6 +25,9 @@ export function displayNameOf(mp: Mp, actorId: number): string {
   try { return String(mp.getActorName(actorId) || "Unknown"); } catch { return "Unknown"; }
 }
 
+// The Show Title prefix in front of a name, the form chat and the floating name tag use
+export const titledName = (title: string, name: string): string => (title ? `${title} ${name}` : name);
+
 // The stashed original while masked, for the audit trail only.
 export function realNameOf(mp: Mp, actorId: number): string {
   let stashed = "";
