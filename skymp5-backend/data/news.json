@@ -1,9 +1,30 @@
 [
   {
+    "title": "Patch 0.9.1",
+    "body": "Thanks to everyone participating in the beta. We're taking in all of the feedback from whitelisted players specifically so we can fix these issues from passionate community members before we go live publicly. Patch notes are posted on the discord.",
+    "date": "Sep 23, 2026",
+    "tag": "UPDATE",
+    "image": "/images/news-lore.jpg"
+  },
+  {
+    "title": "Bug/Crash Reports",
+    "body": "If you notice any bugs, please post them on discord in #technical-help along with any crash logs, and/or your logs located in Desktop/My Games/Skyrim Special Edition/SKSE (please zip them up for me),",
+    "date": "Sep 23, 2026",
+    "tag": "NOTICE",
+    "image": "/images/news-economy.gif"
+  },
+  {
+    "title": "README",
+    "body": "Please make sure you have downgraded Skyrim to 1.6.1170 before installing using Reliquary: https://www.nexusmods.com/site/mods/2188",
+    "date": "Sep 22, 2026",
+    "tag": "NOTICE",
+    "image": "/images/news-economy.gif"
+  },
+  {
     "title": "Server Launches 10/1",
     "body": "After 3 months of hard work, we are please to announce the server will officially launch to the public October 1st. \n\nStarting Tuesday, 9/22, players that are whitelisted will be able to access the closed beta a week before the server is released to the public. The final wipe will be Monday the 21st, after that date everything is live.",
     "date": "Sep 18, 2026",
-    "tag": "UPDATE",
+    "tag": "NEWS",
     "image": "/images/news-world.gif"
   }
 ]

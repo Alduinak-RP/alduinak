@@ -435,13 +435,6 @@ html, body {
   flex-direction: column;
 }
 
-.modlist-section {
-  width: 268px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 /* Nexus Premium notice, above the modlist */
 .premium-section {
   flex-shrink: 0;
@@ -481,6 +474,13 @@ html, body {
 }
 
 .premium-link:hover { color: var(--gold-bright); text-decoration: underline; }
+
+.modlist-section {
+  width: 268px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 /* News grid */
 .news-grid {

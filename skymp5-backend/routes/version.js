@@ -9,7 +9,7 @@ const CLIENT_VERSION = '0.8.3'
 const SERVER_VERSION = '0.8.3'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 // Launchers from 2.4.0 update from this zip; older ones only read DOWNLOAD_URL, so nginx keeps serving the exe
-const PACKAGE_URL    = 'https://alduinak.com/images/0/28177400/AlduinakLauncher-csOIfTHLcczP9Vcym9GSOQ.zip'
+const PACKAGE_URL    = 'https://alduinak.com/download'
 
 router.get('/', (_req, res) => {
   res.json({
