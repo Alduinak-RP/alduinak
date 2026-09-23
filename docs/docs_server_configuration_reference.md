@@ -343,7 +343,7 @@ the playable races only Khajiit Night Eye). `false` makes characters start
 without them; abilities such as the combat heal rate, racial passives and
 lesser powers (Khajiit Night Eye) stay,
 and spells learned in play (tomes) are kept. The client drops the withheld spells from its own spell lists at
-spawn and after the race menu. Read by the native server at boot.
+spawn and after the race menu, always from the list the server sent last. Read by the native server at boot.
 
 ```json5
 {

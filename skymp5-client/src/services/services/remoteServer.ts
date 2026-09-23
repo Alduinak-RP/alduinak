@@ -27,7 +27,7 @@ import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '.
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
-import { dropUnlistedBaseSpells, learnSpells, removeAllSpells, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
+import { describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
@@ -809,21 +809,29 @@ export class RemoteServer extends ClientListener {
     };
 
     if (msg.isMe && msg.props && msg.props.learnedSpells) {
-      const learnedSpells = msg.props.learnedSpells;
+      const spawnSpells = msg.props.learnedSpells;
 
       once('update', () => {
         if (spawnSeq !== this.playerSpawnSeq) return;
         Utility.wait(1).then(() => {
+          // The race menu pauses this wait, so the list the server sent last is the one to apply
+          const learnedSpells = this.worldModel.forms[i]?.learnedSpells ?? spawnSpells;
           const player = Game.getPlayer();
 
-          if (player) {
+          if (player && spawnSeq === this.playerSpawnSeq && i === this.worldModel.playerCharacterFormIdx) {
             dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, learnedSpells);
-            removeAllSpells(player);
+            removeUnlistedSpells(player, learnedSpells);
             learnSpells(player, learnedSpells);
             syncRaceAbilities(player, learnedSpells);
             logTrace(this,
               `player learnedSpells:`, JSON.stringify(learnedSpells),
             );
+            Utility.wait(5).then(() => {
+              const pc = Game.getPlayer();
+              if (pc) {
+                logToPlatformLog(this, 'race abilities', describeRaceAbilities(pc));
+              }
+            });
           }
         });
       });
@@ -1132,6 +1140,7 @@ export class RemoteServer extends ClientListener {
         const player = Game.getPlayer();
         if (player) {
           dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, msgData as number[]);
+          learnSpells(player, msgData as number[]);
           syncRaceAbilities(player, msgData as number[]);
         }
       });

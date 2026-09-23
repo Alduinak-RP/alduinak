@@ -510,8 +510,8 @@ export class MasterySystem implements System {
     this.write(ctx, actorId, rec);
     // Spells already in the changeform ride the spawn message down on their
     // own; only a gap (new config, retuned rank) needs granting, and it has to
-    // wait out the client's spawn-time removeAllSpells.
-    // A craft taken before starting kits existed gets its kit on the same delay.
+    // wait out the client's spawn-time removeUnlistedSpells.
+    // A craft held without its kit gets the kit on the same delay.
     if (this.missingSpells(rec).length || !this.hasKit(ctx, actorId)) {
       this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
     }

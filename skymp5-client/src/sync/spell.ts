@@ -1,13 +1,15 @@
 import { Actor, ActorBase, Game, Race, Spell, printConsole } from 'skyrimPlatform';
 import { BLOCKED_POWER_IDS } from '../services/services/magicSyncService';
 
-export const removeAllSpells = (actor: Actor) => {
+// Listed spells stay, removing and re-adding one in the same frame would dispel and recast it
+export const removeUnlistedSpells = (actor: Actor, spellsIds: Array<number>) => {
   let spellToRemove = new Array<Spell>();
+  const listed = new Set(spellsIds);
 
   for (let i = 0; i < actor.getSpellCount(); i++) {
     const spell = actor.getNthSpell(i);
 
-    if (spell) {
+    if (spell && !listed.has(spell.getFormID())) {
       spellToRemove.push(spell);
     }
   }
@@ -131,4 +133,13 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
     actor,
     currentSpells.map((spell) => spell.getFormID()).filter((id) => !BLOCKED_POWER_IDS.has(id)),
   );
+};
+
+// Base race with whether each of its spells' first effect is active, the added spell count and WaterBreathing, for the platform log
+export const describeRaceAbilities = (actor: Actor) => {
+  const race = ActorBase.from(actor.getBaseObject())?.getRace();
+  const spells = race
+    ? raceSpells(race).map((spell) => `${spell.getFormID().toString(16)}:${actor.hasMagicEffect(spell.getNthEffectMagicEffect(0))}`)
+    : [];
+  return `${race ? race.getFormID().toString(16) : 'none'} [${spells.join(' ')}] added ${actor.getSpellCount()} waterBreathing ${actor.getActorValue('WaterBreathing')}`;
 };

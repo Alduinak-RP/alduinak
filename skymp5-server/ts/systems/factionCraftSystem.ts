@@ -26,7 +26,7 @@ type Mp = any;
 // Persistence: `private.factionMarkers`, the marker ids the character holds, on
 // the actor form. A marker already in the changeform rides the spawn message
 // down on its own; a new one has to wait out the client's spawn-time
-// removeAllSpells, the same delay the mastery system uses.
+// removeUnlistedSpells, the same delay the mastery system uses.
 //
 // server-settings.json keys (all optional):
 //   factionCraftEnabled   false grants no markers, default true
