@@ -76,4 +76,10 @@ function checkGameVersion(gameDir, edition) {
   return { exe, version, ok, required: gog ? GAME_VERSION_GOG : GAME_VERSION_REQUIRED }
 }
 
-module.exports = { GAME_VERSION_REQUIRED, GAME_VERSION_GOG, GAME_DOWNGRADE_URL, readPeFileVersion, checkGameVersion }
+// Skyrim 1.7 keys Creations by UUID ("CSV2_<uuid>"); 1.6 runs the text after the last "_" through stoull and crashes at startup
+function catalogFrom17(cat) {
+  return !!cat && typeof cat === 'object' &&
+    Object.keys(cat).some(k => /^CSV(1M|1CC|2)/.test(k) && k.includes('_') && !/^-?\d+$/.test(k.slice(k.lastIndexOf('_') + 1)))
+}
+
+module.exports = { GAME_VERSION_REQUIRED, GAME_VERSION_GOG, GAME_DOWNGRADE_URL, readPeFileVersion, checkGameVersion, catalogFrom17 }

@@ -1772,7 +1772,7 @@ const UPDATE_LAUNCHER_ERROR = 'This server needs a newer Alduinak launcher. Acce
 const CREATIONS_STAMP = 'creations-complete.json'
 
 function readJsonOrNull(p) {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
+  try { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '')) } catch { return null }
 }
 
 // Copies the manifest's Creation Club files from the player's own Skyrim install (never downloaded) into gamePath/Data
@@ -2074,6 +2074,8 @@ async function prepareForLaunch(skyrimPath, viaMO2) {
     return { success: false, error: `Skyrim ${gv.version} found in ${skyrimPath}; Alduinak needs ${gv.required}. Downgrade it (see the popup), then press PLAY again.` }
   }
 
+  quarantineContentCatalogs()
+
   const srv = activeServer()
   let serverInfo = null
   if (srv) {
@@ -2195,6 +2197,19 @@ function pluginsTxtDirs() {
   ]
   const existing = variants.map(v => path.join(local, v)).filter(p => fs.existsSync(p))
   return existing.length > 0 ? existing : [path.join(local, variants[0])]
+}
+
+function quarantineContentCatalogs() {
+  for (const dir of pluginsTxtDirs()) {
+    const file = path.join(dir, 'ContentCatalog.txt')
+    if (!gameversion.catalogFrom17(readJsonOrNull(file))) continue
+    try {
+      fs.renameSync(file, `${file}.alduinak-bak`)
+      log(`[catalog] moved ${file} aside: written by Skyrim 1.7, which crashes 1.6 at startup`)
+    } catch (err) {
+      log(`[catalog] could not move ${file} aside: ${err.message}`)
+    }
+  }
 }
 
 // Plugin sync

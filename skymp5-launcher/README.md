@@ -111,7 +111,10 @@ downgrade tool (https://www.nexusmods.com/site/mods/2188?tab=description) and
 blocks the launch; the renderer warning strip shows the same message. GOG
 installs (Galaxy64.dll / goggame-* present) are accepted at **1.6.1179.0**, the
 GOG build of the same generation. An unreadable version never blocks, it is
-only logged.
+only logged. Before every launch `prepareForLaunch` also renames a
+`ContentCatalog.txt` written by Skyrim 1.7 (Creation keys holding a UUID) in the
+LocalAppData game folders to `ContentCatalog.txt.alduinak-bak`; 1.6 parses those
+keys with stoull and crashes at startup, and the game writes a fresh catalog.
 
 ## Client files
 
