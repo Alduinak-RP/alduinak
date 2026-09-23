@@ -268,7 +268,7 @@ interface Location {
 
 const emptyRecord = (): MasteryRecord => ({ profession: null, points: 0, lastPointAt: 0, rank: 0, granted: [] });
 
-const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
+export const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
 
 export class MasterySystem implements System {
   systemName = "MasterySystem";

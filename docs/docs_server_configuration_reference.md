@@ -924,6 +924,7 @@ Survival hunger effect in the plugins.
 | `needsFatigueRegenPerMinute` | `0.016` | Share of the bar refilled per minute |
 | `needsFatigueOfflineRegen` | `true` | `false` refills the bar only while online |
 | `needsFatigueFreeKeywords` | `["AldCraftingMead"]` | Bench keywords whose recipes cost no fatigue |
+| `needsFatigueFreeRecipes` | `["AldRecipeKiln_Charcoal"]` | Recipe editor ids that cost no fatigue; a bench offering one opens however tired the crafter is |
 | `needsFatigueStages` | `[80, 160, 340, 560, 800]` | Survival's exhaustion stage values: Drained, Tired, Weary and Debilitated begin at the last four (the first only ends a sleeping bonus the server never grants); the second also starts the max magicka penalty |
 | `needsFatigueStageAbilities` | `true` | Grant the Survival exhaustion stage ability of the current stage |
 | `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |

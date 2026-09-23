@@ -1,7 +1,7 @@
 // TODO: refactor this out
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 
-import { Actor, ContainerChangedEvent } from "skyrimPlatform";
+import { Actor, ContainerChangedEvent, Menu } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { Inventory } from "../../sync/inventory";
 import { MsgType } from "../../messages";
@@ -13,6 +13,10 @@ export class CraftService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
         controller.on('containerChanged', (e) => this.onContainerChanged(e));
+        // Each crafting session starts with no leftover removals
+        controller.on('menuOpen', (e) => {
+            if (e.name === Menu.Crafting) this.furnitureStreak.clear();
+        });
     }
 
     private onContainerChanged(e: ContainerChangedEvent) {
@@ -20,6 +24,10 @@ export class CraftService extends ClientListener {
         const newContainerId = e.newContainer ? e.newContainer.getFormID() : 0;
         const baseObjId = e.baseObj ? e.baseObj.getFormID() : 0;
         if (oldContainerId !== 0x14 && newContainerId !== 0x14) {
+          return;
+        }
+        // Inventory syncs and key re-adds while seated are not crafts
+        if (!this.sp.Ui.isMenuOpen(Menu.Crafting)) {
           return;
         }
 

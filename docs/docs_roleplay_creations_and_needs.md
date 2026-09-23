@@ -223,13 +223,19 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   rank; a non-member pays the full Novice cost. Imperials (`appearance.raceId` Imperial or the Imperial child race)
   pay a further `needsFatigueImperialMult` (0.75) of every own-profession cost: crafts, a warrior's kill, a
   woodworker's swing and a miner's ore. This is the Imperial racial passive; the plugin carries no effect for it.
-- Free: recipes at benches carrying `AldCraftingMead`, tempering (never sent to the server), and crafts whose inputs the
-  crafter does not hold (MasterySystem's `holdsInputs`; the native side handles those as before).
+- Free: recipes at benches carrying `AldCraftingMead`, the charcoal recipe `AldRecipeKiln_Charcoal`
+  (`needsFatigueFreeRecipes`), tempering (never sent to the server), and crafts whose inputs the crafter does not hold
+  (MasterySystem's `holdsInputs`; the native side handles those as before).
 - Refills 1.6% per minute, online and offline, with no bed or inn bonus; a full bar may be spent at once.
 - A craft the bar cannot pay for is refused before the native craft runs. The server sends `needsState` with
   `closeCrafting`, resends the unchanged inventory to undo the recipe the vanilla menu already made locally, and shows
-  "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." A bench the bar cannot pay one
-  recipe at does not open.
+  "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." The craft that leaves the bar
+  unable to pay for another of its kind closes the menu the same way, with the same notice, and undoes nothing, so rapid
+  clicking stops at the last craft the bar pays for. Both, and every fatigue update, go out as soon as the craft is
+  handled rather than on the next one-second poll. A bench the bar cannot pay one recipe at does not open, unless it
+  offers a free recipe (a smelter always opens for charcoal). Logs:
+  `[needs] craft refused for <id>: fatigue X%, needs Y%`, `bench refused` for a bench kept shut,
+  `bar spent, crafting closed` for the close after the last paid craft.
 - Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs `needsPickFatigue` exhaustion points (10,
   about 1% of the bar) and kneels the picker for `gatheringHarvestSeconds` (5), unable to move or harvest again. A bar
   that cannot pay refuses the harvest ("You are too tired to gather"). Catching a bee is free.
@@ -277,8 +283,9 @@ The server's regeneration check knows only base rates, so it may hold a Well Fed
 (+10%) back to the base rate, as it does for regeneration bonuses from gear.
 
 Decisions inside the native `onCraft`, `onActivate` and `onEatItem` hooks are made from memory; property writes, Papyrus
-calls and packets wait for `updateAsync`. Online characters are brought up to date and saved every minute; a stage
-change on either need swaps its ability and sends a notice from stage 2 up.
+calls and packets run right after the hook returns (`setImmediate`), and `updateAsync` drains anything left. Online
+characters are brought up to date and saved every minute; a stage change on either need swaps its ability and sends a
+notice from stage 2 up.
 
 **Persistence:** `private.needs` = `{ v: 2, hunger, fatigue, at, stageSpell, fatigueSpell, wellFed }` on the character.
 The manager purge re-encodes `stageSpell` and `fatigueSpell`. A version 1 record reads as not Well Fed and holding no
@@ -413,7 +420,8 @@ None of these has been run yet.
   sets `GlobalVariable.from(Game.getFormFromFile(0x2EDF, 'Update.esm'))` to 30 and on F10 sets 0x828 of
   `ccQDRSSE001-SurvivalMode.esl` to 1; SkyrimPlatform loads `PluginsDev`, the launcher never deletes it, and the value
   holds until the next `needsState` (sent on change only). Delete the file after the test.
-- Crafting at a forge as a Novice outside Blacksmith costs 1/6; the seventh craft is refused and the menu closes; reopen
-  the inventory: the refused item must be absent and its inputs present (the resent inventory corrects the client);
-  logging out for 10 minutes refills 16%.
+- Crafting at a forge as a Novice outside Blacksmith costs 1/6; from a full bar the sixth craft closes the menu with the
+  "too tired" notice and all six items stay, however fast the clicks come. A click that slips in before the close (high
+  ping) is refused: reopen the inventory, the refused item must be absent and its inputs present (the resent inventory
+  corrects the client); logging out for 10 minutes refills 16%.
 - Admin Item Spawner finds Creation items by name ("Amber", "Fishing Rod", "Hot").

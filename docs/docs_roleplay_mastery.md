@@ -219,9 +219,9 @@ Benches:
   for placing in the Creation Kit; the existing Hearthfire carpenter's
   workbenches also offer the woodcrafting recipes.
 - **Smelters** carry the charcoal recipe (2 Firewood into 1 Charcoal, open to
-  everyone); the ore-to-ingot recipes there keep their blacksmith tiers. Credit
-  for charcoal counts as blacksmith work, because mastery hours follow the
-  recipe's bench keyword.
+  everyone and free of crafting fatigue); the ore-to-ingot recipes there keep
+  their blacksmith tiers. Credit for charcoal counts as blacksmith work, because
+  mastery hours follow the recipe's bench keyword.
 - **Kiln**: the keyword `AldCraftingKiln` stays in the plugin, unused. A kiln
   mod can claim it and the charcoal recipe moves back with one spec field.
 - **Forges** carry one added recipe, the woodcutter's axe (one iron ingot and
