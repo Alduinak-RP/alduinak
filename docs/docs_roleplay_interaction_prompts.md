@@ -28,9 +28,15 @@ keeps its display name with a verb picked from its base form type.
   `setDisplayName` decor flow through); no name means no prompt, matching
   vanilla.
 - **Player characters** (remote id in the dynamic `0xff` space): verb
-  "Interact"; the name follows introductions (`ff_knownIds` owner prop, else
-  "Stranger"), and a masked player already carries "Masked Person" as their
-  appearance name, so the mask holds. The clone's engine activation is
+  "Interact" ("Search" on a body); the name is the clone's display name, as
+  on the name tag, once introduced (`ff_knownIds` owner prop), else
+  "Stranger" ("Body" when dead); Papyrus GetName is empty on any reference,
+  so it is never used for names. The player menu title and the Debug tab
+  share the rule (`introducedName` in `worldViewMisc.ts`). A masked player
+  already carries "Masked Person" as their appearance name, so the mask
+  holds. Introduce in the player menu gives the target your name only
+  (`30_introductions.js`); when you do not know theirs yet, the reply says
+  they must introduce themselves for you to learn it. The clone's engine activation is
   blocked (`blockActivation`) so the activate key belongs entirely to the
   interaction menu: `PlayerActionService` opens on the game's own
   **Activate** control. Every button event carries the user event name the

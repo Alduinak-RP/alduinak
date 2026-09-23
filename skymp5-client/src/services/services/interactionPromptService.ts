@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { closeWidget, isUiHidden } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { Actor, CrosshairRefChangedEvent, Form, FormType, Keyword, ObjectReference } from "skyrimPlatform";
-import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
+import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
 import { isPlayerCharacterId } from "./playerActionService";
@@ -188,10 +188,7 @@ export class InteractionPromptService extends ClientListener {
     }
     // The engine must not start a dialogue or a local loot window on the clone under our menu.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-    const raw = (ref.getName() || "").trim();
-    const known = raw && knowsCharacter(remoteId);
-    if (dead) return { verb: "Search", label: known ? raw : "Body" };
-    return { verb: "Interact", label: known ? raw : "Stranger" };
+    return { verb: dead ? "Search" : "Interact", label: introducedName(ref, remoteId, dead) };
   }
 
   // Living pets show their ff_pet name and a verb only for what E does here (PetService owns the key); own summons read Command

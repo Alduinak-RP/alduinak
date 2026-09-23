@@ -8,7 +8,7 @@ import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
 import { isFreeCamera } from "./adminModeService";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
-import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
+import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
@@ -191,15 +191,11 @@ export class PlayerActionService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
       return;
     }
-    targetName = (ref.getName() || "").trim();
+    targetName = introducedName(ref, remoteId, false);
     this.playerTarget = remoteId;
     // Flagged actions appear only when the server confirms they apply to this target
     this.menuFlags = {};
     sendCustomPacket(this.controller, { customPacketType: "playerMenuRequest", target: remoteId });
-    // Names stay hidden until introduced (ff_knownIds owner prop)
-    if (!targetName || !knowsCharacter(this.playerTarget)) {
-      targetName = "Stranger";
-    }
     logTrace(this, `Opening player-action menu for`, targetName);
     const wait = this.menuWait = ++this.menuWaitSeq;
     this.controller.lookupListener(TimersService).setTimeout(() => this.openWaitingMenu(wait), MENU_STATE_WAIT_MS);

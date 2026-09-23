@@ -6,7 +6,7 @@ import { parseMasteryMenu } from "./masteryService";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
-import { knowsCharacter, localIdToRemoteId } from "../../view/worldViewMisc";
+import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { formDesc } from "../../lib/formDesc";
 import { isPlayerCharacterId } from "./playerActionService";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
@@ -465,7 +465,7 @@ export class AdminMenuService extends ClientListener {
     const baseId = serverBase || localBase;
     const localBaseId = localBase !== baseId ? localBase : 0;
     let name = safe(() => ref.getDisplayName(), "") || safe(() => ref.getBaseObject()?.getName(), "");
-    if (character && !knowsCharacter(serverId)) name = safe(() => sp.Actor.from(ref)?.isDead(), false) ? "Body" : "Stranger";
+    if (character) name = safe(() => introducedName(ref, serverId, sp.Actor.from(ref)?.isDead() === true), "Stranger");
     this.target = {
       name,
       dist: Math.round(safe(() => player.getDistance(ref), 0)),

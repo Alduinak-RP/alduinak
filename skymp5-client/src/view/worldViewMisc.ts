@@ -76,6 +76,12 @@ export const knowsCharacter = (remoteId: number): boolean => {
   return !Array.isArray(known) || known.includes(remoteId);
 };
 
+// A player character's name for the local player: display name once introduced, else Body or Stranger (GetName is empty on references)
+export const introducedName = (ref: ObjectReference, remoteId: number, dead: boolean): string => {
+  const name = (ref.getDisplayName() || "").trim();
+  return name && knowsCharacter(remoteId) ? name : dead ? "Body" : "Stranger";
+};
+
 // "hex:Plugin" to this client's form id, 0 when the plugin or record is missing; natives need a game context
 export const formIdFromDesc = (desc: unknown): number => {
   if (typeof desc !== "string") return 0;
