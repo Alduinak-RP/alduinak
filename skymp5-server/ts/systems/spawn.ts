@@ -9,6 +9,7 @@ import { kickWithReason } from "./kickUtil";
 import { REALMS, afterlifeOf, isFallen, readMaxCharacters } from "./afterlifeSystem";
 import { hex, isAlive, isBleedingOut, isCreationPending } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
+import { isOutsideBorder, insideSpot } from "./worldBorder";
 
 type Mp = any;
 
@@ -251,6 +252,20 @@ export class Spawn implements System {
     }
   }
 
+  // Runs before setUserActor, so the client's loadGame already gets the spot inside
+  private bringInsideBorder(mp: Mp, actorId: number): void {
+    try {
+      const loc = mp.get(actorId, "locationalData");
+      if (!loc || !isOutsideBorder(mp, loc)) return;
+      const spot = insideSpot(mp, actorId, loc, this.startLocations.length ? this.startLocations : DEFAULT_START_LOCATIONS);
+      if (!spot) return;
+      mp.set(actorId, "locationalData", spot);
+      this.log(`[spawn] ${hex(actorId)} was saved outside the border, placed at ${spot.pos.map(Math.round).join(",")}`);
+    } catch (e) {
+      this.log(`[spawn] border check of ${hex(actorId)} failed: ${e}`);
+    }
+  }
+
   // Sent when the player quits to the main menu: reopen the selection menu and start logout grace on the current body (it stays in the world, so quitting is never an instant combat escape)
   // Rapid repeats or requests right after actor assign skip the grace scheduling: packet spam / stale menu events must not park a body that is being played
   private onMenuRequest(ctx: SystemContext, userId: number, content: Content): void {
@@ -471,6 +486,7 @@ export class Spawn implements System {
     // Selecting the character cancels its pending logout-grace despawn; enable BEFORE setUserActor, PartOne throws on disabled actors
     this.cancelPark(actorId);
     ctx.svr.setEnabled(actorId, true);
+    if (!isNew) this.bringInsideBorder(mp, actorId);
     ctx.svr.setUserActor(userId, actorId);
     if (isNew) {
       if (this.charCreator.enabled) {
@@ -736,6 +752,7 @@ export class Spawn implements System {
       this.log("Loading character", actorId.toString(16));
       this.cancelPark(actorId); // reconnected within the logout grace
       ctx.svr.setEnabled(actorId, true);
+      this.bringInsideBorder(mp, actorId);
       ctx.svr.setUserActor(userId, actorId);
       if (this.charCreator.enabled && this.isCharCreatorPending(mp, actorId)) {
         // Relog protection: an unfinished creator reopens until a submission is accepted

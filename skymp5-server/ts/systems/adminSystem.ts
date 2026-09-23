@@ -1060,7 +1060,7 @@ export class AdminSystem implements System {
     }
   }
 
-  private hasMode(mp: Mp, actorId: number, mode: string): boolean {
+  hasMode(mp: Mp, actorId: number, mode: string): boolean {
     if (this.modesByProfile.size === 0) return false;
     const profileId = this.profileOf(mp, actorId);
     return profileId > 0 && !!this.modesByProfile.get(profileId)?.[mode];

@@ -1,5 +1,6 @@
 #pragma comment(lib, "shell32.lib")
 #include "LoadGame.h"
+#include "CallNativeApi.h"
 #include "NullPointerException.h"
 #include "PapyrusTESModPlatform.h"
 #include "savefile/SFChangeFormNPC.h"
@@ -9,9 +10,29 @@
 
 namespace fs = std::filesystem;
 
+extern CallNativeApi::NativeCallRequirements g_nativeCallRequirements;
+
 CMRC_DECLARE(skyrim_plugin_resources);
 
 constexpr auto g_saveFilePrefix = "TESMODPLATFORM-";
+
+// A load keeps the border check off until a cell leave; send leave then enter
+static void ReenterPlayerCell()
+{
+  auto player = RE::PlayerCharacter::GetSingleton();
+  auto cell = player ? player->GetParentCell() : nullptr;
+  if (!cell || cell->IsInteriorCell()) {
+    return;
+  }
+  RE::BGSActorCellEvent event{};
+  event.actor = player->GetHandle();
+  event.cellID = cell->GetFormID();
+  auto source = player->AsBGSActorCellEventSource();
+  event.flags = RE::BGSActorCellEvent::CellFlag::kLeave;
+  source->SendEvent(&event);
+  event.flags = RE::BGSActorCellEvent::CellFlag::kEnter;
+  source->SendEvent(&event);
+}
 
 class LoadGameEventSink : public RE::BSTEventSink<RE::TESLoadGameEvent>
 {
@@ -31,6 +52,8 @@ public:
     const RE::TESLoadGameEvent* event,
     RE::BSTEventSource<RE::TESLoadGameEvent>* eventSource) override
   {
+    g_nativeCallRequirements.gameThrQ->AddTask(
+      [](Viet::Void) { ReenterPlayerCell(); });
     std::thread([savesDir =
                    LoadGame::GetSaveFullPath(g_saveFilePrefix).parent_path()] {
       // A way to wait 5 seconds game time

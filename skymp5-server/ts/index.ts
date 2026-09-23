@@ -244,7 +244,7 @@ const main = async () => {
   const captureSystem = new CaptureSystem(log);
   // Players brought to 0 health bleed out; capture and carry rescue them
   const bleedoutSystem = new BleedoutSystem(log, captureSystem);
-  // A fall through the world below a space's floor is a death and a temple respawn
+  // A fall below a space's floor is a death and a temple respawn, and a player outside the world border is put back inside
   const worldFloorSystem = new WorldFloorSystem(log, bleedoutSystem);
   // Sovngarde and the Soul Cairn: soul trap, finish off and execution send characters there
   const afterlifeSystem = new AfterlifeSystem(log);
@@ -264,6 +264,8 @@ const main = async () => {
   companionSystem.setAllySource(() => petSystem.fighters(), (id) => petSystem.ownerOf(id));
   housingSystem.petCategoryOf = (actorId, refrId) => petSystem.categoryOfDoor(actorId, refrId);
   const adminSystem = new AdminSystem(log, npcSpawnSystem, masterySystem);
+  // Staff in NoClip may pass the world border
+  worldFloorSystem.exempt = (mp, actorId) => adminSystem.hasMode(mp, actorId, "noclip");
   adminSystem.setPetSystem(petSystem);
   adminSystem.setAfterlifeSystem(afterlifeSystem);
   // Passive jobs: a job carrier neither carries nor is carried, and the admin panel places the jobs

@@ -429,6 +429,8 @@ All optional; see `docs/docs_roleplay_survival_loop.md` section 8 for the system
 
 World floor (no setting): a living player below Z -40000 in Tamriel or below -30000 in any other cell or worldspace has fallen through the world. The server kills them (`[floor]` and `[bleedout] ... fell out of the world` log lines, the Discord death line) and they respawn in the nearest temple after `respawnSeconds`, also after a relog into a saved void position.
 
+World border (no setting): the regions come from the REGN records flagged Border Region in the load order (`[border] N border region(s) over M worldspace(s)` at startup). A living player seen outside every border region of their worldspace on two polls in a row (500 ms apart) is moved back to their last spot inside, or to the nearest start location, and told "You cannot go that way." (`[border]` log line). A character saved outside is placed back inside at login (`[spawn] ... was saved outside the border`). Admins in NoClip are exempt.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `bleedoutSeconds` | `15` | Seconds a downed player has before dying, unless healed, captured or carried |
