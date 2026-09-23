@@ -196,6 +196,15 @@ CallNative::AnySafe VariableToAnySafe(
   }
 }
 
+std::optional<bool> AnySafeToBool(const CallNative::AnySafe& v)
+{
+  if (auto b = std::get_if<bool>(&v))
+    return *b;
+  if (auto number = std::get_if<double>(&v))
+    return *number != 0;
+  return std::nullopt;
+}
+
 bool IsActorOrObjectRefr(const std::string& className)
 {
   return !stricmp(className.data(), "Actor") ||
@@ -221,6 +230,14 @@ bool IsRemoveItem(const std::string& className, const std::string& classFunc,
 {
   return IsActorOrObjectRefr(className) &&
     !stricmp(classFunc.data(), "removeItem") && rawSelf &&
+    IsActorOrObjectRefr(rawSelf->formType.get());
+}
+
+bool IsSetDisplayName(const std::string& className,
+                      const std::string& classFunc, RE::TESForm* rawSelf)
+{
+  return IsActorOrObjectRefr(className) &&
+    !stricmp(classFunc.data(), "setDisplayName") && rawSelf &&
     IsActorOrObjectRefr(rawSelf->formType.get());
 }
 }
@@ -424,6 +441,22 @@ CallNative::AnySafe CallNative::CallNativeSafe(Arguments& args_)
                           nullptr, refrToMove);
     }
     return ObjectPtr();
+  }
+
+  // SKSE's SetDisplayName crashes on a ref whose extra list has no bitfield
+  if (IsSetDisplayName(className, classFunc, rawSelf)) {
+    const auto name = std::get_if<std::string>(&args_.args[0]);
+    const auto force = AnySafeToBool(args_.args[1]);
+    if (name && force) {
+      const auto formId = rawSelf->GetFormID();
+      bool renamed = false;
+      SkyrimPlatform::GetSingleton()->PushToGameThreadAndWait([&] {
+        if (auto refr = RE::TESForm::LookupByID<RE::TESObjectREFR>(formId)) {
+          renamed = refr->SetDisplayName(RE::BSFixedString(*name), *force);
+        }
+      });
+      return renamed;
+    }
   }
 
   auto topArgs = stackIterator->second->top->args;
