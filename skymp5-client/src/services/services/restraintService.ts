@@ -129,8 +129,8 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   - actionLock: plays anim (hands emptied first when its copies would sheathe)
  *     and holds the player still without fighting, sneaking or activation for
  *     the seconds, then plays exitAnim. Going down or dying ends it early,
- *     every other pose wins over it, and a mounted player or one another pose
- *     already holds ignores it.
+ *     every other pose wins over it, and a mounted or swimming player or one
+ *     another pose already holds ignores it.
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
@@ -315,11 +315,11 @@ export class RestraintService extends ClientListener {
     }
   }
 
-  // A rider, a dead player or one another pose holds skips the lock; the server's side of the work goes on
+  // A rider, a swimmer, a dead player or one another pose holds skips the lock; the server's side of the work goes on
   private startLock(anim: string, seconds: number, exitAnim: string): void {
     const player = this.sp.Game.getPlayer();
     if (!player) return;
-    if (seconds > 0 && (player.isDead() || player.isOnMount() || this.boundHands || this.carried || this.carrying || this.downed)) return;
+    if (seconds > 0 && (player.isDead() || player.isOnMount() || player.isSwimming() || this.boundHands || this.carried || this.carrying || this.downed)) return;
     this.lock = seconds > 0 ? { anim, exitAnim, until: Date.now() + seconds * 1000 } : null;
     this.applyStateNow();
   }

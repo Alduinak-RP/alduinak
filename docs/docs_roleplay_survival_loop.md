@@ -306,7 +306,7 @@ prisoner can also be carried).
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
-| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting) |
+| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting); a mounted or swimming player skips it |
 | `playerMenuState` `{ target, canRelease, stabilize, finishOff, prepareExecution, execute }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 
