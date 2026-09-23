@@ -89,6 +89,10 @@ fails it prints a direct download URL - save that zip as
   and a mod copy would shadow the zip's. The log names each mod that lost files
   that way and warns about a remaining mod file whose sha256 differs from the
   zip's copy of the same path.
+  When several downloads hold the same file (a replaced Nexus version left in
+  `downloads`, or a mod that repacks another's files), a mod takes it from the
+  newest archive (highest Nexus file id) of its own Nexus mod, else from the
+  first archive scanned, so a replaced archive is not referenced again.
   Modlist output goes to the tab's own log.
   - **Sync server settings** rewrites `loadOrder` in `server-settings.json` to
     the five vanilla masters followed by the manifest's enabled plugins (each as

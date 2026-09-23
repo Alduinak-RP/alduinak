@@ -129,8 +129,11 @@ client build then never reaches players (the r13 play test ran a two-day-old
 client that way). The launcher still honours a manifest mod that carries
 `Platform/Plugins/skymp5-client.js` (`clientMods`), which no manifest built
 with the guard contains; the Nexus mod 'Alduinak Client Files' must never carry
-`Platform/` or the SkyMP dlls and pex files, only the plugin, the
-CraftingCategories json, meshes, scripts and Address Library's bins.
+`Platform/` or the SkyMP dlls and pex files, only Alduinak's plugin and its
+data files (the CraftingCategories json, scripts, Address Library's bins); the
+DynDOLOD output (DynDOLOD.esm, DynDOLOD.esp, Occlusion.esp, the LOD meshes and
+textures) is a second Nexus file installed as its own MO2 mod, so a client
+files update downloads only the small archive.
 
 The launcher writes `skymp5-client-settings.txt` and the auth file into the real
 Data (the manifest never ships a settings file, or MO2 would let it shadow this

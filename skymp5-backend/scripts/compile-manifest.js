@@ -210,7 +210,7 @@ async function main() {
 
   // 1. Index every archive's entries by (size, CRC32)
   const archives = []                 // { id, hash, size, name, source, _entries }
-  const index    = new Map()          // "size:CRC" -> { id, from }
+  const index    = new Map()          // "size:CRC" -> [{ id, from, modId, fileId }] in scan order
   const referenced = new Set()
 
   const dlNames = fs.existsSync(DOWNLOADS)
@@ -246,7 +246,8 @@ async function main() {
       // nothing inline, so leave them out and let directiveFor emit them.
       if (e.size === 0) continue
       const key = e.size + ':' + e.crc
-      if (!index.has(key)) index.set(key, { id, from: e.path })   // first archive wins
+      if (!index.has(key)) index.set(key, [])
+      index.get(key).push({ id, from: e.path, modId: meta.modId, fileId: meta.fileId })
     }
     console.log(`  indexed ${name} (${entries.length} entries, ${source.type})`)
   }
@@ -294,10 +295,17 @@ async function main() {
   let inlineTotal = 0
   const inlineByLabel = new Map()
 
-  async function directiveFor(absFile, toRel, label) {
+  // A mod takes a file from the newest archive of its own Nexus mod, else from the first archive scanned
+  const pickSource = (hits, modId) => {
+    const own = modId ? hits.filter(h => h.modId === modId) : []
+    return own.length ? own.reduce((a, b) => (b.fileId > a.fileId ? b : a)) : hits[0]
+  }
+
+  async function directiveFor(absFile, toRel, label, modId = 0) {
     const { sha, crc, size } = await hashFile(absFile)
-    const hit = index.get(size + ':' + crc)
-    if (hit) {
+    const hits = index.get(size + ':' + crc)
+    if (hits) {
+      const hit = pickSource(hits, modId)
       referenced.add(hit.id)
       return { to: toRel, archive: hit.id, from: hit.from, sha256: sha, size }
     }
@@ -332,14 +340,15 @@ async function main() {
     }
     if (rels.length === 0) continue
 
+    const modId = readModId(modDir)
     const files = []
     for (const rel of rels) {
-      const f = await directiveFor(path.join(modDir, rel.split('/').join(path.sep)), rel, modName)
+      const f = await directiveFor(path.join(modDir, rel.split('/').join(path.sep)), rel, modName, modId)
       const zipSha = zipped.get(rel.toLowerCase())
       if (zipSha && zipSha !== f.sha256) zipDiffers.push(`${modName}: ${rel} differs from the client zip copy`)
       files.push(f)
     }
-    mods.push({ name: modName, modId: readModId(modDir), files, hash: contentHash(files) })
+    mods.push({ name: modName, modId, files, hash: contentHash(files) })
   }
 
   // 4. Optional game-root files (preloaders, etc.)
