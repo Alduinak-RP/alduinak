@@ -907,8 +907,8 @@ Named damage rules, each a multiplier applied when its conditions hold. Conditio
 ## Hunger and fatigue
 
 All optional; see `docs/docs_roleplay_creations_and_needs.md` for the system. Hunger uses Survival Mode's scale, 0 (full) to 1000, and
-fatigue maps onto its exhaustion scale, 0 (rested) to 960. What a food restores is not a setting: it comes from the food's
-Survival hunger effect in the plugins.
+fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a food carries comes from the plugins
+(its Survival effect: VerySmall, Small, Medium or Large); what each effect restores is `needsFoodHunger`.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -918,6 +918,7 @@ Survival hunger effect in the plugins.
 | `needsHungerStart` | `145` | Hunger of a new character; 145 is Survival Mode's starting value, in the Satisfied stage |
 | `needsHungerStages` | `[80, 160, 340, 520, 770]` | Survival's stage values: Well Fed (after a meal empties hunger) ends at the first, Peckish, Hungry, Famished and Starving begin at the others; the second also starts the max stamina penalty |
 | `needsHungerStageAbilities` | `true` | Grant the Survival hunger stage ability of the current stage |
+| `needsFoodHunger` | `{ "Survival_FoodRestoreHungerVerySmall": 40, "Survival_FoodRestoreHungerSmall": 100, "Survival_FoodRestoreHungerMedium": 220, "Survival_FoodRestoreHungerLarge": 380 }` | Hunger points (of 1000) each hunger magic effect restores, merged key by key over the default; the HUD bar shows a tenth of that as a percentage (VerySmall 4%, Small 10%, Medium 22%, Large 38%). An effect not listed restores its record's `AmountToRestore` global (Survival's 2, 18, 220, 380). Numbers of 0 or more. Read at boot |
 | `needsFatigueCraftsPerHour` | `[6, 12, 18, 24]` | Recipes one full fatigue bar pays for at Novice, Adept, Expert, Master |
 | `needsFatigueMemberMult` | `0.5` | Share of that cost a member of the bench's profession pays |
 | `needsFatigueImperialMult` | `0.75` | Share an Imperial pays of every own-profession fatigue cost (crafts, warrior kills, woodworker swings, miner ore) |

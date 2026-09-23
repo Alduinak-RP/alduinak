@@ -13,7 +13,7 @@ type Mp = any;
 // Hunger and crafting fatigue, kept by the server on Survival Mode's scales and with Survival Mode's penalties.
 //
 // Hunger runs from 0 (full) to 1000 and drains only while the character is online; eating a food takes it down by the
-// amount its Survival hunger effect names (the effect's Survival_HungerRestoreEffectScript AmountToRestore global).
+// amount needsFoodHunger gives its Survival hunger effect, or else the effect's Survival_HungerRestoreEffectScript AmountToRestore global.
 // Fatigue is a bar from 0 to 1 that every accepted recipe draws on, by the crafter's rank in the profession owning the
 // recipe's bench (Novice outside it, members pay half, Imperials less on own-profession work), and that a kill draws on too (needsKillFatigue, less for warriors); it refills at a
 // flat rate online and offline and maps onto Survival's exhaustion scale as (1 - fatigue) * 960. A craft the bar cannot pay for is refused before the native craft runs, and the
@@ -41,6 +41,7 @@ type Mp = any;
 //   needsHungerStart              hunger of a new character, default 145 (Survival's starting value, Satisfied)
 //   needsHungerStages             hunger at which stages 1-5 begin, default [80, 160, 340, 520, 770]
 //   needsHungerStageAbilities     false grants no Survival hunger stage abilities, default true
+//   needsFoodHunger               { "<hunger effect editor id>": hunger points } merged over DEFAULT_FOOD_HUNGER
 //   needsFatigueCraftsPerHour     crafts one full bar pays for by rank [Novice, Adept, Expert, Master], default [6, 12, 18, 24]
 //   needsFatigueMemberMult        what a member of the bench's profession pays of that cost, default 0.5
 //   needsFatigueImperialMult      what an Imperial pays of any own-profession fatigue cost, default 0.75
@@ -88,6 +89,14 @@ const HUNGER_RESTORE_SCRIPT = "survival_hungerrestoreeffectscript";
 const HUNGER_RESTORE_PROPERTY = "amounttorestore";
 // Read at boot to report whether the load order still carries the restore amounts
 const PROBE_EFFECT = "Survival_FoodRestoreHungerSmall";
+const FOOD_EFFECT_PREFIX = "Survival_FoodRestoreHunger";
+// Survival's globals give 2/18/220/380, so drinks and raw food barely moved the bar; the meals keep Survival's amounts
+const DEFAULT_FOOD_HUNGER: Record<string, number> = {
+  Survival_FoodRestoreHungerVerySmall: 40,
+  Survival_FoodRestoreHungerSmall: 100,
+  Survival_FoodRestoreHungerMedium: 220,
+  Survival_FoodRestoreHungerLarge: 380,
+};
 const DEFAULT_STAGES = [80, 160, 340, 520, 770];
 const DEFAULT_FATIGUE_STAGES = [80, 160, 340, 560, 800];
 // Survival_HungerNeedValue, the hunger Survival Mode starts a new game with
@@ -175,6 +184,11 @@ export class NeedsSystem implements System {
     this.hungerStart = clamp(num("needsHungerStart", DEFAULT_HUNGER_START), 0, HUNGER_MAX);
     this.stages = numberList(all["needsHungerStages"], DEFAULT_STAGES.length) || DEFAULT_STAGES.slice();
     this.stageAbilities = all["needsHungerStageAbilities"] !== false;
+    const foodRaw = all["needsFoodHunger"];
+    const foodHunger: Record<string, number> = { ...DEFAULT_FOOD_HUNGER };
+    for (const [edid, v] of Object.entries(foodRaw && typeof foodRaw === "object" ? foodRaw as Record<string, unknown> : {})) {
+      if (Number.isFinite(Number(v)) && Number(v) >= 0) foodHunger[edid] = Number(v);
+    }
     const crafts = numberList(all["needsFatigueCraftsPerHour"], DEFAULT_CRAFTS_PER_HOUR.length);
     this.craftsPerHour = crafts && crafts.every((c) => c > 0) ? crafts : DEFAULT_CRAFTS_PER_HOUR.slice();
     this.memberMult = num("needsFatigueMemberMult", 0.5);
@@ -203,16 +217,17 @@ export class NeedsSystem implements System {
       this.log("[needs] disabled by needsEnabled");
       return;
     }
-    const probe = await this.resolveForms(ctx, freeKeywords, freeRecipes, s.dataDir, s.loadOrder);
-    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food amounts from the records (${PROBE_EFFECT} ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank (members x${this.memberMult}, Imperials x${this.imperialMult}), +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s), ${this.freeRecipes.size} free recipe(s), firewood per bar ${this.chopWoodPerBar.join("/")} (outside the trade, then by woodworker rank)`);
+    const probe = await this.resolveForms(ctx, freeKeywords, freeRecipes, foodHunger, s.dataDir, s.loadOrder);
+    const foodLine = Object.entries(foodHunger).map(([edid, v]) => `${edid.replace(FOOD_EFFECT_PREFIX, "")} ${v}`).join(", ");
+    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue ${this.craftsPerHour.join("/")} crafts per bar by rank (members x${this.memberMult}, Imperials x${this.imperialMult}), +${(this.regenPerMinute * 100).toFixed(1)}% per minute${this.fatigueOffline ? " also offline" : ""}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}, ${this.freeBenches.size} free bench keyword(s), ${this.freeRecipes.size} free recipe(s), firewood per bar ${this.chopWoodPerBar.join("/")} (outside the trade, then by woodworker rank)`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
     this.installHooks(ctx);
   }
 
-  // Resolves the stage abilities, free bench keywords and free recipes; returns the probe effect's restore amount, 0 when the records carry none
-  private async resolveForms(ctx: SystemContext, freeKeywords: string[], freeRecipes: string[], dataDir: string, loadOrder: string[]): Promise<number> {
+  // Resolves the stage abilities, free bench keywords, free recipes and food effects; returns the probe effect's record amount, 0 when the records carry none
+  private async resolveForms(ctx: SystemContext, freeKeywords: string[], freeRecipes: string[], foodHunger: Record<string, number>, dataDir: string, loadOrder: string[]): Promise<number> {
     const mp = ctx.svr as Mp;
     const idOf = (scan: { resolved: Map<string, string> }, edid: string): number => {
       const desc = edid ? scan.resolved.get(edid.toLowerCase()) : undefined;
@@ -227,12 +242,15 @@ export class NeedsSystem implements System {
     this.freeBenches = idsOf(freeKeywords);
     this.freeRecipes = idsOf(freeRecipes);
     this.freeRecipeBenches = new Set(Array.from(this.freeRecipes, (id) => this.mastery.recipeBench(ctx, id)).filter((k) => k));
-    const effects = await resolveEditorIds([PROBE_EFFECT], dataDir, loadOrder, this.log, ["MGEF"]);
+    const foodEdids = Object.keys(foodHunger);
+    const effectNames = Array.from(new Set([PROBE_EFFECT, ...foodEdids]));
+    const effects = await resolveEditorIds(effectNames, dataDir, loadOrder, this.log, ["MGEF"]);
+    this.foodHunger = new Map(foodEdids.map((edid) => [idOf(effects, edid), foodHunger[edid]] as [number, number]).filter(([id]) => id));
     const probe = this.restoreAmountOf(mp, idOf(effects, PROBE_EFFECT));
     const missing = [...spellNames.filter((edid) => !spells.resolved.has(edid.toLowerCase())),
-      ...freeKeywords.concat(freeRecipes).filter((k) => !free.resolved.has(k.toLowerCase()))];
-    if (!effects.resolved.size) missing.push(PROBE_EFFECT);
-    else if (!probe) this.log(`[needs] ${PROBE_EFFECT} carries no ${HUNGER_RESTORE_SCRIPT} amount in the load order: foods restore no hunger (AlduinakCreations.esp must keep Survival's effect edits)`);
+      ...freeKeywords.concat(freeRecipes).filter((k) => !free.resolved.has(k.toLowerCase())),
+      ...effectNames.filter((edid) => !effects.resolved.has(edid.toLowerCase()))];
+    if (effects.resolved.has(PROBE_EFFECT.toLowerCase()) && !probe) this.log(`[needs] ${PROBE_EFFECT} carries no ${HUNGER_RESTORE_SCRIPT} amount in the load order: hunger effects outside needsFoodHunger restore nothing (AlduinakCreations.esp must keep Survival's effect edits)`);
     if (missing.length) this.log(`[needs] not in the load order, ignored: ${missing.join(", ")}`);
     return probe;
   }
@@ -583,7 +601,7 @@ export class NeedsSystem implements System {
     const res = lookup(mp, baseId);
     const type = res && res.record ? String(res.record.type) : "";
     const effects = type === "ALCH" || type === "INGR"
-      ? espmFieldFormIds(res, "EFID").map((mgefId) => ({ mgefId, amount: this.restoreAmountOf(mp, mgefId) })).filter((e) => e.amount > 0)
+      ? espmFieldFormIds(res, "EFID").map((mgefId) => ({ mgefId, amount: this.foodHunger.get(mgefId) ?? this.restoreAmountOf(mp, mgefId) })).filter((e) => e.amount > 0)
       : [];
     this.foodCache.set(baseId, effects);
     return effects;
@@ -731,6 +749,8 @@ export class NeedsSystem implements System {
   private freeBenches = new Set<number>();
   private freeRecipes = new Set<number>();
   private freeRecipeBenches = new Set<number>();
+  // Hunger effect id -> hunger points, from needsFoodHunger
+  private foodHunger = new Map<number, number>();
   private foodCache = new Map<number, FoodEffect[]>();
   private amountCache = new Map<number, number>();
   private online = new Map<number, Online>();

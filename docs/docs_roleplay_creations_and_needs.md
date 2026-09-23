@@ -205,13 +205,25 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
 - Drains 125 points per online hour (full to starving in about 8 online hours), frozen while logged out, unchanged by
   death; a new character starts at 145, the value Survival Mode starts a new game with (`Survival_HungerNeedValue`), in
   the Satisfied stage.
-- A food restores what its hunger effect names. The server reads the effect's `Survival_HungerRestoreEffectScript`
-  property `AmountToRestore`, a global, and that global's value in the load order: VerySmall 2, Small 18, Medium 220,
-  Large 380. Raw cabbage, carrots, gourds, leeks, potatoes and ash yams, Very Small in Survival, carry its Small effect
-  instead, like raw apples and tomatoes (the patcher spec's `overrides.foods`). `LargeVampire` (the blood potion)
-  restores the Large amount only to an actor with the `Vampire` keyword, from its `HasKeyword` condition. Several hunger
-  effects on one food add up, as their scripts would. A food the server refuses for its 10 second cooldown restores
-  nothing. Survival's gutworm disease multiplier is not applied (no disease).
+- A food restores what its hunger effect is worth in `needsFoodHunger`: VerySmall 40, Small 100, Medium 220, Large 380
+  points, which the HUD shows as 4%, 10%, 22% and 38% of the bar (about 19 minutes, 48 minutes, 1 hour 45 and 3 hours
+  of online drain). Survival's own globals (`Survival_HungerRestoreEffectScript` property `AmountToRestore`) give
+  VerySmall 2 and Small 18 (0.2% and 1.8%, taken back by the online drain in 1 and 9 minutes), so a drink, cheese
+  or raw vegetable moved nothing. The meals keep Survival's amounts. An effect outside the setting falls
+  back to its global. Raw cabbage, carrots, gourds, leeks, potatoes and ash yams, Very Small in Survival, carry its
+  Small effect in the plugin, like raw apples and tomatoes (the patcher spec's `overrides.foods`). `LargeVampire` (the
+  blood potion) restores its global's Large amount only to an actor with the `Vampire` keyword, from its `HasKeyword`
+  condition. Several hunger effects on one food add up, as their scripts would. A food the server refuses for its 10
+  second cooldown restores nothing. Survival's gutworm disease multiplier is not applied (no disease).
+- The item card still reads Survival's text, "Restore 2 points of Hunger." and so on: the number is written into the
+  effect description string of the Survival esl, not read from the server.
+- Common foods: VerySmall (40, 4%): ale, mead, wine and spirits, milk, butter, flour, cheese wedges, half a loaf, raw
+  fish, raw chicken, rabbit, pheasant, clams and mudcrab legs, sweets like the honey nut treat. Small (100, 10%):
+  apples, tomatoes, a bread loaf, sweetrolls, cheese wheels, honey, baked potatoes, grilled leeks, raw beef, venison,
+  horse, goat, boar, horker and mammoth meat, and with the plugin's override the six raw vegetables (VerySmall before
+  it). Medium (220, 22%): cooked chicken, rabbit, pheasant, goat, boar and skeever, cooked fish, pies, dumplings,
+  crostatas, garlic, braided and potato bread. Large (380, 38%): every stew and soup, cooked beef, venison, horse,
+  horker and mammoth, spiced beef, the marriage meal.
 - Stages as in `Survival_NeedHunger.ApplyHungerStage`: Well Fed (0) only after a meal empties hunger, until it reaches
   80; Satisfied (1) below 160; Peckish (2) from 160, Hungry (3) from 340, Famished (4) from 520, Starving (5) from 770.
   The character holds `Survival_HungerStage<n>`, granted through Papyrus `AddSpell`: Well Fed +10% stamina
@@ -411,10 +423,10 @@ None of these has been run yet.
 - With a stamina or magicka penalty on, stop the game service for over a minute (the client returns to the main menu)
   or change character, then rejoin: the maximum matches the red segment again, never shorter or longer than before. A
   client hot reload leaves it unchanged.
-- A Windhelm mead, a City of Dawnstar eel pie and a Windhelm bread restore 2, 220 and 18 hunger (0.2%, 22% and 1.8% of
-  the bar).
-- A raw cabbage, potato or ash yam restores 18 hunger like an apple and its card reads "Restore 18 points of Hunger.";
-  an ale still restores 2.
+- A Windhelm mead, a City of Dawnstar eel pie and a Windhelm bread restore 40, 220 and 100 hunger (4%, 22% and 10% of
+  the bar); the boot line reads `food hunger VerySmall 40, Small 100, Medium 220, Large 380`.
+- A raw cabbage, potato or ash yam restores 100 hunger (10%) like an apple, with the plugin's override deployed (40, 4%,
+  without it); its card reads "Restore 18 points of Hunger." (Survival's text). An ale restores 40.
 - HUD check without the console (the console stays closed for everyone, admins included): log in with a character
   that played about an hour (its stage notice reads Peckish or beyond, hunger over 160, since hunger persists per
   character and drains 125/h online); within a few seconds of the first `needsState` the stamina bar shows a red
