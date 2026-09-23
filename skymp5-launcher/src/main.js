@@ -640,6 +640,17 @@ function controlmapPath() {
   return gp ? path.join(gp, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt') : ''
 }
 
+// The game saves in-game rebinds to ControlMap_Custom.txt in its working directory, the game root
+function controlmapCustomPath() {
+  const gp = effectiveGamePath()
+  return gp ? path.join(gp, 'ControlMap_Custom.txt') : ''
+}
+
+function readCustomControlmap() {
+  const p = controlmapCustomPath()
+  try { return p ? fs.readFileSync(p) : null } catch { return null }
+}
+
 const CONTROLMAP_SEED = path.join(__dirname, '..', 'assets', 'controlmap.txt')
 
 function readControlmapText() {
@@ -659,6 +670,41 @@ function controlmapBinding(kb, mouse) {
   if (m >= 0 && m < 8) return MOUSE_DIK + m
   const k = parseInt(kb, 16)
   return k > 0 && k < 0xff ? k : null
+}
+
+// Line index of an event in the Main Gameplay context, the id ControlMap_Custom.txt entries use
+function gameplayEventIndex(text, ev) {
+  let i = 0
+  for (const line of text.split('\n')) {
+    if (line.startsWith('//')) continue
+    if (/^([ \t\r]|$)/.test(line)) return -1
+    if (line.split('\t')[0] === ev) return i
+    i++
+  }
+  return -1
+}
+
+// Keyboard and mouse entries of ControlMap_Custom.txt: per device a [2, length hi, length lo] header, then [event index, 4-byte big-endian key] entries
+function customControlmapEntries(buf) {
+  const out = []
+  if (!buf) return out
+  for (let dev = 0, off = 0; dev < 2 && off + 3 <= buf.length; dev++) {
+    const end = Math.min(off + ((buf[off + 1] << 8) | buf[off + 2]), buf.length)
+    if (end < off + 3) break
+    if (buf[off] === 2) for (let e = off + 3; e + 5 <= end; e += 5) out.push({ dev, index: buf[e], at: e + 1 })
+    off = end
+  }
+  return out
+}
+
+// The binding the game uses: a ControlMap_Custom.txt entry overrides the controlmap.txt column
+function gameHotkeyBinding(text, ev, custom, entries) {
+  const m = text.match(controlmapEventRe(ev))
+  if (!m) return null
+  const cols = [m[2], m[4]]
+  const idx = gameplayEventIndex(text, ev)
+  for (const e of entries) if (e.index === idx) cols[e.dev] = custom.readUInt32BE(e.at).toString(16)
+  return controlmapBinding(cols[0], cols[1])
 }
 
 // Stale launcher copies lack the AE Creations Menu context or still bind Wait on the gamepad
@@ -704,11 +750,10 @@ function applyControlmapOverride(gamePath) {
 ipcMain.handle('gameHotkeys:load', () => {
   try {
     const cm = readControlmapText()
+    const custom = readCustomControlmap()
+    const entries = customControlmapEntries(custom)
     const keys = {}
-    for (const ev of GAME_HOTKEY_EVENTS) {
-      const m = cm.text.match(controlmapEventRe(ev))
-      keys[ev] = m ? controlmapBinding(m[2], m[4]) : null
-    }
+    for (const ev of GAME_HOTKEY_EVENTS) keys[ev] = gameHotkeyBinding(cm.text, ev, custom, entries)
     return { ok: true, path: cm.path, exists: cm.exists, hasGamePath: !!cm.path, keys }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -720,16 +765,24 @@ ipcMain.handle('gameHotkeys:save', (_e, keys) => {
     const p = controlmapPath()
     if (!p) return { ok: false, error: 'Skyrim path is not configured yet' }
     let { text } = readControlmapText()
+    const custom = readCustomControlmap()
+    const entries = customControlmapEntries(custom)
+    let customChanged = false
     for (const [ev, code] of Object.entries(keys || {})) {
       const mouse = code >= MOUSE_DIK && code < MOUSE_DIK + 8
       if (!GAME_HOTKEY_EVENTS.includes(ev) || typeof code !== 'number' || !(mouse || (code > 0 && code < 0xff))) continue
       // One binding per action: the other column goes unbound
       const kb = mouse ? '0xff' : '0x' + code.toString(16)
       const ms = mouse ? '0x' + (code - MOUSE_DIK).toString(16) : '0xff'
+      if (code !== gameHotkeyBinding(text, ev, custom, entries)) {
+        const idx = gameplayEventIndex(text, ev)
+        for (const e of entries) if (e.index === idx) { custom.writeUInt32BE(Number(e.dev ? ms : kb), e.at); customChanged = true }
+      }
       text = text.replace(controlmapEventRe(ev), (_m, head, _kb, sep) => head + kb + sep + ms)
     }
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, text)
+    if (customChanged) fs.writeFileSync(controlmapCustomPath(), custom)
     return { ok: true, path: p }
   } catch (err) {
     return { ok: false, error: err.message }
@@ -1950,7 +2003,7 @@ function clientZipFiles(manifest, vd) {
   return vd && Array.isArray(vd.files) ? vd.files.map(f => String(f.path)) : null
 }
 
-// Matches the game-root-relative paths the launcher itself puts in the portable copy
+// Matches the game-root-relative paths the launcher puts in the portable copy, plus the game's in-game rebinds file
 function gameCopyAllowlist(src, manifest, zipFiles) {
   const keep = new Set([
     ...vanillaJobs(src).map(j => path.join(j.sub, j.rel)),
@@ -1958,6 +2011,7 @@ function gameCopyAllowlist(src, manifest, zipFiles) {
     'Data/Platform/Plugins/skymp5-client-settings.txt',
     'Data/Platform/PluginsNoLoad/auth-data-no-load.js',
     'Data/Interface/Controls/PC/controlmap.txt',
+    'ControlMap_Custom.txt',
     ...((manifest.creations && manifest.creations.files) || []).map(f => f.to),
     ...(manifest.root || []).map(f => f.to),
     ...zipFiles,

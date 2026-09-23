@@ -152,8 +152,9 @@ The portable copy (`<base>\skyrim`) holds only what the launcher puts there:
 the vanilla files (`vanillaJobs`), `Skyrim.ccc` and the copy and Creation
 stamps, the manifest's Creation and root files, the preloader, the SKSE
 `skse64_*` exe and dlls, the client settings, the auth file, `controlmap.txt`,
-logs, and the client zip's files when no manifest mod carries the client. Every
-other file is a stray (`gameCopyStrays`): the MO2 install pass deletes them and
+the game's own `ControlMap_Custom.txt` (in-game key rebinds, which Game Hotkeys
+read and patch too), logs, and the client zip's files when no manifest mod
+carries the client. Every other file is a stray (`gameCopyStrays`): the MO2 install pass deletes them and
 prunes empty folders, and Check Files lists them for Repair Game Copy. Nothing
 is deleted unless Portable Skyrim Mode and MO2 are both on, the folder is
 `<base>\skyrim` with `alduinak-instance.txt` in `<base>`, it does not overlap
