@@ -111,6 +111,15 @@ step with the last known inventory, which means the engine never reported that
 move to JS. The server logs every put that arrives
 as `[put] <actor> puts <base> x<n> into <target>`.
 
+Before sending, each put and drop passes the `SweetCantDrop` keyword check.
+No plugin of this load order defines that keyword, and the engine's
+`hasKeyword(null)` on an ingredient or food is true whenever one of its magic
+effects is a Peak Value Modifier without an associated keyword (Weakness to
+Magic on Salt Pile, Fortify Stamina on Beef Stew and every other Weakness to X,
+Waterbreathing and Fortify food effect), so the check now skips a missing
+keyword instead of passing null. Such an item never produced a `[put]` line or
+a server error: a silent client refusal looks exactly like this.
+
 ### Gamemode TODO
 
 The `target` is a form id you can resolve with `mp.getDescFromId(target)` /
