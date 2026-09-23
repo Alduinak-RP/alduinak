@@ -646,6 +646,9 @@ export class RemoteServer extends ClientListener {
       this.worldModel.playerCharacterRefrId = msg.refrId || 0;
     }
 
+    // A failed load leaves our 'update' callbacks queued; a newer spawn of ours drops them
+    const spawnSeq = msg.isMe ? ++this.playerSpawnSeq : this.playerSpawnSeq;
+
     // TODO: move to a separate module
 
     if (msg.props && !msg.props.isHostedByOther) {
@@ -683,6 +686,7 @@ export class RemoteServer extends ClientListener {
       const learnedSpells = msg.props.learnedSpells;
 
       once('update', () => {
+        if (spawnSeq !== this.playerSpawnSeq) return;
         Utility.wait(1).then(() => {
           const player = Game.getPlayer();
 
@@ -702,6 +706,7 @@ export class RemoteServer extends ClientListener {
     if (msg.isMe) {
       if (msg.props?.isDead) {
         once("update", () => {
+          if (spawnSeq !== this.playerSpawnSeq) return;
           this.controller.emitter.emit("applyDeathStateEvent", {
             actor: Game.getPlayer()!,
             isDead: true
@@ -713,6 +718,7 @@ export class RemoteServer extends ClientListener {
     if (msg.isMe) {
       const spawnTask = { running: false };
       once('update', () => {
+        if (spawnSeq !== this.playerSpawnSeq) return;
         // Use MoveRefrToPosition to spawn if possible (not in main menu); essential after a lost connection
         if (!spawnTask.running) {
           spawnTask.running = true;
@@ -809,7 +815,7 @@ export class RemoteServer extends ClientListener {
 
             logTrace(this, `loading game in world/cell`, msg.transform.worldOrCell.toString(16));
             const loadGameService = this.controller.lookupListener(LoadGameService);
-            loadGameService.loadGame(
+            if (!loadGameService.loadGame(
               msg.transform.pos,
               msg.transform.rot,
               msg.transform.worldOrCell,
@@ -833,7 +839,7 @@ export class RemoteServer extends ClientListener {
                 : undefined,
               loadOrder,
               this.controller.lookupListener(TimeService).getLoadGameTime()
-            );
+            )) return;
             once('update', () => {
               applyPcInv();
               Utility.wait(0.3).then(applyPcInv);
@@ -876,6 +882,7 @@ export class RemoteServer extends ClientListener {
       // re-check on fire since the server may have re-created our actor by then.
       once('update', () => {
         if (this.worldModel.playerCharacterFormIdx === -1) {
+          logToPlatformLog(this, "own actor destroyed, quitting to the main menu");
           Game.quitToMainMenu();
         }
       });
@@ -1101,13 +1108,15 @@ export class RemoteServer extends ClientListener {
     const msg = event.message;
 
     if (msg.open) {
+      const spawnSeq = this.playerSpawnSeq;
       // wait 0.3s to avoid visual bugs when teleporting and showing this menu at the same time in onConnect
-      once('update', () =>
+      once('update', () => {
+        if (spawnSeq !== this.playerSpawnSeq) return;
         Utility.wait(0.3).then(() => {
           unequipDefaultOutfit();
           Game.showRaceMenu();
-        }),
-      );
+        });
+      });
     } else {
       // TODO: Implement closeMenu in SkyrimPlatform
     }
@@ -1397,5 +1406,6 @@ export class RemoteServer extends ClientListener {
   private lastCloneCastSweep = 0;
   private cloneCastReport: { cloneId: number, at: number, text: string, spellCasts: number } | undefined = undefined;
   private lastCloneCastReportAt = 0;
+  private playerSpawnSeq = 0;
   private numSetInventory = 0;
 }

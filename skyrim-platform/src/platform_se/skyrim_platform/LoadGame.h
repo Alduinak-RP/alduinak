@@ -45,14 +45,10 @@ public:
                   SaveFile_::ChangeFormNPC_* changeFormNPC = nullptr,
                   std::vector<std::string>* loadOrder = nullptr);
 
-  static std::wstring GetPathToMyDocuments();
+  static std::filesystem::path GetSaveFullPath(const std::string& name);
 
 private:
-  static std::wstring StringToWstring(const std::string& s);
-
   static std::string GenerateGuid();
-
-  static std::filesystem::path GetSaveFullPath(const std::string& name);
 
   static SaveFile_::PlayerLocation* FindSectionWithPlayerLocation(
     std::shared_ptr<SaveFile_::SaveFile> save);

@@ -86,6 +86,7 @@ const translations = {
     next: 'Продолжить',
     back: 'Назад',
     beginAt: 'Начать путь здесь: {0}?',
+    loadFailed: 'Не удалось войти в мир: {0}. Отправьте администрации skyrim-platform.log из Документы > My Games > папка Skyrim > SKSE.',
   },
   "en": {
     selectCharacter: 'Select Character',
@@ -102,6 +103,7 @@ const translations = {
     next: 'Continue',
     back: 'Back',
     beginAt: 'Begin at {0}?',
+    loadFailed: 'Could not enter the world: {0}. Send staff skyrim-platform.log from Documents > My Games > your Skyrim folder > SKSE.',
   },
 } as const;
 
@@ -121,6 +123,11 @@ let introScreen: 'page' | 'question' | 'confirm' | null = null;
 let introPages: IntroPage[] = [];
 let introPage = 0;
 let introPick = -1;
+// Shown above the slot list after a spawn that never reached the world
+let notice = '';
+
+// A player's own quit opens the pause menu shortly before the main menu
+const PAUSE_QUIT_WINDOW_MS = 60000;
 
 function parseIntro(raw: unknown): StartIntro | null {
   const r = raw as Partial<StartIntro> | null;
@@ -158,6 +165,9 @@ function resetIntro(): void {
  *     { "customPacketType": "characterSelectResult", "action": "play",   "slot": 0 }
  *     { "customPacketType": "characterSelectResult", "action": "create", "slot": 1, "start": "dawnstar-docks" }
  *     { "customPacketType": "characterSelectResult", "action": "delete", "slot": 2 }
+ *
+ *   Client -> Server, reopen after a quit to the main menu or a failed spawn load:
+ *     { "customPacketType": "characterSelectMenuRequest", "loadError"?: "...", "viaPauseMenu"?: true | false }
  */
 export class CharacterSelectService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -294,6 +304,7 @@ export class CharacterSelectService extends ClientListener {
   // Quitting to main menu mid-session must reopen character select (the server forgets its menu state).
   // The focused browser reply also hides the native main menu buttons, same as the initial login flow.
   private onMenuOpen(e: MenuOpenEvent): void {
+    if (e.name === Menu.Journal) this.pauseMenuAt = Date.now();
     if (e.name !== Menu.Main) return;
     if (!this.sawGameplay) return; // initial boot: the auth flow drives the menu
     // menuOpen events can arrive late (queued into SP update tasks); only act
@@ -306,7 +317,14 @@ export class CharacterSelectService extends ClientListener {
     if (this.controller.lookupListener(SinglePlayerService).isSinglePlayer) return;
     if (!this.controller.lookupListener(NetworkingService).isConnected()) return;
     logTrace(this, 'Main menu opened while connected, requesting character select menu');
-    sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest' });
+    sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest', viaPauseMenu: Date.now() - this.pauseMenuAt < PAUSE_QUIT_WINDOW_MS });
+  }
+
+  // The server log gets the reason without the Windows user name
+  public showLoadFailure(reason: string): void {
+    notice = strings.loadFailed.replace('{0}', reason);
+    const loadError = reason.replace(/[A-Za-z]:\\Users\\[^\\]+/g, '%USERPROFILE%').slice(0, 300);
+    sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest', loadError });
   }
 
   private sendResult(action: 'play' | 'create' | 'delete', slot: number, start?: string): void {
@@ -335,7 +353,7 @@ export class CharacterSelectService extends ClientListener {
 
   private menuArgs(): Record<string, unknown> {
     return {
-      characters, maxCharacters, lockedSlots, selectedSlot, confirmDeleteSlot, events, strings, WIDGET_ID,
+      characters, maxCharacters, lockedSlots, selectedSlot, confirmDeleteSlot, events, strings, notice, WIDGET_ID,
       intro, introScreen, introPages, introPage, introPick, INTRO_WIDGET_ID, INTRO_PAGE_WIDGET_ID, INTRO_LIST_WIDGET_ID,
     };
   }
@@ -350,6 +368,7 @@ export class CharacterSelectService extends ClientListener {
     this.menuOpen = false;
     selectedSlot = null;
     confirmDeleteSlot = null;
+    notice = '';
     resetIntro();
     // Clear forms only; chat and other in-game widgets must survive a mid-session reopen.
     this.sp.browser.executeJavaScript(
@@ -387,6 +406,7 @@ export class CharacterSelectService extends ClientListener {
     }
 
     const widget: any = { type: "form", id: WIDGET_ID, caption: strings.selectCharacter, elements: [] as any[] };
+    if (notice) widget.elements.push({ type: "text", text: notice, tags: [] });
 
     // Strike through via combining U+0336 overlays; the form renderer has no text styling.
     const strike = (s: string) => s.split("").map((c) => c + String.fromCharCode(0x0336)).join("");
@@ -447,4 +467,5 @@ export class CharacterSelectService extends ClientListener {
 
   private menuOpen = false;
   private sawGameplay = false;
+  private pauseMenuAt = 0;
 }

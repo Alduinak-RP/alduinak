@@ -118,6 +118,7 @@ function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
 //     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]} }
 //   Client -> Server:
 //     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot, start?: locationId }
+//     { customPacketType: "characterSelectMenuRequest", loadError?: string, viaPauseMenu?: boolean }
 export class Spawn implements System {
   systemName = "Spawn";
   constructor(private log: Log) { }
@@ -194,7 +195,7 @@ export class Spawn implements System {
       if (content.action === "delete") this.onDeleteCharacter(ctx, userId, slot);
       else this.onSelectCharacter(ctx, userId, slot, content.start);   // "play" or "create"
     } else if (type === "characterSelectMenuRequest") {
-      this.onMenuRequest(ctx, userId);
+      this.onMenuRequest(ctx, userId, content);
     }
   }
 
@@ -252,9 +253,12 @@ export class Spawn implements System {
 
   // Sent when the player quits to the main menu: reopen the selection menu and start logout grace on the current body (it stays in the world, so quitting is never an instant combat escape)
   // Rapid repeats or requests right after actor assign skip the grace scheduling: packet spam / stale menu events must not park a body that is being played
-  private onMenuRequest(ctx: SystemContext, userId: number): void {
+  private onMenuRequest(ctx: SystemContext, userId: number, content: Content): void {
     const auth = this.authCache.get(userId);
     if (!auth) return; // not authenticated yet
+    if (typeof content.loadError === "string") {
+      this.log(`[spawn] user ${userId} (profile ${auth.profileId}) could not load the world: ${content.loadError.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").slice(0, 300)}`);
+    }
     if (!this.pending.has(userId)) {
       const now = Date.now();
       const mayPark = now - (this.lastMenuRequestMs.get(userId) ?? 0) >= REQUEST_COOLDOWN_MS &&
@@ -270,7 +274,8 @@ export class Spawn implements System {
         } catch { /* form vanished */ }
       }
       this.pending.set(userId, auth);
-      this.log("Reopening character select for user", userId, mayPark ? "(logout grace started)" : "(guarded, no grace timer)");
+      const via = content.viaPauseMenu === true ? " via the pause menu" : content.viaPauseMenu === false ? " without the pause menu" : "";
+      this.log("Reopening character select for user", userId, (mayPark ? "(logout grace started)" : "(guarded, no grace timer)") + via);
     }
     this.sendCharacterList(ctx, userId, auth.profileId);
   }

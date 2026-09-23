@@ -31,7 +31,8 @@ public:
     const RE::TESLoadGameEvent* event,
     RE::BSTEventSource<RE::TESLoadGameEvent>* eventSource) override
   {
-    std::thread([] {
+    std::thread([savesDir =
+                   LoadGame::GetSaveFullPath(g_saveFilePrefix).parent_path()] {
       // A way to wait 5 seconds game time
       for (int i = 0; i < 50; ++i) {
         auto n = TESModPlatform::GetNumPapyrusUpdates();
@@ -46,10 +47,7 @@ public:
 
       // Removes our temporary save files
       try {
-        std::filesystem::path path = LoadGame::GetPathToMyDocuments() +
-          L"\\My Games\\Skyrim Special Edition\\Saves\\";
-
-        for (auto& file : std::filesystem::directory_iterator(path)) {
+        for (auto& file : std::filesystem::directory_iterator(savesDir)) {
           if (file.path().filename().generic_string().find(g_saveFilePrefix) !=
               std::string::npos)
             try {
@@ -108,8 +106,10 @@ void LoadGame::Run(std::shared_ptr<SaveFile_::SaveFile> save,
   ModifyEssStructure(save, pos, angle, cellOrWorld);
 
   auto name = g_saveFilePrefix + GenerateGuid();
-  if (!SaveFile_::Writer(save).CreateSaveFile(GetSaveFullPath(name))) {
-    throw std::runtime_error("CreateSaveFile failed");
+  auto path = GetSaveFullPath(name);
+  if (!SaveFile_::Writer(save).CreateSaveFile(path)) {
+    throw std::runtime_error("CreateSaveFile failed for " + path.string() +
+                             ": " + std::generic_category().message(errno));
   }
 
   TESModPlatform::BlockMoveRefrToPosition(true);
@@ -122,23 +122,14 @@ void LoadGame::Run(std::shared_ptr<SaveFile_::SaveFile> save,
   }
 }
 
+// The engine's own save path, which differs per store edition
 fs::path LoadGame::GetSaveFullPath(const std::string& name)
 {
-  return GetPathToMyDocuments() +
-    L"\\My Games\\Skyrim Special Edition\\Saves\\" + StringToWstring(name) +
-    L".ess";
-}
-
-std::wstring LoadGame::GetPathToMyDocuments()
-{
-  PWSTR ppszPath;
-  HRESULT hr = SHGetKnownFolderPath(FOLDERID_Documents, 0, NULL, &ppszPath);
-  std::wstring myPath;
-  if (SUCCEEDED(hr)) {
-    myPath = ppszPath;
+  char path[MAX_PATH] = {};
+  if (auto saveData = RE::BSWin32SaveDataSystemUtility::GetSingleton()) {
+    saveData->PrepareFileSavePath(name.c_str(), path, false, false);
   }
-  CoTaskMemFree(ppszPath);
-  return myPath;
+  return path;
 }
 
 void LoadGame::ModifyPluginInfo(std::shared_ptr<SaveFile_::SaveFile>& save)
@@ -375,14 +366,6 @@ void LoadGame::WriteChangeForm(std::shared_ptr<SaveFile_::SaveFile> save,
   save->fileLocationTable.formIDArrayCountOffset -= diff;
   save->fileLocationTable.unknownTable3Offset -= diff;
   save->fileLocationTable.globalDataTable3Offset -= diff;
-}
-
-std::wstring LoadGame::StringToWstring(const std::string& s)
-{
-  std::wstring ws(s.size(), L' ');
-  auto n = std::mbstowcs(&ws[0], s.c_str(), s.size());
-  ws.resize(n);
-  return ws;
 }
 
 std::string LoadGame::GenerateGuid()

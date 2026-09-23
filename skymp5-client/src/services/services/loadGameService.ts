@@ -1,5 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ChangeFormNpc } from "skyrimPlatform";
+import { logToPlatformLog } from "../../logging";
+import { CharacterSelectService } from "./characterSelectService";
 
 export class LoadGameService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -7,16 +9,23 @@ export class LoadGameService extends ClientListener {
         this.controller.on("loadGame", () => this.onLoadGame());
     }
 
-    public loadGame(pos: number[], rot: number[], worldOrCell: number, changeFormNpc?: ChangeFormNpc, loadOrder?: string[], time?: { seconds: number, minutes: number, hours: number }) {
+    public loadGame(pos: number[], rot: number[], worldOrCell: number, changeFormNpc?: ChangeFormNpc, loadOrder?: string[], time?: { seconds: number, minutes: number, hours: number }): boolean {
         try {
-            // @ts-ignore
-            this.sp.loadGame(pos, rot, worldOrCell, changeFormNpc, loadOrder, time);
+            try {
+                // @ts-ignore
+                this.sp.loadGame(pos, rot, worldOrCell, changeFormNpc, loadOrder, time);
+            } catch (e) {
+                // Hotfix non-vanilla headparts bug
+                // @ts-ignore
+                this.sp.loadGame(pos, rot, worldOrCell, undefined, loadOrder, time);
+            }
         } catch (e) {
-            // Hotfix non-vanilla headparts bug
-            // @ts-ignore
-            this.sp.loadGame(pos, rot, worldOrCell, undefined, loadOrder, time);
+            logToPlatformLog(this, "spawn load failed:", e);
+            this.controller.lookupListener(CharacterSelectService).showLoadFailure(String(e));
+            return false;
         }
         this._isCausedBySkyrimPlatform = true;
+        return true;
     }
 
     private onLoadGame() {

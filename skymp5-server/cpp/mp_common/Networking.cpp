@@ -374,6 +374,10 @@ void Networking::HandlePacketServerside(Networking::IServer::OnPacket onPacket,
           "Unexpected disconnection for system without userId (guid={})",
           packet->guid.g));
       }
+      if (packetId == ID_CONNECTION_LOST) {
+        spdlog::info(
+          "Networking: user {} timed out without a disconnect notice", userId);
+      }
       onPacket(state, userId, Networking::PacketType::ServerSideUserDisconnect,
                nullptr, 0);
       idManager.freeId(userId);
