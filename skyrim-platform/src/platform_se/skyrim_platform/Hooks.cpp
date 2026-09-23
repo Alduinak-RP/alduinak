@@ -1,5 +1,7 @@
 #include "Hooks.h"
 #include "EventHandler.h"
+#include <atomic>
+#include <mmsystem.h>
 #include <mutex>
 
 namespace hook::internal {
@@ -53,6 +55,42 @@ struct OnConsoleVPrint
 void InstallOnConsoleVPrintHook()
 {
   Hooks::write_thunk_call<OnConsoleVPrint>(Offsets::Hooks::VPrint.address());
+}
+
+// XAudio2 2.7 indexes its resampler table with channels - 1 unchecked
+struct CreateSourceVoiceGuard
+{
+  static void* thunk(void* a_audio, const WAVEFORMATEX* a_format,
+                     void* a_owner, void* a_callback, std::uint8_t a_flags)
+  {
+    if (a_format && a_format->nChannels == 0) {
+      static std::atomic<bool> logged{ false };
+      if (!logged.exchange(true)) {
+        logger::warn(
+          "Skipped a sound with a zero-channel format (tag {}, {} Hz)",
+          a_format->wFormatTag, a_format->nSamplesPerSec);
+      }
+      return nullptr;
+    }
+    return func(a_audio, a_format, a_owner, a_callback, a_flags);
+  }
+  static inline REL::Relocation<decltype(&thunk)> func;
+};
+
+void InstallCreateSourceVoiceGuard()
+{
+  if (!REL::Module::IsAE()) {
+    return;
+  }
+  const auto call = REL::ID(68003).address() + 0x12A;
+  if (*reinterpret_cast<const std::uint8_t*>(call) != 0xE8 ||
+      call + 5 + *reinterpret_cast<const std::int32_t*>(call + 1) !=
+        REL::ID(67955).address()) {
+    logger::warn(
+      "CreateSourceVoice call not found, zero-channel sound guard skipped");
+    return;
+  }
+  Hooks::write_thunk_call<CreateSourceVoiceGuard>(call);
 }
 
 void BindNativeMethod(RE::BSScript::Internal::VirtualMachine* thisArg,
@@ -124,6 +162,7 @@ void Hooks::Install()
 {
   // InstallOnFrameUpdateHook();
   InstallOnConsoleVPrintHook();
+  InstallCreateSourceVoiceGuard();
   HookVirtualMachineBind();
 
   logger::info("CommonLib hooks installed.");
