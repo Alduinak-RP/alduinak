@@ -1,6 +1,6 @@
 [
   {
-    "title": "Patch 0.9.1",
+    "title": "Patch 0.9.2",
     "body": "Thanks to everyone participating in the beta. We're taking in all of the feedback from whitelisted players specifically so we can fix these issues from passionate community members before we go live publicly. Patch notes are posted on the discord.",
     "date": "Sep 23, 2026",
     "tag": "UPDATE",
@@ -8,7 +8,7 @@
   },
   {
     "title": "Bug/Crash Reports",
-    "body": "If you notice any bugs, please post them on discord in #technical-help along with any crash logs, and/or your logs located in Desktop/My Games/Skyrim Special Edition/SKSE (please zip them up for me),",
+    "body": "If you notice any bugs or crashes, please post them on discord in #technical-help along with any crash logs, and/or your logs located in Desktop/My Games/Skyrim Special Edition/SKSE (please zip them up for me). I can't fix problems if they aren't reported.",
     "date": "Sep 23, 2026",
     "tag": "NOTICE",
     "image": "/images/news-economy.gif"
