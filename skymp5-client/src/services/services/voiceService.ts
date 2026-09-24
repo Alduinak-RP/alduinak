@@ -97,7 +97,9 @@ export class VoiceService extends ClientListener {
     if (code !== this.voiceKey) return;
 
     // isHeld frames let a V hold that outlives the Alt+V cycle start transmitting once Alt releases (isDown fires only on the press frame)
-    if ((e.isDown || e.isHeld) && !this.pttDown) {
+    // The engine can hold a key whose release it lost, so a held frame counts only while the key really is down
+    const pressed = e.isDown || (e.isHeld && !this.voiceKeyReadsUp());
+    if (pressed && !this.pttDown) {
       // A focused browser reads the key itself; the console must not open the mic
       if (this.sp.browser.isFocused() || isConsoleOpen(this.sp)) return;
       if (this.altDown) {
@@ -273,11 +275,7 @@ export class VoiceService extends ClientListener {
     if (this.pttDown && (isConsoleOpen(this.sp) || !myRefr)) this.releasePtt();
 
     // A key pressed in a menu and released after it closed reaches neither side, so poll it once the game has the keyboard back
-    if (this.pttDown && !this.sp.browser.isFocused()
-      && this.voiceKey < DxScanCode.LeftMouseButton
-      && !this.sp.Input.isKeyPressed(this.voiceKey)) {
-      this.releasePtt();
-    }
+    if (this.pttDown && !this.sp.browser.isFocused() && this.voiceKeyReadsUp()) this.releasePtt();
 
     // Write the chosen mode to disk shortly after it changes
     if (this.modePersistAt && now >= this.modePersistAt) {
@@ -299,12 +297,19 @@ export class VoiceService extends ClientListener {
       this.pushPeers();
     }
 
-    if (this.pttDown && now >= this.nextAfkPingAt) this.sendAfkPing();
+    if (this.pttDown) this.sendAfkPing();
   }
 
-  // Talking counts as activity for the server's AFK autokick
+  // Mouse buttons are left to the engine's own key-up
+  private voiceKeyReadsUp(): boolean {
+    return this.voiceKey < DxScanCode.LeftMouseButton && !this.sp.Input.isKeyPressed(this.voiceKey);
+  }
+
+  // Talking counts as activity for the server's AFK autokick, at most once per interval
   private sendAfkPing() {
-    this.nextAfkPingAt = Date.now() + AFK_PING_INTERVAL_MS;
+    const now = Date.now();
+    if (now < this.nextAfkPingAt) return;
+    this.nextAfkPingAt = now + AFK_PING_INTERVAL_MS;
     sendCustomPacket(this.controller, { customPacketType: "afkPing" });
   }
 
