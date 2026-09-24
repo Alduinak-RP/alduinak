@@ -50,3 +50,41 @@ TEST_CASE("SetLastAnimEventAndBroadcast reaches the neighbours and later "
   actor.SetLastAnimEvent(std::nullopt);
   REQUIRE(!actor.GetLastAnimEvent().has_value());
 }
+
+TEST_CASE("UpdateAnimation relays get-ups reliably and other events "
+          "unreliably",
+          "[PartOne]")
+{
+  PartOne partOne;
+
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000ABC, { 1.f, 2.f, 3.f }, 180.f, 0x3c);
+  partOne.SetUserActor(0, 0xff000ABC);
+
+  DoConnect(partOne, 1);
+  partOne.CreateActor(0xffABCABC, { 11.f, 22.f, 33.f }, 180.f, 0x3c);
+  partOne.SetUserActor(1, 0xffABCABC);
+
+  auto relayTo1 = [&](const char* animEventName) {
+    partOne.Messages().clear();
+    DoMessage(partOne, 0,
+              nlohmann::json{
+                { "t", MsgType::UpdateAnimation },
+                { "idx", 0 },
+                { "data",
+                  { { "animEventName", animEventName },
+                    { "numChanges", 1 } } } });
+    auto it = std::find_if(
+      partOne.Messages().begin(), partOne.Messages().end(),
+      [&](const PartOne::Message& m) {
+        return m.j["t"] == MsgType::UpdateAnimation && m.userId == 1;
+      });
+    REQUIRE(it != partOne.Messages().end());
+    return it->reliable;
+  };
+
+  REQUIRE(relayTo1("IdleForceDefaultState"));
+  REQUIRE(relayTo1("idleChairFrontExit"));
+  REQUIRE(relayTo1("bleedOutStop"));
+  REQUIRE(!relayTo1("IdleSitCrossLeggedEnter"));
+}
