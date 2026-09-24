@@ -89,8 +89,8 @@ export class VoiceService extends ClientListener {
   private onButtonEventImpl(e: ButtonEvent) {
     const code = buttonEventKeyCode(e);
 
-    // Track Alt so Alt+V can mean "cycle mode" instead of "talk"
-    if (code === DxScanCode.LeftAlt || code === DxScanCode.RightAlt) {
+    // Track Alt so Alt+V can mean "cycle mode" instead of "talk"; an Alt bound to push-to-talk is plain push-to-talk
+    if (this.isAltKey(code)) {
       if (e.isDown) this.altDown = true;
       else if (e.isUp) this.altDown = false;
       return;
@@ -317,8 +317,12 @@ export class VoiceService extends ClientListener {
     if (this.pttDown) this.sendAfkPing();
   }
 
+  private isAltKey(code: number): boolean {
+    return (code === DxScanCode.LeftAlt || code === DxScanCode.RightAlt) && code !== this.voiceKey;
+  }
+
   private isAltPressed(): boolean {
-    return this.sp.Input.isKeyPressed(DxScanCode.LeftAlt) || this.sp.Input.isKeyPressed(DxScanCode.RightAlt);
+    return [DxScanCode.LeftAlt, DxScanCode.RightAlt].some(k => this.isAltKey(k) && this.sp.Input.isKeyPressed(k));
   }
 
   // Mouse buttons are left to the engine's own key-up

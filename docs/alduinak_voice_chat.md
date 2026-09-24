@@ -45,7 +45,9 @@ The integration described as "future work" below has been built:
   typing guard covers DOM keys only. A focused menu hides mouse buttons from
   the engine, so the key-up it sends for a button held as a menu opens is
   ignored while `Input.isKeyPressed` still reads the key down, and the poll
-  closes the mic on the real release. Alt+V mode cycling is game-side only.
+  closes the mic on the real release. Alt+V mode cycling is game-side only;
+  a Left or Right Alt bound to push-to-talk is plain push-to-talk and only
+  the other Alt cycles.
   Requests a token per actor assignment; pushes peer distances (same world
   only) every 400ms.
 - **Talk range**: V + mousewheel picks the speaker's audible range between

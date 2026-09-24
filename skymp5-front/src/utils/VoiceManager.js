@@ -78,8 +78,8 @@ class VoiceManager {
   onKeyDown(e) {
     if (e.code === 'Tab' && e.altKey) this.release();
     if (!this.pttCode || e.code !== this.pttCode || e.repeat || isTyping()) return;
-    // Alt+V means cycle mode, which only the game handles
-    if (e.altKey) return;
+    // Alt+V means cycle mode, which only the game handles; an Alt key bound to push-to-talk sets altKey itself
+    if (e.altKey && !this.pttCode.startsWith('Alt')) return;
     this.setPtt(true);
     sendToGame('voice::ptt', '1');
   }
