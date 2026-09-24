@@ -32,10 +32,13 @@ The integration described as "future work" below has been built:
   it (`Input.isKeyPressed`) and releases once the key is up, or at the latest
   when the menu closes; an engine hold whose release was lost cannot reopen it
   while the key reads up, and the AFK ping goes out at most once a minute. The
-  console and a despawned actor force a release. A window blur, a hidden page
-  or Alt+Tab while a menu has focus closes the mic (`voice::focusLost`), since
-  no key-up reaches the page after it; the game ignores the blur a closing
-  menu causes. Mouse buttons and keys with no DOM code (Right Ctrl/Alt,
+  console and a despawned actor force a release. No key-up follows once the
+  game loses the foreground and the off-screen page never gets a blur, so on
+  `WM_ACTIVATE`/`WA_INACTIVE` SkyrimPlatform (SkyrimPlatformImpl.dll)
+  dispatches `skymp5-client:windowInactive` to the page on its next input
+  update, and the page closes the mic itself and reports `voice::ptt` `0`; an
+  Alt+Tab the page sees in a menu does the same. Mouse buttons and keys with
+  no DOM code (Right Ctrl/Alt,
   arrows, Home/End/Ins/Del, Numpad Enter/Divide, Num Lock, Pause) never reach
   the page, so while a menu has focus the game polls them itself and opens the
   mic on a press edge (not while Alt is down or the console is open); the

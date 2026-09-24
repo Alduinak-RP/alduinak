@@ -254,6 +254,9 @@ inline uint32_t GetCefModifiers_(uint16_t aVirtualKey)
   return modifiers;
 }
 
+// Set by the window procedure when the game loses the foreground, taken by the next input update
+static std::atomic<bool> g_windowDeactivated{ false };
+
 class MyInputListener : public IInputListener
 {
 public:
@@ -444,8 +447,14 @@ public:
         app->InjectMouseMove(-1.f, -1.f, GetCefModifiers_(0), false);
       }
     }
-    if (auto app = service->GetMyChromiumApp())
+    if (auto app = service->GetMyChromiumApp()) {
       app->RunTasks();
+      // Off-screen rendering never blurs the page, so it hears of a lost foreground from here
+      if (g_windowDeactivated.exchange(false)) {
+        app->ExecuteJavaScript(
+          "window.dispatchEvent(new Event('skymp5-client:windowInactive'))");
+      }
+    }
 
     if (IsBrowserFocused()) {
       const clock_t now = clock();
@@ -505,6 +514,8 @@ public:
       // The next "deactivated by" line then covers exactly this stay in front
       if (active) {
         CEFUtils::DInputHook::ResetKeyboardCounters();
+      } else {
+        g_windowDeactivated = true;
       }
     } else if (uMsg == WM_KILLFOCUS) {
       LogWindow(hwnd, "focus taken by", reinterpret_cast<HWND>(wParam));
