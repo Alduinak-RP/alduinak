@@ -6,7 +6,7 @@ import { SendInputsService } from "./sendInputsService";
 import { getPcInventory } from "./remoteServer";
 import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, SHEATHE_SETTLE_S } from "../../sync/animation";
 import { formIdFromDesc } from "../../view/worldViewMisc";
-import { BrowserMessageEvent, ButtonEvent, DxScanCode, Inventory } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, Inventory } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
@@ -19,6 +19,10 @@ const WIDGET_ID = 24;
 // An idle played in first person loses the character's collision, so an emote keeps the camera in third person
 const FIRST_PERSON_CAMERA = 0;
 const CAMERA_TICK_MS = 250;
+// Master graph variable set while an idle plays
+const IDLE_PLAYING_VAR = "bIdlePlaying";
+// Checks the idle must stay gone before the emote counts as over, so a switch between an idle's stages is not its end
+const IDLE_END_TICKS = 2;
 
 // An item the emote shows in hand; any one of the "hex:Plugin" items unlocks it
 interface PropNeed {
@@ -301,6 +305,7 @@ export class EmoteService extends ClientListener {
     }
     const previous = this.activeEmote;
     this.activeEmote = anim;
+    this.sentAnim = "";
     // Offset overlays live on their own graph layer: crossing between an
     // overlay and a state idle needs the previous emote exited first, and the
     // exit event must go out alone so the single-slot animation sync relays it.
@@ -341,6 +346,8 @@ export class EmoteService extends ClientListener {
       }
       this.sp.Game.forceThirdPerson();
       this.sp.Debug.sendAnimationEvent(player, anim);
+      this.sentAnim = anim;
+      this.idleGoneTicks = -1;
       logTrace(this, `Playing emote`, anim);
     });
   }
@@ -349,10 +356,25 @@ export class EmoteService extends ClientListener {
     const now = Date.now();
     if (now < this.nextCameraTickMs) return;
     this.nextCameraTickMs = now + CAMERA_TICK_MS;
-    if (!this.activeEmote || this.sp.Game.getCameraState() !== FIRST_PERSON_CAMERA) return;
-    // A chair or a mount taken after the emote owns the camera again
+    if (!this.activeEmote) return;
     const player = this.sp.Game.getPlayer();
-    if (player && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceThirdPerson();
+    if (!player) return;
+    if (this.idleEnded(player)) {
+      this.activeEmote = "";
+      return;
+    }
+    // A chair or a mount taken after the emote owns the camera again
+    if (this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceThirdPerson();
+  }
+
+  // An idle seen playing and then gone ended by itself (a one-shot, combat, movement from any device); offset overlays are not idles
+  private idleEnded(player: Actor): boolean {
+    if (this.sentAnim !== this.activeEmote || this.activeEmote.indexOf("Offset") === 0) return false;
+    if (player.getAnimationVariableBool(IDLE_PLAYING_VAR)) {
+      this.idleGoneTicks = 0;
+      return false;
+    }
+    return this.idleGoneTicks >= 0 && ++this.idleGoneTicks >= IDLE_END_TICKS;
   }
 
   // Also abandons any pending exit chain or follow-up emote
@@ -551,6 +573,9 @@ export class EmoteService extends ClientListener {
   // Generation counter: bumping it abandons any pending exit chain.
   private chainId = 0;
   private nextCameraTickMs = 0;
+  // The idle last sent to the graph, and the checks it has been gone since it was seen playing (-1 while never seen)
+  private sentAnim = "";
+  private idleGoneTicks = -1;
 
   get menuKeyCode(): number {
     return this.menuKey;

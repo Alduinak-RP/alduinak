@@ -11,7 +11,11 @@ reports the slice under the cursor as `emote:hover`. Movement keys (`W A S D`,
 `Space`) end an emote, and so does drawing a weapon or spell. A draw leaves an idle by itself, so no idle exit event is sent while the hands
 are drawn; an offset overlay such as Crossed Arms is not an idle, so a draw still sends its `OffsetStop`.
 An emote forces third person and keeps the camera there while it plays (a 250 ms check), because an idle in
-first person loses the character's collision and walks through geometry.
+first person loses the character's collision and walks through geometry. The same check ends the emote once the
+graph's `bIdlePlaying` has been off for two checks after the idle was seen playing (a one-shot such as Wave
+finished, or combat or stick movement ended it), so the camera is free again; sit and kneel poses keep the idle
+playing and the lock with it. An offset overlay (Crossed Arms) is not an idle and keeps the lock until it is
+cancelled.
 
 - Client: `skymp5-client/src/services/services/emoteService.ts` (the `GROUPS` catalog, playing, exiting, the
   prop gate).
