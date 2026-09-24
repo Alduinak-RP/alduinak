@@ -478,6 +478,8 @@ export class ExecutionSystem implements System {
     (globalThis as any).__alduinakMarkDeathAlerted?.(victimId);
     this.bleedout.die(victimId, how, killerId);
     this.bodies.leaveBody(victimId, `${how} by ${hex(killerId)}`);
+    // Before the move, since a carried captive is set down at the carrier
+    if (this.ctx) this.capture.freeCaptive(this.ctx, victimId);
     this.afterlife.sendToSovngarde(victimId, `${how} by ${hex(killerId)}`);
     appendLog(this.logDir, "pk.log", line);
     (globalThis as any).__alduinakDiscordAlert?.("execute", line);

@@ -318,7 +318,10 @@ behaviour-graph events — no ESP required.**
   player disarms it). It is the finish off PK without a killmove: the character dies
   at once, leaves the body above and goes to Sovngarde, with the same
   `pk.log`, `pvp.log` and `execute` alert lines (`(staff)` when the admin
-  holds no execute right). Refused on yourself, on a character already dead
+  holds no execute right). Like every PK (`slay`) it frees a cuffed or
+  carried captive (`CaptureSystem.freeCaptive`, as the block execution
+  does) after the body is left and before the move to Sovngarde, so nobody
+  wakes in the Hall of Valor still bound. Refused on yourself, on a character already dead
   ("They are already dead", wait for the respawn) and on a fallen one
   ("They are already fallen"); logged in `admin.log` as `profile N PK'd
   <name>`.
