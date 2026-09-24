@@ -39,6 +39,8 @@ export const REALMS: Record<RealmId, Realm> = {
 export const AFTERLIFE_PROP = "private.afterlife";
 // Neighbor-visible (registered in the gamemode) { realm, shader, alpha }: the realm's look, played by every client that sees the character
 const LOOK_PROP = "ff_afterlife";
+// The SPEL look ability actually added, so a changed look or a revive removes that one
+const SPELL_PROP = "private.afterlifeSpell";
 // The realm whose outfit the character was given since the pack was last stripped; a lost piece is only handed out again after the next strip
 const OUTFIT_PROP = "private.afterlifeOutfit";
 // Set by FactionSystem once a fallen character's ranks were released
@@ -241,10 +243,8 @@ export class AfterlifeSystem implements System {
       this.log(`[afterlife] reviving ${hex(actorId)} failed: ${e}`);
       return "Revive failed, see server log";
     }
-    if (realm) {
-      this.clearLook(mp, actorId, realm);
-      this.undress(mp, actorId, realm);
-    }
+    this.clearLook(mp, actorId);
+    if (realm) this.undress(mp, actorId, realm);
     notifyActor(mp, actorId, "You have been returned to the living.");
     this.log(`[afterlife] ${hex(actorId)} of profile ${profileId} revived by ${by}`);
     return "";
@@ -301,40 +301,58 @@ export class AfterlifeSystem implements System {
     const realm = afterlifeOf(mp, actorId);
     let stored: { realm?: unknown; shader?: unknown; alpha?: unknown } | null = null;
     try { stored = mp.get(actorId, LOOK_PROP); } catch { /* unregistered, the set below logs it */ }
+    const added = this.addedSpellOf(mp, actorId);
     if (!realm) {
-      if (!stored) return;
-      const was = realmIdOf(stored.realm);
-      this.clearLook(mp, actorId, was);
+      if (!stored && !added) return;
+      const was = realmIdOf(stored?.realm);
+      this.clearLook(mp, actorId);
       this.log(`[afterlife] ${hex(actorId)} is in no realm, cleared the stale ${was ? REALMS[was].label : "realm"} look`);
       return;
     }
     const { shaderId, spellId, alpha } = this.looks[realm];
-    if (stored?.realm === realm && stored.shader === shaderId && stored.alpha === alpha) return;
-    try {
-      mp.set(actorId, LOOK_PROP, { realm, shader: shaderId, alpha });
-    } catch (e) {
-      this.log(`[afterlife] ${LOOK_PROP} on ${hex(actorId)} failed (property registered in gamemode.js?): ${e}`);
+    if (stored?.realm !== realm || stored.shader !== shaderId || stored.alpha !== alpha) {
+      try {
+        mp.set(actorId, LOOK_PROP, { realm, shader: shaderId, alpha });
+      } catch (e) {
+        this.log(`[afterlife] ${LOOK_PROP} on ${hex(actorId)} failed (property registered in gamemode.js?): ${e}`);
+      }
     }
+    if (added === spellId) return;
+    if (added) this.removeAddedSpell(mp, actorId, added);
     if (!spellId) return;
     try {
       addSpellTo(mp, actorId, spellId);
+      mp.set(actorId, SPELL_PROP, spellId);
     } catch (e) {
       this.log(`[afterlife] adding the ${REALMS[realm].label} ability to ${hex(actorId)} failed: ${e}`);
     }
   }
 
-  private clearLook(mp: Mp, actorId: number, realm: RealmId | null): void {
+  private clearLook(mp: Mp, actorId: number): void {
     try {
       mp.set(actorId, LOOK_PROP, null);
     } catch (e) {
       this.log(`[afterlife] clearing ${LOOK_PROP} of ${hex(actorId)} failed: ${e}`);
     }
-    const spellId = realm ? this.looks[realm].spellId : 0;
-    if (!realm || !spellId) return;
+    const added = this.addedSpellOf(mp, actorId);
+    if (added) this.removeAddedSpell(mp, actorId, added);
+  }
+
+  private addedSpellOf(mp: Mp, actorId: number): number {
+    try {
+      const id = mp.get(actorId, SPELL_PROP);
+      return typeof id === "number" ? id >>> 0 : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private removeAddedSpell(mp: Mp, actorId: number, spellId: number): void {
     try {
       removeSpellFrom(mp, actorId, spellId);
+      mp.set(actorId, SPELL_PROP, null);
     } catch (e) {
-      this.log(`[afterlife] removing the ${REALMS[realm].label} ability from ${hex(actorId)} failed: ${e}`);
+      this.log(`[afterlife] removing the realm ability ${hex(spellId)} from ${hex(actorId)} failed: ${e}`);
     }
   }
 

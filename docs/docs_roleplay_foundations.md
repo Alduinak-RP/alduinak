@@ -311,7 +311,9 @@ to one stays playable but is confined to it.
   the player (`afterlifeLookService.ts`, again 1 s after a respawn, which
   drops shaders; `look <id>|off` in `skyrim-platform.log`), the way admin
   Ghost rides `ff_adminModes`; a SPEL is added as an ability on arrival (`AddSpell`) and
-  removed by a revive; any other record type is logged and ignored. The
+  recorded in `private.afterlifeSpell`, so a changed look swaps the recorded
+  ability for the new one on the next realm respawn or login, and a revive (or
+  a login in no realm) removes the recorded one; any other record type is logged and ignored. The
   outfit is given (`AddItem`, when not held) and put on through the owner's
   client (`Actor.EquipItem`, removable) at once when a living character is
   sent, 5 s after a realm respawn and 5 s after a login into the realm, since
