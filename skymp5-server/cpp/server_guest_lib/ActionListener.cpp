@@ -385,32 +385,6 @@ bool CanHitWithSpell(const MpActor& actor, uint32_t spellId)
   }
   return false;
 }
-
-// Mirrors needsReliableSend in skymp5-client/src/sync/animation.ts
-bool NeedsReliableRelay(const std::string& animEventName)
-{
-  static const CISet kReliableAnims = {
-    "idlestoolbackexit",
-    "idlechairrightexit",
-    "idlechairrightquickexit",
-    "idlechairleftexit",
-    "idlechairleftquickexit",
-    "idlechairfrontexit",
-    "idlechairfrontquickexit",
-    "idlechairchildfrontexit",
-    "idlechairchildleftexit",
-    "idlechairchildrightexit",
-    "idleforcedefaultstate",
-    "offsetcarrybasketstart",
-    "offsetcarrylogstart",
-    "offsetboundstandingstart",
-    "offsetarmscrossedstart",
-    "offsetstop",
-    "bleedoutstart",
-    "bleedoutstop",
-  };
-  return kReliableAnims.count(animEventName.data()) > 0;
-}
 }
 
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
@@ -578,8 +552,8 @@ void ActionListener::OnUpdateAnimation(const RawMessageData& rawMsgData,
     return;
   }
 
-  const bool reliable = NeedsReliableRelay(msg.data.animEventName);
-  auto targetActor = SendToNeighbours(msg.idx, rawMsgData, reliable);
+  // One reliable-ordered channel so a get-up never lands after a later pose
+  auto targetActor = SendToNeighbours(msg.idx, rawMsgData, true);
 
   if (!targetActor) {
     return;
