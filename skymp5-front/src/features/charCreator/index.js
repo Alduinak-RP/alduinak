@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Component, useState, useEffect, useRef } from 'react';
 
 import Button from '../../constructorComponents/button';
 import { findRace } from './data/races';
@@ -218,4 +218,33 @@ const CharCreator = ({ data }) => {
   );
 };
 
-export default CharCreator;
+// A render throw would silently unmount the whole widget tree; the box stays and the client logs the message
+class CharCreatorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error) {
+    send('charCreator:mountError', String((error && error.message) || error));
+  }
+
+  render() {
+    if (!this.state.error) return <CharCreator data={this.props.data} />;
+    return (
+      <div className='charCreator'>
+        <div className='charCreator__panel'>
+          <div className='charCreator__title'>Character creator failed to load</div>
+          <div className='charCreator__error'>{String(this.state.error.message || this.state.error)}</div>
+          <div className='charCreator__error'>Send staff skyrim-platform.log from Documents &gt; My Games &gt; your Skyrim folder &gt; SKSE.</div>
+        </div>
+      </div>
+    );
+  }
+}
+
+export default CharCreatorBoundary;

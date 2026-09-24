@@ -6,7 +6,7 @@ import { CreateActorMessage } from "../messages/createActorMessage";
 import { focusEventString } from "./browserService";
 import { showUi } from "./widgetMenuUtil";
 import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
-import { logTrace, logError } from "../../logging";
+import { logTrace, logError, logToPlatformLog } from "../../logging";
 import { applyAppearanceToPlayer, Appearance } from "../../sync/appearance";
 import { formIdFromDesc } from "../../view/worldViewMisc";
 
@@ -25,7 +25,9 @@ const MAX_PREVIEW_JSON = 32 * 1024;
 //
 // The `charCreator` widget is rendered by skymp5-front; this service shows/hides
 // it, applies local appearance previews and relays the final result. Inert until
-// the server sends charCreatorOpen.
+// the server sends charCreatorOpen. The open, close and failure lines go to
+// skyrim-platform.log (logToPlatformLog), so a creator that never showed can be
+// told apart from one the player never submitted.
 export class CharCreatorService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -33,13 +35,19 @@ export class CharCreatorService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
+    // A game load can wipe the widget tree under an open creator; put it back
+    this.controller.emitter.on("gameLoad", () => {
+      if (!this.menuOpen) return;
+      logToPlatformLog(this, 'reopening character creator after a game load');
+      this.inject();
+    });
   }
 
   // A character switch respawns the player and authService wipes the widgets;
   // close locally so controls and state never go stale. If the new character
   // still has the creator pending, the server re-sends charCreatorOpen.
   private onCreateActorMessage(e: ConnectionMessage<CreateActorMessage>): void {
-    if (e.message.isMe && this.menuOpen) this.close();
+    if (e.message.isMe && this.menuOpen) this.close('createActor');
   }
 
   // Quitting to the main menu opens character select; the creator must not overlay it.
@@ -51,7 +59,7 @@ export class CharCreatorService extends ClientListener {
     } catch {
       return;
     }
-    this.close();
+    this.close('main menu');
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -63,7 +71,7 @@ export class CharCreatorService extends ClientListener {
         this.open(content["config"]);
         break;
       case 'charCreatorClose':
-        if (this.menuOpen) this.close();
+        if (this.menuOpen) this.close('accepted by the server');
         break;
       case 'charCreatorError':
         if (this.menuOpen) this.forwardError(String(content["message"] ?? ""));
@@ -76,7 +84,12 @@ export class CharCreatorService extends ClientListener {
   private open(config: unknown): void {
     this.config = config && typeof config === 'object' ? config : {};
     this.menuOpen = true;
-    logTrace(this, 'opening character creator');
+    logToPlatformLog(this, 'opening character creator');
+    this.inject();
+  }
+
+  // Replaces any creator widget already in the tree; safe to run again after a reload
+  private inject(): void {
     // Native game-thread calls throw from the packet handler; defer to update.
     this.controller.once("update", () => {
       if (!this.menuOpen) return;
@@ -92,7 +105,7 @@ export class CharCreatorService extends ClientListener {
         this.sp.browser.setVisible(true);
         this.sp.browser.setFocused(true);
       } catch (e) {
-        logError(this, `failed to show character creator: ${e}`);
+        logToPlatformLog(this, `failed to show character creator: ${e}`);
       }
       try {
         this.sp.Game.forceThirdPerson();
@@ -100,15 +113,15 @@ export class CharCreatorService extends ClientListener {
         this.sp.Game.disablePlayerControls(false, true, false, false, false, true, false, false, 0);
         this.controlsDisabled = true;
       } catch (e) {
-        logError(this, `failed to lock controls: ${e}`);
+        logToPlatformLog(this, `failed to lock controls: ${e}`);
       }
     });
   }
 
-  private close(): void {
+  private close(reason: string): void {
     this.menuOpen = false;
     this.config = undefined;
-    logTrace(this, 'closing character creator');
+    logToPlatformLog(this, `closing character creator: ${reason}`);
     const js =
       "(function(){" +
       "if(!window.skyrimPlatform||!window.skyrimPlatform.widgets)return;" +
@@ -153,6 +166,10 @@ export class CharCreatorService extends ClientListener {
         break;
       case 'charCreator:preview':
         this.onPreview(e.arguments[1]);
+        break;
+      case 'charCreator:mountError':
+        // The front's error boundary caught a render throw; the wizard shows its failure box and never submits
+        logToPlatformLog(this, `character creator failed to render: ${String(e.arguments[1] ?? '')}`);
         break;
       case 'cef::browser:unfocus':
       case 'menu:escape':

@@ -45,6 +45,53 @@ for fresh characters. Species → Race → Identity (sex/age/stats) → Appearan
    `applyEquipment` strips the player, so nothing else ever dressed it).
    Spells follow the `playersInheritBaseSpells` server setting.
 
+## Logs and failure handling
+
+Every step leaves a line, so a player "stuck at character creation" can be
+placed without a repro. Server log (`Creating character` and the `Refusing`
+lines come from `onSelectCharacter`):
+
+- `Refusing to play permanently dead character <id> in slot N`, `Refusing
+  character creation in slot N for profile P: living limit reached`, `Refusing
+  character creation in slot N with unknown start location X`: the menu is
+  re-sent with a `notice` line the player sees above the slots ("That
+  character is dead.", "You already have the maximum number of living
+  characters.", "Unknown start location, try again.").
+- `Kicking user U on character creation: the client sent no start location,
+  its files are out of date`: an old client without the intro.
+- `Creating character <id> in slot N at <start>`, then `Character creator
+  opened for actor <id> profile P` when `charCreator.enabled` is on (also on a
+  relog with the creator still pending).
+- `[spawn] charCreatorResult ignored for user U: <the creator is disabled | no
+  actor | not pending for actor X>`: a submission that arrived in the wrong
+  state.
+- `[spawn] charCreator refused for <id>: <validation error | race R is locked
+  for profile P>`: a submission the wizard shows the error for.
+- `Character creator accepted for actor <id> (<race> "<name>")`, then
+  `Character creation finished for actor <id>`.
+
+Client log (`skyrim-platform.log`, Documents > My Games > your Skyrim folder >
+SKSE; `CharCreatorService: ...` lines):
+
+- `opening character creator`, `closing character creator: <createActor | main
+  menu | accepted by the server>`, `failed to show character creator: ...`,
+  `failed to lock controls: ...`.
+- `character creator failed to render: <message>`: the wizard threw while
+  rendering. A small React error boundary around it keeps a "Character creator
+  failed to load" box on screen instead of an empty widget tree and sends the
+  message to the client as the `charCreator:mountError` browser message. Such
+  a creator never submits, so the server keeps `private.charCreatorPending`
+  and re-opens it on the next login.
+- `reopening character creator after a game load`: a `gameLoad` fired while the
+  creator was open (a reload can wipe the widget tree), so the widget was put
+  back.
+
+Reading them together: no `Creating character` means the refusal happened in
+`onSelectCharacter` and the player saw its `notice`; `Character creator opened`
+without `opening character creator` on the client means the packet never
+arrived; `opening` without `accepted` and without `failed to render` means the
+wizard showed and the player never finished it.
+
 ## Wire contract
 
 Server → Client (custom packets):
@@ -88,6 +135,8 @@ Browser → Client (`window.skyrimPlatform.sendMessage`):
 - `charCreator:preview`, arg 1: JSON string of a full Appearance object
   (a stale preview is simply overwritten by the next one; fresh characters
   have no committed appearance to revert to)
+- `charCreator:mountError`, arg 1: the render error's message, from the error
+  boundary; the client only logs it
 
 Client → Server:
 
