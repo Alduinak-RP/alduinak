@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import * as fetchRetry from "fetch-retry";
 import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
 import { hasDiscordBanRole } from "./discordBanSystem";
-import { postEventLog } from "./discordAlerts";
+import { discordAlert } from "./discordAlerts";
 import { kickWithReason } from "./kickUtil";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
@@ -248,9 +248,9 @@ export class Login implements System {
           const ipToPrint = shouldHideIp ? "hidden" : ip;
           const actorIds = ctx.svr.getActorsByProfileId(profile.id).map(id => id.toString(16));
 
-          const loginMessage = `Server Login: Server Slot ${userId}, IP ${ipToPrint}, Actor ID ${actorIds}, Master API ${profile.id}, Discord ID ${profile.discordId} <@${profile.discordId}>`;
-          console.log(loginMessage);
-          postEventLog(loginMessage);
+          const loginMessage = `Server Login: Server Slot ${userId}, IP ${ipToPrint}, Actor ID ${actorIds}, Master API ${profile.id}, Discord ID ${profile.discordId}`;
+          console.log(`${loginMessage} <@${profile.discordId}>`);
+          discordAlert("login", loginMessage, { discordIds: [String(profile.discordId)] });
         }
 
         const rolesToAssign = isMemberOfAny ? [...new Set(fetchedRoles)] : roles;

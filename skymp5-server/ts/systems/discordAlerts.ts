@@ -9,11 +9,14 @@ import { hex, isPlayerActor } from "./actorUtil";
 type Mp = any;
 
 // Staff alerts to every discordAuth.guilds[].eventLogChannelId, batched per FLUSH_MS; discord.js REST queues around rate limits
+// Only the kinds in discordAlertKinds (default DEFAULT_ALERT_KINDS) are posted, every other kind is dropped in discordAlert
 
-export type AlertKind = "death" | "execute" | "admin" | "ticket" | "keyword";
+export type AlertKind = "death" | "execute" | "admin" | "ticket" | "keyword" | "login";
 export interface AlertOptions { here?: boolean; discordIds?: string[] }
 
-const LABELS: Record<AlertKind, string> = { death: "Death", execute: "Execution", admin: "Admin", ticket: "Staff call", keyword: "Keyword" };
+const LABELS: Record<AlertKind, string> = { death: "Death", execute: "Execution", admin: "Admin", ticket: "Staff call", keyword: "Keyword", login: "Login" };
+const DEFAULT_ALERT_KINDS: AlertKind[] = ["death", "execute", "ticket"];
+let allowedKinds = new Set<string>(DEFAULT_ALERT_KINDS);
 const FLUSH_MS = 2000;
 const MAX_MESSAGE = 2000;
 const MAX_LINE = 1800;
@@ -82,14 +85,15 @@ async function flush(): Promise<void> {
   });
 }
 
-// Raw event-log line, sent as is: callers must not pass player text
-export function postEventLog(line: string, here = false): void {
+// Raw event-log line, sent as is and unfiltered: callers go through discordAlert
+function postEventLog(line: string, here = false): void {
   if (pending.length >= MAX_PENDING && !here) skipped++;
   else pending.push({ line, here });
   flushTimer ??= setTimeout(() => void flush(), FLUSH_MS);
 }
 
 export function discordAlert(kind: AlertKind, text: string, opts: AlertOptions = {}): void {
+  if (!allowedKinds.has(kind)) return;
   const mentions = (opts.discordIds || []).filter((id) => /^\d{5,25}$/.test(String(id))).map((id) => ` <@${id}>`).join("");
   postEventLog(`**[${LABELS[kind] || clean(String(kind))}]** ${clean(text)}${mentions}`, !!opts.here);
 }
@@ -186,6 +190,11 @@ export class DiscordAlerts implements System {
     g.__alduinakDeathAlert = (actorId: number, killerId: number) => deathAlert(mp, actorId >>> 0, killerId >>> 0);
     g.__alduinakKeywordAlert = (actorId: number, channel: string, text: string) => keywordAlert(mp, actorId >>> 0, String(channel), String(text));
     loadKeywords();
+    const kinds = (await Settings.get()).allSettings?.["discordAlertKinds"];
+    if (Array.isArray(kinds) && kinds.length && kinds.every((k) => typeof k === "string")) allowedKinds = new Set(kinds);
+    const unknown = Array.isArray(kinds) ? kinds.filter((k) => !(typeof k === "string" && k in LABELS)) : [];
+    if (unknown.length) console.log(`[discordAlerts] discordAlertKinds names no such kind: ${unknown.join(", ")}`);
     if (!(await targetOf())) console.log("[discordAlerts] no Discord event log channel, game alerts are off");
+    else console.log(`[discordAlerts] posting ${[...allowedKinds].join(", ")}`);
   }
 }
