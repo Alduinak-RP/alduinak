@@ -63,6 +63,8 @@ const ASSIGN_GRACE_MS = 10 * 1000;
 const DEFAULT_LOGOUT_GRACE_MS = 5 * 60 * 1000;
 // The parked body sits down for the grace (the emote wheel's Sit Crossed); overridable via "logoutPose", "" for none
 const DEFAULT_LOGOUT_POSE = "IdleSitCrossLeggedEnter";
+// Broadcast to the parked body's viewers when it is picked again, so their copies stand up and get their collision back
+const UNPARK_POSE = "IdleForceDefaultState";
 
 const DEFAULT_STAT_POOL = 120;
 
@@ -143,6 +145,8 @@ export class Spawn implements System {
   private lastAssignMs = new Map<number, number>();
   // actorId -> pending logout-grace despawn timer; keyed by actor since userIds are recycled across connections, actor form ids are not
   private parkTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  // Bodies sitting in the logout pose
+  private parked = new Set<number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
@@ -221,6 +225,7 @@ export class Spawn implements System {
     this.cancelPark(actorId);
     const handle = setTimeout(() => {
       this.parkTimers.delete(actorId);
+      this.parked.delete(actorId);
       try {
         ctx.svr.setEnabled(actorId, false);
         const userId = ctx.svr.getUserByActor(actorId);
@@ -240,9 +245,23 @@ export class Spawn implements System {
     if (!this.logoutPose || !isAlive(mp, actorId) || isBleedingOut(mp, actorId) || isRestrained(mp, actorId)) return;
     try {
       mp.set(actorId, "lastAnimEvent", this.logoutPose);
+      this.parked.add(actorId);
       this.log(`[spawn] ${hex(actorId)} parked in ${this.logoutPose}`);
     } catch (e) {
       this.log(`[spawn] parking pose of ${hex(actorId)} failed: ${e}`);
+    }
+  }
+
+  // Runs before setUserActor: the stand-up reaches everyone who sees the parked body, then the cleared event keeps the sit pose out of the CreateActor
+  private unpark(ctx: SystemContext, actorId: number): void {
+    if (!this.parked.delete(actorId)) return;
+    const mp = ctx.svr as Mp;
+    try {
+      mp.set(actorId, "lastAnimEvent", UNPARK_POSE);
+      mp.set(actorId, "lastAnimEvent", "");
+      this.log(`[spawn] ${hex(actorId)} unparked`);
+    } catch (e) {
+      this.log(`[spawn] unparking ${hex(actorId)} failed: ${e}`);
     }
   }
 
@@ -490,6 +509,7 @@ export class Spawn implements System {
 
     // Selecting the character cancels its pending logout-grace despawn; enable BEFORE setUserActor, PartOne throws on disabled actors
     this.cancelPark(actorId);
+    this.unpark(ctx, actorId);
     ctx.svr.setEnabled(actorId, true);
     if (!isNew) this.bringInsideBorder(mp, actorId);
     ctx.svr.setUserActor(userId, actorId);
@@ -766,6 +786,7 @@ export class Spawn implements System {
       // Fallen characters may be deleted too (destroying the body); the extra slot they opened closes with them
       const fallen = isFallen(ctx.svr as unknown as Mp, actorId);
       this.cancelPark(actorId);
+      this.parked.delete(actorId);
       ctx.gm.emit(CHARACTER_RETIRED_EVENT, auth.profileId, slot, actorId);
       ctx.svr.destroyActor(actorId);
       this.log(fallen ? `Deleted fallen character ${actorId.toString(16)} from slot ${slot}, its extra slot closes` : `Deleted character ${actorId.toString(16)} from slot ${slot}`);
@@ -784,6 +805,7 @@ export class Spawn implements System {
     if (actorId) {
       this.log("Loading character", actorId.toString(16));
       this.cancelPark(actorId); // reconnected within the logout grace
+      this.unpark(ctx, actorId);
       ctx.svr.setEnabled(actorId, true);
       this.bringInsideBorder(mp, actorId);
       ctx.svr.setUserActor(userId, actorId);
