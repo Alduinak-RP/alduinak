@@ -96,7 +96,7 @@ const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
   BeeHive: HIVE_YIELD, BeeHiveVacant: HIVE_YIELD, BYOHBYOHApiary: HIVE_YIELD,
 };
 // Flora harvested without the kneel: fish (it breaks a swimmer's animation) and hanging clutter, plus any editor id starting with Hanging
-const INSTANT_FLORA = ["FXAmbWaterSalmon01A", "FXAmbWaterSalmon01B", "FXAmbWaterSalmon02A", "FXAmbWaterSalmon02B", "SlaughterfishEggNest01", "DeadSalmon01", "DeadSalmon02", "WHOarFish", "WHOarFishHanging", "WHOarFishHangingBig", "HangingElvesEar01", "HangingFrostMirriam01", "HangingGarlic01", "HangingRabbit01", "HangingPheasant01"];
+const INSTANT_FLORA = ["FXAmbWaterSalmon01A", "FXAmbWaterSalmon01B", "FXAmbWaterSalmon02A", "FXAmbWaterSalmon02B", "SlaughterfishEggNest01", "DeadSalmon01", "DeadSalmon02", "WHOarFish", "WHOarFishHanging", "WHOarFishHangingBig", "HangingElvesEar01", "HangingFrostMirriam", "HangingGarlicBraid", "HangingRabbit01", "HangingRabbit02", "HangingPheasant01", "HangingPheasant02"];
 const INSTANT_PREFIX = "hanging";
 
 type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";
