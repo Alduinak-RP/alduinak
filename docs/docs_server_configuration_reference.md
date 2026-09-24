@@ -452,11 +452,11 @@ World border (no setting): the regions come from the REGN records flagged Border
 
 ## Carry pose
 
-A carried player or pet sits in a vanilla chair idle held in the carrier's arms. `CaptureSystem` sends the pose to the carried player's client, and to the carrier's client for a carried pet or NPC, and uses it for its drift snap. Every key is optional and read at server start, so a change needs a game service restart and no build.
+A carried player or pet lies in a vanilla lying idle held in the carrier's arms and turns with the carrier: the carried client writes the whole angle every 100 ms past a 1 degree deadzone, and the carrier's clone on that client is turned outright to the carrier's reported yaw instead of at the AI's turning pace. Skyrim actors cannot pitch, so the lying look has to come from the idle itself. `CaptureSystem` sends the pose to the carried player's client, and to the carrier's client for a carried pet or NPC, and uses it for its drift snap. Every key is optional and read at server start, so a change needs a game service restart and no build. A replacement idle must be in the client's `restraintPosesLowerCase` and `actorSitAnimsLowerCase` lists (`sync/animation.ts`) so viewers' copies turn by `setAngle` and drop collision like the chair idle.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `carriedAnimEvent` | `IdleChairEnterInstant` | Animation event the carried body plays |
+| `carriedAnimEvent` | `IdleLayDown` | Animation event the carried body plays, the emote wheel's Lay Down; `IdleChairEnterInstant` sits it up as before |
 | `carryOffsetForward` | `16` | Units ahead of the carrier, inside the carrier's own capsule so the held body never pokes through a wall or a bar door |
 | `carryOffsetUp` | `40` | Units above the carrier's feet |
 | `carryYawOffset` | `45` | Degrees the body is turned from the carrier's facing; `90` lies it across the arms, `0` faces forward |

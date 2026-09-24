@@ -73,6 +73,8 @@ const actorSitAnimsLowerCase = [
   'idlechairchildfrontenter',
   'idlechairchildleftenter',
   'idlechairchildrightenter',
+  // The carried pose: its copies turn by setAngle and drop collision like a seated one
+  'idlelaydown',
 ];
 
 const actorGetUpAnimsLowerCase = [
@@ -94,6 +96,7 @@ const restraintPosesLowerCase = new Set<string>([
   'offsetboundstandingstart',
   'offsetcarrybasketstart',
   'idlechairenterinstant',
+  'idlelaydown',
   'bleedoutstart',
   'bleedoutstop',
 ]);

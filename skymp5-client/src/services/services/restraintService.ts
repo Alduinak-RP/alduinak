@@ -18,8 +18,8 @@ import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 const BOUND_HANDS_ANIM_START = "OffsetBoundStandingStart";
 const CARRY_HOLD_ANIM_START = "OffsetCarryBasketStart";
 const OFFSET_STOP_ANIM = "OffsetStop";
-// Vanilla chair sit idle; it plays without furniture, as on remote copies of seated players
-const CARRIED_ANIM_START = "IdleChairEnterInstant";
+// Vanilla lying idle (the emote wheel's Lay Down); actors cannot pitch, so the lying look comes from the idle
+const CARRIED_ANIM_START = "IdleLayDown";
 const IDLE_EXIT_ANIM = "IdleForceDefaultState";
 // Vanilla bleedout kneel (IDLE 13ECC / 13ECE), its own graph layer with its own exit; whitelisted in sync/animation.ts
 const BLEEDOUT_ANIM_START = "bleedOutStart";
@@ -50,7 +50,7 @@ const CARRY_YAW = 45;
 // Carried body chases the carrier's clone locally; the server's drift snap is only a backstop
 const CARRY_FOLLOW_TIME_S = 0.2;
 const CARRY_FOLLOW_DEADZONE = 4;
-const CARRY_FOLLOW_YAW_DEADZONE = 3;
+const CARRY_FOLLOW_YAW_DEADZONE = 1;
 const CARRY_FOLLOW_MIN_SPEED = 50;
 const CARRY_FOLLOW_MAX_DIST = 2048;
 const CARRIER_COLLISION_REFRESH_MS = 1000;
@@ -88,7 +88,7 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   // The restrained player (captive); carrier is the carrier's server actor id, 0 when not carried:
  *   { "customPacketType": "restraintState", "boundHands": true }
  *   { "customPacketType": "restraintState", "carried": true, "carrier": 4278190090, "anim": "OffsetBoundStandingStart",
- *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
+ *     "carriedAnim": "IdleLayDown", "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
  *   { "customPacketType": "restraintState", "boundHands": false, "carried": false, "carrier": 0 }
  *
  *   // The carrier (pose only, no control change); target is the carried actor's server id, an NPC's clone is posed here, 0 for a passive job load:
@@ -112,8 +112,9 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  * Effects on the local player:
  *   - boundHands: plays the bound-hands pose and disables fighting/sneaking/
  *     activation. Movement stays enabled so the prisoner can be marched/walked.
- *   - carried: plays a sitting pose held carryForward ahead of and carryUp above
- *     the carrier's clone, turned carryYaw degrees from the carrier's facing.
+ *   - carried: plays a lying pose held carryForward ahead of and carryUp above
+ *     the carrier's clone, turned carryYaw degrees from the carrier's facing
+ *     and turning with it (movementApply turns the carrier's clone outright).
  *     Fully immobilised in third person; the camera can still orbit. The
  *     carrier's clone stops colliding with the player meanwhile.
  *   - carrying: plays the carry-hold pose; fighting is disabled and a drawn
@@ -200,6 +201,11 @@ export class RestraintService extends ClientListener {
 
   get isCarrying(): boolean {
     return this.carrying;
+  }
+
+  // Local id of the carrier's clone while carried, 0 otherwise
+  get carrierCloneId(): number {
+    return this.carried && this.carrierId ? remoteIdToLocalId(this.carrierId) : 0;
   }
 
   // The pose last sent to the player, "" before any
@@ -436,13 +442,13 @@ export class RestraintService extends ClientListener {
     if (dist > CARRY_FOLLOW_MAX_DIST || (dist < CARRY_FOLLOW_DEADZONE && yawDiff < CARRY_FOLLOW_YAW_DEADZONE)) {
       return;
     }
-    // The sit idle ignores TranslateTo's angle
+    // A state idle ignores TranslateTo's angle; the full angle is written so no X or Y from an earlier ragdoll stays
     if (yawDiff >= CARRY_FOLLOW_YAW_DEADZONE) {
-      held.setAngle(held.getAngleX(), held.getAngleY(), targetYaw);
+      held.setAngle(0, 0, targetYaw);
     }
     held.translateTo(
       target[0], target[1], target[2],
-      held.getAngleX(), held.getAngleY(), targetYaw,
+      0, 0, targetYaw,
       Math.max(dist / CARRY_FOLLOW_TIME_S, CARRY_FOLLOW_MIN_SPEED), 0,
     );
   }

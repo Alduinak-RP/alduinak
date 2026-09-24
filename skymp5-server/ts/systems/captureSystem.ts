@@ -85,8 +85,8 @@ const CARRY_MAX_DRIFT_SQ = 256 * 256;
 // A carrier's cell change this soon after a door activation is a load door; later ones drop the body
 const DOOR_FOLLOW_MS = 5000;
 
-// Carried pose: a vanilla chair sit idle held in the carrier's arms, turned 45 degrees from their facing. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
-const DEFAULT_CARRIED_ANIM = "IdleChairEnterInstant";
+// Carried pose: a vanilla lying idle held in the carrier's arms, turned 45 degrees from their facing. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
+const DEFAULT_CARRIED_ANIM = "IdleLayDown";
 const DEFAULT_CARRY_FORWARD = 16;
 const DEFAULT_CARRY_UP = 40;
 const DEFAULT_CARRY_YAW = 45;

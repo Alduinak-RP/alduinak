@@ -9,6 +9,7 @@ import { RespawnNeededError } from "../lib/errors";
 import { Movement, RunMode, AnimationVariables, Transform, NiPoint3 } from "./movement";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { SpApiInteractor } from "../services/spApiInteractor";
+import { RestraintService } from "../services/services/restraintService";
 import { isInSitPose } from "./animation";
 
 const sqr = (x: number) => x * x;
@@ -88,10 +89,19 @@ const applyHeadTracking = (ac: Actor, m: Movement) => {
   }
 };
 
+// The carried player's carrier clone; the body in its arms follows this copy's yaw
+const isCarrierClone = (ac: Actor): boolean =>
+  ac.getFormID() === SpApiInteractor.getControllerInstance().lookupListener(RestraintService).carrierCloneId;
+
 const keepOffsetFromActor = (ac: Actor, m: Movement) => {
+  // The carrier clone turns outright to its packet yaw while standing, so the carried body turns with the carrier and not at the AI's pace; a walking copy is turned by its translate
+  const carrierClone = isCarrierClone(ac);
+  if (carrierClone && m.runMode === "Standing" && wrappedAngleDiff(m.rot[2], ac.getAngleZ()) > 0) {
+    ac.setAngle(ac.getAngleX(), ac.getAngleY(), m.rot[2]);
+  }
   let offsetAngle = m.rot[2] - ac.getAngleZ();
   // Wider deadzone when standing: 130ms-stale idle angle noise makes the offset hunt visibly
-  const deadzone = m.runMode === "Standing" ? 12 : 5;
+  const deadzone = carrierClone ? 0 : m.runMode === "Standing" ? 12 : 5;
   if (Math.abs(offsetAngle) < deadzone) {
     offsetAngle = 0;
   }
