@@ -32,8 +32,7 @@
  "keywords": {
   "alchemy": "AldCraftingAlchemy",
   "kiln": "AldCraftingKiln",
-  "woodcrafting": "AldCraftingWoodcrafting",
-  "grainMill": "AldCraftingGrainMill"
+  "woodcrafting": "AldCraftingWoodcrafting"
  },
  "stripConditions": [
   "HasPerk",
@@ -114,7 +113,7 @@
  ],
  "craftingStations": [
   {
-   "comment": "The grain mills open the crafting menu on AldCraftingGrainMill, where a Sea Salt Rock refines into Salt Pile (smithing.newRecipes). The vanilla GrainMill is listed; add the editor id of any mod grain mill the farms use (xEdit: FURN whose FULL contains Grain Mill). A mill listed here shows the menu instead of playing the push animation.",
+   "comment": "The grain mills open the crafting menu on AldCraftingGrainMill, where a Sea Salt Rock refines into Salt Pile (smithing.newRecipes). The vanilla GrainMill is listed; add the editor id of any mod grain mill the farms use (xEdit: FURN whose FULL contains Grain Mill). A mill listed here opens the crafting menu; whether its push idle still plays first is to be confirmed in game.",
    "keyword": "AldCraftingGrainMill",
    "keywordFormId": "0x04125E",
    "furniture": [

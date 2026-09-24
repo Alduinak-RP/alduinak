@@ -432,7 +432,7 @@ static class Steps
         foreach (var s in c.Spec["craftingStations"]!.AsArray().Select(x => x!.AsObject()))
         {
             var kwEdid = s["keyword"]!.GetValue<string>();
-            // Pinned like a newRecipes entry, so a hotfix run does not push the faction markers and category keywords
+            // Pinned like a newRecipes entry and kept out of spec keywords, which would create it first at the next free id
             var kw = c.OwnOrNew(c.Mod.Keywords, kwEdid, formId: s["keywordFormId"] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null).FormKey;
             foreach (var edid in Edids(c, s["furniture"]))
             {

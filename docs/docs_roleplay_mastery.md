@@ -369,10 +369,10 @@ container loot are off:
   the plugin gives them the `AldCraftingGrainMill` bench keyword (spec
   `craftingStations`) and `AldRecipeSmith_SaltPileMill`, one rock into 50 Salt
   Pile there, open to everyone too. A mill turned into a crafting station
-  opens the crafting menu instead of playing the push animation, and no
-  profession owns the keyword, so a craft there earns no mastery hours and
-  costs a full Novice craft's fatigue (`needsFatigueCraftsPerHour`, no member
-  share). The vanilla loot lists of
+  opens the crafting menu (whether its push idle still plays first is to be
+  confirmed in game), and no profession owns the keyword, so a craft there
+  earns no mastery hours and costs a full Novice craft's fatigue
+  (`needsFatigueCraftsPerHour`, no member share). The vanilla loot lists of
   bandits, Forsworn, warlocks and other human foes carry it too.
 - Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
   open to everyone.
@@ -414,10 +414,10 @@ corundum stay open. Tiers are `DEFAULT_VEIN_TIERS` by ore editor id, with a
 `miningVeinTiers` override. Any activator carrying `MineOreScript` is a vein,
 so the 41 **Sea Salt Deposits** of `Saltdeposits.esp` on the northern coasts
 count too: their script hands out Sea Salt Rock (`12SeaSaltOre`, weight 20,
-one rock refines into 50 Salt Pile at a smelter), each has its own pickaxe
-floor marker, and the ore sits in the tier table as open to anyone, so the
-boot line `[gathering] vein ores: ...` lists it with its resolved id and an
-`ore(s) not in the load order` line would name it if the mod went missing.
+one rock refines into 50 Salt Pile at a smelter or a grain mill), each has its
+own pickaxe floor marker, and the ore sits in the tier table as open to anyone,
+so the boot line `[gathering] vein ores: ...` lists it with its resolved id and
+an `ore(s) not in the load order` line would name it if the mod went missing.
 Every vein holds **six ore** (`gatheringVeinTotal`,
 one per strike, so six strikes of five seconds) and **comes back whole 24 hours
 after its first ore was taken** (`gatheringVeinRespawnMinutes`), whether one

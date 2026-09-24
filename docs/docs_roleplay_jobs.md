@@ -302,7 +302,8 @@ load goes.
   business; if it turns out not to turn either, `furnitureSeatService` can send
   the same pair on `seatClaim` and `seatRelease`. A mill the plugin lists under
   `craftingStations` (spec, `docs_roleplay_mastery.md`) opens the crafting menu
-  instead, so none of this runs there.
+  instead; the replay still runs there if its enter idle plays first, which is
+  to be confirmed in game.
 - Doors, containers, NPCs and trade work as usual.
 
 ## Anti-abuse
