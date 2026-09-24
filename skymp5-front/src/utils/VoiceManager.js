@@ -1,13 +1,14 @@
 // Proximity voice chat over LiveKit, driven by the game side via window.__alduinakVoice (skymp5-client voiceService.ts).
 // Plain JS on purpose: the repo pins TypeScript 4.6 and livekit-client's types need 5.x.
 // Contract with the game side:
-//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}], mode }
+//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}], mode, pttCode }
 //   disconnect()              leave the room
 //   setPtt(bool)              push-to-talk: enable/disable the mic track
+//   setPttKey(code)           KeyboardEvent.code of the push-to-talk key; the game sees no keys while a menu has focus, so the page reads it then
 //   setMode(key)              Alt+V cycles whisper/talk/shout; the range goes out on the data channel so listeners attenuate by the SPEAKER's loudness
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
 // Events back to the game (window.skyrimPlatform.sendMessage):
-//   'voice::ready', 'voice::micDenied', 'voice::error' <text>,
+//   'voice::ready', 'voice::micDenied', 'voice::error' <text>, 'voice::ptt' <'1' pressed | '0' released, from the page's own key listeners>,
 //   'voice::speaking' <json array of {id, level}: own voice while PTT is held plus audible unmuted speakers, every 150 ms while anyone talks, [] once when quiet>,
 //   'voice::stopped' <identity hex: that voice ended (mute, track gone, left, out of range, own PTT released), so its mouth closes without waiting for a report>
 
@@ -32,6 +33,17 @@ function sendToGame(...args) {
   try { window.skyrimPlatform.sendMessage(...args); } catch (e) { /* outside game */ }
 }
 
+// The chat line (the only contentEditable) keeps DOM focus after the browser unfocuses, so it counts only while the chat has the keyboard
+let chatFocused = false;
+window.addEventListener('skymp5-client:browserFocused', () => { chatFocused = true; });
+window.addEventListener('skymp5-client:browserUnfocused', () => { chatFocused = false; });
+
+function isTyping() {
+  const el = document.activeElement;
+  if (!el) return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el.isContentEditable && chatFocused);
+}
+
 class VoiceManager {
   constructor() {
     this.room = null;
@@ -42,6 +54,7 @@ class VoiceManager {
     this.distances = {};       // identity -> game units, refreshed by setPeers
     this.peerRanges = {};      // identity -> that speaker's mode range
     this.ptt = false;
+    this.pttCode = '';
     this.audioEls = new Map(); // identity -> HTMLAudioElement
     this.bannerEl = null;
     this.bannerTimer = null;
@@ -53,6 +66,27 @@ class VoiceManager {
     if (!cfg || typeof cfg !== 'object') return;
     if (Array.isArray(cfg.modes) && cfg.modes.length) this.modes = cfg.modes;
     if (cfg.mode && this.modeByKey(cfg.mode)) this.mode = cfg.mode;
+    if (typeof cfg.pttCode === 'string') this.setPttKey(cfg.pttCode);
+  }
+
+  setPttKey(code) {
+    this.pttCode = code || '';
+  }
+
+  // Key events reach the page only while a menu or the chat has focus, when the game cannot see the key
+  onKeyDown(e) {
+    if (!this.pttCode || e.code !== this.pttCode || e.repeat || isTyping()) return;
+    // Alt+V means cycle mode, which only the game handles
+    if (e.altKey) return;
+    this.setPtt(true);
+    sendToGame('voice::ptt', '1');
+  }
+
+  // Not gated on typing: a key held since before the chat took focus must still release
+  onKeyUp(e) {
+    if (!this.ptt || !this.pttCode || e.code !== this.pttCode) return;
+    this.setPtt(false);
+    sendToGame('voice::ptt', '0');
   }
 
   modeByKey(key) {
@@ -302,6 +336,8 @@ class VoiceManager {
 }
 
 window.__alduinakVoice = new VoiceManager();
+window.addEventListener('keydown', (e) => window.__alduinakVoice.onKeyDown(e));
+window.addEventListener('keyup', (e) => window.__alduinakVoice.onKeyUp(e));
 
 // Failsafe: if the game stops feeding distances (main menu, script reload), go silent instead of playing stale volumes.
 // Also heartbeat the range so listeners who missed the data packet eventually heal.

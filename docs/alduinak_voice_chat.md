@@ -21,9 +21,18 @@ The integration described as "future work" below has been built:
   Joins the room, attaches remote audio, per-participant volume falloff by
   distance, unsubscribes tracks beyond ~1.15x range.
 - **Client**: `skymp5-client/src/services/services/voiceService.ts`. Push-to-
-  talk on `voicePushToTalkKeyCode` (default V, DX 47), suppressed while chat is
-  focused; requests a token per actor assignment; pushes peer distances
-  (same world only) every 400ms.
+  talk on `voicePushToTalkKeyCode` (default V, DX 47, or the in-game rebind
+  from the chat Controls tab). The game reads the key while the browser is
+  unfocused; while a menu or the chat has focus the game sees no keys, so the
+  front reads the same key (`setPttKey`, `KeyboardEvent.code` from
+  `domKeyCode`) and reports `voice::ptt` `1`/`0` back, which keeps the
+  game-side state and the AFK ping in step. A press while typing in an input
+  or the chat line is ignored, a release always closes the mic, and a key
+  held across a focus change releases on whichever side sees the key-up. Only
+  the console (and a despawned actor) force a release. A mouse-bound key has
+  no DOM code and works unfocused only; Alt+V mode cycling is game-side only.
+  Requests a token per actor assignment; pushes peer distances (same world
+  only) every 400ms.
 - **Talk range**: V + mousewheel picks the speaker's audible range between
   chatRanges.whisper (150u) and chatRanges.shout (10000u), default say (2000u).
   The range is published to the room over LiveKit's data channel, so LISTENERS

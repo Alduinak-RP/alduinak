@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket } from "./customPacketUtil";
-import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode } from "./widgetMenuUtil";
+import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode, domKeyCode } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
@@ -10,6 +10,7 @@ import { logTrace } from "../../logging";
 
 // Proximity voice chat: push-to-talk (default V, launcher-configurable via voicePushToTalkKeyCode) + LiveKit room managed by VoiceManager in the skymp5-front CEF page.
 // This service owns the game side: room token requests, peer distances to the browser, and the PTT key; audibility is distance vs the server-provided range (chat "say" range by default), same-world only.
+// The game sees no keys while a menu or the chat has focus, so the front reads the key then and reports it as 'voice::ptt' 1/0.
 
 const PEERS_INTERVAL_MS = 400;
 const TOKEN_RETRY_MS = 5000;
@@ -53,6 +54,14 @@ export class VoiceService extends ClientListener {
 
   setPushToTalkKey(override: number): void {
     this.voiceKey = override || this.launcherPushToTalkKeyCode;
+    this.pushPttKey();
+  }
+
+  // Mouse buttons have no DOM code, so a mouse-bound key only works with the game unfocused
+  private pushPttKey(): void {
+    this.sp.browser.executeJavaScript(
+      `window.__alduinakVoice && window.__alduinakVoice.setPttKey(${JSON.stringify(domKeyCode(this.voiceKey))})`
+    );
   }
 
   private disabledByServer = false;
@@ -90,7 +99,7 @@ export class VoiceService extends ClientListener {
 
     // isHeld frames let a V hold that outlives the Alt+V cycle start transmitting once Alt releases (isDown fires only on the press frame)
     if ((e.isDown || e.isHeld) && !this.pttDown) {
-      // Typing in chat or the console must not open the mic; other menus may
+      // A focused browser reads the key itself; the console must not open the mic
       if (this.sp.browser.isFocused() || isConsoleOpen(this.sp)) return;
       if (this.altDown) {
         if (e.isDown) this.cycleMode();
@@ -173,6 +182,14 @@ export class VoiceService extends ClientListener {
       this.connectedForRefrId = 0;
       this.nextTokenAttemptAt = Date.now() + TOKEN_RETRY_MS;
       logTrace(this, `voice error from front: ${e.arguments[1]}`);
+    } else if (kind === "voice::ptt") {
+      // The front already toggled its own mic; only the game-side state follows
+      if (String(e.arguments[1]) === "1") {
+        this.pttDown = true;
+        this.sendAfkPing();
+      } else {
+        this.pttDown = false;
+      }
     }
   }
 
@@ -222,7 +239,7 @@ export class VoiceService extends ClientListener {
         : (this.modes.find(m => m.key === "talk") || this.modes[0]).key;
     }
 
-    const cfg = { modes: this.modes, mode: this.mode };
+    const cfg = { modes: this.modes, mode: this.mode, pttCode: domKeyCode(this.voiceKey) };
     this.pendingRefrId = this.myRefrId();
     this.sp.browser.executeJavaScript(
       `window.__alduinakVoice && window.__alduinakVoice.connect(${JSON.stringify(url)}, ${JSON.stringify(token)}, ${JSON.stringify(cfg)})`
@@ -253,8 +270,8 @@ export class VoiceService extends ClientListener {
       this.altDown = false;
     }
 
-    // Chat focus steals the key-up event, so drop the mic when typing starts; same when our actor despawns (character park, connection loss)
-    if (this.pttDown && (this.sp.browser.isFocused() || isConsoleOpen(this.sp) || !myRefr)) this.releasePtt();
+    // A focused browser sees the key-up itself; the console does not, and our actor can despawn under a held key (character park, connection loss)
+    if (this.pttDown && (isConsoleOpen(this.sp) || !myRefr)) this.releasePtt();
 
     // Write the chosen mode to disk shortly after it changes
     if (this.modePersistAt && now >= this.modePersistAt) {
