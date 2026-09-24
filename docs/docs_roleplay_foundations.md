@@ -86,7 +86,8 @@ Rules:
   not show in-game rebinds. Two
   checkboxes there (`emoteWheelHold`, `interactMenuHold`, both off) make the
   emote wheel and every menu the interact key opens (player, carried load,
-  Personal, housing, pet and the bounty board strongbox) **hold-to-open**: the menu
+  Personal, housing, pet, the bounty board strongbox and the search window on a
+  body or NPC) **hold-to-open**: the menu
   stays while the key is down and closes on release (the housing menu stays once
   its key-name prompt or rename field is being typed in), and a released wheel key
   plays the emote under the cursor. The client polls the key in game while the

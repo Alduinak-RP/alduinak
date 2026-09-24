@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared, armHeldMenu, claimHeldMenu } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared, armHeldMenu, claimHeldMenu, closeContainerMenu } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
@@ -147,7 +147,7 @@ export class PlayerActionService extends ClientListener {
     if (isUiHidden(this.controller)) return;
     // Every press replaces the armed one, so a menu Activate opens is never taken for a held one
     armHeldMenu(this.sp, this.controller, isInteract && this.holdMode ? this.interactKey : 0);
-    this.strongboxAsked = false;
+    this.containerAsked = false;
 
     const housing = this.controller.lookupListener(HousingService);
     const personal = this.controller.lookupListener(AdminMenuService);
@@ -173,7 +173,7 @@ export class PlayerActionService extends ClientListener {
     // Any other living server NPC is searched like a body
     if (ref && actor && remoteId >= FIRST_DYNAMIC_REMOTE_ID) {
       try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-      sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+      this.requestSearch(remoteId);
       return;
     }
     if (isActivate) return;
@@ -182,7 +182,7 @@ export class PlayerActionService extends ClientListener {
     // The server opens the strongbox for the hold's managers and answers everyone else with a notice
     if (ref && this.controller.lookupListener(InteractionPromptService).isBoard(ref)) {
       sendCustomPacket(this.controller, { customPacketType: "bountyBoardManage", board: localIdToRemoteId(ref.getFormID()) });
-      this.strongboxAsked = true;
+      this.containerAsked = true;
       return;
     }
     if (ref && isPropertyRef(ref)) {
@@ -197,15 +197,17 @@ export class PlayerActionService extends ClientListener {
     if (claimHeldMenu(() => personal.isOpen, () => personal.closeMenu())) personal.open();
   }
 
-  // The strongbox is the engine's container menu, which the server opens after bountyBoardManage
+  // The strongbox and the search window are the engine's container menu, which the server opens after the request
   private onMenuOpen(e: MenuOpenEvent): void {
-    if (e.name !== Menu.Container || !this.strongboxAsked) return;
-    this.strongboxAsked = false;
-    const close = () => this.controller.once("update", () => {
-      // No close-menu API in SkyrimPlatform: tap the container's cancel key, as SearchService does
-      if (this.sp.Ui.isMenuOpen(Menu.Container)) this.sp.Input.tapKey(DxScanCode.Tab);
-    });
+    if (e.name !== Menu.Container || !this.containerAsked) return;
+    this.containerAsked = false;
+    const close = () => closeContainerMenu(this.sp, this.controller);
     if (!claimHeldMenu(() => this.sp.Ui.isMenuOpen(Menu.Container), close)) close();
+  }
+
+  private requestSearch(remoteId: number): void {
+    sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+    this.containerAsked = true;
   }
 
   private openLoadMenu(title: string): void {
@@ -221,7 +223,7 @@ export class PlayerActionService extends ClientListener {
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
     // Bodies skip the menu and open their inventory through the server search
     if (actor.isDead()) {
-      sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+      this.requestSearch(remoteId);
       return;
     }
     targetName = introducedName(ref, remoteId, false);
@@ -345,8 +347,8 @@ export class PlayerActionService extends ClientListener {
   private menuOpen = false;
   // Every menu the interact key opens is held open instead of toggled
   private holdMode = false;
-  // The last press asked the server for a bounty board's strongbox
-  private strongboxAsked = false;
+  // The last press asked the server for a bounty board's strongbox or a search window
+  private containerAsked = false;
   private playerTarget = 0;
   // Action id -> whether the server's playerMenuState says it applies to the target
   private menuFlags: Record<string, boolean> = {};

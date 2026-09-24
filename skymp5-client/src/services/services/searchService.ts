@@ -2,9 +2,9 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, closeContainerMenu } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
-import { Actor, BrowserMessageEvent, DxScanCode } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent } from "skyrimPlatform";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { getInventory } from "../../sync/inventory";
 import { logTrace, logError } from "../../logging";
@@ -164,12 +164,7 @@ export class SearchService extends ClientListener {
       return;
     }
     this.searchWindowOpen = false;
-    this.controller.once("update", () => {
-      // No close-menu API in SkyrimPlatform: tap the cancel key while the container window is up, same as the player's own close.
-      if (this.sp.Ui.isMenuOpen("ContainerMenu")) {
-        this.sp.Input.tapKey(DxScanCode.Tab);
-      }
-    });
+    closeContainerMenu(this.sp, this.controller);
   }
 
   private openPrompt(): void {

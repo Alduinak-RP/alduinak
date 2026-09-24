@@ -32,6 +32,13 @@ export function closeFormMenu(sp: Sp, widgetId: number): void {
   sp.browser.setFocused(false);
 }
 
+// No close-menu API in SkyrimPlatform: taps the container window's cancel key on the next update
+export function closeContainerMenu(sp: Sp, controller: CombinedController): void {
+  controller.once("update", () => {
+    if (sp.Ui.isMenuOpen(Menu.Container)) sp.Input.tapKey(DxScanCode.Tab);
+  });
+}
+
 interface HeldPress {
   key: number;
   down: boolean;
