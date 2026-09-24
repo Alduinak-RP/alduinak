@@ -56,7 +56,10 @@ lines come from `onSelectCharacter`):
   character creation in slot N with unknown start location X`: the menu is
   re-sent with a `notice` line the player sees above the slots ("That
   character is dead.", "You already have the maximum number of living
-  characters.", "Unknown start location, try again.").
+  characters.", "Unknown start location, try again."). Every other list the
+  server sends (login, a delete, a plain re-open) carries an empty `notice`,
+  which clears an old refusal; only the re-open after a load failure leaves
+  it out, so the client keeps its own load failure line.
 - `Kicking user U on character creation: the client sent no start location,
   its files are out of date`: an old client without the intro.
 - `Creating character <id> in slot N at <start>`, then `Character creator

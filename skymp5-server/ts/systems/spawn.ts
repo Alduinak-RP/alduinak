@@ -119,7 +119,7 @@ function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
 // CharacterSelectService). Flag off (default) keeps the original
 // single-character behaviour, so enabling can never brick login on its own.
 //   Server -> Client:
-//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]}, notice?: "why the last choice was refused" }
+//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]}, notice?: "why the last choice was refused", "" clears it }
 //   Client -> Server:
 //     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot, start?: locationId }
 //     { customPacketType: "characterSelectMenuRequest", loadError?: string, viaPauseMenu?: boolean }
@@ -180,7 +180,7 @@ export class Spawn implements System {
         const auth = { profileId: userProfileId, roles: discordRoleIds, discordId, access };
         this.authCache.set(userId, auth);
         this.pending.set(userId, auth);
-        this.sendCharacterList(ctx, userId, userProfileId);
+        this.sendCharacterList(ctx, userId, userProfileId, "");
         return;
       }
       this.legacySpawn(ctx, userId, userProfileId, discordRoleIds, discordId, access);
@@ -325,7 +325,8 @@ export class Spawn implements System {
       const via = content.viaPauseMenu === true ? " via the pause menu" : content.viaPauseMenu === false ? " without the pause menu" : "";
       this.log("Reopening character select for user", userId, (mayPark ? "(logout grace started)" : "(guarded, no grace timer)") + via);
     }
-    this.sendCharacterList(ctx, userId, auth.profileId);
+    // The client shows its own load failure line
+    this.sendCharacterList(ctx, userId, auth.profileId, typeof content.loadError === "string" ? undefined : "");
   }
 
   // Character select
@@ -427,8 +428,8 @@ export class Spawn implements System {
     }
   }
 
-  // notice is shown above the slot list, so a refused choice never looks like nothing happened
-  private sendCharacterList(ctx: SystemContext, userId: number, profileId: number, notice = ""): void {
+  // notice is shown above the slot list, so a refused choice never looks like nothing happened; "" clears it, undefined keeps the client's line
+  private sendCharacterList(ctx: SystemContext, userId: number, profileId: number, notice?: string): void {
     const mp = ctx.svr as unknown as Mp;
     const slots = this.slotMap(ctx, profileId);
     const characters = slots.map((actorId, i) => {
@@ -446,7 +447,7 @@ export class Spawn implements System {
       .filter((e) => e !== null));
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
       customPacketType: "characterSelectMenu", maxCharacters: slots.length, characters, lockedSlots, intro,
-      ...(notice ? { notice } : {}),
+      ...(notice !== undefined ? { notice } : {}),
     }));
   }
 
@@ -829,7 +830,7 @@ export class Spawn implements System {
       ctx.svr.destroyActor(actorId);
       this.log(fallen ? `Deleted fallen character ${actorId.toString(16)} from slot ${slot}, its extra slot closes` : `Deleted character ${actorId.toString(16)} from slot ${slot}`);
     }
-    this.sendCharacterList(ctx, userId, auth.profileId);
+    this.sendCharacterList(ctx, userId, auth.profileId, "");
   }
 
   // Legacy single-character path (flag off): original behaviour kept
