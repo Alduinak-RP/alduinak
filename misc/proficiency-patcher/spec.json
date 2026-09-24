@@ -5849,7 +5849,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -5885,7 +5885,11 @@
    "016805:AlduinakAdditions.esp",
    "016807:AlduinakAdditions.esp",
    "1115B9:Warbirds Whiterun Metropolis.esp",
-   "001E64:AlduinakAdditions.esp"
+   "001E64:AlduinakAdditions.esp",
+   "205626:Warbirds Whiterun Metropolis.esp",
+   "07C613:Warbirds Whiterun Metropolis.esp",
+   "07C5FE:Warbirds Whiterun Metropolis.esp",
+   "001F23:AlduinakAdditions.esp"
   ]
  },
  "overrides": {
