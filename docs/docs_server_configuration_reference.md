@@ -511,7 +511,7 @@ Optional. What a fallen character looks like and wears in its realm (`docs_rolep
 
 ```json5
 "afterlifeLooks": {
-  "sovngarde": { "look": "96ffb:Skyrim.esm", "outfit": ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"] },
+  "sovngarde": { "look": "SovengardeFXS01", "outfit": ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"] },
   "soulCairn": { "look": "DLC1SoulCairnGhostFXShader", "outfit": ["ClothesPrisonerRags", "ClothesPrisonerShoes"] }
 }
 ```

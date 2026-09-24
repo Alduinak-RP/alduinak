@@ -285,8 +285,9 @@ to one stays playable but is confined to it.
   logged `[afterlife] <realm> look|outfit item '<name>' not found in the load
   order, ignored`, and the boot line `[afterlife] <realm> look: shader|ability
   <id>|none, N/M outfit item(s)` says what resolved). Sovngarde: the look
-  `96ffb:Skyrim.esm` and the Ancient Nord set (`ArmorDraugrCuirass`, `Boots`,
-  `Gauntlets`, `Helmet`); the Soul Cairn: `DLC1SoulCairnGhostFXShader` and the
+  `SovengardeFXS01` (Skyrim.esm EFSH `10b2df`, the glow the heroes' ability
+  `AbFXSovengardeGlow` plays) and the Ancient Nord set (`ArmorDraugrCuirass`,
+  `Boots`, `Gauntlets`, `Helmet`); the Soul Cairn: `DLC1SoulCairnGhostFXShader` and the
   prisoner rags and shoes (`ClothesPrisonerRags`, `ClothesPrisonerShoes`). A
   look that is an EFSH goes into the neighbor-visible `ff_afterlife` property
   (`{ realm, shader, alpha: 1 }`, written on the send and on every realm

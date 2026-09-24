@@ -51,8 +51,9 @@ interface RealmLookConfig {
   look?: string;
   outfit: string[];
 }
+// SovengardeFXS01 (Skyrim.esm EFSH 10B2DF) is the glow FXSovengardeSCRIPT plays on the heroes through AbFXSovengardeGlow
 const DEFAULT_LOOKS: Record<RealmId, RealmLookConfig> = {
-  sovngarde: { look: "96ffb:Skyrim.esm", outfit: ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"] },
+  sovngarde: { look: "SovengardeFXS01", outfit: ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"] },
   soulCairn: { look: "DLC1SoulCairnGhostFXShader", outfit: ["ClothesPrisonerRags", "ClothesPrisonerShoes"] },
 };
 interface RealmLook {
