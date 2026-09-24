@@ -4548,7 +4548,7 @@
     }
    ],
    "npcs": [
-    "EncSkeletonMage01"
+    "dunLabyrinthianSkeletonMage"
    ]
   },
   {
@@ -4600,12 +4600,9 @@
    ]
   },
   {
-   "list": "DeathItemDraugrDeathlord",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
-   ],
+   "list": "AldDeathItemDraugrDeathlord",
+   "new": true,
+   "formId": "0x041269",
    "useAll": true,
    "add": [
     {
@@ -4633,6 +4630,9 @@
      "count": 1,
      "level": 1
     }
+   ],
+   "npcs": [
+    "EncDraugr05TemplateEbony"
    ]
   },
   {
@@ -4664,12 +4664,9 @@
    ]
   },
   {
-   "list": "DeathItemCorruptedShade",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
-   ],
+   "list": "AldDeathItemCorruptedShade",
+   "new": true,
+   "formId": "0x04126A",
    "useAll": true,
    "add": [
     {
@@ -4692,6 +4689,10 @@
      "count": 1,
      "level": 1
     }
+   ],
+   "npcs": [
+    "EncSkeletonNecroImp01Melee1H",
+    "EncSkeletonNecroImp01Missile"
    ]
   }
  ],
