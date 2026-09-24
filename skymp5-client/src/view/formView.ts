@@ -18,7 +18,7 @@ import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
 import { isOwnCompanion, keepsOwnOffset } from "../services/services/companionService";
-import { adminGhostAlpha, setAdminGhostShader } from "./adminGhostLook";
+import { adminGhostAlpha, afterlifeLookOf, setAdminGhostShader } from "./adminGhostLook";
 
 export interface ScreenResolution {
   width: number;
@@ -324,6 +324,8 @@ export class FormView {
     this.adminShaderOn = false;
     this.adminShaderReplayAt = 0;
     this.adminGhostFlag = false;
+    this.afterlifeShaderId = 0;
+    this.afterlifeShaderReplayAt = 0;
     this.removeNickname();
   }
 
@@ -530,7 +532,7 @@ export class FormView {
     }
 
     this.applyAdminView(refr, model);
-
+    this.applyAfterlifeView(refr, model);
 
     if (model.appearance) {
       const actor = Actor.from(refr);
@@ -567,6 +569,9 @@ export class FormView {
             // The rebuilt 3D drops effect shaders
             if (this.adminShaderOn) {
               this.adminShaderReplayAt = this.lastNiNodeUpdateMs + FormView.adminShaderReplayDelayMs;
+            }
+            if (this.afterlifeShaderId) {
+              this.afterlifeShaderReplayAt = this.lastNiNodeUpdateMs + FormView.adminShaderReplayDelayMs;
             }
           }
         }
@@ -781,6 +786,38 @@ export class FormView {
       this.adminView = view;
       this.lastAdminHideApply = now;
     }
+  }
+
+  // A fallen character's realm look rides the neighbor-visible ff_afterlife prop; the alpha yields to a hidden or ghost admin view
+  private applyAfterlifeView(refr: ObjectReference, model: FormModel): void {
+    const { shaderId, alpha } = afterlifeLookOf(model as Record<string, unknown>);
+    if (!shaderId && !this.afterlifeShaderId) {
+      return;
+    }
+    const actor = Actor.from(refr);
+    if (!actor || !actor.is3DLoaded()) {
+      this.afterlifeShaderId = 0;
+      return;
+    }
+    const now = Date.now();
+    const replay = this.afterlifeShaderReplayAt > 0 && now >= this.afterlifeShaderReplayAt;
+    if (shaderId === this.afterlifeShaderId && !replay) {
+      return;
+    }
+    if (this.afterlifeShaderId && this.afterlifeShaderId !== shaderId) {
+      setAdminGhostShader(actor, false, this.afterlifeShaderId);
+    }
+    const ownAlpha = this.adminView === "visible" ? (shaderId ? alpha : 1) : undefined;
+    if (shaderId) {
+      setAdminGhostShader(actor, true, shaderId, ownAlpha);
+    } else if (ownAlpha !== undefined) {
+      actor.setAlpha(ownAlpha, false);
+    }
+    if (shaderId !== this.afterlifeShaderId) {
+      printConsole(`[afterlife] ${this.getRemoteRefrId().toString(16)} look ${shaderId ? shaderId.toString(16) : "off"}`);
+    }
+    this.afterlifeShaderId = shaderId;
+    this.afterlifeShaderReplayAt = 0;
   }
 
   // Invisible admins are hidden from players and shown to admins as ghosts; Ghost admins look ethereal to everyone
@@ -1001,6 +1038,8 @@ export class FormView {
   private adminShaderReplayAt = 0;
   private adminGhostFlag = false;
   private lastAdminHideApply = 0;
+  private afterlifeShaderId = 0;
+  private afterlifeShaderReplayAt = 0;
   private textNameId: number | undefined = undefined;
   private textActorIdId: number | undefined = undefined;
   private createdTagName = "";

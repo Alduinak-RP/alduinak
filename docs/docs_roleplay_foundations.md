@@ -291,8 +291,10 @@ to one stays playable but is confined to it.
   look that is an EFSH goes into the neighbor-visible `ff_afterlife` property
   (`{ realm, shader, alpha: 1 }`, written on the send and on every realm
   respawn, cleared by a revive), which every client plays on its copy of the
-  character and the own client on the player, the way admin Ghost rides
-  `ff_adminModes`; a SPEL is added as an ability on arrival (`AddSpell`) and
+  character (`formView.ts`, again after a 3D reload) and the own client on
+  the player (`afterlifeLookService.ts`, again 1 s after a respawn, which
+  drops shaders; `look <id>|off` in `skyrim-platform.log`), the way admin
+  Ghost rides `ff_adminModes`; a SPEL is added as an ability on arrival (`AddSpell`) and
   removed by a revive; any other record type is logged and ignored. The
   outfit is given (`AddItem`, when not held) and put on through the owner's
   client (`Actor.EquipItem`, removable) at once when a living character is
