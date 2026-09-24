@@ -134,7 +134,7 @@ export class PlayerActionService extends ClientListener {
     if ((!isActivate && !isInteract) || this.menuOpen) return;
     if (this.menuWait) {
       // A second press during the wait is the one the waiting menu follows
-      if (isInteract && this.holdMode) armHeldMenu(this.sp, this.controller, this.interactKey);
+      if (isInteract && this.holdMode && this.menuWaitHeld) armHeldMenu(this.sp, this.controller, this.interactKey);
       return;
     }
     if (isGameInputBlocked(this.sp, this.controller) || isPlayerDowned(this.controller)) return;
@@ -147,6 +147,7 @@ export class PlayerActionService extends ClientListener {
     if (isUiHidden(this.controller)) return;
     // Every press replaces the armed one, so a menu Activate opens is never taken for a held one
     armHeldMenu(this.sp, this.controller, isInteract && this.holdMode ? this.interactKey : 0);
+    this.menuWaitHeld = isInteract && this.holdMode;
     this.containerAsked = false;
 
     const housing = this.controller.lookupListener(HousingService);
@@ -355,6 +356,8 @@ export class PlayerActionService extends ClientListener {
   // Token of the open waiting for the server's answer, 0 when none
   private menuWait = 0;
   private menuWaitSeq = 0;
+  // Whether the press the waiting menu answers was a held interact press
+  private menuWaitHeld = false;
   private interactKey: number;
 
   get interactKeyCode(): number {
