@@ -220,7 +220,7 @@ tells the player how many days until the next slot frees.
 The Writings tab was removed from the Personal Menu. The server still answers
 the `writingStaff` packet (`read`, `rename`, `destroy` by document id, for
 tiers with the `players` cap) and still writes every use to `admin.log`
-through the gamemode's `__alduinakAdminLog` bridge, so a tool can drive it,
+through `adminAudit` (`discordAlerts.ts`), so a tool can drive it,
 but nothing in the game sends it.
 
 ## Logging

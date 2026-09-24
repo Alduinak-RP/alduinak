@@ -38,7 +38,7 @@ const serverSettings = [
   { key: 'logoutGraceMs',           label: 'Logout grace (ms)',     type: 'number', group: 'Gameplay', help: 'How long a disconnected body stays killable in the world before despawning. Default 300000.' },
   { key: 'respawnSeconds',          label: 'Respawn seconds',       type: 'number', group: 'Gameplay', help: 'Bleedout/respawn timer applied to players (gamemode). Default 15.' },
   { key: 'afkKickMinutes',          label: 'AFK kick (minutes)',    type: 'number', group: 'Gameplay', help: 'Minutes without movement, chat, or voice before an idle player is kicked. Players still in character creation are never kicked. 0 disables. Default 20.' },
-  { key: 'afkWarnMinutes',          label: 'AFK warning (minutes)', type: 'number', group: 'Gameplay', help: 'Minutes before the AFK kick to warn the player in chat. Default 2.' },
+  { key: 'afkWarnMinutes',          label: 'AFK warning (minutes)', type: 'number', group: 'Gameplay', help: 'Minutes before the AFK kick to warn the player in chat. Default 1.' },
   { key: 'regenerationMultiplier',  label: 'Regen multiplier',      type: 'number', group: 'Gameplay', help: 'Scales the health/magicka/stamina regen the server accepts from clients. 1 = race-record rates, 0 = no natural regen. Needs a native rebuild to change engine behavior; the setting itself is read at boot.' },
   { key: 'chatRanges',              label: 'Chat ranges',           type: 'json',   group: 'Gameplay', help: 'Audible ranges in game units: { whisper, low, say, wide, shout }. Provided keys override the defaults.' },
   { key: 'voiceChat',               label: 'Voice chat',            type: 'json',   group: 'Gameplay', help: 'LiveKit proximity voice: { enabled, url, apiKey, apiSecret, room, rangeUnits }. rangeUnits = MAX talk range (defaults to chatRanges.shout); speakers pick their range between chatRanges.whisper and this with V + mousewheel.' },
@@ -93,6 +93,7 @@ const serverSettings = [
   { key: 'damageMultFormulaSettings', label: 'Damage formula', type: 'json', group: 'Advanced' },
   { key: 'additionalServerSettings',  label: 'Additional settings (GitHub)', type: 'json', group: 'Advanced' },
   { key: 'discordAuth',   label: 'Discord auth',   type: 'json', group: 'Advanced', help: 'Discord bot integration: { botToken, guilds:[{ guildId, banRoleId, eventLogChannelId }] }. Holds a bot token - keep it secret.' },
+  { key: 'discordAlertKinds', label: 'Discord alert kinds', type: 'json', group: 'Advanced', help: 'Alert kinds posted to the event log channel. Default ["death","execute","ticket"]; add "admin", "keyword" or "login" to restore them. Read at boot.' },
 ]
 
 // backend .env - the Express backend configuration. `secret: true` masks the value.

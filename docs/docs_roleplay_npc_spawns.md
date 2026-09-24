@@ -384,7 +384,7 @@ Everything goes through the server log and the manager console, prefixed
 - `N/M zone(s) loaded from ./NPC-Spawns.json (boot | file changed | admin add | admin delete), carried K zone(s)`
   and, when editor ids were involved, `resolved a/b editor id(s) in X ms, unresolved: ...`
 - `'<Name>' appended to ./NPC-Spawns.json by admin` / `'<Name>' removed from ./NPC-Spawns.json by admin`;
-  the admin log (staff channel) names the profile that added, reset, deleted or teleported to a zone
+  the admin log (`admin.log`) names the profile that added, reset, deleted or teleported to a zone
 - `'<Name>' entered by <player name> (<hex actor id>)` once per player entering
   the zone; there is no line for leaving
 - `navmesh spots for N/M zone(s) in X ms; rings kept for: ...` after each scan, naming the zones without navmesh near `POS`;

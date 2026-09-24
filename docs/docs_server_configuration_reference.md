@@ -500,6 +500,10 @@ A character's body stays in the world for `logoutGraceMs` (default `300000`, fiv
 
 The body sits the moment the server learns of the disconnect: at once on a quit to the main menu or a kick, and within about 10 s of a crash, an Alt+F4 or a dead link, because both the server and the client drop a silent connection after 10 s (`Networking.cpp` `timeoutTimeMs`, `MpClientPlugin.cpp` `kTimeoutMs`, RakNet's own default; keepalives run on RakNet's thread, so loading screens never trip it). A client that leaves on purpose destroys its RakNet peer with a 200 ms grace so the server receives the disconnect notification and frees the slot immediately instead of after the timeout. Such a timeout also logs `Networking: user N timed out without a disconnect notice` next to `disconnect N` (a clean quit through the Alduinak Quit buttons logs only `disconnect N`), so that line a few seconds after `Creating character` or `Loading character` means the game closed during the spawn load.
 
+## afkKickMinutes, afkWarnMinutes
+
+`afkKickMinutes` (default `20`, `0` disables the whole system) is how long a player may go without moving, chatting or sending any other player-driven packet before `AfkSystem` kicks them with "You were disconnected after N minutes of inactivity."; the body stays for the `logoutGraceMs` grace. Players in the login, character select or character creation screens are never kicked. `afkWarnMinutes` (default `1`) is how long before that kick the player is warned once per idle period with "You will be kicked for inactivity in N minute(s). Move or chat to stay connected.", a chat line in the System tab that pulls the tab into focus when the chat input is not in use; any activity re-arms the warning. Idleness is polled every 15 s, so the warning lands up to 15 s later than the exact mark. Both keys are read at boot and the boot log prints `AfkSystem: kicking after K min, warning W min before`.
+
 ## playerSlots, queueGraceMs, queueStaffBypass
 
 `playerSlots` (default `maxPlayers`, which turns the queue off) is how many verified logins may play at once; `maxPlayers` stays the connection cap, so the difference is the number of players the queue can hold (live: 1200 of 1300). A login past the limit waits in arrival order and sees "You are N of M in the queue", the time waited and a rough estimate instead of the character select; the server re-sends the place every 5 s, which also keeps the idle connection alive. Staff (`adminRoles` tiers, `adminRoleIds`, `adminProfileIds`) never wait, may exceed `playerSlots` up to `maxPlayers` and take no play slot, so a slot freed while staff are online still goes to the head of the queue. A slot is held from admission until the connection ends, so a player parked in the character select keeps it and a quit to the main menu holds it for the `logoutGraceMs` body as well. `queueGraceMs` (default `120000`) keeps a disconnected player's slot, or their queue place, for that long, so a crash inside it skips the queue on the way back; a second connection of the same account while the first still lingers takes the slot over at once. The heartbeat carries `playerSlots` as `maxPlayers` and the number of connected waiting players as `queued` (a place kept for a dropped player is not counted, nor shown in another player's total), so the launcher badge reads "N PLAYERS · Q QUEUED" and `/api/status` returns `queued`. The queue is in memory: a restart re-queues everyone in reconnect order. Log lines start with `[queue]`: every admission that is not a plain free-slot login prints `[queue] profile P admitted (staff | takeover | kept slot | slot freed) after N s, W waiting`, so a staff login into a full test server is visible.
@@ -597,15 +601,16 @@ Lets every player run the server console commands (`additem`, `equipitem`, `plac
 
 ## discordAuth
 
-The Discord bot integration. `botToken` is the bot's token, so keep this key secret. For each entry in `guilds`, login checks membership and `banRoleId`, and `DiscordBanSystem` kicks players who get the ban role. `eventLogChannelId` receives the `Server Login` lines and the game alerts below. Leave `eventLogChannelId` out (or turn on `offlineMode`) on a test server, so it posts nothing to the live channel.
+The Discord bot integration. `botToken` is the bot's token, so keep this key secret. For each entry in `guilds`, login checks membership and `banRoleId`, and `DiscordBanSystem` kicks players who get the ban role. `eventLogChannelId` receives the game alerts below. Leave `eventLogChannelId` out (or turn on `offlineMode`) on a test server, so it posts nothing to the live channel.
 
-Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews:
+Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews. Only the kinds listed in `discordAlertKinds` are posted, default `["death", "execute", "ticket"]`; the key is read at boot and a non-empty list replaces the default, so `admin`, `keyword` and `login` are off unless listed:
 
-- **[Death]** every player death, with the killer (player or NPC, if any) and the place: the nearest map marker outdoors, the cell indoors, then the raw location. A bleedout death says how it happened (bled out, died of their wounds while bleeding out, logged out while bleeding out, was finished off, was smitten) and names the player who landed the finishing hit.
-- **[Execution]** execute and finish off. The killing code calls `globalThis.__alduinakMarkDeathAlerted(actorId)` first, so the same death posts no second [Death] line.
-- **[Admin]** every admin power (teleports, summon, kick, ban, item spawn, grants, npc zones, jobs, admin modes), staff writing actions, `/system` broadcasts, and faction changes made with staff powers rather than a rank of the actor's own.
-- **[Staff call]** `/gm`, `/ticket`, `/pray` and `/prayer <message>`, with `@here` and a mention of the player. The same line goes to the in-game Admin tab, which players still cannot read, and each player may call once a minute. Staff and players may `/pm` each other without an introduction, so a ticket can go back and forth. For the `@here` to ping, the bot needs the Mention @everyone, @here and All Roles permission in that channel.
-- **[Keyword]** any chat line, PMs included, that contains a word from `alert-keywords.json` in the server folder. Staff `/admin` and `/system` lines are not scanned. The server re-reads the file within 5 seconds of a save. It holds `keywords` (whole words or phrases, ignoring case; a trailing `*` matches any ending) and `cooldownSeconds` (default 60, per player and keyword). The seed with notes is `skymp5-server/seeds/alert-keywords.json`. Without the file, keyword alerts are off.
+- **[Death]** (`death`) every player death, with the killer (player or NPC, if any) and the place: the nearest map marker outdoors, the cell indoors, then the raw location. A bleedout death says how it happened (bled out, died of their wounds while bleeding out, logged out while bleeding out, was finished off, was smitten) and names the player who landed the finishing hit.
+- **[Execution]** (`execute`) execute and finish off. The killing code calls `globalThis.__alduinakMarkDeathAlerted(actorId)` first, so the same death posts no second [Death] line.
+- **[Staff call]** (`ticket`) `/gm`, `/ticket`, `/pray` and `/prayer <message>`, with `@here` and a mention of the player. The same line goes to the in-game Admin tab, which players still cannot read, and each player may call once a minute. Staff and players may `/pm` each other without an introduction, so a ticket can go back and forth. For the `@here` to ping, the bot needs the Mention @everyone, @here and All Roles permission in that channel.
+- **[Admin]** (`admin`, off unless listed) every admin power (teleports, summon, kick, ban, item spawn, grants, npc zones, jobs, admin modes), staff writing actions, `/system` broadcasts, and faction changes made with staff powers rather than a rank of the actor's own. Every one of these lines is written to `admin.log` in `logDir` whether or not it is posted; nothing of it reaches the in-game Admin tab.
+- **[Keyword]** (`keyword`, off unless listed) any chat line, PMs included, that contains a word from `alert-keywords.json` in the server folder. Staff `/admin` and `/system` lines are not scanned. The server re-reads the file within 5 seconds of a save. It holds `keywords` (whole words or phrases, ignoring case; a trailing `*` matches any ending) and `cooldownSeconds` (default 60, per player and keyword). The seed with notes is `skymp5-server/seeds/alert-keywords.json`. Without the file, keyword alerts are off.
+- **[Login]** (`login`, off unless listed) the `Server Login` line of every verified login (slot, IP, actor ids, profile id) with a mention of the player. The same line is always printed to the server log.
 
 ```json5
 {
@@ -613,7 +618,8 @@ Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted
   "discordAuth": {
     "botToken": "<bot token>",
     "guilds": [{ "guildId": "<guild id>", "banRoleId": "<role id>", "eventLogChannelId": "<channel id>" }]
-  }
+  },
+  "discordAlertKinds": ["death", "execute", "ticket"]
   // ...
 }
 ```
@@ -709,7 +715,7 @@ Optional per-tier overrides of the caps above, merged over the defaults (every c
 
 The Admin tab's Item Spawner searches every weapon, armor, ammo, potion, ingredient, book, misc item, key, scroll, soul gem and carryable light of the server load order. The last override of each record wins; deleted records and non-playable armor are left out. The list is built in the background the first time an admin with the `items` cap opens the Personal Menu, which logs `AdminSystem: item catalog N item(s) in X ms`. Names of localized plugins come from `Data/Strings` or `Skyrim - Interface.bsa`, and fall back to the editor id.
 
-A spawn gives 1 to 1000 of the chosen item to the admin or to any online player, at most once per 250 ms. Every spawn is written to the server log, admin.log and the staff channel:
+A spawn gives 1 to 1000 of the chosen item to the admin or to any online player, at most once per 250 ms. Every spawn is written to the server log and admin.log:
 
 ```
 profile 12 (gm) spawned 5x "Iron Sword" [12eb7:Skyrim.esm WEAP] for "Hrolf" (profile 34)
