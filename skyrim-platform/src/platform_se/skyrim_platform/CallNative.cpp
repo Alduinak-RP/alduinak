@@ -488,7 +488,7 @@ CallNative::AnySafe CallNative::CallNativeSafe(Arguments& args_)
     auto jsThrQPtr = &jsThrQ;
     auto cb = latentCallback;
     auto onResult = [cb, funcReturnType, jsThrQPtr](const Variable& result) {
-      spdlog::info("onResult called");
+      spdlog::trace("onResult called");
       jsThrQPtr->AddTask([=](Napi::Env env) {
         if (!cb)
           throw NullPointerException("cb");
