@@ -22,14 +22,17 @@ const KILLMOVE_TWO_HANDED = 0xf467f;
 type WeaponType = "sword" | "dagger" | "axe" | "mace" | "greatsword" | "battleaxe" | "unarmed" | "dual";
 const WEAPON_TYPES: Record<number, WeaponType> = { 1: "sword", 2: "dagger", 3: "axe", 4: "mace", 5: "greatsword", 6: "battleaxe" };
 type FinisherTable = Record<WeaponType, number[]>;
-// Loose Skyrim.esm paired killmoves without conditions, none decapitating: pa_1HMKillMoveShortA-D and ShortJ, pa_1HMKillMoveDualWieldA, pa_2HMKillMoveStabA
-// A dagger, axe or mace plays the sword pool (the same 1HM state) until the operator fills its own; a battleaxe borrows the greatsword stab. Overridable via "executionFinishers"
-const ONE_HANDED_FINISHERS = [0xf469a, 0xf469b, 0xf469c, 0xf469d, 0x108a45];
+// Loose Skyrim.esm paired killmoves without conditions, none decapitating, split by weapon as the vanilla killmove tree splits their clips
+// KillMoveShortBlade (sword or dagger): pa_1HMKillMoveShortB, ShortD and ShortJ
+const BLADE_FINISHERS = [0xf469b, 0xf469d, 0x108a45];
+// KillMoveShortAxeMace (war axe or mace): pa_1HMKillMoveShortA and ShortC
+const AXE_MACE_FINISHERS = [0xf469a, 0xf469c];
+// pa_1HMKillMoveDualWieldA and pa_2HMKillMoveStabA; no loose non-decapitating two-handed axe pair exists, so a battleaxe borrows the stab. Overridable via "executionFinishers"
 const FINISHERS: FinisherTable = {
-  sword: ONE_HANDED_FINISHERS,
-  dagger: ONE_HANDED_FINISHERS,
-  axe: ONE_HANDED_FINISHERS,
-  mace: ONE_HANDED_FINISHERS,
+  sword: BLADE_FINISHERS,
+  dagger: BLADE_FINISHERS,
+  axe: AXE_MACE_FINISHERS,
+  mace: AXE_MACE_FINISHERS,
   dual: [0xf469f],
   greatsword: [0xf4687],
   battleaxe: [],

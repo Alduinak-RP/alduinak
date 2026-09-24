@@ -83,11 +83,17 @@ behaviour-graph events — no ESP required.**
   (2), `axe` (3), `mace` (4), `greatsword` (5), `battleaxe` (6, warhammers
   too), `dual` when both hands hold a 1-4, `unarmed` with empty hands. The
   pools (`executionFinishers` in `docs_server_configuration_reference.md`
-  lays a table over them, one type at a time): sword `pa_1HMKillMoveShortA-D`
-  (IDLE F469A-F469D) and `ShortJ` (108A45); dagger, axe and mace the same
-  pool for now, since the engine runs them in the same 1HM state, until the
-  operator fills their own `pa_` ids; dual `pa_1HMKillMoveDualWieldA`
-  (F469F); greatsword `pa_2HMKillMoveStabA` (F4687); battleaxe none, so it
+  lays a table over them, one type at a time) split the loose, condition
+  free `pa_` records the way the vanilla killmove tree splits their clips by
+  `GetEquippedItemType`: sword and dagger the `KillMoveShortBlade` clips,
+  `pa_1HMKillMoveShortB` (IDLE F469B), `ShortD` (F469D) and `ShortJ`
+  (108A45); war axe and mace the `KillMoveShortAxeMace` clips,
+  `pa_1HMKillMoveShortA` (F469A) and `ShortC` (F469C); dual
+  `pa_1HMKillMoveDualWieldA` (F469F); greatsword `pa_2HMKillMoveStabA`
+  (F4687). No vanilla standing pair is dagger-only except the decapitating
+  `pa_1HMKillMoveDecapKnife` (F465E), which a finish off never plays. The
+  battleaxe has no loose non-decapitating pair (its tree clips `KillMove2HWB`,
+  `ChopKick` and `HeadButt` sit behind the extended probe below), so it
   borrows the greatsword stab and logs `[execution] no battleaxe finisher,
   using the greatsword stab`; unarmed none, refused like a bow. The server
   logs `[execution] <killer> finishes off <victim> with <type> idle <id>`.
