@@ -111,7 +111,8 @@ everyone is refused while locked (it fails closed).
 4. In the launcher a staff member sees PLAY enabled and the lock badge; a plain member
    sees *Server is currently locked*.
 5. A staff member makes a new character: the synopsis, the spawn choice and the starter
-   kit appear, and `starter-grants.json` gains one key.
+   kit (the clothes; the gold comes with the first profession) appear, and
+   `starter-grants.json` gains one key.
 6. The hashes of `bans.json`, `profiles.json` and `role-permissions.json` equal the
    copies in `$dir\backend-data` (`Get-FileHash`).
 7. Back to automatic start:

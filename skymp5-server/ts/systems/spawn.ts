@@ -21,12 +21,11 @@ function randomInteger(min: number, max: number) {
 // Slot indices a character may keep; each fallen character opens one more slot up to this
 const MAX_SLOTS = 10;
 
-// Fresh characters start with a miner's outfit and pocket change (Skyrim.esm: ClothesMinerClothes, ClothesMinerBoots, Gold001).
+// Fresh characters start with a miner's outfit (Skyrim.esm: ClothesMinerClothes, ClothesMinerBoots); the gold comes with the first profession kit.
 // Overridable via the "startingItems" server setting.
 const DEFAULT_STARTING_ITEMS = [
   { baseId: 0x00080697, count: 1 },
   { baseId: 0x00080699, count: 1 },
-  { baseId: 0x0000000f, count: 50 },
 ];
 
 // Parse a base id that may arrive as a decimal number or a "0x..." hex string
@@ -372,7 +371,7 @@ export class Spawn implements System {
   }
 
   // Replaces the Player record's default inventory every new actor is seeded with.
-  // One kit per profile+slot: recreating a deleted character reuses the slot and gets clothes but no repeat gold faucet.
+  // One kit per profile+slot: recreating a deleted character reuses the slot and gets the clothes again, but gold listed in startingItems only once.
   private giveStartingItems(mp: Mp, actorId: number, profileId: number, slot: number): void {
     const key = `${profileId}:${slot}`;
     const granted = this.loadStarterGrants();
