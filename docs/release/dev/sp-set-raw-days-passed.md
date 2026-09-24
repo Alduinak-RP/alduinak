@@ -1,0 +1,1 @@
+Added a `setRawDaysPassed` method that sets the whole days the engine Calendar counts (`rawDaysPassed` in CommonLibSSE's Calendar). The engine rebuilds the `GameDaysPassed` global from it plus `GameHour / 24` every frame, so writing the global alone does not last. It returns the new `GameDaysPassed` value.

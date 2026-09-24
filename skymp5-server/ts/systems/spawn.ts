@@ -1,13 +1,13 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, CREATION_FINISHED_EVENT } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
 import { REALMS, afterlifeOf, isFallen, readMaxCharacters } from "./afterlifeSystem";
-import { chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
+import { GOLD_BASE_ID, STARTER_GOLD_PROP, chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
 import { isOutsideBorder, insideSpot } from "./worldBorder";
 
@@ -119,7 +119,7 @@ function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
 // CharacterSelectService). Flag off (default) keeps the original
 // single-character behaviour, so enabling can never brick login on its own.
 //   Server -> Client:
-//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]}, notice?: "why the last choice was refused" }
+//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]}, notice?: "why the last choice was refused", "" clears it }
 //   Client -> Server:
 //     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot, start?: locationId }
 //     { customPacketType: "characterSelectMenuRequest", loadError?: string, viaPauseMenu?: boolean }
@@ -147,6 +147,10 @@ export class Spawn implements System {
   private parkTimers = new Map<number, ReturnType<typeof setTimeout>>();
   // Bodies sitting in the logout pose
   private parked = new Set<number>();
+  // actorId -> pending post-respawn unequip
+  private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  // Users whose ignored charCreatorResult was already logged this connection
+  private creatorResultIgnored = new Set<number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
@@ -176,7 +180,7 @@ export class Spawn implements System {
         const auth = { profileId: userProfileId, roles: discordRoleIds, discordId, access };
         this.authCache.set(userId, auth);
         this.pending.set(userId, auth);
-        this.sendCharacterList(ctx, userId, userProfileId);
+        this.sendCharacterList(ctx, userId, userProfileId, "");
         return;
       }
       this.legacySpawn(ctx, userId, userProfileId, discordRoleIds, discordId, access);
@@ -211,6 +215,7 @@ export class Spawn implements System {
     this.authCache.delete(userId);
     this.lastMenuRequestMs.delete(userId);
     this.lastAssignMs.delete(userId);
+    this.creatorResultIgnored.delete(userId);
     // Logout grace: parkTimers is actorId-keyed and deliberately NOT cleaned here, the timer must outlive the connection; re-selecting the character cancels it
     try {
       const actorId = ctx.svr.getUserActor(userId);
@@ -320,7 +325,8 @@ export class Spawn implements System {
       const via = content.viaPauseMenu === true ? " via the pause menu" : content.viaPauseMenu === false ? " without the pause menu" : "";
       this.log("Reopening character select for user", userId, (mayPark ? "(logout grace started)" : "(guarded, no grace timer)") + via);
     }
-    this.sendCharacterList(ctx, userId, auth.profileId);
+    // The client shows its own load failure line
+    this.sendCharacterList(ctx, userId, auth.profileId, typeof content.loadError === "string" ? undefined : "");
   }
 
   // Character select
@@ -402,10 +408,13 @@ export class Spawn implements System {
     const key = `${profileId}:${slot}`;
     const granted = this.loadStarterGrants();
     const items = granted[key]
-      ? this.startingItems.filter(e => e.baseId !== 0x0000000f)
+      ? this.startingItems.filter(e => e.baseId !== GOLD_BASE_ID)
       : this.startingItems;
-    try { mp.set(actorId, "inventory", { entries: items.map(e => ({ ...e })) }); }
-    catch { /* form vanished */ }
+    const gold = items.reduce((n, e) => (e.baseId === GOLD_BASE_ID ? n + e.count : n), 0);
+    try {
+      mp.set(actorId, "inventory", { entries: items.map(e => ({ ...e })) });
+      if (gold > 0) mp.set(actorId, STARTER_GOLD_PROP, { count: gold, at: Date.now() });
+    } catch { /* form vanished */ }
     if (!granted[key]) {
       granted[key] = true;
       try { fs.writeFileSync(STARTER_GRANTS_FILE, JSON.stringify(granted)); }
@@ -422,8 +431,8 @@ export class Spawn implements System {
     }
   }
 
-  // notice is shown above the slot list, so a refused choice never looks like nothing happened
-  private sendCharacterList(ctx: SystemContext, userId: number, profileId: number, notice = ""): void {
+  // notice is shown above the slot list, so a refused choice never looks like nothing happened; "" clears it, undefined keeps the client's line
+  private sendCharacterList(ctx: SystemContext, userId: number, profileId: number, notice?: string): void {
     const mp = ctx.svr as unknown as Mp;
     const slots = this.slotMap(ctx, profileId);
     const characters = slots.map((actorId, i) => {
@@ -441,7 +450,7 @@ export class Spawn implements System {
       .filter((e) => e !== null));
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
       customPacketType: "characterSelectMenu", maxCharacters: slots.length, characters, lockedSlots, intro,
-      ...(notice ? { notice } : {}),
+      ...(notice !== undefined ? { notice } : {}),
     }));
   }
 
@@ -606,29 +615,45 @@ export class Spawn implements System {
     };
   }
 
-  // The ragdoll death and the get-up leave the hands' behaviour graph stale while the weapon stays worn, so worn weapons are unequipped through the owner's client
+  // The ragdoll death and the get-up leave the hands' behaviour graph stale while the weapon stays worn, so the weapons worn at death are unequipped through the owner's client
   private installRespawnHook(ctx: SystemContext): void {
     const mp = ctx.svr as unknown as Mp;
     chainMpHook(mp, "onRespawn", (rawId: number) => {
       const actorId = Number(rawId) >>> 0;
-      if (isPlayerActor(mp, actorId)) setTimeout(() => this.unequipWeapons(mp, actorId), RESPAWN_UNEQUIP_DELAY_MS);
+      if (!isPlayerActor(mp, actorId)) return;
+      clearTimeout(this.respawnTimers.get(actorId));
+      this.respawnTimers.delete(actorId);
+      const bases = this.wornWeapons(mp, actorId);
+      if (!bases.length) return;
+      this.respawnTimers.set(actorId, setTimeout(() => {
+        this.respawnTimers.delete(actorId);
+        this.unequipWeapons(mp, actorId, bases);
+      }, RESPAWN_UNEQUIP_DELAY_MS));
     });
   }
 
-  private unequipWeapons(mp: Mp, actorId: number): void {
-    if (userOf(mp, actorId) < 0) return;
+  // Base ids of the weapons in either hand
+  private wornWeapons(mp: Mp, actorId: number): number[] {
     let entries: any[] = [];
-    try { entries = mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return; }
-    const worn = entries.filter((e) => (e?.worn || e?.wornLeft) && weaponAnimType(mp, Number(e.baseId)) >= 0);
+    try { entries = mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return []; }
+    return entries
+      .filter((e) => (e?.worn || e?.wornLeft) && weaponAnimType(mp, Number(e.baseId)) >= 0)
+      .map((e) => Number(e.baseId) >>> 0);
+  }
+
+  // A weapon equipped after the respawn stays, and a player who died again or left is skipped
+  private unequipWeapons(mp: Mp, actorId: number, bases: number[]): void {
+    if (userOf(mp, actorId) < 0 || !isAlive(mp, actorId)) return;
+    const worn = this.wornWeapons(mp, actorId).filter((b) => bases.includes(b));
     if (!worn.length) return;
-    for (const e of worn) {
+    for (const baseId of worn) {
       try {
         const self = { type: "form", desc: mp.getDescFromId(actorId) };
-        const item = { type: "espm", desc: mp.getDescFromId(Number(e.baseId) >>> 0) };
+        const item = { type: "espm", desc: mp.getDescFromId(baseId) };
         // UnequipItem(akItem, abPreventEquip, abSilent)
         mp.callPapyrusFunction("method", "Actor", "UnequipItem", self, [item, false, true]);
       } catch (err) {
-        this.log(`[respawn] unequip ${hex(Number(e.baseId))} of ${hex(actorId)} failed: ${err}`);
+        this.log(`[respawn] unequip ${hex(baseId)} of ${hex(actorId)} failed: ${err}`);
       }
     }
     this.log(`[respawn] ${hex(actorId)} sheathes ${worn.length} weapon(s)`);
@@ -660,6 +685,7 @@ export class Spawn implements System {
     } catch { return; /* form vanished */ }
     this.scheduleKit(ctx, actorId, EQUIP_KIT_DELAY_MS);
     this.log("Character creation finished for actor", actorId.toString(16));
+    ctx.gm.emit(CREATION_FINISHED_EVENT, actorId);
   }
 
   private scheduleKit(ctx: SystemContext, actorId: number, delayMs: number): void {
@@ -742,7 +768,10 @@ export class Spawn implements System {
       : !this.isCharCreatorPending(mp, actorId) ? `not pending for actor ${actorId.toString(16)}`
       : "";
     if (ignored) {
-      this.log(`[spawn] charCreatorResult ignored for user ${userId}: ${ignored}`);
+      if (!this.creatorResultIgnored.has(userId)) {
+        this.creatorResultIgnored.add(userId);
+        this.log(`[spawn] charCreatorResult ignored for user ${userId}: ${ignored} (logged once per connection)`);
+      }
       return;
     }
 
@@ -805,7 +834,7 @@ export class Spawn implements System {
       ctx.svr.destroyActor(actorId);
       this.log(fallen ? `Deleted fallen character ${actorId.toString(16)} from slot ${slot}, its extra slot closes` : `Deleted character ${actorId.toString(16)} from slot ${slot}`);
     }
-    this.sendCharacterList(ctx, userId, auth.profileId);
+    this.sendCharacterList(ctx, userId, auth.profileId, "");
   }
 
   // Legacy single-character path (flag off): original behaviour kept

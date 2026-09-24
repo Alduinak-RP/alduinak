@@ -100,6 +100,18 @@ $text-muted: rgba(210, 170, 165, 0.65);
     }
   }
 
+  &__hint {
+    margin: -6px 0 0;
+    text-align: center;
+    color: $text-muted;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+
+    &--bad {
+      color: $red-border-bright;
+    }
+  }
+
   &__actions {
     display: flex;
     justify-content: center;

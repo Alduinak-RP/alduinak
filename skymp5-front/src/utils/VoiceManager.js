@@ -7,6 +7,7 @@
 //   setPttKey(code)           KeyboardEvent.code of the push-to-talk key; the game sees no keys while a menu has focus, so the page reads it then
 //   setMode(key)              Alt+V cycles whisper/talk/shout; the range goes out on the data channel so listeners attenuate by the SPEAKER's loudness
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
+// SkyrimPlatform dispatches 'skymp5-client:windowInactive' when the game loses the foreground; the page then closes the mic itself
 // Events back to the game (window.skyrimPlatform.sendMessage):
 //   'voice::ready', 'voice::micDenied', 'voice::error' <text>, 'voice::ptt' <'1' pressed | '0' released, from the page's own key listeners>,
 //   'voice::speaking' <json array of {id, level}: own voice while PTT is held plus audible unmuted speakers, every 150 ms while anyone talks, [] once when quiet>,
@@ -75,16 +76,22 @@ class VoiceManager {
 
   // Key events reach the page only while a menu or the chat has focus, when the game cannot see the key
   onKeyDown(e) {
+    if (e.code === 'Tab' && e.altKey) this.release();
     if (!this.pttCode || e.code !== this.pttCode || e.repeat || isTyping()) return;
-    // Alt+V means cycle mode, which only the game handles
-    if (e.altKey) return;
+    // Alt+V means cycle mode, which only the game handles; an Alt key bound to push-to-talk sets altKey itself
+    if (e.altKey && !this.pttCode.startsWith('Alt')) return;
     this.setPtt(true);
     sendToGame('voice::ptt', '1');
   }
 
   // Not gated on typing: a key held since before the chat took focus must still release
   onKeyUp(e) {
-    if (!this.ptt || !this.pttCode || e.code !== this.pttCode) return;
+    if (this.pttCode && e.code === this.pttCode) this.release();
+  }
+
+  // No key-up follows once the game loses the foreground
+  release() {
+    if (!this.ptt) return;
     this.setPtt(false);
     sendToGame('voice::ptt', '0');
   }
@@ -338,6 +345,7 @@ class VoiceManager {
 window.__alduinakVoice = new VoiceManager();
 window.addEventListener('keydown', (e) => window.__alduinakVoice.onKeyDown(e));
 window.addEventListener('keyup', (e) => window.__alduinakVoice.onKeyUp(e));
+window.addEventListener('skymp5-client:windowInactive', () => window.__alduinakVoice.release());
 
 // Failsafe: if the game stops feeding distances (main menu, script reload), go silent instead of playing stale volumes.
 // Also heartbeat the range so listeners who missed the data packet eventually heal.

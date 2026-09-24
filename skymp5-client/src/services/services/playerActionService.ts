@@ -1,13 +1,13 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, domKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared, armHeldMenu, claimHeldMenu, closeContainerMenu } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
 import { isFreeCamera } from "./adminModeService";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, Menu, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
 import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
@@ -84,7 +84,6 @@ const events = {
   action: 'pa:action',
   close: 'pa:close',
   trade: 'pa:trade',
-  keyUp: 'pa:keyup',
 };
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
@@ -114,6 +113,7 @@ export class PlayerActionService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
@@ -122,11 +122,7 @@ export class PlayerActionService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
-    if (!e.isDown) {
-      // A release the game still saw, before the menu took focus, closes a held menu
-      if (this.holdMode && e.isUp && this.menuOpen && buttonEventKeyCode(e) === this.interactKey) this.closeMenu();
-      return;
-    }
+    if (!e.isDown) return;
     const code = buttonEventKeyCode(e);
     if (code === DxScanCode.Escape && this.menuOpen) {
       this.closeMenu();
@@ -135,7 +131,12 @@ export class PlayerActionService extends ClientListener {
     // When one key is both, the Activate rules win
     const isActivate = e.userEventName === "Activate";
     const isInteract = !isActivate && code === this.interactKey;
-    if ((!isActivate && !isInteract) || this.menuOpen || this.menuWait) return;
+    if ((!isActivate && !isInteract) || this.menuOpen) return;
+    if (this.menuWait) {
+      // A second press during the wait is the one the waiting menu follows
+      if (isInteract && this.holdMode && this.menuWaitHeld) armHeldMenu(this.sp, this.controller, this.interactKey);
+      return;
+    }
     if (isGameInputBlocked(this.sp, this.controller) || isPlayerDowned(this.controller)) return;
     // A hidden interface must not trap a rider, so the saddle is checked before the rest of the hotkey block
     const mount = this.controller.lookupListener(MountService);
@@ -144,6 +145,10 @@ export class PlayerActionService extends ClientListener {
       return;
     }
     if (isUiHidden(this.controller)) return;
+    // Every press replaces the armed one, so a menu Activate opens is never taken for a held one
+    armHeldMenu(this.sp, this.controller, isInteract && this.holdMode ? this.interactKey : 0);
+    this.menuWaitHeld = isInteract && this.holdMode;
+    this.containerAsked = false;
 
     const housing = this.controller.lookupListener(HousingService);
     const personal = this.controller.lookupListener(AdminMenuService);
@@ -169,7 +174,7 @@ export class PlayerActionService extends ClientListener {
     // Any other living server NPC is searched like a body
     if (ref && actor && remoteId >= FIRST_DYNAMIC_REMOTE_ID) {
       try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-      sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+      this.requestSearch(remoteId);
       return;
     }
     if (isActivate) return;
@@ -178,6 +183,7 @@ export class PlayerActionService extends ClientListener {
     // The server opens the strongbox for the hold's managers and answers everyone else with a notice
     if (ref && this.controller.lookupListener(InteractionPromptService).isBoard(ref)) {
       sendCustomPacket(this.controller, { customPacketType: "bountyBoardManage", board: localIdToRemoteId(ref.getFormID()) });
+      this.containerAsked = true;
       return;
     }
     if (ref && isPropertyRef(ref)) {
@@ -189,12 +195,26 @@ export class PlayerActionService extends ClientListener {
       this.openLoadMenu(load);
       return;
     }
-    personal.open();
+    if (claimHeldMenu(() => personal.isOpen, () => personal.closeMenu())) personal.open();
+  }
+
+  // The strongbox and the search window are the engine's container menu, which the server opens after the request
+  private onMenuOpen(e: MenuOpenEvent): void {
+    if (e.name !== Menu.Container || !this.containerAsked) return;
+    this.containerAsked = false;
+    const close = () => closeContainerMenu(this.sp, this.controller);
+    if (!claimHeldMenu(() => this.sp.Ui.isMenuOpen(Menu.Container), close)) close();
+  }
+
+  private requestSearch(remoteId: number): void {
+    sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+    this.containerAsked = true;
   }
 
   private openLoadMenu(title: string): void {
     targetName = title;
     this.playerTarget = 0;
+    if (!this.claimHeld()) return;
     this.menuOpen = true;
     openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: LOAD_ACTIONS, targetName, hideTrade: true, events, WIDGET_ID }, this.controller);
   }
@@ -204,7 +224,7 @@ export class PlayerActionService extends ClientListener {
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
     // Bodies skip the menu and open their inventory through the server search
     if (actor.isDead()) {
-      sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+      this.requestSearch(remoteId);
       return;
     }
     targetName = introducedName(ref, remoteId, false);
@@ -233,7 +253,7 @@ export class PlayerActionService extends ClientListener {
     }
   }
 
-  // Opens once the server's answer is in or the wait ran out, unless another screen took over meanwhile
+  // Opens once the server's answer is in or the wait ran out, unless another screen took over or a held key was let go meanwhile
   private openWaitingMenu(wait: number): void {
     if (wait !== this.menuWait) return;
     this.menuWait = 0;
@@ -252,12 +272,6 @@ export class PlayerActionService extends ClientListener {
     }
     if (key === events.close) {
       this.closeMenu();
-      return;
-    }
-    // Releasing a held interact key closes the menu
-    if (key === events.keyUp) {
-      const interactDomKey = domKeyCode(this.interactKey);
-      if (this.holdMode && interactDomKey && e.arguments[1] === interactDomKey) this.closeMenu();
       return;
     }
     if (key === events.trade) {
@@ -292,8 +306,14 @@ export class PlayerActionService extends ClientListener {
   }
 
   private openMenu(): void {
+    if (!this.claimHeld()) return;
     this.menuOpen = true;
     openFormMenu(this.sp, this.playerWidgetSetter, this.menuArgs(), this.controller);
+  }
+
+  // A held interact key closes the menu on release, and one already let go keeps it shut
+  private claimHeld(): boolean {
+    return claimHeldMenu(() => this.menuOpen, () => this.closeMenu());
   }
 
   private menuArgs(): Record<string, unknown> {
@@ -326,14 +346,18 @@ export class PlayerActionService extends ClientListener {
   };
 
   private menuOpen = false;
-  // The pa: context menu is held open instead of toggled; the other menus the key opens keep toggling
+  // Every menu the interact key opens is held open instead of toggled
   private holdMode = false;
+  // The last press asked the server for a bounty board's strongbox or a search window
+  private containerAsked = false;
   private playerTarget = 0;
   // Action id -> whether the server's playerMenuState says it applies to the target
   private menuFlags: Record<string, boolean> = {};
   // Token of the open waiting for the server's answer, 0 when none
   private menuWait = 0;
   private menuWaitSeq = 0;
+  // Whether the press the waiting menu answers was a held interact press
+  private menuWaitHeld = false;
   private interactKey: number;
 
   get interactKeyCode(): number {

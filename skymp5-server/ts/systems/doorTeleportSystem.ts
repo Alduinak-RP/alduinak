@@ -1,7 +1,8 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { formIdFromConfig } from "./formIdUtil";
+import { espmRefrFieldId, formIdFromConfig } from "./formIdUtil";
 import { hex, isDoorRef, userOf } from "./actorUtil";
+import { sendJson } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -40,6 +41,20 @@ const DEFAULT_OVERRIDES: Record<string, unknown>[] = [
     cellOrWorldDesc: "3c:Skyrim.esm",
     pos: [-79858.25, 114377.65, -2273.45],
     rot: [0, 0, 159.95],
+  },
+  // Temple of Jhunal tower, outside door up: lands on the balcony's XMarkerHeading f058aa, 64 units up so the arrival never starts inside the floor
+  {
+    door: "f058c4:Winterhold Restored.esp",
+    cellOrWorldDesc: "3c:Skyrim.esm",
+    pos: [99175.03, 100978.69, -3370.54],
+    rot: [0, 0, 223.45],
+  },
+  // Temple of Jhunal tower, balcony door down: the plugin's own arrival, 64 units up
+  {
+    door: "f058c5:Winterhold Restored.esp",
+    cellOrWorldDesc: "3c:Skyrim.esm",
+    pos: [99342.88, 101158.70, -4482.54],
+    rot: [0, 0, 42.62],
   },
 ];
 
@@ -85,6 +100,7 @@ export class DoorTeleportSystem implements System {
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
+    if (type === "loadDoorQuery") return this.answerLoadDoor(userId, content, ctx);
     if (type !== "teleportReport") return;
     const stuck = content.outcome === "stuck";
     const lastReportMs = stuck ? this.lastStuckReportMs : this.lastLateReportMs;
@@ -99,6 +115,14 @@ export class DoorTeleportSystem implements System {
     } catch { /* no actor */ }
     const what = stuck ? "did not follow a teleport and was sent to character select" : "followed a teleport late";
     this.log(`[doors] ${hex(actorId)} (${name}) ${what}: target ${hex(Number(content.worldOrCell))}, client in ${hex(Number(content.clientWorldOrCell))}, ${Number(content.moves)} move(s), ragdoll wait ${content.ragdollReturned === false ? "failed or timed out" : "returned"}, race menu seen ${content.raceMenuSeen === true}, ${Number(content.sinceLoadS)} s since load`);
+  }
+
+  // The client drops a press on a door mid-swing unless the door teleports, which only the plugin's XTEL tells
+  private answerLoadDoor(userId: number, content: Content, ctx: SystemContext): void {
+    const mp = ctx.svr as Mp;
+    const target = Number(content.target) >>> 0;
+    const loadDoor = this.destinations.has(target) || espmRefrFieldId(mp, target, "XTEL") !== 0;
+    sendJson(mp, userId, { customPacketType: "loadDoorAnswer", target, loadDoor });
   }
 
   disconnect(userId: number): void {

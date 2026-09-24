@@ -30,9 +30,24 @@ The integration described as "future work" below has been built:
   or the chat line is ignored and a release always closes the mic. A key held
   from a menu into the game reaches neither side's key-up, so the game polls
   it (`Input.isKeyPressed`) and releases once the key is up, or at the latest
-  when the menu closes; the console and a despawned actor force a release. A
-  mouse-bound key has no DOM code and works unfocused only; Alt+V mode
-  cycling is game-side only.
+  when the menu closes; an engine hold whose release was lost cannot reopen it
+  while the key reads up, and the AFK ping goes out at most once a minute. The
+  console and a despawned actor force a release. No key-up follows once the
+  game loses the foreground and the off-screen page never gets a blur, so on
+  `WM_ACTIVATE`/`WA_INACTIVE` SkyrimPlatform (SkyrimPlatformImpl.dll)
+  dispatches `skymp5-client:windowInactive` to the page on its next input
+  update, and the page closes the mic itself and reports `voice::ptt` `0`; an
+  Alt+Tab the page sees in a menu does the same. Mouse buttons and keys with
+  no DOM code (Right Ctrl/Alt,
+  arrows, Home/End/Ins/Del, Numpad Enter/Divide, Num Lock, Pause) never reach
+  the page, so while a menu has focus the game polls them itself and opens the
+  mic on a press edge (not while Alt is down or the console is open); the
+  typing guard covers DOM keys only. A focused menu hides mouse buttons from
+  the engine, so the key-up it sends for a button held as a menu opens is
+  ignored while `Input.isKeyPressed` still reads the key down, and the poll
+  closes the mic on the real release. Alt+V mode cycling is game-side only;
+  a Left or Right Alt bound to push-to-talk is plain push-to-talk and only
+  the other Alt cycles.
   Requests a token per actor assignment; pushes peer distances (same world
   only) every 400ms.
 - **Talk range**: V + mousewheel picks the speaker's audible range between
@@ -44,7 +59,8 @@ The integration described as "future work" below has been built:
   relaunches via `voice-settings-no-load`.
 - **Launcher**: "Voice Push-to-Talk" picker in Server Hotkeys; the hotkey-wipe
   bug in `writeClientSettings` is fixed so rebinds survive launches. The chat
-  settings Controls tab rebinds it in game too, and that override wins.
+  settings Controls tab rebinds it in game too, and that override wins until
+  the key is changed in the launcher again.
 
 Rollout order: (1) CI flatrim rebuild -> new SkyrimPlatform.dll into the client
 dist, (2) server manager "Build Client" (front + client logic + repackage),

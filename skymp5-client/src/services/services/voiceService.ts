@@ -10,7 +10,7 @@ import { logTrace } from "../../logging";
 
 // Proximity voice chat: push-to-talk (default V, launcher-configurable via voicePushToTalkKeyCode) + LiveKit room managed by VoiceManager in the skymp5-front CEF page.
 // This service owns the game side: room token requests, peer distances to the browser, and the PTT key; audibility is distance vs the server-provided range (chat "say" range by default), same-world only.
-// The game sees no keys while a menu or the chat has focus, so the front reads the key then and reports it as 'voice::ptt' 1/0.
+// The game sees no key events while a menu or the chat has focus, so the front reads DOM keys then and reports them as 'voice::ptt' 1/0; the rest are polled here.
 
 const PEERS_INTERVAL_MS = 400;
 const TOKEN_RETRY_MS = 5000;
@@ -71,6 +71,9 @@ export class VoiceService extends ClientListener {
   private modePersistAt = 0;
   private altDown = false;
   private pttDown = false;
+  private polledKeyDown = false;
+  // An engine key-up the focused poll took over, still owed if focus leaves before the key reads up
+  private deferredRelease = false;
   private micDeniedShown = false;
   private nextTokenAttemptAt = 0;
   private nextPeersAt = 0;
@@ -88,8 +91,8 @@ export class VoiceService extends ClientListener {
   private onButtonEventImpl(e: ButtonEvent) {
     const code = buttonEventKeyCode(e);
 
-    // Track Alt so Alt+V can mean "cycle mode" instead of "talk"
-    if (code === DxScanCode.LeftAlt || code === DxScanCode.RightAlt) {
+    // Track Alt so Alt+V can mean "cycle mode" instead of "talk"; an Alt bound to push-to-talk is plain push-to-talk
+    if (this.isAltKey(code)) {
       if (e.isDown) this.altDown = true;
       else if (e.isUp) this.altDown = false;
       return;
@@ -97,19 +100,31 @@ export class VoiceService extends ClientListener {
     if (code !== this.voiceKey) return;
 
     // isHeld frames let a V hold that outlives the Alt+V cycle start transmitting once Alt releases (isDown fires only on the press frame)
-    if ((e.isDown || e.isHeld) && !this.pttDown) {
+    // The engine can hold a key whose release it lost, so a held frame counts only while the key really is down
+    const pressed = e.isDown || (e.isHeld && !this.voiceKeyReadsUp());
+    if (pressed && !this.pttDown) {
       // A focused browser reads the key itself; the console must not open the mic
       if (this.sp.browser.isFocused() || isConsoleOpen(this.sp)) return;
       if (this.altDown) {
         if (e.isDown) this.cycleMode();
         return;
       }
-      this.pttDown = true;
-      this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(true)`);
-      this.sendAfkPing();
+      this.pressPtt();
     } else if (e.isUp && this.pttDown) {
-      this.releasePtt();
+      if (this.focusedPollHolds()) this.deferredRelease = true;
+      else this.releasePtt();
     }
+  }
+
+  // A focused menu hides held mouse buttons from the engine, so its key-up is not real while the key still reads down
+  private focusedPollHolds(): boolean {
+    return this.sp.browser.isFocused() && !domKeyCode(this.voiceKey) && this.sp.Input.isKeyPressed(this.voiceKey);
+  }
+
+  private pressPtt() {
+    this.pttDown = true;
+    this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(true)`);
+    this.sendAfkPing();
   }
 
   // Alt+V steps whisper -> talk -> shout -> whisper
@@ -161,6 +176,7 @@ export class VoiceService extends ClientListener {
 
   private releasePtt() {
     this.pttDown = false;
+    this.deferredRelease = false;
     this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(false)`);
   }
 
@@ -263,20 +279,24 @@ export class VoiceService extends ClientListener {
     const myRefr = this.myRefrId();
 
     // Alt-Tab can swallow the Alt keyup, leaving V stuck in cycle mode
-    if (this.altDown
-      && !this.sp.Input.isKeyPressed(DxScanCode.LeftAlt)
-      && !this.sp.Input.isKeyPressed(DxScanCode.RightAlt)) {
-      this.altDown = false;
-    }
+    if (this.altDown && !this.isAltPressed()) this.altDown = false;
 
     // The console never reports a key-up, and our actor can despawn under a held key (character park, connection loss)
     if (this.pttDown && (isConsoleOpen(this.sp) || !myRefr)) this.releasePtt();
 
     // A key pressed in a menu and released after it closed reaches neither side, so poll it once the game has the keyboard back
-    if (this.pttDown && !this.sp.browser.isFocused()
-      && this.voiceKey < DxScanCode.LeftMouseButton
-      && !this.sp.Input.isKeyPressed(this.voiceKey)) {
-      this.releasePtt();
+    if (this.pttDown && !this.sp.browser.isFocused() && this.voiceKeyReadsUp()) this.releasePtt();
+    if (this.pttDown && this.deferredRelease && !this.sp.Input.isKeyPressed(this.voiceKey)) this.releasePtt();
+
+    // The page cannot see mouse buttons or keys without a DOM code, so a focused menu polls them here
+    if (!domKeyCode(this.voiceKey)) {
+      const down = this.sp.Input.isKeyPressed(this.voiceKey);
+      const pressedNow = down && !this.polledKeyDown;
+      this.polledKeyDown = down;
+      if (this.sp.browser.isFocused() && myRefr && !isConsoleOpen(this.sp)) {
+        if (pressedNow && !this.pttDown && !this.isAltPressed()) this.pressPtt();
+        else if (!down && this.pttDown) this.releasePtt();
+      }
     }
 
     // Write the chosen mode to disk shortly after it changes
@@ -299,12 +319,27 @@ export class VoiceService extends ClientListener {
       this.pushPeers();
     }
 
-    if (this.pttDown && now >= this.nextAfkPingAt) this.sendAfkPing();
+    if (this.pttDown) this.sendAfkPing();
   }
 
-  // Talking counts as activity for the server's AFK autokick
+  private isAltKey(code: number): boolean {
+    return (code === DxScanCode.LeftAlt || code === DxScanCode.RightAlt) && code !== this.voiceKey;
+  }
+
+  private isAltPressed(): boolean {
+    return [DxScanCode.LeftAlt, DxScanCode.RightAlt].some(k => this.isAltKey(k) && this.sp.Input.isKeyPressed(k));
+  }
+
+  // Mouse buttons are left to the engine's own key-up
+  private voiceKeyReadsUp(): boolean {
+    return this.voiceKey < DxScanCode.LeftMouseButton && !this.sp.Input.isKeyPressed(this.voiceKey);
+  }
+
+  // Talking counts as activity for the server's AFK autokick, at most once per interval
   private sendAfkPing() {
-    this.nextAfkPingAt = Date.now() + AFK_PING_INTERVAL_MS;
+    const now = Date.now();
+    if (now < this.nextAfkPingAt) return;
+    this.nextAfkPingAt = now + AFK_PING_INTERVAL_MS;
     sendCustomPacket(this.controller, { customPacketType: "afkPing" });
   }
 

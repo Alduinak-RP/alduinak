@@ -180,6 +180,8 @@ class PatchContext
     private Dictionary<string, Route>? routes;
     // Recipes a faction rule gated, which the uncraftable list must then leave alone
     public readonly HashSet<string> Claimed = new(StringComparer.OrdinalIgnoreCase);
+    // Recipes NewRecipe wrote, which a later sweep of the load order must not re-tier without their also
+    public readonly HashSet<string> Made = new(StringComparer.OrdinalIgnoreCase);
 
     public PatchContext(SkyrimMod mod, ILinkCache cache, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, JsonObject spec, Report report,
                         ModKey? markerKey = null, Func<IMajorRecordGetter, bool>? includes = null)
@@ -445,6 +447,8 @@ static class Steps
                 if (!furn.Keywords.Any(x => x.FormKey == kw)) furn.Keywords.Add(kw.ToLink<IKeywordGetter>());
                 c.Note($"Crafting station {edid}: crafting menu with keyword {kwEdid}");
             }
+            foreach (var p in s["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+                PlaceOwn(c, p, "crafting station");
         }
     }
 
@@ -478,6 +482,7 @@ static class Steps
             throw new SpecException($"recipe {edid}: a recipe without a profession must be {PatchContext.AnyoneTier} and named {CommonRecipePrefix}*");
         // A pinned id keeps a recipe added later out of the block a hotfix run allocates in order, so the records after it keep their ids
         var cobj = c.OwnOrNew(c.Mod.ConstructibleObjects, edid, formId: r["formId"] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null);
+        c.Made.Add(edid);
         cobj.WorkbenchKeyword.SetTo(bench);
         cobj.CreatedObject.SetTo(output.FormKey);
         cobj.CreatedObjectCount = (ushort)(r["count"]?.GetValue<int>() ?? 1);
@@ -621,7 +626,7 @@ static class Steps
         {
             if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
-            if (exclude.Contains(edid)) continue;
+            if (exclude.Contains(edid) || c.Made.Contains(edid)) continue;
             // Smelter recipes are not routed: they are how ore becomes metal in the first place
             var route = c.Routes.GetValueOrDefault(edid);
             var owner = route?.Profession ?? profession;
@@ -953,29 +958,7 @@ static class Steps
         if (c.Spec["world"] is not JsonObject w) return;
         var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
         foreach (var p in w["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
-        {
-            var edid = p["edid"]!.GetValue<string>();
-            var cellKey = FormKey.Factory(p["cell"]!.GetValue<string>());
-            if (!cache.TryResolveContext<ICell, ICellGetter>(cellKey, out var cellCtx)) { c.Error($"world: cell {cellKey} not found"); continue; }
-            var name = p["base"]!.GetValue<string>();
-            // An editor id names one of the plugin's own records, a form key one of the load order's
-            var baseKey = name.Contains(':') ? FormKey.Factory(name) : c.KeyOf<IMajorRecordGetter>(name);
-            if (name.Contains(':') && !cache.TryResolve<IMajorRecordGetter>(baseKey, out _)) { c.Error($"world: base object {name} not found"); continue; }
-            var id = Convert.ToUInt32(p["formId"]!.GetValue<string>(), 16);
-            var cell = cellCtx.GetOrAddAsOverride(c.Mod);
-            var placed = c.OwnOrNew(edid, () =>
-            {
-                var key = new FormKey(c.Key, id);
-                if (c.Mod.EnumerateMajorRecords().Any(r => r.FormKey == key)) throw new SpecException($"world: '{edid}' wants the pinned id {key}, which another record already holds");
-                var r = new PlacedObject(key, SkyrimRelease.SkyrimSE) { EditorID = edid };
-                cell.Temporary.Add(r);
-                return r;
-            });
-            placed.Base.SetTo(baseKey);
-            placed.Placement = new Placement { Position = Vec3(p["pos"]), Rotation = Vec3(p["rot"]) };
-            if (p["scale"] != null) placed.Scale = p["scale"]!.GetValue<float>();
-            c.Note($"World reference {edid} {placed.FormKey}: {c.EdidOf(baseKey)} in cell {cellKey} at {placed.Placement.Position}");
-        }
+            PlaceOwn(c, p, "world");
         foreach (var mv in w["moves"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
         {
             var key = FormKey.Factory(mv["ref"]!.GetValue<string>());
@@ -986,6 +969,33 @@ static class Steps
             rec.Placement.Position = Vec3(mv["pos"]);
             c.Note($"World move {key} ({c.EdidOf(rec.Base.FormKey)}): {from} in {refs[0].ModKey} -> {rec.Placement.Position}");
         }
+    }
+
+    // A reference of the plugin's own at a pinned local id, in an override of its cell taken from the load order winner
+    static void PlaceOwn(PatchContext c, JsonObject p, string kind)
+    {
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        var edid = p["edid"]!.GetValue<string>();
+        var cellKey = FormKey.Factory(p["cell"]!.GetValue<string>());
+        if (!cache.TryResolveContext<ICell, ICellGetter>(cellKey, out var cellCtx)) { c.Error($"{kind}: cell {cellKey} not found"); return; }
+        var name = p["base"]!.GetValue<string>();
+        // An editor id names a record of the plugin or the load order, a form key one of the load order's
+        var baseKey = name.Contains(':') ? FormKey.Factory(name) : c.KeyOf<IMajorRecordGetter>(name);
+        if (name.Contains(':') && !cache.TryResolve<IMajorRecordGetter>(baseKey, out _)) { c.Error($"{kind}: base object {name} not found"); return; }
+        var id = Convert.ToUInt32(p["formId"]!.GetValue<string>(), 16);
+        var cell = cellCtx.GetOrAddAsOverride(c.Mod);
+        var placed = c.OwnOrNew(edid, () =>
+        {
+            var key = new FormKey(c.Key, id);
+            if (c.Mod.EnumerateMajorRecords().Any(r => r.FormKey == key)) throw new SpecException($"{kind}: '{edid}' wants the pinned id {key}, which another record already holds");
+            var r = new PlacedObject(key, SkyrimRelease.SkyrimSE) { EditorID = edid };
+            cell.Temporary.Add(r);
+            return r;
+        });
+        placed.Base.SetTo(baseKey);
+        placed.Placement = new Placement { Position = Vec3(p["pos"]), Rotation = Vec3(p["rot"]) };
+        if (p["scale"] != null) placed.Scale = p["scale"]!.GetValue<float>();
+        c.Note($"{PatchContext.Cap(kind)} reference {edid} {placed.FormKey}: {c.EdidOf(baseKey)} in cell {cellKey} at {placed.Placement.Position}");
     }
 
     static P3Float Vec3(JsonNode? n)
@@ -1169,7 +1179,7 @@ static class Steps
             .Select(s => (Products: Edids(c, s["products"]).Select(c.KeyOf<IItemGetter>).ToHashSet(), Also: Edids(c, s["also"]).ToList())).ToList();
         var atBenches = c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides().Where(w => benches.Contains(w.WorkbenchKeyword.FormKey)).ToList();
         // The sweep reads the load order, so a recipe an earlier step routed to the rack keeps the tier that step gave it
-        var swept = atBenches.Where(w => c.Includes(w)).Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
+        var swept = atBenches.Where(w => c.Includes(w)).Select(w => w.EditorID ?? "").Where(e => e.Length > 0 && !c.Made.Contains(e));
         // A shared product is re-tiered whether or not the plugin already overrides its recipe
         var sharing = atBenches.Where(w => shared.Any(s => s.Products.Contains(w.CreatedObject.FormKey))).Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
         // A hotfix run does not sweep the recipes the plugin already overrides, so the tier lists name theirs outright

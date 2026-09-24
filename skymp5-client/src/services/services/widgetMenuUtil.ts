@@ -32,6 +32,66 @@ export function closeFormMenu(sp: Sp, widgetId: number): void {
   sp.browser.setFocused(false);
 }
 
+// No close-menu API in SkyrimPlatform: taps the container window's cancel key on the next update
+export function closeContainerMenu(sp: Sp, controller: CombinedController): void {
+  controller.once("update", () => {
+    if (sp.Ui.isMenuOpen(Menu.Container)) sp.Input.tapKey(DxScanCode.Tab);
+  });
+}
+
+interface HeldPress {
+  key: number;
+  down: boolean;
+  claimUntil: number;
+  menus: { isOpen: () => boolean; onRelease: () => void }[];
+}
+
+// How long a menu may still claim the press that asked for it; the housing menu waits as long for its reply
+const HELD_CLAIM_MS = 5000;
+let heldPress: HeldPress | null = null;
+let heldPollOn = false;
+
+// Hold mode: the menu key just pressed is polled in game, which also sees keys and mouse buttons while a menu has focus; 0 disarms
+export function armHeldMenu(sp: Sp, controller: CombinedController, key: number): void {
+  if (!heldPollOn) {
+    heldPollOn = true;
+    controller.on("update", () => pollHeldPress(sp));
+  }
+  heldPress = key ? { key, down: true, claimUntil: Date.now() + HELD_CLAIM_MS, menus: [] } : null;
+}
+
+// Ties a menu opening from the armed press to its release; false when that key is already up, so the menu stays shut
+export function claimHeldMenu(isOpen: () => boolean, onRelease: () => void): boolean {
+  const press = heldPress;
+  if (!press || Date.now() > press.claimUntil) return true;
+  if (!press.down) {
+    heldPress = null;
+    return false;
+  }
+  press.menus.push({ isOpen, onRelease });
+  return true;
+}
+
+// A menu that starts taking typed text no longer closes when the held key is let go
+export function releaseHeldMenus(): void {
+  heldPress = null;
+}
+
+function pollHeldPress(sp: Sp): void {
+  const press = heldPress;
+  if (!press) return;
+  const expired = Date.now() > press.claimUntil;
+  if (press.down && sp.Input.isKeyPressed(press.key)) {
+    if (!press.menus.length && expired) heldPress = null;
+    return;
+  }
+  // A release before any menu opened stays until the claim window ends, so a late answer is refused
+  if (press.menus.length || expired) heldPress = null;
+  if (!press.down) return;
+  press.down = false;
+  for (const menu of press.menus) if (menu.isOpen()) menu.onRelease();
+}
+
 // A front reload or the login widget reset (authService) drops every widget without a close message
 export function onWidgetsCleared(controller: CombinedController, fn: () => void): void {
   controller.emitter.on("browserWindowLoaded", fn);

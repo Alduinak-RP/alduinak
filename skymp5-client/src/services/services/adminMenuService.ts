@@ -355,7 +355,7 @@ export class AdminMenuService extends ClientListener {
     if (this.menuOpen) refreshFormMenu(this.sp, this.browsersideWidgetSetter, { panelData, WIDGET_ID });
   }
 
-  private closeMenu(): void {
+  closeMenu(): void {
     closeFormMenu(this.sp, WIDGET_ID);
     this.menuOpen = false;
   }

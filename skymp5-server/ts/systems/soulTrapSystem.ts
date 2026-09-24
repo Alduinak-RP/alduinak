@@ -74,6 +74,7 @@ export class SoulTrapSystem implements System {
     private afterlife?: AfterlifeSystem,
     private factions?: { canExecute(actorId: number): boolean },
     private bodies?: BodySystem,
+    private captives?: { freeCaptive(ctx: SystemContext, actorId: number): void },
   ) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -145,6 +146,8 @@ export class SoulTrapSystem implements System {
     const pk = player && !!this.factions?.canExecute(casterId);
     // A character already fallen keeps its pack: the Soul Cairn refuses it and no body is left
     if (pk && !isFallen(mp, targetId)) this.bodies?.leaveBody(targetId, `soul trapped by ${hex(casterId)}`);
+    // Before the move, since a carried captive is set down at the carrier
+    if (pk) this.captives?.freeCaptive(ctx, targetId);
     const sent = pk && !!this.afterlife?.sendToSoulCairn(targetId, `soul trapped by ${hex(casterId)}`);
     this.log(`[soultrap] ${hex(casterId)} trapped the ${kind} soul of ${hex(targetId)} in gem ${hex(gemId)}${player && !sent ? ", the player stays unmarked" : ""}`);
   }

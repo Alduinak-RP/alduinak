@@ -60,6 +60,8 @@ export declare function setFreeCameraMode(enable: boolean): boolean
 
 export declare function setFov(worldFov: number, firstPersonFov?: number): number
 
+export declare function setRawDaysPassed(days: number): number
+
 export type PacketType = 'message' | 'disconnect' | 'connectionAccepted' | 'connectionFailed' | 'connectionDenied'
 
 // Available only if multiplayer is installed on user's machine

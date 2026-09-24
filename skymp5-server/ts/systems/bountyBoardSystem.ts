@@ -17,7 +17,7 @@ type Mp = any;
 // worldspace, one in Tamriel for the exterior view); both resolve to one
 // canonical reference so they always show the same notices.
 //
-// Each board keeps a strongbox, a container placed at the canonical board the
+// Each board keeps a strongbox, a container placed at the visible board the
 // first time it is needed; the posting fees pile up in it and only the ranks
 // that manage the hold's property (canManage) may open it.
 //
@@ -75,11 +75,11 @@ const INVALID_USER_ID = 65535;
 // Each city's board is a cluster of references: the visible mesh activator
 // (what players activate) plus the invisible primitive, and the walled cities
 // carry the whole pair twice (city worldspace and the Tamriel exterior twin).
-// Notes live on the first desc listed; every other ref is an alias of it.
+// Notes live on the first desc listed and the strongbox stands at the second, the visible board beside it; every other ref is an alias.
 const BOARDS: Array<{ name: string; descs: string[] }> = [
   { name: "Whiterun", descs: ["d66:Missives.esp", "12cc:Missives.esp", "21846:Missives.esp", "21847:Missives.esp"] },
-  { name: "Riften", descs: ["9478:Missives.esp", "9491:Missives.esp", "21844:Missives.esp", "2183f:Missives.esp"] },
-  { name: "Windhelm", descs: ["9492:Missives.esp", "9477:Missives.esp", "2183a:Missives.esp", "21845:Missives.esp"] },
+  { name: "Riften", descs: ["9492:Missives.esp", "9491:Missives.esp", "21844:Missives.esp", "21845:Missives.esp"] },
+  { name: "Windhelm", descs: ["9478:Missives.esp", "9477:Missives.esp", "2183a:Missives.esp", "2183f:Missives.esp"] },
   { name: "Markarth", descs: ["94a3:Missives.esp", "94a2:Missives.esp", "21840:Missives.esp", "21841:Missives.esp"] },
   { name: "Solitude", descs: ["9490:Missives.esp", "948f:Missives.esp", "21838:Missives.esp", "21839:Missives.esp"] },
   { name: "Dawnstar", descs: ["94b1:Missives.esp", "94ae:Missives.esp"] },
@@ -87,6 +87,10 @@ const BOARDS: Array<{ name: string; descs: string[] }> = [
   { name: "Morthal", descs: ["94ad:Missives.esp", "94aa:Missives.esp"] },
   { name: "Falkreath", descs: ["94a9:Missives.esp", "94a6:Missives.esp"] },
 ];
+
+// Riften and Windhelm primaries whose stored notices trade places once, marked done on the first
+const SWAPPED_PRIMARIES = ["9492:Missives.esp", "9478:Missives.esp"];
+const SWAP_DONE_PROP = "private.bountyBoardSwapped";
 
 interface BoardNote {
   id: number;
@@ -158,6 +162,7 @@ export class BountyBoardSystem implements System {
         let refrId = 0;
         try { refrId = mp.getIdFromDesc(desc) >>> 0; } catch { continue; }
         if (!primary) primary = refrId;
+        else if (!this.stashAnchors.has(primary)) this.stashAnchors.set(primary, refrId);
         this.knownBoards.set(refrId, { primary, name: board.name });
       }
     }
@@ -166,6 +171,7 @@ export class BountyBoardSystem implements System {
     // Placed forms exist only once the world DB has loaded; the strongboxes of the previous run are guarded from then on
     ctx.gm.once(WORLD_LOADED_EVENT, () => {
       this.worldLoaded = true;
+      this.swapMisfiledNotes(ctx);
       for (const primary of this.primaries()) {
         const rec = this.read(ctx, primary);
         if (rec?.stash && this.isStash(ctx, rec.stash)) this.stashes.set(rec.stash, primary);
@@ -553,7 +559,7 @@ export class BountyBoardSystem implements System {
     this.appendLog(`${describeActor(ctx.svr, actorId)} opened the ${board.name} board strongbox`);
   }
 
-  // The board's strongbox, placed at the canonical board on first use; 0 when none can be had
+  // The board's strongbox, placed on first use at the foot of the visible board; 0 when none can be had
   private stashOf(ctx: SystemContext, primary: number, rec: BoardRecord): number {
     const mp = ctx.svr as Mp;
     if (rec.stash && this.isStash(ctx, rec.stash)) {
@@ -563,7 +569,7 @@ export class BountyBoardSystem implements System {
     if (!this.worldLoaded || !this.stashDesc) return 0;
     let stash = 0;
     try {
-      stash = placeAtMe(mp, primary, this.stashDesc) >>> 0;
+      stash = placeAtMe(mp, this.stashAnchors.get(primary) || primary, this.stashDesc) >>> 0;
       mp.set(stash, "inventory", { entries: [] });
     } catch (e) {
       this.log(`[bounty] could not place the ${this.boardNameOf(primary)} board strongbox: ${e}`);
@@ -660,6 +666,28 @@ export class BountyBoardSystem implements System {
     }
   }
 
+  // Notices and ids trade places; each strongbox stays with the primary it was placed at
+  private swapMisfiledNotes(ctx: SystemContext): void {
+    const mp = ctx.svr as Mp;
+    let a = 0, b = 0;
+    try {
+      [a, b] = SWAPPED_PRIMARIES.map((desc) => mp.getIdFromDesc(desc) >>> 0);
+      if (mp.get(a, SWAP_DONE_PROP)) return;
+    } catch { return; }
+    const ra = this.read(ctx, a) || emptyRecord();
+    const rb = this.read(ctx, b) || emptyRecord();
+    const na: BoardRecord = { nextId: rb.nextId, notes: rb.notes, ...(ra.stash ? { stash: ra.stash } : {}) };
+    const nb: BoardRecord = { nextId: ra.nextId, notes: ra.notes, ...(rb.stash ? { stash: rb.stash } : {}) };
+    if (!this.write(ctx, a, na)) return;
+    if (!this.write(ctx, b, nb)) {
+      this.write(ctx, a, ra);
+      return;
+    }
+    try { mp.set(a, SWAP_DONE_PROP, true); }
+    catch (e) { this.log(`[bounty] could not mark the Riften and Windhelm swap done: ${e}`); }
+    this.log(`[bounty] moved ${rb.notes.length} notices to Riften and ${ra.notes.length} to Windhelm`);
+  }
+
   private write(ctx: SystemContext, primary: number, rec: BoardRecord): boolean {
     try {
       (ctx.svr as Mp).set(primary, BOARD_PROP, rec);
@@ -708,6 +736,8 @@ export class BountyBoardSystem implements System {
   private worldLoaded = false;
   // Strongbox reference to the canonical board it belongs to
   private stashes = new Map<number, number>();
+  // Canonical board to the visible board its strongbox is placed at
+  private stashAnchors = new Map<number, number>();
   private boardBaseIds = new Set<number>();
   private knownBoards = new Map<number, { primary: number; name: string }>();
   private baseIdCache = new Map<number, number>();

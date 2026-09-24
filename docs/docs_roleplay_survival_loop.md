@@ -83,11 +83,17 @@ behaviour-graph events — no ESP required.**
   (2), `axe` (3), `mace` (4), `greatsword` (5), `battleaxe` (6, warhammers
   too), `dual` when both hands hold a 1-4, `unarmed` with empty hands. The
   pools (`executionFinishers` in `docs_server_configuration_reference.md`
-  lays a table over them, one type at a time): sword `pa_1HMKillMoveShortA-D`
-  (IDLE F469A-F469D) and `ShortJ` (108A45); dagger, axe and mace the same
-  pool for now, since the engine runs them in the same 1HM state, until the
-  operator fills their own `pa_` ids; dual `pa_1HMKillMoveDualWieldA`
-  (F469F); greatsword `pa_2HMKillMoveStabA` (F4687); battleaxe none, so it
+  lays a table over them, one type at a time) split the loose, condition
+  free `pa_` records the way the vanilla killmove tree splits their clips by
+  `GetEquippedItemType`: sword and dagger the `KillMoveShortBlade` clips,
+  `pa_1HMKillMoveShortB` (IDLE F469B), `ShortD` (F469D) and `ShortJ`
+  (108A45); war axe and mace the `KillMoveShortAxeMace` clips,
+  `pa_1HMKillMoveShortA` (F469A) and `ShortC` (F469C); dual
+  `pa_1HMKillMoveDualWieldA` (F469F); greatsword `pa_2HMKillMoveStabA`
+  (F4687). No vanilla standing pair is dagger-only except the decapitating
+  `pa_1HMKillMoveDecapKnife` (F465E), which a finish off never plays. The
+  battleaxe has no loose non-decapitating pair (its tree clips `KillMove2HWB`,
+  `ChopKick` and `HeadButt` sit behind the extended probe below), so it
   borrows the greatsword stab and logs `[execution] no battleaxe finisher,
   using the greatsword stab`; unarmed none, refused like a bow. The server
   logs `[execution] <killer> finishes off <victim> with <type> idle <id>`.
@@ -106,10 +112,8 @@ behaviour-graph events — no ESP required.**
   victim stays kneeling and every weapon plays the one-handed
   `pa_1HMKillMoveBleedOutKill` (F469E, `pa_KillingBlow`, no decapitation,
   no variety; a two-hander stabs one-handed, no non-decapitating two-handed
-  bleedout record exists) in the packet's own update on the victim's own
-  client, the r13 shape, and 1.2 s later on every other client, which sends
-  the kneel to its copy first (the execution's `kneel re-sent to copy`
-  rule; `unarmed` is refused here too). The
+  bleedout record exists) 1.2 s after the packet on every client, the
+  execution's kneel rule below (`unarmed` is refused here too). The
   victim's timer waits while the pair plays: each
   participant's client polls both actors (`bIsSynced`, `IsInKillMove`) and
   reports the end (`pairedIdleDone`, first report wins), a pair the graph
@@ -157,17 +161,19 @@ behaviour-graph events — no ESP required.**
   own animation file: the engine only enters them by seating both actors in
   the block furniture, and sent on the ground they play nothing, which is
   what r13 shipped. **Execute** needs a drawn melee weapon ("Draw your
-  weapon first.") and plays the bleedout beheading pair at once on the
-  kneeling prisoner through the same `pairedIdle` packet as a finish off,
-  from wherever the executioner stands within reach of the block: nothing
-  moves the executioner (the pair aligns the two actors itself) and nothing
-  waits, the r13 shape. A prisoner's client with no kneel recorded when the
-  packet arrives sends it again and plays 1.2 s later (`kneel missing at
-  pair start`), and every other client sends `bleedOutStart` to its copy of
-  the prisoner and waits the same 1.2 s (`kneel re-sent to copy ... at pair
-  start`), since the bleedout pairs need the victim's graph in the bleedout
-  state on the client that plays them and a copy rebuilt by the move onto
-  the block may stand. The clips:
+  weapon first.") and plays the bleedout beheading pair on the kneeling
+  prisoner through the same `pairedIdle` packet as a finish off, from
+  wherever the executioner stands within reach of the block: nothing moves
+  the executioner (the pair aligns the two actors itself). Every client plays a kneeling pair 1.2 s after the
+  packet: the prisoner's client sends the kneel again first when it has
+  none recorded (`kneel missing at pair start`), and every other client
+  sends `bleedOutStart` to its copy of the prisoner (`kneel re-sent to copy
+  ... at pair start`), since the bleedout pairs need the victim's graph in
+  the bleedout state on the client that plays them and a copy rebuilt by
+  the move onto the block may stand. The prisoner's client waits even with
+  the kneel in place, so both participants' clips end together and the
+  first `pairedIdleDone`, which kills, never lands while the executioner
+  and the viewers are still 1.2 s from the end of theirs. The clips:
   `pa_KillMove1HMDecapBleedOut` (IDLE F465D) for one-handed and dual
   weapons, `pa_KillMove2HMDecapBleedOut` (F467F) for two-handed ones, the
   clips the finish off played in r13 and r14 (a battleaxe or warhammer plays
@@ -202,23 +208,45 @@ behaviour-graph events — no ESP required.**
 - **Assassinate** (`executionSystem.ts`): the same right kills a standing
   player from behind. Assassinate shows in the X menu on a living player
   character in reach (`captureInteractMaxDistance`) who is neither downed, bound,
-  carried nor fallen, when the killer is sneaking (Papyrus
+  carried, fallen, mounted (`ff_mount`) nor seated (`FurnitureSeatSystem`:
+  a `seatClaim` counts only for a furniture reference in the claimant's cell
+  within 256 units, and only while the claimant stays connected, in that
+  cell and within 48 units of where they sat, otherwise it is dropped),
+  since no paired killmove plays on a rider or in furniture, when the killer
+  is on foot ("Dismount first.") and sneaking (Papyrus
   `GetAnimationVariableBool IsSneaking`, the flag the movement sync reports)
   and stands within 60 degrees behind the victim's back (`actorUtil.isBehind`,
   from the victim's yaw and both positions); the refusals name the missing
   condition ("You must be sneaking.", "You must be behind them.", "They are
-  out of reach.", "They cannot be assassinated now."). Like a finish off it
+  out of reach.", "They cannot be assassinated now."). A killer takes one
+  life at a time: while an assassination or a killmove of theirs is still
+  under way a second one is refused ("You cannot do that now."). Like a finish off it
   needs a drawn melee weapon ("You need a melee weapon in hand to assassinate
   them.", "Draw your weapon first."), and the pair comes from a second table
-  by weapon type, `executionSneakFinishers`, which defaults to the finish off
-  pools until the operator fills the vanilla sneak pairs (`pa_` IDLEs under
-  the KillMoveSneak tree, read in xEdit). The pair is sent with `standUp` and
+  by weapon type, `executionSneakFinishers`. Its defaults are the loose,
+  condition-free clips of the vanilla sneak and back killmoves: sword,
+  dagger, war axe, mace and dual wield play `pa_1HMSneakKillBackA` (IDLE
+  F4679, the throat slit, `pa_KillMoveSneakBackA`) or `pa_1HMKillMoveBackStab`
+  (F465A); vanilla gives them to a blade only, but they run in the same
+  one-handed state for any one-handed weapon. Greatsword and battleaxe keep
+  their standing pools, since their sneak kills exist only as Update.esm
+  tree records (`KillMove2HMStabFromBehind00` 0100081F, `KillMove2HWHackFromBehind00`
+  0100081C, under `KillMoveBackSideRoot00`, whose target and killmove-state
+  conditions are not shown to hold between two players), and unarmed has
+  none (`KillMoveSneakH2HNeckBreak00` 01000814, which also rolls 50%, and
+  `KillMoveSneakH2HSleeper00` 01000817 sit under `KillingMoveSneakBackA00`,
+  conditioned the same way): a test
+  that shows one plays can add it through the setting. The pair is sent with `standUp` and
   `kneel` both false, so every client plays it at once with the victim on
   their feet; the victim dies when a participant's client reports the end,
   or at `finishOffMaxMs`, through the same PK as a staff PK (`pk`, "You
-  assassinated ..."), so the body and Sovngarde follow. A victim dead or
-  fallen by other means meanwhile is left as they are (`[execution] the
-  assassination of ... came to nothing: ...`). Logged as `[execution]
+  assassinated ..."), so the body and Sovngarde follow. Nothing holds the
+  victim while the pair plays, so at the strike the server checks again
+  that the killer is alive, able and on foot and the victim alive, not
+  fallen, downed, bound, mounted or seated, and still in reach; otherwise
+  the attempt comes to nothing (`[execution] the assassination of ... came
+  to nothing: ...`) and both are told ("Your assassination of ... failed.",
+  "... failed to assassinate you." to a living victim). Logged as `[execution]
   <killer> assassinates <victim> with <type> idle <id>`.
 - **The body** (`bodySystem.ts`): every PK (a finish off, an execution, a
   soul trap by an execute holder) leaves a body where the victim fell: a
@@ -237,18 +265,34 @@ behaviour-graph events — no ESP required.**
   realm), so two bodies never lie side by side. The clone has no profile id,
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
   never applies `searchPlayerBodyTakeLimit` to it: a body gives up
-  everything. It is registered in `bodies.json` next to `companions.json`
-  and re-adopted after a restart while its actor still exists; every 2 s a
-  body whose loose stacks are gone, or one older than `bodyMaxSeconds`
-  (3600, 0 = never), is removed (`[body] <id> of <victim> removed: emptied
-  | lay too long | gone`). The body carries the neighbor-visible `ff_body`
+  everything, except to the victim's own account. The body entry keeps the
+  victim's profile id (saved in `bodies.json`), and `SearchSystem.bodyRefusal`
+  refuses a search of it by any character of that profile ("You cannot loot
+  the body of your own fallen character."), so an alt cannot walk over and
+  undo the loss; a take needs the search's occupancy, so no take gets past
+  it. `createActor` only adds the form and never streams it, so
+  once the clone is dressed, filled and dead it is put on the grid with
+  `mp.set(body, "locationalData", ...)` (`MpActor::Teleport`, whose first
+  `SetPos` runs `ForceSubscriptionsUpdate`) and every client nearby creates
+  it with its full state. The victim is stripped only after that: if any
+  step before fails (`[body] leaving a body for <victim> failed <step>,
+  pack kept`) the clone is destroyed and the victim keeps their pack. It
+  is registered in `bodies.json` next to `companions.json`
+  and re-adopted, and put on the grid again, after a restart while its
+  actor still exists; every 2 s a
+  body whose loose stacks are gone, one older than `bodyMaxSeconds`
+  (default 0 = never), or one that has been taken from or put into but then
+  left alone for `bodyIdleSeconds` (default 7200; the last touch is kept in
+  `bodies.json` as `touchedAt`, and a body nobody has touched is not
+  affected) is removed (`[body] <id> of <victim> removed: emptied
+  | lay too long | left alone | gone`). The body carries the neighbor-visible `ff_body`
   property, which the gamemode must register in
   `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
   the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
-  Build gamemode only before the server build; without it the server logs
-  `[body] ff_body on <id> failed` and clients that arrive later never create
-  the body, since `formView.ts` otherwise never creates a dead copy that
-  carries an appearance. Logged as `[body] <victim> <how> by <killer>: body
+  Build gamemode only before the server build; without it no client could
+  ever create the body (`formView.ts` never creates a dead copy that
+  carries an appearance otherwise), so no body is left and the victim keeps
+  their pack (`failed setting ff_body`). Logged as `[body] <victim> <how> by <killer>: body
   <id> holds N stack(s)`.
 - **Coming back whole** (`deathService.ts`): a finisher never decapitates,
   an execution does, and a decapitation persists as the actor's
@@ -258,15 +302,20 @@ behaviour-graph events — no ESP required.**
   the appearance apply already relies on), plus `IdleForceDefaultState` if
   the engine's killmove flag is still set; on a whole body both are no-ops.
   Each respawn writes one `restoreBody inKillMove=<bool> limbReset=ok/err`
-  line to `skyrim-platform.log`. If a test still shows a neck stump, the
+  line to `skyrim-platform.log`. The get-up waits at most 2 s for the
+  ragdoll removal, whose latent call may never return, and logs
+  `resurrect <id>: ragdoll wait failed or timed out` when it goes ahead
+  without it. If a test still shows a neck stump, the
   next step is a re-apply of the stored appearance from `RemoteServer` in
   the same callback. The ragdoll and the get-up also leave the hands'
-  behaviour graph stale while the weapon stays worn, so 3 s after every
-  player respawn the server (`Spawn.installRespawnHook`) reads the worn
-  entries of the actor's equipment and unequips every weapon among them
-  through Papyrus `Actor.UnequipItem` on the owner's client, logging
+  behaviour graph stale while the weapon stays worn, so at every player
+  respawn the server (`Spawn.installRespawnHook`) notes the weapons worn in
+  either hand and, 3 s later, unequips those still worn through Papyrus
+  `Actor.UnequipItem` on the owner's client, logging
   `[respawn] <actor> sheathes <n> weapon(s)`; the player draws it again by
-  hand.
+  hand. A weapon equipped in those 3 s stays, and nothing is sent when the
+  player has died again, respawned again (the newer respawn's timer
+  replaces it) or disconnected.
 - **Revive** (`AfterlifeSystem.revive`): staff with the `players` cap return
   a fallen character (Sovngarde, the Soul Cairn or perma-dead) to the living.
   The admin panel's Players sub-tab lists the selected profile's fallen
@@ -289,10 +338,17 @@ behaviour-graph events — no ESP required.**
 - **Staff PK** (`ExecutionSystem.pk`): staff with the `kick` cap (the
   moderation tiers, `players` too) get a PK button next to Kick in the
   admin panel's Players sub-tab (`adminAction pk`, the selected online
-  character). It is the finish off PK without a killmove: the character dies
+  character). The first click only arms it: the button turns into Confirm
+  PK for that selection, and a second click sends it (selecting another
+  player disarms it). It is the finish off PK without a killmove: the character dies
   at once, leaves the body above and goes to Sovngarde, with the same
   `pk.log`, `pvp.log` and `execute` alert lines (`(staff)` when the admin
-  holds no execute right). Refused on yourself, on a character already dead
+  holds no execute right). Like every PK (`slay`) it frees a cuffed or
+  carried captive (`CaptureSystem.freeCaptive`, as the block execution
+  does) after the body is left and before the move to Sovngarde, so nobody
+  wakes in the Hall of Valor still bound; the soul trap PK
+  (`SoulTrapSystem.capture`) frees them the same way before the Soul Cairn
+  move. Refused on yourself, on a character already dead
   ("They are already dead", wait for the respawn) and on a fallen one
   ("They are already fallen"); logged in `admin.log` as `profile N PK'd
   <name>`.
@@ -391,15 +447,22 @@ prisoner can also be carried).
   carrier's way, with the line `[carry] <carried> set down at <carrier>`. A
   body held through a wall or a jail bar door therefore ends up back beside the
   carrier, never inside the cell. NPC bodies are set down by PetSystem instead.
+- **Relog**: a carried player who logs back in is picked up again only while
+  their carrier is still online, not downed, in the same cell and within
+  `captureInteractMaxDistance` (default 256) of the parked body; otherwise the
+  carry ends quietly and a bound captive stays bound.
 - **Doors**: a carrier's door activation is recorded (`onActivate`, after the
   housing lock had its say, so a locked door never counts, and before the door
   override runs, so an overridden door such as the embassy entry counts). The body only
   follows the carrier into another cell when the carrier used a door within the
   last 5 s; a carrier who reached another cell any other way (an admin
-  teleport, fast travel, a coc) loses the body where it was: the carry ends
+  teleport, fast travel, a coc), or who jumped more than 2048 units between two
+  350 ms follow ticks within the same worldspace (an admin tp across Tamriel, a
+  border push-back), loses the body where it was: the carry ends
   without moving it, the carrier reads "You lost your grip.", the carried "Your
   carrier left without you.", and the log says
-  `[carry] <carrier> changed cell without a door, dropped <carried>`.
+  `[carry] <carrier> changed cell without a door, dropped <carried>` (or
+  `teleported without a door` for a jump within the worldspace).
 
 ---
 

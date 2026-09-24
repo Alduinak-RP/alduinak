@@ -6,7 +6,8 @@ import { FactionSystem } from "./factionSystem";
 import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
 import { toFormId } from "./formIdUtil";
-import { baseIdOf, hex, isAlive, isBehind, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
+import { FurnitureSeatSystem } from "./furnitureSeatSystem";
+import { baseIdOf, hex, isAlive, isBehind, isMounted, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -21,21 +22,33 @@ const KILLMOVE_TWO_HANDED = 0xf467f;
 type WeaponType = "sword" | "dagger" | "axe" | "mace" | "greatsword" | "battleaxe" | "unarmed" | "dual";
 const WEAPON_TYPES: Record<number, WeaponType> = { 1: "sword", 2: "dagger", 3: "axe", 4: "mace", 5: "greatsword", 6: "battleaxe" };
 type FinisherTable = Record<WeaponType, number[]>;
-// Loose Skyrim.esm paired killmoves without conditions, none decapitating: pa_1HMKillMoveShortA-D and ShortJ, pa_1HMKillMoveDualWieldA, pa_2HMKillMoveStabA
-// A dagger, axe or mace plays the sword pool (the same 1HM state) until the operator fills its own; a battleaxe borrows the greatsword stab. Overridable via "executionFinishers"
-const ONE_HANDED_FINISHERS = [0xf469a, 0xf469b, 0xf469c, 0xf469d, 0x108a45];
+// Loose Skyrim.esm paired killmoves without conditions, none decapitating, split by weapon as the vanilla killmove tree splits their clips
+// KillMoveShortBlade (sword or dagger): pa_1HMKillMoveShortB, ShortD and ShortJ
+const BLADE_FINISHERS = [0xf469b, 0xf469d, 0x108a45];
+// KillMoveShortAxeMace (war axe or mace): pa_1HMKillMoveShortA and ShortC
+const AXE_MACE_FINISHERS = [0xf469a, 0xf469c];
+// pa_1HMKillMoveDualWieldA and pa_2HMKillMoveStabA; no loose non-decapitating two-handed axe pair exists, so a battleaxe borrows the stab. Overridable via "executionFinishers"
 const FINISHERS: FinisherTable = {
-  sword: ONE_HANDED_FINISHERS,
-  dagger: ONE_HANDED_FINISHERS,
-  axe: ONE_HANDED_FINISHERS,
-  mace: ONE_HANDED_FINISHERS,
+  sword: BLADE_FINISHERS,
+  dagger: BLADE_FINISHERS,
+  axe: AXE_MACE_FINISHERS,
+  mace: AXE_MACE_FINISHERS,
   dual: [0xf469f],
   greatsword: [0xf4687],
   battleaxe: [],
   unarmed: [],
 };
-// The pairs an assassination from behind plays: the standing finishers stand in until the operator fills the vanilla sneak pairs. Overridable via "executionSneakFinishers"
-const SNEAK_FINISHERS: FinisherTable = FINISHERS;
+// pa_1HMSneakKillBackA and pa_1HMKillMoveBackStab, the loose clips of the vanilla sneak and back killmoves, for every one-handed weapon
+const SNEAK_BACK_PAIRS = [0xf4679, 0xf465a];
+// Two-handed sneak kills exist only as conditioned Update.esm tree records, so those weapons keep the standing pool. Overridable via "executionSneakFinishers"
+const SNEAK_FINISHERS: FinisherTable = {
+  ...FINISHERS,
+  sword: SNEAK_BACK_PAIRS,
+  dagger: SNEAK_BACK_PAIRS,
+  axe: SNEAK_BACK_PAIRS,
+  mace: SNEAK_BACK_PAIRS,
+  dual: SNEAK_BACK_PAIRS,
+};
 // pa_1HMKillMoveBleedOutKill (ENAM pa_KillingBlow, loose, non-decapitating), stabbed down into the kneeling victim; the finisher for every weapon when "finishOffStandUp" is false
 const KILLMOVE_KNEELING = 0xf469e;
 // Killmove tree records whose own or parent conditions the engine may refuse; added by "finishOffExtendedPool"
@@ -127,6 +140,7 @@ export class ExecutionSystem implements System {
     private factions: FactionSystem,
     private afterlife: AfterlifeSystem,
     private bodies: BodySystem,
+    private seats: FurnitureSeatSystem,
   ) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -207,12 +221,23 @@ export class ExecutionSystem implements System {
     const mp = this.mp;
     if (killerId === victimId || !isPlayerActor(mp, victimId)) return "They cannot be assassinated.";
     if (!this.factions.canExecute(killerId)) return "You do not have the right to execute.";
-    if (!this.isAble(killerId)) return "You cannot do that now.";
-    if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId)) return "They cannot be assassinated now.";
+    if (this.isKilling(killerId)) return "You cannot do that now.";
     if (this.assassinations.has(victimId)) return "They are already being assassinated.";
-    if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return "They are out of reach.";
+    const refusal = this.strikeRefusal(killerId, victimId);
+    if (refusal) return refusal;
     if (!isSneaking(mp, killerId)) return "You must be sneaking.";
     if (!isBehind(mp, killerId, victimId)) return "You must be behind them.";
+    return "";
+  }
+
+  // What must still hold when the kill lands, checked on the request and again at the strike
+  private strikeRefusal(killerId: number, victimId: number): string {
+    const mp = this.mp;
+    if (!this.isAble(killerId)) return "You cannot do that now.";
+    if (isMounted(mp, killerId)) return "Dismount first.";
+    if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId) ||
+      isMounted(mp, victimId) || this.seats.seatOf(userOf(mp, victimId))) return "They cannot be assassinated now.";
+    if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return "They are out of reach.";
     return "";
   }
 
@@ -236,14 +261,18 @@ export class ExecutionSystem implements System {
     this.log(`[execution] ${hex(killerId)} assassinates ${hex(victimId)} with ${held} idle ${hex(idle)}`);
   }
 
-  // A victim dead or fallen by other means meanwhile is left as they are
+  // A killer who fell, was bound or mounted, or a victim who got away, went down or died meanwhile ends the attempt with no kill
   private strike(victimId: number, killerId: number): void {
+    const mp = this.mp;
     const attempt = this.assassinations.get(victimId);
     if (!attempt || attempt.killerId !== killerId) return;
     clearTimeout(attempt.timer);
     this.assassinations.delete(victimId);
-    const refusal = this.pk(victimId, killerId, "assassinated");
-    if (refusal) this.log(`[execution] the assassination of ${hex(victimId)} by ${hex(killerId)} came to nothing: ${refusal}`);
+    const refusal = this.strikeRefusal(killerId, victimId) || this.pk(victimId, killerId, "assassinated");
+    if (!refusal) return;
+    this.log(`[execution] the assassination of ${hex(victimId)} by ${hex(killerId)} came to nothing: ${refusal}`);
+    notifyActor(mp, killerId, `Your assassination of ${nameShownTo(mp, killerId, victimId)} failed.`);
+    if (isAlive(mp, victimId)) notifyActor(mp, victimId, `${nameShownTo(mp, victimId, killerId)} failed to assassinate you.`);
   }
 
   // Why the killer may not finish the victim off, "" when they may; the weapon is checked on the request
@@ -461,6 +490,8 @@ export class ExecutionSystem implements System {
     (globalThis as any).__alduinakMarkDeathAlerted?.(victimId);
     this.bleedout.die(victimId, how, killerId);
     this.bodies.leaveBody(victimId, `${how} by ${hex(killerId)}`);
+    // Before the move, since a carried captive is set down at the carrier
+    if (this.ctx) this.capture.freeCaptive(this.ctx, victimId);
     this.afterlife.sendToSovngarde(victimId, `${how} by ${hex(killerId)}`);
     appendLog(this.logDir, "pk.log", line);
     (globalThis as any).__alduinakDiscordAlert?.("execute", line);
@@ -546,6 +577,13 @@ export class ExecutionSystem implements System {
   private isAble(actorId: number): boolean {
     const mp = this.mp;
     return isAlive(mp, actorId) && !this.bleedout.isDowned(actorId) && !isRestrained(mp, actorId) && !this.capture.carriedOf(actorId);
+  }
+
+  // An assassination or a killmove of theirs still under way
+  private isKilling(killerId: number): boolean {
+    const now = Date.now();
+    return Array.from(this.assassinations.values()).some((a) => a.killerId === killerId) ||
+      Array.from(this.pairs.values()).some((pair) => pair.attackerId === killerId && !pair.ended && now <= pair.until);
   }
 
   private actorOf(userId: number): number {

@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { SkyrimFrame } from '../../../components/SkyrimFrame/SkyrimFrame';
 import { SkyrimSlider } from '../../../components/SkyrimSlider/SkyrimSlider';
 import CheckBox from '../../checkbox/index';
-import { DOM_TO_DIK, MOUSE_TO_DIK, FIRST_MOUSE_DIK, dikLabel, canHold } from '../../../utils/dxScanCodes';
+import { DOM_TO_DIK, MOUSE_TO_DIK, dikLabel, canHold } from '../../../utils/dxScanCodes';
 import './styles.scss';
 
 const SETTINGS_TABS = [
@@ -20,6 +20,18 @@ const KEY_ROWS: [string, string][] = [
   ['voicePushToTalkKeyCode', 'Voice push-to-talk'],
   ['chatFocusKeyCode', 'Chat'],
   ['bountyBoardMenuKeyCode', 'Bounty board'],
+];
+
+// The launcher's CLIENT_FIXED_KEYS (skymp5-launcher renderer.js) without the bounty board, which is a row here
+const CLIENT_FIXED_KEYS: Record<number, string> = {
+  1: 'menu close', 15: 'game menu', 28: 'Chat',
+  17: 'emote cancel', 30: 'emote cancel', 31: 'emote cancel', 32: 'emote cancel', 57: 'emote cancel', 19: 'emote cancel',
+};
+
+// The controlmap's keys the client adds to keysLauncher, labelled like the launcher's Game Hotkeys
+const GAME_KEYS: [string, string][] = [
+  ['gameActivateKeyCode', 'Activate'], ['gameJumpKeyCode', 'Jump'], ['gameSprintKeyCode', 'Sprint'],
+  ['gameSneakKeyCode', 'Sneak'], ['gameShoutKeyCode', 'Shout / Power'], ['gameTogglePovKeyCode', 'Toggle POV'],
 ];
 
 export type KeyOverrides = Record<string, number>;
@@ -47,7 +59,7 @@ const Settings = (props: {
   keys: KeyOverrides,
   setKeys: (value: KeyOverrides) => void,
   keysLauncher: KeyOverrides,
-  // Hold the key to keep the menu open instead of toggling it; keyboard keys only
+  // Hold the key to keep the menu open instead of toggling it
   emoteWheelHold: boolean,
   setEmoteWheelHold: (value: boolean) => void,
   interactMenuHold: boolean,
@@ -62,12 +74,11 @@ const Settings = (props: {
   // Auto-size the frame to its content so everything fits without a scrollbar.
   useLayoutEffect(() => {
     if (contentRef.current) setFrameHeight(Math.ceil(contentRef.current.scrollHeight) + 64);
-  }, [tab]);
+  }, [tab, props.keys]);
 
   const keyOf = (name: string, keys = props.keys) => keys[name] || props.keysLauncher[name] || 0;
-  const isMouse = (name: string, keys = props.keys) => keyOf(name, keys) >= FIRST_MOUSE_DIK;
   const noHold = (name: string, keys = props.keys) => !canHold(keyOf(name, keys));
-  // A menu bound to a mouse button or a key without a browser code cannot be held open, so its hold option is dropped with the rebind
+  // An unbound menu key cannot be held, so its hold option is dropped with the rebind
   const applyKeys = (next: KeyOverrides) => {
     props.setKeys(next);
     if (noHold('emoteWheelKeyCode', next)) props.setEmoteWheelHold(false);
@@ -108,6 +119,32 @@ const Settings = (props: {
       window.removeEventListener('mouseup', onMouse, { capture: true });
     };
   }, [capturing, props.keys]);
+
+  // The client polls Esc and the free-cursor key itself and would close the panel mid-capture
+  useEffect(() => {
+    if (!capturing) return;
+    const send = (on: string) => (window as any).skyrimPlatform?.sendMessage?.('cef::browser:keyCapture', on);
+    send('1');
+    return () => send('0');
+  }, [capturing]);
+
+  // Same warnings as the launcher's showHotkeyConflict; shared keys still save
+  const interact = keyOf('altInteractKeyCode');
+  const interactClash = !!interact && interact === props.keysLauncher.gameActivateKeyCode;
+  const uses = new Map<number, Set<string>>();
+  for (const [name, label] of KEY_ROWS) {
+    const code = keyOf(name);
+    if (!code) continue;
+    if (!uses.has(code)) {
+      const game = GAME_KEYS.filter(([gameName]) => props.keysLauncher[gameName] === code).map(([, gameLabel]) => gameLabel);
+      uses.set(code, new Set([...(CLIENT_FIXED_KEYS[code] ? [CLIENT_FIXED_KEYS[code]] : []), ...game]));
+    }
+    uses.get(code)!.add(label);
+  }
+  // The Activate warning already explains Interact / Menus on that key
+  const shared = [...uses].filter(([code, names]) => names.size > 1 && !(interactClash && code === interact && names.size === 2))
+    .map(([code, names]) => `${dikLabel(code)} (${[...names].join(', ')})`);
+  const sharedWarning = shared.length ? `Each of these keys does more than one thing on the same press: ${shared.join('; ')}.` : '';
 
   return (
     <div className='chat-settings' style={{ height: `${frameHeight}px` }}>
@@ -170,7 +207,7 @@ const Settings = (props: {
             </div>
           ))}
           <CheckBox key={`wheelHold-${keyOf('emoteWheelKeyCode')}`} text={'hold the emote wheel key' + (noHold('emoteWheelKeyCode') ? ' (not for this key)' : '')} initialValue={props.emoteWheelHold} setChecked={props.setEmoteWheelHold} disabled={noHold('emoteWheelKeyCode')} />
-          <CheckBox key={`interactHold-${keyOf('altInteractKeyCode')}`} text={'hold the interact key for the player menu' + (noHold('altInteractKeyCode') ? ' (not for this key)' : '')} initialValue={props.interactMenuHold} setChecked={props.setInteractMenuHold} disabled={noHold('altInteractKeyCode')} />
+          <CheckBox key={`interactHold-${keyOf('altInteractKeyCode')}`} text={'hold the interact key for its menus' + (noHold('altInteractKeyCode') ? ' (not for this key)' : '')} initialValue={props.interactMenuHold} setChecked={props.setInteractMenuHold} disabled={noHold('altInteractKeyCode')} />
           <div className='chat-key-row'>
             <span className='chat-key-label'>Esc cancels, Backspace resets a row</span>
             <button
@@ -182,6 +219,8 @@ const Settings = (props: {
               {'Use launcher defaults'}
             </button>
           </div>
+          {interactClash && <div className='chat-key-warning'>{'Interact / Menus shares a key with Activate. Activate wins, so the housing menu and Personal Menu will not open until the keys differ.'}</div>}
+          {sharedWarning && <div className='chat-key-warning'>{sharedWarning}</div>}
         </>}
       </div>
       <SkyrimFrame width={512} height={frameHeight} header={false} name={'Settings'}/>

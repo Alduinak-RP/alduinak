@@ -10,6 +10,7 @@ type Mp = any;
 
 // Staff alerts to every discordAuth.guilds[].eventLogChannelId, batched per FLUSH_MS; discord.js REST queues around rate limits
 // Only the kinds in discordAlertKinds (default DEFAULT_ALERT_KINDS) are posted, every other kind is dropped in discordAlert
+// ADMIN_TAB_KINDS also reach online staff's in-game Admin tab, whatever discordAlertKinds lists
 
 export type AlertKind = "death" | "execute" | "admin" | "ticket" | "keyword" | "login";
 export interface AlertOptions { here?: boolean; discordIds?: string[] }
@@ -17,6 +18,7 @@ export interface AlertOptions { here?: boolean; discordIds?: string[] }
 const LABELS: Record<AlertKind, string> = { death: "Death", execute: "Execution", admin: "Admin", ticket: "Staff call", keyword: "Keyword", login: "Login" };
 const DEFAULT_ALERT_KINDS: AlertKind[] = ["death", "execute", "ticket"];
 let allowedKinds = new Set<string>(DEFAULT_ALERT_KINDS);
+const ADMIN_TAB_KINDS = new Set<string>(["death", "execute"]);
 const FLUSH_MS = 2000;
 const MAX_MESSAGE = 2000;
 const MAX_LINE = 1800;
@@ -94,7 +96,17 @@ function postEventLog(line: string, here = false): void {
   flushTimer ??= setTimeout(() => void flush(), FLUSH_MS);
 }
 
+// Through the gamemode's __alduinakStaffLine (35_admin_chat.js), which colors and sanitizes the line
+function adminTabLine(label: string, text: string): void {
+  try {
+    (globalThis as any).__alduinakStaffLine?.(label, text);
+  } catch (e) {
+    console.error(`[discordAlerts] Admin tab line failed: ${e}`);
+  }
+}
+
 export function discordAlert(kind: AlertKind, text: string, opts: AlertOptions = {}): void {
+  if (ADMIN_TAB_KINDS.has(kind)) adminTabLine(LABELS[kind], text);
   if (!allowedKinds.has(kind)) return;
   const mentions = (opts.discordIds || []).filter((id) => /^\d{5,25}$/.test(String(id))).map((id) => ` <@${id}>`).join("");
   postEventLog(`**[${LABELS[kind] || clean(String(kind))}]** ${clean(text)}${mentions}`, !!opts.here);

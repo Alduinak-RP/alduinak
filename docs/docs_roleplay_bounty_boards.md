@@ -26,8 +26,8 @@ notices.
 | Board | Canonical ref | Alias ref |
 |---|---|---|
 | Whiterun | `d66:Missives.esp` | `21847:Missives.esp` |
-| Riften | `9478:Missives.esp` | `2183f:Missives.esp` |
-| Windhelm | `9492:Missives.esp` | `21845:Missives.esp` |
+| Riften | `9492:Missives.esp` | `21845:Missives.esp` |
+| Windhelm | `9478:Missives.esp` | `2183f:Missives.esp` |
 | Markarth | `94a3:Missives.esp` | `21841:Missives.esp` |
 | Solitude | `9490:Missives.esp` | `21839:Missives.esp` |
 | Dawnstar | `94b1:Missives.esp` | |
@@ -86,10 +86,14 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
 
 ## Strongbox
 
-Every board has a strongbox: a real container (`CONT`) the server places at
-the canonical board with `PlaceAtMe` the first time a fee is paid there, so
-it sits at the board's foot in the city worldspace (the server cannot move a
-placed non-actor, so the base should be small or flat). The posting fees pile
+Every board has a strongbox: a real container (`CONT`) the server places with
+`PlaceAtMe` the first time a fee is paid there. Its anchor is the visible
+board (`12cb`, the second reference of the board's cluster in `BOARDS`), so
+it sits at that board's foot in the city worldspace; the canonical ref is the
+invisible primitive, which floats about 105-155 units above the visible board
+and to one side of it, where a strongbox would hang in the air and catch the
+crosshair meant for the board (the server cannot move a placed non-actor, so
+the base should be small or flat). The posting fees pile
 up in it. Its base is `bountyBoardStashBase` (default `c674b:Skyrim.esm`, the
 vanilla ash pile, a CONT with no base items); a base that is not a CONT is
 logged at startup and the fee is then simply destroyed, as before. The base
@@ -110,7 +114,8 @@ property-menu branch, and the server, once the player is within
 `bountyBoardMaxDistance` of that board and may manage it, activates the
 strongbox for the player through Papyrus `ObjectReference.Activate`, the
 engine's own container path (it records the occupant, so takes and puts pass
-the occupant check) and the client opens the vanilla ContainerMenu. The
+the occupant check) and the client opens the vanilla ContainerMenu (with the
+chat settings' interact hold on, releasing X closes it by tapping Tab). The
 strongbox is placed on a first manage as well, so a board nobody has paid at
 yet still has one. Because it sits in the city worldspace, a walled city's
 Tamriel twin answers "Open the strongbox from the board inside the city."
@@ -132,6 +137,13 @@ it rides the reference's changeform into MongoDB and comes back on restart.
 The strongbox id (`stash`) rides along in the same record; the gold itself is
 the placed container's inventory. Nothing else stores state; there is no
 sidecar file.
+
+Until 2026-09 the table gave Riften and Windhelm each other's references, so
+each city's notices were stored on the other city's primitive. The first boot
+with the corrected table swaps the notices and note ids of `9492` and `9478`
+once (each strongbox id stays with the reference it was placed at), marks
+`private.bountyBoardSwapped` on `9492` and logs `[bounty] moved N notices to
+Riften and M to Windhelm`.
 
 Expiry is `bountyBoardExpiryDays` (default 7) days per notice and happens
 lazily on every read of a board, plus an hourly sweep for boards nobody looks

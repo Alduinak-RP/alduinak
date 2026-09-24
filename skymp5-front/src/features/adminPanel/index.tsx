@@ -391,6 +391,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [now, setNow] = useState(Date.now());
   const [refreshKey, setRefreshKey] = useState(0);
   const [copied, setCopied] = useState<{ text: string; ok: boolean } | null>(null);
+  // The actor a first PK click armed; a second click on the same selection sends it
+  const [pkArmed, setPkArmed] = useState('');
 
   const ev = data.events || {};
   const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
@@ -475,7 +477,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     if (selectedPlayer && selectedPlayer.a) send(key, selectedPlayer.a, ...args);
   };
 
-  useEffect(() => { setAttrs(attrForm(selectedPlayer ? selectedPlayer.av : null)); }, [selected]);
+  useEffect(() => {
+    setAttrs(attrForm(selectedPlayer ? selectedPlayer.av : null));
+    setPkArmed('');
+  }, [selected]);
 
   // Mastery rows stay tied to the selected character.
   const masteryRows: Array<{ key: string; who: string; target: string; m: PanelMastery | null | undefined }> = [];
@@ -660,7 +665,13 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               <Button text="TP to" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
               <Button text="Summon" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.summon)} />
               {canKick ? <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} /> : null}
-              {canKick && ev.pk ? <Button text="PK" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.pk)} /> : null}
+              {canKick && ev.pk ? (
+                selectedPlayer && selectedPlayer.a && pkArmed === selectedPlayer.a ? (
+                  <Button text="Confirm PK" width={104} height={32} disabled={!actionsEnabled} onClick={() => { setPkArmed(''); act(ev.pk); }} />
+                ) : (
+                  <Button text="PK" width={104} height={32} disabled={!actionsEnabled} onClick={() => setPkArmed(selectedPlayer?.a || '')} />
+                )
+              ) : null}
               {canBan ? <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
             </div>
             {ev.masteryGrant && selectedPlayer ? (

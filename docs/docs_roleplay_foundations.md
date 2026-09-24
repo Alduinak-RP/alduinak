@@ -74,15 +74,25 @@ Rules:
   nametag toggles below. **Controls** rebinds the server keys in game (emote
   wheel, Interact / Menus, hide interface, free cursor, voice push-to-talk,
   chat, bounty board): click a row, press a key or a middle/4/5 mouse button
-  (Esc cancels, Backspace returns the row to the launcher's key). A rebind is
+  (Esc cancels, Backspace returns the row to the launcher's key). Like the
+  launcher, the tab warns when two rows share a key or a row sits on a key the
+  client already uses (Esc, Tab, Enter, or W, A, S, D, Space and R, which
+  cancel an emote); the key still saves. A rebind is
   saved as `keys.<setting name>` in the chat settings and wins over the
-  launcher's Server Hotkeys until **Use launcher defaults** clears every row;
-  the launcher itself is not changed and does not show in-game rebinds. Two
+  launcher's Server Hotkeys until **Use launcher defaults** clears every row
+  or that key is changed in the launcher (the client stamps the launcher's
+  keys as `keysLauncherSaved`, like `fovLauncher`, and drops an override whose
+  launcher key differs at start); the launcher itself is not changed and does
+  not show in-game rebinds. Two
   checkboxes there (`emoteWheelHold`, `interactMenuHold`, both off) make the
-  emote wheel and the interact key's player menu **hold-to-open**: the menu
-  stays while the key is down and closes on release, and a released wheel key
-  plays the emote under the cursor. Hold mode is keyboard only: with a mouse
-  button bound the checkbox is disabled and the menu keeps toggling.
+  emote wheel and every menu the interact key opens (player, carried load,
+  Personal, housing, pet, the bounty board strongbox and the search window on a
+  body or NPC) **hold-to-open**: the menu
+  stays while the key is down and closes on release (the housing menu stays once
+  its key-name prompt or rename field is being typed in), and a released wheel key
+  plays the emote under the cursor. The client polls the key in game while the
+  menu is open, so any key or mouse button can be held; only an unbound key
+  disables the checkbox.
 - The two nametag toggles are saved with the other chat settings:
   **show player names** (off by default, draws the nametag
   over other players) and **show form ids** (off by default, the `ffxxxxxx`
@@ -278,29 +288,49 @@ to one stays playable but is confined to it.
   Valor, the Soul Cairn, the Reaper's lair or the Boneyard), or who carries
   `private.afterlife`, respawns at that realm's arrival instead of a temple. The
   `onRespawn` hook swaps `spawnPoint` for that one respawn and logs
-  `[afterlife] ... respawns in ...`.
+  `[afterlife] ... respawns in ...`. Only a character with `private.afterlife`
+  gets the realm's look and outfit; a living player who merely died there does
+  not.
 - **Looks**: the fallen wear their realm. Each realm has a look and an outfit,
   resolved at boot by editor id, desc or hex id (`afterlifeLooks` in
   `docs_server_configuration_reference.md`; a name the load order lacks is
   logged `[afterlife] <realm> look|outfit item '<name>' not found in the load
-  order, ignored`, and the boot line `[afterlife] <realm> look: shader|ability
-  <id>|none, N/M outfit item(s)` says what resolved). Sovngarde: the look
-  `96ffb:Skyrim.esm` and the Ancient Nord set (`ArmorDraugrCuirass`, `Boots`,
-  `Gauntlets`, `Helmet`); the Soul Cairn: `DLC1SoulCairnGhostFXShader` and the
-  prisoner rags and shoes (`ClothesPrisonerRags`, `ClothesPrisonerShoes`). A
-  look that is an EFSH goes into the neighbor-visible `ff_afterlife` property
-  (`{ realm, shader, alpha: 1 }`, written on the send and on every realm
-  respawn, cleared by a revive), which every client plays on its copy of the
+  order, ignored`, and the boot line `[afterlife] <realm> look: shader <id> at
+  alpha <a>|ability <id>|none, N/M outfit item(s)` says what resolved). Sovngarde: the look
+  `SovengardeFXS01` (Skyrim.esm EFSH `10b2df`, the glow the heroes' ability
+  `AbFXSovengardeGlow` plays) and the Ancient Nord set (`ArmorDraugrCuirass`,
+  `Boots`, `Gauntlets`, `Helmet`); the Soul Cairn: `DLC1SoulCairnGhostFXShader` and the
+  prisoner rags and shoes (`ClothesPrisonerRags`, `ClothesPrisonerShoes`),
+  at alpha 0.25 like the Dawnguard ghost ability `DLC1SoulCairnAbGhost`
+  (Sovngarde stays at 1). A look that is an EFSH goes into the neighbor-visible
+  `ff_afterlife` property (`{ realm, shader, alpha }`, the alpha played with the
+  shader; written on the send, and on every realm respawn and login into the
+  realm when it differs from the resolved look, so characters already in a
+  realm and a changed `afterlifeLooks` catch up; cleared by a revive, and on a
+  respawn or login of a character in no realm, logged `[afterlife] <id> is in
+  no realm, cleared the stale <realm> look`), which every client plays on its copy of the
   character (`formView.ts`, again after a 3D reload) and the own client on
   the player (`afterlifeLookService.ts`, again 1 s after a respawn, which
   drops shaders; `look <id>|off` in `skyrim-platform.log`), the way admin
   Ghost rides `ff_adminModes`; a SPEL is added as an ability on arrival (`AddSpell`) and
-  removed by a revive; any other record type is logged and ignored. The
+  recorded in `private.afterlifeSpell`, so a changed look swaps the recorded
+  ability for the new one on the next realm respawn or login, and a revive (or
+  a login in no realm) removes the recorded one; any other record type is logged and ignored. The
   outfit is given (`AddItem`, when not held) and put on through the owner's
   client (`Actor.EquipItem`, removable) at once when a living character is
   sent, 5 s after a realm respawn and 5 s after a login into the realm, since
   the spawn strips the player first (`[afterlife] <id> wears N piece(s) of
-  the <realm> outfit`). `ff_afterlife` must be registered in
+  the <realm> outfit`). The outfit is handed out once per send: the first
+  dressing records `private.afterlifeOutfit` (`{ realm, granted }`, the realm
+  and the count per base id that `AddItem` actually gave; a piece the player
+  already held is only put on), and later dressings only put on the pieces
+  still held, so a piece dropped or traded is gone until the next PK strip (a
+  send clears the record). A revive takes back at most the granted count per
+  base, only from copies with no enchantment, tempering or name, worn ones
+  first, so the player's own Ancient Nord or prisoner pieces stay (a plain copy
+  of their own can go in place of a granted one they gave away), logs
+  `[afterlife] took N granted piece(s) of the <realm> outfit from <id>` and
+  clears the record. `ff_afterlife` must be registered in
   `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
   the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
   Build gamemode only before the server build; without it the server logs

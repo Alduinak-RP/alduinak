@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
-import { BrowserMessageEvent, DxScanCode } from "skyrimPlatform";
+import { BrowserMessageEvent } from "skyrimPlatform";
 import { MsgType } from "../../messages";
 import { FormView, getScreenResolution } from "../../view/formView";
 import { FovSettingsService } from "./fovSettingsService";
@@ -361,7 +361,7 @@ export class ChatService extends ClientListener {
       const parsed = data ? JSON.parse(data.slice(2)) : {};
       if (!parsed || typeof parsed !== "object") return "{}";
       if (data) this.applyChatSettings(parsed);
-      return JSON.stringify({ ...parsed, fov: FovSettingsService.currentFov(this.sp) ?? undefined, keysLauncher: this.launcherKeys() });
+      return JSON.stringify({ ...parsed, fov: FovSettingsService.currentFov(this.sp) ?? undefined, keysLauncher: { ...this.launcherKeys(), ...this.gameKeys() } });
     } catch (e) {
       return "{}";
     }
@@ -381,6 +381,22 @@ export class ChatService extends ClientListener {
     };
   }
 
+  // The controlmap's keys the Controls tab warns about, a mouse button as 256 + n
+  private gameKeys(): Record<string, number> {
+    const controls: Record<string, string> = {
+      gameActivateKeyCode: "Activate", gameJumpKeyCode: "Jump", gameSprintKeyCode: "Sprint",
+      gameSneakKeyCode: "Sneak", gameShoutKeyCode: "Shout", gameTogglePovKeyCode: "Toggle POV",
+    };
+    const keys: Record<string, number> = {};
+    for (const [name, control] of Object.entries(controls)) {
+      try {
+        const code = [0, 1].map((device) => this.sp.Input.getMappedKey(control, device)).find((c) => c > 0);
+        if (code) keys[name] = code;
+      } catch { /* SKSE input not ready */ }
+    }
+    return keys;
+  }
+
   // Nametag toggles, the FOV and the key overrides live in the chat settings JSON; no showPlayerNames key means both toggles are off
   private applyChatSettings(parsed: Record<string, unknown>): void {
     const fresh = parsed["showPlayerNames"] == null;
@@ -392,14 +408,21 @@ export class ChatService extends ClientListener {
     FovSettingsService.setChatFov(typeof parsed["fov"] === "number" ? parsed["fov"] : null);
     // A missing or 0 override keeps the launcher's key
     const keys = (parsed["keys"] && typeof parsed["keys"] === "object" ? parsed["keys"] : {}) as Record<string, unknown>;
+    // A launcher key changed since the overrides were saved wins over its override
+    const keysLauncherSaved = parsed["keysLauncherSaved"] as Record<string, unknown> | undefined;
+    if (keysLauncherSaved && typeof keysLauncherSaved === "object") {
+      const launcher = this.launcherKeys();
+      for (const name of Object.keys(keys)) {
+        if (keysLauncherSaved[name] !== launcher[name]) delete keys[name];
+      }
+    }
     const key = (name: string) => (typeof keys[name] === "number" ? keys[name] as number : 0);
     const emote = this.controller.lookupListener(EmoteService);
     const playerAction = this.controller.lookupListener(PlayerActionService);
     emote.setMenuKey(key("emoteWheelKeyCode"));
     playerAction.setInteractKey(key("altInteractKeyCode"));
-    // Hold-to-open is keyboard only: the focused menu forwards key releases, not mouse buttons
-    emote.setHoldMode(parsed["emoteWheelHold"] === true && emote.menuKeyCode < DxScanCode.LeftMouseButton);
-    playerAction.setHoldMode(parsed["interactMenuHold"] === true && playerAction.interactKeyCode < DxScanCode.LeftMouseButton);
+    emote.setHoldMode(parsed["emoteWheelHold"] === true);
+    playerAction.setHoldMode(parsed["interactMenuHold"] === true);
     const browser = this.controller.lookupListener(BrowserService);
     browser.setHideUiKey(key("hideUiKeyCode"));
     browser.setFreeCursorKey(key("freeCursorKeyCode"));
@@ -417,6 +440,7 @@ export class ChatService extends ClientListener {
       delete parsed["hidePlayerNames"];
       delete parsed["keysLauncher"];
       parsed["fovLauncher"] = readClientSettingNumber(this.sp, "fov", 0);
+      parsed["keysLauncherSaved"] = this.launcherKeys();
       this.applyChatSettings(parsed);
       this.sp.writePlugin(
         this.pluginChatSettingsName,

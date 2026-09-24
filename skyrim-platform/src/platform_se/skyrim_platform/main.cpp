@@ -254,6 +254,24 @@ inline uint32_t GetCefModifiers_(uint16_t aVirtualKey)
   return modifiers;
 }
 
+// Set by the window procedure when the game loses the foreground, taken by the next input update
+static std::atomic<bool> g_windowDeactivated{ false };
+static constexpr const char* kWindowInactiveJs =
+  "window.dispatchEvent(new Event('skymp5-client:windowInactive'))";
+
+// The engine stops reading input in the background, so the window procedure tells the page itself when it can
+static void DispatchWindowInactive()
+{
+  auto service = OverlayService::GetInstance();
+  auto app = service ? service->GetMyChromiumApp() : nullptr;
+  auto client = app ? app->GetClient() : nullptr;
+  if (client && client->IsReady()) {
+    g_windowDeactivated = false;
+    app->ExecuteJavaScript(kWindowInactiveJs);
+    spdlog::info("ForegroundGuard: told the page the game window is inactive");
+  }
+}
+
 class MyInputListener : public IInputListener
 {
 public:
@@ -444,8 +462,13 @@ public:
         app->InjectMouseMove(-1.f, -1.f, GetCefModifiers_(0), false);
       }
     }
-    if (auto app = service->GetMyChromiumApp())
+    if (auto app = service->GetMyChromiumApp()) {
       app->RunTasks();
+      // Off-screen rendering never blurs the page, so it hears of a lost foreground from here
+      if (g_windowDeactivated.exchange(false)) {
+        app->ExecuteJavaScript(kWindowInactiveJs);
+      }
+    }
 
     if (IsBrowserFocused()) {
       const clock_t now = clock();
@@ -505,6 +528,14 @@ public:
       // The next "deactivated by" line then covers exactly this stay in front
       if (active) {
         CEFUtils::DInputHook::ResetKeyboardCounters();
+      } else {
+        // The game's own windows only borrow the foreground and are reclaimed
+        const HWND other = lParam ? reinterpret_cast<HWND>(lParam)
+                                  : GetForegroundWindow();
+        if (!IsOwnWindow(Describe(other))) {
+          g_windowDeactivated = true;
+          DispatchWindowInactive();
+        }
       }
     } else if (uMsg == WM_KILLFOCUS) {
       LogWindow(hwnd, "focus taken by", reinterpret_cast<HWND>(wParam));

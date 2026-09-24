@@ -3,7 +3,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
-import { onWidgetsCleared } from "./widgetMenuUtil";
+import { closeWidget, onWidgetsCleared, refreshFormMenu } from "./widgetMenuUtil";
 import { applyNeedsPenalties } from "../../sync/attributePenalty";
 import { logToPlatformLog } from "../../logging";
 
@@ -17,17 +17,27 @@ const SURVIVAL_PLUGIN = "ccQDRSSE001-SurvivalMode.esl";
 const SURVIVAL_MODE_GLOBAL = 0x828;
 // Survival_ModeEnabled: only Survival_MainScript sets it, when vanilla Survival switches itself on
 const SURVIVAL_ENABLED_GLOBAL = 0x826;
+const FATIGUE_WIDGET_ID = 39;
+
+// for the browser-side widget setter (executed inside the CEF browser)
+declare const window: any;
+
+// Module-level so the browser-side widget setter can read it (runtime injection)
+let fatigueReadout = { fatigue: 100, stageName: "" };
 
 interface NeedsState {
   staminaPenalty: number;
   magickaPenalty: number;
+  fatigue: number;
+  fatigueStageName: string;
   survivalMode: boolean;
 }
 
 /**
  * Hunger and fatigue on the vanilla HUD. The server (NeedsSystem) owns both values and pushes needsState whenever they
  * change; this service applies the max stamina (hunger) and max magicka (fatigue) penalty shares the server sends, shows
- * them as Survival's red meter segments, and closes the Crafting Menu when the server refused a craft for fatigue.
+ * them as Survival's red meter segments, shows the fatigue left in a small HUD readout while it is below 100, and closes
+ * the Crafting Menu when the server refused a craft for fatigue.
  *
  *   Client -> Server: { "customPacketType": "needsRequest" }
  *   Server -> Client: { "customPacketType": "needsState", "hunger", "stage", "stageName", "fatigue", "fatigueStage",
@@ -40,6 +50,7 @@ export class NeedsService extends ClientListener {
     // Login resets every widget, and a front reload drops them silently
     onWidgetsCleared(this.controller, () => this.controller.once("update", () => {
       this.lastHudLog = "";
+      this.fatigueShown = "";
       sendCustomPacket(this.controller, { customPacketType: "needsRequest" });
     }));
     // A load resets the HUD's survival cache; a needsState that landed mid-load is re-applied
@@ -52,8 +63,11 @@ export class NeedsService extends ClientListener {
     this.needs = {
       staminaPenalty: Number(content["staminaPenalty"]) || 0,
       magickaPenalty: Number(content["magickaPenalty"]) || 0,
+      fatigue: Number.isFinite(Number(content["fatigue"])) ? Number(content["fatigue"]) : 100,
+      fatigueStageName: String(content["fatigueStageName"] || ""),
       survivalMode: content["survivalMode"] === true,
     };
+    this.showFatigueReadout(this.needs);
     const closeCrafting = content["closeCrafting"] === true;
     this.controller.once("update", () => {
       // Papyrus natives are allowed in update; the vanilla menu already made the refused recipe locally
@@ -87,6 +101,25 @@ export class NeedsService extends ClientListener {
     logToPlatformLog(this, line);
   }
 
+  // Only with the survival HUD flag on, like the red meter segments
+  private showFatigueReadout(needs: NeedsState): void {
+    const fatigue = Math.max(0, Math.min(100, Math.round(needs.fatigue)));
+    const key = needs.survivalMode && fatigue < 100 ? `${fatigue}|${needs.fatigueStageName}` : "";
+    if (key === this.fatigueShown) return;
+    this.fatigueShown = key;
+    if (!key) return closeWidget(this.sp, FATIGUE_WIDGET_ID);
+    fatigueReadout = { fatigue, stageName: needs.fatigueStageName };
+    refreshFormMenu(this.sp, this.fatigueWidgetSetter, { fatigueReadout, FATIGUE_WIDGET_ID });
+  }
+
+  // Runs inside the CEF browser. Only injected vars + window are available; no spread syntax
+  private fatigueWidgetSetter = () => {
+    const widget = { type: "fatigueReadout", id: FATIGUE_WIDGET_ID, fatigue: fatigueReadout.fatigue, stageName: fatigueReadout.stageName };
+    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== FATIGUE_WIDGET_ID);
+    window.skyrimPlatform.widgets.set(others.concat([widget]));
+  };
+
   private needs: NeedsState | null = null;
+  private fatigueShown = "";
   private lastHudLog = "";
 }

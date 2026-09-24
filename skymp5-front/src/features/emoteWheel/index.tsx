@@ -23,7 +23,7 @@ interface EmoteWheelEvents {
   close: string;
   stop: string;
   key: string;
-  keyUp: string;
+  hover: string;
   [key: string]: string;
 }
 
@@ -173,30 +173,17 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   const [hovering, setHovering] = useState(false);
   const [refusedAnim, setRefusedAnim] = useState('');
   const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The emote slice under the cursor, played when a held wheel key is released
-  const hoveredRef = useRef('');
 
   useEffect(() => {
     // Losing browser focus (free-cursor key, chat) would strand the overlay.
     const onUnfocused = () => send(ev.close);
-    // The game sees no keys while the wheel has focus, so the client matches presses and releases to the wheel key
+    // The game sees no keys while the wheel has focus, so the client matches presses to the wheel key
     const onKeyDown = (e: KeyboardEvent) => { if (!e.repeat) send(ev.key, e.code); };
-    const onKeyUp = (e: KeyboardEvent) => {
-      const anim = hoveredRef.current;
-      const group = anim && data.hold ? groups.find((g) => g.emotes.some((it) => it.anim === anim)) : undefined;
-      if (group) {
-        savedGroupId = group.id;
-        savedAnim = anim;
-      }
-      send(ev.keyUp, e.code, anim);
-    };
     window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
     return () => {
       window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
       if (swapTimer.current) clearTimeout(swapTimer.current);
     };
   }, []);
@@ -229,6 +216,18 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
     setActiveGroupId(groupId);
     setActiveAnim(group.emotes[0].anim);
     changePreview(group.emotes[0].anim);
+  };
+
+  // A held wheel plays the hovered slice when the client sees the key released, so the hover is reported and remembered
+  const hoverEmote = (anim: string) => {
+    setHovering(!!anim);
+    if (anim) changePreview(anim);
+    if (!data.hold) return;
+    send(ev.hover, anim);
+    if (anim) {
+      savedGroupId = activeGroupId;
+      savedAnim = anim;
+    }
   };
 
   const selectEmote = (anim: string) => {
@@ -275,8 +274,8 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
                 labelClass="emote-wheel__segment-label"
                 activeId={activeAnim}
                 items={activeGroup.emotes.map((e) => ({ id: e.anim, label: e.label, locked: e.locked }))}
-                onHover={(anim) => { hoveredRef.current = anim; setHovering(true); changePreview(anim); }}
-                onLeave={() => { hoveredRef.current = ''; setHovering(false); }}
+                onHover={hoverEmote}
+                onLeave={() => hoverEmote('')}
                 onClick={selectEmote}
               />
             </svg>

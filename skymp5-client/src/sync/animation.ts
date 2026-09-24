@@ -46,8 +46,18 @@ const RELAYED_STAGGER_MAGNITUDE = 0.5;
 // Whether the sync itself sent this event to the copy; consumed, so a phantom event of the same name stays blocked
 export const consumeAllowedAnim = (refrId: number, animEventName: string): boolean =>
   allowedAnims.delete(refrId + ":" + animEventName);
-// Refs whose collision a sit animation turned off, with the time it happened
-const sitCollisionDisabledAt = new Map<number, number>();
+// Refs whose collision a sit animation turned off
+const sitCollisionDisabled = new Set<number>();
+// Refs a synced ground pose left posed; exits, get-ups, IdleStop, draws, attacks and jumps clear it
+const idlePosed = new Set<number>();
+// Emote wheel ground poses and the server's default logoutPose; they loop until an exit
+const groundPosesLowerCase = new Set<string>([
+  'idlesitcrossleggedenter',
+  'idlekneelingenter',
+  'idlewounded_03',
+  'idlewarmhandscrouched',
+  'idlecowerenter',
+]);
 
 // Called with every event that reaches a copy's graph, after any override
 export type SendToGraphHook = (refr: ObjectReference, animEventName: string) => void;
@@ -226,6 +236,7 @@ export const applyAnimation = (
   const ac = Actor.from(refr);
 
   if (anim.animEventName === "SkympFakeEquip") {
+    idlePosed.delete(refr.getFormID());
     if (ac) {
       applyWeapDrawn(ac, true);
     }
@@ -295,12 +306,25 @@ const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
 
   if (actorSitAnimsLowerCase.find((x) => x === animEventNameLowerCase) !== undefined) {
     setCollision(refr.getFormID(), false);
-    sitCollisionDisabledAt.set(refr.getFormID(), Date.now());
+    sitCollisionDisabled.add(refr.getFormID());
   }
 
-  if (actorGetUpAnimsLowerCase.find((x) => x === animEventNameLowerCase) !== undefined) {
+  const isGetUp = actorGetUpAnimsLowerCase.find((x) => x === animEventNameLowerCase) !== undefined;
+  if (isGetUp) {
     setCollision(refr.getFormID(), true);
-    sitCollisionDisabledAt.delete(refr.getFormID());
+    sitCollisionDisabled.delete(refr.getFormID());
+  }
+
+  if (
+    isGetUp ||
+    animEventNameLowerCase === "idlestop" ||
+    animEventNameLowerCase.includes("exit") ||
+    animEventNameLowerCase.includes("attack") ||
+    animEventNameLowerCase.includes("jump")
+  ) {
+    idlePosed.delete(refr.getFormID());
+  } else if (groundPosesLowerCase.has(animEventNameLowerCase)) {
+    idlePosed.add(refr.getFormID());
   }
 
   for (const hook of sendToGraphHooks) {
@@ -312,34 +336,38 @@ const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
   }
 };
 
-export const isInSitPose = (refrId: number): boolean => sitCollisionDisabledAt.has(refrId);
+export const isInSitPose = (refrId: number): boolean => sitCollisionDisabled.has(refrId);
 
 export const setRefrCollision = (refrId: number, collision: boolean): void => {
   setCollision(refrId, collision);
 };
 
-// When a copy the engine still seats first moved, so a sit that is still settling is not stood up
-const seatedMovingSince = new Map<number, number>();
+// When a posed or engine-seated copy first moved, so a pose that is still settling is not stood up
+const posedMovingSince = new Map<number, number>();
 
 // Animation sync is unreliable and single-slot, so a lost get-up must not leave a walking clone posed or without collision
 export const restoreSitCollisionIfMoving = (refr: ObjectReference, m: Movement): void => {
   const refrId = refr.getFormID();
-  if (m.runMode === "Standing") {
-    seatedMovingSince.delete(refrId);
+  // IdleForceDefaultState is a global wildcard into the sheathed branch, so a drawn copy is never reset
+  if (m.isWeapDrawn) {
+    idlePosed.delete(refrId);
+    posedMovingSince.delete(refrId);
+    if (m.runMode !== "Standing" && sitCollisionDisabled.delete(refrId)) {
+      setCollision(refrId, true);
+    }
+    return;
+  }
+  const posed = idlePosed.has(refrId) || sitCollisionDisabled.has(refrId) || (Actor.from(refr)?.getSitState() ?? 0) >= 2;
+  if (m.runMode === "Standing" || !posed) {
+    posedMovingSince.delete(refrId);
     return;
   }
   const now = Date.now();
-  const seated = (Actor.from(refr)?.getSitState() ?? 0) >= 2;
-  if (!seated) {
-    seatedMovingSince.delete(refrId);
-  } else if (!seatedMovingSince.has(refrId)) {
-    seatedMovingSince.set(refrId, now);
-  }
-  const disabledAt = sitCollisionDisabledAt.get(refrId);
-  const posedLong = disabledAt !== undefined && now - disabledAt > 2000;
-  const seatedLong = seated && now - (seatedMovingSince.get(refrId) ?? now) > 2000;
-  if (posedLong || seatedLong) {
-    seatedMovingSince.delete(refrId);
+  const since = posedMovingSince.get(refrId);
+  if (since === undefined) {
+    posedMovingSince.set(refrId, now);
+  } else if (now - since > 2000) {
+    posedMovingSince.delete(refrId);
     sendToGraph(refr, { animEventName: "IdleForceDefaultState", numChanges: 0 });
   }
 };

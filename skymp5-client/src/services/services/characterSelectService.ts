@@ -125,6 +125,8 @@ let introPage = 0;
 let introPick = -1;
 // Shown above the slot list after a spawn that never reached the world, or the server's reason for refusing the last choice
 let notice = '';
+// The load failure line outlives menu re-sends until the player's next choice
+let keepNotice = false;
 
 // A player's own quit opens the pause menu shortly before the main menu
 const PAUSE_QUIT_WINDOW_MS = 60000;
@@ -200,8 +202,8 @@ export class CharacterSelectService extends ClientListener {
         selectedSlot = null;
         confirmDeleteSlot = null;
         intro = parseIntro(content["intro"]);
-        // A menu without one keeps the line set here, such as the load failure
         if (typeof content["notice"] === 'string') notice = content["notice"];
+        else if (!keepNotice) notice = '';
         resetIntro();
         this.menuOpen = true;
         logTrace(this, `Opening character select menu with`, maxCharacters, `slots`);
@@ -323,15 +325,21 @@ export class CharacterSelectService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest', viaPauseMenu: Date.now() - this.pauseMenuAt < PAUSE_QUIT_WINDOW_MS });
   }
 
+  public isMenuOpen(): boolean {
+    return this.menuOpen;
+  }
+
   // The server log gets the reason without the Windows user name
   public showLoadFailure(reason: string): void {
     notice = strings.loadFailed.replace('{0}', reason);
+    keepNotice = true;
     const loadError = reason.replace(/[A-Za-z]:\\Users\\[^\\]+/g, '%USERPROFILE%').slice(0, 300);
     sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest', loadError });
   }
 
   private sendResult(action: 'play' | 'create' | 'delete', slot: number, start?: string): void {
     logTrace(this, `Sending character select result:`, action, slot, start);
+    keepNotice = false;
     sendCustomPacket(this.controller, { customPacketType: 'characterSelectResult', action, slot, start });
   }
 
@@ -372,6 +380,7 @@ export class CharacterSelectService extends ClientListener {
     selectedSlot = null;
     confirmDeleteSlot = null;
     notice = '';
+    keepNotice = false;
     resetIntro();
     // Clear forms only; chat and other in-game widgets must survive a mid-session reopen.
     this.sp.browser.executeJavaScript(

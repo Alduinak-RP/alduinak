@@ -50,7 +50,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | `Size` | no | 2000 | trigger radius in game units |
 | `Spread` | no | `Size` | radius around `POS` of the walkable navmesh the NPCs scatter over, each at its own random spot; capped at `Size`. Blank uses the whole `Size`, `0` keeps the ring layout around `POS` (see Placement). Set a smaller value to keep a pack close together |
 | `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional; at most 40 NPCs per zone in total |
-| `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); the timer does not run while any living NPC of the zone is fighting a player (a damaging hit within `npcAggroHostSeconds`); `0` = never |
+| `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); the timer does not run while any living NPC of the zone within `3 x Size` of `POS` is fighting a player (a damaging hit within `npcAggroHostSeconds`), for 5 minutes at most; `0` = never |
 | `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
 
 An entry that fails a check (no `Name`, a `Name` longer than 64 characters,
@@ -105,28 +105,36 @@ server at level 1. A list whose chance comes from a global is never rolled.
 Loot changes are overrides of those lists in `AlduinakAdditions.esp`, written
 by the `leveledItems` section of `misc/proficiency-patcher/spec.json`. The
 rule is one list per creature, every named item drops (the list carries Use
-All), and no vanilla gold sublist stays: the only gold is what the list names
-outright. Giants drop exactly 20 gold and no weapon; Falmer an ear, a Falmer
+All), and no NPC drops gold: the gold sublists leave every death item list,
+the creature treasure roll (`LootSmallTreasure10`) and the Falmer inventory
+list (`LootFalmerCorpseGold`). The treasure roll now hits 5% of the time
+instead of 10%, so its gem and ring rolls (`LItemGemsSmall`,
+`LItemJewelryRingSmall`) stay at 2.5% each. Giants drop no weapon; Falmer an ear, a Falmer
 sword, helmet and shield; draugr bone meal, linen wrap, an iron shield, 10
 ancient Nord arrows and a 50% chance of an ancient Nord sword or bow; draugr
 deathlords 3 bone meal, an ancient Nord sword, an emerald, a 20% chance of one
-ancient Nord armour piece and a 50% chance of a greater or grand soul gem;
+ancient Nord armour piece and a 50% chance of a greater or grand soul gem, and
+the Sunderstone Gorge deathlord carries an Orcish bow and arrows instead of the
+ebony ones (no NPC drops ebony);
 frostbite spiders venom and 2 eggs; trolls troll fat and a skull (frost trolls
 2 fat); chaurus 2 chitin and 2 eggs; wolves a pelt and a silver ring; frost
 atronachs a common soul gem and 2 frost salts, flame atronachs 2 fire salts;
-hagravens 2 feathers, 2 claws, 8 gold and a potion roll; skeletons bone meal,
-2 gold and a 50% chance of one iron weapon, skeleton mages 2 bone meal, a
-lesser soul gem, 6 gold and a 20% chance of one of four staves; corrupted
+hagravens 2 feathers, 2 claws and a potion roll; skeletons bone meal and a
+50% chance of one iron weapon, skeleton mages 2 bone meal, a lesser soul gem
+and a 20% chance of one of four staves (every zone on the mage base
+`0009362B` gets this: Windward Ruins, and the Dustman's Cairn and Bleak Falls
+Barrow skeleton zones); corrupted
 shades an Imperial sword, 5 steel arrows, a 50% chance of an Imperial bow and
 10% of an Imperial helmet. Every dwemer construct (spider, sphere, centurion,
 ballista) has a 50% chance of one dwemer scrap piece; spiders add a petty soul
 gem and dwarven oil, spheres a common soul gem, 3 oil and a 50% chance of 10
 dwarven bolts, centurions a greater soul gem and 5 oil, and the centurion
-keeps its Dynamo Core. Death hounds and cave bears are vanilla. A list's
-chance is a sublist with a chance-none and one entry taken; the base ids the
-live zones use, the vanilla lists they end at and what those hold are printed
-by `misc/proficiency-patcher/dump_death_items.py`. Bodies that already exist
-keep their loot.
+keeps its Dynamo Core. Death hounds and cave bears keep their vanilla lists
+without the gold. A list's chance is a sublist with a chance-none and one entry
+taken; the base ids the live zones use, the vanilla lists they end at and what
+those hold are printed by `misc/proficiency-patcher/dump_death_items.py`, whose
+`--forbid Gold001 Ebony` fails if any spawn can still get gold or ebony. Bodies
+that already exist keep their loot.
 
 ## State machine
 
@@ -134,7 +142,7 @@ keep their loot.
 idle      -- a player within Size ------------------>  active   (every slot off cooldown placed)
 active    -- nobody within 1.5 x Size, no NPC fighting -->  emptying (Despawn timer runs)
 emptying  -- a player back within 1.5 x Size ------->  active   (timer cleared)
-emptying  -- a living NPC fighting a player -------->  active   (timer cleared; the fight holds the zone)
+emptying  -- a living NPC within 3 x Size fighting ->  active   (timer cleared; the fight holds the zone, 5 min at most)
 emptying  -- Despawn seconds elapsed --------------->  idle     (living NPCs destroyed; corpses and slot cooldowns keep their timers)
 
 per slot (one per NPC to place):
@@ -158,11 +166,16 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
-- The `Despawn` timer does not run while any living NPC of the zone is
-  fighting a player: a damaging hit exchanged within `npcAggroHostSeconds`
-  (30 s by default, the same window hosting uses for aggro) resets it, so a
-  pack chased or kited beyond `1.5 x Size` is not destroyed mid-fight. The
-  countdown starts once the last hit is that long ago. An admin **Deactivate**
+- The `Despawn` timer does not run while any living NPC of the zone within
+  `3 x Size` of `POS` (same cell or worldspace) is fighting a player: a
+  damaging hit exchanged within `npcAggroHostSeconds` (30 s by default, the
+  same window hosting uses for aggro) resets it, so a pack chased or kited
+  beyond `1.5 x Size` is not destroyed mid-fight. The countdown starts once
+  the last hit is that long ago. The hold still works as a leash: an NPC
+  dragged beyond `3 x Size` no longer holds the zone, and one empty spell
+  holds for 5 minutes at most in total, counted from its first fight and not
+  renewed by later ones, before the countdown runs whatever the fighting.
+  A player back within `1.5 x Size` ends the spell. An admin **Deactivate**
   still despawns at once.
 - NPCs are placed disabled with `PlaceAtMe` anchored on a player who is inside
   the zone, so the actor starts in the right cell, then teleported to a random
@@ -236,8 +249,10 @@ companions and pets: their client still reports the body, so it would count as
 running, and a claim that lands takes the NPC away from the player fighting it
 and locks that player out of it for 60 seconds (below). Refusals log
 `HostingSystem: <npc> refused to <player> (dead|downed)`, once per player every
-30 seconds. A companion accepts a
-claim only from its owner, a living player character without a user (a body
+30 seconds; a dead owner's claim on their own companion or pet (or a dead
+rider's on the horse) is refused by the companion and pet hooks, which run
+first, and logs nothing. A companion accepts a
+claim only from its living owner, a living player character without a user (a body
 parked for its logout grace, `logoutPose`) is refused outright, and every
 other NPC stays first come. A claim over
 a host whose game was running when the claim arrived means that client did not

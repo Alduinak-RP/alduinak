@@ -56,15 +56,20 @@ lines come from `onSelectCharacter`):
   character creation in slot N with unknown start location X`: the menu is
   re-sent with a `notice` line the player sees above the slots ("That
   character is dead.", "You already have the maximum number of living
-  characters.", "Unknown start location, try again.").
+  characters.", "Unknown start location, try again."). Every other list the
+  server sends (login, a delete, a plain re-open) carries an empty `notice`,
+  which clears an old refusal; only the re-open after a load failure leaves
+  it out, so the client keeps its own load failure line.
 - `Kicking user U on character creation: the client sent no start location,
   its files are out of date`: an old client without the intro.
 - `Creating character <id> in slot N at <start>`, then `Character creator
   opened for actor <id> profile P` when `charCreator.enabled` is on (also on a
   relog with the creator still pending).
 - `[spawn] charCreatorResult ignored for user U: <the creator is disabled | no
-  actor | not pending for actor X>`: a submission that arrived in the wrong
-  state.
+  actor | not pending for actor X> (logged once per connection)`: a
+  submission that arrived in the wrong state. Only the first one per
+  connection is logged, so a client repeating the packet cannot flood the
+  log.
 - `[spawn] charCreator refused for <id>: <validation error | race R is locked
   for profile P>`: a submission the wizard shows the error for.
 - `Character creator accepted for actor <id> (<race> "<name>")`, then
@@ -195,6 +200,13 @@ Accepted data lands in `private.rp`:
 
 `grants` maps profile ids to entitlement keys. Absent `charCreator` block (or
 `enabled: false`) keeps the vanilla race menu, so enabling is opt-in per server.
+
+On the vanilla path the client logs each step to `skyrim-platform.log`
+(`race menu requested`, `showRaceMenu`, `RaceSex Menu opened/closed`). If the
+menu is still not open 5 s after the spawn settled (no loading screen, focused
+browser page or character select menu up), it calls `showRaceMenu` again, up to
+3 times, and stops once the menu has closed. The 5 s restart whenever chat or
+another page takes focus, so the race menu never opens under a hidden page.
 
 ## Data provenance
 

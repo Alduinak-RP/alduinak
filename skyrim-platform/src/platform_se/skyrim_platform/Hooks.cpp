@@ -1,6 +1,7 @@
 #include "Hooks.h"
 #include "EventHandler.h"
 #include <atomic>
+#include <cstring>
 #include <mmsystem.h>
 #include <mutex>
 
@@ -93,6 +94,33 @@ void InstallCreateSourceVoiceGuard()
   Hooks::write_thunk_call<CreateSourceVoiceGuard>(call);
 }
 
+// The engine stacks items whose extras compare equal; copies with different custom names must stay apart, as on the server
+struct TextDisplayDataIsNotEqual
+{
+  static bool thunk(const RE::ExtraTextDisplayData* a_this,
+                    const RE::BSExtraData* a_rhs)
+  {
+    if (a_rhs &&
+        a_rhs->GetType() == RE::ExtraDataType::kTextDisplayData) {
+      const auto rhs = static_cast<const RE::ExtraTextDisplayData*>(a_rhs);
+      if (!a_this->displayNameText && !rhs->displayNameText &&
+          !a_this->ownerQuest && !rhs->ownerQuest) {
+        return std::strcmp(a_this->displayName.c_str(),
+                           rhs->displayName.c_str()) != 0;
+      }
+    }
+    return func(a_this, a_rhs);
+  }
+  static inline REL::Relocation<decltype(&thunk)> func;
+};
+
+void InstallTextDisplayDataIsNotEqualHook()
+{
+  REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ExtraTextDisplayData[0] };
+  TextDisplayDataIsNotEqual::func =
+    vtbl.write_vfunc(0x2, TextDisplayDataIsNotEqual::thunk);
+}
+
 void BindNativeMethod(RE::BSScript::Internal::VirtualMachine* thisArg,
                       RE::BSScript::IFunction* func);
 
@@ -163,6 +191,7 @@ void Hooks::Install()
   // InstallOnFrameUpdateHook();
   InstallOnConsoleVPrintHook();
   InstallCreateSourceVoiceGuard();
+  InstallTextDisplayDataIsNotEqualHook();
   HookVirtualMachineBind();
 
   logger::info("CommonLib hooks installed.");

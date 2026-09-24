@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 
 import './styles.scss';
 
@@ -11,7 +11,6 @@ interface ContextMenuEvents {
   action: string;
   close: string;
   trade: string;
-  keyUp: string;
   [key: string]: string;
 }
 
@@ -44,13 +43,6 @@ const ContextMenu = ({ data }: { data: ContextMenuData }) => {
 
   const ev = data.events || ({} as ContextMenuEvents);
   const actions = data.actions || [];
-
-  useEffect(() => {
-    // The game sees no keys while the menu has focus, so the client matches releases to a held interact key
-    const onKeyUp = (e: KeyboardEvent) => send(ev.keyUp, e.code);
-    window.addEventListener('keyup', onKeyUp);
-    return () => window.removeEventListener('keyup', onKeyUp);
-  }, []);
 
   // Panel hangs down-right of the crosshair, clamped inside the viewport before first paint.
   useLayoutEffect(() => {

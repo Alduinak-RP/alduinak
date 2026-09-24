@@ -21,6 +21,9 @@ const POLL_MS = 2000;
 const ZONES_FILE = "./NPC-Spawns.json";
 const SPAWNS_FILE = "./zone-spawns.json";
 const DESPAWN_HYSTERESIS = 1.5;
+// A fight holds an empty zone only for NPCs within this many times Size of POS, and for this long at most
+const FIGHT_LEASH = 3;
+const FIGHT_HOLD_MS = 300000;
 const DEFAULT_SIZE = 2000;
 const DEFAULT_DESPAWN = 120;
 const DEFAULT_RESPAWN = 1800;
@@ -86,6 +89,8 @@ interface Zone {
   signature: string;
   spawned: Spawned[];
   emptySince: number;
+  // When a fight first held the zone since it emptied; 0 = no hold yet
+  holdSince: number;
   inside: Set<number>;
 }
 
@@ -307,6 +312,7 @@ export class NpcSpawnSystem implements System {
       zone.spawned = prev.spawned;
       zone.slotReadyAt = prev.slotReadyAt;
       zone.emptySince = prev.emptySince;
+      zone.holdSince = prev.holdSince;
       zone.inside = prev.inside;
       carried.add(prev);
     }
@@ -443,7 +449,7 @@ export class NpcSpawnSystem implements System {
       respawnSeconds: draft.respawnSeconds,
       slotReadyAt: slots.map(() => 0),
       signature: JSON.stringify([cellOrWorldDesc, draft.pos, draft.radius, draft.spread, slots.map((n) => n.baseDesc), draft.despawnSeconds, draft.respawnSeconds]),
-      spawned: [], emptySince: 0, inside: new Set(),
+      spawned: [], emptySince: 0, holdSince: 0, inside: new Set(),
     };
   }
 
@@ -485,10 +491,10 @@ export class NpcSpawnSystem implements System {
       if (zone.spawned.length) this.checkDeaths(mp, zone, now);
       if (occupied) {
         zone.emptySince = 0;
+        zone.holdSince = 0;
         if (!this.awaitingSpots(zone)) this.fillSlots(mp, zone, now);
       } else if (zone.spawned.length && zone.despawnSeconds > 0) {
-        // A zone whose NPCs are still fighting a player holds until the fight is over
-        if (this.fighting(zone)) {
+        if (this.heldByFight(mp, zone, now)) {
           zone.emptySince = 0;
         } else {
           if (!zone.emptySince) zone.emptySince = now;
@@ -498,8 +504,25 @@ export class NpcSpawnSystem implements System {
     }
   }
 
-  private fighting(zone: Zone): boolean {
-    return zone.spawned.some((e) => e.id && !e.diedAt && this.inCombat(e.id));
+  // The hold time counts from the first fight since the zone emptied, so fights with pauses cannot renew it
+  private heldByFight(mp: Mp, zone: Zone, now: number): boolean {
+    if (zone.holdSince && now - zone.holdSince >= FIGHT_HOLD_MS) return false;
+    if (!this.fighting(mp, zone)) return false;
+    if (!zone.holdSince) zone.holdSince = now;
+    return true;
+  }
+
+  // Whether a living NPC within the leash of POS is fighting a player
+  private fighting(mp: Mp, zone: Zone): boolean {
+    const leash = zone.radius * FIGHT_LEASH;
+    return zone.spawned.some((e) => {
+      if (!e.id || e.diedAt || !this.inCombat(e.id)) return false;
+      try {
+        return mp.getActorCellOrWorld(e.id) === zone.cellOrWorldId && distance(mp.getActorPos(e.id), zone.pos) <= leash;
+      } catch {
+        return false;
+      }
+    });
   }
 
   private updateInside(mp: Mp, zone: Zone, playerIds: number[]): void {
@@ -759,6 +782,7 @@ export class NpcSpawnSystem implements System {
     this.log(`NpcSpawnSystem: '${zone.name}' despawned ${zone.spawned.length} npc(s)`);
     zone.spawned = [];
     zone.emptySince = 0;
+    zone.holdSince = 0;
     const now = Date.now();
     zone.slotReadyAt = zone.slotReadyAt.map((at) => reset || at < 0 || at <= now ? 0 : at);
     this.saveSpawns();

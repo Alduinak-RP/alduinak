@@ -1,5 +1,5 @@
 import { System, Log, SystemContext, Content } from "./system";
-import { hex } from "./actorUtil";
+import { baseTypeOf, hex } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -16,6 +16,8 @@ type Mp = any;
 const LEFT_SEAT_DISTANCE = 48;
 // Without marker indices, two seated actors this close share one marker
 const SAME_SEAT_DISTANCE = 24;
+// A seated actor stands no further than this from the furniture's origin
+const FURNITURE_REACH = 256;
 
 interface SeatClaim {
   actorId: number;
@@ -37,10 +39,18 @@ export class FurnitureSeatSystem implements System {
   constructor(private log: Log) { }
 
   private claims = new Map<number, SeatClaim>();
+  private mp: Mp = null;
 
-  // The furniture a user is fully seated at and since when, until the client releases it
+  async initAsync(ctx: SystemContext): Promise<void> {
+    this.mp = ctx.svr as Mp;
+  }
+
+  // The furniture a user is fully seated at and since when, until the client releases it or leaves the seat
   seatOf(userId: number): { furniture: number; at: number } | undefined {
-    return this.claims.get(userId);
+    const held = this.claims.get(userId);
+    if (!held || this.isStillSeated(this.mp, userId, held)) return held;
+    this.claims.delete(userId);
+    return undefined;
   }
 
   disconnect(userId: number): void {
@@ -57,7 +67,10 @@ export class FurnitureSeatSystem implements System {
     const mp = ctx.svr as Mp;
     const claim = this.readClaim(mp, userId, content);
     this.claims.delete(userId);
-    if (!claim) return;
+    if (!claim) {
+      this.log(`FurnitureSeatSystem: user ${userId} claim of ${hex(Number(content.furniture) >>> 0)} refused, no furniture there`);
+      return;
+    }
 
     for (const [holderUserId, held] of this.claims) {
       if (held.furniture !== claim.furniture) continue;
@@ -81,8 +94,11 @@ export class FurnitureSeatSystem implements System {
     const marker = Number.isInteger(content.marker) ? Number(content.marker) : -1;
     try {
       const actorId = mp.getUserActor(userId) >>> 0;
-      if (!actorId || !furniture) return null;
-      return { actorId, furniture, marker, cell: mp.getActorCellOrWorld(actorId), pos: mp.getActorPos(actorId), at: Date.now() };
+      if (!actorId || !furniture || baseTypeOf(mp, furniture) !== "FURN") return null;
+      if (String(mp.get(actorId, "worldOrCellDesc")) !== String(mp.get(furniture, "worldOrCellDesc"))) return null;
+      const pos: number[] = mp.getActorPos(actorId);
+      if (!(distance(pos, mp.get(furniture, "pos")) <= FURNITURE_REACH)) return null;
+      return { actorId, furniture, marker, cell: mp.getActorCellOrWorld(actorId), pos, at: Date.now() };
     } catch {
       return null;
     }

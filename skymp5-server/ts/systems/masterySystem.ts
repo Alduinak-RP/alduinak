@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
-import { GOLD_BASE_ID, addGold, addItemTo, addSpellTo, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
+import { GOLD_BASE_ID, addGold, addItemTo, addSpellTo, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -56,11 +56,14 @@ type Mp = any;
 //                                DEFAULT_KITS key by key, same shape as startingItems;
 //                                [] gives that profession nothing.
 //   masteryKitGold               gold every profession's kit carries on top of its items,
-//                                alchemists included, default 50; 0 turns it off.
+//                                alchemists included, default 50; 0 turns it off. A
+//                                character marked private.starterGold (its starting items
+//                                carried gold) gets none.
 //   masteryKitGoldSince          ISO date or epoch ms: every character created since then
-//                                whose kit marker carries no gold receives it once (at boot
-//                                for everyone, again after login), marked by
-//                                private.professionKitGold. Absent or unparsable: off.
+//                                whose kit marker carries no gold and that is not marked
+//                                private.starterGold receives it once (at boot for everyone,
+//                                again after login), marked by private.professionKitGold.
+//                                Absent or unparsable: off.
 
 const MASTERY_PROP = "private.mastery";
 // Set with a character's first kit and never cleared, so a reset and a new pick bring no second one
@@ -574,6 +577,8 @@ export class MasterySystem implements System {
     this.applySpells(ctx, actorId, rec);
     this.notice(ctx, userId, `You take up the craft of the ${this.labelOf(professionId)}.`);
     this.giveKit(ctx, actorId, userId, professionId);
+    // A reset character keeps its gold-less kit marker, so the backfill gold comes with the new pick
+    this.giveKitGold(ctx, actorId, rec);
     this.sendMenu(ctx, userId);
   }
 
@@ -586,8 +591,9 @@ export class MasterySystem implements System {
   private giveKit(ctx: SystemContext, actorId: number, userId: number, professionId: string): void {
     if (this.hasKit(ctx, actorId)) return;
     const mp = ctx.svr as Mp;
+    const gold = hadStarterGold(mp, actorId) ? 0 : this.kitGold;
     try {
-      mp.set(actorId, KIT_PROP, { profession: professionId, at: Date.now(), gold: this.kitGold });
+      mp.set(actorId, KIT_PROP, { profession: professionId, at: Date.now(), gold });
     } catch (e) {
       this.log(`[mastery] kit flag failed for ${hex(actorId)}: ${e}`);
       return;
@@ -600,23 +606,23 @@ export class MasterySystem implements System {
         this.log(`[mastery] kit item ${hex(item.baseId)} failed for ${hex(actorId)}: ${e}`);
       }
     }
-    if (this.kitGold > 0) {
+    if (gold > 0) {
       try {
-        addItemTo(mp, actorId, GOLD_BASE_ID, this.kitGold);
+        addItemTo(mp, actorId, GOLD_BASE_ID, gold);
       } catch (e) {
         this.log(`[mastery] kit gold failed for ${hex(actorId)}: ${e}`);
       }
     }
-    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}, gold ${this.kitGold}`);
-    if (kit.length || this.kitGold > 0) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
+    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}, gold ${gold}${gold < this.kitGold ? " (starter gold came at spawn)" : ""}`);
+    if (kit.length || gold > 0) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
   }
 
-  // Characters created since masteryKitGoldSince whose kit came without gold; the marker settles each one for good
+  // Characters created since masteryKitGoldSince whose kit came without gold and whose starting items carried none; the marker settles each one for good
   private kitGoldDue(ctx: SystemContext, actorId: number, rec: MasteryRecord): boolean {
     if (!this.kitGoldSince || this.kitGold <= 0 || !rec.profession) return false;
     const mp = ctx.svr as Mp;
     try {
-      if (mp.get(actorId, KIT_GOLD_PROP)) return false;
+      if (mp.get(actorId, KIT_GOLD_PROP) || hadStarterGold(mp, actorId)) return false;
       const kit = mp.get(actorId, KIT_PROP);
       // No kit marker: giveKit hands the kit and its gold together at login
       if (!kit || typeof kit.gold === "number") return false;

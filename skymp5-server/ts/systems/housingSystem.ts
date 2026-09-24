@@ -49,8 +49,12 @@ const REGISTRY_FILE = "./housing.json";
 
 // Vanilla key form; the name extra carries the credential.
 export const KEY_BASE_ID = 0x000db0e2;
+// Label of every key cut before keys were named, and of a cut from a client that sends no name
+const DEFAULT_KEY_LABEL = "Property Key";
 // The bracketed suffix of a key's name: TAG or TAG-serial, optionally /cut
 const KEY_CREDENTIAL = /\(([0-9A-F]+(?:-\d+)?)(?:\/\d+)?\)$/;
+// A key cut before the cut number existed: TAG or TAG-serial only
+const UNCUT_KEY = /^Property Key \(([0-9A-F]+)(?:-\d+)?\)$/;
 // HearthFires BYOHMaterialLock; claiming needs one in the inventory.
 const LOCK_DESC = "3012:HearthFires.esm";
 const LOCK_BASE_ID_FALLBACK = 0x03003012;
@@ -62,6 +66,7 @@ const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
 const CHANGE_FAILED = "That cannot be changed right now.";
+const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ and - only.";
 
 // Interior cells that belong to a hold, from HoldClaims::GetHoldCells(); names are hold keys (factionRules.holdKey).
 // Only these can resolve a hold manager; everything else is owner + admin only.
@@ -134,12 +139,13 @@ export class HousingSystem implements System {
     if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
 
     this.roleCfg = readAdminRoleConfig(all);
+    this.keySplitOnLogin = all?.["keySplitOnLogin"] === true;
     try { this.lockBaseId = ((ctx.svr as Mp).getIdFromDesc(LOCK_DESC) >>> 0) || LOCK_BASE_ID_FALLBACK; } catch { }
 
     this.claimed = this.loadRegistry();
     this.installActivationHook(ctx);
     ctx.gm.on("userAssignActor", (userId: number) => this.onActorAssigned(ctx, userId));
-    this.log(`[housing] ready, ${this.claimed.length} claimed refs in the registry`);
+    this.log(`[housing] ready, ${this.claimed.length} claimed refs in the registry, uncut key stacks ${this.keySplitOnLogin ? "split" : "kept"} at login`);
   }
 
   // Locks are enforced here: a refused activation never reaches the door.
@@ -216,6 +222,8 @@ export class HousingSystem implements System {
   // A fresh actor needs the full picture: names and locks for every claim.
   private onActorAssigned(ctx: SystemContext, userId: number): void {
     this.pushDecor(ctx, userId);
+    const actorId = this.actorOf(ctx, userId);
+    if (actorId && this.keySplitOnLogin) this.splitUncutKeys(ctx, actorId);
   }
 
   // ── Requests ────────────────────────────────────────────────────────────────
@@ -355,7 +363,7 @@ export class HousingSystem implements System {
     }
     const name = this.cleanName(raw);
     if (!name) {
-      this.notice(ctx, userId, "That name will not do.");
+      this.notice(ctx, userId, NAME_REFUSED);
       return;
     }
     rec.name = name;
@@ -372,9 +380,9 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "Only the owner cuts keys.");
       return;
     }
-    const label = this.cleanName(raw);
+    const label = typeof raw === "string" ? this.cleanName(raw) : DEFAULT_KEY_LABEL;
     if (!label) {
-      this.notice(ctx, userId, "That name will not do.");
+      this.notice(ctx, userId, NAME_REFUSED);
       return;
     }
     // The counter is stored before the key exists so no two cuts ever share a name
@@ -641,6 +649,46 @@ export class HousingSystem implements System {
       } catch { /* actor gone */ }
     }
     rec.serial += 1;
+  }
+
+  // A stack of old keys becomes separately numbered keys with the same credential in one inventory write
+  private splitUncutKeys(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as Mp;
+    let entries: any[];
+    try {
+      const inv = mp.get(actorId, "inventory");
+      entries = inv && Array.isArray(inv.entries) ? inv.entries.slice() : [];
+    } catch {
+      return;
+    }
+    let split = 0;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      const count = Number(e?.count) || 0;
+      if ((Number(e?.baseId) >>> 0) !== KEY_BASE_ID || count < 2 || count > MAX_KEYS_CARRIED) continue;
+      const m = typeof e.name === "string" ? UNCUT_KEY.exec(e.name) : null;
+      if (!m) continue;
+      const primary = parseInt(m[1], 16) >>> 0;
+      const rec = primary ? this.read(ctx, primary) : null;
+      // A stale key opens nothing, so it is left as it is
+      if (!rec || rec.owner === 0 || keyCredentialIn(e.name) !== this.credentialOf(primary, rec)) continue;
+      const first = rec.cut + 1;
+      rec.cut += count;
+      if (!this.write(ctx, primary, rec)) continue;
+      const copies = [];
+      for (let n = 0; n < count; n++) {
+        copies.push({ ...e, count: 1, name: this.keyNameOf(primary, { ...rec, cut: first + n }, DEFAULT_KEY_LABEL) });
+      }
+      entries.splice(i, 1, ...copies);
+      split += count;
+    }
+    if (!split) return;
+    try {
+      mp.set(actorId, "inventory", { entries });
+      this.log(`[housing] split ${split} uncut keys of ${this.who(ctx, actorId)}`);
+    } catch (e) {
+      this.log(`[housing] could not split uncut keys of ${this.who(ctx, actorId)}: ${e}`);
+    }
   }
 
   private giveKey(ctx: SystemContext, actorId: number, keyName: string): boolean {
@@ -955,6 +1003,7 @@ export class HousingSystem implements System {
   private lastDenyMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxDistance = DEFAULT_MAX_DISTANCE;
+  private keySplitOnLogin = false;
   private lockBaseId = LOCK_BASE_ID_FALLBACK;
   private decorDirty = false;
   private lastDecorMs = 0;

@@ -552,7 +552,8 @@ void ActionListener::OnUpdateAnimation(const RawMessageData& rawMsgData,
     return;
   }
 
-  auto targetActor = SendToNeighbours(msg.idx, rawMsgData);
+  // One reliable-ordered channel so a get-up never lands after a later pose
+  auto targetActor = SendToNeighbours(msg.idx, rawMsgData, true);
 
   if (!targetActor) {
     return;

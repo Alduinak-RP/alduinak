@@ -113,11 +113,45 @@
  ],
  "craftingStations": [
   {
-   "comment": "The grain mills open the crafting menu on AldCraftingGrainMill, where a Sea Salt Rock refines into Salt Pile (smithing.newRecipes). The vanilla GrainMill is listed; add the editor id of any mod grain mill the farms use (xEdit: FURN whose FULL contains Grain Mill). A mill listed here opens the crafting menu; whether its push idle still plays first is to be confirmed in game.",
+   "comment": "The grain mills open the crafting menu on AldCraftingGrainMill, where a Sea Salt Rock refines into Salt Pile (smithing.newRecipes). The vanilla GrainMill is listed; add the editor id of any mod grain mill the farms use (xEdit: FURN whose FULL contains Grain Mill). A mill listed here opens the crafting menu; whether its push idle still plays first is to be confirmed in game. The Chillfurrow and Battle-Born Farm 'Grain Mill' is a FarmhouseWindMillWR windmill (ACTI, nothing to use), so placements puts a GrainMill on the ground beside each, clear of the hay, fences and walls.",
    "keyword": "AldCraftingGrainMill",
    "keywordFormId": "0x04125E",
    "furniture": [
     "GrainMill"
+   ],
+   "placements": [
+    {
+     "edid": "AldGrainMill_ChillfurrowFarm",
+     "formId": "0x04126B",
+     "base": "GrainMill",
+     "cell": "009618:Skyrim.esm",
+     "pos": [
+      29300,
+      -11889,
+      -4160
+     ],
+     "rot": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "edid": "AldGrainMill_BattleBornFarm",
+     "formId": "0x04126C",
+     "base": "GrainMill",
+     "cell": "0095F8:Skyrim.esm",
+     "pos": [
+      33710,
+      -6523,
+      -4330
+     ],
+     "rot": [
+      0,
+      0,
+      0
+     ]
+    }
    ]
   }
  ],
@@ -4068,15 +4102,23 @@
     "LootGiantGold",
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "Gold001"
    ],
-   "useAll": true,
-   "add": [
-    {
-     "item": "Gold001",
-     "count": 20,
-     "level": 1
-    }
+   "useAll": true
+  },
+  {
+   "list": "LootSmallTreasure10",
+   "chanceNone": 95,
+   "remove": [
+    "LootGoldChange"
+   ]
+  },
+  {
+   "list": "LootFalmerCorpseGold",
+   "remove": [
+    "LootFalmerCorpseGoldSublist",
+    "LootGoldChange"
    ]
   },
   {
@@ -4092,7 +4134,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "LItemFalmerEar50",
+    "LItemFalmerEar25"
    ],
    "useAll": true,
    "add": [
@@ -4126,12 +4170,12 @@
    "useAll": false,
    "add": [
     {
-     "item": "DraugrSword01",
+     "item": "DraugrSword",
      "count": 1,
      "level": 1
     },
     {
-     "item": "DraugrBow01",
+     "item": "DraugrBow",
      "count": 1,
      "level": 1
     }
@@ -4142,7 +4186,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "DeathItemDraugrGold",
+    "LItemBoneMeal25"
    ],
    "useAll": true,
    "add": [
@@ -4152,7 +4198,7 @@
      "level": 1
     },
     {
-     "item": "LinenWrap",
+     "item": "RuinsLinenPile01",
      "count": 1,
      "level": 1
     },
@@ -4168,6 +4214,31 @@
     },
     {
      "item": "AldLootDraugrWeapon50",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemDraugrMage",
+   "remove": [
+    "DeathItemDraugrGold"
+   ]
+  },
+  {
+   "list": "LItemDraugr05EWeaponBow",
+   "remove": [
+    "LItemDraugr05EWeaponArrowSublist",
+    "LItemDraugr05EWeaponBowSublist"
+   ],
+   "add": [
+    {
+     "item": "LItemDraugr05WeaponArrowSublist",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "LItemDraugr05WeaponBowSublist",
      "count": 1,
      "level": 1
     }
@@ -4209,7 +4280,7 @@
      "level": 1
     },
     {
-     "item": "TrollSkull",
+     "item": "BoneTrollSkull01",
      "count": 1,
      "level": 1
     }
@@ -4220,7 +4291,8 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "TrollFat"
    ],
    "useAll": true,
    "add": [
@@ -4230,7 +4302,7 @@
      "level": 1
     },
     {
-     "item": "TrollSkull",
+     "item": "BoneTrollSkull01",
      "count": 1,
      "level": 1
     }
@@ -4241,7 +4313,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "ChaurusChitin",
+    "DeathItemChaurusEggs25"
    ],
    "useAll": true,
    "add": [
@@ -4283,7 +4357,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "LootDwarvenSpiderSoulGem50",
+    "LItemDwarvenOil50"
    ],
    "useAll": true,
    "add": [
@@ -4307,7 +4383,7 @@
    "useAll": false,
    "add": [
     {
-     "item": "DLC1DwarvenBolt",
+     "item": "DLC1BoltDwarven",
      "count": 10,
      "level": 1
     }
@@ -4319,7 +4395,10 @@
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
     "LootImperialLuck",
-    "LootDwarvenScrap25"
+    "LootDwarvenScrap25",
+    "LootDwarvenSphereSoulGem50",
+    "LItemDwarvenOil50",
+    "DLC1LootSphereBolts"
    ],
    "useAll": true,
    "add": [
@@ -4346,7 +4425,10 @@
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
     "LootImperialLuck",
-    "LootDwarvenScrap25"
+    "LootDwarvenScrap25",
+    "LootDwarvenCenturionSoulGem",
+    "DwarvenOil",
+    "LItemDwarvenOil50"
    ],
    "useAll": true,
    "add": [
@@ -4369,11 +4451,12 @@
    ]
   },
   {
-   "list": "DeathItemAtronachFrost",
+   "list": "DeathItemFrostAtronach",
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "FrostSalts"
    ],
    "useAll": true,
    "add": [
@@ -4390,11 +4473,12 @@
    ]
   },
   {
-   "list": "DeathItemAtronachFlame",
+   "list": "DeathItemFlameAtronach",
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "FireSalts"
    ],
    "useAll": true,
    "add": [
@@ -4410,7 +4494,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "HagravenFeathers",
+    "LItemHagravenClaw25"
    ],
    "useAll": true,
    "add": [
@@ -4425,12 +4511,7 @@
      "level": 1
     },
     {
-     "item": "Gold001",
-     "count": 8,
-     "level": 1
-    },
-    {
-     "item": "LootPotionAny25",
+     "item": "LootHagravenChestPotions25",
      "count": 1,
      "level": 1
     }
@@ -4470,18 +4551,14 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "LItemBoneMeal25"
    ],
    "useAll": true,
    "add": [
     {
      "item": "BoneMeal",
      "count": 1,
-     "level": 1
-    },
-    {
-     "item": "Gold001",
-     "count": 2,
      "level": 1
     },
     {
@@ -4509,7 +4586,7 @@
      "level": 1
     },
     {
-     "item": "StaffHealing",
+     "item": "StaffHealingHands",
      "count": 1,
      "level": 1
     },
@@ -4537,18 +4614,13 @@
      "level": 1
     },
     {
-     "item": "Gold001",
-     "count": 6,
-     "level": 1
-    },
-    {
      "item": "AldLootSkeletonStaff",
      "count": 1,
      "level": 1
     }
    ],
    "npcs": [
-    "EncSkeletonMage01"
+    "dunLabyrinthianSkeletonMage"
    ]
   },
   {
@@ -4600,12 +4672,9 @@
    ]
   },
   {
-   "list": "DeathItemDraugrDeathlord",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
-   ],
+   "list": "AldDeathItemDraugrDeathlord",
+   "new": true,
+   "formId": "0x041269",
    "useAll": true,
    "add": [
     {
@@ -4614,7 +4683,7 @@
      "level": 1
     },
     {
-     "item": "DraugrSword01",
+     "item": "DraugrSword",
      "count": 1,
      "level": 1
     },
@@ -4633,6 +4702,9 @@
      "count": 1,
      "level": 1
     }
+   ],
+   "npcs": [
+    "EncDraugr05TemplateEbony"
    ]
   },
   {
@@ -4664,12 +4736,9 @@
    ]
   },
   {
-   "list": "DeathItemCorruptedShade",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
-   ],
+   "list": "AldDeathItemCorruptedShade",
+   "new": true,
+   "formId": "0x04126A",
    "useAll": true,
    "add": [
     {
@@ -4692,6 +4761,10 @@
      "count": 1,
      "level": 1
     }
+   ],
+   "npcs": [
+    "EncSkeletonNecroImp01Melee1H",
+    "EncSkeletonNecroImp01Missile"
    ]
   }
  ],
@@ -5777,7 +5850,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -5813,7 +5886,11 @@
    "016805:AlduinakAdditions.esp",
    "016807:AlduinakAdditions.esp",
    "1115B9:Warbirds Whiterun Metropolis.esp",
-   "001E64:AlduinakAdditions.esp"
+   "001E64:AlduinakAdditions.esp",
+   "205626:Warbirds Whiterun Metropolis.esp",
+   "07C613:Warbirds Whiterun Metropolis.esp",
+   "07C5FE:Warbirds Whiterun Metropolis.esp",
+   "001F23:AlduinakAdditions.esp"
   ]
  },
  "overrides": {

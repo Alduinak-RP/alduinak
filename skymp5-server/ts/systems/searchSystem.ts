@@ -76,6 +76,8 @@ export class SearchSystem implements System {
   // Set by index.ts: the owner of a pet or companion (0 for none), and whether a living NPC is game
   ownedBy?: (actorId: number) => number;
   isAnimal?: (ctx: SystemContext, actorId: number) => boolean;
+  // Set by index.ts: why a searcher may not open this body, "" when they may
+  bodyRefusal?: (searcherActorId: number, bodyActorId: number) => string;
 
   // targetActorId -> session (a target is searched by at most one player)
   private sessions = new Map<number, SearchSession>();
@@ -312,6 +314,11 @@ export class SearchSystem implements System {
       const refusal = this.npcRefusal(ctx, searcherActorId, targetActorId);
       if (refusal) this.notice(ctx, userId, refusal);
       else this.startSession(ctx, searcherActorId, targetActorId, false, false, false, true);
+      return;
+    }
+    const bodyRefusal = body ? this.bodyRefusal?.(searcherActorId, targetActorId) : "";
+    if (bodyRefusal) {
+      this.notice(ctx, userId, bodyRefusal);
       return;
     }
     // Bodies and bound players are searched without a prompt

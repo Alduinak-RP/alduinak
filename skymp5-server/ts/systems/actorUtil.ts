@@ -42,6 +42,17 @@ export const baseIdOf = (mp: Mp, actorId: number): number => {
 
 export const GOLD_BASE_ID = 0x0000000f;
 
+// Set on a character whose starting items carried gold, { count, at }; its profession kit then comes without gold
+export const STARTER_GOLD_PROP = "private.starterGold";
+
+export const hadStarterGold = (mp: Mp, actorId: number): boolean => {
+  try {
+    return !!mp.get(actorId, STARTER_GOLD_PROP);
+  } catch {
+    return false;
+  }
+};
+
 // Record type of a reference's base ("DOOR", "FURN"...), "" when unknown
 export const baseTypeOf = (mp: Mp, refId: number): string => {
   try {
@@ -135,6 +146,15 @@ export const isBehind = (mp: Mp, viewerId: number, subjectId: number): boolean =
     const dx = subject[0] - viewer[0], dy = subject[1] - viewer[1];
     const distance = Math.hypot(dx, dy);
     return distance > 0 && (Math.sin(yaw) * dx + Math.cos(yaw) * dy) / distance >= Math.cos(BEHIND_HALF_ANGLE_DEG * Math.PI / 180);
+  } catch {
+    return false;
+  }
+};
+
+// A rider's ff_mount holds the horse id, 0 or unset on foot
+export const isMounted = (mp: Mp, actorId: number): boolean => {
+  try {
+    return !!mp.get(actorId, "ff_mount");
   } catch {
     return false;
   }
@@ -235,9 +255,9 @@ export const destroyRef = (mp: Mp, id: number): void => {
   mp.callPapyrusFunction("method", "ObjectReference", "Delete", { type: "form", desc: mp.getDescFromId(id) }, []);
 };
 
-// Through Papyrus, so the server records learnedSpells (which HasSpell reads) and the client learns it live; throws when a form is unknown
-export const addSpellTo = (mp: Mp, actorId: number, spellId: number): void => {
-  mp.callPapyrusFunction("method", "Actor", "AddSpell", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(spellId) }, false]);
+// Through Papyrus, so the server records learnedSpells (which HasSpell reads) and the client learns it live; false when it was already known, throws when a form is unknown
+export const addSpellTo = (mp: Mp, actorId: number, spellId: number): boolean => {
+  return mp.callPapyrusFunction("method", "Actor", "AddSpell", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(spellId) }, false]) === true;
 };
 
 export const removeSpellFrom = (mp: Mp, actorId: number, spellId: number): void => {

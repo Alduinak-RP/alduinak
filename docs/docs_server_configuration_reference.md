@@ -295,10 +295,21 @@ number, a `"0x..."` string or a `"hex:File.esp"` descriptor. `pos` is the
 arrival point in game units and `rot` its angles in degrees, `[0, 0, 0]` when
 omitted. An entry the load order has no form for is skipped and logged at boot.
 
-Defaults to the Thalmor Embassy party room's south west door (`7C98E:Skyrim.esm`),
-whose vanilla pair leaves the player in the room, redirecting it to the courtyard
-outside the embassy front door. Giving the key replaces that list; `[]` turns the
-overrides off.
+Defaults to three doors:
+
+- the Thalmor Embassy party room's south west door (`7C98E:Skyrim.esm`), whose
+  vanilla pair leaves the player in the room, redirected to the courtyard outside
+  the embassy front door;
+- the Temple of Jhunal tower pair of Winterhold Restored, both outside in Tamriel
+  1111 units apart: the door at the foot (`f058c4:Winterhold Restored.esp`,
+  MWRJhunalTowerDoor01Ref) lands on the balcony's XMarkerHeading `f058aa` and the
+  balcony door (`f058c5`, MWRJhunalTowerDoor02Ref) at its plugin arrival, each 64
+  units above the floor. The plugin's arrivals sit exactly on the floor, and a move
+  within one worldspace has no loading screen to settle the player, so a landing
+  that starts inside the balcony drops them down the tower to their death.
+
+Giving the key replaces that list, so a configured list that should keep them
+repeats them; `[]` turns the overrides off.
 
 The override applies only to the connected player who pressed the door, only
 once the lock, faction and job checks of the normal door path have allowed the
@@ -310,6 +321,14 @@ system is logged as `[doors] <actor> (<name>) pressed <door>`, once per second
 per player; a press missing there never reached the server or was refused by a
 lock, a faction or the native side (`WorldSpace doesn't match`, logged by the
 server itself).
+
+The client drops a press on a door that is still swinging, so it cannot reverse
+the swing, except on a load door: the first such press on a plugin door asks the
+server (`loadDoorQuery`), which answers from the door's XTEL or this list
+(`loadDoorAnswer`), and a load door gets the dropped press sent at once and every
+later one straight through. A plain door stuck mid-swing takes a second press
+1.5 s after the first ignored one; an ignored press older than 5 s starts that
+wait over.
 
 ```json5
 {
@@ -339,6 +358,60 @@ boot.
 {
   // ...
   "exteriorScriptAllowlist": ["default2StateActivator", "NorLever01SCRIPT"]
+  // ...
+}
+```
+
+## leverLinks
+
+Levers that open or close a gate or door the plugin wires through markers the
+server never loads. The server skips every STAT reference, XMarkers included,
+so a lever script that reads or activates one moves nothing but the lever. One
+entry per gate: `levers` lists the placed levers, `target` the placed door or
+gate they move; both take a number, a `"0x..."` string or a `"hex:File.esp"`
+descriptor. With `all: true` every lever of the entry must have been pulled once
+before the target moves; after that each pull toggles it. A `DOOR` target
+toggles its native `isOpen`; any other target plays `openAnim` / `closeAnim`
+(default `open` / `close`, the default2StateActivator names), which the server
+keeps for players who arrive later. Pulls are stored on the levers and a
+door's `isOpen` on the door, and both survive a restart; any other target loads
+closed after a restart (its animation is not saved), so the next pull opens it. Only a connected player's pull counts, once the
+other activation checks allowed it, and a target moves at most once every 3 s.
+Each pull is logged as `[levers] <player> pulled <lever>, ...`.
+
+Defaults to Soljund's Sinkhole: soljundLever `5ebe3` and `5ebe4` run
+soljundMasterScript, which disables one XMarker per lever and opens portcullis
+`5ebc0` through a third once both are down; here both levers open the
+portcullis once each has been pulled. Giving the key replaces the list; `[]`
+turns the links off.
+
+```json5
+{
+  // ...
+  "leverLinks": [
+    { "levers": ["5ebe3:Skyrim.esm", "5ebe4:Skyrim.esm"], "target": "5ebc0:Skyrim.esm", "all": true }
+  ]
+  // ...
+}
+```
+
+## keySplitOnLogin
+
+`false` (default) leaves a stack of property keys cut before keys were
+numbered (`Property Key (TAG)` xN) as it is. `true` splits such a stack into N
+keys named `Property Key (TAG/n)` when its holder's actor is assigned at login
+(`docs_roleplay_property_factions.md`). Turn it on only after the client with
+the new `SkyrimPlatformImpl.dll` (the `ExtraTextDisplayData::IsNotEqual` hook)
+has shipped and two differently named keys stay separate in game: a client
+without it merges the split keys back into one engine stack, and its put/take
+requests then fail with "Source inventory doesn't have enough 0xdb0e2". The
+split cannot be undone. Read at startup; the boot line `[housing] ready`
+says whether stacks are split or kept.
+
+```json5
+{
+  // ...
+  "keySplitOnLogin": true
   // ...
 }
 ```
@@ -448,9 +521,10 @@ World border (no setting): the regions come from the REGN records flagged Border
 | `finishOffMaxMs` | `9000` | Cap on a finish off or execution killmove: the victim dies when a participant's client reports the end of the pair, or after this |
 | `finishOffExtendedPool` | `false` | Adds the killmove tree records, whose conditions the engine may refuse, to the finisher pools; a probe, see docs_roleplay_survival_loop.md section 8 |
 | `finishOffStandUp` | `true` | The finish off stands the victim up and plays a standing killmove once the get-up settled; `false` keeps them kneeling and plays the one-handed KillingBlow stab at once (no decapitation, no variety). Read at start, so a change needs a game service restart and no build |
-| `executionFinishers` | see section 8 | The finish off pools per weapon type, `{ "sword": [idle form ids], "dagger": [], "axe": [], "mace": [], "greatsword": [], "battleaxe": [], "dual": [], "unarmed": [] }` (numbers or `"0x..."` strings, loose `pa_` IDLE records of that weapon state); a type given replaces its default pool, the others keep theirs. Dagger, axe and mace default to the sword pool, battleaxe to the greatsword stab, unarmed to nothing (refused). Read at start |
-| `executionSneakFinishers` | the `executionFinishers` defaults | The assassination pairs per weapon type, same shape as `executionFinishers`; the standing finishers stand in until the vanilla sneak pairs are filled in. Read at start |
-| `bodyMaxSeconds` | `3600` | How long the body a PK leaves lies before it is removed with whatever is left in it; `0` keeps it until it is emptied. A body is removed as soon as its loose stacks are gone either way. The body carries the neighbor-visible `ff_body` property, registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only before the server build |
+| `executionFinishers` | see section 8 | The finish off pools per weapon type, `{ "sword": [idle form ids], "dagger": [], "axe": [], "mace": [], "greatsword": [], "battleaxe": [], "dual": [], "unarmed": [] }` (numbers or `"0x..."` strings, loose `pa_` IDLE records of that weapon state); a type given replaces its default pool, the others keep theirs. Sword and dagger share the blade pool (`F469B`, `F469D`, `108A45`), axe and mace share `F469A` and `F469C`, dual is `F469F` and greatsword the stab `F4687`; battleaxe is empty and borrows the greatsword pool, unarmed has nothing (refused). Overriding one type never changes another that shares its default pool. Read at start |
+| `executionSneakFinishers` | one-handed and dual: `pa_1HMSneakKillBackA` F4679, `pa_1HMKillMoveBackStab` F465A; the others the finish off defaults | The assassination pairs per weapon type, same shape as `executionFinishers`; a type given replaces its default pool. Read at start |
+| `bodyMaxSeconds` | `0` | How long the body a PK leaves lies before it is removed with whatever is left in it; `0` (default) keeps it until it is emptied, as the patch notes promise. Read at startup. A body is removed as soon as its loose stacks are gone either way. The body carries the neighbor-visible `ff_body` property, registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only before the server build |
+| `bodyIdleSeconds` | `7200` | How long a PK body lies after its last take or put before it is removed with whatever is left in it, so leftover or dropped junk cannot keep a looted body forever. A body nobody has taken from or put into is not affected (it stays until emptied or `bodyMaxSeconds`). `0` turns it off. The last touch is kept in `bodies.json`, so a restart does not reset it. Read at startup |
 
 ## Carry pose
 
@@ -507,12 +581,12 @@ With `characterSelect` on, how many living characters a profile may hold (1-10, 
 
 ## afterlifeLooks
 
-Optional. What a fallen character looks like and wears in its realm (`docs_roleplay_foundations.md` section 4). One entry per realm, `sovngarde` and `soulCairn`; a realm left out keeps its default. `look` (or `shader`) is an EFSH, played on the character for everyone through the neighbor-visible `ff_afterlife` property, or a SPEL added as an ability; `outfit` lists ARMO records given and put on. Every name is an editor id, a `hex:Plugin.esm` desc or a hex id, resolved at start (a game service restart, no build); misses and other record types are logged and ignored. `ff_afterlife` is registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only before the server build.
+Optional. What a fallen character looks like and wears in its realm (`docs_roleplay_foundations.md` section 4). One entry per realm, `sovngarde` and `soulCairn`; a realm or a key left out keeps its default, so `"sovngarde": { "look": "AbFXSovengardeGlow" }` keeps the Ancient Nord outfit; `"look": ""` drops the look and `"outfit": []` the outfit. `look` (or `shader`) is an EFSH, played on the character for everyone through the neighbor-visible `ff_afterlife` property, or a SPEL added as an ability; `outfit` lists ARMO records given and put on; `alpha` (0-1, default 1 for Sovngarde and 0.25 for the Soul Cairn, the Dawnguard ghost's value) is the character's opacity while an EFSH look plays; anything but a number from 0 to 1 (`null`, `""`, `false`, `2`) is logged `[afterlife] <realm> alpha <value> is not a number between 0 and 1, the default <a> is used` and the realm's default applies. Every name is an editor id, a `hex:Plugin.esm` desc or a hex id, resolved at start (a game service restart, no build); misses and other record types are logged and ignored. `ff_afterlife` is registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only before the server build.
 
 ```json5
 "afterlifeLooks": {
-  "sovngarde": { "look": "96ffb:Skyrim.esm", "outfit": ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"] },
-  "soulCairn": { "look": "DLC1SoulCairnGhostFXShader", "outfit": ["ClothesPrisonerRags", "ClothesPrisonerShoes"] }
+  "sovngarde": { "look": "SovengardeFXS01", "outfit": ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"], "alpha": 1 },
+  "soulCairn": { "look": "DLC1SoulCairnGhostFXShader", "outfit": ["ClothesPrisonerRags", "ClothesPrisonerShoes"], "alpha": 0.25 }
 }
 ```
 
@@ -625,7 +699,7 @@ Lets every player run the server console commands (`additem`, `equipitem`, `plac
 
 The Discord bot integration. `botToken` is the bot's token, so keep this key secret. For each entry in `guilds`, login checks membership and `banRoleId`, and `DiscordBanSystem` kicks players who get the ban role. `eventLogChannelId` receives the game alerts below. Leave `eventLogChannelId` out (or turn on `offlineMode`) on a test server, so it posts nothing to the live channel.
 
-Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews. Only the kinds listed in `discordAlertKinds` are posted, default `["death", "execute", "ticket"]`; the key is read at boot and a non-empty list replaces the default, so `admin`, `keyword` and `login` are off unless listed:
+Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews. Only the kinds listed in `discordAlertKinds` are posted, default `["death", "execute", "ticket"]`; the key is read at boot and a non-empty list replaces the default, so `admin`, `keyword` and `login` are off unless listed. The `death` and `execute` lines also go to every online staff member's in-game Admin tab, listed or not, through the gamemode's `globalThis.__alduinakStaffLine(label, text)` (`35_admin_chat.js`); with the staff calls they are the only log lines that tab shows, and console commands, `/system` broadcasts and PvP hits go only to `admin.log` and `pvp.log`:
 
 - **[Death]** (`death`) every player death, with the killer (player or NPC, if any) and the place: the nearest map marker outdoors, the cell indoors, then the raw location. A bleedout death says how it happened (bled out, died of their wounds while bleeding out, logged out while bleeding out, was finished off, was smitten) and names the player who landed the finishing hit.
 - **[Execution]** (`execute`) execute, finish off and a staff PK. The killing code calls `globalThis.__alduinakMarkDeathAlerted(actorId)` first, so the same death posts no second [Death] line.
@@ -941,9 +1015,9 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | Key | Default | Meaning |
 |---|---|---|
 | `needsEnabled` | `true` | `false` switches hunger and fatigue off |
-| `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours) |
+| `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours); hunger holds while the race menu or creator is pending, for up to 20 minutes (then it drains again and the server logs a warning); fatigue keeps regenerating |
 | `needsHungerOffline` | `false` | `true` drains hunger while logged out too |
-| `needsHungerStart` | `145` | Hunger of a new character; 145 is Survival Mode's starting value, in the Satisfied stage |
+| `needsHungerStart` | `145` | Hunger of a new character, set again (with a full fatigue bar) when its race menu or creator is accepted; 145 is Survival Mode's starting value, in the Satisfied stage |
 | `needsHungerStages` | `[80, 160, 340, 520, 770]` | Survival's stage values: Well Fed (after a meal empties hunger) ends at the first, Peckish, Hungry, Famished and Starving begin at the others; the second also starts the max stamina penalty |
 | `needsHungerStageAbilities` | `true` | Grant the Survival hunger stage ability of the current stage |
 | `needsFoodHunger` | `{ "Survival_FoodRestoreHungerVerySmall": 40, "Survival_FoodRestoreHungerSmall": 100, "Survival_FoodRestoreHungerMedium": 220, "Survival_FoodRestoreHungerLarge": 380 }` | Hunger points (of 1000) each hunger magic effect restores, merged key by key over the default; the HUD bar shows a tenth of that as a percentage (VerySmall 4%, Small 10%, Medium 22%, Large 38%). An effect not listed restores its record's `AmountToRestore` global (Survival's 2, 18, 220, 380). Numbers of 0 or more. Read at boot |
@@ -977,8 +1051,8 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `masterySpells` | plugin markers | `{ "<profession>": [novice, adept, expert, master] }` form ids; a profession left out uses the plugin's `AldMastery_<Profession>_<Rank>` spells |
 | `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
 | `masteryKits` | see `DEFAULT_KITS` in `masterySystem.ts` | `{ "<profession>": [{ baseId, count }] }` kit a character receives with its first profession, same shape as `startingItems`; a profession left out keeps its default, `[]` gives nothing, an unknown key or item is logged at boot |
-| `masteryKitGold` | `50` | Gold every profession's kit carries on top of its items, alchemists included, whatever `masteryKits` says; `0` turns it off |
-| `masteryKitGoldSince` | unset | ISO date or epoch ms (a digit-only string counts as epoch ms). Every character created at or after it whose profession kit marker carries no gold receives `masteryKitGold` once, at boot for everyone and again after login, marked by `private.professionKitGold`; unset or unparsable turns the backfill off |
+| `masteryKitGold` | `50` | Gold every profession's kit carries on top of its items, alchemists included, whatever `masteryKits` says; `0` turns it off. A character that got gold from `startingItems` (marked `private.starterGold`) gets none |
+| `masteryKitGoldSince` | unset | ISO date or epoch ms (a digit-only string counts as epoch ms). Every character created at or after it whose profession kit marker carries no gold and that is not marked `private.starterGold` receives `masteryKitGold` once, at boot for everyone and again after login, marked by `private.professionKitGold`; unset or unparsable turns the backfill off. Characters created before the `private.starterGold` marker existed cannot be told apart, so it may pay a second 50 to those that got spawn gold |
 | `gatheringStrikeSeconds` | `5` | Seconds per pickaxe strike |
 | `gatheringChopSeconds` | `10` | Seconds per swing of the woodcutter's axe; the firewood lands when the swing ends, counted from the moment the client reports the player seated, and only if they are still seated then |
 | `gatheringChopYield` | `2` | Firewood one swing hands over. A sitting at a chopping block has no cap: the chopper stays in the chopping animation, a yield every swing, and stands up with "You are too tired to swing an axe. Rest a while." once the fatigue bar cannot pay for another (`needsChopWoodPerBar`) |

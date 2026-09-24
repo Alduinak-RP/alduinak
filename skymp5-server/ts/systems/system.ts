@@ -23,6 +23,9 @@ export interface CharacterListEntry {
   dead: boolean;
 }
 
+// Emitted on SystemContext.gm (actorId) when Spawn accepts a new character's race menu or creator
+export const CREATION_FINISHED_EVENT = "creationFinished";
+
 // Emitted on SystemContext.gm (profileId, slot, actorId) just before a character is deleted
 export const CHARACTER_RETIRED_EVENT = "characterRetired";
 

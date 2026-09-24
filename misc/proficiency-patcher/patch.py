@@ -125,13 +125,15 @@ def spec_overrides(spec):
 
 
 def world_allowed(spec):
-    # The world section adds its own references, the overrides of the cells holding them and the references it moves
-    w = json.load(open(spec, encoding='utf-8')).get('world', {})
+    # The world section and the crafting stations add their own references, the overrides of the cells holding them and the references it moves
+    s = json.load(open(spec, encoding='utf-8'))
+    w = s.get('world', {})
     def key(text):
         local, plugin = text.split(':', 1)
         return plugin.lower(), int(local, 16)
-    cells = {key(p['cell']) for p in w.get('placements', [])}
-    edids = {p['edid'] for p in w.get('placements', [])}
+    placements = w.get('placements', []) + [p for st in s.get('craftingStations', []) for p in st.get('placements', [])]
+    cells = {key(p['cell']) for p in placements}
+    edids = {p['edid'] for p in placements}
     moves = {key(m['ref']) for m in w.get('moves', [])}
     return lambda k, rec: (k[0] == 'REFR' and k[1] == 'self' and k[2] in edids) \
         or (k[0] == 'CELL' and (k[1].lower(), k[2]) in cells) \

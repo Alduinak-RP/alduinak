@@ -46,6 +46,7 @@ import { TimeSystem } from "./systems/timeSystem";
 import { WeatherSystem } from "./systems/weatherSystem";
 import { FurnitureSeatSystem } from "./systems/furnitureSeatSystem";
 import { DoorTeleportSystem } from "./systems/doorTeleportSystem";
+import { LeverLinkSystem } from "./systems/leverLinkSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { DiscordAlerts } from "./systems/discordAlerts";
@@ -284,8 +285,9 @@ const main = async () => {
   const factionSystem = new FactionSystem(log, housingSystem);
   // A PK leaves a lootable body at the spot of death
   const bodySystem = new BodySystem(log);
+  searchSystem.bodyRefusal = (searcherId, bodyId) => bodySystem.refusalFor(searcherId, bodyId);
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
-  const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem);
+  const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem, furnitureSeatSystem);
   adminSystem.setExecutionSystem(executionSystem);
   const bountyBoardSystem = new BountyBoardSystem(log);
   bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
@@ -314,7 +316,7 @@ const main = async () => {
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
     searchSystem,
-    new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem),
+    new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem, captureSystem),
     new VoiceSystem(log),
     new AfkSystem(log),
     new TimeSystem(log),
@@ -343,6 +345,8 @@ const main = async () => {
     new DiscordBanSystem(),
     new DiscordAlerts(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
+    // After every other activate hook but the job one, so only an allowed pull moves the linked gate
+    new LeverLinkSystem(log),
     // Last: its hit and activate hooks wrap every other one
     jobSystem,
   );

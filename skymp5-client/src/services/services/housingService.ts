@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared, claimHeldMenu, releaseHeldMenus } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
@@ -35,6 +35,8 @@ const events = {
   grantContainer: 'housing:grantcontainer',
   pets: 'housing:pets',
   cancel: 'housing:cancel',
+  // The rename field took focus
+  typing: 'housing:typing',
 };
 
 // Event keys of the pet list the Pets option opens
@@ -48,6 +50,9 @@ const keyPromptEvents = {
   ok: 'housing:keyname:ok',
   cancel: 'housing:keyname:cancel',
 };
+
+// The server's cleanName rule for a key label
+const keyNameRule = { chars: "A-Za-z0-9 '_-", maxLength: 32, hint: "Letters, numbers, spaces, ' _ and - only." };
 
 // The server's propertyMenu reply that drives which menu we render.
 interface PropertyMenuInfo {
@@ -193,6 +198,7 @@ export class HousingService extends ClientListener {
           notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
           break;
         }
+        if (!this.menuOpen && !claimHeldMenu(() => this.menuOpen, () => this.closeMenu())) break;
         info = {
           target,
           view: view === 'owner' || view === 'manager' || view === 'keyholder' || view === 'claimable' ? view : 'denied',
@@ -274,9 +280,13 @@ export class HousingService extends ClientListener {
         sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action, target });
         break;
       }
+      case events.typing:
+        releaseHeldMenus();
+        break;
       case events.createKey:
+        releaseHeldMenus();
         keyPromptCaption = "Name the key";
-        keyPromptValue = info.name || targetLabel;
+        keyPromptValue = (info.name || targetLabel).replace(new RegExp(`[^${keyNameRule.chars}]`, "g"), "").trim().slice(0, keyNameRule.maxLength);
         this.openKeyPrompt();
         break;
       case events.rename: {
@@ -315,9 +325,11 @@ export class HousingService extends ClientListener {
     openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, targetLabel, WIDGET_ID }, this.controller);
   }
 
+  // The key prompt keeps the focus while it is still shown
   private closeMenu(): void {
     this.menuOpen = false;
-    closeFormMenu(this.sp, WIDGET_ID);
+    if (this.promptOpen) closeWidget(this.sp, WIDGET_ID);
+    else closeFormMenu(this.sp, WIDGET_ID);
   }
 
   private openPetList(): void {
@@ -332,7 +344,7 @@ export class HousingService extends ClientListener {
 
   private openKeyPrompt(): void {
     this.promptOpen = true;
-    openFormMenu(this.sp, this.keyPromptWidgetSetter, { keyPromptCaption, keyPromptValue, keyPromptEvents, KEY_PROMPT_WIDGET_ID }, this.controller);
+    openFormMenu(this.sp, this.keyPromptWidgetSetter, { keyPromptCaption, keyPromptValue, keyPromptEvents, keyNameRule, KEY_PROMPT_WIDGET_ID }, this.controller);
   }
 
   // The menu underneath keeps the focus while it is still open
@@ -391,6 +403,9 @@ export class HousingService extends ClientListener {
       id: KEY_PROMPT_WIDGET_ID,
       caption: keyPromptCaption,
       value: keyPromptValue,
+      allowedChars: keyNameRule.chars,
+      allowedHint: keyNameRule.hint,
+      maxLength: keyNameRule.maxLength,
       events: keyPromptEvents,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== KEY_PROMPT_WIDGET_ID);
