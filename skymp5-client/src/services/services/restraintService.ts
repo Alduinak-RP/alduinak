@@ -119,10 +119,12 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   - carrying: plays the carry-hold pose; fighting is disabled and a drawn
  *     weapon, fists or spell is sheathed. The carrier can still walk.
  *   - downed: kneels in the bleedout pose, cannot move, fight, sneak, activate
- *     or open menus, and is a ghost locally so no local hit lands; the camera
- *     stays free. Carried wins over downed, downed over bound.
+ *     or open menus, and is a ghost locally so no local hit lands; held in
+ *     third person for the whole bleedout, the camera can still orbit.
+ *     Carried wins over downed, downed over bound.
  *   - executionState: kneels at the block in the given pose, held in place like
- *     a downed player but with menus; wins over bound, the cuffs stay on.
+ *     a downed player but with menus and a free camera; wins over bound, the
+ *     cuffs stay on.
  *   - standForPair (PairedIdleService, a finish off with standUp): the kneel is
  *     left for the length of the pair while the controls stay locked; a victim
  *     who survives it kneels again shortly after pairEnded, or when it lapses.
@@ -533,15 +535,16 @@ export class RestraintService extends ClientListener {
       this.sp.Game.enablePlayerControls(true, false, true, false, false, false, false, false, 0);
     }
     if (this.downed || this.executionPose || this.lock) {
-      // Held in place: no walking, fighting, sneaking or activation, and no menus while downed; the camera stays free
+      // Held in place: no walking, fighting, sneaking or activation; downed also loses menus and is kept in third person, the block kneel and action locks keep the camera free
+      if (this.downed) this.sp.Game.forceThirdPerson();
       this.stillControlsApplied = true;
-      this.sp.Game.disablePlayerControls(true, true, false, false, true, this.downed, true, false, 0);
+      this.sp.Game.disablePlayerControls(true, true, this.downed, false, true, this.downed, true, false, 0);
       player.setDontMove(true);
       return;
     }
     if (this.stillControlsApplied) {
       this.stillControlsApplied = false;
-      this.sp.Game.enablePlayerControls(true, false, false, false, false, true, false, false, 0);
+      this.sp.Game.enablePlayerControls(true, false, true, false, false, true, false, false, 0);
     }
     if (this.boundHands) {
       // Can still walk / be marched, but can't fight, sneak or use hands.

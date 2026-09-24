@@ -37,7 +37,11 @@ behaviour-graph events — no ESP required.**
   falls). BleedoutSystem refuses it, so the server holds the player at 1%
   health and never sends them 0. They kneel in the vanilla bleedout pose, cannot
   move, fight, sneak, cast, activate, eat, drink or open menus, and are told how
-  long they have (a potion they drink anyway is handed back without effect). The player who downed them is told too. NPCs, and admins in god or
+  long they have (a potion they drink anyway is handed back without effect).
+  The client forces third person and locks the camera switch for the whole
+  bleedout, so a downed player never sits in first person inside the kneel;
+  the camera can still orbit, and the switch comes back with the stand-up. The
+  execution block kneel and timed action locks keep the camera free. The player who downed them is told too. NPCs, and admins in god or
   ghost mode, never go down. Without the native server build the gate never
   fires and players die at once, as before.
 - **Dying**: a further hit from another player kills at once, and the
