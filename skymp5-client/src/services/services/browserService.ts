@@ -53,7 +53,8 @@ export class BrowserService extends ClientListener {
     // A hidden page must not take keyboard focus away from the game
     const canFocus = !this.uiHidden && this.badMenusOpen.size === 0;
     if (this.keyCaptureHeld && !this.isCaptureKeyDown((key) => e.isDown([key]))) this.keyCaptureHeld = false;
-    const keyCapture = this.keyCapture || this.keyCaptureHeld;
+    // Another service may drop focus with a bare setFocused(false) while a capture is pending
+    const keyCapture = (this.keyCapture && this.sp.browser.isFocused()) || this.keyCaptureHeld;
     if (canFocus && !keyCapture && e.isDown([this.freeCursorKey])) {
       const newState = !this.sp.browser.isFocused();
       this.sp.browser.setFocused(newState);

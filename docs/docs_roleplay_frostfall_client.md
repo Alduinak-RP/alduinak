@@ -37,7 +37,9 @@ key no longer matches that stamp is dropped, so a later launcher change wins
 the override replaces `T` and Enter stays. While a row waits for a press the page
 sends `cef::browser:keyCapture` `1` (`0` when it ends), and BrowserService leaves
 Esc and the free-cursor key to the page until they are released, so cancelling
-or binding one of them does not close the settings panel.
+or binding one of them does not close the settings panel. A capture only counts
+while the page holds browser focus, so a menu that drops focus mid-capture
+(trade, death screen, character select) leaves the free-cursor key working.
 
 The interact key replaced the Housing (`H`, `housingMenuKeyCode`), Faction
 (`G`, `factionMenuKeyCode`), Personal (`U`, `personalMenuKeyCode`), Admin
