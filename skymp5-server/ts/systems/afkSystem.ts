@@ -11,9 +11,9 @@ type Mp = any;
 //
 // server-settings.json keys:
 //   afkKickMinutes  minutes of inactivity before the kick, 0 disables (default 20)
-//   afkWarnMinutes  minutes before the kick to warn the player (default 2)
+//   afkWarnMinutes  minutes before the kick to warn the player (default 1)
 
-const POLL_MS = 30000;
+const POLL_MS = 15000;
 
 // Automatic client packets that fire without player input
 const IDLE_PACKET_TYPES = new Set(["voiceTokenRequest", "gameTimeRequest", "knowledgeRequest"]);
@@ -29,7 +29,7 @@ export class AfkSystem implements System {
   constructor(private log: Log) { }
 
   private kickMs = 20 * 60 * 1000;
-  private warnMs = 2 * 60 * 1000;
+  private warnMs = 1 * 60 * 1000;
   private states = new Map<number, AfkState>();
   private nextPollAt = 0;
 
