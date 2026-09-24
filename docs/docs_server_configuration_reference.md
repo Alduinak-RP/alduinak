@@ -394,6 +394,27 @@ turns the links off.
 }
 ```
 
+## keySplitOnLogin
+
+`false` (default) leaves a stack of property keys cut before keys were
+numbered (`Property Key (TAG)` xN) as it is. `true` splits such a stack into N
+keys named `Property Key (TAG/n)` when its holder's actor is assigned at login
+(`docs_roleplay_property_factions.md`). Turn it on only after the client with
+the new `SkyrimPlatformImpl.dll` (the `ExtraTextDisplayData::IsNotEqual` hook)
+has shipped and two differently named keys stay separate in game: a client
+without it merges the split keys back into one engine stack, and its put/take
+requests then fail with "Source inventory doesn't have enough 0xdb0e2". The
+split cannot be undone. Read at startup; the boot line `[housing] ready`
+says whether stacks are split or kept.
+
+```json5
+{
+  // ...
+  "keySplitOnLogin": true
+  // ...
+}
+```
+
 ## playersInheritBaseSpells
 
 `true` (default) keeps the Player record's castable spells (Flames, Healing)

@@ -139,12 +139,13 @@ export class HousingSystem implements System {
     if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
 
     this.roleCfg = readAdminRoleConfig(all);
+    this.keySplitOnLogin = all?.["keySplitOnLogin"] === true;
     try { this.lockBaseId = ((ctx.svr as Mp).getIdFromDesc(LOCK_DESC) >>> 0) || LOCK_BASE_ID_FALLBACK; } catch { }
 
     this.claimed = this.loadRegistry();
     this.installActivationHook(ctx);
     ctx.gm.on("userAssignActor", (userId: number) => this.onActorAssigned(ctx, userId));
-    this.log(`[housing] ready, ${this.claimed.length} claimed refs in the registry`);
+    this.log(`[housing] ready, ${this.claimed.length} claimed refs in the registry, uncut key stacks ${this.keySplitOnLogin ? "split" : "kept"} at login`);
   }
 
   // Locks are enforced here: a refused activation never reaches the door.
@@ -222,7 +223,7 @@ export class HousingSystem implements System {
   private onActorAssigned(ctx: SystemContext, userId: number): void {
     this.pushDecor(ctx, userId);
     const actorId = this.actorOf(ctx, userId);
-    if (actorId) this.splitUncutKeys(ctx, actorId);
+    if (actorId && this.keySplitOnLogin) this.splitUncutKeys(ctx, actorId);
   }
 
   // ── Requests ────────────────────────────────────────────────────────────────
@@ -1002,6 +1003,7 @@ export class HousingSystem implements System {
   private lastDenyMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxDistance = DEFAULT_MAX_DISTANCE;
+  private keySplitOnLogin = false;
   private lockBaseId = LOCK_BASE_ID_FALLBACK;
   private decorDirty = false;
   private lastDecorMs = 0;
