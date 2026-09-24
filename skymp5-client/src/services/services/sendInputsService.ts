@@ -7,7 +7,7 @@ import { getMovement } from "../../sync/movementGet";
 // TODO: refactor this out
 import * as worldViewMisc from "../../view/worldViewMisc";
 
-import { Animation, AnimationSource } from "../../sync/animation";
+import { Animation, AnimationSource, needsReliableSend } from "../../sync/animation";
 import { Actor, EquipEvent, FormType } from "skyrimPlatform";
 import { getAppearance } from "../../sync/appearance";
 import { ActorValues, getActorValues } from "../../sync/actorvalues";
@@ -249,7 +249,7 @@ export class SendInputsService extends ClientListener {
                 };
                 this.controller.emitter.emit("sendMessageWithRefrId", {
                     message,
-                    reliability: "unreliable"
+                    reliability: needsReliableSend(anim.animEventName) ? "reliable" : "unreliable"
                 });
             }
         }

@@ -1,5 +1,5 @@
 import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
-import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
+import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving, isInSitPose } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment, resyncHandGraph, wearsExactly } from "../sync/equipment";
 import { logToPlatformLog } from "../logging";
@@ -7,7 +7,7 @@ import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
-import { Movement } from "../sync/movement";
+import { Movement, NiPoint3 } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
@@ -293,6 +293,8 @@ export class FormView {
 
   destroy(): void {
     this.redrawTints();
+    this.slideState.sampledAt = 0;
+    this.slideState.idleSince = 0;
     this.spawnMoment = 0;
     this.loaded3DMoment = 0;
     this.dealtWithRef = false;
@@ -460,6 +462,9 @@ export class FormView {
             applyMovement(refr, movement, !!model.isMyClone, mounted, ownOffset);
             if (!mounted) {
               restoreSitCollisionIfMoving(refr, movement);
+              if (ac) {
+                this.watchSlide(refr, ac, movement, model);
+              }
             }
           } catch (e) {
             if (e instanceof RespawnNeededError) {
@@ -854,6 +859,31 @@ export class FormView {
     return Date.now() - this.loaded3DMoment < FormView.copySettleMs;
   }
 
+  // A copy dragged by translateTo while its graph idles is the slide players report; the line names the sender and receiver state behind it
+  private watchSlide(refr: ObjectReference, ac: Actor, m: Movement, model: FormModel): void {
+    const now = Date.now();
+    const s = this.slideState;
+    if (now - s.sampledAt >= 1000) {
+      const pos = ObjectReferenceEx.getPos(refr);
+      s.moved = s.sampledAt ? ObjectReferenceEx.getDistance(s.pos, pos) : 0;
+      s.pos = pos;
+      s.sampledAt = now;
+    }
+    const speedSampled = ac.getAnimationVariableFloat("SpeedSampled");
+    if (m.runMode === "Standing" || speedSampled !== 0) {
+      s.idleSince = 0;
+    } else if (!s.idleSince) {
+      s.idleSince = now;
+    }
+    const idleWhileMoving = s.idleSince > 0 && now - s.idleSince > 1000;
+    const standingFast = m.runMode === "Standing" && m.speed > 150;
+    if (s.moved <= 64 || !(idleWhileMoving || standingFast) || now - s.loggedAt < FormView.slideLogIntervalMs) {
+      return;
+    }
+    s.loggedAt = now;
+    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} slides: runMode ${m.runMode}, speed ${Math.round(m.speed)}, SpeedSampled ${speedSampled.toFixed(1)}, sitState ${ac.getSitState()}, sitPose ${isInSitPose(this.refrId)}, lastAnim ${model.animation?.animEventName}, dead ${ac.isDead()}, 3D ${refr.is3DLoaded()}`);
+  }
+
   // Every copy's base holds form id 7, so a head the engine rebuilds on its own (3D reload, helmet swap) carries the local player's tints until the on-screen check queues the copy's own
   private redrawTints(): void {
     this.isOnScreen = false;
@@ -953,6 +983,8 @@ export class FormView {
   private lastWorldOrCell = 0;
   private lastCloneCheckMs = 0;
   private static readonly cloneCheckIntervalMs = 2000;
+  private slideState = { pos: [0, 0, 0] as NiPoint3, sampledAt: 0, moved: 0, idleSince: 0, loggedAt: 0 };
+  private static readonly slideLogIntervalMs = 10000;
   private spawnMoment = 0;
   private loaded3DMoment = 0;
   private static readonly copySettleMs = 1000;

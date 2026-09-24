@@ -315,18 +315,35 @@ export const setRefrCollision = (refrId: number, collision: boolean): void => {
   setCollision(refrId, collision);
 };
 
-// Animation sync is unreliable and single-slot, so a lost get-up must not leave a walking clone without collision
+// When a copy the engine still seats first moved, so a sit that is still settling is not stood up
+const seatedMovingSince = new Map<number, number>();
+
+// Animation sync is unreliable and single-slot, so a lost get-up must not leave a walking clone posed or without collision
 export const restoreSitCollisionIfMoving = (refr: ObjectReference, m: Movement): void => {
+  const refrId = refr.getFormID();
   if (m.runMode === "Standing") {
+    seatedMovingSince.delete(refrId);
     return;
   }
-  const refrId = refr.getFormID();
+  const now = Date.now();
+  const seated = (Actor.from(refr)?.getSitState() ?? 0) >= 2;
+  if (!seated) {
+    seatedMovingSince.delete(refrId);
+  } else if (!seatedMovingSince.has(refrId)) {
+    seatedMovingSince.set(refrId, now);
+  }
   const disabledAt = sitCollisionDisabledAt.get(refrId);
-  if (disabledAt !== undefined && Date.now() - disabledAt > 2000) {
-    sitCollisionDisabledAt.delete(refrId);
-    setCollision(refrId, true);
+  const posedLong = disabledAt !== undefined && now - disabledAt > 2000;
+  const seatedLong = seated && now - (seatedMovingSince.get(refrId) ?? now) > 2000;
+  if (posedLong || seatedLong) {
+    seatedMovingSince.delete(refrId);
+    sendToGraph(refr, { animEventName: "IdleForceDefaultState", numChanges: 0 });
   }
 };
+
+// Get-ups and forced poses are single-slot on the receiver, a lost one leaves a copy posed
+export const needsReliableSend = (animEventName: string): boolean =>
+  actorGetUpAnimsLowerCase.includes(animEventName.toLowerCase()) || forcedSyncAnims.has(animEventName);
 
 export const setDefaultAnimsDisabled = (
   refrId: number,
