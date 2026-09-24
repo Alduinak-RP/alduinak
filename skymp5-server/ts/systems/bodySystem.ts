@@ -73,35 +73,33 @@ export class BodySystem implements System {
     }
     const entries: any[] = Array.isArray(inventory?.entries) ? inventory.entries : [];
     const named = (e: any): boolean => isNamedItemBase(Number(e?.baseId));
+    const loot = looseEntries({ entries: entries.filter((e) => !named(e)) });
     let cloneId = 0;
+    let step = "creating the clone";
+    // The victim is stripped last, so a body that fails to stand leaves their pack where it was
     try {
       cloneId = mp.createActor(0, loc.pos, Number(loc.rot?.[2]) || 0, mp.getIdFromDesc(String(loc.cellOrWorldDesc))) >>> 0;
       mp.set(cloneId, "spawnDelay", NEVER_RESPAWN);
       if (appearance) mp.set(cloneId, "appearance", appearance);
-    } catch (e) {
-      this.log(`[body] leaving a body for ${hex(victimId)} failed: ${e}`);
-      if (cloneId) {
-        try { mp.destroyActor(cloneId); } catch { }
-      }
-      return 0;
-    }
-    // Throws on a native build without the equipment setter; the body then lies naked
-    try { mp.set(cloneId, "equipment", equipment); } catch { }
-    // Registration lives in gamemode.js; without it late arrivals never see the body, but it is still lootable
-    try {
+      // Throws on a native build without the equipment setter; the body then lies naked
+      try { mp.set(cloneId, "equipment", equipment); } catch { }
+      step = `setting ${BODY_PROP} (registered in gamemode.js?)`;
       mp.set(cloneId, BODY_PROP, true);
-    } catch (e) {
-      this.log(`[body] ${BODY_PROP} on ${hex(cloneId)} failed (property registered in gamemode.js?): ${e}`);
-    }
-    const loot = looseEntries({ entries: entries.filter((e) => !named(e)) });
-    // The clone uses the Player base, so the gamemode's onDeath would post a [Death] line for it
-    markDeathAlerted(cloneId);
-    try {
+      // The clone uses the Player base, so the gamemode's onDeath would post a [Death] line for it
+      markDeathAlerted(cloneId);
+      step = "filling the body";
       mp.set(cloneId, "inventory", { entries: loot });
       mp.set(cloneId, "isDead", true);
+      step = "placing the body";
+      this.placeOnGrid(cloneId, loc);
+      step = "stripping the victim";
       mp.set(victimId, "inventory", { entries: entries.filter(named) });
     } catch (e) {
-      this.log(`[body] moving the pack of ${hex(victimId)} to ${hex(cloneId)} failed: ${e}`);
+      this.log(`[body] leaving a body for ${hex(victimId)} failed ${step}, pack kept: ${e}`);
+      if (cloneId) {
+        try { destroyRef(mp, cloneId); } catch { }
+      }
+      return 0;
     }
     this.bodies.set(cloneId, { id: cloneId, victimId, at: Date.now() });
     this.save();
@@ -114,6 +112,11 @@ export class BodySystem implements System {
     }, VICTIM_RESPAWN_MS);
     this.log(`[body] ${hex(victimId)} ${why}: body ${hex(cloneId)} holds ${loot.length} stack(s)`);
     return cloneId;
+  }
+
+  // createActor never streams an actor; setting its location puts it on the grid so nearby clients create it
+  private placeOnGrid(id: number, loc: any): void {
+    this.mp.set(id, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: loc.pos, rot: loc.rot });
   }
 
   // Stacks a searcher can still take; null when the form is gone
@@ -150,6 +153,11 @@ export class BodySystem implements System {
       let exists = false;
       try { exists = mp.get(body.id, "type") === "MpActor"; } catch { }
       if (!exists) continue;
+      try {
+        this.placeOnGrid(body.id, mp.get(body.id, "locationalData"));
+      } catch (e) {
+        this.log(`[body] placing ${hex(body.id)} failed: ${e}`);
+      }
       this.bodies.set(body.id, body);
       kept++;
     }

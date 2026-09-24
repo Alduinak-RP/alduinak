@@ -237,18 +237,26 @@ behaviour-graph events — no ESP required.**
   realm), so two bodies never lie side by side. The clone has no profile id,
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
   never applies `searchPlayerBodyTakeLimit` to it: a body gives up
-  everything. It is registered in `bodies.json` next to `companions.json`
-  and re-adopted after a restart while its actor still exists; every 2 s a
+  everything. `createActor` only adds the form and never streams it, so
+  once the clone is dressed, filled and dead it is put on the grid with
+  `mp.set(body, "locationalData", ...)` (`MpActor::Teleport`, whose first
+  `SetPos` runs `ForceSubscriptionsUpdate`) and every client nearby creates
+  it with its full state. The victim is stripped only after that: if any
+  step before fails (`[body] leaving a body for <victim> failed <step>,
+  pack kept`) the clone is destroyed and the victim keeps their pack. It
+  is registered in `bodies.json` next to `companions.json`
+  and re-adopted, and put on the grid again, after a restart while its
+  actor still exists; every 2 s a
   body whose loose stacks are gone, or one older than `bodyMaxSeconds`
   (3600, 0 = never), is removed (`[body] <id> of <victim> removed: emptied
   | lay too long | gone`). The body carries the neighbor-visible `ff_body`
   property, which the gamemode must register in
   `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
   the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
-  Build gamemode only before the server build; without it the server logs
-  `[body] ff_body on <id> failed` and clients that arrive later never create
-  the body, since `formView.ts` otherwise never creates a dead copy that
-  carries an appearance. Logged as `[body] <victim> <how> by <killer>: body
+  Build gamemode only before the server build; without it no client could
+  ever create the body (`formView.ts` never creates a dead copy that
+  carries an appearance otherwise), so no body is left and the victim keeps
+  their pack (`failed setting ff_body`). Logged as `[body] <victim> <how> by <killer>: body
   <id> holds N stack(s)`.
 - **Coming back whole** (`deathService.ts`): a finisher never decapitates,
   an execution does, and a decapitation persists as the actor's
