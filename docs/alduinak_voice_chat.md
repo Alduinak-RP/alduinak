@@ -35,9 +35,11 @@ The integration described as "future work" below has been built:
   console and a despawned actor force a release. A window blur, a hidden page
   or Alt+Tab while a menu has focus closes the mic (`voice::focusLost`), since
   no key-up reaches the page after it; the game ignores the blur a closing
-  menu causes. A
-  mouse-bound key has no DOM code and works unfocused only; Alt+V mode
-  cycling is game-side only.
+  menu causes. Mouse buttons and keys with no DOM code (Right Ctrl/Alt,
+  arrows, Home/End/Ins/Del, Numpad Enter/Divide, Num Lock, Pause) never reach
+  the page, so while a menu has focus the game polls them itself and opens the
+  mic on a press edge (not while Alt is down or the console is open); the
+  typing guard covers DOM keys only. Alt+V mode cycling is game-side only.
   Requests a token per actor assignment; pushes peer distances (same world
   only) every 400ms.
 - **Talk range**: V + mousewheel picks the speaker's audible range between
