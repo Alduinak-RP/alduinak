@@ -301,13 +301,15 @@ export class FormView {
           // A horse leaving throws its rider first; a rider leaving lets go of its saddle
           dismountRiderOf(refrId);
           releaseRiderClone(refrId);
-          refr.delete();
+          const ac = Actor.from(refr);
+          if (ac) {
+            TESModPlatform.setWeaponDrawnMode(ac, -1);
+          }
+          refr.disable(false).then(() => {
+            ObjectReference.from(Game.getFormEx(refrId))?.delete();
+          });
         }
         SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refrId, -1);
-        const ac = Actor.from(refr);
-        if (ac) {
-          TESModPlatform.setWeaponDrawnMode(ac, -1);
-        }
       }
     })
 
