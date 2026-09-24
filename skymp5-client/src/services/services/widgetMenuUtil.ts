@@ -65,6 +65,11 @@ export function claimHeldMenu(isOpen: () => boolean, onRelease: () => void): boo
   return true;
 }
 
+// A menu that starts taking typed text no longer closes when the held key is let go
+export function releaseHeldMenus(): void {
+  heldPress = null;
+}
+
 function pollHeldPress(sp: Sp): void {
   const press = heldPress;
   if (!press) return;

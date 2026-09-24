@@ -87,7 +87,8 @@ Rules:
   checkboxes there (`emoteWheelHold`, `interactMenuHold`, both off) make the
   emote wheel and every menu the interact key opens (player, carried load,
   Personal, housing, pet and the bounty board strongbox) **hold-to-open**: the menu
-  stays while the key is down and closes on release, and a released wheel key
+  stays while the key is down and closes on release (the housing menu stays once
+  its key-name prompt or rename field is being typed in), and a released wheel key
   plays the emote under the cursor. The client polls the key in game while the
   menu is open, so any key or mouse button can be held; only an unbound key
   disables the checkbox.

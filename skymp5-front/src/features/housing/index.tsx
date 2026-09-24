@@ -15,6 +15,7 @@ interface HousingEvents {
   grantContainer: string;
   pets: string;
   cancel: string;
+  typing: string;
   [key: string]: string;
 }
 
@@ -160,6 +161,7 @@ const Housing = ({ data }: { data: HousingData }) => {
               spellCheck={false}
               value={rename}
               onChange={(e) => setRename(e.target.value)}
+              onFocus={() => ev.typing && send(ev.typing)}
             />
             <button
               className="housing__button"

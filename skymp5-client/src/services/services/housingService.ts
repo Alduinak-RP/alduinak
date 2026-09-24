@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared, claimHeldMenu } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared, claimHeldMenu, releaseHeldMenus } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
@@ -35,6 +35,8 @@ const events = {
   grantContainer: 'housing:grantcontainer',
   pets: 'housing:pets',
   cancel: 'housing:cancel',
+  // The rename field took focus
+  typing: 'housing:typing',
 };
 
 // Event keys of the pet list the Pets option opens
@@ -278,7 +280,11 @@ export class HousingService extends ClientListener {
         sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action, target });
         break;
       }
+      case events.typing:
+        releaseHeldMenus();
+        break;
       case events.createKey:
+        releaseHeldMenus();
         keyPromptCaption = "Name the key";
         keyPromptValue = (info.name || targetLabel).replace(new RegExp(`[^${keyNameRule.chars}]`, "g"), "").trim().slice(0, keyNameRule.maxLength);
         this.openKeyPrompt();
@@ -319,9 +325,11 @@ export class HousingService extends ClientListener {
     openFormMenu(this.sp, this.browsersideWidgetSetter, { events, info, targetLabel, WIDGET_ID }, this.controller);
   }
 
+  // The key prompt keeps the focus while it is still shown
   private closeMenu(): void {
     this.menuOpen = false;
-    closeFormMenu(this.sp, WIDGET_ID);
+    if (this.promptOpen) closeWidget(this.sp, WIDGET_ID);
+    else closeFormMenu(this.sp, WIDGET_ID);
   }
 
   private openPetList(): void {
