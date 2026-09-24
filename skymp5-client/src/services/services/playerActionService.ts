@@ -16,6 +16,7 @@ import { TimersService } from "./timersService";
 import { PetService } from "./petService";
 import { MountService } from "./mountService";
 import { JobService } from "./jobService";
+import { InteractionPromptService } from "./interactionPromptService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -100,9 +101,10 @@ let hideTrade = false;
  * always dismounts (MountService), whatever the crosshair found. Activate leaves
  * everything else to normal activation. The interact key also completes a
  * pending housing hand-over or pet transfer pick first,
- * asks HousingService for the property menu on a door or container, and opens
- * the Personal Menu (AdminMenuService) on anything else or nothing. Drives the
- * gamemode through its existing contracts.
+ * asks the server to open a bounty board's strongbox, asks HousingService for
+ * the property menu on a door or container, and opens the Personal Menu
+ * (AdminMenuService) on anything else or nothing. Drives the gamemode through
+ * its existing contracts.
  */
 export class PlayerActionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -170,6 +172,11 @@ export class PlayerActionService extends ClientListener {
     if (isActivate) return;
     // A menu left open without focus (F6) is still on screen
     if (housing.isOpen || personal.isOpen || pets.isOpen) return;
+    // The server opens the strongbox for the hold's managers and answers everyone else with a notice
+    if (ref && this.controller.lookupListener(InteractionPromptService).isBoard(ref)) {
+      sendCustomPacket(this.controller, { customPacketType: "bountyBoardManage", board: localIdToRemoteId(ref.getFormID()) });
+      return;
+    }
     if (ref && isPropertyRef(ref)) {
       housing.requestMenuFor(ref);
       return;

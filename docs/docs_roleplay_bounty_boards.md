@@ -8,7 +8,7 @@ pinned there; anyone can read them, pinning one costs **25 gold** (taken
 server-side, refused if the player cannot pay), and a notice stays on the
 board for **7 days** before it fades on its own.
 
-- Client piece: `skymp5-client/src/services/services/bountyBoardService.ts` (default **N**, `bountyBoardMenuKeyCode`)
+- Client piece: `skymp5-client/src/services/services/bountyBoardService.ts` (default **N**, `bountyBoardMenuKeyCode`); the X key on a board is routed by `playerActionService.ts`
 - Front piece: `skymp5-front/src/features/bountyBoard/`, with the opened paper, the compose dialog and the buttons from `features/parchment/` (shared with writings)
 - Server piece: `skymp5-server/ts/systems/bountyBoardSystem.ts`, with the name, sanitize and log helpers in `playerText.ts` (shared with writings)
 - Chat piece: `server-plugins/Suraru/bounty-board/` (`/board`, for clients without the hotkey)
@@ -104,6 +104,19 @@ injected as `canManage` in `index.ts`. Anyone else pressing E on it is
 refused with a notice by the bounty activation hook; a manager's activation
 runs the vanilla container open, so the strongbox is looted like any chest.
 
+Managers open it with **X** (the interact key) while looking at the board:
+`PlayerActionService` sends `bountyBoardManage` with the board ref before the
+property-menu branch, and the server, once the player is within
+`bountyBoardMaxDistance` of that board and may manage it, activates the
+strongbox for the player through Papyrus `ObjectReference.Activate`, the
+engine's own container path (it records the occupant, so takes and puts pass
+the occupant check) and the client opens the vanilla ContainerMenu. The
+strongbox is placed on a first manage as well, so a board nobody has paid at
+yet still has one. Because it sits in the city worldspace, a walled city's
+Tamriel twin answers "Open the strongbox from the board inside the city."
+(the engine refuses an activation across worldspaces). X on a board by anyone
+else gets the "steward or jarl" notice instead of the Personal Menu.
+
 The strongbox id is stored as `stash` on the board record and re-checked on
 every use (a stale id whose base is no longer a CONT is replaced), and the
 strongboxes of the previous run are guarded again once the world DB has
@@ -142,6 +155,7 @@ Every message is a CustomPacket carrying JSON:
                         maxNotes, expiryDays,
                         notes: [{ id, author, text, ageHours }] }
     Client -> Server: { customPacketType: "bountyBoardPost", board, text }
+    Client -> Server: { customPacketType: "bountyBoardManage", board }
     Client -> Server: { customPacketType: "bountyBoardClose" }
     Server -> Client: { customPacketType: "bountyBoardNotice", text }
 

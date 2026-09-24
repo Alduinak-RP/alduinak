@@ -251,6 +251,11 @@ export class InteractionPromptService extends ClientListener {
     }
   }
 
+  isBoard(ref: ObjectReference): boolean {
+    const base = ref.getBaseObject();
+    return !!base && this.isBoardBase(base);
+  }
+
   private isBoardBase(base: Form): boolean {
     if (this.boardBaseId === undefined) {
       try {

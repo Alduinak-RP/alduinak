@@ -26,6 +26,7 @@ type Mp = any;
 //     { customPacketType: "bountyBoardOpenRequest" }
 //     { customPacketType: "bountyBoardPost", board: <refrId>, text }
 //     { customPacketType: "bountyBoardRemove", board: <refrId>, id }
+//     { customPacketType: "bountyBoardManage", board: <refrId> }
 //     { customPacketType: "bountyBoardClose" }
 //   Server -> Client:
 //     { customPacketType: "bountyBoardMenu", board, boardName, reason,
@@ -62,6 +63,7 @@ const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
 // The vanilla ash pile: a CONT with no base items and a flat mesh at the board's foot
 const DEFAULT_STASH_BASE = "c674b:Skyrim.esm";
+const NOT_MANAGER_NOTICE = "Only the hold's steward or jarl may open the board's strongbox.";
 
 const POST_COOLDOWN_MS = 5000;
 const OPEN_COOLDOWN_MS = 1000;
@@ -211,7 +213,7 @@ export class BountyBoardSystem implements System {
       // A manager's activation runs the vanilla container open
       if (this.canManage(casterId, this.boardNameOf(stashOwner))) return false;
       const userId = this.userOf(ctx, casterId);
-      if (userId >= 0) this.notice(ctx, userId, "Only the hold's steward or jarl may open the board's strongbox.");
+      if (userId >= 0) this.notice(ctx, userId, NOT_MANAGER_NOTICE);
       return true;
     }
     const board = this.boardOf(ctx, targetId);
@@ -228,6 +230,7 @@ export class BountyBoardSystem implements System {
       case "bountyBoardOpenRequest": this.onOpenRequest(ctx, userId); break;
       case "bountyBoardPost": this.onPost(ctx, userId, content); break;
       case "bountyBoardRemove": this.onRemove(ctx, userId, content); break;
+      case "bountyBoardManage": this.onManage(ctx, userId, content); break;
       case "bountyBoardClose": this.sessions.delete(userId); break;
       default: break;
     }
@@ -523,6 +526,32 @@ export class BountyBoardSystem implements System {
   }
 
   // ── Strongbox ───────────────────────────────────────────────────────────────
+
+  // X on a board: a manager opens the strongbox through the engine's own container path, which records the occupant
+  private onManage(ctx: SystemContext, userId: number, content: Content): void {
+    const mp = ctx.svr as Mp;
+    const actorId = this.actorOf(ctx, userId);
+    if (!actorId) return;
+    const refr = toFormId(content["board"]);
+    const board = this.boardOf(ctx, refr);
+    if (!board) return;
+    if (!this.withinReach(ctx, actorId, refr)) return this.notice(ctx, userId, "You are too far from the board.");
+    if (!this.canManage(actorId, board.name)) return this.notice(ctx, userId, NOT_MANAGER_NOTICE);
+    const stash = this.stashOf(ctx, board.primary, this.read(ctx, board.primary) || emptyRecord());
+    if (!stash) return this.notice(ctx, userId, "This board has no strongbox.");
+    try {
+      // The Tamriel twin of a walled city is another worldspace, and the engine refuses an activation across worldspaces
+      if (mp.get(actorId, "worldOrCellDesc") !== mp.get(stash, "worldOrCellDesc")) {
+        return this.notice(ctx, userId, "Open the strongbox from the board inside the city.");
+      }
+      const self = { type: "form", desc: mp.getDescFromId(stash) };
+      mp.callPapyrusFunction("method", "ObjectReference", "Activate", self, [{ type: "form", desc: mp.getDescFromId(actorId) }, false]);
+    } catch (e) {
+      this.log(`[bounty] could not open the ${board.name} board strongbox for ${actorId.toString(16)}: ${e}`);
+      return;
+    }
+    this.appendLog(`${describeActor(ctx.svr, actorId)} opened the ${board.name} board strongbox`);
+  }
 
   // The board's strongbox, placed at the canonical board on first use; 0 when none can be had
   private stashOf(ctx: SystemContext, primary: number, rec: BoardRecord): number {

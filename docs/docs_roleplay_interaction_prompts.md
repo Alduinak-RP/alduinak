@@ -74,7 +74,9 @@ keeps its display name with a verb picked from its base form type.
   and books placed by a plugin show no prompt, since the server refuses them
   (`forbiddenReloot`); only runtime refs such as player drops read Take or Read. The board base (`12cb:Missives.esp`,
   resolved through `Game.getFormFromFile` so load order cannot break it)
-  gets Read + "Notice Board".
+  gets Read + "Notice Board"; `isBoard` is public, and `PlayerActionService`
+  routes X on a board to the server as `bountyBoardManage`, which opens the
+  board's strongbox for the hold's managers (`docs_roleplay_bounty_boards.md`).
 - **Passive job offers** (`docs_roleplay_jobs.md`): with nothing under the
   crosshair, a player standing at a job's pickup sees the server's offer
   as one sentence-case line (`[E] Carry hay (10 gold)`, the widget's `line`

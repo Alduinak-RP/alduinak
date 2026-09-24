@@ -634,7 +634,7 @@ Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted
 
 ## Admin roles
 
-Every player opens the Personal Menu with the interact key (X by default) while looking at nothing, a world NPC or anything else that is not a player, door or container. It has four tabs, in this order:
+Every player opens the Personal Menu with the interact key (X by default) while looking at nothing, a world NPC or anything else that is not a player, door, container or bounty board. It has four tabs, in this order:
 
 - **Admin**, shown only once the server confirms the player's admin tier, with the sub-tabs:
   - Players: roster, teleport to, summon, kick, ban, mastery grant and reset, a permanent max health, magicka and stamina change of the selected online character (-1000..1000 each, absolute not additive, 0 for the plugins' own values; it is stored on the character, survives a relog and the hunger and fatigue penalties recompute against the new maximum), and Revive for the selected profile's fallen characters (Sovngarde, the Soul Cairn or perma-dead, online or not; refused while a character made in the extra slot is alive, see `docs_roleplay_survival_loop.md` section 8);

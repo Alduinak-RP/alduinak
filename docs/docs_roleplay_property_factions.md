@@ -340,8 +340,9 @@ the Falkreath Warhammer) stays Master.
 - **Hold property**: ranks with `housing` (by default the Jarl and the Steward,
   who also count until the game server has loaded the definitions) manage the
   claims in their hold's registered interior cells (`HOLD_CELLS` in
-  `housingSystem.ts`); backend hold ids like `the-rift` match the housing
-  table's `rift`.
+  `housingSystem.ts`) and open the hold's bounty board strongbox
+  (`docs_roleplay_bounty_boards.md`); backend hold ids like `the-rift` match
+  the housing table's `rift`.
 - **Faction-only doors and containers** are listed in the live file
   `faction-access.json` next to `gamemode.js` (re-read within 10 seconds of a
   change). An entry with a rank list admits exactly those ranks; an entry
