@@ -34,6 +34,7 @@ export function closeFormMenu(sp: Sp, widgetId: number): void {
 
 interface HeldPress {
   key: number;
+  down: boolean;
   claimUntil: number;
   menus: { isOpen: () => boolean; onRelease: () => void }[];
 }
@@ -49,23 +50,33 @@ export function armHeldMenu(sp: Sp, controller: CombinedController, key: number)
     heldPollOn = true;
     controller.on("update", () => pollHeldPress(sp));
   }
-  heldPress = key ? { key, claimUntil: Date.now() + HELD_CLAIM_MS, menus: [] } : null;
+  heldPress = key ? { key, down: true, claimUntil: Date.now() + HELD_CLAIM_MS, menus: [] } : null;
 }
 
-// Ties a menu opening from the armed press to its release
-export function claimHeldMenu(isOpen: () => boolean, onRelease: () => void): void {
+// Ties a menu opening from the armed press to its release; false when that key is already up, so the menu stays shut
+export function claimHeldMenu(isOpen: () => boolean, onRelease: () => void): boolean {
   const press = heldPress;
-  if (press && Date.now() <= press.claimUntil) press.menus.push({ isOpen, onRelease });
+  if (!press || Date.now() > press.claimUntil) return true;
+  if (!press.down) {
+    heldPress = null;
+    return false;
+  }
+  press.menus.push({ isOpen, onRelease });
+  return true;
 }
 
 function pollHeldPress(sp: Sp): void {
   const press = heldPress;
   if (!press) return;
-  if (sp.Input.isKeyPressed(press.key)) {
-    if (!press.menus.length && Date.now() > press.claimUntil) heldPress = null;
+  const expired = Date.now() > press.claimUntil;
+  if (press.down && sp.Input.isKeyPressed(press.key)) {
+    if (!press.menus.length && expired) heldPress = null;
     return;
   }
-  heldPress = null;
+  // A release before any menu opened stays until the claim window ends, so a late answer is refused
+  if (press.menus.length || expired) heldPress = null;
+  if (!press.down) return;
+  press.down = false;
   for (const menu of press.menus) if (menu.isOpen()) menu.onRelease();
 }
 

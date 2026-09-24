@@ -192,7 +192,8 @@ export class PlayerActionService extends ClientListener {
   private openLoadMenu(title: string): void {
     targetName = title;
     this.playerTarget = 0;
-    this.markOpen();
+    if (!this.claimHeld()) return;
+    this.menuOpen = true;
     openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: LOAD_ACTIONS, targetName, hideTrade: true, events, WIDGET_ID }, this.controller);
   }
 
@@ -230,7 +231,7 @@ export class PlayerActionService extends ClientListener {
     }
   }
 
-  // Opens once the server's answer is in or the wait ran out, unless another screen took over meanwhile
+  // Opens once the server's answer is in or the wait ran out, unless another screen took over or a held key was let go meanwhile
   private openWaitingMenu(wait: number): void {
     if (wait !== this.menuWait) return;
     this.menuWait = 0;
@@ -283,14 +284,14 @@ export class PlayerActionService extends ClientListener {
   }
 
   private openMenu(): void {
-    this.markOpen();
+    if (!this.claimHeld()) return;
+    this.menuOpen = true;
     openFormMenu(this.sp, this.playerWidgetSetter, this.menuArgs(), this.controller);
   }
 
-  // A held interact key closes the menu on release
-  private markOpen(): void {
-    this.menuOpen = true;
-    claimHeldMenu(() => this.menuOpen, () => this.closeMenu());
+  // A held interact key closes the menu on release, and one already let go keeps it shut
+  private claimHeld(): boolean {
+    return claimHeldMenu(() => this.menuOpen, () => this.closeMenu());
   }
 
   private menuArgs(): Record<string, unknown> {
