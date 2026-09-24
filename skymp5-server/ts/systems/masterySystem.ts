@@ -577,6 +577,8 @@ export class MasterySystem implements System {
     this.applySpells(ctx, actorId, rec);
     this.notice(ctx, userId, `You take up the craft of the ${this.labelOf(professionId)}.`);
     this.giveKit(ctx, actorId, userId, professionId);
+    // A reset character keeps its gold-less kit marker, so the backfill gold comes with the new pick
+    this.giveKitGold(ctx, actorId, rec);
     this.sendMenu(ctx, userId);
   }
 

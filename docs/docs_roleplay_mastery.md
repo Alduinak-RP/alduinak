@@ -110,7 +110,9 @@ character
 still owed its kit is left to the kit itself, which now carries the gold. The
 pass runs at boot over every player character, offline ones through an inventory
 merge, and again about five seconds after a login, where the player gets the
-usual AddItem line and "The 50 gold of your starting kit is in your pack."; each grant
+usual AddItem line and "The 50 gold of your starting kit is in your pack." A
+character whose craft was reset holds no profession at boot, so it is paid when
+it picks its new craft; each grant
 writes `private.professionKitGold` `{ count, at }` and logs
 `[mastery] <actor> kit gold backfill: 50`, so the key can stay in place across
 restarts and be removed later.
