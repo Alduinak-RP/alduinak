@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
@@ -13,6 +13,7 @@ declare const window: any;
 
 const WIDGET_ID = 8;
 const PET_LIST_WIDGET_ID = 30;
+const KEY_PROMPT_WIDGET_ID = 38;
 
 // A hand-over waits for one more interact-key press; it must not wait forever.
 const PENDING_RECIPIENT_MS = 30000;
@@ -40,6 +41,12 @@ const events = {
 const petListEvents = {
   summon: 'housing:petsummon',
   close: 'housing:petclose',
+};
+
+// Event keys of the name prompt Cut a key opens
+const keyPromptEvents = {
+  ok: 'housing:keyname:ok',
+  cancel: 'housing:keyname:cancel',
 };
 
 // The server's propertyMenu reply that drives which menu we render.
@@ -71,6 +78,8 @@ let info: PropertyMenuInfo = {
 };
 let targetLabel = '';
 let petList: PetListInfo = { door: 0, category: '', pets: [] };
+let keyPromptCaption = '';
+let keyPromptValue = '';
 
 // Doors and containers are the bases the server can claim
 export function isPropertyRef(ref: ObjectReference): boolean {
@@ -93,7 +102,7 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view", "owned",
  *                       "name", "locked", "canLock", "hasKeys", "canGrantContainers", "ownerName", "pets" }
  *   Client -> Server: { "customPacketType": "propertyRequest", "action", "target",
- *                       "recipient"?, "name"? }
+ *                       "recipient"?, "name"? }  (createkey names the key)
  *   Server -> Client: { "customPacketType": "propertyNotice", "text" }
  *   Client -> Server: { "customPacketType": "petRequest", "action": "list", "door" }
  *   Server -> Client: { "customPacketType": "petList", "door", "category", "pets" }
@@ -104,9 +113,10 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  * rename/keys/lock/transfer/abandon; 'manager' (admin, jarl or steward) offers
  * grant/revoke/rename, and lock only when canLock is set; 'keyholder' offers
  * lock/unlock. Transfer and grant-container are two-step: pick the action,
- * then look at the recipient and press the interact key again. A non-empty
- * pets category adds the Pets option: it swaps the menu for the petList widget
- * of the pets kept at that door, each with a Summon button.
+ * then look at the recipient and press the interact key again. Cut a key asks
+ * for the key's name in a prompt over the menu and sends createkey with it. A
+ * non-empty pets category adds the Pets option: it swaps the menu for the
+ * petList widget of the pets kept at that door, each with a Summon button.
  */
 export class HousingService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -115,11 +125,11 @@ export class HousingService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.closeOpen(); });
-    onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.listOpen = false; });
+    onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.listOpen = false; this.promptOpen = false; });
   }
 
   get isOpen(): boolean {
-    return this.menuOpen || this.listOpen;
+    return this.menuOpen || this.listOpen || this.promptOpen;
   }
 
   // Second step of transfer / grant-container: consumes the pending pick with the crosshair's player
@@ -228,6 +238,15 @@ export class HousingService extends ClientListener {
       this.closeOpen();
       return;
     }
+    if (key === keyPromptEvents.ok || key === keyPromptEvents.cancel) {
+      if (!this.promptOpen) return;
+      this.closeKeyPrompt();
+      const name = key === keyPromptEvents.ok && typeof e.arguments[1] === "string" ? (e.arguments[1] as string).trim() : "";
+      if (name) {
+        sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "createkey", target: info.target || this.target, name });
+      }
+      return;
+    }
     if (key === petListEvents.summon || key === petListEvents.close) {
       if (!this.listOpen) return;
       if (key === petListEvents.summon) {
@@ -250,12 +269,16 @@ export class HousingService extends ClientListener {
       case events.revoke:
       case events.lock:
       case events.unlock:
-      case events.createKey:
       case events.revokeKeys: {
         const action = key.slice("housing:".length);
         sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action, target });
         break;
       }
+      case events.createKey:
+        keyPromptCaption = "Name the key";
+        keyPromptValue = info.name || targetLabel;
+        this.openKeyPrompt();
+        break;
       case events.rename: {
         const name = typeof e.arguments[1] === "string" ? (e.arguments[1] as string).trim() : "";
         if (name) {
@@ -307,8 +330,21 @@ export class HousingService extends ClientListener {
     closeFormMenu(this.sp, PET_LIST_WIDGET_ID);
   }
 
-  // Whichever of the property menu and the pet list is open
+  private openKeyPrompt(): void {
+    this.promptOpen = true;
+    openFormMenu(this.sp, this.keyPromptWidgetSetter, { keyPromptCaption, keyPromptValue, keyPromptEvents, KEY_PROMPT_WIDGET_ID }, this.controller);
+  }
+
+  // The menu underneath keeps the focus while it is still open
+  private closeKeyPrompt(): void {
+    this.promptOpen = false;
+    if (this.menuOpen) closeWidget(this.sp, KEY_PROMPT_WIDGET_ID);
+    else closeFormMenu(this.sp, KEY_PROMPT_WIDGET_ID);
+  }
+
+  // Whichever of the key prompt, the property menu and the pet list is open
   private closeOpen(): void {
+    if (this.promptOpen) this.closeKeyPrompt();
     if (this.menuOpen) this.closeMenu();
     if (this.listOpen) this.closePetList();
   }
@@ -348,8 +384,22 @@ export class HousingService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
+  // Runs inside the CEF browser. Only injected vars + window are available.
+  private keyPromptWidgetSetter = () => {
+    const widget = {
+      type: "petPrompt",
+      id: KEY_PROMPT_WIDGET_ID,
+      caption: keyPromptCaption,
+      value: keyPromptValue,
+      events: keyPromptEvents,
+    };
+    const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== KEY_PROMPT_WIDGET_ID);
+    window.skyrimPlatform.widgets.set(others.concat([widget]));
+  };
+
   private menuOpen = false;
   private listOpen = false;
+  private promptOpen = false;
   private target = 0;
   private awaitingAt = 0;
   private listAwaitingAt = 0;
