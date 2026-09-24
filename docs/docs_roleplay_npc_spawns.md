@@ -107,7 +107,9 @@ by the `leveledItems` section of `misc/proficiency-patcher/spec.json`. The
 rule is one list per creature, every named item drops (the list carries Use
 All), and no NPC drops gold: the gold sublists leave every death item list,
 the creature treasure roll (`LootSmallTreasure10`) and the Falmer inventory
-list (`LootFalmerCorpseGold`). Giants drop no weapon; Falmer an ear, a Falmer
+list (`LootFalmerCorpseGold`). The treasure roll now hits 5% of the time
+instead of 10%, so its gem and ring rolls (`LItemGemsSmall`,
+`LItemJewelryRingSmall`) stay at 2.5% each. Giants drop no weapon; Falmer an ear, a Falmer
 sword, helmet and shield; draugr bone meal, linen wrap, an iron shield, 10
 ancient Nord arrows and a 50% chance of an ancient Nord sword or bow; draugr
 deathlords 3 bone meal, an ancient Nord sword, an emerald, a 20% chance of one

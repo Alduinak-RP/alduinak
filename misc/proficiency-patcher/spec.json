@@ -4109,6 +4109,7 @@
   },
   {
    "list": "LootSmallTreasure10",
+   "chanceNone": 95,
    "remove": [
     "LootGoldChange"
    ]
