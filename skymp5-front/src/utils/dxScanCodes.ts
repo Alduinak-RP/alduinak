@@ -39,7 +39,7 @@ export const MOUSE_TO_DIK: Record<number, [number, string]> = { 1: [258, 'Middle
 const DIK_LABELS: Record<number, string> = { 256: 'Left Mouse', 257: 'Right Mouse', 261: 'Mouse 6', 262: 'Mouse 7', 263: 'Mouse 8' };
 for (const [dik, label] of [...Object.values(DOM_TO_DIK), ...Object.values(MOUSE_TO_DIK)]) DIK_LABELS[dik] = label;
 
-export const dikLabel = (code: number): string => DIK_LABELS[code] || `0x${code.toString(16)}`;
+export const dikLabel = (code: number): string => (code ? DIK_LABELS[code] || `0x${code.toString(16)}` : 'none');
 
 // The client polls a held menu key in game, so any bound key or mouse button can be held
 export const canHold = (code: number): boolean => code > 0;
