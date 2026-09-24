@@ -347,7 +347,10 @@ export class FormView {
     }
     if (now - this.lastOpenApply > 133) {
       this.lastOpenApply = now;
-      ModelApplyUtils.applyModelIsOpen(refr, !!model.isOpen);
+      // A door set before its 3D is in can stick between open and closed, so the server's state waits for the model
+      if (refr.is3DLoaded()) {
+        ModelApplyUtils.applyModelIsOpen(refr, !!model.isOpen);
+      }
       // A reloaded cell recreates the ref without its activation block, so doors would open locally again
       if (!refr.isActivationBlocked()) {
         const base = refr.getBaseObject();

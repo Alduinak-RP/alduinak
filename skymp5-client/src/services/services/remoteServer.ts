@@ -39,6 +39,7 @@ import { RagdollService } from './ragdollService';
 import { RestraintService } from './restraintService';
 import { MountService } from './mountService';
 import { CloneSpellGuardService } from './cloneSpellGuardService';
+import { CellAnimationsService } from './cellAnimationsService';
 import { LastInvService } from './lastInvService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
 import { TeleportMessage } from '../messages/teleportMessage';
@@ -650,23 +651,10 @@ export class RemoteServer extends ClientListener {
 
             ModelApplyUtils.applyModelIsDisabled(refr, !!(msg.props.isDisabled || msg.props['disabled']));
 
-            // TODO: move to a separate module
             const animation = msg.props.lastAnimation;
             if (typeof animation === "string") {
-              const refrid = refr.getFormID();
-
-              (async () => {
-                for (let i = 0; i < 5; i++) {
-                  // retry. pillars in bleakfalls are not reliable for some reason
-                  let res2 = ObjectReference.from(Game.getFormEx(refrid))?.playAnimation(animation);
-                  if (res2) {
-                    break;
-                  }
-                  await Utility.wait(2);
-                }
-              })();
+              this.controller.lookupListener(CellAnimationsService).queue(refr.getFormID(), animation);
             }
-
 
             let displayName = msg.props.displayName;
 
