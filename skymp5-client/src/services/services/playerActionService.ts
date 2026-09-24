@@ -131,7 +131,12 @@ export class PlayerActionService extends ClientListener {
     // When one key is both, the Activate rules win
     const isActivate = e.userEventName === "Activate";
     const isInteract = !isActivate && code === this.interactKey;
-    if ((!isActivate && !isInteract) || this.menuOpen || this.menuWait) return;
+    if ((!isActivate && !isInteract) || this.menuOpen) return;
+    if (this.menuWait) {
+      // A second press during the wait is the one the waiting menu follows
+      if (isInteract && this.holdMode) armHeldMenu(this.sp, this.controller, this.interactKey);
+      return;
+    }
     if (isGameInputBlocked(this.sp, this.controller) || isPlayerDowned(this.controller)) return;
     // A hidden interface must not trap a rider, so the saddle is checked before the rest of the hotkey block
     const mount = this.controller.lookupListener(MountService);
