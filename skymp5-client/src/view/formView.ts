@@ -268,12 +268,6 @@ export class FormView {
 
     const refr = ObjectReference.from(Game.getFormEx(this.refrId));
     if (refr) {
-      if (!model.baseId && this.isClone(refr)) {
-        this.destroy();
-        this.refrId = 0;
-        this.appearanceBasedBaseId = 0;
-        return;
-      }
       const actor = Actor.from(refr);
       if (actor && !this.localImmortal) {
         actor.startDeferredKill();
@@ -927,42 +921,6 @@ export class FormView {
     this.lastNiNodeUpdateMs = 0;
   }
 
-  // A base that stopped matching the stored appearance took the local player's look through form id 7, so it respawns like a cell change
-  private isClone(refr: ObjectReference): boolean {
-    const appearance = this.appearanceState.appearance;
-    const now = Date.now();
-    if (!appearance || this.refrId < 0xff000000 || now - this.lastCloneCheckMs < FormView.cloneCheckIntervalMs) {
-      return false;
-    }
-    this.lastCloneCheckMs = now;
-    const base = ActorBase.from(refr.getBaseObject());
-    if (!base) {
-      return false;
-    }
-    const diffs: string[] = [];
-    const sex = base.getSex();
-    if ((sex === 1) !== !!appearance.isFemale) {
-      diffs.push(`sex ${sex}`);
-    }
-    const raceId = base.getRace()?.getFormID() ?? 0;
-    if (Game.getFormEx(appearance.raceId) && raceId !== appearance.raceId) {
-      diffs.push(`race ${raceId.toString(16)} not ${appearance.raceId.toString(16)}`);
-    }
-    const weight = base.getWeight();
-    if (Math.abs(weight - appearance.weight) > 0.5) {
-      diffs.push(`weight ${weight} not ${appearance.weight}`);
-    }
-    const name = base.getName().trim();
-    if (name !== (appearance.name ?? "").trim()) {
-      diffs.push(`name '${name}' not '${appearance.name}'`);
-    }
-    if (diffs.length === 0) {
-      return false;
-    }
-    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} clone detected (${diffs.join(", ")}), respawning`);
-    return true;
-  }
-
   private getDefaultEquipState() {
     return { lastNumChanges: 0, lastEqMoment: 0, resyncAt: 0 };
   };
@@ -1018,8 +976,6 @@ export class FormView {
   private static readonly niNodeUpdateMinIntervalMs = 5000;
   private lastPcWorldOrCell = 0;
   private lastWorldOrCell = 0;
-  private lastCloneCheckMs = 0;
-  private static readonly cloneCheckIntervalMs = 2000;
   private slideState = { pos: [0, 0, 0] as NiPoint3, sampledAt: 0, moved: 0, idleSince: 0, loggedAt: 0 };
   private static readonly slideLogIntervalMs = 10000;
   private spawnMoment = 0;
