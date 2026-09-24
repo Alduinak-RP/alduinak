@@ -1,9 +1,9 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FINISHED_EVENT } from "./system";
 import { resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
 import { keywordConditionsPass } from "./espmMagic";
-import { addSpellTo, removeSpellFrom, hex, chainMpHook, isAlive, isBleedingOut, sendStagger, userOf } from "./actorUtil";
+import { addSpellTo, removeSpellFrom, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, sendStagger, userOf } from "./actorUtil";
 import { MasterySystem, stringList } from "./masterySystem";
 import { IMPERIAL_RACES } from "./charCreatorData";
 
@@ -12,7 +12,7 @@ type Mp = any;
 
 // Hunger and crafting fatigue, kept by the server on Survival Mode's scales and with Survival Mode's penalties.
 //
-// Hunger runs from 0 (full) to 1000 and drains only while the character is online; eating a food takes it down by the
+// Hunger runs from 0 (full) to 1000 and drains only while the character is online and past character creation; eating a food takes it down by the
 // amount needsFoodHunger gives its Survival hunger effect, or else the effect's Survival_HungerRestoreEffectScript AmountToRestore global.
 // Fatigue is a bar from 0 to 1 that every accepted recipe draws on, by the crafter's rank in the profession owning the
 // recipe's bench (Novice outside it, members pay half, Imperials less on own-profession work), and that a kill draws on too (needsKillFatigue, less for warriors); it refills at a
@@ -229,6 +229,7 @@ export class NeedsSystem implements System {
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
+    ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.startFresh(ctx, actorId >>> 0));
     this.installHooks(ctx);
   }
 
@@ -427,6 +428,16 @@ export class NeedsSystem implements System {
     this.sendState(ctx, actorId, false);
   }
 
+  // A finished character starts from the new-character values, whatever the creation wait did
+  private startFresh(ctx: SystemContext, actorId: number): void {
+    const entry = this.online.get(actorId);
+    if (!entry) return;
+    Object.assign(entry.rec, { hunger: this.hungerStart, fatigue: 1, at: Date.now(), wellFed: false });
+    this.write(ctx, actorId, entry.rec);
+    this.syncStages(ctx, actorId, entry);
+    this.sendState(ctx, actorId, false);
+  }
+
   disconnect(userId: number, ctx: SystemContext): void {
     for (const [actorId, entry] of Array.from(this.online.entries())) {
       if (entry.userId === userId) this.goOffline(ctx, actorId);
@@ -533,6 +544,11 @@ export class NeedsSystem implements System {
         if (tick) {
           if (!this.stillPlaying(ctx, entry.userId, actorId)) {
             this.goOffline(ctx, actorId);
+            continue;
+          }
+          // The race menu or creator can stay open for hours
+          if (isCreationPending(ctx.svr as Mp, actorId)) {
+            entry.rec.at = now;
             continue;
           }
           this.advance(entry.rec, now, true);

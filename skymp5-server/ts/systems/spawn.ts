@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, CREATION_FINISHED_EVENT } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
@@ -682,6 +682,7 @@ export class Spawn implements System {
     } catch { return; /* form vanished */ }
     this.scheduleKit(ctx, actorId, EQUIP_KIT_DELAY_MS);
     this.log("Character creation finished for actor", actorId.toString(16));
+    ctx.gm.emit(CREATION_FINISHED_EVENT, actorId);
   }
 
   private scheduleKit(ctx: SystemContext, actorId: number, delayMs: number): void {

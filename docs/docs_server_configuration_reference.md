@@ -941,9 +941,9 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | Key | Default | Meaning |
 |---|---|---|
 | `needsEnabled` | `true` | `false` switches hunger and fatigue off |
-| `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours) |
+| `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours); nothing drains while the race menu or creator is pending |
 | `needsHungerOffline` | `false` | `true` drains hunger while logged out too |
-| `needsHungerStart` | `145` | Hunger of a new character; 145 is Survival Mode's starting value, in the Satisfied stage |
+| `needsHungerStart` | `145` | Hunger of a new character, set again (with a full fatigue bar) when its race menu or creator is accepted; 145 is Survival Mode's starting value, in the Satisfied stage |
 | `needsHungerStages` | `[80, 160, 340, 520, 770]` | Survival's stage values: Well Fed (after a meal empties hunger) ends at the first, Peckish, Hungry, Famished and Starving begin at the others; the second also starts the max stamina penalty |
 | `needsHungerStageAbilities` | `true` | Grant the Survival hunger stage ability of the current stage |
 | `needsFoodHunger` | `{ "Survival_FoodRestoreHungerVerySmall": 40, "Survival_FoodRestoreHungerSmall": 100, "Survival_FoodRestoreHungerMedium": 220, "Survival_FoodRestoreHungerLarge": 380 }` | Hunger points (of 1000) each hunger magic effect restores, merged key by key over the default; the HUD bar shows a tenth of that as a percentage (VerySmall 4%, Small 10%, Medium 22%, Large 38%). An effect not listed restores its record's `AmountToRestore` global (Survival's 2, 18, 220, 380). Numbers of 0 or more. Read at boot |
