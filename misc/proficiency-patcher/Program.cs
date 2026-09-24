@@ -69,10 +69,10 @@ JsonObject? categories = null;
 Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
-    ? [Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
+    ? [Steps.CraftingStations, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
        Steps.Racial, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors,
        categoriesStep, Steps.MarkerEffects]
-    : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.AlchemyRecipes, Steps.KilnRecipes,
+    : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
        Steps.Racial, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
@@ -423,6 +423,28 @@ static class Steps
             furn.Keywords ??= new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
             if (!furn.Keywords.Any(x => x.FormKey == kw)) furn.Keywords.Add(kw.ToLink<IKeywordGetter>());
             c.Note($"Alchemy lab {edid}: crafting menu with keyword {c.EdidOf(kw)}");
+        }
+    }
+
+    // ---- crafting stations: other furniture opens the crafting menu on a bench keyword of the plugin's own ---------
+    public static void CraftingStations(PatchContext c)
+    {
+        foreach (var s in c.Spec["craftingStations"]!.AsArray().Select(x => x!.AsObject()))
+        {
+            var kwEdid = s["keyword"]!.GetValue<string>();
+            // Pinned like a newRecipes entry, so a hotfix run does not push the faction markers and category keywords
+            var kw = c.OwnOrNew(c.Mod.Keywords, kwEdid, formId: s["keywordFormId"] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null).FormKey;
+            foreach (var edid in Edids(c, s["furniture"]))
+            {
+                if (!c.TryWinning<IFurnitureGetter>(edid, out var winning)) { c.Warn($"crafting station '{edid}' not found, skipped"); continue; }
+                var furn = c.Override(c.Mod.Furniture, winning);
+                furn.WorkbenchData ??= new WorkbenchData();
+                furn.WorkbenchData.BenchType = WorkbenchData.Type.CreateObject;
+                furn.WorkbenchData.UsesSkill = null;
+                furn.Keywords ??= new ExtendedList<IFormLinkGetter<IKeywordGetter>>();
+                if (!furn.Keywords.Any(x => x.FormKey == kw)) furn.Keywords.Add(kw.ToLink<IKeywordGetter>());
+                c.Note($"Crafting station {edid}: crafting menu with keyword {kwEdid}");
+            }
         }
     }
 

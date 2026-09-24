@@ -365,7 +365,14 @@ container loot are off:
   below) give Sea Salt Rock, weight 20, and the smelter's `12RecipeSeaSaltPile`
   refines one rock into 50 Salt Pile, open to everyone; `AlduinakAdditions.esp`
   overrides the rock's weight and the recipe's count (spec `overrides`), which
-  makes `Saltdeposits.esp` one of its masters. The vanilla loot lists of
+  makes `Saltdeposits.esp` one of its masters. The grain mills do the same:
+  the plugin gives them the `AldCraftingGrainMill` bench keyword (spec
+  `craftingStations`) and `AldRecipeSmith_SaltPileMill`, one rock into 50 Salt
+  Pile there, open to everyone too. A mill turned into a crafting station
+  opens the crafting menu instead of playing the push animation, and no
+  profession owns the keyword, so a craft there earns no mastery hours and
+  costs a full Novice craft's fatigue (`needsFatigueCraftsPerHour`, no member
+  share). The vanilla loot lists of
   bandits, Forsworn, warlocks and other human foes carry it too.
 - Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
   open to everyone.

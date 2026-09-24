@@ -300,7 +300,9 @@ load goes.
   that copy, or the copy moving 96 units off or unloading, sends `SlaveIdle`.
   The platform log traces each send. The local user's own mill is the engine's
   business; if it turns out not to turn either, `furnitureSeatService` can send
-  the same pair on `seatClaim` and `seatRelease`.
+  the same pair on `seatClaim` and `seatRelease`. A mill the plugin lists under
+  `craftingStations` (spec, `docs_roleplay_mastery.md`) opens the crafting menu
+  instead, so none of this runs there.
 - Doors, containers, NPCs and trade work as usual.
 
 ## Anti-abuse
