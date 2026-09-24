@@ -305,7 +305,9 @@ behaviour-graph events — no ESP required.**
 - **Staff PK** (`ExecutionSystem.pk`): staff with the `kick` cap (the
   moderation tiers, `players` too) get a PK button next to Kick in the
   admin panel's Players sub-tab (`adminAction pk`, the selected online
-  character). It is the finish off PK without a killmove: the character dies
+  character). The first click only arms it: the button turns into Confirm
+  PK for that selection, and a second click sends it (selecting another
+  player disarms it). It is the finish off PK without a killmove: the character dies
   at once, leaves the body above and goes to Sovngarde, with the same
   `pk.log`, `pvp.log` and `execute` alert lines (`(staff)` when the admin
   holds no execute right). Refused on yourself, on a character already dead
