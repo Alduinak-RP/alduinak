@@ -86,10 +86,14 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
 
 ## Strongbox
 
-Every board has a strongbox: a real container (`CONT`) the server places at
-the canonical board with `PlaceAtMe` the first time a fee is paid there, so
-it sits at the board's foot in the city worldspace (the server cannot move a
-placed non-actor, so the base should be small or flat). The posting fees pile
+Every board has a strongbox: a real container (`CONT`) the server places with
+`PlaceAtMe` the first time a fee is paid there. Its anchor is the visible
+board (`12cb`, the second reference of the board's cluster in `BOARDS`), so
+it sits at that board's foot in the city worldspace; the canonical ref is the
+invisible primitive, which floats about 105-155 units above the visible board
+and to one side of it, where a strongbox would hang in the air and catch the
+crosshair meant for the board (the server cannot move a placed non-actor, so
+the base should be small or flat). The posting fees pile
 up in it. Its base is `bountyBoardStashBase` (default `c674b:Skyrim.esm`, the
 vanilla ash pile, a CONT with no base items); a base that is not a CONT is
 logged at startup and the fee is then simply destroyed, as before. The base
