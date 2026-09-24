@@ -142,20 +142,18 @@ export class AfterlifeSystem implements System {
     });
   }
 
-  // Editor ids, descs and hex ids of the look and the outfit per realm, the settings over the defaults; misses are logged
+  // Editor ids, descs and hex ids of the look and the outfit per realm, each set field over its default; misses are logged
   private async resolveLooks(mp: Mp): Promise<void> {
     const s = await Settings.get();
     const configured = s.allSettings?.["afterlifeLooks"] as Record<string, unknown> | undefined;
     const configs = {} as Record<RealmId, RealmLookConfig>;
     for (const realm of Object.keys(REALMS) as RealmId[]) {
-      const raw = configured && typeof configured === "object" ? configured[realm] as Record<string, unknown> | undefined : undefined;
-      if (!raw || typeof raw !== "object") {
-        configs[realm] = DEFAULT_LOOKS[realm];
-        continue;
-      }
-      const look = raw["look"] ?? raw["shader"];
-      const outfit = Array.isArray(raw["outfit"]) ? raw["outfit"].filter((v): v is string => typeof v === "string" && !!v) : [];
-      const alpha = raw["alpha"] === undefined ? DEFAULT_LOOKS[realm].alpha : Number(raw["alpha"]);
+      const entry = configured && typeof configured === "object" ? configured[realm] : undefined;
+      const raw = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+      const def = DEFAULT_LOOKS[realm];
+      const look = "look" in raw ? raw["look"] : "shader" in raw ? raw["shader"] : def.look;
+      const outfit = Array.isArray(raw["outfit"]) ? raw["outfit"].filter((v): v is string => typeof v === "string" && !!v) : def.outfit;
+      const alpha = raw["alpha"] === undefined ? def.alpha : Number(raw["alpha"]);
       configs[realm] = { look: typeof look === "string" && look ? look : undefined, outfit, alpha };
     }
     const names = Object.values(configs).flatMap((c) => [c.look ?? "", ...c.outfit]).filter((n) => n && isEditorId(n));
