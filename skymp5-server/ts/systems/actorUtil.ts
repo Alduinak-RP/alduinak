@@ -222,6 +222,17 @@ export const addItemTo = (mp: Mp, actorId: number, itemId: number, count: number
   mp.callPapyrusFunction("method", "ObjectReference", "AddItem", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(itemId) }, count, silent]);
 };
 
+// Merges gold into the inventory record itself, so it also reaches an offline actor; throws when the form is unknown
+export const addGold = (mp: Mp, actorId: number, amount: number): void => {
+  if (amount <= 0) return;
+  const inv = mp.get(actorId, "inventory");
+  const entries = inv && Array.isArray(inv.entries) ? inv.entries.slice() : [];
+  const stack = entries.find((e: any) => (Number(e?.baseId) >>> 0) === GOLD_BASE_ID);
+  if (stack) stack.count = (Number(stack.count) || 0) + amount;
+  else entries.push({ baseId: GOLD_BASE_ID, count: amount });
+  mp.set(actorId, "inventory", { entries });
+};
+
 // Forms of a previous run exist only after the world DB loads (WORLD_LOADED_EVENT); plugin refs, player characters and ids failing isOurs are kept
 export const destroyLeftovers = (mp: Mp, ids: number[], isOurs: (id: number) => boolean): number =>
   ids.filter((id) => {

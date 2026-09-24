@@ -1,8 +1,8 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content } from "./system";
+import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
-import { GOLD_BASE_ID, addItemTo, addSpellTo, hex, isCreationPending, removeSpellFrom } from "./actorUtil";
+import { GOLD_BASE_ID, addGold, addItemTo, addSpellTo, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -57,10 +57,16 @@ type Mp = any;
 //                                [] gives that profession nothing.
 //   masteryKitGold               gold every profession's kit carries on top of its items,
 //                                alchemists included, default 50; 0 turns it off.
+//   masteryKitGoldSince          ISO date or epoch ms: every character created since then
+//                                whose kit marker carries no gold receives it once (at boot
+//                                for everyone, again after login), marked by
+//                                private.professionKitGold. Absent or unparsable: off.
 
 const MASTERY_PROP = "private.mastery";
 // Set with a character's first kit and never cleared, so a reset and a new pick bring no second one
 const KIT_PROP = "private.professionKit";
+// Set by the kit gold backfill, { count, at }
+const KIT_GOLD_PROP = "private.professionKitGold";
 // Plugin recipes any character makes at Novice (instruments, broom, war horns) are no one's work
 const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
 
@@ -325,6 +331,11 @@ export class MasterySystem implements System {
     this.loadKits(ctx, all?.["masteryKits"]);
     const kitGold = Number(all?.["masteryKitGold"]);
     if (Number.isInteger(kitGold) && kitGold >= 0) this.kitGold = kitGold;
+    const rawSince = all?.["masteryKitGoldSince"];
+    const sinceText = String(rawSince ?? "").trim();
+    const since = typeof rawSince === "number" ? rawSince : /^\d+$/.test(sinceText) ? Number(sinceText) : Date.parse(sinceText);
+    if (Number.isFinite(since) && since > 0) this.kitGoldSince = since;
+    else if (sinceText) this.log(`[mastery] masteryKitGoldSince "${sinceText}" is not a date or epoch ms, kit gold backfill off`);
     await this.loadRules(ctx, all?.["masteryActivities"], s.dataDir, s.loadOrder);
     await this.loadPluginSpells(ctx, s.dataDir, s.loadOrder);
 
@@ -337,6 +348,7 @@ export class MasterySystem implements System {
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => {
       this.onActorAssigned(ctx, userId, actorId >>> 0);
     });
+    if (this.kitGoldSince) ctx.gm.once(WORLD_LOADED_EVENT, () => this.backfillKitGold(ctx));
 
     // Events are only queued so every property write and Papyrus call runs
     // outside the native event call stack.
@@ -517,8 +529,8 @@ export class MasterySystem implements System {
     // Spells already in the changeform ride the spawn message down on their
     // own; only a gap (new config, retuned rank) needs granting, and it has to
     // wait out the client's spawn-time removeUnlistedSpells.
-    // A craft held without its kit gets the kit on the same delay.
-    if (this.missingSpells(rec).length || !this.hasKit(ctx, actorId)) {
+    // A craft held without its kit gets the kit on the same delay, and so does the kit gold backfill.
+    if (this.missingSpells(rec).length || !this.hasKit(ctx, actorId) || this.kitGoldDue(ctx, actorId, rec)) {
       this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
     }
   }
@@ -533,6 +545,7 @@ export class MasterySystem implements System {
       if (!rec || !rec.profession) return;
       this.applySpells(ctx, actorId, rec);
       this.giveKit(ctx, actorId, this.userOf(ctx, actorId), rec.profession);
+      this.giveKitGold(ctx, actorId, rec);
     });
   }
 
@@ -596,6 +609,58 @@ export class MasterySystem implements System {
     }
     this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}, gold ${this.kitGold}`);
     if (kit.length || this.kitGold > 0) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
+  }
+
+  // Characters created since masteryKitGoldSince whose kit came without gold; the marker settles each one for good
+  private kitGoldDue(ctx: SystemContext, actorId: number, rec: MasteryRecord): boolean {
+    if (!this.kitGoldSince || this.kitGold <= 0 || !rec.profession) return false;
+    const mp = ctx.svr as Mp;
+    try {
+      if (mp.get(actorId, KIT_GOLD_PROP)) return false;
+      const kit = mp.get(actorId, KIT_PROP);
+      // No kit marker: giveKit hands the kit and its gold together at login
+      if (!kit || typeof kit.gold === "number") return false;
+      const createdAt = Number(mp.get(actorId, "private.startLocation")?.at) || Number(kit.at) || 0;
+      return createdAt >= this.kitGoldSince;
+    } catch {
+      return false;
+    }
+  }
+
+  // Online actors get the AddItem notice, offline ones an inventory merge
+  private giveKitGold(ctx: SystemContext, actorId: number, rec: MasteryRecord): boolean {
+    if (!this.kitGoldDue(ctx, actorId, rec)) return false;
+    const mp = ctx.svr as Mp;
+    try {
+      mp.set(actorId, KIT_GOLD_PROP, { count: this.kitGold, at: Date.now() });
+      const userId = this.userOf(ctx, actorId);
+      if (userId === -1) {
+        addGold(mp, actorId, this.kitGold);
+      } else {
+        addItemTo(mp, actorId, GOLD_BASE_ID, this.kitGold);
+        this.notice(ctx, userId, `The ${this.kitGold} gold of your starting kit is in your pack.`);
+      }
+    } catch (e) {
+      this.log(`[mastery] kit gold backfill failed for ${hex(actorId)}: ${e}`);
+      return false;
+    }
+    this.log(`[mastery] ${hex(actorId)} kit gold backfill: ${this.kitGold}`);
+    return true;
+  }
+
+  // Runs once the world DB is loaded, so offline characters are settled in one restart
+  private backfillKitGold(ctx: SystemContext): void {
+    const mp = ctx.svr as Mp;
+    let given = 0;
+    try {
+      for (const actorId of Array.from(mp.getAllForms(0xff) as Uint32Array).filter((id) => isPlayerActor(mp, id))) {
+        const rec = this.read(ctx, actorId);
+        if (rec && this.giveKitGold(ctx, actorId, rec)) given += 1;
+      }
+    } catch (e) {
+      this.log(`[mastery] kit gold backfill could not list the characters: ${e}`);
+    }
+    this.log(`[mastery] kit gold backfill done, ${given} granted (cutoff ${new Date(this.kitGoldSince).toISOString()})`);
   }
 
   // ── Menu ────────────────────────────────────────────────────────────────────
@@ -1101,6 +1166,7 @@ export class MasterySystem implements System {
   private rankHours = DEFAULT_RANK_HOURS.slice();
   private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };
   private kitGold = DEFAULT_KIT_GOLD;
+  private kitGoldSince = 0;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
   private spells: Record<string, number[]> = {};
   private rules: Record<string, ResolvedRules> = {};

@@ -956,6 +956,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
 | `masteryKits` | see `DEFAULT_KITS` in `masterySystem.ts` | `{ "<profession>": [{ baseId, count }] }` kit a character receives with its first profession, same shape as `startingItems`; a profession left out keeps its default, `[]` gives nothing, an unknown key or item is logged at boot |
 | `masteryKitGold` | `50` | Gold every profession's kit carries on top of its items, alchemists included, whatever `masteryKits` says; `0` turns it off |
+| `masteryKitGoldSince` | unset | ISO date or epoch ms (a digit-only string counts as epoch ms). Every character created at or after it whose profession kit marker carries no gold receives `masteryKitGold` once, at boot for everyone and again after login, marked by `private.professionKitGold`; unset or unparsable turns the backfill off |
 | `gatheringStrikeSeconds` | `5` | Seconds per pickaxe strike |
 | `gatheringChopSeconds` | `10` | Seconds per swing of the woodcutter's axe; the firewood lands when the swing ends, counted from the moment the client reports the player seated, and only if they are still seated then |
 | `gatheringChopYield` | `2` | Firewood one swing hands over. A sitting at a chopping block has no cap: the chopper stays in the chopping animation, a yield every swing, and stands up with "You are too tired to swing an axe. Rest a while." once the fatigue bar cannot pay for another (`needsChopWoodPerBar`) |

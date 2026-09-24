@@ -93,6 +93,19 @@ because finishing creation cuts the inventory back to the starter clothes.
 `masteryKits` overrides a profession's kit (`[]` gives nothing), and the boot
 log names any kit item missing from the load order.
 
+Characters whose kit came before it carried gold can be settled once with
+`masteryKitGoldSince` (an ISO date or epoch ms): every character created at or
+after that moment (`private.startLocation.at`, else `private.professionKit.at`)
+that holds a profession, whose kit marker has no `gold` field and that carries no
+`private.professionKitGold` marker receives `masteryKitGold` gold. A character
+still owed its kit is left to the kit itself, which now carries the gold. The
+pass runs at boot over every player character, offline ones through an inventory
+merge, and again about five seconds after a login, where the player gets the
+usual AddItem line and "The 50 gold of your starting kit is in your pack."; each grant
+writes `private.professionKitGold` `{ count, at }` and logs
+`[mastery] <actor> kit gold backfill: 50`, so the key can stay in place across
+restarts and be removed later.
+
 ## What each rank unlocks
 
 Recipe tiers are the owner's lists, applied by the patcher; the exact set is in

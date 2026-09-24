@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
-import { GOLD_BASE_ID } from "./actorUtil";
+import { GOLD_BASE_ID, addGold } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -350,7 +350,8 @@ export class BountyBoardSystem implements System {
     rec.nextId += 1;
     if (!this.write(ctx, session.primary, rec)) {
       // The board cannot hold the record; give the fee back.
-      this.giveGold(ctx, actorId, this.costGold);
+      try { addGold(ctx.svr, actorId, this.costGold); }
+      catch (e) { this.log(`[bounty] could not refund gold to ${actorId.toString(16)}: ${e}`); }
       this.appendLog(`${describeActor(ctx.svr, actorId)} failed to post on the ${session.name} board, fee refunded`);
       this.notice(ctx, userId, "The board would not take your notice.");
       return;
@@ -479,21 +480,6 @@ export class BountyBoardSystem implements System {
     } catch (e) {
       this.log(`[bounty] could not take gold from ${actorId.toString(16)}: ${e}`);
       return false;
-    }
-  }
-
-  private giveGold(ctx: SystemContext, actorId: number, amount: number): void {
-    if (amount <= 0) return;
-    const mp = ctx.svr as Mp;
-    try {
-      const inv = mp.get(actorId, "inventory");
-      const entries = inv && Array.isArray(inv.entries) ? inv.entries.slice() : [];
-      const stack = entries.find((e: any) => (Number(e?.baseId) >>> 0) === GOLD_BASE_ID);
-      if (stack) stack.count = (Number(stack.count) || 0) + amount;
-      else entries.push({ baseId: GOLD_BASE_ID, count: amount });
-      mp.set(actorId, "inventory", { entries });
-    } catch (e) {
-      this.log(`[bounty] could not refund gold to ${actorId.toString(16)}: ${e}`);
     }
   }
 
