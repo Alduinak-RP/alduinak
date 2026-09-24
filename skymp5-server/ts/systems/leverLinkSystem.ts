@@ -20,7 +20,6 @@ const CLOSE_ANIM = "close";
 const TOGGLE_COOLDOWN_MS = 3000;
 
 const PULLED_PROP = "private.leverPulled";
-const OPEN_PROP = "private.leverLinkOpen";
 
 interface LeverLink {
   levers: number[];
@@ -37,6 +36,8 @@ export class LeverLinkSystem implements System {
 
   private linkByLever = new Map<number, LeverLink>();
   private lastToggleMs = new Map<number, number>();
+  // Non-door targets opened this session; the animation is not saved, so they load closed after a restart
+  private openTargets = new Set<number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
@@ -98,8 +99,9 @@ export class LeverLinkSystem implements System {
       mp.set(link.target, "isOpen", open);
       return open;
     }
-    const open = mp.get(link.target, OPEN_PROP) !== true;
-    mp.set(link.target, OPEN_PROP, open);
+    const open = !this.openTargets.has(link.target);
+    if (open) this.openTargets.add(link.target);
+    else this.openTargets.delete(link.target);
     const self = { type: "form", desc: mp.getDescFromId(link.target) };
     mp.callPapyrusFunction("method", "ObjectReference", "PlayAnimation", self, [open ? link.openAnim : link.closeAnim]);
     return open;

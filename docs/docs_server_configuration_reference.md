@@ -373,8 +373,9 @@ descriptor. With `all: true` every lever of the entry must have been pulled once
 before the target moves; after that each pull toggles it. A `DOOR` target
 toggles its native `isOpen`; any other target plays `openAnim` / `closeAnim`
 (default `open` / `close`, the default2StateActivator names), which the server
-keeps for players who arrive later. Pulls and the open state are stored on the
-refs and survive a restart. Only a connected player's pull counts, once the
+keeps for players who arrive later. Pulls are stored on the levers and a
+door's `isOpen` on the door, and both survive a restart; any other target loads
+closed after a restart (its animation is not saved), so the next pull opens it. Only a connected player's pull counts, once the
 other activation checks allowed it, and a target moves at most once every 3 s.
 Each pull is logged as `[levers] <player> pulled <lever>, ...`.
 
