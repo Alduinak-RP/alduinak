@@ -160,7 +160,9 @@ export class AfterlifeSystem implements System {
       const def = DEFAULT_LOOKS[realm];
       const look = "look" in raw ? raw["look"] : "shader" in raw ? raw["shader"] : def.look;
       const outfit = Array.isArray(raw["outfit"]) ? raw["outfit"].filter((v): v is string => typeof v === "string" && !!v) : def.outfit;
-      const alpha = raw["alpha"] === undefined ? def.alpha : Number(raw["alpha"]);
+      const rawAlpha = "alpha" in raw ? raw["alpha"] : def.alpha;
+      const alpha = typeof rawAlpha === "number" && Number.isFinite(rawAlpha) && rawAlpha >= 0 && rawAlpha <= 1 ? rawAlpha : def.alpha;
+      if (alpha !== rawAlpha) this.log(`[afterlife] ${REALMS[realm].label} alpha ${JSON.stringify(rawAlpha)} is not a number between 0 and 1, the default ${def.alpha} is used`);
       configs[realm] = { look: typeof look === "string" && look ? look : undefined, outfit, alpha };
     }
     const names = Object.values(configs).flatMap((c) => [c.look ?? "", ...c.outfit]).filter((n) => n && isEditorId(n));
@@ -181,9 +183,7 @@ export class AfterlifeSystem implements System {
     for (const realm of Object.keys(REALMS) as RealmId[]) {
       const { label } = REALMS[realm];
       const config = configs[realm];
-      const look: RealmLook = { ...NO_LOOK, outfit: [] };
-      if (Number.isFinite(config.alpha) && config.alpha >= 0 && config.alpha <= 1) look.alpha = config.alpha;
-      else this.log(`[afterlife] ${label} alpha '${config.alpha}' is not between 0 and 1, ignored`);
+      const look: RealmLook = { ...NO_LOOK, outfit: [], alpha: config.alpha };
       if (config.look) {
         const id = idOf(config.look);
         const type = typeOf(id);
