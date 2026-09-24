@@ -22,6 +22,8 @@ interface EmoteWheelEvents {
   play: string;
   close: string;
   stop: string;
+  key: string;
+  keyUp: string;
   [key: string]: string;
 }
 
@@ -29,6 +31,7 @@ interface EmoteWheelEvents {
 export interface EmoteWheelData {
   groups: EmoteGroup[];
   events: EmoteWheelEvents;
+  hold?: boolean;
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -95,10 +98,11 @@ interface RingProps {
   activeId: string;
   items: { id: string; label: string; locked?: boolean }[];
   onHover?: (id: string) => void;
+  onLeave?: () => void;
   onClick: (id: string) => void;
 }
 
-const Ring = ({ innerR, outerR, segClass, labelClass, activeId, items, onHover, onClick }: RingProps) => {
+const Ring = ({ innerR, outerR, segClass, labelClass, activeId, items, onHover, onLeave, onClick }: RingProps) => {
   const step = 360 / items.length;
   const startOffset = -90;
   const labelR = innerR + (outerR - innerR) * 0.55;
@@ -114,6 +118,7 @@ const Ring = ({ innerR, outerR, segClass, labelClass, activeId, items, onHover, 
               d={describeArcSegment(CENTER, CENTER, innerR, outerR, startAngle, endAngle)}
               className={segClass + (item.id === activeId ? ' active' : '') + (item.locked ? ' locked' : '')}
               onMouseEnter={onHover ? () => onHover(item.id) : undefined}
+              onMouseLeave={onLeave}
               onClick={() => onClick(item.id)}
             />
             <text x={labelPoint.x} y={labelPoint.y} className={labelClass + (item.locked ? ' locked' : '')}>
@@ -146,17 +151,30 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   const [previewChanging, setPreviewChanging] = useState(false);
   const [refusedAnim, setRefusedAnim] = useState('');
   const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The emote slice under the cursor, played when a held wheel key is released
+  const hoveredRef = useRef('');
 
   useEffect(() => {
     // Losing browser focus (free-cursor key, chat) would strand the overlay.
     const onUnfocused = () => send(ev.close);
-    // The game sees no keys while the wheel has focus, so the client matches presses to the wheel key
+    // The game sees no keys while the wheel has focus, so the client matches presses and releases to the wheel key
     const onKeyDown = (e: KeyboardEvent) => { if (!e.repeat) send(ev.key, e.code); };
+    const onKeyUp = (e: KeyboardEvent) => {
+      const anim = hoveredRef.current;
+      const group = anim && data.hold ? groups.find((g) => g.emotes.some((it) => it.anim === anim)) : undefined;
+      if (group) {
+        savedGroupId = group.id;
+        savedAnim = anim;
+      }
+      send(ev.keyUp, e.code, anim);
+    };
     window.addEventListener('skymp5-client:browserUnfocused', onUnfocused);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     return () => {
       window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       if (swapTimer.current) clearTimeout(swapTimer.current);
     };
   }, []);
@@ -235,7 +253,8 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
                 labelClass="emote-wheel__segment-label"
                 activeId={activeAnim}
                 items={activeGroup.emotes.map((e) => ({ id: e.anim, label: e.label, locked: e.locked }))}
-                onHover={changePreview}
+                onHover={(anim) => { hoveredRef.current = anim; changePreview(anim); }}
+                onLeave={() => { hoveredRef.current = ''; }}
                 onClick={selectEmote}
               />
             </svg>

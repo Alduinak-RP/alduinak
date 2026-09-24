@@ -12,6 +12,8 @@ import { logTrace } from "../../logging";
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
 
+// Mirrors holdMode for the widget setter, which runs in the browser with injected vars only
+let wheelHold = false;
 const WIDGET_ID = 24;
 
 // An item the emote shows in hand; any one of the "hex:Plugin" items unlocks it
@@ -136,6 +138,7 @@ const events = {
   close: 'emote:close',
   stop: 'emote:stop',
   key: 'emote:key',
+  keyUp: 'emote:keyup',
 };
 
 // Movement input breaks an active emote, matching how remote clones exit poses.
@@ -210,6 +213,11 @@ export class EmoteService extends ClientListener {
     if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(code) && !isGameInputBlocked(this.sp, this.controller)) {
       this.stopActiveEmote();
     }
+    // A release the game still saw, before the wheel took focus, closes a held wheel
+    if (code === this.menuKey && e.isUp && this.menuOpen && this.holdMode) {
+      this.closeMenu();
+      return;
+    }
     if (code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
     }
@@ -237,10 +245,14 @@ export class EmoteService extends ClientListener {
       this.closeMenu();
       return;
     }
-    // The wheel key again closes the wheel
+    // The wheel key again closes the wheel, unless it is being held open
     if (key === events.key) {
-      const menuDomKey = domKeyCode(this.menuKey);
-      if (menuDomKey && e.arguments[1] === menuDomKey) this.closeMenu();
+      if (!this.holdMode && this.isMenuDomKey(e.arguments[1])) this.closeMenu();
+      return;
+    }
+    // Releasing a held wheel key plays the hovered emote, if any, and closes the wheel
+    if (key === events.keyUp) {
+      if (this.holdMode && this.isMenuDomKey(e.arguments[1])) this.playFromMenu(e.arguments[2]);
       return;
     }
     if (key === events.stop) {
@@ -249,17 +261,27 @@ export class EmoteService extends ClientListener {
       return;
     }
     if (key === events.play) {
-      const anim = typeof e.arguments[1] === "string" ? (e.arguments[1] as string) : "";
-      this.closeMenu();
-      if (!this.allowedAnims.has(anim)) {
-        return;
-      }
-      if (this.isPoseLocked()) {
-        notifyNextUpdate(this.controller, this.sp, this.poseLockNotice());
-        return;
-      }
-      this.playEmote(anim);
+      this.playFromMenu(e.arguments[1]);
     }
+  }
+
+  private isMenuDomKey(domKey: unknown): boolean {
+    const menuDomKey = domKeyCode(this.menuKey);
+    return !!menuDomKey && domKey === menuDomKey;
+  }
+
+  // Closes the wheel and plays the chosen emote, or nothing when none was chosen
+  private playFromMenu(chosen: unknown): void {
+    const anim = typeof chosen === "string" ? chosen : "";
+    this.closeMenu();
+    if (!this.allowedAnims.has(anim)) {
+      return;
+    }
+    if (this.isPoseLocked()) {
+      notifyNextUpdate(this.controller, this.sp, this.poseLockNotice());
+      return;
+    }
+    this.playEmote(anim);
   }
 
   // Plays an idle for another service; exits replace the exit chain derived from its name
@@ -435,7 +457,7 @@ export class EmoteService extends ClientListener {
       emotes: group.emotes.map(({ needs, ...emote }) =>
         needs ? { ...emote, locked: !this.carries(needs, inventory), needs: needs.label } : emote),
     }));
-    return { GROUPS: groups, events, WIDGET_ID };
+    return { GROUPS: groups, events, WIDGET_ID, wheelHold: this.holdMode };
   }
 
   private missingProp(anim: string, inventory: Inventory | undefined): PropNeed | undefined {
@@ -490,6 +512,7 @@ export class EmoteService extends ClientListener {
       id: WIDGET_ID,
       groups: GROUPS,
       events: events,
+      hold: wheelHold,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
@@ -497,6 +520,8 @@ export class EmoteService extends ClientListener {
 
   private menuKey: number;
   private menuOpen = false;
+  // Held open instead of toggled; the release plays the hovered emote
+  private holdMode = false;
   private activeEmote = "";
   private allowedAnims: Set<string>;
   private propAnims: Set<string>;
@@ -517,5 +542,10 @@ export class EmoteService extends ClientListener {
 
   setMenuKey(override: number): void {
     this.menuKey = override || this.launcherMenuKeyCode;
+  }
+
+  setHoldMode(hold: boolean): void {
+    this.holdMode = hold;
+    wheelHold = hold;
   }
 }

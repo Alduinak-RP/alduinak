@@ -77,7 +77,12 @@ Rules:
   (Esc cancels, Backspace returns the row to the launcher's key). A rebind is
   saved as `keys.<setting name>` in the chat settings and wins over the
   launcher's Server Hotkeys until **Use launcher defaults** clears every row;
-  the launcher itself is not changed and does not show in-game rebinds.
+  the launcher itself is not changed and does not show in-game rebinds. Two
+  checkboxes there (`emoteWheelHold`, `interactMenuHold`, both off) make the
+  emote wheel and the interact key's player menu **hold-to-open**: the menu
+  stays while the key is down and closes on release, and a released wheel key
+  plays the emote under the cursor. Hold mode is keyboard only: with a mouse
+  button bound the checkbox is disabled and the menu keeps toggling.
 - The two nametag toggles are saved with the other chat settings:
   **show player names** (off by default, draws the nametag
   over other players) and **show form ids** (off by default, the `ffxxxxxx`

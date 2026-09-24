@@ -60,6 +60,8 @@ const Chat = (props) => {
   // In-game key overrides; the client injects the launcher's keys as keysLauncher for the rows without one
   const [keys, setKeys] = useState(saved.keys && typeof saved.keys === 'object' ? saved.keys : {});
   const keysLauncher = saved.keysLauncher && typeof saved.keysLauncher === 'object' ? saved.keysLauncher : {};
+  const [emoteWheelHold, setEmoteWheelHold] = useState(saved.emoteWheelHold === true);
+  const [interactMenuHold, setInteractMenuHold] = useState(saved.interactMenuHold === true);
   const [idle, setIdle] = useState(false);
   const idleTimerRef = useRef();
   const browserFocusedRef = useRef(false);
@@ -318,8 +320,8 @@ const Chat = (props) => {
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
     // Fov is saved once chat or the launcher supplies one; the client stamps it so a later launcher change wins
-    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, keys }, fov != null ? { fov } : {}));
-  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, fov, keys]);
+    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, keys, emoteWheelHold, interactMenuHold }, fov != null ? { fov } : {}));
+  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, fov, keys, emoteWheelHold, interactMenuHold]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -489,6 +491,10 @@ const Chat = (props) => {
           keys={keys}
           setKeys={setKeys}
           keysLauncher={keysLauncher}
+          emoteWheelHold={emoteWheelHold}
+          setEmoteWheelHold={setEmoteWheelHold}
+          interactMenuHold={interactMenuHold}
+          setInteractMenuHold={setInteractMenuHold}
           onBack={() => {
             setSettingsOpened(false);
             if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) {

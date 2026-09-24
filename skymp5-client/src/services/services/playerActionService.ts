@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, domKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
@@ -80,6 +80,7 @@ const events = {
   action: 'pa:action',
   close: 'pa:close',
   trade: 'pa:trade',
+  keyUp: 'pa:keyup',
 };
 
 // Module-level so the browser-side widget setter can read it (runtime injection).
@@ -116,7 +117,11 @@ export class PlayerActionService extends ClientListener {
   }
 
   private onButtonEvent(e: ButtonEvent): void {
-    if (!e.isDown) return;
+    if (!e.isDown) {
+      // A release the game still saw, before the menu took focus, closes a held menu
+      if (this.holdMode && e.isUp && this.menuOpen && buttonEventKeyCode(e) === this.interactKey) this.closeMenu();
+      return;
+    }
     const code = buttonEventKeyCode(e);
     if (code === DxScanCode.Escape && this.menuOpen) {
       this.closeMenu();
@@ -239,6 +244,12 @@ export class PlayerActionService extends ClientListener {
       this.closeMenu();
       return;
     }
+    // Releasing a held interact key closes the menu
+    if (key === events.keyUp) {
+      const interactDomKey = domKeyCode(this.interactKey);
+      if (this.holdMode && interactDomKey && e.arguments[1] === interactDomKey) this.closeMenu();
+      return;
+    }
     if (key === events.trade) {
       if (this.playerTarget) {
         sendCustomPacket(this.controller, { customPacketType: "tradeRequest", recipient: this.playerTarget });
@@ -305,6 +316,8 @@ export class PlayerActionService extends ClientListener {
   };
 
   private menuOpen = false;
+  // The pa: context menu is held open instead of toggled; the other menus the key opens keep toggling
+  private holdMode = false;
   private playerTarget = 0;
   // Action id -> whether the server's playerMenuState says it applies to the target
   private menuFlags: Record<string, boolean> = {};
@@ -322,5 +335,9 @@ export class PlayerActionService extends ClientListener {
 
   setInteractKey(override: number): void {
     this.interactKey = override || this.launcherInteractKeyCode;
+  }
+
+  setHoldMode(hold: boolean): void {
+    this.holdMode = hold;
   }
 }
