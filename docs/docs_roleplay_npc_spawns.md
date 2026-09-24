@@ -111,7 +111,9 @@ list (`LootFalmerCorpseGold`). Giants drop no weapon; Falmer an ear, a Falmer
 sword, helmet and shield; draugr bone meal, linen wrap, an iron shield, 10
 ancient Nord arrows and a 50% chance of an ancient Nord sword or bow; draugr
 deathlords 3 bone meal, an ancient Nord sword, an emerald, a 20% chance of one
-ancient Nord armour piece and a 50% chance of a greater or grand soul gem;
+ancient Nord armour piece and a 50% chance of a greater or grand soul gem, and
+the Sunderstone Gorge deathlord carries an Orcish bow and arrows instead of the
+ebony ones (no NPC drops ebony);
 frostbite spiders venom and 2 eggs; trolls troll fat and a skull (frost trolls
 2 fat); chaurus 2 chitin and 2 eggs; wolves a pelt and a silver ring; frost
 atronachs a common soul gem and 2 frost salts, flame atronachs 2 fire salts;

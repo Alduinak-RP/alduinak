@@ -4188,6 +4188,25 @@
    ]
   },
   {
+   "list": "LItemDraugr05EWeaponBow",
+   "remove": [
+    "LItemDraugr05EWeaponArrowSublist",
+    "LItemDraugr05EWeaponBowSublist"
+   ],
+   "add": [
+    {
+     "item": "LItemDraugr05WeaponArrowSublist",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "LItemDraugr05WeaponBowSublist",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
    "list": "DeathItemFrostbiteSpider",
    "remove": [
     "LootGoldChange",
