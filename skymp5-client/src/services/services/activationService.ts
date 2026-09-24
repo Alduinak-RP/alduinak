@@ -7,14 +7,19 @@ import { getInventory } from "../../sync/inventory";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 
 import { LastInvService } from "./lastInvService";
-import { logError, logTrace } from "../../logging";
+import { logError, logToPlatformLog, logTrace } from "../../logging";
 import { takeSyntheticActivation } from "../../sync/mountApply";
+
+// A press on a door mid-swing is dropped, but a door stuck between states would never take one, so it goes through after this long
+const STUCK_PRESS_MS = 1500;
 
 export class ActivationService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
         this.controller.on("activate", (e) => this.onActivate(e));
     }
+
+    private firstIgnoredMs = new Map<number, number>();
 
     private onActivate(e: ActivateEvent) {
         const lastInvService = this.controller.lookupListener(LastInvService);
@@ -62,9 +67,18 @@ export class ActivationService extends ClientListener {
         }
 
         if (openState === OpenState.Opening || openState === OpenState.Closing) {
-            logTrace(this, "Ignoring activation of door because it's already opening or closing");
-            return;
+            const now = Date.now();
+            const firstIgnored = this.firstIgnoredMs.get(target);
+            if (firstIgnored === undefined) {
+                this.firstIgnoredMs.set(target, now);
+            }
+            if (firstIgnored === undefined || now - firstIgnored < STUCK_PRESS_MS) {
+                logTrace(this, "Ignoring activation of door because it's already opening or closing");
+                return;
+            }
+            logToPlatformLog(this, `door ${target.toString(16)} still ${openState === OpenState.Opening ? "opening" : "closing"} ${now - firstIgnored} ms after the first ignored press, sending the activation anyway`);
         }
+        this.firstIgnoredMs.delete(target);
 
         this.controller.emitter.emit("sendMessage", {
             message: {
