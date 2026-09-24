@@ -37,6 +37,9 @@ interface Body {
   touchedAt: number;
 }
 
+const packSig = (entries: any[]): string =>
+  entries.filter((e) => e && e.count > 0).map((e) => `${Number(e.baseId) >>> 0}:${e.count}`).sort().join(",");
+
 export class BodySystem implements System {
   systemName = "BodySystem";
 
@@ -114,6 +117,7 @@ export class BodySystem implements System {
       return 0;
     }
     this.bodies.set(cloneId, { id: cloneId, victimId, profileId, at: Date.now(), touchedAt: 0 });
+    this.packSigs.set(cloneId, packSig(loot));
     this.save();
     setTimeout(() => {
       try {
@@ -155,9 +159,9 @@ export class BodySystem implements System {
     return entries.filter((e) => e && e.count > 0 && !isNamedItemBase(Number(e.baseId))).length;
   }
 
-  // Any change to the pack since the last check is a take or a put; the first check of a run only records it
+  // Any change to the pack since the last check is a take or a put; the pack is recorded when the body is left or adopted
   private noteTouch(body: Body, entries: any[], now: number): void {
-    const sig = entries.filter((e) => e && e.count > 0).map((e) => `${Number(e.baseId) >>> 0}:${e.count}`).sort().join(",");
+    const sig = packSig(entries);
     const last = this.packSigs.get(body.id);
     this.packSigs.set(body.id, sig);
     if (last === undefined || last === sig) return;
@@ -195,6 +199,8 @@ export class BodySystem implements System {
         this.log(`[body] placing ${hex(body.id)} failed: ${e}`);
       }
       this.bodies.set(body.id, body);
+      const entries = this.entriesOf(body.id);
+      if (entries) this.packSigs.set(body.id, packSig(entries));
       kept++;
     }
     if (this.leftovers.length) this.log(`[body] ${kept}/${this.leftovers.length} body(ies) of the previous run kept`);
