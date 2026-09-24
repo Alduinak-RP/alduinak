@@ -334,14 +334,15 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
   (`needsSurvivalModeFlag`).
 - Notices reuse `masteryNotice`.
 
-**HUD:** there is no needs widget. As in vanilla Survival, hunger shows as a red segment at the end of the stamina bar
-and fatigue as one at the end of the magicka bar. The stamina segment is the hunger penalty share. The magicka segment
-is all the fatigue spent (`100 - fatigue`), from the first point, not only the penalty from stage 2, so a single pick,
-ore or axe swing shows; it is never smaller than the penalty, and the actual max magicka loss still follows the stage 2
-curve above. `needsService.ts` writes these values into the Update.esm globals the Survival `DOBJ` keys name, on the
-client only: `Survival_HungerAttributePenaltyPercent` (0x2EDF, `SRHP`) and
-`Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100, `Survival_ColdAttributePenaltyPercent`
-(0x2EDE, `SRCP`) at 0. With `needsSurvivalModeFlag` on (default on since r15) it also sets the Creation's
+**HUD:** as in vanilla Survival, the penalty shows as a red segment at the end of the stamina bar (hunger) and the
+magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. Fatigue itself has a
+small front widget (`features/fatigueReadout`, widget id 39): one line above the magicka bar, bottom left, reading
+`FATIGUE <fatigue>%` and the `fatigueStageName` ("Refreshed", "Tired", ...), shown while `fatigue` is below 100 and
+`survivalMode` is on (`needsSurvivalModeFlag`), and gone at 100 or with the flag off. It follows every `needsState`
+and hides with the rest of the browser (menus, hidden interface). `needsService.ts` writes the share into the
+Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
+(0x2EDF, `SRHP`) and `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100 (the penalty share times
+100, nothing else), `Survival_ColdAttributePenaltyPercent` (0x2EDE, `SRCP`) at 0. With `needsSurvivalModeFlag` on (default on since r15) it also sets the Creation's
 `Survival_ModeToggle` (`SRVT`, esl 0x828) to 1, and that global is what makes the segments show. The engine's
 `HUDMenu::AdvanceMovie` polls the `SRVT` global every frame (found in the AE 1.6.1179 exe for r16) together with the
 temperature and the three penalty globals, and posts the HUD's `ShowSurvivalElements(abShow, values, abForce)` when
@@ -356,9 +357,8 @@ or exhaustion effect starts from the global; the compass temperature icon stays 
 and the Settings > Gameplay Survival toggle stays hidden because it hangs on `Survival_ModeCanBeEnabled` (`SRVS`),
 kept at 0. The engine's own Survival extras do come with it on every client: arrows and bolts and the lockpick weigh
 their record weight (0.1 for ammo) and armour cards and the inventory bar show Warmth; sleep-to-level is moot with
-skill advance off. The red end lives inside the meter clip, and `hudmenu.swf`'s `onEnterFrame` replays that meter's
-fade-in every frame while its penalty percent is above 0 (`*_THRESHOLD_1` = 0), so a bar with a red end stays on
-screen, as in single-player Survival. After each apply the client reads the globals back and logs
+skill advance off. The red end lives inside the meter clip, so it fades with the bar when that is full and idle, as in
+single-player Survival: sprint or cast to see it. After each apply the client reads the globals back and logs
 `NeedsService: survival hud toggle=<0|1|none> enabled=<0|1|none> hunger=<pct> exhaustion=<pct>` to
 `skyrim-platform.log`, once per distinct line; `none` means the form lookup failed, and `enabled=1` means vanilla
 Survival switched itself on. A load resets the engine's HUD cache, so the service re-applies its last state after
@@ -366,9 +366,8 @@ Survival switched itself on. A load resets the engine's HUD cache, so the servic
 The live `server-settings.json` carries the key explicitly (the manager Settings tab lists it under Gameplay as
 "Survival mode flag on clients"); it is read at boot, so restart the game service after a change.
 `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
-The hunger segment follows Survival's curve from stage 2. The fatigue segment, and with it the magicka bar, shows from
-the first point spent until the fatigue bar is back above 99.5%; the meter's fill is drawn in the part left of the red
-end, so it reads as the fatigue left. The stage notices remain the text cue.
+The segments follow Survival's curve, starting at stage 2; below that, the fatigue readout and the stage notices are
+the cue.
 
 ## Deploy runbook
 
@@ -460,6 +459,9 @@ None of these has been run yet.
   sets `GlobalVariable.from(Game.getFormFromFile(0x2EDF, 'Update.esm'))` to 30 and on F10 sets 0x828 of
   `ccQDRSSE001-SurvivalMode.esl` to 1; SkyrimPlatform loads `PluginsDev`, the launcher never deletes it, and the value
   holds until the next `needsState` (sent on change only). Delete the file after the test.
+- Fatigue readout: with a rested character, mine one vein or craft once; a line `FATIGUE <n>%` with the stage name
+  appears above the magicka bar, the magicka bar stays full with no red end (a mage's full magicka reads full), and the
+  line goes once fatigue is back at 100. From stage 2 the red end grows by the penalty share, not the fatigue spent.
 - Crafting at a forge as a Novice outside Blacksmith costs 1/6; from a full bar the sixth craft closes the menu with the
   "too tired" notice and all six items stay, however fast the clicks come. A click that slips in before the close (high
   ping) is refused: reopen the inventory, the refused item must be absent and its inputs present (the resent inventory
