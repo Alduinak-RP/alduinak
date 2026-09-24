@@ -4048,6 +4048,7 @@
     "LootPerkGoldenTouchChange",
     "LootImperialLuck"
    ],
+   "useAll": true,
    "add": [
     {
      "item": "Gold001",
@@ -4065,21 +4066,610 @@
    "chanceNone": 50
   },
   {
+   "list": "DeathItemFalmer",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "FalmerEar",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "FalmerSword",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "ArmorFalmerHelmet",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "ArmorFalmerShield",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldLootDraugrWeapon50",
+   "new": true,
+   "formId": "0x041260",
+   "chanceNone": 50,
+   "useAll": false,
+   "add": [
+    {
+     "item": "DraugrSword01",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DraugrBow01",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemDraugr",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "BoneMeal",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "LinenWrap",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "ArmorIronShield",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DraugrArrow",
+     "count": 10,
+     "level": 1
+    },
+    {
+     "item": "AldLootDraugrWeapon50",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemFrostbiteSpider",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "FrostbiteVenom",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "SpiderEgg",
+     "count": 2,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemTroll",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "TrollFat",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "TrollSkull",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemTrollFrost",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "TrollFat",
+     "count": 2,
+     "level": 1
+    },
+    {
+     "item": "TrollSkull",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemChaurus",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "ChaurusChitin",
+     "count": 2,
+     "level": 1
+    },
+    {
+     "item": "ChaurusEggs",
+     "count": 2,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemWolf",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "WolfPelt",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "JewelryRingSilver",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemDwarvenSpider",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "SoulGemPetty",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenOil",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldLootDwarvenBolts",
+   "new": true,
+   "formId": "0x041261",
+   "chanceNone": 50,
+   "useAll": false,
+   "add": [
+    {
+     "item": "DLC1DwarvenBolt",
+     "count": 10,
+     "level": 1
+    }
+   ]
+  },
+  {
    "list": "DeathItemDwarvenSphere",
    "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck",
     "LootDwarvenScrap25"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "SoulGemCommon",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenOil",
+     "count": 3,
+     "level": 1
+    },
+    {
+     "item": "AldLootDwarvenBolts",
+     "count": 1,
+     "level": 1
+    }
    ]
   },
   {
    "list": "DeathItemDwarvenCenturion",
    "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck",
     "LootDwarvenScrap25"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "SoulGemGreater",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenOil",
+     "count": 5,
+     "level": 1
+    }
    ]
   },
   {
    "list": "DeathItemDwarvenBallista",
    "remove": [
     "LootDwarvenScrap25"
+   ]
+  },
+  {
+   "list": "DeathItemAtronachFrost",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "SoulGemCommon",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "FrostSalts",
+     "count": 2,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemAtronachFlame",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "FireSalts",
+     "count": 2,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemHagraven",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "HagravenFeathers",
+     "count": 2,
+     "level": 1
+    },
+    {
+     "item": "HagravenClaw",
+     "count": 2,
+     "level": 1
+    },
+    {
+     "item": "Gold001",
+     "count": 8,
+     "level": 1
+    },
+    {
+     "item": "LootPotionAny25",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldLootSkeletonWeapon",
+   "new": true,
+   "formId": "0x041262",
+   "chanceNone": 50,
+   "useAll": false,
+   "add": [
+    {
+     "item": "IronSword",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "IronDagger",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "IronMace",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "IronWarAxe",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemSkeleton",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "BoneMeal",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "Gold001",
+     "count": 2,
+     "level": 1
+    },
+    {
+     "item": "AldLootSkeletonWeapon",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldLootSkeletonStaff",
+   "new": true,
+   "formId": "0x041263",
+   "chanceNone": 80,
+   "useAll": false,
+   "add": [
+    {
+     "item": "StaffMagelight",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "StaffFlames",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "StaffHealing",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "StaffFrostbite",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldDeathItemSkeletonMage",
+   "new": true,
+   "formId": "0x041264",
+   "useAll": true,
+   "add": [
+    {
+     "item": "BoneMeal",
+     "count": 2,
+     "level": 1
+    },
+    {
+     "item": "SoulGemLesser",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "Gold001",
+     "count": 6,
+     "level": 1
+    },
+    {
+     "item": "AldLootSkeletonStaff",
+     "count": 1,
+     "level": 1
+    }
+   ],
+   "npcs": [
+    "EncSkeletonMage01"
+   ]
+  },
+  {
+   "list": "AldLootDraugrArmor20",
+   "new": true,
+   "formId": "0x041265",
+   "chanceNone": 80,
+   "useAll": false,
+   "add": [
+    {
+     "item": "ArmorDraugrCuirass",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "ArmorDraugrBoots",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "ArmorDraugrGauntlets",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "ArmorDraugrHelmet",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldLootSoulGemBig50",
+   "new": true,
+   "formId": "0x041266",
+   "chanceNone": 50,
+   "useAll": false,
+   "add": [
+    {
+     "item": "SoulGemGreater",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "SoulGemGrand",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemDraugrDeathlord",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "BoneMeal",
+     "count": 3,
+     "level": 1
+    },
+    {
+     "item": "DraugrSword01",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "GemEmerald",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "AldLootDraugrArmor20",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "AldLootSoulGemBig50",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldLootImperialBow50",
+   "new": true,
+   "formId": "0x041267",
+   "chanceNone": 50,
+   "useAll": false,
+   "add": [
+    {
+     "item": "ImperialBow",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "AldLootImperialHelmet10",
+   "new": true,
+   "formId": "0x041268",
+   "chanceNone": 90,
+   "useAll": false,
+   "add": [
+    {
+     "item": "ArmorImperialHelmet",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
+   "list": "DeathItemCorruptedShade",
+   "remove": [
+    "LootGoldChange",
+    "LootPerkGoldenTouchChange",
+    "LootImperialLuck"
+   ],
+   "useAll": true,
+   "add": [
+    {
+     "item": "ImperialSword",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "SteelArrow",
+     "count": 5,
+     "level": 1
+    },
+    {
+     "item": "AldLootImperialBow50",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "AldLootImperialHelmet10",
+     "count": 1,
+     "level": 1
+    }
    ]
   }
  ],

@@ -103,10 +103,30 @@ What a body holds comes from the plugin alone: the base's inventory and
 outfit when it is placed, and its death item when it dies, both rolled by the
 server at level 1. A list whose chance comes from a global is never rolled.
 Loot changes are overrides of those lists in `AlduinakAdditions.esp`, written
-by the `leveledItems` section of `misc/proficiency-patcher/spec.json`: giants
-drop exactly 20 gold and no weapon, and every dwemer construct (spider, sphere,
-centurion, ballista) has a 50% chance of one dwemer scrap piece; the centurion
-keeps its Dynamo Core. Bodies that already exist keep their loot.
+by the `leveledItems` section of `misc/proficiency-patcher/spec.json`. The
+rule is one list per creature, every named item drops (the list carries Use
+All), and no vanilla gold sublist stays: the only gold is what the list names
+outright. Giants drop exactly 20 gold and no weapon; Falmer an ear, a Falmer
+sword, helmet and shield; draugr bone meal, linen wrap, an iron shield, 10
+ancient Nord arrows and a 50% chance of an ancient Nord sword or bow; draugr
+deathlords 3 bone meal, an ancient Nord sword, an emerald, a 20% chance of one
+ancient Nord armour piece and a 50% chance of a greater or grand soul gem;
+frostbite spiders venom and 2 eggs; trolls troll fat and a skull (frost trolls
+2 fat); chaurus 2 chitin and 2 eggs; wolves a pelt and a silver ring; frost
+atronachs a common soul gem and 2 frost salts, flame atronachs 2 fire salts;
+hagravens 2 feathers, 2 claws, 8 gold and a potion roll; skeletons bone meal,
+2 gold and a 50% chance of one iron weapon, skeleton mages 2 bone meal, a
+lesser soul gem, 6 gold and a 20% chance of one of four staves; corrupted
+shades an Imperial sword, 5 steel arrows, a 50% chance of an Imperial bow and
+10% of an Imperial helmet. Every dwemer construct (spider, sphere, centurion,
+ballista) has a 50% chance of one dwemer scrap piece; spiders add a petty soul
+gem and dwarven oil, spheres a common soul gem, 3 oil and a 50% chance of 10
+dwarven bolts, centurions a greater soul gem and 5 oil, and the centurion
+keeps its Dynamo Core. Death hounds and cave bears are vanilla. A list's
+chance is a sublist with a chance-none and one entry taken; the base ids the
+live zones use, the vanilla lists they end at and what those hold are printed
+by `misc/proficiency-patcher/dump_death_items.py`. Bodies that already exist
+keep their loot.
 
 ## State machine
 
