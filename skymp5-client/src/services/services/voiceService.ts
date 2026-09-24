@@ -72,6 +72,8 @@ export class VoiceService extends ClientListener {
   private altDown = false;
   private pttDown = false;
   private polledKeyDown = false;
+  // An engine key-up the focused poll took over, still owed if focus leaves before the key reads up
+  private deferredRelease = false;
   private micDeniedShown = false;
   private nextTokenAttemptAt = 0;
   private nextPeersAt = 0;
@@ -108,8 +110,9 @@ export class VoiceService extends ClientListener {
         return;
       }
       this.pressPtt();
-    } else if (e.isUp && this.pttDown && !this.focusedPollHolds()) {
-      this.releasePtt();
+    } else if (e.isUp && this.pttDown) {
+      if (this.focusedPollHolds()) this.deferredRelease = true;
+      else this.releasePtt();
     }
   }
 
@@ -173,6 +176,7 @@ export class VoiceService extends ClientListener {
 
   private releasePtt() {
     this.pttDown = false;
+    this.deferredRelease = false;
     this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(false)`);
   }
 
@@ -282,6 +286,7 @@ export class VoiceService extends ClientListener {
 
     // A key pressed in a menu and released after it closed reaches neither side, so poll it once the game has the keyboard back
     if (this.pttDown && !this.sp.browser.isFocused() && this.voiceKeyReadsUp()) this.releasePtt();
+    if (this.pttDown && this.deferredRelease && !this.sp.Input.isKeyPressed(this.voiceKey)) this.releasePtt();
 
     // The page cannot see mouse buttons or keys without a DOM code, so a focused menu polls them here
     if (!domKeyCode(this.voiceKey)) {
