@@ -63,8 +63,11 @@ some dragon and Wabbajack effects), and there is no general magic resistance on 
 Weapon poison:
 ```
 // the aggressor's inventory copy of the weapon that hit carries poisonId/poisonCount (put there when the poison was applied)
-// every hostile or detrimental Health, Stamina or Magicka value effect of the ALCH:
+// every hostile or detrimental Health, Stamina or Magicka value modifier effect of the ALCH:
 poisonDamage[av] = sum(magnitude * max(1, duration) * resistMult(effect's MGEF resist value));
+// a dual value modifier effect (Frostbite Venom: Health and Stamina) adds the same burst times its second AV weight
+// to the second value's bucket
+poisonDamage[secondAV] += magnitude * max(1, duration) * resistMult * secondAVWeight;
 ```
 The Health part joins the weapon damage, so `onHitDamageAttempt`, god mode and bleedout see one total, and a blocked
 swing still delivers the whole poison, while a bash (shield, bow or power bash) neither poisons nor spends a use, as in
@@ -72,7 +75,8 @@ the engine. Stamina and Magicka drop separately on the target. A lingering poiso
 one burst (magnitude times seconds) because the hit path has no per-victim timer. Damage Health and Damage Magicka
 poisons name PoisonResist, so the Redguard and Bosmer passives halve them; the vanilla Damage Stamina poisons name no
 resist value and land in full. Paralysis, rate drains (Damage Stamina Rate), weaknesses (PeakValueMod) and influence
-effects, and any effect whose conditions fail, are only counted in the log line (`OnWeaponHit - <aggressor> poisons
+effects, dual effects whose two values are neither Health, Stamina nor Magicka, and any effect whose conditions fail,
+are only counted in the log line (`OnWeaponHit - <aggressor> poisons
 <target> with <alch>: ... effects ignored`). Applying a poison puts one use on the server's copy of the worn weapon at
 once; with Concentrated Poison the engine puts two, and the client's report within 15 s raises the copy to two on the
 same credit (`poison up to 2 (perk)` in the crafted log).

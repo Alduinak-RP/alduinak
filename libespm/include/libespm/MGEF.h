@@ -97,6 +97,9 @@ public:
     // Raw (file-local) ids: cloak spell, bound weapon, summoned NPC_ or hazard
     uint32_t associatedItem = 0;
     uint32_t projectile = 0;
+    // Dual value modifiers hit a second actor value at this share of the magnitude
+    ActorValue secondaryAV = espm::ActorValue::None;
+    float secondAVWeight = 0.f;
 
     [[nodiscard]] inline bool IsFlagSet(Flags flag) const
     {

@@ -408,6 +408,25 @@ float TES5SpellDamageFormulaImpl::CalculateDamage() const
 
 }
 
+namespace {
+
+// Null for values the hit path does not track
+float* PoisonBucket(PoisonHit& hit, espm::ActorValue av)
+{
+  switch (av) {
+    case espm::ActorValue::Health:
+      return &hit.health;
+    case espm::ActorValue::Stamina:
+      return &hit.stamina;
+    case espm::ActorValue::Magicka:
+      return &hit.magicka;
+    default:
+      return nullptr;
+  }
+}
+
+}
+
 PoisonHit CalculatePoisonHit(const MpActor& aggressor, const MpActor& target,
                              uint32_t poisonId)
 {
@@ -433,25 +452,15 @@ PoisonHit CalculatePoisonHit(const MpActor& aggressor, const MpActor& target,
     }
     const auto mgefData = mgef->GetData(cache);
     const auto& data = mgefData.data;
-    float* value = nullptr;
-    switch (data.primaryAV) {
-      case espm::ActorValue::Health:
-        value = &hit.health;
-        break;
-      case espm::ActorValue::Stamina:
-        value = &hit.stamina;
-        break;
-      case espm::ActorValue::Magicka:
-        value = &hit.magicka;
-        break;
-      default:
-        break;
-    }
+    const bool dual = data.effectType == espm::MGEF::EffectType::Dual;
+    const bool modifiesValue =
+      dual || data.effectType == espm::MGEF::EffectType::ValueMod;
+    float* value = PoisonBucket(hit, data.primaryAV);
+    float* second = dual ? PoisonBucket(hit, data.secondaryAV) : nullptr;
     const bool harmful = data.IsFlagSet(espm::MGEF::Flags::Hostile) ||
       data.IsFlagSet(espm::MGEF::Flags::Detrimental);
     // Paralysis, rate drains, weaknesses and influence have no server side effect
-    if (!value || !harmful ||
-        data.effectType != espm::MGEF::EffectType::ValueMod) {
+    if ((!value && !second) || !harmful || !modifiesValue) {
       ++hit.ignored;
       continue;
     }
@@ -462,8 +471,15 @@ PoisonHit CalculatePoisonHit(const MpActor& aggressor, const MpActor& target,
     }
     // A lingering poison lands as one burst, the hit path has no per victim timer
     const float seconds = static_cast<float>(std::max(1u, effect.duration));
-    *value += effect.magnitude * seconds *
+    const float burst = effect.magnitude * seconds *
       internal::GetResistMult(data.resistAV, aggressor, target);
+    if (value) {
+      *value += burst;
+    }
+    // Frostbite Venom takes Stamina beside Health at the record's weight
+    if (second) {
+      *second += burst * data.secondAVWeight;
+    }
   }
   return hit;
 }

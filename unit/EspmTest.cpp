@@ -636,6 +636,13 @@ TEST_CASE("MGEF parsing", "[espm]")
   auto frost = espm::GetData<espm::MGEF>(0x13CAA, &provider);
   REQUIRE(frost.data.primaryAV == espm::ActorValue::Health);
   REQUIRE(frost.data.resistAV == espm::ActorValue::FrostResist);
+  // Frost damage is a dual value modifier taking Stamina at the full magnitude
+  REQUIRE(frost.data.effectType == espm::MGEF::EffectType::Dual);
+  REQUIRE(frost.data.secondaryAV == espm::ActorValue::Stamina);
+  REQUIRE(frost.data.secondAVWeight == 1.f);
+
+  // DamageResist has no second value
+  REQUIRE(data.data.secondaryAV == espm::ActorValue::None);
 }
 
 TEST_CASE("isFood flag is not set for heal potion", "[espm]")

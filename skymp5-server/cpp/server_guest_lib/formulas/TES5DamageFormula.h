@@ -15,7 +15,7 @@ struct PoisonHit
   unsigned ignored = 0;
 };
 
-// Hostile Health/Stamina/Magicka value effects of an ALCH poison, per-second ones as one burst, scaled by the target's resist abilities
+// Hostile Health/Stamina/Magicka value and dual value effects of an ALCH poison, per-second ones as one burst, scaled by the target's resist abilities
 [[nodiscard]] PoisonHit CalculatePoisonHit(const MpActor& aggressor,
                                            const MpActor& target,
                                            uint32_t poisonId);
