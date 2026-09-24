@@ -78,8 +78,8 @@ const INVALID_USER_ID = 65535;
 // Notes live on the first desc listed; every other ref is an alias of it.
 const BOARDS: Array<{ name: string; descs: string[] }> = [
   { name: "Whiterun", descs: ["d66:Missives.esp", "12cc:Missives.esp", "21846:Missives.esp", "21847:Missives.esp"] },
-  { name: "Riften", descs: ["9478:Missives.esp", "9491:Missives.esp", "21844:Missives.esp", "2183f:Missives.esp"] },
-  { name: "Windhelm", descs: ["9492:Missives.esp", "9477:Missives.esp", "2183a:Missives.esp", "21845:Missives.esp"] },
+  { name: "Riften", descs: ["9492:Missives.esp", "9491:Missives.esp", "21844:Missives.esp", "21845:Missives.esp"] },
+  { name: "Windhelm", descs: ["9478:Missives.esp", "9477:Missives.esp", "2183a:Missives.esp", "2183f:Missives.esp"] },
   { name: "Markarth", descs: ["94a3:Missives.esp", "94a2:Missives.esp", "21840:Missives.esp", "21841:Missives.esp"] },
   { name: "Solitude", descs: ["9490:Missives.esp", "948f:Missives.esp", "21838:Missives.esp", "21839:Missives.esp"] },
   { name: "Dawnstar", descs: ["94b1:Missives.esp", "94ae:Missives.esp"] },
@@ -87,6 +87,10 @@ const BOARDS: Array<{ name: string; descs: string[] }> = [
   { name: "Morthal", descs: ["94ad:Missives.esp", "94aa:Missives.esp"] },
   { name: "Falkreath", descs: ["94a9:Missives.esp", "94a6:Missives.esp"] },
 ];
+
+// Riften and Windhelm once kept their notices on each other's primary; the swap runs once, marked on the first
+const SWAPPED_PRIMARIES = ["9492:Missives.esp", "9478:Missives.esp"];
+const SWAP_DONE_PROP = "private.bountyBoardSwapped";
 
 interface BoardNote {
   id: number;
@@ -166,6 +170,7 @@ export class BountyBoardSystem implements System {
     // Placed forms exist only once the world DB has loaded; the strongboxes of the previous run are guarded from then on
     ctx.gm.once(WORLD_LOADED_EVENT, () => {
       this.worldLoaded = true;
+      this.swapMisfiledNotes(ctx);
       for (const primary of this.primaries()) {
         const rec = this.read(ctx, primary);
         if (rec?.stash && this.isStash(ctx, rec.stash)) this.stashes.set(rec.stash, primary);
@@ -658,6 +663,28 @@ export class BountyBoardSystem implements System {
     } catch {
       return null;
     }
+  }
+
+  // Notices and ids trade places; each strongbox stays with the primary it was placed at
+  private swapMisfiledNotes(ctx: SystemContext): void {
+    const mp = ctx.svr as Mp;
+    let a = 0, b = 0;
+    try {
+      [a, b] = SWAPPED_PRIMARIES.map((desc) => mp.getIdFromDesc(desc) >>> 0);
+      if (mp.get(a, SWAP_DONE_PROP)) return;
+    } catch { return; }
+    const ra = this.read(ctx, a) || emptyRecord();
+    const rb = this.read(ctx, b) || emptyRecord();
+    const na: BoardRecord = { nextId: rb.nextId, notes: rb.notes, ...(ra.stash ? { stash: ra.stash } : {}) };
+    const nb: BoardRecord = { nextId: ra.nextId, notes: ra.notes, ...(rb.stash ? { stash: rb.stash } : {}) };
+    if (!this.write(ctx, a, na)) return;
+    if (!this.write(ctx, b, nb)) {
+      this.write(ctx, a, ra);
+      return;
+    }
+    try { mp.set(a, SWAP_DONE_PROP, true); }
+    catch (e) { this.log(`[bounty] could not mark the Riften and Windhelm swap done: ${e}`); }
+    this.log(`[bounty] moved ${rb.notes.length} notices to Riften and ${ra.notes.length} to Windhelm`);
   }
 
   private write(ctx: SystemContext, primary: number, rec: BoardRecord): boolean {

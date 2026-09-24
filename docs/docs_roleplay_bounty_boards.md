@@ -26,8 +26,8 @@ notices.
 | Board | Canonical ref | Alias ref |
 |---|---|---|
 | Whiterun | `d66:Missives.esp` | `21847:Missives.esp` |
-| Riften | `9478:Missives.esp` | `2183f:Missives.esp` |
-| Windhelm | `9492:Missives.esp` | `21845:Missives.esp` |
+| Riften | `9492:Missives.esp` | `21845:Missives.esp` |
+| Windhelm | `9478:Missives.esp` | `2183f:Missives.esp` |
 | Markarth | `94a3:Missives.esp` | `21841:Missives.esp` |
 | Solitude | `9490:Missives.esp` | `21839:Missives.esp` |
 | Dawnstar | `94b1:Missives.esp` | |
@@ -133,6 +133,13 @@ it rides the reference's changeform into MongoDB and comes back on restart.
 The strongbox id (`stash`) rides along in the same record; the gold itself is
 the placed container's inventory. Nothing else stores state; there is no
 sidecar file.
+
+Until 2026-09 the table gave Riften and Windhelm each other's references, so
+each city's notices were stored on the other city's primitive. The first boot
+with the corrected table swaps the notices and note ids of `9492` and `9478`
+once (each strongbox id stays with the reference it was placed at), marks
+`private.bountyBoardSwapped` on `9492` and logs `[bounty] moved N notices to
+Riften and M to Windhelm`.
 
 Expiry is `bountyBoardExpiryDays` (default 7) days per notice and happens
 lazily on every read of a board, plus an hourly sweep for boards nobody looks
