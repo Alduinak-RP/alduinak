@@ -49,6 +49,8 @@ const REGISTRY_FILE = "./housing.json";
 
 // Vanilla key form; the name extra carries the credential.
 export const KEY_BASE_ID = 0x000db0e2;
+// The bracketed suffix of a key's name: TAG or TAG-serial, optionally /cut
+const KEY_CREDENTIAL = /\(([0-9A-F]+(?:-\d+)?)(?:\/\d+)?\)$/;
 // HearthFires BYOHMaterialLock; claiming needs one in the inventory.
 const LOCK_DESC = "3012:HearthFires.esm";
 const LOCK_BASE_ID_FALLBACK = 0x03003012;
@@ -92,6 +94,7 @@ interface PropertyRecord {
   name: string | null;
   locked: boolean;
   serial: number;
+  cut: number;
   partner: number;
   containers: number[];
 }
@@ -110,8 +113,13 @@ interface ViewerAccess {
 
 const emptyRecord = (): PropertyRecord => ({
   owner: 0, ownerName: "", name: null, locked: false,
-  serial: 1, partner: 0, containers: [],
+  serial: 1, cut: 0, partner: 0, containers: [],
 });
+
+const keyCredentialIn = (name: unknown): string => {
+  const m = typeof name === "string" ? KEY_CREDENTIAL.exec(name) : null;
+  return m ? m[1] : "";
+};
 
 export class HousingSystem implements System {
   systemName = "HousingSystem";
@@ -256,7 +264,7 @@ export class HousingSystem implements System {
       case "lock": this.doLock(ctx, userId, actorId, primary, rec, true); break;
       case "unlock": this.doLock(ctx, userId, actorId, primary, rec, false); break;
       case "rename": this.doRename(ctx, userId, primary, rec, isOwner, isManager, content["name"]); break;
-      case "createkey": this.doCreateKey(ctx, userId, actorId, primary, rec, isOwner); break;
+      case "createkey": this.doCreateKey(ctx, userId, actorId, primary, rec, isOwner, content["name"]); break;
       case "revokekeys": this.doRevokeKeys(ctx, userId, primary, rec, isOwner, isManager); break;
       case "transfer": this.doTransfer(ctx, userId, primary, rec, isOwner, isManager, content["recipient"]); break;
       case "grantcontainer": this.doGrantContainer(ctx, userId, primary, rec, isOwner, isManager, content["recipient"]); break;
@@ -359,12 +367,20 @@ export class HousingSystem implements System {
 
   // Keys are real inventory items; the name extra is the credential, so a key
   // handed over in trade works immediately and needs no server bookkeeping.
-  private doCreateKey(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean): void {
+  private doCreateKey(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, raw: unknown): void {
     if (!isOwner) {
       this.notice(ctx, userId, "Only the owner cuts keys.");
       return;
     }
-    const keyName = this.keyNameOf(primary, rec);
+    const label = this.cleanName(raw);
+    if (!label) {
+      this.notice(ctx, userId, "That name will not do.");
+      return;
+    }
+    // The counter is stored before the key exists so no two cuts ever share a name
+    rec.cut += 1;
+    if (!this.commit(ctx, userId, primary, rec)) return;
+    const keyName = this.keyNameOf(primary, rec, label);
     if (!this.giveKey(ctx, actorId, keyName)) {
       this.notice(ctx, userId, "You are carrying too many keys.");
       return;
@@ -510,7 +526,7 @@ export class HousingSystem implements System {
     const v = this.viewerAccess(ctx, actorId);
     if (v.profileId && v.profileId === rec.owner) return "owner";
     if (v.admin) return "admin";
-    return v.keys.has(this.keyNameOf(primary, rec)) ? "key" : "";
+    return v.keys.has(this.credentialOf(primary, rec)) ? "key" : "";
   }
 
   // One inventory read and one access read per actor, not per claimed ref.
@@ -521,7 +537,9 @@ export class HousingSystem implements System {
       const inv = mp.get(actorId, "inventory");
       const entries = inv && Array.isArray(inv.entries) ? inv.entries : [];
       for (const e of entries) {
-        if ((Number(e?.baseId) >>> 0) === KEY_BASE_ID && e?.name) keys.add(String(e.name));
+        if ((Number(e?.baseId) >>> 0) !== KEY_BASE_ID) continue;
+        const credential = keyCredentialIn(e?.name);
+        if (credential) keys.add(credential);
       }
     } catch { /* actor gone */ }
     return {
@@ -595,24 +613,30 @@ export class HousingSystem implements System {
 
   // The credential is the form id plus the serial, never the player-chosen
   // label: a rename must not orphan keys, and no label may forge another
-  // property's key. hasAccess matches the key item's name against it exactly.
-  private keyNameOf(primary: number, rec: PropertyRecord): string {
+  // property's key. hasAccess reads it back from the name's bracketed suffix,
+  // which cleanName keeps a label from carrying.
+  private credentialOf(primary: number, rec: PropertyRecord): string {
     const tag = primary.toString(16).toUpperCase();
-    return rec.serial > 1 ? `Property Key (${tag}-${rec.serial})` : `Property Key (${tag})`;
+    return rec.serial > 1 ? `${tag}-${rec.serial}` : tag;
+  }
+
+  // The cut number keeps every key of one property a separate item
+  private keyNameOf(primary: number, rec: PropertyRecord, label: string): string {
+    return `${label} (${this.credentialOf(primary, rec)}/${rec.cut})`;
   }
 
   // Pull the current keys from everyone online and move the serial on, so any
   // copy that was missed (offline, in a container) stops matching.
   private reKey(ctx: SystemContext, primary: number, rec: PropertyRecord): void {
     const mp = ctx.svr as Mp;
-    const keyName = this.keyNameOf(primary, rec);
+    const credential = this.credentialOf(primary, rec);
     for (const userId of this.onlineUsers(ctx)) {
       const actorId = this.actorOf(ctx, userId);
       if (!actorId) continue;
       try {
         const inv = mp.get(actorId, "inventory");
         const entries = inv && Array.isArray(inv.entries) ? inv.entries : [];
-        const kept = entries.filter((e: any) => !((Number(e?.baseId) >>> 0) === KEY_BASE_ID && String(e?.name || "") === keyName));
+        const kept = entries.filter((e: any) => !((Number(e?.baseId) >>> 0) === KEY_BASE_ID && keyCredentialIn(e?.name) === credential));
         if (kept.length !== entries.length) mp.set(actorId, "inventory", { entries: kept });
       } catch { /* actor gone */ }
     }
@@ -627,9 +651,7 @@ export class HousingSystem implements System {
       const keys = entries.filter((e: any) => (Number(e?.baseId) >>> 0) === KEY_BASE_ID);
       const carried = keys.reduce((n: number, e: any) => n + (Number(e?.count) || 0), 0);
       if (carried >= MAX_KEYS_CARRIED) return false;
-      const stack = keys.find((e: any) => e?.name === keyName);
-      if (stack) stack.count = (Number(stack.count) || 0) + 1;
-      else entries.push({ baseId: KEY_BASE_ID, count: 1, name: keyName });
+      entries.push({ baseId: KEY_BASE_ID, count: 1, name: keyName });
       mp.set(actorId, "inventory", { entries });
       return true;
     } catch (e) {
@@ -774,6 +796,7 @@ export class HousingSystem implements System {
         name: typeof r.name === "string" && r.name ? r.name : null,
         locked: r.locked === true,
         serial: Number(r.serial) || 1,
+        cut: Number(r.cut) || 0,
         partner: Number(r.partner) || 0,
         containers: Array.isArray(r.containers) ? r.containers.map((c) => Number(c) >>> 0) : [],
       };
