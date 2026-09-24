@@ -23,6 +23,8 @@ const CAMERA_TICK_MS = 250;
 const IDLE_PLAYING_VAR = "bIdlePlaying";
 // Checks the idle must stay gone before the emote counts as over, so a switch between an idle's stages is not its end
 const IDLE_END_TICKS = 2;
+// An idle never seen playing this long after it was sent was refused by the graph
+const IDLE_START_MS = 2000;
 
 // An item the emote shows in hand; any one of the "hex:Plugin" items unlocks it
 interface PropNeed {
@@ -347,6 +349,7 @@ export class EmoteService extends ClientListener {
       this.sp.Game.forceThirdPerson();
       this.sp.Debug.sendAnimationEvent(player, anim);
       this.sentAnim = anim;
+      this.sentAt = Date.now();
       this.idleGoneTicks = -1;
       logTrace(this, `Playing emote`, anim);
     });
@@ -367,14 +370,15 @@ export class EmoteService extends ClientListener {
     if (this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceThirdPerson();
   }
 
-  // An idle seen playing and then gone ended by itself (a one-shot, combat, movement from any device); offset overlays are not idles
+  // An idle seen playing and then gone ended by itself (a one-shot, combat, movement from any device), one never seen was refused; offset overlays are not idles
   private idleEnded(player: Actor): boolean {
     if (this.sentAnim !== this.activeEmote || this.activeEmote.indexOf("Offset") === 0) return false;
     if (player.getAnimationVariableBool(IDLE_PLAYING_VAR)) {
       this.idleGoneTicks = 0;
       return false;
     }
-    return this.idleGoneTicks >= 0 && ++this.idleGoneTicks >= IDLE_END_TICKS;
+    if (this.idleGoneTicks < 0) return Date.now() - this.sentAt > IDLE_START_MS;
+    return ++this.idleGoneTicks >= IDLE_END_TICKS;
   }
 
   // Also abandons any pending exit chain or follow-up emote
@@ -576,6 +580,7 @@ export class EmoteService extends ClientListener {
   // The idle last sent to the graph, and the checks it has been gone since it was seen playing (-1 while never seen)
   private sentAnim = "";
   private idleGoneTicks = -1;
+  private sentAt = 0;
 
   get menuKeyCode(): number {
     return this.menuKey;

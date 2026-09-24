@@ -13,7 +13,8 @@ are drawn; an offset overlay such as Crossed Arms is not an idle, so a draw stil
 An emote forces third person and keeps the camera there while it plays (a 250 ms check), because an idle in
 first person loses the character's collision and walks through geometry. The same check ends the emote once the
 graph's `bIdlePlaying` has been off for two checks after the idle was seen playing (a one-shot such as Wave
-finished, or combat or stick movement ended it), so the camera is free again; sit and kneel poses keep the idle
+finished, or combat or stick movement ended it), or once it was never seen playing within 2 s of being sent
+(the graph refused it), so the camera is free again; sit and kneel poses keep the idle
 playing and the lock with it. An offset overlay (Crossed Arms) is not an idle and keeps the lock until it is
 cancelled.
 
