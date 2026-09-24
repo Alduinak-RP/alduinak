@@ -130,9 +130,10 @@ export class BrowserService extends ClientListener {
     return isDown(DxScanCode.Escape) || isDown(this.freeCursorKey);
   }
 
+  // A capture the page still runs while unfocused is kept, so it holds again once the page is refocused
   private unfocus() {
-    this.keyCapture = this.keyCaptureHeld = false;
     if (this.sp.browser.isFocused()) {
+      this.keyCapture = this.keyCaptureHeld = false;
       this.sp.browser.setFocused(false);
       this.sp.browser.executeJavaScript(unfocusEventString);
     }
