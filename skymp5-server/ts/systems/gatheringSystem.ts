@@ -25,7 +25,7 @@ type Mp = any;
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
-//   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 2, never for fish
+//   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 2, never for fish or hanging clutter
 //
 // A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopWoodPerBar by
 // woodworker rank, needsMineFatigue); miners pay the smaller price for their own trade, and a bar that cannot pay
@@ -39,7 +39,8 @@ type Mp = any;
 // so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
 // Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs needsPickFatigue and kneels the picker for
 // gatheringHarvestSeconds, during which they cannot move or harvest again; the native harvest still hands over the plant's ingredient.
-// Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) cost the fatigue but never kneel.
+// Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
+// rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
 
 const VEIN_PROP = "private.gathering";
@@ -94,8 +95,9 @@ const HIVE_YIELD: Record<string, number> = { BeeHoneyComb: 2, CritterBeeIngredie
 const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
   BeeHive: HIVE_YIELD, BeeHiveVacant: HIVE_YIELD, BYOHBYOHApiary: HIVE_YIELD,
 };
-// Fish flora skip the harvest kneel, which breaks a swimmer's animation
-const FISH_FLORA = ["FXAmbWaterSalmon01A", "FXAmbWaterSalmon01B", "FXAmbWaterSalmon02A", "FXAmbWaterSalmon02B", "SlaughterfishEggNest01", "DeadSalmon01", "DeadSalmon02", "WHOarFish", "WHOarFishHanging", "WHOarFishHangingBig"];
+// Flora harvested without the kneel: fish (it breaks a swimmer's animation) and hanging clutter, plus any editor id starting with Hanging
+const INSTANT_FLORA = ["FXAmbWaterSalmon01A", "FXAmbWaterSalmon01B", "FXAmbWaterSalmon02A", "FXAmbWaterSalmon02B", "SlaughterfishEggNest01", "DeadSalmon01", "DeadSalmon02", "WHOarFish", "WHOarFishHanging", "WHOarFishHangingBig", "HangingElvesEar01", "HangingFrostMirriam01", "HangingGarlic01", "HangingRabbit01", "HangingPheasant01"];
+const INSTANT_PREFIX = "hanging";
 
 type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";
 
@@ -165,14 +167,17 @@ export class GatheringSystem implements System {
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
     await this.loadProduce(ctx, all?.["gatheringProduceContainers"], s.dataDir, s.loadOrder);
     await this.loadProduceYield(ctx, all?.["gatheringProduceYield"], s.dataDir, s.loadOrder);
-    this.fishFlora = new Set((await this.resolveIds(ctx, FISH_FLORA, ["FLOR"], s.dataDir, s.loadOrder)).values());
+    const instant = await this.resolveIds(ctx, INSTANT_FLORA, ["FLOR", "TREE"], s.dataDir, s.loadOrder);
+    this.instantFlora = new Set(instant.values());
+    const unresolved = INSTANT_FLORA.filter((n) => !instant.has(n));
+    if (unresolved.length) this.log(`[gathering] instant flora not in the load order: ${unresolved.join(", ")}`);
     this.loadPicks();
     ctx.gm.once(WORLD_LOADED_EVENT, () => { this.worldLoaded = true; });
 
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels for ${this.harvestMs / 1000} s except at ${this.fishFlora.size} fish flora`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels for ${this.harvestMs / 1000} s except at ${this.instantFlora.size} instant flora`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -361,7 +366,7 @@ export class GatheringSystem implements System {
   // The native harvest hands over the ingredient; an already harvested plant is left to it for free
   private onPlant(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>): Verdict {
     if (this.veinState(ctx, refrId, 1, props["regrow"]).left <= 0) return undefined;
-    return this.harvest(ctx, refrId, actorId, props["regrow"], props["fish"] ? 0 : this.harvestMs);
+    return this.harvest(ctx, refrId, actorId, props["regrow"], props["instant"] ? 0 : this.harvestMs);
   }
 
   // Without grant the activation goes on to the native harvest
@@ -702,9 +707,13 @@ export class GatheringSystem implements System {
     else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
     else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
-    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), fish: this.fishFlora.has(baseId) ? 1 : 0 } };
+    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0 } };
     this.stationCache.set(baseId, station);
     return station;
+  }
+
+  private isInstantFlora(res: any, baseId: number): boolean {
+    return this.instantFlora.has(baseId) || String(res.record.editorId || "").toLowerCase().startsWith(INSTANT_PREFIX);
   }
 
   private relootMs(type: string): number {
@@ -799,7 +808,7 @@ export class GatheringSystem implements System {
   private toolCache = new Map<number, Set<number>>();
   // Produce container base id -> ms until it has produce again
   private produceMs = new Map<number, number>();
-  private fishFlora = new Set<number>();
+  private instantFlora = new Set<number>();
   private pickMs = DEFAULT_PICK_MINUTES * 60000;
   private harvestMs = DEFAULT_HARVEST_SECONDS * 1000;
   // Actor id -> epoch ms its harvest kneel ends

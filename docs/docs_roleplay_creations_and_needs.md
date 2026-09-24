@@ -265,8 +265,9 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   and costs nothing (`docs_roleplay_mastery.md`, Chopping). Mining ore costs `needsMineFatigue` (20, a miner 10) per ore.
 - Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs `needsPickFatigue` exhaustion points (10,
   about 1% of the bar) and kneels the picker for `gatheringHarvestSeconds` (2), unable to move or harvest again. Fish
-  (leaping salmon, slaughterfish eggs, racked salmon and oarfish) cost the same fatigue but never kneel. A swimmer never
-  kneels; the server still waits out the kneel before their next harvest. A bar that cannot pay refuses the harvest
+  (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear and frost
+  mirriam braids, hanging rabbits and pheasants) cost the same fatigue but never kneel. A swimmer never kneels; the
+  server still waits out the kneel before their next harvest. A bar that cannot pay refuses the harvest
   ("You are too tired to gather"). Catching a bee is free.
 - The bar maps onto Survival's exhaustion scale as `(1 - fatigue) * 960` (`Survival_ExhaustionNeedMaxValue`), so a
   non-member's six crafts land on 160, 320, 480, 640, 800 and 960.
