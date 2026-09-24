@@ -42,6 +42,20 @@ const DEFAULT_OVERRIDES: Record<string, unknown>[] = [
     pos: [-79858.25, 114377.65, -2273.45],
     rot: [0, 0, 159.95],
   },
+  // Temple of Jhunal tower, outside door up: lands on the balcony's XMarkerHeading f058aa, 64 units up so the arrival never starts inside the floor
+  {
+    door: "f058c4:Winterhold Restored.esp",
+    cellOrWorldDesc: "3c:Skyrim.esm",
+    pos: [99175.03, 100978.69, -3370.54],
+    rot: [0, 0, 223.45],
+  },
+  // Temple of Jhunal tower, balcony door down: the plugin's own arrival, 64 units up
+  {
+    door: "f058c5:Winterhold Restored.esp",
+    cellOrWorldDesc: "3c:Skyrim.esm",
+    pos: [99342.88, 101158.70, -4482.54],
+    rot: [0, 0, 42.62],
+  },
 ];
 
 // A held activate key fires repeatedly; one move per player per second is plenty.

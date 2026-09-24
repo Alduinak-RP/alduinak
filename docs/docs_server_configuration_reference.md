@@ -295,10 +295,21 @@ number, a `"0x..."` string or a `"hex:File.esp"` descriptor. `pos` is the
 arrival point in game units and `rot` its angles in degrees, `[0, 0, 0]` when
 omitted. An entry the load order has no form for is skipped and logged at boot.
 
-Defaults to the Thalmor Embassy party room's south west door (`7C98E:Skyrim.esm`),
-whose vanilla pair leaves the player in the room, redirecting it to the courtyard
-outside the embassy front door. Giving the key replaces that list; `[]` turns the
-overrides off.
+Defaults to three doors:
+
+- the Thalmor Embassy party room's south west door (`7C98E:Skyrim.esm`), whose
+  vanilla pair leaves the player in the room, redirected to the courtyard outside
+  the embassy front door;
+- the Temple of Jhunal tower pair of Winterhold Restored, both outside in Tamriel
+  1111 units apart: the door at the foot (`f058c4:Winterhold Restored.esp`,
+  MWRJhunalTowerDoor01Ref) lands on the balcony's XMarkerHeading `f058aa` and the
+  balcony door (`f058c5`, MWRJhunalTowerDoor02Ref) at its plugin arrival, each 64
+  units above the floor. The plugin's arrivals sit exactly on the floor, and a move
+  within one worldspace has no loading screen to settle the player, so a landing
+  that starts inside the balcony drops them down the tower to their death.
+
+Giving the key replaces that list, so a configured list that should keep them
+repeats them; `[]` turns the overrides off.
 
 The override applies only to the connected player who pressed the door, only
 once the lock, faction and job checks of the normal door path have allowed the
