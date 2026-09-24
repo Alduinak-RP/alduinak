@@ -3,7 +3,7 @@ import * as path from "path";
 import { REST, Routes } from "discord.js";
 import { Settings } from "../settings";
 import { System, SystemContext } from "./system";
-import { describeActor, displayNameOf, whereOf } from "./playerText";
+import { appendLog, describeActor, displayNameOf, logDirOf, whereOf } from "./playerText";
 import { hex, isPlayerActor } from "./actorUtil";
 
 type Mp = any;
@@ -28,10 +28,12 @@ const DEFAULT_KEYWORD_COOLDOWN_S = 60;
 // Player links must not unfurl into previews
 const SUPPRESS_EMBEDS = 4;
 const DEATH_ALERTED_MS = 10000;
+const ADMIN_LOG_FILE = "admin.log";
 
 interface Target { rest: REST; channelIds: string[] }
 
 let target: Promise<Target | null> | null = null;
+let logDir = "";
 const pending: { line: string; here: boolean }[] = [];
 let skipped = 0;
 let flushTimer: NodeJS.Timeout | null = null;
@@ -99,9 +101,9 @@ export function discordAlert(kind: AlertKind, text: string, opts: AlertOptions =
 }
 (globalThis as any).__alduinakDiscordAlert = discordAlert;
 
-// Staff audit: admin.log and the in-game staff channel, plus Discord unless alert is false
+// Staff audit: admin.log, plus the admin alert kind unless alert is false
 export function adminAudit(text: string, alert = true): void {
-  try { (globalThis as any).__alduinakAdminLog?.(text); } catch { /* gamemode not loaded */ }
+  appendLog(logDir, ADMIN_LOG_FILE, text);
   if (alert) discordAlert("admin", text);
 }
 
@@ -190,7 +192,9 @@ export class DiscordAlerts implements System {
     g.__alduinakDeathAlert = (actorId: number, killerId: number) => deathAlert(mp, actorId >>> 0, killerId >>> 0);
     g.__alduinakKeywordAlert = (actorId: number, channel: string, text: string) => keywordAlert(mp, actorId >>> 0, String(channel), String(text));
     loadKeywords();
-    const kinds = (await Settings.get()).allSettings?.["discordAlertKinds"];
+    const all = (await Settings.get()).allSettings;
+    logDir = logDirOf(all);
+    const kinds = all?.["discordAlertKinds"];
     if (Array.isArray(kinds) && kinds.length && kinds.every((k) => typeof k === "string")) allowedKinds = new Set(kinds);
     const unknown = Array.isArray(kinds) ? kinds.filter((k) => !(typeof k === "string" && k in LABELS)) : [];
     if (unknown.length) console.log(`[discordAlerts] discordAlertKinds names no such kind: ${unknown.join(", ")}`);
