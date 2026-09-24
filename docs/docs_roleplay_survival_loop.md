@@ -258,7 +258,10 @@ behaviour-graph events — no ESP required.**
   the appearance apply already relies on), plus `IdleForceDefaultState` if
   the engine's killmove flag is still set; on a whole body both are no-ops.
   Each respawn writes one `restoreBody inKillMove=<bool> limbReset=ok/err`
-  line to `skyrim-platform.log`. If a test still shows a neck stump, the
+  line to `skyrim-platform.log`. The get-up waits at most 2 s for the
+  ragdoll removal, whose latent call may never return, and logs
+  `resurrect <id>: ragdoll wait failed or timed out` when it goes ahead
+  without it. If a test still shows a neck stump, the
   next step is a re-apply of the stored appearance from `RemoteServer` in
   the same callback. The ragdoll and the get-up also leave the hands'
   behaviour graph stale while the weapon stays worn, so 3 s after every

@@ -11,6 +11,8 @@ import { logToPlatformLog } from "../../logging";
 // The get-up has blended in by then; the 3D rebuild restores a head an execution took
 const RESTORE_BODY_S = 1.5;
 const IDLE_EXIT_ANIM = "IdleForceDefaultState";
+// The ragdoll removal's latent call may never return, so the get-up goes ahead without it
+const RESURRECT_RAGDOLL_MS = 2000;
 
 export class DeathService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -154,8 +156,11 @@ export class DeathService extends ClientListener {
   private ressurectWithPushKill = (act: Actor): void => {
     const formId = act.getFormID();
     const ragdollService = this.controller.lookupListener(RagdollService);
-    ragdollService.safeRemoveRagdollFromWorld(act, () => {
+    ragdollService.safeRemoveRagdollFromWorld(act, (returned) => {
       const actor = Actor.from(this.sp.Game.getFormEx(formId));
+      if (!returned) {
+        logToPlatformLog(this, `resurrect ${formId.toString(16)}: ragdoll wait failed or timed out, getting up anyway`);
+      }
       if (!actor) {
         return;
       }
@@ -164,7 +169,7 @@ export class DeathService extends ClientListener {
       this.sp.Game.getPlayer()!.setAnimationVariableInt("iGetUpType", 1);
       this.sp.Debug.sendAnimationEvent(actor, AnimationEventName.GetUpBegin);
       this.sp.Utility.wait(RESTORE_BODY_S).then(() => this.controller.once("update", () => this.rebuildBody(formId)));
-    });
+    }, RESURRECT_RAGDOLL_MS);
   };
 
   private isPlayer = (actor: Actor): boolean => {
