@@ -241,8 +241,10 @@ companions and pets: their client still reports the body, so it would count as
 running, and a claim that lands takes the NPC away from the player fighting it
 and locks that player out of it for 60 seconds (below). Refusals log
 `HostingSystem: <npc> refused to <player> (dead|downed)`, once per player every
-30 seconds. A companion accepts a
-claim only from its owner, a living player character without a user (a body
+30 seconds; a dead owner's claim on their own companion or pet (or a dead
+rider's on the horse) is refused by the companion and pet hooks, which run
+first, and logs nothing. A companion accepts a
+claim only from its living owner, a living player character without a user (a body
 parked for its logout grace, `logoutPose`) is refused outright, and every
 other NPC stays first come. A claim over
 a host whose game was running when the claim arrived means that client did not

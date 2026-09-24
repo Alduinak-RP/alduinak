@@ -910,13 +910,13 @@ export class PetSystem implements System {
         return true;
       }
     };
-    // Only the owner, or the rider taking it, hosts a pet; a released one is anyone's
+    // Only the living owner, or the rider taking it, hosts a pet; a released one is anyone's
     const previousHost = typeof mp.onHostAttempt === "function" ? mp.onHostAttempt : null;
     mp.onHostAttempt = (requesterId: number, actorId: number): boolean => {
       const a = this.active.get(actorId >>> 0);
       if (a) {
         const rider = a.ridingBy || a.pending?.rider || 0;
-        return requesterId >>> 0 === (rider || a.ownerId);
+        return requesterId >>> 0 === (rider || a.ownerId) && isAlive(mp, requesterId >>> 0);
       }
       return chain(previousHost, [requesterId, actorId]);
     };

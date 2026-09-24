@@ -556,7 +556,7 @@ export class CompanionSystem implements System {
     const previousHost = typeof mp.onHostAttempt === "function" ? mp.onHostAttempt : null;
     mp.onHostAttempt = (requesterId: number, actorId: number): boolean => {
       const c = this.companions.get(actorId >>> 0);
-      if (c) return requesterId >>> 0 === c.ownerId;
+      if (c) return requesterId >>> 0 === c.ownerId && isAlive(this.mp, c.ownerId);
       return chain(previousHost, [requesterId, actorId]);
     };
 
