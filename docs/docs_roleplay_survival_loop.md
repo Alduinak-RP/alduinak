@@ -208,7 +208,10 @@ behaviour-graph events — no ESP required.**
 - **Assassinate** (`executionSystem.ts`): the same right kills a standing
   player from behind. Assassinate shows in the X menu on a living player
   character in reach (`captureInteractMaxDistance`) who is neither downed, bound,
-  carried, fallen, mounted (`ff_mount`) nor seated (`FurnitureSeatSystem`),
+  carried, fallen, mounted (`ff_mount`) nor seated (`FurnitureSeatSystem`:
+  a `seatClaim` counts only for a furniture reference in the claimant's cell
+  within 256 units, and only while the claimant stays connected, in that
+  cell and within 48 units of where they sat, otherwise it is dropped),
   since no paired killmove plays on a rider or in furniture, when the killer
   is on foot ("Dismount first.") and sneaking (Papyrus
   `GetAnimationVariableBool IsSneaking`, the flag the movement sync reports)
