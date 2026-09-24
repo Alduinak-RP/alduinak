@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
-import { addItemTo, addSpellTo, hex, isCreationPending, removeSpellFrom } from "./actorUtil";
+import { GOLD_BASE_ID, addItemTo, addSpellTo, hex, isCreationPending, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -55,6 +55,8 @@ type Mp = any;
 //   masteryKits                  { "<professionId>": [{ baseId, count }] } overriding
 //                                DEFAULT_KITS key by key, same shape as startingItems;
 //                                [] gives that profession nothing.
+//   masteryKitGold               gold every profession's kit carries on top of its items,
+//                                alchemists included, default 50; 0 turns it off.
 
 const MASTERY_PROP = "private.mastery";
 // Set with a character's first kit and never cleared, so a reset and a new pick bring no second one
@@ -226,7 +228,7 @@ interface KitItem {
   count: number;
 }
 
-// Skyrim.esm: IngotIron, Leather01, LeatherStrips, Axe01, weapPickaxe, SaltPile, IronDagger, HuntingBow, IronArrow; alchemists start with nothing
+// Skyrim.esm: IngotIron, Leather01, LeatherStrips, Axe01, weapPickaxe, SaltPile, IronDagger, HuntingBow, IronArrow; alchemists have no kit items
 const DEFAULT_KITS: Record<string, KitItem[]> = {
   blacksmith: [{ baseId: 0x0005ace4, count: 5 }],
   tailor: [{ baseId: 0x000db5d2, count: 5 }, { baseId: 0x000800e4, count: 5 }],
@@ -236,6 +238,8 @@ const DEFAULT_KITS: Record<string, KitItem[]> = {
   warrior: [{ baseId: 0x0001397e, count: 1 }],
   hunter: [{ baseId: 0x00013985, count: 1 }, { baseId: 0x0001397d, count: 20 }],
 };
+// Gold001 handed out with every kit, whatever masteryKits says about the items
+const DEFAULT_KIT_GOLD = 50;
 
 const ACTIVITY_KINDS = ["craft", "activate", "eat", "kill", "hit"] as const;
 type ActivityKind = typeof ACTIVITY_KINDS[number];
@@ -319,6 +323,8 @@ export class MasterySystem implements System {
     }
 
     this.loadKits(ctx, all?.["masteryKits"]);
+    const kitGold = Number(all?.["masteryKitGold"]);
+    if (Number.isInteger(kitGold) && kitGold >= 0) this.kitGold = kitGold;
     await this.loadRules(ctx, all?.["masteryActivities"], s.dataDir, s.loadOrder);
     await this.loadPluginSpells(ctx, s.dataDir, s.loadOrder);
 
@@ -568,7 +574,7 @@ export class MasterySystem implements System {
     if (this.hasKit(ctx, actorId)) return;
     const mp = ctx.svr as Mp;
     try {
-      mp.set(actorId, KIT_PROP, { profession: professionId, at: Date.now() });
+      mp.set(actorId, KIT_PROP, { profession: professionId, at: Date.now(), gold: this.kitGold });
     } catch (e) {
       this.log(`[mastery] kit flag failed for ${hex(actorId)}: ${e}`);
       return;
@@ -581,8 +587,15 @@ export class MasterySystem implements System {
         this.log(`[mastery] kit item ${hex(item.baseId)} failed for ${hex(actorId)}: ${e}`);
       }
     }
-    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}`);
-    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
+    if (this.kitGold > 0) {
+      try {
+        addItemTo(mp, actorId, GOLD_BASE_ID, this.kitGold);
+      } catch (e) {
+        this.log(`[mastery] kit gold failed for ${hex(actorId)}: ${e}`);
+      }
+    }
+    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}, gold ${this.kitGold}`);
+    if (kit.length || this.kitGold > 0) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
   }
 
   // ── Menu ────────────────────────────────────────────────────────────────────
@@ -1087,6 +1100,7 @@ export class MasterySystem implements System {
 
   private rankHours = DEFAULT_RANK_HOURS.slice();
   private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };
+  private kitGold = DEFAULT_KIT_GOLD;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
   private spells: Record<string, number[]> = {};
   private rules: Record<string, ResolvedRules> = {};

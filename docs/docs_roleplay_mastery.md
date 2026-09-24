@@ -65,23 +65,26 @@ defined in `PROFESSIONS` in `masterySystem.ts`; edit them there and the menu fol
 ## Starting kits
 
 A character's first craft comes with a starting kit, `DEFAULT_KITS` in
-`masterySystem.ts` (Skyrim.esm items):
+`masterySystem.ts` (Skyrim.esm items) plus 50 gold (`DEFAULT_KIT_GOLD`,
+`masteryKitGold` in the settings, `0` for none), the only gold a new character
+gets, since the spawn kit is the clothes alone:
 
 | Profession | Kit |
 |---|---|
-| Alchemist | nothing |
-| Blacksmith | 5 Iron Ingot (`0x5ACE4`) |
-| Cook | 10 Salt Pile (`0x34CDF`) |
-| Hunter | Hunting Bow (`0x13985`), 20 Iron Arrow (`0x1397D`) |
-| Miner | Pickaxe (`0xE3C16`) |
-| Tailor | 5 Leather (`0xDB5D2`), 5 Leather Strips (`0x800E4`) |
-| Warrior | Iron Dagger (`0x1397E`) |
-| Woodworker | Woodcutter's Axe (`0x2F2F4`) |
+| Alchemist | 50 gold |
+| Blacksmith | 5 Iron Ingot (`0x5ACE4`) and 50 gold |
+| Cook | 10 Salt Pile (`0x34CDF`) and 50 gold |
+| Hunter | Hunting Bow (`0x13985`), 20 Iron Arrow (`0x1397D`) and 50 gold |
+| Miner | Pickaxe (`0xE3C16`) and 50 gold |
+| Tailor | 5 Leather (`0xDB5D2`), 5 Leather Strips (`0x800E4`) and 50 gold |
+| Warrior | Iron Dagger (`0x1397E`) and 50 gold |
+| Woodworker | Woodcutter's Axe (`0x2F2F4`) and 50 gold |
 
 The items arrive with the choice, each with its "+ name (count)" notice, then
 "The Hunter's starting kit is in your pack." (for a hunter) and a
-`[mastery] <actor> starting kit for <id>: ...` log line.
-`private.professionKit` `{ profession, at }` marks the kit as given and nothing
+`[mastery] <actor> starting kit for <id>: ..., gold 50` log line.
+`private.professionKit` `{ profession, at, gold }` marks the kit as given
+(`gold` is the amount that came with it) and nothing
 clears it, so an admin reset or a wiped `private.mastery` followed by a new pick
 brings no second kit; a new character gets its own. A character that took its
 craft before kits existed receives its craft's kit about five seconds after its
