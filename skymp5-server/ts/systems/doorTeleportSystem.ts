@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { formIdFromConfig } from "./formIdUtil";
-import { hex, userOf } from "./actorUtil";
+import { hex, isDoorRef, userOf } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -15,7 +15,7 @@ type Mp = any;
 // no ESP rebuild.
 //
 // Overridable via "doorTeleportOverrides", one entry per door, replacing the
-// defaults below; `[]` turns the system off. Docs in
+// defaults below; `[]` turns the overrides off. Docs in
 // docs_server_configuration_reference.md.
 //
 //   "doorTeleportOverrides": [
@@ -28,6 +28,10 @@ type Mp = any;
 // it, and the native side has already refused a caster outside the door's cell.
 // Only the connected player who pressed the door is moved; a pet or a companion
 // following through keeps the native path.
+//
+// Every door press by a connected player is logged once per second per user,
+// overridden or not, so a press that never reached the server can be told from
+// one the native side refused.
 
 // Thalmor Embassy party room, south west door: its pair leaves the player in the room, so it hands over to the courtyard outside the front door
 const DEFAULT_OVERRIDES: Record<string, unknown>[] = [
@@ -45,6 +49,9 @@ const MOVE_COOLDOWN_MS = 1000;
 // Client teleport reports are logged at most this often per user
 const LATE_REPORT_EVERY_MS = 30000;
 const STUCK_REPORT_EVERY_MS = 10000;
+
+// A held activate key fires repeatedly, so door presses are logged at most this often per user
+const PRESS_LOG_EVERY_MS = 1000;
 
 interface DoorDestination {
   cellOrWorldDesc: string;
@@ -67,17 +74,14 @@ export class DoorTeleportSystem implements System {
   private lastMoveMs = new Map<number, number>();
   private lastLateReportMs = new Map<number, number>();
   private lastStuckReportMs = new Map<number, number>();
+  private lastPressLogMs = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const raw = ((await Settings.get()).allSettings as Record<string, unknown> | null)?.["doorTeleportOverrides"];
     const entries = Array.isArray(raw) ? raw : DEFAULT_OVERRIDES;
     for (const entry of entries as Record<string, unknown>[]) this.add(ctx.svr as Mp, entry);
-    if (this.destinations.size === 0) {
-      this.log("DoorTeleportSystem: no doors overridden");
-      return;
-    }
     this.installActivationHook(ctx);
-    this.log(`DoorTeleportSystem: ${this.destinations.size} door(s) redirected`);
+    this.log(this.destinations.size === 0 ? "DoorTeleportSystem: no doors overridden" : `DoorTeleportSystem: ${this.destinations.size} door(s) redirected`);
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -100,6 +104,7 @@ export class DoorTeleportSystem implements System {
   disconnect(userId: number): void {
     this.lastLateReportMs.delete(userId);
     this.lastStuckReportMs.delete(userId);
+    this.lastPressLogMs.delete(userId);
   }
 
   // An entry naming a door or a destination the load order has no form for is skipped and logged
@@ -141,10 +146,12 @@ export class DoorTeleportSystem implements System {
 
   // True once the override has taken the activation over, move or no move
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): boolean {
+    const mp = ctx.svr as Mp;
+    const userId = userOf(mp, casterId);
+    if (userId < 0) return false;
+    this.logPress(ctx, userId, targetId, casterId);
     const destination = this.destinations.get(targetId);
     if (!destination) return false;
-    const mp = ctx.svr as Mp;
-    if (userOf(mp, casterId) < 0) return false;
 
     const now = Date.now();
     if (now - (this.lastMoveMs.get(casterId) || 0) < MOVE_COOLDOWN_MS) return true;
@@ -157,5 +164,14 @@ export class DoorTeleportSystem implements System {
     });
     this.log(`[doors] ${hex(casterId)} through ${hex(targetId)} to ${destination.cellOrWorldDesc} ${destination.pos.join(", ")}`);
     return true;
+  }
+
+  private logPress(ctx: SystemContext, userId: number, targetId: number, casterId: number): void {
+    const now = Date.now();
+    if (now - (this.lastPressLogMs.get(userId) || 0) < PRESS_LOG_EVERY_MS || !isDoorRef(ctx.svr as Mp, targetId)) return;
+    this.lastPressLogMs.set(userId, now);
+    let name = "";
+    try { name = String(ctx.svr.getActorName(casterId) ?? ""); } catch { /* no name */ }
+    this.log(`[doors] ${hex(casterId)} (${name}) pressed ${hex(targetId)}`);
   }
 }

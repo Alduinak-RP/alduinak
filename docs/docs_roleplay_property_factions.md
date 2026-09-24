@@ -67,7 +67,9 @@ Looking at a door or container, the player presses the **interact key** (default
 
 The title is the property's name when it has one (Rename), else the door's or
 container's display name, as on the E prompt (Papyrus GetName is empty on any
-reference), else "Property".
+reference), else "Property". A rename changes only that name and the decor the
+clients show; the reference, its base and its teleport target stay the plugin's,
+so a renamed door leads where it always did.
 
 The service resolves the targeted reference to its **server-format form id** and
 sends the chosen action. It never opens for a person (the interact key opens the

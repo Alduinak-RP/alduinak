@@ -197,6 +197,8 @@ A time before a game object restores its original state in milliseconds. Unlike 
 
 `FLOR` and `TREE` are the alchemy plants (flowers, bushes, mushrooms, apple trees): a harvested plant grows back after that many milliseconds, natively, and `gatheringSystem.ts` reads the same numbers for its harvest kneel. The live file sets both to `1800000` (30 minutes) since r15; without an entry the native default is one hour.
 
+`DOOR` is worth a short entry too, `5000` for example: a load door is marked open on the server when a player goes through it and every client swings it open until the reloot closes it again, so without the entry a used load door stands open for an hour.
+
 ```json5
 {
   // ...
@@ -302,6 +304,12 @@ The override applies only to the connected player who pressed the door, only
 once the lock, faction and job checks of the normal door path have allowed the
 activation, and it replaces the door's own teleport rather than adding to it. A
 pet or a companion following its owner through keeps the plugin destination.
+
+Overridden or not, every door press by a connected player that reaches the
+system is logged as `[doors] <actor> (<name>) pressed <door>`, once per second
+per player; a press missing there never reached the server or was refused by a
+lock, a faction or the native side (`WorldSpace doesn't match`, logged by the
+server itself).
 
 ```json5
 {
