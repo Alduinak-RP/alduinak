@@ -4126,12 +4126,12 @@
    "useAll": false,
    "add": [
     {
-     "item": "DraugrSword01",
+     "item": "DraugrSword",
      "count": 1,
      "level": 1
     },
     {
-     "item": "DraugrBow01",
+     "item": "DraugrBow",
      "count": 1,
      "level": 1
     }
@@ -4152,7 +4152,7 @@
      "level": 1
     },
     {
-     "item": "LinenWrap",
+     "item": "RuinsLinenPile01",
      "count": 1,
      "level": 1
     },
@@ -4209,7 +4209,7 @@
      "level": 1
     },
     {
-     "item": "TrollSkull",
+     "item": "BoneTrollSkull01",
      "count": 1,
      "level": 1
     }
@@ -4230,7 +4230,7 @@
      "level": 1
     },
     {
-     "item": "TrollSkull",
+     "item": "BoneTrollSkull01",
      "count": 1,
      "level": 1
     }
@@ -4307,7 +4307,7 @@
    "useAll": false,
    "add": [
     {
-     "item": "DLC1DwarvenBolt",
+     "item": "DLC1BoltDwarven",
      "count": 10,
      "level": 1
     }
@@ -4369,7 +4369,7 @@
    ]
   },
   {
-   "list": "DeathItemAtronachFrost",
+   "list": "DeathItemFrostAtronach",
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
@@ -4390,7 +4390,7 @@
    ]
   },
   {
-   "list": "DeathItemAtronachFlame",
+   "list": "DeathItemFlameAtronach",
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
@@ -4430,7 +4430,7 @@
      "level": 1
     },
     {
-     "item": "LootPotionAny25",
+     "item": "LootHagravenChestPotions25",
      "count": 1,
      "level": 1
     }
@@ -4509,7 +4509,7 @@
      "level": 1
     },
     {
-     "item": "StaffHealing",
+     "item": "StaffHealingHands",
      "count": 1,
      "level": 1
     },
@@ -4614,7 +4614,7 @@
      "level": 1
     },
     {
-     "item": "DraugrSword01",
+     "item": "DraugrSword",
      "count": 1,
      "level": 1
     },
