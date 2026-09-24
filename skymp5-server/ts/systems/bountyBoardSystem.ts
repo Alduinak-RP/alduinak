@@ -88,7 +88,7 @@ const BOARDS: Array<{ name: string; descs: string[] }> = [
   { name: "Falkreath", descs: ["94a9:Missives.esp", "94a6:Missives.esp"] },
 ];
 
-// Riften and Windhelm once kept their notices on each other's primary; the swap runs once, marked on the first
+// Riften and Windhelm primaries whose stored notices trade places once, marked done on the first
 const SWAPPED_PRIMARIES = ["9492:Missives.esp", "9478:Missives.esp"];
 const SWAP_DONE_PROP = "private.bountyBoardSwapped";
 
