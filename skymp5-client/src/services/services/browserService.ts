@@ -52,7 +52,9 @@ export class BrowserService extends ClientListener {
     }
     // A hidden page must not take keyboard focus away from the game
     const canFocus = !this.uiHidden && this.badMenusOpen.size === 0;
-    if (canFocus && e.isDown([this.freeCursorKey])) {
+    if (this.keyCaptureHeld && !this.isCaptureKeyDown((key) => e.isDown([key]))) this.keyCaptureHeld = false;
+    const keyCapture = this.keyCapture || this.keyCaptureHeld;
+    if (canFocus && !keyCapture && e.isDown([this.freeCursorKey])) {
       const newState = !this.sp.browser.isFocused();
       this.sp.browser.setFocused(newState);
       if (newState) {
@@ -71,7 +73,7 @@ export class BrowserService extends ClientListener {
         this.sp.browser.executeJavaScript(chatKeyFocusEventString);
       }
     }
-    if (e.isDown([DxScanCode.Escape])) {
+    if (!keyCapture && e.isDown([DxScanCode.Escape])) {
       this.unfocus();
     }
   }
@@ -86,7 +88,14 @@ export class BrowserService extends ClientListener {
     const onFrontLoadedEventKey = "front-loaded";
 
     if (e.arguments[0] === onFrontLoadedEventKey) {
+      this.keyCapture = this.keyCaptureHeld = false;
       this.controller.emitter.emit("browserWindowLoaded", {});
+    }
+
+    if (e.arguments[0] === "cef::browser:keyCapture") {
+      const on = e.arguments[1] === "1";
+      this.keyCaptureHeld = this.keyCapture && !on && this.isCaptureKeyDown((key) => this.sp.Input.isKeyPressed(key));
+      this.keyCapture = on;
     }
 
     // After hitting enter, unfocuses the chat
@@ -116,7 +125,12 @@ export class BrowserService extends ClientListener {
     }
   }
 
+  private isCaptureKeyDown(isDown: (key: number) => boolean): boolean {
+    return isDown(DxScanCode.Escape) || isDown(this.freeCursorKey);
+  }
+
   private unfocus() {
+    this.keyCapture = this.keyCaptureHeld = false;
     if (this.sp.browser.isFocused()) {
       this.sp.browser.setFocused(false);
       this.sp.browser.executeJavaScript(unfocusEventString);
@@ -156,6 +170,10 @@ export class BrowserService extends ClientListener {
 
   private badMenusOpen = new Set<string>();
   private uiHidden = false;
+  // A chat Controls row waits for a press, so Esc and the free-cursor key belong to the page
+  private keyCapture = false;
+  // The Esc or free-cursor press that ended a capture stays inert until released
+  private keyCaptureHeld = false;
 
   private hideUiKey: number;
   private freeCursorKey: number;

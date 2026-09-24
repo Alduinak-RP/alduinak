@@ -114,6 +114,14 @@ const Settings = (props: {
     };
   }, [capturing, props.keys]);
 
+  // The client polls Esc and the free-cursor key itself and would close the panel mid-capture
+  useEffect(() => {
+    if (!capturing) return;
+    const send = (on: string) => (window as any).skyrimPlatform?.sendMessage?.('cef::browser:keyCapture', on);
+    send('1');
+    return () => send('0');
+  }, [capturing]);
+
   // Same warning as the launcher's showHotkeyConflict; shared keys still save
   const uses = new Map<number, Set<string>>();
   for (const [name, label] of KEY_ROWS) {

@@ -34,7 +34,10 @@ key read at start, and "Use launcher defaults" clears them all. Each save stamps
 the launcher's keys as `keysLauncherSaved`; at start an override whose launcher
 key no longer matches that stamp is dropped, so a later launcher change wins
 (saves from before the stamp keep their overrides). For the chat key
-the override replaces `T` and Enter stays.
+the override replaces `T` and Enter stays. While a row waits for a press the page
+sends `cef::browser:keyCapture` `1` (`0` when it ends), and BrowserService leaves
+Esc and the free-cursor key to the page until they are released, so cancelling
+or binding one of them does not close the settings panel.
 
 The interact key replaced the Housing (`H`, `housingMenuKeyCode`), Faction
 (`G`, `factionMenuKeyCode`), Personal (`U`, `personalMenuKeyCode`), Admin
