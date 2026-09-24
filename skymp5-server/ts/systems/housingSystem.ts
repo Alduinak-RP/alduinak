@@ -53,6 +53,8 @@ export const KEY_BASE_ID = 0x000db0e2;
 const DEFAULT_KEY_LABEL = "Property Key";
 // The bracketed suffix of a key's name: TAG or TAG-serial, optionally /cut
 const KEY_CREDENTIAL = /\(([0-9A-F]+(?:-\d+)?)(?:\/\d+)?\)$/;
+// A key cut before the cut number existed: TAG or TAG-serial only
+const UNCUT_KEY = /^Property Key \(([0-9A-F]+)(?:-\d+)?\)$/;
 // HearthFires BYOHMaterialLock; claiming needs one in the inventory.
 const LOCK_DESC = "3012:HearthFires.esm";
 const LOCK_BASE_ID_FALLBACK = 0x03003012;
@@ -219,6 +221,8 @@ export class HousingSystem implements System {
   // A fresh actor needs the full picture: names and locks for every claim.
   private onActorAssigned(ctx: SystemContext, userId: number): void {
     this.pushDecor(ctx, userId);
+    const actorId = this.actorOf(ctx, userId);
+    if (actorId) this.splitUncutKeys(ctx, actorId);
   }
 
   // ── Requests ────────────────────────────────────────────────────────────────
@@ -644,6 +648,46 @@ export class HousingSystem implements System {
       } catch { /* actor gone */ }
     }
     rec.serial += 1;
+  }
+
+  // A stack of old keys becomes separately numbered keys with the same credential in one inventory write
+  private splitUncutKeys(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as Mp;
+    let entries: any[];
+    try {
+      const inv = mp.get(actorId, "inventory");
+      entries = inv && Array.isArray(inv.entries) ? inv.entries.slice() : [];
+    } catch {
+      return;
+    }
+    let split = 0;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      const count = Number(e?.count) || 0;
+      if ((Number(e?.baseId) >>> 0) !== KEY_BASE_ID || count < 2 || count > MAX_KEYS_CARRIED) continue;
+      const m = typeof e.name === "string" ? UNCUT_KEY.exec(e.name) : null;
+      if (!m) continue;
+      const primary = parseInt(m[1], 16) >>> 0;
+      const rec = primary ? this.read(ctx, primary) : null;
+      // A stale key opens nothing, so it is left as it is
+      if (!rec || rec.owner === 0 || keyCredentialIn(e.name) !== this.credentialOf(primary, rec)) continue;
+      const first = rec.cut + 1;
+      rec.cut += count;
+      if (!this.write(ctx, primary, rec)) continue;
+      const copies = [];
+      for (let n = 0; n < count; n++) {
+        copies.push({ ...e, count: 1, name: this.keyNameOf(primary, { ...rec, cut: first + n }, DEFAULT_KEY_LABEL) });
+      }
+      entries.splice(i, 1, ...copies);
+      split += count;
+    }
+    if (!split) return;
+    try {
+      mp.set(actorId, "inventory", { entries });
+      this.log(`[housing] split ${split} uncut keys of ${this.who(ctx, actorId)}`);
+    } catch (e) {
+      this.log(`[housing] could not split uncut keys of ${this.who(ctx, actorId)}: ${e}`);
+    }
   }
 
   private giveKey(ctx: SystemContext, actorId: number, keyName: string): boolean {
