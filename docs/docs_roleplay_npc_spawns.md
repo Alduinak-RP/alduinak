@@ -50,7 +50,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | `Size` | no | 2000 | trigger radius in game units |
 | `Spread` | no | `Size` | radius around `POS` of the walkable navmesh the NPCs scatter over, each at its own random spot; capped at `Size`. Blank uses the whole `Size`, `0` keeps the ring layout around `POS` (see Placement). Set a smaller value to keep a pack close together |
 | `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional; at most 40 NPCs per zone in total |
-| `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); `0` = never |
+| `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); the timer does not run while any living NPC of the zone is fighting a player (a damaging hit within `npcAggroHostSeconds`); `0` = never |
 | `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
 
 An entry that fails a check (no `Name`, a `Name` longer than 64 characters,
@@ -112,8 +112,9 @@ keeps its Dynamo Core. Bodies that already exist keep their loot.
 
 ```
 idle      -- a player within Size ------------------>  active   (every slot off cooldown placed)
-active    -- nobody within 1.5 x Size -------------->  emptying (Despawn timer runs)
+active    -- nobody within 1.5 x Size, no NPC fighting -->  emptying (Despawn timer runs)
 emptying  -- a player back within 1.5 x Size ------->  active   (timer cleared)
+emptying  -- a living NPC fighting a player -------->  active   (timer cleared; the fight holds the zone)
 emptying  -- Despawn seconds elapsed --------------->  idle     (living NPCs destroyed; corpses and slot cooldowns keep their timers)
 
 per slot (one per NPC to place):
@@ -137,6 +138,12 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
+- The `Despawn` timer does not run while any living NPC of the zone is
+  fighting a player: a damaging hit exchanged within `npcAggroHostSeconds`
+  (30 s by default, the same window hosting uses for aggro) resets it, so a
+  pack chased or kited beyond `1.5 x Size` is not destroyed mid-fight. The
+  countdown starts once the last hit is that long ago. An admin **Deactivate**
+  still despawns at once.
 - NPCs are placed disabled with `PlaceAtMe` anchored on a player who is inside
   the zone, so the actor starts in the right cell, then teleported to a random
   navmesh spot, or its ring spot with `Spread: 0` (see Placement), which also

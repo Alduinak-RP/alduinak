@@ -185,6 +185,8 @@ export class NpcSpawnSystem implements System {
   constructor(private log: Log) { }
 
   private mp: Mp = null;
+  // Whether a player is fighting the NPC; index.ts wires hosting's aggro here
+  inCombat: (npcId: number) => boolean = () => false;
   private zones: Zone[] = [];
   // Ids placed by the previous run, destroyed once the world DB has loaded
   private leftovers: number[] = [];
@@ -485,10 +487,19 @@ export class NpcSpawnSystem implements System {
         zone.emptySince = 0;
         if (!this.awaitingSpots(zone)) this.fillSlots(mp, zone, now);
       } else if (zone.spawned.length && zone.despawnSeconds > 0) {
-        if (!zone.emptySince) zone.emptySince = now;
-        if (now - zone.emptySince >= zone.despawnSeconds * 1000) this.despawn(mp, zone);
+        // A zone whose NPCs are still fighting a player holds until the fight is over
+        if (this.fighting(zone)) {
+          zone.emptySince = 0;
+        } else {
+          if (!zone.emptySince) zone.emptySince = now;
+          if (now - zone.emptySince >= zone.despawnSeconds * 1000) this.despawn(mp, zone);
+        }
       }
     }
+  }
+
+  private fighting(zone: Zone): boolean {
+    return zone.spawned.some((e) => e.id && !e.diedAt && this.inCombat(e.id));
   }
 
   private updateInside(mp: Mp, zone: Zone, playerIds: number[]): void {

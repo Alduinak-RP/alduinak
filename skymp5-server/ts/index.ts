@@ -241,6 +241,8 @@ const main = async () => {
   const companionSystem = new CompanionSystem(log, hostingSystem);
   // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
   hostingSystem.addProvider(() => npcSpawnSystem.liveNpcs());
+  // A zone whose NPCs are fighting a player does not despawn under them
+  npcSpawnSystem.inCombat = (id) => hostingSystem.inCombat(id);
   hostingSystem.addProvider(() => companionSystem.hostables());
   const captureSystem = new CaptureSystem(log);
   // Players brought to 0 health bleed out; capture and carry rescue them
