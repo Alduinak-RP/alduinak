@@ -30,7 +30,10 @@ board's `bountyBoardMenuKeyCode`, default `N`): an override stored under `keys`
 in `Data/Platform/PluginsNoLoad/chat-settings-no-load.js` wins over the
 launcher's value as soon as it is saved (`ChatService.applyChatSettings` pushes
 it into each service's setter); a missing or `0` entry falls back to the launcher
-key read at start, and "Use launcher defaults" clears them all. For the chat key
+key read at start, and "Use launcher defaults" clears them all. Each save stamps
+the launcher's keys as `keysLauncherSaved`; at start an override whose launcher
+key no longer matches that stamp is dropped, so a later launcher change wins
+(saves from before the stamp keep their overrides). For the chat key
 the override replaces `T` and Enter stays.
 
 The interact key replaced the Housing (`H`, `housingMenuKeyCode`), Faction

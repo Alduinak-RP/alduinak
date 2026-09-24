@@ -392,6 +392,14 @@ export class ChatService extends ClientListener {
     FovSettingsService.setChatFov(typeof parsed["fov"] === "number" ? parsed["fov"] : null);
     // A missing or 0 override keeps the launcher's key
     const keys = (parsed["keys"] && typeof parsed["keys"] === "object" ? parsed["keys"] : {}) as Record<string, unknown>;
+    // A launcher key changed since the overrides were saved wins over its override
+    const keysLauncherSaved = parsed["keysLauncherSaved"] as Record<string, unknown> | undefined;
+    if (keysLauncherSaved && typeof keysLauncherSaved === "object") {
+      const launcher = this.launcherKeys();
+      for (const name of Object.keys(keys)) {
+        if (keysLauncherSaved[name] !== launcher[name]) delete keys[name];
+      }
+    }
     const key = (name: string) => (typeof keys[name] === "number" ? keys[name] as number : 0);
     const emote = this.controller.lookupListener(EmoteService);
     const playerAction = this.controller.lookupListener(PlayerActionService);
@@ -416,6 +424,7 @@ export class ChatService extends ClientListener {
       delete parsed["hidePlayerNames"];
       delete parsed["keysLauncher"];
       parsed["fovLauncher"] = readClientSettingNumber(this.sp, "fov", 0);
+      parsed["keysLauncherSaved"] = this.launcherKeys();
       this.applyChatSettings(parsed);
       this.sp.writePlugin(
         this.pluginChatSettingsName,

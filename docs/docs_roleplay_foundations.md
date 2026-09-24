@@ -79,8 +79,11 @@ Rules:
   client already uses (Esc, Tab, Enter, or W, A, S, D, Space and R, which
   cancel an emote); the key still saves. A rebind is
   saved as `keys.<setting name>` in the chat settings and wins over the
-  launcher's Server Hotkeys until **Use launcher defaults** clears every row;
-  the launcher itself is not changed and does not show in-game rebinds. Two
+  launcher's Server Hotkeys until **Use launcher defaults** clears every row
+  or that key is changed in the launcher (the client stamps the launcher's
+  keys as `keysLauncherSaved`, like `fovLauncher`, and drops an override whose
+  launcher key differs at start); the launcher itself is not changed and does
+  not show in-game rebinds. Two
   checkboxes there (`emoteWheelHold`, `interactMenuHold`, both off) make the
   emote wheel and every menu the interact key opens (player, carried load,
   Personal, housing, pet and the bounty board strongbox) **hold-to-open**: the menu
