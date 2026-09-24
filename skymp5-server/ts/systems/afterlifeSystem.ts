@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, AFTERLIFE_EVENT } from "./system";
 import { addItemTo, addSpellTo, chainMpHook, hex, holdsItem, isAlive, isPlayerActor, notifyActor, removeSpellFrom, userOf } from "./actorUtil";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
+import { readInventory } from "./inventoryExtras";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -38,6 +39,8 @@ export const REALMS: Record<RealmId, Realm> = {
 export const AFTERLIFE_PROP = "private.afterlife";
 // Neighbor-visible (registered in the gamemode) { realm, shader, alpha }: the realm's look, played by every client that sees the character
 const LOOK_PROP = "ff_afterlife";
+// The realm whose outfit the character was given since the pack was last stripped; a lost piece is only handed out again after the next strip
+const OUTFIT_PROP = "private.afterlifeOutfit";
 // Set by FactionSystem once a fallen character's ranks were released
 export const RELEASED_PROP = "private.factionsReleased";
 // Where a revived character wakes: the Temple of Kynareth in Whiterun (TempleRespawn.cpp)
@@ -232,17 +235,22 @@ export class AfterlifeSystem implements System {
       mp.set(actorId, AFTERLIFE_PROP, null);
       mp.set(actorId, "private.permaDead", null);
       mp.set(actorId, RELEASED_PROP, null);
+      mp.set(actorId, OUTFIT_PROP, null);
       mp.set(actorId, "locationalData", REVIVE_ARRIVAL);
     } catch (e) {
       this.log(`[afterlife] reviving ${hex(actorId)} failed: ${e}`);
       return "Revive failed, see server log";
     }
-    if (realm) this.clearLook(mp, actorId, realm);
+    if (realm) {
+      this.clearLook(mp, actorId, realm);
+      this.undress(mp, actorId, realm);
+    }
     notifyActor(mp, actorId, "You have been returned to the living.");
     this.log(`[afterlife] ${hex(actorId)} of profile ${profileId} revived by ${by}`);
     return "";
   }
 
+  // Senders strip the pack into the body first (BodySystem.leaveBody), so the outfit is owed again
   private send(actorId: number, realm: RealmId, reason: string): boolean {
     const ctx = this.ctx;
     if (!ctx) return false;
@@ -252,6 +260,7 @@ export class AfterlifeSystem implements System {
     const alive = isAlive(mp, actorId);
     try {
       mp.set(actorId, AFTERLIFE_PROP, { realm, reason, at: Date.now() });
+      mp.set(actorId, OUTFIT_PROP, null);
       if (alive) mp.set(actorId, "locationalData", arrival);
     } catch (e) {
       this.log(`[afterlife] sending ${hex(actorId)} to ${label} failed: ${e}`);
@@ -333,10 +342,15 @@ export class AfterlifeSystem implements System {
   private dress(mp: Mp, actorId: number, realm: RealmId): void {
     const { outfit } = this.looks[realm];
     if (!outfit.length || userOf(mp, actorId) < 0 || !isAlive(mp, actorId) || afterlifeOf(mp, actorId) !== realm) return;
+    let given = false;
+    try { given = mp.get(actorId, OUTFIT_PROP) === realm; } catch { /* treated as not given */ }
     let worn = 0;
     for (const itemId of outfit) {
       try {
-        if (!holdsItem(mp, actorId, (baseId) => baseId === itemId)) addItemTo(mp, actorId, itemId, 1, true);
+        if (!holdsItem(mp, actorId, (baseId) => baseId === itemId)) {
+          if (given) continue;
+          addItemTo(mp, actorId, itemId, 1, true);
+        }
         const self = { type: "form", desc: mp.getDescFromId(actorId) };
         mp.callPapyrusFunction("method", "Actor", "EquipItem", self, [{ type: "espm", desc: mp.getDescFromId(itemId) }, false, true]);
         worn++;
@@ -344,7 +358,27 @@ export class AfterlifeSystem implements System {
         this.log(`[afterlife] dressing ${hex(actorId)} in ${hex(itemId)} failed: ${e}`);
       }
     }
+    if (!given && worn) {
+      try {
+        mp.set(actorId, OUTFIT_PROP, realm);
+      } catch (e) {
+        this.log(`[afterlife] recording the outfit of ${hex(actorId)} failed: ${e}`);
+      }
+    }
     this.log(`[afterlife] ${hex(actorId)} wears ${worn} piece(s) of the ${REALMS[realm].label} outfit`);
+  }
+
+  // Takes every piece of the realm's outfit back, so a revive carries none of it to Tamriel
+  private undress(mp: Mp, actorId: number, realm: RealmId): void {
+    const { outfit } = this.looks[realm];
+    if (!outfit.length) return;
+    try {
+      const { entries } = readInventory(mp, actorId);
+      const kept = entries.filter((e) => !outfit.includes(Number(e.baseId) >>> 0));
+      if (kept.length !== entries.length) mp.set(actorId, "inventory", { entries: kept });
+    } catch (e) {
+      this.log(`[afterlife] taking the ${REALMS[realm].label} outfit from ${hex(actorId)} failed: ${e}`);
+    }
   }
 
   // A living character outside its realm (staff teleport, a portal, marked while away) is brought back to the arrival

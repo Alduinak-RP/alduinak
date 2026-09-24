@@ -308,7 +308,11 @@ to one stays playable but is confined to it.
   client (`Actor.EquipItem`, removable) at once when a living character is
   sent, 5 s after a realm respawn and 5 s after a login into the realm, since
   the spawn strips the player first (`[afterlife] <id> wears N piece(s) of
-  the <realm> outfit`). `ff_afterlife` must be registered in
+  the <realm> outfit`). The outfit is handed out once per send: the first
+  dressing records `private.afterlifeOutfit` (the realm), and later dressings
+  only put on the pieces still held, so a piece dropped or traded is gone until
+  the next PK strip (a send clears the record). A revive takes every outfit
+  piece out of the inventory and clears the record. `ff_afterlife` must be registered in
   `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
   the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
   Build gamemode only before the server build; without it the server logs
