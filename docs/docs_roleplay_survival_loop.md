@@ -248,7 +248,7 @@ behaviour-graph events — no ESP required.**
   and re-adopted, and put on the grid again, after a restart while its
   actor still exists; every 2 s a
   body whose loose stacks are gone, or one older than `bodyMaxSeconds`
-  (3600, 0 = never), is removed (`[body] <id> of <victim> removed: emptied
+  (default 0 = never), is removed (`[body] <id> of <victim> removed: emptied
   | lay too long | gone`). The body carries the neighbor-visible `ff_body`
   property, which the gamemode must register in
   `build/dist/server/gamemode_extensions/50_properties.js` (live file) with

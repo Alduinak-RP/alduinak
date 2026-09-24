@@ -18,8 +18,8 @@ const REGISTRY_FILE = "./bodies.json";
 const CHECK_MS = 2000;
 // The victim's own dead actor is respawned this long after the body is left, so two bodies never lie side by side
 const VICTIM_RESPAWN_MS = 4000;
-// A body lies this long at most; overridable via "bodyMaxSeconds", 0 keeps it until it is emptied
-const DEFAULT_MAX_SEC = 3600;
+// Seconds a body lies at most, overridable via "bodyMaxSeconds"; 0 keeps it until it is emptied
+const DEFAULT_MAX_SEC = 0;
 // An emptied body is left this long, so a victim with nothing to loot still leaves one to see
 const EMPTY_GRACE_MS = 60000;
 // A second death of the same victim within this window (a finish off then a soul trap) leaves no second body
