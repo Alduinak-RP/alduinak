@@ -1120,6 +1120,10 @@ export class RemoteServer extends ClientListener {
     }
     const i = this.getIdManager().getId(msg.idx);
     const form = this.worldModel.forms[i];
+    if (form === undefined) {
+      logError(this, `onUpdatePropertyMessage - Form with idx`, msg.idx, `not found for`, msg.propName);
+      return;
+    }
     (form as Record<string, unknown>)[msg.propName] = msgData;
 
     // Sent after the race menu, whose race switch brings the new race's spells
