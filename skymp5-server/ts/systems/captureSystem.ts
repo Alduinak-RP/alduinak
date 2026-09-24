@@ -17,7 +17,7 @@ type Mp = any;
 //     clone and the server snaps the body back when it drifts. The camera is
 //     locked to third person. A put-down sets the body at the carrier's feet, and the body only follows
 //     the carrier into another cell through a door they used within DOOR_FOLLOW_MS;
-//     any other cell change ends the carry where the body was.
+//     any other cell change or teleport ends the carry where the body was.
 // Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
 // in the captor's inventory, carrying needs no item. A conscious target must
 // accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
@@ -84,6 +84,8 @@ const CARRY_FOLLOW_MIN_MOVE_SQ = 96 * 96;
 const CARRY_MAX_DRIFT_SQ = 256 * 256;
 // A carrier's cell change this soon after a door activation is a load door; later ones drop the body
 const DOOR_FOLLOW_MS = 5000;
+// A carrier who moved farther than this between follow ticks was teleported
+const CARRY_TELEPORT_SQ = 2048 * 2048;
 
 // Carried pose: a vanilla lying idle held in the carrier's arms, turned 45 degrees from their facing. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
 const DEFAULT_CARRIED_ANIM = "IdleLayDown";
@@ -144,6 +146,8 @@ export class CaptureSystem implements System {
   private lastCarryPos = new Map<number, [number, number, number]>();
   // carrierActorId -> when they last activated a door
   private doorUsedAt = new Map<number, number>();
+  // carrierActorId -> where the last follow tick saw them
+  private carrierLastLoc = new Map<number, { cellOrWorldDesc: string, pos: number[] }>();
   // requestId -> outstanding consent prompt
   private pending = new Map<number, PendingConsent>();
   // "captorActorId:targetActorId" -> last prompt timestamp (spam guard)
@@ -274,6 +278,10 @@ export class CaptureSystem implements System {
         if (!loc || !Array.isArray(loc.pos)) {
           continue;
         }
+        const lastLoc = this.carrierLastLoc.get(carrierActorId);
+        this.carrierLastLoc.set(carrierActorId, { cellOrWorldDesc: loc.cellOrWorldDesc, pos: [...loc.pos] });
+        const teleported = !!lastLoc && lastLoc.cellOrWorldDesc === loc.cellOrWorldDesc &&
+          (loc.pos[0] - lastLoc.pos[0]) ** 2 + (loc.pos[1] - lastLoc.pos[1]) ** 2 + (loc.pos[2] - lastLoc.pos[2]) ** 2 > CARRY_TELEPORT_SQ;
         const carrierYaw = Array.isArray(loc.rot) ? Number(loc.rot[2]) || 0 : 0;
         const [x, y, z] = this.carryTarget(loc.pos as number[], carrierYaw);
         // Each snap is a full engine teleport on the carried client; only
@@ -282,12 +290,12 @@ export class CaptureSystem implements System {
         const cellChanged = !!carriedLoc && carriedLoc.cellOrWorldDesc !== loc.cellOrWorldDesc;
         // A carried pet is moved by its carrier's client within a cell; a load door still snaps it, and a player body keeps the old path
         if (this.userOf(ctx, carriedActorId) < 0 && !isPlayerActor(mp, carriedActorId) && carriedLoc && !cellChanged) continue;
-        // Only a door carries the body into another cell; a carrier who got there any other way lost it where it was
-        if (cellChanged && now - (this.doorUsedAt.get(carrierActorId) ?? 0) > DOOR_FOLLOW_MS) {
+        // Only a door carries the body into another cell or far across it; a carrier who got there any other way lost it where it was
+        if ((cellChanged || teleported) && now - (this.doorUsedAt.get(carrierActorId) ?? 0) > DOOR_FOLLOW_MS) {
           this.stopCarry(ctx, carriedActorId, false);
           this.notice(ctx, this.userOf(ctx, carrierActorId), "You lost your grip.");
           this.notice(ctx, this.userOf(ctx, carriedActorId), "Your carrier left without you.");
-          this.log(`[carry] ${carrierActorId.toString(16)} changed cell without a door, dropped ${carriedActorId.toString(16)}`);
+          this.log(`[carry] ${carrierActorId.toString(16)} ${cellChanged ? "changed cell" : "teleported"} without a door, dropped ${carriedActorId.toString(16)}`);
           continue;
         }
         if (carriedLoc && Array.isArray(carriedLoc.pos) && !cellChanged) {
@@ -734,6 +742,7 @@ export class CaptureSystem implements System {
     this.carrying.set(carrierActorId, targetActorId);
     this.carriedBy.set(targetActorId, carrierActorId);
     this.lastCarryPos.delete(targetActorId);
+    this.carrierLastLoc.delete(carrierActorId);
     this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, info);
     this.sendCarryState(ctx, carrierActorId, true, targetActorId);

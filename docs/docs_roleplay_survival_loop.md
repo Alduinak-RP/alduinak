@@ -444,10 +444,13 @@ prisoner can also be carried).
   override runs, so an overridden door such as the embassy entry counts). The body only
   follows the carrier into another cell when the carrier used a door within the
   last 5 s; a carrier who reached another cell any other way (an admin
-  teleport, fast travel, a coc) loses the body where it was: the carry ends
+  teleport, fast travel, a coc), or who jumped more than 2048 units between two
+  350 ms follow ticks within the same worldspace (an admin tp across Tamriel, a
+  border push-back), loses the body where it was: the carry ends
   without moving it, the carrier reads "You lost your grip.", the carried "Your
   carrier left without you.", and the log says
-  `[carry] <carrier> changed cell without a door, dropped <carried>`.
+  `[carry] <carrier> changed cell without a door, dropped <carried>` (or
+  `teleported without a door` for a jump within the worldspace).
 
 ---
 
