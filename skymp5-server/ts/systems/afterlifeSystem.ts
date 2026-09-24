@@ -50,18 +50,22 @@ const DRESS_DELAY_MS = 5000;
 interface RealmLookConfig {
   look?: string;
   outfit: string[];
+  // Opacity played with the EFSH, 0-1
+  alpha: number;
 }
 // SovengardeFXS01 (Skyrim.esm EFSH 10B2DF) is the glow FXSovengardeSCRIPT plays on the heroes through AbFXSovengardeGlow
 const DEFAULT_LOOKS: Record<RealmId, RealmLookConfig> = {
-  sovngarde: { look: "SovengardeFXS01", outfit: ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"] },
-  soulCairn: { look: "DLC1SoulCairnGhostFXShader", outfit: ["ClothesPrisonerRags", "ClothesPrisonerShoes"] },
+  sovngarde: { look: "SovengardeFXS01", outfit: ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"], alpha: 1 },
+  // The Dawnguard ghost ability DLC1SoulCairnAbGhost pairs the shader with magicSetActorAlphaScript at 0.25
+  soulCairn: { look: "DLC1SoulCairnGhostFXShader", outfit: ["ClothesPrisonerRags", "ClothesPrisonerShoes"], alpha: 0.25 },
 };
 interface RealmLook {
   shaderId: number;
   spellId: number;
   outfit: number[];
+  alpha: number;
 }
-const NO_LOOK: RealmLook = { shaderId: 0, spellId: 0, outfit: [] };
+const NO_LOOK: RealmLook = { shaderId: 0, spellId: 0, outfit: [], alpha: 1 };
 // Living characters per player; override with the "characterSelectMaxCharacters" server setting (1-10)
 const DEFAULT_MAX_CHARACTERS = 3;
 
@@ -151,7 +155,8 @@ export class AfterlifeSystem implements System {
       }
       const look = raw["look"] ?? raw["shader"];
       const outfit = Array.isArray(raw["outfit"]) ? raw["outfit"].filter((v): v is string => typeof v === "string" && !!v) : [];
-      configs[realm] = { look: typeof look === "string" && look ? look : undefined, outfit };
+      const alpha = raw["alpha"] === undefined ? DEFAULT_LOOKS[realm].alpha : Number(raw["alpha"]);
+      configs[realm] = { look: typeof look === "string" && look ? look : undefined, outfit, alpha };
     }
     const names = Object.values(configs).flatMap((c) => [c.look ?? "", ...c.outfit]).filter((n) => n && isEditorId(n));
     const scan = await resolveEditorIds(Array.from(new Set(names)), s.dataDir, s.loadOrder, this.log, ["EFSH", "SPEL", "ARMO"]);
@@ -172,6 +177,8 @@ export class AfterlifeSystem implements System {
       const { label } = REALMS[realm];
       const config = configs[realm];
       const look: RealmLook = { ...NO_LOOK, outfit: [] };
+      if (Number.isFinite(config.alpha) && config.alpha >= 0 && config.alpha <= 1) look.alpha = config.alpha;
+      else this.log(`[afterlife] ${label} alpha '${config.alpha}' is not between 0 and 1, ignored`);
       if (config.look) {
         const id = idOf(config.look);
         const type = typeOf(id);
@@ -185,7 +192,7 @@ export class AfterlifeSystem implements System {
         else this.log(`[afterlife] ${label} outfit item '${name}' ${id ? "is not an ARMO" : "not found in the load order"}, ignored`);
       }
       this.looks[realm] = look;
-      this.log(`[afterlife] ${label} look: ${look.shaderId ? `shader ${hex(look.shaderId)}` : look.spellId ? `ability ${hex(look.spellId)}` : "none"}, ${look.outfit.length}/${config.outfit.length} outfit item(s)`);
+      this.log(`[afterlife] ${label} look: ${look.shaderId ? `shader ${hex(look.shaderId)} at alpha ${look.alpha}` : look.spellId ? `ability ${hex(look.spellId)}` : "none"}, ${look.outfit.length}/${config.outfit.length} outfit item(s)`);
     }
   }
 
@@ -281,9 +288,9 @@ export class AfterlifeSystem implements System {
 
   // Registration of ff_afterlife lives in gamemode.js, so a missing property is logged and the rest goes on
   private applyLook(mp: Mp, actorId: number, realm: RealmId): void {
-    const { shaderId, spellId } = this.looks[realm];
+    const { shaderId, spellId, alpha } = this.looks[realm];
     try {
-      mp.set(actorId, LOOK_PROP, { realm, shader: shaderId, alpha: 1 });
+      mp.set(actorId, LOOK_PROP, { realm, shader: shaderId, alpha });
     } catch (e) {
       this.log(`[afterlife] ${LOOK_PROP} on ${hex(actorId)} failed (property registered in gamemode.js?): ${e}`);
     }
