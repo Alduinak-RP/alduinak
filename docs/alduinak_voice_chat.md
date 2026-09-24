@@ -27,10 +27,12 @@ The integration described as "future work" below has been built:
   front reads the same key (`setPttKey`, `KeyboardEvent.code` from
   `domKeyCode`) and reports `voice::ptt` `1`/`0` back, which keeps the
   game-side state and the AFK ping in step. A press while typing in an input
-  or the chat line is ignored, a release always closes the mic, and a key
-  held across a focus change releases on whichever side sees the key-up. Only
-  the console (and a despawned actor) force a release. A mouse-bound key has
-  no DOM code and works unfocused only; Alt+V mode cycling is game-side only.
+  or the chat line is ignored and a release always closes the mic. A key held
+  from a menu into the game reaches neither side's key-up, so the game polls
+  it (`Input.isKeyPressed`) and releases once the key is up, or at the latest
+  when the menu closes; the console and a despawned actor force a release. A
+  mouse-bound key has no DOM code and works unfocused only; Alt+V mode
+  cycling is game-side only.
   Requests a token per actor assignment; pushes peer distances (same world
   only) every 400ms.
 - **Talk range**: V + mousewheel picks the speaker's audible range between

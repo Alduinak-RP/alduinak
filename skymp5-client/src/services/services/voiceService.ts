@@ -57,7 +57,6 @@ export class VoiceService extends ClientListener {
     this.pushPttKey();
   }
 
-  // Mouse buttons have no DOM code, so a mouse-bound key only works with the game unfocused
   private pushPttKey(): void {
     this.sp.browser.executeJavaScript(
       `window.__alduinakVoice && window.__alduinakVoice.setPttKey(${JSON.stringify(domKeyCode(this.voiceKey))})`
@@ -270,8 +269,15 @@ export class VoiceService extends ClientListener {
       this.altDown = false;
     }
 
-    // A focused browser sees the key-up itself; the console does not, and our actor can despawn under a held key (character park, connection loss)
+    // The console never reports a key-up, and our actor can despawn under a held key (character park, connection loss)
     if (this.pttDown && (isConsoleOpen(this.sp) || !myRefr)) this.releasePtt();
+
+    // A key pressed in a menu and released after it closed reaches neither side, so poll it once the game has the keyboard back
+    if (this.pttDown && !this.sp.browser.isFocused()
+      && this.voiceKey < DxScanCode.LeftMouseButton
+      && !this.sp.Input.isKeyPressed(this.voiceKey)) {
+      this.releasePtt();
+    }
 
     // Write the chosen mode to disk shortly after it changes
     if (this.modePersistAt && now >= this.modePersistAt) {
