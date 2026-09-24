@@ -503,6 +503,17 @@ Searches for `index.js` if a directory specified.
 
 With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again, and so does a staff revive (admin panel Players sub-tab or the Server Manager Players tab), which is refused while the living count is at this limit. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
 
+## afterlifeLooks
+
+Optional. What a fallen character looks like and wears in its realm (`docs_roleplay_foundations.md` section 4). One entry per realm, `sovngarde` and `soulCairn`; a realm left out keeps its default. `look` (or `shader`) is an EFSH, played on the character for everyone through the neighbor-visible `ff_afterlife` property, or a SPEL added as an ability; `outfit` lists ARMO records given and put on. Every name is an editor id, a `hex:Plugin.esm` desc or a hex id, resolved at start (a game service restart, no build); misses and other record types are logged and ignored. `ff_afterlife` is registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only before the server build.
+
+```json5
+"afterlifeLooks": {
+  "sovngarde": { "look": "96ffb:Skyrim.esm", "outfit": ["ArmorDraugrCuirass", "ArmorDraugrBoots", "ArmorDraugrGauntlets", "ArmorDraugrHelmet"] },
+  "soulCairn": { "look": "DLC1SoulCairnGhostFXShader", "outfit": ["ClothesPrisonerRags", "ClothesPrisonerShoes"] }
+}
+```
+
 ## logoutGraceMs, logoutPose
 
 A character's body stays in the world for `logoutGraceMs` (default `300000`, five minutes) after a disconnect, a quit to the main menu or a switch to another slot, so leaving is never an instant escape; re-selecting the character cancels the grace and stands the body up: the server broadcasts `IdleForceDefaultState` to everyone who sees it (their copies get their collision back) and clears the stored event before the player is handed the body, so the `CreateActor` sent to viewers carries no sit pose, with the line `[spawn] <id> unparked`. When the grace runs out instead, the body is disabled and the stored pose is cleared with it (a disable alone keeps it, and the next `CreateActor` would carry it), so a later select of the character also streams a standing body. For that time the body sits down in `logoutPose` (default `"IdleSitCrossLeggedEnter"`, the emote wheel's Sit Crossed; `""` leaves it standing), sent by the server to everyone who sees the body and to anyone who walks in later, with the line `[spawn] <id> parked in <pose>`. A downed, bound or carried body keeps its own pose. No client hosts a parked body (`HostingSystem.mayHost` refuses a living player character without a user), so a neighbour's engine never replaces the pose or clears it with a movement report; hits on the body are server-resolved and need no host. The pose needs the native server build that accepts `mp.set(actorId, "lastAnimEvent", ...)`; an older build logs `[spawn] parking pose ... failed` and the body stands.

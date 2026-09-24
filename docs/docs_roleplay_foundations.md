@@ -279,6 +279,30 @@ to one stays playable but is confined to it.
   `private.afterlife`, respawns at that realm's arrival instead of a temple. The
   `onRespawn` hook swaps `spawnPoint` for that one respawn and logs
   `[afterlife] ... respawns in ...`.
+- **Looks**: the fallen wear their realm. Each realm has a look and an outfit,
+  resolved at boot by editor id, desc or hex id (`afterlifeLooks` in
+  `docs_server_configuration_reference.md`; a name the load order lacks is
+  logged `[afterlife] <realm> look|outfit item '<name>' not found in the load
+  order, ignored`, and the boot line `[afterlife] <realm> look: shader|ability
+  <id>|none, N/M outfit item(s)` says what resolved). Sovngarde: the look
+  `96ffb:Skyrim.esm` and the Ancient Nord set (`ArmorDraugrCuirass`, `Boots`,
+  `Gauntlets`, `Helmet`); the Soul Cairn: `DLC1SoulCairnGhostFXShader` and the
+  prisoner rags and shoes (`ClothesPrisonerRags`, `ClothesPrisonerShoes`). A
+  look that is an EFSH goes into the neighbor-visible `ff_afterlife` property
+  (`{ realm, shader, alpha: 1 }`, written on the send and on every realm
+  respawn, cleared by a revive), which every client plays on its copy of the
+  character and the own client on the player, the way admin Ghost rides
+  `ff_adminModes`; a SPEL is added as an ability on arrival (`AddSpell`) and
+  removed by a revive; any other record type is logged and ignored. The
+  outfit is given (`AddItem`, when not held) and put on through the owner's
+  client (`Actor.EquipItem`, removable) at once when a living character is
+  sent, 5 s after a realm respawn and 5 s after a login into the realm, since
+  the spawn strips the player first (`[afterlife] <id> wears N piece(s) of
+  the <realm> outfit`). `ff_afterlife` must be registered in
+  `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
+  the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
+  Build gamemode only before the server build; without it the server logs
+  `[afterlife] ff_afterlife on <id> failed` and the outfit still goes on.
 - **Confinement**: every 2 seconds, and when a character is picked at character
   select, a living character with `private.afterlife` outside its realm is
   brought back to the arrival with "The dead cannot leave ...". Vanilla
