@@ -292,8 +292,9 @@ to one stays playable but is confined to it.
   at alpha 0.25 like the Dawnguard ghost ability `DLC1SoulCairnAbGhost`
   (Sovngarde stays at 1). A look that is an EFSH goes into the neighbor-visible
   `ff_afterlife` property (`{ realm, shader, alpha }`, the alpha played with the
-  shader; written on the send and on every realm
-  respawn, cleared by a revive), which every client plays on its copy of the
+  shader; written on the send, and on every realm respawn and login into the
+  realm when it differs from the resolved look, so characters already in a
+  realm and a changed `afterlifeLooks` catch up; cleared by a revive), which every client plays on its copy of the
   character (`formView.ts`, again after a 3D reload) and the own client on
   the player (`afterlifeLookService.ts`, again 1 s after a respawn, which
   drops shaders; `look <id>|off` in `skyrim-platform.log`), the way admin

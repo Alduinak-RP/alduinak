@@ -138,7 +138,9 @@ export class AfterlifeSystem implements System {
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       this.confine(mp, actorId >>> 0);
       const realm = afterlifeOf(mp, actorId >>> 0);
-      if (realm) setTimeout(() => this.dress(mp, actorId >>> 0, realm), DRESS_DELAY_MS);
+      if (!realm) return;
+      this.applyLook(mp, actorId >>> 0, realm);
+      setTimeout(() => this.dress(mp, actorId >>> 0, realm), DRESS_DELAY_MS);
     });
   }
 
@@ -284,9 +286,12 @@ export class AfterlifeSystem implements System {
     this.log(`[afterlife] ${hex(actorId)} respawns in ${label}`);
   }
 
-  // Registration of ff_afterlife lives in gamemode.js, so a missing property is logged and the rest goes on
+  // Registration of ff_afterlife lives in gamemode.js, so a missing property is logged and the rest goes on; an up to date look is left alone
   private applyLook(mp: Mp, actorId: number, realm: RealmId): void {
     const { shaderId, spellId, alpha } = this.looks[realm];
+    let stored: { realm?: unknown; shader?: unknown; alpha?: unknown } | null = null;
+    try { stored = mp.get(actorId, LOOK_PROP); } catch { /* unregistered, the set below logs it */ }
+    if (stored?.realm === realm && stored.shader === shaderId && stored.alpha === alpha) return;
     try {
       mp.set(actorId, LOOK_PROP, { realm, shader: shaderId, alpha });
     } catch (e) {
