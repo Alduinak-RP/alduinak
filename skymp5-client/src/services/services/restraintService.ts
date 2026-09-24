@@ -168,17 +168,20 @@ export class RestraintService extends ClientListener {
       }
     });
 
-    // The server ends a disconnected carrier's carry and kills a disconnected downed player but cannot tell this client
+    // The server ends a disconnected carrier's carry and kills a disconnected downed player but cannot tell this client; a surviving restraint is re-sent on login
     this.controller.emitter.on("connectionDisconnect", () => {
       if (this.carrying) {
         this.carrying = false;
         this.applyCarryAnim();
       }
-      if (this.downed || this.lock || this.executionPose) {
+      if (this.downed || this.lock || this.executionPose || this.carried || this.boundHands) {
         this.downed = false;
         this.lock = null;
         this.executionPose = "";
         this.pairedUntil = 0;
+        this.carried = false;
+        this.carrierId = 0;
+        this.boundHands = false;
         this.applyState();
       }
     });
