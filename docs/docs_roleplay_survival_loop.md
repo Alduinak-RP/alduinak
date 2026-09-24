@@ -277,9 +277,12 @@ behaviour-graph events — no ESP required.**
   is registered in `bodies.json` next to `companions.json`
   and re-adopted, and put on the grid again, after a restart while its
   actor still exists; every 2 s a
-  body whose loose stacks are gone, or one older than `bodyMaxSeconds`
-  (default 0 = never), is removed (`[body] <id> of <victim> removed: emptied
-  | lay too long | gone`). The body carries the neighbor-visible `ff_body`
+  body whose loose stacks are gone, one older than `bodyMaxSeconds`
+  (default 0 = never), or one that has been taken from or put into but then
+  left alone for `bodyIdleSeconds` (default 7200; the last touch is kept in
+  `bodies.json` as `touchedAt`, and a body nobody has touched is not
+  affected) is removed (`[body] <id> of <victim> removed: emptied
+  | lay too long | left alone | gone`). The body carries the neighbor-visible `ff_body`
   property, which the gamemode must register in
   `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
   the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a

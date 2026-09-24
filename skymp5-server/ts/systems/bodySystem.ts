@@ -20,6 +20,8 @@ const CHECK_MS = 2000;
 const VICTIM_RESPAWN_MS = 4000;
 // Seconds a body lies at most, overridable via "bodyMaxSeconds"; 0 keeps it until it is emptied
 const DEFAULT_MAX_SEC = 0;
+// Seconds a body lies after its last take or put, overridable via "bodyIdleSeconds"; 0 keeps it; an untouched body is not affected
+const DEFAULT_IDLE_SEC = 7200;
 // An emptied body is left this long, so a victim with nothing to loot still leaves one to see
 const EMPTY_GRACE_MS = 60000;
 // A second death of the same victim within this window (a finish off then a soul trap) leaves no second body
@@ -31,6 +33,8 @@ interface Body {
   // The victim's account, whose other characters may not loot the body; -1 when unknown
   profileId: number;
   at: number;
+  // Last take or put, 0 while nobody has touched the pack
+  touchedAt: number;
 }
 
 export class BodySystem implements System {
@@ -43,6 +47,8 @@ export class BodySystem implements System {
     const all = (await Settings.get()).allSettings as Record<string, unknown> | null;
     const maxSec = Number(all?.["bodyMaxSeconds"]);
     if (Number.isFinite(maxSec) && maxSec >= 0) this.maxSec = maxSec;
+    const idleSec = Number(all?.["bodyIdleSeconds"]);
+    if (Number.isFinite(idleSec) && idleSec >= 0) this.idleSec = idleSec;
     this.loadRegistry();
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.adoptLeftovers());
   }
@@ -52,8 +58,11 @@ export class BodySystem implements System {
     if (!this.bodies.size || now < this.nextCheckAt) return;
     this.nextCheckAt = now + CHECK_MS;
     for (const body of Array.from(this.bodies.values())) {
-      const left = this.lootLeft(body.id);
-      const reason = left === null ? "gone" : left === 0 && now - body.at > EMPTY_GRACE_MS ? "emptied" : this.maxSec > 0 && now - body.at > this.maxSec * 1000 ? "lay too long" : "";
+      const entries = this.entriesOf(body.id);
+      const left = entries && this.lootLeft(entries);
+      if (entries) this.noteTouch(body, entries, now);
+      const idle = this.idleSec > 0 && body.touchedAt > 0 && now - body.touchedAt > this.idleSec * 1000;
+      const reason = left === null ? "gone" : left === 0 && now - body.at > EMPTY_GRACE_MS ? "emptied" : this.maxSec > 0 && now - body.at > this.maxSec * 1000 ? "lay too long" : idle ? "left alone" : "";
       if (reason) this.remove(body, reason);
     }
   }
@@ -104,7 +113,7 @@ export class BodySystem implements System {
       }
       return 0;
     }
-    this.bodies.set(cloneId, { id: cloneId, victimId, profileId, at: Date.now() });
+    this.bodies.set(cloneId, { id: cloneId, victimId, profileId, at: Date.now(), touchedAt: 0 });
     this.save();
     setTimeout(() => {
       try {
@@ -131,19 +140,34 @@ export class BodySystem implements System {
     return own ? "You cannot loot the body of your own fallen character." : "";
   }
 
-  // Stacks a searcher can still take; null when the form is gone
-  private lootLeft(bodyId: number): number | null {
-    let entries: any[];
+  // null when the form is gone
+  private entriesOf(bodyId: number): any[] | null {
     try {
-      entries = this.mp.get(bodyId, "inventory")?.entries ?? [];
+      const entries = this.mp.get(bodyId, "inventory")?.entries;
+      return Array.isArray(entries) ? entries : [];
     } catch {
       return null;
     }
+  }
+
+  // Stacks a searcher can still take
+  private lootLeft(entries: any[]): number {
     return entries.filter((e) => e && e.count > 0 && !isNamedItemBase(Number(e.baseId))).length;
+  }
+
+  // Any change to the pack since the last check is a take or a put; the first check of a run only records it
+  private noteTouch(body: Body, entries: any[], now: number): void {
+    const sig = entries.filter((e) => e && e.count > 0).map((e) => `${Number(e.baseId) >>> 0}:${e.count}`).sort().join(",");
+    const last = this.packSigs.get(body.id);
+    this.packSigs.set(body.id, sig);
+    if (last === undefined || last === sig) return;
+    body.touchedAt = now;
+    this.save();
   }
 
   private remove(body: Body, reason: string): void {
     this.bodies.delete(body.id);
+    this.packSigs.delete(body.id);
     try { destroyRef(this.mp, body.id); } catch { }
     this.save();
     this.log(`[body] ${hex(body.id)} of ${hex(body.victimId)} removed: ${reason}`);
@@ -153,7 +177,7 @@ export class BodySystem implements System {
     let saved: { bodies?: unknown } = {};
     try { saved = JSON.parse(fs.readFileSync(REGISTRY_FILE, "utf8")) ?? {}; } catch { }
     this.leftovers = (Array.isArray(saved.bodies) ? saved.bodies : [])
-      .map((b: any) => ({ id: Number(b?.id) >>> 0, victimId: Number(b?.victimId) >>> 0, profileId: Number.isInteger(b?.profileId) ? b.profileId : -1, at: Number(b?.at) || 0 }))
+      .map((b: any) => ({ id: Number(b?.id) >>> 0, victimId: Number(b?.victimId) >>> 0, profileId: Number.isInteger(b?.profileId) ? b.profileId : -1, at: Number(b?.at) || 0, touchedAt: Number(b?.touchedAt) || 0 }))
       .filter((b: Body) => b.id > 0);
   }
 
@@ -186,9 +210,12 @@ export class BodySystem implements System {
 
   private mp: Mp = null;
   private maxSec = DEFAULT_MAX_SEC;
+  private idleSec = DEFAULT_IDLE_SEC;
   private nextCheckAt = 0;
   // bodyId -> the body lying in the world
   private bodies = new Map<number, Body>();
+  // bodyId -> the pack as last checked
+  private packSigs = new Map<number, string>();
   // Registry entries of the previous run, adopted once the world loads
   private leftovers: Body[] = [];
 }
