@@ -439,6 +439,10 @@ prisoner can also be carried).
   carrier's way, with the line `[carry] <carried> set down at <carrier>`. A
   body held through a wall or a jail bar door therefore ends up back beside the
   carrier, never inside the cell. NPC bodies are set down by PetSystem instead.
+- **Relog**: a carried player who logs back in is picked up again only while
+  their carrier is still online, not downed, in the same cell and within
+  `captureInteractMaxDistance` (default 256) of the parked body; otherwise the
+  carry ends quietly and a bound captive stays bound.
 - **Doors**: a carrier's door activation is recorded (`onActivate`, after the
   housing lock had its say, so a locked door never counts, and before the door
   override runs, so an overridden door such as the embassy entry counts). The body only

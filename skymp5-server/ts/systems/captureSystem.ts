@@ -388,8 +388,9 @@ export class CaptureSystem implements System {
     if (info.carried) {
       const carrier = info.offlineCarrierActorId ?? info.captorActorId;
       info.offlineCarrierActorId = undefined;
+      // A carrier who moved on while the captive was away is not handed the body back
       if (this.userOf(ctx, carrier) >= 0 && !this.isDowned(mp, carrier) &&
-        !this.carryRefusal(ctx, carrier, actorId)) {
+        this.nearEnough(ctx, carrier, actorId) && !this.carryRefusal(ctx, carrier, actorId)) {
         this.applyCarry(ctx, actorId, carrier);
         return;
       }
