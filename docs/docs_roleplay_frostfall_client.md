@@ -40,6 +40,11 @@ Esc and the free-cursor key to the page until they are released, so cancelling
 or binding one of them does not close the settings panel. A capture only counts
 while the page holds browser focus, so a menu that drops focus mid-capture
 (trade, death screen, character select) leaves the free-cursor key working.
+Like the launcher, the tab warns when a row's key is also another row's,
+a fixed client key's (Esc, Tab, Enter, the emote-cancel keys) or one of the
+controlmap's game keys (Activate, Jump, Sprint, Sneak, Shout, Toggle POV, which
+the client reads with `Input.getMappedKey` and sends inside `keysLauncher`), with
+its own line for Interact / Menus on the Activate key. Shared keys still save.
 
 The interact key replaced the Housing (`H`, `housingMenuKeyCode`), Faction
 (`G`, `factionMenuKeyCode`), Personal (`U`, `personalMenuKeyCode`), Admin

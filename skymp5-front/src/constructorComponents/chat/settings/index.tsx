@@ -28,6 +28,12 @@ const CLIENT_FIXED_KEYS: Record<number, string> = {
   17: 'emote cancel', 30: 'emote cancel', 31: 'emote cancel', 32: 'emote cancel', 57: 'emote cancel', 19: 'emote cancel',
 };
 
+// The controlmap's keys the client adds to keysLauncher, labelled like the launcher's Game Hotkeys
+const GAME_KEYS: [string, string][] = [
+  ['gameActivateKeyCode', 'Activate'], ['gameJumpKeyCode', 'Jump'], ['gameSprintKeyCode', 'Sprint'],
+  ['gameSneakKeyCode', 'Sneak'], ['gameShoutKeyCode', 'Shout / Power'], ['gameTogglePovKeyCode', 'Toggle POV'],
+];
+
 export type KeyOverrides = Record<string, number>;
 
 const Settings = (props: {
@@ -122,15 +128,22 @@ const Settings = (props: {
     return () => send('0');
   }, [capturing]);
 
-  // Same warning as the launcher's showHotkeyConflict; shared keys still save
+  // Same warnings as the launcher's showHotkeyConflict; shared keys still save
+  const interact = keyOf('altInteractKeyCode');
+  const interactClash = !!interact && interact === props.keysLauncher.gameActivateKeyCode;
   const uses = new Map<number, Set<string>>();
   for (const [name, label] of KEY_ROWS) {
     const code = keyOf(name);
     if (!code) continue;
-    if (!uses.has(code)) uses.set(code, new Set(CLIENT_FIXED_KEYS[code] ? [CLIENT_FIXED_KEYS[code]] : []));
+    if (!uses.has(code)) {
+      const game = GAME_KEYS.filter(([gameName]) => props.keysLauncher[gameName] === code).map(([, gameLabel]) => gameLabel);
+      uses.set(code, new Set([...(CLIENT_FIXED_KEYS[code] ? [CLIENT_FIXED_KEYS[code]] : []), ...game]));
+    }
     uses.get(code)!.add(label);
   }
-  const shared = [...uses].filter(([, names]) => names.size > 1).map(([code, names]) => `${dikLabel(code)} (${[...names].join(', ')})`);
+  // The Activate warning already explains Interact / Menus on that key
+  const shared = [...uses].filter(([code, names]) => names.size > 1 && !(interactClash && code === interact && names.size === 2))
+    .map(([code, names]) => `${dikLabel(code)} (${[...names].join(', ')})`);
   const sharedWarning = shared.length ? `Each of these keys does more than one thing on the same press: ${shared.join('; ')}.` : '';
 
   return (
@@ -206,6 +219,7 @@ const Settings = (props: {
               {'Use launcher defaults'}
             </button>
           </div>
+          {interactClash && <div className='chat-key-warning'>{'Interact / Menus shares a key with Activate. Activate wins, so the housing menu and Personal Menu will not open until the keys differ.'}</div>}
           {sharedWarning && <div className='chat-key-warning'>{sharedWarning}</div>}
         </>}
       </div>

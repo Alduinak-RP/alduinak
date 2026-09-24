@@ -361,7 +361,7 @@ export class ChatService extends ClientListener {
       const parsed = data ? JSON.parse(data.slice(2)) : {};
       if (!parsed || typeof parsed !== "object") return "{}";
       if (data) this.applyChatSettings(parsed);
-      return JSON.stringify({ ...parsed, fov: FovSettingsService.currentFov(this.sp) ?? undefined, keysLauncher: this.launcherKeys() });
+      return JSON.stringify({ ...parsed, fov: FovSettingsService.currentFov(this.sp) ?? undefined, keysLauncher: { ...this.launcherKeys(), ...this.gameKeys() } });
     } catch (e) {
       return "{}";
     }
@@ -379,6 +379,22 @@ export class ChatService extends ClientListener {
       chatFocusKeyCode: browser.launcherChatKeyCode,
       bountyBoardMenuKeyCode: this.controller.lookupListener(BountyBoardService).launcherMenuKeyCode,
     };
+  }
+
+  // The controlmap's keys the Controls tab warns about, a mouse button as 256 + n
+  private gameKeys(): Record<string, number> {
+    const controls: Record<string, string> = {
+      gameActivateKeyCode: "Activate", gameJumpKeyCode: "Jump", gameSprintKeyCode: "Sprint",
+      gameSneakKeyCode: "Sneak", gameShoutKeyCode: "Shout", gameTogglePovKeyCode: "Toggle POV",
+    };
+    const keys: Record<string, number> = {};
+    for (const [name, control] of Object.entries(controls)) {
+      try {
+        const code = [0, 1].map((device) => this.sp.Input.getMappedKey(control, device)).find((c) => c > 0);
+        if (code) keys[name] = code;
+      } catch { /* SKSE input not ready */ }
+    }
+    return keys;
   }
 
   // Nametag toggles, the FOV and the key overrides live in the chat settings JSON; no showPlayerNames key means both toggles are off
