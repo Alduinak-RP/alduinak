@@ -149,6 +149,8 @@ export class Spawn implements System {
   private parked = new Set<number>();
   // actorId -> pending post-respawn unequip
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  // Users whose ignored charCreatorResult was already logged this connection
+  private creatorResultIgnored = new Set<number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
@@ -213,6 +215,7 @@ export class Spawn implements System {
     this.authCache.delete(userId);
     this.lastMenuRequestMs.delete(userId);
     this.lastAssignMs.delete(userId);
+    this.creatorResultIgnored.delete(userId);
     // Logout grace: parkTimers is actorId-keyed and deliberately NOT cleaned here, the timer must outlive the connection; re-selecting the character cancels it
     try {
       const actorId = ctx.svr.getUserActor(userId);
@@ -760,7 +763,10 @@ export class Spawn implements System {
       : !this.isCharCreatorPending(mp, actorId) ? `not pending for actor ${actorId.toString(16)}`
       : "";
     if (ignored) {
-      this.log(`[spawn] charCreatorResult ignored for user ${userId}: ${ignored}`);
+      if (!this.creatorResultIgnored.has(userId)) {
+        this.creatorResultIgnored.add(userId);
+        this.log(`[spawn] charCreatorResult ignored for user ${userId}: ${ignored} (logged once per connection)`);
+      }
       return;
     }
 

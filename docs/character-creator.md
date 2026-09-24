@@ -63,8 +63,10 @@ lines come from `onSelectCharacter`):
   opened for actor <id> profile P` when `charCreator.enabled` is on (also on a
   relog with the creator still pending).
 - `[spawn] charCreatorResult ignored for user U: <the creator is disabled | no
-  actor | not pending for actor X>`: a submission that arrived in the wrong
-  state.
+  actor | not pending for actor X> (logged once per connection)`: a
+  submission that arrived in the wrong state. Only the first one per
+  connection is logged, so a client repeating the packet cannot flood the
+  log.
 - `[spawn] charCreator refused for <id>: <validation error | race R is locked
   for profile P>`: a submission the wizard shows the error for.
 - `Character creator accepted for actor <id> (<race> "<name>")`, then
