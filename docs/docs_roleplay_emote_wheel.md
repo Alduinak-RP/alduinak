@@ -9,6 +9,8 @@ the emote under the cursor (or only closes the wheel when nothing is hovered). H
 keys only, since the focused wheel forwards key releases and not mouse buttons. Movement keys (`W A S D`,
 `Space`) end an emote, and so does drawing a weapon or spell. A draw leaves an idle by itself, so no idle exit event is sent while the hands
 are drawn; an offset overlay such as Crossed Arms is not an idle, so a draw still sends its `OffsetStop`.
+An emote forces third person and keeps the camera there while it plays (a 250 ms check), because an idle in
+first person loses the character's collision and walks through geometry.
 
 - Client: `skymp5-client/src/services/services/emoteService.ts` (the `GROUPS` catalog, playing, exiting, the
   prop gate).

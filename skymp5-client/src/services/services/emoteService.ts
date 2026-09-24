@@ -16,6 +16,10 @@ declare const window: any;
 let wheelHold = false;
 const WIDGET_ID = 24;
 
+// An idle played in first person loses the character's collision, so an emote keeps the camera in third person
+const FIRST_PERSON_CAMERA = 0;
+const CAMERA_TICK_MS = 250;
+
 // An item the emote shows in hand; any one of the "hex:Plugin" items unlocks it
 interface PropNeed {
   label: string;
@@ -164,6 +168,7 @@ export class EmoteService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.on("update", () => this.onUpdate());
     this.controller.emitter.on("gameLoad", () => this.dropEmote());
     // A front reload drops the widget without an emote:close message.
     this.controller.emitter.on("browserWindowLoaded", () => { this.menuOpen = false; });
@@ -340,9 +345,20 @@ export class EmoteService extends ClientListener {
         this.sp.Utility.wait(SHEATHE_SETTLE_S).then(() => this.sendEmote(anim));
         return;
       }
+      this.sp.Game.forceThirdPerson();
       this.sp.Debug.sendAnimationEvent(player, anim);
       logTrace(this, `Playing emote`, anim);
     });
+  }
+
+  private onUpdate(): void {
+    const now = Date.now();
+    if (now < this.nextCameraTickMs) return;
+    this.nextCameraTickMs = now + CAMERA_TICK_MS;
+    if (!this.activeEmote || this.sp.Game.getCameraState() !== FIRST_PERSON_CAMERA) return;
+    // A chair or a mount taken after the emote owns the camera again
+    const player = this.sp.Game.getPlayer();
+    if (player && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceThirdPerson();
   }
 
   // Also abandons any pending exit chain or follow-up emote
@@ -532,6 +548,7 @@ export class EmoteService extends ClientListener {
   private probeSucceeded = false;
   // Generation counter: bumping it abandons any pending exit chain.
   private chainId = 0;
+  private nextCameraTickMs = 0;
 
   get menuKeyCode(): number {
     return this.menuKey;
