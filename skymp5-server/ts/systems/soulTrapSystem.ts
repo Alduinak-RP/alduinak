@@ -2,6 +2,7 @@ import { System, Log, SystemContext } from "./system";
 import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
 import { hex, notifyActor } from "./actorUtil";
 import { AfterlifeSystem } from "./afterlifeSystem";
+import { BodySystem } from "./bodySystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -72,6 +73,7 @@ export class SoulTrapSystem implements System {
     private companions?: { isCompanionActor(actorId: number): boolean },
     private afterlife?: AfterlifeSystem,
     private factions?: { canExecute(actorId: number): boolean },
+    private bodies?: BodySystem,
   ) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -140,7 +142,9 @@ export class SoulTrapSystem implements System {
     }
     notifyActor(mp, casterId, "Soul captured!");
     // The victim is dead here, so it is only marked and its respawn takes it to the Soul Cairn
-    const sent = player && !!this.factions?.canExecute(casterId) && !!this.afterlife?.sendToSoulCairn(targetId, `soul trapped by ${hex(casterId)}`);
+    const pk = player && !!this.factions?.canExecute(casterId);
+    if (pk) this.bodies?.leaveBody(targetId, `soul trapped by ${hex(casterId)}`);
+    const sent = pk && !!this.afterlife?.sendToSoulCairn(targetId, `soul trapped by ${hex(casterId)}`);
     this.log(`[soultrap] ${hex(casterId)} trapped the ${kind} soul of ${hex(targetId)} in gem ${hex(gemId)}${player && !sent ? ", the player stays unmarked" : ""}`);
   }
 

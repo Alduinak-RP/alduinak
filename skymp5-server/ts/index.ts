@@ -38,6 +38,7 @@ import { CraftedExtrasSystem } from "./systems/craftedExtrasSystem";
 import { SearchSystem } from "./systems/searchSystem";
 import { SoulTrapSystem } from "./systems/soulTrapSystem";
 import { AfterlifeSystem } from "./systems/afterlifeSystem";
+import { BodySystem } from "./systems/bodySystem";
 import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
@@ -281,8 +282,10 @@ const main = async () => {
   const weatherSystem = new WeatherSystem(log);
   adminSystem.setWeatherSystem(weatherSystem);
   const factionSystem = new FactionSystem(log, housingSystem);
+  // A PK leaves a lootable body at the spot of death
+  const bodySystem = new BodySystem(log);
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
-  const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem);
+  const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem);
   const bountyBoardSystem = new BountyBoardSystem(log);
   bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
   bountyBoardSystem.canManage = (actorId, boardName) => factionSystem.canManageBoard(actorId, boardName);
@@ -305,11 +308,12 @@ const main = async () => {
     afterlifeSystem,
     housingSystem,
     factionSystem,
+    bodySystem,
     executionSystem,
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
     searchSystem,
-    new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem),
+    new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem),
     new VoiceSystem(log),
     new AfkSystem(log),
     new TimeSystem(log),

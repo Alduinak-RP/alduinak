@@ -448,6 +448,7 @@ World border (no setting): the regions come from the REGN records flagged Border
 | `finishOffMaxMs` | `9000` | Cap on a finish off or execution killmove: the victim dies when a participant's client reports the end of the pair, or after this |
 | `finishOffExtendedPool` | `false` | Adds the killmove tree records, whose conditions the engine may refuse, to the finisher pools; a probe, see docs_roleplay_survival_loop.md section 8 |
 | `finishOffStandUp` | `true` | The finish off stands the victim up and plays a standing killmove once the get-up settled; `false` keeps them kneeling and plays the one-handed KillingBlow stab at once (no decapitation, no variety). Read at start, so a change needs a game service restart and no build |
+| `bodyMaxSeconds` | `3600` | How long the body a PK leaves lies before it is removed with whatever is left in it; `0` keeps it until it is emptied. A body is removed as soon as its loose stacks are gone either way. The body carries the neighbor-visible `ff_body` property, registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only before the server build |
 
 ## Carry pose
 

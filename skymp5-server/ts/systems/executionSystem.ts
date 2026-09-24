@@ -4,6 +4,7 @@ import { CaptureSystem, isBound, isCarried, isRestrained } from "./captureSystem
 import { BleedoutSystem } from "./bleedoutSystem";
 import { FactionSystem } from "./factionSystem";
 import { AfterlifeSystem } from "./afterlifeSystem";
+import { BodySystem } from "./bodySystem";
 import { toFormId } from "./formIdUtil";
 import { baseIdOf, hex, isAlive, isNear, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
@@ -92,6 +93,7 @@ export class ExecutionSystem implements System {
     private bleedout: BleedoutSystem,
     private factions: FactionSystem,
     private afterlife: AfterlifeSystem,
+    private bodies: BodySystem,
   ) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -347,7 +349,7 @@ export class ExecutionSystem implements System {
     }
   }
 
-  // A PK: a kill the gate never sees, then the soul goes to Sovngarde
+  // A PK: a kill the gate never sees, a body left behind, then the soul goes to Sovngarde
   private slay(victimId: number, killerId: number, how: string): void {
     const mp = this.mp;
     const rights = this.factions.factionsWith(killerId, "execute");
@@ -355,6 +357,7 @@ export class ExecutionSystem implements System {
       ` (${rights.length ? `execute right of ${rights.join(", ")}` : "staff"})`;
     (globalThis as any).__alduinakMarkDeathAlerted?.(victimId);
     this.bleedout.die(victimId, how, killerId);
+    this.bodies.leaveBody(victimId, `${how} by ${hex(killerId)}`);
     this.afterlife.sendToSovngarde(victimId, `${how} by ${hex(killerId)}`);
     appendLog(this.logDir, "pk.log", line);
     (globalThis as any).__alduinakDiscordAlert?.("execute", line);

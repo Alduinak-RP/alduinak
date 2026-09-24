@@ -98,7 +98,7 @@ const COMMAND_LIMIT = 1;
 const TWIN_SOULS_LIMIT = 2;
 
 // A container holds nothing worn: worn flags are dropped and stacks that become equal are merged, so every stack stays takeable
-const looseEntries = (inventory: any): Record<string, unknown>[] => {
+export const looseEntries = (inventory: any): Record<string, unknown>[] => {
   const merged = new Map<string, Record<string, unknown>>();
   const entries: any[] = Array.isArray(inventory?.entries) ? inventory.entries : [];
   for (const e of entries) {

@@ -174,6 +174,29 @@ behaviour-graph events — no ESP required.**
   released with `IdleFurnitureExit`; if (3) works only for the vanilla
   headsmen, the `isExecutioner` keyword (0x70C0A) on the Player record is
   the ESP option.
+- **The body** (`bodySystem.ts`): every PK (a finish off, an execution, a
+  soul trap by an execute holder) leaves a body where the victim fell: a
+  clone made with `createActor` at the victim's spot wearing their look
+  (their gear too once the native equipment setter ships, naked until then)
+  and holding a copy of their pack with the worn flags dropped, so every
+  stack is takeable through the search window. The victim's own dead actor
+  is respawned 4 s later (the afterlife routing takes that respawn to the
+  realm), so two bodies never lie side by side. The clone has no profile id,
+  so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
+  never applies `searchPlayerBodyTakeLimit` to it: a body gives up
+  everything. It is registered in `bodies.json` next to `companions.json`
+  and re-adopted after a restart while its actor still exists; every 2 s a
+  body whose loose stacks are gone, or one older than `bodyMaxSeconds`
+  (3600, 0 = never), is removed (`[body] <id> of <victim> removed: emptied
+  | lay too long | gone`). The body carries the neighbor-visible `ff_body`
+  property, which the gamemode must register in
+  `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
+  the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
+  Build gamemode only before the server build; without it the server logs
+  `[body] ff_body on <id> failed` and clients that arrive later never create
+  the body, since `formView.ts` otherwise never creates a dead copy that
+  carries an appearance. Logged as `[body] <victim> <how> by <killer>: body
+  <id> holds N stack(s)`.
 - **Coming back whole** (`deathService.ts`): a finisher never decapitates,
   an execution does, and a decapitation persists as the actor's
   dismembered-limb extra data, which nothing on the respawn path cleared. So
