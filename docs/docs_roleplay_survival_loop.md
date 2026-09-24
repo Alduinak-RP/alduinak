@@ -220,9 +220,13 @@ behaviour-graph events — no ESP required.**
   `kneel` both false, so every client plays it at once with the victim on
   their feet; the victim dies when a participant's client reports the end,
   or at `finishOffMaxMs`, through the same PK as a staff PK (`pk`, "You
-  assassinated ..."), so the body and Sovngarde follow. A victim dead or
-  fallen by other means meanwhile is left as they are (`[execution] the
-  assassination of ... came to nothing: ...`). Logged as `[execution]
+  assassinated ..."), so the body and Sovngarde follow. Nothing holds the
+  victim while the pair plays, so at the strike the server checks again
+  that the killer is alive, able and on foot and the victim alive, not
+  fallen, downed, bound, mounted or seated, and still in reach; otherwise
+  the attempt comes to nothing (`[execution] the assassination of ... came
+  to nothing: ...`) and both are told ("Your assassination of ... failed.",
+  "... failed to assassinate you." to a living victim). Logged as `[execution]
   <killer> assassinates <victim> with <type> idle <id>`.
 - **The body** (`bodySystem.ts`): every PK (a finish off, an execution, a
   soul trap by an execute holder) leaves a body where the victim fell: a

@@ -209,14 +209,23 @@ export class ExecutionSystem implements System {
     const mp = this.mp;
     if (killerId === victimId || !isPlayerActor(mp, victimId)) return "They cannot be assassinated.";
     if (!this.factions.canExecute(killerId)) return "You do not have the right to execute.";
-    if (!this.isAble(killerId) || this.isKilling(killerId)) return "You cannot do that now.";
+    if (this.isKilling(killerId)) return "You cannot do that now.";
+    if (this.assassinations.has(victimId)) return "They are already being assassinated.";
+    const refusal = this.strikeRefusal(killerId, victimId);
+    if (refusal) return refusal;
+    if (!isSneaking(mp, killerId)) return "You must be sneaking.";
+    if (!isBehind(mp, killerId, victimId)) return "You must be behind them.";
+    return "";
+  }
+
+  // What must still hold when the kill lands, checked on the request and again at the strike
+  private strikeRefusal(killerId: number, victimId: number): string {
+    const mp = this.mp;
+    if (!this.isAble(killerId)) return "You cannot do that now.";
     if (isMounted(mp, killerId)) return "Dismount first.";
     if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId) ||
       isMounted(mp, victimId) || this.seats.seatOf(userOf(mp, victimId))) return "They cannot be assassinated now.";
-    if (this.assassinations.has(victimId)) return "They are already being assassinated.";
     if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return "They are out of reach.";
-    if (!isSneaking(mp, killerId)) return "You must be sneaking.";
-    if (!isBehind(mp, killerId, victimId)) return "You must be behind them.";
     return "";
   }
 
@@ -240,14 +249,18 @@ export class ExecutionSystem implements System {
     this.log(`[execution] ${hex(killerId)} assassinates ${hex(victimId)} with ${held} idle ${hex(idle)}`);
   }
 
-  // A victim dead or fallen by other means meanwhile is left as they are
+  // A killer who fell, was bound or mounted, or a victim who got away, went down or died meanwhile ends the attempt with no kill
   private strike(victimId: number, killerId: number): void {
+    const mp = this.mp;
     const attempt = this.assassinations.get(victimId);
     if (!attempt || attempt.killerId !== killerId) return;
     clearTimeout(attempt.timer);
     this.assassinations.delete(victimId);
-    const refusal = this.pk(victimId, killerId, "assassinated");
-    if (refusal) this.log(`[execution] the assassination of ${hex(victimId)} by ${hex(killerId)} came to nothing: ${refusal}`);
+    const refusal = this.strikeRefusal(killerId, victimId) || this.pk(victimId, killerId, "assassinated");
+    if (!refusal) return;
+    this.log(`[execution] the assassination of ${hex(victimId)} by ${hex(killerId)} came to nothing: ${refusal}`);
+    notifyActor(mp, killerId, `Your assassination of ${nameShownTo(mp, killerId, victimId)} failed.`);
+    if (isAlive(mp, victimId)) notifyActor(mp, victimId, `${nameShownTo(mp, victimId, killerId)} failed to assassinate you.`);
   }
 
   // Why the killer may not finish the victim off, "" when they may; the weapon is checked on the request
