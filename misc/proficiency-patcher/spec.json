@@ -4099,7 +4099,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "LItemFalmerEar50",
+    "LItemFalmerEar25"
    ],
    "useAll": true,
    "add": [
@@ -4150,7 +4152,8 @@
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
     "LootImperialLuck",
-    "DeathItemDraugrGold"
+    "DeathItemDraugrGold",
+    "LItemBoneMeal25"
    ],
    "useAll": true,
    "add": [
@@ -4253,7 +4256,8 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "TrollFat"
    ],
    "useAll": true,
    "add": [
@@ -4274,7 +4278,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "ChaurusChitin",
+    "DeathItemChaurusEggs25"
    ],
    "useAll": true,
    "add": [
@@ -4316,7 +4322,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "LootDwarvenSpiderSoulGem50",
+    "LItemDwarvenOil50"
    ],
    "useAll": true,
    "add": [
@@ -4352,7 +4360,10 @@
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
     "LootImperialLuck",
-    "LootDwarvenScrap25"
+    "LootDwarvenScrap25",
+    "LootDwarvenSphereSoulGem50",
+    "LItemDwarvenOil50",
+    "DLC1LootSphereBolts"
    ],
    "useAll": true,
    "add": [
@@ -4379,7 +4390,10 @@
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
     "LootImperialLuck",
-    "LootDwarvenScrap25"
+    "LootDwarvenScrap25",
+    "LootDwarvenCenturionSoulGem",
+    "DwarvenOil",
+    "LItemDwarvenOil50"
    ],
    "useAll": true,
    "add": [
@@ -4406,7 +4420,8 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "FrostSalts"
    ],
    "useAll": true,
    "add": [
@@ -4427,7 +4442,8 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "FireSalts"
    ],
    "useAll": true,
    "add": [
@@ -4443,7 +4459,9 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "HagravenFeathers",
+    "LItemHagravenClaw25"
    ],
    "useAll": true,
    "add": [
@@ -4498,7 +4516,8 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "LItemBoneMeal25"
    ],
    "useAll": true,
    "add": [
