@@ -21,13 +21,15 @@ const SURVIVAL_ENABLED_GLOBAL = 0x826;
 interface NeedsState {
   staminaPenalty: number;
   magickaPenalty: number;
+  fatigueSpent: number;
   survivalMode: boolean;
 }
 
 /**
  * Hunger and fatigue on the vanilla HUD. The server (NeedsSystem) owns both values and pushes needsState whenever they
  * change; this service applies the max stamina (hunger) and max magicka (fatigue) penalty shares the server sends, shows
- * them as Survival's red meter segments, and closes the Crafting Menu when the server refused a craft for fatigue.
+ * hunger's penalty and all the fatigue spent as Survival's red meter segments, and closes the Crafting Menu when the
+ * server refused a craft for fatigue.
  *
  *   Client -> Server: { "customPacketType": "needsRequest" }
  *   Server -> Client: { "customPacketType": "needsState", "hunger", "stage", "stageName", "fatigue", "fatigueStage",
@@ -49,9 +51,12 @@ export class NeedsService extends ClientListener {
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
     const content = parseCustomPacket(event);
     if (!content || content["customPacketType"] !== "needsState") return;
+    const magickaPenalty = Number(content["magickaPenalty"]) || 0;
+    const fatigue = Number(content["fatigue"]);
     this.needs = {
       staminaPenalty: Number(content["staminaPenalty"]) || 0,
-      magickaPenalty: Number(content["magickaPenalty"]) || 0,
+      magickaPenalty,
+      fatigueSpent: Number.isFinite(fatigue) ? Math.max(0, Math.min(100, 100 - fatigue)) : magickaPenalty * 100,
       survivalMode: content["survivalMode"] === true,
     };
     const closeCrafting = content["closeCrafting"] === true;
@@ -76,7 +81,8 @@ export class NeedsService extends ClientListener {
     const find = (id: number, plugin: string) => this.sp.GlobalVariable.from(this.sp.Game.getFormFromFile(id, plugin));
     const set = (id: number, plugin: string, value: number): void => find(id, plugin)?.setValue(value);
     set(HUNGER_PENALTY_GLOBAL, UPDATE_ESM, Math.round(needs.staminaPenalty * 100));
-    set(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM, Math.round(needs.magickaPenalty * 100));
+    // From the first point spent, not Survival's stage 2: the penalty never exceeds it, and a segment keeps the meter up
+    set(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM, Math.round(needs.fatigueSpent));
     set(COLD_PENALTY_GLOBAL, UPDATE_ESM, 0);
     set(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN, needs.survivalMode ? 1 : 0);
     // Read back: "none" means the form lookup failed, so the HUD never saw the value
