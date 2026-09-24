@@ -338,8 +338,8 @@ export class AfterlifeSystem implements System {
     if (added) this.removeAddedSpell(mp, actorId, added);
     if (!spellId) return;
     try {
-      addSpellTo(mp, actorId, spellId);
-      mp.set(actorId, SPELL_PROP, spellId);
+      // An ability the player already knew is not the realm's to take back
+      if (addSpellTo(mp, actorId, spellId)) mp.set(actorId, SPELL_PROP, spellId);
     } catch (e) {
       this.log(`[afterlife] adding the ${REALMS[realm].label} ability to ${hex(actorId)} failed: ${e}`);
     }

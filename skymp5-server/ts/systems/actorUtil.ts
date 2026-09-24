@@ -255,9 +255,9 @@ export const destroyRef = (mp: Mp, id: number): void => {
   mp.callPapyrusFunction("method", "ObjectReference", "Delete", { type: "form", desc: mp.getDescFromId(id) }, []);
 };
 
-// Through Papyrus, so the server records learnedSpells (which HasSpell reads) and the client learns it live; throws when a form is unknown
-export const addSpellTo = (mp: Mp, actorId: number, spellId: number): void => {
-  mp.callPapyrusFunction("method", "Actor", "AddSpell", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(spellId) }, false]);
+// Through Papyrus, so the server records learnedSpells (which HasSpell reads) and the client learns it live; false when it was already known, throws when a form is unknown
+export const addSpellTo = (mp: Mp, actorId: number, spellId: number): boolean => {
+  return mp.callPapyrusFunction("method", "Actor", "AddSpell", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(spellId) }, false]) === true;
 };
 
 export const removeSpellFrom = (mp: Mp, actorId: number, spellId: number): void => {
