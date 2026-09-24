@@ -993,7 +993,7 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | Key | Default | Meaning |
 |---|---|---|
 | `needsEnabled` | `true` | `false` switches hunger and fatigue off |
-| `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours); nothing drains while the race menu or creator is pending |
+| `needsHungerDrainPerHour` | `125` | Hunger gained per online hour (full to starving in about 8 hours); hunger holds while the race menu or creator is pending, for up to 20 minutes (then it drains again and the server logs a warning); fatigue keeps regenerating |
 | `needsHungerOffline` | `false` | `true` drains hunger while logged out too |
 | `needsHungerStart` | `145` | Hunger of a new character, set again (with a full fatigue bar) when its race menu or creator is accepted; 145 is Survival Mode's starting value, in the Satisfied stage |
 | `needsHungerStages` | `[80, 160, 340, 520, 770]` | Survival's stage values: Well Fed (after a meal empties hunger) ends at the first, Peckish, Hungry, Famished and Starving begin at the others; the second also starts the max stamina penalty |

@@ -77,6 +77,8 @@ const TICK_MS = 60000;
 // The client wipes and re-applies learnedSpells about a second after spawn; a stage ability change has to land after that
 const LOGIN_SYNC_DELAY_MS = 5000;
 const NOTICE_GAP_MS = 2000;
+// Longest a pending race menu or creator holds hunger; a creation stuck past this drains like play
+const CREATION_HUNGER_HOLD_MS = 20 * 60000;
 const MAX_QUEUED = 4096;
 const EPSILON = 1e-6;
 
@@ -136,6 +138,8 @@ interface Online {
   // Last state sent to the client, so the minute tick only sends changes
   sent: string;
   syncStageAt: number;
+  // Epoch ms the minute tick first saw this character's creation pending, 0 when it is not, -1 once the hold ran out
+  pendingSince: number;
 }
 
 type Queued =
@@ -348,7 +352,7 @@ export class NeedsSystem implements System {
     const bench = this.mastery.recipeBench(ctx, recipeId);
     if (this.freeBenches.has(bench)) return true;
     const cost = this.craftCost(ctx, actorId, bench) * mult;
-    this.advance(entry.rec, Date.now(), true);
+    this.catchUp(entry);
     if (entry.rec.fatigue + EPSILON < cost) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
       return false;
@@ -369,7 +373,7 @@ export class NeedsSystem implements System {
     if (!bench) return false;
     const cost = this.craftCost(ctx, actorId, bench) * Math.min(1, ...keywords.map((k) => this.benchMult.get(k) ?? 1));
     if (cost <= 0) return false;
-    this.advance(entry.rec, Date.now(), true);
+    this.catchUp(entry);
     if (entry.rec.fatigue + EPSILON >= cost) return false;
     this.enqueue(ctx, { kind: "tired", actorId, cost });
     return true;
@@ -384,7 +388,7 @@ export class NeedsSystem implements System {
       .filter((e) => keywordConditionsPass(mp, e.mgefId, actorId))
       .reduce((sum, e) => sum + e.amount, 0);
     if (!restore) return;
-    this.advance(entry.rec, Date.now(), true);
+    this.catchUp(entry);
     entry.rec.hunger = clamp(entry.rec.hunger - restore, 0, HUNGER_MAX);
     if (entry.rec.hunger <= 0) entry.rec.wellFed = true;
     this.enqueue(ctx, { kind: "changed", actorId });
@@ -423,7 +427,7 @@ export class NeedsSystem implements System {
     const stored = this.read(ctx, actorId);
     const rec = stored || { v: 2, hunger: this.hungerStart, fatigue: 1, at: now, stageSpell: 0, fatigueSpell: 0, wellFed: false };
     if (stored) this.advance(rec, now, false);
-    this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS });
+    this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, pendingSince: 0 });
     this.write(ctx, actorId, rec);
     this.sendState(ctx, actorId, false);
   }
@@ -433,6 +437,7 @@ export class NeedsSystem implements System {
     const entry = this.online.get(actorId);
     if (!entry) return;
     Object.assign(entry.rec, { hunger: this.hungerStart, fatigue: 1, at: Date.now(), wellFed: false });
+    entry.pendingSince = 0;
     this.write(ctx, actorId, entry.rec);
     this.syncStages(ctx, actorId, entry);
     this.sendState(ctx, actorId, false);
@@ -448,7 +453,7 @@ export class NeedsSystem implements System {
   private goOffline(ctx: SystemContext, actorId: number): void {
     const entry = this.online.get(actorId);
     if (!entry) return;
-    this.advance(entry.rec, Date.now(), true);
+    this.catchUp(entry);
     this.write(ctx, actorId, entry.rec);
     this.online.delete(actorId);
   }
@@ -516,7 +521,7 @@ export class NeedsSystem implements System {
   private canAfford(actorId: number, points: number): boolean {
     const entry = this.online.get(actorId);
     if (!entry || !this.enabled || points <= 0) return true;
-    this.advance(entry.rec, Date.now(), true);
+    this.catchUp(entry);
     return entry.rec.fatigue + EPSILON >= points / this.exhaustionMax;
   }
 
@@ -524,7 +529,7 @@ export class NeedsSystem implements System {
   private applyExhaustion(ctx: SystemContext, actorId: number, points: number, what: string): void {
     const entry = this.online.get(actorId);
     if (!entry || !this.enabled || points <= 0) return;
-    this.advance(entry.rec, Date.now(), true);
+    this.catchUp(entry);
     entry.rec.fatigue = clamp(entry.rec.fatigue - points / this.exhaustionMax, 0, 1);
     this.log(`[needs] ${hex(actorId)} ${what}: -${Math.round(points * 10) / 10} pts, fatigue ${pct(entry.rec.fatigue)}%`);
     this.write(ctx, actorId, entry.rec);
@@ -546,12 +551,8 @@ export class NeedsSystem implements System {
             this.goOffline(ctx, actorId);
             continue;
           }
-          // The race menu or creator can stay open for hours
-          if (isCreationPending(ctx.svr as Mp, actorId)) {
-            entry.rec.at = now;
-            continue;
-          }
-          this.advance(entry.rec, now, true);
+          this.trackCreationHold(ctx, actorId, entry, now);
+          this.catchUp(entry, now);
           this.write(ctx, actorId, entry.rec);
           this.syncStages(ctx, actorId, entry);
           this.sendState(ctx, actorId, false);
@@ -595,9 +596,26 @@ export class NeedsSystem implements System {
 
   // ── Rules ──────────────────────────────────────────────────────────────────
 
-  private advance(rec: NeedsRecord, now: number, online: boolean): void {
+  // The race menu or creator can stay open for hours, so a pending creation holds hunger up to CREATION_HUNGER_HOLD_MS
+  private trackCreationHold(ctx: SystemContext, actorId: number, entry: Online, now: number): void {
+    if (!isCreationPending(ctx.svr as Mp, actorId)) {
+      entry.pendingSince = 0;
+    } else if (!entry.pendingSince) {
+      entry.pendingSince = now;
+    } else if (entry.pendingSince > 0 && now - entry.pendingSince >= CREATION_HUNGER_HOLD_MS) {
+      this.log(`[needs] warning: ${hex(actorId)} has had character creation pending for ${Math.round((now - entry.pendingSince) / 60000)} minutes; hunger drains again`);
+      entry.pendingSince = -1;
+    }
+  }
+
+  // Fatigue always regenerates online; hunger waits while a pending creation holds it
+  private catchUp(entry: Online, now = Date.now()): void {
+    this.advance(entry.rec, now, true, entry.pendingSince <= 0);
+  }
+
+  private advance(rec: NeedsRecord, now: number, online: boolean, hunger = true): void {
     const ms = Math.max(0, now - rec.at);
-    if (online || this.hungerOffline) rec.hunger = clamp(rec.hunger + this.drainPerHour * ms / 3600000, 0, HUNGER_MAX);
+    if (hunger && (online || this.hungerOffline)) rec.hunger = clamp(rec.hunger + this.drainPerHour * ms / 3600000, 0, HUNGER_MAX);
     if (online || this.fatigueOffline) rec.fatigue = clamp(rec.fatigue + this.regenPerMinute * ms / 60000, 0, 1);
     if (rec.hunger >= this.stages[0]) rec.wellFed = false;
     rec.at = Math.max(rec.at, now);
