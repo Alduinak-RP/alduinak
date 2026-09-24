@@ -77,15 +77,24 @@ behaviour-graph events — no ESP required.**
   `finishOffStandUp` (default true) the victim stands up out of the kneel
   (`bleedOutStop`, on their own client through
   `RestraintService.standForPair` and on every copy) and, once the get-up
-  has settled, both play a random vanilla paired killmove for the weapon in
-  hand, none of them decapitating: one-handed (WEAP animation type 1-4, right hand first)
-  `pa_1HMKillMoveShortA-D` (IDLE F469A-F469D) and `ShortJ` (108A45), dual
-  wield `pa_1HMKillMoveDualWieldA` (F469F), greatsword (type 5)
-  `pa_2HMKillMoveStabA` (F4687); a battleaxe or warhammer (type 6) has no
-  loose non-decapitating killmove and plays the greatsword stab.
+  has settled, both play a random vanilla paired killmove from the pool of
+  the weapon type in hand, none of them decapitating. The type is the WEAP
+  animation type of the right hand, then the left: `sword` (1), `dagger`
+  (2), `axe` (3), `mace` (4), `greatsword` (5), `battleaxe` (6, warhammers
+  too), `dual` when both hands hold a 1-4, `unarmed` with empty hands. The
+  pools (`executionFinishers` in `docs_server_configuration_reference.md`
+  lays a table over them, one type at a time): sword `pa_1HMKillMoveShortA-D`
+  (IDLE F469A-F469D) and `ShortJ` (108A45); dagger, axe and mace the same
+  pool for now, since the engine runs them in the same 1HM state, until the
+  operator fills their own `pa_` ids; dual `pa_1HMKillMoveDualWieldA`
+  (F469F); greatsword `pa_2HMKillMoveStabA` (F4687); battleaxe none, so it
+  borrows the greatsword stab and logs `[execution] no battleaxe finisher,
+  using the greatsword stab`; unarmed none, refused like a bow. The server
+  logs `[execution] <killer> finishes off <victim> with <type> idle <id>`.
   `finishOffExtendedPool` adds the killmove tree records (`KillMoveShortB`,
-  `1HMKillMoveB-M`, `KillMove2HMStab` and the Update.esm slashes,
-  `KillMove2HWB`/`ChopKick`/`HeadButt` for type 6, the dual-wield slashes),
+  `1HMKillMoveB-M` for the one-handed types, `KillMove2HMStab` and the
+  Update.esm slashes, `KillMove2HWB`/`ChopKick`/`HeadButt` for the
+  battleaxe, the dual-wield slashes),
   whose own and parent conditions the engine may refuse: a probe, off until a
   test shows they play. The get-up is an animation-driven clip longer than
   any fixed wait, and a pair started while the victim's graph is still in it

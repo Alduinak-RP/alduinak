@@ -17,23 +17,36 @@ type Mp = any;
 // pa_KillMove1HMDecapBleedOut and pa_KillMove2HMDecapBleedOut (Skyrim.esm IDLE, no conditions), played on a kneeling victim
 const KILLMOVE_ONE_HANDED = 0xf465d;
 const KILLMOVE_TWO_HANDED = 0xf467f;
-// The held weapon by its WEAP DNAM animation type: 1-4 in one hand or in both, 5 greatsword, 6 battleaxe and warhammer
-type WeaponClass = "oneHanded" | "dual" | "twoHanded" | "twoHandedHeavy";
-// Loose Skyrim.esm paired killmoves without conditions, none decapitating; type 6 has none, so it borrows the greatsword stab
-const FINISHERS: Record<WeaponClass, number[]> = {
-  oneHanded: [0xf469a, 0xf469b, 0xf469c, 0xf469d, 0x108a45],
+// The held weapon by its WEAP DNAM animation type, dual when both hands hold a 1-4; empty hands are unarmed, a bow, staff or crossbow is no melee weapon
+type WeaponType = "sword" | "dagger" | "axe" | "mace" | "greatsword" | "battleaxe" | "unarmed" | "dual";
+const WEAPON_TYPES: Record<number, WeaponType> = { 1: "sword", 2: "dagger", 3: "axe", 4: "mace", 5: "greatsword", 6: "battleaxe" };
+type FinisherTable = Record<WeaponType, number[]>;
+// Loose Skyrim.esm paired killmoves without conditions, none decapitating: pa_1HMKillMoveShortA-D and ShortJ, pa_1HMKillMoveDualWieldA, pa_2HMKillMoveStabA
+// A dagger, axe or mace plays the sword pool (the same 1HM state) until the operator fills its own; a battleaxe borrows the greatsword stab. Overridable via "executionFinishers"
+const ONE_HANDED_FINISHERS = [0xf469a, 0xf469b, 0xf469c, 0xf469d, 0x108a45];
+const FINISHERS: FinisherTable = {
+  sword: ONE_HANDED_FINISHERS,
+  dagger: ONE_HANDED_FINISHERS,
+  axe: ONE_HANDED_FINISHERS,
+  mace: ONE_HANDED_FINISHERS,
   dual: [0xf469f],
-  twoHanded: [0xf4687],
-  twoHandedHeavy: [],
+  greatsword: [0xf4687],
+  battleaxe: [],
+  unarmed: [],
 };
 // pa_1HMKillMoveBleedOutKill (ENAM pa_KillingBlow, loose, non-decapitating), stabbed down into the kneeling victim; the finisher for every weapon when "finishOffStandUp" is false
 const KILLMOVE_KNEELING = 0xf469e;
 // Killmove tree records whose own or parent conditions the engine may refuse; added by "finishOffExtendedPool"
-const EXTENDED_FINISHERS: Record<WeaponClass, number[]> = {
-  oneHanded: [0x6440c, 0x5169f, 0x2ff92, 0x55706, 0x55707, 0x55708, 0x5570b, 0x5570c, 0x5570d],
+const ONE_HANDED_EXTENDED = [0x6440c, 0x5169f, 0x2ff92, 0x55706, 0x55707, 0x55708, 0x5570b, 0x5570c, 0x5570d];
+const EXTENDED_FINISHERS: FinisherTable = {
+  sword: ONE_HANDED_EXTENDED,
+  dagger: ONE_HANDED_EXTENDED,
+  axe: ONE_HANDED_EXTENDED,
+  mace: ONE_HANDED_EXTENDED,
   dual: [0x1bbc2, 0x0100082e, 0x0100082f],
-  twoHanded: [0xd3648, 0x01000828, 0x01000829, 0x0100082a],
-  twoHandedHeavy: [0x10d972, 0x01000824, 0x01000825],
+  greatsword: [0xd3648, 0x01000828, 0x01000829, 0x0100082a],
+  battleaxe: [0x10d972, 0x01000824, 0x01000825],
+  unarmed: [],
 };
 // The victim of a finish off or an execution dies when a participant's client reports the end of the pair, or at this cap. Overridable via "finishOffMaxMs"
 const DEFAULT_PAIR_MAX_MS = 9000;
@@ -78,6 +91,17 @@ interface Pair {
   done: () => void;
 }
 
+// A settings table { type: [idle form ids] } laid over the defaults, one weapon type at a time
+const finisherTableOf = (raw: unknown, defaults: FinisherTable): FinisherTable => {
+  const table = { ...defaults };
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  for (const type of Object.keys(table) as WeaponType[]) {
+    const ids = o[type];
+    if (Array.isArray(ids)) table[type] = ids.map((v) => toFormId(v, 0)).filter((id) => id > 0);
+  }
+  return table;
+};
+
 const offsetOf = (raw: unknown, fallback: Offset): Offset => {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const pick = (key: keyof Offset): number => typeof o[key] === "number" && Number.isFinite(o[key]) ? o[key] as number : fallback[key];
@@ -111,6 +135,7 @@ export class ExecutionSystem implements System {
     if (Number.isFinite(pairMaxMs) && pairMaxMs > 0) this.pairMaxMs = pairMaxMs;
     this.extendedPool = all?.["finishOffExtendedPool"] === true;
     this.standUp = all?.["finishOffStandUp"] !== false;
+    this.finishers = finisherTableOf(all?.["executionFinishers"], FINISHERS);
 
     this.capture.menuFlagProviders.push((requesterId, targetId) => ({
       finishOff: !this.finishOffRefusal(requesterId, targetId),
@@ -179,7 +204,8 @@ export class ExecutionSystem implements System {
     const mp = this.mp;
     const killerId = this.actorOf(userId);
     if (!killerId) return;
-    const idle = this.pickFinisher(killerId);
+    const held = this.weaponTypeOf(killerId);
+    const idle = this.pickFinisher(held);
     const refusal = this.finishOffRefusal(killerId, victimId) ||
       (idle ? "" : "You need a melee weapon in hand to finish them off.") ||
       (isWeaponDrawn(mp, killerId) ? "" : "Draw your weapon first.") ||
@@ -190,7 +216,7 @@ export class ExecutionSystem implements System {
     }
     this.playPair(killerId, victimId, idle, this.standUp, () => this.bleedout.completeHold(victimId, killerId));
     notifyActor(mp, victimId, `${nameShownTo(mp, victimId, killerId)} is finishing you off.`);
-    this.log(`[execution] ${hex(killerId)} finishes off ${hex(victimId)}`);
+    this.log(`[execution] ${hex(killerId)} finishes off ${hex(victimId)} with ${held} idle ${hex(idle)}`);
   }
 
   // Why the executor may not lead the prisoner to a block, "" when they may
@@ -408,24 +434,32 @@ export class ExecutionSystem implements System {
     if (now <= pair.until) pair.done();
   }
 
-  // A random finisher of the pool for the weapon in hand, 0 without a melee weapon; the kneeling stab when the victim is not stood up
-  private pickFinisher(actorId: number): number {
-    const held = this.weaponClassOf(actorId);
+  // A random finisher of the pool for the weapon in hand, 0 without a melee weapon; the one-handed kneeling stab when the victim is not stood up
+  private pickFinisher(held: WeaponType | ""): number {
     if (!held) return 0;
-    if (!this.standUp) return KILLMOVE_KNEELING;
-    let pool = this.extendedPool ? [...FINISHERS[held], ...EXTENDED_FINISHERS[held]] : FINISHERS[held];
-    if (!pool.length) pool = FINISHERS.twoHanded;
-    return pool[Math.floor(Math.random() * pool.length)];
+    if (!this.standUp) return held === "unarmed" ? 0 : KILLMOVE_KNEELING;
+    return this.pickFrom(this.finishers, held, this.extendedPool ? EXTENDED_FINISHERS : null);
+  }
+
+  // A random idle of the pool for the weapon type; a battleaxe without one borrows the greatsword stab, any other empty pool gives 0
+  private pickFrom(table: FinisherTable, held: WeaponType, extended: FinisherTable | null): number {
+    let pool = extended ? [...table[held], ...extended[held]] : table[held];
+    if (!pool.length && held === "battleaxe") {
+      this.log("[execution] no battleaxe finisher, using the greatsword stab");
+      pool = table.greatsword;
+    }
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 0;
   }
 
   // The bleedout killmove for the weapon in hand, 0 without a melee weapon
   private killMoveOf(actorId: number): number {
-    const held = this.weaponClassOf(actorId);
-    return held === "oneHanded" || held === "dual" ? KILLMOVE_ONE_HANDED : held ? KILLMOVE_TWO_HANDED : 0;
+    const held = this.weaponTypeOf(actorId);
+    if (!held || held === "unarmed") return 0;
+    return held === "greatsword" || held === "battleaxe" ? KILLMOVE_TWO_HANDED : KILLMOVE_ONE_HANDED;
   }
 
-  // By the melee weapon in hand, the right hand first; "" without one
-  private weaponClassOf(actorId: number): WeaponClass | "" {
+  // By the weapon in hand, the right hand first: a melee type, unarmed with empty hands, "" with a bow, staff or crossbow
+  private weaponTypeOf(actorId: number): WeaponType | "" {
     let entries: any[] = [];
     try { entries = this.mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return ""; }
     const animIn = (hand: "worn" | "wornLeft"): number =>
@@ -435,11 +469,9 @@ export class ExecutionSystem implements System {
     const left = animIn("wornLeft");
     if (oneHanded(right) && oneHanded(left)) return "dual";
     for (const anim of [right, left]) {
-      if (oneHanded(anim)) return "oneHanded";
-      if (anim === 5) return "twoHanded";
-      if (anim === 6) return "twoHandedHeavy";
+      if (WEAPON_TYPES[anim]) return WEAPON_TYPES[anim];
     }
-    return "";
+    return right < 0 && left < 0 ? "unarmed" : "";
   }
 
   // Alive, on their feet, hands free
@@ -465,6 +497,7 @@ export class ExecutionSystem implements System {
   private extendedPool = false;
   // The finish off stands the victim up for a standing killmove; off, the kneeling stab plays at once
   private standUp = true;
+  private finishers = FINISHERS;
   private nextCheckAt = 0;
   // prisonerId -> the block they kneel at
   private prisoners = new Map<number, Prisoner>();
