@@ -49,6 +49,8 @@ const REGISTRY_FILE = "./housing.json";
 
 // Vanilla key form; the name extra carries the credential.
 export const KEY_BASE_ID = 0x000db0e2;
+// Label of every key cut before keys were named, and of a cut from a client that sends no name
+const DEFAULT_KEY_LABEL = "Property Key";
 // The bracketed suffix of a key's name: TAG or TAG-serial, optionally /cut
 const KEY_CREDENTIAL = /\(([0-9A-F]+(?:-\d+)?)(?:\/\d+)?\)$/;
 // HearthFires BYOHMaterialLock; claiming needs one in the inventory.
@@ -372,7 +374,7 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "Only the owner cuts keys.");
       return;
     }
-    const label = this.cleanName(raw);
+    const label = typeof raw === "string" ? this.cleanName(raw) : DEFAULT_KEY_LABEL;
     if (!label) {
       this.notice(ctx, userId, "That name will not do.");
       return;
