@@ -81,8 +81,9 @@ Rules:
   checkboxes there (`emoteWheelHold`, `interactMenuHold`, both off) make the
   emote wheel and the interact key's player menu **hold-to-open**: the menu
   stays while the key is down and closes on release, and a released wheel key
-  plays the emote under the cursor. Hold mode is keyboard only: with a mouse
-  button bound the checkbox is disabled and the menu keeps toggling.
+  plays the emote under the cursor. The client polls the key in game while the
+  menu is open, so any keyboard key can be held; with a mouse button bound the
+  checkbox is disabled and the menu keeps toggling.
 - The two nametag toggles are saved with the other chat settings:
   **show player names** (off by default, draws the nametag
   over other players) and **show form ids** (off by default, the `ffxxxxxx`

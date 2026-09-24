@@ -32,6 +32,43 @@ export function closeFormMenu(sp: Sp, widgetId: number): void {
   sp.browser.setFocused(false);
 }
 
+interface HeldPress {
+  key: number;
+  claimUntil: number;
+  menus: { isOpen: () => boolean; onRelease: () => void }[];
+}
+
+// How long a menu may still claim the press that asked for it, for a server that answers late
+const HELD_CLAIM_MS = 2000;
+let heldPress: HeldPress | null = null;
+let heldPollOn = false;
+
+// Hold mode: the menu key just pressed is polled in game, which also sees keys and mouse buttons while a menu has focus; 0 disarms
+export function armHeldMenu(sp: Sp, controller: CombinedController, key: number): void {
+  if (!heldPollOn) {
+    heldPollOn = true;
+    controller.on("update", () => pollHeldPress(sp));
+  }
+  heldPress = key ? { key, claimUntil: Date.now() + HELD_CLAIM_MS, menus: [] } : null;
+}
+
+// Ties a menu opening from the armed press to its release
+export function claimHeldMenu(isOpen: () => boolean, onRelease: () => void): void {
+  const press = heldPress;
+  if (press && Date.now() <= press.claimUntil) press.menus.push({ isOpen, onRelease });
+}
+
+function pollHeldPress(sp: Sp): void {
+  const press = heldPress;
+  if (!press) return;
+  if (sp.Input.isKeyPressed(press.key)) {
+    if (!press.menus.length && Date.now() > press.claimUntil) heldPress = null;
+    return;
+  }
+  heldPress = null;
+  for (const menu of press.menus) if (menu.isOpen()) menu.onRelease();
+}
+
 // A front reload or the login widget reset (authService) drops every widget without a close message
 export function onWidgetsCleared(controller: CombinedController, fn: () => void): void {
   controller.emitter.on("browserWindowLoaded", fn);

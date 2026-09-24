@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode, domKeyCode } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHotkeyBlocked, isGameInputBlocked, buttonEventKeyCode, domKeyCode, armHeldMenu, claimHeldMenu } from "./widgetMenuUtil";
 import { RestraintService } from "./restraintService";
 import { SendInputsService } from "./sendInputsService";
 import { getPcInventory } from "./remoteServer";
@@ -142,7 +142,7 @@ const events = {
   close: 'emote:close',
   stop: 'emote:stop',
   key: 'emote:key',
-  keyUp: 'emote:keyup',
+  hover: 'emote:hover',
 };
 
 // Movement input breaks an active emote, matching how remote clones exit poses.
@@ -218,11 +218,6 @@ export class EmoteService extends ClientListener {
     if (e.isDown && this.activeEmote && CANCEL_KEYS.includes(code) && !isGameInputBlocked(this.sp, this.controller)) {
       this.stopActiveEmote();
     }
-    // A release the game still saw, before the wheel took focus, closes a held wheel
-    if (code === this.menuKey && e.isUp && this.menuOpen && this.holdMode) {
-      this.closeMenu();
-      return;
-    }
     if (code !== this.menuKey || !e.isDown || this.menuOpen) {
       return;
     }
@@ -255,9 +250,8 @@ export class EmoteService extends ClientListener {
       if (!this.holdMode && this.isMenuDomKey(e.arguments[1])) this.closeMenu();
       return;
     }
-    // Releasing a held wheel key plays the hovered emote, if any, and closes the wheel
-    if (key === events.keyUp) {
-      if (this.holdMode && this.isMenuDomKey(e.arguments[1])) this.playFromMenu(e.arguments[2]);
+    if (key === events.hover) {
+      this.hoveredAnim = typeof e.arguments[1] === "string" ? e.arguments[1] : "";
       return;
     }
     if (key === events.stop) {
@@ -463,6 +457,12 @@ export class EmoteService extends ClientListener {
 
   private openMenu(): void {
     this.menuOpen = true;
+    this.hoveredAnim = "";
+    // Releasing a held wheel key plays the hovered emote, if any, and closes the wheel
+    if (this.holdMode) {
+      armHeldMenu(this.sp, this.controller, this.menuKey);
+      claimHeldMenu(() => this.menuOpen, () => this.playFromMenu(this.hoveredAnim));
+    }
     openFormMenu(this.sp, this.emoteWidgetSetter, this.menuArgs(getPcInventory()), this.controller);
   }
 
@@ -538,6 +538,8 @@ export class EmoteService extends ClientListener {
   private menuOpen = false;
   // Held open instead of toggled; the release plays the hovered emote
   private holdMode = false;
+  // The emote slice under the cursor, as the held wheel reports it
+  private hoveredAnim = "";
   private activeEmote = "";
   private allowedAnims: Set<string>;
   private propAnims: Set<string>;
