@@ -70,13 +70,15 @@ export class PairedIdleService extends ClientListener {
     const ms = Number(content["ms"]);
     const seq = Number(content["seq"]) || 0;
     const standUp = content["standUp"] === true;
+    // An older server sends no kneel flag: its pairs without a stand-up are all on a kneeling victim
+    const kneel = typeof content["kneel"] === "boolean" ? content["kneel"] : !standUp;
     if (!attacker || !target || !idle || !(ms > 0)) return;
     // Native calls are unsafe in the packet handler
-    this.controller.once("update", () => this.start(attacker, target, idle, ms, seq, standUp));
+    this.controller.once("update", () => this.start(attacker, target, idle, ms, seq, standUp, kneel));
   }
 
-  // A kneeling victim plays at once; a standing pair waits for the stand-up to settle
-  private start(attackerRemoteId: number, targetRemoteId: number, idleId: number, ms: number, seq: number, standUp: boolean): void {
+  // A kneeling victim plays once the kneel is sure; a standing pair waits for the stand-up to settle; a standing victim plays at once
+  private start(attackerRemoteId: number, targetRemoteId: number, idleId: number, ms: number, seq: number, standUp: boolean, kneel: boolean): void {
     const attackerId = this.localIdOf(attackerRemoteId);
     const targetId = this.localIdOf(targetRemoteId);
     const attacker = this.actorOf(attackerId);
@@ -98,10 +100,15 @@ export class PairedIdleService extends ClientListener {
       else this.sp.Debug.sendAnimationEvent(target, BLEEDOUT_ANIM_STOP);
       pair.playAt = now + SETTLE_MIN_MS;
       pair.playBy = now + SETTLE_MAX_MS;
-    } else if (targetId === PLAYER_FORM_ID && restraint.currentPose !== BLEEDOUT_ANIM_START) {
+    } else if (kneel && targetId === PLAYER_FORM_ID && restraint.currentPose !== BLEEDOUT_ANIM_START) {
       // The reattach after a server move can swallow the kneel; it is sent again and the pair waits for it
       logToPlatformLog(this, `kneel missing at pair start, pose ${restraint.currentPose || "none"}`);
       restraint.reapplyPoses();
+      pair.playAt = pair.playBy = now + KNEEL_RESEND_MS;
+    } else if (kneel && targetId !== PLAYER_FORM_ID) {
+      // A copy rebuilt by the move onto the block stands until the next relayed kneel, so it is sent here and the pair waits for it
+      this.sp.Debug.sendAnimationEvent(target, BLEEDOUT_ANIM_START);
+      logToPlatformLog(this, `kneel re-sent to copy ${targetId.toString(16)} at pair start`);
       pair.playAt = pair.playBy = now + KNEEL_RESEND_MS;
     }
     this.pairs.push(pair);

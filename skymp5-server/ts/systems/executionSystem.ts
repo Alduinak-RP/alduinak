@@ -61,6 +61,7 @@ const BLOCK_REACH = 300;
 const DEFAULT_PRISONER_OFFSET: Offset = { forward: 0, right: 0, up: 0, yaw: 0 };
 // The vanilla headsman idles are furniture-state clips that never play on the ground, so the prisoner kneels in the bleedout pose the killmove is built for
 const PRISONER_KNEEL = "bleedOutStart";
+const PRISONER_STAND = "bleedOutStop";
 const STATE_PACKET = "executionState";
 // The pair beheads the prisoner on every client the moment it is sent, so nothing takes them off the block after that
 const AXE_FALLING = "The axe is already falling.";
@@ -318,6 +319,7 @@ export class ExecutionSystem implements System {
     }
     this.prisoners.set(prisonerId, { blockId, timers: [] });
     this.sendPose(prisonerId, PRISONER_KNEEL);
+    this.mirrorPose(prisonerId, PRISONER_KNEEL);
     notifyActor(mp, executorId, `You force ${nameShownTo(mp, executorId, prisonerId)} down onto the block.`);
     notifyActor(mp, prisonerId, `${nameShownTo(mp, prisonerId, executorId)} forces you down onto the block.`);
     this.log(`[execution] ${hex(executorId)} puts ${hex(prisonerId)} on block ${hex(blockId)}`);
@@ -366,11 +368,21 @@ export class ExecutionSystem implements System {
       this.mp.set(prisonerId, ON_BLOCK_PROP, null);
     } catch { /* form gone */ }
     this.sendPose(prisonerId, "");
+    this.mirrorPose(prisonerId, PRISONER_STAND);
     this.log(`[execution] ${hex(prisonerId)} left block ${hex(prisoner.blockId)}`);
   }
 
   private sendPose(prisonerId: number, pose: string): void {
     sendJson(this.mp, userOf(this.mp, prisonerId), { customPacketType: STATE_PACKET, pose });
+  }
+
+  // The parked-body pose path: every copy that streams in plays the event, so late viewers see the kneel; needs the native build that accepts lastAnimEvent
+  private mirrorPose(prisonerId: number, anim: string): void {
+    try {
+      this.mp.set(prisonerId, "lastAnimEvent", anim);
+    } catch (e) {
+      this.log(`[execution] mirroring ${anim} on ${hex(prisonerId)} failed: ${e}`);
+    }
   }
 
   // The nearest execution block within reach, 0 when there is none
@@ -506,10 +518,11 @@ export class ExecutionSystem implements System {
     return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 0;
   }
 
-  // The bleedout killmove for the weapon in hand, 0 without a melee weapon
+  // The bleedout killmove for the weapon in hand, 0 without a melee weapon; no 2HW decapitation exists, so a battleaxe borrows the greatsword clip
   private killMoveOf(actorId: number): number {
     const held = this.weaponTypeOf(actorId);
     if (!held || held === "unarmed") return 0;
+    if (held === "battleaxe") this.log("[execution] no battleaxe decapitation, using the greatsword clip");
     return held === "greatsword" || held === "battleaxe" ? KILLMOVE_TWO_HANDED : KILLMOVE_ONE_HANDED;
   }
 

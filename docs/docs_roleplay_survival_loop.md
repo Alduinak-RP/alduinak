@@ -106,7 +106,10 @@ behaviour-graph events — no ESP required.**
   victim stays kneeling and every weapon plays the one-handed
   `pa_1HMKillMoveBleedOutKill` (F469E, `pa_KillingBlow`, no decapitation,
   no variety; a two-hander stabs one-handed, no non-decapitating two-handed
-  bleedout record exists) in the packet's own update, the r13 shape. The
+  bleedout record exists) in the packet's own update on the victim's own
+  client, the r13 shape, and 1.2 s later on every other client, which sends
+  the kneel to its copy first (the execution's `kneel re-sent to copy`
+  rule; `unarmed` is refused here too). The
   victim's timer waits while the pair plays: each
   participant's client polls both actors (`bIsSynced`, `IsInKillMove`) and
   reports the end (`pairedIdleDone`, first report wins), a pair the graph
@@ -144,7 +147,11 @@ behaviour-graph events — no ESP required.**
   swallow the kneel sent around it, so `RestraintService.onTeleported` sends
   the held pose again 0.5 s after every server move of a posed player
   (`pose <pose> re-sent after teleport` in `skyrim-platform.log`); the
-  copies take it from the relayed event.
+  copies take it from the relayed event, and the server also writes the
+  kneel to the prisoner's `lastAnimEvent` (the parked-body pose path, the
+  native build that accepts it; `[execution] mirroring bleedOutStart on ...
+  failed` on an older one), so a copy that streams in later, or is rebuilt
+  by the move, kneels too; leaving the block writes `bleedOutStop` there.
   The vanilla headsman idles (`IdleExecutioneeIdleEnterInstant`,
   `IdleExecutionerChop` and their pair) are furniture-state clips with no
   own animation file: the engine only enters them by seating both actors in
@@ -156,11 +163,16 @@ behaviour-graph events — no ESP required.**
   moves the executioner (the pair aligns the two actors itself) and nothing
   waits, the r13 shape. A prisoner's client with no kneel recorded when the
   packet arrives sends it again and plays 1.2 s later (`kneel missing at
-  pair start`). The clips:
+  pair start`), and every other client sends `bleedOutStart` to its copy of
+  the prisoner and waits the same 1.2 s (`kneel re-sent to copy ... at pair
+  start`), since the bleedout pairs need the victim's graph in the bleedout
+  state on the client that plays them and a copy rebuilt by the move onto
+  the block may stand. The clips:
   `pa_KillMove1HMDecapBleedOut` (IDLE F465D) for one-handed and dual
   weapons, `pa_KillMove2HMDecapBleedOut` (F467F) for two-handed ones, the
   clips the finish off played in r13 and r14 (a battleaxe or warhammer plays
-  the greatsword clip). A beheading is the point of a block execution, and
+  the greatsword clip and the server logs `[execution] no battleaxe
+  decapitation, using the greatsword clip`). A beheading is the point of a block execution, and
   the respawn rebuilds the body. The prisoner dies when a participant's
   client reports the end of the pair, or at `finishOffMaxMs`, and goes to
   Sovngarde, the same PK as a finish off (`pk.log`, `pvp.log`, the
