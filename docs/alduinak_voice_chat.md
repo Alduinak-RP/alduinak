@@ -32,7 +32,8 @@ The integration described as "future work" below has been built:
   shows while PTT is held or the wheel moves; the choice persists across
   relaunches via `voice-settings-no-load`.
 - **Launcher**: "Voice Push-to-Talk" picker in Server Hotkeys; the hotkey-wipe
-  bug in `writeClientSettings` is fixed so rebinds survive launches.
+  bug in `writeClientSettings` is fixed so rebinds survive launches. The chat
+  settings Controls tab rebinds it in game too, and that override wins.
 
 Rollout order: (1) CI flatrim rebuild -> new SkyrimPlatform.dll into the client
 dist, (2) server manager "Build Client" (front + client logic + repackage),

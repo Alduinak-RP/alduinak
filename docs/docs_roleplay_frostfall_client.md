@@ -25,6 +25,13 @@ All menus render as `form` widgets and **preserve SkyMP's chat widget**
 
 Every `...KeyCode` setting also takes a mouse button as DxScanCode 256 + n
 (258 middle, 259 Mouse 4, 260 Mouse 5); the launcher's Settings tab captures them.
+The chat settings' Controls tab rebinds the same keys in game (plus the bounty
+board's `bountyBoardMenuKeyCode`, default `N`): an override stored under `keys`
+in `Data/Platform/PluginsNoLoad/chat-settings-no-load.js` wins over the
+launcher's value as soon as it is saved (`ChatService.applyChatSettings` pushes
+it into each service's setter); a missing or `0` entry falls back to the launcher
+key read at start, and "Use launcher defaults" clears them all. For the chat key
+the override replaces `T` and Enter stays.
 
 The interact key replaced the Housing (`H`, `housingMenuKeyCode`), Faction
 (`G`, `factionMenuKeyCode`), Personal (`U`, `personalMenuKeyCode`), Admin

@@ -31,7 +31,8 @@ const DEFAULT_MODES: VoiceMode[] = [
 export class VoiceService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.voiceKey = readMenuKeyCode(sp, "voicePushToTalkKeyCode", DxScanCode.V);
+    this.launcherPushToTalkKeyCode = readMenuKeyCode(sp, "voicePushToTalkKeyCode", DxScanCode.V);
+    this.voiceKey = this.launcherPushToTalkKeyCode;
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
@@ -42,10 +43,16 @@ export class VoiceService extends ClientListener {
     this.controller.emitter.on("connectionDenied", () => this.resetSession());
   }
 
-  private voiceKey: DxScanCode;
+  private voiceKey: number;
+  // The launcher's key, which an in-game rebind from the chat settings overrides
+  readonly launcherPushToTalkKeyCode: number;
 
   get pushToTalkKeyCode(): number {
     return this.voiceKey;
+  }
+
+  setPushToTalkKey(override: number): void {
+    this.voiceKey = override || this.launcherPushToTalkKeyCode;
   }
 
   private disabledByServer = false;

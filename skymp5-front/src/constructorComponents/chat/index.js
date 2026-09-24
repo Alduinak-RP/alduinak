@@ -20,7 +20,7 @@ const FOV_COMMAND = /^\/fov\s+(\d{2,3})$/i;
 const FOV_MIN = 70;
 const FOV_MAX = 170;
 
-// Chat settings (font size, transparency, lock, highlights, nametag toggles, field of view, window pos/size) persist via window.__alduinakChatSettings: the client injects saved values on mount and writes changes under Data/Platform since localStorage/CEF cache do not survive a relaunch
+// Chat settings (font size, transparency, lock, highlights, nametag toggles, field of view, key overrides, window pos/size) persist via window.__alduinakChatSettings: the client injects saved values on mount and writes changes under Data/Platform since localStorage/CEF cache do not survive a relaunch
 const loadChatSettings = () => {
   try { return window.__alduinakChatSettings || {}; }
   catch (e) { return {}; }
@@ -57,6 +57,9 @@ const Chat = (props) => {
   const [showPlayerNames, setShowPlayerNames] = useState(!freshNametags && saved.showPlayerNames === true);
   const [showFormIds, setShowFormIds] = useState(!freshNametags && saved.showFormIds === true);
   const [fov, setFov] = useState(saved.fov != null ? saved.fov : null);
+  // In-game key overrides; the client injects the launcher's keys as keysLauncher for the rows without one
+  const [keys, setKeys] = useState(saved.keys && typeof saved.keys === 'object' ? saved.keys : {});
+  const keysLauncher = saved.keysLauncher && typeof saved.keysLauncher === 'object' ? saved.keysLauncher : {};
   const [idle, setIdle] = useState(false);
   const idleTimerRef = useRef();
   const browserFocusedRef = useRef(false);
@@ -315,8 +318,8 @@ const Chat = (props) => {
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
     // Fov is saved once chat or the launcher supplies one; the client stamps it so a later launcher change wins
-    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds }, fov != null ? { fov } : {}));
-  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, fov]);
+    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, keys }, fov != null ? { fov } : {}));
+  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, fov, keys]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -483,6 +486,9 @@ const Chat = (props) => {
           setCustomHighlights={setCustomHighlights}
           fov={fov}
           setFov={setFov}
+          keys={keys}
+          setKeys={setKeys}
+          keysLauncher={keysLauncher}
           onBack={() => {
             setSettingsOpened(false);
             if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) {

@@ -71,7 +71,13 @@ Rules:
   only the input, tabs and handles fade after the delay; on, the messages fade
   with them and any mouse movement over the chat brings everything back), lock
   chat and highlight words. **Graphics / UI** holds the field of view and the
-  nametag toggles below.
+  nametag toggles below. **Controls** rebinds the server keys in game (emote
+  wheel, Interact / Menus, hide interface, free cursor, voice push-to-talk,
+  chat, bounty board): click a row, press a key or a middle/4/5 mouse button
+  (Esc cancels, Backspace returns the row to the launcher's key). A rebind is
+  saved as `keys.<setting name>` in the chat settings and wins over the
+  launcher's Server Hotkeys until **Use launcher defaults** clears every row;
+  the launcher itself is not changed and does not show in-game rebinds.
 - The two nametag toggles are saved with the other chat settings:
   **show player names** (off by default, draws the nametag
   over other players) and **show form ids** (off by default, the `ffxxxxxx`

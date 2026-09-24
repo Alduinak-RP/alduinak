@@ -111,7 +111,8 @@ export class PlayerActionService extends ClientListener {
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
-    this.interactKey = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
+    this.launcherInteractKeyCode = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
+    this.interactKey = this.launcherInteractKeyCode;
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -314,5 +315,12 @@ export class PlayerActionService extends ClientListener {
 
   get interactKeyCode(): number {
     return this.interactKey;
+  }
+
+  // The launcher's key, which an in-game rebind from the chat settings overrides
+  readonly launcherInteractKeyCode: number;
+
+  setInteractKey(override: number): void {
+    this.interactKey = override || this.launcherInteractKeyCode;
   }
 }

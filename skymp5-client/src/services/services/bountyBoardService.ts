@@ -76,7 +76,8 @@ export class BountyBoardService extends ClientListener {
     });
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
-    this.menuKey = readMenuKeyCode(this.sp, "bountyBoardMenuKeyCode", DxScanCode.N);
+    this.launcherMenuKeyCode = readMenuKeyCode(this.sp, "bountyBoardMenuKeyCode", DxScanCode.N);
+    this.menuKey = this.launcherMenuKeyCode;
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -185,6 +186,16 @@ export class BountyBoardService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
-  private menuKey: DxScanCode = DxScanCode.N;
+  private menuKey: number;
   private menuOpen = false;
+  // The launcher's key, which an in-game rebind from the chat settings overrides
+  readonly launcherMenuKeyCode: number;
+
+  get menuKeyCode(): number {
+    return this.menuKey;
+  }
+
+  setMenuKey(override: number): void {
+    this.menuKey = override || this.launcherMenuKeyCode;
+  }
 }

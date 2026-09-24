@@ -1,13 +1,28 @@
-import React, { useRef, useState, useLayoutEffect } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { SkyrimFrame } from '../../../components/SkyrimFrame/SkyrimFrame';
 import { SkyrimSlider } from '../../../components/SkyrimSlider/SkyrimSlider';
 import CheckBox from '../../checkbox/index';
+import { DOM_TO_DIK, MOUSE_TO_DIK, dikLabel } from '../../../utils/dxScanCodes';
 import './styles.scss';
 
 const SETTINGS_TABS = [
   { id: 'chat', label: 'Chat' },
   { id: 'ui', label: 'Graphics / UI' },
+  { id: 'controls', label: 'Controls' },
 ];
+
+// Rebindable keys: chat settings `keys` name (the launcher's skymp5-client setting) -> row label
+const KEY_ROWS: [string, string][] = [
+  ['emoteWheelKeyCode', 'Emote wheel'],
+  ['altInteractKeyCode', 'Interact / Menus'],
+  ['hideUiKeyCode', 'Hide interface'],
+  ['freeCursorKeyCode', 'Free cursor'],
+  ['voicePushToTalkKeyCode', 'Voice push-to-talk'],
+  ['chatFocusKeyCode', 'Chat'],
+  ['bountyBoardMenuKeyCode', 'Bounty board'],
+];
+
+export type KeyOverrides = Record<string, number>;
 
 const Settings = (props: {
   fontSize: number,
@@ -28,15 +43,59 @@ const Settings = (props: {
   setCustomHighlights: (value: string) => void,
   fov: number | null,
   setFov: (value: number) => void,
+  // In-game rebinds; a missing name uses the launcher's key
+  keys: KeyOverrides,
+  setKeys: (value: KeyOverrides) => void,
+  keysLauncher: KeyOverrides,
   onBack: () => void,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [frameHeight, setFrameHeight] = useState(520);
   const [tab, setTab] = useState(SETTINGS_TABS[0].id);
+  // The key row waiting for a press, if any
+  const [capturing, setCapturing] = useState('');
   // Auto-size the frame to its content so everything fits without a scrollbar.
   useLayoutEffect(() => {
     if (contentRef.current) setFrameHeight(Math.ceil(contentRef.current.scrollHeight) + 64);
   }, [tab]);
+
+  const keyOf = (name: string) => props.keys[name] || props.keysLauncher[name] || 0;
+
+  // Same capture as the launcher's Settings tab: Esc cancels, Backspace returns the row to the launcher's key
+  useEffect(() => {
+    if (!capturing) return;
+    const finish = (dik?: number) => {
+      setCapturing('');
+      if (dik === undefined) return;
+      const next = { ...props.keys };
+      if (dik) next[capturing] = dik;
+      else delete next[capturing];
+      props.setKeys(next);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.repeat) return;
+      if (e.code === 'Escape') return finish();
+      if (e.code === 'Backspace') return finish(0);
+      const entry = DOM_TO_DIK[e.code];
+      if (entry) finish(entry[0]);
+    };
+    const onMouse = (e: MouseEvent) => {
+      const entry = MOUSE_TO_DIK[e.button];
+      if (!entry) return finish();
+      e.preventDefault();
+      e.stopPropagation();
+      finish(entry[0]);
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    window.addEventListener('mouseup', onMouse, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onKey, { capture: true });
+      window.removeEventListener('mouseup', onMouse, { capture: true });
+    };
+  }, [capturing, props.keys]);
+
   return (
     <div className='chat-settings' style={{ height: `${frameHeight}px` }}>
       <button
@@ -82,6 +141,32 @@ const Settings = (props: {
           <SkyrimSlider text={'field of view'} name={'fov'} min={70} max={170} setValue={(value) => props.setFov(value)} sliderValue={props.fov ?? 80} marks={[70, 90, 110, 130, 150, 170]}/>
           <CheckBox text={'show player names'} initialValue={props.showPlayerNames} setChecked={props.setShowPlayerNames} disabled={false} />
           <CheckBox text={'show form ids'} initialValue={props.showFormIds} setChecked={props.setShowFormIds} disabled={false} />
+        </>}
+        {tab === 'controls' && <>
+          {KEY_ROWS.map(([name, label]) => (
+            <div key={name} className='chat-key-row'>
+              <span className='chat-key-label'>{label}</span>
+              <button
+                type='button'
+                className={`chat-settings-btn chat-key-btn ${capturing === name ? 'capturing' : ''}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setCapturing(name)}
+              >
+                {capturing === name ? 'Press a key...' : dikLabel(keyOf(name))}
+              </button>
+            </div>
+          ))}
+          <div className='chat-key-row'>
+            <span className='chat-key-label'>Esc cancels, Backspace resets a row</span>
+            <button
+              type='button'
+              className='chat-settings-btn'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => props.setKeys({})}
+            >
+              {'Use launcher defaults'}
+            </button>
+          </div>
         </>}
       </div>
       <SkyrimFrame width={512} height={frameHeight} header={false} name={'Settings'}/>

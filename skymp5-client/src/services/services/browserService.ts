@@ -9,6 +9,9 @@ export const unfocusEventString = `window.dispatchEvent(new CustomEvent('skymp5-
 export const focusEventString = `window.dispatchEvent(new CustomEvent('skymp5-client:browserFocused', {}))`;
 const chatKeyFocusEventString = `window.dispatchEvent(new CustomEvent('skymp5-client:chatKeyFocused', {}))`;
 
+// The dedicated chat key of a chatFocusKeyCodes list, or Enter when only Enter focuses chat
+const chatKeyOf = (keys: number[]): number => keys.find((key) => key > 0 && key !== DxScanCode.Enter) ?? DxScanCode.Enter;
+
 export class BrowserService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -16,19 +19,22 @@ export class BrowserService extends ClientListener {
     this.sp.browser.setVisible(false);
 
     // Key bindings are configurable from the launcher's client settings
-    this.hideUiKey = readMenuKeyCode(this.sp, "hideUiKeyCode", DxScanCode.F1);
-    this.freeCursorKey = readMenuKeyCode(this.sp, "freeCursorKeyCode", DxScanCode.F6);
+    this.launcherHideUiKeyCode = readMenuKeyCode(this.sp, "hideUiKeyCode", DxScanCode.F1);
+    this.launcherFreeCursorKeyCode = readMenuKeyCode(this.sp, "freeCursorKeyCode", DxScanCode.F6);
     try {
       const settings = this.sp.settings["skymp5-client"] as any;
       if (settings && Array.isArray(settings["chatFocusKeyCodes"])) {
         const codes = settings["chatFocusKeyCodes"].filter((c: unknown) => typeof c === "number");
         if (codes.length > 0) {
-          this.chatFocusKeys = codes as DxScanCode[];
+          this.launcherChatFocusKeys = codes as DxScanCode[];
         }
       }
     } catch {
       // fall back to defaults
     }
+    this.hideUiKey = this.launcherHideUiKeyCode;
+    this.freeCursorKey = this.launcherFreeCursorKeyCode;
+    this.chatFocusKeys = this.launcherChatFocusKeys;
 
     this.controller.emitter.on("queryKeyCodeBindings", (e) => this.onQueryKeyCodeBindings(e));
     // A front reload must never leave the player with a hidden interface
@@ -151,9 +157,13 @@ export class BrowserService extends ClientListener {
   private badMenusOpen = new Set<string>();
   private uiHidden = false;
 
-  private hideUiKey: DxScanCode = DxScanCode.F1;
-  private freeCursorKey: DxScanCode = DxScanCode.F6;
-  private chatFocusKeys: DxScanCode[] = [DxScanCode.Enter, DxScanCode.T];
+  private hideUiKey: number;
+  private freeCursorKey: number;
+  private chatFocusKeys: number[];
+  // The launcher's keys, which in-game rebinds from the chat settings override
+  readonly launcherHideUiKeyCode: number;
+  readonly launcherFreeCursorKeyCode: number;
+  private launcherChatFocusKeys: number[] = [DxScanCode.Enter, DxScanCode.T];
 
   get hideUiKeyCode(): number {
     return this.hideUiKey;
@@ -165,7 +175,24 @@ export class BrowserService extends ClientListener {
 
   // The dedicated chat key, or Enter when only Enter focuses chat
   get chatKeyCode(): number {
-    return this.chatFocusKeys.find((key) => key > 0 && key !== DxScanCode.Enter) ?? DxScanCode.Enter;
+    return chatKeyOf(this.chatFocusKeys);
+  }
+
+  get launcherChatKeyCode(): number {
+    return chatKeyOf(this.launcherChatFocusKeys);
+  }
+
+  setHideUiKey(override: number): void {
+    this.hideUiKey = override || this.launcherHideUiKeyCode;
+  }
+
+  setFreeCursorKey(override: number): void {
+    this.freeCursorKey = override || this.launcherFreeCursorKeyCode;
+  }
+
+  // Enter always focuses chat next to the rebound key
+  setChatKey(override: number): void {
+    this.chatFocusKeys = override ? [DxScanCode.Enter, override] : this.launcherChatFocusKeys;
   }
 
   private readonly badMenus: Menu[] = [

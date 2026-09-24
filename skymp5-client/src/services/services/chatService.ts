@@ -5,6 +5,11 @@ import { MsgType } from "../../messages";
 import { FormView, getScreenResolution } from "../../view/formView";
 import { FovSettingsService } from "./fovSettingsService";
 import { readClientSettingNumber } from "./widgetMenuUtil";
+import { EmoteService } from "./emoteService";
+import { PlayerActionService } from "./playerActionService";
+import { BrowserService } from "./browserService";
+import { VoiceService } from "./voiceService";
+import { BountyBoardService } from "./bountyBoardService";
 
 declare const window: any;
 
@@ -353,17 +358,30 @@ export class ChatService extends ClientListener {
     try {
       // @ts-expect-error (TODO: Remove in 2.10.0)
       const data = this.sp.getPluginSourceCode(this.pluginChatSettingsName, "PluginsNoLoad");
-      if (!data) return JSON.stringify({ fov: FovSettingsService.currentFov(this.sp) ?? undefined });
-      const parsed = JSON.parse(data.slice(2));
+      const parsed = data ? JSON.parse(data.slice(2)) : {};
       if (!parsed || typeof parsed !== "object") return "{}";
-      this.applyChatSettings(parsed);
-      return JSON.stringify({ ...parsed, fov: FovSettingsService.currentFov(this.sp) ?? undefined });
+      if (data) this.applyChatSettings(parsed);
+      return JSON.stringify({ ...parsed, fov: FovSettingsService.currentFov(this.sp) ?? undefined, keysLauncher: this.launcherKeys() });
     } catch (e) {
       return "{}";
     }
   }
 
-  // Nametag toggles and the FOV live in the chat settings JSON; no showPlayerNames key means both toggles are off
+  // The launcher's keys by chat settings name, shown on the Controls rows that have no override
+  private launcherKeys(): Record<string, number> {
+    const browser = this.controller.lookupListener(BrowserService);
+    return {
+      emoteWheelKeyCode: this.controller.lookupListener(EmoteService).launcherMenuKeyCode,
+      altInteractKeyCode: this.controller.lookupListener(PlayerActionService).launcherInteractKeyCode,
+      hideUiKeyCode: browser.launcherHideUiKeyCode,
+      freeCursorKeyCode: browser.launcherFreeCursorKeyCode,
+      voicePushToTalkKeyCode: this.controller.lookupListener(VoiceService).launcherPushToTalkKeyCode,
+      chatFocusKeyCode: browser.launcherChatKeyCode,
+      bountyBoardMenuKeyCode: this.controller.lookupListener(BountyBoardService).launcherMenuKeyCode,
+    };
+  }
+
+  // Nametag toggles, the FOV and the key overrides live in the chat settings JSON; no showPlayerNames key means both toggles are off
   private applyChatSettings(parsed: Record<string, unknown>): void {
     const fresh = parsed["showPlayerNames"] == null;
     FormView.isDisplayingNicknames = parsed["showPlayerNames"] === true;
@@ -372,6 +390,17 @@ export class ChatService extends ClientListener {
     const launcherFov = readClientSettingNumber(this.sp, "fov", 0);
     if (launcherFov > 0 && parsed["fovLauncher"] !== launcherFov) delete parsed["fov"];
     FovSettingsService.setChatFov(typeof parsed["fov"] === "number" ? parsed["fov"] : null);
+    // A missing or 0 override keeps the launcher's key
+    const keys = (parsed["keys"] && typeof parsed["keys"] === "object" ? parsed["keys"] : {}) as Record<string, unknown>;
+    const key = (name: string) => (typeof keys[name] === "number" ? keys[name] as number : 0);
+    this.controller.lookupListener(EmoteService).setMenuKey(key("emoteWheelKeyCode"));
+    this.controller.lookupListener(PlayerActionService).setInteractKey(key("altInteractKeyCode"));
+    const browser = this.controller.lookupListener(BrowserService);
+    browser.setHideUiKey(key("hideUiKeyCode"));
+    browser.setFreeCursorKey(key("freeCursorKeyCode"));
+    browser.setChatKey(key("chatFocusKeyCode"));
+    this.controller.lookupListener(VoiceService).setPushToTalkKey(key("voicePushToTalkKeyCode"));
+    this.controller.lookupListener(BountyBoardService).setMenuKey(key("bountyBoardMenuKeyCode"));
   }
 
   // Persist settings sent from the chat UI to disk so they survive a relaunch.
@@ -381,6 +410,7 @@ export class ChatService extends ClientListener {
       const parsed = JSON.parse(json);
       if (!parsed || typeof parsed !== "object") return;
       delete parsed["hidePlayerNames"];
+      delete parsed["keysLauncher"];
       parsed["fovLauncher"] = readClientSettingNumber(this.sp, "fov", 0);
       this.applyChatSettings(parsed);
       this.sp.writePlugin(

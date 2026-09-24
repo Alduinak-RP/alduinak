@@ -72,6 +72,25 @@
   .checkbox {
     zoom: 0.5;
   }
+  .chat-key-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'Futura Condensed', Din-pro;
+    font-weight: bold;
+    color: #fafafa;
+    .chat-key-label {
+      font-size: 16px;
+      opacity: 0.8;
+    }
+    .chat-key-btn {
+      min-width: 120px;
+      &.capturing {
+        background: rgba(120, 30, 28, 0.75);
+      }
+    }
+  }
   .chat-highlights {
     display: flex;
     flex-direction: column;

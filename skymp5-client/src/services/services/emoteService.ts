@@ -166,7 +166,8 @@ export class EmoteService extends ClientListener {
     this.controller.emitter.on("browserWindowLoaded", () => { this.menuOpen = false; });
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
 
-    this.menuKey = readMenuKeyCode(this.sp, "emoteWheelKeyCode", DxScanCode.B);
+    this.launcherMenuKeyCode = readMenuKeyCode(this.sp, "emoteWheelKeyCode", DxScanCode.B);
+    this.menuKey = this.launcherMenuKeyCode;
 
     this.allowedAnims = new Set<string>();
     this.propAnims = new Set<string>();
@@ -494,7 +495,7 @@ export class EmoteService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
-  private menuKey: DxScanCode = DxScanCode.B;
+  private menuKey: number;
   private menuOpen = false;
   private activeEmote = "";
   private allowedAnims: Set<string>;
@@ -509,5 +510,12 @@ export class EmoteService extends ClientListener {
 
   get menuKeyCode(): number {
     return this.menuKey;
+  }
+
+  // The launcher's key, which an in-game rebind from the chat settings overrides
+  readonly launcherMenuKeyCode: number;
+
+  setMenuKey(override: number): void {
+    this.menuKey = override || this.launcherMenuKeyCode;
   }
 }
