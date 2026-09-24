@@ -22,6 +22,12 @@ const KEY_ROWS: [string, string][] = [
   ['bountyBoardMenuKeyCode', 'Bounty board'],
 ];
 
+// The launcher's CLIENT_FIXED_KEYS (skymp5-launcher renderer.js) without the bounty board, which is a row here
+const CLIENT_FIXED_KEYS: Record<number, string> = {
+  1: 'menu close', 15: 'game menu', 28: 'Chat',
+  17: 'emote cancel', 30: 'emote cancel', 31: 'emote cancel', 32: 'emote cancel', 57: 'emote cancel', 19: 'emote cancel',
+};
+
 export type KeyOverrides = Record<string, number>;
 
 const Settings = (props: {
@@ -62,7 +68,7 @@ const Settings = (props: {
   // Auto-size the frame to its content so everything fits without a scrollbar.
   useLayoutEffect(() => {
     if (contentRef.current) setFrameHeight(Math.ceil(contentRef.current.scrollHeight) + 64);
-  }, [tab]);
+  }, [tab, props.keys]);
 
   const keyOf = (name: string, keys = props.keys) => keys[name] || props.keysLauncher[name] || 0;
   const noHold = (name: string, keys = props.keys) => !canHold(keyOf(name, keys));
@@ -107,6 +113,17 @@ const Settings = (props: {
       window.removeEventListener('mouseup', onMouse, { capture: true });
     };
   }, [capturing, props.keys]);
+
+  // Same warning as the launcher's showHotkeyConflict; shared keys still save
+  const uses = new Map<number, Set<string>>();
+  for (const [name, label] of KEY_ROWS) {
+    const code = keyOf(name);
+    if (!code) continue;
+    if (!uses.has(code)) uses.set(code, new Set(CLIENT_FIXED_KEYS[code] ? [CLIENT_FIXED_KEYS[code]] : []));
+    uses.get(code)!.add(label);
+  }
+  const shared = [...uses].filter(([, names]) => names.size > 1).map(([code, names]) => `${dikLabel(code)} (${[...names].join(', ')})`);
+  const sharedWarning = shared.length ? `Each of these keys does more than one thing on the same press: ${shared.join('; ')}.` : '';
 
   return (
     <div className='chat-settings' style={{ height: `${frameHeight}px` }}>
@@ -181,6 +198,7 @@ const Settings = (props: {
               {'Use launcher defaults'}
             </button>
           </div>
+          {sharedWarning && <div className='chat-key-warning'>{sharedWarning}</div>}
         </>}
       </div>
       <SkyrimFrame width={512} height={frameHeight} header={false} name={'Settings'}/>
