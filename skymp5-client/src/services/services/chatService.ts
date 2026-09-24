@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
-import { BrowserMessageEvent, DxScanCode } from "skyrimPlatform";
+import { BrowserMessageEvent } from "skyrimPlatform";
 import { MsgType } from "../../messages";
 import { FormView, getScreenResolution } from "../../view/formView";
 import { FovSettingsService } from "./fovSettingsService";
@@ -397,9 +397,8 @@ export class ChatService extends ClientListener {
     const playerAction = this.controller.lookupListener(PlayerActionService);
     emote.setMenuKey(key("emoteWheelKeyCode"));
     playerAction.setInteractKey(key("altInteractKeyCode"));
-    // Hold-to-open is keyboard only: the focused menu forwards key releases, not mouse buttons
-    emote.setHoldMode(parsed["emoteWheelHold"] === true && emote.menuKeyCode < DxScanCode.LeftMouseButton);
-    playerAction.setHoldMode(parsed["interactMenuHold"] === true && playerAction.interactKeyCode < DxScanCode.LeftMouseButton);
+    emote.setHoldMode(parsed["emoteWheelHold"] === true);
+    playerAction.setHoldMode(parsed["interactMenuHold"] === true);
     const browser = this.controller.lookupListener(BrowserService);
     browser.setHideUiKey(key("hideUiKeyCode"));
     browser.setFreeCursorKey(key("freeCursorKeyCode"));

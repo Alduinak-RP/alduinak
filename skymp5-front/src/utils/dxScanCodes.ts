@@ -36,13 +36,10 @@ export const DOM_TO_DIK: Record<string, [number, string]> = {
 // MouseEvent.button -> [DxScanCode, label]; left and right stay attack and block, so they cancel a capture
 export const MOUSE_TO_DIK: Record<number, [number, string]> = { 1: [258, 'Middle Mouse'], 3: [259, 'Mouse 4'], 4: [260, 'Mouse 5'] };
 
-// Mouse buttons are DxScanCode 256 + n
-export const FIRST_MOUSE_DIK = 256;
-
 const DIK_LABELS: Record<number, string> = { 256: 'Left Mouse', 257: 'Right Mouse', 261: 'Mouse 6', 262: 'Mouse 7', 263: 'Mouse 8' };
 for (const [dik, label] of [...Object.values(DOM_TO_DIK), ...Object.values(MOUSE_TO_DIK)]) DIK_LABELS[dik] = label;
 
 export const dikLabel = (code: number): string => DIK_LABELS[code] || `0x${code.toString(16)}`;
 
-// A menu key can only be held when the browser sees its release, which needs a KeyboardEvent.code in the table
-export const canHold = (code: number): boolean => Object.values(DOM_TO_DIK).some(([dik]) => dik === code);
+// The client polls a held menu key in game, so any bound key or mouse button can be held
+export const canHold = (code: number): boolean => code > 0;

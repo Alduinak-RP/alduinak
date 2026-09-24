@@ -83,8 +83,8 @@ Rules:
   Personal, housing, pet and the bounty board strongbox) **hold-to-open**: the menu
   stays while the key is down and closes on release, and a released wheel key
   plays the emote under the cursor. The client polls the key in game while the
-  menu is open, so any keyboard key can be held; with a mouse button bound the
-  checkbox is disabled and the menu keeps toggling.
+  menu is open, so any key or mouse button can be held; only an unbound key
+  disables the checkbox.
 - The two nametag toggles are saved with the other chat settings:
   **show player names** (off by default, draws the nametag
   over other players) and **show form ids** (off by default, the `ffxxxxxx`

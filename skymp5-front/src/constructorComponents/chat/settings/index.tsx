@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { SkyrimFrame } from '../../../components/SkyrimFrame/SkyrimFrame';
 import { SkyrimSlider } from '../../../components/SkyrimSlider/SkyrimSlider';
 import CheckBox from '../../checkbox/index';
-import { DOM_TO_DIK, MOUSE_TO_DIK, FIRST_MOUSE_DIK, dikLabel, canHold } from '../../../utils/dxScanCodes';
+import { DOM_TO_DIK, MOUSE_TO_DIK, dikLabel, canHold } from '../../../utils/dxScanCodes';
 import './styles.scss';
 
 const SETTINGS_TABS = [
@@ -47,7 +47,7 @@ const Settings = (props: {
   keys: KeyOverrides,
   setKeys: (value: KeyOverrides) => void,
   keysLauncher: KeyOverrides,
-  // Hold the key to keep the menu open instead of toggling it; keyboard keys only
+  // Hold the key to keep the menu open instead of toggling it
   emoteWheelHold: boolean,
   setEmoteWheelHold: (value: boolean) => void,
   interactMenuHold: boolean,
@@ -65,9 +65,8 @@ const Settings = (props: {
   }, [tab]);
 
   const keyOf = (name: string, keys = props.keys) => keys[name] || props.keysLauncher[name] || 0;
-  const isMouse = (name: string, keys = props.keys) => keyOf(name, keys) >= FIRST_MOUSE_DIK;
   const noHold = (name: string, keys = props.keys) => !canHold(keyOf(name, keys));
-  // A menu bound to a mouse button or a key without a browser code cannot be held open, so its hold option is dropped with the rebind
+  // An unbound menu key cannot be held, so its hold option is dropped with the rebind
   const applyKeys = (next: KeyOverrides) => {
     props.setKeys(next);
     if (noHold('emoteWheelKeyCode', next)) props.setEmoteWheelHold(false);
