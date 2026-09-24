@@ -732,22 +732,37 @@ static class Steps
         }
     }
 
-    // ---- leveled items: the NPC loot lists the server rolls, re-weighted, trimmed or topped up ------------------------
+    // ---- leveled items: the NPC loot lists the server rolls, re-weighted, trimmed, topped up or made anew ---------------
     public static void LeveledItems(PatchContext c)
     {
         foreach (var e in c.Spec["leveledItems"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
         {
             var edid = e["list"]!.GetValue<string>();
-            if (!c.TryWinning<ILeveledItemGetter>(edid, out var winning)) { c.Error($"leveled items: list '{edid}' not found"); continue; }
-            // The server reads a list with a chance-none global as always empty
-            if (!winning.Global.IsNull) { c.Error($"leveled items: {edid} takes its chance from a global, use chanceNone instead"); continue; }
-            var rec = c.Override(c.Mod.LeveledItems, winning);
+            LeveledItem rec;
+            if (e["new"]?.GetValue<bool>() == true)
+            {
+                // A pinned id keeps the list out of the block a hotfix run allocates in order, like a new recipe
+                rec = c.OwnOrNew(c.Mod.LeveledItems, edid, formId: e["formId"] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null);
+            }
+            else
+            {
+                if (!c.TryWinning<ILeveledItemGetter>(edid, out var winning)) { c.Error($"leveled items: list '{edid}' not found"); continue; }
+                // The server reads a list with a chance-none global as always empty
+                if (!winning.Global.IsNull) { c.Error($"leveled items: {edid} takes its chance from a global, use chanceNone instead"); continue; }
+                rec = c.Override(c.Mod.LeveledItems, winning);
+            }
             rec.Entries ??= new ExtendedList<LeveledItemEntry>();
             var changes = new List<string>();
             if (e["chanceNone"] is JsonNode chance)
             {
                 rec.ChanceNone = new Percent(chance.GetValue<int>() / 100.0);
                 changes.Add($"chance none {chance.GetValue<int>()}%");
+            }
+            // Without UseAll the server takes one random entry of the list
+            if (e["useAll"] is JsonNode useAll)
+            {
+                rec.Flags = useAll.GetValue<bool>() ? rec.Flags | LeveledItem.Flag.UseAll : rec.Flags & ~LeveledItem.Flag.UseAll;
+                changes.Add(useAll.GetValue<bool>() ? "use all" : "one entry");
             }
             foreach (var item in Edids(c, e["remove"]))
             {
@@ -768,7 +783,14 @@ static class Steps
                 rec.Entries.Add(new LeveledItemEntry { Data = data });
                 changes.Add($"+{count}x {item}");
             }
-            c.Note($"Leveled list {edid} ({winning.FormKey}): {(changes.Count > 0 ? string.Join(", ", changes) : "unchanged")}");
+            // The server reads the death item off the NPC_ the UseTraits template walk stops at, so name that record
+            foreach (var npc in Edids(c, e["npcs"]))
+            {
+                if (!c.TryWinning<INpcGetter>(npc, out var baseNpc)) { c.Error($"leveled items: {edid}: npc '{npc}' not found"); continue; }
+                c.Override(c.Mod.Npcs, baseNpc).DeathItem.SetTo(rec.FormKey);
+                changes.Add($"death item of {npc}");
+            }
+            c.Note($"Leveled list {edid} ({rec.FormKey}): {(changes.Count > 0 ? string.Join(", ", changes) : "unchanged")}");
         }
     }
 

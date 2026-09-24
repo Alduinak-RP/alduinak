@@ -112,6 +112,7 @@ def spec_overrides(spec):
     enchs = {e['enchantment'].lower() for e in s.get('enchantmentMagnitudes', [])}
     named = {('RACE', r.lower()) for r in s.get('races', {}).get('races', [])} | {('HDPT', p.lower()) for h in s.get('headParts', []) for p in h['parts']}
     named |= {('LVLI', e['list'].lower()) for e in s.get('leveledItems', [])}
+    named |= {('NPC_', n.lower()) for e in s.get('leveledItems', []) for n in e.get('npcs', [])}
     # The overrides section: items, recipes, foods and quests by form key, own placed references by editor id
     o = s.get('overrides', {})
     keyed = {('MISC', m['item'].split(':', 1)[1].lower(), int(m['item'].split(':', 1)[0], 16)) for m in o.get('misc', [])}
