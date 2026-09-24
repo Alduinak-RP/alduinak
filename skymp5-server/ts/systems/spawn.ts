@@ -7,7 +7,7 @@ import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
 import { REALMS, afterlifeOf, isFallen, readMaxCharacters } from "./afterlifeSystem";
-import { chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
+import { GOLD_BASE_ID, STARTER_GOLD_PROP, chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
 import { isOutsideBorder, insideSpot } from "./worldBorder";
 
@@ -408,10 +408,13 @@ export class Spawn implements System {
     const key = `${profileId}:${slot}`;
     const granted = this.loadStarterGrants();
     const items = granted[key]
-      ? this.startingItems.filter(e => e.baseId !== 0x0000000f)
+      ? this.startingItems.filter(e => e.baseId !== GOLD_BASE_ID)
       : this.startingItems;
-    try { mp.set(actorId, "inventory", { entries: items.map(e => ({ ...e })) }); }
-    catch { /* form vanished */ }
+    const gold = items.reduce((n, e) => (e.baseId === GOLD_BASE_ID ? n + e.count : n), 0);
+    try {
+      mp.set(actorId, "inventory", { entries: items.map(e => ({ ...e })) });
+      if (gold > 0) mp.set(actorId, STARTER_GOLD_PROP, { count: gold, at: Date.now() });
+    } catch { /* form vanished */ }
     if (!granted[key]) {
       granted[key] = true;
       try { fs.writeFileSync(STARTER_GRANTS_FILE, JSON.stringify(granted)); }

@@ -67,7 +67,11 @@ defined in `PROFESSIONS` in `masterySystem.ts`; edit them there and the menu fol
 A character's first craft comes with a starting kit, `DEFAULT_KITS` in
 `masterySystem.ts` (Skyrim.esm items) plus 50 gold (`DEFAULT_KIT_GOLD`,
 `masteryKitGold` in the settings, `0` for none), the only gold a new character
-gets, since the spawn kit is the clothes alone:
+gets, since the spawn kit is the clothes alone. When `startingItems` does list
+gold, a character that received it at spawn is marked `private.starterGold`
+`{ count, at }` and its kit comes without the gold (the kit marker records
+`gold: 0` and the log line adds "(starter gold came at spawn)"), so every
+character starts with one 50:
 
 | Profession | Kit |
 |---|---|
@@ -96,8 +100,13 @@ log names any kit item missing from the load order.
 Characters whose kit came before it carried gold can be settled once with
 `masteryKitGoldSince` (an ISO date or epoch ms): every character created at or
 after that moment (`private.startLocation.at`, else `private.professionKit.at`)
-that holds a profession, whose kit marker has no `gold` field and that carries no
-`private.professionKitGold` marker receives `masteryKitGold` gold. A character
+that holds a profession, whose kit marker has no `gold` field and that carries
+neither a `private.professionKitGold` nor a `private.starterGold` marker receives
+`masteryKitGold` gold. Characters created before `private.starterGold` existed
+carry no marker even when they got the spawn gold (the starter-grants ledger
+records the profile and slot, not the character, and deleted characters are
+not loaded), so a cutoff before that deploy can still pay them a second 50. A
+character
 still owed its kit is left to the kit itself, which now carries the gold. The
 pass runs at boot over every player character, offline ones through an inventory
 merge, and again about five seconds after a login, where the player gets the

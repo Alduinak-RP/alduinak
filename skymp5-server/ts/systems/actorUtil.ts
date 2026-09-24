@@ -42,6 +42,17 @@ export const baseIdOf = (mp: Mp, actorId: number): number => {
 
 export const GOLD_BASE_ID = 0x0000000f;
 
+// Set on a character whose starting items carried gold, { count, at }; its profession kit then comes without gold
+export const STARTER_GOLD_PROP = "private.starterGold";
+
+export const hadStarterGold = (mp: Mp, actorId: number): boolean => {
+  try {
+    return !!mp.get(actorId, STARTER_GOLD_PROP);
+  } catch {
+    return false;
+  }
+};
+
 // Record type of a reference's base ("DOOR", "FURN"...), "" when unknown
 export const baseTypeOf = (mp: Mp, refId: number): string => {
   try {
