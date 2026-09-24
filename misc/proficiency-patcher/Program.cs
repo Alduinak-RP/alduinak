@@ -447,6 +447,8 @@ static class Steps
                 if (!furn.Keywords.Any(x => x.FormKey == kw)) furn.Keywords.Add(kw.ToLink<IKeywordGetter>());
                 c.Note($"Crafting station {edid}: crafting menu with keyword {kwEdid}");
             }
+            foreach (var p in s["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+                PlaceOwn(c, p, "crafting station");
         }
     }
 
@@ -956,29 +958,7 @@ static class Steps
         if (c.Spec["world"] is not JsonObject w) return;
         var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
         foreach (var p in w["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
-        {
-            var edid = p["edid"]!.GetValue<string>();
-            var cellKey = FormKey.Factory(p["cell"]!.GetValue<string>());
-            if (!cache.TryResolveContext<ICell, ICellGetter>(cellKey, out var cellCtx)) { c.Error($"world: cell {cellKey} not found"); continue; }
-            var name = p["base"]!.GetValue<string>();
-            // An editor id names one of the plugin's own records, a form key one of the load order's
-            var baseKey = name.Contains(':') ? FormKey.Factory(name) : c.KeyOf<IMajorRecordGetter>(name);
-            if (name.Contains(':') && !cache.TryResolve<IMajorRecordGetter>(baseKey, out _)) { c.Error($"world: base object {name} not found"); continue; }
-            var id = Convert.ToUInt32(p["formId"]!.GetValue<string>(), 16);
-            var cell = cellCtx.GetOrAddAsOverride(c.Mod);
-            var placed = c.OwnOrNew(edid, () =>
-            {
-                var key = new FormKey(c.Key, id);
-                if (c.Mod.EnumerateMajorRecords().Any(r => r.FormKey == key)) throw new SpecException($"world: '{edid}' wants the pinned id {key}, which another record already holds");
-                var r = new PlacedObject(key, SkyrimRelease.SkyrimSE) { EditorID = edid };
-                cell.Temporary.Add(r);
-                return r;
-            });
-            placed.Base.SetTo(baseKey);
-            placed.Placement = new Placement { Position = Vec3(p["pos"]), Rotation = Vec3(p["rot"]) };
-            if (p["scale"] != null) placed.Scale = p["scale"]!.GetValue<float>();
-            c.Note($"World reference {edid} {placed.FormKey}: {c.EdidOf(baseKey)} in cell {cellKey} at {placed.Placement.Position}");
-        }
+            PlaceOwn(c, p, "world");
         foreach (var mv in w["moves"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
         {
             var key = FormKey.Factory(mv["ref"]!.GetValue<string>());
@@ -989,6 +969,33 @@ static class Steps
             rec.Placement.Position = Vec3(mv["pos"]);
             c.Note($"World move {key} ({c.EdidOf(rec.Base.FormKey)}): {from} in {refs[0].ModKey} -> {rec.Placement.Position}");
         }
+    }
+
+    // A reference of the plugin's own at a pinned local id, in an override of its cell taken from the load order winner
+    static void PlaceOwn(PatchContext c, JsonObject p, string kind)
+    {
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        var edid = p["edid"]!.GetValue<string>();
+        var cellKey = FormKey.Factory(p["cell"]!.GetValue<string>());
+        if (!cache.TryResolveContext<ICell, ICellGetter>(cellKey, out var cellCtx)) { c.Error($"{kind}: cell {cellKey} not found"); return; }
+        var name = p["base"]!.GetValue<string>();
+        // An editor id names a record of the plugin or the load order, a form key one of the load order's
+        var baseKey = name.Contains(':') ? FormKey.Factory(name) : c.KeyOf<IMajorRecordGetter>(name);
+        if (name.Contains(':') && !cache.TryResolve<IMajorRecordGetter>(baseKey, out _)) { c.Error($"{kind}: base object {name} not found"); return; }
+        var id = Convert.ToUInt32(p["formId"]!.GetValue<string>(), 16);
+        var cell = cellCtx.GetOrAddAsOverride(c.Mod);
+        var placed = c.OwnOrNew(edid, () =>
+        {
+            var key = new FormKey(c.Key, id);
+            if (c.Mod.EnumerateMajorRecords().Any(r => r.FormKey == key)) throw new SpecException($"{kind}: '{edid}' wants the pinned id {key}, which another record already holds");
+            var r = new PlacedObject(key, SkyrimRelease.SkyrimSE) { EditorID = edid };
+            cell.Temporary.Add(r);
+            return r;
+        });
+        placed.Base.SetTo(baseKey);
+        placed.Placement = new Placement { Position = Vec3(p["pos"]), Rotation = Vec3(p["rot"]) };
+        if (p["scale"] != null) placed.Scale = p["scale"]!.GetValue<float>();
+        c.Note($"{PatchContext.Cap(kind)} reference {edid} {placed.FormKey}: {c.EdidOf(baseKey)} in cell {cellKey} at {placed.Placement.Position}");
     }
 
     static P3Float Vec3(JsonNode? n)

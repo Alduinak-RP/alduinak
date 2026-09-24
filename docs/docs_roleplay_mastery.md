@@ -379,7 +379,10 @@ container loot are off:
   makes `Saltdeposits.esp` one of its masters. The grain mills do the same:
   the plugin gives them the `AldCraftingGrainMill` bench keyword (spec
   `craftingStations`) and `AldRecipeSmith_SaltPileMill`, one rock into 50 Salt
-  Pile there, open to everyone too. A mill turned into a crafting station
+  Pile there, open to everyone too. Chillfurrow and Battle-Born Farm only had
+  a windmill (an activator, nothing to use), so the plugin places a grain mill
+  beside each (`AldGrainMill_ChillfurrowFarm`, `AldGrainMill_BattleBornFarm`,
+  spec `craftingStations.placements`). A mill turned into a crafting station
   opens the crafting menu (whether its push idle still plays first is to be
   confirmed in game), and no profession owns the keyword, so a craft there
   earns no mastery hours and costs a full Novice craft's fatigue
