@@ -5,8 +5,8 @@ const fs = require('fs')
 // CLIENT_VERSION = client files release (baked into data/files-version.json by merge-files.js)
 // SERVER_VERSION = game server release label (informational)
 const LATEST_VERSION = '2.4.3'
-const CLIENT_VERSION = '0.9.2'
-const SERVER_VERSION = '0.9.2'
+const CLIENT_VERSION = '0.9.3'
+const SERVER_VERSION = '0.9.3'
 const DOWNLOAD_URL   = 'https://api.alduinak.com/downloads/AlduinakLauncher.exe'
 // Launchers from 2.4.0 update from this zip; older ones only read DOWNLOAD_URL, so nginx keeps serving the exe
 const PACKAGE_URL    = 'https://alduinak.com/download'
