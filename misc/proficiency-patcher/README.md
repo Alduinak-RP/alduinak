@@ -58,6 +58,14 @@ listed under the new records, and `proficiency-ids.json` must show the same loca
 before it moves the global ids, and the live `server-settings.json` must then take the Hunter Master id from the
 new `proficiency-ids.json`.
 
+`dump_death_items.py` prints what the live spawn bases drop before the spec is edited and after a run: it reads
+`loadOrder` and `dataDir` from `--settings` and the base ids from `--spawns` (`NPC-Spawns.json`), follows each
+base's template chain while Use Traits is set the way the server does, and prints the death item list it stops at
+with its flags, chance none and entries, sublists included (`python misc/proficiency-patcher/dump_death_items.py
+--settings build/dist/server/server-settings.json --spawns build/dist/server/NPC-Spawns.json DeathItemDraugr`;
+editor ids on the command line, NPC_ or LVLI, are printed the same way, and `--plugin out/AlduinakAdditions.esp`
+reads the patcher output in place of the Data folder copy). Python only, no Mutagen.
+
 Needs the .NET 9 SDK (`dotnet`), Python 3 and the game Data folder named by `dataDir` in the settings
 file, with every plugin of `loadOrder` present (Mutagen reads them to resolve editor ids and winning
 records). The first run restores the Mutagen NuGet package.
