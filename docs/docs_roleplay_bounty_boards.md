@@ -110,7 +110,8 @@ property-menu branch, and the server, once the player is within
 `bountyBoardMaxDistance` of that board and may manage it, activates the
 strongbox for the player through Papyrus `ObjectReference.Activate`, the
 engine's own container path (it records the occupant, so takes and puts pass
-the occupant check) and the client opens the vanilla ContainerMenu. The
+the occupant check) and the client opens the vanilla ContainerMenu (with the
+chat settings' interact hold on, releasing X closes it by tapping Tab). The
 strongbox is placed on a first manage as well, so a board nobody has paid at
 yet still has one. Because it sits in the city worldspace, a walled city's
 Tamriel twin answers "Open the strongbox from the board inside the city."

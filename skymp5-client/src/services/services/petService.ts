@@ -3,7 +3,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, buttonEventKeyCode, onWidgetsCleared, claimHeldMenu } from "./widgetMenuUtil";
 import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { CompanionService, isOwnCompanion, setDrivenPetIds } from "./companionService";
 import { EmoteService } from "./emoteService";
@@ -397,6 +397,7 @@ export class PetService extends ClientListener {
 
   private openMenuWidget(): void {
     if (this.isOpen || isMenuHotkeyBlocked(this.sp, this.controller)) return;
+    if (!claimHeldMenu(() => this.menuOpen, () => this.closeMenu())) return;
     this.menuOpen = true;
     logTrace(this, `Opening pet menu for`, petMenuTitle);
     openFormMenu(this.sp, this.menuWidgetSetter, { petMenuTitle, petMenuActions, petMenuHideTrade, events, WIDGET_ID }, this.controller);

@@ -7,7 +7,7 @@ import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
 import { isFreeCamera } from "./adminModeService";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, Menu, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
 import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
@@ -113,6 +113,7 @@ export class PlayerActionService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
@@ -141,6 +142,7 @@ export class PlayerActionService extends ClientListener {
     if (isUiHidden(this.controller)) return;
     // Every press replaces the armed one, so a menu Activate opens is never taken for a held one
     armHeldMenu(this.sp, this.controller, isInteract && this.holdMode ? this.interactKey : 0);
+    this.strongboxAsked = false;
 
     const housing = this.controller.lookupListener(HousingService);
     const personal = this.controller.lookupListener(AdminMenuService);
@@ -175,6 +177,7 @@ export class PlayerActionService extends ClientListener {
     // The server opens the strongbox for the hold's managers and answers everyone else with a notice
     if (ref && this.controller.lookupListener(InteractionPromptService).isBoard(ref)) {
       sendCustomPacket(this.controller, { customPacketType: "bountyBoardManage", board: localIdToRemoteId(ref.getFormID()) });
+      this.strongboxAsked = true;
       return;
     }
     if (ref && isPropertyRef(ref)) {
@@ -186,7 +189,18 @@ export class PlayerActionService extends ClientListener {
       this.openLoadMenu(load);
       return;
     }
-    personal.open();
+    if (claimHeldMenu(() => personal.isOpen, () => personal.closeMenu())) personal.open();
+  }
+
+  // The strongbox is the engine's container menu, which the server opens after bountyBoardManage
+  private onMenuOpen(e: MenuOpenEvent): void {
+    if (e.name !== Menu.Container || !this.strongboxAsked) return;
+    this.strongboxAsked = false;
+    const close = () => this.controller.once("update", () => {
+      // No close-menu API in SkyrimPlatform: tap the container's cancel key, as SearchService does
+      if (this.sp.Ui.isMenuOpen(Menu.Container)) this.sp.Input.tapKey(DxScanCode.Tab);
+    });
+    if (!claimHeldMenu(() => this.sp.Ui.isMenuOpen(Menu.Container), close)) close();
   }
 
   private openLoadMenu(title: string): void {
@@ -324,8 +338,10 @@ export class PlayerActionService extends ClientListener {
   };
 
   private menuOpen = false;
-  // The pa: context menu is held open instead of toggled; the other menus the key opens keep toggling
+  // Every menu the interact key opens is held open instead of toggled
   private holdMode = false;
+  // The last press asked the server for a bounty board's strongbox
+  private strongboxAsked = false;
   private playerTarget = 0;
   // Action id -> whether the server's playerMenuState says it applies to the target
   private menuFlags: Record<string, boolean> = {};

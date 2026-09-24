@@ -79,7 +79,8 @@ Rules:
   launcher's Server Hotkeys until **Use launcher defaults** clears every row;
   the launcher itself is not changed and does not show in-game rebinds. Two
   checkboxes there (`emoteWheelHold`, `interactMenuHold`, both off) make the
-  emote wheel and the interact key's player menu **hold-to-open**: the menu
+  emote wheel and every menu the interact key opens (player, carried load,
+  Personal, housing, pet and the bounty board strongbox) **hold-to-open**: the menu
   stays while the key is down and closes on release, and a released wheel key
   plays the emote under the cursor. The client polls the key in game while the
   menu is open, so any keyboard key can be held; with a mouse button bound the

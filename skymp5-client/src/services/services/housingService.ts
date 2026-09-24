@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared, claimHeldMenu } from "./widgetMenuUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
@@ -193,6 +193,7 @@ export class HousingService extends ClientListener {
           notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
           break;
         }
+        if (!this.menuOpen && !claimHeldMenu(() => this.menuOpen, () => this.closeMenu())) break;
         info = {
           target,
           view: view === 'owner' || view === 'manager' || view === 'keyholder' || view === 'claimable' ? view : 'denied',

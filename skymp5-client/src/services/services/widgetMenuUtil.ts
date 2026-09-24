@@ -39,8 +39,8 @@ interface HeldPress {
   menus: { isOpen: () => boolean; onRelease: () => void }[];
 }
 
-// How long a menu may still claim the press that asked for it, for a server that answers late
-const HELD_CLAIM_MS = 2000;
+// How long a menu may still claim the press that asked for it; the housing menu waits as long for its reply
+const HELD_CLAIM_MS = 5000;
 let heldPress: HeldPress | null = null;
 let heldPollOn = false;
 

@@ -170,7 +170,7 @@ const Settings = (props: {
             </div>
           ))}
           <CheckBox key={`wheelHold-${keyOf('emoteWheelKeyCode')}`} text={'hold the emote wheel key' + (noHold('emoteWheelKeyCode') ? ' (not for this key)' : '')} initialValue={props.emoteWheelHold} setChecked={props.setEmoteWheelHold} disabled={noHold('emoteWheelKeyCode')} />
-          <CheckBox key={`interactHold-${keyOf('altInteractKeyCode')}`} text={'hold the interact key for the player menu' + (noHold('altInteractKeyCode') ? ' (not for this key)' : '')} initialValue={props.interactMenuHold} setChecked={props.setInteractMenuHold} disabled={noHold('altInteractKeyCode')} />
+          <CheckBox key={`interactHold-${keyOf('altInteractKeyCode')}`} text={'hold the interact key for its menus' + (noHold('altInteractKeyCode') ? ' (not for this key)' : '')} initialValue={props.interactMenuHold} setChecked={props.setInteractMenuHold} disabled={noHold('altInteractKeyCode')} />
           <div className='chat-key-row'>
             <span className='chat-key-label'>Esc cancels, Backspace resets a row</span>
             <button
