@@ -404,17 +404,17 @@ rose from three to six) is read as full.
 
 ### Chopping
 
-A chopping block needs a woodcutter's axe. One swing takes eight seconds
+A chopping block needs a woodcutter's axe. One swing takes ten seconds
 (`gatheringChopSeconds`) and hands over two firewood (`gatheringChopYield`);
 the chopper stays in the chopping animation across yields until the fatigue
 bar cannot pay for another swing, then stands up with "You are too tired to
 swing an axe. Rest a while." A swing counts only when the chopper sat at the
-block for all of its eight seconds: the cycle starts when the client reports
+block for all of its ten seconds: the cycle starts when the client reports
 the player fully seated (`seatClaim`, FurnitureSeatSystem), and standing up
 before it ends (`seatRelease`, sent as the exit starts) ends the sitting with
 no firewood for that cycle; sitting down again starts a new cycle. So the
-first firewood lands eight seconds after the sit-down animation, not after
-the key press. A client that never sends the claim keeps the plain eight
+first firewood lands ten seconds after the sit-down animation, not after
+the key press. A client that never sends the claim keeps the plain ten
 second timing, and the server logs `[gathering] <actor> chops at <block> with
 no seat claim` once per sitting. A full bar chops, before its online refill:
 
@@ -429,7 +429,7 @@ no seat claim` once per sitting. A full bar chops, before its online refill:
 `needsChopWoodPerBar` sets the five numbers. The Imperial passive stretches a
 woodworker's bar by a third (Novice 32, Master 128). The bar refills 1.6% a
 minute meanwhile, so a long sitting runs a little past the table: an Adept
-gets about 50, an Expert 76 and a Master 106 from a full bar.
+gets about 50, an Expert 78 and a Master 110 from a full bar.
 
 ### Hunting
 

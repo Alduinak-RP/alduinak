@@ -259,9 +259,9 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   for every kill, chop, ore or harvest charge.
 - Chopping firewood costs each swing's share of the bar by woodworker rank (`needsChopWoodPerBar`): a full bar chops
   12 firewood outside the profession, 24 at Novice, 48 at Adept, 72 at Expert and 96 at Master, two per swing every
-  eight seconds, before the online refill. The chopper stays at the block across yields and stands up with "You are too
+  ten seconds, before the online refill. The chopper stays at the block across yields and stands up with "You are too
   tired to swing an axe. Rest a while." once the bar cannot pay for another swing; a block the bar cannot pay one swing
-  at does not open. A swing lands, and costs, only after eight seconds seated at the block; standing up mid-swing gives
+  at does not open. A swing lands, and costs, only after ten seconds seated at the block; standing up mid-swing gives
   and costs nothing (`docs_roleplay_mastery.md`, Chopping). Mining ore costs `needsMineFatigue` (20, a miner 10) per ore.
 - Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs `needsPickFatigue` exhaustion points (10,
   about 1% of the bar) and kneels the picker for `gatheringHarvestSeconds` (2), unable to move or harvest again. Fish
@@ -457,9 +457,9 @@ None of these has been run yet.
   "too tired" notice and all six items stay, however fast the clicks come. A click that slips in before the close (high
   ping) is refused: reopen the inventory, the refused item must be absent and its inputs present (the resent inventory
   corrects the client); logging out for 10 minutes refills 16%.
-- Chopping: sit at a block and wait; the axe keeps swinging, 2 firewood land every 8 seconds, and the player stands up
+- Chopping: sit at a block and wait; the axe keeps swinging, 2 firewood land every 10 seconds, and the player stands up
   only with the "too tired" notice. Stand up (move key) about 5 seconds into a swing: no firewood for it and no fatigue
-  spent. Sit again: the next firewood lands 8 seconds after sitting down.
+  spent. Sit again: the next firewood lands 10 seconds after sitting down.
 - Charcoal at a smelter outside Blacksmith costs 1/12 (8%) each; from a full bar the twelfth closes the menu with the
   "too tired" notice, however fast the clicks come, and the smelter stays shut until the bar holds 8% again.
 - Admin Item Spawner finds Creation items by name ("Amber", "Fishing Rod", "Hot").

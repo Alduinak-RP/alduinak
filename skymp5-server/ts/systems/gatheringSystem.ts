@@ -16,7 +16,7 @@ type Mp = any;
 //
 // server-settings.json keys (all optional):
 //   gatheringStrikeSeconds       seconds of work per pickaxe strike, default 5
-//   gatheringChopSeconds         seconds one swing of the axe takes before the firewood lands, default 8
+//   gatheringChopSeconds         seconds one swing of the axe takes before the firewood lands, default 10
 //   gatheringChopYield           firewood one swing hands over, default 2
 //   gatheringVeinTotal           ore collections every vein holds, default 6; 0 uses each record's resourcecounttotal
 //   gatheringVeinRespawnMinutes  minutes after the first ore taken until the whole vein is back, default 1440, 0 keeps it
@@ -53,7 +53,7 @@ const NOTICE_PACKET = "masteryNotice";
 
 const DEFAULT_STRIKE_SECONDS = 5;
 // One activation is one swing: the wood lands when the animation ends, never during it.
-const DEFAULT_CHOP_SECONDS = 8;
+const DEFAULT_CHOP_SECONDS = 10;
 const DEFAULT_CHOP_YIELD = 2;
 const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 // Overrides the record's total on every vein; 0 keeps the record's own
