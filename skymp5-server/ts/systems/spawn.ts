@@ -225,7 +225,7 @@ export class Spawn implements System {
     this.cancelPark(actorId);
     const handle = setTimeout(() => {
       this.parkTimers.delete(actorId);
-      this.parked.delete(actorId);
+      const wasParked = this.parked.delete(actorId);
       try {
         ctx.svr.setEnabled(actorId, false);
         const userId = ctx.svr.getUserByActor(actorId);
@@ -234,6 +234,10 @@ export class Spawn implements System {
         }
         this.log("Logout grace expired, actor", actorId.toString(16), "despawned");
       } catch { /* form vanished */ }
+      // Disable keeps the stored pose; cleared here or the CreateActor of the next Enable still carries the sit
+      if (wasParked) {
+        try { (ctx.svr as Mp).set(actorId, "lastAnimEvent", ""); } catch { /* form vanished */ }
+      }
     }, this.logoutGraceMs);
     this.parkTimers.set(actorId, handle);
     this.parkPose(ctx, actorId);
