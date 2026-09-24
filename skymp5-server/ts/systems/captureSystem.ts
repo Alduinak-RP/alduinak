@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
-import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook } from "./actorUtil";
+import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook, isDoorRef } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -15,6 +15,9 @@ type Mp = any;
 //     fight, sneak or use hands.
 //   - carried: fully immobilised; the captive's client follows the carrier's
 //     clone and the server snaps the body back when it drifts. Camera stays free.
+//     A put-down sets the body at the carrier's feet, and the body only follows
+//     the carrier into another cell through a door they used within DOOR_FOLLOW_MS;
+//     any other cell change ends the carry where the body was.
 // Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
 // in the captor's inventory, carrying needs no item. A conscious target must
 // accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
@@ -79,10 +82,12 @@ const DEFAULT_MANACLES = 0;
 const CARRY_FOLLOW_INTERVAL_MS = 350;
 const CARRY_FOLLOW_MIN_MOVE_SQ = 96 * 96;
 const CARRY_MAX_DRIFT_SQ = 256 * 256;
+// A carrier's cell change this soon after a door activation is a load door; later ones drop the body
+const DOOR_FOLLOW_MS = 5000;
 
 // Carried pose: a vanilla chair sit idle held in the carrier's arms, turned 45 degrees from their facing. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
 const DEFAULT_CARRIED_ANIM = "IdleChairEnterInstant";
-const DEFAULT_CARRY_FORWARD = 30;
+const DEFAULT_CARRY_FORWARD = 16;
 const DEFAULT_CARRY_UP = 40;
 const DEFAULT_CARRY_YAW = 45;
 
@@ -137,6 +142,8 @@ export class CaptureSystem implements System {
   private carriedBy = new Map<number, number>();
   // carriedActorId -> last carrier pos we snapped them to (spam/jitter guard)
   private lastCarryPos = new Map<number, [number, number, number]>();
+  // carrierActorId -> when they last activated a door
+  private doorUsedAt = new Map<number, number>();
   // requestId -> outstanding consent prompt
   private pending = new Map<number, PendingConsent>();
   // "captorActorId:targetActorId" -> last prompt timestamp (spam guard)
@@ -197,6 +204,16 @@ export class CaptureSystem implements System {
       this.onActorAssigned(ctx, actorId);
     });
     this.installCarrierFightBlock(ctx.svr as Mp);
+    this.installDoorWatch(ctx.svr as Mp);
+  }
+
+  // A locked door is refused by HousingSystem before this runs, so only a door that opened counts
+  private installDoorWatch(mp: Mp): void {
+    chainMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
+      const carrier = casterId >>> 0;
+      if (this.carrying.has(carrier) && isDoorRef(mp, targetId >>> 0)) this.doorUsedAt.set(carrier, Date.now());
+      return true;
+    });
   }
 
   // A carrier cannot fight; onHitAttempt and onSpellCastAttempt need the native build, onHitDamageAttempt works on any
@@ -255,11 +272,18 @@ export class CaptureSystem implements System {
         // Each snap is a full engine teleport on the carried client; only
         // resend when the body actually drifted or changed cell
         const carriedLoc = mp.get(carriedActorId, "locationalData");
+        const cellChanged = !!carriedLoc && carriedLoc.cellOrWorldDesc !== loc.cellOrWorldDesc;
         // A carried pet is moved by its carrier's client within a cell; a load door still snaps it, and a player body keeps the old path
-        if (this.userOf(ctx, carriedActorId) < 0 && !isPlayerActor(mp, carriedActorId) &&
-          carriedLoc && carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) continue;
-        if (carriedLoc && Array.isArray(carriedLoc.pos) &&
-          carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) {
+        if (this.userOf(ctx, carriedActorId) < 0 && !isPlayerActor(mp, carriedActorId) && carriedLoc && !cellChanged) continue;
+        // Only a door carries the body into another cell; a carrier who got there any other way lost it where it was
+        if (cellChanged && now - (this.doorUsedAt.get(carrierActorId) ?? 0) > DOOR_FOLLOW_MS) {
+          this.stopCarry(ctx, carriedActorId, false);
+          this.notice(ctx, this.userOf(ctx, carrierActorId), "You lost your grip.");
+          this.notice(ctx, this.userOf(ctx, carriedActorId), "Your carrier left without you.");
+          this.log(`[carry] ${carrierActorId.toString(16)} changed cell without a door, dropped ${carriedActorId.toString(16)}`);
+          continue;
+        }
+        if (carriedLoc && Array.isArray(carriedLoc.pos) && !cellChanged) {
           const dx = x - carriedLoc.pos[0], dy = y - carriedLoc.pos[1], dz = z - carriedLoc.pos[2];
           if (dx * dx + dy * dy + dz * dz < CARRY_MAX_DRIFT_SQ) {
             continue;
@@ -279,6 +303,7 @@ export class CaptureSystem implements System {
           rot: [0, 0, carrierYaw + this.carryYaw],
         });
         this.lastCarryPos.set(carriedActorId, [x, y, z]);
+        if (cellChanged) this.doorUsedAt.delete(carrierActorId);
       } catch (e) {
         // carrier or carried vanished mid-carry: free the pair so no stale restraint record survives
         this.releaseTarget(ctx, carriedActorId);
@@ -297,12 +322,14 @@ export class CaptureSystem implements System {
     if (carried !== undefined) {
       this.stopCarry(ctx, carried);
     }
-    // If they were being carried, tell their carrier to stop.
+    // If they were being carried, tell their carrier to stop; the parked body lies at the carrier's feet
     const carrier = this.carriedBy.get(actorId);
     if (carrier !== undefined) {
+      this.dropAtCarrier(ctx, actorId, carrier);
       this.carrying.delete(carrier);
       this.carriedBy.delete(actorId);
       this.lastCarryPos.delete(actorId);
+      this.doorUsedAt.delete(carrier);
       this.sendCarryState(ctx, carrier, false);
       const own = this.restraints.get(actorId);
       if (own) {
@@ -706,15 +733,17 @@ export class CaptureSystem implements System {
     this.log(`[carry] ${carrierActorId.toString(16)} carries ${targetActorId.toString(16)}`);
   }
 
-  // Stop a carry while preserving any arrest (boundHands) the captive still has.
-  private stopCarry(ctx: SystemContext, targetActorId: number): void {
+  // Stop a carry while preserving any arrest (boundHands) the captive still has; setDown false leaves the body where it is
+  private stopCarry(ctx: SystemContext, targetActorId: number, setDown = true): void {
     const carrier = this.carriedBy.get(targetActorId);
     if (carrier === undefined) {
       return;
     }
+    if (setDown) this.dropAtCarrier(ctx, targetActorId, carrier);
     this.carrying.delete(carrier);
     this.carriedBy.delete(targetActorId);
     this.lastCarryPos.delete(targetActorId);
+    this.doorUsedAt.delete(carrier);
     this.sendCarryState(ctx, carrier, false, targetActorId);
     if (this.userOf(ctx, targetActorId) < 0) this.onNpcCarryEnd?.(targetActorId, carrier);
 
@@ -740,9 +769,11 @@ export class CaptureSystem implements System {
   private releaseTarget(ctx: SystemContext, targetActorId: number): void {
     const carrier = this.carriedBy.get(targetActorId);
     if (carrier !== undefined) {
+      this.dropAtCarrier(ctx, targetActorId, carrier);
       this.carrying.delete(carrier);
       this.carriedBy.delete(targetActorId);
       this.lastCarryPos.delete(targetActorId);
+      this.doorUsedAt.delete(carrier);
       this.sendCarryState(ctx, carrier, false, targetActorId);
       if (this.userOf(ctx, targetActorId) < 0) this.onNpcCarryEnd?.(targetActorId, carrier);
     }
@@ -753,6 +784,19 @@ export class CaptureSystem implements System {
     if (info?.boundHands === true) {
       this.removeShackles(ctx, targetActorId, info.addedShackle === true);
     }
+  }
+
+  // Sent before the restraint packet, so the carried client takes the cheap same-cell translate; a body held through a wall or a bar door ends up where the carrier stands. NPC bodies are set down by PetSystem
+  private dropAtCarrier(ctx: SystemContext, carriedActorId: number, carrierActorId: number): void {
+    const mp = ctx.svr as Mp;
+    if (!isPlayerActor(mp, carriedActorId)) return;
+    try {
+      const loc = mp.get(carrierActorId, "locationalData");
+      if (!loc || !Array.isArray(loc.pos)) return;
+      const carrierYaw = Array.isArray(loc.rot) ? Number(loc.rot[2]) || 0 : 0;
+      mp.set(carriedActorId, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: [...loc.pos], rot: [0, 0, carrierYaw] });
+      this.log(`[carry] ${carriedActorId.toString(16)} set down at ${carrierActorId.toString(16)}`);
+    } catch { /* carrier or carried gone */ }
   }
 
   // ── Packet senders ─────────────────────────────────────────────────────────

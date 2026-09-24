@@ -320,8 +320,11 @@ Picking up a player in bleedout **ends their bleedout** (§8).
   { "customPacketType": "restraintState", "carried": true }
   ```
 
-  `RestraintService` immobilises them (`setDontMove`, controls disabled) so the
-  server can move the body, while leaving the camera free. Release with:
+  `RestraintService` immobilises them (`setDontMove`, controls disabled) in
+  third person and its own client holds the body `carryOffsetForward` ahead of
+  and `carryOffsetUp` above the carrier's clone every 100 ms, turned with the
+  carrier (see the carry pose keys in `docs_server_configuration_reference.md`).
+  Release with:
 
   ```json
   { "customPacketType": "restraintState", "carried": false }
@@ -330,17 +333,30 @@ Picking up a player in bleedout **ends their bleedout** (§8).
 `boundHands` and `carried` are independent flags and may be combined (a bound
 prisoner can also be carried).
 
-### Gamemode TODO
+### Server rules (`captureSystem.ts`)
 
-1. **Consent / eligibility** — allow carry only if the target is in bleedout
-   **or** has consented (a prompt/`/carryaccept`-style flow you define).
-2. **Move the body** — while carried, keep the victim positioned on/just behind
-   the carrier each tick (server-side `moveTo`/position update, or a follow
-   offset). Mark the carried actor so movement sync doesn't fight it.
-3. **End bleedout** — a carry of a bleeding-out player ends the bleedout
-   (`CaptureSystem.rescueDowned`); a carried player hit to 0 is dropped and
-   bleeds out again.
-4. **Put down / drop** — on release send `carried: false`.
+- **Consent / eligibility**: a conscious target answers a Yes/No prompt; a
+  downed or restrained target is picked up at once, which ends a bleedout
+  (`CaptureSystem.rescueDowned`). A carrier who goes down, dies or is restrained
+  drops the body, and a carried player hit to 0 slips free and bleeds out again.
+- **Moving the body**: the carried client follows the carrier's clone; the
+  server re-snaps the body every 350 ms only when it drifted more than 256
+  units, so the follow is collisionless and the body pokes through thin walls
+  and bar doors while it is held.
+- **Put down**: every end of a carry (Put down, Release, the carrier's
+  disconnect or collapse, and a carried player's own disconnect, whose parked
+  body is left there) first moves the body to the carrier's feet, facing the
+  carrier's way, with the line `[carry] <carried> set down at <carrier>`. A
+  body held through a wall or a jail bar door therefore ends up back beside the
+  carrier, never inside the cell. NPC bodies are set down by PetSystem instead.
+- **Doors**: a carrier's door activation is recorded (`onActivate`, after the
+  housing lock had its say, so a locked door never counts). The body only
+  follows the carrier into another cell when the carrier used a door within the
+  last 5 s; a carrier who reached another cell any other way (an admin
+  teleport, fast travel, a coc) loses the body where it was: the carry ends
+  without moving it, the carrier reads "You lost your grip.", the carried "Your
+  carrier left without you.", and the log says
+  `[carry] <carrier> changed cell without a door, dropped <carried>`.
 
 ---
 

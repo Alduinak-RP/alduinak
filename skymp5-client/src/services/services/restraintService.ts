@@ -43,7 +43,7 @@ const POSE_SWAP_DELAY_S = 0.1;
 const TELEPORT_SETTLE_S = 0.5;
 
 // Carried body is held ahead of and above the carrier, turned 45 degrees from their facing; the server may override these
-const CARRY_FORWARD = 30;
+const CARRY_FORWARD = 16;
 const CARRY_UP = 40;
 const CARRY_YAW = 45;
 
@@ -88,12 +88,12 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   // The restrained player (captive); carrier is the carrier's server actor id, 0 when not carried:
  *   { "customPacketType": "restraintState", "boundHands": true }
  *   { "customPacketType": "restraintState", "carried": true, "carrier": 4278190090, "anim": "OffsetBoundStandingStart",
- *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 30, "carryUp": 40, "carryYaw": 45 }
+ *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
  *   { "customPacketType": "restraintState", "boundHands": false, "carried": false, "carrier": 0 }
  *
  *   // The carrier (pose only, no control change); target is the carried actor's server id, an NPC's clone is posed here, 0 for a passive job load:
  *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart", "target": 4278190090,
- *     "carryForward": 30, "carryUp": 40, "carryYaw": 45 }
+ *     "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
  *   { "customPacketType": "carryState", "carrying": false }
  *
  *   // A player at 0 health (BleedoutSystem); died skips the stand-up:

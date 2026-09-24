@@ -457,7 +457,7 @@ A carried player or pet sits in a vanilla chair idle held in the carrier's arms.
 | Key | Default | Meaning |
 |---|---|---|
 | `carriedAnimEvent` | `IdleChairEnterInstant` | Animation event the carried body plays |
-| `carryOffsetForward` | `30` | Units ahead of the carrier |
+| `carryOffsetForward` | `16` | Units ahead of the carrier, inside the carrier's own capsule so the held body never pokes through a wall or a bar door |
 | `carryOffsetUp` | `40` | Units above the carrier's feet |
 | `carryYawOffset` | `45` | Degrees the body is turned from the carrier's facing; `90` lies it across the arms, `0` faces forward |
 
