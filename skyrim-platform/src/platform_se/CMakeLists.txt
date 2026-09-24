@@ -85,7 +85,7 @@ if(NOT "${SKIP_SKYRIM_PLATFORM_BUILDING}")
   )
 
   if(MSVC)
-    file(GLOB_RECURSE platform_src "skyrim_platform/*")
+    file(GLOB_RECURSE platform_src CONFIGURE_DEPENDS "skyrim_platform/*")
     list(APPEND platform_src "${CMAKE_SOURCE_DIR}/.clang-format")
     list(APPEND platform_src ${CMAKE_CURRENT_BINARY_DIR}/include/Version.h)
     list(APPEND platform_src ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
