@@ -6,7 +6,7 @@ import { FactionSystem } from "./factionSystem";
 import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
 import { toFormId } from "./formIdUtil";
-import { baseIdOf, hex, isAlive, isNear, isPlayerActor, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
+import { baseIdOf, hex, isAlive, isBehind, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -34,6 +34,8 @@ const FINISHERS: FinisherTable = {
   battleaxe: [],
   unarmed: [],
 };
+// The pairs an assassination from behind plays: the standing finishers stand in until the operator fills the vanilla sneak pairs. Overridable via "executionSneakFinishers"
+const SNEAK_FINISHERS: FinisherTable = FINISHERS;
 // pa_1HMKillMoveBleedOutKill (ENAM pa_KillingBlow, loose, non-decapitating), stabbed down into the kneeling victim; the finisher for every weapon when "finishOffStandUp" is false
 const KILLMOVE_KNEELING = 0xf469e;
 // Killmove tree records whose own or parent conditions the engine may refuse; added by "finishOffExtendedPool"
@@ -79,6 +81,12 @@ interface Prisoner {
   // Set while the axe falls
   executorId?: number;
   timers: ReturnType<typeof setTimeout>[];
+}
+
+// An assassination pair under way on a victim, who dies when it ends or at the cap timer
+interface Assassination {
+  killerId: number;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 // A killmove under way on a victim; done runs once, when a participant's client reports the end
@@ -136,11 +144,13 @@ export class ExecutionSystem implements System {
     this.extendedPool = all?.["finishOffExtendedPool"] === true;
     this.standUp = all?.["finishOffStandUp"] !== false;
     this.finishers = finisherTableOf(all?.["executionFinishers"], FINISHERS);
+    this.sneakFinishers = finisherTableOf(all?.["executionSneakFinishers"], SNEAK_FINISHERS);
 
     this.capture.menuFlagProviders.push((requesterId, targetId) => ({
       finishOff: !this.finishOffRefusal(requesterId, targetId),
       prepareExecution: !this.prepareRefusal(requesterId, targetId),
       execute: !this.executeRefusal(requesterId, targetId),
+      assassinate: !this.assassinateRefusal(requesterId, targetId),
     }));
     this.capture.onBlock = (actorId) => this.prisoners.has(actorId);
     this.capture.blockRefusal = (actorId) => this.prisoners.get(actorId)?.executorId ? AXE_FALLING : "";
@@ -187,7 +197,52 @@ export class ExecutionSystem implements System {
     if (type === "finishOffRequest") this.onFinishOffRequest(userId, targetId);
     else if (type === "prepareExecutionRequest") this.onPrepareRequest(userId, targetId);
     else if (type === "executeRequest") this.onExecuteRequest(userId, targetId);
+    else if (type === "assassinateRequest") this.onAssassinateRequest(userId, targetId);
     else if (type === "pairedIdleDone") this.onPairedIdleDone(userId, targetId, Number(content.seq));
+  }
+
+  // Why the killer may not assassinate the victim, "" when they may; the weapon is checked on the request
+  private assassinateRefusal(killerId: number, victimId: number): string {
+    const mp = this.mp;
+    if (killerId === victimId || !isPlayerActor(mp, victimId)) return "They cannot be assassinated.";
+    if (!this.factions.canExecute(killerId)) return "You do not have the right to execute.";
+    if (!this.isAble(killerId)) return "You cannot do that now.";
+    if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId)) return "They cannot be assassinated now.";
+    if (this.assassinations.has(victimId)) return "They are already being assassinated.";
+    if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return "They are out of reach.";
+    if (!isSneaking(mp, killerId)) return "You must be sneaking.";
+    if (!isBehind(mp, killerId, victimId)) return "You must be behind them.";
+    return "";
+  }
+
+  // The victim stays standing under the pair; the kill lands when a participant's client reports the end, or at the cap
+  private onAssassinateRequest(userId: number, victimId: number): void {
+    const mp = this.mp;
+    const killerId = this.actorOf(userId);
+    if (!killerId) return;
+    const held = this.weaponTypeOf(killerId);
+    const idle = held ? this.pickFrom(this.sneakFinishers, held, null) : 0;
+    const refusal = this.assassinateRefusal(killerId, victimId) ||
+      (idle ? "" : "You need a melee weapon in hand to assassinate them.") ||
+      (isWeaponDrawn(mp, killerId) ? "" : "Draw your weapon first.");
+    if (refusal) {
+      notifyActor(mp, killerId, refusal);
+      return;
+    }
+    const timer = setTimeout(() => this.strike(victimId, killerId), this.pairMaxMs);
+    this.assassinations.set(victimId, { killerId, timer });
+    this.playPair(killerId, victimId, idle, false, () => this.strike(victimId, killerId), false);
+    this.log(`[execution] ${hex(killerId)} assassinates ${hex(victimId)} with ${held} idle ${hex(idle)}`);
+  }
+
+  // A victim dead or fallen by other means meanwhile is left as they are
+  private strike(victimId: number, killerId: number): void {
+    const attempt = this.assassinations.get(victimId);
+    if (!attempt || attempt.killerId !== killerId) return;
+    clearTimeout(attempt.timer);
+    this.assassinations.delete(victimId);
+    const refusal = this.pk(victimId, killerId, "assassinated");
+    if (refusal) this.log(`[execution] the assassination of ${hex(victimId)} by ${hex(killerId)} came to nothing: ${refusal}`);
   }
 
   // Why the killer may not finish the victim off, "" when they may; the weapon is checked on the request
@@ -375,7 +430,7 @@ export class ExecutionSystem implements System {
     }
   }
 
-  // The PK of a living player character outside a killmove (staff, a later sneak kill); the refusal, "" once they are slain
+  // The PK of a living player character without a killmove of its own (the staff PK, the end of an assassination); the refusal, "" once they are slain
   pk(victimId: number, killerId: number, how = "executed"): string {
     const mp = this.mp;
     if (!isPlayerActor(mp, victimId)) return "They are not a player character";
@@ -401,14 +456,14 @@ export class ExecutionSystem implements System {
     this.log(`[execution] ${line}`);
   }
 
-  // Both players see the pair, and so does everyone whose client has a copy of the victim; a standing pair stands the victim up first
-  private playPair(attackerId: number, targetId: number, idle: number, standUp: boolean, done: () => void): void {
+  // Both players see the pair, and so does everyone whose client has a copy of the victim; a standing pair stands the victim up first, a kneeling one waits for the kneel
+  private playPair(attackerId: number, targetId: number, idle: number, standUp: boolean, done: () => void, kneel = !standUp): void {
     const mp = this.mp;
     const now = Date.now();
     this.pairs.forEach((pair, id) => { if (now > pair.until) this.pairs.delete(id); });
     const seq = ++this.pairSeq;
     this.pairs.set(targetId, { attackerId, seq, sentAt: now, until: now + this.pairMaxMs, ended: false, done });
-    const payload = { customPacketType: "pairedIdle", attacker: attackerId, target: targetId, idle, ms: this.pairMaxMs, standUp, seq };
+    const payload = { customPacketType: "pairedIdle", attacker: attackerId, target: targetId, idle, ms: this.pairMaxMs, standUp, kneel, seq };
     let online: unknown[] = [];
     try { online = mp.get(0, "onlinePlayers") ?? []; } catch { /* no players */ }
     for (const raw of online) {
@@ -498,9 +553,12 @@ export class ExecutionSystem implements System {
   // The finish off stands the victim up for a standing killmove; off, the kneeling stab plays at once
   private standUp = true;
   private finishers = FINISHERS;
+  private sneakFinishers = SNEAK_FINISHERS;
   private nextCheckAt = 0;
   // prisonerId -> the block they kneel at
   private prisoners = new Map<number, Prisoner>();
+  // victimId -> the assassination under way on them
+  private assassinations = new Map<number, Assassination>();
   // victimId -> the killmove playing on them
   private pairs = new Map<number, Pair>();
   private pairSeq = 0;

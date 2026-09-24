@@ -114,6 +114,32 @@ export const isWeaponDrawn = (mp: Mp, actorId: number): boolean => {
   }
 };
 
+// Through Papyrus, which reads the sneak flag the client's movement reports; false for an unknown form
+export const isSneaking = (mp: Mp, actorId: number): boolean => {
+  try {
+    return mp.callPapyrusFunction("method", "ObjectReference", "GetAnimationVariableBool", { type: "form", desc: mp.getDescFromId(actorId) }, ["IsSneaking"]) === true;
+  } catch {
+    return false;
+  }
+};
+
+// Half angle of the cone behind an actor's back, in degrees
+const BEHIND_HALF_ANGLE_DEG = 60;
+
+// Whether the viewer stands in the cone behind the subject's back; Skyrim yaw runs clockwise from north, so the subject faces (sin, cos)
+export const isBehind = (mp: Mp, viewerId: number, subjectId: number): boolean => {
+  try {
+    const yaw = (Number(mp.get(subjectId, "angle")?.[2]) || 0) * Math.PI / 180;
+    const subject = mp.get(subjectId, "pos") as number[];
+    const viewer = mp.get(viewerId, "pos") as number[];
+    const dx = subject[0] - viewer[0], dy = subject[1] - viewer[1];
+    const distance = Math.hypot(dx, dy);
+    return distance > 0 && (Math.sin(yaw) * dx + Math.cos(yaw) * dy) / distance >= Math.cos(BEHIND_HALF_ANGLE_DEG * Math.PI / 180);
+  } catch {
+    return false;
+  }
+};
+
 // Mirrored by BleedoutSystem while a player kneels at 0 health: alive, but unable to act
 export const BLEEDOUT_PROP = "private.bleedout";
 

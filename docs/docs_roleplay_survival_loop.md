@@ -187,6 +187,27 @@ behaviour-graph events — no ESP required.**
   released with `IdleFurnitureExit`; if (3) works only for the vanilla
   headsmen, the `isExecutioner` keyword (0x70C0A) on the Player record is
   the ESP option.
+- **Assassinate** (`executionSystem.ts`): the same right kills a standing
+  player from behind. Assassinate shows in the X menu on a living player
+  character in reach (`captureInteractMaxDistance`) who is neither downed, bound,
+  carried nor fallen, when the killer is sneaking (Papyrus
+  `GetAnimationVariableBool IsSneaking`, the flag the movement sync reports)
+  and stands within 60 degrees behind the victim's back (`actorUtil.isBehind`,
+  from the victim's yaw and both positions); the refusals name the missing
+  condition ("You must be sneaking.", "You must be behind them.", "They are
+  out of reach.", "They cannot be assassinated now."). Like a finish off it
+  needs a drawn melee weapon ("You need a melee weapon in hand to assassinate
+  them.", "Draw your weapon first."), and the pair comes from a second table
+  by weapon type, `executionSneakFinishers`, which defaults to the finish off
+  pools until the operator fills the vanilla sneak pairs (`pa_` IDLEs under
+  the KillMoveSneak tree, read in xEdit). The pair is sent with `standUp` and
+  `kneel` both false, so every client plays it at once with the victim on
+  their feet; the victim dies when a participant's client reports the end,
+  or at `finishOffMaxMs`, through the same PK as a staff PK (`pk`, "You
+  assassinated ..."), so the body and Sovngarde follow. A victim dead or
+  fallen by other means meanwhile is left as they are (`[execution] the
+  assassination of ... came to nothing: ...`). Logged as `[execution]
+  <killer> assassinates <victim> with <type> idle <id>`.
 - **The body** (`bodySystem.ts`): every PK (a finish off, an execution, a
   soul trap by an execute holder) leaves a body where the victim fell: a
   clone made with `createActor` at the victim's spot wearing their look
@@ -378,12 +399,13 @@ prisoner can also be carried).
 | `bleedoutState` `{ downed, seconds?, died? }` | Server → downed player's client | Kneel and lock controls, or stand up (no stand-up when `died`) |
 | `stabilizeRequest` `{ target }` | Rescuer client → server | Stabilize a downed player |
 | `finishOffRequest` `{ target }` | Client → server | Finish off a downed player |
-| `pairedIdle` `{ attacker, target, idle, ms, standUp, seq }` | Server → both players and viewers | Play a killmove on both copies, after the victim's stand-up when `standUp`; `ms` is the cap |
+| `pairedIdle` `{ attacker, target, idle, ms, standUp, kneel, seq }` | Server → both players and viewers | Play a killmove on both copies, after the victim's stand-up when `standUp`, on a kneeling victim when `kneel` (a missing `kneel` means `!standUp`), at once for an assassination; `ms` is the cap |
+| `assassinateRequest` `{ target }` | Client → server | Assassinate a standing player from behind |
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
 | `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting); a mounted or swimming player skips it |
-| `playerMenuState` `{ target, canRelease, stabilize, finishOff, prepareExecution, execute }` | Server → requester | Which flagged X menu actions apply to the target |
+| `playerMenuState` `{ target, canRelease, stabilize, finishOff, prepareExecution, execute, assassinate }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 
 All restraint/bleedout **rules, timers, permissions and persistence are
