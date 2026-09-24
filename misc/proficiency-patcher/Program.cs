@@ -180,6 +180,8 @@ class PatchContext
     private Dictionary<string, Route>? routes;
     // Recipes a faction rule gated, which the uncraftable list must then leave alone
     public readonly HashSet<string> Claimed = new(StringComparer.OrdinalIgnoreCase);
+    // Recipes NewRecipe wrote, which a later sweep of the load order must not re-tier without their also
+    public readonly HashSet<string> Made = new(StringComparer.OrdinalIgnoreCase);
 
     public PatchContext(SkyrimMod mod, ILinkCache cache, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, JsonObject spec, Report report,
                         ModKey? markerKey = null, Func<IMajorRecordGetter, bool>? includes = null)
@@ -478,6 +480,7 @@ static class Steps
             throw new SpecException($"recipe {edid}: a recipe without a profession must be {PatchContext.AnyoneTier} and named {CommonRecipePrefix}*");
         // A pinned id keeps a recipe added later out of the block a hotfix run allocates in order, so the records after it keep their ids
         var cobj = c.OwnOrNew(c.Mod.ConstructibleObjects, edid, formId: r["formId"] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null);
+        c.Made.Add(edid);
         cobj.WorkbenchKeyword.SetTo(bench);
         cobj.CreatedObject.SetTo(output.FormKey);
         cobj.CreatedObjectCount = (ushort)(r["count"]?.GetValue<int>() ?? 1);
@@ -621,7 +624,7 @@ static class Steps
         {
             if (!benches.Contains(winning.WorkbenchKeyword.FormKey) || !c.Includes(winning)) continue;
             var edid = winning.EditorID ?? "";
-            if (exclude.Contains(edid)) continue;
+            if (exclude.Contains(edid) || c.Made.Contains(edid)) continue;
             // Smelter recipes are not routed: they are how ore becomes metal in the first place
             var route = c.Routes.GetValueOrDefault(edid);
             var owner = route?.Profession ?? profession;
@@ -1169,7 +1172,7 @@ static class Steps
             .Select(s => (Products: Edids(c, s["products"]).Select(c.KeyOf<IItemGetter>).ToHashSet(), Also: Edids(c, s["also"]).ToList())).ToList();
         var atBenches = c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides().Where(w => benches.Contains(w.WorkbenchKeyword.FormKey)).ToList();
         // The sweep reads the load order, so a recipe an earlier step routed to the rack keeps the tier that step gave it
-        var swept = atBenches.Where(w => c.Includes(w)).Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
+        var swept = atBenches.Where(w => c.Includes(w)).Select(w => w.EditorID ?? "").Where(e => e.Length > 0 && !c.Made.Contains(e));
         // A shared product is re-tiered whether or not the plugin already overrides its recipe
         var sharing = atBenches.Where(w => shared.Any(s => s.Products.Contains(w.CreatedObject.FormKey))).Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
         // A hotfix run does not sweep the recipes the plugin already overrides, so the tier lists name theirs outright
