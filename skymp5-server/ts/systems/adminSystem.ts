@@ -7,6 +7,7 @@ import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
 import { WeatherSystem } from "./weatherSystem";
 import { AfterlifeSystem, fallenLabel, fallenOf, livingCount, readMaxCharacters } from "./afterlifeSystem";
+import { ExecutionSystem } from "./executionSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, userOf, userSlotCount } from "./actorUtil";
@@ -30,6 +31,7 @@ type Mp = any;
 //                     { customPacketType: "adminMenuRequest" }
 //                     { customPacketType: "npcZonesRequest" }
 //                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
+//                     { customPacketType: "adminAction", action: "pk", target }  the finish off PK on an online living character: they die, leave a body and go to Sovngarde
 //                     { customPacketType: "adminAction", action: "toggleMode", mode, on? }  on: the client reports a mode it already left, recorded without an echo
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
 //                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
@@ -141,6 +143,12 @@ export class AdminSystem implements System {
 
   setAfterlifeSystem(afterlife: AfterlifeSystem): void {
     this.afterlife = afterlife;
+  }
+
+  private execution: ExecutionSystem | null = null;
+
+  setExecutionSystem(execution: ExecutionSystem): void {
+    this.execution = execution;
   }
 
   private maxCharacters = readMaxCharacters(null);
@@ -571,7 +579,7 @@ export class AdminSystem implements System {
     }
 
     const targetId = parseInt(String(content["target"] ?? ""), 16);
-    // Only currently-online player actors are valid targets; the roster carries the admin's own row too, so self is allowed for everything but kick and ban
+    // Only currently-online player actors are valid targets; the roster carries the admin's own row too, so self is allowed for everything but kick, PK and ban
     const target = this.onlinePlayers(mp).find(p => p.actorId === targetId);
     if (!target) {
       this.reply(mp, userId, false, "Target is no longer online");
@@ -604,6 +612,15 @@ export class AdminSystem implements System {
         } else {
           this.banViaBackend(mp, ctx, userId, myActorId, target, adminProfile, tier);
         }
+      } else if (action === "pk") {
+        if (target.actorId === myActorId) return this.reply(mp, userId, false, "You cannot PK yourself");
+        const refusal = this.execution ? this.execution.pk(target.actorId, myActorId, "PK'd") : "Server not ready";
+        if (refusal) {
+          this.adminLog(`profile ${adminProfile} was refused a PK of ${target.name} (profile ${target.profileId}): ${refusal}`, false);
+          return this.reply(mp, userId, false, refusal);
+        }
+        this.adminLog(`profile ${adminProfile} PK'd ${target.name} (profile ${target.profileId}), their soul goes to Sovngarde`);
+        this.reply(mp, userId, true, `PK'd ${target.name}`);
       } else if (action === "masteryGrant") {
         const amount = Number(content["amount"]);
         const summary = this.mastery.grantPoints(ctx, target.actorId, amount);

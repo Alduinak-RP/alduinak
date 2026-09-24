@@ -18,7 +18,7 @@ export const TIER_CAPS: Record<AdminTier, AdminCaps> = {
   gm: allCaps(true),
 };
 
-// Kick and Ban are Players sub-tab buttons, so they also need players
+// Kick, PK and Ban are Players sub-tab buttons, so their caps also need players
 const NEEDS_PLAYERS: AdminCap[] = ["kick", "ban"];
 
 // Cap each admin request needs (adminAction by its action); null needs none, a key missing here is refused
@@ -28,6 +28,7 @@ export const REQUEST_CAP: Record<string, AdminCap | null> = {
   teleportTo: "players",
   summon: "players",
   kick: "kick",
+  pk: "kick",
   masteryGrant: "players",
   masteryReset: "players",
   attrSet: "players",

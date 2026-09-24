@@ -3,10 +3,10 @@ import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./sys
 import { CaptureSystem, isBound, isCarried, isRestrained } from "./captureSystem";
 import { BleedoutSystem } from "./bleedoutSystem";
 import { FactionSystem } from "./factionSystem";
-import { AfterlifeSystem } from "./afterlifeSystem";
+import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
 import { toFormId } from "./formIdUtil";
-import { baseIdOf, hex, isAlive, isNear, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
+import { baseIdOf, hex, isAlive, isNear, isPlayerActor, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -347,6 +347,16 @@ export class ExecutionSystem implements System {
     } catch {
       return null;
     }
+  }
+
+  // The PK of a living player character outside a killmove (staff, a later sneak kill); the refusal, "" once they are slain
+  pk(victimId: number, killerId: number, how = "executed"): string {
+    const mp = this.mp;
+    if (!isPlayerActor(mp, victimId)) return "They are not a player character";
+    if (!isAlive(mp, victimId)) return "They are already dead";
+    if (isFallen(mp, victimId)) return "They are already fallen";
+    this.slay(victimId, killerId, how);
+    return "";
   }
 
   // A PK: a kill the gate never sees, a body left behind, then the soul goes to Sovngarde

@@ -45,6 +45,7 @@ const events = {
   tp: "admin::tp",
   summon: "admin::summon",
   kick: "admin::kick",
+  pk: "admin::pk",
   ban: "admin::ban",
   tpLoc: "admin::tploc",
   mode: "admin::mode",
@@ -716,15 +717,16 @@ export class AdminMenuService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: zoneAction, target: String(e.arguments[1] ?? "") });
       return;
     }
-    if (kind !== events.tp && kind !== events.summon && kind !== events.kick && kind !== events.ban) return;
+    if (kind !== events.tp && kind !== events.summon && kind !== events.kick && kind !== events.pk && kind !== events.ban) return;
     const target = String(e.arguments[1] ?? "");
     const action =
       kind === events.tp ? "teleportTo" :
       kind === events.summon ? "summon" :
-      kind === events.kick ? "kick" : "ban";
+      kind === events.kick ? "kick" :
+      kind === events.pk ? "pk" : "ban";
     sendCustomPacket(this.controller, { customPacketType: "adminAction", action, target });
-    // Kick/ban changes the roster; ask for a fresh one
-    if (action === "kick" || action === "ban") {
+    // Kick/PK/ban changes the roster; ask for a fresh one
+    if (action === "kick" || action === "pk" || action === "ban") {
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
     }
   }

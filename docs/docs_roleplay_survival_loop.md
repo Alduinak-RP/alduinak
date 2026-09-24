@@ -230,6 +230,16 @@ behaviour-graph events — no ESP required.**
   character list. Faction ranks released at death are not given back; staff
   re-assign them. Logged as `[afterlife] <id> of profile N revived by ...`
   and in `admin.log`.
+- **Staff PK** (`ExecutionSystem.pk`): staff with the `kick` cap (the
+  moderation tiers, `players` too) get a PK button next to Kick in the
+  admin panel's Players sub-tab (`adminAction pk`, the selected online
+  character). It is the finish off PK without a killmove: the character dies
+  at once, leaves the body above and goes to Sovngarde, with the same
+  `pk.log`, `pvp.log` and `execute` alert lines (`(staff)` when the admin
+  holds no execute right). Refused on yourself, on a character already dead
+  ("They are already dead", wait for the respawn) and on a fallen one
+  ("They are already fallen"); logged in `admin.log` as `profile N PK'd
+  <name>`.
 - **Logs**: deaths the native kill does not report (timer, damage over time,
   logout, a light finishing hit) go to `pvp.log` when another player downed or
   hit them; every bleedout event is logged as `[bleedout] ...`.

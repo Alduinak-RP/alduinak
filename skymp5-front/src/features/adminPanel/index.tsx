@@ -465,9 +465,9 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   });
 
   const selectedPlayer = players.find((pl) => pl.p === selected) || null;
-  // TP/Summon/Kick/Ban all target the live actor; offline rows only display identity
+  // TP/Summon/Kick/PK/Ban all target the live actor; offline rows only display identity
   const actionsEnabled = !!(selectedPlayer && selectedPlayer.online && selectedPlayer.a);
-  // Hidden rather than greyed so a tier without kick or ban never sees a dead button; the server enforces it anyway
+  // Hidden rather than greyed so a tier without kick or ban never sees a dead button; the server enforces it anyway. PK shares the kick cap
   const canKick = caps.kick !== false;
   const canBan = caps.ban !== false;
 
@@ -660,6 +660,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               <Button text="TP to" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
               <Button text="Summon" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.summon)} />
               {canKick ? <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} /> : null}
+              {canKick && ev.pk ? <Button text="PK" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.pk)} /> : null}
               {canBan ? <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
             </div>
             {ev.masteryGrant && selectedPlayer ? (
