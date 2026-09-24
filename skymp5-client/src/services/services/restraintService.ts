@@ -6,7 +6,7 @@ import { logToPlatformLog, logTrace } from "../../logging";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement, NiPoint3 } from "../../sync/movement";
-import { wrappedAngleDiff } from "../../sync/movementApply";
+import { wrappedAngleDiff, setCarrierClone } from "../../sync/movementApply";
 import { isInSitPose, needsEmptyHands, setRefrCollision } from "../../sync/animation";
 import { isPlayerCharacterId } from "./playerActionService";
 import { MountService } from "./mountService";
@@ -201,11 +201,6 @@ export class RestraintService extends ClientListener {
 
   get isCarrying(): boolean {
     return this.carrying;
-  }
-
-  // Local id of the carrier's clone while carried, 0 otherwise
-  get carrierCloneId(): number {
-    return this.carried && this.carrierId ? remoteIdToLocalId(this.carrierId) : 0;
   }
 
   // The pose last sent to the player, "" before any
@@ -407,6 +402,7 @@ export class RestraintService extends ClientListener {
       return;
     }
     this.keepCarrierCollisionOff(carrierLocalId);
+    setCarrierClone(carrierLocalId);
     this.holdAt(player, carrier);
   }
 
@@ -474,6 +470,7 @@ export class RestraintService extends ClientListener {
   private restoreCarrierCollision(): void {
     const id = this.collisionOffId;
     this.collisionOffId = 0;
+    setCarrierClone(0);
     // A carrier clone that sat down meanwhile keeps the sit sync's collision off
     if (!id || !this.sp.Game.getFormEx(id) || isInSitPose(id)) {
       return;

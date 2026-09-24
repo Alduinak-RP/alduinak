@@ -9,7 +9,6 @@ import { RespawnNeededError } from "../lib/errors";
 import { Movement, RunMode, AnimationVariables, Transform, NiPoint3 } from "./movement";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { SpApiInteractor } from "../services/spApiInteractor";
-import { RestraintService } from "../services/services/restraintService";
 import { isInSitPose } from "./animation";
 
 const sqr = (x: number) => x * x;
@@ -89,9 +88,14 @@ const applyHeadTracking = (ac: Actor, m: Movement) => {
   }
 };
 
-// The carried player's carrier clone; the body in its arms follows this copy's yaw
-const isCarrierClone = (ac: Actor): boolean =>
-  ac.getFormID() === SpApiInteractor.getControllerInstance().lookupListener(RestraintService).carrierCloneId;
+// The carried player's carrier clone by local id, 0 while not carried; the body in its arms follows this copy's yaw
+let carrierCloneId = 0;
+
+export const setCarrierClone = (localId: number): void => {
+  carrierCloneId = localId;
+};
+
+const isCarrierClone = (ac: Actor): boolean => carrierCloneId !== 0 && ac.getFormID() === carrierCloneId;
 
 const keepOffsetFromActor = (ac: Actor, m: Movement) => {
   // The carrier clone turns outright to its packet yaw while standing, so the carried body turns with the carrier and not at the AI's pace; a walking copy is turned by its translate
