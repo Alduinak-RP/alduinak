@@ -114,7 +114,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Profession | Anyone | Novice | Adept | Expert | Master |
 |---|---|---|---|---|---|
 | Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions | the plain Potions of each school, attribute and resistance, Cure Disease, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma |
-| Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, stalhrim, the few pieces that take dragon bone or scales (Immersive Armors' Bosmer Hunt set), and the Skyforge |
+| Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, stalhrim, the few pieces that take dragon bone or scales (Immersive Armors' Bosmer Hunt set), and the Skyforge |
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue |
 | Hunter | - | the only one who sees and takes pelts off dead animals | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
 | Miner | iron veins and the sea salt deposits | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
@@ -296,11 +296,13 @@ Benches:
   mastery hours follow the recipe's bench keyword.
 - **Kiln**: the keyword `AldCraftingKiln` stays in the plugin, unused. A kiln
   mod can claim it and the charcoal recipe moves back with one spec field.
-- **Woodcutter's axe**: there is no open forge recipe for it. A Novice
-  woodworker makes it at the Woodcrafting Bench (one iron ingot, one leather
-  strip, one firewood), and every woodworker starts with one. Every vanilla
-  merchant on this server is disabled, and without an axe no one can chop
-  firewood. The forge adds the blacksmith's hoe and the two common war horns.
+- **Woodcutter's axe**: a Novice woodworker makes it at the Woodcrafting
+  Bench (one iron ingot, one leather strip, one firewood), and every woodworker
+  starts with one. The forge carries the same recipe for the axe and the
+  pickaxe, open to a Novice blacksmith or a Novice woodworker alike. Every
+  vanilla merchant on this server is disabled, and without an axe no one can
+  chop firewood. The forge adds the blacksmith's hoe and the two common war
+  horns.
 - **Meadery boilers**: the three boilers of the north row in Honningbrew
   Meadery's boiler room and the two in Black-Briar Meadery's basement brew
   mead, see below.

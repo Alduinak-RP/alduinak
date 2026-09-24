@@ -2344,6 +2344,40 @@
      "LeatherStrips": 2,
      "IngotIron": 1
     }
+   },
+   {
+    "edid": "AldRecipeSmith_Axe01",
+    "formId": "0x04125C",
+    "bench": "CraftingSmithingForge",
+    "output": "Axe01",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "also": [
+     "woodworker"
+    ],
+    "items": {
+     "IngotIron": 1,
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeSmith_Pickaxe",
+    "formId": "0x04125D",
+    "bench": "CraftingSmithingForge",
+    "output": "weapPickaxe",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "also": [
+     "woodworker"
+    ],
+    "items": {
+     "IngotIron": 1,
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
    }
   ]
  },

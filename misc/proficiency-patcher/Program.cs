@@ -465,9 +465,10 @@ static class Steps
             if (!c.TryWinning<IMajorRecordGetter>(item.Key, out var ing)) { c.Error($"recipe {edid}: ingredient '{item.Key}' not found"); continue; }
             cobj.Items.Add(new ContainerEntry { Item = new ContainerItem { Item = ing.FormKey.ToLink<IItemGetter>(), Count = item.Value!.GetValue<int>() } });
         }
-        SetTier(c, cobj, profession ?? "", r["tier"]!.GetValue<string>());
+        var also = Edids(c, r["also"]).ToList();
+        SetTier(c, cobj, profession ?? "", r["tier"]!.GetValue<string>(), also);
         c.Report.Recipes.Add(new RecipeLine(profession == null ? "common" : Kind(prefix), edid, c.NameOf(output.FormKey), profession ?? "any", r["tier"]!.GetValue<string>(), cobj.Items.Select(i => $"{i.Item.Count}x {c.NameOf(i.Item.Item.FormKey)}").ToList(),
-                                           note: profession == null ? "no mastery hours" : null));
+                                           note: profession == null ? "no mastery hours" : AlsoNote(also)));
     }
 
     static string Kind(string prefix) => prefix switch
@@ -1617,19 +1618,25 @@ static class Steps
     static bool HasAldCondition(PatchContext c, IConstructibleObjectGetter cobj) =>
         cobj.Conditions.Any(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey);
 
-    // Replace every existing marker condition by the one for this tier; only Anyone leaves a recipe ungated.
-    static void SetTier(PatchContext c, ConstructibleObject cobj, string profession, string tier)
+    // Replace every existing marker condition by the tier's marker plus the extra professions' markers (also) as one OR group; only Anyone leaves a recipe ungated.
+    static void SetTier(PatchContext c, ConstructibleObject cobj, string profession, string tier, IEnumerable<string>? also = null)
     {
         if (tier != PatchContext.AnyoneTier && Array.IndexOf(c.Ranks, tier) < 0) throw new SpecException($"unknown tier '{tier}' on {cobj.EditorID}");
         cobj.Conditions.RemoveAll(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey);
         if (tier == PatchContext.AnyoneTier) return;
         // A trailing OR would let the marker join that group and the gate would pass without it
         if (cobj.Conditions.Count > 0) cobj.Conditions[^1].Flags &= ~Condition.Flag.OR;
-        var marker = c.Winning<ISpellGetter>(c.MarkerEdid(profession, tier));
-        var data = new HasSpellConditionData { RunOnType = Condition.RunOnType.Subject };
-        data.Spell.Link.SetTo(marker.FormKey);
-        cobj.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = data });
+        var markers = (also ?? Enumerable.Empty<string>()).Prepend(profession).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(p => c.Winning<ISpellGetter>(c.MarkerEdid(p, tier)).FormKey).ToList();
+        for (int i = 0; i < markers.Count; i++)
+        {
+            var data = new HasSpellConditionData { RunOnType = Condition.RunOnType.Subject };
+            data.Spell.Link.SetTo(markers[i]);
+            cobj.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = data, Flags = i < markers.Count - 1 ? Condition.Flag.OR : default });
+        }
     }
+
+    static string? AlsoNote(List<string> also) => also.Count > 0 ? $"also {string.Join(", ", also)}" : null;
 
     static List<string> Items(PatchContext c, IConstructibleObjectGetter cobj) =>
         (cobj.Items ?? new List<IContainerEntryGetter>()).Select(i => $"{i.Item.Count}x {c.NameOf(i.Item.Item.FormKey)}").ToList();
