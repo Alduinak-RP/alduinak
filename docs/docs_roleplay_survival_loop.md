@@ -350,7 +350,8 @@ prisoner can also be carried).
   body held through a wall or a jail bar door therefore ends up back beside the
   carrier, never inside the cell. NPC bodies are set down by PetSystem instead.
 - **Doors**: a carrier's door activation is recorded (`onActivate`, after the
-  housing lock had its say, so a locked door never counts). The body only
+  housing lock had its say, so a locked door never counts, and before the door
+  override runs, so an overridden door such as the embassy entry counts). The body only
   follows the carrier into another cell when the carrier used a door within the
   last 5 s; a carrier who reached another cell any other way (an admin
   teleport, fast travel, a coc) loses the body where it was: the carry ends

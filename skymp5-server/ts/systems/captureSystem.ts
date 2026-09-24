@@ -14,8 +14,8 @@ type Mp = any;
 //   - boundHands ("arrest"): Helgen bound-hands pose; can walk and chat, cannot
 //     fight, sneak or use hands.
 //   - carried: fully immobilised; the captive's client follows the carrier's
-//     clone and the server snaps the body back when it drifts. Camera stays free.
-//     A put-down sets the body at the carrier's feet, and the body only follows
+//     clone and the server snaps the body back when it drifts. The camera is
+//     locked to third person. A put-down sets the body at the carrier's feet, and the body only follows
 //     the carrier into another cell through a door they used within DOOR_FOLLOW_MS;
 //     any other cell change ends the carry where the body was.
 // Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
@@ -207,13 +207,20 @@ export class CaptureSystem implements System {
     this.installDoorWatch(ctx.svr as Mp);
   }
 
-  // A locked door is refused by HousingSystem before this runs, so only a door that opened counts
+  // Recorded before the chain: the door override installed earlier vetoes the native teleport after moving the carrier, and a locked door is refused by HousingSystem's later wrapper before this one runs
   private installDoorWatch(mp: Mp): void {
-    chainMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
+    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
+    mp.onActivate = (targetId: number, casterId: number): boolean => {
       const carrier = casterId >>> 0;
       if (this.carrying.has(carrier) && isDoorRef(mp, targetId >>> 0)) this.doorUsedAt.set(carrier, Date.now());
-      return true;
-    });
+      if (!previous) return true;
+      try {
+        return previous.call(mp, targetId, casterId) !== false;
+      } catch (e) {
+        this.log(`[carry] door watch chain failed: ${e}`);
+        return true;
+      }
+    };
   }
 
   // A carrier cannot fight; onHitAttempt and onSpellCastAttempt need the native build, onHitDamageAttempt works on any
