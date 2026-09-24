@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import './styles.scss';
 
@@ -12,6 +12,10 @@ interface PetPromptEvents {
 export interface PetPromptData {
   caption: string;
   value: string;
+  // A regex character class body the whole text must match, shown as allowedHint
+  allowedChars?: string;
+  allowedHint?: string;
+  maxLength?: number;
   events: PetPromptEvents;
 }
 
@@ -55,9 +59,18 @@ const PetPrompt = ({ data }: { data: PetPromptData }) => {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [ev.cancel]);
 
+  const pattern = useMemo(() => {
+    try {
+      return data.allowedChars ? new RegExp('^[' + data.allowedChars + ']+$') : null;
+    } catch (e) {
+      return null;
+    }
+  }, [data.allowedChars]);
+
   const trimmed = text.trim();
+  const valid = !!trimmed && (!pattern || pattern.test(trimmed));
   const ok = () => {
-    if (trimmed) send(ev.ok, trimmed);
+    if (valid) send(ev.ok, trimmed);
   };
 
   return (
@@ -68,14 +81,17 @@ const PetPrompt = ({ data }: { data: PetPromptData }) => {
         <input
           className="pet-prompt__input"
           autoFocus
-          maxLength={MAX_LENGTH}
+          maxLength={data.maxLength || MAX_LENGTH}
           spellCheck={false}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') ok(); }}
         />
+        {data.allowedHint ? (
+          <p className={'pet-prompt__hint' + (trimmed && !valid ? ' pet-prompt__hint--bad' : '')}>{data.allowedHint}</p>
+        ) : null}
         <div className="pet-prompt__actions">
-          <button className="pet-prompt__button pet-prompt__button--primary" disabled={!trimmed} onClick={ok}>
+          <button className="pet-prompt__button pet-prompt__button--primary" disabled={!valid} onClick={ok}>
             OK
           </button>
           <button className="pet-prompt__button pet-prompt__button--quiet" onClick={() => send(ev.cancel)}>

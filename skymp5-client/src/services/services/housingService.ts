@@ -49,6 +49,9 @@ const keyPromptEvents = {
   cancel: 'housing:keyname:cancel',
 };
 
+// The server's cleanName rule for a key label
+const keyNameRule = { chars: "A-Za-z0-9 '_-", maxLength: 32, hint: "Letters, numbers, spaces, ' _ and - only." };
+
 // The server's propertyMenu reply that drives which menu we render.
 interface PropertyMenuInfo {
   target: number;
@@ -277,7 +280,7 @@ export class HousingService extends ClientListener {
       }
       case events.createKey:
         keyPromptCaption = "Name the key";
-        keyPromptValue = info.name || targetLabel;
+        keyPromptValue = (info.name || targetLabel).replace(new RegExp(`[^${keyNameRule.chars}]`, "g"), "").trim().slice(0, keyNameRule.maxLength);
         this.openKeyPrompt();
         break;
       case events.rename: {
@@ -333,7 +336,7 @@ export class HousingService extends ClientListener {
 
   private openKeyPrompt(): void {
     this.promptOpen = true;
-    openFormMenu(this.sp, this.keyPromptWidgetSetter, { keyPromptCaption, keyPromptValue, keyPromptEvents, KEY_PROMPT_WIDGET_ID }, this.controller);
+    openFormMenu(this.sp, this.keyPromptWidgetSetter, { keyPromptCaption, keyPromptValue, keyPromptEvents, keyNameRule, KEY_PROMPT_WIDGET_ID }, this.controller);
   }
 
   // The menu underneath keeps the focus while it is still open
@@ -392,6 +395,9 @@ export class HousingService extends ClientListener {
       id: KEY_PROMPT_WIDGET_ID,
       caption: keyPromptCaption,
       value: keyPromptValue,
+      allowedChars: keyNameRule.chars,
+      allowedHint: keyNameRule.hint,
+      maxLength: keyNameRule.maxLength,
       events: keyPromptEvents,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== KEY_PROMPT_WIDGET_ID);

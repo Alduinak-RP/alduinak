@@ -64,6 +64,7 @@ const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
 const CHANGE_FAILED = "That cannot be changed right now.";
+const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ and - only.";
 
 // Interior cells that belong to a hold, from HoldClaims::GetHoldCells(); names are hold keys (factionRules.holdKey).
 // Only these can resolve a hold manager; everything else is owner + admin only.
@@ -357,7 +358,7 @@ export class HousingSystem implements System {
     }
     const name = this.cleanName(raw);
     if (!name) {
-      this.notice(ctx, userId, "That name will not do.");
+      this.notice(ctx, userId, NAME_REFUSED);
       return;
     }
     rec.name = name;
@@ -376,7 +377,7 @@ export class HousingSystem implements System {
     }
     const label = typeof raw === "string" ? this.cleanName(raw) : DEFAULT_KEY_LABEL;
     if (!label) {
-      this.notice(ctx, userId, "That name will not do.");
+      this.notice(ctx, userId, NAME_REFUSED);
       return;
     }
     // The counter is stored before the key exists so no two cuts ever share a name
