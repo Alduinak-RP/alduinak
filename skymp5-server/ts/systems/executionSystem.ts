@@ -6,7 +6,8 @@ import { FactionSystem } from "./factionSystem";
 import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
 import { toFormId } from "./formIdUtil";
-import { baseIdOf, hex, isAlive, isBehind, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
+import { FurnitureSeatSystem } from "./furnitureSeatSystem";
+import { baseIdOf, hex, isAlive, isBehind, isMounted, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -127,6 +128,7 @@ export class ExecutionSystem implements System {
     private factions: FactionSystem,
     private afterlife: AfterlifeSystem,
     private bodies: BodySystem,
+    private seats: FurnitureSeatSystem,
   ) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -208,7 +210,9 @@ export class ExecutionSystem implements System {
     if (killerId === victimId || !isPlayerActor(mp, victimId)) return "They cannot be assassinated.";
     if (!this.factions.canExecute(killerId)) return "You do not have the right to execute.";
     if (!this.isAble(killerId)) return "You cannot do that now.";
-    if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId)) return "They cannot be assassinated now.";
+    if (isMounted(mp, killerId)) return "Dismount first.";
+    if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId) ||
+      isMounted(mp, victimId) || this.seats.seatOf(userOf(mp, victimId))) return "They cannot be assassinated now.";
     if (this.assassinations.has(victimId)) return "They are already being assassinated.";
     if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return "They are out of reach.";
     if (!isSneaking(mp, killerId)) return "You must be sneaking.";

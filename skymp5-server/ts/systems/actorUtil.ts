@@ -140,6 +140,15 @@ export const isBehind = (mp: Mp, viewerId: number, subjectId: number): boolean =
   }
 };
 
+// A rider's ff_mount holds the horse id, 0 or unset on foot
+export const isMounted = (mp: Mp, actorId: number): boolean => {
+  try {
+    return !!mp.get(actorId, "ff_mount");
+  } catch {
+    return false;
+  }
+};
+
 // Mirrored by BleedoutSystem while a player kneels at 0 health: alive, but unable to act
 export const BLEEDOUT_PROP = "private.bleedout";
 

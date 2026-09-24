@@ -202,7 +202,9 @@ behaviour-graph events — no ESP required.**
 - **Assassinate** (`executionSystem.ts`): the same right kills a standing
   player from behind. Assassinate shows in the X menu on a living player
   character in reach (`captureInteractMaxDistance`) who is neither downed, bound,
-  carried nor fallen, when the killer is sneaking (Papyrus
+  carried, fallen, mounted (`ff_mount`) nor seated (`FurnitureSeatSystem`),
+  since no paired killmove plays on a rider or in furniture, when the killer
+  is on foot ("Dismount first.") and sneaking (Papyrus
   `GetAnimationVariableBool IsSneaking`, the flag the movement sync reports)
   and stands within 60 degrees behind the victim's back (`actorUtil.isBehind`,
   from the victim's yaw and both positions); the refusals name the missing

@@ -286,7 +286,7 @@ const main = async () => {
   const bodySystem = new BodySystem(log);
   searchSystem.bodyRefusal = (searcherId, bodyId) => bodySystem.refusalFor(searcherId, bodyId);
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
-  const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem);
+  const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem, furnitureSeatSystem);
   adminSystem.setExecutionSystem(executionSystem);
   const bountyBoardSystem = new BountyBoardSystem(log);
   bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
