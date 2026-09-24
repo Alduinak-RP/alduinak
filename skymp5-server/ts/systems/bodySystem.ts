@@ -56,7 +56,7 @@ export class BodySystem implements System {
     }
   }
 
-  // The clone wears the victim's look and gear and holds their pack, and the victim respawns shortly after; 0 when no body could be left
+  // The clone wears the victim's look and gear and holds their pack; the victim keeps only named items (property keys and writings) and respawns shortly after. 0 when no body could be left
   leaveBody(victimId: number, why: string): number {
     const mp = this.mp;
     const recent = Array.from(this.bodies.values()).find((b) => b.victimId === victimId && Date.now() - b.at < REPEAT_MS);
@@ -99,8 +99,9 @@ export class BodySystem implements System {
     try {
       mp.set(cloneId, "inventory", { entries: loot });
       mp.set(cloneId, "isDead", true);
+      mp.set(victimId, "inventory", { entries: entries.filter(named) });
     } catch (e) {
-      this.log(`[body] filling ${hex(cloneId)} with the pack of ${hex(victimId)} failed: ${e}`);
+      this.log(`[body] moving the pack of ${hex(victimId)} to ${hex(cloneId)} failed: ${e}`);
     }
     this.bodies.set(cloneId, { id: cloneId, victimId, at: Date.now() });
     this.save();

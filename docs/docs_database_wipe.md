@@ -21,6 +21,7 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `build/dist/server/housing.json`, `zone-spawns.json` | Reset to `[]` |
 | `build/dist/server/companions.json` | Reset to `{"active":[],"corpses":[],"stored":[]}` |
 | `build/dist/server/pets.json` | Reset to `{"active":[],"released":[]}` |
+| `build/dist/server/bodies.json` | Reset to `{"bodies":[]}`. It lists the bodies PKs left; a stale entry is dropped at boot anyway |
 | `build/dist/server/starter-grants.json` | Reset to `{}`. The starting kit is the clothes and the gold comes with the first profession, so the ledger only matters when `startingItems` carries gold |
 | `build/dist/server/gathering-picks.json` | Reset to `{}`. It lists picked nirnroot and critters waiting to grow back, and their hidden state goes with the dropped changeForms |
 | `build/dist/server/weather-state.json` | Reset to `{}`, so every region rolls a fresh weather on the next boot |

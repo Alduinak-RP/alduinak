@@ -178,8 +178,11 @@ behaviour-graph events — no ESP required.**
   soul trap by an execute holder) leaves a body where the victim fell: a
   clone made with `createActor` at the victim's spot wearing their look
   (their gear too once the native equipment setter ships, naked until then)
-  and holding a copy of their pack with the worn flags dropped, so every
-  stack is takeable through the search window. The victim's own dead actor
+  and holding their pack with the worn flags dropped, so every stack is
+  takeable through the search window. The fallen character keeps only the
+  named items (property keys and writings, `isNamedItemBase`), which the
+  window never moves anyway, and wakes in the afterlife with nothing else:
+  gold and worn gear included. The victim's own dead actor
   is respawned 4 s later (the afterlife routing takes that respawn to the
   realm), so two bodies never lie side by side. The clone has no profile id,
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
