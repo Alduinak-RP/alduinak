@@ -191,6 +191,9 @@ export class VoiceService extends ClientListener {
       } else {
         this.pttDown = false;
       }
+    } else if (kind === "voice::focusLost") {
+      // A menu that closed blurs the page too; the unfocused poll owns that release
+      if (this.sp.browser.isFocused()) this.releasePtt();
     }
   }
 

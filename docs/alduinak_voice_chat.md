@@ -32,7 +32,10 @@ The integration described as "future work" below has been built:
   it (`Input.isKeyPressed`) and releases once the key is up, or at the latest
   when the menu closes; an engine hold whose release was lost cannot reopen it
   while the key reads up, and the AFK ping goes out at most once a minute. The
-  console and a despawned actor force a release. A
+  console and a despawned actor force a release. A window blur, a hidden page
+  or Alt+Tab while a menu has focus closes the mic (`voice::focusLost`), since
+  no key-up reaches the page after it; the game ignores the blur a closing
+  menu causes. A
   mouse-bound key has no DOM code and works unfocused only; Alt+V mode
   cycling is game-side only.
   Requests a token per actor assignment; pushes peer distances (same world

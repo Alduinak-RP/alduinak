@@ -9,6 +9,7 @@
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
 // Events back to the game (window.skyrimPlatform.sendMessage):
 //   'voice::ready', 'voice::micDenied', 'voice::error' <text>, 'voice::ptt' <'1' pressed | '0' released, from the page's own key listeners>,
+//   'voice::focusLost' <window blur, hidden page or Alt+Tab while the mic is open; the game releases it if a menu still has focus>,
 //   'voice::speaking' <json array of {id, level}: own voice while PTT is held plus audible unmuted speakers, every 150 ms while anyone talks, [] once when quiet>,
 //   'voice::stopped' <identity hex: that voice ended (mute, track gone, left, out of range, own PTT released), so its mouth closes without waiting for a report>
 
@@ -75,6 +76,7 @@ class VoiceManager {
 
   // Key events reach the page only while a menu or the chat has focus, when the game cannot see the key
   onKeyDown(e) {
+    if (e.code === 'Tab' && e.altKey) this.onFocusLost();
     if (!this.pttCode || e.code !== this.pttCode || e.repeat || isTyping()) return;
     // Alt+V means cycle mode, which only the game handles
     if (e.altKey) return;
@@ -87,6 +89,11 @@ class VoiceManager {
     if (!this.ptt || !this.pttCode || e.code !== this.pttCode) return;
     this.setPtt(false);
     sendToGame('voice::ptt', '0');
+  }
+
+  // No key-up follows once the window loses focus; a menu closing blurs the page too, so the game decides
+  onFocusLost() {
+    if (this.ptt) sendToGame('voice::focusLost');
   }
 
   modeByKey(key) {
@@ -338,6 +345,10 @@ class VoiceManager {
 window.__alduinakVoice = new VoiceManager();
 window.addEventListener('keydown', (e) => window.__alduinakVoice.onKeyDown(e));
 window.addEventListener('keyup', (e) => window.__alduinakVoice.onKeyUp(e));
+window.addEventListener('blur', () => window.__alduinakVoice.onFocusLost());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) window.__alduinakVoice.onFocusLost();
+});
 
 // Failsafe: if the game stops feeding distances (main menu, script reload), go silent instead of playing stale volumes.
 // Also heartbeat the range so listeners who missed the data packet eventually heal.
