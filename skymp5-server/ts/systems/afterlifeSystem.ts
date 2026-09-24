@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, AFTERLIFE_EVENT } from "./system";
 import { addItemTo, addSpellTo, chainMpHook, hex, holdsItem, isAlive, isPlayerActor, notifyActor, removeSpellFrom, userOf } from "./actorUtil";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
-import { readInventory } from "./inventoryExtras";
+import { readInventory, sameExtras } from "./inventoryExtras";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -41,8 +41,12 @@ export const AFTERLIFE_PROP = "private.afterlife";
 const LOOK_PROP = "ff_afterlife";
 // The SPEL look ability actually added, so a changed look or a revive removes that one
 const SPELL_PROP = "private.afterlifeSpell";
-// The realm whose outfit the character was given since the pack was last stripped; a lost piece is only handed out again after the next strip
+// { realm, granted: { [baseId]: count } }: the realm whose outfit was handed out since the pack was last stripped and the pieces AddItem gave; a lost piece is only handed out again after the next strip
 const OUTFIT_PROP = "private.afterlifeOutfit";
+interface OutfitRecord {
+  realm: RealmId;
+  granted: Record<string, number>;
+}
 // Set by FactionSystem once a fallen character's ranks were released
 export const RELEASED_PROP = "private.factionsReleased";
 // Where a revived character wakes: the Temple of Kynareth in Whiterun (TempleRespawn.cpp)
@@ -98,6 +102,21 @@ export const isFallen = (mp: Mp, actorId: number): boolean => {
     return false;
   }
   return afterlifeOf(mp, actorId) !== null;
+};
+
+const outfitOf = (mp: Mp, actorId: number): OutfitRecord | null => {
+  try {
+    const raw = mp.get(actorId, OUTFIT_PROP);
+    const realm = realmIdOf(raw?.realm);
+    if (!realm) return null;
+    const granted: Record<string, number> = {};
+    for (const [base, count] of Object.entries(raw.granted && typeof raw.granted === "object" ? raw.granted : {})) {
+      if (typeof count === "number" && Number.isInteger(count) && count > 0) granted[base] = count;
+    }
+    return { realm, granted };
+  } catch {
+    return null;
+  }
 };
 
 const realmAt = (mp: Mp, actorId: number): RealmId | null => {
@@ -232,19 +251,17 @@ export class AfterlifeSystem implements System {
     let profileId = -1;
     try { profileId = Number(mp.get(actorId, "profileId")); } catch { return "Character not found"; }
     if (livingCount(mp, profileId) >= this.maxCharacters) return "The extra slot is in use: delete the character created in it first";
-    const realm = afterlifeOf(mp, actorId);
     try {
       mp.set(actorId, AFTERLIFE_PROP, null);
       mp.set(actorId, "private.permaDead", null);
       mp.set(actorId, RELEASED_PROP, null);
-      mp.set(actorId, OUTFIT_PROP, null);
       mp.set(actorId, "locationalData", REVIVE_ARRIVAL);
     } catch (e) {
       this.log(`[afterlife] reviving ${hex(actorId)} failed: ${e}`);
       return "Revive failed, see server log";
     }
     this.clearLook(mp, actorId);
-    if (realm) this.undress(mp, actorId, realm);
+    this.undress(mp, actorId);
     notifyActor(mp, actorId, "You have been returned to the living.");
     this.log(`[afterlife] ${hex(actorId)} of profile ${profileId} revived by ${by}`);
     return "";
@@ -360,14 +377,15 @@ export class AfterlifeSystem implements System {
   private dress(mp: Mp, actorId: number, realm: RealmId): void {
     const { outfit } = this.looks[realm];
     if (!outfit.length || userOf(mp, actorId) < 0 || !isAlive(mp, actorId) || afterlifeOf(mp, actorId) !== realm) return;
-    let given = false;
-    try { given = mp.get(actorId, OUTFIT_PROP) === realm; } catch { /* treated as not given */ }
+    const given = outfitOf(mp, actorId)?.realm === realm;
+    const granted: Record<string, number> = {};
     let worn = 0;
     for (const itemId of outfit) {
       try {
         if (!holdsItem(mp, actorId, (baseId) => baseId === itemId)) {
           if (given) continue;
           addItemTo(mp, actorId, itemId, 1, true);
+          granted[itemId] = (granted[itemId] ?? 0) + 1;
         }
         const self = { type: "form", desc: mp.getDescFromId(actorId) };
         mp.callPapyrusFunction("method", "Actor", "EquipItem", self, [{ type: "espm", desc: mp.getDescFromId(itemId) }, false, true]);
@@ -376,9 +394,9 @@ export class AfterlifeSystem implements System {
         this.log(`[afterlife] dressing ${hex(actorId)} in ${hex(itemId)} failed: ${e}`);
       }
     }
-    if (!given && worn) {
+    if (!given && (worn || Object.keys(granted).length)) {
       try {
-        mp.set(actorId, OUTFIT_PROP, realm);
+        mp.set(actorId, OUTFIT_PROP, { realm, granted });
       } catch (e) {
         this.log(`[afterlife] recording the outfit of ${hex(actorId)} failed: ${e}`);
       }
@@ -386,16 +404,30 @@ export class AfterlifeSystem implements System {
     this.log(`[afterlife] ${hex(actorId)} wears ${worn} piece(s) of the ${REALMS[realm].label} outfit`);
   }
 
-  // Takes every piece of the realm's outfit back, so a revive carries none of it to Tamriel
-  private undress(mp: Mp, actorId: number, realm: RealmId): void {
-    const { outfit } = this.looks[realm];
-    if (!outfit.length) return;
+  // Takes back as many plain copies as dress() granted, worn ones first, so a revive carries none of it to Tamriel and the player's own pieces stay
+  private undress(mp: Mp, actorId: number): void {
+    const record = outfitOf(mp, actorId);
+    if (!record) return;
     try {
+      const owed = new Map(Object.entries(record.granted).map(([base, count]) => [Number(base) >>> 0, count]));
       const { entries } = readInventory(mp, actorId);
-      const kept = entries.filter((e) => !outfit.includes(Number(e.baseId) >>> 0));
-      if (kept.length !== entries.length) mp.set(actorId, "inventory", { entries: kept });
+      const counts = entries.map((e) => Number(e.count) || 0);
+      const order = entries.map((_, i) => i).sort((a, b) => Number(!!entries[b].worn) - Number(!!entries[a].worn));
+      let taken = 0;
+      for (const i of order) {
+        const base = Number(entries[i].baseId) >>> 0;
+        const due = owed.get(base) ?? 0;
+        if (!due || !sameExtras(entries[i], { baseId: base, count: 1 })) continue;
+        const n = Math.min(due, counts[i]);
+        counts[i] -= n;
+        owed.set(base, due - n);
+        taken += n;
+      }
+      if (taken) mp.set(actorId, "inventory", { entries: entries.map((e, i) => ({ ...e, count: counts[i] })).filter((e) => e.count > 0) });
+      mp.set(actorId, OUTFIT_PROP, null);
+      this.log(`[afterlife] took ${taken} granted piece(s) of the ${REALMS[record.realm].label} outfit from ${hex(actorId)}`);
     } catch (e) {
-      this.log(`[afterlife] taking the ${REALMS[realm].label} outfit from ${hex(actorId)} failed: ${e}`);
+      this.log(`[afterlife] taking the ${REALMS[record.realm].label} outfit from ${hex(actorId)} failed: ${e}`);
     }
   }
 

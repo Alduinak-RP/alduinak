@@ -319,10 +319,16 @@ to one stays playable but is confined to it.
   sent, 5 s after a realm respawn and 5 s after a login into the realm, since
   the spawn strips the player first (`[afterlife] <id> wears N piece(s) of
   the <realm> outfit`). The outfit is handed out once per send: the first
-  dressing records `private.afterlifeOutfit` (the realm), and later dressings
-  only put on the pieces still held, so a piece dropped or traded is gone until
-  the next PK strip (a send clears the record). A revive takes every outfit
-  piece out of the inventory and clears the record. `ff_afterlife` must be registered in
+  dressing records `private.afterlifeOutfit` (`{ realm, granted }`, the realm
+  and the count per base id that `AddItem` actually gave; a piece the player
+  already held is only put on), and later dressings only put on the pieces
+  still held, so a piece dropped or traded is gone until the next PK strip (a
+  send clears the record). A revive takes back at most the granted count per
+  base, only from copies with no enchantment, tempering or name, worn ones
+  first, so the player's own Ancient Nord or prisoner pieces stay (a plain copy
+  of their own can go in place of a granted one they gave away), logs
+  `[afterlife] took N granted piece(s) of the <realm> outfit from <id>` and
+  clears the record. `ff_afterlife` must be registered in
   `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
   the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
   Build gamemode only before the server build; without it the server logs
