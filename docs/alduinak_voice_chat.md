@@ -42,7 +42,10 @@ The integration described as "future work" below has been built:
   arrows, Home/End/Ins/Del, Numpad Enter/Divide, Num Lock, Pause) never reach
   the page, so while a menu has focus the game polls them itself and opens the
   mic on a press edge (not while Alt is down or the console is open); the
-  typing guard covers DOM keys only. Alt+V mode cycling is game-side only.
+  typing guard covers DOM keys only. A focused menu hides mouse buttons from
+  the engine, so the key-up it sends for a button held as a menu opens is
+  ignored while `Input.isKeyPressed` still reads the key down, and the poll
+  closes the mic on the real release. Alt+V mode cycling is game-side only.
   Requests a token per actor assignment; pushes peer distances (same world
   only) every 400ms.
 - **Talk range**: V + mousewheel picks the speaker's audible range between

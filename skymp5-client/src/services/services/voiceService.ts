@@ -108,9 +108,14 @@ export class VoiceService extends ClientListener {
         return;
       }
       this.pressPtt();
-    } else if (e.isUp && this.pttDown) {
+    } else if (e.isUp && this.pttDown && !this.focusedPollHolds()) {
       this.releasePtt();
     }
+  }
+
+  // A focused menu hides held mouse buttons from the engine, so its key-up is not real while the key still reads down
+  private focusedPollHolds(): boolean {
+    return this.sp.browser.isFocused() && !domKeyCode(this.voiceKey) && this.sp.Input.isKeyPressed(this.voiceKey);
   }
 
   private pressPtt() {
