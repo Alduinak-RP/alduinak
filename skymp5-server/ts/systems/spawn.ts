@@ -119,7 +119,7 @@ function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
 // CharacterSelectService). Flag off (default) keeps the original
 // single-character behaviour, so enabling can never brick login on its own.
 //   Server -> Client:
-//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]} }
+//     { customPacketType: "characterSelectMenu", maxCharacters, characters: [ {name,info,dead} | null ], lockedSlots, intro?: {pages, question, locations: [{id,label}]}, notice?: "why the last choice was refused" }
 //   Client -> Server:
 //     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot, start?: locationId }
 //     { customPacketType: "characterSelectMenuRequest", loadError?: string, viaPauseMenu?: boolean }
@@ -418,7 +418,8 @@ export class Spawn implements System {
     }
   }
 
-  private sendCharacterList(ctx: SystemContext, userId: number, profileId: number): void {
+  // notice is shown above the slot list, so a refused choice never looks like nothing happened
+  private sendCharacterList(ctx: SystemContext, userId: number, profileId: number, notice = ""): void {
     const mp = ctx.svr as unknown as Mp;
     const slots = this.slotMap(ctx, profileId);
     const characters = slots.map((actorId, i) => {
@@ -436,6 +437,7 @@ export class Spawn implements System {
       .filter((e) => e !== null));
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
       customPacketType: "characterSelectMenu", maxCharacters: slots.length, characters, lockedSlots, intro,
+      ...(notice ? { notice } : {}),
     }));
   }
 
@@ -458,13 +460,13 @@ export class Spawn implements System {
     // Permanently dead characters are locked: the body remains in the world but can never be played again
     if (!isNew && actorId !== undefined && this.isPermaDead(mp, actorId)) {
       this.log("Refusing to play permanently dead character", actorId.toString(16), "in slot", slot);
-      this.sendCharacterList(ctx, userId, auth.profileId);
+      this.sendCharacterList(ctx, userId, auth.profileId, "That character is dead.");
       return;
     }
 
     if (isNew && !this.canCreate(mp, slots)) {
       this.log(`Refusing character creation in slot ${slot} for profile ${auth.profileId}: living limit reached`);
-      this.sendCharacterList(ctx, userId, auth.profileId);
+      this.sendCharacterList(ctx, userId, auth.profileId, "You already have the maximum number of living characters.");
       return;
     }
 
@@ -481,7 +483,7 @@ export class Spawn implements System {
             return;
           }
           this.log("Refusing character creation in slot", slot, "with unknown start location", String(start).slice(0, 64));
-          this.sendCharacterList(ctx, userId, auth.profileId);
+          this.sendCharacterList(ctx, userId, auth.profileId, "Unknown start location, try again.");
           return;
         }
       }
@@ -516,13 +518,13 @@ export class Spawn implements System {
     if (isNew) {
       if (this.charCreator.enabled) {
         mp.set(actorId, "private.charCreatorPending", true);
-        this.sendCharCreatorOpen(ctx, userId, auth.profileId);
+        this.sendCharCreatorOpen(ctx, userId, auth.profileId, actorId);
       } else {
         ctx.svr.setRaceMenuOpen(actorId, true);
       }
     } else if (this.charCreator.enabled && this.isCharCreatorPending(mp, actorId)) {
       // Relog protection: an unfinished creator reopens until a submission is accepted
-      this.sendCharCreatorOpen(ctx, userId, auth.profileId);
+      this.sendCharCreatorOpen(ctx, userId, auth.profileId, actorId);
     }
 
     this.applyAuthProps(mp, actorId, auth.profileId, auth.roles, auth.discordId,
@@ -707,7 +709,8 @@ export class Spawn implements System {
       .catch((e) => this.log(`[spawn] charCreator: mod hair scan failed: ${e}`));
   }
 
-  private sendCharCreatorOpen(ctx: SystemContext, userId: number, profileId: number): void {
+  private sendCharCreatorOpen(ctx: SystemContext, userId: number, profileId: number, actorId: number): void {
+    this.log("Character creator opened for actor", actorId.toString(16), "profile", profileId);
     ctx.svr.sendCustomPacket(userId, JSON.stringify({
       customPacketType: "charCreatorOpen",
       config: {
@@ -727,12 +730,17 @@ export class Spawn implements System {
   }
 
   private onCharCreatorResult(ctx: SystemContext, userId: number, content: Content): void {
-    if (!this.charCreator.enabled) return;
     let actorId = 0;
-    try { actorId = ctx.svr.getUserActor(userId); } catch { return; }
-    if (actorId === 0) return;
+    try { actorId = ctx.svr.getUserActor(userId); } catch { /* user gone */ }
     const mp = ctx.svr as unknown as Mp;
-    if (!this.isCharCreatorPending(mp, actorId)) return;
+    const ignored = !this.charCreator.enabled ? "the creator is disabled"
+      : actorId === 0 ? "no actor"
+      : !this.isCharCreatorPending(mp, actorId) ? `not pending for actor ${actorId.toString(16)}`
+      : "";
+    if (ignored) {
+      this.log(`[spawn] charCreatorResult ignored for user ${userId}: ${ignored}`);
+      return;
+    }
 
     let profileId = this.authCache.get(userId)?.profileId;
     if (profileId === undefined) {
@@ -749,10 +757,12 @@ export class Spawn implements System {
     };
     const res = validateResult(content.data, config);
     if (res.ok === false) {
+      this.log(`[spawn] charCreator refused for ${actorId.toString(16)}: ${res.error}`);
       this.sendCharCreatorError(ctx, userId, res.error);
       return;
     }
     if (this.lockedRacesFor(profileId).includes(res.clean.race)) {
+      this.log(`[spawn] charCreator refused for ${actorId.toString(16)}: race ${res.clean.race} is locked for profile ${profileId}`);
       this.sendCharCreatorError(ctx, userId, "This race is locked for your account");
       return;
     }
@@ -811,7 +821,7 @@ export class Spawn implements System {
       ctx.svr.setUserActor(userId, actorId);
       if (this.charCreator.enabled && this.isCharCreatorPending(mp, actorId)) {
         // Relog protection: an unfinished creator reopens until a submission is accepted
-        this.sendCharCreatorOpen(ctx, userId, userProfileId);
+        this.sendCharCreatorOpen(ctx, userId, userProfileId, actorId);
       }
     } else {
       const point = this.randomStartPoint();
@@ -823,7 +833,7 @@ export class Spawn implements System {
       ctx.svr.setUserActor(userId, actorId);
       if (this.charCreator.enabled) {
         mp.set(actorId, "private.charCreatorPending", true);
-        this.sendCharCreatorOpen(ctx, userId, userProfileId);
+        this.sendCharCreatorOpen(ctx, userId, userProfileId, actorId);
       } else {
         ctx.svr.setRaceMenuOpen(actorId, true);
       }

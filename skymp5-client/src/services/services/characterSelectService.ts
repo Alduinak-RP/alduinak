@@ -123,7 +123,7 @@ let introScreen: 'page' | 'question' | 'confirm' | null = null;
 let introPages: IntroPage[] = [];
 let introPage = 0;
 let introPick = -1;
-// Shown above the slot list after a spawn that never reached the world
+// Shown above the slot list after a spawn that never reached the world, or the server's reason for refusing the last choice
 let notice = '';
 
 // A player's own quit opens the pause menu shortly before the main menu
@@ -150,13 +150,14 @@ function resetIntro(): void {
  *
  * Protocol (all messages are {@link MsgType.CustomPacket} JSON dumps):
  *
- *   Server -> Client, open the menu (without intro an empty slot creates at once):
+ *   Server -> Client, open the menu (without intro an empty slot creates at once); notice is shown above the slots, a refused choice sends one:
  *     { "customPacketType": "characterSelectMenu",
  *       "maxCharacters": 3,
  *       "characters": [ { "name": "Lydia", "info": "..." }, null, null ],
  *       "lockedSlots": [ 2 ],
  *       "intro": { "pages": [ { "caption": "...", "text": "...", "align": "left" } ], "question": "...",
- *                  "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ] } }
+ *                  "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ] },
+ *       "notice"?: "That character is dead." }
  *
  *   Server -> Client, close without a choice (optional):
  *     { "customPacketType": "characterSelectMenuClose" }
@@ -199,6 +200,8 @@ export class CharacterSelectService extends ClientListener {
         selectedSlot = null;
         confirmDeleteSlot = null;
         intro = parseIntro(content["intro"]);
+        // A menu without one keeps the line set here, such as the load failure
+        if (typeof content["notice"] === 'string') notice = content["notice"];
         resetIntro();
         this.menuOpen = true;
         logTrace(this, `Opening character select menu with`, maxCharacters, `slots`);

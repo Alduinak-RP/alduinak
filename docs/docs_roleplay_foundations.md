@@ -152,7 +152,8 @@ All messages use `MsgType.CustomPacket` with a JSON dump in `contentJsonDump`.
     ],
     "question": "Where will your journey begin?",
     "locations": [ { "id": "dawnstar-docks", "label": "Dawnstar Docks" } ]
-  }
+  },
+  "notice": "You already have the maximum number of living characters."
 }
 ```
 
@@ -165,6 +166,12 @@ All messages use `MsgType.CustomPacket` with a JSON dump in `contentJsonDump`.
   limit is reached). The client hides them.
 - `intro` — optional new character intro. The server sends it while its
   `startLocations` list is not empty (see the server configuration reference).
+- `notice` — optional line shown above the slot list. The server sends it when
+  it re-opens the menu after refusing the player's choice, so the refusal
+  never looks like nothing happened: "That character is dead.", "You already
+  have the maximum number of living characters." or "Unknown start location,
+  try again." (each also logged as `Refusing ...`). A menu without `notice`
+  keeps the line the client set itself, such as the failed spawn load text.
 
 On receipt the client shows the menu and makes the browser visible/focused.
 Filled slots offer **play** and **delete** (delete asks for confirmation);
