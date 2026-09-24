@@ -90,6 +90,27 @@ const previewFor = (anim: string): string => {
   }
 };
 
+// An Image outside the document never advances, so this paints the gif's first frame
+const StillFrame = ({ src }: { src: string }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d')?.drawImage(img, 0, 0);
+    };
+    img.src = src;
+    return () => {
+      img.onload = null;
+      img.src = '';
+    };
+  }, [src]);
+  return <canvas ref={canvasRef} aria-label="Selected emote preview" />;
+};
+
 interface RingProps {
   innerR: number;
   outerR: number;
@@ -147,8 +168,9 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
   const [activeGroupId, setActiveGroupId] = useState(initialGroup ? initialGroup.id : '');
   const [activeAnim, setActiveAnim] = useState(initialAnim);
   const [previewAnim, setPreviewAnim] = useState(initialAnim);
-  const [previewSrc, setPreviewSrc] = useState(previewFor(initialAnim));
+  const [previewSrc, setPreviewSrc] = useState(() => previewFor(initialAnim));
   const [previewChanging, setPreviewChanging] = useState(false);
+  const [hovering, setHovering] = useState(false);
   const [refusedAnim, setRefusedAnim] = useState('');
   const swapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The emote slice under the cursor, played when a held wheel key is released
@@ -253,8 +275,8 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
                 labelClass="emote-wheel__segment-label"
                 activeId={activeAnim}
                 items={activeGroup.emotes.map((e) => ({ id: e.anim, label: e.label, locked: e.locked }))}
-                onHover={(anim) => { hoveredRef.current = anim; changePreview(anim); }}
-                onLeave={() => { hoveredRef.current = ''; }}
+                onHover={(anim) => { hoveredRef.current = anim; setHovering(true); changePreview(anim); }}
+                onLeave={() => { hoveredRef.current = ''; setHovering(false); }}
                 onClick={selectEmote}
               />
             </svg>
@@ -281,7 +303,7 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
           >
             <div className="emote-wheel__preview-glow" />
             {previewLocked && previewedEmote && <p className="emote-wheel__preview-needs">Requires {previewedEmote.needs}</p>}
-            <img src={previewSrc} alt="Selected emote preview" />
+            {hovering ? <img src={previewSrc} alt="Selected emote preview" /> : <StillFrame src={previewSrc} />}
           </div>
         </aside>
       </div>

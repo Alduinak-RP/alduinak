@@ -42,7 +42,6 @@ $grey-border-locked-hover: rgba(150, 142, 140, 0.6);
     background:
       radial-gradient(circle at center, rgba(10, 0, 0, 0.15), rgba(0, 0, 0, 0.7) 100%),
       rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(2px);
   }
 
   &__stage {
@@ -54,7 +53,6 @@ $grey-border-locked-hover: rgba(150, 142, 140, 0.6);
     grid-template-columns: minmax(570px, 1fr) 340px;
     align-items: center;
     gap: clamp(24px, 4vw, 58px);
-    filter: drop-shadow(0 30px 46px rgba(0, 0, 0, 0.84));
   }
 
   &__wheel-section {
@@ -269,6 +267,7 @@ $grey-border-locked-hover: rgba(150, 142, 140, 0.6);
     display: grid;
     place-items: end center;
     overflow: hidden;
+    contain: paint;
     border: 1px solid rgba(120, 35, 30, 0.45);
     background:
       radial-gradient(ellipse at center bottom, rgba(120, 30, 25, 0.22), transparent 56%),
@@ -277,7 +276,8 @@ $grey-border-locked-hover: rgba(150, 142, 140, 0.6);
       inset 0 0 26px rgba(0, 0, 0, 0.8),
       0 0 16px rgba(0, 0, 0, 0.55);
 
-    img {
+    img,
+    canvas {
       position: relative;
       z-index: 1;
       max-width: 84%;
@@ -286,16 +286,29 @@ $grey-border-locked-hover: rgba(150, 142, 140, 0.6);
       object-fit: contain;
       object-position: center bottom;
       opacity: 0.95;
-      filter: drop-shadow(0 18px 15px rgba(0, 0, 0, 0.8)) saturate(0.85) contrast(0.96);
-      transition: opacity $medium, transform $medium, filter $medium;
+      transition: opacity $medium, transform $medium;
     }
 
-    &--changing img {
+    // The drop-shadow stays on the still canvas, which renders once
+    img {
+      filter: saturate(0.85) contrast(0.96);
+    }
+
+    canvas {
+      filter: drop-shadow(0 18px 15px rgba(0, 0, 0, 0.8)) saturate(0.85) contrast(0.96);
+    }
+
+    &--changing img,
+    &--changing canvas {
       opacity: 0.35;
       transform: translateY(6px) scale(0.98);
     }
 
     &--locked img {
+      filter: grayscale(1) brightness(0.7);
+    }
+
+    &--locked canvas {
       filter: drop-shadow(0 18px 15px rgba(0, 0, 0, 0.8)) grayscale(1) brightness(0.7);
     }
   }

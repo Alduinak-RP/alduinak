@@ -12,7 +12,9 @@ are drawn; an offset overlay such as Crossed Arms is not an idle, so a draw stil
 
 - Client: `skymp5-client/src/services/services/emoteService.ts` (the `GROUPS` catalog, playing, exiting, the
   prop gate).
-- Front: `skymp5-front/src/features/emoteWheel/` (the radial widget, id 24).
+- Front: `skymp5-front/src/features/emoteWheel/` (the radial widget, id 24). The preview gif animates only
+  while the cursor is over an emote slice; otherwise the panel shows its first frame, so an idle wheel costs no
+  frame time.
 - Server: nothing. Animation packets are relayed unchecked (`ActionListener::OnUpdateAnimation`).
 
 ## Emotes that need an item
