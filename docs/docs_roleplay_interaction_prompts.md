@@ -137,7 +137,9 @@ and Papyrus scripts, its record flags (an initially disabled or deleted ref is
 never loaded by the server), its XAPD, then every REFR whose XAPR names it as
 activation parent: the gate a lever moves must be listed there with a base type
 the server loads (ACTI, DOOR, FURN, CONT, FLOR, TREE, items) and a script the
-script storage has, or the pull toggles the lever alone. `--door` follows the
+script storage has, or the pull toggles the lever alone. A lever whose script
+reaches its gate through an XMarker (a STAT the server never loads) gets a
+`leverLinks` entry instead. `--door` follows the
 ref's XTEL to its twin and prints both halves' destination cell, arrival
 position and rotation in degrees, which is what a `doorTeleportOverrides` entry
 replaces.

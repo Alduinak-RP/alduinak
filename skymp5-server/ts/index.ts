@@ -46,6 +46,7 @@ import { TimeSystem } from "./systems/timeSystem";
 import { WeatherSystem } from "./systems/weatherSystem";
 import { FurnitureSeatSystem } from "./systems/furnitureSeatSystem";
 import { DoorTeleportSystem } from "./systems/doorTeleportSystem";
+import { LeverLinkSystem } from "./systems/leverLinkSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { DiscordAlerts } from "./systems/discordAlerts";
@@ -344,6 +345,8 @@ const main = async () => {
     new DiscordBanSystem(),
     new DiscordAlerts(),
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
+    // After every other activate hook but the job one, so only an allowed pull moves the linked gate
+    new LeverLinkSystem(log),
     // Last: its hit and activate hooks wrap every other one
     jobSystem,
   );

@@ -362,6 +362,38 @@ boot.
 }
 ```
 
+## leverLinks
+
+Levers that open or close a gate or door the plugin wires through markers the
+server never loads. The server skips every STAT reference, XMarkers included,
+so a lever script that reads or activates one moves nothing but the lever. One
+entry per gate: `levers` lists the placed levers, `target` the placed door or
+gate they move; both take a number, a `"0x..."` string or a `"hex:File.esp"`
+descriptor. With `all: true` every lever of the entry must have been pulled once
+before the target moves; after that each pull toggles it. A `DOOR` target
+toggles its native `isOpen`; any other target plays `openAnim` / `closeAnim`
+(default `open` / `close`, the default2StateActivator names), which the server
+keeps for players who arrive later. Pulls and the open state are stored on the
+refs and survive a restart. Only a connected player's pull counts, once the
+other activation checks allowed it, and a target moves at most once every 3 s.
+Each pull is logged as `[levers] <player> pulled <lever>, ...`.
+
+Defaults to Soljund's Sinkhole: soljundLever `5ebe3` and `5ebe4` run
+soljundMasterScript, which disables one XMarker per lever and opens portcullis
+`5ebc0` through a third once both are down; here both levers open the
+portcullis once each has been pulled. Giving the key replaces the list; `[]`
+turns the links off.
+
+```json5
+{
+  // ...
+  "leverLinks": [
+    { "levers": ["5ebe3:Skyrim.esm", "5ebe4:Skyrim.esm"], "target": "5ebc0:Skyrim.esm", "all": true }
+  ]
+  // ...
+}
+```
+
 ## playersInheritBaseSpells
 
 `true` (default) keeps the Player record's castable spells (Flames, Healing)
