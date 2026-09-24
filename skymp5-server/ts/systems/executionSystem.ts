@@ -209,7 +209,7 @@ export class ExecutionSystem implements System {
     const mp = this.mp;
     if (killerId === victimId || !isPlayerActor(mp, victimId)) return "They cannot be assassinated.";
     if (!this.factions.canExecute(killerId)) return "You do not have the right to execute.";
-    if (!this.isAble(killerId)) return "You cannot do that now.";
+    if (!this.isAble(killerId) || this.isKilling(killerId)) return "You cannot do that now.";
     if (isMounted(mp, killerId)) return "Dismount first.";
     if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId) ||
       isMounted(mp, victimId) || this.seats.seatOf(userOf(mp, victimId))) return "They cannot be assassinated now.";
@@ -550,6 +550,13 @@ export class ExecutionSystem implements System {
   private isAble(actorId: number): boolean {
     const mp = this.mp;
     return isAlive(mp, actorId) && !this.bleedout.isDowned(actorId) && !isRestrained(mp, actorId) && !this.capture.carriedOf(actorId);
+  }
+
+  // An assassination or a killmove of theirs still under way
+  private isKilling(killerId: number): boolean {
+    const now = Date.now();
+    return Array.from(this.assassinations.values()).some((a) => a.killerId === killerId) ||
+      Array.from(this.pairs.values()).some((pair) => pair.attackerId === killerId && !pair.ended && now <= pair.until);
   }
 
   private actorOf(userId: number): number {

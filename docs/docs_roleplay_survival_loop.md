@@ -209,7 +209,9 @@ behaviour-graph events — no ESP required.**
   and stands within 60 degrees behind the victim's back (`actorUtil.isBehind`,
   from the victim's yaw and both positions); the refusals name the missing
   condition ("You must be sneaking.", "You must be behind them.", "They are
-  out of reach.", "They cannot be assassinated now."). Like a finish off it
+  out of reach.", "They cannot be assassinated now."). A killer takes one
+  life at a time: while an assassination or a killmove of theirs is still
+  under way a second one is refused ("You cannot do that now."). Like a finish off it
   needs a drawn melee weapon ("You need a melee weapon in hand to assassinate
   them.", "Draw your weapon first."), and the pair comes from a second table
   by weapon type, `executionSneakFinishers`, which defaults to the finish off
