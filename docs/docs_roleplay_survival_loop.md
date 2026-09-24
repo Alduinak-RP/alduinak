@@ -346,7 +346,9 @@ behaviour-graph events — no ESP required.**
   holds no execute right). Like every PK (`slay`) it frees a cuffed or
   carried captive (`CaptureSystem.freeCaptive`, as the block execution
   does) after the body is left and before the move to Sovngarde, so nobody
-  wakes in the Hall of Valor still bound. Refused on yourself, on a character already dead
+  wakes in the Hall of Valor still bound; the soul trap PK
+  (`SoulTrapSystem.capture`) frees them the same way before the Soul Cairn
+  move. Refused on yourself, on a character already dead
   ("They are already dead", wait for the respawn) and on a fallen one
   ("They are already fallen"); logged in `admin.log` as `profile N PK'd
   <name>`.

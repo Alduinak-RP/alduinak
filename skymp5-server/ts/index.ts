@@ -316,7 +316,7 @@ const main = async () => {
     new TradeSystem(log),
     new CraftedExtrasSystem(log),
     searchSystem,
-    new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem),
+    new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem, captureSystem),
     new VoiceSystem(log),
     new AfkSystem(log),
     new TimeSystem(log),
