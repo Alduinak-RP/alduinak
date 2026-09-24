@@ -255,7 +255,8 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   handled rather than on the next one-second poll. A bench does not open when the bar cannot pay its cheapest recipe
   (a smelter opens while the bar pays for one charcoal; an ingot the bar cannot pay is then refused as above). Logs:
   `[needs] craft refused for <id>: fatigue X%, needs Y%`, `bench refused` for a bench kept shut,
-  `bar spent, crafting closed` for the close after the last paid craft.
+  `bar spent, crafting closed` for the close after the last paid craft, and `[needs] <id> <what>: -N pts, fatigue X%`
+  for every kill, chop, ore or harvest charge.
 - Chopping firewood costs each swing's share of the bar by woodworker rank (`needsChopWoodPerBar`): a full bar chops
   12 firewood outside the profession, 24 at Novice, 48 at Adept, 72 at Expert and 96 at Master, two per swing every
   eight seconds, before the online refill. The chopper stays at the block across yields and stands up with "You are too

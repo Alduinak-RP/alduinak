@@ -451,22 +451,22 @@ export class NeedsSystem implements System {
 
   // A kill costs exhaustion points off the same bar crafting spends; warriors pay the smaller price
   applyKillFatigue(ctx: SystemContext, actorId: number, warrior: boolean): void {
-    this.applyExhaustion(ctx, actorId, warrior ? this.killFatigueWarrior * this.professionMult(ctx, actorId) : this.killFatigue);
+    this.applyExhaustion(ctx, actorId, warrior ? this.killFatigueWarrior * this.professionMult(ctx, actorId) : this.killFatigue, "kill");
   }
 
   // Firewood off a chopping block, priced by the woodworker rank (-1 outside the profession)
   applyChopFatigue(ctx: SystemContext, actorId: number, rank: number, wood: number): void {
-    this.applyExhaustion(ctx, actorId, this.chopPoints(ctx, actorId, rank, wood));
+    this.applyExhaustion(ctx, actorId, this.chopPoints(ctx, actorId, rank, wood), "chop");
   }
 
   // One ore off a vein; miners pay the smaller price
   applyMineFatigue(ctx: SystemContext, actorId: number, miner: boolean): void {
-    this.applyExhaustion(ctx, actorId, this.minePoints(ctx, actorId, miner));
+    this.applyExhaustion(ctx, actorId, this.minePoints(ctx, actorId, miner), "ore");
   }
 
   // Harvesting a plant or nirnroot
   applyPickFatigue(ctx: SystemContext, actorId: number): void {
-    this.applyExhaustion(ctx, actorId, this.pickFatigue);
+    this.applyExhaustion(ctx, actorId, this.pickFatigue, "harvest");
   }
 
   // Whether the bar can still pay for one swing's firewood
@@ -509,12 +509,13 @@ export class NeedsSystem implements System {
     return entry.rec.fatigue + EPSILON >= points / this.exhaustionMax;
   }
 
-  // Exhaustion points off the bar crafting spends, on the stage scale
-  private applyExhaustion(ctx: SystemContext, actorId: number, points: number): void {
+  // Exhaustion points off the bar crafting spends, on the stage scale; what names the work for the log
+  private applyExhaustion(ctx: SystemContext, actorId: number, points: number, what: string): void {
     const entry = this.online.get(actorId);
     if (!entry || !this.enabled || points <= 0) return;
     this.advance(entry.rec, Date.now(), true);
     entry.rec.fatigue = clamp(entry.rec.fatigue - points / this.exhaustionMax, 0, 1);
+    this.log(`[needs] ${hex(actorId)} ${what}: -${Math.round(points * 10) / 10} pts, fatigue ${pct(entry.rec.fatigue)}%`);
     this.write(ctx, actorId, entry.rec);
     this.syncStages(ctx, actorId, entry);
     this.sendState(ctx, actorId, false);
