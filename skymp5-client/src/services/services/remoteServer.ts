@@ -126,6 +126,8 @@ const PLAYER_TELEPORT_RESYNC_MS = 3000;
 const PLAYER_TELEPORT_REACH = 4096;
 // A repeat of the pending target, such as the TeleportMessage2 answering the first old-cell movement
 const PLAYER_TELEPORT_SAME = 256;
+const RACE_MENU_RETRY_MS = 5000;
+const RACE_MENU_RETRIES = 3;
 
 interface PlayerTeleport {
   pos: NiPoint3;
@@ -244,9 +246,21 @@ export class RemoteServer extends ClientListener {
 
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("update", () => this.checkPlayerTeleport());
-    this.controller.on("menuOpen", (e) => { if (e.name === Menu.RaceSex) this.raceMenuSeen = true; });
+    this.controller.on("update", () => this.checkRaceMenu());
+    this.controller.on("menuOpen", (e) => {
+      if (e.name === Menu.RaceSex) {
+        this.raceMenuSeen = true;
+        logToPlatformLog(this, `RaceSex Menu opened, creation pending ${this.raceMenuPending}`);
+      }
+    });
+    this.controller.on("menuClose", (e) => {
+      if (e.name === Menu.RaceSex) {
+        logToPlatformLog(this, `RaceSex Menu closed, creation pending ${this.raceMenuPending}, loading ${Ui.isMenuOpen(Menu.Loading)}`);
+        this.raceMenuPending = false;
+      }
+    });
     this.controller.emitter.on("gameLoad", () => { this.lastLoadAt = Date.now(); });
-    this.controller.emitter.on("connectionDisconnect", () => { this.playerTeleport = undefined; });
+    this.controller.emitter.on("connectionDisconnect", () => { this.playerTeleport = undefined; this.raceMenuPending = false; });
     // Diagnostic: whether the diagnosed clone's graph took the replayed cast event
     this.sp.hooks.sendAnimationEvent.add({
       enter: () => { },
@@ -768,6 +782,9 @@ export class RemoteServer extends ClientListener {
     if (msg.props && !msg.props.isHostedByOther) {
     }
 
+    if (msg.isMe) {
+      this.raceMenuPending = false;
+    }
     if (msg.props && msg.props.isRaceMenuOpen && msg.isMe) {
       this.onSetRaceMenuOpenMessage({ message: { t: MsgType.SetRaceMenuOpen, open: true } });
     }
@@ -1238,17 +1255,55 @@ export class RemoteServer extends ClientListener {
 
     if (msg.open) {
       const spawnSeq = this.playerSpawnSeq;
+      this.raceMenuPending = true;
+      this.raceMenuRetries = 0;
+      this.raceMenuSettledAt = 0;
+      logToPlatformLog(this, `race menu requested for spawn ${spawnSeq}`);
       // wait 0.3s to avoid visual bugs when teleporting and showing this menu at the same time in onConnect
       once('update', () => {
-        if (spawnSeq !== this.playerSpawnSeq) return;
-        Utility.wait(0.3).then(() => {
-          unequipDefaultOutfit();
-          Game.showRaceMenu();
-        });
+        if (spawnSeq !== this.playerSpawnSeq) {
+          logToPlatformLog(this, `race menu request dropped: spawn ${spawnSeq} replaced by ${this.playerSpawnSeq}`);
+          return;
+        }
+        Utility.wait(0.3).then(() => this.showRaceMenu('first call'));
       });
     } else {
+      this.raceMenuPending = false;
       // TODO: Implement closeMenu in SkyrimPlatform
     }
+  }
+
+  private showRaceMenu(why: string): void {
+    if (!this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex)) {
+      return;
+    }
+    logToPlatformLog(this, `showRaceMenu (${why}), loading ${Ui.isMenuOpen(Menu.Loading)}`);
+    unequipDefaultOutfit();
+    Game.showRaceMenu();
+  }
+
+  // A pending creation whose menu never opened calls it again once no loading screen is up
+  private checkRaceMenu(): void {
+    if (!this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main)) {
+      this.raceMenuSettledAt = 0;
+      return;
+    }
+    const now = Date.now();
+    if (!this.raceMenuSettledAt) {
+      this.raceMenuSettledAt = now;
+      return;
+    }
+    if (now - this.raceMenuSettledAt < RACE_MENU_RETRY_MS) {
+      return;
+    }
+    this.raceMenuSettledAt = now;
+    if (this.raceMenuRetries >= RACE_MENU_RETRIES) {
+      logToPlatformLog(this, `race menu never opened after ${RACE_MENU_RETRIES} retries, giving up`);
+      this.raceMenuPending = false;
+      return;
+    }
+    this.raceMenuRetries++;
+    this.showRaceMenu(`not open ${RACE_MENU_RETRY_MS} ms after the spawn settled, retry ${this.raceMenuRetries}/${RACE_MENU_RETRIES}`);
   }
 
   /** Packet handlers end **/
@@ -1540,5 +1595,8 @@ export class RemoteServer extends ClientListener {
   private playerTeleport?: PlayerTeleport;
   private resyncing = false;
   private raceMenuSeen = false;
+  private raceMenuPending = false;
+  private raceMenuRetries = 0;
+  private raceMenuSettledAt = 0;
   private lastLoadAt = 0;
 }

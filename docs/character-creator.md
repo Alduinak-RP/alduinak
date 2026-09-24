@@ -196,6 +196,11 @@ Accepted data lands in `private.rp`:
 `grants` maps profile ids to entitlement keys. Absent `charCreator` block (or
 `enabled: false`) keeps the vanilla race menu, so enabling is opt-in per server.
 
+On the vanilla path the client logs each step to `skyrim-platform.log`
+(`race menu requested`, `showRaceMenu`, `RaceSex Menu opened/closed`). If the
+menu is still not open 5 s after the spawn settled (no loading screen up), it
+calls `showRaceMenu` again, up to 3 times, and stops once the menu has closed.
+
 ## Data provenance
 
 `skymp5-front/src/features/charCreator/data/headparts.json` and `tints.json`
