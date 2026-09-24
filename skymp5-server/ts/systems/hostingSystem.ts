@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
-import { isPlayerActor, isAlive, hex, userOf } from "./actorUtil";
+import { isPlayerActor, isAlive, isBleedingOut, hex, userOf } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -36,6 +36,8 @@ const HOST_KEEP_MS = 6000;
 const ARRIVAL_MS = 3000;
 // A live host that lost the NPC to another client's claim did not run it; it is not given that NPC back for this long
 const SILENT_MS = 60000;
+// A dead or downed client keeps claiming every second, so its refusals are logged once per player this often
+const REFUSAL_LOG_MS = 30000;
 
 interface Located {
   id: number;
@@ -75,6 +77,8 @@ export class HostingSystem implements System {
   private pausedHost = new Map<number, number>();
   // Per online player: the cell the audit last saw it in and since when
   private inCell = new Map<number, InCell>();
+  // Per player: when a refused claim of theirs was last logged
+  private refusalLoggedAt = new Map<number, number>();
   private hostRange = DEFAULT_HOST_RANGE;
   private aggroMs = DEFAULT_AGGRO_SEC * 1000;
   private supported = false;
@@ -171,7 +175,14 @@ export class HostingSystem implements System {
   private mayHost(requesterId: number, npcId: number): boolean {
     // A parked player body has no AI to run and keeps its logout pose; hits on it are server-resolved
     if (isAlive(this.mp, npcId) && isPlayerActor(this.mp, npcId) && userOf(this.mp, npcId) < 0) return false;
-    if (!this.hostables.has(npcId)) return true;
+    const h = this.hostables.get(npcId);
+    // A dead or downed client still reports its body and so counts as live, but its AI would only stand over that body; companions and pets stay with a downed owner
+    const unfit = !isAlive(this.mp, requesterId) ? "dead" : !h?.owner && isBleedingOut(this.mp, requesterId) ? "downed" : "";
+    if (unfit) {
+      this.logRefusal(requesterId, npcId, unfit);
+      return false;
+    }
+    if (!h) return true;
     this.noteAttempt(npcId);
     let ids: unknown[] = [];
     try {
@@ -180,6 +191,13 @@ export class HostingSystem implements System {
       return true;
     }
     return ids.some((id) => Number(id) >>> 0 === requesterId) && this.isLive(requesterId);
+  }
+
+  private logRefusal(requesterId: number, npcId: number, why: string): void {
+    const now = Date.now();
+    if (now - (this.refusalLoggedAt.get(requesterId) ?? 0) < REFUSAL_LOG_MS) return;
+    this.refusalLoggedAt.set(requesterId, now);
+    this.log(`HostingSystem: ${hex(npcId)} refused to ${hex(requesterId)} (${why})`);
   }
 
   private audit(): void {
@@ -196,6 +214,7 @@ export class HostingSystem implements System {
     const players = playerIds.map((id) => this.locate(id)).filter((p): p is Located => !!p);
     this.noteCells(players, now);
     const alive = players.filter((p) => isAlive(mp, p.id));
+    const downed = new Set(alive.filter((p) => isBleedingOut(mp, p.id)).map((p) => p.id));
     const ready = new Set(alive.filter((p) => this.isLive(p.id)).map((p) => p.id));
     const keeping = new Set(alive.filter((p) => this.isLive(p.id, HOST_KEEP_MS)).map((p) => p.id));
     const streamers = this.streamers(players);
@@ -217,6 +236,8 @@ export class HostingSystem implements System {
       for (const p of players) {
         // Only a client the server streams the NPC to can run its AI
         if (p.cell !== at.cell || !listening?.has(p.id) || !(p.id === current ? keeping : ready).has(p.id)) continue;
+        // A downed player's AI would stand over their own body while the others fight; only their companions and pets stay
+        if (!h.owner && downed.has(p.id)) continue;
         if (silent && silent.playerId === p.id && silent.until > now) continue;
         const dx = p.pos[0] - at.pos[0];
         const dy = p.pos[1] - at.pos[1];
@@ -224,7 +245,7 @@ export class HostingSystem implements System {
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 <= range2) near.push({ id: p.id, d2 });
       }
-      // A paused or dead host is no candidate, so it loses the NPC without the cooldown
+      // A paused, dead or downed host is no candidate, so it loses the NPC without the cooldown
       const currentEligible = near.some((p) => p.id === current);
       const candidates = currentEligible && !h.owner ? near.filter((p) => p.id === current || !this.arrivedRecently(p.id, now)) : near;
       const { hoster, reason } = this.choose(h, candidates, current, now);

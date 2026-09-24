@@ -219,7 +219,9 @@ within `npcHostRange`:
   picked over it. Companions and pets are exempt;
 - a host paused longer than that, dead, offline or in another cell is no
   candidate, so another candidate takes the NPC at the next audit without that
-  5 second wait;
+  5 second wait; neither is a downed (bleeding out) player for an NPC without
+  an owner, whose AI on that client would only stand over the body, while a
+  companion or pet stays with its downed owner;
 - with no candidate, the current host keeps the NPC as long as the server
   still streams it to that player, because unhosting would only let that
   client claim it straight back. Once the host no longer receives the NPC it
@@ -228,7 +230,13 @@ within `npcHostRange`:
 A client can still claim an NPC on its own: an unhosted one at once, a hosted
 one once its host has sent no movement for that NPC for 2 seconds. For zone
 NPCs the server refuses the claim (`onHostAttempt`) when the NPC is not
-streamed to that player or that player's game is paused. A companion accepts a
+streamed to that player or that player's game is paused. A dead player's claim
+is refused for every NPC, and a downed player's for every NPC but their own
+companions and pets: their client still reports the body, so it would count as
+running, and a claim that lands takes the NPC away from the player fighting it
+and locks that player out of it for 60 seconds (below). Refusals log
+`HostingSystem: <npc> refused to <player> (dead|downed)`, once per player every
+30 seconds. A companion accepts a
 claim only from its owner, a living player character without a user (a body
 parked for its logout grace, `logoutPose`) is refused outright, and every
 other NPC stays first come. A claim over
