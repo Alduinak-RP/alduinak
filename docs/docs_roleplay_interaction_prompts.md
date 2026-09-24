@@ -126,6 +126,20 @@ moves: its console id and model folder tell whether it is a skipped
   while pointing at something activatable (non-empty means the path root is
   right).
 
+A lever that moves nothing or a door that lands wrong is read from the plugin
+data with `python misc/dump-switch.py <ref>` on the Windows box (the ref as a
+global id of the server load order or as `hex:Plugin.esp`, the way the admin
+panel's Target shows it; `--settings` and `--data` as for
+`gen-map-marker-teleports.py`). It prints the ref's base with its editor id
+and Papyrus scripts, its record flags (an initially disabled or deleted ref is
+never loaded by the server), its XAPD, then every REFR whose XAPR names it as
+activation parent: the gate a lever moves must be listed there with a base type
+the server loads (ACTI, DOOR, FURN, CONT, FLOR, TREE, items) and a script the
+script storage has, or the pull toggles the lever alone. `--door` follows the
+ref's XTEL to its twin and prints both halves' destination cell, arrival
+position and rotation in degrees, which is what a `doorTeleportOverrides` entry
+replaces.
+
 ## Deployment
 
 Client + front: manager **Build Client**, players re-download via the
