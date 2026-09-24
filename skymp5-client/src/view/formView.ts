@@ -62,8 +62,8 @@ export class FormView {
 
 
 
-    // Dead players stay hidden until they respawn; NPC corpses spawn and are killed on the first apply
-    if (model.isDead && this.refrId === 0 && model.appearance) {
+    // Dead players stay hidden until they respawn; NPC corpses and the bodies a PK leaves (ff_body) spawn and are killed on the first apply
+    if (model.isDead && this.refrId === 0 && model.appearance && (model as Record<string, unknown>)["ff_body"] !== true) {
       return;
     }
 
