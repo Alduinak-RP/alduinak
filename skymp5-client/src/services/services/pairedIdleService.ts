@@ -15,7 +15,7 @@ const BLEEDOUT_ANIM_STOP = "bleedOutStop";
 // A standing pair starts once the victim's get-up has settled: the graph quiet twice in a row after this long, or at the cap regardless
 const SETTLE_MIN_MS = 1200;
 const SETTLE_MAX_MS = 3000;
-// A kneel sent again at pair start has this long to land before the pair plays on it
+// A kneeling pair plays this long after the packet on every client, time for a kneel sent again to land, so both participants end together
 const KNEEL_RESEND_MS = 1200;
 const POLL_MS = 100;
 // The engine's paired-animation flag, set on both actors while the pair plays
@@ -77,7 +77,7 @@ export class PairedIdleService extends ClientListener {
     this.controller.once("update", () => this.start(attacker, target, idle, ms, seq, standUp, kneel));
   }
 
-  // A kneeling victim plays once the kneel is sure; a standing pair waits for the stand-up to settle; a standing victim plays at once
+  // A kneeling pair waits for the kneel on every client alike; a standing pair waits for the stand-up to settle; a standing victim plays at once
   private start(attackerRemoteId: number, targetRemoteId: number, idleId: number, ms: number, seq: number, standUp: boolean, kneel: boolean): void {
     const attackerId = this.localIdOf(attackerRemoteId);
     const targetId = this.localIdOf(targetRemoteId);
@@ -100,15 +100,16 @@ export class PairedIdleService extends ClientListener {
       else this.sp.Debug.sendAnimationEvent(target, BLEEDOUT_ANIM_STOP);
       pair.playAt = now + SETTLE_MIN_MS;
       pair.playBy = now + SETTLE_MAX_MS;
-    } else if (kneel && targetId === PLAYER_FORM_ID && restraint.currentPose !== BLEEDOUT_ANIM_START) {
-      // The reattach after a server move can swallow the kneel; it is sent again and the pair waits for it
-      logToPlatformLog(this, `kneel missing at pair start, pose ${restraint.currentPose || "none"}`);
-      restraint.reapplyPoses();
-      pair.playAt = pair.playBy = now + KNEEL_RESEND_MS;
-    } else if (kneel && targetId !== PLAYER_FORM_ID) {
-      // A copy rebuilt by the move onto the block stands until the next relayed kneel, so it is sent here and the pair waits for it
-      this.sp.Debug.sendAnimationEvent(target, BLEEDOUT_ANIM_START);
-      logToPlatformLog(this, `kneel re-sent to copy ${targetId.toString(16)} at pair start`);
+    } else if (kneel) {
+      if (targetId !== PLAYER_FORM_ID) {
+        // A copy rebuilt by the move onto the block stands until the next relayed kneel
+        this.sp.Debug.sendAnimationEvent(target, BLEEDOUT_ANIM_START);
+        logToPlatformLog(this, `kneel re-sent to copy ${targetId.toString(16)} at pair start`);
+      } else if (restraint.currentPose !== BLEEDOUT_ANIM_START) {
+        // The reattach after a server move can swallow the kneel
+        logToPlatformLog(this, `kneel missing at pair start, pose ${restraint.currentPose || "none"}`);
+        restraint.reapplyPoses();
+      }
       pair.playAt = pair.playBy = now + KNEEL_RESEND_MS;
     }
     this.pairs.push(pair);

@@ -112,10 +112,8 @@ behaviour-graph events — no ESP required.**
   victim stays kneeling and every weapon plays the one-handed
   `pa_1HMKillMoveBleedOutKill` (F469E, `pa_KillingBlow`, no decapitation,
   no variety; a two-hander stabs one-handed, no non-decapitating two-handed
-  bleedout record exists) in the packet's own update on the victim's own
-  client, the r13 shape, and 1.2 s later on every other client, which sends
-  the kneel to its copy first (the execution's `kneel re-sent to copy`
-  rule; `unarmed` is refused here too). The
+  bleedout record exists) 1.2 s after the packet on every client, the
+  execution's kneel rule below (`unarmed` is refused here too). The
   victim's timer waits while the pair plays: each
   participant's client polls both actors (`bIsSynced`, `IsInKillMove`) and
   reports the end (`pairedIdleDone`, first report wins), a pair the graph
@@ -163,17 +161,19 @@ behaviour-graph events — no ESP required.**
   own animation file: the engine only enters them by seating both actors in
   the block furniture, and sent on the ground they play nothing, which is
   what r13 shipped. **Execute** needs a drawn melee weapon ("Draw your
-  weapon first.") and plays the bleedout beheading pair at once on the
-  kneeling prisoner through the same `pairedIdle` packet as a finish off,
-  from wherever the executioner stands within reach of the block: nothing
-  moves the executioner (the pair aligns the two actors itself) and nothing
-  waits, the r13 shape. A prisoner's client with no kneel recorded when the
-  packet arrives sends it again and plays 1.2 s later (`kneel missing at
-  pair start`), and every other client sends `bleedOutStart` to its copy of
-  the prisoner and waits the same 1.2 s (`kneel re-sent to copy ... at pair
-  start`), since the bleedout pairs need the victim's graph in the bleedout
-  state on the client that plays them and a copy rebuilt by the move onto
-  the block may stand. The clips:
+  weapon first.") and plays the bleedout beheading pair on the kneeling
+  prisoner through the same `pairedIdle` packet as a finish off, from
+  wherever the executioner stands within reach of the block: nothing moves
+  the executioner (the pair aligns the two actors itself). Every client plays a kneeling pair 1.2 s after the
+  packet: the prisoner's client sends the kneel again first when it has
+  none recorded (`kneel missing at pair start`), and every other client
+  sends `bleedOutStart` to its copy of the prisoner (`kneel re-sent to copy
+  ... at pair start`), since the bleedout pairs need the victim's graph in
+  the bleedout state on the client that plays them and a copy rebuilt by
+  the move onto the block may stand. The prisoner's client waits even with
+  the kneel in place, so both participants' clips end together and the
+  first `pairedIdleDone`, which kills, never lands while the executioner
+  and the viewers are still 1.2 s from the end of theirs. The clips:
   `pa_KillMove1HMDecapBleedOut` (IDLE F465D) for one-handed and dual
   weapons, `pa_KillMove2HMDecapBleedOut` (F467F) for two-handed ones, the
   clips the finish off played in r13 and r14 (a battleaxe or warhammer plays
