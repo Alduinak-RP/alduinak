@@ -311,6 +311,14 @@ per player; a press missing there never reached the server or was refused by a
 lock, a faction or the native side (`WorldSpace doesn't match`, logged by the
 server itself).
 
+The client drops a press on a door that is still swinging, so it cannot reverse
+the swing, except on a load door: the first such press on a plugin door asks the
+server (`loadDoorQuery`), which answers from the door's XTEL or this list
+(`loadDoorAnswer`), and a load door gets the dropped press sent at once and every
+later one straight through. A plain door stuck mid-swing takes a second press
+1.5 s after the first ignored one; an ignored press older than 5 s starts that
+wait over.
+
 ```json5
 {
   // ...
