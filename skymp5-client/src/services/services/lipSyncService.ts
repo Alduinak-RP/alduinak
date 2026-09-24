@@ -10,9 +10,15 @@ import { logError, logToPlatformLog, logTrace } from "../../logging";
 const TICK_MS = 90;
 const REPORT_TTL_MS = 600;
 const PLAYER_FORM_ID = 0x14;
+// The own face is unseen in first person and while the camera moves between views
 const FIRST_PERSON_CAMERA = 0;
+const TRANSITION_CAMERA = 6;
 // Open-mouth phoneme slots of Actor.setExpressionPhoneme: Aah, BigAah, Eee, Eh, I, Oh, OohQ
 const MOUTH_PHONEMES = [0, 1, 5, 6, 8, 11, 12];
+// SKSE runs each expression native as a task from a 10-slot pool refilled once per frame and drops the rest silently, so an update hands it at most this many
+const MAX_WRITES_PER_UPDATE = 8;
+// A queue deeper than this when an update starts is logged once
+const QUEUE_LOG_DEPTH = 10;
 // A face that stops talking is reset again after this, once any blend toward the last shape has settled
 const RESET_REPEAT_MS = 400;
 // Bridges LiveKit's gaps between words so the name tag glyph does not flicker
@@ -20,7 +26,7 @@ const SPEAKING_HOLD_MS = 500;
 // A face this service wrote is closed again once a second after its mouth left, this many times, then trusted shut
 const SWEEP_MS = 1000;
 const SWEEP_CLOSES = 3;
-// Every visible copy face without a talk report is zeroed this often, whatever wrote to it
+// One visible copy face without a talk report is zeroed this often, in turn, whatever wrote to it
 const SWEEP_ALL_MS = 1500;
 const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
 // A mouth the report keeps at level 0 this long is a lingering report, logged once
@@ -44,6 +50,13 @@ interface Touched {
   closes: number;
 }
 
+// One expression native waiting for a frame with room, run on the actor resolved then
+interface Write {
+  localId: number;
+  what: string;
+  run: (actor: Actor) => void;
+}
+
 export class LipSyncService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -64,6 +77,9 @@ export class LipSyncService extends ClientListener {
   private nextTickAt = 0;
   private nextSweepAt = 0;
   private nextSweepAllAt = 0;
+  private sweepAllCursor = 0;
+  // Natives not yet handed to SKSE, closes at the front
+  private writes: Write[] = [];
   private playerFaceOpen = false;
   private playerCloseOwed = false;
   // local id -> when its face gets the repeated reset
@@ -76,7 +92,7 @@ export class LipSyncService extends ClientListener {
   private unmapped = new Map<number, number>();
   // ids already logged this session, one line each
   private unmappedLogged = new Set<number>();
-  // "<kind>:<local id>" already logged this session, one line each
+  // log keys such as "<kind>:<local id>" already written this session, one line each
   private failedLogged = new Set<string>();
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -107,6 +123,7 @@ export class LipSyncService extends ClientListener {
   // Every mouth closes and every face this service wrote is re-closed by the next sweep
   private reset(): void {
     this.pending = new Map();
+    this.writes = [];
     this.touched.forEach((face) => { face.closes = 0; });
     this.nextSweepAt = 0;
     this.nextSweepAllAt = 0;
@@ -118,6 +135,7 @@ export class LipSyncService extends ClientListener {
   private onUpdate(): void {
     try {
       const now = Date.now();
+      this.drainWrites();
       if (this.pending) {
         const report = this.pending;
         this.pending = undefined;
@@ -152,7 +170,7 @@ export class LipSyncService extends ClientListener {
     this.markSpeakers(report);
     this.mouths.forEach((mouth, remoteId) => {
       if (report.has(remoteId)) return;
-      this.closeFace(mouth.localId);
+      this.closeFace(mouth.localId, mouth.phoneme);
       this.mouths.delete(remoteId);
     });
     this.unmapped.forEach((_since, remoteId) => {
@@ -197,7 +215,7 @@ export class LipSyncService extends ClientListener {
       const mouth = this.mouths.get(remoteId);
       if (!mouth) return;
       this.mouths.delete(remoteId);
-      this.closeFace(mouth.localId);
+      this.closeFace(mouth.localId, mouth.phoneme);
       logTrace(this, `voice stopped for ${remoteId.toString(16)}`);
     });
     this.stopped.clear();
@@ -234,7 +252,7 @@ export class LipSyncService extends ClientListener {
     });
   }
 
-  // Every visible copy of a player without a mouth of its own is zeroed, whatever wrote to it; the own face too outside first person
+  // One visible copy of a player without a mouth of its own is zeroed per call, round robin, whatever wrote to it; the own face is in the round outside first person
   private sweepAll(): void {
     const open = new Set(Array.from(this.mouths.values()).map((mouth) => mouth.localId));
     const ids = this.isFirstPerson() ? [] : [PLAYER_FORM_ID];
@@ -243,11 +261,28 @@ export class LipSyncService extends ClientListener {
       const localId = remoteIdToLocalId(form.refrId!);
       if (localId) ids.push(localId);
     }
-    for (const localId of ids) {
-      if (open.has(localId)) continue;
-      const actor = this.actorOf(localId);
-      if (!actor?.is3DLoaded()) continue;
-      this.guarded(localId, "close", () => MOUTH_PHONEMES.forEach((phoneme) => actor.setExpressionPhoneme(phoneme, 0)));
+    const faces = ids.filter((localId) => !open.has(localId) && this.actorOf(localId)?.is3DLoaded());
+    if (faces.length === 0) return;
+    const localId = faces[this.sweepAllCursor++ % faces.length];
+    MOUTH_PHONEMES.forEach((phoneme) => this.enqueue(localId, "close", (actor) => actor.setExpressionPhoneme(phoneme, 0)));
+  }
+
+  private enqueue(localId: number, what: string, run: (actor: Actor) => void): void {
+    this.writes.push({ localId, what, run });
+  }
+
+  // Hands SKSE at most a pool's worth per frame, the actor resolved at that moment
+  private drainWrites(): void {
+    if (this.writes.length > QUEUE_LOG_DEPTH) {
+      this.logOnce("queue", `expression writes queued ${this.writes.length}, draining ${MAX_WRITES_PER_UPDATE} per frame`);
+    }
+    for (const write of this.writes.splice(0, MAX_WRITES_PER_UPDATE)) {
+      const actor = this.actorOf(write.localId);
+      if (!actor) {
+        this.logOnce(`${write.what}:${write.localId}:gone`, `${write.what} ${write.localId.toString(16)}: no actor`);
+        continue;
+      }
+      this.guarded(write.localId, write.what, () => write.run(actor));
     }
   }
 
@@ -256,11 +291,14 @@ export class LipSyncService extends ClientListener {
     try {
       work();
     } catch (err) {
-      const key = `${what}:${localId}`;
-      if (this.failedLogged.has(key)) return;
-      this.failedLogged.add(key);
-      logToPlatformLog(this, `${what} failed ${localId.toString(16)}: ${err}`);
+      this.logOnce(`${what}:${localId}`, `${what} failed ${localId.toString(16)}: ${err}`);
     }
+  }
+
+  private logOnce(key: string, text: string): void {
+    if (this.failedLogged.has(key)) return;
+    this.failedLogged.add(key);
+    logToPlatformLog(this, text);
   }
 
   private markSpeakers(report: Map<number, number>): void {
@@ -285,23 +323,23 @@ export class LipSyncService extends ClientListener {
   }
 
   private isFirstPerson(): boolean {
-    return this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA;
+    const state = this.sp.Game.getCameraState();
+    return state === FIRST_PERSON_CAMERA || state === TRANSITION_CAMERA;
   }
 
   private animate(remoteId: number, mouth: Mouth): void {
-    const actor = this.actorOf(mouth.localId);
-    if (!actor) {
+    if (!this.actorOf(mouth.localId)) {
       // Clone despawned mid-sentence; the next report re-adds it if it comes back
       this.resetsDue.set(mouth.localId, Date.now() + RESET_REPEAT_MS);
       this.mouths.delete(remoteId);
       return;
     }
     const previous = mouth.phoneme;
-    if (previous >= 0) this.guarded(mouth.localId, "phoneme write", () => actor.setExpressionPhoneme(previous, 0));
+    if (previous >= 0) this.enqueue(mouth.localId, "phoneme write", (actor) => actor.setExpressionPhoneme(previous, 0));
     // A clone can respawn under a new local id while still speaking
     const localId = this.localIdFor(remoteId);
     if (localId && localId !== mouth.localId) {
-      this.closeFace(mouth.localId);
+      this.closeFace(mouth.localId, previous);
       mouth.localId = localId;
       mouth.phoneme = -1;
       return;
@@ -321,33 +359,33 @@ export class LipSyncService extends ClientListener {
     const strength = Math.min(0.9, 0.25 + mouth.level * 2.5) * (0.7 + Math.random() * 0.3);
     const phoneme = MOUTH_PHONEMES[Math.floor(Math.random() * MOUTH_PHONEMES.length)];
     mouth.phoneme = phoneme;
-    this.guarded(mouth.localId, "phoneme write", () => actor.setExpressionPhoneme(phoneme, strength));
+    this.enqueue(mouth.localId, "phoneme write", (actor) => actor.setExpressionPhoneme(phoneme, strength));
     this.touched.set(mouth.localId, { remoteId, lastWriteAt: Date.now(), closes: 0 });
     if (mouth.localId === PLAYER_FORM_ID) this.playerFaceOpen = true;
   }
 
-  // Zeroes every slot this service opens and resets the face; an open player face is redone after first person, where the write may miss the body's face
-  private closeFace(localId: number): void {
+  // Zeroes the slot known open, or every slot this service opens, and resets the face, ahead of anything else queued; an open player face is redone after first person, where the write may miss the body's face
+  private closeFace(localId: number, lastPhoneme = -1): void {
     if (localId === PLAYER_FORM_ID) this.playerFaceOpen = this.playerCloseOwed = this.playerFaceOpen && this.isFirstPerson();
     this.resetsDue.set(localId, Date.now() + RESET_REPEAT_MS);
-    this.guarded(localId, "close", () => {
-      const actor = this.actorOf(localId);
-      if (!actor) {
-        logToPlatformLog(this, `closeFace ${localId.toString(16)}: no actor`);
-        return;
-      }
-      MOUTH_PHONEMES.forEach((phoneme) => actor.setExpressionPhoneme(phoneme, 0));
-      actor.resetExpressionOverrides();
-    });
+    // A queued animation write for this face never landed, so which slots are open is unknown
+    const dropped = this.writes.some((write) => write.localId === localId && write.what === "phoneme write");
+    this.writes = this.writes.filter((write) => write.localId !== localId);
+    const slots = lastPhoneme >= 0 && !dropped ? [lastPhoneme] : MOUTH_PHONEMES;
+    this.writes.unshift(
+      ...slots.map((phoneme): Write => ({ localId, what: "close", run: (actor) => actor.setExpressionPhoneme(phoneme, 0) })),
+      { localId, what: "close", run: (actor) => actor.resetExpressionOverrides() },
+    );
   }
 
-  // A face that started talking again is left to the animation
+  // A face that started talking again is left to the animation, a gone one to the sweep
   private runDueResets(now: number): void {
     this.resetsDue.forEach((dueAt, localId) => {
       if (now < dueAt) return;
       this.resetsDue.delete(localId);
       if (Array.from(this.mouths.values()).some((mouth) => mouth.localId === localId)) return;
-      this.guarded(localId, "reset", () => this.actorOf(localId)?.resetExpressionOverrides());
+      if (!this.actorOf(localId)) return;
+      this.enqueue(localId, "reset", (actor) => actor.resetExpressionOverrides());
     });
   }
 }

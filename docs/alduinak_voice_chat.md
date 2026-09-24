@@ -56,39 +56,62 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
   a recognizable voice defeats /mask on its own - an RP-rules matter. The
   front emits `voice::speaking` (`[{id, level}]` of actor ids, own id
   included while the mic is live, every 150 ms while anyone talks); the
-  client's `LipSyncService` turns it into face phonemes on those actors. A
-  speaker who leaves the report (release, out of range, track gone) or whose
-  reports stop for 600 ms gets the phonemes zeroed and a full expression
-  reset (`resetExpressionOverrides`), repeated 400 ms later. The front also
-  sends `voice::stopped <identity>` the moment a voice ends (track muted or
-  unsubscribed, participant left, gain dropped to 0, own PTT released), and
-  the client closes that mouth at once. Every face the service ever wrote
-  is kept in a touched list and re-closed by a 1 s sweep three more times
-  after its mouth left, then trusted shut; a cell change, a camera flip
-  between first and third person, a game load or a reconnect re-closes
-  every touched face again, because a face not being updated at the moment
-  of a close (own body in first person, a copy off-screen or with its 3D
-  unloaded) keeps the last phoneme. A copy re-created under a new local id
-  gets the re-closes on its new face and its old id is dropped after one
-  close; a copy that despawned, or a talker who left, is forgotten after
-  one close. On top of that, every 1.5 s the service zeroes the seven
-  mouth phonemes on every visible copy of a player that has no talk report
-  at that moment (`sweepAll`: every world-model form with an appearance
-  and a loaded 3D that is not the local player's own clone, plus the own
-  face outside first person), whatever wrote to it and whether this
-  service ever touched it; no `resetExpressionOverrides` there, so nothing
-  else is fought, and no other service writes expressions today. Cost:
-  seven native writes per visible copy per 1.5 s. A native that throws on
-  one face no longer aborts that tick's lip work on the others: every
-  write is guarded per face and each of the three failure lines below is
-  logged once per local id. The engine
-  rebuilds a copy's 3D when it comes back on screen, so a mouth stuck on a
-  copy heals when the viewer looks away and back: a useful check when it
-  happens. Evidence goes to `skyrim-platform.log` through
-  `logToPlatformLog`: `sweep re-close <id> ... actor present/gone,
+  client's `LipSyncService` turns it into face phonemes on those actors.
+  No speaking state crosses the game server: the talker sends nothing
+  about its mouth, each viewer animates the copies it can hear from its
+  own LiveKit room, so a mouth stuck on your screen is never seen by
+  anyone else, and a copy's mouth on your screen depends only on your
+  client. A speaker who leaves the report (release, out of range, track
+  gone) or whose reports stop for 600 ms gets the phonemes zeroed and a
+  full expression reset (`resetExpressionOverrides`), repeated 400 ms
+  later. The front also sends `voice::stopped <identity>` the moment a
+  voice ends (track muted or unsubscribed, participant left, gain dropped
+  to 0, own PTT released), and the client closes that mouth at once.
+  Every expression native (`setExpressionPhoneme`, `resetExpressionOverrides`)
+  is SKSE's, and SKSE does not run it in place: it queues a task from a
+  fixed pool of 10 that refills once per game frame, and when the pool is
+  empty the write is dropped silently, no error, no exception. So the
+  service never hands SKSE natives directly: every write goes into one
+  queue drained at most 8 per update (two slots left for other mods), a
+  close goes to the front of the queue and drops whatever was queued for
+  that face, and a close that knows the mouth's last phoneme queues only
+  that zero plus the reset (2 tasks) instead of the seven-slot pass, which
+  stays for faces whose state is unknown (a sweep, a first-person close, a
+  queued animation write that never landed). `resetExpressionOverrides`
+  is SKSE's `Reset(1.0, expression, modifiers and phonemes)` with a 1 s
+  timer, a full face reset, not only an override clear. Every face the
+  service ever wrote is kept in a touched list and re-closed by a 1 s
+  sweep three more times after its mouth left, then trusted shut; a cell
+  change, a camera flip between first and third person, a game load or a
+  reconnect re-closes every touched face again, because a face not being
+  updated at the moment of a close (own body in first person, a copy
+  off-screen or with its 3D unloaded) keeps the last phoneme. The camera's
+  transition state between the two views counts as first person, so the
+  own face's owed close waits for a real third-person frame. A copy
+  re-created under a new local id gets the re-closes on its new face and
+  its old id is dropped after one close; a copy that despawned, or a
+  talker who left, is forgotten after one close. On top of that, every
+  1.5 s the service zeroes the seven mouth phonemes on one visible copy of
+  a player that has no talk report at that moment, round robin over them
+  (`sweepAll`: every world-model form with an appearance and a loaded 3D
+  that is not the local player's own clone, plus the own face outside
+  first person), whatever wrote to it and whether this service ever
+  touched it; no `resetExpressionOverrides` there, so nothing else is
+  fought, and no other service writes expressions today. Cost: seven
+  queued writes per 1.5 s. A native that throws on one face no longer
+  aborts that tick's lip work on the others: every write is guarded per
+  face and each of the three failure lines below is logged once per local
+  id. The engine rebuilds a copy's 3D when it comes back on screen, so a
+  mouth stuck on a copy heals when the viewer looks away and back: a
+  useful check when it happens. Evidence goes to `skyrim-platform.log`
+  through `logToPlatformLog`: `sweep re-close <id> ... actor present/gone,
   first/third person`, `copy of <remote id> changed <old> -> <new>`,
-  `closeFace <id>: no actor`, `owed player close in
-  third person`, `phoneme write failed <id>: <err>`, `close failed <id>:
+  `close <id>: no actor` (or `phoneme write`, `reset`; once per face and
+  kind, a queued write whose actor was gone when its frame came), `owed
+  player close in third person`,
+  `expression writes queued <n>, draining 8 per frame` (once per session,
+  when more than 10 writes wait at the start of an update: the burst
+  happened), `phoneme write failed <id>: <err>`, `close failed <id>:
   <err>` and `reset failed <id>: <err>` for a native that threw on that
   face, `report names <id> with no local actor for over 2000 ms` for a
   talker this client has no copy of, and `report keeps <id> at level 0`
@@ -96,12 +119,11 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
   not stick). When a mouth sticks anyway, the next report needs three
   things: whose face it was (your own in third person, or another
   player's copy on your screen), whether looking away and back closed it,
-  and both machines' `skyrim-platform.log`. MfgFix
-  is deliberately not on the client mod list: it makes SKSE phoneme writes
-  persistent, so a missed close would become a permanent stick; it is the
-  next step only once a log shows the closes ran on a present actor (a
-  `sweep re-close ... actor present` line, or the sweepAll era with no
-  `failed` line for that face) and the mouth still stayed open.
+  and both machines' `skyrim-platform.log`. MfgFix is deliberately not on
+  the client mod list and would not help here: it hooks the engine's
+  keyframe update, not SKSE's task pool, so a dropped write stays dropped
+  with or without it, and the SKSE phoneme values already persist frame to
+  frame until a zero write or a reset lands.
   The same feed
   puts the VOIP glyph (U+E000 in the Tavern font, `misc/voip-glyph`) in front
   of a talking remote player's name tag for 500 ms after each report; the tag
