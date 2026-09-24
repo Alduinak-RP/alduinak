@@ -539,7 +539,12 @@ export class RestraintService extends ClientListener {
     }
     if (this.downed || this.executionPose || this.lock) {
       // Held in place: no walking, fighting, sneaking or activation; downed also loses menus and is kept in third person, the block kneel and action locks keep the camera free
-      if (this.downed) this.sp.Game.forceThirdPerson();
+      if (this.downed) {
+        this.sp.Game.forceThirdPerson();
+      } else if (this.downedControlsApplied) {
+        this.sp.Game.enablePlayerControls(false, false, true, false, false, true, false, false, 0);
+      }
+      this.downedControlsApplied = this.downed;
       this.stillControlsApplied = true;
       this.sp.Game.disablePlayerControls(true, true, this.downed, false, true, this.downed, true, false, 0);
       player.setDontMove(true);
@@ -547,6 +552,7 @@ export class RestraintService extends ClientListener {
     }
     if (this.stillControlsApplied) {
       this.stillControlsApplied = false;
+      this.downedControlsApplied = false;
       this.sp.Game.enablePlayerControls(true, false, true, false, false, true, false, false, 0);
     }
     if (this.boundHands) {
@@ -696,6 +702,8 @@ export class RestraintService extends ClientListener {
   private pairedUntil = 0;
   private lock: ActionLock | null = null;
   private stillControlsApplied = false;
+  // The bleedout's camera and menu lock, which a disable call with false never lifts
+  private downedControlsApplied = false;
   private ghostApplied = false;
   private collisionOffId = 0;
   private nextCollisionRefreshMs = 0;
