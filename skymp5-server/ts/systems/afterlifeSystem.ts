@@ -74,10 +74,12 @@ export const readMaxCharacters = (all: Record<string, unknown> | null): number =
   return Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : DEFAULT_MAX_CHARACTERS;
 };
 
+const realmIdOf = (realm: unknown): RealmId | null =>
+  typeof realm === "string" && Object.prototype.hasOwnProperty.call(REALMS, realm) ? realm as RealmId : null;
+
 export const afterlifeOf = (mp: Mp, actorId: number): RealmId | null => {
   try {
-    const realm = mp.get(actorId, AFTERLIFE_PROP)?.realm;
-    return typeof realm === "string" && Object.prototype.hasOwnProperty.call(REALMS, realm) ? realm as RealmId : null;
+    return realmIdOf(mp.get(actorId, AFTERLIFE_PROP)?.realm);
   } catch {
     return null;
   }
@@ -131,16 +133,16 @@ export class AfterlifeSystem implements System {
         if (!isPlayerActor(mp, actorId)) return;
         const realm = afterlifeOf(mp, actorId) ?? realmAt(mp, actorId);
         if (realm) this.routeRespawn(mp, actorId, realm);
+        this.syncLook(mp, actorId);
       } catch (e) {
         this.log(`[afterlife] respawn routing of ${hex(actorId)} failed: ${e}`);
       }
     });
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       this.confine(mp, actorId >>> 0);
+      this.syncLook(mp, actorId >>> 0);
       const realm = afterlifeOf(mp, actorId >>> 0);
-      if (!realm) return;
-      this.applyLook(mp, actorId >>> 0, realm);
-      setTimeout(() => this.dress(mp, actorId >>> 0, realm), DRESS_DELAY_MS);
+      if (realm) setTimeout(() => this.dress(mp, actorId >>> 0, realm), DRESS_DELAY_MS);
     });
   }
 
@@ -255,7 +257,7 @@ export class AfterlifeSystem implements System {
       this.log(`[afterlife] sending ${hex(actorId)} to ${label} failed: ${e}`);
       return false;
     }
-    this.applyLook(mp, actorId, realm);
+    this.syncLook(mp, actorId);
     if (alive) this.dress(mp, actorId, realm);
     notifyActor(mp, actorId, `Your soul passes to ${label}.`);
     let profileId = -1;
@@ -281,16 +283,23 @@ export class AfterlifeSystem implements System {
         this.log(`[afterlife] restoring the spawn point of ${hex(actorId)} failed: ${e}`);
       }
     }, 0);
-    this.applyLook(mp, actorId, realm);
     setTimeout(() => this.dress(mp, actorId, realm), DRESS_DELAY_MS);
     this.log(`[afterlife] ${hex(actorId)} respawns in ${label}`);
   }
 
-  // Registration of ff_afterlife lives in gamemode.js, so a missing property is logged and the rest goes on; an up to date look is left alone
-  private applyLook(mp: Mp, actorId: number, realm: RealmId): void {
-    const { shaderId, spellId, alpha } = this.looks[realm];
+  // Writes the look of the character's realm, or clears a stale one when it is in none; ff_afterlife lives in gamemode.js, so a missing property is only logged
+  private syncLook(mp: Mp, actorId: number): void {
+    const realm = afterlifeOf(mp, actorId);
     let stored: { realm?: unknown; shader?: unknown; alpha?: unknown } | null = null;
     try { stored = mp.get(actorId, LOOK_PROP); } catch { /* unregistered, the set below logs it */ }
+    if (!realm) {
+      if (!stored) return;
+      const was = realmIdOf(stored.realm);
+      this.clearLook(mp, actorId, was);
+      this.log(`[afterlife] ${hex(actorId)} is in no realm, cleared the stale ${was ? REALMS[was].label : "realm"} look`);
+      return;
+    }
+    const { shaderId, spellId, alpha } = this.looks[realm];
     if (stored?.realm === realm && stored.shader === shaderId && stored.alpha === alpha) return;
     try {
       mp.set(actorId, LOOK_PROP, { realm, shader: shaderId, alpha });
@@ -305,14 +314,14 @@ export class AfterlifeSystem implements System {
     }
   }
 
-  private clearLook(mp: Mp, actorId: number, realm: RealmId): void {
-    const { spellId } = this.looks[realm];
+  private clearLook(mp: Mp, actorId: number, realm: RealmId | null): void {
     try {
       mp.set(actorId, LOOK_PROP, null);
     } catch (e) {
       this.log(`[afterlife] clearing ${LOOK_PROP} of ${hex(actorId)} failed: ${e}`);
     }
-    if (!spellId) return;
+    const spellId = realm ? this.looks[realm].spellId : 0;
+    if (!realm || !spellId) return;
     try {
       removeSpellFrom(mp, actorId, spellId);
     } catch (e) {

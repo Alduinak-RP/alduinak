@@ -278,7 +278,9 @@ to one stays playable but is confined to it.
   Valor, the Soul Cairn, the Reaper's lair or the Boneyard), or who carries
   `private.afterlife`, respawns at that realm's arrival instead of a temple. The
   `onRespawn` hook swaps `spawnPoint` for that one respawn and logs
-  `[afterlife] ... respawns in ...`.
+  `[afterlife] ... respawns in ...`. Only a character with `private.afterlife`
+  gets the realm's look and outfit; a living player who merely died there does
+  not.
 - **Looks**: the fallen wear their realm. Each realm has a look and an outfit,
   resolved at boot by editor id, desc or hex id (`afterlifeLooks` in
   `docs_server_configuration_reference.md`; a name the load order lacks is
@@ -294,7 +296,9 @@ to one stays playable but is confined to it.
   `ff_afterlife` property (`{ realm, shader, alpha }`, the alpha played with the
   shader; written on the send, and on every realm respawn and login into the
   realm when it differs from the resolved look, so characters already in a
-  realm and a changed `afterlifeLooks` catch up; cleared by a revive), which every client plays on its copy of the
+  realm and a changed `afterlifeLooks` catch up; cleared by a revive, and on a
+  respawn or login of a character in no realm, logged `[afterlife] <id> is in
+  no realm, cleared the stale <realm> look`), which every client plays on its copy of the
   character (`formView.ts`, again after a 3D reload) and the own client on
   the player (`afterlifeLookService.ts`, again 1 s after a respawn, which
   drops shaders; `look <id>|off` in `skyrim-platform.log`), the way admin
