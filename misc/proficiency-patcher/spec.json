@@ -2581,6 +2581,17 @@
     "MCERecipeClothesWeddingDress"
    ]
   },
+  "shared": [
+   {
+    "products": [
+     "Leather01",
+     "LeatherStrips"
+    ],
+    "also": [
+     "hunter"
+    ]
+   }
+  ],
   "recipes": [
    {
     "edid": "RecipeArmorevgsmpfastenedscarfarmor",

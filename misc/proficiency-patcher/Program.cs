@@ -1120,12 +1120,16 @@ static class Steps
         var listed = t["recipes"]!.AsArray().Select(x => x!.AsObject()).ToDictionary(r => r["edid"]!.GetValue<string>(), r => r, StringComparer.OrdinalIgnoreCase);
         var tierOf = TierMap(t["tiers"]?.AsObject() ?? new JsonObject());
         var benches = Edids(c, t["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        // Products other professions make too: their recipes at the benches gain those markers beside the owner's
+        var shared = (t["shared"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+            .Select(s => (Products: Edids(c, s["products"]).Select(c.KeyOf<IItemGetter>).ToHashSet(), Also: Edids(c, s["also"]).ToList())).ToList();
+        var atBenches = c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides().Where(w => benches.Contains(w.WorkbenchKeyword.FormKey)).ToList();
         // The sweep reads the load order, so a recipe an earlier step routed to the rack keeps the tier that step gave it
-        var swept = c.LoadOrder.PriorityOrder.ConstructibleObject().WinningOverrides()
-            .Where(w => benches.Contains(w.WorkbenchKeyword.FormKey) && c.Includes(w))
-            .Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
+        var swept = atBenches.Where(w => c.Includes(w)).Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
+        // A shared product is re-tiered whether or not the plugin already overrides its recipe
+        var sharing = atBenches.Where(w => shared.Any(s => s.Products.Contains(w.CreatedObject.FormKey))).Select(w => w.EditorID ?? "").Where(e => e.Length > 0);
         // A hotfix run does not sweep the recipes the plugin already overrides, so the tier lists name theirs outright
-        foreach (var edid in swept.Concat(listed.Keys).Concat(c.Hotfix ? tierOf.Keys : Enumerable.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var edid in swept.Concat(listed.Keys).Concat(c.Hotfix ? tierOf.Keys : Enumerable.Empty<string>()).Concat(sharing).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var r = listed.GetValueOrDefault(edid);
             if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"tailoring recipe '{edid}' not found"); continue; }
@@ -1144,8 +1148,9 @@ static class Steps
             cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
             var tier = r?["tier"]?.GetValue<string>() ?? tierOf.GetValueOrDefault(edid, c.Ranks[0]);
             var owner = r?["profession"]?.GetValue<string>() ?? profession;
-            SetTier(c, cobj, owner, tier);
-            c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), owner, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName));
+            var also = shared.Where(s => s.Products.Contains(cobj.CreatedObject.FormKey)).SelectMany(s => s.Also).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            SetTier(c, cobj, owner, tier, also);
+            c.Report.Recipes.Add(new RecipeLine("tailoring", edid, c.NameOf(cobj.CreatedObject.FormKey), owner, tier, Items(c, cobj), gatesStripped: stripped, origin: winning.FormKey.ModKey.FileName, note: AlsoNote(also)));
         }
         foreach (var r in t["newRecipes"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
         {
