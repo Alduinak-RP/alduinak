@@ -4068,15 +4068,22 @@
     "LootGiantGold",
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "Gold001"
    ],
-   "useAll": true,
-   "add": [
-    {
-     "item": "Gold001",
-     "count": 20,
-     "level": 1
-    }
+   "useAll": true
+  },
+  {
+   "list": "LootSmallTreasure10",
+   "remove": [
+    "LootGoldChange"
+   ]
+  },
+  {
+   "list": "LootFalmerCorpseGold",
+   "remove": [
+    "LootFalmerCorpseGoldSublist",
+    "LootGoldChange"
    ]
   },
   {
@@ -4142,7 +4149,8 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "DeathItemDraugrGold"
    ],
    "useAll": true,
    "add": [
@@ -4171,6 +4179,12 @@
      "count": 1,
      "level": 1
     }
+   ]
+  },
+  {
+   "list": "DeathItemDraugrMage",
+   "remove": [
+    "DeathItemDraugrGold"
    ]
   },
   {
@@ -4425,11 +4439,6 @@
      "level": 1
     },
     {
-     "item": "Gold001",
-     "count": 8,
-     "level": 1
-    },
-    {
      "item": "LootHagravenChestPotions25",
      "count": 1,
      "level": 1
@@ -4477,11 +4486,6 @@
     {
      "item": "BoneMeal",
      "count": 1,
-     "level": 1
-    },
-    {
-     "item": "Gold001",
-     "count": 2,
      "level": 1
     },
     {
@@ -4534,11 +4538,6 @@
     {
      "item": "SoulGemLesser",
      "count": 1,
-     "level": 1
-    },
-    {
-     "item": "Gold001",
-     "count": 6,
      "level": 1
     },
     {
