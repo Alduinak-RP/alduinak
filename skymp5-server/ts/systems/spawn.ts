@@ -7,7 +7,7 @@ import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
 import { REALMS, afterlifeOf, isFallen, readMaxCharacters } from "./afterlifeSystem";
-import { hex, isAlive, isBleedingOut, isCreationPending } from "./actorUtil";
+import { chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
 import { isOutsideBorder, insideSpot } from "./worldBorder";
 
@@ -70,6 +70,8 @@ const DEFAULT_STAT_POOL = 120;
 const EQUIP_KIT_DELAY_MS = 1500;
 // A fresh spawn strips the player (empty equipment changeForm), so the kit is dressed again once the client settled
 const EQUIP_KIT_SPAWN_DELAY_MS = 5000;
+// Worn weapons are unequipped this long after a respawn, once the client's get-up is over
+const RESPAWN_UNEQUIP_DELAY_MS = 3000;
 
 // Character creator settings ("charCreator" server setting); disabled keeps the vanilla race menu
 interface CharCreatorSettings {
@@ -163,6 +165,7 @@ export class Spawn implements System {
     this.installAppearanceHook(ctx);
     this.installEquipmentHook(ctx);
     this.installCreationDamageHook(ctx);
+    this.installRespawnHook(ctx);
 
     const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
       if (this.characterSelect) {
@@ -575,6 +578,34 @@ export class Spawn implements System {
       try { return previous.call(mp, actorId, equipment, isAllowed) !== false; }
       catch { return true; }
     };
+  }
+
+  // The ragdoll death and the get-up leave the hands' behaviour graph stale while the weapon stays worn, so worn weapons are unequipped through the owner's client
+  private installRespawnHook(ctx: SystemContext): void {
+    const mp = ctx.svr as unknown as Mp;
+    chainMpHook(mp, "onRespawn", (rawId: number) => {
+      const actorId = Number(rawId) >>> 0;
+      if (isPlayerActor(mp, actorId)) setTimeout(() => this.unequipWeapons(mp, actorId), RESPAWN_UNEQUIP_DELAY_MS);
+    });
+  }
+
+  private unequipWeapons(mp: Mp, actorId: number): void {
+    if (userOf(mp, actorId) < 0) return;
+    let entries: any[] = [];
+    try { entries = mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return; }
+    const worn = entries.filter((e) => (e?.worn || e?.wornLeft) && weaponAnimType(mp, Number(e.baseId)) >= 0);
+    if (!worn.length) return;
+    for (const e of worn) {
+      try {
+        const self = { type: "form", desc: mp.getDescFromId(actorId) };
+        const item = { type: "espm", desc: mp.getDescFromId(Number(e.baseId) >>> 0) };
+        // UnequipItem(akItem, abPreventEquip, abSilent)
+        mp.callPapyrusFunction("method", "Actor", "UnequipItem", self, [item, false, true]);
+      } catch (err) {
+        this.log(`[respawn] unequip ${hex(Number(e.baseId))} of ${hex(actorId)} failed: ${err}`);
+      }
+    }
+    this.log(`[respawn] ${hex(actorId)} sheathes ${worn.length} weapon(s)`);
   }
 
   private wearsKit(equipment: unknown): boolean {

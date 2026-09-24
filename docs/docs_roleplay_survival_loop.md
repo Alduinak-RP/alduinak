@@ -210,7 +210,13 @@ behaviour-graph events — no ESP required.**
   Each respawn writes one `restoreBody inKillMove=<bool> limbReset=ok/err`
   line to `skyrim-platform.log`. If a test still shows a neck stump, the
   next step is a re-apply of the stored appearance from `RemoteServer` in
-  the same callback.
+  the same callback. The ragdoll and the get-up also leave the hands'
+  behaviour graph stale while the weapon stays worn, so 3 s after every
+  player respawn the server (`Spawn.installRespawnHook`) reads the worn
+  entries of the actor's equipment and unequips every weapon among them
+  through Papyrus `Actor.UnequipItem` on the owner's client, logging
+  `[respawn] <actor> sheathes <n> weapon(s)`; the player draws it again by
+  hand.
 - **Revive** (`AfterlifeSystem.revive`): staff with the `players` cap return
   a fallen character (Sovngarde, the Soul Cairn or perma-dead) to the living.
   The admin panel's Players sub-tab lists the selected profile's fallen
