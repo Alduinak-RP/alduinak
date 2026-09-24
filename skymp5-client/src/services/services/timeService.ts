@@ -27,6 +27,8 @@ const DAYS_PASSED_SAMPLES = 15;
 // A smaller offset sample is queueing delay unless it is this far off (the player changed their PC clock)
 const CLOCK_JUMP_MS = 30000;
 
+type CalendarApi = { setRawDaysPassed?: (days: number) => number };
+
 interface ServerClock {
   offsetMs: number;
   tzOffsetMin: number;
@@ -77,7 +79,6 @@ export class TimeService extends ClientListener {
   // The template save carries its own calendar, so the first pass after a load replaces all of it
   private onLoadGame(): void {
     this.weeks = undefined;
-    this.written = undefined;
     this.samples = [];
     this.nextSyncAt = 0;
     sendCustomPacket(this.controller, { customPacketType: "gameTimeRequest" });
@@ -103,11 +104,11 @@ export class TimeService extends ClientListener {
     if (month.getValue() !== date.getUTCMonth()) month.setValue(date.getUTCMonth());
     if (year.getValue() !== this.clock.year) year.setValue(this.clock.year);
 
-    this.syncDaysPassed(daysPassed, date);
+    this.syncDaysPassed(daysPassed, hour, date);
   }
 
   // Whole weeks from a Sunday keep floor(GameDaysPassed) % 7 on the real weekday and the float32 value small
-  private syncDaysPassed(daysPassed: GlobalVariable, date: Date): void {
+  private syncDaysPassed(daysPassed: GlobalVariable, hour: GlobalVariable, date: Date): void {
     const days = date.getTime() / DAY_MS + SUNDAY_OFFSET_DAYS;
     const current = daysPassed.getValue();
     // Rebased per load to within a week above the template save's value, so a load never moves it back
@@ -117,17 +118,11 @@ export class TimeService extends ClientListener {
       this.report(`GameDaysPassed value/target every 2 s after the load: ${this.samples.join(" ")}`);
       this.samples = undefined;
     }
-    if (this.engineOwnsDaysPassed) return;
-    // Nothing in the game lowers it, so a drop below our last write means the engine recomputes it from its own counters
-    if (this.written !== undefined && current < this.written - MAX_DRIFT_DAYS) {
-      this.engineOwnsDaysPassed = true;
-      this.report(`GameDaysPassed fell from ${this.written} to ${current} after a write, so it is left to the engine`);
-      return;
-    }
     // Both ways, so training, jail or the DST fall back never leave it ahead
     if (Math.abs(target - current) < MAX_DRIFT_DAYS) return;
-    daysPassed.setValue(target);
-    this.written = Math.fround(target);
+    // The engine rebuilds the global every frame from the Calendar's whole days and GameHour, older SkyrimPlatform builds lack the setter
+    const api = this.sp as Sp & CalendarApi;
+    if (typeof api.setRawDaysPassed === "function") api.setRawDaysPassed(Math.round(target - hour.getValue() / 24));
   }
 
   // printConsole never reaches skyrim-platform.log (and the console is blocked), a throw from its own update does
@@ -140,8 +135,6 @@ export class TimeService extends ClientListener {
   private hasServerClock = false;
   private nextSyncAt = 0;
   private weeks: number | undefined;
-  private written: number | undefined;
-  private engineOwnsDaysPassed = false;
   // Diagnostic: the first passes after a load, logged once so the engine's handling of GameDaysPassed can be checked in game
   private samples: string[] | undefined;
 }

@@ -1,5 +1,6 @@
 #include "SkyrimPlatform.h"
 #include "BrowserApi.h"    // APIs for register in CommonExecutionListener
+#include "CalendarApi.h"
 #include "CallNativeApi.h" // CallNativeApi::NativeCallRequirements
 #include "CameraApi.h"
 #include "ConsoleApi.h" // CommonExecutionListener
@@ -275,6 +276,7 @@ private:
       EncodingApi::Register(env, e);
       LoadGameApi::Register(env, e);
       CameraApi::Register(env, e);
+      CalendarApi::Register(env, e);
       MpClientPluginApi::Register(env, e);
       ObjectReferenceApi::Register(env, e);
       HttpClientApi::Register(env, e);
