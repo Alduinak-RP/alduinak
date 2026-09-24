@@ -220,9 +220,20 @@ behaviour-graph events — no ESP required.**
   under way a second one is refused ("You cannot do that now."). Like a finish off it
   needs a drawn melee weapon ("You need a melee weapon in hand to assassinate
   them.", "Draw your weapon first."), and the pair comes from a second table
-  by weapon type, `executionSneakFinishers`, which defaults to the finish off
-  pools until the operator fills the vanilla sneak pairs (`pa_` IDLEs under
-  the KillMoveSneak tree, read in xEdit). The pair is sent with `standUp` and
+  by weapon type, `executionSneakFinishers`. Its defaults are the loose,
+  condition-free clips of the vanilla sneak and back killmoves: sword,
+  dagger, war axe, mace and dual wield play `pa_1HMSneakKillBackA` (IDLE
+  F4679, the throat slit, `pa_KillMoveSneakBackA`) or `pa_1HMKillMoveBackStab`
+  (F465A); vanilla gives them to a blade only, but they run in the same
+  one-handed state for any one-handed weapon. Greatsword and battleaxe keep
+  their standing pools, since their sneak kills exist only as Update.esm
+  tree records (`KillMove2HMStabFromBehind00` 0100081F, `KillMove2HWHackFromBehind00`
+  0100081C, under `KillMoveBackSideRoot00`, whose target and killmove-state
+  conditions are not shown to hold between two players), and unarmed has
+  none (`KillMoveSneakH2HNeckBreak00` 01000814, which also rolls 50%, and
+  `KillMoveSneakH2HSleeper00` 01000817 sit under `KillingMoveSneakBackA00`,
+  conditioned the same way): a test
+  that shows one plays can add it through the setting. The pair is sent with `standUp` and
   `kneel` both false, so every client plays it at once with the victim on
   their feet; the victim dies when a participant's client reports the end,
   or at `finishOffMaxMs`, through the same PK as a staff PK (`pk`, "You

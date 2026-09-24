@@ -38,8 +38,17 @@ const FINISHERS: FinisherTable = {
   battleaxe: [],
   unarmed: [],
 };
-// The pairs an assassination from behind plays: the standing finishers stand in until the operator fills the vanilla sneak pairs. Overridable via "executionSneakFinishers"
-const SNEAK_FINISHERS: FinisherTable = FINISHERS;
+// pa_1HMSneakKillBackA and pa_1HMKillMoveBackStab, the loose clips of the vanilla sneak and back killmoves, for every one-handed weapon
+const SNEAK_BACK_PAIRS = [0xf4679, 0xf465a];
+// Two-handed sneak kills exist only as conditioned Update.esm tree records, so those weapons keep the standing pool. Overridable via "executionSneakFinishers"
+const SNEAK_FINISHERS: FinisherTable = {
+  ...FINISHERS,
+  sword: SNEAK_BACK_PAIRS,
+  dagger: SNEAK_BACK_PAIRS,
+  axe: SNEAK_BACK_PAIRS,
+  mace: SNEAK_BACK_PAIRS,
+  dual: SNEAK_BACK_PAIRS,
+};
 // pa_1HMKillMoveBleedOutKill (ENAM pa_KillingBlow, loose, non-decapitating), stabbed down into the kneeling victim; the finisher for every weapon when "finishOffStandUp" is false
 const KILLMOVE_KNEELING = 0xf469e;
 // Killmove tree records whose own or parent conditions the engine may refuse; added by "finishOffExtendedPool"
