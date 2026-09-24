@@ -1,3 +1,5 @@
+import { toFormId } from "./formIdUtil";
+
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
@@ -38,6 +40,15 @@ export const locationForFollower = (mp: Mp, ownerId: number): NpcLocation =>
 export const moveNpc = (mp: Mp, id: number, loc: NpcLocation): void => {
   mp.set(id, "locationalData", loc);
   mp.set(id, "spawnPoint", loc);
+};
+
+// A CONT base given as a desc ("c674b:Skyrim.esm") or a load-order id; "" when it is neither
+export const containerDesc = (mp: Mp, raw: unknown): string => {
+  try {
+    const desc = typeof raw === "string" && raw.includes(":") ? raw : mp.getDescFromId(toFormId(raw));
+    if (mp.lookupEspmRecordById(mp.getIdFromDesc(desc))?.record?.type === "CONT") return desc;
+  } catch { }
+  return "";
 };
 
 // PlaceAtMe needs a self ref (anchorId); the new reference starts at the anchor's position and cell; throws on failure

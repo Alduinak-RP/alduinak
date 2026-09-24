@@ -1,8 +1,9 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content } from "./system";
+import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
-import { GOLD_BASE_ID, addGold } from "./actorUtil";
+import { GOLD_BASE_ID, addGold, baseTypeOf } from "./actorUtil";
+import { containerDesc, placeAtMe } from "./npcPlacement";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -15,6 +16,10 @@ type Mp = any;
 // walled cities have two copies of the same physical board (one in the city
 // worldspace, one in Tamriel for the exterior view); both resolve to one
 // canonical reference so they always show the same notices.
+//
+// Each board keeps a strongbox, a container placed at the canonical board the
+// first time it is needed; the posting fees pile up in it and only the ranks
+// that manage the hold's property (canManage) may open it.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -31,7 +36,7 @@ type Mp = any;
 // Persistence: `private.bountyBoard` on the canonical board reference, which
 // rides the changeform into Mongo and comes back on restart. Notices expire
 // lazily on every read plus a slow sweep, so correctness does not depend on
-// the sweep having run.
+// the sweep having run. The strongbox id rides along as `stash`.
 //
 // Every post and expiry is appended to bounty.log in the shared log directory.
 //
@@ -41,6 +46,7 @@ type Mp = any;
 //   bountyBoardMaxNotes     notices one board holds, default 40
 //   bountyBoardMaxTextLen   characters per notice, default 500
 //   bountyBoardMaxDistance  posting reach in game units, default 512
+//   bountyBoardStashBase    CONT base of the strongbox, default c674b:Skyrim.esm
 
 const BOARD_PROP = "private.bountyBoard";
 
@@ -54,6 +60,8 @@ const DEFAULT_EXPIRY_DAYS = 7;
 const DEFAULT_MAX_NOTES = 40;
 const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
+// The vanilla ash pile: a CONT with no base items and a flat mesh at the board's foot
+const DEFAULT_STASH_BASE = "c674b:Skyrim.esm";
 
 const POST_COOLDOWN_MS = 5000;
 const OPEN_COOLDOWN_MS = 1000;
@@ -90,6 +98,8 @@ interface BoardNote {
 interface BoardRecord {
   nextId: number;
   notes: BoardNote[];
+  // The strongbox reference, once placed
+  stash?: number;
 }
 
 interface BoardSession {
@@ -108,6 +118,7 @@ export class BountyBoardSystem implements System {
   constructor(private log: Log) { }
 
   canRemove = (_actorId: number, _boardName: string): boolean => false;
+  canManage = (_actorId: number, _boardName: string): boolean => false;
   titleOf = (_actorId: number): string => "";
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -128,6 +139,8 @@ export class BountyBoardSystem implements System {
     this.logDir = logDirOf(all);
 
     const mp = ctx.svr as Mp;
+    this.stashDesc = containerDesc(mp, all?.["bountyBoardStashBase"] ?? DEFAULT_STASH_BASE);
+    if (!this.stashDesc) this.log(`[bounty] bountyBoardStashBase is not a CONT record, the posting fee is lost`);
     for (const desc of BOARD_BASE_DESCS) {
       try {
         this.boardBaseIds.add(mp.getIdFromDesc(desc) >>> 0);
@@ -148,6 +161,14 @@ export class BountyBoardSystem implements System {
     }
 
     this.installActivationHook(ctx);
+    // Placed forms exist only once the world DB has loaded; the strongboxes of the previous run are guarded from then on
+    ctx.gm.once(WORLD_LOADED_EVENT, () => {
+      this.worldLoaded = true;
+      for (const primary of this.primaries()) {
+        const rec = this.read(ctx, primary);
+        if (rec?.stash && this.isStash(ctx, rec.stash)) this.stashes.set(rec.stash, primary);
+      }
+    });
     // A character switch mid-connection voids the session, same as trade.
     ctx.gm.on("userAssignActor", (userId: number) => {
       this.sessions.delete(userId);
@@ -183,8 +204,16 @@ export class BountyBoardSystem implements System {
     };
   }
 
-  // True when the target is a board and the menu was taken care of.
+  // True when the target is a board and the menu was taken care of, or a strongbox refused.
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): boolean {
+    const stashOwner = this.stashes.get(targetId);
+    if (stashOwner) {
+      // A manager's activation runs the vanilla container open
+      if (this.canManage(casterId, this.boardNameOf(stashOwner))) return false;
+      const userId = this.userOf(ctx, casterId);
+      if (userId >= 0) this.notice(ctx, userId, "Only the hold's steward or jarl may open the board's strongbox.");
+      return true;
+    }
     const board = this.boardOf(ctx, targetId);
     if (!board) return false;
     const userId = this.userOf(ctx, casterId);
@@ -210,9 +239,7 @@ export class BountyBoardSystem implements System {
     const sinceLast = now - this.lastSweepMs;
     if (sinceLast >= 0 && sinceLast < SWEEP_INTERVAL_MS) return;
     this.lastSweepMs = now;
-    const primaries = new Set<number>();
-    this.knownBoards.forEach((b) => primaries.add(b.primary));
-    for (const primary of primaries) {
+    for (const primary of this.primaries()) {
       const rec = this.read(ctx, primary);
       if (rec && this.prune(ctx, primary, rec)) this.write(ctx, primary, rec);
     }
@@ -338,6 +365,7 @@ export class BountyBoardSystem implements System {
       this.notice(ctx, userId, `Pinning a notice costs ${this.costGold} gold, and you do not have it.`);
       return;
     }
+    const stash = this.costGold > 0 ? this.stashOf(ctx, session.primary, rec) : 0;
 
     const author = titledName(this.titleOf(actorId), displayNameOf(ctx.svr, actorId));
     rec.notes.push({
@@ -357,7 +385,12 @@ export class BountyBoardSystem implements System {
       return;
     }
 
-    this.appendLog(`${describeActor(ctx.svr, actorId)} posted on the ${session.name} board (-${this.costGold} gold): ${JSON.stringify(text)}`);
+    if (stash) {
+      try { addGold(ctx.svr, stash, this.costGold); }
+      catch (e) { this.log(`[bounty] could not put the fee in strongbox ${stash.toString(16)}: ${e}`); }
+    }
+    const fee = stash ? `${this.costGold} gold to the board strongbox` : `-${this.costGold} gold`;
+    this.appendLog(`${describeActor(ctx.svr, actorId)} posted on the ${session.name} board (${fee}): ${JSON.stringify(text)}`);
     this.notice(ctx, userId, "Your notice is pinned to the board.");
     this.refreshViewers(ctx, session.primary);
   }
@@ -435,6 +468,12 @@ export class BountyBoardSystem implements System {
     return dropped;
   }
 
+  private primaries(): Set<number> {
+    const primaries = new Set<number>();
+    this.knownBoards.forEach((b) => primaries.add(b.primary));
+    return primaries;
+  }
+
   private boardNameOf(primary: number): string {
     const board = this.knownBoards.get(primary);
     return board ? board.name : "Missive";
@@ -481,6 +520,36 @@ export class BountyBoardSystem implements System {
       this.log(`[bounty] could not take gold from ${actorId.toString(16)}: ${e}`);
       return false;
     }
+  }
+
+  // ── Strongbox ───────────────────────────────────────────────────────────────
+
+  // The board's strongbox, placed at the canonical board on first use; 0 when none can be had
+  private stashOf(ctx: SystemContext, primary: number, rec: BoardRecord): number {
+    const mp = ctx.svr as Mp;
+    if (rec.stash && this.isStash(ctx, rec.stash)) {
+      this.stashes.set(rec.stash, primary);
+      return rec.stash;
+    }
+    if (!this.worldLoaded || !this.stashDesc) return 0;
+    let stash = 0;
+    try {
+      stash = placeAtMe(mp, primary, this.stashDesc) >>> 0;
+      mp.set(stash, "inventory", { entries: [] });
+    } catch (e) {
+      this.log(`[bounty] could not place the ${this.boardNameOf(primary)} board strongbox: ${e}`);
+      return 0;
+    }
+    rec.stash = stash;
+    if (!this.write(ctx, primary, rec)) return 0;
+    this.stashes.set(stash, primary);
+    this.log(`[bounty] placed the ${this.boardNameOf(primary)} board strongbox ${stash.toString(16)}`);
+    return stash;
+  }
+
+  // A stale id from an earlier run is no strongbox
+  private isStash(ctx: SystemContext, refrId: number): boolean {
+    return baseTypeOf(ctx.svr as Mp, refrId) === "CONT";
   }
 
   // ── Board resolution ────────────────────────────────────────────────────────
@@ -554,7 +623,9 @@ export class BountyBoardSystem implements System {
           });
         }
       }
-      return { nextId: Math.max(1, Number(r.nextId) || 1), notes };
+      const rec: BoardRecord = { nextId: Math.max(1, Number(r.nextId) || 1), notes };
+      if (Number(r.stash) > 0) rec.stash = Number(r.stash) >>> 0;
+      return rec;
     } catch {
       return null;
     }
@@ -604,6 +675,10 @@ export class BountyBoardSystem implements System {
   private maxTextLen = DEFAULT_MAX_TEXT_LEN;
   private maxDistance = DEFAULT_MAX_DISTANCE;
   private logDir = "C:\\logs";
+  private stashDesc = "";
+  private worldLoaded = false;
+  // Strongbox reference to the canonical board it belongs to
+  private stashes = new Map<number, number>();
   private boardBaseIds = new Set<number>();
   private knownBoards = new Map<number, { primary: number; name: string }>();
   private baseIdCache = new Map<number, number>();

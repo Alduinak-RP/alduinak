@@ -285,6 +285,7 @@ const main = async () => {
   const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem);
   const bountyBoardSystem = new BountyBoardSystem(log);
   bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
+  bountyBoardSystem.canManage = (actorId, boardName) => factionSystem.canManageBoard(actorId, boardName);
   bountyBoardSystem.titleOf = (actorId) => factionSystem.titleOfActor(actorId);
   systems.push(
     new MetricsSystem(),

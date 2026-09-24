@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
-import { placeNpc, placeAtMe, moveNpc, locationNear, locationForFollower, HOSTILE_PROP } from "./npcPlacement";
+import { placeNpc, placeAtMe, moveNpc, locationNear, locationForFollower, containerDesc, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, isStreamedTo, hex, baseIdOf, destroyLeftovers, destroyRef, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
@@ -525,15 +525,11 @@ export class CompanionSystem implements System {
     return pileId;
   }
 
-  // A CONT base as a desc ("c674b:Skyrim.esm") or a load-order id; empty when it is none, and reanimated bodies then stay
+  // Empty when the base is no CONT, and reanimated bodies then stay
   private containerDesc(raw: unknown): string {
-    const mp = this.mp;
-    try {
-      const desc = typeof raw === "string" && raw.includes(":") ? raw : mp.getDescFromId(toFormId(raw));
-      if (mp.lookupEspmRecordById(mp.getIdFromDesc(desc))?.record?.type === "CONT") return desc;
-    } catch { }
-    this.log(`CompanionSystem: ash pile base ${String(raw)} is not a CONT record, reanimated bodies stay as corpses`);
-    return "";
+    const desc = containerDesc(this.mp, raw);
+    if (!desc) this.log(`CompanionSystem: ash pile base ${String(raw)} is not a CONT record, reanimated bodies stay as corpses`);
+    return desc;
   }
 
   private sendState(ownerId: number): void {

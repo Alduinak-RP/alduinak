@@ -63,6 +63,12 @@ const MAX_QUEUED = 3;
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
 
+// Bounty board name to the hold whose ranks tend it
+const HOLD_BY_BOARD: Record<string, string> = {
+  Dawnstar: "the-pale", Falkreath: "falkreath", Markarth: "the-reach", Morthal: "hjaalmarch",
+  Riften: "the-rift", Solitude: "haafingar", Whiterun: "whiterun", Windhelm: "eastmarch", Winterhold: "winterhold",
+};
+
 // Acting through staff powers rather than a rank of their own
 const staffOnly = (auth: rules.Authority): boolean => auth.staff && !auth.rank;
 
@@ -992,17 +998,22 @@ export class FactionSystem implements System {
   }
 
   canRemoveBoardPosts(actorId: number, boardName: string): boolean {
-    const holdByBoard: Record<string, string> = {
-      Dawnstar: "the-pale", Falkreath: "falkreath", Markarth: "the-reach", Morthal: "hjaalmarch",
-      Riften: "the-rift", Solitude: "haafingar", Whiterun: "whiterun", Windhelm: "eastmarch", Winterhold: "winterhold",
-    };
-    const hold = holdByBoard[boardName];
+    const hold = HOLD_BY_BOARD[boardName];
     if (!hold) return false;
     if (this.isStaff(actorId)) return true;
     const faction = this.defs.get(`hold:${hold}`);
     // The lowest rank of the hold is its citizenry; every rank above it may clear the board
     const lowest = faction && faction.ranks.length ? faction.ranks[faction.ranks.length - 1].slug : "citizen";
     return rules.membershipsOf(this.cachedAccess(actorId)).some((m) => m.factionId === `hold:${hold}` && m.rankSlug !== lowest);
+  }
+
+  // The board's strongbox opens for the ranks that manage the hold's property, the same rule as housing
+  canManageBoard(actorId: number, boardName: string): boolean {
+    if (this.isStaff(actorId)) return true;
+    const hold = HOLD_BY_BOARD[boardName];
+    if (!hold) return false;
+    const faction = this.defs.get(`hold:${hold}`);
+    return rules.membershipsOf(this.cachedAccess(actorId)).some((m) => m.factionId === `hold:${hold}` && rules.managesHold(faction, m.rankSlug));
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

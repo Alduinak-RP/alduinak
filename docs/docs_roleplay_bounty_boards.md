@@ -67,7 +67,8 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
 
 - A notice costs `bountyBoardCostGold` (default 25) in gold, `baseId 0xf`.
   The fee is checked and taken only after every other check has passed; a
-  player who cannot pay is refused with a notice and loses nothing.
+  player who cannot pay is refused with a notice and loses nothing. The fee
+  goes into the board's strongbox (below); the `bounty.log` line says so.
 - Notices are signed with the name others see: `maskName` when set, the
   actor's real name otherwise, preceded by the poster's **Show Title** prefix
   when one is shown (`FactionSystem.titleOfActor`, injected as `titleOf` in
@@ -83,12 +84,41 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
 - Everyone with that board open sees the new notice immediately (a refresh
   push; the client only applies it to an already-open menu).
 
+## Strongbox
+
+Every board has a strongbox: a real container (`CONT`) the server places at
+the canonical board with `PlaceAtMe` the first time a fee is paid there, so
+it sits at the board's foot in the city worldspace (the server cannot move a
+placed non-actor, so the base should be small or flat). The posting fees pile
+up in it. Its base is `bountyBoardStashBase` (default `c674b:Skyrim.esm`, the
+vanilla ash pile, a CONT with no base items); a base that is not a CONT is
+logged at startup and the fee is then simply destroyed, as before. The base
+must carry no items of its own, because the engine re-adds base items when a
+container is emptied.
+
+Only the ranks that manage the hold's property may open it: staff, or a
+membership in the board's hold whose rank has the `housing` flag (by default
+the Jarl and the Steward, the same predicate as housing, see
+`docs_roleplay_property_factions.md`), through `FactionSystem.canManageBoard`
+injected as `canManage` in `index.ts`. Anyone else pressing E on it is
+refused with a notice by the bounty activation hook; a manager's activation
+runs the vanilla container open, so the strongbox is looted like any chest.
+
+The strongbox id is stored as `stash` on the board record and re-checked on
+every use (a stale id whose base is no longer a CONT is replaced), and the
+strongboxes of the previous run are guarded again once the world DB has
+loaded. Boards outside the table (patch plugins) get one too, under their own
+record, but `canManage` knows only the nine hold capitals, so only staff can
+open those.
+
 ## Persistence and expiry
 
 The notice pool lives in `private.bountyBoard` on the canonical board
 reference, the same changeform-dynamic-field pattern as housing and mastery:
 it rides the reference's changeform into MongoDB and comes back on restart.
-Nothing else stores state; there is no sidecar file.
+The strongbox id (`stash`) rides along in the same record; the gold itself is
+the placed container's inventory. Nothing else stores state; there is no
+sidecar file.
 
 Expiry is `bountyBoardExpiryDays` (default 7) days per notice and happens
 lazily on every read of a board, plus an hourly sweep for boards nobody looks
@@ -139,12 +169,14 @@ menu closes itself when the browser loses focus, like the mastery menu.
 | `bountyBoardMaxNotes` | 40 | notices one board holds |
 | `bountyBoardMaxTextLen` | 500 | characters per notice |
 | `bountyBoardMaxDistance` | 512 | posting reach in game units |
+| `bountyBoardStashBase` | `c674b:Skyrim.esm` | CONT base of the strongbox, as a `hex:Plugin` desc or a load-order id |
 
-`bountyBoardCostGold` also has a numeric row in the manager **Settings** tab
-(Interactions group), so the price can be changed there without editing the
-JSON by hand; a blank field removes the key and the server falls back to the
-default. The value is read once at startup, so restart the game service after
-changing it.
+`bountyBoardCostGold` and `bountyBoardStashBase` also have rows in the manager
+**Settings** tab (Interactions group), so they can be changed there without
+editing the JSON by hand; a blank field removes the key and the server falls
+back to the default. The values are read once at startup, so restart the game
+service after changing them. Changing the strongbox base does not touch a
+strongbox already placed; its old container stays.
 
 ## Deployment
 
