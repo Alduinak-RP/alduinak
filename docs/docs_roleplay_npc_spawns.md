@@ -121,7 +121,9 @@ frostbite spiders venom and 2 eggs; trolls troll fat and a skull (frost trolls
 atronachs a common soul gem and 2 frost salts, flame atronachs 2 fire salts;
 hagravens 2 feathers, 2 claws and a potion roll; skeletons bone meal and a
 50% chance of one iron weapon, skeleton mages 2 bone meal, a lesser soul gem
-and a 20% chance of one of four staves; corrupted
+and a 20% chance of one of four staves (every zone on the mage base
+`0009362B` gets this: Windward Ruins, and the Dustman's Cairn and Bleak Falls
+Barrow skeleton zones); corrupted
 shades an Imperial sword, 5 steel arrows, a 50% chance of an Imperial bow and
 10% of an Imperial helmet. Every dwemer construct (spider, sphere, centurion,
 ballista) has a 50% chance of one dwemer scrap piece; spiders add a petty soul
