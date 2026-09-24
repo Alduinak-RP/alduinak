@@ -203,8 +203,10 @@ Accepted data lands in `private.rp`:
 
 On the vanilla path the client logs each step to `skyrim-platform.log`
 (`race menu requested`, `showRaceMenu`, `RaceSex Menu opened/closed`). If the
-menu is still not open 5 s after the spawn settled (no loading screen up), it
-calls `showRaceMenu` again, up to 3 times, and stops once the menu has closed.
+menu is still not open 5 s after the spawn settled (no loading screen, focused
+browser page or character select menu up), it calls `showRaceMenu` again, up to
+3 times, and stops once the menu has closed. The 5 s restart whenever chat or
+another page takes focus, so the race menu never opens under a hidden page.
 
 ## Data provenance
 

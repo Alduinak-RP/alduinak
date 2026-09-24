@@ -31,6 +31,7 @@ import { describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlis
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
+import { CharacterSelectService } from './characterSelectService';
 import { UpdateMovementMessage } from '../messages/updateMovementMessage';
 import { ChangeValuesMessage } from '../messages/changeValuesMessage';
 import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
@@ -1282,9 +1283,10 @@ export class RemoteServer extends ClientListener {
     Game.showRaceMenu();
   }
 
-  // A pending creation whose menu never opened calls it again once no loading screen is up
+  // A pending creation whose menu never opened calls it again once no loading screen or focused page is up
   private checkRaceMenu(): void {
-    if (!this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main)) {
+    if (!this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main) ||
+        this.sp.browser.isFocused() || this.controller.lookupListener(CharacterSelectService).isMenuOpen()) {
       this.raceMenuSettledAt = 0;
       return;
     }

@@ -325,6 +325,10 @@ export class CharacterSelectService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest', viaPauseMenu: Date.now() - this.pauseMenuAt < PAUSE_QUIT_WINDOW_MS });
   }
 
+  public isMenuOpen(): boolean {
+    return this.menuOpen;
+  }
+
   // The server log gets the reason without the Windows user name
   public showLoadFailure(reason: string): void {
     notice = strings.loadFailed.replace('{0}', reason);
