@@ -8,6 +8,7 @@
 #include <FunctionHook.hpp>
 #include <array>
 #include <atomic>
+#include <cstring>
 #include <iostream>
 #include <spdlog/spdlog.h>
 #include <vector>
@@ -40,6 +41,8 @@ ULONGLONG g_lastWatch = 0;
 ULONGLONG g_lastKick = 0;
 uint32_t g_kickTotal = 0;
 bool g_awaitingDelivery = false;
+bool g_browserFocusWas = false;
+std::vector<uint8_t> g_releasedWhileFocused;
 
 bool ThisProcessInFront()
 {
@@ -149,6 +152,58 @@ void CountKeyboardRead(HRESULT result, DWORD dataSize,
                    g_kickTotal);
     }
   }
+}
+
+std::string DescribeScanCodes(const std::vector<uint8_t>& codes)
+{
+  std::string result;
+  for (uint8_t code : codes) {
+    result += fmt::format("{}{:#x}", result.empty() ? "" : " ",
+                          static_cast<unsigned>(code));
+  }
+  return result.empty() ? "none" : result;
+}
+
+std::vector<uint8_t> HeldScanCodes()
+{
+  std::vector<uint8_t> held;
+  for (size_t dik = 1; dik < g_deliveredDown.size(); ++dik) {
+    if (g_deliveredDown[dik]) {
+      held.push_back(static_cast<uint8_t>(dik));
+    }
+  }
+  return held;
+}
+
+// While the browser has focus the engine gets only the releases of keys it still holds, so a menu opened mid-run stops the run
+void KeepHeldKeyReleases(HRESULT result, DWORD dataSize,
+                         DIDEVICEOBJECTDATA* data, DWORD* count)
+{
+  if (!count) {
+    return;
+  }
+  if (FAILED(result) || !data || dataSize < 2 * sizeof(DWORD)) {
+    *count = 0;
+    return;
+  }
+  auto* bytes = reinterpret_cast<uint8_t*>(data);
+  DWORD kept = 0;
+  for (DWORD i = 0; i < *count; ++i) {
+    const auto* event =
+      reinterpret_cast<const DIDEVICEOBJECTDATA*>(bytes + i * dataSize);
+    const bool down = (event->dwData & 0x80) != 0;
+    const uint8_t code = static_cast<uint8_t>(event->dwOfs & 0xFF);
+    if (down || !g_deliveredDown[code]) {
+      continue;
+    }
+    g_deliveredDown[code] = false;
+    g_releasedWhileFocused.push_back(code);
+    if (kept != i) {
+      std::memmove(bytes + kept * dataSize, bytes + i * dataSize, dataSize);
+    }
+    ++kept;
+  }
+  *count = kept;
 }
 
 void ProcessMouseData(DIMOUSESTATE2* apMouseState)
@@ -452,7 +507,22 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
 
   if (instanceInfo.guidInstance == GUID_SysKeyboard) {
     const bool browserFocus = DInputHook::ChromeFocus();
-    CountKeyboardRead(result, dataSize, outData, outDataLen, !browserFocus);
+    if (browserFocus != g_browserFocusWas) {
+      g_browserFocusWas = browserFocus;
+      if (browserFocus) {
+        g_releasedWhileFocused.clear();
+        spdlog::info("DInputHook: browser focused, engine holds keys {}",
+                     DescribeScanCodes(HeldScanCodes()));
+      } else {
+        spdlog::info("DInputHook: browser unfocused, releases passed to the "
+                     "engine while focused {}",
+                     DescribeScanCodes(g_releasedWhileFocused));
+      }
+    }
+    if (browserFocus) {
+      KeepHeldKeyReleases(result, dataSize, outData, outDataLen);
+    }
+    CountKeyboardRead(result, dataSize, outData, outDataLen, true);
     uint8_t rawData[256];
     HRESULT hr = IDirectInputDevice8_GetDeviceState(m_pDevice, 256, rawData);
     WatchKeyboard(hr == DI_OK ? rawData : nullptr);
@@ -478,11 +548,6 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
       memset(rawData, 0, 256);
     } else {
       g_keyboard.lastFailedHr = static_cast<uint32_t>(hr);
-    }
-    if (browserFocus) {
-      *outDataLen = 0;
-
-      return result;
     }
   }
 
