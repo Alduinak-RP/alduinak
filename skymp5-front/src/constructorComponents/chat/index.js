@@ -51,6 +51,7 @@ const Chat = (props) => {
   const [channel, setChannel] = useState(DEFAULT_CHANNEL);
   const [fontSize, setFontSize] = useState(saved.fontSize != null ? saved.fontSize : 16);
   const [fadeSeconds, setFadeSeconds] = useState(saved.fadeSeconds != null ? saved.fadeSeconds : 10);
+  const [fadeText, setFadeText] = useState(saved.fadeText === true);
   // No showPlayerNames key: both toggles start off, whatever showFormIds says
   const freshNametags = saved.showPlayerNames == null;
   const [showPlayerNames, setShowPlayerNames] = useState(!freshNametags && saved.showPlayerNames === true);
@@ -269,7 +270,7 @@ const Chat = (props) => {
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
   }, []);
 
-  // Idle fade: the chrome melts away after fadeSeconds of no activity (text stays).
+  // Idle fade: the chrome melts away after fadeSeconds of no activity (the text only with fadeText).
   const fadeSecondsRef = useRef(fadeSeconds);
   fadeSecondsRef.current = fadeSeconds;
   const bumpIdle = () => {
@@ -314,8 +315,8 @@ const Chat = (props) => {
   // Persist the settings whenever they change so they survive a relaunch.
   useEffect(() => {
     // Fov is saved once chat or the launcher supplies one; the client stamps it so a later launcher change wins
-    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, showPlayerNames, showFormIds }, fov != null ? { fov } : {}));
-  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, showPlayerNames, showFormIds, fov]);
+    persistChatSettings(Object.assign({ fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds }, fov != null ? { fov } : {}));
+  }, [fontSize, chatTransparency, lockChat, customHighlights, fadeSeconds, fadeText, showPlayerNames, showFormIds, fov]);
 
   const handleInput = (value) => {
     updateInput(value);
@@ -370,7 +371,7 @@ const Chat = (props) => {
         defaultPosition={saved.pos || undefined}
         onStop={(e, data) => persistChatSettings({ pos: { x: data.x, y: data.y } })}
       >
-        <div id='chat' className={idle ? 'chat-idle' : ''} onMouseEnter={() => bumpIdle()} onMouseMove={() => { if (idle) bumpIdle(); }} style={{ '--chat-bg-alpha': (100 - chatTransparency) / 100 }}>
+        <div id='chat' className={`${idle ? 'chat-idle' : ''} ${idle && fadeText ? 'chat-idle-text' : ''}`} onMouseEnter={() => bumpIdle()} onMouseMove={() => { if (idle) bumpIdle(); }} style={{ '--chat-bg-alpha': (100 - chatTransparency) / 100 }}>
           <div className="chat-main">
             <div className='chat-header'>
               {!lockChat && <div className='chat-drag-bar' title='Drag to move chat' />}
@@ -476,6 +477,8 @@ const Chat = (props) => {
           setChatTransparency={setChatTransparency}
           fadeSeconds={fadeSeconds}
           setFadeSeconds={setFadeSeconds}
+          fadeText={fadeText}
+          setFadeText={setFadeText}
           customHighlights={customHighlights}
           setCustomHighlights={setCustomHighlights}
           fov={fov}

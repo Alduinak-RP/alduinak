@@ -5,12 +5,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;
-  // Back button, top-right of the settings popup (mirrors Escape).
-  .chat-settings-back {
-    position: absolute;
-    top: 22px;
-    right: 44px;
-    z-index: 11;
+  .chat-settings-btn {
     padding: 2px 10px;
     border: none;
     border-radius: 8px;
@@ -28,6 +23,13 @@
       background: rgba(0, 0, 0, 0.75);
     }
   }
+  // Back button, top-right of the settings popup (mirrors Escape).
+  .chat-settings-back {
+    position: absolute;
+    top: 22px;
+    right: 44px;
+    z-index: 11;
+  }
   .content {
     margin: 30px 50px;
     display: flex;
@@ -39,6 +41,14 @@
     }
     > div:last-child {
       border-bottom: none;
+    }
+  }
+  .chat-settings-tabs {
+    justify-content: center;
+    gap: 16px;
+    margin: 0;
+    .chat-channel {
+      font-size: 16px;
     }
   }
   // Half-size variants of the shared slider and checkbox.
