@@ -284,6 +284,7 @@ const main = async () => {
   const factionSystem = new FactionSystem(log, housingSystem);
   // A PK leaves a lootable body at the spot of death
   const bodySystem = new BodySystem(log);
+  searchSystem.bodyRefusal = (searcherId, bodyId) => bodySystem.refusalFor(searcherId, bodyId);
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
   const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem);
   adminSystem.setExecutionSystem(executionSystem);

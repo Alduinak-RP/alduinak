@@ -28,6 +28,8 @@ const REPEAT_MS = 30000;
 interface Body {
   id: number;
   victimId: number;
+  // The victim's account, whose other characters may not loot the body; -1 when unknown
+  profileId: number;
   at: number;
 }
 
@@ -61,8 +63,9 @@ export class BodySystem implements System {
     const mp = this.mp;
     const recent = Array.from(this.bodies.values()).find((b) => b.victimId === victimId && Date.now() - b.at < REPEAT_MS);
     if (recent) return recent.id;
-    let loc: any, appearance: unknown, equipment: unknown, inventory: any;
+    let loc: any, appearance: unknown, equipment: unknown, inventory: any, profileId = -1;
     try {
+      profileId = Number(mp.get(victimId, "profileId"));
       loc = mp.get(victimId, "locationalData");
       appearance = mp.get(victimId, "appearance");
       equipment = mp.get(victimId, "equipment");
@@ -101,7 +104,7 @@ export class BodySystem implements System {
       }
       return 0;
     }
-    this.bodies.set(cloneId, { id: cloneId, victimId, at: Date.now() });
+    this.bodies.set(cloneId, { id: cloneId, victimId, profileId, at: Date.now() });
     this.save();
     setTimeout(() => {
       try {
@@ -117,6 +120,15 @@ export class BodySystem implements System {
   // createActor never streams an actor; setting its location puts it on the grid so nearby clients create it
   private placeOnGrid(id: number, loc: any): void {
     this.mp.set(id, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: loc.pos, rot: loc.rot });
+  }
+
+  // Another character of the fallen player's account would undo the loss; "" when the searcher may open the body
+  refusalFor(searcherId: number, bodyId: number): string {
+    const profileId = this.bodies.get(bodyId)?.profileId ?? -1;
+    if (!(profileId >= 0)) return "";
+    let own = false;
+    try { own = Number(this.mp.get(searcherId, "profileId")) === profileId; } catch { }
+    return own ? "You cannot loot the body of your own fallen character." : "";
   }
 
   // Stacks a searcher can still take; null when the form is gone
@@ -141,7 +153,7 @@ export class BodySystem implements System {
     let saved: { bodies?: unknown } = {};
     try { saved = JSON.parse(fs.readFileSync(REGISTRY_FILE, "utf8")) ?? {}; } catch { }
     this.leftovers = (Array.isArray(saved.bodies) ? saved.bodies : [])
-      .map((b: any) => ({ id: Number(b?.id) >>> 0, victimId: Number(b?.victimId) >>> 0, at: Number(b?.at) || 0 }))
+      .map((b: any) => ({ id: Number(b?.id) >>> 0, victimId: Number(b?.victimId) >>> 0, profileId: Number.isInteger(b?.profileId) ? b.profileId : -1, at: Number(b?.at) || 0 }))
       .filter((b: Body) => b.id > 0);
   }
 

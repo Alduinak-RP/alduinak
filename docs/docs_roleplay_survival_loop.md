@@ -237,7 +237,12 @@ behaviour-graph events — no ESP required.**
   realm), so two bodies never lie side by side. The clone has no profile id,
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
   never applies `searchPlayerBodyTakeLimit` to it: a body gives up
-  everything. `createActor` only adds the form and never streams it, so
+  everything, except to the victim's own account. The body entry keeps the
+  victim's profile id (saved in `bodies.json`), and `SearchSystem.bodyRefusal`
+  refuses a search of it by any character of that profile ("You cannot loot
+  the body of your own fallen character."), so an alt cannot walk over and
+  undo the loss; a take needs the search's occupancy, so no take gets past
+  it. `createActor` only adds the form and never streams it, so
   once the clone is dressed, filled and dead it is put on the grid with
   `mp.set(body, "locationalData", ...)` (`MpActor::Teleport`, whose first
   `SetPos` runs `ForceSubscriptionsUpdate`) and every client nearby creates
