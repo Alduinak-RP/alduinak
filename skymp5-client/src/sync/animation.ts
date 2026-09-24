@@ -48,8 +48,16 @@ export const consumeAllowedAnim = (refrId: number, animEventName: string): boole
   allowedAnims.delete(refrId + ":" + animEventName);
 // Refs whose collision a sit animation turned off
 const sitCollisionDisabled = new Set<number>();
-// Refs a synced idle left posed; exits, get-ups and IdleStop clear it
+// Refs a synced ground pose left posed; exits, get-ups, IdleStop, draws, attacks and jumps clear it
 const idlePosed = new Set<number>();
+// Emote wheel ground poses and the server's default logoutPose; they loop until an exit
+const groundPosesLowerCase = new Set<string>([
+  'idlesitcrossleggedenter',
+  'idlekneelingenter',
+  'idlewounded_03',
+  'idlewarmhandscrouched',
+  'idlecowerenter',
+]);
 
 // Called with every event that reaches a copy's graph, after any override
 export type SendToGraphHook = (refr: ObjectReference, animEventName: string) => void;
@@ -228,6 +236,7 @@ export const applyAnimation = (
   const ac = Actor.from(refr);
 
   if (anim.animEventName === "SkympFakeEquip") {
+    idlePosed.delete(refr.getFormID());
     if (ac) {
       applyWeapDrawn(ac, true);
     }
@@ -306,9 +315,15 @@ const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
     sitCollisionDisabled.delete(refr.getFormID());
   }
 
-  if (isGetUp || animEventNameLowerCase === "idlestop" || animEventNameLowerCase.includes("exit")) {
+  if (
+    isGetUp ||
+    animEventNameLowerCase === "idlestop" ||
+    animEventNameLowerCase.includes("exit") ||
+    animEventNameLowerCase.includes("attack") ||
+    animEventNameLowerCase.includes("jump")
+  ) {
     idlePosed.delete(refr.getFormID());
-  } else if (isIdle(anim.animEventName)) {
+  } else if (groundPosesLowerCase.has(animEventNameLowerCase)) {
     idlePosed.add(refr.getFormID());
   }
 
@@ -333,6 +348,15 @@ const posedMovingSince = new Map<number, number>();
 // Animation sync is unreliable and single-slot, so a lost get-up must not leave a walking clone posed or without collision
 export const restoreSitCollisionIfMoving = (refr: ObjectReference, m: Movement): void => {
   const refrId = refr.getFormID();
+  // IdleForceDefaultState is a global wildcard into the sheathed branch, so a drawn copy is never reset
+  if (m.isWeapDrawn) {
+    idlePosed.delete(refrId);
+    posedMovingSince.delete(refrId);
+    if (m.runMode !== "Standing" && sitCollisionDisabled.delete(refrId)) {
+      setCollision(refrId, true);
+    }
+    return;
+  }
   const posed = idlePosed.has(refrId) || sitCollisionDisabled.has(refrId) || (Actor.from(refr)?.getSitState() ?? 0) >= 2;
   if (m.runMode === "Standing" || !posed) {
     posedMovingSince.delete(refrId);
