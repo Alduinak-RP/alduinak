@@ -302,12 +302,14 @@ behaviour-graph events — no ESP required.**
   without it. If a test still shows a neck stump, the
   next step is a re-apply of the stored appearance from `RemoteServer` in
   the same callback. The ragdoll and the get-up also leave the hands'
-  behaviour graph stale while the weapon stays worn, so 3 s after every
-  player respawn the server (`Spawn.installRespawnHook`) reads the worn
-  entries of the actor's equipment and unequips every weapon among them
-  through Papyrus `Actor.UnequipItem` on the owner's client, logging
+  behaviour graph stale while the weapon stays worn, so at every player
+  respawn the server (`Spawn.installRespawnHook`) notes the weapons worn in
+  either hand and, 3 s later, unequips those still worn through Papyrus
+  `Actor.UnequipItem` on the owner's client, logging
   `[respawn] <actor> sheathes <n> weapon(s)`; the player draws it again by
-  hand.
+  hand. A weapon equipped in those 3 s stays, and nothing is sent when the
+  player has died again, respawned again (the newer respawn's timer
+  replaces it) or disconnected.
 - **Revive** (`AfterlifeSystem.revive`): staff with the `players` cap return
   a fallen character (Sovngarde, the Soul Cairn or perma-dead) to the living.
   The admin panel's Players sub-tab lists the selected profile's fallen

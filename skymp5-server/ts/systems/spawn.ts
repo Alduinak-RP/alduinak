@@ -147,6 +147,8 @@ export class Spawn implements System {
   private parkTimers = new Map<number, ReturnType<typeof setTimeout>>();
   // Bodies sitting in the logout pose
   private parked = new Set<number>();
+  // actorId -> pending post-respawn unequip
+  private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
@@ -606,29 +608,45 @@ export class Spawn implements System {
     };
   }
 
-  // The ragdoll death and the get-up leave the hands' behaviour graph stale while the weapon stays worn, so worn weapons are unequipped through the owner's client
+  // The ragdoll death and the get-up leave the hands' behaviour graph stale while the weapon stays worn, so the weapons worn at death are unequipped through the owner's client
   private installRespawnHook(ctx: SystemContext): void {
     const mp = ctx.svr as unknown as Mp;
     chainMpHook(mp, "onRespawn", (rawId: number) => {
       const actorId = Number(rawId) >>> 0;
-      if (isPlayerActor(mp, actorId)) setTimeout(() => this.unequipWeapons(mp, actorId), RESPAWN_UNEQUIP_DELAY_MS);
+      if (!isPlayerActor(mp, actorId)) return;
+      clearTimeout(this.respawnTimers.get(actorId));
+      this.respawnTimers.delete(actorId);
+      const bases = this.wornWeapons(mp, actorId);
+      if (!bases.length) return;
+      this.respawnTimers.set(actorId, setTimeout(() => {
+        this.respawnTimers.delete(actorId);
+        this.unequipWeapons(mp, actorId, bases);
+      }, RESPAWN_UNEQUIP_DELAY_MS));
     });
   }
 
-  private unequipWeapons(mp: Mp, actorId: number): void {
-    if (userOf(mp, actorId) < 0) return;
+  // Base ids of the weapons in either hand
+  private wornWeapons(mp: Mp, actorId: number): number[] {
     let entries: any[] = [];
-    try { entries = mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return; }
-    const worn = entries.filter((e) => (e?.worn || e?.wornLeft) && weaponAnimType(mp, Number(e.baseId)) >= 0);
+    try { entries = mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return []; }
+    return entries
+      .filter((e) => (e?.worn || e?.wornLeft) && weaponAnimType(mp, Number(e.baseId)) >= 0)
+      .map((e) => Number(e.baseId) >>> 0);
+  }
+
+  // A weapon equipped after the respawn stays, and a player who died again or left is skipped
+  private unequipWeapons(mp: Mp, actorId: number, bases: number[]): void {
+    if (userOf(mp, actorId) < 0 || !isAlive(mp, actorId)) return;
+    const worn = this.wornWeapons(mp, actorId).filter((b) => bases.includes(b));
     if (!worn.length) return;
-    for (const e of worn) {
+    for (const baseId of worn) {
       try {
         const self = { type: "form", desc: mp.getDescFromId(actorId) };
-        const item = { type: "espm", desc: mp.getDescFromId(Number(e.baseId) >>> 0) };
+        const item = { type: "espm", desc: mp.getDescFromId(baseId) };
         // UnequipItem(akItem, abPreventEquip, abSilent)
         mp.callPapyrusFunction("method", "Actor", "UnequipItem", self, [item, false, true]);
       } catch (err) {
-        this.log(`[respawn] unequip ${hex(Number(e.baseId))} of ${hex(actorId)} failed: ${err}`);
+        this.log(`[respawn] unequip ${hex(baseId)} of ${hex(actorId)} failed: ${err}`);
       }
     }
     this.log(`[respawn] ${hex(actorId)} sheathes ${worn.length} weapon(s)`);
