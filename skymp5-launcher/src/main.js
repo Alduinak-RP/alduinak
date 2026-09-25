@@ -63,7 +63,6 @@ const store = new Store({
     nexusOauth:        null,   // { accessToken, refreshToken, expiresAt } (OAuth flow)
     nexusUser:         null,   // { name, isPremium } from the last validation
     isolatedGame:      true,  // play from the isolated game copy instead of skyrimPath
-    gameDirPath:       '',     // legacy: pre-base-dir location of the game copy
     baseDirPath:       '',     // Alduinak base dir: MO2 root, with the game at <base>\skyrim
     forcedDefaultsApplied: false, // server-required graphics defaults seeded once at first install
   }
@@ -99,29 +98,16 @@ const serverInfoUrl = () => `${config.apiUrl}/api/serverinfo${serverQuery()}`
 // Effective game path
 // Creates an isolated copy, this keeps the base directory clean
 function isolatedGameDir() {
-  const base = store.get('baseDirPath')
-  if (base) return path.join(base, 'skyrim')
-  // Legacy layouts from before the base-dir structure
-  const legacy = store.get('gameDirPath')
-  if (legacy) return legacy
-  const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
-  return path.join(local, 'Alduinak', 'GameDir')
+  return path.join(store.get('baseDirPath') || DEFAULT_BASE_DIR, 'skyrim')
 }
 
 function isolatedGameReady() {
   return fs.existsSync(path.join(isolatedGameDir(), 'SkyrimSE.exe'))
 }
 
-// A usable game copy needs more than SkyrimSE.exe (it is copied first, so an
-// interrupted run leaves it behind with a partial Data). The completion marker
-// written by copyGameDir is authoritative; copies made before the marker
-// existed fall back to the masters check (the esms are copied nearly last,
-// so their presence implies the BSAs made it too).
+// SkyrimSE.exe is copied first, so only the marker copyGameDir writes last proves a complete copy
 function gameCopyComplete(dir) {
-  if (!fs.existsSync(path.join(dir, 'SkyrimSE.exe'))) return false
-  if (fs.existsSync(path.join(dir, 'vanilla-copy-complete.json'))) return true
-  return fs.existsSync(path.join(dir, 'Data', 'Skyrim.esm'))
-    && fs.existsSync(path.join(dir, 'Data', 'Update.esm'))
+  return fs.existsSync(path.join(dir, 'vanilla-copy-complete.json'))
 }
 
 function effectiveGamePath() {
@@ -642,7 +628,7 @@ const CONTROLMAP_SEED = path.join(__dirname, '..', 'assets', 'controlmap.txt')
 
 function readControlmapText() {
   const p = controlmapPath()
-  if (p && fs.existsSync(p)) return { path: p, text: upgradeControlmapText(fs.readFileSync(p, 'utf8')), exists: true }
+  if (p && fs.existsSync(p)) return { path: p, text: fs.readFileSync(p, 'utf8'), exists: true }
   return { path: p, text: fs.readFileSync(CONTROLMAP_SEED, 'utf8'), exists: false }
 }
 
@@ -694,41 +680,15 @@ function gameHotkeyBinding(text, ev, custom, entries) {
   return controlmapBinding(cols[0], cols[1])
 }
 
-// Stale launcher copies lack the AE Creations Menu context or still bind Wait on the gamepad
-function isStaleLauncherControlmap(text) {
-  if (!/launcher controlmap override/.test(text)) return false
-  const wait = text.match(/^Wait[ \t]+\S+[ \t]+\S+[ \t]+(\S+)/m)
-  return !/^PurchaseCredits[ \t]/m.test(text) || (!!wait && wait[1].toLowerCase() !== '0xff')
-}
-
-// Rebuilds a stale launcher copy from the seed, keeping the keyboard and mouse rebinds the Settings tab manages
-function upgradeControlmapText(text) {
-  if (!isStaleLauncherControlmap(text)) return text
-  let upgraded = fs.readFileSync(CONTROLMAP_SEED, 'utf8')
-  for (const ev of GAME_HOTKEY_EVENTS) {
-    const m = text.match(controlmapEventRe(ev))
-    if (m) upgraded = upgraded.replace(controlmapEventRe(ev), (_m, head, _kb, sep) => head + m[2] + sep + m[4])
-  }
-  return upgraded
-}
-
-// Seeds the Wait-unbound controlmap when the game has none and upgrades a stale launcher copy; a player's own map is never touched
+// Seeds the Wait-unbound controlmap when the game has none; a player's own map is never touched
 function applyControlmapOverride(gamePath) {
   try {
     if (!gamePath) return
     const dest = path.join(gamePath, 'Data', 'Interface', 'Controls', 'PC', 'controlmap.txt')
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(path.dirname(dest), { recursive: true })
-      fs.copyFileSync(CONTROLMAP_SEED, dest)
-      log('[defaults] wrote controlmap override (Wait unbound on keyboard and gamepad) to ' + dest)
-      return
-    }
-    const text = fs.readFileSync(dest, 'utf8')
-    const upgraded = upgradeControlmapText(text)
-    if (upgraded !== text) {
-      fs.writeFileSync(dest, upgraded)
-      log('[defaults] rebuilt the stale controlmap override from the current seed at ' + dest)
-    }
+    if (fs.existsSync(dest)) return
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.copyFileSync(CONTROLMAP_SEED, dest)
+    log('[defaults] wrote controlmap override (Wait unbound on keyboard and gamepad) to ' + dest)
   } catch (err) {
     log('[defaults] could not write controlmap override:', err.message)
   }
@@ -785,27 +745,6 @@ ipcMain.handle('gameHotkeys:save', (_e, keys) => {
 //      Settings tab default when the ini doesn't specify one)
 //   • Wait unbound (T, pad Back) → controlmap override (waiting is disabled here)
 function applyForcedServerDefaults(gamePath) {
-  // One-time repair for profiles created before resolution became
-  // player-owned: earlier builds force-stamped 1920x1080 into the profile
-  // ini, hiding the player's real resolution. Re-import it once from the
-  // original My Games ini; from then on the Settings tab owns the values.
-  if (!store.get('resolutionMigrated')) {
-    try {
-      const src  = findOriginalPrefsIni()
-      const prof = skyrimPrefsPath()
-      if (src && fs.existsSync(prof)) {
-        const orig = ini.read(src)['Display'] || {}
-        if (orig['iSize W'] && orig['iSize H']) {
-          ini.write(prof, { Display: { 'iSize W': String(orig['iSize W']), 'iSize H': String(orig['iSize H']) } })
-          log(`[defaults] re-imported resolution ${orig['iSize W']}x${orig['iSize H']} from the original ini`)
-        }
-      }
-      store.set('resolutionMigrated', true)
-    } catch (err) {
-      log('[defaults] resolution migration failed:', err.message)
-    }
-  }
-
   // Graphics: force borderless window mode. ini.write preserves every other
   // key, including whatever resolution the player's ini carries.
   if (!store.get('forcedDefaultsApplied')) {
