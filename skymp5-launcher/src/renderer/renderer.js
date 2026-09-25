@@ -401,8 +401,8 @@ let serverAllowed       = true
 // Call this after login, logout, and initial serverinfo load.
 function updateLockState() {
   // While the game runs (or a play sequence is in flight) the button is
-  // managed by updatePlayButton() - don't fight over it here.
-  if (gameRunning || launchStartedAt || playBusy) return
+  // managed by updatePlayButton() - don't fight over it here. Offline keeps it disabled.
+  if (gameRunning || launchStartedAt || playBusy || !serverOnline) return
 
   if (serverLocked && discordUser && !serverAllowed) {
     // Logged in but not on the server lock allow-list
@@ -437,8 +437,8 @@ async function loadSettings() {
   checkSkyrimPath()
   fieldBaseDir.value = s.baseDirPath || ''
 
-  // Footer server selector - dropdown when >1 server, plain text otherwise
-  if (s.servers && s.servers.length > 1) {
+  // Footer server selector - a dropdown whenever the list is known, plain text otherwise
+  if (s.servers && s.servers.length > 0) {
     footerServerName.hidden   = true
     footerServerSelect.hidden = false
     footerServerSelect.innerHTML = ''
@@ -452,9 +452,6 @@ async function loadSettings() {
   } else {
     footerServerName.hidden   = false
     footerServerSelect.hidden = true
-    if (s.servers && s.servers.length === 1) {
-      footerServerName.textContent = s.servers[0].name
-    }
   }
 
   // Restore Discord user from persisted store
@@ -964,13 +961,14 @@ let playBusy        = false
 let isoReady        = true   // isolation disabled, or the game copy exists
 let updateAvailable = false  // server has newer client files than installed
 let launcherUpdateReady = false  // a newer launcher build is published
+let serverOnline    = true   // the selected game server answered the last status poll
 let launchStartedAt = 0  // set after a successful launch until Skyrim shows up or the launch times out
 let launchPollTimer = null
 let gamePollInFlight = false
 
 const PLAY_LABEL = '\u25BA PLAY'
-const LAUNCHING_LABEL = '\u25BA LAUNCHING\u2026'
-const LAUNCH_TIMEOUT_MS = 90_000
+const LAUNCHING_LABEL = '\u25BA GAME LAUNCHING\u2026'
+const LAUNCH_TIMEOUT_MS = 30_000
 const LAUNCH_TIMEOUT_WARNING = 'Skyrim did not start. Check MO2 for an error, then press Play again.'
 const updatePill = document.getElementById('update-pill')
 
@@ -1011,6 +1009,13 @@ function updatePlayButton() {
     btnConnect.disabled    = false
     btnConnect.textContent = '\u2913 UPDATE'
     btnConnect.title       = 'A client files update is available.'
+    return
+  }
+
+  if (!serverOnline) {
+    btnConnect.disabled    = true
+    btnConnect.textContent = 'OFFLINE'
+    btnConnect.title       = 'The selected server is offline.'
     return
   }
 
@@ -1172,6 +1177,7 @@ btnConnect.addEventListener('click', async () => {
     }
     if (install.warning) showWarning(`\u26A0 ${install.warning}`)
 
+    if (!serverOnline) blockers.push('The server is offline.')
     // Updated but not launchable yet (e.g. no Discord login): say why and stop.
     if (blockers.length > 0) {
       showWarning(blockers[0])
@@ -1213,7 +1219,9 @@ let backendWasReachable = null
 async function checkServerStatus() {
   const data = await window.electronAPI.fetchStatus()
   const backendUp = !!(data && data.ok)   // drives the reconnect resync below
-  if (!data || !data.ok || data.status !== 'online') {
+  const online = backendUp && data.status === 'online'
+  if (online !== serverOnline) { serverOnline = online; updatePlayButton() }
+  if (!online) {
     badgeStatus.classList.remove('online')
     badgeLabel.textContent = 'OFFLINE'
     badgePlayers.hidden = true
@@ -1444,12 +1452,10 @@ function buildModItem(mod) {
   item.appendChild(dot)
   item.appendChild(name)
 
-  if (mod.required) {
-    const badge = document.createElement('span')
-    badge.className   = 'mod-badge mod-badge--required'
-    badge.textContent = 'REQ'
-    item.appendChild(badge)
-  }
+  const reqBadge = document.createElement('span')
+  reqBadge.className   = mod.required ? 'mod-badge mod-badge--required' : 'mod-badge mod-badge--optional'
+  reqBadge.textContent = mod.required ? 'REQ' : 'OPT'
+  item.appendChild(reqBadge)
 
   // Backend mods are installed automatically by the launcher.
   // Nexus mods are downloaded from Nexus and installed through MO2.

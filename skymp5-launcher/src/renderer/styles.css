@@ -388,6 +388,11 @@ html, body {
   color: rgba(201, 162, 39, 0.75);
 }
 
+.mod-badge--optional {
+  border: 1px solid rgba(232, 224, 208, 0.2);
+  color: rgba(232, 224, 208, 0.5);
+}
+
 .mod-badge--auto {
   background: rgba(88, 166, 255, 0.10);
   border: 1px solid rgba(88, 166, 255, 0.25);

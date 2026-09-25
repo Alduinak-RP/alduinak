@@ -1511,7 +1511,7 @@ ipcMain.handle('files:updateCheck', async () => {
 })
 
 // MO2 can take a while to boot Skyrim, so a fresh launch blocks relaunching until the game shows up or this runs out
-const LAUNCH_GRACE_MS = 90_000
+const LAUNCH_GRACE_MS = 30_000
 let launchInFlight = false
 let launchStartedAt = 0
 
