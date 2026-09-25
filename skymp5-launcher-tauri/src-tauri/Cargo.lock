@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "alduinak-launcher"
-version = "2.5.0"
+version = "3.0.0"
 dependencies = [
  "base64 0.22.1",
  "discord-rich-presence",

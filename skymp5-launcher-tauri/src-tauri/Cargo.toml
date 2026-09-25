@@ -1,6 +1,6 @@
 [package]
 name = "alduinak-launcher"
-version = "2.5.0"
+version = "3.0.0"
 description = "Launcher for the Alduinak server"
 authors = ["F02K", "Suraru"]
 license = "MIT"
