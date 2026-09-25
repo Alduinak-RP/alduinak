@@ -1229,7 +1229,6 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
     seedProfilePrefs(src)
 
     store.set('isolatedGame', true)
-    store.set('mo2Enabled', true)
 
     log(`[isolated] Alduinak install ready at ${base}`)
     return { success: true, dir: base }
@@ -1400,18 +1399,17 @@ const MYGAMES_VARIANTS = [
   'Skyrim Special Edition MS',
 ]
 
+// The player's own SkyrimPrefs.ini, found only where Skyrim.ini sits beside it
 function findOriginalPrefsIni() {
   const docs = app.getPath('documents')
   for (const v of MYGAMES_VARIANTS) {
-    const p = path.join(docs, 'My Games', v, 'SkyrimPrefs.ini')
-    if (fs.existsSync(p)) return p
+    const dir = path.join(docs, 'My Games', v)
+    if (fs.existsSync(path.join(dir, 'SkyrimPrefs.ini')) && fs.existsSync(path.join(dir, 'Skyrim.ini'))) return path.join(dir, 'SkyrimPrefs.ini')
   }
   return null
 }
 
-const NEVER_LAUNCHED_ERROR =
-  'Skyrim has never been launched on this PC (no SkyrimPrefs.ini in Documents\\My Games). ' +
-  'Start the game once the normal way (Steam/GOG), reach the main menu, quit, then run this install again.'
+const NEVER_LAUNCHED_ERROR = 'You must run vanilla skyrim at least once.'
 
 // Startup warning, once per launch. Fires only when a Skyrim install was found
 // but the My Games inis are missing; a missing game has its own renderer flow.
@@ -1437,6 +1435,8 @@ async function maybeWarnNeverLaunched() {
 // deliberately NOT rewritten: it stays whatever the player's ini says, and
 // the Settings tab only shows 1080p as a fallback when the ini has none.
 function seedProfilePrefs(skyrimPath) {
+  // Copied before anything writes to the profile, so the player's own settings carry over
+  try { ensureProfileIni('skyrim.ini') } catch (err) { log(`[isolated] could not seed Skyrim.ini: ${err.message}`) }
   const dest = path.join(mo2.getProfileDir(), 'skyrimprefs.ini')
   if (fs.existsSync(dest)) return
   const candidates = [
