@@ -1197,40 +1197,13 @@ function refreshServerData() {
   refreshPlayState()   // client version + update availability
 }
 
-// Server info strip
 async function loadServerInfo() {
   const info = await window.electronAPI.fetchServerInfo()
   if (!info || info.error) return
 
-  const strip      = document.getElementById('server-info-strip')
-  const nameEl     = document.getElementById('sinfo-name')
-  const capEl      = document.getElementById('sinfo-capacity')
-  const modeEl     = document.getElementById('sinfo-mode')
-  const modeSep    = document.getElementById('sinfo-mode-sep')
-  const discEl     = document.getElementById('sinfo-discord')
-  const discSep    = document.getElementById('sinfo-discord-sep')
-  const lockEl     = document.getElementById('sinfo-locked')
-  const lockSep    = document.getElementById('sinfo-locked-sep')
-  const footerName = document.getElementById('footer-server-name')
-
-  nameEl.textContent = info.name
-  capEl.textContent  = `Max ${info.maxPlayers} players`
-  footerName.textContent = info.name
-
-  if (info.gamemode) {
-    modeEl.textContent = info.gamemode
-    modeEl.hidden  = false
-    modeSep.hidden = false
-  }
-
-  if (info.discordAuthRequired) {
-    discEl.hidden  = false
-    discSep.hidden = false
-  }
-
-  serverLocked   = !!info.locked
-  lockEl.hidden  = !serverLocked
-  lockSep.hidden = !serverLocked
+  document.getElementById('footer-server-name').textContent = info.name
+  serverLocked = !!info.locked
+  document.getElementById('badge-locked').hidden = !serverLocked
 
   // `allowed` is session-aware: false only when a session was sent and the
   // backend rejected it (locked/not whitelisted).  Without a session it
