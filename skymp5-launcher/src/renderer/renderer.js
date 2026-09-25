@@ -207,7 +207,7 @@ const GHK_MAP = {
 }
 const GFX_INPUT_IDS = [
   'gfx-windowmode', 'gfx-resolution', 'gfx-texquality', 'gfx-aa', 'gfx-shadowquality',
-  'gfx-decals', 'gfx-reflections', 'gfx-godrays', 'gfx-lensflare', 'gfx-ao', 'gfx-precip',
+  'gfx-decals', 'gfx-godrays', 'gfx-lensflare', 'gfx-ao', 'gfx-precip',
 ]
 const fovInput = document.getElementById('gfx-fov')
 const showFov = () => { const out = document.getElementById('gfx-fov-value'); if (out && fovInput) out.textContent = fovInput.value }
@@ -251,7 +251,6 @@ async function loadGameSettingsTab() {
       setVal('gfx-aa', g.aa)
       setVal('gfx-shadowquality', g.shadowQuality)
       setVal('gfx-decals', g.decals)
-      setVal('gfx-reflections', g.reflections)
       setVal('gfx-fov', g.fov)
       showFov()
       setChk('gfx-godrays', g.godrays)
@@ -297,7 +296,6 @@ async function saveGameSettingsTab() {
         aa:            val('gfx-aa'),
         shadowQuality: val('gfx-shadowquality'),
         decals:        val('gfx-decals'),
-        reflections:   val('gfx-reflections'),
         fov:           val('gfx-fov'),
         godrays:       chk('gfx-godrays'),
         lensFlare:     chk('gfx-lensflare'),

@@ -495,7 +495,6 @@ ipcMain.handle('graphics:load', () => {
     }
     const skip = num('Display', 'iTexMipMapSkip', 0)
     const shadowRes = num('Display', 'iShadowMapResolution', 2048)
-    const reflH = num('Water', 'iWaterReflectHeight', 512)
     const maxDecals = num('Decals', 'uMaxDecals', 250)
     return {
       ok: true,
@@ -511,9 +510,6 @@ ipcMain.handle('graphics:load', () => {
       shadowQuality: shadowRes <= 512 ? 'low' : (shadowRes <= 1024 ? 'medium' : (shadowRes <= 2048 ? 'high' : 'ultra')),
       decals: val('Decals', 'bDecals', '1') === '0' ? 'off'
         : (maxDecals <= 100 ? 'low' : (maxDecals <= 250 ? 'medium' : (maxDecals <= 350 ? 'high' : 'ultra'))),
-      reflections: reflH >= 1024
-        ? (val('Water', 'bReflectLODTrees', '0') === '1' ? 'ultra' : 'high')
-        : (val('Water', 'bReflectLODLand', '0') === '1' ? 'medium' : 'low'),
       fov:       launcherFov(),
       godrays:   val('Display', 'bVolumetricLightingEnable', '1') === '1',
       lensFlare: val('Imagespace', 'bLensFlare', '1') === '1',
@@ -558,13 +554,6 @@ ipcMain.handle('graphics:save', (_e, g) => {
       ultra:  { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '1000', uMaxSkinDecals: '100', uMaxSkinDecalsPerActor: '60' },
     }
     if (DECALS[g.decals]) edits.Decals = DECALS[g.decals]
-    const REFLECTIONS = {
-      low:    { iWaterReflectHeight: '512',  iWaterReflectWidth: '512',  bReflectLODLand: '0', bReflectLODObjects: '0', bReflectLODTrees: '0', bReflectSky: '0' },
-      medium: { iWaterReflectHeight: '512',  iWaterReflectWidth: '512',  bReflectLODLand: '1', bReflectLODObjects: '0', bReflectLODTrees: '0', bReflectSky: '1' },
-      high:   { iWaterReflectHeight: '1024', iWaterReflectWidth: '1024', bReflectLODLand: '1', bReflectLODObjects: '1', bReflectLODTrees: '0', bReflectSky: '1' },
-      ultra:  { iWaterReflectHeight: '1024', iWaterReflectWidth: '1024', bReflectLODLand: '1', bReflectLODObjects: '1', bReflectLODTrees: '1', bReflectSky: '1' },
-    }
-    if (REFLECTIONS[g.reflections]) edits.Water = Object.assign({ bUseWaterReflections: '1' }, REFLECTIONS[g.reflections])
     ini.write(skyrimPrefsPath(), edits)
     saveFov(g.fov)
     return { ok: true, path: skyrimPrefsPath() }
@@ -1256,7 +1245,7 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
 // With the Bethesda.net platform disabled too, AE owners never get the "download AE content" prompt.
 const VANILLA_ROOT_FILES = [
   'SkyrimSE.exe', 'SkyrimSELauncher.exe', 'bink2w64.dll',
-  'steam_api64.dll', 'Galaxy64.dll', 'EOSSDK-Win64-Shipping.dll',
+  'steam_api64.dll', 'Galaxy64.dll',
   'High.ini', 'Medium.ini', 'Low.ini', 'Ultra.ini', 'Skyrim_Default.ini',
   'installscript.vdf',
 ]
