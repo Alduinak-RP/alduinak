@@ -1197,7 +1197,6 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
     await mo2.ensureInstalled(msg => send('isolated:progress', msg))
 
     let manifest = null
-    let vd = null
     if (force) {
       // The copy folder could have become a link into the original install since the first check
       if (pathsOverlap(src, dst)) return { success: false, error: 'The game copy folder resolves into your original Skyrim install - remove the link before repairing.' }
@@ -1208,7 +1207,6 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
       }
       try { manifest = await fetchJSON(MANIFEST_URL()) } catch (err) { log(`[isolated] no manifest, strays and Creation files stay: ${err.message}`) }
       if (manifest && Number(manifest.schema) > MANIFEST_SCHEMA) manifest = null
-      try { vd = await fetchJSON(`${config.apiUrl}/api/files/version`) } catch {}
       if (manifest) {
         send('isolated:progress', 'Removing the Creation Club files…')
         for (const rel of [CREATIONS_STAMP, ...((manifest.creations && manifest.creations.files) || []).map(f => f.to)]) {
@@ -1225,7 +1223,7 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
       log('[isolated] reusing existing game copy at ' + dst)
     }
     if (manifest) {
-      const strays = removeGameCopyStrays(dst, manifest, clientZipFiles(manifest, vd))
+      const strays = removeGameCopyStrays(dst, manifest)
       if (strays) send('isolated:progress', `Removed ${strays} stray file(s) from the game copy`)
     }
     send('isolated:progress', 'Cleaning the Skyrim masters…')
@@ -1743,7 +1741,7 @@ const clientFilesPresent = (gamePath, viaMO2) =>
   REQUIRED_FILES.every(dataFileFinder(gamePath, viaMO2)) &&
   preloaderPresent(gamePath)
 
-// The manifest mods that carry the SkyMP client; under MO2 they replace the backend's client zip
+// The manifest mods that carry the SkyMP client
 function clientMods(manifest) {
   const target = CLIENT_SCRIPT.toLowerCase()
   return ((manifest && manifest.mods) || []).filter(m => (m.files || []).some(f => String(f.to).toLowerCase() === target))
@@ -1970,14 +1968,8 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
   return { ok: true, cleaned, warning }
 }
 
-// The client zip's file list when no manifest mod carries the client, [] when one does, null when the list is unknown
-function clientZipFiles(manifest, vd) {
-  if (clientMods(manifest).length > 0) return []
-  return vd && Array.isArray(vd.files) ? vd.files.map(f => String(f.path)) : null
-}
-
 // Matches the game-root-relative paths the launcher puts in the portable copy, plus the game's in-game rebinds file
-function gameCopyAllowlist(src, manifest, zipFiles) {
+function gameCopyAllowlist(src, manifest) {
   const keep = new Set([
     ...vanillaJobs(src).map(j => path.join(j.sub, j.rel)),
     'Skyrim.ccc', 'vanilla-copy-complete.json', CREATIONS_STAMP, ...PRELOADER_DLLS,
@@ -1987,7 +1979,6 @@ function gameCopyAllowlist(src, manifest, zipFiles) {
     'ControlMap_Custom.txt',
     ...((manifest.creations && manifest.creations.files) || []).map(f => f.to),
     ...(manifest.root || []).map(f => f.to),
-    ...zipFiles,
   ].map(p => String(p).split(path.sep).join('/').toLowerCase()))
   return rel => {
     const l = rel.toLowerCase()
@@ -1996,22 +1987,22 @@ function gameCopyAllowlist(src, manifest, zipFiles) {
 }
 
 // Files in the portable game copy the launcher never installs; [] whenever a cleanup would not be safe
-function gameCopyStrays(gamePath, manifest, zipFiles) {
+function gameCopyStrays(gamePath, manifest) {
   const src  = store.get('skyrimPath')
   const base = store.get('baseDirPath')
   const safe = !!(store.get('isolatedGame') && store.get('mo2Enabled') && base && gamePath === isolatedGameDir() &&
     fs.existsSync(path.join(base, 'alduinak-instance.txt')) && src && !pathsOverlap(src, gamePath) &&
-    fs.existsSync(path.join(src, 'Data', 'Skyrim.esm')) && manifest && Array.isArray(zipFiles))
+    fs.existsSync(path.join(src, 'Data', 'Skyrim.esm')) && manifest)
   if (!safe) return []
-  const kept = gameCopyAllowlist(src, manifest, zipFiles)
+  const kept = gameCopyAllowlist(src, manifest)
   return mo2.listFilesRel(gamePath).filter(rel => {
     if (kept(rel)) return false
     try { return !fs.lstatSync(path.join(gamePath, ...rel.split('/'))).isSymbolicLink() } catch { return false }
   })
 }
 
-function removeGameCopyStrays(gamePath, manifest, zipFiles) {
-  const strays = gameCopyStrays(gamePath, manifest, zipFiles)
+function removeGameCopyStrays(gamePath, manifest) {
+  const strays = gameCopyStrays(gamePath, manifest)
   for (const rel of strays) {
     const full = path.join(gamePath, ...rel.split('/'))
     try {
@@ -2311,7 +2302,7 @@ ipcMain.on('install:start', (_e, mode, opts) => {
   if (mode === 'mo2') {
     fn = runMO2Install()
   } else if (mode === 'modlist') {
-    fn = runMO2Install({ modlistOnly: true, force })
+    fn = runMO2Install({ force })
   } else {
     // Auto mode (used by the Play button) - delegate based on mo2Enabled setting
     fn = store.get('mo2Enabled') ? runMO2Install() : runDirectInstall()
@@ -2421,183 +2412,12 @@ ipcMain.handle('install:skse', async (_e, opts) => {
   }
 })
 
-// Files under Data/Platform and Data/SKSE/Plugins written by the launcher, Skyrim Platform or SKSE rather than shipped in the client zip.
+// Files under Data/Platform and Data/SKSE/Plugins written by the launcher, Skyrim Platform or SKSE rather than shipped in a mod.
 const CLIENT_OWN_FILE_RES = [/^data\/platform\/(logs|pluginsnoload|pluginsdev)\//, /skymp5-client-settings\.txt$/, /\.log$/, /^data\/skse\/plugins\/skse64_/]
-
-// Shared download + extract helpers
-
-/**
- * Stream the client zip from the backend to a local temp file.
- * Calls onProgress(bytesReceived, totalBytes) as data arrives.
- */
-function downloadClientZip(tempPath, onProgress) {
-  const url = `${config.apiUrl}/api/files/zip`
-  return new Promise((resolve, reject) => {
-    try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
-    let file = null
-    let settled = false
-    const finish = () => { if (!settled) { settled = true; resolve() } }
-    // Destroy the stream before unlinking: an open handle leaves the partial file delete-pending on Windows and blocks every retry this session.
-    const fail = err => {
-      if (settled) return
-      settled = true
-      if (file && !file.destroyed) {
-        file.once('close', () => { try { fs.unlinkSync(tempPath) } catch {} reject(err) })
-        file.destroy()
-      } else {
-        try { fs.unlinkSync(tempPath) } catch {}
-        reject(err)
-      }
-    }
-    const mod = url.startsWith('https') ? https : http
-    const req = mod.get(url, res => {
-      if (res.statusCode === 404) {
-        res.resume()
-        return fail(new Error('Update package not found on server. Run npm run merge on the backend.'))
-      }
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        res.resume()
-        return fail(new Error(`Server returned HTTP ${res.statusCode}`))
-      }
-
-      const total    = parseInt(res.headers['content-length'] || '0', 10)
-      let   received = 0
-
-      file = fs.createWriteStream(tempPath)
-      res.on('data', chunk => {
-        received += chunk.length
-        if (onProgress) onProgress(received, total)
-      })
-      res.pipe(file)
-      file.on('finish', () => file.close(finish))
-      file.on('error', fail)
-      res.on('error',  fail)
-      res.on('aborted', () => fail(new Error('Download interrupted')))
-    })
-    req.on('error', fail)
-    req.setTimeout(60_000, () => { req.destroy(); fail(new Error('Download timed out')) })
-  })
-}
-
-/**
- * Extract the zip at zipPath into destDir, preserving the internal path structure.
- * Calls onProgress(entryName, index, total) for each file entry.
- * Returns the number of files extracted.
- */
-function extractClientZip(zipPath, destDir, onProgress) {
-  const zip     = new AdmZip(zipPath)
-  const entries = zip.getEntries().filter(e => !e.isDirectory)
-  const total   = entries.length
-
-  // Zip-slip guard (defense-in-depth over adm-zip): reject any entry whose
-  // resolved destination escapes destDir before writing it.
-  const root = path.resolve(destDir)
-  for (let i = 0; i < total; i++) {
-    const entry = entries[i]
-    const resolved = path.resolve(destDir, entry.entryName)
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-      throw new Error(`Refusing to extract entry outside the target directory: ${entry.entryName}`)
-    }
-    zip.extractEntryTo(entry.entryName, destDir, /* maintainEntryPath */ true, /* overwrite */ true)
-    if (onProgress) onProgress(entry.entryName, i + 1, total)
-  }
-
-  return total
-}
-
-// Client files install core
-// Shared by the direct and MO2 installers: version check, download, extract, client settings.
-
-async function installClientFilesCore(skyrimPath, srv, serverInfo, force = false) {
-  const tempZip = path.join(os.tmpdir(), 'alduinak-client.zip')
-  const clientSettingsPath = path.join(skyrimPath, 'Data', 'Platform', 'Plugins', 'skymp5-client-settings.txt')
-
-  try {
-    // 1. Check whether a download is needed
-    let serverVersion = null
-    let packaged = []
-    try {
-      const vd = await fetchJSON(`${config.apiUrl}/api/files/version`)
-      serverVersion = vd.version
-      if (Array.isArray(vd.files)) packaged = vd.files.map(f => String(f.path)).filter(p => !p.split('/').includes('..'))
-    } catch (err) {
-      if (err.statusCode === 404) {
-        return { success: false, error: 'Client files have not been packaged on the server yet. Ask the server admin to run `npm run build-client`.' }
-      }
-      if (force) return { success: false, error: 'Backend unreachable, client files were not reinstalled' }
-      // Network error - play on cached files if they exist
-      const allPresent = clientFilesPresent(skyrimPath, false)
-      if (!allPresent) return { success: false, error: 'Backend unreachable and client files are not installed. Check your connection.' }
-      log('[install] Backend unreachable - files already installed, updating settings only')
-      writeClientSettings(clientSettingsPath, srv, serverInfo)
-      return { success: true, upToDate: true }
-    }
-
-    const allPresent    = clientFilesPresent(skyrimPath, false)
-    const needsDownload = force || serverVersion !== store.get('filesVersion') || !allPresent
-
-    if (!needsDownload) {
-      log('[install] Files up to date, updating settings only')
-      writeClientSettings(clientSettingsPath, srv, serverInfo)
-      return { success: true, upToDate: true }
-    }
-
-    // 2. Download
-    send('install:progress', { phase: 'download', file: 'Connecting to server…', index: 0, total: 0, skipped: false })
-    await downloadClientZip(tempZip, (received, total) => {
-      const mb  = n => (n / 1024 / 1024).toFixed(1)
-      const pct = total > 0 ? ` (${Math.round(received / total * 100)}%)` : ''
-      send('install:progress', {
-        phase: 'download',
-        file:  `Downloading update… ${mb(received)} / ${mb(total)} MB${pct}`,
-        index: received, total, skipped: false,
-      })
-    })
-
-    // 3. Extract directly into Skyrim directory.
-    // The zip's stock skymp5-client-settings.txt would clobber hotkey rebinds; snapshot it so writeClientSettings sees the pre-extract file.
-    let settingsSnapshot = null
-    try { settingsSnapshot = fs.readFileSync(clientSettingsPath, 'utf8') } catch { /* first install */ }
-    // An interrupted extract must show as an update on the next Play
-    store.set('filesVersion', '')
-    // A repair deletes the whole package first, so nothing stale survives the re-extract
-    if (force) {
-      const own = packaged.filter(p => !CLIENT_OWN_FILE_RES.some(re => re.test(p.toLowerCase())))
-      for (const p of own) { try { fs.rmSync(mo2.lp(path.join(skyrimPath, ...p.split('/'))), { force: true }) } catch {} }
-      log(`[install] removed ${own.length} packaged client file(s) before the re-extract`)
-    }
-    const extracted = extractClientZip(tempZip, skyrimPath, (file, i, total) => {
-      send('install:progress', { phase: 'extract', file, index: i, total, skipped: false })
-    })
-    if (settingsSnapshot !== null) {
-      try { fs.writeFileSync(clientSettingsPath, settingsSnapshot) } catch { /* fall back to zip copy */ }
-    }
-    log(`[install] extracted ${extracted} files`)
-    ensureClientDirs(skyrimPath)
-
-    if (!preloaderPresent(skyrimPath)) {
-      return {
-        success: false,
-        error: 'The client package installed, but no Engine Fixes preloader dll (d3dx9_42.dll / winhttp.dll) is next to SkyrimSE.exe. ' +
-               'The server admin needs to add the preloader files to the client package and rebuild it (npm run merge).',
-      }
-    }
-
-    // 4. Write server settings
-    writeClientSettings(clientSettingsPath, srv, serverInfo)
-    store.set('filesVersion', serverVersion)
-
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: `Install failed: ${err.message}` }
-  } finally {
-    try { fs.unlinkSync(tempZip) } catch {}
-  }
-}
 
 // Direct install (no mod manager)
 
-async function runDirectInstall(force = false) {
+async function runDirectInstall() {
   const skyrimPath = effectiveGamePath()
   const srv        = activeServer()
 
@@ -2619,11 +2439,10 @@ async function runDirectInstall(force = false) {
   let serverInfo = null
   try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
 
-  const core = await installClientFilesCore(skyrimPath, srv, serverInfo, force)
-  if (core.success) applyForcedServerDefaults(skyrimPath)
-  send('install:complete', core.success
-    ? { success: true, upToDate: core.upToDate, ...(warning ? { warning } : {}) }
-    : { success: false, error: core.error })
+  ensureClientDirs(skyrimPath)
+  writeClientSettings(clientSettingsPath(), srv, serverInfo)
+  applyForcedServerDefaults(skyrimPath)
+  send('install:complete', { success: true, ...(warning ? { warning } : {}) })
   installing = false
 }
 
@@ -2656,7 +2475,7 @@ function openDownloadList(downloadsDir, missing) {
 }
 
 // MO2 install
-// Full modpack pipeline: MO2 itself → manifest replay, whose client mod carries the SkyMP client (else the backend zip).
+// Full modpack pipeline: MO2 itself → manifest replay, whose client mod carries the SkyMP client.
 // Mods are reproduced from the backend's compiled install manifest (download +
 // verify each archive, extract once, apply per-file directives) so every player
 // gets the reference install's exact, byte-identical layout.
@@ -2678,7 +2497,6 @@ async function installSkseIntoRoot(skyrimPath) {
 
 // opts.force rebuilds every mod and the SKSE root step from scratch (Repair Modlist).
 async function runMO2Install(opts = {}) {
-  const modlistOnly = opts.modlistOnly === true
   const force       = opts.force === true
   _downloadListOpened = false
   const fail = (msg) => {
@@ -2747,22 +2565,14 @@ async function runMO2Install(opts = {}) {
     const masters = await ensureCleanedMasters(skyrimPath)
     const setupWarning = [vanillaWarning, creations.warning, masters.warning].filter(Boolean).join(' | ') || null
 
-    // 3. SkyMP client files: a manifest mod carries them under MO2; without one the backend zip goes into the real Data (skipped by Repair Modlist)
-    let coreUpToDate = false
+    // 3. SkyMP client files come from a manifest mod
+    if (clientMods(manifest).length === 0) return fail('The install manifest has no SkyMP client mod - contact staff.')
     let clientFilesVersion = null
-    let vd = null
-    try { vd = await fetchJSON(`${config.apiUrl}/api/files/version`) } catch {}
-    if (clientMods(manifest).length > 0) {
-      clientFilesVersion = vd && vd.version
-      ensureClientDirs(skyrimPath)
-      writeClientSettings(clientSettingsPath(), srv, serverInfo)
-      coreUpToDate = !!clientFilesVersion && clientFilesVersion === store.get('filesVersion')
-    } else if (!modlistOnly) {
-      const core = await installClientFilesCore(skyrimPath, srv, serverInfo)
-      if (!core.success) return fail(core.error)
-      coreUpToDate = !!core.upToDate
-    }
-    const strays = removeGameCopyStrays(skyrimPath, manifest, clientZipFiles(manifest, vd))
+    try { clientFilesVersion = (await fetchJSON(`${config.apiUrl}/api/files/version`)).version } catch {}
+    const coreUpToDate = !!clientFilesVersion && clientFilesVersion === store.get('filesVersion')
+    ensureClientDirs(skyrimPath)
+    writeClientSettings(clientSettingsPath(), srv, serverInfo)
+    const strays = removeGameCopyStrays(skyrimPath, manifest)
     if (strays) log(`[mo2-install] removed ${strays} stray file(s) from the game copy`)
 
     const finishOrder = () => {
