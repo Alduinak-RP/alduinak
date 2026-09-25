@@ -1707,7 +1707,6 @@ async function ensureCreations(manifest, gamePath) {
   const done = []
   const missing = []
   const warnings = []
-  const mb = n => (n / 1048576).toFixed(0)
 
   for (let i = 0; i < c.files.length; i++) {
     const f = c.files[i]
@@ -2373,16 +2372,22 @@ function openDownloadList(downloadsDir, missing) {
 // Download SKSE (edition-aware) and install it into the game root. Shared by
 // the manifest root step and the empty-manifest path: without SKSE nothing
 // can launch, no matter how few mods the server ships.
-async function installSkseIntoRoot(skyrimPath) {
-  const mb = n => (n / 1024 / 1024).toFixed(1)
-  const skse = mo2.skseSourceFor(skyrimPath)
-  send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})…`, index: 0, total: 0, skipped: false })
-  const name = await mo2.downloadToDownloads(skse.url, skse.fileName, (r, t) => {
-    const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-    send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
+// Download progress line: percentage, then megabytes
+const mb = n => (n / 1024 / 1024).toFixed(1)
+function downloadProgress(label) {
+  return (r, t) => send('install:progress', {
+    phase: 'mods', file: t > 0 ? `${label}… ${Math.floor(r * 100 / t)}% (${mb(r)} / ${mb(t)} MB)` : `${label}… ${mb(r)} MB`,
+    index: 0, total: 0, skipped: false,
   })
+}
+
+async function installSkseIntoRoot(skyrimPath) {
+  const skse = mo2.skseSourceFor(skyrimPath)
+  const name = await mo2.downloadToDownloads(skse.url, skse.fileName, downloadProgress(`Downloading SKSE (${skse.edition})`))
   send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
-  await mo2.installSkse(path.join(mo2.getDownloadsDir(), name), skyrimPath)
+  const archive = path.join(mo2.getDownloadsDir(), name)
+  await mo2.installSkse(archive, skyrimPath)
+  try { fs.rmSync(archive, { force: true }) } catch {}
 }
 
 // opts.force rebuilds every mod and the SKSE root step from scratch (Repair Modlist).
@@ -2498,7 +2503,6 @@ async function runMO2Install(opts = {}) {
     const downloadsDir = mo2.getDownloadsDir()
     const nexusAuth = await getNexusAuth()
     const premium   = !!(nexusAuth && store.get('nexusUser')?.isPremium)
-    const mb = n => (n / 1024 / 1024).toFixed(1)
     const sanitize       = n => String(n).replace(/[<>:"/\\|?*]/g, '')
     const modFolderPath  = m => path.join(mo2.getModsDir(), sanitize(m.name))
     if (force) {
@@ -2579,22 +2583,14 @@ async function runMO2Install(opts = {}) {
       if (existing) { archivePaths[a.id] = existing; continue }
 
       if (a.source.type === 'url') {
-        send('install:progress', { phase: 'mods', file: `Downloading ${a.name}…`, index: 0, total: 0, skipped: false })
-        const name = await mo2.downloadToDownloads(a.source.url, a.name, (r, t) => {
-          const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-          send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
-        })
+        const name = await mo2.downloadToDownloads(a.source.url, a.name, downloadProgress(`Downloading ${a.name}`))
         const p = path.join(downloadsDir, name)
         if (!(await mo2.verifyArchive(p, a.hash))) return fail(`${a.name}: downloaded file failed verification (hash mismatch).`)
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus' && premium) {
-        send('install:progress', { phase: 'mods', file: `Downloading ${a.name}…`, index: 0, total: 0, skipped: false })
         let name = null
         try {
-          name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, (r, t) => {
-            const pct = t > 0 ? ` (${Math.round(r / t * 100)}%)` : ''
-            send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} / ${mb(t)} MB${pct}`, index: 0, total: 0, skipped: false })
-          })
+          name = await nexus.downloadFileEntry(nexusAuth, a.source.modId, { fileId: a.source.fileId, fileName: a.name }, downloadsDir, downloadProgress(`Downloading ${a.name}`))
         } catch (err) {
           // A dead pin (HTTP 404 = the file was removed or archived on Nexus)
           // must not abort the whole install: fall back to the manual browser
@@ -2614,30 +2610,14 @@ async function runMO2Install(opts = {}) {
       }
     }
 
-    // 3b. Free / no-key path: open the downloads list page + MO2 staging folder
-    if (needBrowser.length > 0) {
-      openDownloadList(downloadsDir, needBrowser)
-      send('install:progress', {
-        phase: 'mods',
-        file:  'Opened the downloads list: open each link, click "Slow Download" (about 5 at a time), and move every archive into the Alduinak downloads folder.',
-        index: 0, total: needBrowser.length, skipped: false,
-      })
-      // Matched by sha256, so paths come back verified regardless of filename; the
-      // namePattern only flags likely wrong-version files in the status message.
-      const paths = await mo2.waitForDownloads(
-        needBrowser.map(a => ({ name: a.name, hash: a.hash, size: a.size, namePattern: nexusNamePattern(a.source.modId, a.name) })),
-        (done, total, message) => send('install:progress', { phase: 'mods', file: message, index: done, total, skipped: false }),
-        installAbort?.signal)
-      needBrowser.forEach((a, i) => { archivePaths[a.id] = paths[i] })
-    }
-
-    // 3c. Replay the manifest: extract each archive once, apply directives
+    // 3b. Replay the manifest: extract each archive once, apply directives
     // Reference-count archives across mods + root so each extraction is freed
     // as soon as its last consumer is done (bounds temp disk use).
+    const archiveIds = files => [...new Set(files.filter(f => f.archive).map(f => f.archive))]
     const refCount = new Map()
     const bump = ids => { for (const id of ids) refCount.set(id, (refCount.get(id) || 0) + 1) }
-    for (const m of modsToInstall) bump(new Set(m.files.filter(f => f.archive).map(f => f.archive)))
-    if (needsRoot) bump(new Set((manifest.root || []).filter(f => f.archive).map(f => f.archive)))
+    for (const m of modsToInstall) bump(archiveIds(m.files))
+    if (needsRoot) bump(archiveIds(manifest.root || []))
 
     mo2.clearCache()
     const extractedDirs = {}
@@ -2656,24 +2636,55 @@ async function runMO2Install(opts = {}) {
       }
     }
 
+    // Installs every waiting mod whose archives have all arrived
     const failed = []
-    for (let i = 0; i < modsToInstall.length; i++) {
-      const mod = modsToInstall[i]
-      const ids = [...new Set(mod.files.filter(f => f.archive).map(f => f.archive))]
-      const showMod = pct => send('install:progress', { phase: 'mods', file: `Installing ${mod.name}… ${pct}%`, index: i + 1, total: modsToInstall.length, skipped: false })
-      showMod(0)
-      try {
-        await ensureExtracted(ids, showMod)
-        const r = await mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId, mod.hash)
-        if (r.error) failed.push(`${mod.name} (${r.error})`)
-      } catch (err) {
-        failed.push(`${mod.name} (${err.message})`)
+    const pending = modsToInstall.slice()
+    let installed = 0
+    const installReady = async () => {
+      for (const mod of pending.slice()) {
+        const ids = archiveIds(mod.files)
+        if (!ids.every(id => archivePaths[id])) continue
+        pending.splice(pending.indexOf(mod), 1)
+        installed++
+        const showMod = pct => send('install:progress', { phase: 'mods', file: `Installing ${mod.name}… ${pct}%`, index: installed, total: modsToInstall.length, skipped: false })
+        showMod(0)
+        try {
+          await ensureExtracted(ids, showMod)
+          const r = await mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId, mod.hash)
+          if (r.error) failed.push(`${mod.name} (${r.error})`)
+        } catch (err) {
+          failed.push(`${mod.name} (${err.message})`)
+        }
+        release(ids)
       }
-      release(ids)
+    }
+    // Serialized: an archive that lands mid-install waits for the current mod
+    let installChain = installReady()
+    await installChain
+
+    // 3c. Free / no-key path: open the downloads list page + MO2 staging folder, installing each archive as it lands
+    if (needBrowser.length > 0) {
+      openDownloadList(downloadsDir, needBrowser)
+      send('install:progress', {
+        phase: 'mods',
+        file:  'Opened the downloads list: open each link, click "Slow Download", and move every archive into the Alduinak downloads folder. Each mod installs as soon as its archive arrives.',
+        index: 0, total: needBrowser.length, skipped: false,
+      })
+      // Matched by sha256, so paths come back verified regardless of filename; the
+      // namePattern only flags likely wrong-version files in the status message.
+      await mo2.waitForDownloads(
+        needBrowser.map(a => ({ name: a.name, hash: a.hash, size: a.size, namePattern: nexusNamePattern(a.source.modId, a.name) })),
+        (done, total, message) => send('install:progress', { phase: 'mods', file: message, index: done, total, skipped: false }),
+        installAbort?.signal,
+        (i, full) => {
+          archivePaths[needBrowser[i].id] = full
+          installChain = installChain.then(installReady)
+        })
+      await installChain
     }
 
     if (needsRoot && manifest.root && manifest.root.length > 0) {
-      const ids = [...new Set(manifest.root.filter(f => f.archive).map(f => f.archive))]
+      const ids = archiveIds(manifest.root)
       try {
         await ensureExtracted(ids)
         await mo2.applyRootFiles(manifest.root, extractedDirs, skyrimPath)
@@ -2696,6 +2707,13 @@ async function runMO2Install(opts = {}) {
 
     // 5. Match MO2 priority + plugin order, record the installed version
     finishOrder()
+
+    // 6. Cleanup: the installed mods no longer need their archives; a repair downloads them again
+    const archives = [...new Set(Object.values(archivePaths))].filter(p => !path.relative(downloadsDir, p).startsWith('..'))
+    archives.forEach((p, i) => {
+      send('install:progress', { phase: 'mods', file: `Cleaning up downloads… ${Math.floor((i + 1) * 100 / archives.length)}% (${i + 1}/${archives.length})`, index: i + 1, total: archives.length, skipped: false })
+      for (const f of [p, `${p}.meta`]) try { fs.rmSync(f, { force: true }) } catch (err) { log(`[cleanup] could not remove ${f}: ${err.message}`) }
+    })
 
     store.set('modpackState', 'ready')
     send('install:complete', {

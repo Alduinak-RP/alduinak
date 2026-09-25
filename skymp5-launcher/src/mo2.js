@@ -248,7 +248,7 @@ async function downloadMo2Archive(onProgress) {
   await downloadFile(MO2_URL, archive, (received, total) => {
     if (onProgress && total > 0) {
       const mb = n => (n / 1024 / 1024).toFixed(1)
-      onProgress(`Downloading Mod Organizer 2… ${mb(received)} / ${mb(total)} MB`)
+      onProgress(`Downloading MO2… ${Math.floor(received * 100 / total)}% (${mb(received)} / ${mb(total)} MB)`)
     }
   })
   return archive
@@ -1145,7 +1145,8 @@ async function listArchiveEntries(archivePath) {
  *
  *   wanted: [{ name, hash?, size?, namePattern?, expect? }]
  */
-function waitForDownloads(wanted, onProgress, signal, intervalMs = 1000, timeoutMs = 900_000) {
+// onFound(i, path) fires as each wanted archive arrives, so callers can install before the rest land
+function waitForDownloads(wanted, onProgress, signal, onFound, intervalMs = 5000, timeoutMs = 900_000) {
   let deadline   = Date.now() + timeoutMs
   // The sliding deadline keeps an actively-staging user alive, but any churn
   // in the downloads folder (a crawling browser download, antivirus rewrites)
@@ -1210,6 +1211,7 @@ function waitForDownloads(wanted, onProgress, signal, intervalMs = 1000, timeout
         found[i] = a.full
         consumed.add(a.full)
         progressed = true
+        if (onFound) onFound(i, a.full)
         break
       }
     }
