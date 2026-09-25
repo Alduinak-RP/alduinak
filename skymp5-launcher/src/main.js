@@ -2372,11 +2372,15 @@ function downloadProgress(label) {
   })
 }
 
-// sha256 of the files SKSE 2.2.6 puts in the game root, per edition; an edition without a list is not checked
+// sha256 of the files SKSE 2.2.6 puts in the game root, per edition
 const SKSE_FILE_HASHES = {
   Steam: {
     'skse64_loader.exe':   '730c2743f6871fbaeb8606c1d3b7a55feca045c3d74858a41b0c6d03cd989fbc',
     'skse64_1_6_1170.dll': 'c9a2c8a80df6bf2372c5f49468bb2e5ab67786157265b6f29ece9f4eac075d54',
+  },
+  GOG: {
+    'skse64_loader.exe':   '1fe471a2ca8451ef900b72495076e62241ce50af21f8057775b29e1e19069d2e',
+    'skse64_1_6_1179.dll': '1af746d2db9c4bf8e716c6b122e2faa7ca205039274a10573bd5908ba9712177',
   },
 }
 const SKSE_ROOT_FILE_RE = /^skse64_.*\.(exe|dll)$/i
