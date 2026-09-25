@@ -1256,3 +1256,6 @@ button.hotkey-btn--capturing {
   border-color: var(--gold);
   color: var(--gold);
 }
+
+/* Generated Game Hotkeys rows sit in the parent grid */
+.ghk-rows { display: contents; }

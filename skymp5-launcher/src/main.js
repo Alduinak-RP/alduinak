@@ -617,7 +617,12 @@ ipcMain.handle('hotkeys:save', async (_e, h) => {
 
 // Game hotkeys edit the keyboard and mouse columns of the game's controlmap.txt.
 // Values are DirectInput scan codes, the same space the renderer's KEY_TABLE uses; mouse button n is 256 + n.
-const GAME_HOTKEY_EVENTS = ['Activate', 'Jump', 'Sprint', 'Sneak', 'Shout', 'Toggle POV']
+const GAME_HOTKEY_EVENTS = [
+  'Forward', 'Back', 'Strafe Left', 'Strafe Right', 'Left Attack/Block', 'Right Attack/Block',
+  'Activate', 'Ready Weapon', 'Tween Menu', 'Toggle POV', 'Jump', 'Sprint', 'Shout', 'Sneak',
+  'Run', 'Toggle Always Run', 'Auto-Move', 'Favorites', 'Journal', 'Pause',
+  'Quick Inventory', 'Quick Magic', 'Quick Stats', 'Quick Map',
+]
 const MOUSE_DIK = 256
 
 function controlmapPath() {

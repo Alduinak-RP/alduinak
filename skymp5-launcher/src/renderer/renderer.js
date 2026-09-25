@@ -79,7 +79,9 @@ const KEY_TABLE = {
 }
 // MouseEvent.button -> [DxScanCode, label]; left and right stay attack and block, so they cancel a capture
 const MOUSE_TABLE = { 1: [258, 'Middle Mouse'], 3: [259, 'Mouse 4'], 4: [260, 'Mouse 5'] }
-const DIK_LABELS = { 256: 'Left Mouse', 257: 'Right Mouse', 261: 'Mouse 6', 262: 'Mouse 7', 263: 'Mouse 8' }
+const DIK_LABELS = { 1: 'Esc', 256: 'Left Mouse', 257: 'Right Mouse', 261: 'Mouse 6', 262: 'Mouse 7', 263: 'Mouse 8' }
+// Left and right bind only on Game Hotkeys rows, the attack and block keys
+const GAME_MOUSE_TABLE = { ...MOUSE_TABLE, 0: [256, 'Left Mouse'], 2: [257, 'Right Mouse'] }
 for (const [dik, label] of [...Object.values(KEY_TABLE), ...Object.values(MOUSE_TABLE)]) DIK_LABELS[dik] = label
 
 const RESOLUTIONS = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1080', '2560x1440', '3440x1440', '3840x2160']
@@ -137,10 +139,33 @@ const SERVER_HOTKEYS = {
   'hk-emote-wheel': ['emoteWheel', 48],
 }
 const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]
-const GAME_HOTKEY_IDS = ['ghk-activate', 'ghk-jump', 'ghk-sprint', 'ghk-sneak', 'ghk-shout', 'ghk-pov']
+// Game hotkey button id -> [label, controlmap event, default DIK]; the defaults are the vanilla bindings
+const GAME_HOTKEYS = {
+  'ghk-forward': ['Forward', 'Forward', 17], 'ghk-back': ['Back', 'Back', 31],
+  'ghk-left': ['Left', 'Strafe Left', 30], 'ghk-right': ['Right', 'Strafe Right', 32],
+  'ghk-left-hand': ['Left Hand', 'Left Attack/Block', 257], 'ghk-right-hand': ['Right Hand', 'Right Attack/Block', 256],
+  'ghk-activate': ['Activate', 'Activate', 18], 'ghk-ready': ['Ready', 'Ready Weapon', 19],
+  'ghk-menu': ['Menu', 'Tween Menu', 15], 'ghk-pov': ['Toggle POV', 'Toggle POV', 33],
+  'ghk-jump': ['Jump', 'Jump', 57], 'ghk-sprint': ['Sprint', 'Sprint', 56],
+  'ghk-shout': ['Power', 'Shout', 44], 'ghk-sneak': ['Sneak', 'Sneak', 29],
+  'ghk-run': ['Run', 'Run', 42], 'ghk-always-run': ['Always Run', 'Toggle Always Run', 58],
+  'ghk-automove': ['Automove', 'Auto-Move', 46], 'ghk-favorites': ['Favorites', 'Favorites', 16],
+  'ghk-journal': ['Journal', 'Journal', 36], 'ghk-system': ['System', 'Pause', 1],
+  'ghk-inventory': ['Inventory', 'Quick Inventory', 23], 'ghk-magic': ['Magic', 'Quick Magic', 25],
+  'ghk-stats': ['Stats', 'Quick Stats', 53], 'ghk-map': ['Map', 'Quick Map', 50],
+}
+const GHK_MAP = Object.fromEntries(Object.entries(GAME_HOTKEYS).map(([id, [, ev]]) => [id, ev]))
+const GAME_HOTKEY_IDS = Object.keys(GAME_HOTKEYS)
+const ghkRows = document.getElementById('ghk-rows')
+for (const [id, [label]] of Object.entries(GAME_HOTKEYS)) {
+  const group = document.createElement('div')
+  group.className = 'settings-group'
+  group.innerHTML = `<label class="setting-label">${label}</label><button type="button" class="setting-input hotkey-btn" id="${id}"></button>`
+  ghkRows.appendChild(group)
+}
 // DIK -> [use, also shared by Game Hotkeys rows]; movement cancelling an emote is intended, so those only count for Server Hotkeys
 const CLIENT_FIXED_KEYS = {
-  1: ['menu close', true], 15: ['game menu', true], 28: ['Activate Chat', true], 49: ['bounty board', true],
+  28: ['Activate Chat', true], 49: ['bounty board', true],
   17: ['emote cancel', false], 30: ['emote cancel', false], 31: ['emote cancel', false],
   32: ['emote cancel', false], 57: ['emote cancel', false], 19: ['emote cancel', false],
 }
@@ -181,7 +206,7 @@ function startCapture(btn, canUnbind) {
   }
   // Bound on release so the back and forward buttons never reach Chromium's history navigation
   const onMouse = (e) => {
-    const entry = MOUSE_TABLE[e.button]
+    const entry = (btn.id.startsWith('ghk-') ? GAME_MOUSE_TABLE : MOUSE_TABLE)[e.button]
     if (!entry) { endCapture(true); return }
     e.preventDefault()
     e.stopPropagation()
@@ -204,11 +229,6 @@ function startCapture(btn, canUnbind) {
 })
 window.addEventListener('blur', () => endCapture(true))
 
-// Game hotkey button ids -> controlmap event names
-const GHK_MAP = {
-  'ghk-activate': 'Activate', 'ghk-jump': 'Jump', 'ghk-sprint': 'Sprint',
-  'ghk-sneak': 'Sneak', 'ghk-shout': 'Shout', 'ghk-pov': 'Toggle POV',
-}
 const GFX_INPUT_IDS = [
   'gfx-windowmode', 'gfx-resolution', 'gfx-texquality', 'gfx-aa', 'gfx-shadowquality',
   'gfx-decals', 'gfx-godrays', 'gfx-lensflare', 'gfx-ao', 'gfx-precip',
@@ -268,9 +288,9 @@ async function loadGameSettingsTab() {
     const ghkEditable = !!(gh && gh.ok && gh.hasGamePath)
     setInputsDisabled(Object.keys(GHK_MAP), !ghkEditable)
     if (gh && gh.ok) {
-      for (const [id, ev] of Object.entries(GHK_MAP)) {
+      for (const [id, [, ev, dflt]] of Object.entries(GAME_HOTKEYS)) {
         const code = gh.keys ? gh.keys[ev] : null
-        if (typeof code === 'number' && code > 0) setKey(id, code)
+        setKey(id, typeof code === 'number' && code > 0 ? code : dflt)
       }
     }
     const h = await window.electronAPI.hotkeysLoad()
