@@ -203,7 +203,8 @@
 
           <details class="settings-collapse" open>
             <summary>Graphics</summary>
-            <div class="collapse-grid">
+            <p class="setting-hint" id="gfx-missing" hidden>Install MO2 first.</p>
+            <div class="collapse-grid" id="gfx-grid">
             <p class="setting-hint setting-warning span-2" id="gfx-mo2-off" hidden>Except Field of View, these settings are stored in the MO2 profile, so they only apply when the game starts through MO2. Choose Mod Organizer 2 under Install Options to change them.</p>
             <p class="setting-hint span-2">Changes apply the next time you start the game.</p>
             <div class="settings-group">
@@ -298,7 +299,8 @@
 
           <details class="settings-collapse">
             <summary>Server Hotkeys</summary>
-            <div class="collapse-grid">
+            <p class="setting-hint" id="hk-missing" hidden>Install mods first.</p>
+            <div class="collapse-grid" id="hk-grid">
             <div class="settings-group"><label class="setting-label">Activate Chat</label><button type="button" class="setting-input hotkey-btn" id="hk-chat"></button></div>
             <div class="settings-group"><label class="setting-label">Release Mouse</label><button type="button" class="setting-input hotkey-btn" id="hk-cursor"></button></div>
             <div class="settings-group"><label class="setting-label">Voice Push-to-Talk</label><button type="button" class="setting-input hotkey-btn" id="hk-voice-ptt"></button></div>
@@ -313,10 +315,11 @@
 
           <details class="settings-collapse">
             <summary>Game Hotkeys</summary>
-            <div class="collapse-grid">
+            <p class="setting-hint" id="ghk-missing" hidden>Install mods first.</p>
+            <div class="collapse-grid" id="ghk-grid">
             <label class="setting-checkbox-row span-2"><input type="checkbox" id="gfx-invert-y" /><span>Invert Y axis</span></label>
             <div class="ghk-rows" id="ghk-rows"></div>
-            <p class="setting-hint span-2">Written to the game's controlmap; a mouse button replaces the key. Rows unlock once the game files are installed. Changes apply the next time you start the game.</p>
+            <p class="setting-hint span-2">Written to the game's controlmap; a mouse button replaces the key. Changes apply the next time you start the game.</p>
             <p class="setting-hint setting-warning span-2" id="ghk-duplicate" hidden></p>
             </div>
           </details>

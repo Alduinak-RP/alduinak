@@ -612,7 +612,7 @@ const PENDING_HOTKEYS = 'pendingClientHotkeys'
 ipcMain.handle('hotkeys:load', () => {
   try {
     const c = { ...readClientSettings(), ...store.get(PENDING_HOTKEYS) }
-    const out = { ok: true, path: clientSettingsPath(), chatFocus: Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null }
+    const out = { ok: true, path: clientSettingsPath(), exists: fs.existsSync(clientSettingsPath()), chatFocus: Array.isArray(c.chatFocusKeyCodes) ? c.chatFocusKeyCodes : null }
     for (const [field, key] of Object.entries(CLIENT_HOTKEY_KEYS)) out[field] = typeof c[key] === 'number' ? c[key] : null
     // Interact / Menus cannot be unbound, so a stored 0 shows and saves the X default
     if (out.altInteract === 0) out.altInteract = null
@@ -748,7 +748,7 @@ ipcMain.handle('gameHotkeys:load', () => {
     const entries = customControlmapEntries(custom)
     const keys = {}
     for (const ev of GAME_HOTKEY_EVENTS) keys[ev] = gameHotkeyBinding(cm.text, ev, custom, entries)
-    return { ok: true, path: cm.path, exists: cm.exists, hasGamePath: !!cm.path, keys }
+    return { ok: true, path: cm.path, exists: cm.exists, keys }
   } catch (err) {
     return { ok: false, error: err.message }
   }

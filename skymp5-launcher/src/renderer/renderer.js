@@ -280,15 +280,17 @@ function fillResolutions(current) {
 }
 aspectSel.addEventListener('change', () => { fillResolutions(resSel.value); saveGraphics() })
 
-function setInputsDisabled(ids, disabled) {
-  for (const id of ids) { const el = document.getElementById(id); if (el) el.disabled = !!disabled }
-}
-let gfxExists = true
 // Graphics live in the MO2 profile inis, which a direct launch never reads
 function lockGfx() {
   const mo2On = mo2Selected()
-  setInputsDisabled(GFX_INPUT_IDS, !gfxExists || !mo2On)
+  for (const id of GFX_INPUT_IDS) document.getElementById(id).disabled = !mo2On
   document.getElementById('gfx-mo2-off').hidden = mo2On
+}
+
+// A section stays hidden behind its note until the install creates the files it edits
+function showSection(prefix, filesExist) {
+  document.getElementById(`${prefix}-grid`).hidden = !filesExist
+  document.getElementById(`${prefix}-missing`).hidden = filesExist
 }
 
 async function loadGameSettingsTab() {
@@ -304,12 +306,11 @@ async function loadGameSettingsTab() {
       for (const [id, field] of Object.entries(GFX_CHECKS)) document.getElementById(id).checked = !!g[field]
       fovInput.value = g.fov
       showFov()
-      gfxExists = !!g.exists
+      showSection('gfx', !!g.exists)
       lockGfx()
     }
     const gh = await window.electronAPI.gameHotkeysLoad()
-    const ghkEditable = !!(gh && gh.ok && gh.hasGamePath)
-    setInputsDisabled(Object.keys(GHK_MAP), !ghkEditable)
+    showSection('ghk', !!(gh && gh.ok && gh.exists))
     if (gh && gh.ok) {
       for (const [id, [, ev, dflt]] of Object.entries(GAME_HOTKEYS)) {
         const code = gh.keys ? gh.keys[ev] : null
@@ -317,6 +318,7 @@ async function loadGameSettingsTab() {
       }
     }
     const h = await window.electronAPI.hotkeysLoad()
+    showSection('hk', !!(h && h.ok && h.exists))
     if (h && h.ok) {
       const chat = Array.isArray(h.chatFocus) ? (h.chatFocus.find(c => c !== 28) || h.chatFocus[0] || 20) : 20
       setKey('hk-chat', chat)
