@@ -16,6 +16,7 @@ const crypto = require('crypto')
 const http   = require('http')
 const https  = require('https')
 const { spawn, execFile, execFileSync } = require('child_process')
+const { pathToFileURL } = require('url')
 const Store  = require('electron-store')
 const AdmZip = require('adm-zip')
 const config = require('./config')
@@ -863,10 +864,39 @@ ipcMain.on('open:external', (_e, url) => {
 })
 
 // News
+// News images are cached by URL so each one downloads once; unreferenced files are pruned
+const NEWS_CACHE_DIR = path.join(app.getPath('userData'), 'news-cache')
+const newsCachePath = url => path.join(NEWS_CACHE_DIR, crypto.createHash('sha1').update(url).digest('hex') + (path.extname(new URL(url).pathname) || '.img'))
+
+async function cacheNewsImages(items) {
+  fs.mkdirSync(NEWS_CACHE_DIR, { recursive: true })
+  const urls = [...new Set(items.map(i => i.image).filter(u => typeof u === 'string' && /^https?:\/\//i.test(u)))]
+  const cached = new Map()
+  await Promise.all(urls.map(async url => {
+    const file = newsCachePath(url)
+    try {
+      if (!fs.existsSync(file)) {
+        await downloadToFile(url, file + '.part')
+        fs.renameSync(file + '.part', file)
+      }
+      cached.set(url, file)
+    } catch (err) {
+      log(`[news] could not cache ${url}: ${err.message}`)
+    }
+  }))
+  for (const item of items) if (cached.has(item.image)) item.image = pathToFileURL(cached.get(item.image)).href
+  const keep = new Set(urls.map(u => path.basename(newsCachePath(u))))
+  for (const name of fs.readdirSync(NEWS_CACHE_DIR)) {
+    if (!keep.has(name)) try { fs.rmSync(path.join(NEWS_CACHE_DIR, name), { force: true }) } catch {}
+  }
+}
+
 ipcMain.handle('api:news', async () => {
   try {
     const items = await fetchJSON(`${config.apiUrl}/api/news`)
-    return { ok: true, items: Array.isArray(items) ? items : [] }
+    const list = Array.isArray(items) ? items : []
+    await cacheNewsImages(list)
+    return { ok: true, items: list }
   } catch (err) {
     return { ok: false, error: err.message }
   }
