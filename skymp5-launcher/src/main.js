@@ -1820,7 +1820,7 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
   const unknown  = []
   const failed   = []
   let cleaned = 0
-  for (const m of cleanmasters.MASTERS) {
+  for (const [i, m] of cleanmasters.MASTERS.entries()) {
     const file   = path.join(dataDir, m.name)
     const backup = path.join(dataDir, cleanmasters.BACKUP_DIR, m.name)
     const restoreFrom = portable ? (original && path.join(original, 'Data', m.name)) : backup
@@ -1834,7 +1834,8 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
     if (v === 'cleaned') continue
     if (!v) { unknown.push(`${m.name} (size ${size})`); continue }
 
-    send('install:progress', { phase: 'download', file: `Cleaning ${m.name} (${v.edition})…`, index: cleaned, total: 0, skipped: false })
+    const pct = Math.floor(i * 100 / cleanmasters.MASTERS.length)
+    send('install:progress', { phase: 'download', file: `Cleaning masters… ${pct}% (${i + 1}/${cleanmasters.MASTERS.length}, ${m.name} ${v.edition})`, index: i + 1, total: cleanmasters.MASTERS.length, skipped: false })
     const xdelta = bundledXdelta()
     if (!xdelta) {
       const error = 'xdelta3.exe is missing from the launcher install. Reinstall the launcher.'
