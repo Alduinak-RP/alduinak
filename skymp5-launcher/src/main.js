@@ -1813,7 +1813,7 @@ async function cleanedMasterPatch(v) {
   return file
 }
 
-// Cleans the masters and Creation plugins in gamePath/Data; real installs back up the originals, strict turns failures into errors
+// Cleans the masters and Creation plugins in gamePath/Data without keeping backups (Steam/GOG verify restores them); strict turns failures into errors
 async function ensureCleanedMasters(gamePath, { force = false, portable = !!store.get('isolatedGame') && gamePath === isolatedGameDir(), strict = false } = {}) {
   const dataDir  = path.join(gamePath, 'Data')
   const original = store.get('skyrimPath')
@@ -1822,8 +1822,7 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
   let cleaned = 0
   for (const [i, m] of cleanmasters.MASTERS.entries()) {
     const file   = path.join(dataDir, m.name)
-    const backup = path.join(dataDir, cleanmasters.BACKUP_DIR, m.name)
-    const restoreFrom = portable ? (original && path.join(original, 'Data', m.name)) : backup
+    const restoreFrom = portable && original && path.join(original, 'Data', m.name)
     if (force && restoreFrom && fs.existsSync(restoreFrom) && fs.existsSync(file)) {
       await fs.promises.copyFile(restoreFrom, file)
       log(`[masters] restored ${m.name} from ${restoreFrom}`)
@@ -1851,10 +1850,6 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
         (err, _out, stderr) => resolve(err ? (String(stderr || '').trim() || err.message) : null)))
       if (failure) throw new Error(failure)
       if (fs.statSync(tmp).size !== v.dstSize || (v.dstSha256 && await mo2.sha256File(tmp) !== v.dstSha256)) throw new Error('the patched file does not match the cleaned master')
-      if (!portable && !fs.existsSync(backup)) {
-        fs.mkdirSync(path.dirname(backup), { recursive: true })
-        await fs.promises.copyFile(file, backup)
-      }
       fs.renameSync(tmp, file)
     } catch (err) {
       try { fs.rmSync(tmp, { force: true }) } catch {}
@@ -1867,6 +1862,8 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
     cleaned++
     log(`[masters] cleaned ${m.name} (${v.edition})`)
   }
+  // Backups earlier launchers (or the standalone patcher) left behind
+  try { fs.rmSync(path.join(dataDir, cleanmasters.BACKUP_DIR), { recursive: true, force: true }) } catch {}
   if (unknown.length) log(`[masters] no cleaning patch for this build of ${unknown.join(', ')}`)
   const warning = [
     unknown.length ? `No cleaned-master patch for ${unknown.join(', ')}; they stay as shipped.` : null,
