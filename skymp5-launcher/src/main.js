@@ -401,7 +401,7 @@ const FOV_INIS = ['skyrimcustom.ini', 'skyrim.ini']
 const FOV_DEFAULT = 80
 function clampFov(v) {
   const n = Math.round(parseFloat(v))
-  return Number.isFinite(n) ? Math.min(170, Math.max(70, n)) : null
+  return Number.isFinite(n) ? Math.min(140, Math.max(60, n)) : null
 }
 function fovInEffect() {
   const d = FOV_INIS.map(profileIniInEffect).map(f => (f && ini.read(f).Display) || {}).find(x => FOV_KEYS[0] in x) || {}
@@ -459,60 +459,108 @@ function adoptChatFov() {
   }
 }
 
+// Graphics dropdown -> level -> SkyrimPrefs.ini edits, taken from the game's own Low/Medium/High/Ultra.ini presets
+const GFX_LEVELS = {
+  texQuality: {
+    high:   { Display: { iTexMipMapSkip: '0' } },
+    medium: { Display: { iTexMipMapSkip: '1' } },
+    low:    { Display: { iTexMipMapSkip: '2' } },
+  },
+  aa: {
+    taa:  { Display: { bUseTAA: '1', bFXAAEnabled: '0' } },
+    fxaa: { Display: { bUseTAA: '0', bFXAAEnabled: '1' } },
+    off:  { Display: { bUseTAA: '0', bFXAAEnabled: '0' } },
+  },
+  shadowQuality: {
+    ultra:  { Display: { iShadowMapResolution: '4096', fShadowDistance: '10000' } },
+    high:   { Display: { iShadowMapResolution: '2048', fShadowDistance: '8000' } },
+    medium: { Display: { iShadowMapResolution: '2048', fShadowDistance: '3000' } },
+    low:    { Display: { iShadowMapResolution: '1024', fShadowDistance: '3000' } },
+  },
+  decals: {
+    high:   { Decals: { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '1000', uMaxSkinDecals: '100', iMaxDecalsPerFrame: '100', iMaxSkinDecalsPerFrame: '25' } },
+    medium: { Decals: { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '100', uMaxSkinDecals: '35', iMaxDecalsPerFrame: '10', iMaxSkinDecalsPerFrame: '3' } },
+    off:    { Decals: { bDecals: '0', bSkinnedDecals: '0', uMaxDecals: '0', uMaxSkinDecals: '0', iMaxDecalsPerFrame: '0', iMaxSkinDecalsPerFrame: '0' } },
+  },
+  godrays: {
+    high:   { Display: { bVolumetricLightingEnable: '1', iVolumetricLightingQuality: '2' } },
+    medium: { Display: { bVolumetricLightingEnable: '1', iVolumetricLightingQuality: '1' } },
+    low:    { Display: { bVolumetricLightingEnable: '1', iVolumetricLightingQuality: '0' } },
+    off:    { Display: { bVolumetricLightingEnable: '0' } },
+  },
+  distantDetail: {
+    ultra:  { TerrainManager: { fTreeLoadDistance: '75000', fBlockLevel0Distance: '60000', fBlockLevel1Distance: '90000', fBlockMaximumDistance: '250000', fSplitDistanceMult: '1.5' }, Display: { fMeshLODLevel1FadeDist: '999999', fMeshLODLevel2FadeDist: '999999' } },
+    high:   { TerrainManager: { fTreeLoadDistance: '75000', fBlockLevel0Distance: '35000', fBlockLevel1Distance: '70000', fBlockMaximumDistance: '250000', fSplitDistanceMult: '1.5' }, Display: { fMeshLODLevel1FadeDist: '999999', fMeshLODLevel2FadeDist: '999999' } },
+    medium: { TerrainManager: { fTreeLoadDistance: '75000', fBlockLevel0Distance: '20000', fBlockLevel1Distance: '32000', fBlockMaximumDistance: '100000', fSplitDistanceMult: '1.1' }, Display: { fMeshLODLevel1FadeDist: '6000', fMeshLODLevel2FadeDist: '3000' } },
+    low:    { TerrainManager: { fTreeLoadDistance: '12500', fBlockLevel0Distance: '15000', fBlockLevel1Distance: '25000', fBlockMaximumDistance: '100000', fSplitDistanceMult: '0.5' }, Display: { fMeshLODLevel1FadeDist: '4000', fMeshLODLevel2FadeDist: '1600' } },
+  },
+  objectFade: {
+    high:   { LOD: { fLODFadeOutMultObjects: '9', fLODFadeOutMultActors: '9', fLODFadeOutMultItems: '6' } },
+    medium: { LOD: { fLODFadeOutMultObjects: '7', fLODFadeOutMultActors: '7', fLODFadeOutMultItems: '3' } },
+    low:    { LOD: { fLODFadeOutMultObjects: '5', fLODFadeOutMultActors: '5', fLODFadeOutMultItems: '1.5' } },
+  },
+}
+// Graphics checkbox -> the [section, key] pairs it sets to 1 or 0
+const GFX_FLAGS = {
+  ssr:       [['Display', 'bScreenSpaceReflectionEnabled']],
+  ao:        [['Display', 'bSAOEnable']],
+  precip:    [['Display', 'bUsePrecipitationOcclusion']],
+  snow:      [['Display', 'bEnableImprovedSnow']],
+  lensFlare: [['Imagespace', 'bLensFlare'], ['Display', 'bIBLFEnable']],
+  hdr64:     [['Display', 'bUse64bitsHDRRenderTarget']],
+}
+
+// Merges ini edit objects section by section
+function mergeIniEdits(into, edits) {
+  for (const [section, keys] of Object.entries(edits)) into[section] = Object.assign(into[section] || {}, keys)
+  return into
+}
+
 ipcMain.handle('graphics:load', () => {
   adoptChatFov()
   try {
     const p = skyrimPrefsPath()
     const data = ini.read(p)
     const disp = data['Display'] || {}
-    const controls = data['Controls'] || {}
     const full = String(disp['bFull Screen'] || '0') === '1'
     // Default to borderless when the ini doesn't say otherwise (missing file
     // or keys). An explicit bFull Screen=0 + bBorderless=0 reads as windowed.
     const hasMode = ('bFull Screen' in disp) || ('bBorderless' in disp)
     const borderless = hasMode ? String(disp['bBorderless'] || '0') === '1' : true
-    // Fallback chain for player-owned values: profile ini, then the player's
-    // original My Games ini, then the engine default.
+    // Fallback chain for player-owned values: profile ini, then the player's original My Games ini
     let orig = {}
     try {
       const src = findOriginalPrefsIni()
       if (src) orig = ini.read(src)
     } catch { /* fall through to defaults */ }
-    const origDisp = orig['Display'] || {}
-    const val = (section, key, dflt) => {
-      const a = data[section] || {}
-      if (key in a) return String(a[key])
-      const b = orig[section] || {}
-      if (key in b) return String(b[key])
-      return dflt
+    const val = (section, key) => {
+      for (const d of [data, orig]) if (d[section] && key in d[section]) return String(d[section][key])
+      return null
     }
-    const num = (section, key, dflt) => {
-      const n = parseInt(val(section, key, ''), 10)
-      return Number.isNaN(n) ? dflt : n
+    const same = (a, b) => a !== null && parseFloat(a) === parseFloat(b)
+    // The level whose keys the inis match best; the first level wins a tie
+    const level = option => {
+      let best = null, bestScore = -1
+      for (const [name, edits] of Object.entries(GFX_LEVELS[option])) {
+        const pairs = Object.entries(edits).flatMap(([s, keys]) => Object.entries(keys).map(([k, v]) => [s, k, v]))
+        const score = pairs.filter(([s, k, v]) => same(val(s, k), v)).length / pairs.length
+        if (score > bestScore) { best = name; bestScore = score }
+      }
+      return best
     }
-    const skip = num('Display', 'iTexMipMapSkip', 0)
-    const shadowRes = num('Display', 'iShadowMapResolution', 2048)
-    const maxDecals = num('Decals', 'uMaxDecals', 250)
-    return {
+    const out = {
       ok: true,
       path: p,
       exists: fs.existsSync(p),
       windowMode: full ? 'fullscreen' : (borderless ? 'borderless' : 'windowed'),
-      width:  disp['iSize W'] || origDisp['iSize W'] || '1920',
-      height: disp['iSize H'] || origDisp['iSize H'] || '1080',
-      invertY: String(controls['bInvertYValues'] || '0') === '1',
-      texQuality: skip >= 2 ? 'low' : (skip === 1 ? 'medium' : 'high'),
-      aa: val('Display', 'bUseTAA', '1') === '1' ? 'taa'
-        : (val('Display', 'bFXAAEnabled', '0') === '1' ? 'fxaa' : 'off'),
-      shadowQuality: shadowRes <= 512 ? 'low' : (shadowRes <= 1024 ? 'medium' : (shadowRes <= 2048 ? 'high' : 'ultra')),
-      decals: val('Decals', 'bDecals', '1') === '0' ? 'off'
-        : (maxDecals <= 100 ? 'low' : (maxDecals <= 250 ? 'medium' : (maxDecals <= 350 ? 'high' : 'ultra'))),
-      fov:       launcherFov(),
-      godrays:   val('Display', 'bVolumetricLightingEnable', '1') === '1',
-      lensFlare: val('Imagespace', 'bLensFlare', '1') === '1',
-      ao:        val('Display', 'bSAOEnable', '1') === '1',
-      precip:    val('Display', 'bPrecipitationOcclusion', '1') === '1',
+      width:  val('Display', 'iSize W') || '1920',
+      height: val('Display', 'iSize H') || '1080',
+      invertY: val('Controls', 'bInvertYValues') === '1',
+      fov: launcherFov(),
     }
+    for (const option of Object.keys(GFX_LEVELS)) out[option] = level(option)
+    for (const [flag, pairs] of Object.entries(GFX_FLAGS)) out[flag] = val(...pairs[0]) !== '0'
+    return out
   } catch (err) {
     return { ok: false, error: err.message }
   }
@@ -527,30 +575,12 @@ ipcMain.handle('graphics:save', (_e, g) => {
     else if (g.windowMode === 'windowed')   { display['bFull Screen'] = '0'; display['bBorderless'] = '0' }
     if (g.width)  display['iSize W'] = String(g.width)
     if (g.height) display['iSize H'] = String(g.height)
-    const TEX = { high: '0', medium: '1', low: '2' }
-    if (TEX[g.texQuality]) display['iTexMipMapSkip'] = TEX[g.texQuality]
-    if (['off', 'fxaa', 'taa'].includes(g.aa)) {
-      display['bUseTAA']      = g.aa === 'taa'  ? '1' : '0'
-      display['bFXAAEnabled'] = g.aa === 'fxaa' ? '1' : '0'
-    }
-    const SHADOW = { low: '512', medium: '1024', high: '2048', ultra: '4096' }
-    if (SHADOW[g.shadowQuality]) display['iShadowMapResolution'] = SHADOW[g.shadowQuality]
-    if (typeof g.godrays === 'boolean') display['bVolumetricLightingEnable'] = g.godrays ? '1' : '0'
-    if (typeof g.ao === 'boolean')      display['bSAOEnable'] = g.ao ? '1' : '0'
-    if (typeof g.precip === 'boolean')  display['bPrecipitationOcclusion'] = g.precip ? '1' : '0'
     const edits = { Display: display, Controls: { bInvertYValues: g.invertY ? '1' : '0' } }
-    if (typeof g.lensFlare === 'boolean') {
-      display['bIBLFEnable'] = g.lensFlare ? '1' : '0'
-      edits.Imagespace = { bLensFlare: g.lensFlare ? '1' : '0' }
+    for (const [option, levels] of Object.entries(GFX_LEVELS)) if (levels[g[option]]) mergeIniEdits(edits, levels[g[option]])
+    for (const [flag, pairs] of Object.entries(GFX_FLAGS)) {
+      if (typeof g[flag] !== 'boolean') continue
+      for (const [s, k] of pairs) mergeIniEdits(edits, { [s]: { [k]: g[flag] ? '1' : '0' } })
     }
-    const DECALS = {
-      off:    { bDecals: '0', bSkinnedDecals: '0' },
-      low:    { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '100',  uMaxSkinDecals: '25',  uMaxSkinDecalsPerActor: '20' },
-      medium: { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '250',  uMaxSkinDecals: '50',  uMaxSkinDecalsPerActor: '40' },
-      high:   { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '350',  uMaxSkinDecals: '75',  uMaxSkinDecalsPerActor: '50' },
-      ultra:  { bDecals: '1', bSkinnedDecals: '1', uMaxDecals: '1000', uMaxSkinDecals: '100', uMaxSkinDecalsPerActor: '60' },
-    }
-    if (DECALS[g.decals]) edits.Decals = DECALS[g.decals]
     ini.write(skyrimPrefsPath(), edits)
     saveFov(g.fov)
     return { ok: true, path: skyrimPrefsPath() }

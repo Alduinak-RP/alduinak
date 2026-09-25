@@ -84,7 +84,14 @@ const DIK_LABELS = { 1: 'Esc', 256: 'Left Mouse', 257: 'Right Mouse', 261: 'Mous
 const GAME_MOUSE_TABLE = { ...MOUSE_TABLE, 0: [256, 'Left Mouse'], 2: [257, 'Right Mouse'] }
 for (const [dik, label] of [...Object.values(KEY_TABLE), ...Object.values(MOUSE_TABLE)]) DIK_LABELS[dik] = label
 
-const RESOLUTIONS = ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1080', '2560x1440', '3440x1440', '3840x2160']
+// Standard resolutions per aspect ratio
+const RESOLUTIONS = {
+  '16:9':  ['1280x720', '1366x768', '1600x900', '1920x1080', '2560x1440', '3200x1800', '3840x2160'],
+  '16:10': ['1280x800', '1440x900', '1680x1050', '1920x1200', '2560x1600'],
+  '21:9':  ['2560x1080', '3440x1440', '3840x1600', '5120x2160'],
+  '32:9':  ['3840x1080', '5120x1440'],
+  '4:3':   ['1024x768', '1280x960', '1600x1200'],
+}
 
 function labelForCode(code) {
   if (!code) return '— none —'
@@ -229,19 +236,49 @@ function startCapture(btn, canUnbind) {
 })
 window.addEventListener('blur', () => endCapture(true))
 
-const GFX_INPUT_IDS = [
-  'gfx-windowmode', 'gfx-resolution', 'gfx-texquality', 'gfx-aa', 'gfx-shadowquality',
-  'gfx-decals', 'gfx-godrays', 'gfx-lensflare', 'gfx-ao', 'gfx-precip',
-]
+// Graphics dropdown and checkbox ids -> graphics:load/save fields
+const GFX_SELECTS = {
+  'gfx-texquality': 'texQuality', 'gfx-aa': 'aa', 'gfx-shadowquality': 'shadowQuality', 'gfx-decals': 'decals',
+  'gfx-godrays': 'godrays', 'gfx-distant': 'distantDetail', 'gfx-fade': 'objectFade',
+}
+const GFX_CHECKS = {
+  'gfx-ssr': 'ssr', 'gfx-ao': 'ao', 'gfx-precip': 'precip', 'gfx-snow': 'snow', 'gfx-lensflare': 'lensFlare', 'gfx-hdr64': 'hdr64',
+}
+const GFX_INPUT_IDS = ['gfx-windowmode', 'gfx-aspect', 'gfx-resolution', ...Object.keys(GFX_SELECTS), ...Object.keys(GFX_CHECKS)]
 const fovInput = document.getElementById('gfx-fov')
-const showFov = () => { const out = document.getElementById('gfx-fov-value'); if (out && fovInput) out.textContent = fovInput.value }
-if (fovInput) fovInput.addEventListener('input', showFov)
+const showFov = () => { document.getElementById('gfx-fov-value').textContent = fovInput.value }
+fovInput.addEventListener('input', showFov)
 // Stored on release
 const fovError = document.getElementById('gfx-fov-error')
-if (fovInput) fovInput.addEventListener('change', async () => {
+fovInput.addEventListener('change', async () => {
   const r = await window.electronAPI.graphicsSaveFov(fovInput.value).catch(() => null)
-  if (fovError) fovError.hidden = !!(r && r.ok)
+  fovError.hidden = !!(r && r.ok)
 })
+
+// The aspect ratio only filters the resolution list; it is never written to the inis
+const fillSelect = (sel, values) => {
+  sel.innerHTML = ''
+  for (const v of values) { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o) }
+}
+const aspectSel = document.getElementById('gfx-aspect')
+const resSel    = document.getElementById('gfx-resolution')
+fillSelect(aspectSel, Object.keys(RESOLUTIONS))
+function aspectOf(res) {
+  const [w, h] = res.split('x').map(Number)
+  return Object.keys(RESOLUTIONS).reduce((best, a) => {
+    const [aw, ah] = a.split(':').map(Number)
+    const [bw, bh] = best.split(':').map(Number)
+    return Math.abs(aw / ah - w / h) < Math.abs(bw / bh - w / h) ? a : best
+  })
+}
+// Lists the aspect's resolutions, keeping the ini's own one when it is not a standard size
+function fillResolutions(current) {
+  const list = RESOLUTIONS[aspectSel.value].slice()
+  if (current && aspectOf(current) === aspectSel.value && !list.includes(current)) list.unshift(current)
+  fillSelect(resSel, list)
+  resSel.value = list.includes(current) ? current : list[list.length - 1]
+}
+aspectSel.addEventListener('change', () => { fillResolutions(resSel.value); saveGraphics() })
 
 function setInputsDisabled(ids, disabled) {
   for (const id of ids) { const el = document.getElementById(id); if (el) el.disabled = !!disabled }
@@ -251,36 +288,22 @@ let gfxExists = true
 function lockGfx() {
   const mo2On = mo2Selected()
   setInputsDisabled(GFX_INPUT_IDS, !gfxExists || !mo2On)
-  const note = document.getElementById('gfx-mo2-off'); if (note) note.hidden = mo2On
+  document.getElementById('gfx-mo2-off').hidden = mo2On
 }
 
 async function loadGameSettingsTab() {
   try {
     const g = await window.electronAPI.graphicsLoad()
     if (g && g.ok) {
-      const wm = document.getElementById('gfx-windowmode'); if (wm) wm.value = g.windowMode || 'windowed'
-      const resSel = document.getElementById('gfx-resolution')
-      if (resSel) {
-        const cur = (g.width && g.height) ? `${g.width}x${g.height}` : ''
-        const list = RESOLUTIONS.slice()
-        if (cur && !list.includes(cur)) list.unshift(cur)
-        resSel.innerHTML = ''
-        for (const r of list) { const o = document.createElement('option'); o.value = r; o.textContent = r; resSel.appendChild(o) }
-        if (cur) resSel.value = cur
-      }
-      const iy = document.getElementById('gfx-invert-y'); if (iy) iy.checked = !!g.invertY
-      const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v }
-      const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v }
-      setVal('gfx-texquality', g.texQuality)
-      setVal('gfx-aa', g.aa)
-      setVal('gfx-shadowquality', g.shadowQuality)
-      setVal('gfx-decals', g.decals)
-      setVal('gfx-fov', g.fov)
+      document.getElementById('gfx-windowmode').value = g.windowMode || 'borderless'
+      const cur = `${g.width}x${g.height}`
+      aspectSel.value = aspectOf(cur)
+      fillResolutions(cur)
+      document.getElementById('gfx-invert-y').checked = !!g.invertY
+      for (const [id, field] of Object.entries(GFX_SELECTS)) if (g[field]) document.getElementById(id).value = g[field]
+      for (const [id, field] of Object.entries(GFX_CHECKS)) document.getElementById(id).checked = !!g[field]
+      fovInput.value = g.fov
       showFov()
-      setChk('gfx-godrays', g.godrays)
-      setChk('gfx-lensflare', g.lensFlare)
-      setChk('gfx-ao', g.ao)
-      setChk('gfx-precip', g.precip)
       gfxExists = !!g.exists
       lockGfx()
     }
@@ -305,29 +328,19 @@ async function loadGameSettingsTab() {
 // The inis live in the MO2 profile; while it is missing the controls are locked and nothing is written
 async function saveGraphics() {
   if (document.getElementById('gfx-windowmode').disabled) return
-  const resSel = document.getElementById('gfx-resolution')
-  let width = '', height = ''
-  if (resSel && /^\d+x\d+$/.test(resSel.value)) [width, height] = resSel.value.split('x')
-  const val = (id) => { const el = document.getElementById(id); return el ? el.value : '' }
-  const chk = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
-  await window.electronAPI.graphicsSave({
-    windowMode:    val('gfx-windowmode'),
+  const [width, height] = resSel.value.split('x')
+  const g = {
+    windowMode: document.getElementById('gfx-windowmode').value,
     width, height,
-    invertY:       chk('gfx-invert-y'),
-    texQuality:    val('gfx-texquality'),
-    aa:            val('gfx-aa'),
-    shadowQuality: val('gfx-shadowquality'),
-    decals:        val('gfx-decals'),
-    fov:           val('gfx-fov'),
-    godrays:       chk('gfx-godrays'),
-    lensFlare:     chk('gfx-lensflare'),
-    ao:            chk('gfx-ao'),
-    precip:        chk('gfx-precip'),
-  }).catch(() => null)
+    invertY: document.getElementById('gfx-invert-y').checked,
+    fov: fovInput.value,
+  }
+  for (const [id, field] of Object.entries(GFX_SELECTS)) g[field] = document.getElementById(id).value
+  for (const [id, field] of Object.entries(GFX_CHECKS)) g[field] = document.getElementById(id).checked
+  await window.electronAPI.graphicsSave(g).catch(() => null)
 }
 for (const id of [...GFX_INPUT_IDS, 'gfx-invert-y']) {
-  const el = document.getElementById(id)
-  if (el) el.addEventListener('change', saveGraphics)
+  if (id !== 'gfx-aspect') document.getElementById(id).addEventListener('change', saveGraphics)
 }
 
 // Saves the section the changed hotkey belongs to

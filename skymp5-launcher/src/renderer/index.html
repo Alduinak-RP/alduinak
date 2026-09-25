@@ -204,14 +204,19 @@
           <details class="settings-collapse" open>
             <summary>Graphics</summary>
             <div class="collapse-grid">
-            <p class="setting-hint setting-warning span-2" id="gfx-mo2-off" hidden>Except Field of View, these settings are stored in the MO2 profile, so they only apply when the game starts through MO2. Turn on MO2 under Troubleshooting to change them.</p>
+            <p class="setting-hint setting-warning span-2" id="gfx-mo2-off" hidden>Except Field of View, these settings are stored in the MO2 profile, so they only apply when the game starts through MO2. Choose Mod Organizer 2 under Install Options to change them.</p>
+            <p class="setting-hint span-2">Changes apply the next time you start the game.</p>
             <div class="settings-group">
               <label class="setting-label">Window Mode</label>
               <select class="setting-input" id="gfx-windowmode">
+                <option value="borderless">Borderless Window</option>
                 <option value="windowed">Windowed</option>
-                <option value="fullscreen">Full screen</option>
-                <option value="borderless">Borderless window</option>
+                <option value="fullscreen">Fullscreen</option>
               </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Aspect Ratio</label>
+              <select class="setting-input" id="gfx-aspect"></select>
             </div>
             <div class="settings-group">
               <label class="setting-label">Resolution</label>
@@ -228,40 +233,66 @@
             <div class="settings-group">
               <label class="setting-label">Antialiasing</label>
               <select class="setting-input" id="gfx-aa">
-                <option value="off">Off</option>
-                <option value="fxaa">FXAA</option>
                 <option value="taa">TAA</option>
+                <option value="fxaa">FXAA</option>
+                <option value="off">Off</option>
               </select>
             </div>
             <div class="settings-group">
               <label class="setting-label">Shadow Quality</label>
               <select class="setting-input" id="gfx-shadowquality">
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
                 <option value="ultra">Ultra</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
               </select>
             </div>
             <div class="settings-group">
               <label class="setting-label">Decal Quantity</label>
               <select class="setting-input" id="gfx-decals">
-                <option value="off">Off</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
                 <option value="high">High</option>
-                <option value="ultra">Ultra</option>
+                <option value="medium">Medium</option>
+                <option value="off">Off</option>
               </select>
             </div>
             <div class="settings-group">
+              <label class="setting-label">Godrays Quality</label>
+              <select class="setting-input" id="gfx-godrays">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="off">Off</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Distant Object Detail</label>
+              <select class="setting-input" id="gfx-distant">
+                <option value="ultra">Ultra</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label">Object Detail Fade</label>
+              <select class="setting-input" id="gfx-fade">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="settings-group span-2">
               <label class="setting-label setting-label--range" for="gfx-fov">Field of View <output id="gfx-fov-value" for="gfx-fov">80</output></label>
-              <input class="setting-input setting-range" id="gfx-fov" type="range" min="70" max="170" step="1" value="80" />
-              <p class="setting-hint">Applies the next time you start the game. Changing the FOV in the in-game chat settings updates this slider.</p>
+              <input class="setting-input setting-range" id="gfx-fov" type="range" min="60" max="140" step="1" value="80" />
+              <p class="setting-hint">Changing the FOV in the in-game chat settings updates this slider.</p>
               <p class="setting-hint setting-warning" id="gfx-fov-error" hidden>Could not save the field of view. Try again.</p>
             </div>
-            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-godrays" /><span>Godrays</span></label>
-            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-lensflare" /><span>Lens flare</span></label>
-            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-ao" /><span>Ambient occlusion</span></label>
-            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-precip" /><span>Precipitation occlusion</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-ssr" /><span>Screen Space Reflections</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-ao" /><span>Screen Space Ambient Occlusion</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-precip" /><span>Precipitation Occlusion</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-snow" /><span>Snow Shader</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-lensflare" /><span>Lens Flare</span></label>
+            <label class="setting-checkbox-row"><input type="checkbox" id="gfx-hdr64" /><span>64-bit Render Targets</span></label>
             </div>
           </details>
 
