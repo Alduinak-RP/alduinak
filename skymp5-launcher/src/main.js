@@ -63,6 +63,7 @@ const store = new Store({
     nexusOauth:        null,   // { accessToken, refreshToken, expiresAt } (OAuth flow)
     nexusUser:         null,   // { name, isPremium } from the last validation
     isolatedGame:      true,  // play from the isolated game copy instead of skyrimPath
+    gameStore:         '',     // store edition of skyrimPath: Steam, GOG, Epic Games, Microsoft Store or Unknown
     baseDirPath:       '',     // Alduinak base dir: MO2 root, with the game at <base>\skyrim
     forcedDefaultsApplied: false, // server-required graphics defaults seeded once at first install
   }
@@ -210,15 +211,25 @@ function ensureSkyrimPath() {
   if (isValidSkyrimPath(stored)) return stored
   const detected = detectSkyrimPath()
   if (detected) {
-    store.set('skyrimPath', detected)
+    store.set({ skyrimPath: detected, gameStore: gameStoreOf(detected) })
     log(`[detect] Skyrim path auto-detected: ${detected}`)
   }
   return detected
 }
 
-ipcMain.handle('game:detectPath', () => {
-  // Fill-only: the renderer shows the result and Save persists it
-  return { path: detectSkyrimPath() }
+ipcMain.handle('game:detectPath', () => ({ path: detectSkyrimPath() }))
+
+// Store edition by its files; Unknown when no store marker is present
+const gameStoreOf = dir => mo2.detectEdition(dir, 'Unknown')
+
+// The warning shown under the Skyrim path field, null when the folder is usable
+ipcMain.handle('game:checkPath', (_e, dir) => {
+  if (!isValidSkyrimPath(dir)) return { warning: 'This folder is not a valid Skyrim install: SkyrimSE.exe was not found.' }
+  const edition = gameStoreOf(dir)
+  if (edition !== 'Steam' && edition !== 'GOG') return { warning: `${edition} versions of the game are not supported.` }
+  const gv = gameversion.checkGameVersion(dir, edition)
+  if (!gv.ok) return { warning: `Skyrim is version ${gv.version}; version ${gv.required} is required. Skyrim must be downgraded first.` }
+  return { warning: null }
 })
 
 // Window
@@ -307,6 +318,7 @@ ipcMain.handle('settings:save', (_e, data) => {
   const allowed = ['skyrimPath', 'baseDirPath', 'activeServerId', 'mo2Enabled', 'isolatedGame', 'discordPresence']
   const clean = {}
   for (const k of allowed) if (k in data) clean[k] = data[k]
+  if ('skyrimPath' in clean) clean.gameStore = isValidSkyrimPath(clean.skyrimPath) ? gameStoreOf(clean.skyrimPath) : ''
   store.set(clean)
   if ('discordPresence' in clean) setPresenceRunning(gameWasRunning)
 })
@@ -944,12 +956,20 @@ ipcMain.handle('mo2:open', () => {
   catch (err) { return { success: false, error: err.message } }
 })
 
-// Open the portable install (base) folder in the OS file manager.
-ipcMain.handle('install:openFolder', async () => {
-  const dir = store.get('baseDirPath') || mo2.getRoot()
-  if (!dir || !fs.existsSync(dir)) {
-    return { success: false, error: 'No portable install folder yet - set one up first.' }
+// Quick links: the Alduinak install, the detected Skyrim folder and the SKSE logs
+function quickLinkDir(kind) {
+  if (kind === 'install') return store.get('baseDirPath') || mo2.getRoot()
+  if (kind === 'skyrim') return store.get('skyrimPath')
+  if (kind === 'logs') {
+    const prefs = findOriginalPrefsIni()
+    return path.join(prefs ? path.dirname(prefs) : path.join(app.getPath('documents'), 'My Games', MYGAMES_VARIANTS[0]), 'SKSE')
   }
+  return null
+}
+
+ipcMain.handle('folder:open', async (_e, kind) => {
+  const dir = quickLinkDir(kind)
+  if (!dir || !fs.existsSync(dir)) return { success: false, error: `${dir || 'That folder'} does not exist yet.` }
   const err = await shell.openPath(dir)
   return err ? { success: false, error: err } : { success: true }
 })

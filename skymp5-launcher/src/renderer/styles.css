@@ -5,6 +5,8 @@
   padding: 0;
 }
 
+[hidden] { display: none !important; }
+
 /* Tokens */
 :root {
   --gold:         #c9a227;
@@ -441,7 +443,6 @@ html, body {
   margin-bottom: 12px;
 }
 
-.premium-section[hidden] { display: none; }
 
 .premium-box {
   border: 1px solid rgba(201, 162, 39, 0.35);
@@ -717,7 +718,6 @@ html, body {
   animation: fadeIn 0.2s ease;
 }
 
-.modal-overlay[hidden] { display: none; }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -781,7 +781,6 @@ html, body {
   margin-bottom: 18px;
 }
 
-.settings-group[hidden] { display: none; }
 
 .setting-label {
   font-family: 'Barlow Condensed', sans-serif;
@@ -832,28 +831,7 @@ html, body {
 }
 
 .btn-browse:hover { border-color: var(--glass-border-bright); color: var(--parchment); }
-
-.modal-actions {
-  margin-top: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding-top: 18px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.install-status {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(13px * var(--text-scale));
-  color: rgba(232,224,208,0.45);
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.btn-browse:disabled { opacity: 0.4; cursor: default; }
 
 .setting-warning { color: #c9a227; }
 
@@ -873,25 +851,9 @@ html, body {
   word-break: break-word;
 }
 
-#tab-install .install-progress { height: 200px; }
+#tab-trouble .install-progress { height: 200px; }
 
-.btn-save {
-  padding: 9px 22px;
-  background: linear-gradient(to bottom, #d4ab2a, #b08920);
-  border: none;
-  color: rgba(20, 12, 2, 0.9);
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(11px * var(--text-scale));
-  font-weight: 700;
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-save:hover { background: linear-gradient(to bottom, #e8c240, #c49a28); }
-
-/* Server info strip */
+/* Lock badge */
 .badge-locked {
   color: rgba(220, 60, 60, 0.9);
 }

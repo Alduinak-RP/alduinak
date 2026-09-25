@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Skyrim path auto-detection (registry probe) - { path } or { path: null }
   detectSkyrimPath: () => ipcRenderer.invoke('game:detectPath'),
+  checkSkyrimPath:  (dir) => ipcRenderer.invoke('game:checkPath', dir),
 
   // Settings tab - graphics (SkyrimPrefs.ini) and server hotkeys (client settings)
   graphicsLoad: ()  => ipcRenderer.invoke('graphics:load'),
@@ -80,5 +81,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mo2Open:   () => ipcRenderer.invoke('mo2:open'),
 
   // Open the portable install (base) folder in the OS file manager
-  openInstallFolder: () => ipcRenderer.invoke('install:openFolder'),
+  openFolderOf: (kind) => ipcRenderer.invoke('folder:open', kind),
 })

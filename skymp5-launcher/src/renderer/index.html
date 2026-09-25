@@ -137,14 +137,14 @@
 
       <!-- Tab bar -->
       <div class="modal-tabs">
-        <button class="modal-tab active" data-tab="install">Repair</button>
+        <button class="modal-tab active" data-tab="install">Install Options</button>
         <button class="modal-tab" data-tab="settings">Settings</button>
         <button class="modal-tab" data-tab="trouble">Troubleshooting</button>
       </div>
 
       <div class="modal-body">
 
-        <!-- Repair tab -->
+        <!-- Install Options tab -->
         <div class="tab-panel" id="tab-install">
 
           <div class="settings-group">
@@ -168,26 +168,32 @@
           </div>
 
           <div class="settings-group">
-            <label class="setting-label">Repair</label>
-            <div class="vortex-status-row install-buttons-row">
-              <button class="btn-detect-vortex" id="btn-repair-mo2">Repair MO2</button>
-              <button class="btn-detect-vortex" id="btn-repair-game">Repair Game Copy</button>
-              <button class="btn-detect-vortex" id="btn-repair-masters">Repair Cleaned Masters</button>
-              <button class="btn-detect-vortex" id="btn-repair-skse">Repair SKSE</button>
-              <button class="btn-detect-vortex" id="btn-repair-modlist" disabled>Repair Modlist</button>
+            <label class="setting-label">Mod Manager</label>
+            <div class="setting-path-row">
+              <select class="setting-input" id="setting-mod-manager">
+                <option value="mo2">Mod Organizer 2</option>
+                <option value="vortex" disabled>Vortex</option>
+                <option value="none">None</option>
+              </select>
+              <button class="btn-browse" id="btn-open-mo2">Open and Configure Mod Manager</button>
             </div>
-            <p class="setting-hint">Each button deletes the files of its part and restores them from the source; mod archives are downloaded again only when missing or damaged.</p>
-            <p class="setting-hint">With Portable Skyrim Mode and MO2 on, PLAY deletes any file the launcher does not install from the portable game copy, ENB and ReShade included. Your original Skyrim is never touched.</p>
-            <p class="setting-hint">Cleaned masters use the patches and xdelta3 from the Simple Cleaned Masters mod, with thanks to its author.</p>
-            <div class="vortex-status-row" id="isolated-install-group">
-              <span class="vortex-status-dot" id="isolated-status-dot"></span>
-              <span class="vortex-status-text" id="isolated-status-text">Checking…</span>
-            </div>
+            <p class="setting-hint" id="mod-manager-hint"></p>
             <div class="vortex-status-row">
               <span class="vortex-status-dot" id="mo2-status-dot"></span>
               <span class="vortex-status-text" id="mo2-status-text">Checking…</span>
             </div>
-            <pre class="install-progress" id="install-progress"></pre>
+          </div>
+
+          <div class="settings-group">
+            <label class="setting-checkbox-row setting-label">
+              <input type="checkbox" id="setting-isolated-game" />
+              <span>Portable Installation</span>
+            </label>
+            <p class="setting-hint">Alduinak uses a portable install of Skyrim to maintain compatibility with other modlists including singleplayer and other servers. If you are short on disk space, you can disable this option to save about 16gb. A clean install of skyrim is required, delete all files and redownload.</p>
+            <div class="vortex-status-row" id="isolated-install-group">
+              <span class="vortex-status-dot" id="isolated-status-dot"></span>
+              <span class="vortex-status-text" id="isolated-status-text">Checking…</span>
+            </div>
           </div>
 
         </div>
@@ -250,7 +256,7 @@
               <label class="setting-label setting-label--range" for="gfx-fov">Field of View <output id="gfx-fov-value" for="gfx-fov">80</output></label>
               <input class="setting-input setting-range" id="gfx-fov" type="range" min="70" max="170" step="1" value="80" />
               <p class="setting-hint">Applies the next time you start the game. Changing the FOV in the in-game chat settings updates this slider.</p>
-              <p class="setting-hint setting-warning" id="gfx-fov-error" hidden>Could not save the field of view. Try again or press Save Settings.</p>
+              <p class="setting-hint setting-warning" id="gfx-fov-error" hidden>Could not save the field of view. Try again.</p>
             </div>
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-godrays" /><span>Godrays</span></label>
             <label class="setting-checkbox-row"><input type="checkbox" id="gfx-lensflare" /><span>Lens flare</span></label>
@@ -303,32 +309,42 @@
         <div class="tab-panel" id="tab-trouble" hidden>
 
           <div class="settings-group">
-            <label class="setting-label">Portable Skyrim Mode</label>
-            <label class="setting-checkbox-row">
-              <input type="checkbox" id="setting-isolated-game" />
-              <span>Disable this if you are short on disk space.</span>
-            </label>
-            <button class="btn-detect-vortex" id="btn-open-install">Open Portable Install Folder</button>
+            <label class="setting-label">Install</label>
+            <div class="vortex-status-row install-buttons-row">
+              <button class="btn-detect-vortex" id="btn-install-mo2">Install MO2</button>
+              <button class="btn-detect-vortex" id="btn-copy-game">Copy Game</button>
+              <button class="btn-detect-vortex" id="btn-clean-masters">Clean Masters</button>
+              <button class="btn-detect-vortex" id="btn-install-skse">Install SKSE</button>
+              <button class="btn-detect-vortex" id="btn-download-mods" disabled>Download Mods</button>
+            </div>
           </div>
 
           <div class="settings-group">
-            <label class="setting-label">Mod Organizer 2</label>
-            <label class="setting-checkbox-row">
-              <input type="checkbox" id="setting-mo2-enabled" />
-              <span id="mo2-enable-text">Enable MO2 - Disable to use manual installation</span>
-            </label>
-            <div class="vortex-status-row">
-              <button class="btn-detect-vortex" id="btn-open-mo2">Open & Configure MO2</button>
-              <span class="setting-hint" id="mo2-open-warning" hidden>Warning: MO2 takes a moment to start up.</span>
+            <label class="setting-label">Repair</label>
+            <div class="vortex-status-row install-buttons-row">
+              <button class="btn-detect-vortex" id="btn-repair-modlist" disabled>Repair Modlist</button>
+              <button class="btn-detect-vortex" id="btn-repair-game">Repair Game Files</button>
+            </div>
+            <p class="setting-hint">With Portable Installation and MO2 on, PLAY deletes any file the launcher does not install from the portable game copy, ENB and ReShade included. Your original Skyrim is never touched.</p>
+            <p class="setting-hint">Cleaned masters use the patches and xdelta3 from the Simple Cleaned Masters mod, with thanks to its author.</p>
+          </div>
+
+          <div class="settings-group">
+            <label class="setting-label">Console Output</label>
+            <pre class="install-progress" id="install-progress"></pre>
+          </div>
+
+          <div class="settings-group">
+            <label class="setting-label">Quick Links</label>
+            <div class="vortex-status-row install-buttons-row">
+              <button class="btn-detect-vortex" data-open-folder="install">Open Alduinak Install</button>
+              <button class="btn-detect-vortex" data-open-folder="skyrim">Open Skyrim Folder</button>
+              <button class="btn-detect-vortex" data-open-folder="logs">Open Logs Folder</button>
             </div>
           </div>
 
         </div>
 
-        <!-- Actions (always visible) -->
-        <div class="modal-actions">
-          <button class="btn-save" id="btn-save">Save Settings</button>
-        </div>
       </div>
     </div>
   </div>

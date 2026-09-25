@@ -36,6 +36,8 @@ document.querySelectorAll('.modal-tab').forEach(tab => {
     document.querySelectorAll('.tab-panel').forEach(p => { p.hidden = true })
     tab.classList.add('active')
     document.getElementById(`tab-${tab.dataset.tab}`).hidden = false
+    // The ini files may have changed in game or in MO2 since the last look
+    if (tab.dataset.tab === 'settings') loadGameSettingsTab()
   })
 })
 
@@ -95,7 +97,7 @@ function setKey(id, code) {
   showHotkeyConflict()
 }
 function getKey(id) { const el = document.getElementById(id); return el ? (parseInt(el.dataset.code, 10) || 0) : 0 }
-// Shared keys only warn; Save still writes them
+// Shared keys only warn; they are still saved
 function showHotkeyConflict() {
   const interact = getKey('hk-alt-interact')
   const interactClash = !!interact && interact === getKey('ghk-activate')
@@ -164,7 +166,7 @@ function startCapture(btn, canUnbind) {
     e.preventDefault()
     e.stopPropagation()
     if (e.code === 'Escape') { endCapture(true); return }
-    if (canUnbind && e.code === 'Backspace') { endCapture(false); setKey(btn.id, 0); return }
+    if (canUnbind && e.code === 'Backspace') { endCapture(false); setKey(btn.id, 0); saveHotkeys(btn.id); return }
     if (e.code === 'Backspace' && btn.id === 'hk-alt-interact') { endCapture(true); return }
     const entry = KEY_TABLE[e.code]
     if (!entry) {
@@ -175,6 +177,7 @@ function startCapture(btn, canUnbind) {
     }
     endCapture(false)
     setKey(btn.id, entry[0])
+    saveHotkeys(btn.id)
   }
   // Bound on release so the back and forward buttons never reach Chromium's history navigation
   const onMouse = (e) => {
@@ -184,6 +187,7 @@ function startCapture(btn, canUnbind) {
     e.stopPropagation()
     endCapture(false)
     setKey(btn.id, entry[0])
+    saveHotkeys(btn.id)
   }
   btn.classList.add('hotkey-btn--capturing')
   btn.textContent = prompt
@@ -212,7 +216,7 @@ const GFX_INPUT_IDS = [
 const fovInput = document.getElementById('gfx-fov')
 const showFov = () => { const out = document.getElementById('gfx-fov-value'); if (out && fovInput) out.textContent = fovInput.value }
 if (fovInput) fovInput.addEventListener('input', showFov)
-// Stored on release, so closing Settings without Save keeps it
+// Stored on release
 const fovError = document.getElementById('gfx-fov-error')
 if (fovInput) fovInput.addEventListener('change', async () => {
   const r = await window.electronAPI.graphicsSaveFov(fovInput.value).catch(() => null)
@@ -225,7 +229,7 @@ function setInputsDisabled(ids, disabled) {
 let gfxExists = true
 // Graphics live in the MO2 profile inis, which a direct launch never reads
 function lockGfx() {
-  const mo2On = fieldMo2Enabled.checked
+  const mo2On = mo2Selected()
   setInputsDisabled(GFX_INPUT_IDS, !gfxExists || !mo2On)
   const note = document.getElementById('gfx-mo2-off'); if (note) note.hidden = mo2On
 }
@@ -278,46 +282,48 @@ async function loadGameSettingsTab() {
   } catch (err) { /* settings tab is best-effort */ }
 }
 
-async function saveGameSettingsTab() {
-  try {
-    const wm = document.getElementById('gfx-windowmode')
-    const resSel = document.getElementById('gfx-resolution')
-    let width = '', height = ''
-    if (resSel && /^\d+x\d+$/.test(resSel.value)) { const p = resSel.value.split('x'); width = p[0]; height = p[1] }
-    const iy = document.getElementById('gfx-invert-y')
-    if (wm && !wm.disabled) {
-      const val = (id) => { const el = document.getElementById(id); return el ? el.value : '' }
-      const chk = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
-      await window.electronAPI.graphicsSave({
-        windowMode: wm ? wm.value : 'windowed',
-        width, height,
-        invertY: !!(iy && iy.checked),
-        texQuality:    val('gfx-texquality'),
-        aa:            val('gfx-aa'),
-        shadowQuality: val('gfx-shadowquality'),
-        decals:        val('gfx-decals'),
-        fov:           val('gfx-fov'),
-        godrays:       chk('gfx-godrays'),
-        lensFlare:     chk('gfx-lensflare'),
-        ao:            chk('gfx-ao'),
-        precip:        chk('gfx-precip'),
-      })
-    } else if (fovInput) {
-      await window.electronAPI.graphicsSaveFov(fovInput.value)
+// The inis live in the MO2 profile; while it is missing the controls are locked and nothing is written
+async function saveGraphics() {
+  if (document.getElementById('gfx-windowmode').disabled) return
+  const resSel = document.getElementById('gfx-resolution')
+  let width = '', height = ''
+  if (resSel && /^\d+x\d+$/.test(resSel.value)) [width, height] = resSel.value.split('x')
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value : '' }
+  const chk = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
+  await window.electronAPI.graphicsSave({
+    windowMode:    val('gfx-windowmode'),
+    width, height,
+    invertY:       chk('gfx-invert-y'),
+    texQuality:    val('gfx-texquality'),
+    aa:            val('gfx-aa'),
+    shadowQuality: val('gfx-shadowquality'),
+    decals:        val('gfx-decals'),
+    fov:           val('gfx-fov'),
+    godrays:       chk('gfx-godrays'),
+    lensFlare:     chk('gfx-lensflare'),
+    ao:            chk('gfx-ao'),
+    precip:        chk('gfx-precip'),
+  }).catch(() => null)
+}
+for (const id of [...GFX_INPUT_IDS, 'gfx-invert-y']) {
+  const el = document.getElementById(id)
+  if (el) el.addEventListener('change', saveGraphics)
+}
+
+// Saves the section the changed hotkey belongs to
+async function saveHotkeys(id) {
+  if (id.startsWith('ghk-')) {
+    const keys = {}
+    for (const [gid, ev] of Object.entries(GHK_MAP)) {
+      const code = getKey(gid)
+      if (code > 0) keys[ev] = code
     }
-    const ghkFirst = document.getElementById('ghk-activate')
-    if (ghkFirst && !ghkFirst.disabled) {
-      const keys = {}
-      for (const [id, ev] of Object.entries(GHK_MAP)) {
-        const code = getKey(id)
-        if (code > 0) keys[ev] = code
-      }
-      await window.electronAPI.gameHotkeysSave(keys)
-    }
-    const hk = { chatFocus: [28, getKey('hk-chat')].filter(c => c > 0) }
-    for (const [id, [field]] of Object.entries(SERVER_HOTKEYS)) hk[field] = getKey(id)
-    await window.electronAPI.hotkeysSave(hk)
-  } catch (err) { /* best-effort */ }
+    await window.electronAPI.gameHotkeysSave(keys).catch(() => null)
+    return
+  }
+  const hk = { chatFocus: [28, getKey('hk-chat')].filter(c => c > 0) }
+  for (const [sid, [field]] of Object.entries(SERVER_HOTKEYS)) hk[field] = getKey(sid)
+  await window.electronAPI.hotkeysSave(hk).catch(() => null)
 }
 
 // Form fields
@@ -345,7 +351,6 @@ footerServerSelect.addEventListener('change', async () => {
 })
 
 // MO2 fields
-const fieldMo2Enabled = document.getElementById('setting-mo2-enabled')
 const mo2StatusDot    = document.getElementById('mo2-status-dot')
 const mo2StatusText   = document.getElementById('mo2-status-text')
 
@@ -394,8 +399,7 @@ function updateLockState() {
 async function loadSettings() {
   const s = await window.electronAPI.loadSettings()
   fieldSkyrimPath.value = s.skyrimPath || ''
-  // Empty here means main's registry auto-detect already failed.
-  setPathWarning(s.skyrimPath ? '' : DETECT_FAIL_MSG)
+  checkSkyrimPath()
   fieldBaseDir.value = s.baseDirPath || ''
 
   // Footer server selector - dropdown when >1 server, plain text otherwise
@@ -424,12 +428,10 @@ async function loadSettings() {
     renderTopbarDiscord()
   }
 
-  // Restore MO2 settings
-  fieldMo2Enabled.checked = !!s.mo2Enabled
-  refreshMo2Status()
-
-  // Restore isolated-game setting
+  fieldModManager.value = s.mo2Enabled ? 'mo2' : 'none'
   fieldIsolated.checked = !!s.isolatedGame
+  applyModManager()
+  refreshMo2Status()
   refreshIsolatedStatus()
 
   fieldDiscordPresence.checked = !!s.discordPresence
@@ -610,37 +612,42 @@ window.electronAPI.nexusGetUser().then(user => {
   renderTopbarNexus()
 })
 
-// Repair tab
+// Install Options tab
 const isolatedDot      = document.getElementById('isolated-status-dot')
 const isolatedText     = document.getElementById('isolated-status-text')
 const fieldIsolated    = document.getElementById('setting-isolated-game')
 const fieldDiscordPresence = document.getElementById('setting-discord-presence')
-const btnRepairMo2     = document.getElementById('btn-repair-mo2')
-const btnRepairGame    = document.getElementById('btn-repair-game')
-const btnRepairMasters = document.getElementById('btn-repair-masters')
-const btnRepairSkse    = document.getElementById('btn-repair-skse')
-const btnRepairModlist = document.getElementById('btn-repair-modlist')
-const REPAIR_BUTTONS   = [btnRepairMo2, btnRepairGame, btnRepairMasters, btnRepairSkse, btnRepairModlist]
 const isolatedGroup    = document.getElementById('isolated-install-group')
 
-// locks the modlist repair until there's a game to manage
+// Troubleshooting tab
+const btnInstallMo2    = document.getElementById('btn-install-mo2')
+const btnCopyGame      = document.getElementById('btn-copy-game')
+const btnCleanMasters  = document.getElementById('btn-clean-masters')
+const btnInstallSkse   = document.getElementById('btn-install-skse')
+const btnDownloadMods  = document.getElementById('btn-download-mods')
+const btnRepairModlist = document.getElementById('btn-repair-modlist')
+const btnRepairGame    = document.getElementById('btn-repair-game')
+const REPAIR_BUTTONS   = [btnInstallMo2, btnCopyGame, btnCleanMasters, btnInstallSkse, btnDownloadMods, btnRepairModlist, btnRepairGame]
+const MODLIST_BUTTONS  = [btnDownloadMods, btnRepairModlist]
+
+// locks the modlist buttons until there's a game to manage
 function refreshDownloadModsState(st) {
-  if (mo2InstallRunning || repairRunning) return  // button is in Cancel mode or locked; don't fight it
+  if (mo2InstallRunning || repairRunning) return  // a button is in Cancel mode or locked; don't fight it
   const ready = !fieldIsolated.checked || st.ready
-  btnRepairModlist.disabled = !ready
-  btnRepairModlist.title = ready
-    ? ''
-    : 'Install the game files first, or turn off Portable Skyrim Mode in the Troubleshooting tab.'
+  for (const b of MODLIST_BUTTONS) {
+    b.disabled = !ready
+    b.title = ready ? '' : 'Copy the game first, or turn off Portable Installation in Install Options.'
+  }
 }
 
 async function refreshIsolatedStatus() {
   const st = await window.electronAPI.isolatedStatus()
-  // Portable mode off: hide the game-copy button and status instead of explaining them.
+  // Portable mode off: hide the game-copy buttons and status instead of explaining them.
   isolatedGroup.hidden = !fieldIsolated.checked
-  btnRepairGame.hidden = !fieldIsolated.checked
+  btnCopyGame.hidden = btnRepairGame.hidden = !fieldIsolated.checked
   if (!st.ready) {
     isolatedDot.className    = 'vortex-status-dot'
-    isolatedText.textContent = 'Game copy not installed yet - use Repair Game Copy'
+    isolatedText.textContent = 'Game copy not installed yet - press PLAY or Copy Game under Troubleshooting'
   } else if (!fieldIsolated.checked) {
     isolatedDot.className    = 'vortex-status-dot dot-warn'
     isolatedText.textContent = 'Alduinak install exists - playing from the original Skyrim'
@@ -651,14 +658,14 @@ async function refreshIsolatedStatus() {
   refreshDownloadModsState(st)
 }
 
-// Full re-copy of the vanilla files into the portable game copy.
-async function repairGameCopy() {
+// Copies the vanilla files into the portable game copy; force re-copies every file.
+async function copyGame(force) {
   window.electronAPI.removeIsolatedListeners()
   // Game-copy steps stream into the shared install progress log.
   window.electronAPI.onIsolatedProgress(msg => installLive(msg))
-  installLog('Repairing game copy…')
+  installLog(force ? 'Repairing the game files…' : 'Copying the game…')
 
-  const result = await window.electronAPI.createIsolated(fieldBaseDir.value.trim(), { force: true })
+  const result = await window.electronAPI.createIsolated(fieldBaseDir.value.trim(), { force })
   window.electronAPI.removeIsolatedListeners()
 
   if (!result.success) {
@@ -668,74 +675,86 @@ async function repairGameCopy() {
   // The base may have been nested under \Alduinak - reflect what was used.
   if (result.dir) fieldBaseDir.value = result.dir
   installLog('Game copy ready ✓')
-  fieldIsolated.checked = true
-  await window.electronAPI.saveSettings({ isolatedGame: true })
   refreshIsolatedStatus()
   refreshPlayState()
   return true
 }
 
-fieldIsolated.addEventListener('change', refreshIsolatedStatus)
+// Every Install Options field saves as soon as it changes
+const saveSetting = data => window.electronAPI.saveSettings(data)
 
-document.getElementById('btn-save').addEventListener('click', async () => {
-  const data = {
-    skyrimPath:   fieldSkyrimPath.value.trim(),
-    baseDirPath:  fieldBaseDir.value.trim(),
-    mo2Enabled:   fieldMo2Enabled.checked,
-    isolatedGame: fieldIsolated.checked,
-    discordPresence: fieldDiscordPresence.checked,
-  }
-
-  await window.electronAPI.saveSettings(data)
-  await saveGameSettingsTab()
-  refreshMo2Status()
-
-  const btn = document.getElementById('btn-save')
-  btn.textContent = 'Saved!'
-  setTimeout(() => { btn.textContent = 'Save Settings' }, 1400)
+fieldIsolated.addEventListener('change', async () => {
+  await saveSetting({ isolatedGame: fieldIsolated.checked })
+  refreshIsolatedStatus()
+  refreshPlayState()
 })
+fieldDiscordPresence.addEventListener('change', () => saveSetting({ discordPresence: fieldDiscordPresence.checked }))
 
-// Browse folder
+// Warns below the path field about a missing SkyrimSE.exe, a wrong version or an unsupported store
+async function checkSkyrimPath() {
+  const p = fieldSkyrimPath.value.trim()
+  if (!p) { setPathWarning(DETECT_FAIL_MSG); return }
+  const r = await window.electronAPI.checkSkyrimPath(p)
+  setPathWarning(r.warning)
+}
+
+async function setSkyrimPath(p) {
+  fieldSkyrimPath.value = p
+  await saveSetting({ skyrimPath: p.trim() })
+  checkSkyrimPath()
+  refreshPlayState()
+}
+
+fieldSkyrimPath.addEventListener('change', () => setSkyrimPath(fieldSkyrimPath.value))
+fieldBaseDir.addEventListener('change', () => saveSetting({ baseDirPath: fieldBaseDir.value.trim() }))
+
 document.getElementById('btn-browse').addEventListener('click', async () => {
   const folder = await window.electronAPI.openFolder()
-  if (folder) { fieldSkyrimPath.value = folder; setPathWarning('') }
+  if (folder) setSkyrimPath(folder)
 })
 
-// Browse install location (dialog fallback for the Install Location field)
 document.getElementById('btn-browse-base').addEventListener('click', async () => {
   const folder = await window.electronAPI.openFolder('Choose where to install Alduinak (~16 GB: MO2 + game copy)')
-  if (folder) fieldBaseDir.value = folder
+  if (folder) { fieldBaseDir.value = folder; saveSetting({ baseDirPath: folder }) }
 })
 
-// Detect Skyrim from the registry (persists on success)
 document.getElementById('btn-detect-path').addEventListener('click', async () => {
   const r = await window.electronAPI.detectSkyrimPath()
-  if (r && r.path) {
-    fieldSkyrimPath.value = r.path
-    setPathWarning('')
-  } else {
-    setPathWarning(DETECT_FAIL_MSG)
-  }
+  if (r && r.path) setSkyrimPath(r.path)
+  else setPathWarning(DETECT_FAIL_MSG)
 })
 
-// MO2 UI
+// Mod manager: MO2 or None. None installs into the Skyrim folder, so the portable copy is off and locked.
+const fieldModManager = document.getElementById('setting-mod-manager')
+const modManagerHint  = document.getElementById('mod-manager-hint')
+const btnOpenMo2      = document.getElementById('btn-open-mo2')
+const mo2Selected     = () => fieldModManager.value === 'mo2'
 
-const mo2EnableText = document.getElementById('mo2-enable-text')
+function applyModManager() {
+  const mo2 = mo2Selected()
+  fieldIsolated.disabled = !mo2
+  if (!mo2) fieldIsolated.checked = false
+  btnOpenMo2.disabled = !mo2
+  modManagerHint.textContent = mo2
+    ? 'The game starts through MO2, so mods stay out of your Skyrim folder.'
+    : 'Mods install directly into your Skyrim folder and the game starts through SKSE.'
+}
+
+fieldModManager.addEventListener('change', async () => {
+  applyModManager()
+  await saveSetting({ mo2Enabled: mo2Selected(), isolatedGame: fieldIsolated.checked })
+  refreshMo2Status()
+  refreshIsolatedStatus()
+  refreshPlayState()
+})
 
 async function refreshMo2Status() {
   lockGfx()
-  const status  = await window.electronAPI.mo2Status()
-  const enabled = fieldMo2Enabled.checked
-
-  // Checkbox caption reflects what disabling MO2 means.
-  mo2EnableText.textContent = enabled
-    ? 'Launch the game through MO2 - mods stay out of your Skyrim folder'
-    : 'You will need to install mods manually.'
-
+  const status = await window.electronAPI.mo2Status()
   if (!status.installed) {
     mo2StatusDot.className    = 'vortex-status-dot'
-    mo2StatusText.textContent = 'MO2 not installed yet - use Repair MO2'
-  } else if (!enabled) {
+    mo2StatusText.textContent = 'MO2 not installed yet - press PLAY or Install MO2 under Troubleshooting'
+  } else if (!mo2Selected()) {
     mo2StatusDot.className    = 'vortex-status-dot dot-warn'
     mo2StatusText.textContent = `MO2 ${status.version} ready (${status.modCount} mods) - launching without it`
   } else {
@@ -744,30 +763,23 @@ async function refreshMo2Status() {
   }
 }
 
-const btnOpenMo2  = document.getElementById('btn-open-mo2')
-const mo2OpenWarn = document.getElementById('mo2-open-warning')
 btnOpenMo2.addEventListener('click', async () => {
   btnOpenMo2.disabled    = true
-  btnOpenMo2.textContent = 'MO2 is running'
-  if (mo2OpenWarn) mo2OpenWarn.hidden = false
-
+  btnOpenMo2.textContent = 'MO2 is starting…'
   const result = await window.electronAPI.mo2Open()
-  if (!result.success) {
-    alert(`Could not open MO2: ${result.error}`)
-    btnOpenMo2.disabled    = false
-    btnOpenMo2.textContent = 'Open & Configure MO2'
-    if (mo2OpenWarn) mo2OpenWarn.hidden = true
-  }
+  if (!result.success) alert(`Could not open MO2: ${result.error}`)
+  btnOpenMo2.disabled    = false
+  btnOpenMo2.textContent = 'Open and Configure Mod Manager'
 })
 
-fieldMo2Enabled.addEventListener('change', refreshMo2Status)
-
-document.getElementById('btn-open-install').addEventListener('click', async () => {
-  const r = await window.electronAPI.openInstallFolder()
-  if (!r.success) alert(`Could not open the install folder: ${r.error}`)
+document.querySelectorAll('[data-open-folder]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const r = await window.electronAPI.openFolderOf(btn.dataset.openFolder)
+    if (!r.success) installLog(`Could not open the folder: ${r.error}`)
+  })
 })
 
-// Repair tab: shared install progress log
+// Troubleshooting tab: shared install progress log
 // Every repair button streams its progress into the one <pre> below them.
 const installProgressEl = document.getElementById('install-progress')
 let installLogLines = []
@@ -822,43 +834,45 @@ function runInstall(mode, opts) {
   })
 }
 
-// Repair steps: each deletes its section, restores it and resolves true on success.
-async function repairMo2() {
-  installLog('Repairing Mod Organizer 2…')
+// Troubleshooting steps: each runs its part of the install script and resolves true on success.
+async function installMo2() {
+  installLog('Installing Mod Organizer 2…')
   const r = await window.electronAPI.installMo2Only({ force: true })
-  installLog(r.success ? 'MO2 reinstalled ✓' : `Error: ${r.error}`)
+  installLog(r.success ? 'MO2 installed ✓' : `Error: ${r.error}`)
   refreshMo2Status()
   return r.success
 }
 
-async function repairMasters() {
-  installLog('Repairing the cleaned masters…')
+async function cleanMasters() {
+  installLog('Cleaning the masters…')
   const r = await window.electronAPI.installMasters({ force: true })
   if (r.success && r.warning) installLog(`⚠ ${r.warning}`)
   installLog(r.success ? `Cleaned masters ready ✓ (${r.cleaned} cleaned)` : `Error: ${r.error}`)
   return r.success
 }
 
-async function repairSkse() {
-  installLog('Repairing SKSE…')
+async function installSkse() {
+  installLog('Installing SKSE…')
   const r = await window.electronAPI.installSkse({ force: true })
-  installLog(r.success ? 'SKSE reinstalled ✓' : `Error: ${r.error}`)
+  installLog(r.success ? 'SKSE installed ✓' : `Error: ${r.error}`)
   return r.success
 }
 
-// While the modlist rebuilds the same button cancels it, so a wedged run can
+// While the modlist runs its button cancels it, so a wedged run can
 // always be stopped and retried without restarting the launcher.
 let mo2InstallRunning = false
 
-async function repairModlist() {
+// Download Mods installs what is missing or changed; Repair Modlist (force) rebuilds every mod
+async function runModlist(btn, force) {
   if (installBusy()) return false
+  const label = btn.textContent
   mo2InstallRunning = true
-  btnRepairModlist.textContent = 'Cancel Repair'
-  btnRepairModlist.disabled = false
-  installLog('Repairing modlist…')
-  const { success, error, warning, modsTotal } = await runInstall('modlist', { force: true })
+  btn.textContent = 'Cancel'
+  btn.disabled = false
+  installLog(force ? 'Repairing modlist…' : 'Downloading mods…')
+  const { success, error, warning, modsTotal } = await runInstall('modlist', { force })
   mo2InstallRunning = false
-  btnRepairModlist.textContent = 'Repair Modlist'
+  btn.textContent = label
   // Keep the Play button honest right away instead of waiting for the 10s
   // poll - otherwise a stale UPDATE label eats the player's next click.
   refreshPlayState()
@@ -872,7 +886,7 @@ async function repairModlist() {
   return true
 }
 
-// Every repair button is blocked while a step runs; the modlist step re-enables its own button as Cancel.
+// Every button is blocked while a step runs; the modlist steps re-enable their own button as Cancel.
 let repairRunning = false
 
 async function withRepairLock(fn) {
@@ -888,18 +902,21 @@ async function withRepairLock(fn) {
   }
 }
 
-btnRepairMo2.addEventListener('click', () => withRepairLock(repairMo2))
-btnRepairGame.addEventListener('click', () => withRepairLock(repairGameCopy))
-btnRepairMasters.addEventListener('click', () => withRepairLock(repairMasters))
-btnRepairSkse.addEventListener('click', () => withRepairLock(repairSkse))
-btnRepairModlist.addEventListener('click', () => {
-  if (mo2InstallRunning) {
-    installLog('Cancelling…')
-    window.electronAPI.cancelInstall()
-    return
-  }
-  withRepairLock(repairModlist)
-})
+btnInstallMo2.addEventListener('click', () => withRepairLock(installMo2))
+btnCopyGame.addEventListener('click', () => withRepairLock(() => copyGame(false)))
+btnRepairGame.addEventListener('click', () => withRepairLock(() => copyGame(true)))
+btnCleanMasters.addEventListener('click', () => withRepairLock(cleanMasters))
+btnInstallSkse.addEventListener('click', () => withRepairLock(installSkse))
+for (const [btn, force] of [[btnDownloadMods, false], [btnRepairModlist, true]]) {
+  btn.addEventListener('click', () => {
+    if (mo2InstallRunning) {
+      installLog('Cancelling…')
+      window.electronAPI.cancelInstall()
+      return
+    }
+    withRepairLock(() => runModlist(btn, force))
+  })
+}
 
 // PLAY button
 // One click does everything: verify/refresh client files, sync the load
