@@ -326,9 +326,7 @@ function refreshOauth(clientId, refreshToken, oauthBase = OAUTH_BASE) {
 
 module.exports = {
   setLogger,
-  authHeaders,
   oauthUserInfo,
-  getDownloadLink,
   downloadFileEntry,
   oauthLogin,
   refreshOauth,

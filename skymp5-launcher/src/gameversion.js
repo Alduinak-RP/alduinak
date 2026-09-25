@@ -82,4 +82,4 @@ function catalogFrom17(cat) {
     Object.keys(cat).some(k => /^CSV(1M|1CC|2)/.test(k) && k.includes('_') && !/^-?\d+$/.test(k.slice(k.lastIndexOf('_') + 1)))
 }
 
-module.exports = { GAME_VERSION_REQUIRED, GAME_VERSION_GOG, GAME_DOWNGRADE_URL, readPeFileVersion, checkGameVersion, catalogFrom17 }
+module.exports = { GAME_VERSION_GOG, GAME_DOWNGRADE_URL, checkGameVersion, catalogFrom17 }

@@ -875,23 +875,6 @@ html, body {
 
 #tab-install .install-progress { height: 200px; }
 
-.btn-install {
-  padding: 9px 18px;
-  background: transparent;
-  border: 1px solid var(--glass-border);
-  color: rgba(201,162,39,0.6);
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: calc(11px * var(--text-scale));
-  font-weight: 500;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-install:hover:not(:disabled) { border-color: var(--glass-border-bright); color: var(--gold); }
-.btn-install:disabled { opacity: 0.4; cursor: default; }
-
 .btn-save {
   padding: 9px 22px;
   background: linear-gradient(to bottom, #d4ab2a, #b08920);

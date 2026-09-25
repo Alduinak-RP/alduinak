@@ -30,12 +30,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchNews:       () => ipcRenderer.invoke('api:news'),
   fetchServerInfo: () => ipcRenderer.invoke('api:serverinfo'),
   fetchModlist:    () => ipcRenderer.invoke('api:modlist'),
-  fetchServers:    () => ipcRenderer.invoke('api:servers'),
 
   // Discord OAuth
   discordLogin:   () => ipcRenderer.invoke('discord:login'),
   discordLogout:  () => ipcRenderer.invoke('discord:logout'),
-  discordGetUser: () => ipcRenderer.invoke('discord:getUser'),
 
   // Launcher update check + in-app install
   checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
@@ -61,15 +59,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installMo2Only: (opts) => ipcRenderer.invoke('install:mo2only', opts),
   installSkse:    (opts) => ipcRenderer.invoke('install:skse', opts),
   installMasters: (opts) => ipcRenderer.invoke('install:masters', opts),
-  // Read-only scan of every section - { ok, issues: [{ kind, path, fix }], notes }
   onInstallProgress: (cb) =>
     ipcRenderer.on('install:progress', (_e, data) => cb(data)),
   onInstallComplete: (cb) =>
     ipcRenderer.on('install:complete',  (_e, data) => cb(data)),
-  removeInstallListeners: () => {
-    ipcRenderer.removeAllListeners('install:progress')
-    ipcRenderer.removeAllListeners('install:complete')
-  },
 
   // Nexus Mods login (OAuth)
   nexusGetUser: ()    => ipcRenderer.invoke('nexus:getUser'),

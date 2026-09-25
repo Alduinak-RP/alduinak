@@ -849,8 +849,6 @@ ipcMain.handle('api:serverinfo', async () => {
 
 // Discord OAuth
 
-ipcMain.handle('discord:getUser', () => store.get('discordUser') || null)
-
 ipcMain.handle('discord:logout', () => {
   store.set('discordUser',   null)
   store.set('gameProfileId', null)
@@ -1415,16 +1413,6 @@ function seedProfilePrefs(skyrimPath) {
 }
 
 // Servers
-ipcMain.handle('api:servers', async () => {
-  try {
-    const servers = await fetchJSON(`${config.apiUrl}/api/servers`)
-    if (Array.isArray(servers) && servers.length > 0) store.set('cachedServers', servers)
-    return servers
-  } catch {
-    return store.get('cachedServers') || []
-  }
-})
-
 // Modlist
 ipcMain.handle('api:modlist', async () => {
   try {
