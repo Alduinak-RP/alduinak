@@ -1218,8 +1218,6 @@ async function loadServerInfo() {
   }
 
   updateLockState()
-
-  strip.hidden = false
 }
 
 // Launcher update check
