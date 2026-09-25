@@ -935,6 +935,23 @@ function readModHash(modName) {
  * meta.ini - directly comparable to the summed directive sizes from the
  * manifest. Returns -1 when the folder is missing or unreadable.
  */
+// Files a cheat would swap: code, plugins and compiled scripts. These are hashed on every Play; the rest only sized.
+const RISKY_FILE_RE = /\.(dll|exe|esp|esm|esl|pex)$/i
+
+// Why the risky files under dir differ from the manifest directives, null when they all match; never uses a cache, so a restored mtime cannot hide an edit
+async function riskyFileProblem(dir, files) {
+  const expected = new Map(files.filter(f => RISKY_FILE_RE.test(f.to) && f.sha256).map(f => [f.to.toLowerCase(), String(f.sha256).toLowerCase()]))
+  const present = listFilesRel(dir).filter(rel => RISKY_FILE_RE.test(rel))
+  for (const rel of present) {
+    const want = expected.get(rel.toLowerCase())
+    if (!want) return `unexpected file ${rel}`
+    if ((await sha256File(path.join(dir, rel))).toLowerCase() !== want) return `modified file ${rel}`
+  }
+  const have = new Set(present.map(r => r.toLowerCase()))
+  for (const to of expected.keys()) if (!have.has(to)) return `missing file ${to}`
+  return null
+}
+
 function modFolderSize(modName) {
   const folder = String(modName).replace(/[<>:"/\\|?*]/g, '')
   const root = path.join(getModsDir(), folder)
@@ -1413,6 +1430,8 @@ module.exports = {
   applyMod,
   readModHash,
   modFolderSize,
+  riskyFileProblem,
+  RISKY_FILE_RE,
   applyRootFiles,
   setModlistOrder,
   setPlugins,

@@ -1337,15 +1337,25 @@ async function copyGameDir(src, dst) {
   return { success: true, copied }
 }
 
-// Vanilla files in the game copy that are missing or the wrong size compared
-// to the original install; a cleaned master counts as intact.
-function vanillaMismatches(src, dir) {
+// Vanilla files in the game copy that are missing, the wrong size, or (for the
+// exe, dlls and masters) a different hash than the original install; a cleaned master counts as intact.
+async function vanillaMismatches(src, dir) {
   const sizeOf = p => { try { return fs.statSync(p).size } catch { return -1 } }
   const bad = []
   for (const job of vanillaJobs(src)) {
-    const want = sizeOf(path.join(src, job.sub, job.rel))
-    const have = sizeOf(path.join(dir, job.sub, job.rel))
-    if (want >= 0 && have !== want && !cleanmasters.cleanedSizes(job.rel).includes(have)) bad.push(job)
+    const from = path.join(src, job.sub, job.rel)
+    const to   = path.join(dir, job.sub, job.rel)
+    const want = sizeOf(from)
+    const have = sizeOf(to)
+    if (want < 0) continue
+    const cleaned = cleanmasters.MASTERS.find(mm => mm.name.toLowerCase() === job.rel.toLowerCase())?.variants.find(v => v.dstSize === have)
+    if (have !== want && !cleaned) { bad.push(job); continue }
+    if (!mo2.RISKY_FILE_RE.test(job.rel)) continue
+    try {
+      const got = await mo2.sha256File(to)
+      const ok = cleaned ? (!cleaned.dstSha256 || got === cleaned.dstSha256) : got === await mo2.hashCached(from, fs.statSync(from))
+      if (!ok) bad.push(job)
+    } catch { bad.push(job) }
   }
   return bad
 }
@@ -1362,7 +1372,7 @@ async function ensureVanillaIntegrity(gamePath) {
       // No source to verify against; the launch gate still blocks a broken copy.
       return { ok: true, warning: null }
     }
-    const bad = vanillaMismatches(original, gamePath)
+    const bad = await vanillaMismatches(original, gamePath)
     if (bad.length === 0) return { ok: true, warning: null }
     log(`[integrity] repairing ${bad.length} vanilla file(s): ${bad.map(j => j.rel).join(', ')}`)
     let done = 0
@@ -2510,7 +2520,7 @@ async function runMO2Install(opts = {}) {
       mo2.clearBuildCache()
       mo2.clearCache()
     }
-    const modChanged = m => {
+    const modChanged = async m => {
       if (force) return true
       if (!fs.existsSync(modFolderPath(m))) return true
       if (!m.hash) return true                     // pre-hash manifest: be safe, reinstall
@@ -2519,17 +2529,23 @@ async function runMO2Install(opts = {}) {
       // actual bytes. The install-time hash stamp alone cannot see files an
       // AV quarantined or a player deleted; a mismatch rebuilds the mod.
       const files = Array.isArray(m.files) ? m.files : []
-      if (!files.length || !files.every(f => Number.isFinite(f.size))) return false
-      const expected = files.reduce((a, f) => a + f.size, 0)
-      const actual = mo2.modFolderSize(m.name)
-      if (actual === -1) {
+      if (files.length && files.every(f => Number.isFinite(f.size))) {
+        const expected = files.reduce((a, f) => a + f.size, 0)
+        const actual = mo2.modFolderSize(m.name)
         // Unreadable mid-scan (AV holding a handle): do not wipe a mod over a
         // transient lock, only over a real size mismatch.
-        log(`[mo2-install] ${m.name}: folder unreadable during verify - skipping size check`)
-        return false
+        if (actual === -1) log(`[mo2-install] ${m.name}: folder unreadable during verify - skipping size check`)
+        else if (actual !== expected) {
+          log(`[mo2-install] ${m.name}: folder is ${actual} bytes, manifest expects ${expected} - repairing`)
+          return true
+        }
       }
-      if (actual !== expected) {
-        log(`[mo2-install] ${m.name}: folder is ${actual} bytes, manifest expects ${expected} - repairing`)
+      // Code, plugins and scripts are hashed every time, so a same-size swap still repairs the mod
+      let risky = null
+      try { risky = await mo2.riskyFileProblem(modFolderPath(m), files) }
+      catch (err) { log(`[mo2-install] ${m.name}: could not hash its files (${err.message}) - skipping`) }
+      if (risky) {
+        log(`[mo2-install] ${m.name}: ${risky} - repairing`)
         return true
       }
       return false
@@ -2537,11 +2553,17 @@ async function runMO2Install(opts = {}) {
     const rootSetUp      = fs.existsSync(path.join(skyrimPath, 'skse64_loader.exe'))
     const rootChanged    = (store.get('installedRootHash') || '') !== (manifest.rootHash || '')
     const rootMissing    = (manifest.root || []).some(f => !fs.existsSync(path.join(skyrimPath, ...String(f.to).split('/'))))
-    const needsRoot      = (force || !rootSetUp || rootChanged || rootMissing)
-    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} filesMissing=${rootMissing} force=${force} -> needsRoot=${needsRoot}`)
+    // Root code (the SKSE loader, preloader dlls) is hashed on every Play like mod code
+    let rootModified = false
+    for (const f of (manifest.root || []).filter(f => f.sha256 && mo2.RISKY_FILE_RE.test(f.to))) {
+      const p = path.join(skyrimPath, ...String(f.to).split('/'))
+      if (fs.existsSync(p) && (await mo2.sha256File(p).catch(() => '')).toLowerCase() !== String(f.sha256).toLowerCase()) rootModified = true
+    }
+    const needsRoot      = (force || !rootSetUp || rootChanged || rootMissing || rootModified)
+    log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} filesMissing=${rootMissing} modified=${rootModified} force=${force} -> needsRoot=${needsRoot}`)
     const modsToInstall  = []
     for (let i = 0; i < manifest.mods.length; i++) {
-      if (modChanged(manifest.mods[i])) modsToInstall.push(manifest.mods[i])
+      if (await modChanged(manifest.mods[i])) modsToInstall.push(manifest.mods[i])
       if ((i + 1) % 10 === 0 || i + 1 === manifest.mods.length) {
         send('install:progress', { phase: 'verify', index: i + 1, total: manifest.mods.length })
       }
