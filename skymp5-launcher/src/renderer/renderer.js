@@ -623,11 +623,8 @@ const btnRepairMo2     = document.getElementById('btn-repair-mo2')
 const btnRepairGame    = document.getElementById('btn-repair-game')
 const btnRepairMasters = document.getElementById('btn-repair-masters')
 const btnRepairSkse    = document.getElementById('btn-repair-skse')
-const btnRepairClient  = document.getElementById('btn-repair-client')
 const btnRepairModlist = document.getElementById('btn-repair-modlist')
-const btnRepairAll     = document.getElementById('btn-repair-all')
-const btnCheckFiles    = document.getElementById('btn-check-files')
-const REPAIR_BUTTONS   = [btnRepairMo2, btnRepairGame, btnRepairMasters, btnRepairSkse, btnRepairClient, btnRepairModlist, btnRepairAll, btnCheckFiles]
+const REPAIR_BUTTONS   = [btnRepairMo2, btnRepairGame, btnRepairMasters, btnRepairSkse, btnRepairModlist]
 const isolatedGroup    = document.getElementById('isolated-install-group')
 
 // locks the modlist repair until there's a game to manage
@@ -829,7 +826,7 @@ function runInstall(mode, opts) {
   })
 }
 
-// Repair steps: each deletes its section, restores it and resolves true on success so Repair All can chain them.
+// Repair steps: each deletes its section, restores it and resolves true on success.
 async function repairMo2() {
   installLog('Repairing Mod Organizer 2…')
   const r = await window.electronAPI.installMo2Only({ force: true })
@@ -851,14 +848,6 @@ async function repairSkse() {
   const r = await window.electronAPI.installSkse({ force: true })
   installLog(r.success ? 'SKSE reinstalled ✓' : `Error: ${r.error}`)
   return r.success
-}
-
-async function repairClientFiles() {
-  if (installBusy()) return false
-  installLog('Repairing the SkyMP client…')
-  const { success, error } = await runInstall('client', { force: true })
-  installLog(success ? 'SkyMP client reinstalled ✓' : `Error: ${error}`)
-  return success
 }
 
 // While the modlist rebuilds the same button cancels it, so a wedged run can
@@ -887,30 +876,7 @@ async function repairModlist() {
   return true
 }
 
-// Check Files: one line per issue, capped so the 300-line log keeps the summary; main writes every line to install.log.
-const CHECK_FIX_LABELS = { mo2: 'MO2', game: 'Game Copy', masters: 'Cleaned Masters', skse: 'SKSE', client: 'SkyMP Client', modlist: 'Modlist' }
-const CHECK_LOG_CAP = 250
-
-function formatCheckIssue(issue) {
-  return `[${issue.kind}] ${issue.path}  ->  Repair ${CHECK_FIX_LABELS[issue.fix] || issue.fix}`
-}
-
-async function checkFiles() {
-  installLog('Checking files…')
-  const r = await window.electronAPI.checkFiles()
-  if (!r.ok) {
-    installLog(`Error: ${r.error}`)
-    return false
-  }
-  for (const note of r.notes || []) installLog(`⚠ ${note}`)
-  const lines = r.issues.map(formatCheckIssue)
-  for (const line of lines.slice(0, CHECK_LOG_CAP)) installLog(line)
-  if (lines.length > CHECK_LOG_CAP) installLog(`… and ${lines.length - CHECK_LOG_CAP} more (see install.log in the launcher data folder)`)
-  installLog(lines.length ? `${lines.length} issue(s) found` : 'All files OK ✓')
-  return true
-}
-
-// Every repair button is blocked while a step (or the Repair All chain) runs; the modlist step re-enables its own button as Cancel.
+// Every repair button is blocked while a step runs; the modlist step re-enables its own button as Cancel.
 let repairRunning = false
 
 async function withRepairLock(fn) {
@@ -930,7 +896,6 @@ btnRepairMo2.addEventListener('click', () => withRepairLock(repairMo2))
 btnRepairGame.addEventListener('click', () => withRepairLock(repairGameCopy))
 btnRepairMasters.addEventListener('click', () => withRepairLock(repairMasters))
 btnRepairSkse.addEventListener('click', () => withRepairLock(repairSkse))
-btnRepairClient.addEventListener('click', () => withRepairLock(repairClientFiles))
 btnRepairModlist.addEventListener('click', () => {
   if (mo2InstallRunning) {
     installLog('Cancelling…')
@@ -939,26 +904,6 @@ btnRepairModlist.addEventListener('click', () => {
   }
   withRepairLock(repairModlist)
 })
-btnCheckFiles.addEventListener('click', () => withRepairLock(checkFiles))
-
-btnRepairAll.addEventListener('click', () => withRepairLock(async () => {
-  const steps = [
-    ['MO2', repairMo2],
-    ...(fieldIsolated.checked ? [['Game Copy', repairGameCopy]] : []),
-    ['Cleaned Masters', repairMasters],
-    ['SKSE', repairSkse],
-    ['SkyMP Client', repairClientFiles],
-    ['Modlist', repairModlist],
-  ]
-  installLog(`Repair All: ${steps.map(s => s[0]).join(', ')}`)
-  for (const [name, step] of steps) {
-    if (!(await step())) {
-      installLog(`Repair All stopped at ${name}.`)
-      return
-    }
-  }
-  installLog('Repair All finished ✓')
-}))
 
 // PLAY button
 // One click does everything: verify/refresh client files, sync the load

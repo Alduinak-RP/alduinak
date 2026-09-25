@@ -62,7 +62,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installSkse:    (opts) => ipcRenderer.invoke('install:skse', opts),
   installMasters: (opts) => ipcRenderer.invoke('install:masters', opts),
   // Read-only scan of every section - { ok, issues: [{ kind, path, fix }], notes }
-  checkFiles:     () => ipcRenderer.invoke('install:check'),
   onInstallProgress: (cb) =>
     ipcRenderer.on('install:progress', (_e, data) => cb(data)),
   onInstallComplete: (cb) =>
