@@ -854,7 +854,8 @@ function skseSourceFor(gameDir) {
  *
  * @returns {{ folder: string|null }}  the scripts-mod folder, if one was made
  */
-async function installSkse(archivePath, gameDir) {
+// direct copies SKSE's Data files into the game's Data (Mod Manager None) instead of an MO2 mod
+async function installSkse(archivePath, gameDir, direct = false) {
   const tmp = path.join(getRoot(), '.skse')
   try { fs.rmSync(lp(tmp), { recursive: true, force: true }) } catch {}
   await extractArchive(archivePath, tmp)
@@ -880,7 +881,9 @@ async function installSkse(archivePath, gameDir) {
     let folder = null
     const dataDir = fs.readdirSync(rootDir, { withFileTypes: true })
       .find(e => e.isDirectory() && e.name.toLowerCase() === 'data')
-    if (dataDir) {
+    if (dataDir && direct) {
+      copyTree(path.join(rootDir, dataDir.name), path.join(gameDir, 'Data'))
+    } else if (dataDir) {
       folder = 'SKSE'
       const modDir = path.join(getModsDir(), folder)
       try { fs.rmSync(lp(modDir), { recursive: true, force: true }) } catch {}
@@ -935,6 +938,69 @@ function readModHash(modName) {
  * meta.ini - directly comparable to the summed directive sizes from the
  * manifest. Returns -1 when the folder is missing or unreadable.
  */
+// Mod Manager None: mods go straight into the game's Data, and this record in the game root says which files each one owns
+const DIRECT_RECORD = 'alduinak-installed.json'
+
+function readDirectRecord(gameDir) {
+  try { return JSON.parse(fs.readFileSync(path.join(gameDir, DIRECT_RECORD), 'utf8')) } catch { return { mods: {} } }
+}
+
+function writeDirectRecord(gameDir, record) {
+  fs.writeFileSync(path.join(gameDir, DIRECT_RECORD), JSON.stringify(record, null, 2))
+}
+
+function copyTree(from, to) {
+  for (const rel of listFilesRel(from)) {
+    const dest = path.join(to, ...rel.split('/'))
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.copyFileSync(path.join(from, ...rel.split('/')), dest)
+  }
+}
+
+async function applyModDirect(gameDir, mod, extractedDirs) {
+  const dataDir = path.join(gameDir, 'Data')
+  try {
+    for (const f of mod.files) await writeDirective(f, dataDir, extractedDirs)
+  } catch (err) {
+    return { error: err.message }
+  }
+  const record = readDirectRecord(gameDir)
+  record.mods[mod.name] = { hash: mod.hash || '', files: mod.files.map(f => f.to) }
+  writeDirectRecord(gameDir, record)
+  return {}
+}
+
+// Deletes the files of recorded mods the manifest dropped, unless a kept mod owns the same path
+function pruneDirectMods(gameDir, keepNames) {
+  const record = readDirectRecord(gameDir)
+  const keep = new Set(keepNames)
+  const owned = new Set(Object.entries(record.mods).filter(([n]) => keep.has(n)).flatMap(([, r]) => r.files.map(f => f.toLowerCase())))
+  for (const [name, r] of Object.entries(record.mods)) {
+    if (keep.has(name)) continue
+    for (const to of r.files) {
+      if (!owned.has(to.toLowerCase())) try { fs.rmSync(path.join(gameDir, 'Data', ...to.split('/')), { force: true }) } catch {}
+    }
+    delete record.mods[name]
+    _log(`removed dropped mod ${name} from the game folder`)
+  }
+  writeDirectRecord(gameDir, record)
+}
+
+// Why a mod installed straight into Data differs from the manifest, null when it matches; sizes for everything, hashes for risky files
+async function directModProblem(gameDir, mod) {
+  const rec = readDirectRecord(gameDir).mods[mod.name]
+  if (!rec || rec.hash !== (mod.hash || '')) return 'not installed at this version'
+  for (const f of mod.files || []) {
+    const p = path.join(gameDir, 'Data', ...f.to.split('/'))
+    let size = -1
+    try { size = fs.statSync(p).size } catch {}
+    if (size < 0) return `missing file ${f.to}`
+    if (Number.isFinite(f.size) && size !== f.size) return `resized file ${f.to}`
+    if (RISKY_FILE_RE.test(f.to) && f.sha256 && (await sha256File(p)).toLowerCase() !== String(f.sha256).toLowerCase()) return `modified file ${f.to}`
+  }
+  return null
+}
+
 // Files a cheat would swap: code, plugins and compiled scripts. These are hashed on every Play; the rest only sized.
 const RISKY_FILE_RE = /\.(dll|exe|esp|esm|esl|pex)$/i
 
@@ -1431,6 +1497,10 @@ module.exports = {
   readModHash,
   modFolderSize,
   riskyFileProblem,
+  readDirectRecord,
+  applyModDirect,
+  pruneDirectMods,
+  directModProblem,
   RISKY_FILE_RE,
   applyRootFiles,
   setModlistOrder,

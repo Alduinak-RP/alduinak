@@ -805,9 +805,11 @@ ipcMain.handle('gameHotkeys:save', (_e, keys) => {
 //      Settings tab default when the ini doesn't specify one)
 //   • Wait unbound (T, pad Back) → controlmap override (waiting is disabled here)
 function applyForcedServerDefaults(gamePath) {
+  // The profile inis below belong to MO2; Mod Manager None never touches the player's own inis
+  const viaMO2 = store.get('mo2Enabled')
   // Graphics: force borderless window mode. ini.write preserves every other
   // key, including whatever resolution the player's ini carries.
-  if (!store.get('forcedDefaultsApplied')) {
+  if (viaMO2 && !store.get('forcedDefaultsApplied')) {
     try {
       ini.write(skyrimPrefsPath(), {
         Display: { 'bFull Screen': '0', 'bBorderless': '1' },
@@ -834,6 +836,7 @@ function applyForcedServerDefaults(gamePath) {
   } catch (err) {
     log('[defaults] could not write Skyrim.ccc:', err.message)
   }
+  if (!viaMO2) return
   // Profile ini: kill the Bethesda.net platform, which drives the "AE content available for download" prompt and the CC news.
   try {
     const dest = ensureProfileIni('skyrim.ini')
@@ -1984,11 +1987,25 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   return problems
 }
 
+// Mod Manager None plays from the player's own folder, so instead of deleting anything the launch refuses
+// dlls it did not install: SKSE plugins, and proxies like dxgi.dll in the game root
+function unknownDirectDlls(gamePath) {
+  const owned = new Set(Object.values(mo2.readDirectRecord(gamePath).mods).flatMap(r => r.files.map(f => `data/${f.toLowerCase()}`)))
+  for (const f of [...VANILLA_ROOT_FILES, ...PRELOADER_DLLS, ...(store.get('rootFiles') || [])]) owned.add(String(f).toLowerCase())
+  const dlls = dir => { try { return fs.readdirSync(path.join(gamePath, dir)).filter(n => /\.dll$/i.test(n)).map(n => dir ? `${dir}/${n}` : n) } catch { return [] } }
+  return [...dlls(''), ...dlls('Data/SKSE/Plugins')]
+    .filter(rel => !owned.has(rel.toLowerCase()) && !/(^|\/)skse64_[^/]*\.dll$/i.test(rel))
+}
+
 async function prepareForLaunch(skyrimPath, viaMO2) {
   ensureClientDirs(skyrimPath)
 
   const problem = gameSourceProblem(skyrimPath)
   if (problem) return { success: false, error: problem }
+  if (!viaMO2) {
+    const unknown = unknownDirectDlls(skyrimPath)
+    if (unknown.length) return { success: false, error: `Remove these files from your Skyrim folder, or choose Mod Organizer 2 under Install Options: ${unknown.join(', ')}` }
+  }
 
   quarantineContentCatalogs()
 
@@ -2199,12 +2216,12 @@ ipcMain.on('install:start', (_e, mode, opts) => {
 
   let fn
   if (mode === 'mo2') {
-    fn = runMO2Install()
+    fn = runModlistInstall()
   } else if (mode === 'modlist') {
-    fn = runMO2Install({ force })
+    fn = runModlistInstall({ force })
   } else {
     // Auto mode (used by the Play button) - delegate based on mo2Enabled setting
-    fn = store.get('mo2Enabled') ? runMO2Install() : runDirectInstall()
+    fn = runModlistInstall()
   }
   fn.catch(err => {
     log('[install] Unhandled error:', err.message)
@@ -2314,37 +2331,6 @@ ipcMain.handle('install:skse', async (_e, opts) => {
 // Files under Data/Platform and Data/SKSE/Plugins written by the launcher, Skyrim Platform or SKSE rather than shipped in a mod.
 const CLIENT_OWN_FILE_RES = [/^data\/platform\/(logs|pluginsnoload|pluginsdev)\//, /skymp5-client-settings\.txt$/, /\.log$/, /^data\/skse\/plugins\/skse64_/]
 
-// Direct install (no mod manager)
-
-async function runDirectInstall() {
-  const skyrimPath = effectiveGamePath()
-  const srv        = activeServer()
-
-  const fail = (msg) => {
-    log('[install] ABORT:', msg)
-    send('install:complete', { success: false, error: msg })
-    installing = false
-  }
-
-  if (!skyrimPath) return fail('Skyrim path not configured.')
-  if (!srv)        return fail('No server selected - open Settings and choose a server.')
-
-  // Vanilla integrity (repairs portable copies, warns for the real install).
-  const integrity = await ensureVanillaIntegrity(skyrimPath)
-  if (!integrity.ok) return fail(integrity.error)
-  const masters = await ensureCleanedMasters(skyrimPath)
-  const warning = [integrity.warning, masters.warning].filter(Boolean).join(' | ')
-
-  let serverInfo = null
-  try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
-
-  ensureClientDirs(skyrimPath)
-  writeClientSettings(clientSettingsPath(), srv, serverInfo)
-  applyForcedServerDefaults(skyrimPath)
-  send('install:complete', { success: true, ...(warning ? { warning } : {}) })
-  installing = false
-}
-
 // Filename pattern for a Nexus archive: downloads embed the mod id (…-17230-…); a renamed
 // file still matches on the mod's name words. `version` additionally pins the release
 // (Nexus encodes v2020.3 as "2020-3" in filenames).
@@ -2373,8 +2359,8 @@ function openDownloadList(downloadsDir, missing) {
   shell.openExternal(`${config.apiUrl}/api/nexus-downloads${query}`)
 }
 
-// MO2 install
-// Full modpack pipeline: MO2 itself → manifest replay, whose client mod carries the SkyMP client.
+// Modlist install
+// Full modpack pipeline: MO2 itself (unless Mod Manager is None) → manifest replay, whose client mod carries the SkyMP client.
 // Mods are reproduced from the backend's compiled install manifest (download +
 // verify each archive, extract once, apply per-file directives) so every player
 // gets the reference install's exact, byte-identical layout.
@@ -2396,13 +2382,15 @@ async function installSkseIntoRoot(skyrimPath) {
   const name = await mo2.downloadToDownloads(skse.url, skse.fileName, downloadProgress(`Downloading SKSE (${skse.edition})`))
   send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
   const archive = path.join(mo2.getDownloadsDir(), name)
-  await mo2.installSkse(archive, skyrimPath)
+  await mo2.installSkse(archive, skyrimPath, !store.get('mo2Enabled'))
   try { fs.rmSync(archive, { force: true }) } catch {}
 }
 
 // opts.force rebuilds every mod and the SKSE root step from scratch (Repair Modlist).
-async function runMO2Install(opts = {}) {
+// Mod Manager None (direct) installs the same mods straight into the game's Data.
+async function runModlistInstall(opts = {}) {
   const force       = opts.force === true
+  const direct      = !store.get('mo2Enabled')
   _downloadListOpened = false
   const fail = (msg) => {
     log('[mo2-install] ABORT:', msg)
@@ -2431,14 +2419,15 @@ async function runMO2Install(opts = {}) {
     const vanillaWarning = integrity.warning || null
 
     // 1. MO2 itself, the portable instance, and the nxm:// handler
-    await mo2.ensureInstalled(msg =>
-      send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
-
     let serverInfo = null
     try { serverInfo = await fetchJSON(serverInfoUrl()) } catch {}
-    mo2.ensureInstance(skyrimPath, serverInfo?.loadOrder)
-    mo2.registerNxmHandler()
-    seedProfilePrefs(store.get('skyrimPath') || skyrimPath)
+    if (!direct) {
+      await mo2.ensureInstalled(msg =>
+        send('install:progress', { phase: 'download', file: msg, index: 0, total: 0, skipped: false }))
+      mo2.ensureInstance(skyrimPath, serverInfo?.loadOrder)
+      mo2.registerNxmHandler()
+      seedProfilePrefs(store.get('skyrimPath') || skyrimPath)
+    }
     applyForcedServerDefaults(skyrimPath)
 
     // 2. Mods from the compiled install manifest
@@ -2460,7 +2449,7 @@ async function runMO2Install(opts = {}) {
     if (force) {
       // Every Creation file is hashed again and nothing stray in overwrite survives
       try { fs.rmSync(path.join(skyrimPath, CREATIONS_STAMP), { force: true }) } catch {}
-      const wiped = mo2.cleanOverwrite()
+      const wiped = direct ? [] : mo2.cleanOverwrite()
       if (wiped.length > 0) log(`[mo2-install] cleaned overwrite: ${wiped.join(', ')}`)
     }
 
@@ -2484,10 +2473,15 @@ async function runMO2Install(opts = {}) {
       const order = (Array.isArray(manifest.order) && manifest.order.length)
         ? manifest.order.slice()
         : manifest.mods.map(m => m.name)
-      if (fs.existsSync(path.join(mo2.getModsDir(), 'SKSE')) && !order.includes('SKSE')) order.push('SKSE')
-      mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
-      mo2.setPlugins(manifest.plugins)
+      if (direct) {
+        mo2.pruneDirectMods(skyrimPath, manifest.mods.map(m => m.name))   // plugins.txt is synced at launch
+      } else {
+        if (fs.existsSync(path.join(mo2.getModsDir(), 'SKSE')) && !order.includes('SKSE')) order.push('SKSE')
+        mo2.setModlistOrder(order)        // also prunes managed mods dropped from the manifest
+        mo2.setPlugins(manifest.plugins)
+      }
       store.set('installedRootHash', manifest.rootHash || '')
+      store.set('rootFiles', (manifest.root || []).map(f => String(f.to)))
       // The launch gate compares this with the backend's files version
       if (clientFilesVersion) store.set('filesVersion', clientFilesVersion)
     }
@@ -2522,6 +2516,13 @@ async function runMO2Install(opts = {}) {
     }
     const modChanged = async m => {
       if (force) return true
+      if (direct) {
+        let problem = null
+        try { problem = await mo2.directModProblem(skyrimPath, m) }
+        catch (err) { log(`[mo2-install] ${m.name}: could not check its files (${err.message}) - skipping`) }
+        if (problem) log(`[mo2-install] ${m.name}: ${problem} - installing`)
+        return !!problem
+      }
       if (!fs.existsSync(modFolderPath(m))) return true
       if (!m.hash) return true                     // pre-hash manifest: be safe, reinstall
       if (mo2.readModHash(m.name) !== m.hash) return true
@@ -2672,7 +2673,9 @@ async function runMO2Install(opts = {}) {
         showMod(0)
         try {
           await ensureExtracted(ids, showMod)
-          const r = await mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId, mod.hash)
+          const r = direct
+            ? await mo2.applyModDirect(skyrimPath, mod, extractedDirs)
+            : await mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId, mod.hash)
           if (r.error) failed.push(`${mod.name} (${r.error})`)
         } catch (err) {
           failed.push(`${mod.name} (${err.message})`)
