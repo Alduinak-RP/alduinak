@@ -223,15 +223,28 @@ ipcMain.handle('game:detectPath', () => ({ path: detectSkyrimPath() }))
 // Store edition by its files; Unknown when no store marker is present
 const gameStoreOf = dir => mo2.detectEdition(dir, 'Unknown')
 
-// The warning shown under the Skyrim path field, null when the folder is usable
-ipcMain.handle('game:checkPath', (_e, dir) => {
-  if (!isValidSkyrimPath(dir)) return { warning: 'This folder is not a valid Skyrim install: SkyrimSE.exe was not found.' }
+const STORE_LABELS = { 'Microsoft Store': 'Game Pass' }
+// sha256 allow-list of SkyrimSE.exe builds, from the install manifest once it carries one
+let knownGameExes = null
+const exeHashes = new Map()
+function gameExeHash(exe) {
+  const key = `${exe}|${fs.statSync(exe).mtimeMs}`
+  if (!exeHashes.has(key)) exeHashes.set(key, crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'))
+  return exeHashes.get(key)
+}
+
+// Why a Skyrim folder cannot be installed or played, null when it is fine
+function gameSourceProblem(dir) {
+  if (!isValidSkyrimPath(dir)) return 'This folder is not a valid Skyrim install: SkyrimSE.exe was not found.'
   const edition = gameStoreOf(dir)
-  if (edition !== 'Steam' && edition !== 'GOG') return { warning: `${edition} versions of the game are not supported.` }
-  const gv = gameversion.checkGameVersion(dir, edition)
-  if (!gv.ok) return { warning: `Skyrim is version ${gv.version}; version ${gv.required} is required. Skyrim must be downgraded first.` }
-  return { warning: null }
-})
+  if (edition !== 'Steam' && edition !== 'GOG') return `${STORE_LABELS[edition] || edition} versions of the game are not supported.`
+  if (!gameversion.checkGameVersion(dir, edition).ok) return 'Skyrim Version is not Correct. Please update/downgrade.'
+  if (knownGameExes && !knownGameExes.includes(gameExeHash(path.join(dir, 'SkyrimSE.exe')))) return 'Unknown versions of the game are not supported.'
+  return null
+}
+
+// The warning shown under the Skyrim path field
+ipcMain.handle('game:checkPath', (_e, dir) => ({ warning: gameSourceProblem(dir) }))
 
 // Window
 function createWindow() {
@@ -254,11 +267,7 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
   win.once('ready-to-show', () => {
     win.show()
-    // Chained so the two startup modals never stack
-    maybeWarnNeverLaunched().then(() => {
-      const gv = gameVersionProblem()
-      if (gv) showGameVersionDialog(gv)
-    })
+    maybeWarnNeverLaunched()
   })
 
   if (isDev) win.webContents.openDevTools({ mode: 'detach' })
@@ -1128,16 +1137,9 @@ ipcMain.handle('game:createIsolated', async (_e, baseDirOverride, opts) => {
 // force re-copies vanilla and deletes the Creation files and strays; other Repair sections stay
 async function createIsolatedImpl(baseDirOverride, force = false) {
   const src = store.get('skyrimPath')
-  if (!src || !fs.existsSync(path.join(src, 'SkyrimSE.exe'))) {
-    return { success: false, error: 'Set a valid Skyrim path first (SkyrimSE.exe not found).' }
-  }
-
-  // Never copy a wrong-version exe into the portable install
-  const gv = gameversion.checkGameVersion(src, mo2.detectEdition(src))
-  if (!gv.ok) {
-    showGameVersionDialog(gv)
-    return { success: false, error: `Skyrim ${gv.version} found; downgrade to ${gv.required} before installing the game copy.` }
-  }
+  // Never copy an unsupported or wrong-version game into the portable install
+  const problem = gameSourceProblem(src)
+  if (problem) return { success: false, error: problem }
 
   if (!findOriginalPrefsIni()) {
     return { success: false, error: NEVER_LAUNCHED_ERROR }
@@ -1194,7 +1196,7 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
       for (const job of vanillaJobs(src)) {
         try { fs.rmSync(path.join(dst, job.sub, job.rel), { force: true }) } catch {}
       }
-      try { manifest = await fetchJSON(MANIFEST_URL()) } catch (err) { log(`[isolated] no manifest, strays and Creation files stay: ${err.message}`) }
+      try { manifest = await fetchJSON(MANIFEST_URL()); rememberGameExes(manifest) } catch (err) { log(`[isolated] no manifest, strays and Creation files stay: ${err.message}`) }
       if (manifest && Number(manifest.schema) > MANIFEST_SCHEMA) manifest = null
       if (manifest) {
         send('isolated:progress', 'Removing the Creation Club files…')
@@ -1244,10 +1246,10 @@ async function createIsolatedImpl(baseDirOverride, force = false) {
 // copyGameDir instead writes an EMPTY Skyrim.ccc and applyForcedServerDefaults keeps it empty.
 // With the Bethesda.net platform disabled too, AE owners never get the "download AE content" prompt.
 const VANILLA_ROOT_FILES = [
-  'SkyrimSE.exe', 'SkyrimSELauncher.exe', 'bink2w64.dll',
-  'steam_api64.dll', 'Galaxy64.dll',
+  'SkyrimSE.exe', 'SkyrimSELauncher.exe', 'bink2w64.dll', 'ControlMap_Custom.txt',
+  'steam_api64.dll', 'Galaxy64.dll', 'goggame-1711230643.hashdb', 'goggame-1711230643.info',
   'High.ini', 'Medium.ini', 'Low.ini', 'Ultra.ini', 'Skyrim_Default.ini',
-  'installscript.vdf',
+  path.join('Skyrim', 'SkyrimPrefs.ini'),
 ]
 
 // Vanilla BSAs the engine loads without a matching plugin (cc* still excluded).
@@ -1319,7 +1321,7 @@ async function copyGameDir(src, dst) {
       return { success: false, error: `Failed copying ${job.rel}: ${err.message}` }
     }
     copied++
-    send('isolated:progress', `Copying vanilla game files… ${copied}/${jobs.length} (${job.rel})`)
+    send('isolated:progress', `Copying vanilla game files… ${Math.floor(copied * 100 / jobs.length)}% (${copied}/${jobs.length} files, ${job.rel})`)
   }
   // AE popup fix: an empty Skyrim.ccc declares no CC content expected, so the engine never prompts AE owners to download it.
   try { fs.writeFileSync(path.join(dst, 'Skyrim.ccc'), '') } catch { /* re-applied by applyForcedServerDefaults */ }
@@ -1428,45 +1430,6 @@ async function maybeWarnNeverLaunched() {
     buttons: ['OK'],
     defaultId: 0,
   })
-}
-
-// Wrong game version popup with a button to the Reliquary downgrade page
-let gameVersionDialogOpen = false
-async function showGameVersionDialog(gv) {
-  if (gameVersionDialogOpen || !win || win.isDestroyed()) return
-  gameVersionDialogOpen = true
-  try {
-    const { response } = await dialog.showMessageBox(win, {
-      type: 'warning',
-      title: 'Wrong Skyrim version',
-      message: `Skyrim is version ${gv.version}, but Alduinak needs ${gv.required}.`,
-      detail:
-        `Checked: ${gv.exe}\n\n` +
-        'Use the Reliquary downgrade tool from Nexus Mods to switch Skyrim Special Edition to build 1.6.1170; it only downloads the files that differ. ' +
-        'Afterwards set Steam to "Only update this game when I launch it" so it stays on that build, then press PLAY again.' +
-        (gv.required === gameversion.GAME_VERSION_GOG
-          ? '\n\nGOG installs: roll back to 1.6.1179 through GOG Galaxy (Manage installation > Configure > Version) instead of Reliquary.'
-          : ''),
-      buttons: ['Open downgrade page', 'Close'],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-    })
-    if (response === 0) shell.openExternal(gameversion.GAME_DOWNGRADE_URL)
-  } finally {
-    gameVersionDialogOpen = false
-  }
-}
-
-// Checks the original install first (the portable copy is rebuilt from it), then the copy that actually runs
-function gameVersionProblem() {
-  for (const dir of [store.get('skyrimPath'), isolatedGameReady() ? isolatedGameDir() : null]) {
-    if (!dir) continue
-    const gv = gameversion.checkGameVersion(dir, mo2.detectEdition(dir))
-    log(`[version] ${gv.exe} = ${gv.version || 'unreadable'}`)
-    if (!gv.ok) return gv
-  }
-  return null
 }
 
 // Seed the MO2 profile SkyrimPrefs.ini from the player's own prefs, then
@@ -1681,7 +1644,7 @@ ipcMain.handle('launch:skse', () => guardLaunch(async () => {
   }
 
   if (mo2Enabled && !mo2.isInstalled()) {
-    return { success: false, error: 'MO2 is not set up - open Settings → Repair and run Repair MO2.' }
+    return { success: false, error: 'MO2 is not set up - run Install MO2 under Troubleshooting.' }
   }
 
   // Shared pre-launch steps: client settings, load order, file validation.
@@ -1717,6 +1680,9 @@ ipcMain.handle('launch:skse', () => guardLaunch(async () => {
 // Highest install manifest schema this launcher understands; the backend refuses newer manifests to older launchers
 const MANIFEST_SCHEMA = 3
 const MANIFEST_URL = () => `${config.apiUrl}/api/install-manifest?schema=${MANIFEST_SCHEMA}`
+const rememberGameExes = manifest => {
+  if (manifest && Array.isArray(manifest.gameExes)) knownGameExes = manifest.gameExes.map(h => String(h).toLowerCase())
+}
 const UPDATE_LAUNCHER_ERROR = 'This server needs a newer Alduinak launcher. Accept the launcher update (or download it again from the website), then try again.'
 const CREATIONS_STAMP = 'creations-complete.json'
 
@@ -1888,7 +1854,7 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
   if (unknown.length) log(`[masters] no cleaning patch for this build of ${unknown.join(', ')}`)
   const warning = [
     unknown.length ? `No cleaned-master patch for ${unknown.join(', ')}; they stay as shipped.` : null,
-    failed.length ? `Could not clean ${failed.join(', ')}; they stay as shipped (see install.log, or use Repair Cleaned Masters).` : null,
+    failed.length ? `Could not clean ${failed.join(', ')}; they stay as shipped (see install.log, or use Clean Masters under Troubleshooting).` : null,
   ].filter(Boolean).join(' ') || null
   return { ok: true, cleaned, warning }
 }
@@ -1961,7 +1927,7 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
   const missingFiles = REQUIRED_FILES.filter(f => !found(f))
   if (missingFiles.length > 0) {
     const names = missingFiles.map(f => path.basename(f)).join(', ')
-    problems.push(`Client files missing (${names}); run Repair SkyMP Client in Settings first.`)
+    problems.push(`Client files missing (${names}); run Repair Modlist under Troubleshooting first.`)
   }
 
   // SKSE runtime.
@@ -2009,12 +1975,8 @@ function verifyLaunchReadiness(skyrimPath, viaMO2, serverInfo) {
 async function prepareForLaunch(skyrimPath, viaMO2) {
   ensureClientDirs(skyrimPath)
 
-  // Version gate; the dialog is not awaited so the warning strip updates while it is up
-  const gv = gameversion.checkGameVersion(skyrimPath, mo2.detectEdition(skyrimPath))
-  if (!gv.ok) {
-    showGameVersionDialog(gv)
-    return { success: false, error: `Skyrim ${gv.version} found in ${skyrimPath}; Alduinak needs ${gv.required}. Downgrade it (see the popup), then press PLAY again.` }
-  }
+  const problem = gameSourceProblem(skyrimPath)
+  if (problem) return { success: false, error: problem }
 
   quarantineContentCatalogs()
 
@@ -2463,7 +2425,7 @@ async function runMO2Install(opts = {}) {
 
     // 2. Mods from the compiled install manifest
     let manifest
-    try { manifest = await fetchJSON(MANIFEST_URL()) }
+    try { manifest = await fetchJSON(MANIFEST_URL()); rememberGameExes(manifest) }
     catch (err) {
       // A 404 means the backend never compiled (or lost, after a fresh
       // deploy) its manifest - surface the backend's own explanation.

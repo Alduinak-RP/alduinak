@@ -6,7 +6,6 @@ const path = require('path')
 const GAME_VERSION_REQUIRED = '1.6.1170.0'
 // GOG ships the same generation as 1.6.1179.0; the launcher supports GOG installs, so it is accepted there.
 const GAME_VERSION_GOG      = '1.6.1179.0'
-const GAME_DOWNGRADE_URL    = 'https://www.nexusmods.com/site/mods/2188?tab=description'
 
 // FileVersion from VS_FIXEDFILEINFO in the RT_VERSION resource; null when the file is missing or not a PE with one.
 function readPeFileVersion(exePath) {
@@ -82,4 +81,4 @@ function catalogFrom17(cat) {
     Object.keys(cat).some(k => /^CSV(1M|1CC|2)/.test(k) && k.includes('_') && !/^-?\d+$/.test(k.slice(k.lastIndexOf('_') + 1)))
 }
 
-module.exports = { GAME_VERSION_GOG, GAME_DOWNGRADE_URL, checkGameVersion, catalogFrom17 }
+module.exports = { checkGameVersion, catalogFrom17 }
