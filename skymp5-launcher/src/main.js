@@ -2312,9 +2312,6 @@ ipcMain.handle('install:skse', async (_e, opts) => {
   try {
     if (opts && opts.force) {
       try { fs.rmSync(path.join(mo2.getDownloadsDir(), mo2.skseSourceFor(gamePath).fileName), { force: true }) } catch {}
-      for (const name of fs.readdirSync(gamePath)) {
-        if (/^skse64_.*\.(exe|dll)$/i.test(name)) try { fs.rmSync(path.join(gamePath, name), { force: true }) } catch {}
-      }
       store.set('installedRootHash', '')
     }
     await installSkseIntoRoot(gamePath)
@@ -2375,7 +2372,32 @@ function downloadProgress(label) {
   })
 }
 
+// sha256 of the files SKSE 2.2.6 puts in the game root, per edition; an edition without a list is not checked
+const SKSE_FILE_HASHES = {
+  Steam: {
+    'skse64_loader.exe':   '730c2743f6871fbaeb8606c1d3b7a55feca045c3d74858a41b0c6d03cd989fbc',
+    'skse64_1_6_1170.dll': 'c9a2c8a80df6bf2372c5f49468bb2e5ab67786157265b6f29ece9f4eac075d54',
+  },
+}
+const SKSE_ROOT_FILE_RE = /^skse64_.*\.(exe|dll)$/i
+
+// Why the SKSE files in the game root are not the official build, null when they are
+async function skseFileProblem(gamePath) {
+  const known = SKSE_FILE_HASHES[mo2.skseSourceFor(gamePath).edition]
+  if (!known) return null
+  for (const name of fs.readdirSync(gamePath).filter(n => SKSE_ROOT_FILE_RE.test(n))) {
+    const want = known[name.toLowerCase()]
+    if (!want) return `unexpected SKSE file ${name}`
+    if ((await mo2.sha256File(path.join(gamePath, name))) !== want) return `modified SKSE file ${name}`
+  }
+  return null
+}
+
+// Replaces every skse64_* root file, so a stray or modified one never survives a reinstall
 async function installSkseIntoRoot(skyrimPath) {
+  for (const name of fs.readdirSync(skyrimPath).filter(n => SKSE_ROOT_FILE_RE.test(n))) {
+    try { fs.rmSync(path.join(skyrimPath, name), { force: true }) } catch {}
+  }
   const skse = mo2.skseSourceFor(skyrimPath)
   const name = await mo2.downloadToDownloads(skse.url, skse.fileName, downloadProgress(`Downloading SKSE (${skse.edition})`))
   send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
@@ -2558,6 +2580,8 @@ async function runModlistInstall(opts = {}) {
       const p = path.join(skyrimPath, ...String(f.to).split('/'))
       if (fs.existsSync(p) && (await mo2.sha256File(p).catch(() => '')).toLowerCase() !== String(f.sha256).toLowerCase()) rootModified = true
     }
+    const skseProblem = await skseFileProblem(skyrimPath).catch(() => null)
+    if (skseProblem) { log(`[mo2-install] ${skseProblem} - reinstalling SKSE`); rootModified = true }
     const needsRoot      = (force || !rootSetUp || rootChanged || rootMissing || rootModified)
     log(`[mo2-install] root check: skse=${rootSetUp} hashChanged=${rootChanged} filesMissing=${rootMissing} modified=${rootModified} force=${force} -> needsRoot=${needsRoot}`)
     const modsToInstall  = []
