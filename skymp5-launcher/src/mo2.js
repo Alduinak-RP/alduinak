@@ -22,6 +22,7 @@ const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
 const https = require('https')
+const http  = require('http')
 const crypto = require('crypto')
 const { spawn, execFileSync, execFile } = require('child_process')
 const ini = require('./ini')
@@ -74,10 +75,22 @@ function get7za() {
 
 // Download / install MO2
 
-/** Download url to dest, following redirects (GitHub releases redirect to a CDN). */
-// Settle the promise exactly once on every outcome, including an aborted response.
-function downloadFile(url, dest, onProgress, redirectsLeft = 5) {
+// Reject remote plain-HTTP downloads of payloads we run or extract: guards
+// against MITM tampering and https->http redirect downgrades. Loopback stays
+// allowed so the http://localhost dev backend still works.
+function assertSecureDownloadUrl(url) {
+  if (/^https:/i.test(url)) return
+  let host = ''
+  try { host = new URL(url).hostname } catch {}
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return
+  throw new Error(`Refusing to download over an insecure (non-HTTPS) URL: ${url}`)
+}
+
+// Download a URL to a local file, following redirects (GitHub and Nexus hand out CDN links).
+// Settles exactly once on every outcome, including an aborted response.
+function downloadFile(url, dest, onProgress, headers = {}, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
+    try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
     let file = null
     let settled = false
     const finish = val => { if (!settled) { settled = true; resolve(val) } }
@@ -93,24 +106,18 @@ function downloadFile(url, dest, onProgress, redirectsLeft = 5) {
         reject(err)
       }
     }
-    const req = https.get(url, res => {
+    const mod = url.startsWith('https') ? https : http
+    const req = mod.get(url, { headers }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume()
         if (redirectsLeft <= 0) return fail(new Error('Too many redirects'))
-        return finish(downloadFile(res.headers.location, dest, onProgress, redirectsLeft - 1))
+        return finish(downloadFile(res.headers.location, dest, onProgress, headers, redirectsLeft - 1))
       }
-      if (res.statusCode !== 200) {
-        res.resume()
-        return fail(new Error(`HTTP ${res.statusCode} downloading ${url}`))
-      }
-
+      if (res.statusCode !== 200) { res.resume(); return fail(new Error(`HTTP ${res.statusCode}`)) }
       const total = parseInt(res.headers['content-length'] || '0', 10)
       let received = 0
       file = fs.createWriteStream(dest)
-      res.on('data', chunk => {
-        received += chunk.length
-        if (onProgress) onProgress(received, total)
-      })
+      res.on('data', c => { received += c.length; if (onProgress) onProgress(received, total) })
       res.pipe(file)
       file.on('finish', () => file.close(() => finish(dest)))
       file.on('error', fail)
@@ -1379,6 +1386,7 @@ module.exports = {
   setLogger,
   setRootProvider,
   getRoot,
+  downloadFile,
   detectEdition,
   getDownloadsDir,
   getModsDir,

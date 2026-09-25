@@ -876,7 +876,7 @@ async function cacheNewsImages(items) {
     const file = newsCachePath(url)
     try {
       if (!fs.existsSync(file)) {
-        await downloadToFile(url, file + '.part')
+        await mo2.downloadFile(url, file + '.part')
         fs.renameSync(file + '.part', file)
       }
       cached.set(url, file)
@@ -1588,60 +1588,6 @@ ipcMain.handle('app:checkUpdate', async () => {
   }
 })
 
-// Reject remote plain-HTTP downloads of payloads we run or extract: guards
-// against MITM tampering and https->http redirect downgrades. Loopback stays
-// allowed so the http://localhost dev backend still works.
-function assertSecureDownloadUrl(url) {
-  if (/^https:/i.test(url)) return
-  let host = ''
-  try { host = new URL(url).hostname } catch {}
-  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return
-  throw new Error(`Refusing to download over an insecure (non-HTTPS) URL: ${url}`)
-}
-
-// Download a URL to a local file, following redirects (release URLs hit a CDN).
-// Settles exactly once on every outcome, including an aborted response.
-function downloadToFile(url, dest, onProgress, redirectsLeft = 5) {
-  return new Promise((resolve, reject) => {
-    try { assertSecureDownloadUrl(url) } catch (err) { return reject(err) }
-    let file = null
-    let settled = false
-    const finish = val => { if (!settled) { settled = true; resolve(val) } }
-    // Destroy the stream before unlinking: an open handle leaves the partial file delete-pending on Windows and blocks every retry this session.
-    const fail = err => {
-      if (settled) return
-      settled = true
-      if (file && !file.destroyed) {
-        file.once('close', () => { try { fs.unlinkSync(dest) } catch {} reject(err) })
-        file.destroy()
-      } else {
-        try { fs.unlinkSync(dest) } catch {}
-        reject(err)
-      }
-    }
-    const mod = url.startsWith('https') ? https : http
-    const req = mod.get(url, res => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        res.resume()
-        if (redirectsLeft <= 0) return fail(new Error('Too many redirects'))
-        return finish(downloadToFile(res.headers.location, dest, onProgress, redirectsLeft - 1))
-      }
-      if (res.statusCode !== 200) { res.resume(); return fail(new Error(`HTTP ${res.statusCode}`)) }
-      const total = parseInt(res.headers['content-length'] || '0', 10)
-      let received = 0
-      file = fs.createWriteStream(dest)
-      res.on('data', c => { received += c.length; if (onProgress) onProgress(received, total) })
-      res.pipe(file)
-      file.on('finish', () => file.close(() => finish(dest)))
-      file.on('error', fail)
-      res.on('error',  fail)
-      res.on('aborted', () => fail(new Error('Download interrupted')))
-    })
-    req.on('error', fail)
-    req.setTimeout(120_000, () => { req.destroy(); fail(new Error('Download timed out')) })
-  })
-}
-
 // The website ships the installer inside a zip; a plain exe at the same URL still works
 function unpackUpdate(pkg, dest) {
   const fd = fs.openSync(pkg, 'r')
@@ -1675,7 +1621,7 @@ ipcMain.handle('app:installUpdate', async () => {
     const pkg  = path.join(os.tmpdir(), 'AlduinakLauncher-update.pkg')
     const dest = path.join(os.tmpdir(), 'AlduinakLauncher-update.exe')
     send('update:progress', { phase: 'download', received: 0, total: 0 })
-    await downloadToFile(url, pkg, (received, total) =>
+    await mo2.downloadFile(url, pkg, (received, total) =>
       send('update:progress', { phase: 'download', received, total }))
     try { fs.rmSync(dest, { force: true }) } catch {}
     unpackUpdate(pkg, dest)
@@ -1878,7 +1824,7 @@ async function cleanedMasterPatch(v) {
   const file = path.join(dir, v.patch)
   if (fs.existsSync(file) && await mo2.sha256FileAsync(file) === v.patchSha256) return file
   fs.mkdirSync(dir, { recursive: true })
-  await downloadToFile(`${config.apiUrl}/files/cleaned-masters/${encodeURIComponent(v.patch)}`, file)
+  await mo2.downloadFile(`${config.apiUrl}/files/cleaned-masters/${encodeURIComponent(v.patch)}`, file)
   if (await mo2.sha256FileAsync(file) !== v.patchSha256) {
     try { fs.rmSync(file, { force: true }) } catch {}
     throw new Error(`${v.patch} failed its checksum after download`)

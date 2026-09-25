@@ -26,6 +26,7 @@ const GAME = 'skyrimspecialedition'
 // Nexus API policy: every request must carry the application name and version.
 // Derived from package.json so the version stays accurate and forks inherit their own identity.
 const pkg = require('../package.json')
+const { downloadFile } = require('./mo2')
 const APP_HEADERS = {
   'User-Agent':          `${pkg.name}/${pkg.version}`,
   'Application-Name':    pkg.name,
@@ -122,39 +123,6 @@ async function getDownloadLink(auth, nexusId, fileId) {
   return links[0].URI
 }
 
-// Download
-
-/** Stream a URL to destPath, following redirects. */
-function downloadFile(url, destPath, onProgress, redirectsLeft = 5) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: APP_HEADERS }, res => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        res.resume()
-        if (redirectsLeft <= 0) return reject(new Error('Too many redirects'))
-        return resolve(downloadFile(res.headers.location, destPath, onProgress, redirectsLeft - 1))
-      }
-      if (res.statusCode !== 200) {
-        res.resume()
-        return reject(new Error(`HTTP ${res.statusCode} downloading mod archive`))
-      }
-
-      const total = parseInt(res.headers['content-length'] || '0', 10)
-      let received = 0
-      const file = fs.createWriteStream(destPath)
-      res.on('data', chunk => {
-        received += chunk.length
-        if (onProgress) onProgress(received, total)
-      })
-      res.pipe(file)
-      file.on('finish', () => file.close(resolve))
-      file.on('error', err => { try { fs.unlinkSync(destPath) } catch {} reject(err) })
-      res.on('error',  err => { try { fs.unlinkSync(destPath) } catch {} reject(err) })
-    })
-    req.on('error', reject)
-    req.setTimeout(120_000, () => { req.destroy(); reject(new Error('Mod download timed out')) })
-  })
-}
-
 // File download
 
 /**
@@ -172,7 +140,7 @@ async function downloadFileEntry(auth, nexusId, file, downloadsDir, onProgress) 
   if (fs.existsSync(destPath)) { _log(`${archiveName} already downloaded`); return archiveName }
   fs.mkdirSync(downloadsDir, { recursive: true })
   const tmp = destPath + '.unfinished'
-  await downloadFile(url, tmp, onProgress)
+  await downloadFile(url, tmp, onProgress, APP_HEADERS)
   fs.renameSync(tmp, destPath)
   return archiveName
 }
