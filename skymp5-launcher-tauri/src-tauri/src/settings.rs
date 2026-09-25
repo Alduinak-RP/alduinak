@@ -7,9 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const PROFILE: &str = "Alduinak";
 
-pub fn profile_dir() -> PathBuf {
-    crate::base_dir().join("profiles").join(PROFILE)
-}
+pub use crate::mo2::profile_dir;
 
 pub fn skyrim_prefs_path() -> PathBuf {
     profile_dir().join("skyrimprefs.ini")

@@ -1,10 +1,17 @@
+mod auth;
 mod basic;
 mod game;
+mod gamecopy;
+mod install;
+mod launch;
 mod ini;
+mod mo2;
 mod net;
+mod presence;
 mod proc;
 mod settings;
 mod store;
+mod updater;
 
 use serde_json::Value;
 use std::path::PathBuf;
@@ -136,6 +143,24 @@ pub fn run() {
             settings::hotkeys_save,
             settings::game_hotkeys_load,
             settings::game_hotkeys_save,
+            mo2::mo2_open,
+            mo2::mo2_status,
+            auth::discord_login,
+            auth::discord_logout,
+            auth::nexus_get_user,
+            auth::nexus_logout,
+            auth::nexus_login,
+            install::install_start,
+            install::install_cancel,
+            install::install_mo2_only,
+            install::install_masters,
+            install::install_skse,
+            install::game_create_isolated,
+            install::files_update_check,
+            launch::launch_skse,
+            launch::game_is_running,
+            updater::app_check_update,
+            updater::app_install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the launcher");

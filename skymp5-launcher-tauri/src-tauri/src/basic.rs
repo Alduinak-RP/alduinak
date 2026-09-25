@@ -52,7 +52,9 @@ pub fn settings_save(data: Value) {
         let edition = if game::is_valid_skyrim_path(p) { game::detect_edition(p) } else { String::new() };
         pairs.push(("gameStore".into(), Value::from(edition)));
     }
+    let presence = data.get("discordPresence").is_some();
     store().set_many(pairs);
+    if presence { crate::presence::refresh(); }
 }
 
 #[tauri::command]
