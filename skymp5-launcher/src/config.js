@@ -10,17 +10,12 @@
 module.exports = {
   apiUrl: process.env.API_URL || 'https://api.alduinak.com',
 
-  // Nexus login, in preference order:
-  //  1. OAuth (users.nexusmods.com, authorization code + PKCE) when a client
-  //     id is set. The callback URL to register with the Nexus team is
+  // Nexus OAuth login (authorization code + PKCE); the registered callback is
   //     http://127.0.0.1:<nexusOauthPort>/nexus/callback
-  //  2. Websocket SSO (the older Vortex/MO2/Wabbajack flow) when only the
-  //     application slug is set.
   // Defaults are the registered public "SkyRP" app (a public PKCE client, so
   // no secret ships here); packaged builds have no .env, they rely on these.
   nexusOauthClientId: process.env.NEXUS_OAUTH_CLIENT_ID || 'skyrp',
   nexusOauthPort:     parseInt(process.env.NEXUS_OAUTH_PORT || '48521', 10),
-  nexusAppSlug:       process.env.NEXUS_APP_SLUG || 'skyrp',
 
   // Rich Presence application id; a discordAppId in /api/serverinfo overrides it
   discordAppId:       process.env.DISCORD_APP_ID || '1525331715613261934',

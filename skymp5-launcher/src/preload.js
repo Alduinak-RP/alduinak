@@ -71,11 +71,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('install:complete')
   },
 
-  // Nexus Mods login (one-click SSO only)
+  // Nexus Mods login (OAuth)
   nexusGetUser: ()    => ipcRenderer.invoke('nexus:getUser'),
   nexusLogout:  ()    => ipcRenderer.invoke('nexus:logout'),
-  nexusSsoAvailable: () => ipcRenderer.invoke('nexus:ssoAvailable'),
-  nexusSsoLogin:     () => ipcRenderer.invoke('nexus:ssoLogin'),
+  nexusLogin:   ()    => ipcRenderer.invoke('nexus:login'),
 
   // Isolated game copy (baseDir optional; falls back to the stored/default install location; opts { force } re-copies the vanilla files)
   isolatedStatus: () => ipcRenderer.invoke('game:isolatedStatus'),

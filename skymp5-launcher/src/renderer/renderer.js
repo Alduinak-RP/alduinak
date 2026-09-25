@@ -518,9 +518,7 @@ renderTopbarDiscord()
 
 
 // Nexus topbar widget
-// Login is the one-click SSO flow (registered application slug): the button
-// opens nexusmods.com in the browser and the key arrives over the SSO
-// websocket. The old paste-your-API-key modal is gone.
+// Login opens nexusmods.com in the browser (OAuth with PKCE).
 const nexusTopbarSlot = document.getElementById('nexus-topbar-slot')
 
 let nexusUser = null
@@ -591,7 +589,7 @@ function renderTopbarNexus() {
         connectWarning.classList.remove('visible')
         connectWarning.textContent = ''
       }
-      const result = await window.electronAPI.nexusSsoLogin()
+      const result = await window.electronAPI.nexusLogin()
       if (result.success) {
         nexusUser = result.user
         renderTopbarNexus()

@@ -36,12 +36,9 @@ const APP_HEADERS = {
 let _log = (...args) => console.log('[nexus]', ...args)
 function setLogger(fn) { _log = (...args) => fn('[nexus]', ...args) }
 
-// Auth header for either credential kind. A plain string is treated as an
-// API key (SSO-era call sites); OAuth callers pass { bearer: accessToken }.
+// OAuth callers pass { bearer: accessToken }.
 function authHeaders(auth) {
-  if (typeof auth === 'string' && auth) return { apikey: auth }
   if (auth && auth.bearer) return { Authorization: `Bearer ${auth.bearer}` }
-  if (auth && auth.apiKey) return { apikey: auth.apiKey }
   throw new Error('Not logged in to Nexus.')
 }
 
@@ -60,7 +57,7 @@ function apiGet(auth, apiPath) {
       let data = ''
       res.on('data', c => { data += c })
       res.on('end', () => {
-        if (res.statusCode === 401) return reject(new Error('Invalid or expired Nexus API key.'))
+        if (res.statusCode === 401) return reject(new Error('Nexus login expired - log in again.'))
         if (res.statusCode === 403) return reject(new Error('Nexus refused the request (premium required?).'))
         if (res.statusCode < 200 || res.statusCode >= 300) {
           return reject(new Error(`Nexus API HTTP ${res.statusCode}`))
@@ -77,22 +74,9 @@ function apiGet(auth, apiPath) {
 // Account
 
 /**
- * Validate a credential (API key or { bearer }).
- * Returns { name, isPremium, profileUrl } or throws.
- */
-async function validateKey(auth) {
-  const data = await apiGet(auth, '/v1/users/validate.json')
-  return {
-    name:       data.name,
-    isPremium:  data.is_premium === true,
-    profileUrl: data.profile_url || null,
-  }
-}
-
-/**
  * Identity for an OAuth login. /v1/users/validate.json is API-key-only (500s
  * on Bearer tokens), so OAuth callers use the userinfo endpoint instead.
- * Returns the same shape as validateKey.
+ * Returns { name, isPremium, profileUrl }.
  */
 function oauthUserInfo(accessToken, oauthBase = OAUTH_BASE) {
   return new Promise((resolve, reject) => {
@@ -191,67 +175,6 @@ async function downloadFileEntry(auth, nexusId, file, downloadsDir, onProgress) 
   await downloadFile(url, tmp, onProgress)
   fs.renameSync(tmp, destPath)
   return archiveName
-}
-
-// SSO login (one-click, Vortex/Wabbajack-style)
-
-/**
- * Nexus SSO flow: connect to wss://sso.nexusmods.com, hand the browser an
- * authorize URL, and receive the user's API key over the websocket once
- * they click "Authorise" on the Nexus site.
- *
- * Requires an application slug registered with Nexus Mods. Uses Node's
- * built-in WebSocket client (Node >= 21 / current Electron).
- *
- * @param {string} appSlug                Registered Nexus application slug
- * @param {(url: string) => void} openUrl Called with the authorize URL to open
- * @param {number} [timeoutMs]
- * @returns {Promise<string>}             The user's API key
- */
-function ssoLogin(appSlug, openUrl, timeoutMs = 5 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
-    if (!appSlug) return reject(new Error('No Nexus application slug configured.'))
-    if (typeof WebSocket === 'undefined') {
-      return reject(new Error('WebSocket client unavailable in this runtime.'))
-    }
-
-    const id = require('crypto').randomUUID()
-    const ws = new WebSocket('wss://sso.nexusmods.com')
-
-    let settled = false
-    const finish = (err, key) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      try { ws.close() } catch {}
-      err ? reject(err) : resolve(key)
-    }
-
-    const timer = setTimeout(() => finish(new Error('Nexus login timed out - try again.')), timeoutMs)
-
-    ws.onopen = () => {
-      // protocol 2: server replies with a connection_token, then (after the
-      // user authorises in the browser) with the api_key.
-      ws.send(JSON.stringify({ id, token: null, protocol: 2 }))
-      openUrl(`https://www.nexusmods.com/sso?id=${id}&application=${appSlug}`)
-    }
-
-    ws.onmessage = event => {
-      let msg
-      try { msg = JSON.parse(event.data) } catch { return }
-      if (msg.success === false) {
-        return finish(new Error(msg.error || 'Nexus SSO rejected the request.'))
-      }
-      if (msg.data?.api_key) {
-        _log('SSO login complete')
-        return finish(null, msg.data.api_key)
-      }
-      // First reply carries data.connection_token - nothing to do but wait.
-    }
-
-    ws.onerror = ()  => finish(new Error('Could not reach the Nexus SSO service.'))
-    ws.onclose = ()  => finish(new Error('Nexus SSO connection closed before login completed.'))
-  })
 }
 
 // OAuth login (users.nexusmods.com, authorization code + PKCE)
@@ -404,11 +327,9 @@ function refreshOauth(clientId, refreshToken, oauthBase = OAUTH_BASE) {
 module.exports = {
   setLogger,
   authHeaders,
-  validateKey,
   oauthUserInfo,
   getDownloadLink,
   downloadFileEntry,
-  ssoLogin,
   oauthLogin,
   refreshOauth,
 }

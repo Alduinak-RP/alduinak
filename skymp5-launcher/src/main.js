@@ -60,7 +60,6 @@ const store = new Store({
     discordUser:       null,
     mo2Enabled:        true,   // launch the game through the managed portable MO2
     discordPresence:   true,   // show "Playing Alduinak" on Discord while the game runs
-    nexusApiKey:       '',     // Nexus API key (websocket SSO flow)
     nexusOauth:        null,   // { accessToken, refreshToken, expiresAt } (OAuth flow)
     nexusUser:         null,   // { name, isPremium } from the last validation
     isolatedGame:      true,  // play from the isolated game copy instead of skyrimPath
@@ -304,7 +303,7 @@ ipcMain.handle('settings:load', async () => {
 
   const servers = store.get('cachedServers') || []
   // Whitelist only what the renderer reads. Never spread the whole store: it
-  // holds secrets (nexusApiKey, nexusOauth tokens, gameSession, gameProfileId)
+  // holds secrets (nexusOauth tokens, gameSession, gameProfileId)
   // the renderer must never receive.
   return {
     skyrimPath:        store.get('skyrimPath'),
@@ -1023,19 +1022,12 @@ ipcMain.handle('install:openFolder', async () => {
 ipcMain.handle('nexus:getUser', () => store.get('nexusUser') || null)
 
 ipcMain.handle('nexus:logout', () => {
-  store.set('nexusApiKey', '')
   store.set('nexusOauth', null)
   store.set('nexusUser', null)
   return { success: true }
 })
 
-// One-click web login. Prefers OAuth (authorization code + PKCE) when a
-// client id is configured; falls back to the older websocket SSO when only
-// the application slug is set. The renderer flow is identical either way.
-ipcMain.handle('nexus:ssoAvailable', () => !!(config.nexusOauthClientId || config.nexusAppSlug))
-
-// Current Nexus credential for API calls: OAuth bearer (refreshed when close
-// to expiry) or the SSO-era API key. Null when logged out.
+// Current Nexus OAuth bearer (refreshed when close to expiry); null when logged out.
 async function getNexusAuth() {
   const oauth = store.get('nexusOauth')
   if (oauth && oauth.accessToken) {
@@ -1058,38 +1050,24 @@ async function getNexusAuth() {
     }
     return { bearer: oauth.accessToken }
   }
-  const key = store.get('nexusApiKey')
-  return key ? { apiKey: key } : null
+  return null
 }
 
-ipcMain.handle('nexus:ssoLogin', async () => {
+ipcMain.handle('nexus:login', async () => {
   try {
-    if (config.nexusOauthClientId) {
-      const tokens = await nexus.oauthLogin({
-        clientId: config.nexusOauthClientId,
-        port:     config.nexusOauthPort,
-        openUrl:  url => shell.openExternal(url),
-      })
-      store.set('nexusOauth', {
-        accessToken:  tokens.access_token,
-        refreshToken: tokens.refresh_token || null,
-        expiresAt:    Date.now() + (tokens.expires_in ? tokens.expires_in * 1000 : 6 * 3600 * 1000),
-      })
-      store.set('nexusApiKey', '')   // the bearer token replaces any old key
-      const user = await nexus.oauthUserInfo(tokens.access_token)
-      store.set('nexusUser', user)
-      log(`[nexus] OAuth login as ${user.name} (premium: ${user.isPremium})`)
-      return { success: true, user }
-    }
-
-    if (!config.nexusAppSlug) {
-      return { success: false, error: 'Nexus login is not configured in this build (missing OAuth client id / application slug).' }
-    }
-    const apiKey = await nexus.ssoLogin(config.nexusAppSlug, url => shell.openExternal(url))
-    const user   = await nexus.validateKey(apiKey)
-    store.set('nexusApiKey', apiKey)
+    const tokens = await nexus.oauthLogin({
+      clientId: config.nexusOauthClientId,
+      port:     config.nexusOauthPort,
+      openUrl:  url => shell.openExternal(url),
+    })
+    store.set('nexusOauth', {
+      accessToken:  tokens.access_token,
+      refreshToken: tokens.refresh_token || null,
+      expiresAt:    Date.now() + (tokens.expires_in ? tokens.expires_in * 1000 : 6 * 3600 * 1000),
+    })
+    const user = await nexus.oauthUserInfo(tokens.access_token)
     store.set('nexusUser', user)
-    log(`[nexus] SSO login as ${user.name} (premium: ${user.isPremium})`)
+    log(`[nexus] OAuth login as ${user.name} (premium: ${user.isPremium})`)
     return { success: true, user }
   } catch (err) {
     return { success: false, error: err.message }
@@ -2595,7 +2573,7 @@ async function runMO2Install(opts = {}) {
 
     // 3a. Acquire every referenced archive, verified by sha256
     const downloadsDir = mo2.getDownloadsDir()
-    const nexusAuth = await getNexusAuth()   // OAuth bearer or SSO API key
+    const nexusAuth = await getNexusAuth()
     const premium   = !!(nexusAuth && store.get('nexusUser')?.isPremium)
     const mb = n => (n / 1024 / 1024).toFixed(1)
     const sanitize       = n => String(n).replace(/[<>:"/\\|?*]/g, '')
