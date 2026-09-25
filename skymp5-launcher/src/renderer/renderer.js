@@ -774,23 +774,6 @@ document.getElementById('btn-open-install').addEventListener('click', async () =
   if (!r.success) alert(`Could not open the install folder: ${r.error}`)
 })
 
-// Troubleshooting: manual launch buttons
-const troubleLaunchStatus = document.getElementById('trouble-launch-status')
-
-document.getElementById('btn-launch-mo2').addEventListener('click', async () => {
-  troubleLaunchStatus.textContent = 'Launching via MO2…'
-  const r = await window.electronAPI.launchViaMO2()
-  troubleLaunchStatus.textContent = r.success ? 'Launched via MO2 ✓' : `Error: ${r.error}`
-  if (r.success) startLaunchWatch()
-})
-
-document.getElementById('btn-launch-direct').addEventListener('click', async () => {
-  troubleLaunchStatus.textContent = 'Launching SKSE…'
-  const r = await window.electronAPI.launchDirect()
-  troubleLaunchStatus.textContent = r.success ? 'Launched ✓' : `Error: ${r.error}`
-  if (r.success) startLaunchWatch()
-})
-
 // Repair tab: shared install progress log
 // Every repair button streams its progress into the one <pre> below them.
 const installProgressEl = document.getElementById('install-progress')

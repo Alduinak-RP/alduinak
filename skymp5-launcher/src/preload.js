@@ -47,8 +47,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // SKSE launch
   launchSkse:   () => ipcRenderer.invoke('launch:skse'),
-  launchViaMO2: () => ipcRenderer.invoke('launch:viaMO2'),
-  launchDirect: () => ipcRenderer.invoke('launch:direct'),
 
   // Client files update check - { ok, updateAvailable }
   filesUpdateCheck: () => ipcRenderer.invoke('files:updateCheck'),

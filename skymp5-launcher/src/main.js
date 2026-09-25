@@ -1784,32 +1784,6 @@ ipcMain.handle('launch:skse', () => guardLaunch(async () => {
   }
 }))
 
-// Troubleshooting: force a launch path regardless of the mo2Enabled setting.
-ipcMain.handle('launch:viaMO2', () => guardLaunch(async () => {
-  const skyrimPath = effectiveGamePath()
-  if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
-  if (!mo2.isInstalled()) return { success: false, error: 'MO2 is not installed - use Repair MO2 first.' }
-  const prep = await prepareForLaunch(skyrimPath, true)
-  if (!prep.success) return prep
-  try { mo2.launchGame(skyrimPath); return { success: true } }
-  catch (err) { return { success: false, error: err.message } }
-}))
-
-ipcMain.handle('launch:direct', () => guardLaunch(async () => {
-  const skyrimPath = effectiveGamePath()
-  if (!skyrimPath) return { success: false, error: 'Skyrim path not configured.' }
-  const prep = await prepareForLaunch(skyrimPath, false)
-  if (!prep.success) return prep
-  const exe = path.join(skyrimPath, 'skse64_loader.exe')
-  if (!fs.existsSync(exe)) {
-    return { success: false, error: `skse64_loader.exe not found in ${skyrimPath}. Install SKSE there first.` }
-  }
-  try {
-    spawn(exe, [], { detached: true, stdio: 'ignore', cwd: skyrimPath }).unref()
-    return { success: true }
-  } catch (err) { return { success: false, error: err.message } }
-}))
-
 /**
  * Common pre-launch pipeline:
  *  1. Re-write skymp5-client-settings.txt so server-ip/port/gameData are current.
