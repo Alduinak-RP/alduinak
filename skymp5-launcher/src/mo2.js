@@ -129,12 +129,23 @@ function downloadFile(url, dest, onProgress, headers = {}, redirectsLeft = 5) {
   })
 }
 
-/** Extract a .7z/.zip archive with the bundled 7za. */
-function extractArchive(archivePath, destDir) {
+// Extract an archive with the bundled 7-Zip in a child process, so the launcher window never stalls; onPercent gets 7-Zip's own progress
+function extractArchive(archivePath, destDir, onPercent) {
   fs.mkdirSync(destDir, { recursive: true })
-  execFileSync(get7za(), ['x', '-y', `-o${destDir}`, archivePath], {
-    stdio: 'ignore',
-    timeout: 10 * 60 * 1000,
+  return new Promise((resolve, reject) => {
+    const child = spawn(get7za(), ['x', '-y', '-bsp1', '-bso0', `-o${destDir}`, archivePath], { windowsHide: true })
+    const timer = setTimeout(() => child.kill(), 10 * 60 * 1000)
+    let last = -1
+    child.stdout.on('data', d => {
+      const m = String(d).match(/(\d+)%/g)
+      const pct = m ? parseInt(m[m.length - 1], 10) : -1
+      if (onPercent && pct !== last && pct >= 0) { last = pct; onPercent(pct) }
+    })
+    child.on('error', err => { clearTimeout(timer); reject(err) })
+    child.on('close', code => {
+      clearTimeout(timer)
+      code === 0 ? resolve() : reject(new Error(`7-Zip could not extract ${path.basename(archivePath)} (exit ${code})`))
+    })
   })
 }
 
@@ -243,9 +254,9 @@ async function downloadMo2Archive(onProgress) {
   return archive
 }
 
-function extractMo2Archive(archive, onProgress) {
-  if (onProgress) onProgress('Extracting Mod Organizer 2…')
-  extractArchive(archive, getRoot())
+async function extractMo2Archive(archive, onProgress) {
+  if (onProgress) onProgress('Installing MO2… 0%')
+  await extractArchive(archive, getRoot(), pct => onProgress && onProgress(`Installing MO2… ${pct}%`))
   try { fs.unlinkSync(archive) } catch {}
   if (!isInstalled()) {
     throw new Error('MO2 extraction finished but ModOrganizer.exe was not found.')
@@ -263,12 +274,12 @@ async function reinstall(onProgress) {
     const removed = removeRootEntries(await archiveTopLevelNames(archive))
     _log(`removed ${removed.length} MO2 entries from ${root} for a fresh install`)
   }
-  extractMo2Archive(archive, onProgress)
+  await extractMo2Archive(archive, onProgress)
 }
 
 async function installFresh(onProgress) {
   _log(`installing MO2 ${MO2_VERSION} to ${getRoot()}`)
-  extractMo2Archive(await downloadMo2Archive(onProgress), onProgress)
+  await extractMo2Archive(await downloadMo2Archive(onProgress), onProgress)
 }
 
 // Portable instance / profile
@@ -563,21 +574,10 @@ function listFilesRel(dir) {
   return out
 }
 
-/** Streaming SHA-256 of a file (handles multi-GB archives without buffering). */
-function sha256File(p) {
-  const fd  = fs.openSync(lp(p), 'r')
-  const h   = crypto.createHash('sha256')
-  const buf = Buffer.alloc(1 << 20)
-  try {
-    let n
-    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n))
-  } finally { fs.closeSync(fd) }
-  return h.digest('hex')
-}
 
 /** True when the archive on disk matches the manifest's expected sha256. */
-function verifyArchive(archivePath, sha256) {
-  try { return sha256File(archivePath).toLowerCase() === String(sha256).toLowerCase() }
+async function verifyArchive(archivePath, sha256) {
+  try { return (await sha256File(archivePath)).toLowerCase() === String(sha256).toLowerCase() }
   catch { return false }
 }
 
@@ -626,7 +626,7 @@ async function downloadToDownloads(url, fileName, onProgress) {
 // a cached extraction counts only when this marker says it finished.
 const EXTRACT_MARKER = '.complete'
 
-function extractToCache(archivePath, archiveId) {
+async function extractToCache(archivePath, archiveId, onPercent) {
   const dir = path.join(getRoot(), '.x', String(archiveId))
   const marker = path.join(dir, EXTRACT_MARKER)
   if (fs.existsSync(lp(marker))) return dir
@@ -635,7 +635,7 @@ function extractToCache(archivePath, archiveId) {
     _log(`discarding incomplete extraction of ${archiveId}`)
     rmrfSync(dir)
   }
-  extractArchive(archivePath, dir)
+  await extractArchive(archivePath, dir, onPercent)
   fs.writeFileSync(lp(marker), '')
   return dir
 }
@@ -667,7 +667,7 @@ function clearCache(archiveId) {
  *
  * @returns { folder } | { error }
  */
-function applyMod(modName, files, extractedDirs, modId, hash) {
+async function applyMod(modName, files, extractedDirs, modId, hash) {
   const folderName = String(modName).replace(/[<>:"/\\|?*]/g, '')
   const modDir     = path.join(getModsDir(), folderName)
   const buildDir   = path.join(getRoot(), '.b', String(_applyCounter++))
@@ -676,7 +676,7 @@ function applyMod(modName, files, extractedDirs, modId, hash) {
   try {
     for (const f of files) {
       try {
-        writeDirective(f, buildDir, extractedDirs)
+        await writeDirective(f, buildDir, extractedDirs)
       } catch (err) {
         // Name the file and its source: "mod failed" alone is undiagnosable
         throw new Error(`${f.to}: ${err.message}${f.archive ? ` [archive ${f.archive}, from ${f.from}]` : ' [inline]'}`)
@@ -716,27 +716,27 @@ function applyMod(modName, files, extractedDirs, modId, hash) {
 let _applyCounter = 1
 
 /** Place game-root files (SKSE, preloaders) directly into the game folder. */
-function applyRootFiles(rootFiles, extractedDirs, gameDir) {
-  for (const f of rootFiles || []) writeDirective(f, gameDir, extractedDirs)
+async function applyRootFiles(rootFiles, extractedDirs, gameDir) {
+  for (const f of rootFiles || []) await writeDirective(f, gameDir, extractedDirs)
   return (rootFiles || []).length
 }
 
 /** Materialise a single directive (FromArchive or Inline) under destRoot, verifying sha256. */
-function writeDirective(f, destRoot, extractedDirs) {
+async function writeDirective(f, destRoot, extractedDirs) {
   const dest = path.join(destRoot, f.to.split('/').join(path.sep))
   fs.mkdirSync(lp(path.dirname(dest)), { recursive: true })
 
   if (f.inline != null) {
-    fs.writeFileSync(lp(dest), Buffer.from(f.inline, 'base64'))
+    await fs.promises.writeFile(lp(dest), Buffer.from(f.inline, 'base64'))
   } else {
     const dir = extractedDirs[f.archive]
     if (!dir) throw new Error(`archive ${f.archive} was not extracted`)
     const src = path.join(dir, f.from.split('/').join(path.sep))
     if (!fs.existsSync(lp(src))) throw new Error(`"${f.from}" not found in archive ${f.archive}`)
-    fs.copyFileSync(lp(src), lp(dest))
+    await fs.promises.copyFile(lp(src), lp(dest))
   }
 
-  if (f.sha256 && sha256File(dest).toLowerCase() !== String(f.sha256).toLowerCase()) {
+  if (f.sha256 && (await sha256File(dest)).toLowerCase() !== String(f.sha256).toLowerCase()) {
     throw new Error(`hash mismatch for ${f.to}`)
   }
 }
@@ -854,10 +854,10 @@ function skseSourceFor(gameDir) {
  *
  * @returns {{ folder: string|null }}  the scripts-mod folder, if one was made
  */
-function installSkse(archivePath, gameDir) {
+async function installSkse(archivePath, gameDir) {
   const tmp = path.join(getRoot(), '.skse')
   try { fs.rmSync(lp(tmp), { recursive: true, force: true }) } catch {}
-  extractArchive(archivePath, tmp)
+  await extractArchive(archivePath, tmp)
   try {
     // Descend a single wrapper folder (skse64_2_02_06/…) to the real root.
     let rootDir = tmp
@@ -1036,7 +1036,8 @@ const _archiveHashCache = new Map()   // full -> { size, mtimeMs, hash }
 const _archiveListCache = new Map()   // full -> { size, mtimeMs, listing }
 
 /** Async streaming SHA-256 that yields to the event loop, so the UI stays responsive mid-scan. */
-function sha256FileAsync(p) {
+// Streaming SHA-256 of a file (handles multi-GB archives without buffering)
+function sha256File(p) {
   return new Promise((resolve, reject) => {
     const h = crypto.createHash('sha256')
     const s = fs.createReadStream(lp(p), { highWaterMark: 1 << 20 })
@@ -1050,7 +1051,7 @@ function sha256FileAsync(p) {
 async function hashCached(full, st) {
   const c = _archiveHashCache.get(full)
   if (c && c.size === st.size && c.mtimeMs === st.mtimeMs) return c.hash
-  const hash = (await sha256FileAsync(full)).toLowerCase()
+  const hash = (await sha256File(full)).toLowerCase()
   _archiveHashCache.set(full, { size: st.size, mtimeMs: st.mtimeMs, hash })
   return hash
 }
@@ -1400,7 +1401,7 @@ module.exports = {
   findDownloadByFileId,
   findArchiveByHash,
   verifyArchive,
-  sha256FileAsync,
+  sha256File,
   hashCached,
   listFilesRel,
   lp,

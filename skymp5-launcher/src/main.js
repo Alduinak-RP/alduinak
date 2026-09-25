@@ -224,8 +224,11 @@ ipcMain.handle('game:detectPath', () => ({ path: detectSkyrimPath() }))
 const gameStoreOf = dir => mo2.detectEdition(dir, 'Unknown')
 
 const STORE_LABELS = { 'Microsoft Store': 'Game Pass' }
-// sha256 allow-list of SkyrimSE.exe builds, from the install manifest once it carries one
-let knownGameExes = null
+// sha256 of the supported SkyrimSE.exe builds (Steam 1.6.1170, GOG 1.6.1179); a manifest gameExes list replaces it
+let knownGameExes = [
+  'c434208894f07f604b852f29b8edc3a58c4de63de783373733e72b2b73f33be9',
+  '9b0fc7880c4b12d436bfb59bcae64868f176dbc04010adbd9bc2ecb64bc8ed3f',
+]
 const exeHashes = new Map()
 function gameExeHash(exe) {
   const key = `${exe}|${fs.statSync(exe).mtimeMs}`
@@ -1748,7 +1751,7 @@ async function ensureCreations(manifest, gamePath) {
       progress(`Copying ${f.title} (${f.name}, ${mb(found.size)} MB) from ${found.path}…`)
       await fs.promises.copyFile(mo2.lp(found.path), mo2.lp(tmp))
       const tst = fs.statSync(mo2.lp(tmp))
-      if (tst.size !== found.size || await mo2.sha256FileAsync(tmp) !== found.sha256) throw new Error('the copy does not match its source')
+      if (tst.size !== found.size || await mo2.sha256File(tmp) !== found.sha256) throw new Error('the copy does not match its source')
       fs.renameSync(mo2.lp(tmp), mo2.lp(to))
       const final = fs.statSync(mo2.lp(to))
       done.push({ name: f.name, size: final.size, mtimeMs: final.mtimeMs, sha256: found.sha256 })
@@ -1788,10 +1791,10 @@ function bundledXdelta() {
 async function cleanedMasterPatch(v) {
   const dir = path.join(mo2.getDownloadsDir(), 'cleaned-masters')
   const file = path.join(dir, v.patch)
-  if (fs.existsSync(file) && await mo2.sha256FileAsync(file) === v.patchSha256) return file
+  if (fs.existsSync(file) && await mo2.sha256File(file) === v.patchSha256) return file
   fs.mkdirSync(dir, { recursive: true })
   await mo2.downloadFile(`${config.apiUrl}/files/cleaned-masters/${encodeURIComponent(v.patch)}`, file)
-  if (await mo2.sha256FileAsync(file) !== v.patchSha256) {
+  if (await mo2.sha256File(file) !== v.patchSha256) {
     try { fs.rmSync(file, { force: true }) } catch {}
     throw new Error(`${v.patch} failed its checksum after download`)
   }
@@ -1834,7 +1837,7 @@ async function ensureCleanedMasters(gamePath, { force = false, portable = !!stor
       const failure = await new Promise(resolve => execFile(xdelta, ['-d', '-f', '-s', file, patch, tmp], { windowsHide: true, timeout: 10 * 60 * 1000 },
         (err, _out, stderr) => resolve(err ? (String(stderr || '').trim() || err.message) : null)))
       if (failure) throw new Error(failure)
-      if (fs.statSync(tmp).size !== v.dstSize || (v.dstSha256 && await mo2.sha256FileAsync(tmp) !== v.dstSha256)) throw new Error('the patched file does not match the cleaned master')
+      if (fs.statSync(tmp).size !== v.dstSize || (v.dstSha256 && await mo2.sha256File(tmp) !== v.dstSha256)) throw new Error('the patched file does not match the cleaned master')
       if (!portable && !fs.existsSync(backup)) {
         fs.mkdirSync(path.dirname(backup), { recursive: true })
         await fs.promises.copyFile(file, backup)
@@ -2379,7 +2382,7 @@ async function installSkseIntoRoot(skyrimPath) {
     send('install:progress', { phase: 'mods', file: `Downloading SKSE (${skse.edition})… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
   })
   send('install:progress', { phase: 'mods', file: 'Installing SKSE…', index: 0, total: 0, skipped: false })
-  mo2.installSkse(path.join(mo2.getDownloadsDir(), name), skyrimPath)
+  await mo2.installSkse(path.join(mo2.getDownloadsDir(), name), skyrimPath)
 }
 
 // opts.force rebuilds every mod and the SKSE root step from scratch (Repair Modlist).
@@ -2566,7 +2569,7 @@ async function runMO2Install(opts = {}) {
       names.push(a.name)
       for (const name of names) {
         const p = path.join(downloadsDir, name)
-        if (fs.existsSync(p) && mo2.verifyArchive(p, a.hash)) return p
+        if (fs.existsSync(p) && await mo2.verifyArchive(p, a.hash)) return p
       }
       return await mo2.findArchiveByHash(a.hash, a.size)   // manually moved / renamed file
     }
@@ -2582,7 +2585,7 @@ async function runMO2Install(opts = {}) {
           send('install:progress', { phase: 'mods', file: `Downloading ${a.name}… ${mb(r)} MB${pct}`, index: 0, total: 0, skipped: false })
         })
         const p = path.join(downloadsDir, name)
-        if (!mo2.verifyArchive(p, a.hash)) return fail(`${a.name}: downloaded file failed verification (hash mismatch).`)
+        if (!(await mo2.verifyArchive(p, a.hash))) return fail(`${a.name}: downloaded file failed verification (hash mismatch).`)
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus' && premium) {
         send('install:progress', { phase: 'mods', file: `Downloading ${a.name}…`, index: 0, total: 0, skipped: false })
@@ -2602,7 +2605,7 @@ async function runMO2Install(opts = {}) {
           continue
         }
         const p = path.join(downloadsDir, name)
-        if (!mo2.verifyArchive(p, a.hash)) return fail(`${a.name}: downloaded file failed verification (hash mismatch - the version pin may have changed).`)
+        if (!(await mo2.verifyArchive(p, a.hash))) return fail(`${a.name}: downloaded file failed verification (hash mismatch - the version pin may have changed).`)
         archivePaths[a.id] = p
       } else if (a.source.type === 'nexus') {
         needBrowser.push(a)
@@ -2638,11 +2641,11 @@ async function runMO2Install(opts = {}) {
 
     mo2.clearCache()
     const extractedDirs = {}
-    const ensureExtracted = ids => {
+    const ensureExtracted = async (ids, label) => {
       for (const id of ids) {
         if (extractedDirs[id]) continue
         if (!archivePaths[id]) throw new Error(`archive ${id} was never downloaded`)
-        extractedDirs[id] = mo2.extractToCache(archivePaths[id], id)
+        extractedDirs[id] = await mo2.extractToCache(archivePaths[id], id, pct => label && label(pct))
       }
     }
     const release = ids => {
@@ -2657,10 +2660,11 @@ async function runMO2Install(opts = {}) {
     for (let i = 0; i < modsToInstall.length; i++) {
       const mod = modsToInstall[i]
       const ids = [...new Set(mod.files.filter(f => f.archive).map(f => f.archive))]
-      send('install:progress', { phase: 'mods', file: `Installing ${mod.name}…`, index: i, total: modsToInstall.length, skipped: false })
+      const showMod = pct => send('install:progress', { phase: 'mods', file: `Installing ${mod.name}… ${pct}%`, index: i + 1, total: modsToInstall.length, skipped: false })
+      showMod(0)
       try {
-        ensureExtracted(ids)
-        const r = mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId, mod.hash)
+        await ensureExtracted(ids, showMod)
+        const r = await mo2.applyMod(mod.name, mod.files, extractedDirs, mod.modId, mod.hash)
         if (r.error) failed.push(`${mod.name} (${r.error})`)
       } catch (err) {
         failed.push(`${mod.name} (${err.message})`)
@@ -2671,8 +2675,8 @@ async function runMO2Install(opts = {}) {
     if (needsRoot && manifest.root && manifest.root.length > 0) {
       const ids = [...new Set(manifest.root.filter(f => f.archive).map(f => f.archive))]
       try {
-        ensureExtracted(ids)
-        mo2.applyRootFiles(manifest.root, extractedDirs, skyrimPath)
+        await ensureExtracted(ids)
+        await mo2.applyRootFiles(manifest.root, extractedDirs, skyrimPath)
       } catch (err) {
         failed.push(`root files (${err.message})`)
       }
