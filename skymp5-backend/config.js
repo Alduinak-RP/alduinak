@@ -10,7 +10,6 @@ const config = module.exports = {
   // Client files bucket
   clientFilesDir: process.env.CLIENT_FILES_DIR
     || path.join(__dirname, '..', 'build', 'client-files'),
-  clientZipName: 'skymp-client.zip',
 
   // Game server connection (used for status checks and metrics)
   skyrimServerHost: process.env.SKYMP_HOST || '127.0.0.1',
@@ -45,10 +44,6 @@ const config = module.exports = {
 
   // Refuse game-server connections whose launcher didn't verify client files + load order; set LAUNCH_CHECK_ENFORCE=false to disable (e.g. for launcher builds predating the check)
   launchCheckEnforce: process.env.LAUNCH_CHECK_ENFORCE !== 'false',
-
-  // Admin service
-  adminUrl:   process.env.ADMIN_URL   || 'http://localhost:5001',
-  adminToken: process.env.ADMIN_TOKEN || '',
 
   // Dashboard auth
   dashboardPort: parseInt(process.env.DASHBOARD_PORT || '4002', 10),

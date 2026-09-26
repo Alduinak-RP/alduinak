@@ -123,8 +123,7 @@ const agent = createAgent({
   relay: fakeRelay,
 })
 
-let agentServer, backendServer, adminServer, api
-const adminForwarded = []
+let agentServer, backendServer, api
 const sessionOf = {}
 
 function request(port, method, urlPath, { headers = {}, body } = {}) {
@@ -175,25 +174,13 @@ test.before(async () => {
   app.use('/api/role-permissions', require('../routes/role-permissions'))
   app.use('/api/server-access', require('../routes/server-access'))
   app.use('/api/manager', require('../routes/manager'))
-  app.use('/api/admin', require('../routes/admin'))
   await new Promise(resolve => { backendServer = app.listen(0, '127.0.0.1', resolve) })
   api = (method, urlPath, opts) => request(backendServer.address().port, method, urlPath, opts)
-
-  // Stand-in for the SkyMP-Admin service behind /api/admin
-  adminServer = http.createServer((req, res) => {
-    adminForwarded.push(`${req.method} ${req.url}`)
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end('{"ok":true}')
-  })
-  await new Promise(resolve => adminServer.listen(0, '127.0.0.1', resolve))
-  backendConfig.adminUrl = `http://127.0.0.1:${adminServer.address().port}`
-  backendConfig.adminToken = 'admin-service-' + crypto.randomBytes(12).toString('hex')
 })
 
 test.after(() => {
   agentServer.close()
   backendServer.close()
-  adminServer.close()
 })
 
 test('timing-safe compare rejects empty, different and prefix values', () => {
@@ -304,24 +291,6 @@ test('escalation guard: privileged grants need admin.* confirmed by Discord, a d
   const lost = await api('PUT', `/api/role-permissions/${ROLE_ADMIN}`, { headers: fromDashboard(staff2), body: { name: 'Admin', permissions: ['dashboard.access'] } })
   assert.equal(lost.status, 401, 'a caller removed from Staff in Discord is refused')
   assert.equal((await api('GET', '/auth/dashboard/me', { headers: auth(staff2) })).status, 401, 'and that stale session is revoked')
-})
-
-test('admin proxy: sessions pass the manager gate, the static ADMIN_TOKEN still works', async () => {
-  adminForwarded.length = 0
-  const staticCall = await api('POST', '/api/admin/server/restart', { headers: auth(backendConfig.adminToken) })
-  assert.equal(staticCall.status, 200)
-
-  const developer = login('proxy-developer', { roles: [ROLE_DEVELOPER] })
-  assert.equal((await api('POST', '/api/admin/server/stop', { headers: fromDashboard(developer) })).status, 403)
-  assert.equal((await api('POST', '/api/admin/server/stop', { headers: fromDashboard(login('proxy-website', { discordId: ENV_ADMIN, aud: 'website' })) })).json.reason, 'audience')
-  assert.equal((await api('POST', '/api/admin/server/stop', { headers: fromDashboard(login('proxy-no-mfa', { discordId: ENV_ADMIN, mfa: false })) })).json.reason, 'mfa')
-  const admin = login('proxy-admin', { discordId: ENV_ADMIN })
-  assert.equal((await api('POST', '/api/admin/server/stop', { headers: auth(admin) })).json.reason, 'origin')
-  assert.equal((await api('POST', '/api/admin/server/stop', { headers: auth('not-a-session') })).status, 401)
-  assert.deepEqual(adminForwarded, ['POST /api/server/restart'], 'no refused call reached the admin service')
-
-  assert.equal((await api('POST', '/api/admin/server/stop', { headers: fromDashboard(admin) })).status, 200)
-  assert.deepEqual(adminForwarded, ['POST /api/server/restart', 'POST /api/server/stop'])
 })
 
 test('audience: only logins that returned to the dashboard origin may use the manager', async () => {

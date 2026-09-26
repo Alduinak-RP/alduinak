@@ -47,5 +47,5 @@ if (isCloned) {
 console.log('[setup] Running merge pipeline…')
 const { mergeSourcesIntoRoot } = require('./merge-files')
 mergeSourcesIntoRoot()
-  .then(() => console.log('[setup] Setup complete. public/files/root/ and zip are ready.'))
+  .then(() => console.log('[setup] Setup complete. the client files and their version manifest are ready.'))
   .catch(err => { console.error('[setup] Merge failed:', err.message); process.exit(1) })

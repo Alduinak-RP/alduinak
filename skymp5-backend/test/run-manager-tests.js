@@ -14,7 +14,7 @@ fs.mkdirSync(parent, { recursive: true })
 const root = fs.mkdtempSync(path.join(parent, 'alduinak-manager-test-'))
 
 const skip = src => !/[\\/](node_modules|client|skse|\.git)([\\/]|$)/.test(path.relative(repoRoot, src))
-for (const rel of ['config.js', 'package.json', 'routes', 'sources', 'middleware', 'test', path.join('data', 'role-permissions.json')]) {
+for (const rel of ['config.js', 'package.json', 'routes', 'sources', 'middleware', 'scripts', 'test', path.join('data', 'role-permissions.json')]) {
   fs.cpSync(path.join(backendDir, rel), path.join(root, 'skymp5-backend', rel), { recursive: true, filter: skip })
 }
 fs.cpSync(path.join(repoRoot, 'server-manager', 'src'), path.join(root, 'server-manager', 'src'), { recursive: true, filter: skip })

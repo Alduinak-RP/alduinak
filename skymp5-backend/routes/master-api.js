@@ -2,14 +2,10 @@
 
 /**
  * Master API, called by the SkyMP game server (not the client directly).
- * Mounted twice in server.js:
- *   app.use('/auth',        masterApiRoute)  -> POST /auth/session
+ * Mounted in server.js:
  *   app.use('/api/servers', masterApiRoute)  -> GET/POST /api/servers/:key/…
  *
  * Endpoints:
- *   POST /auth/session
- *     Body: { discordUser: { id, username } }  Returns: { profileId, session }
- *     Called by the launcher after Discord login; the game client passes the session token to the game server.
  *   GET /api/servers/:key/sessions/:session
  *     Validates a session token. Returns: { user: { id, discordId, username } }
  *   GET /api/servers/:key/sessions/:session/balance
@@ -207,7 +203,7 @@ function getProfileFactionPayload(discordId) {
   }
 }
 
-// Session creation helper (used by POST /auth/session and discord-auth callback)
+// Session creation helper (used by the discord-auth callback)
 
 function createSession(discordUser) {
   pruneExpired()
@@ -223,17 +219,6 @@ function createSession(discordUser) {
   saveSessions()
   return { profileId, session: token }
 }
-
-// POST /auth/session
-
-router.post('/session', (req, res) => {
-  const { discordUser } = req.body || {}
-  if (!discordUser || !discordUser.id)
-    return res.status(400).json({ error: 'Missing discordUser.id' })
-
-  const result = createSession(discordUser)
-  res.json(result)
-})
 
 // GET /api/servers/:key/sessions/:session
 
@@ -410,19 +395,6 @@ router.get('/:key/players', (req, res) => {
     res.json({ players: rows })
   } catch (err) {
     res.status(500).json({ error: err.message || 'failed to load players' })
-  }
-})
-
-// GET /api/servers/:key/holds/:holdSlug/roster
-// Full member list of one hold (online or not) for the in-game faction menu.
-
-router.get('/:key/holds/:holdSlug/roster', (req, res) => {
-  if (!checkKey(req, res)) return
-
-  try {
-    res.json({ hold: req.params.holdSlug, members: factionWhitelist.namedRoster(factionWhitelist.getHoldRoster(req.params.holdSlug)) })
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to load roster' })
   }
 })
 

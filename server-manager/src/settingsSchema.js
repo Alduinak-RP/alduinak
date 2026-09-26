@@ -142,8 +142,6 @@ const backendEnv = [
   { key: 'DISCORD_DASHBOARD_REDIRECT_URI', label: 'Dashboard redirect URI', type: 'text', group: 'Admin dashboard' },
   { key: 'DASHBOARD_DISCORD_IDS', label: 'Dashboard Discord IDs', type: 'text',   group: 'Admin dashboard', help: 'Comma-separated Discord user IDs.' },
   { key: 'WEBSITE_URL',           label: 'Website URL',           type: 'text',   group: 'Admin dashboard' },
-  { key: 'ADMIN_URL',             label: 'Admin service URL',     type: 'text',   group: 'Admin dashboard', help: 'Local SkyMP-Admin service - never expose publicly.' },
-  { key: 'ADMIN_TOKEN',           label: 'Admin token',           type: 'secret', group: 'Admin dashboard' },
 
   // Metrics
   { key: 'METRICS_USER',     label: 'Metrics user',     type: 'text',   group: 'Metrics' },
@@ -159,9 +157,7 @@ const backendEnv = [
   { key: 'BAN_LOG_DIR',            label: 'Ban log directory', type: 'text', group: 'Access control', help: 'Where ban.log and faction.log are written. Empty = the default logs folder.' },
 
   // Client updates
-  { key: 'GITHUB_WEBHOOK_SECRET', label: 'GitHub webhook secret', type: 'secret', group: 'Client updates' },
-  { key: 'CLIENT_BRANCH',         label: 'Client branch',         type: 'text',   group: 'Client updates', placeholder: 'refs/heads/main' },
-  { key: 'CLIENT_FILES_DIR',      label: 'Client files directory', type: 'text',  group: 'Client updates', help: 'Bucket holding skymp-client.zip and the served client files. Empty = build/client-files.' },
+  { key: 'CLIENT_FILES_DIR',      label: 'Client files directory', type: 'text',  group: 'Client updates', help: 'Folder holding the served client files. Empty = build/client-files.' },
 
   // CI & tooling
   { key: 'ALDUINAK_GH_TOKEN',     label: 'GitHub token (PAT)',    type: 'secret', group: 'CI & tooling', help: 'PAT with actions:write - powers the manager CI Rebuild (workflow dispatch).' },

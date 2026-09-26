@@ -568,7 +568,7 @@ class Builder {
     const modOwned = v.files.filter(f => /^Data\//i.test(f.path) && clientPackage.isModOwned(f.path.slice(5))).map(f => f.path)
     if (modOwned.length) { bad++; this.line(`MOD-OWNED in zip (the install manifest delivers these): ${modOwned.join(', ')}`) }
     if (bad) return { ok: false, error: 'the client zip does not match build/dist/client - see the STALE, MISSING or MOD-OWNED lines' }
-    this.line(`\n✓ client zip ${v.version} built ${v.builtAt}, ${v.files.length} files, ${(v.zipSize / 1048576).toFixed(1)} MB`)
+    this.line(`\n✓ client zip ${v.version} built ${v.builtAt}, ${v.files.length} files`)
     return { ok: true }
   }
 
