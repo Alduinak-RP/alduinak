@@ -21,6 +21,9 @@ router.get('/', (_req, res) => {
       queued:     hb?.queued ?? 0,
       maxPlayers: hb?.maxPlayers ?? server.maxPlayers,
       lastSeen:   hb?.lastSeen ?? null,
+      // A heartbeat within the last 20 s, the same window routes/status.js uses
+      up:         !!hb && Date.now() - new Date(hb.lastSeen).getTime() < 20_000,
+      staffOnly:  !!server.staffOnly,
     }
   }))
 })

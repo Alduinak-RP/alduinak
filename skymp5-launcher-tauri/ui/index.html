@@ -55,14 +55,22 @@
         <a class="legal-link" data-href="legal">TOS and Privacy Policy</a>
       </div>
 
+      <!-- Section titles on one bar that also separates the status row from the content -->
+      <div class="section-bar">
+        <div class="section-header section-header--news">
+          <h2 class="section-title">LATEST NEWS</h2>
+        </div>
+        <div class="section-header section-header--modlist">
+          <h2 class="section-title">MODLIST</h2>
+          <span class="modlist-count" id="modlist-count"></span>
+        </div>
+      </div>
+
       <!-- Two-column content layout -->
       <div class="content-layout">
 
         <!-- News -->
         <section class="news-section">
-          <div class="section-header">
-            <h2 class="section-title">LATEST NEWS</h2>
-          </div>
           <div class="news-grid" id="news-grid">
             <!-- populated by renderer.js -->
           </div>
@@ -70,10 +78,6 @@
 
         <!-- Modlist -->
         <section class="modlist-section">
-          <div class="section-header section-header--modlist">
-            <h2 class="section-title">MODLIST</h2>
-            <span class="modlist-count" id="modlist-count"></span>
-          </div>
           <!-- Nexus Premium notice: shown only while the signed-in account has no premium -->
           <div class="premium-section" id="premium-notice" hidden>
             <div class="premium-box">
@@ -106,7 +110,14 @@
         <div class="info-item">
           <span class="info-label">SERVER</span>
           <span class="info-value" id="footer-server-name">—</span>
-          <select class="footer-server-select" id="footer-server-select" hidden></select>
+          <div class="server-picker" id="server-picker" hidden>
+            <button type="button" class="server-picker-btn" id="server-picker-btn" aria-haspopup="listbox" aria-expanded="false">
+              <span class="server-dot" id="server-picker-dot"></span>
+              <span class="server-picker-name" id="server-picker-name"></span>
+              <span class="server-picker-caret">&#9652;</span>
+            </button>
+            <ul class="server-menu" id="server-menu" role="listbox" hidden></ul>
+          </div>
         </div>
         <!-- Footer player count hidden for now: the topbar badge shows it.
         <div class="info-divider"></div>
@@ -199,6 +210,49 @@
 
         <!-- Settings tab -->
         <div class="tab-panel" id="tab-settings" hidden>
+
+          <details class="settings-collapse">
+            <summary>Discord</summary>
+            <div class="collapse-grid">
+            <label class="setting-checkbox-row span-2"><input type="checkbox" id="setting-discord-presence" /><span>Discord Rich Presence</span></label>
+            <p class="setting-hint span-2">Shows "Playing Alduinak" and the player count on your Discord profile while the game runs and this launcher stays open. Needs the Discord app and its "Share your detected activities with others" setting.</p>
+            </div>
+          </details>
+
+          <details class="settings-collapse" id="voip-collapse">
+            <summary>Voice Chat</summary>
+            <div class="collapse-grid">
+            <div class="settings-group">
+              <label class="setting-label" for="voip-input">Microphone</label>
+              <select class="setting-input" id="voip-input"></select>
+            </div>
+            <div class="settings-group">
+              <label class="setting-label" for="voip-output">Speaker</label>
+              <select class="setting-input" id="voip-output"></select>
+            </div>
+            <div class="voip-activation span-2">
+              <label class="setting-checkbox-row"><input type="radio" name="voip-activation" value="ptt" id="voip-ptt" /><span>Push-to-Talk</span></label>
+              <label class="setting-checkbox-row"><input type="radio" name="voip-activation" value="vad" id="voip-vad" /><span>Voice Detection</span></label>
+            </div>
+            <div class="voip-meter span-2">
+              <div class="voip-row" id="voip-threshold-row" hidden>
+                <div class="voip-track"><span class="voip-arrow voip-arrow--down" id="voip-threshold" title="Voice detection threshold"></span></div>
+                <span class="voip-readout" id="voip-threshold-value"></span>
+              </div>
+              <div class="voip-row">
+                <div class="voip-bar"><div class="voip-level" id="voip-level"></div><span class="voip-target"></span></div>
+                <span class="voip-readout" id="voip-level-value"></span>
+              </div>
+              <div class="voip-row">
+                <div class="voip-track"><span class="voip-arrow voip-arrow--up" id="voip-gain" title="Microphone volume"></span></div>
+                <span class="voip-readout">Volume</span>
+              </div>
+            </div>
+            <p class="setting-hint span-2">Drag the arrow to change your volume. Try to keep your talking voice as close to the center as you can.</p>
+            <p class="setting-hint setting-warning span-2" id="voip-error" hidden></p>
+            <p class="setting-hint span-2">Push-to-Talk uses the Voice Push-to-Talk key under Server Hotkeys. Changes apply the next time you start the game.</p>
+            </div>
+          </details>
 
           <details class="settings-collapse" open>
             <summary>Graphics</summary>
@@ -320,14 +374,6 @@
             <div class="ghk-rows" id="ghk-rows"></div>
             <p class="setting-hint span-2">Written to the game's controlmap; a mouse button replaces the key. Changes apply the next time you start the game.</p>
             <p class="setting-hint setting-warning span-2" id="ghk-duplicate" hidden></p>
-            </div>
-          </details>
-
-          <details class="settings-collapse">
-            <summary>Discord</summary>
-            <div class="collapse-grid">
-            <label class="setting-checkbox-row span-2"><input type="checkbox" id="setting-discord-presence" /><span>Discord Rich Presence</span></label>
-            <p class="setting-hint span-2">Shows "Playing Alduinak" and the player count on your Discord profile while the game runs and this launcher stays open. Needs the Discord app and its "Share your detected activities with others" setting.</p>
             </div>
           </details>
 

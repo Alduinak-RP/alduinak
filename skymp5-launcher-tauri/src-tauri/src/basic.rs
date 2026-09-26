@@ -38,6 +38,7 @@ pub async fn settings_load() -> Value {
         "mo2Enabled": s.bool("mo2Enabled"),
         "isolatedGame": s.bool("isolatedGame"),
         "discordPresence": s.bool("discordPresence"),
+        "voice": crate::install::VOICE_KEYS.iter().map(|k| (k.to_string(), s.get(k))).collect::<serde_json::Map<_, _>>(),
         "multiServer": servers.as_array().map(|a| a.len() > 1).unwrap_or(false),
         "servers": servers,
         "discordUser": s.get("discordUser"),
@@ -47,7 +48,7 @@ pub async fn settings_load() -> Value {
 #[tauri::command]
 pub fn settings_save(data: Value) {
     let allowed = ["skyrimPath", "baseDirPath", "activeServerId", "mo2Enabled", "isolatedGame", "discordPresence"];
-    let mut pairs: Vec<(String, Value)> = allowed.iter().filter_map(|k| data.get(*k).map(|v| (k.to_string(), v.clone()))).collect();
+    let mut pairs: Vec<(String, Value)> = allowed.iter().chain(crate::install::VOICE_KEYS.iter()).filter_map(|k| data.get(*k).map(|v| (k.to_string(), v.clone()))).collect();
     if let Some(p) = data.get("skyrimPath").and_then(|v| v.as_str()) {
         let edition = if game::is_valid_skyrim_path(p) { game::detect_edition(p) } else { String::new() };
         pairs.push(("gameStore".into(), Value::from(edition)));

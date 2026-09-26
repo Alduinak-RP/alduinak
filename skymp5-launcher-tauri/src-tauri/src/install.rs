@@ -158,6 +158,9 @@ fn open_download_list(missing: &[Value]) {
     let _ = app.opener().open_url(format!("{}/api/nexus-downloads{query}", net::api_url()), None::<&str>);
 }
 
+// Voice chat settings the game reads as is: device labels, "ptt" or "vad", the detection threshold and the mic gain in dB
+pub const VOICE_KEYS: [&str; 5] = ["voiceInputDevice", "voiceOutputDevice", "voiceActivation", "voiceThresholdDb", "voiceGainDb"];
+
 // Writes the SkyMP client settings from scratch, keeping only the player's hotkeys and FOV; online servers also get the login the game reads
 pub fn write_client_settings(dest: &Path, srv: &Value, info: Option<&Value>) -> Result<(), String> {
     let mut prev: Map<String, Value> = fs::read_to_string(dest).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| v.as_object().cloned()).unwrap_or_default();
@@ -167,6 +170,10 @@ pub fn write_client_settings(dest: &Path, srv: &Value, info: Option<&Value>) -> 
         if let Some(v) = prev.get(k) { s.insert(k.into(), v.clone()); }
     }
     s.insert("fov".into(), json!(crate::settings::launcher_fov()));
+    for k in VOICE_KEYS {
+        let v = store().get(k);
+        if !v.is_null() { s.insert(k.into(), v); }
+    }
     s.insert("server-ip".into(), srv["address"].clone());
     s.insert("server-port".into(), json!(srv["port"].as_i64().or_else(|| srv["port"].as_str().and_then(|p| p.parse().ok()))));
     // Online mode when serverinfo is unavailable: offline would write a wrong profileId-based gameData

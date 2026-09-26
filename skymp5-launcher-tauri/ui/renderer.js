@@ -22,8 +22,8 @@ document.querySelectorAll('.topnav-link[data-href], .legal-link[data-href]').for
 const modalOverlay = document.getElementById('modal-settings')
 
 // loadSettings re-runs main's registry auto-detect and refreshes the path fields.
-function openModal() { modalOverlay.hidden = false; loadSettings(); loadGameSettingsTab() }
-function closeModal() { endCapture(true); modalOverlay.hidden = true }
+function openModal() { modalOverlay.hidden = false; loadSettings(); loadGameSettingsTab(); syncVoipTest() }
+function closeModal() { endCapture(true); modalOverlay.hidden = true; stopVoipTest() }
 
 document.getElementById('btn-gear').addEventListener('click', openModal)
 document.getElementById('modal-close').addEventListener('click', closeModal)
@@ -38,6 +38,7 @@ document.querySelectorAll('.modal-tab').forEach(tab => {
     document.getElementById(`tab-${tab.dataset.tab}`).hidden = false
     // The ini files may have changed in game or in MO2 since the last look
     if (tab.dataset.tab === 'settings') loadGameSettingsTab()
+    syncVoipTest()
   })
 })
 
@@ -373,13 +374,66 @@ function setPathWarning(msg) {
   skyrimPathWarning.hidden = !msg
 }
 
-// Footer server selector
-const footerServerName   = document.getElementById('footer-server-name')
-const footerServerSelect = document.getElementById('footer-server-select')
+// Footer server picker
+const footerServerName = document.getElementById('footer-server-name')
+const serverPicker     = document.getElementById('server-picker')
+const serverPickerBtn  = document.getElementById('server-picker-btn')
+const serverMenu       = document.getElementById('server-menu')
+let pickerServers = []
+let pickerActiveId = ''
+
+function setServerMenuOpen(open) {
+  serverMenu.hidden = !open
+  serverPickerBtn.setAttribute('aria-expanded', String(open))
+}
+
+function renderServerPicker() {
+  const active = pickerServers.find(s => s.id === pickerActiveId) || pickerServers[0]
+  if (!active) return
+  document.getElementById('server-picker-name').textContent = active.name
+  document.getElementById('server-picker-dot').classList.toggle('online', active.up === true)
+  serverMenu.innerHTML = ''
+  for (const srv of pickerServers) {
+    const li = document.createElement('li')
+    li.className = 'server-option' + (srv === active ? ' selected' : '')
+    li.setAttribute('role', 'option')
+    li.dataset.id = srv.id || ''
+    const dot = document.createElement('span')
+    dot.className = 'server-dot' + (srv.up === true ? ' online' : '')
+    const name = document.createElement('span')
+    name.className = 'server-option-name'
+    name.textContent = srv.name
+    li.append(dot, name)
+    if (srv.staffOnly) {
+      const tag = document.createElement('span')
+      tag.className = 'server-option-tag'
+      tag.textContent = 'STAFF'
+      li.append(tag)
+    }
+    const players = document.createElement('span')
+    players.className = 'server-option-players'
+    players.textContent = srv.up === true ? `${srv.online ?? 0} / ${srv.maxPlayers ?? '?'}` : 'offline'
+    li.append(players)
+    serverMenu.append(li)
+  }
+}
+
+serverPickerBtn.addEventListener('click', e => {
+  e.stopPropagation()
+  setServerMenuOpen(serverMenu.hidden)
+})
+document.addEventListener('click', () => setServerMenuOpen(false))
+document.addEventListener('keydown', e => { if (e.key === 'Escape') setServerMenuOpen(false) })
 
 // Status, lock and PLAY state follow the selected server
-footerServerSelect.addEventListener('change', async () => {
-  await window.electronAPI.saveSettings({ activeServerId: footerServerSelect.value })
+serverMenu.addEventListener('click', async e => {
+  const li = e.target.closest('.server-option')
+  if (!li) return
+  setServerMenuOpen(false)
+  if (li.dataset.id === pickerActiveId) return
+  pickerActiveId = li.dataset.id
+  renderServerPicker()
+  await window.electronAPI.saveSettings({ activeServerId: pickerActiveId })
   checkServerStatus()
   loadServerInfo()
   refreshPlayState()
@@ -437,21 +491,14 @@ async function loadSettings() {
   checkSkyrimPath()
   fieldBaseDir.value = s.baseDirPath || ''
 
-  // Footer server selector - a dropdown whenever the list is known, plain text otherwise
-  if (s.servers && s.servers.length > 0) {
-    footerServerName.hidden   = true
-    footerServerSelect.hidden = false
-    footerServerSelect.innerHTML = ''
-    for (const srv of s.servers) {
-      const opt = document.createElement('option')
-      opt.value       = srv.id || ''
-      opt.textContent = srv.name
-      opt.selected    = srv.id === s.activeServerId
-      footerServerSelect.appendChild(opt)
-    }
-  } else {
-    footerServerName.hidden   = false
-    footerServerSelect.hidden = true
+  // Footer server picker whenever the list is known, plain text otherwise
+  const hasList = Array.isArray(s.servers) && s.servers.length > 0
+  footerServerName.hidden = hasList
+  serverPicker.hidden = !hasList
+  if (hasList) {
+    pickerServers = s.servers
+    pickerActiveId = s.activeServerId
+    renderServerPicker()
   }
 
   // Restore Discord user from persisted store
@@ -467,6 +514,7 @@ async function loadSettings() {
   refreshIsolatedStatus()
 
   fieldDiscordPresence.checked = !!s.discordPresence
+  applyVoiceSettings(s.voice)
 
   return s
 }
@@ -721,6 +769,162 @@ fieldIsolated.addEventListener('change', async () => {
   refreshPlayState()
 })
 fieldDiscordPresence.addEventListener('change', () => saveSetting({ discordPresence: fieldDiscordPresence.checked }))
+
+// Voice chat settings: devices are stored by label (the game's browser has its own device ids), and the mic test uses the game's -60..0 dB scale
+const VOIP_MIN_DB = -60
+const VOIP_GAIN_DB = 20   // the volume arrow spans -20..+20 dB
+const voip = { input: '', output: '', activation: 'ptt', thresholdDb: -40, gainDb: 0 }
+let voipTest = null
+
+const voipCollapse   = document.getElementById('voip-collapse')
+const voipInput      = document.getElementById('voip-input')
+const voipOutput     = document.getElementById('voip-output')
+const voipThreshold  = document.getElementById('voip-threshold')
+const voipGain       = document.getElementById('voip-gain')
+const voipLevel      = document.getElementById('voip-level')
+const voipLevelValue = document.getElementById('voip-level-value')
+const voipError      = document.getElementById('voip-error')
+
+const dbToPos = db => Math.min(1, Math.max(0, (db - VOIP_MIN_DB) / -VOIP_MIN_DB))
+
+function applyVoiceSettings(v) {
+  v = v || {}
+  voip.input       = typeof v.voiceInputDevice === 'string' ? v.voiceInputDevice : ''
+  voip.output      = typeof v.voiceOutputDevice === 'string' ? v.voiceOutputDevice : ''
+  voip.activation  = v.voiceActivation === 'vad' ? 'vad' : 'ptt'
+  voip.thresholdDb = typeof v.voiceThresholdDb === 'number' ? v.voiceThresholdDb : -40
+  voip.gainDb      = typeof v.voiceGainDb === 'number' ? v.voiceGainDb : 0
+  fillVoipDevices([])
+  renderVoip()
+}
+
+function renderVoip() {
+  document.getElementById('voip-ptt').checked = voip.activation === 'ptt'
+  document.getElementById('voip-vad').checked = voip.activation === 'vad'
+  document.getElementById('voip-threshold-row').hidden = voip.activation !== 'vad'
+  voipThreshold.style.left = `${dbToPos(voip.thresholdDb) * 100}%`
+  document.getElementById('voip-threshold-value').textContent = `${voip.thresholdDb} dB`
+  voipGain.style.left = `${(voip.gainDb + VOIP_GAIN_DB) / (2 * VOIP_GAIN_DB) * 100}%`
+  voipGain.title = `Microphone volume ${voip.gainDb > 0 ? '+' : ''}${voip.gainDb} dB`
+  if (voipTest) voipTest.gain.gain.value = Math.pow(10, voip.gainDb / 20)
+}
+
+// A saved device that is unplugged stays selectable so the choice is not lost
+function fillVoipDevices(devices) {
+  for (const [select, kind, current] of [[voipInput, 'audioinput', voip.input], [voipOutput, 'audiooutput', voip.output]]) {
+    const labels = [...new Set(devices.filter(d => d.kind === kind && d.label && d.deviceId !== 'default' && d.deviceId !== 'communications').map(d => d.label))]
+    if (current && !labels.includes(current)) labels.push(current)
+    select.innerHTML = ''
+    select.append(new Option('System default', ''))
+    for (const label of labels) select.append(new Option(label, label))
+    select.value = current
+  }
+}
+
+async function findDeviceId(kind, label) {
+  if (!label) return ''
+  const found = (await navigator.mediaDevices.enumerateDevices()).find(d => d.kind === kind && d.label === label)
+  return found ? found.deviceId : ''
+}
+
+function voipTick() {
+  if (!voipTest) return
+  const { analyser, buf } = voipTest
+  analyser.getFloatTimeDomainData(buf)
+  let sum = 0
+  for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+  const db = Math.max(VOIP_MIN_DB, 20 * Math.log10(Math.sqrt(sum / buf.length) || 1e-8))
+  voipLevel.style.width = `${dbToPos(db) * 100}%`
+  voipLevel.classList.toggle('voip-level--open', voip.activation === 'vad' && db >= voip.thresholdDb)
+  voipLevelValue.textContent = `${Math.round(db)} dB`
+  voipTest.raf = requestAnimationFrame(voipTick)
+}
+
+// Listens to the chosen mic through the volume setting only; nothing is played back
+async function startVoipTest() {
+  if (voipTest) return
+  voipError.hidden = true
+  try {
+    const deviceId = await findDeviceId('audioinput', voip.input)
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true })
+    const ctx = new AudioContext()
+    const gain = ctx.createGain()
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 1024
+    ctx.createMediaStreamSource(stream).connect(gain)
+    gain.connect(analyser)
+    voipTest = { stream, ctx, gain, analyser, buf: new Float32Array(analyser.fftSize), raf: 0 }
+    renderVoip()
+    // Device names are readable only once the mic is allowed
+    fillVoipDevices(await navigator.mediaDevices.enumerateDevices())
+    voipTick()
+  } catch (e) {
+    voipError.textContent = `Could not open the microphone: ${e && e.message || e}`
+    voipError.hidden = false
+  }
+}
+
+function stopVoipTest() {
+  const t = voipTest
+  voipTest = null
+  if (!t) return
+  cancelAnimationFrame(t.raf)
+  t.stream.getTracks().forEach(tr => tr.stop())
+  t.ctx.close().catch(() => {})
+  voipLevel.style.width = '0'
+  voipLevelValue.textContent = ''
+}
+
+// The mic stays open only while the section is visible
+function syncVoipTest() {
+  const visible = voipCollapse.open && !modalOverlay.hidden && !document.getElementById('tab-settings').hidden
+  if (visible) startVoipTest()
+  else stopVoipTest()
+}
+
+voipCollapse.addEventListener('toggle', syncVoipTest)
+
+voipInput.addEventListener('change', async () => {
+  voip.input = voipInput.value
+  await saveSetting({ voiceInputDevice: voip.input })
+  stopVoipTest()
+  syncVoipTest()
+})
+voipOutput.addEventListener('change', () => {
+  voip.output = voipOutput.value
+  saveSetting({ voiceOutputDevice: voip.output })
+})
+document.querySelectorAll('input[name="voip-activation"]').forEach(radio => radio.addEventListener('change', () => {
+  voip.activation = radio.value
+  renderVoip()
+  saveSetting({ voiceActivation: voip.activation })
+}))
+
+// Drags an arrow along its track; the value saves when the arrow is let go
+function dragArrow(arrow, onMove, onDone) {
+  arrow.addEventListener('pointerdown', e => {
+    e.preventDefault()
+    arrow.setPointerCapture(e.pointerId)
+    const track = arrow.parentElement.getBoundingClientRect()
+    const move = ev => onMove(Math.min(1, Math.max(0, (ev.clientX - track.left) / track.width)))
+    const up = () => {
+      arrow.removeEventListener('pointermove', move)
+      arrow.removeEventListener('pointerup', up)
+      arrow.removeEventListener('pointercancel', up)
+      onDone()
+    }
+    arrow.addEventListener('pointermove', move)
+    arrow.addEventListener('pointerup', up)
+    arrow.addEventListener('pointercancel', up)
+    move(e)
+  })
+}
+dragArrow(voipThreshold,
+  p => { voip.thresholdDb = Math.round(VOIP_MIN_DB * (1 - p)); renderVoip() },
+  () => saveSetting({ voiceThresholdDb: voip.thresholdDb }))
+dragArrow(voipGain,
+  p => { voip.gainDb = Math.round(p * 2 * VOIP_GAIN_DB - VOIP_GAIN_DB); renderVoip() },
+  () => saveSetting({ voiceGainDb: voip.gainDb }))
 
 // Warns below the path field about a missing SkyrimSE.exe, a wrong version or an unsupported store
 async function checkSkyrimPath() {
