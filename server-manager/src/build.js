@@ -442,7 +442,11 @@ class Builder {
     if (!built) return { ok: false, error: `no ${version} installer found in ${bundle}` }
     fs.mkdirSync(config.paths.launcherOut, { recursive: true })
     const exePath = path.join(config.paths.launcherOut, config.launcherArtifact)
-    fs.copyFileSync(path.join(bundle, built), exePath)
+    // Copied aside then renamed, so a launcher never downloads a half-written installer
+    fs.copyFileSync(path.join(bundle, built), exePath + '.part')
+    fs.renameSync(exePath + '.part', exePath)
+    require(path.join(config.paths.backend, 'sources', 'versions')).writeVersion('launcher', version)
+    this.line(`[launcher] versions.json now advertises ${version}`)
     this.line(`
 ✓ Launcher built → ${exePath}`)
     return { ok: true, out: config.paths.launcherOut }

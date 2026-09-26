@@ -277,7 +277,8 @@ function registerVersionIpc(name, pkgPath, extraWriteFns) {
 }
 
 const writeVersion = key => v => backendModule('versions').writeVersion(key, v)
-registerVersionIpc('launcher', config.paths.launcherPkg, [writeVersion('launcher')])
+// The launcher's live version is published by Build launcher once the new installer is served
+registerVersionIpc('launcher', config.paths.launcherPkg, [])
 registerVersionIpc('client', config.paths.clientPkg, [writeVersion('client')])
 registerVersionIpc('server', config.paths.serverPkg, [writeVersion('server')])
 
