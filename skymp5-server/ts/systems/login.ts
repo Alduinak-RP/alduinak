@@ -76,13 +76,13 @@ export class Login implements System {
     return data.user as UserProfile;
   }
 
-  // Backend ban check (discordId/hwid/ip); fails OPEN so a backend outage cannot lock everyone out
-  private async checkConnectionAllowed(profileId: number, ip: string): Promise<boolean> {
+  // Backend ban check (discordId/hwid/ip); fails closed, a player the backend cannot vouch for stays out
+  private async checkConnectionAllowed(profileId: number, ip: string): Promise<"allowed" | "banned" | "unavailable"> {
     try {
       const authToken = this.settingsObject.allSettings ? this.settingsObject.allSettings["masterApiAuthToken"] : undefined;
       if (typeof authToken !== "string" || !authToken) {
-        console.warn("checkConnectionAllowed: masterApiAuthToken missing, skipping ban check");
-        return true;
+        console.error("checkConnectionAllowed: masterApiAuthToken missing, refusing logins");
+        return "unavailable";
       }
       const response = await this.fetchRetry(
         `${this.masterUrl}/api/servers/${this.masterKey}/connection-check`,
@@ -95,14 +95,14 @@ export class Login implements System {
         },
       );
       if (!response.ok) {
-        console.warn(`checkConnectionAllowed: HTTP ${response.status}, failing open`);
-        return true;
+        console.warn(`checkConnectionAllowed: HTTP ${response.status}, refusing`);
+        return "unavailable";
       }
       const data = await response.json();
-      return !(data && data.allowed === false);
+      return data && data.allowed === true ? "allowed" : "banned";
     } catch (err) {
-      console.warn("checkConnectionAllowed: request failed, failing open:", err);
-      return true;
+      console.warn("checkConnectionAllowed: request failed, refusing:", err);
+      return "unavailable";
     }
   }
 
@@ -166,8 +166,12 @@ export class Login implements System {
         }
 
         // Backend ban store check by discordId/hwid/ip; also records the connecting ip
-        const connectionAllowed = await this.checkConnectionAllowed(profile.id, ip);
-        if (!connectionAllowed) {
+        const connection = await this.checkConnectionAllowed(profile.id, ip);
+        if (connection === "unavailable") {
+          kickWithReason(ctx.svr, userId, "The login service is unavailable, please try again in a minute.");
+          throw new Error("connection-check unavailable");
+        }
+        if (connection === "banned") {
           ctx.svr.sendCustomPacket(userId, loginFailedBanned);
           throw new Error("Banned by backend connection-check");
         }
