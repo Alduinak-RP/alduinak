@@ -436,8 +436,10 @@ class Builder {
       { [pathKey]: `${cargo};${process.env[pathKey] || ''}` })
     if (!build.ok) return { ok: false, error: 'tauri build failed - see log (is Rust installed?)' }
     const bundle = path.join(dir, 'src-tauri', 'target', 'release', 'bundle', 'nsis')
-    const built = fs.readdirSync(bundle).find(f => f.toLowerCase().endsWith('-setup.exe'))
-    if (!built) return { ok: false, error: `no installer found in ${bundle}` }
+    // Older installers stay in the bundle folder, so pick the one for this version
+    const version = JSON.parse(fs.readFileSync(config.paths.launcherPkg, 'utf8')).version
+    const built = fs.readdirSync(bundle).find(f => f.toLowerCase().endsWith(`_${version}_x64-setup.exe`))
+    if (!built) return { ok: false, error: `no ${version} installer found in ${bundle}` }
     fs.mkdirSync(config.paths.launcherOut, { recursive: true })
     const exePath = path.join(config.paths.launcherOut, config.launcherArtifact)
     fs.copyFileSync(path.join(bundle, built), exePath)
