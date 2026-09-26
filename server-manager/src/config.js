@@ -24,6 +24,15 @@ function readEnv(key) {
   } catch { return '' }
 }
 
+// systemLog.path of the repo's mongod.cfg, which the AlduinakMongo service loads
+function mongoLogFile() {
+  try {
+    const m = /^\s*path:\s*(.+?)\s*$/m.exec(fs.readFileSync(path.join(repoRoot, 'deploy', 'mongodb', 'mongod.cfg'), 'utf8'))
+    if (m) return m[1]
+  } catch {}
+  return 'C:\\Alduinak\\mongodb\\log\\mongod.log'
+}
+
 function readServerSetting(key) {
   try { return JSON.parse(fs.readFileSync(serverSettings, 'utf8'))[key] || '' } catch { return '' }
 }
@@ -42,15 +51,15 @@ module.exports = {
 
   // nssm services. `key` is the short label shown in the UI; `name` is the
   // actual Windows service. Order is the start order (stop order is reversed).
-  // Keep this list in sync with SERVICES in src/renderer/renderer.js (the
-  // renderer has its own copy of key/label and would show a stale set if they drift).
   // Renamed services: migrate the live box by re-running build/dist/server/install-services.bat
   // legacyNames are pre-rename service names the manager falls back to until then.
+  // column: the Console tab column that shows the service; logFiles: logs nssm does not know (MongoDB is a plain Windows service)
   services: [
-    { key: 'nginx',   name: 'AlduinakNginx',      legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx'    },
-    { key: 'backend', name: 'AlduinakBackend',    legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend'  },
-    { key: 'livekit', name: 'AlduinakLiveKit',    legacyNames: [],                                label: 'LiveKit'  },
-    { key: 'game',    name: 'AlduinakGameServer', legacyNames: ['SkyrpGameServer'],               label: 'Game'     },
+    { key: 'mongo',   name: 'AlduinakMongo',      legacyNames: [],                                label: 'MongoDB',  column: 'backend', logFiles: [mongoLogFile()] },
+    { key: 'nginx',   name: 'AlduinakNginx',      legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx',    column: 'nginx', accessLog: 'C:\\nginx\\logs\\access.log' },
+    { key: 'backend', name: 'AlduinakBackend',    legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend',  column: 'backend' },
+    { key: 'livekit', name: 'AlduinakLiveKit',    legacyNames: [],                                label: 'LiveKit',  column: 'game' },
+    { key: 'game',    name: 'AlduinakGameServer', legacyNames: ['SkyrpGameServer'],               label: 'Game',     column: 'game' },
   ],
 
   // Reference MO2 install used to compile the manifest (the Modlist tab).
@@ -102,8 +111,8 @@ module.exports = {
     get dir()    { return readEnv('MANAGER_LOG_DIR') || path.join(module.exports.logDir, 'manager') },
   },
 
-  // Daily game restart time (local HH:MM, or off), read live from the backend .env
-  get autoRestartAt() { return readEnv('AUTO_RESTART_AT') || '04:00' },
+  // Daily game restart time (local HH:MM, or off), read live from server-settings.json
+  get autoRestartAt() { return String(readServerSetting('dailyRestartAt') || '04:00') },
 
   // Backend audit logs (ban.log, faction.log), mirroring auditLog.js
   get auditLogDir() { return readEnv('BAN_LOG_DIR') || module.exports.logDir },

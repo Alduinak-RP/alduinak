@@ -65,7 +65,7 @@ function createRestartSchedule({ at, say, restart, gameRunning, log, now = Date.
       const t = now()
       const text = String(at() || '').trim()
       if (!parseAt(text)) {
-        if (text && text.toLowerCase() !== 'off' && text !== badText) log(`AUTO_RESTART_AT "${text}" is not HH:MM or off: daily restart disabled`)
+        if (text && text.toLowerCase() !== 'off' && text !== badText) log(`dailyRestartAt "${text}" is not HH:MM or off: daily restart disabled`)
         badText = text
         cycle = null
         return

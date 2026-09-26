@@ -6,6 +6,7 @@ const path = require('path')
 const fs   = require('fs')
 const config = require('./config')
 const modsync = require('./modsync')
+const playtime = require('./playtime')
 const { nssm, nativeModuleLocked } = require('./serviceCheck')
 
 // Host callbacks: onRotated(file) after a log is archived, status(text) for warnings
@@ -59,6 +60,12 @@ function purgePending() {
 }
 
 async function act(svc, verb) {
+  // The backend and the game server hold MongoDB open; stopping it under them loses writes
+  if (svc.key === 'mongo' && verb === 'stop') {
+    for (const dep of ['backend', 'game']) {
+      if (await nssm('status', await serviceName(serviceByKey[dep])) !== 'SERVICE_STOPPED') return { ok: false, text: `refused: stop ${serviceByKey[dep].label} first` }
+    }
+  }
   if (svc.key === 'game' && verb === 'start') {
     const pending = purgePending()
     if (pending) return { ok: false, text: pending }
@@ -101,6 +108,7 @@ async function serviceLogFiles(svc) {
     const p = parseNssmPath(await nssm('get', name, stream))
     if (p) files.push(p)
   }
+  files.push(...(svc.logFiles || []))
   if (svc.key === 'game') {
     for (const f of GAME_LOG_FILES) {
       files.push(path.join(chatLogDir(), f))
@@ -151,8 +159,23 @@ function sweepRotatedLogs(file) {
   }
 }
 
+// The game's own log, and nssm's size-rotated pieces of it, add their sessions to the hours played first
+async function countPlaytime(file) {
+  const dir = path.dirname(file)
+  const ext = path.extname(file) || '.log'
+  const base = path.basename(file, ext)
+  let pieces = []
+  try { pieces = fs.readdirSync(dir).filter(e => e.startsWith(base + '-') && e.endsWith(ext) && /^\d/.test(e.slice(base.length + 1))) } catch {}
+  for (const f of [...pieces.map(e => path.join(dir, e)), file]) {
+    try { await playtime.addFromLog(f, readServerSettings()) }
+    catch (err) { hooks.status(`hours played not counted from ${f}: ${err.message}`) }
+  }
+}
+
 async function rotateServiceLogs(svc) {
-  for (const file of await serviceLogFiles(svc)) {
+  const files = await serviceLogFiles(svc)
+  if (svc.key === 'game' && files[0]) await countPlaytime(files[0])
+  for (const file of files) {
     sweepRotatedLogs(file)
     archiveLogFile(file)
   }
@@ -196,27 +219,28 @@ function parseNssmPath(s) {
   return p && !/^reset|^\(|unknown|service/i.test(p) ? p : ''
 }
 
-// [{ file, label }] for the logs that exist right now
+// [{ file, label, service }] for the logs that exist right now
 async function discoverLogTargets() {
   const targets = []
   const seen = new Set()
-  const add = (file, label) => {
-    if (file && !seen.has(file)) { seen.add(file); targets.push({ file, label }) }
+  const add = (file, label, service) => {
+    if (file && !seen.has(file)) { seen.add(file); targets.push({ file, label, service }) }
   }
   for (const s of config.services) {
     const name = await serviceName(s)
     for (const stream of ['AppStdout', 'AppStderr']) {
       const p = parseNssmPath(await nssm('get', name, stream))
-      add(p, `${s.label}${stream === 'AppStderr' ? ' (err)' : ''}`)
+      add(p, `${s.label}${stream === 'AppStderr' ? ' (err)' : ''}`, s.key)
     }
+    for (const f of s.logFiles || []) add(f, s.label, s.key)
   }
   // Fallbacks
   const fallbacks = [
-    ['gameserver.log', 'Game'], ['gameserver-err.log', 'Game (err)'],
-    ['backend.log', 'Backend'], ['backend-err.log', 'Backend (err)'],
+    ['gameserver.log', 'Game', 'game'], ['gameserver-err.log', 'Game (err)', 'game'],
+    ['backend.log', 'Backend', 'backend'], ['backend-err.log', 'Backend (err)', 'backend'],
   ]
-  for (const [name, label] of fallbacks) add(path.join(config.logDir, name), label)
-  for (const f of ['error.log', 'access.log']) add(path.join('C:\\nginx', 'logs', f), `Nginx (${f.replace('.log', '')})`)
+  for (const [name, label, key] of fallbacks) add(path.join(config.logDir, name), label, key)
+  for (const f of ['error.log', 'access.log']) add(path.join('C:\\nginx', 'logs', f), `Nginx (${f.replace('.log', '')})`, 'nginx')
   // Keep only the files that actually exist right now (re-checked on each refresh).
   return targets.filter(t => { try { return fs.statSync(t.file).isFile() } catch { return false } })
 }

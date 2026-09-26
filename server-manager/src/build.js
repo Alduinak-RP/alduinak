@@ -445,8 +445,7 @@ class Builder {
     // Copied aside then renamed, so a launcher never downloads a half-written installer
     fs.copyFileSync(path.join(bundle, built), exePath + '.part')
     fs.renameSync(exePath + '.part', exePath)
-    require(path.join(config.paths.backend, 'sources', 'versions')).writeVersion('launcher', version)
-    this.line(`[launcher] versions.json now advertises ${version}`)
+    this.line(`[launcher] upload it, then press Update Version to publish ${version}`)
     this.line(`
 ✓ Launcher built → ${exePath}`)
     return { ok: true, out: config.paths.launcherOut }

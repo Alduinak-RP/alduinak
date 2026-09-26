@@ -13,32 +13,30 @@
     <button class="tab" data-tab="players">Players</button>
     <button class="tab" data-tab="factions">Factions</button>
     <button class="tab" data-tab="build">Build</button>
-    <button class="tab" data-tab="modlist">Modlist</button>
     <button class="tab" data-tab="news">News</button>
     <button class="tab" data-tab="settings">Settings</button>
+    <button class="tab" data-tab="security">Security <span class="count-badge" id="security-badge" hidden></span></button>
   </nav>
-
   <main>
     <section id="console" class="panel active">
-      <div id="services" class="services"></div>
-      <pre id="log" class="log"></pre>
-      <form id="cmd-form" class="row">
-        <input id="cmd" type="text" placeholder="Type a command and press Enter - 'help' lists manager commands…" autocomplete="off" />
-        <button class="action" type="submit">Send</button>
-      </form>
+      <div id="console-columns" class="console-columns"></div>
     </section>
 
     <section id="players" class="panel">
       <div class="row">
-        <input id="player-search" type="text" placeholder="Search name, Discord ID, or character…" autocomplete="off" />
-        <label class="chk"><input type="checkbox" id="players-online-only" /> Online only</label>
+        <input id="player-search" type="text" placeholder="Search Discord name, Discord ID, character or profile ID…" autocomplete="off" />
+        <div class="dropdown">
+          <button id="players-filter-btn" class="action">Filters</button>
+          <div id="players-filter-menu" class="dropdown-menu" hidden></div>
+        </div>
+        <select id="players-sort" title="Sort by"></select>
         <button id="players-refresh" class="action">Refresh</button>
         <span id="players-count" class="status"></span>
       </div>
-      <div class="split">
+      <div class="split resizable">
         <ul id="players-list" class="players"></ul>
         <div id="player-detail" class="detail">
-          <p class="muted">Select a player to view and edit their details.</p>
+          <p class="muted">Select a player, or General Stats.</p>
         </div>
       </div>
     </section>
@@ -58,56 +56,42 @@
               <button id="server-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Bundles the TS server into build/dist/server and rebuilds <code>gamemode.js</code> from <code>gamemode_extensions/</code>. <code>scam_native.node</code> comes from the CI <code>server-dist</code> artifact - drop it in build/dist/server, or tick CMake below.</small>
-          <button id="build-gamemode" class="action small">Build gamemode only</button>
+          <small>Bundles the TS server into build/dist/server and rebuilds <code>gamemode.js</code> from <code>gamemode_extensions/</code>.</small>
+          <button id="build-gamemode" class="action">Build gamemode</button>
           <label class="chk"><input type="checkbox" id="build-server-native" /> Run CMake first (C++ changed, VS 2022)</label>
           <button id="build-server" class="action go">Build server</button>
         </div>
         <div class="build-col">
           <h3>Launcher</h3>
           <div class="field">
-            <label>Version</label>
+            <label>Version <span class="muted" id="launcher-live"></span></label>
             <div class="row">
               <input id="launcher-version" type="text" placeholder="1.0.0" />
               <button id="launcher-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Builds the installer (<code>AlduinakLauncher.exe</code>) → build/launcher.</small>
+          <small>Save sets the version of the next build only. Build launcher writes <code>build/launcher/AlduinakLauncher.exe</code>; upload it, then Update Version tells every launcher to update.</small>
           <button id="build-launcher" class="action go">Build launcher</button>
         </div>
         <div class="build-col">
           <h3>Client</h3>
           <div class="field">
-            <label>Version</label>
+            <label>Version <span class="muted" id="client-live"></span></label>
             <div class="row">
               <input id="client-version" type="text" placeholder="1.0.0" />
               <button id="client-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Rebuilds the front-end UI and skymp5-client.js into build/dist/client; copy its Data into the Alduinak Client Files mod and upload it to Nexus. Drop the CI <code>dist</code> (.dll) into build/dist/client first (or tick CMake below); set Version first.</small>
+          <small>Build client rebuilds the UI and skymp5-client.js into build/dist/client for the Nexus client files. Update modlist builds the manifest from MO2, syncs the server's load order and Data folder and fixes the database for moved or removed plugins; then Update Version, once the Nexus files are live.</small>
           <label class="chk"><input type="checkbox" id="build-client-native" /> Run CMake first (C++ changed, VS 2022)</label>
-          <button id="build-client" class="action go">Build client</button>
+          <button id="build-client" class="action">Build client</button>
+          <button id="modlist-run" class="action go">Update modlist</button>
+          <span id="modlist-gate" class="gate" hidden>Server must be stopped</span>
+          <button id="modlist-purge-restore" class="action small stop" hidden>Restore last purge</button>
         </div>
-        <!-- Native (C++) and CI Rebuild buttons removed; the console still
-             accepts "build native" if a local DLL build is ever wanted. -->
       </div>
-      <pre id="build-log" class="log"></pre>
-    </section>
-
-    <section id="modlist" class="panel">
-      <div class="row">
-        <button id="modlist-refresh" class="action">Read MO2 profile</button>
-        <button id="modlist-update" class="action go">Build manifest</button>
-        <button id="modlist-sync-settings" class="action">Sync server settings</button>
-        <button id="modlist-sync-data" class="action stop">Sync data folder</button>
-        <button id="modlist-purge" class="action stop">Purge MongoDB</button>
-        <button id="modlist-purge-restore" class="action stop" hidden>Restore last purge</button>
-        <span id="modlist-status" class="status"></span>
-      </div>
-      <div id="modlist-summary" class="cards"></div>
       <div id="modlist-diff" class="cards"></div>
-      <div id="modlist-stamps" class="stamps"></div>
-      <pre id="modlist-log" class="log"></pre>
+      <pre id="build-log" class="log"></pre>
     </section>
 
     <section id="news" class="panel">
@@ -138,6 +122,15 @@
       </div>
       <div id="settings-form" class="settings-form"></div>
     </section>
+
+    <section id="security" class="panel">
+      <div class="split">
+        <ul id="security-kinds" class="players narrow"></ul>
+        <div id="security-detail" class="detail wide">
+          <p class="muted">Select a kind of alert.</p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <div id="char-modal" class="modal-overlay" hidden>
@@ -145,12 +138,11 @@
       <div class="modal-head">
         <h3 id="cm-title">Character</h3>
         <span id="cm-status" class="status"></span>
-        <button id="cm-revive" class="action small go" hidden>Revive</button>
-        <button id="cm-delete" class="action small stop">Delete character</button>
         <button id="cm-close" class="action small">Close</button>
       </div>
-      <div id="cm-meta" class="muted"></div>
-      <small>Edits write straight to the character store. Apply them while the game server is stopped (or at least while this player is offline) - a running server can overwrite them at any time. Revive goes through the running server, or straight to the database while the game server is stopped; it is refused while the extra slot the fallen character opened holds a living one.</small>
+      <small>Edits write straight to the character store. Apply them while the game server is stopped (or at least while this player is offline) - a running server can overwrite them.</small>
+      <div id="cm-main" class="cm-main"></div>
+      <div id="cm-faction" class="cm-faction"></div>
       <div class="modal-cols">
         <div class="modal-col" id="cm-appearance"></div>
         <div class="modal-col" id="cm-inventory"></div>
@@ -159,6 +151,10 @@
   </div>
 
   <script src="renderer.js"></script>
+  <script src="console.js"></script>
+  <script src="players.js"></script>
+  <script src="build.js"></script>
+  <script src="security.js"></script>
   <script src="../../../skymp5-backend/public/dashboard/faction-editor.js"></script>
   <script src="factions.js"></script>
 </body>

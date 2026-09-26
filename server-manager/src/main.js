@@ -18,6 +18,8 @@ const {
   statusAll, doServiceAction, doServicesAction, discoverLogTargets, requireGameStopped,
 } = require('./services')
 const { backendRequest, factionsRequest } = require('./backendApi')
+const playerData = require('./playerData')
+const serviceStats = require('./serviceStats')
 const news = require('./news')
 
 let win = null
@@ -59,6 +61,8 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 ipcMain.handle('services:status', () => statusAll())
 
 ipcMain.handle('service:action', (_e, key, action) => doServiceAction(key, action))
+// Sampled only while the Console tab is open
+ipcMain.handle('services:stats', () => serviceStats.sample().catch(() => ({})))
 ipcMain.handle('services:action', (_e, action) => doServicesAction(action))
 
 const tailState = {}   // file -> last byte offset
@@ -72,7 +76,7 @@ async function refreshLogTargets() {
 }
 
 function pollLogs() {
-  for (const { file, label } of logTargets) {
+  for (const { file, label, service } of logTargets) {
     let stat
     try { stat = fs.statSync(file) } catch { continue }
     if (tailState[file] === undefined) tailState[file] = Math.max(0, stat.size - 8192) // seed from tail
@@ -85,7 +89,7 @@ function pollLogs() {
         fs.readSync(fd, buf, 0, len, tailState[file])
         fs.closeSync(fd)
         tailState[file] = stat.size
-        send('log:data', { source: label, text: buf.toString('utf8') })
+        send('log:data', { service, source: label, text: buf.toString('utf8') })
       } catch { /* mid-write race, retry next tick */ }
     }
   }
@@ -277,10 +281,29 @@ function registerVersionIpc(name, pkgPath, extraWriteFns) {
 }
 
 const writeVersion = key => v => backendModule('versions').writeVersion(key, v)
-// The launcher's live version is published by Build launcher once the new installer is served
+// The launcher and client versions reach versions.json only through Update Version, once their files are live
 registerVersionIpc('launcher', config.paths.launcherPkg, [])
-registerVersionIpc('client', config.paths.clientPkg, [writeVersion('client')])
+registerVersionIpc('client', config.paths.clientPkg, [])
 registerVersionIpc('server', config.paths.serverPkg, [writeVersion('server')])
+
+const PUBLISHED_PKG = { launcher: config.paths.launcherPkg, client: config.paths.clientPkg }
+
+ipcMain.handle('versions:published', () => {
+  try { return { ok: true, versions: backendModule('versions').readVersions() } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+// Writes the package's version into versions.json, so launchers update to it
+ipcMain.handle('versions:publish', (_e, key) => {
+  const pkg = PUBLISHED_PKG[key]
+  if (!pkg) return { ok: false, error: 'unknown component' }
+  try {
+    const version = JSON.parse(fs.readFileSync(pkg, 'utf8')).version
+    if (!SEMVER_RE.test(String(version))) return { ok: false, error: `bad version ${version}` }
+    backendModule('versions').writeVersion(key, version)
+    return { ok: true, version }
+  } catch (err) { return { ok: false, error: err.message } }
+})
 
 function backendModule(name) {
   return require(path.join(config.paths.backend, 'sources', name))
@@ -312,6 +335,7 @@ function charFromCf(cf) {
   if (cf.appearanceDump && typeof cf.appearanceDump === 'object') appearance = cf.appearanceDump
   else if (typeof cf.appearanceDump === 'string') { try { appearance = JSON.parse(cf.appearanceDump) } catch {} }
   const name = cf.displayName || (appearance && appearance.name) || cf.formDesc || '(unnamed)'
+  const df = cf.dynamicFields || {}
   return {
     profileId,
     formDesc: cf.formDesc,
@@ -320,6 +344,10 @@ function charFromCf(cf) {
     dead: !!cf.isDead,
     slot: (cf.dynamicFields && Number.isInteger(cf.dynamicFields['private.charSlot'])) ? cf.dynamicFields['private.charSlot'] : null,
     fallen: fallenOf(cf),
+    profession: (df['private.mastery'] && df['private.mastery'].profession) || '',
+    professionHours: (df['private.mastery'] && Number(df['private.mastery'].points)) || 0,
+    attrBonus: { health: 0, magicka: 0, stamina: 0, ...(df['private.attrBonus'] || {}) },
+    roles: Array.isArray(df['private.discordRoles']) ? df['private.discordRoles'].map(String) : [],
     worldOrCell: cf.worldOrCellDesc,
     position: Array.isArray(cf.position) ? cf.position : null,
     health: cf.healthPercentage,
@@ -347,16 +375,20 @@ async function replaceFile(from, to, attempts = 10) {
   }
 }
 
-// Run fn against the mongo changeForms collection, closing the client either way.
-async function withMongoChangeForms(settings, fn) {
+// Run fn against the game server's MongoDB database, closing the client either way.
+async function withDatabase(settings, fn) {
   let MongoClient
   try { ({ MongoClient } = require('mongodb')) }
   catch { throw new Error('mongodb module not installed in server-manager - run npm install') }
   const client = new MongoClient(settings.databaseUri, { serverSelectionTimeoutMS: 3000 })
   try {
     await client.connect()
-    return await fn(client.db(settings.databaseName || 'db').collection('changeForms'))
+    return await fn(client.db(settings.databaseName || 'db'))
   } finally { await client.close() }
+}
+
+async function withMongoChangeForms(settings, fn) {
+  return withDatabase(settings, db => fn(db.collection('changeForms')))
 }
 
 // File driver: yields [file, changeForm] for every parseable json in the store.
@@ -410,67 +442,77 @@ async function readCharactersByProfile() {
   return map
 }
 
-function whitelistSet() {
-  try {
-    const wl = JSON.parse(fs.readFileSync(path.join(config.paths.dataDir, 'whitelist.json'), 'utf8'))
-    return new Set((Array.isArray(wl) ? wl : []).map(String))
-  } catch { return new Set() }
+function whitelistRoleId() {
+  const access = readServerSettings().access
+  return (access && access.whitelistRoleId) || ''
+}
+
+async function playerRows() {
+  const settings = readServerSettings()
+  if (settings.databaseDriver !== 'mongodb') throw new Error('the Players tab needs the MongoDB database (databaseDriver "mongodb")')
+  const [backend, chars] = await Promise.all([playerData.readBackend(settings), readCharactersByProfile()])
+  return { backend, rows: playerData.buildRows(backend, chars, whitelistRoleId()) }
 }
 
 ipcMain.handle('players:list', async () => {
   try {
-    const players = backendModule('players').list()
-    const wl = whitelistSet()
-    const chars = await readCharactersByProfile()
+    const { rows } = await playerRows()
+    return { ok: true, charError: _charError || undefined, rows, races: playerData.RACE_NAMES }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('players:detail', async (_e, profileId) => {
+  try {
+    const { backend, rows } = await playerRows()
+    const row = rows.find(r => r.profileId === Number(profileId))
+    if (!row) return { ok: false, error: 'player not found' }
     return {
       ok: true,
       charError: _charError || undefined,
-      players: players.map(p => ({
-        discordId: p.discordId,
-        profileId: p.profileId,
-        name: p.displayName || p.username || `Player ${p.profileId}`,
-        whitelisted: wl.has(String(p.discordId)),
-        characters: (chars.get(Number(p.profileId)) || []).map(c => c.name),
-      })),
+      player: row,
+      assignments: playerData.assignmentsOf(backend.whitelist, row.discordId),
+      factions: playerData.factionChoices(backend.whitelist),
     }
   } catch (err) { return { ok: false, error: err.message } }
 })
 
-ipcMain.handle('players:detail', async (_e, discordId) => {
-  try {
-    const players = backendModule('players').list()
-    const p = players.find(x => String(x.discordId) === String(discordId))
-    if (!p) return { ok: false, error: 'player not found' }
-    const wl = whitelistSet()
-    const chars = await readCharactersByProfile()
-    return {
-      ok: true,
-      charError: _charError || undefined,
-      player: {
-        discordId: p.discordId, profileId: p.profileId,
-        username: p.username || '', displayName: p.displayName || '',
-        avatar: p.avatar || null, notes: p.notes || '',
-        createdAt: p.createdAt || null, updatedAt: p.updatedAt || null, lastSeenAt: p.lastSeenAt || null,
-        whitelisted: wl.has(String(p.discordId)),
-      },
-      factions: p.assignments || [],
-      permissions: p.factionPermissions || [],
-      gameFactions: p.gameFactions || [],
-      characters: chars.get(Number(p.profileId)) || [],
-    }
-  } catch (err) { return { ok: false, error: err.message } }
+ipcMain.handle('players:stats', async () => {
+  try { return { ok: true, stats: playerData.stats((await playerRows()).rows) } }
+  catch (err) { return { ok: false, error: err.message } }
 })
 
-// Persist edits to a player's username / displayName / notes.
-ipcMain.handle('players:update', (_e, profileId, patch) => {
+// Writes to the backend's records go through its API with the manager token
+async function backendCall(method, apiPath, body) {
+  const token = config.backendApi.token
+  if (!token) return { ok: false, error: 'masterApiAuthToken is not set in server-settings.json' }
   try {
-    const clean = {}
-    for (const k of ['username', 'displayName', 'notes']) {
-      if (patch && patch[k] !== undefined) clean[k] = String(patch[k] ?? '')
-    }
-    const updated = backendModule('players').updateByProfileId(Number(profileId), clean)
-    return { ok: true, player: updated }
-  } catch (err) { return { ok: false, error: err.message } }
+    const { status, data } = await backendRequest(method, apiPath, { body, headers: { 'X-Auth-Token': token }, timeout: 10000 })
+    const ok = status >= 200 && status < 300
+    return { ok, data, error: ok ? undefined : (data && data.error) || `the backend answered ${status}` }
+  } catch (err) {
+    return { ok: false, error: `the backend is unreachable (${err.message}); start the Backend service` }
+  }
+}
+
+ipcMain.handle('players:ban', (_e, profileId, enabled) =>
+  backendCall('PUT', `/api/players/${Number(profileId)}/ban`, { enabled: enabled === true }))
+
+// Kicks the account's online character through the game console
+ipcMain.handle('players:kick', async (_e, profileId) => {
+  const r = await consoleRelay.query('__playersjson', '__PLAYERSJSON__')
+  if (!r.ok) return { ok: false, error: `${r.error}: the game server must be running` }
+  let online = []
+  try { online = JSON.parse(r.payload) } catch { return { ok: false, error: 'bad players payload' } }
+  const hit = online.find(p => Number(p.profileId) === Number(profileId))
+  if (!hit) return { ok: false, error: 'they are not online' }
+  return consoleRelay.command(`kick ${hit.name}`)
+})
+
+ipcMain.handle('chars:faction', (_e, profileId, change) => {
+  const pid = Number(profileId)
+  if (change && change.remove) return backendCall('DELETE', `/api/players/${pid}/factions/${encodeURIComponent(String(change.remove))}`)
+  const { requirementId, slot, playerName } = change || {}
+  return backendCall('POST', `/api/players/${pid}/factions`, { requirementId, slot, playerName })
 })
 
 // ── Character editing: writes straight to the changeForms store ────────────────
@@ -527,31 +569,113 @@ function sanitizeInvEntries(list) {
   return out
 }
 
-async function saveCharacter(formDesc, patch) {
+// Reads the character's changeform, lets mutate change it and writes it back whole (dynamicFields keys hold dots, so no field paths)
+async function updateCharacterDoc(formDesc, mutate) {
   if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
-  const set = {}
-  if (patch && patch.appearance !== undefined) set.appearanceDump = sanitizeAppearance(patch.appearance)
-  if (patch && patch.invEntries !== undefined) set.inv = { entries: sanitizeInvEntries(patch.invEntries) }
-  if (!Object.keys(set).length) throw new Error('nothing to save')
   const settings = readServerSettings()
   if ((settings.databaseDriver || 'file') === 'mongodb') {
     await withMongoChangeForms(settings, async col => {
-      const r = await col.updateOne({ formDesc, recType: 1 }, { $set: set })
-      if (!r.matchedCount) throw new Error(`no character with formDesc ${formDesc}`)
+      const cf = await col.findOne({ formDesc, recType: 1 })
+      if (!cf) throw new Error(`no character with formDesc ${formDesc}`)
+      mutate(cf, settings)
+      const { _id, ...doc } = cf
+      await col.replaceOne({ _id }, doc)
     })
   } else {
-    let saved = false
-    for (const [file, cf] of fileChangeForms(settings)) {
-      if (cf.formDesc !== formDesc || cf.recType !== 1) continue
-      Object.assign(cf, set)
-      fs.writeFileSync(file, JSON.stringify(cf, null, 2))
-      saved = true
-      break
-    }
-    if (!saved) throw new Error(`no character with formDesc ${formDesc}`)
+    const hit = [...fileChangeForms(settings)].find(([, cf]) => cf.formDesc === formDesc && cf.recType === 1)
+    if (!hit) throw new Error(`no character with formDesc ${formDesc}`)
+    mutate(hit[1], settings)
+    fs.writeFileSync(hit[0], JSON.stringify(hit[1], null, 2))
   }
   _charCache = { at: 0, map: new Map() }
 }
+
+const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'hunter', 'miner', 'tailor', 'warrior', 'woodworker']
+const ATTR_LIMIT = 1000   // adminSystem.ts attrSet bounds
+
+function intIn(v, lo, hi, label) {
+  const n = Number(v)
+  if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(`${label}: a whole number from ${lo} to ${hi}`)
+  return n
+}
+
+// A new profession drops the old one's rank marker spells; the server re-grants the right ones at the next login
+function applyMastery(cf, df, { profession, hours }) {
+  const prof = profession ? String(profession) : null
+  if (prof && !PROFESSIONS.includes(prof)) throw new Error(`profession: unknown ${prof}`)
+  const rec = { profession: null, points: 0, lastPointAt: 0, rank: 0, granted: [], ...(df['private.mastery'] || {}) }
+  if (rec.profession !== prof) {
+    const drop = new Set((rec.granted || []).map(Number))
+    if (Array.isArray(cf.learnedSpells)) cf.learnedSpells = cf.learnedSpells.filter(id => !drop.has(Number(id)))
+    rec.granted = []
+    rec.rank = 0
+    rec.profession = prof
+  }
+  rec.points = intIn(hours, 0, 100000, 'Hours in profession')
+  df['private.mastery'] = rec
+}
+
+function applyCharacterPatch(cf, patch) {
+  const df = cf.dynamicFields = { ...(cf.dynamicFields || {}) }
+  let changed = false
+  if (patch.appearance !== undefined) { cf.appearanceDump = sanitizeAppearance(patch.appearance); changed = true }
+  if (patch.invEntries !== undefined) { cf.inv = { entries: sanitizeInvEntries(patch.invEntries) }; changed = true }
+  if (patch.name !== undefined) {
+    const name = String(patch.name).replace(/\p{Cc}/gu, ' ').trim().slice(0, 60)
+    if (!name) throw new Error('Name: empty')
+    cf.appearanceDump = { ...(cf.appearanceDump || {}), name }
+    if (cf.displayName !== undefined) cf.displayName = name
+    changed = true
+  }
+  if (patch.attrBonus !== undefined) {
+    const b = patch.attrBonus || {}
+    df['private.attrBonus'] = {
+      health: intIn(b.health, -ATTR_LIMIT, ATTR_LIMIT, 'Max health'),
+      magicka: intIn(b.magicka, -ATTR_LIMIT, ATTR_LIMIT, 'Max magicka'),
+      stamina: intIn(b.stamina, -ATTR_LIMIT, ATTR_LIMIT, 'Max stamina'),
+    }
+    changed = true
+  }
+  if (patch.mastery !== undefined) { applyMastery(cf, df, patch.mastery || {}); changed = true }
+  if (patch.location !== undefined) {
+    const { worldOrCellDesc, position } = patch.location || {}
+    if (!/^[0-9a-f]{1,8}:[^:]+\.(esm|esp|esl)$/i.test(String(worldOrCellDesc || ''))) throw new Error('Cell: expected a form id and plugin, e.g. 165a7:Skyrim.esm')
+    if (!Array.isArray(position) || position.length !== 3 || position.some(n => !Number.isFinite(Number(n)))) throw new Error('Coordinates: three numbers')
+    cf.worldOrCellDesc = String(worldOrCellDesc)
+    cf.position = position.map(Number)
+    changed = true
+  }
+  if (!changed) throw new Error('nothing to save')
+}
+
+async function saveCharacter(formDesc, patch) {
+  await updateCharacterDoc(formDesc, cf => applyCharacterPatch(cf, patch || {}))
+}
+
+// afterlifeSystem.ts REALMS: where each realm's arrivals appear
+const REALM_ARRIVALS = {
+  sovngarde: { worldOrCellDesc: '95c44:Skyrim.esm', position: [-590.44, -131.84, -357.73], angle: [0, 0, 359] },
+  soulCairn: { worldOrCellDesc: '1408:Dawnguard.esm', position: [-19965.66, -15986.51, 2079.48], angle: [0, 0, 77.35] },
+}
+
+// As afterlifeSystem.ts send() does, written to the store while the game server is stopped
+async function sendToRealm(formDesc, realm) {
+  const arrival = REALM_ARRIVALS[realm]
+  if (!arrival) throw new Error(`unknown realm ${realm}`)
+  if (await gameStatus() !== 'SERVICE_STOPPED') throw new Error('stop the game server first: it owns the character while it runs')
+  await updateCharacterDoc(formDesc, cf => {
+    if (fallenOf(cf)) throw new Error('They are already fallen')
+    const df = cf.dynamicFields = { ...(cf.dynamicFields || {}) }
+    df['private.afterlife'] = { realm, reason: 'server manager', at: Date.now() }
+    delete df['private.afterlifeOutfit']
+    Object.assign(cf, arrival)
+  })
+}
+
+ipcMain.handle('chars:afterlife', async (_e, formDesc, realm) => {
+  try { await sendToRealm(formDesc, realm); return { ok: true } }
+  catch (err) { return { ok: false, error: err.message } }
+})
 
 async function deleteCharacter(formDesc) {
   if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
@@ -665,56 +789,17 @@ ipcMain.handle('chars:revive', async (_e, formDesc) => {
   } catch (err) { return { ok: false, error: err.message } }
 })
 
-// Ask the running backend to drop a user's sessions (they live in its memory).
-async function backendDropSessions(discordId) {
-  const api = config.backendApi
-  if (!api.key || !api.token) throw new Error('backend api credentials missing')
-  const { status, data } = await backendRequest('DELETE', `/api/servers/${encodeURIComponent(api.key)}/sessions-by-discord/${encodeURIComponent(discordId)}`, { headers: { 'X-Auth-Token': api.token } })
-  if (status === 200) return { ok: true, dropped: (data && data.dropped) || 0 }
-  if (status === 404) return { ok: false, noRoute: true }  // backend runs pre-route code
-  return { ok: false }
-}
-
-// A deleted player's cached launcher session (24h sliding TTL) would let them
-// rejoin under the removed profile id, so their sessions must go too.
-async function dropPlayerSessions(discordId) {
-  try {
-    const r = await backendDropSessions(discordId)
-    if (r.ok) return { dropped: r.dropped, warnRestart: false }
-    if (!r.noRoute) return { dropped: 0, warnRestart: true }
-    // fall through to the file scrub with a restart warning
-  } catch { /* backend down: the file scrub below is fully effective */ }
-  // Scrub the persisted store; a RUNNING backend keeps its in-memory copy
-  // (and rewrites the file), so it needs a restart in the noRoute case.
-  let dropped = 0
-  let backendRunning = false
-  try {
-    const file = path.join(config.paths.dataDir, 'sessions.json')
-    const entries = JSON.parse(fs.readFileSync(file, 'utf8'))
-    const keep = entries.filter(([, s]) => String(s && s.discordId) !== String(discordId))
-    dropped = entries.length - keep.length
-    if (dropped) fs.writeFileSync(file, JSON.stringify(keep, null, 2) + '\n')
-  } catch { /* no sessions file yet */ }
-  try { backendRunning = /^SERVICE_RUNNING/.test(await nssm('status', await serviceName(serviceByKey.backend))) } catch {}
-  return { dropped, warnRestart: backendRunning }
-}
-
 // Factions tab: definitions live in the backend, which is their only writer
 ipcMain.handle('factions:api', (_e, method, subPath, body) => factionsRequest(method, subPath, body))
 
-// Deletes the backend player record + profile mapping (and their sessions),
-// optionally with all their characters. A returning player gets a fresh profile.
+// Deletes the account through the backend (record, profile mapping and sessions), optionally with all their characters
 ipcMain.handle('players:delete', async (_e, profileId, opts) => {
   const pid = Number(profileId)
   let deletedChars = 0
   try {
-    const players = backendModule('players')
-    // Verify the mapping BEFORE the irreversible character delete.
-    if (!players.getByProfileId(pid)) return { ok: false, error: 'player not found' }
     if (opts && opts.deleteCharacters) deletedChars = await deleteCharactersByProfile(pid)
-    const r = players.deleteByProfileId(pid)
-    const sessions = await dropPlayerSessions(r.discordId)
-    return { ok: true, discordId: r.discordId, deletedChars, sessions }
+    const r = await backendCall('DELETE', `/api/players/${pid}`)
+    return r.ok ? { ok: true, deletedChars } : { ok: false, error: r.error, deletedChars }
   } catch (err) { return { ok: false, error: err.message, deletedChars } }
 })
 
@@ -735,6 +820,47 @@ ipcMain.handle('players:online', async () => {
     const list = JSON.parse(r.payload)
     return { ok: true, profileIds: list.map(p => Number(p.profileId)), online: list }
   } catch { return { ok: false, error: 'bad players payload' } }
+})
+
+// ── Security tab: alerts the backend and the game server raise into securityAlerts ──
+
+const ALERT_TYPES = ['banEvasion', 'goldSpawn']
+
+async function withAlerts(fn) {
+  const settings = readServerSettings()
+  if (settings.databaseDriver !== 'mongodb') throw new Error('security alerts need the MongoDB database')
+  return withDatabase(settings, db => fn(db.collection('securityAlerts')))
+}
+
+async function unreadCounts(col) {
+  const out = Object.fromEntries(ALERT_TYPES.map(t => [t, 0]))
+  for (const { _id, n } of await col.aggregate([{ $match: { read: false } }, { $group: { _id: '$type', n: { $sum: 1 } } }]).toArray()) out[_id] = n
+  return out
+}
+
+ipcMain.handle('security:unread', async () => {
+  try { return { ok: true, unread: await withAlerts(unreadCounts) } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('security:list', async (_e, type) => {
+  if (!ALERT_TYPES.includes(type)) return { ok: false, error: 'unknown alert type' }
+  try {
+    return await withAlerts(async col => ({
+      ok: true,
+      alerts: (await col.find({ type }).sort({ createdAt: -1 }).limit(500).toArray()).map(a => ({ ...a, id: String(a._id), _id: undefined })),
+    }))
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('security:markRead', async (_e, type) => {
+  if (!ALERT_TYPES.includes(type)) return { ok: false, error: 'unknown alert type' }
+  try {
+    return await withAlerts(async col => {
+      await col.updateMany({ type, read: false }, { $set: { read: true, readAt: new Date() } })
+      return { ok: true, unread: await unreadCounts(col) }
+    })
+  } catch (err) { return { ok: false, error: err.message } }
 })
 
 // Settings tab (structured forms)
@@ -868,31 +994,7 @@ ipcMain.handle('news:addImage', async () => {
 })
 
 
-// Modlist tab
-
-ipcMain.handle('modlist:read', () => {
-  const profileDir = path.join(config.mo2Root, 'profiles', config.profile)
-  const readLines = (f) => {
-    try { return fs.readFileSync(path.join(profileDir, f), 'utf8').split(/\r?\n/) }
-    catch { return null }
-  }
-  const modlist = readLines('modlist.txt')
-  const plugins = readLines('plugins.txt')
-  if (!modlist) return { ok: false, error: `No modlist.txt under ${profileDir}. Check ALDUINAK_MO2_ROOT / profile.` }
-
-  const mods = [], separators = []
-  for (const line of modlist) {
-    const name = line.slice(1).trim()
-    if (!name) continue
-    if (name.endsWith('_separator')) {
-      if (line[0] === '+' || line[0] === '-') separators.push(name.replace(/_separator$/, ''))
-    } else if (line[0] === '+') {
-      mods.push(name)
-    }
-  }
-  const pluginList = (plugins || []).map(l => l.trim()).filter(l => l && !l.startsWith('#'))
-  return { ok: true, profileDir, mods, separators, plugins: pluginList }
-})
+// Modlist: Build tab > Client > Update modlist
 
 // Compile the manifest into a .building file and diff it against the last deployed one; only a successful diff rotates it into place
 async function updateManifest() {
@@ -944,7 +1046,6 @@ async function updateManifest() {
   return { ok: true, diff }
 }
 
-ipcMain.handle('modlist:updateManifest', () => exclusive(updateManifest))
 ipcMain.handle('modlist:diff', () => modsync.readDiff())
 
 function readManifestOrFail() {
@@ -959,46 +1060,34 @@ function stampDiff(patch, log) {
   catch (err) { log(`[diff] not updated: ${err.message}`) }
 }
 
-ipcMain.handle('modlist:syncSettings', () => exclusive(async () => {
-  const b = builder('modlist:log')
+function syncServerSettings(b) {
   const manifest = readManifestOrFail()
-  if (!modsync.readDiff()) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
   requireSettings()
   const r = modsync.syncSettings({ manifest, settingsPath: config.paths.serverSettings, log: t => b.line(t), dryRun: false })
   if (r.ok) stampDiff({ syncedSettingsAt: new Date().toISOString() }, t => b.line(t))
   return r
-}))
+}
 
-ipcMain.handle('modlist:syncData', (_e, opts) => exclusive(async () => {
-  const dryRun = Boolean(opts && opts.dryRun)
-  const b = builder('modlist:log')
+async function syncDataFolder(b) {
   const manifest = readManifestOrFail()
   const prev = modsync.readManifestLight(modsync.paths.prevManifest)
   const stamp = readJsonOrNull(modsync.paths.stamp)
   const settings = requireSettings()
   if (!settings.dataDir) return { ok: false, error: 'server-settings.json has no dataDir' }
-  // Plugins are read at boot, so a running server keeps the old set until restarted
-  if (await gameStatus() === 'SERVICE_RUNNING') {
-    b.line('[data] WARNING: the game server is running, restart it after the sync so it loads the new plugins')
-  }
-  const r = await modsync.syncData({ manifest, prev, stamp, dataDir: settings.dataDir, mo2Root: config.mo2Root, log: t => b.line(t), dryRun })
   // syncData persists data-sync.json itself after a real run
-  if (!dryRun && r.ok) stampDiff({ syncedDataAt: new Date().toISOString() }, t => b.line(t))
+  const r = await modsync.syncData({ manifest, prev, stamp, dataDir: settings.dataDir, mo2Root: config.mo2Root, log: t => b.line(t), dryRun: false })
+  if (r.ok) stampDiff({ syncedDataAt: new Date().toISOString() }, t => b.line(t))
   return r
-}))
+}
 
-ipcMain.handle('modlist:purge', (_e, opts) => exclusive(async () => {
-  const dryRun = Boolean(opts && opts.dryRun)
-  const b = builder('modlist:log')
+async function purgeDatabase(b) {
   const log = t => b.line(`[purge] ${t}`)
   const manifest = readManifestOrFail()
   const diff = modsync.readDiff()
   if (!diff) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
   const settings = requireSettings()
-  const blocked = await requireGameStopped(log, dryRun)
-  if (blocked) return blocked
   const r = await mongoPurge.purgeRemovedMods({
-    settings, diff, dryRun, log,
+    settings, diff, dryRun: false, log,
     newLoadOrder: [...modsync.VANILLA_PLUGINS, ...modsync.enabledPlugins(manifest)],
     currentLoadOrder: (Array.isArray(settings.loadOrder) ? settings.loadOrder : []).map(modsync.basename),
     startPoints: settings.startPoints,
@@ -1006,8 +1095,30 @@ ipcMain.handle('modlist:purge', (_e, opts) => exclusive(async () => {
     // Throwing here aborts the purge before its first write, so no write ever happens without a recorded backup
     onWriteStart: ({ backupFile }) => { modsync.updateDiff({ purgeStartedAt: new Date().toISOString(), purgeBackup: backupFile }) },
   })
-  if (!dryRun && r.ok) stampDiff({ purgedAt: new Date().toISOString(), purgeStartedAt: null }, log)
+  if (r.ok) stampDiff({ purgedAt: new Date().toISOString(), purgeStartedAt: null }, log)
   return r
+}
+
+// Update modlist: manifest, server settings, data folder and the MongoDB purge in one go, with the game server stopped.
+// The change report comes back to the window; its file lives only while the steps run, and stays after a failure so the start gate holds.
+ipcMain.handle('modlist:run', () => exclusive(async () => {
+  const b = builder('modlist:log')
+  const blocked = await requireGameStopped(t => b.line(t), false)
+  if (blocked) return blocked
+  const built = await updateManifest()
+  if (!built.ok) return built
+  const steps = [
+    ['server settings', () => syncServerSettings(b)],
+    ['data folder', () => syncDataFolder(b)],
+    ['MongoDB purge', () => purgeDatabase(b)],
+  ]
+  for (const [label, run] of steps) {
+    b.line(`\n######## ${label} ########`)
+    const r = await run()
+    if (!r.ok) return { ok: false, error: `${label}: ${r.error || 'failed'}`, diff: built.diff, report: r.report }
+  }
+  fs.rmSync(modsync.paths.diff, { force: true })
+  return { ok: true, diff: built.diff }
 }))
 
 // Puts the last purge backup back and reopens the diff for another purge

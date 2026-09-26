@@ -27,6 +27,8 @@ const serverSettings = [
   { key: 'characterSelect',         label: 'Character select',      type: 'bool',   group: 'Gameplay', help: 'Show the character-select screen on join.' },
   { key: 'characterSelectMaxCharacters', label: 'Max characters',   type: 'number', group: 'Gameplay', help: 'Character slots per player when character select is on (1-10, default 3).' },
   { key: 'npcEnabled',              label: 'NPCs enabled',          type: 'bool',   group: 'Gameplay' },
+  { key: 'goldAlertThreshold',      label: 'Gold alert threshold',  type: 'number', group: 'Gameplay', placeholder: '5000', help: 'Gold a character may gain within 10 seconds before the Security tab gets a Gold Spawning alert. 0 disables it. Read at boot. Default 5000.' },
+  { key: 'dailyRestartAt',          label: 'Daily restart time',    type: 'text',   group: 'Gameplay', placeholder: '04:00', help: 'Local HH:MM when the manager agent restarts the game server and archives the logs, with in-game warnings from 1 hour before. off disables it. Read live. Default 04:00.' },
   { key: 'isPapyrusHotReloadEnabled', label: 'Papyrus hot reload',  type: 'bool',   group: 'Gameplay', help: 'Reload compiled .pex scripts on change.' },
   { key: 'enableGamemodeDataUpdatesBroadcast', label: 'Broadcast gamemode updates', type: 'bool', group: 'Gameplay', help: 'Push gamemode script updates to connected clients.' },
   { key: 'locale',                  label: 'Locale file',           type: 'text',   group: 'Gameplay', help: 'File in data/localization (no .json) for M.GetText().' },
@@ -149,7 +151,6 @@ const backendEnv = [
   { key: 'MANAGER_AGENT_SECRET',      label: 'Agent secret',        type: 'secret', group: 'Web manager', help: 'Shared secret the backend signs agent calls with, at least 32 characters.' },
   { key: 'MANAGER_LOG_DIR',           label: 'Manager log folder',  type: 'text',   group: 'Web manager', placeholder: 'C:\\logs\\manager', help: 'Web jobs, their logs, the busy lock and the audit files.' },
   { key: 'MANAGER_AUDIT_WEBHOOK_URL', label: 'Audit Discord webhook', type: 'secret', group: 'Web manager', help: 'Optional private staff channel webhook that mirrors manager actions and failed logins.' },
-  { key: 'AUTO_RESTART_AT',           label: 'Daily restart time',  type: 'text',   group: 'Web manager', placeholder: '04:00', help: 'Local HH:MM when the agent restarts the game server and archives the logs, with in-game warnings from 1 hour before. off disables it. Read live. Default 04:00.' },
 ]
 
 module.exports = { serverSettings, backendEnv }

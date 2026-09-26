@@ -16,8 +16,10 @@
       request: (method, path, body) => window.mgr.factionsApi(method, path, body),
       onSelectPlayer: discordId => {
         document.querySelector('.tab[data-tab="players"]').click()
-        selectPlayer(discordId)
+        showPlayerByDiscordId(discordId)
       },
     })
+    const split = root.querySelector('.fe-split')
+    if (split) makeResizable(split, split.querySelector('.fe-list'), 'factionsListWidth')
   })
 })()

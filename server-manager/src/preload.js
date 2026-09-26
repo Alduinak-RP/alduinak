@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('mgr', {
   servicesStatus:  ()             => ipcRenderer.invoke('services:status'),
   serviceAction:   (key, action)  => ipcRenderer.invoke('service:action', key, action),
   servicesAction:  (action)       => ipcRenderer.invoke('services:action', action),
+  servicesStats:   ()             => ipcRenderer.invoke('services:stats'),
   consoleCommand:  (text)         => ipcRenderer.invoke('console:command', text),
   onLog:           (cb)           => ipcRenderer.on('log:data', (_e, d) => cb(d)),
   onConsoleRelay:  (cb)           => ipcRenderer.on('console:relay', (_e, d) => cb(d)),
@@ -26,16 +27,22 @@ contextBridge.exposeInMainWorld('mgr', {
   clientSetVersion:   (v)  => ipcRenderer.invoke('client:setVersion', v),
   serverGetVersion:   ()   => ipcRenderer.invoke('server:getVersion'),
   serverSetVersion:   (v)  => ipcRenderer.invoke('server:setVersion', v),
+  versionsPublished:  ()   => ipcRenderer.invoke('versions:published'),
+  versionsPublish:    (k)  => ipcRenderer.invoke('versions:publish', k),
 
   // Players tab
   playersList:    ()              => ipcRenderer.invoke('players:list'),
   playersDetail:  (id)            => ipcRenderer.invoke('players:detail', id),
-  playersUpdate:  (profileId, p)  => ipcRenderer.invoke('players:update', profileId, p),
+  playersStats:   ()              => ipcRenderer.invoke('players:stats'),
+  playersBan:     (profileId, on) => ipcRenderer.invoke('players:ban', profileId, on),
+  playersKick:    (profileId)     => ipcRenderer.invoke('players:kick', profileId),
   playersOnline:  ()              => ipcRenderer.invoke('players:online'),
   charsItemNames: (ids)           => ipcRenderer.invoke('chars:itemNames', ids),
   charsSave:      (formDesc, p)   => ipcRenderer.invoke('chars:save', formDesc, p),
   charsDelete:    (formDesc)      => ipcRenderer.invoke('chars:delete', formDesc),
   charsRevive:    (formDesc)      => ipcRenderer.invoke('chars:revive', formDesc),
+  charsAfterlife: (formDesc, realm) => ipcRenderer.invoke('chars:afterlife', formDesc, realm),
+  charsFaction:   (profileId, change) => ipcRenderer.invoke('chars:faction', profileId, change),
   playersDelete:  (profileId, o)  => ipcRenderer.invoke('players:delete', profileId, o),
 
   // Factions tab
@@ -52,12 +59,13 @@ contextBridge.exposeInMainWorld('mgr', {
   newsDelete:   (i)         => ipcRenderer.invoke('news:delete', i),
   newsAddImage: ()          => ipcRenderer.invoke('news:addImage'),
 
-  // Modlist tab
-  modlistRead:           () => ipcRenderer.invoke('modlist:read'),
-  modlistUpdateManifest: () => ipcRenderer.invoke('modlist:updateManifest'),
+  // Build tab > Client > Update modlist
+  modlistRun:            () => ipcRenderer.invoke('modlist:run'),
   modlistDiff:           () => ipcRenderer.invoke('modlist:diff'),
-  modlistSyncSettings:   () => ipcRenderer.invoke('modlist:syncSettings'),
-  modlistSyncData:       (o) => ipcRenderer.invoke('modlist:syncData', o),
-  modlistPurge:          (o) => ipcRenderer.invoke('modlist:purge', o),
   modlistPurgeRestore:   () => ipcRenderer.invoke('modlist:purgeRestore'),
+
+  // Security tab
+  securityUnread:   ()     => ipcRenderer.invoke('security:unread'),
+  securityList:     (type) => ipcRenderer.invoke('security:list', type),
+  securityMarkRead: (type) => ipcRenderer.invoke('security:markRead', type),
 })
