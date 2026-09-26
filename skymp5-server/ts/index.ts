@@ -42,6 +42,7 @@ import { BodySystem } from "./systems/bodySystem";
 import { VoiceSystem } from "./systems/voiceSystem";
 import { AdminSystem } from "./systems/adminSystem";
 import { AfkSystem } from "./systems/afkSystem";
+import { GoldWatchSystem } from "./systems/goldWatchSystem";
 import { TimeSystem } from "./systems/timeSystem";
 import { WeatherSystem } from "./systems/weatherSystem";
 import { FurnitureSeatSystem } from "./systems/furnitureSeatSystem";
@@ -319,6 +320,7 @@ const main = async () => {
     new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem, captureSystem),
     new VoiceSystem(log),
     new AfkSystem(log),
+    new GoldWatchSystem(log),
     new TimeSystem(log),
     weatherSystem,
     furnitureSeatSystem,

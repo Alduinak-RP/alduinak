@@ -115,4 +115,9 @@ async function close() {
   db = null
 }
 
-module.exports = { store, init, flushAll, close, get connected() { return !!db } }
+// A collection the backend does not mirror (written by more than one process), or null without a connection
+function collection(name) {
+  return db ? db.collection(name) : null
+}
+
+module.exports = { store, collection, init, flushAll, close, get connected() { return !!db } }

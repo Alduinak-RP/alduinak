@@ -19,7 +19,9 @@ function list() {
   return load()
 }
 
-// Returns the first entry matching ANY given identifier (empty/null ones are ignored), or null
+const listOf = (list, single) => [...new Set([...(Array.isArray(list) ? list : []), single].filter(Boolean).map(String))]
+
+// Returns the first entry matching ANY given identifier (empty/null ones are ignored), or null; every hwid and ip the banned player was seen with counts
 function isBanned({ discordId, hwid, ip } = {}) {
   const id   = String(discordId || '').trim()
   const hw   = String(hwid || '').trim()
@@ -27,8 +29,8 @@ function isBanned({ discordId, hwid, ip } = {}) {
   if (!id && !hw && !addr) return null
   return load().find(entry =>
     (id && entry.discordId && String(entry.discordId) === id) ||
-    (hw && entry.hwid && String(entry.hwid) === hw) ||
-    (addr && entry.ip && String(entry.ip) === addr)
+    (hw && listOf(entry.hwids, entry.hwid).includes(hw)) ||
+    (addr && listOf(entry.ips, entry.ip).includes(addr))
   ) || null
 }
 
@@ -36,10 +38,14 @@ function isBanned({ discordId, hwid, ip } = {}) {
 function add(input) {
   const discordId = String((input && input.discordId) || '').trim()
   if (!discordId) throw new Error('discordId is required')
+  // The player's whole hwid and ip history goes into the ban, not only the latest pair
+  const seen = require('./players').identities(require('./players').load()[discordId])
   const entry = {
     discordId,
     hwid: input.hwid || null,
     ip: input.ip || null,
+    hwids: listOf(seen.hwids, input.hwid),
+    ips: listOf(seen.ips, input.ip),
     reason: String(input.reason || ''),
     bannedAt: input.bannedAt || new Date().toISOString(),
     bannedBy: input.bannedBy || null,

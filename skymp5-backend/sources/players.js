@@ -2,6 +2,7 @@
 
 const db               = require('./db')
 const profiles         = require('./profiles')
+const security         = require('./security')
 const factionWhitelist = require('./factionWhitelist')
 const characters       = require('./characters')
 
@@ -72,6 +73,38 @@ function createManual(input) {
   return decorate(data[discordId])
 }
 
+const MAX_IDENTITIES = 50
+
+// Every value seen, with when it was first and last seen; hwid/lastIp keep the latest one
+function remember(list, value, now) {
+  const out = Array.isArray(list) ? list : []
+  const hit = out.find(e => e.value === value)
+  if (hit) hit.lastSeen = now
+  else out.push({ value, firstSeen: now, lastSeen: now })
+  return out.slice(-MAX_IDENTITIES)
+}
+
+// Every hwid and ip a player was seen with, including records from before the lists existed
+function identities(record) {
+  const values = (list, latest) => [...new Set([...(Array.isArray(list) ? list.map(e => e.value) : []), latest].filter(Boolean))]
+  return { hwids: values(record && record.hwids, record && record.hwid), ips: values(record && record.ips, record && record.lastIp) }
+}
+
+// A hwid or ip shared with another Discord account is a possible ban evasion; banned is whether that account is banned
+function checkShared(data, discordId, kind, value) {
+  const others = Object.values(data).filter(p => p.discordId !== discordId && identities(p)[kind === 'hwid' ? 'hwids' : 'ips'].includes(value))
+  if (!others.length) return
+  const bans = require('./bans')
+  const accounts = [data[discordId], ...others].map(p => ({
+    discordId: p.discordId,
+    profileId: p.profileId,
+    name: p.displayName || p.username || '',
+    banned: !!bans.isBanned({ discordId: p.discordId }),
+  }))
+  const ids = accounts.map(a => a.discordId).sort().join(',')
+  security.raise('banEvasion', `${kind}:${value}:${ids}`, { kind, value, accounts })
+}
+
 // Records the latest hwid and/or ip for a player; empty values never overwrite stored ones
 function updateIdentity(discordId, { hwid, ip } = {}) {
   const id = String(discordId || '').trim()
@@ -92,13 +125,18 @@ function updateIdentity(discordId, { hwid, ip } = {}) {
   let changed = !data[id]
   const cleanHwid = String(hwid || '').trim()
   const cleanIp = String(ip || '').trim()
-  if (cleanHwid && current.hwid !== cleanHwid) { current.hwid = cleanHwid; changed = true }
-  if (cleanIp && current.lastIp !== cleanIp) { current.lastIp = cleanIp; changed = true }
+  const known = identities(current)
+  const newHwid = cleanHwid && !known.hwids.includes(cleanHwid)
+  const newIp = cleanIp && !known.ips.includes(cleanIp)
+  if (cleanHwid) { current.hwids = remember(current.hwids, cleanHwid, now); current.hwid = cleanHwid; changed = true }
+  if (cleanIp) { current.ips = remember(current.ips, cleanIp, now); current.lastIp = cleanIp; changed = true }
   if (changed) {
     current.updatedAt = now
     data[id] = current
     save(data)
   }
+  if (newHwid) checkShared(data, id, 'hwid', cleanHwid)
+  if (newIp) checkShared(data, id, 'ip', cleanIp)
   return current
 }
 
@@ -176,6 +214,7 @@ function decorate(player) {
 module.exports = {
   load,
   save,
+  identities,
   list,
   getByProfileId,
   upsertFromDiscordUser,

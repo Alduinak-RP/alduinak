@@ -47,6 +47,7 @@ const bans     = require('../sources/bans')
 const safeEqual = require('../sources/safeEqual')
 const { readVersions } = require('../sources/versions')
 const db = require('../sources/db')
+const security = require('../sources/security')
 
 // MongoDB balances: { _id: profileId, balance }
 const balanceStore = db.store('balances')
@@ -379,6 +380,17 @@ router.delete('/:key/sessions-by-discord/:discordId', (req, res) => {
   const discordId = String(req.params.discordId || '').trim()
   if (!discordId) return res.status(400).json({ error: 'Invalid discordId.' })
   res.json({ ok: true, dropped: dropSessionsByDiscord(discordId) })
+})
+
+// POST /api/servers/:key/security-alerts  (X-Auth-Token)
+// Body: { type, key, details }: a finding for the manager's Security tab, raised once per key (goldSpawn from the game server)
+
+router.post('/:key/security-alerts', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+  const { type, key, details } = req.body || {}
+  if (type !== 'goldSpawn' || typeof key !== 'string' || !key || key.length > 200) return res.status(400).json({ error: 'Invalid alert.' })
+  if (!details || typeof details !== 'object' || JSON.stringify(details).length > 4000) return res.status(400).json({ error: 'Invalid alert details.' })
+  res.json({ ok: security.raise(type, key, details) })
 })
 
 // GET /api/servers/:key/players  (X-Auth-Token)
