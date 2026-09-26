@@ -172,7 +172,7 @@ C:\tools\nssm\nssm.exe start AlduinakTestServer
   node -e "process.env.ALDUINAK_SERVER_DIR='C:\\Alduinak\\testserver';const {Builder}=require('./server-manager/src/build');new Builder(t=>process.stdout.write(String(t))).buildGamemode().then(r=>console.log(r.ok))"
   ```
 - **Settings and data**: a new `loadOrder` or data folder must be copied by hand into
-  the test `server-settings.json`; Sync server settings writes only the live file.
+  the test `server-settings.json`; Update modlist writes only the live file.
 - **Wiping the test world**: stop the service, delete `C:\Alduinak\testserver\world`
   and reset the state files as in 2.1. The live wipe tool never touches this folder.
 

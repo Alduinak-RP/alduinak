@@ -22,30 +22,55 @@ fails it prints a direct download URL - save that zip as
 
 ## Tabs
 
-- **Console** - four drop-downs to individually **start / stop / restart** the
-  `nginx`, `backend`, `livekit` (voice media server), and `game` services, plus
-  an **All** row that starts them in that order (and stops in reverse), a live
-  tail of the **actual server run logs**, and a command box that runs commands
-  against the live server.
+- **Console** - three columns: **Nginx**, **Backend** (with **MongoDB** as a
+  second service) and **Game** (with **LiveKit** as a second service). Each
+  service has **START/STOP**, **RESTART** and its own log view, and under the
+  buttons CPU, RAM (and requests/min for Nginx), sampled every 4 s only while
+  the tab is open. Each log keeps the last 100 lines on screen; the files stay
+  in `C:\logs`. Columns collapse sideways (Nginx and Backend to the left, Game
+  to the right) to a strip that still shows status. Only the Game column has
+  the command input.
+  - MongoDB (`AlduinakMongo`) starts first, stops last and refuses to stop
+    while Backend or Game run.
   - The log tail asks nssm where each service writes its stdout/stderr
-    (`nssm get <svc> AppStdout`) instead of guessing a fixed folder, so it always
-    shows the real run output regardless of where the install script put the logs.
-  - The command box first checks for **manager commands** and runs them locally:
-    `help`, `status`, `start|stop|restart <nginx|backend|livekit|game|all>`, and
+    (`nssm get <svc> AppStdout`) instead of guessing a fixed folder.
+  - The command input first checks for **manager commands** and runs them locally:
+    `help`, `status`, `start|stop|restart <mongo|nginx|backend|livekit|game|all>`, and
     `build <server|launcher|client|native|gamemode>` (build output streams into
     the console log; one build or sync at a time).
   - Anything else goes to the game server over the backend WS relay (admin
     `console` role) and the gamemode's command output streams back into the
     console. See **Wiring the console** below.
-- **Players** - a searchable player list on the left, an editable detail panel on
-  the right. Search matches **name, Discord ID, and character names**. The detail
-  panel edits `username` / `displayName` / `notes` (persisted to the backend) and
-  shows factions and the player's **characters** (read from the game server's save
-  store; deleted characters are left out). A fallen character carries a
-  `fallen (Sovngarde)` or `perma-dead` badge and its modal a **Revive** button:
-  through the running server (console verb `__revivejson`, so the backend relay
-  must be up) or straight to the store while the game server is stopped. It is
-  refused while a character created in the extra slot is alive. No more pop-up.
+- **Players** - reads MongoDB directly (`players`, `profiles`, `bans`,
+  `playtime` and `changeForms`). A list on the left, the detail on the right,
+  with a resizable divider.
+  - **Search** matches Discord name, Discord ID, character name and profile ID.
+    **Filters** offers Online, GM, Banned, Dead, Male, Female and the ten races
+    (flags must all hold, genders and races match any). **Sort** by Profile
+    ID, Newest, Oldest, Richest, Poorest, Most Played or Least Played.
+    **Refresh** reloads; the header shows visible/total.
+  - The pinned **General Stats** entry has a **Generate** button: race, gender
+    and profession counts, hours brackets, total and average gold, gold
+    brackets.
+  - The account detail shows the account, Discord ID, roles (GM is role
+    `1521259484859863190`, plus Developer and Whitelist, from the roles saved
+    on characters at login), profile ID, created, last seen, hours played, the
+    IP address and HWID history lists, factions and the characters (each with
+    **Delete**). **Banned** checkbox, **Kick** (through the game console, the
+    player must be online) and **Delete account** (optionally with its
+    characters). Ban, kick and delete go through the backend API, so the
+    backend must run.
+  - The character popup edits name, max health/stamina/magicka change
+    (`private.attrBonus`), profession and hours, coordinates and cell
+    (**Save**), faction ranks for that character, and has the appearance and
+    inventory editors. **Send to Sovngarde** and **Send to Soul Cairn** need
+    the game server stopped; **Revive** shows only on a fallen character.
+    Make edits with the game server stopped.
+  - **Hours played** are counted from the game log when the manager or its
+    agent archives `gameserver.log` at a game start or restart (the daily
+    restart too), per account and per character, into the MongoDB collection
+    `playtime`. Each log is counted once (`playtimeLogs`). Backfill old logs
+    once with `node server-manager/src/playtime.js <archived gameserver logs...>`.
 - **Factions** - create, edit and delete factions (name, zone, colour), their
   ranks (name, ladder order, capacity) and what each rank may do: a tick matrix
   of the ranks it may appoint, promote to, demote from and remove, plus flags
@@ -61,90 +86,64 @@ fails it prints a direct download URL - save that zip as
   and arms **Remove N memberships and delete**; deleted ids are never reused.
   Edits reach the game server within about 20 seconds. Faction doors and
   chests are edited in the game server's `faction-access.json`, not here. Test: `node tools/test-factions-proxy.js`.
-- **Build** - three columns (**Game Server**, **Launcher**, **Client**) with their
-  build buttons and version fields, sharing one build console. The buttons are
-  **JS/packaging only** - the native code (`.dll` / `.node`) is compiled by the
-  GitHub **PR Windows Flatrim** workflow and downloaded as the `dist` artifact;
-  these buttons bundle TypeScript, build the Electron launcher, and zip the
-  CI-produced client files for the launcher to serve.
-- **Modlist** - read the reference MO2 profile and **Build manifest** (runs
-  `compile-manifest.js`). The compile writes `install-manifest.json.building`
-  and leaves the live manifest untouched; once it succeeds the last *deployed*
-  manifest is kept as `install-manifest.json.prev` and the new file is renamed
-  into place (a failed compile only deletes the `.building` file). The backend
-  streams the manifest per request, so it needs no restart. Afterwards the
-  **diff panel** shows: mods added / removed / changed, plugins added / removed
-  (and whether the order changed), plugins whose form-id slot **shifted** and
-  light-flag changes (both need the MongoDB purge), files added / removed /
-  changed, warnings (red card), a **MongoDB purge needed** card and the applied
-  stamps (settings synced / data synced / purged, with times). The diff is
-  stored in `skymp5-backend/data/manifest-diff.json` and reloaded on startup;
-  it also records the `loadOrder` the database was last written under, which
-  the purge re-encodes ids from, and keeps carrying it until that purge ran.
-  A `skymp5-client-settings.txt` in any mod folder is left out of the
-  manifest: under MO2 it would shadow the per-player file the launcher writes.
-  So is the SkyMP client package (`Platform/**`, the SkyrimPlatform and
-  MpClientPlugin dlls, the MpClientPlugin and TESModPlatform pex files, listed
-  in `skymp5-backend/scripts/client-package.js`): the client zip delivers it,
-  and a mod copy would shadow the zip's. The log names each mod that lost files
-  that way and warns about a remaining mod file whose sha256 differs from the
-  zip's copy of the same path.
-  When several downloads hold the same file (a replaced Nexus version left in
-  `downloads`, or a mod that repacks another's files), a mod takes it from the
-  newest archive (highest Nexus file id) of its own Nexus mod, else from the
-  first archive scanned, so a replaced archive is not referenced again.
-  Modlist output goes to the tab's own log.
-  - **Sync server settings** rewrites `loadOrder` in `server-settings.json` to
-    the five vanilla masters followed by the manifest's enabled plugins (each as
-    `<dataDir>/<plugin>`). It refuses when no manifest diff exists yet (build
-    the manifest first so the current load order is recorded for the purge),
-    when the file is invalid JSON or the manifest has no enabled plugins; it
-    keeps the previous file as `server-settings.json.prev` (preserved by the
-    Game Server build's prune step), never touches `archives`, and warns about
-    plugins not yet in the Data folder or enabled but provided by no mod. The
-    Settings tab reloads afterwards. The game server reads the order at boot.
-  - **Sync data folder** mirrors the manifest into the game `Data` folder
-    (`dataDir` from `server-settings.json`) from the MO2 mod folders. The first
-    click is a **dry run** that prints the plan (every delete, every missing
-    source, the first 100 copies) and arms the button; it stays armed until the
-    second click applies the plan or any other Modlist action disarms it.
-    Only files the previous deployed manifest or the last sync stamp
-    (`data-sync.json`) put there are deleted, and only when unmodified (plugins
-    and archives are removed even if modified); vanilla masters, `manifest.json`
-    and anything else in `Data` are never touched. Copies go through a temp
-    file and are sha256-verified. Empty folders left behind are removed.
-  - **Purge MongoDB** removes the world changeForms that reference plugins
-    dropped from the load order, relocates actors whose cell went with them,
-    strips dropped items / spells / headparts / factions from the survivors and
-    re-encodes the numeric ids of plugins whose slot shifted (light flags are
-    read per load order). Same two-click flow: the first click is a **dry run**
-    that lists every delete and update plus the warnings and arms the button
-    (even when nothing needs purging, since applying still records the diff as
-    purged so the recorded load order stops carrying forward). The second click
-    applies only while the `game` service reports **stopped** (a running server
-    re-upserts every loaded form) and only after **Sync server settings** (the
-    file's `loadOrder` must already equal the target order); a purge that
-    already ran, an unfinished one, an unreadable light flag or a **player
-    character** that references a removed plugin (never deleted) refuses too.
-    The apply first writes an EJSON backup `purged-changeforms-<ms>.json` next
-    to `server-settings.json` (kept by the Game Server build's prune step),
-    records it in the diff (`purgeStartedAt` / `purgeBackup`), then applies
-    the updates, the deletes and a verification pass, and stamps `purgedAt`.
-    If it stops half way the diff shows the unfinished purge and a **Restore
-    last purge** button appears (game server stopped): it puts every backed-up
-    document back by `_id`, touches nothing else and reopens the diff for
-    another purge.
-  - **Deploy flow:** Build manifest -> Sync server settings -> Sync data folder
-    -> Purge MongoDB (game server stopped) -> start the game server. Players
-    then re-run the launcher to pick up the changes; the backend needs no
-    restart.
+- **Build** - three boxes (**Game Server**, **Launcher**, **Client**) sharing one
+  build console. Native code comes from CI (see **Builds** below) unless
+  **Run CMake first** is ticked.
+  - **Game Server**: version, **Build gamemode**, **Run CMake first**,
+    **Build server**.
+  - **Launcher**: **Save version** writes only `tauri.conf.json`. **Build
+    launcher** builds `build/launcher/AlduinakLauncher.exe`; its button then
+    turns into **Update Version**, which writes the launcher version into
+    `skymp5-backend/data/versions.json`. Press it only after the exe is
+    uploaded where `launcherUrl` points.
+  - **Client**: **Save version** writes only `skymp5-client/package.json`.
+    **Build client**. **Update modlist** runs, in one go: build manifest (from
+    MO2), sync server settings (`loadOrder`), sync data folder, MongoDB purge
+    (it backs up first). It is disabled with *Server must be stopped* while the
+    game server runs. On success the button turns into **Update Version**,
+    which writes the client version into `versions.json`; press it once the
+    Nexus client files are live. There is no separate dry run.
+  - The change report (mods, plugins, shifted slots, light flags, files,
+    warnings) shows as cards on the Build tab only.
+    `skymp5-backend/data/manifest-diff.json` exists only while the steps run
+    and is deleted on success; after a failure it is kept, so the game start
+    gate still refuses a half-applied load order. **Restore last purge**
+    appears when a purge did not finish (game server stopped): it puts every
+    backed-up document back by `_id`.
+  - Manifest details: the compile writes `install-manifest.json.building` and
+    keeps the last deployed manifest as `install-manifest.json.prev`. A
+    `skymp5-client-settings.txt` in any mod folder and the SkyMP client package
+    (`Platform/**` and the dlls and pex files listed in
+    `skymp5-backend/scripts/client-package.js`) are left out, since the client
+    zip delivers them. When several downloads hold the same file, a mod takes
+    it from the newest archive of its own Nexus mod. The settings sync keeps
+    `server-settings.json.prev`; the data sync deletes only unmodified files a
+    previous manifest or sync put there, sha256-verifies copies and never
+    touches vanilla masters; the purge refuses on an unreadable light flag or
+    a player character that references a removed plugin.
+- **News** - edit the news entries the launcher shows.
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
   masked secrets) for both `server-settings.json` and the backend `.env`, instead
   of raw text. Unknown `server-settings.json` keys round-trip through an
   *Other (raw JSON)* box so nothing is silently dropped. Saving
   `server-settings.json` keeps the previous file as `server-settings.json.prev`
-  and refuses when the file changed on disk since the tab was loaded (a Sync
-  server settings run, a hand edit): reload the tab first.
+  and refuses when the file changed on disk since the tab was loaded (an Update
+  modlist run, a hand edit): reload the tab first.
+
+- **Security** - alerts stored in MongoDB `securityAlerts`, with a red unread
+  count on the tab. Opening a kind marks its alerts read.
+  - **Ban Evasions**: raised by the backend when an IP or HWID a player logs in
+    with is already on another Discord account; shows the accounts and which
+    are banned. Players keep `ips` and `hwids` history lists, and a ban matches
+    any IP or HWID the banned player was ever seen with.
+  - **Gold Spawning**: raised by the game server (`GoldWatchSystem`) when a
+    character gains more than `goldAlertThreshold` gold (`server-settings.json`,
+    default 5000, 0 disables) within 10 s.
+
+Backend records (players, profiles, bans, sessions, characters, balances,
+factions) live in MongoDB. The one-time import from the old JSON files is
+`node skymp5-backend/scripts/import-json-to-mongo.js` (dry run), then the same
+with `--apply`, with the backend stopped.
 
 ### Builds (packaging - native code comes from CI)
 
@@ -230,7 +229,7 @@ the same time. Restart the `AlduinakManager` service after changing
 `docs/docs_web_server_manager.md` for the security model and runbook.
 
 The agent also runs the daily game restart (`src/restartSchedule.js`): `say` warnings
-from 1 hour before `AUTO_RESTART_AT` (backend `.env`, default `04:00`, `off` disables
+from 1 hour before `dailyRestartAt` (`server-settings.json`, default `04:00`, `off` disables
 it), then a Restart job that archives the logs. Test it with
 `node tools/test-restart-schedule.js`.
 
@@ -241,7 +240,7 @@ it), then a Restart job that archives the logs. Test it with
 | `ALDUINAK_LOG_DIR` | `C:\logs` | Fallback log directory (nssm-configured paths win) |
 | `ALDUINAK_SERVER_DIR` | folder of `server-settings.json` | Game server working dir (holds the `world/changeForms` save store) |
 | `ALDUINAK_SERVER_SETTINGS` | `build/dist/server/server-settings.json` | Server settings file edited by the Settings tab |
-| `ALDUINAK_MO2_ROOT` | `X:\MO2` | Reference MO2 install (Modlist tab) |
+| `ALDUINAK_MO2_ROOT` | `C:\MO2` | Reference MO2 install (Update modlist) |
 | `ALDUINAK_GAME_ROOT` | `X:\GOG Games\Skyrim Anniversary Edition` | Game root |
 | `ALDUINAK_MO2_PROFILE` | `Default` | MO2 profile to compile |
 | `ALDUINAK_BUILD_DIR` | `<repo>\build` | Build output dir; the CI `dist/` payloads and the launcher land here |

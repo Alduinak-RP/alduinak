@@ -7,11 +7,13 @@ load-order change would otherwise need one. The r11 CC content shifts
 the pre-launch wipe.
 
 The tool is `deploy/mongodb/wipe-world.js`. It runs from source with node, so
-nothing needs building. The manager's **Purge MongoDB** cannot do this job. It
-only deletes documents from removed plugins and remaps shifted ids, it refuses
-whenever a player character is affected, and it never touches the JSON state
-files. The runbook still uses it once, on the empty collection, to stamp
-`purgedAt` so the manager will start the game server again.
+nothing needs building. The MongoDB purge inside the manager's **Build >
+Client > Update modlist** cannot do this job. It only deletes documents from
+removed plugins and remaps shifted ids, it refuses whenever a player character
+is affected, and it never touches the JSON state files. The runbook runs Update
+modlist once, after the wipe, on the empty collection: it applies the new load
+order and, on success, deletes `manifest-diff.json`, which opens the game
+server start gate again.
 
 ## 1. What the wipe changes
 
@@ -31,9 +33,9 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `C:\logs` `admin`, `ban`, `bounty`, `chat`, `faction`, `pk`, `pvp` and `trading` logs, plus their rotated copies in the log root and in the `C:\logs\YYYY-MM` archive folders | Moved into `C:\logs\pre-wipe-<yyyyMMdd-HHmm>\`. Archived copies keep their `YYYY-MM` subfolder. New characters reuse the old `0xff` ids, so pre-wipe log lines would point at the wrong people. |
 
 **Kept, untouched:**
-- **Server folder:** `server-settings.json` (you edit one value by hand in step 10), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the optional `weather-regions.json` region list, the `alert-keywords.json` Discord keyword list, the gamemode, plugins and `data/`.
+- **Server folder:** `server-settings.json` (you edit one value by hand in step 9), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the optional `weather-regions.json` region list, the `alert-keywords.json` Discord keyword list, the gamemode, plugins and `data/`.
 - **Backend collections:** `players`, `profiles`, `bans`, `balances` and `meta` in the `skymp` database. The backend mirrors them in memory and is their only writer, so it must be stopped for backup, apply and restore.
-- **Backend data files:** `role-permissions.json`, `news.json`, the install manifest files and `manifest-diff.json`. Only Purge MongoDB changes `manifest-diff.json`. The old `characters.json`, `faction-whitelist.json`, `players.json`, `profiles.json`, `bans.json` and `balances.json` are no longer read; the tool neither copies nor changes them.
+- **Backend data files:** `role-permissions.json`, `news.json`, the install manifest files and `manifest-diff.json`. Only Update modlist writes `manifest-diff.json`, and it deletes the file when it succeeds. The old `characters.json`, `faction-whitelist.json`, `players.json`, `profiles.json`, `bans.json` and `balances.json` are no longer read; the tool neither copies nor changes them.
 - **Sessions:** the `sessions` and `authStates` collections and `dashboard-sessions.json` are never copied, changed or restored.
 - **Outside the repo:** Discord roles and `adminRoleIds` (staff rights come back at login), the service logs (`gameserver`, `backend` and the rest) and their archived copies in `C:\logs\YYYY-MM`.
 
@@ -48,7 +50,7 @@ Run every command from the main checkout: `cd C:\Users\Administrator\Desktop\ald
 |---|---|
 | `node deploy\mongodb\wipe-world.js backup` | Dumps the database with `mongodump`, copies the state files and backend data, writes `wipe-backup.json` and `SHA256SUMS.txt`, and prints document counts per class. |
 | `node deploy\mongodb\wipe-world.js restore --backup "<dir>" --test` | Restores the dump into the throwaway collection `skymp.wipeRestoreCheck`, compares counts and `_id`s with the backup and the live collection, then drops it. |
-| `node deploy\mongodb\wipe-world.js verify [--backup "<dir>"] [--order <plugins.txt>]` | Read-only report on services, collection counts, state files, form ids sitting in shifted slots (with the value each must become) and the Purge MongoDB stamp. |
+| `node deploy\mongodb\wipe-world.js verify [--backup "<dir>"] [--order <plugins.txt>]` | Read-only report on services, collection counts, state files, form ids sitting in shifted slots (with the value each must become) and the start gate (`manifest-diff.json`). |
 | `node deploy\mongodb\wipe-world.js apply [--backup "<dir>"]` | Dry run: prints the plan and every reason it would refuse. Without `--backup` it uses the newest `rollback-wipe-*` folder and prints which one. |
 | `node deploy\mongodb\wipe-world.js apply --backup "<dir>" --apply` | Runs the wipe: saves the current `manifest-diff.json` into the backup, repeats the restore test, drops `changeForms`, resets the files and moves the logs. |
 | `node deploy\mongodb\wipe-world.js restore --backup "<dir>" [--with-settings] [--apply]` | Puts a backup back (a dry run without `--apply`). With `--apply` it first backs up the live data into `pre-restore-<yyyyMMdd-HHmmss>`. `--with-settings` also restores `server-settings.json` and the manifest state for a full revert. |
@@ -90,7 +92,7 @@ SHA256SUMS.txt
 
 ## 3. Deploy window runbook
 
-Do the steps in this order, in one sitting. The game server stays stopped until step 12.
+Do the steps in this order, in one sitting. The game server stays stopped until step 10.
 
 1. **Announce the outage.** Post a fixed window in Discord and say that every character is wiped. While the backend is stopped, the website, the dashboard and the launcher checks are down too.
 
@@ -125,11 +127,7 @@ Do the steps in this order, in one sitting. The game server stays stopped until 
      node deploy\mongodb\wipe-world.js verify --order C:\MO2\profiles\Alduinak\plugins.txt
      ```
 
-7. **Update the manifest.** In the manager, run **Modlist, Build manifest** with the backend still stopped. The log must show `AlduinakAdditions.esp full 0x2B -> full 0x2D` and `purgeNeeded`, with no `light flag unknown` warning. That warning makes Purge MongoDB refuse later.
-
-8. **Sync the settings and data.** Run **Sync server settings** (it writes `loadOrder`), then **Sync data folder**.
-
-9. **Apply the wipe.**
+7. **Apply the wipe.**
    ```
    node deploy\mongodb\wipe-world.js apply --backup "<dir>"
    node deploy\mongodb\wipe-world.js apply --backup "<dir>" --apply
@@ -137,22 +135,23 @@ Do the steps in this order, in one sitting. The game server stays stopped until 
    - Read the dry-run plan first. It must list the drop, the file resets and the log move, and no `REFUSED` line.
    - The real run repeats the restore test before the drop and ends with `wipe done and re-read`.
 
-10. **Edit hunterOverDraw by hand.**
+8. **Update the modlist.** In the manager, open **Build > Client** and click **Update modlist**, with Game and Backend still stopped (the button says *Server must be stopped* while the game server runs). In one go it builds the manifest from MO2, syncs `loadOrder` into `server-settings.json`, syncs the data folder and runs the MongoDB purge (it backs up first). On the empty collection the purge has nothing to do.
+   - The change report cards must show `AlduinakAdditions.esp full 0x2B -> full 0x2D`, with no `light flag unknown` warning. That warning makes the purge refuse.
+   - On success the button turns into **Update Version** and `manifest-diff.json` is deleted, which opens the start gate. Press Update Version only once the Nexus client files are live.
+   - If it fails, `manifest-diff.json` stays and the game server refuses to start. Fix the cause (for `unknown light flag`, the plugin file) and click Update modlist again. If a purge did not finish, **Restore last purge** appears. Never bypass the gate by starting the service from `services.msc`.
+
+9. **Edit hunterOverDraw by hand.**
     ```
     node deploy\mongodb\wipe-world.js verify --backup "<dir>"
     ```
     - Under `form ids in shifting slots`, each `EDIT` line names the setting and the value it must become. For r11, `damageMultConditionalFormulaSettings.hunterOverDraw.conditions[0].parameter1` goes from `0x2B002032` to `0x2D002032`.
     - Edit `build\dist\server\server-settings.json` in an editor that saves UTF-8 without a BOM, such as VS Code or Notepad++. Do not use PowerShell `Set-Content`.
     - Fix any `EDIT` lines for `NPC-Spawns.json` or `Jobs.json` the same way.
-    - Re-run verify until it prints `every stored form id matches the new load order`.
+    - Re-run verify until it prints `every stored form id matches the new load order`. Its start gate line must say nothing gates the game server start.
 
-11. **Stamp purgedAt.** In the manager, click **Modlist, Purge MongoDB** once for the dry run, which should say `Nothing to purge` or `scanned 0`. Click it again to apply, which records the diff as purged.
-    - `verify` must now print `stamped, the start gate is open`.
-    - If Purge refuses with `unknown light flag`, fix the plugin file and run Build manifest again. Never bypass the gate by starting the service from `services.msc`.
+10. **First boot.** Start **Backend**, then start **Game** from the manager. The manager's Start runs the gate check and rotates the service logs.
 
-12. **First boot.** Start **Backend**, then start **Game** from the manager. The manager's Start runs the gate check and rotates the service logs.
-
-13. **Check after boot.**
+11. **Check after boot.**
     - **Boot log** (`C:\logs\gameserver.log`):
       - `loaded 0 ChangeForms (Including 0 player characters)`
       - `[housing] ready, 0 claimed refs in the registry`
@@ -172,7 +171,7 @@ Do the steps in this order, in one sitting. The game server stays stopped until 
       - A Discord-role admin gets `/admin` in game and can log in to the dashboard.
       - `/api/version` reports the r11 versions.
 
-14. **Close the window.**
+12. **Close the window.**
     ```
     & C:\tools\nssm\nssm.exe set AlduinakGameServer Start SERVICE_AUTO_START
     & C:\tools\nssm\nssm.exe get AlduinakGameServer Start      # SERVICE_AUTO_START
@@ -203,14 +202,13 @@ the pre-restore copy keeps them.
    Session files are never restored, so players log in again.
 4. Put back the pre-r11 plugin copies and `plugins.txt`. Remove the CC files from MO2, the GOG `Data` folder and `build\dist\client\Data`. Restore the code snapshot (`dist_back`, `scam_native.node`, the client zip and the launcher).
 5. If you want the old moderation logs back, move the contents of `C:\logs\pre-wipe-<stamp>\` into `C:\logs`. Its `YYYY-MM` subfolders merge into the archive folders of the same name.
-6. Run `node deploy\mongodb\wipe-world.js verify`. It must say the loadOrder matches the manifest and must not say `NEEDS STAMP`. Then start the services and set auto start (step 14). Players relaunch.
+6. Run `node deploy\mongodb\wipe-world.js verify`. It must say the loadOrder matches the manifest and must not say `NEEDS STAMP` (if it does, run Update modlist). Then start the services and set auto start (step 12). Players relaunch.
 
 **C. Keep r11 and migrate the old characters (not recommended).**
 1. Run `restore --backup "<dir>" --apply` without `--with-settings`.
-2. Copy `<dir>\post-sync\manifest-diff.json` over `skymp5-backend\data\manifest-diff.json` and set its `purgedAt` to `null`.
-3. Run Purge MongoDB as a dry run, then apply.
+2. Run **Build > Client > Update modlist** with the game server stopped, so its purge re-encodes the restored ids for the new load order.
 
-This only works with the post-sync diff that apply saved. Any later Build manifest writes a diff that no longer holds the old load order, and `private.mastery.granted` ids stay stale unless the purge learns to remap them.
+This only works while the manager still knows the old load order the database was written under. Update modlist deletes `manifest-diff.json` on success, so the wipe's `post-sync` copy is usually missing and the old order is gone. `private.mastery.granted` ids also stay stale unless the purge learns to remap them.
 
 ## 5. Keeping a copy off the box
 

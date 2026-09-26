@@ -13,13 +13,15 @@ Everything from r13 must be live before the wipe, because the wipe is the last o
 
 - Build server, Build Client and Build launcher in the manager, plus the CI flatrim
   build (or Native) if any C++ changed.
-- Before Build launcher, set the launcher version in the manager's Launcher tab (it
-  writes `skymp5-launcher-tauri\src-tauri\tauri.conf.json` only). The build leaves
-  `build\launcher\AlduinakLauncher.exe` where nginx serves `/downloads/`, which is
-  the `launcherUrl` every launcher updates from, and only then writes `launcher` in
-  `skymp5-backend\data\versions.json`, so players update once the new exe is served.
+- Before Build launcher, set the launcher version in the manager's Build tab, Launcher
+  box, and click **Save version** (it writes `skymp5-launcher-tauri\src-tauri\tauri.conf.json`
+  only). Build launcher leaves `build\launcher\AlduinakLauncher.exe`; its button then
+  turns into **Update Version**, which writes `launcher` in
+  `skymp5-backend\data\versions.json`. Press it only once the exe is served where
+  `launcherUrl` points (nginx `/downloads/`), so players update to a file that exists.
 - The plugin copies in the MO2 mod, the GOG `Data` folder and `build\dist\client\Data`,
-  then **Update manifest**, **Sync server settings** and **Sync data folder**.
+  then **Build > Client > Update modlist** with the game server stopped (it builds the
+  manifest, syncs the server settings and the data folder and runs the MongoDB purge).
 - Every live-file change of the round (gamemode extensions, `server-settings.json`,
   `manifest-sources.json`).
 - Any new per-character store added in r13 must already be classified in
@@ -71,8 +73,9 @@ outside 03:00 to 04:30 box time, or set `dailyRestartAt` to `"off"` in
 2. Move the stale `C:\Users\Administrator\Desktop\logs\faction.log` (a leftover from
    before `BAN_LOG_DIR=C:\logs`) into that `pre-wipe-<stamp>` folder by hand.
 3. Run `node deploy\mongodb\wipe-world.js verify` again. If it says a purge is pending,
-   run **Modlist, Purge MongoDB** in the manager once as a dry run and once to apply,
-   so the start gate opens.
+   run **Build > Client > Update modlist** in the manager with the game server stopped.
+   It purges the empty collection and deletes `manifest-diff.json` on success, which
+   opens the start gate.
 
 Bans, profiles, players, role permissions, news, the manifest state, sessions and all
 settings are kept. A game boot between the backup and apply makes apply refuse; take a

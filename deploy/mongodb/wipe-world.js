@@ -270,7 +270,7 @@ function slotsOf(order) {
   return formIds.computeSlots(order.map(o => o.name), Object.fromEntries(order.map(o => [o.name, o.light])))
 }
 
-// MO2 plugins.txt ("*Name.esp" is enabled) gets the vanilla masters in front as Sync server settings does; JSON is an array or { loadOrder }
+// MO2 plugins.txt ("*Name.esp" is enabled) gets the vanilla masters in front as Update modlist does; JSON is an array or { loadOrder }
 function readOrderFile(file) {
   let text
   try { text = fs.readFileSync(file, 'utf8') } catch (err) { throw new Refusal(`cannot read ${file}: ${err.code || err.message}`) }
@@ -743,8 +743,8 @@ function gateReport() {
   if (!diff) { console.log('  no manifest-diff.json, nothing gates the game server start'); return }
   console.log(`  manifest built ${diff.builtAt}; purgeNeeded ${diff.purgeNeeded}; syncedSettingsAt ${diff.syncedSettingsAt}; purgedAt ${diff.purgedAt}`)
   if (diff.purgeStartedAt && !diff.purgedAt) console.log(`  WARNING: a purge started at ${diff.purgeStartedAt} and never finished`)
-  if (modsync.purgePending(diff)) console.log('  NEEDS STAMP: the manager refuses to start the game server; with changeForms empty, run Purge MongoDB (dry run, then apply) to stamp purgedAt')
-  else if (diff.purgeNeeded && !diff.syncedSettingsAt) console.log('  the load order changes but Sync server settings has not run; the purge stamp comes after it')
+  if (modsync.purgePending(diff)) console.log('  NEEDS STAMP: the manager refuses to start the game server; with changeForms empty, run Build > Client > Update modlist, which deletes the diff on success')
+  else if (diff.purgeNeeded && !diff.syncedSettingsAt) console.log('  the load order changes and the last Update modlist did not finish; run it again')
   else if (diff.purgeNeeded) console.log('  stamped, the start gate is open')
   else console.log('  no purge needed for this manifest, the start gate is open')
   let manifest = null
@@ -752,7 +752,7 @@ function gateReport() {
   if (manifest) {
     const target = [...modsync.VANILLA_PLUGINS, ...modsync.enabledPlugins(manifest)].map(n => n.toLowerCase())
     const same = target.join('|') === liveOrder().map(n => n.toLowerCase()).join('|')
-    console.log(same ? '  server-settings.json loadOrder matches the manifest' : '  server-settings.json loadOrder differs from the manifest; Purge MongoDB refuses until Sync server settings runs')
+    console.log(same ? '  server-settings.json loadOrder matches the manifest' : '  server-settings.json loadOrder differs from the manifest; Update modlist sets it')
   }
 }
 
@@ -956,7 +956,7 @@ async function applyMode(flags) {
   console.log('\nwipe done and re-read')
   console.log('next:')
   console.log(`  1. node deploy/mongodb/wipe-world.js verify --backup "${dir}" and fix every EDIT line`)
-  console.log('  2. Purge MongoDB (dry run, then apply) on the empty collection to stamp purgedAt')
+  console.log('  2. Build > Client > Update modlist in the manager, with the game server stopped')
   console.log('  3. start AlduinakBackend, then the game server from the manager')
 }
 
@@ -1096,7 +1096,7 @@ async function restoreMode(flags) {
   }
   console.log('\nrestore done')
   console.log(`the live data from before the restore is in ${preRestore}`)
-  if (!sameOrder && !flags.withSettings) console.log('next: put back the plugins the backup was written under, or run Purge MongoDB, before starting the game server')
+  if (!sameOrder && !flags.withSettings) console.log('next: put back the plugins the backup was written under, or run Update modlist, before starting the game server')
   else console.log('next: start AlduinakBackend, then the game server from the manager')
 }
 

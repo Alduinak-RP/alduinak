@@ -5,9 +5,9 @@ From it staff can check the services, read logs, follow web jobs, use a limited 
 console, view the settings with every secret hidden, start, stop or restart the game
 server, and run the **Build gamemode only** and **Build server** jobs.
 
-Everything else stays on the box, in the Electron Server Manager over RDP: manifest
-updates, Sync settings or data, settings edits, launcher, client and native builds,
-purge and the database wipe.
+Everything else stays on the box, in the Electron Server Manager over RDP: Update modlist
+(manifest, settings and data sync, purge), settings edits, launcher, client and native
+builds, the Players and Security tabs, and the database wipe.
 
 ## 1. How it fits together
 
@@ -200,8 +200,9 @@ Get-FileHash -Algorithm SHA256 build\dist\server\gamemode_extensions\*.js | Sort
 ```
 
 **Start** and **Restart** are refused while a MongoDB purge is pending, the same rule
-the Electron manager applies. After a wipe, the runbook in
-[Database Wipe](docs_database_wipe.md) stamps `purgedAt`, which clears it.
+the Electron manager applies. A successful **Update modlist** deletes
+`manifest-diff.json`, which clears it; a failed one keeps the file. See
+[Database Wipe](docs_database_wipe.md).
 
 ### Audit
 
@@ -331,8 +332,8 @@ A Server tab that is only refreshing on its own does not count. Log in again.
 `kick <name>`, `players` and `status`. Output from the game appears below. Anything
 else must be done in game or on the box.
 
-**Daily restart.** The agent restarts the game server every day at `AUTO_RESTART_AT`
-(`skymp5-backend/.env`, local box time, default `04:00`, read live; `off` disables it).
+**Daily restart.** The agent restarts the game server every day at `dailyRestartAt`
+(`server-settings.json`, local box time, default `04:00`, read live; `off` disables it).
 It broadcasts `Server restart in N minutes. Please find a safe spot and log out.` with
 `say` 60 (shown as 1 hour), 30, 10, 5, 4, 3, 2 and 1 minutes before. A warning whose
 time already passed when the agent started is skipped. At the target it runs a normal
@@ -341,7 +342,7 @@ time already passed when the agent started is skipped. At the target it runs a n
 tab record it. If a build holds the lock it retries each minute for 30 minutes; a
 pending purge or a game server stopped by hand skips that day. The `[schedule]` lines
 appear in the Console tab and `C:\logs\manager-agent.log`. Keep a database wipe or a
-long build outside 03:00 to 04:30, or set `AUTO_RESTART_AT=off` for it.
+long build outside 03:00 to 04:30, or set `dailyRestartAt` to `off` for it.
 
 **Settings tab.** A read-only view. Edit settings on the box with the Electron
 manager.

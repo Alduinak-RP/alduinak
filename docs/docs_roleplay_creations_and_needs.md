@@ -83,7 +83,7 @@ From r12 `AlduinakCreations.esp` is merged into `AlduinakAdditions.esp` and leav
 full slot moves and the ids below are unchanged; `AlduinakAdditions.esp` gains the four Creation plugins as masters.
 
 Every full slot after Dragonborn moves up by 2 (AlduinakAdditions `0x2B` to `0x2D`), every light slot by 2. The server
-settings `loadOrder` comes from manager "Sync server settings". Stored ids follow either by wiping the database or by
+settings `loadOrder` comes from manager "Update modlist". Stored ids follow either by wiping the database or by
 the manager's purge, which re-encodes shifted ids in inventories, equipment, learned spells, appearance, housing
 references and now also `private.mastery.granted` and `private.needs.stageSpell`. The one id in `server-settings.json`,
 the hunter's Over Draw rule, becomes `0x2D002032`. A build's `proficiency-ids.json` must show LIVE's local ids;
@@ -389,17 +389,20 @@ One window, game service stopped, together with the other r11 plugin work (the p
 4. **MO2 profile:** drop the `*AlduinakCreations.esp` line from `profiles/Alduinak/plugins.txt`, so
    `*AlduinakAdditions.esp` is the last line. The Creations need no line; the manifest compiler puts them first.
 5. **Manifest sources:** add the `creations` block above to `skymp5-backend/data/manifest-sources.json`.
-6. **Update manifest** in the manager, with the backend stopped for about a minute (it holds `install-manifest.json`
-   open). The report shows `creations: 4 plugins, 8 files (schema 3)`. The compiler does not check the plugin against
-   the plugins before it, so a stale build is not caught here: rebuild (step 2) whenever a plugin before it changes.
-7. **Sync server settings.** The new `loadOrder` has the Creations after Dragonborn, `AlduinakAdditions.esp` last and no
-   `AlduinakCreations.esp` entry.
-8. **Database:** either wipe it (the owner's choice for this beta), or run the manager Purge as a dry run, read the
-   report (shifted plugins, remapped ids including `mastery granted`), then apply it. Do not start the game service
-   between step 7 and the purge.
+6. **Database:** to wipe it (the owner's choice for this beta), run the wipe from [Database Wipe](docs_database_wipe.md)
+   now, before step 7.
+7. **Update modlist** in the manager (Build tab, Client box), with the game server stopped and the backend stopped for
+   about a minute (it holds `install-manifest.json` open). In one go it builds the manifest, syncs `loadOrder` and the
+   data folder and runs the MongoDB purge, which re-encodes shifted ids (including `mastery granted`) after a backup.
+   The report cards show `creations: 4 plugins, 8 files (schema 3)`, and the new `loadOrder` has the Creations after
+   Dragonborn, `AlduinakAdditions.esp` last and no `AlduinakCreations.esp` entry. There is no dry run. The compiler
+   does not check the plugin against the plugins before it, so a stale build is not caught here: rebuild (step 2)
+   whenever a plugin before it changes.
+8. **Check** the report cards before starting the game service; a failed run keeps `manifest-diff.json` and the
+   game server refuses to start until Update modlist succeeds.
 9. **Edit `server-settings.json`:** `damageMultConditionalFormulaSettings.hunterOverDraw.conditions[0].parameter1` from
    `"0x2B002032"` to `"0x2D002032"`. The `needs*` keys are optional.
-10. **Sync Data**, then **Build server** and **Build Client**; **Build launcher** with the version bump and
+10. **Build server** and **Build Client**; **Build launcher** with the version bump and
     `LATEST_VERSION`; restart the backend (`routes` changed) and the manager app (`server-manager/src` changed).
 11. **Start the game service.** The log should show `[needs] ready`, `[mastery] plugin marker spells found for 8/8`, and
     no `[needs] not in the load order` line.
