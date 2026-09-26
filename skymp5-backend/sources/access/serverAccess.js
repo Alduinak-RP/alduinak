@@ -6,31 +6,54 @@ const config = require('../../config')
 const discordBot = require('../discord/bot')
 const permissions = require('../permissions')
 
-const FILE = path.join(__dirname, '..', '..', 'data', 'server-access.json')
+// Pre per-server settings; the main server still reads it under its own access block
+const LEGACY_FILE = path.join(__dirname, '..', '..', 'data', 'server-access.json')
 const WHITELIST_PATH = path.join(__dirname, '..', '..', 'data', 'whitelist.json')
+
+const mainServer = () => config.servers[0]
 
 function uniq(values) {
   return [...new Set((values || []).map(v => String(v || '').trim()).filter(Boolean))]
 }
 
-function defaults() {
+function defaults(server) {
   return {
     serverLocked: config.serverLocked,
     lockedRoleIds: uniq(config.serverLockedRoleIds),
     lockedDiscordIds: uniq(config.serverLockedAllowList),
     whitelistRoleId: config.whitelistRoleId || '',
     bannedRoleId: config.bannedRoleId || '',
+    staffOnlyRoleIds: uniq(server && server.roleIds),
   }
 }
 
-function load() {
-  const base = defaults()
-  try {
-    const file = JSON.parse(fs.readFileSync(FILE, 'utf8'))
-    return normalize(applyEnvFallbacks({ ...base, ...file }, base))
-  } catch {
-    return normalize(base)
+function readSettingsFile(server) {
+  try { return JSON.parse(fs.readFileSync(server.settingsPath, 'utf8')) } catch { return null }
+}
+
+// The server-settings.json "access" block, in the field names used here
+function fromBlock(block) {
+  const out = {}
+  if (!block || typeof block !== 'object') return out
+  if ('locked' in block) out.serverLocked = block.locked
+  for (const k of ['lockedRoleIds', 'lockedDiscordIds', 'whitelistRoleId', 'bannedRoleId', 'staffOnlyRoleIds']) if (k in block) out[k] = block[k]
+  return out
+}
+
+function toBlock(s) {
+  return {
+    locked: s.serverLocked, lockedRoleIds: s.lockedRoleIds, lockedDiscordIds: s.lockedDiscordIds,
+    whitelistRoleId: s.whitelistRoleId, bannedRoleId: s.bannedRoleId, staffOnlyRoleIds: s.staffOnlyRoleIds,
   }
+}
+
+// A server's rules: its server-settings.json access block over the .env defaults (and, for the main server, the legacy file)
+function load(server = mainServer()) {
+  const base = defaults(server)
+  let legacy = {}
+  if (server === mainServer()) { try { legacy = JSON.parse(fs.readFileSync(LEGACY_FILE, 'utf8')) } catch {} }
+  const block = fromBlock((readSettingsFile(server) || {}).access)
+  return normalize(applyEnvFallbacks({ ...base, ...legacy, ...block }, base))
 }
 
 function applyEnvFallbacks(settings, base) {
@@ -41,8 +64,19 @@ function applyEnvFallbacks(settings, base) {
   }
 }
 
-function save(data) {
-  fs.writeFileSync(FILE, JSON.stringify(normalize(data), null, 2) + '\n')
+function save(data, server) {
+  const settings = readSettingsFile(server)
+  if (!settings && server === mainServer()) {
+    fs.writeFileSync(LEGACY_FILE, JSON.stringify(normalize(data), null, 2) + '\n')
+    return
+  }
+  if (!settings) {
+    const err = new Error(`${server.settingsPath} is missing or unreadable`)
+    err.status = 404
+    throw err
+  }
+  settings.access = toBlock(normalize(data))
+  fs.writeFileSync(server.settingsPath, JSON.stringify(settings, null, 2) + '\n')
 }
 
 function normalize(data) {
@@ -52,6 +86,7 @@ function normalize(data) {
     lockedDiscordIds: uniq(data.lockedDiscordIds),
     whitelistRoleId: String(data.whitelistRoleId || '').trim(),
     bannedRoleId: String(data.bannedRoleId || '').trim(),
+    staffOnlyRoleIds: uniq(data.staffOnlyRoleIds),
   }
 }
 
@@ -65,23 +100,24 @@ function assertAssignableRole(roleId, label) {
 }
 
 /** Role id fields an update would change; changing them needs an admin. */
-function changedRoleFields(input) {
-  const current = load()
+function changedRoleFields(input, server = mainServer()) {
+  const current = load(server)
   const next = normalize({ ...current, ...(input || {}) })
   return ['whitelistRoleId', 'bannedRoleId'].filter(k => next[k] !== current[k])
 }
 
-function update(input) {
-  const current = load()
+function update(input, server = mainServer()) {
+  const current = load(server)
   const next = normalize({
     ...current,
     ...(input || {}),
     lockedRoleIds: input && input.lockedRoleIds !== undefined ? input.lockedRoleIds : current.lockedRoleIds,
     lockedDiscordIds: input && input.lockedDiscordIds !== undefined ? input.lockedDiscordIds : current.lockedDiscordIds,
+    staffOnlyRoleIds: input && input.staffOnlyRoleIds !== undefined ? input.staffOnlyRoleIds : current.staffOnlyRoleIds,
   })
   if (next.whitelistRoleId !== current.whitelistRoleId) assertAssignableRole(next.whitelistRoleId, 'whitelist')
   if (next.bannedRoleId !== current.bannedRoleId) assertAssignableRole(next.bannedRoleId, 'banned')
-  save(next)
+  save(next, server)
   return next
 }
 
@@ -99,12 +135,21 @@ function hasAnyRole(memberRoleIds, requiredRoleIds) {
   return (requiredRoleIds || []).some(roleId => roles.has(roleId))
 }
 
-async function getDiscordAccess(discordId) {
-  const settings = load()
+// A staff-only server (the test server) admits only holders of one of its staffOnlyRoleIds, and nobody when there are none
+function allowedOnServer(server, settings, roles) {
+  if (!settings.staffOnlyRoleIds.length) return !(server && server.staffOnly)
+  return hasAnyRole(roles, settings.staffOnlyRoleIds)
+}
+
+async function getDiscordAccess(discordId, server = mainServer()) {
+  const settings = load(server)
   const roles = await discordBot.getMemberRoles(discordId)
 
   if (settings.bannedRoleId && roles.includes(settings.bannedRoleId)) {
     return { allowed: false, error: 'banned', roles, settings }
+  }
+  if (!allowedOnServer(server, settings, roles)) {
+    return { allowed: false, error: 'staffOnly', roles, settings }
   }
 
   if (settings.serverLocked) {
@@ -129,14 +174,16 @@ async function getDiscordAccess(discordId) {
   return { allowed: true, roles, settings }
 }
 
-function publicState() {
-  const settings = load()
+function publicState(server = mainServer()) {
+  const settings = load(server)
   return {
+    server: server.id,
     ...settings,
     legacyFileWhitelistCount: loadFileWhitelist().length,
   }
 }
 
+// Whitelist and ban roles are Discord roles, so these act on the main server's role ids
 async function setWhitelisted(discordId, enabled) {
   const settings = load()
   if (settings.whitelistRoleId) {

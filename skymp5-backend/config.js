@@ -79,9 +79,12 @@ const config = module.exports = {
 }
 
 // Game servers, main first; each is known by its public master key (serverinfo, manifest, heartbeat, master API)
+// settingsPath: that server's server-settings.json, whose "access" block holds its lock, whitelist and staff-only rules
+const REPO_ROOT = require('path').join(__dirname, '..')
 config.servers = [{
   id: 'alduinak', name: config.serverName, host: config.skyrimServerHost, address: config.skyrimServerAddress,
   port: config.skyrimServerPort, uiPort: config.skympUiPort, masterKey: config.serverMasterKey,
+  settingsPath: process.env.SERVER_SETTINGS_PATH || require('path').join(REPO_ROOT, 'build', 'dist', 'server', 'server-settings.json'),
 }]
 
 // The test server is listed only when TEST_SERVER_PORT and TEST_SERVER_MASTER_KEY are set and clash with nothing live
@@ -92,11 +95,12 @@ if (TEST_PORT && TEST_KEY) {
     id: 'test', name: process.env.TEST_SERVER_NAME || 'Test Server', host: config.skyrimServerHost,
     address: process.env.TEST_SERVER_ADDRESS || config.skyrimServerAddress,
     port: TEST_PORT, uiPort: parseInt(process.env.TEST_SERVER_UI_PORT, 10) || TEST_PORT + 1, masterKey: TEST_KEY,
-    // Reads live backend state but never writes it, and admits only holders of these roles (none set: nobody)
+    settingsPath: process.env.TEST_SERVER_SETTINGS_PATH || require('path').join(REPO_ROOT, 'testserver', 'server-settings.json'),
+    // Reads live backend state but never writes it, and admits only staff-only role holders (none set: nobody)
     readOnly: true,
+    staffOnly: true,
     roleIds: (process.env.TEST_SERVER_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean),
   }
-  if (!test.roleIds.length) console.warn('[config] TEST_SERVER_ROLE_IDS is empty: nobody can join the test server')
   const live = [config.skyrimServerPort, config.skympUiPort]
   if (TEST_KEY === config.serverMasterKey) console.warn('[config] TEST_SERVER_MASTER_KEY equals SERVER_MASTER_KEY: test server not listed')
   else if (live.includes(test.port) || live.includes(test.uiPort)) console.warn(`[config] test server ports ${test.port}/${test.uiPort} collide with the live server (${live.join('/')}): test server not listed`)

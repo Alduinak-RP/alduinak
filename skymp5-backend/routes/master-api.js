@@ -163,11 +163,6 @@ function checkKey(req, res, { write = req.method !== 'GET' } = {}) {
   return true
 }
 
-// A server with roleIds (the test server) admits only holders of one of them
-function allowedOnServer(server, roles) {
-  return !server || !server.roleIds || server.roleIds.some(id => (roles || []).includes(id))
-}
-
 function checkWriteToken(req, res) {
   if (!safeEqual(req.headers['x-auth-token'], config.masterApiAuthToken)) {
     res.status(403).json({ error: 'Invalid auth token.' })
@@ -229,7 +224,7 @@ router.get('/:key/sessions/:session', async (req, res) => {
 
   let access
   try {
-    access = await serverAccess.getDiscordAccess(entry.discordId)
+    access = await serverAccess.getDiscordAccess(entry.discordId, req.server)
   } catch (err) {
     console.error('[master-api] access role check failed:', err.message)
     return res.status(503).json({ error: 'accessUnavailable' })
@@ -237,9 +232,6 @@ router.get('/:key/sessions/:session', async (req, res) => {
 
   if (!access.allowed) {
     return res.status(403).json({ error: access.error || 'accessDenied' })
-  }
-  if (!allowedOnServer(req.server, access.roles)) {
-    return res.status(403).json({ error: 'staffOnly' })
   }
 
   // Ban snapshots: refuse by discordId or hardware id even if the discord role is gone
@@ -286,7 +278,7 @@ router.get('/:key/profiles/:profileId/check', async (req, res) => {
 
   let access
   try {
-    access = await serverAccess.getDiscordAccess(discordId)
+    access = await serverAccess.getDiscordAccess(discordId, req.server)
   } catch (err) {
     console.error('[master-api] offline access role check failed:', err.message)
     return res.status(503).json({ error: 'accessUnavailable' })
@@ -294,9 +286,6 @@ router.get('/:key/profiles/:profileId/check', async (req, res) => {
 
   if (!access.allowed) {
     return res.status(403).json({ error: access.error || 'accessDenied' })
-  }
-  if (!allowedOnServer(req.server, access.roles)) {
-    return res.status(403).json({ error: 'staffOnly' })
   }
 
   res.json({
@@ -310,7 +299,7 @@ router.get('/:key/profiles/:profileId/check', async (req, res) => {
 // Called by the game server at login: records the connecting ip and refuses banned discordId/hwid/ip.
 
 router.post('/:key/connection-check', (req, res) => {
-  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+  if (!checkKey(req, res, { write: false }) || !checkWriteToken(req, res)) return
 
   const { profileId, ip } = req.body || {}
   const id = parseInt(profileId, 10)
@@ -320,7 +309,7 @@ router.post('/:key/connection-check', (req, res) => {
   if (!discordId) return res.status(404).json({ error: 'profileNotFound' })
 
   const cleanIp = typeof ip === 'string' ? ip.trim().slice(0, 64) : ''
-  const player = players.updateIdentity(discordId, { ip: cleanIp }) || {}
+  const player = (req.server.readOnly ? players.load()[discordId] : players.updateIdentity(discordId, { ip: cleanIp })) || {}
 
   const ban = bans.isBanned({ discordId, hwid: player.hwid, ip: cleanIp })
   if (ban) {
@@ -575,14 +564,14 @@ router.post('/:key/sessions/:session/purchase', (req, res) => {
 
 // Launcher hints for the serverinfo routes: the lock state and, when X-Session is sent, whether that player may join the server
 async function sessionHints(token, server) {
-  const locked = serverAccess.load().serverLocked
+  const locked = serverAccess.load(server).serverLocked
   if (!token) return { locked, sessionValid: false, allowed: true }
   const entry = lookupSession(token)
   if (!entry) return { locked, sessionValid: false, allowed: false }
   let allowed = false
   try {
-    const access = await serverAccess.getDiscordAccess(entry.discordId)
-    allowed = access.allowed === true && allowedOnServer(server, access.roles)
+    const access = await serverAccess.getDiscordAccess(entry.discordId, server)
+    allowed = access.allowed === true
   } catch {}
   return { locked, sessionValid: true, allowed }
 }
