@@ -1,11 +1,5 @@
 [
   {
-    "name": "SkyMP Client",
-    "required": true,
-    "enabled": true,
-    "source": "backend"
-  },
-  {
     "name": "Alduinak Client Files",
     "required": true,
     "enabled": true,
@@ -114,7 +108,7 @@
     "name": "Missives 2.03 SSE",
     "required": true,
     "enabled": true,
-    "source": "nexus",
+    "source": "url",
     "nexusId": 17576
   },
   {
