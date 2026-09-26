@@ -680,6 +680,16 @@ pub fn clean_overwrite() -> Vec<String> {
     removed
 }
 
+// A mod's or overwrite's copy of the client settings would shadow the one written before every launch (voice, hotkeys, login)
+pub fn remove_shadowed_client_settings() {
+    let rel = Path::new("Platform").join("Plugins").join("skymp5-client-settings.txt");
+    let dirs = fs::read_dir(mods_dir()).into_iter().flatten().flatten().map(|e| e.path()).chain(std::iter::once(root().join("overwrite")));
+    for dir in dirs {
+        let file = dir.join(&rel);
+        if file.is_file() && fs::remove_file(&file).is_ok() { log(format!("[mo2] removed {}, it shadowed the launcher's client settings", file.display())); }
+    }
+}
+
 // Disables player-added mods that ship plugins or SKSE dlls
 pub fn enforce_mod_rules() -> Vec<String> {
     let path = profile_dir().join("modlist.txt");

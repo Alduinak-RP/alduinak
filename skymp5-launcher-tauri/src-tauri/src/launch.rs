@@ -140,7 +140,7 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
         log("[launch] server load order unavailable - leaving plugins.txt untouched");
     }
     // MO2 lockdown: stray overwrite plugins and player mods with plugins or SKSE dlls
-    if via_mo2 { mo2::clean_overwrite(); mo2::enforce_mod_rules(); }
+    if via_mo2 { mo2::clean_overwrite(); mo2::enforce_mod_rules(); mo2::remove_shadowed_client_settings(); }
     // The backend approves the files and hands out the single-use play token the game logs in with
     let session = store().str("gameSession");
     if !session.is_empty() && srv.is_some() && info.as_ref().and_then(|i| i["offlineMode"].as_bool()) != Some(true) {
