@@ -17,11 +17,11 @@ const { nssm, nativeModuleLocked } = require(path.join(SM, 'serviceCheck'))
 const USAGE = [
   'usage: node deploy/mongodb/wipe-world.js <mode> [flags]',
   '  backup  [--out <dir>] [--backend-running]',
-  '          dump MongoDB and copy the state files; the game server must be stopped',
+  '          dump MongoDB and copy the state files; the game server and backend must be stopped',
   '  verify  [--backup <dir>] [--order <plugins.txt | order.json>]',
   '          read-only: collections, state files, form ids in shifting slots, the purge stamp',
   '  apply   [--backup <dir>] [--apply] [--backend-running]',
-  '          drop changeForms and reset the state files; a dry run unless --apply',
+  '          drop changeForms, reset characters and faction assignments and the state files; a dry run unless --apply',
   '  restore --backup <dir> [--test | --apply [--with-settings]] [--backend-running]',
   '          put a backup back; a dry run unless --apply, which first backs up the live data;',
   '          --test restores into a throwaway collection',
@@ -39,13 +39,26 @@ const SUMS_FILE = 'SHA256SUMS.txt'
 const DUMP_DIR = 'mongodump'
 const SERVER_COPY = 'server'
 const BACKEND_COPY = 'backend-data'
+const BACKEND_DB_COPY = 'backend-db'
 const POST_SYNC_DIFF = 'post-sync/manifest-diff.json'
 const TOOLS_DIR = process.env.ALDUINAK_MONGO_TOOLS || 'C:\\Program Files\\MongoDB\\Tools\\100\\bin'
 const BOM = String.fromCharCode(0xfeff)
 
 // Collections apply drops or keeps; any other collection makes apply refuse until it is listed here
 const DB_DROP = [CF]
-const DB_KEEP = []
+const DB_KEEP = ['players', 'profiles', 'bans', 'sessions', 'authStates', 'balances', 'meta']
+// Backend collections apply resets: every character document, and the rank assignments in the factions whitelist
+const CHARACTERS = 'characters'
+const FACTIONS = 'factions'
+const FACTIONS_DOC = 'whitelist'
+// Live login tokens: left out of the dump and never restored
+const SESSION_COLLECTIONS = ['sessions', 'authStates']
+// Backend collections saved as JSON in backend-db/; mongorestore leaves all of them alone
+const BACKEND_COLLECTIONS = [CHARACTERS, FACTIONS, 'players', 'profiles', 'bans', 'balances', 'meta']
+// Files older backups hold instead of backend-db/
+const LEGACY_FILES = { [CHARACTERS]: 'characters.json', [FACTIONS]: 'faction-whitelist.json' }
+// Backend data files imported into MongoDB and no longer read
+const MIGRATED_FILES = new Set(['players.json', 'profiles.json', 'bans.json', 'characters.json', 'balances.json', 'faction-whitelist.json'])
 
 // Server folder registries of character and runtime ids, each reset to the value its loader reads as empty
 const SERVER_RESET = {
@@ -70,10 +83,6 @@ const SERVER_KEEP_RE = [/^server-settings[.-]/i, /-\d{13}\.json$/i, /\.tmp$/i]
 const SESSION_FILES = new Set(['sessions.json', 'auth-states.json', 'dashboard-sessions.json'])
 // Old manual copies and interrupted writes stay out of the backup
 const BACKEND_SKIP_RE = [/\.bak/i, /\.tmp$/i, /^\.gitkeep$/i]
-// Character names per profile slot, all of them wiped characters
-const BACKEND_RESET = { 'characters.json': {} }
-// Faction definitions and requirements stay; rank assignments go with the characters
-const FACTIONS_FILE = 'faction-whitelist.json'
 // Manifest state restore --with-settings puts back together with the old load order
 const MANIFEST_STATE = ['install-manifest.json', 'install-manifest.json.prev', 'manifest-diff.json', 'manifest-sources.json', 'modlist.json', 'data-sync.json', 'files-version.json']
 // Logs naming character and profile ids; service stdout and stderr logs stay
@@ -309,7 +318,7 @@ async function gameServerBlocker() {
 async function backendBlocker(flags) {
   if (flags.backendRunning) return null
   const { name, status } = await serviceStatus('backend')
-  return status && status !== 'SERVICE_STOPPED' ? `${name} is ${status}, stop it so bans, profiles and faction files hold still (or pass --backend-running)` : null
+  return status && status !== 'SERVICE_STOPPED' ? `${name} is ${status}, stop it: it mirrors its collections in memory and is their only writer (or pass --backend-running)` : null
 }
 
 // ── MongoDB ──────────────────────────────────────────────────────────────────
@@ -322,6 +331,37 @@ async function withDb(fn) {
 
 async function collectionNames(db) {
   return (await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name).sort()
+}
+
+function byId(docs) {
+  return [...docs].sort((a, b) => String(a._id).localeCompare(String(b._id)))
+}
+
+async function readCollection(db, name) {
+  return byId(await db.collection(name).find({}).toArray())
+}
+
+function sameDocs(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+// Documents from the backup's backend-db dump, or built from an older backup's backend-data file; null when neither exists
+function backupDocs(dir, name) {
+  const dumped = readJsonState(path.join(dir, BACKEND_DB_COPY, `${name}.json`))
+  if (!dumped.missing) {
+    if (dumped.error || !Array.isArray(dumped.value)) throw new Refusal(`${BACKEND_DB_COPY}/${name}.json in the backup is ${dumped.error || 'not an array'}`)
+    return byId(dumped.value)
+  }
+  const file = LEGACY_FILES[name]
+  const old = file ? readJsonState(path.join(dir, BACKEND_COPY, file)) : { missing: true }
+  if (old.missing) return null
+  if (old.error || !old.value || typeof old.value !== 'object' || Array.isArray(old.value)) throw new Refusal(`${BACKEND_COPY}/${file} in the backup is ${old.error || 'not an object'}`)
+  if (name === FACTIONS) return [{ _id: FACTIONS_DOC, ...old.value }]
+  return byId(Object.entries(old.value).map(([_id, doc]) => ({ _id, ...doc })))
+}
+
+async function readBackend(db) {
+  return { characters: await readCollection(db, CHARACTERS), factions: await db.collection(FACTIONS).findOne({ _id: FACTIONS_DOC }) }
 }
 
 function docClass(doc) {
@@ -517,18 +557,18 @@ async function takeBackup(dir, flags) {
   const info = {
     createdAt: new Date().toISOString(), head: await gitHead(), databaseName: settings.databaseName,
     collections: {}, changeForms: null, loadOrder: flagsFor(liveOrder(), 'light'),
-    server: { copied: [], absent: [] }, backend: { copied: [], leftOut: [] },
+    server: { copied: [], absent: [] }, backend: { copied: [], leftOut: [], collections: {} },
   }
   console.log(`backup into ${dir}`)
   console.log('\n[1/4] MongoDB')
   await withDb(async db => {
-    for (const name of await collectionNames(db)) if (name !== RESTORE_CHECK) info.collections[name] = await db.collection(name).countDocuments()
+    for (const name of await collectionNames(db)) if (name !== RESTORE_CHECK && !SESSION_COLLECTIONS.includes(name)) info.collections[name] = await db.collection(name).countDocuments()
     if (CF in info.collections) info.changeForms = await changeFormStats(db)
   })
   for (const [name, count] of Object.entries(info.collections)) console.log(`  ${name}: ${plural(count, 'document', 'documents')}`)
   if (info.changeForms) printStats(info.changeForms, '  ')
   fs.mkdirSync(dir, { recursive: true })
-  await withToolConfig(cfg => runTool('mongodump', ['--config', cfg, '--db', settings.databaseName, '--excludeCollection', RESTORE_CHECK, '--out', path.join(dir, DUMP_DIR)]))
+  await withToolConfig(cfg => runTool('mongodump', ['--config', cfg, '--db', settings.databaseName, '--excludeCollection', RESTORE_CHECK, ...SESSION_COLLECTIONS.flatMap(c => ['--excludeCollection', c]), '--out', path.join(dir, DUMP_DIR)]))
   for (const [name, count] of Object.entries(info.collections)) {
     const n = dumpCount(dir, info, name)
     if (n !== count) throw new Error(`the dump of ${name} holds ${n} document(s) but the collection holds ${count}`)
@@ -547,14 +587,23 @@ async function takeBackup(dir, flags) {
 
   console.log('\n[3/4] backend data')
   const dataDir = config.paths.dataDir
-  const skipped = name => SESSION_FILES.has(name.toLowerCase()) || BACKEND_SKIP_RE.some(re => re.test(name))
+  const skipped = name => SESSION_FILES.has(name.toLowerCase()) || MIGRATED_FILES.has(name.toLowerCase()) || BACKEND_SKIP_RE.some(re => re.test(name))
   if (isDir(dataDir)) {
     info.backend.leftOut = fs.readdirSync(dataDir).filter(skipped).sort()
     fs.cpSync(dataDir, path.join(dir, BACKEND_COPY), { recursive: true, errorOnExist: true, force: false, filter: src => path.resolve(src) === path.resolve(dataDir) || !skipped(path.basename(src)) })
     info.backend.copied = isDir(path.join(dir, BACKEND_COPY)) ? listFiles(path.join(dir, BACKEND_COPY)) : []
   }
   console.log(`  copied: ${info.backend.copied.join(', ') || 'nothing'}`)
-  if (info.backend.leftOut.length) console.log(`  left out (sessions, old copies): ${info.backend.leftOut.join(', ')}`)
+  if (info.backend.leftOut.length) console.log(`  left out (sessions, files now in MongoDB, old copies): ${info.backend.leftOut.join(', ')}`)
+  fs.mkdirSync(path.join(dir, BACKEND_DB_COPY), { recursive: true })
+  await withDb(async db => {
+    for (const name of BACKEND_COLLECTIONS) {
+      const docs = await readCollection(db, name)
+      fs.writeFileSync(path.join(dir, BACKEND_DB_COPY, `${name}.json`), JSON.stringify(docs, null, 2) + '\n')
+      info.backend.collections[name] = docs.length
+    }
+  })
+  console.log(`  collections as JSON: ${Object.entries(info.backend.collections).map(([n, c]) => `${n} ${c}`).join(', ')}`)
 
   console.log('\n[4/4] load order and checksums')
   const unknown = info.loadOrder.filter(o => typeof o.light !== 'boolean').map(o => o.name)
@@ -582,17 +631,23 @@ function registryState(file) {
   return n ? `${plural(n, 'entry', 'entries')}, not reset` : 'reset'
 }
 
-function stateReport() {
+async function stateReport() {
   const serverDir = config.paths.serverDir
   const dataDir = config.paths.dataDir
   for (const name of Object.keys(SERVER_RESET)) console.log(`  ${name}: ${registryState(path.join(serverDir, name))}`)
   const wdir = path.join(serverDir, WRITINGS_DIR)
   const wcount = isDir(wdir) ? listFiles(wdir).length : null
   console.log(`  ${WRITINGS_DIR}/: ${wcount === null ? 'absent' : wcount ? `${plural(wcount, 'file', 'files')}, not reset` : 'reset'}`)
-  for (const name of Object.keys(BACKEND_RESET)) console.log(`  backend ${name}: ${registryState(path.join(dataDir, name))}`)
-  const f = readJsonState(path.join(dataDir, FACTIONS_FILE))
-  const assigned = f.value ? arrLen(f.value.assignments) : 0
-  console.log(`  backend ${FACTIONS_FILE}: ${f.missing ? 'absent' : f.error ? f.error : `${plural(arrLen(f.value.factions), 'faction', 'factions')} and ${plural(arrLen(f.value.requirements), 'requirement', 'requirements')} kept, ${plural(assigned, 'assignment', 'assignments')}${assigned ? ', not reset' : ', reset'}`}`)
+  try {
+    const b = await withDb(readBackend)
+    const assigned = b.factions ? arrLen(b.factions.assignments) : 0
+    console.log(`  backend ${CHARACTERS}: ${b.characters.length ? `${plural(b.characters.length, 'document', 'documents')}, not reset` : 'reset'}`)
+    console.log(`  backend ${FACTIONS}.${FACTIONS_DOC}: ${b.factions ? `${plural(arrLen(b.factions.factions), 'faction', 'factions')} and ${plural(arrLen(b.factions.requirements), 'requirement', 'requirements')} kept, ${plural(assigned, 'assignment', 'assignments')}${assigned ? ', not reset' : ', reset'}` : 'absent'}`)
+  } catch (err) {
+    console.log(`  backend collections could not be read: ${purge.sanitize(err, settings)}`)
+  }
+  const stale = (isDir(dataDir) ? fs.readdirSync(dataDir) : []).filter(n => MIGRATED_FILES.has(n.toLowerCase()))
+  if (stale.length) console.log(`  backend files now in MongoDB, not read or reset: ${stale.join(', ')}`)
   for (const name of SERVER_DEFINITIONS.slice(1)) {
     const s = readJsonState(path.join(serverDir, name))
     console.log(`  ${name}: ${s.missing ? 'absent' : s.error ? s.error : `${plural(entryCount(s.value), 'entry', 'entries')}, kept`}`)
@@ -740,7 +795,7 @@ async function verifyMode(flags) {
   }
 
   console.log('\nstate files')
-  stateReport()
+  await stateReport()
   console.log('\nform ids in shifting slots')
   shiftReport(info, backupDir, flags)
   console.log('\nstart gate')
@@ -795,7 +850,7 @@ async function applyMode(flags) {
     for (const name of names) counts[name] = await db.collection(name).countDocuments()
     return { names, counts, stats: names.includes(CF) ? await changeFormStats(db) : null }
   })
-  const unknown = live.names.filter(n => !DB_DROP.includes(n) && !DB_KEEP.includes(n) && n !== RESTORE_CHECK)
+  const unknown = live.names.filter(n => !DB_DROP.includes(n) && !DB_KEEP.includes(n) && n !== CHARACTERS && n !== FACTIONS && n !== RESTORE_CHECK)
   if (unknown.length) plan.blockers.push(`unclassified collection(s) ${unknown.join(', ')}: list them in DB_DROP or DB_KEEP in wipe-world.js`)
   for (const name of DB_KEEP.filter(n => live.names.includes(n))) console.log(`  ${name}: kept`)
   if (live.names.includes(CF)) {
@@ -837,23 +892,28 @@ async function applyMode(flags) {
   }
   console.log(`  kept: ${SERVER_DEFINITIONS.filter(n => fs.existsSync(path.join(serverDir, n))).join(', ')}`)
 
-  console.log('\nbackend data')
-  for (const [name, empty] of Object.entries(BACKEND_RESET)) {
-    planJson(plan, {
-      file: path.join(dataDir, name), copy: path.join(dir, BACKEND_COPY, name), label: name,
-      done: v => entryCount(v) === 0, target: () => empty, describe: v => `${plural(entryCount(v), 'entry', 'entries')} -> ${JSON.stringify(empty)}`,
-    })
+  console.log('\nbackend collections')
+  const backend = await withDb(readBackend)
+  if (!backend.characters.length) console.log(`  ${CHARACTERS}: already reset`)
+  else if (!sameDocs(backend.characters, backupDocs(dir, CHARACTERS))) plan.blockers.push(`${CHARACTERS} differs from its backup copy (something wrote since the backup), take a new backup`)
+  else {
+    console.log(`  ${CHARACTERS}: ${plural(backend.characters.length, 'document', 'documents')} -> none`)
+    plan.actions.push({ label: `delete every ${CHARACTERS} document`, run: () => withDb(db => db.collection(CHARACTERS).deleteMany({})) })
   }
-  planJson(plan, {
-    file: path.join(dataDir, FACTIONS_FILE), copy: path.join(dir, BACKEND_COPY, FACTIONS_FILE), label: FACTIONS_FILE, needsValue: true,
-    done: v => arrLen(v && v.assignments) === 0,
-    target: v => ({ ...v, assignments: [] }),
-    describe: v => `${plural(arrLen(v.assignments), 'assignment', 'assignments')} cleared, ${plural(arrLen(v.factions), 'faction', 'factions')} and ${plural(arrLen(v.requirements), 'requirement', 'requirements')} kept`,
-  })
-  const touched = new Set([...Object.keys(BACKEND_RESET), FACTIONS_FILE])
-  const backendKept = (isDir(dataDir) ? fs.readdirSync(dataDir) : []).filter(n => !touched.has(n) && !SESSION_FILES.has(n.toLowerCase()) && !BACKEND_SKIP_RE.some(re => re.test(n)))
-  console.log(`  kept: ${backendKept.join(', ') || 'nothing else'}`)
-  console.log(`  never touched: ${[...SESSION_FILES].join(', ')}`)
+  const fdoc = backend.factions
+  if (!fdoc) console.log(`  ${FACTIONS}.${FACTIONS_DOC}: absent, nothing to reset`)
+  else if (!arrLen(fdoc.assignments)) console.log(`  ${FACTIONS}.${FACTIONS_DOC}: already reset`)
+  else if (!sameDocs(fdoc, (backupDocs(dir, FACTIONS) || []).find(d => String(d._id) === FACTIONS_DOC))) plan.blockers.push(`${FACTIONS}.${FACTIONS_DOC} differs from its backup copy (something wrote since the backup), take a new backup`)
+  else {
+    console.log(`  ${FACTIONS}.${FACTIONS_DOC}: ${plural(arrLen(fdoc.assignments), 'assignment', 'assignments')} cleared, ${plural(arrLen(fdoc.factions), 'faction', 'factions')} and ${plural(arrLen(fdoc.requirements), 'requirement', 'requirements')} kept`)
+    plan.actions.push({ label: `clear the assignments in ${FACTIONS}.${FACTIONS_DOC}`, run: () => withDb(db => db.collection(FACTIONS).updateOne({ _id: FACTIONS_DOC }, { $set: { assignments: [] } })) })
+  }
+  console.log(`  kept: ${DB_KEEP.filter(n => live.names.includes(n)).join(', ') || 'nothing else'}`)
+
+  console.log('\nbackend data')
+  const backendKept = (isDir(dataDir) ? fs.readdirSync(dataDir) : []).filter(n => !MIGRATED_FILES.has(n.toLowerCase()) && !SESSION_FILES.has(n.toLowerCase()) && !BACKEND_SKIP_RE.some(re => re.test(n)))
+  console.log(`  kept: ${backendKept.join(', ') || 'nothing'}`)
+  console.log(`  never touched: ${[...SESSION_FILES, ...MIGRATED_FILES].join(', ')}`)
 
   console.log('\nlogs')
   const ldir = logDir()
@@ -888,10 +948,10 @@ async function applyMode(flags) {
   const problems = []
   if ((await withDb(collectionNames)).includes(CF)) problems.push(`${CF} still exists`)
   for (const name of Object.keys(SERVER_RESET)) if (!/^(reset|absent)/.test(registryState(path.join(serverDir, name)))) problems.push(`${name} is not reset`)
-  for (const name of Object.keys(BACKEND_RESET)) if (!/^(reset|absent)/.test(registryState(path.join(dataDir, name)))) problems.push(`${name} is not reset`)
   if (isDir(wdir) && fs.readdirSync(wdir).length) problems.push(`${WRITINGS_DIR}/ is not empty`)
-  const factions = readJsonState(path.join(dataDir, FACTIONS_FILE))
-  if (factions.value && arrLen(factions.value.assignments)) problems.push(`${FACTIONS_FILE} still has assignments`)
+  const after = await withDb(readBackend)
+  if (after.characters.length) problems.push(`${CHARACTERS} still holds ${after.characters.length} document(s)`)
+  if (after.factions && arrLen(after.factions.assignments)) problems.push(`${FACTIONS}.${FACTIONS_DOC} still has assignments`)
   if (problems.length) throw new Error(`re-read after the wipe: ${problems.join(', ')}`)
   console.log('\nwipe done and re-read')
   console.log('next:')
@@ -901,6 +961,29 @@ async function applyMode(flags) {
 }
 
 // ── restore ──────────────────────────────────────────────────────────────────
+
+// characters is replaced whole; factions only gets the backup's documents back, so other ids stay
+function planRestoreDocs(plan, dir, name, live, whole) {
+  const docs = backupDocs(dir, name)
+  if (!docs) { console.log(`  ${name}: not in the backup, left as is`); return }
+  const ids = new Set(docs.map(d => String(d._id)))
+  const scope = list => (whole ? list : list.filter(d => ids.has(String(d._id))))
+  if (sameDocs(scope(live), docs)) { console.log(`  ${name}: matches the backup`); return }
+  console.log(`  ${name}: ${plural(scope(live).length, 'document', 'documents')} -> ${plural(docs.length, 'document', 'documents')} from the backup`)
+  plan.actions.push({
+    label: `restore ${name}`,
+    run: () => withDb(async db => {
+      const col = db.collection(name)
+      if (whole) {
+        await col.deleteMany({})
+        if (docs.length) await col.insertMany(docs)
+      } else {
+        for (const doc of docs) await col.replaceOne({ _id: doc._id }, doc, { upsert: true })
+      }
+      if (!sameDocs(scope(await readCollection(db, name)), docs)) throw new Error(`${name} does not match the backup after the restore`)
+    }),
+  })
+}
 
 function planCopyBack(plan, { src, dest, label, keepPrevious = false }) {
   const inBackup = fs.existsSync(src)
@@ -942,6 +1025,10 @@ async function restoreMode(flags) {
   if (info.databaseName !== settings.databaseName) throw new Refusal(`the backup is of database ${info.databaseName}, server-settings.json names ${settings.databaseName}`)
   if (flags.test) {
     await withDb(db => restoreTest(db, dir, info))
+    for (const name of [CHARACTERS, FACTIONS]) {
+      const docs = backupDocs(dir, name)
+      console.log(`  backend ${name}: ${docs ? `${plural(docs.length, 'document', 'documents')} readable in the backup` : 'not in the backup'}`)
+    }
     return
   }
   const plan = { blockers: [], actions: [] }
@@ -960,15 +1047,18 @@ async function restoreMode(flags) {
     for (const name of await collectionNames(db)) counts[name] = await db.collection(name).countDocuments()
     return counts
   })
-  for (const [name, count] of Object.entries(info.collections)) console.log(`  ${name}: ${name in live ? live[name] : 'absent'} -> ${count}`)
-  const extra = Object.keys(live).filter(n => !(n in info.collections) && n !== RESTORE_CHECK)
+  for (const name of restored) console.log(`  ${name}: ${name in live ? live[name] : 'absent'} -> ${info.collections[name]}`)
+  const restored = Object.keys(info.collections).filter(n => !BACKEND_COLLECTIONS.includes(n) && !SESSION_COLLECTIONS.includes(n))
+  const extra = Object.keys(live).filter(n => !restored.includes(n) && !BACKEND_COLLECTIONS.includes(n) && n !== RESTORE_CHECK)
   if (extra.length) console.log(`  not in the backup, left as is: ${extra.join(', ')}`)
   plan.actions.push({
-    label: `mongorestore --drop of ${Object.keys(info.collections).join(', ') || 'nothing'}`,
+    label: `mongorestore --drop of ${restored.join(', ') || 'nothing'}`,
     run: async () => {
-      await withToolConfig(cfg => runTool('mongorestore', ['--config', cfg, '--drop', '--nsInclude', `${info.databaseName}.*`, '--dir', path.join(dir, DUMP_DIR)]))
+      const exclude = [...BACKEND_COLLECTIONS, ...SESSION_COLLECTIONS].flatMap(c => ['--nsExclude', `${info.databaseName}.${c}`])
+      await withToolConfig(cfg => runTool('mongorestore', ['--config', cfg, '--drop', '--nsInclude', `${info.databaseName}.*`, ...exclude, '--dir', path.join(dir, DUMP_DIR)]))
       await withDb(async db => {
-        for (const [name, count] of Object.entries(info.collections)) {
+        for (const name of restored) {
+          const count = info.collections[name]
           const got = await db.collection(name).countDocuments()
           if (got !== count) throw new Error(`after the restore ${name} holds ${got} document(s), the backup ${count}`)
         }
@@ -985,11 +1075,16 @@ async function restoreMode(flags) {
   for (const name of [...Object.keys(SERVER_RESET), WRITINGS_DIR]) planCopyBack(plan, { src: path.join(dir, SERVER_COPY, name), dest: path.join(serverDir, name), label: name })
   if (flags.withSettings) planCopyBack(plan, { src: path.join(dir, SERVER_COPY, 'server-settings.json'), dest: config.paths.serverSettings, label: 'server-settings.json', keepPrevious: true })
 
-  console.log('\nbackend data')
-  for (const name of [...Object.keys(BACKEND_RESET), FACTIONS_FILE, ...(flags.withSettings ? MANIFEST_STATE : [])]) {
-    planCopyBack(plan, { src: path.join(dir, BACKEND_COPY, name), dest: path.join(dataDir, name), label: name })
+  console.log('\nbackend collections')
+  const liveBackend = await withDb(async db => ({ characters: await readCollection(db, CHARACTERS), factions: await readCollection(db, FACTIONS) }))
+  planRestoreDocs(plan, dir, CHARACTERS, liveBackend.characters, true)
+  planRestoreDocs(plan, dir, FACTIONS, liveBackend.factions, false)
+  console.log(`  never restored: ${BACKEND_COLLECTIONS.filter(n => n !== CHARACTERS && n !== FACTIONS).join(', ')}, ${SESSION_COLLECTIONS.join(', ')} (players log in again)`)
+
+  if (flags.withSettings) {
+    console.log('\nbackend data')
+    for (const name of MANIFEST_STATE) planCopyBack(plan, { src: path.join(dir, BACKEND_COPY, name), dest: path.join(dataDir, name), label: name })
   }
-  console.log(`  never restored: ${[...SESSION_FILES].join(', ')} (players log in again)`)
 
   console.log('\nplan')
   plan.actions.forEach((a, i) => console.log(`  ${i + 1}. ${a.label}`))

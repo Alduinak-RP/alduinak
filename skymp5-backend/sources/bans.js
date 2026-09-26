@@ -1,24 +1,18 @@
 'use strict'
 
-// data/bans.json: one entry per banned discordId with hwid/ip captured at ban time, so alt accounts can be matched later
+// MongoDB bans: one document per banned discordId with hwid/ip captured at ban time, so alt accounts can be matched later
 
-const fs       = require('fs')
-const path     = require('path')
+const db       = require('./db')
 const auditLog = require('./auditLog')
 
-const FILE = path.join(__dirname, '..', 'data', 'bans.json')
+const store = db.store('bans')
 
 function load() {
-  try {
-    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'))
-    return Array.isArray(data) ? data : []
-  } catch {
-    return []
-  }
+  return Object.values(store.toObject())
 }
 
 function save(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2) + '\n')
+  store.replaceAll(Object.fromEntries(data.map(entry => [String(entry.discordId), entry])))
 }
 
 function list() {

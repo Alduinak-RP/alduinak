@@ -29,8 +29,8 @@ Everything from r13 must be live before the wipe, because the wipe is the last o
   silently.
 
 If the daily restart is already running (section 6 done earlier), keep the window
-outside 03:00 to 04:30 box time, or set `AUTO_RESTART_AT=off` in
-`skymp5-backend\.env` until the end.
+outside 03:00 to 04:30 box time, or set `dailyRestartAt` to `"off"` in
+`server-settings.json` until the end.
 
 ## 2. Stop and back up
 
@@ -65,7 +65,7 @@ outside 03:00 to 04:30 box time, or set `AUTO_RESTART_AT=off` in
    node deploy\mongodb\wipe-world.js apply --backup $dir --apply
    ```
    The dry run must list the `changeForms` drop, the state file resets, the
-   `characters.json` reset, the faction rank assignments and the log move, with no
+   `characters` collection reset, the faction rank assignments and the log move, with no
    `REFUSED` line. The real run ends with `wipe done and re-read` and names the
    `C:\logs\pre-wipe-<stamp>` folder the moderation logs moved to.
 2. Move the stale `C:\Users\Administrator\Desktop\logs\faction.log` (a leftover from
@@ -109,8 +109,8 @@ everyone is refused while locked (it fails closed).
 5. A staff member makes a new character: the synopsis, the spawn choice and the starter
    kit (the clothes; the gold comes with the first profession) appear, and
    `starter-grants.json` gains one key.
-6. The hashes of `bans.json`, `profiles.json` and `role-permissions.json` equal the
-   copies in `$dir\backend-data` (`Get-FileHash`).
+6. `verify` shows the same `bans`, `profiles` and `players` counts as `$dir\backend-db`,
+   and the hash of `role-permissions.json` equals its copy in `$dir\backend-data` (`Get-FileHash`).
 7. Back to automatic start:
    ```
    & C:\tools\nssm\nssm.exe set AlduinakGameServer Start SERVICE_AUTO_START
@@ -132,7 +132,7 @@ is not installed on this box yet. One time:
    ```
    MANAGER_AGENT_SECRET=<the 64 hex characters>
    ```
-   `AUTO_RESTART_AT` can stay unset (04:00 box time, Pacific). `off` disables it.
+   `dailyRestartAt` in `server-settings.json` can stay unset (04:00 box time, Pacific). `off` disables it.
 2. Restart **AlduinakBackend**.
 3. Run `server-manager\Setup-Agent.bat` (it asks for admin rights and installs
    `AlduinakManager`). In the nssm editor's **Log on** tab choose *This account*,

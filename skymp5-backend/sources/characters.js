@@ -1,26 +1,19 @@
 'use strict'
 // Character names per profile and slot, reported by the game server so the dashboard and faction rosters can name characters
 
-const fs   = require('fs')
-const path = require('path')
+const db = require('./db')
 
-const FILE = path.join(__dirname, '..', 'data', 'characters.json')
+// MongoDB characters: one document per profile id
+const store = db.store('characters')
 const MAX_SLOT = 9
 const MAX_NAME = 60
 
 function load() {
-  try {
-    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'))
-    return data && typeof data === 'object' && !Array.isArray(data) ? data : {}
-  } catch {
-    return {}
-  }
+  return store.toObject()
 }
 
 function save(data) {
-  const tmp = FILE + '.tmp'
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n')
-  fs.renameSync(tmp, FILE)
+  store.replaceAll(data)
 }
 
 function toList(entry) {

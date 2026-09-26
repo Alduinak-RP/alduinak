@@ -75,6 +75,7 @@ function gameServer(id, settingsPath, extra = {}) {
     master:      () => settings().master || '',
     masterApiAuthToken: () => settings().masterApiAuthToken || '',
     metricsAuth: () => settings().metricsAuth || {},
+    settings,
   }
   for (const [k, get] of Object.entries(getters)) Object.defineProperty(server, k, { get, enumerable: true })
   return server

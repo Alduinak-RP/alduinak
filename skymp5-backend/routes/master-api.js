@@ -37,8 +37,6 @@
 
 const router = require('express').Router()
 const crypto = require('crypto')
-const fs     = require('fs')
-const path   = require('path')
 const config = require('../config')
 const factionWhitelist = require('../sources/factionWhitelist')
 const characters = require('../sources/characters')
@@ -48,37 +46,25 @@ const players  = require('../sources/players')
 const bans     = require('../sources/bans')
 const safeEqual = require('../sources/safeEqual')
 const { readVersions } = require('../sources/versions')
+const db = require('../sources/db')
 
-// Persistent balance store: profileId -> coin balance
-
-const BALANCES_PATH = path.join(__dirname, '..', 'data', 'balances.json')
-
-function loadBalances() {
-  try { return JSON.parse(fs.readFileSync(BALANCES_PATH, 'utf8')) }
-  catch { return {} }
-}
-
-function saveBalances(data) {
-  try { fs.writeFileSync(BALANCES_PATH, JSON.stringify(data, null, 2) + '\n') }
-  catch (e) { console.error('Failed to persist balances:', e) }
-}
+// MongoDB balances: { _id: profileId, balance }
+const balanceStore = db.store('balances')
 
 function getBalance(profileId) {
-  const data = loadBalances()
-  return typeof data[profileId] === 'number' ? data[profileId] : 0
+  const doc = balanceStore.get(profileId)
+  return doc && typeof doc.balance === 'number' ? doc.balance : 0
 }
 
 function setBalance(profileId, balance) {
-  const data = loadBalances()
-  data[profileId] = balance
-  saveBalances(data)
+  balanceStore.set(profileId, { balance })
 }
 
-// In-memory session store, used for online-mode validation only
+// Session store, used for online-mode validation only; kept in MongoDB so a restart keeps everyone signed in
 
 const sessions      = new Map()
 const SESSION_TTL   = 24 * 60 * 60 * 1000  // 24 h
-const SESSIONS_PATH = path.join(__dirname, '..', 'data', 'sessions.json')
+const sessionStore  = db.store('sessions')
 
 function pruneExpired() {
   const now = Date.now()
@@ -87,20 +73,15 @@ function pruneExpired() {
 }
 
 function saveSessions() {
-  const now     = Date.now()
-  const entries = [...sessions.entries()].filter(([, s]) => s.expiresAt > now)
-  try { fs.writeFileSync(SESSIONS_PATH, JSON.stringify(entries, null, 2) + '\n') }
-  catch (e) { console.error('Failed to persist sessions:', e) }
+  const now = Date.now()
+  sessionStore.replaceAll(Object.fromEntries([...sessions.entries()].filter(([, s]) => s.expiresAt > now)))
 }
 
 function loadSessions() {
-  try {
-    const entries = JSON.parse(fs.readFileSync(SESSIONS_PATH, 'utf8'))
-    const now     = Date.now()
-    for (const [token, s] of entries)
-      if (s.expiresAt > now) sessions.set(token, s)
-    console.log(`Loaded ${sessions.size} active session(s) from disk`)
-  } catch { /* first run or file absent: start fresh */ }
+  const now = Date.now()
+  for (const [token, s] of Object.entries(sessionStore.toObject()))
+    if (s.expiresAt > now) sessions.set(token, s)
+  console.log(`Loaded ${sessions.size} active session(s)`)
 }
 
 loadSessions()
@@ -384,16 +365,20 @@ router.post('/:key/ban', (req, res) => {
 // Drops every session of one Discord user, so a deleted player cannot rejoin
 // on a cached launcher token under a stale profile id (the TTL slides 24h).
 
-router.delete('/:key/sessions-by-discord/:discordId', (req, res) => {
-  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
-  const discordId = String(req.params.discordId || '').trim()
-  if (!discordId) return res.status(400).json({ error: 'Invalid discordId.' })
+function dropSessionsByDiscord(discordId) {
   let dropped = 0
   for (const [token, s] of sessions) {
     if (String(s.discordId) === discordId) { sessions.delete(token); dropped++ }
   }
   if (dropped) saveSessions()
-  res.json({ ok: true, dropped })
+  return dropped
+}
+
+router.delete('/:key/sessions-by-discord/:discordId', (req, res) => {
+  if (!checkKey(req, res) || !checkWriteToken(req, res)) return
+  const discordId = String(req.params.discordId || '').trim()
+  if (!discordId) return res.status(400).json({ error: 'Invalid discordId.' })
+  res.json({ ok: true, dropped: dropSessionsByDiscord(discordId) })
 })
 
 // GET /api/servers/:key/players  (X-Auth-Token)
@@ -615,6 +600,7 @@ module.exports.createSession  = createSession
 module.exports.sessionHints         = sessionHints
 module.exports.recordLaunchCheck    = recordLaunchCheck
 module.exports.recordSessionHwid    = recordSessionHwid
+module.exports.dropSessionsByDiscord = dropSessionsByDiscord
 module.exports.currentFilesVersion  = currentFilesVersion
 module.exports.checkKey             = checkKey
 module.exports.checkWriteToken      = checkWriteToken

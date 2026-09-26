@@ -1,24 +1,19 @@
 'use strict'
 
-const fs               = require('fs')
-const path             = require('path')
+const db               = require('./db')
 const profiles         = require('./profiles')
 const factionWhitelist = require('./factionWhitelist')
 const characters       = require('./characters')
 
-const FILE = path.join(__dirname, '..', 'data', 'players.json')
+// MongoDB players: one document per Discord id
+const store = db.store('players')
 
 function load() {
-  try {
-    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'))
-    return data && typeof data === 'object' && !Array.isArray(data) ? data : {}
-  } catch {
-    return {}
-  }
+  return store.toObject()
 }
 
 function save(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2) + '\n')
+  store.replaceAll(data)
 }
 
 function upsertFromDiscordUser(discordUser) {

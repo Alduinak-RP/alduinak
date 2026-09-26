@@ -1,14 +1,14 @@
 'use strict'
 
 const crypto     = require('crypto')
-const fs         = require('fs')
-const path       = require('path')
+const db         = require('./db')
 const auditLog   = require('./auditLog')
 const characters = require('./characters')
 const profiles   = require('./profiles')
 
-// Definitions (factions, requirements, retired ids) and memberships (assignments) share one file; the pre-launch wipe clears only assignments
-const FILE = process.env.FACTION_WHITELIST_FILE || path.join(__dirname, '..', 'data', 'faction-whitelist.json')
+// Definitions (factions, requirements, retired ids) and memberships (assignments) share one MongoDB document; the pre-launch wipe clears only assignments
+const store = db.store('factions')
+const DOC = 'whitelist'
 const AUDIT_FILE = 'faction.log'
 
 // characterSelectMaxCharacters allows 1-10 characters, so slots run 0-9
@@ -73,19 +73,16 @@ function normalize(data) {
   }
 }
 
-// A missing file reads as empty; an unreadable one reads as empty for member lookups but refuses writes and definition reads, so a typo never wipes the table
+// A missing document reads as empty; a malformed one reads as empty for member lookups but refuses writes and definition reads, so a bad edit never wipes the table
 function load(strict = false) {
-  let data
-  try {
-    data = JSON.parse(fs.readFileSync(FILE, 'utf8'))
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('top level is not an object')
-  } catch (err) {
-    if (err.code === 'ENOENT') return normalize({})
+  const data = store.get(DOC)
+  if (data === undefined) return normalize({})
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
     if (!unreadableLogged) {
       unreadableLogged = true
-      console.error(`[factionWhitelist] data/faction-whitelist.json is unreadable, factions are disabled until it is fixed: ${err.message}`)
+      console.error('[factionWhitelist] the factions document is malformed, factions are disabled until it is fixed')
     }
-    if (strict) throw fail(500, 'faction-whitelist.json is unreadable; fix the file before using factions')
+    if (strict) throw fail(500, 'the factions document is malformed; fix it before using factions')
     return normalize({})
   }
   unreadableLogged = false
@@ -93,18 +90,12 @@ function load(strict = false) {
 }
 
 function save(data) {
-  const tmp = FILE + '.tmp'
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n')
-  fs.renameSync(tmp, FILE)
+  store.set(DOC, data)
 }
 
-// Copy kept next to the file before a delete removes memberships
+// Copy kept beside the document before a delete removes memberships
 function backup() {
-  try {
-    fs.copyFileSync(FILE, FILE + '.bak')
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw fail(500, `could not back up faction-whitelist.json: ${err.message}`)
-  }
+  if (store.has(DOC)) store.set(`${DOC}.bak`, store.get(DOC))
 }
 
 function getRequirement(data, requirementId) {

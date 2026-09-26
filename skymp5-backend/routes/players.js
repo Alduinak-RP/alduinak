@@ -1,7 +1,7 @@
 'use strict'
 
 const { Router }        = require('express')
-const requirePermission = require('../middleware/requirePermission')
+const managerOrPermission = require('../middleware/managerOrPermission')
 const profiles          = require('../sources/profiles')
 const players           = require('../sources/players')
 const serverAccess      = require('../sources/access/serverAccess')
@@ -10,11 +10,11 @@ const bans              = require('../sources/bans')
 
 const router = Router()
 
-router.get('/', requirePermission('players.view'), async (_req, res) => {
+router.get('/', managerOrPermission('players.view'), async (_req, res) => {
   res.json({ players: await enrichPlayers(players.list()) })
 })
 
-router.post('/', requirePermission('players.manage'), async (req, res) => {
+router.post('/', managerOrPermission('players.manage'), async (req, res) => {
   try {
     const player = players.createManual(req.body || {})
     res.status(201).json(await enrichPlayer(player))
@@ -23,13 +23,13 @@ router.post('/', requirePermission('players.manage'), async (req, res) => {
   }
 })
 
-router.get('/:profileId', requirePermission('players.view'), async (req, res) => {
+router.get('/:profileId', managerOrPermission('players.view'), async (req, res) => {
   const player = players.getByProfileId(req.params.profileId)
   if (!player) return res.status(404).json({ error: 'player not found' })
   res.json(await enrichPlayer(player))
 })
 
-router.put('/:profileId', requirePermission('players.manage'), async (req, res) => {
+router.put('/:profileId', managerOrPermission('players.manage'), async (req, res) => {
   try {
     res.json(await enrichPlayer(players.updateByProfileId(req.params.profileId, req.body || {})))
   } catch (err) {
@@ -37,28 +37,38 @@ router.put('/:profileId', requirePermission('players.manage'), async (req, res) 
   }
 })
 
-router.put('/:profileId/whitelist', requirePermission('players.manage'), async (req, res) => {
+// Removes the player record and profile mapping and ends their sessions; a returning player gets a fresh profile id
+router.delete('/:profileId', managerOrPermission('players.manage'), (req, res) => {
+  try {
+    const { discordId } = players.deleteByProfileId(req.params.profileId)
+    res.json({ ok: true, discordId, droppedSessions: require('./master-api').dropSessionsByDiscord(discordId) })
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'failed to delete player' })
+  }
+})
+
+router.put('/:profileId/whitelist', managerOrPermission('players.manage'), async (req, res) => {
   await mutateAccess(req, res, 'whitelist')
 })
 
-router.put('/:profileId/ban', requirePermission('players.manage'), async (req, res) => {
+router.put('/:profileId/ban', managerOrPermission('players.manage'), async (req, res) => {
   await mutateAccess(req, res, 'ban')
 })
 
-router.post('/:profileId/factions', requirePermission('factions.manage'), (req, res) => {
+router.post('/:profileId/factions', managerOrPermission('factions.manage'), (req, res) => {
   try {
     const discordId = requireDiscordId(req.params.profileId)
     const assignment = factions.createAssignment({
       ...req.body,
       discordId,
-    }, req.session.discordId)
+    }, req.actor)
     res.status(201).json(assignment)
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'failed to assign faction' })
   }
 })
 
-router.delete('/:profileId/factions/:assignmentId', requirePermission('factions.manage'), (req, res) => {
+router.delete('/:profileId/factions/:assignmentId', managerOrPermission('factions.manage'), (req, res) => {
   try {
     const discordId = requireDiscordId(req.params.profileId)
     const belongsToPlayer = factions
@@ -69,7 +79,7 @@ router.delete('/:profileId/factions/:assignmentId', requirePermission('factions.
       err.status = 404
       throw err
     }
-    factions.deleteAssignment(req.params.assignmentId, req.session.discordId)
+    factions.deleteAssignment(req.params.assignmentId, req.actor)
     res.json({ ok: true })
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message || 'failed to remove faction' })
@@ -86,7 +96,7 @@ async function mutateAccess(req, res, type) {
     } else {
       // bans.json snapshot is the source of truth; capture hwid/ip so alts can be matched
       const record = players.load()[discordId] || {}
-      const actor = (req.session && (req.session.username || req.session.discordId)) || null
+      const actor = (req.session && (req.session.username || req.session.discordId)) || req.actor || null
       if (enabled) {
         const entry = bans.add({ discordId, hwid: record.hwid || null, ip: record.lastIp || null, reason: 'dashboard ban', bannedBy: actor })
         bans.logBan(`banned: discordId=${discordId} hwid=${entry.hwid || 'none'} ip=${entry.ip || 'none'} by=${actor || 'unknown'}`)

@@ -9,79 +9,87 @@ process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection] Server kept alive:', reason)
 })
 
-// Start WS relay alongside Express (independent port, see WS_PORT in .env)
-require('./sources/wsRelay')
-
-// Start Discord bot for role-based access checks
-const discordBot = require('./sources/discord/bot')
-discordBot.start()
-
-// Start the management dashboard on its own port/subdomain target.
-const dashboardServer = require('./sources/dashboardServer')
-dashboardServer.start()
-
-const express  = require('express')
-const cors     = require('cors')
-
-const newsRoute        = require('./routes/news')
-const statusRoute      = require('./routes/status')
-const versionRoute     = require('./routes/version')
-const serverinfoRoute  = require('./routes/serverinfo')
-const masterApiRoute   = require('./routes/master-api')
-const modlistRoute     = require('./routes/modlist')
-const manifestRoute    = require('./routes/manifest')
-const nexusDownloadsRoute  = require('./routes/nexus-downloads')
-const serversRoute     = require('./routes/servers')
-const dashAuthRoute        = require('./routes/dashboard-auth')
-const skympCompatRoute     = require('./routes/skymp-compat')
-const factionWhitelistRoute = require('./routes/faction-whitelist')
-const factionsRoute         = require('./routes/factions')
-const rolePermissionsRoute  = require('./routes/role-permissions')
-const serverAccessRoute     = require('./routes/server-access')
-const playersRoute          = require('./routes/players')
-const launchCheckRoute      = require('./routes/launch-check')
-const managerRoute          = require('./routes/manager')
-
-const app  = express()
-const PORT = process.env.PORT || 4000
-
-// nginx terminates TLS and proxies over loopback; without this req.ip is 127.0.0.1 for everyone and per-IP rate limiting (routes/files.js) treats all players as one client
-app.set('trust proxy', 'loopback')
-
-const corsOrigins = [config.websiteUrl, config.dashboardPublicUrl]
-app.use(cors({ origin: corsOrigins }))
-console.log(`[cors] allowed origins: ${corsOrigins.join(', ')}`)
-
-app.use(express.json())
-
-// Simple Cleaned Masters .vcdiff patches the launcher applies to the player's masters
-app.use('/files/cleaned-masters', express.static(path.join(config.clientFilesDir, 'cleaned-masters')))
-// Mod files found in no download archive, packed by compile-manifest
-app.use('/files/extras', express.static(path.join(config.clientFilesDir, 'extras')))
-
-// News images: served at /images/<filename>
-app.use('/images', express.static(path.join(__dirname, 'public', 'images')))
-
-app.use('/api/news',       newsRoute)
-app.use('/api/status',     statusRoute)
-app.use('/api/version',    versionRoute)
-app.use('/api/serverinfo', serverinfoRoute)
-app.use('/api/modlist',    modlistRoute)
-app.use('/api/manifest',   manifestRoute)
-app.use('/api/nexus-downloads',  nexusDownloadsRoute)
-app.use('/api/servers',    serversRoute)
-// SkyMP client Master-API compat: mount before /api/servers so /api/users/login-discord/status is not swallowed by a shorter prefix
-app.use('/api/users',      skympCompatRoute)
-app.use('/api/servers',    masterApiRoute)   // GET  /api/servers/:key/sessions/:session
-app.use('/auth/dashboard',      dashAuthRoute)
-app.use('/api/faction-whitelist', factionWhitelistRoute)
-app.use('/api/factions',          factionsRoute)
-app.use('/api/role-permissions',  rolePermissionsRoute)
-app.use('/api/server-access',      serverAccessRoute)
-app.use('/api/players',            playersRoute)
-app.use('/api/launch-check',       launchCheckRoute)
-app.use('/api/manager',            managerRoute)
-
-app.listen(PORT, () => {
-  console.log(`Alduinak backend running on http://localhost:${PORT}`)
+// Every store is loaded from MongoDB before any module reads it
+require('./sources/db').init().then(start, (err) => {
+  console.error('[db] could not connect to MongoDB, exiting:', err.message)
+  process.exit(1)
 })
+
+function start() {
+  // Start WS relay alongside Express (independent port, see WS_PORT in .env)
+  require('./sources/wsRelay')
+
+  // Start Discord bot for role-based access checks
+  const discordBot = require('./sources/discord/bot')
+  discordBot.start()
+
+  // Start the management dashboard on its own port/subdomain target.
+  const dashboardServer = require('./sources/dashboardServer')
+  dashboardServer.start()
+
+  const express  = require('express')
+  const cors     = require('cors')
+
+  const newsRoute        = require('./routes/news')
+  const statusRoute      = require('./routes/status')
+  const versionRoute     = require('./routes/version')
+  const serverinfoRoute  = require('./routes/serverinfo')
+  const masterApiRoute   = require('./routes/master-api')
+  const modlistRoute     = require('./routes/modlist')
+  const manifestRoute    = require('./routes/manifest')
+  const nexusDownloadsRoute  = require('./routes/nexus-downloads')
+  const serversRoute     = require('./routes/servers')
+  const dashAuthRoute        = require('./routes/dashboard-auth')
+  const skympCompatRoute     = require('./routes/skymp-compat')
+  const factionWhitelistRoute = require('./routes/faction-whitelist')
+  const factionsRoute         = require('./routes/factions')
+  const rolePermissionsRoute  = require('./routes/role-permissions')
+  const serverAccessRoute     = require('./routes/server-access')
+  const playersRoute          = require('./routes/players')
+  const launchCheckRoute      = require('./routes/launch-check')
+  const managerRoute          = require('./routes/manager')
+
+  const app  = express()
+  const PORT = process.env.PORT || 4000
+
+  // nginx terminates TLS and proxies over loopback; without this req.ip is 127.0.0.1 for everyone and per-IP rate limiting (routes/files.js) treats all players as one client
+  app.set('trust proxy', 'loopback')
+
+  const corsOrigins = [config.websiteUrl, config.dashboardPublicUrl]
+  app.use(cors({ origin: corsOrigins }))
+  console.log(`[cors] allowed origins: ${corsOrigins.join(', ')}`)
+
+  app.use(express.json())
+
+  // Simple Cleaned Masters .vcdiff patches the launcher applies to the player's masters
+  app.use('/files/cleaned-masters', express.static(path.join(config.clientFilesDir, 'cleaned-masters')))
+  // Mod files found in no download archive, packed by compile-manifest
+  app.use('/files/extras', express.static(path.join(config.clientFilesDir, 'extras')))
+
+  // News images: served at /images/<filename>
+  app.use('/images', express.static(path.join(__dirname, 'public', 'images')))
+
+  app.use('/api/news',       newsRoute)
+  app.use('/api/status',     statusRoute)
+  app.use('/api/version',    versionRoute)
+  app.use('/api/serverinfo', serverinfoRoute)
+  app.use('/api/modlist',    modlistRoute)
+  app.use('/api/manifest',   manifestRoute)
+  app.use('/api/nexus-downloads',  nexusDownloadsRoute)
+  app.use('/api/servers',    serversRoute)
+  // SkyMP client Master-API compat: mount before /api/servers so /api/users/login-discord/status is not swallowed by a shorter prefix
+  app.use('/api/users',      skympCompatRoute)
+  app.use('/api/servers',    masterApiRoute)   // GET  /api/servers/:key/sessions/:session
+  app.use('/auth/dashboard',      dashAuthRoute)
+  app.use('/api/faction-whitelist', factionWhitelistRoute)
+  app.use('/api/factions',          factionsRoute)
+  app.use('/api/role-permissions',  rolePermissionsRoute)
+  app.use('/api/server-access',      serverAccessRoute)
+  app.use('/api/players',            playersRoute)
+  app.use('/api/launch-check',       launchCheckRoute)
+  app.use('/api/manager',            managerRoute)
+
+  app.listen(PORT, () => {
+    console.log(`Alduinak backend running on http://localhost:${PORT}`)
+  })
+}

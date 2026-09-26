@@ -26,8 +26,6 @@
 const router  = require('express').Router()
 const https   = require('https')
 const crypto  = require('crypto')
-const fs      = require('fs')
-const path    = require('path')
 const config  = require('../config')
 const players = require('../sources/players')
 
@@ -57,24 +55,19 @@ const authStates = new Map()
 const PENDING_TTL     = 10 * 60 * 1000
 const DONE_TTL        =  5 * 60 * 1000
 const DELIVERED_GRACE =      60 * 1000
-const AUTH_STATES_PATH = path.join(__dirname, '..', 'data', 'auth-states.json')
+const authStore = require('../sources/db').store('authStates')
 
 function saveAuthStates() {
-  const now     = Date.now()
-  const entries = [...authStates.entries()].filter(([, v]) => v.expiresAt > now)
-  try { fs.writeFileSync(AUTH_STATES_PATH, JSON.stringify(entries) + '\n') }
-  catch (e) { console.error('[skymp-compat] failed to persist auth states:', e.message) }
+  const now = Date.now()
+  authStore.replaceAll(Object.fromEntries([...authStates.entries()].filter(([, v]) => v.expiresAt > now)))
 }
 
 function loadAuthStates() {
-  try {
-    const entries = JSON.parse(fs.readFileSync(AUTH_STATES_PATH, 'utf8'))
-    const now     = Date.now()
-    for (const [k, v] of entries)
-      if (v.expiresAt > now) authStates.set(k, v)
-    if (authStates.size > 0)
-      console.log(`[skymp-compat] restored ${authStates.size} in-flight auth state(s)`)
-  } catch { /* first run or file absent: start fresh */ }
+  const now = Date.now()
+  for (const [k, v] of Object.entries(authStore.toObject()))
+    if (v.expiresAt > now) authStates.set(k, v)
+  if (authStates.size > 0)
+    console.log(`[skymp-compat] restored ${authStates.size} in-flight auth state(s)`)
 }
 
 loadAuthStates()

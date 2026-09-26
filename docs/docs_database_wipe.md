@@ -26,14 +26,15 @@ files. The runbook still uses it once, on the empty collection, to stamp
 | `build/dist/server/gathering-picks.json` | Reset to `{}`. It lists picked nirnroot and critters waiting to grow back, and their hidden state goes with the dropped changeForms |
 | `build/dist/server/weather-state.json` | Reset to `{}`, so every region rolls a fresh weather on the next boot |
 | `build/dist/server/writings/` | Emptied. Document ids restart with the wiped counter, so old files would collide with new ones. |
-| `skymp5-backend/data/characters.json` | Reset to `{}` (it names wiped characters) |
-| `skymp5-backend/data/faction-whitelist.json` | `assignments` cleared. `factions`, `requirements` and the `retired` ids are kept. |
+| MongoDB `skymp.characters` | Every document deleted (they name wiped characters) |
+| MongoDB `skymp.factions`, document `whitelist` | `assignments` cleared. `factions`, `requirements` and the `retired` ids are kept. Other documents, such as `whitelist.bak`, are left alone. |
 | `C:\logs` `admin`, `ban`, `bounty`, `chat`, `faction`, `pk`, `pvp` and `trading` logs, plus their rotated copies in the log root and in the `C:\logs\YYYY-MM` archive folders | Moved into `C:\logs\pre-wipe-<yyyyMMdd-HHmm>\`. Archived copies keep their `YYYY-MM` subfolder. New characters reuse the old `0xff` ids, so pre-wipe log lines would point at the wrong people. |
 
 **Kept, untouched:**
 - **Server folder:** `server-settings.json` (you edit one value by hand in step 10), the `NPC-Spawns.json` zone definitions, `Jobs.json` job definitions, `faction-access.json`, the optional `weather-regions.json` region list, the `alert-keywords.json` Discord keyword list, the gamemode, plugins and `data/`.
-- **Backend data:** `bans.json`, `profiles.json`, `players.json`, `role-permissions.json`, `news.json`, the install manifest files and `manifest-diff.json`. Only Purge MongoDB changes `manifest-diff.json`.
-- **Sessions:** `sessions.json`, `auth-states.json` and `dashboard-sessions.json` are never copied, changed or restored.
+- **Backend collections:** `players`, `profiles`, `bans`, `balances` and `meta` in the `skymp` database. The backend mirrors them in memory and is their only writer, so it must be stopped for backup, apply and restore.
+- **Backend data files:** `role-permissions.json`, `news.json`, the install manifest files and `manifest-diff.json`. Only Purge MongoDB changes `manifest-diff.json`. The old `characters.json`, `faction-whitelist.json`, `players.json`, `profiles.json`, `bans.json` and `balances.json` are no longer read; the tool neither copies nor changes them.
+- **Sessions:** the `sessions` and `authStates` collections and `dashboard-sessions.json` are never copied, changed or restored.
 - **Outside the repo:** Discord roles and `adminRoleIds` (staff rights come back at login), the service logs (`gameserver`, `backend` and the rest) and their archived copies in `C:\logs\YYYY-MM`.
 
 World state that staff set by console also goes with the drop, such as opened
@@ -70,11 +71,12 @@ Run every command from the main checkout: `cd C:\Users\Administrator\Desktop\ald
 
 ```
 wipe-backup.json      counts per collection and class, load order with light flags, git HEAD
-mongodump\skymp\      changeForms.bson and its metadata
+mongodump\skymp\      every collection except sessions and authStates, with metadata
 server\               housing, zone-spawns, companions, pets, starter-grants, writings\,
                       server-settings.json, NPC-Spawns.json, Jobs.json, faction-access.json,
                       weather-regions.json
-backend-data\         everything in skymp5-backend\data except sessions, auth states and *.bak copies
+backend-db\           characters, factions, players, profiles, bans, balances and meta as JSON arrays
+backend-data\         skymp5-backend\data except sessions, the files now in MongoDB and *.bak copies
 post-sync\            manifest-diff.json as it was at apply time (added by apply)
 SHA256SUMS.txt
 ```
@@ -166,7 +168,7 @@ Do the steps in this order, in one sitting. The game server stays stopped until 
       - The CC items work.
     - **Tool:** run `node deploy\mongodb\wipe-world.js verify`. It should show exactly the test characters under `player characters`, and `every descriptor names a plugin in the live load order`.
     - **Backend:**
-      - The hashes of `bans.json`, `profiles.json` and `role-permissions.json` equal the copies in `<dir>\backend-data` (`Get-FileHash`).
+      - `verify` shows the same `bans`, `profiles` and `players` counts as `<dir>\backend-db`, and the hash of `role-permissions.json` equals its copy in `<dir>\backend-data` (`Get-FileHash`).
       - A Discord-role admin gets `/admin` in game and can log in to the dashboard.
       - `/api/version` reports the r11 versions.
 
@@ -194,7 +196,7 @@ the pre-restore copy keeps them.
    node deploy\mongodb\wipe-world.js restore --backup "<dir>" --with-settings --apply
    ```
    This puts back:
-   - `changeForms`, the registries, `writings\`, `characters.json` and `faction-whitelist.json`
+   - `changeForms` and the other game collections, the registries, `writings\`, the `characters` collection and the `factions` documents (from `backend-db\`, or from `characters.json` and `faction-whitelist.json` in an older backup); `players`, `profiles`, `bans`, `balances`, `meta` and the sessions are left as they are
    - `server-settings.json` (the live copy is kept as `server-settings.json.pre-restore-<stamp>`)
    - `install-manifest.json` and its `.prev`, `manifest-diff.json`, `manifest-sources.json`, `modlist.json`, `data-sync.json` and `files-version.json`
 
@@ -214,7 +216,7 @@ This only works with the post-sync diff that apply saved. Any later Build manife
 
 The backup lives on `C:`, the only disk on this box. It holds:
 - Discord ids
-- IP addresses and HWIDs (`players.json`, `bans.json`)
+- IP addresses and HWIDs (`players` and `bans` in `backend-db\` and the dump)
 - the `server-settings.json` secrets: database URI, bot token, master keys and LiveKit keys
 
 It never holds session or auth-state files.

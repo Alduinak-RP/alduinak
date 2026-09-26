@@ -9,9 +9,7 @@ const os     = require('os')
 const path   = require('path')
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'faction-test-'))
-const FILE = path.join(tmp, 'faction-whitelist.json')
 const TOKEN = 'test-manager-token-0123456789'
-process.env.FACTION_WHITELIST_FILE = FILE
 process.env.BAN_LOG_DIR = tmp
 process.env.SERVER_SETTINGS_PATH = path.join(tmp, 'server-settings.json')
 fs.writeFileSync(process.env.SERVER_SETTINGS_PATH, JSON.stringify({ masterApiAuthToken: TOKEN }))
@@ -47,12 +45,16 @@ function status(fn) {
 
 const revOf = id => store.definitions().factions.find(f => f.id === id).rev
 const rankOf = (factionId, slug) => store.definitions().factions.find(f => f.id === factionId).ranks.find(r => r.id === `${factionId}:${slug}`)
-const readFile = () => JSON.parse(fs.readFileSync(FILE, 'utf8'))
+// The factions document in the memory-only store (no db.init here)
+const doc = require('../sources/db').store('factions')
+const readFile = () => doc.get('whitelist')
+const writeFile = data => doc.set('whitelist', data)
 const auditLines = () => (fs.existsSync(path.join(tmp, 'faction.log')) ? fs.readFileSync(path.join(tmp, 'faction.log'), 'utf8').trim().split('\n') : [])
 
 function resetSeed() {
-  fs.copyFileSync(SEED, FILE)
-  for (const f of ['faction.log', 'faction-whitelist.json.bak']) fs.rmSync(path.join(tmp, f), { force: true })
+  writeFile(JSON.parse(fs.readFileSync(SEED, 'utf8')))
+  doc.delete('whitelist.bak')
+  fs.rmSync(path.join(tmp, 'faction.log'), { force: true })
 }
 
 // The hold ladder of the 2026-09-19 spec, craft on the Captain only since r15: slug -> [capacity, recruit, promote, permissions]
@@ -133,7 +135,7 @@ async function run() {
     // A hand-edited custom or wildcard string never reaches the game server
     const data = readFile()
     Object.assign(data.requirements.find(r => r.id === `${id}:member`), { permission: 'admin.*' })
-    fs.writeFileSync(FILE, JSON.stringify(data))
+    writeFile(data)
     store.createAssignment({ requirementId: `${id}:member`, discordId: '777', slot: 0, playerName: 'Farkas' }, ACTOR)
     assert.deepEqual(store.getPlayerFactionPermissions('777'), ['faction.companions.member'])
     assert.equal(store.getPlayerGameFactions('777')[0].permission, 'faction.companions.member')
@@ -203,7 +205,7 @@ async function run() {
     assert.deepEqual(data.assignments.map(a => a.playerName), ['Ysolda'])
     assert.ok(!data.requirements.some(r => r.id === rankId))
     assert.ok(data.requirements.filter(r => r.id.startsWith('hold:whiterun:')).every(r => !(r.recruit || []).includes('guard')), 'the rank leaves every recruit list')
-    assert.ok(fs.existsSync(FILE + '.bak'))
+    assert.ok(doc.has('whitelist.bak'))
     const lines = auditLines()
     assert.equal(lines.filter(l => l.includes('action=member.remove') && l.includes(`requirement=${rankId}`)).length, 2)
     assert.ok(lines.some(l => l.includes('action=rank.delete') && l.includes('removedMembers=2')))
@@ -214,7 +216,7 @@ async function run() {
     const rev = revOf('faction:thalmor')
     assert.equal(store.deleteRank('faction:thalmor:enforcer', { rev }, ACTOR).removedMembers, 0)
     assert.equal(store.deleteFaction('faction:thalmor', { rev: rev + 1 }, ACTOR).removedMembers, 0)
-    assert.ok(!fs.existsSync(FILE + '.bak'))
+    assert.ok(!doc.has('whitelist.bak'))
   })
 
   await test('deleted ids are tombstoned and never reused, and survive the wipe', () => {
@@ -244,7 +246,7 @@ async function run() {
 
     // wipe-world.js keeps every key but assignments
     const wiped = { ...readFile(), assignments: [] }
-    fs.writeFileSync(FILE, JSON.stringify(wiped))
+    writeFile(wiped)
     assert.equal(status(() => store.createFaction({ type: 'guild', group: 'Thieves Guild' }, ACTOR)).status, 409)
   })
 
@@ -285,10 +287,10 @@ async function run() {
     assert.ok(Date.parse(store.namedRoster(store.getFactionRoster('hold:whiterun'))[0].since) > 0)
   })
 
-  await test('an unreadable file refuses writes and definition reads and stays as it is', () => {
-    fs.writeFileSync(FILE, '{ not json')
+  await test('a malformed document refuses writes and definition reads and stays as it is', () => {
+    writeFile('{ not json')
     assert.equal(status(() => store.createFaction({ type: 'guild', group: 'Anyone' }, ACTOR)).status, 500)
-    assert.equal(fs.readFileSync(FILE, 'utf8'), '{ not json')
+    assert.equal(readFile(), '{ not json')
     // The game server keeps its last definitions instead of loading an empty table
     assert.equal(status(() => store.listDefinitions()).status, 500)
     assert.equal(status(() => store.definitions()).status, 500)

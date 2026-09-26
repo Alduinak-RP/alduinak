@@ -1,24 +1,23 @@
 'use strict'
 
-const fs   = require('fs')
-const path = require('path')
+const db = require('./db')
 
-const FILE = path.join(__dirname, '..', 'data', 'profiles.json')
+// MongoDB profiles: { _id: discordId, profileId }; the next free id lives in meta
+const store = db.store('profiles')
+const meta  = db.store('meta')
 
 function load() {
-  try {
-    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'))
-    return {
-      nextId: Number.isInteger(data.nextId) ? data.nextId : 1,
-      map: data.map && typeof data.map === 'object' ? data.map : {},
-    }
-  } catch {
-    return { nextId: 1, map: {} }
-  }
+  const map = {}
+  for (const [discordId, doc] of Object.entries(store.toObject())) map[discordId] = doc.profileId
+  const next = (meta.get('profiles') || {}).nextId
+  return { nextId: Number.isInteger(next) ? next : Math.max(0, ...Object.values(map)) + 1, map }
 }
 
 function save(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2) + '\n')
+  const docs = {}
+  for (const [discordId, profileId] of Object.entries(data.map)) docs[discordId] = { profileId }
+  store.replaceAll(docs)
+  meta.set('profiles', { nextId: data.nextId })
 }
 
 function getOrCreateProfileId(discordId) {
