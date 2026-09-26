@@ -64,7 +64,7 @@ single most common source of "the fix didn't work":
 | `skymp5-client/src` | set a new Client version in the manager Build tab, then "Build Client" (it refuses a changed client under an unchanged version); players re-download via launcher. The Nexus client mod must never carry `Platform/` or the SkyMP dlls: the manifest guard drops them and the zip delivers them |
 | `skymp5-front/src` | same: Client version bump, then "Build Client" + players re-download |
 | C++ (`skyrim-platform`, `skymp5-server/cpp`) | **CI flatrim build** (apply the artifact into `build/dist`), or the manager's CMake checkbox / `build native`: CMake configures into `build/` itself (the repo refuses any other binary dir) and writes `build/dist` directly - no copy step, but the game service must be stopped for server builds. Then Build Client for client-side changes |
-| `skymp5-launcher/src` | manager "Build launcher" + redistribute the launcher |
+| `skymp5-launcher-tauri` | manager "Build launcher" (needs Rust); players get it through the launcher's own update |
 | `server-manager/src` | restart the manager app (runs from source) |
 
 The manager Build tab has a **Native (C++)** button that compiles locally with

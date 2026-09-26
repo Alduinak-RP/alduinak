@@ -1,4 +1,4 @@
-// KeyboardEvent.code -> [DirectInput scan code, label], the launcher's KEY_TABLE (skymp5-launcher renderer.js) copied because the front cannot import it; DIK codes match DxScanCode in the client
+// KeyboardEvent.code -> [DirectInput scan code, label], the launcher's KEY_TABLE (skymp5-launcher-tauri/ui/renderer.js) copied because the front cannot import it; DIK codes match DxScanCode in the client
 export const DOM_TO_DIK: Record<string, [number, string]> = {
   Enter: [28, 'Enter'], Space: [57, 'Space'], Tab: [15, 'Tab'],
   ShiftLeft: [42, 'Left Shift'], ControlLeft: [29, 'Left Ctrl'], AltLeft: [56, 'Left Alt'],

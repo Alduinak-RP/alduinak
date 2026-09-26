@@ -199,7 +199,7 @@ export function buttonEventKeyCode(e: ButtonEvent): number {
   return -1;
 }
 
-// Launcher Settings key names by settings key code (skymp5-launcher renderer.js DIK_LABELS)
+// Launcher Settings key names by settings key code (skymp5-launcher-tauri/ui/renderer.js DIK_LABELS)
 const KEY_LABELS: Record<number, string> = {
   2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "6", 8: "7", 9: "8", 10: "9", 11: "0", 12: "-", 13: "=",
   14: "Backspace", 15: "Tab", 16: "Q", 17: "W", 18: "E", 19: "R", 20: "T", 21: "Y", 22: "U", 23: "I",

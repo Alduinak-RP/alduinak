@@ -36,22 +36,14 @@ if not exist "%EL_PKG%" (
 echo.
 echo Electron runtime missing - trying offline-friendly fallbacks...
 
-:: 1) Reuse the launcher's Electron (same version, already on disk if you built it)
-set "LAUNCHER_DIST=..\skymp5-launcher\node_modules\electron\dist"
-if exist "%LAUNCHER_DIST%\electron.exe" (
-    echo  - reusing Electron from the launcher install...
-    xcopy /e /i /y /q "%LAUNCHER_DIST%" "%EL_PKG%\dist" >nul
-    if exist "%EL_BIN%" goto :done
-)
-
-:: 2) Extract a zip you downloaded by hand and dropped next to this script
+:: 1) Extract a zip you downloaded by hand and dropped next to this script
 if exist "%EL_ZIP%" (
     echo  - extracting %EL_ZIP% ...
     powershell -NoProfile -Command "Expand-Archive -Force '%EL_ZIP%' '%EL_PKG%\dist'"
     if exist "%EL_BIN%" goto :done
 )
 
-:: 3) Retry the normal download a few times (the firewall is intermittent)
+:: 2) Retry the normal download a few times (the firewall is intermittent)
 set /a tries=0
 :retry
 set /a tries+=1

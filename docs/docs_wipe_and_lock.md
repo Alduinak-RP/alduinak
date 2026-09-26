@@ -13,12 +13,12 @@ Everything from r13 must be live before the wipe, because the wipe is the last o
 
 - Build server, Build Client and Build launcher in the manager, plus the CI flatrim
   build (or Native) if any C++ changed.
-- Before Build launcher, set the launcher version to 2.4.0 in the manager's Launcher
-  tab (it writes `skymp5-launcher\package.json` and `LATEST_VERSION` together). The
-  build leaves `build\launcher\AlduinakLauncher.exe` where nginx serves `/downloads/`
-  for launchers up to 2.3.0; upload `AlduinakLauncher.zip` to the website and update
-  `PACKAGE_URL` if its link changed. A version that the served exe does not report
-  loops every launcher through self-update.
+- Before Build launcher, set the launcher version in the manager's Launcher tab (it
+  writes `skymp5-launcher-tauri\src-tauri\tauri.conf.json` and `launcher` in
+  `skymp5-backend\data\versions.json` together). The build leaves
+  `build\launcher\AlduinakLauncher.exe` where nginx serves `/downloads/`, which is
+  the `launcherUrl` every launcher updates from. A version that the served exe does
+  not report loops every launcher through self-update.
 - The plugin copies in the MO2 mod, the GOG `Data` folder and `build\dist\client\Data`,
   then **Update manifest**, **Sync server settings** and **Sync data folder**.
 - Every live-file change of the round (gamemode extensions, `server-settings.json`,

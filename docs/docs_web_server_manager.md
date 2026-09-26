@@ -176,9 +176,8 @@ A web build runs only when all of these hold:
 
 - the live checkout is on `main`
 - no merge is in progress
-- nothing is uncommitted apart from the version files (`skymp5-client`,
-  `skymp5-server` and `skymp5-launcher` `package.json`, and
-  `skymp5-backend/routes/version.js`)
+- nothing is uncommitted apart from the version files (`skymp5-client` and
+  `skymp5-server` `package.json`, and `skymp5-launcher-tauri/src-tauri/tauri.conf.json`)
 
 The commit id is stored in the job record and in the audit log.
 
