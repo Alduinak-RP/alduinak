@@ -29,7 +29,7 @@ const versionRoute     = require('./routes/version')
 const serverinfoRoute  = require('./routes/serverinfo')
 const masterApiRoute   = require('./routes/master-api')
 const modlistRoute     = require('./routes/modlist')
-const installManifestRoute = require('./routes/install-manifest')
+const manifestRoute    = require('./routes/manifest')
 const nexusDownloadsRoute  = require('./routes/nexus-downloads')
 const serversRoute     = require('./routes/servers')
 const dashAuthRoute        = require('./routes/dashboard-auth')
@@ -56,6 +56,8 @@ app.use(express.json())
 
 // Simple Cleaned Masters .vcdiff patches the launcher applies to the player's masters
 app.use('/files/cleaned-masters', express.static(path.join(config.clientFilesDir, 'cleaned-masters')))
+// Mod files found in no download archive, packed by compile-manifest
+app.use('/files/extras', express.static(path.join(config.clientFilesDir, 'extras')))
 
 // News images: served at /images/<filename>
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')))
@@ -65,7 +67,7 @@ app.use('/api/status',     statusRoute)
 app.use('/api/version',    versionRoute)
 app.use('/api/serverinfo', serverinfoRoute)
 app.use('/api/modlist',    modlistRoute)
-app.use('/api/install-manifest', installManifestRoute)
+app.use('/api/manifest',   manifestRoute)
 app.use('/api/nexus-downloads',  nexusDownloadsRoute)
 app.use('/api/servers',    serversRoute)
 // SkyMP client Master-API compat: mount before /api/servers so /api/users/login-discord/status is not swallowed by a shorter prefix

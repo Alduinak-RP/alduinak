@@ -3,6 +3,7 @@ use crate::gamecopy::{self, progress, CREATIONS_STAMP, NEVER_LAUNCHED_ERROR};
 use crate::settings::client_settings_path;
 use crate::{active_server, auth, basic, effective_game_path, isolated_game_dir, isolated_game_ready, log, mo2, net, proc, send, store};
 use regex::Regex;
+use sha2::Digest;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -11,9 +12,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri_plugin_opener::OpenerExt;
 
-// Highest install manifest schema this launcher understands; the backend refuses newer manifests to older launchers
-pub const MANIFEST_SCHEMA: u64 = 3;
-pub const UPDATE_LAUNCHER_ERROR: &str = "This server needs a newer Alduinak launcher. Accept the launcher update (or download it again from the website), then try again.";
 pub const CLIENT_SCRIPT: &str = "Platform/Plugins/skymp5-client.js";
 
 pub static INSTALLING: AtomicBool = AtomicBool::new(false);
@@ -71,12 +69,63 @@ pub async fn install_skse_into_root(game: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// Fetched fresh on every install run and never cached, so no local copy can be edited
 pub async fn fetch_manifest() -> Result<Value, net::HttpError> {
-    let m = net::fetch_json(&format!("{}/api/install-manifest?schema={MANIFEST_SCHEMA}", net::api_url()), &[]).await?;
+    let m = net::fetch_json(&format!("{}/api/manifest", net::api_url()), &[]).await?;
     if let Some(list) = m["gameExes"].as_array() {
         *crate::game::KNOWN_GAME_EXES.lock().unwrap() = Some(list.iter().filter_map(|h| h.as_str().map(str::to_lowercase)).collect());
     }
-    Ok(m)
+    Ok(expand_manifest(&m))
+}
+
+fn join_path(dir: &str, file: &str) -> String {
+    if dir.is_empty() { file.to_string() } else { format!("{dir}/{file}") }
+}
+
+// Compact entries (archive entries and file entries, see the backend's sources/manifestFormat.js) as flat directives
+fn expand_entries(entries: &Value, mod_id: &Value, archives: &mut Vec<Value>) -> Vec<Value> {
+    let mut files = vec![];
+    for e in entries.as_array().into_iter().flatten() {
+        if let Some(name) = e["archive"].as_str() {
+            let key = e["key"].as_str().unwrap_or("");
+            if archives.iter().any(|a| a["id"] == key) { continue; }
+            let source = if let Some(url) = e["url"].as_str() { json!({ "type": "url", "url": url }) }
+                else if let Some(file_id) = e["fileId"].as_i64() { json!({ "type": "nexus", "modId": if e["modId"].is_null() { mod_id.clone() } else { e["modId"].clone() }, "fileId": file_id }) }
+                else { json!({ "type": "manual", "name": name }) };
+            archives.push(json!({ "id": key, "name": name, "hash": e["sha256"], "size": e["size"], "source": source }));
+            continue;
+        }
+        let file = e["file"].as_str().unwrap_or("");
+        let from = e["from"].as_str().unwrap_or("");
+        let (key, from_dir) = from.split_once('/').unwrap_or((from, ""));
+        let to_dir = match e["to"].as_str() { None => from_dir, Some("root") => "", Some(t) => t.strip_prefix("root/").unwrap_or(t) };
+        let name = e["name"].as_str().unwrap_or(file);
+        files.push(json!({ "to": join_path(to_dir, file), "archive": key, "from": join_path(from_dir, name), "sha256": e["sha256"], "size": e["size"] }));
+    }
+    files
+}
+
+// MO2 text file lines without comments and blanks
+fn text_lines(v: &Value) -> Vec<String> {
+    v.as_str().unwrap_or("").lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(String::from).collect()
+}
+
+// The compact manifest in the flat shape the installer works with
+fn expand_manifest(m: &Value) -> Value {
+    let mut archives = vec![];
+    let mods: Vec<Value> = m["mods"].as_array().into_iter().flatten().map(|md| json!({
+        "name": md["name"], "modId": md["modId"], "version": md["version"], "hash": md["hash"], "size": md["size"],
+        "files": expand_entries(&md["files"], &md["modId"], &mut archives),
+    })).collect();
+    let root = expand_entries(&m["gameFiles"], &Value::Null, &mut archives);
+    let root_hash = hex::encode(sha2::Sha256::digest(root.iter().map(|f| format!("{}:{}", f["to"].as_str().unwrap_or(""), f["sha256"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n").as_bytes()));
+    let order: Vec<String> = text_lines(&m["modlist"]).into_iter()
+        .filter(|l| l.starts_with('+') || (l.starts_with('-') && l.ends_with("_separator"))).map(|l| l[1..].trim().to_string()).collect();
+    json!({
+        "version": m["version"], "build": m["build"], "mods": mods, "archives": archives, "root": root, "rootHash": root_hash,
+        "order": order, "plugins": text_lines(&m["plugins"]), "creations": m["creations"],
+        "settings": m["settings"], "initweaks": m["initweaks"],
+    })
 }
 
 pub fn load_order(info: Option<&Value>) -> Option<Vec<String>> {
@@ -242,7 +291,6 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
     let (Some(mods), Some(archives)) = (manifest["mods"].as_array().cloned(), manifest["archives"].as_array().cloned()) else {
         return Err("Install manifest is missing or malformed - run \"npm run compile-manifest\" on the backend.".into());
     };
-    if manifest["schema"].as_u64().unwrap_or(0) > MANIFEST_SCHEMA { return Err(UPDATE_LAUNCHER_ERROR.into()); }
     if force {
         // Every Creation file is hashed again and nothing stray in overwrite survives
         let _ = fs::remove_file(game.join(CREATIONS_STAMP));
@@ -275,6 +323,10 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
             if mo2::mods_dir().join("SKSE").exists() && !order.iter().any(|n| n == "SKSE") { order.push("SKSE".into()); }
             mo2::set_modlist_order(&order);
             mo2::set_plugins(&manifest["plugins"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<_>>());
+            // The profile's own MO2 settings and ini tweaks, as the reference install has them
+            for (name, key) in [("settings.ini", "settings"), ("initweaks.ini", "initweaks")] {
+                if let Some(text) = manifest[key].as_str().filter(|t| !t.is_empty()) { let _ = fs::write(mo2::profile_dir().join(name), text.replace('\n', "\r\n")); }
+            }
         }
         store().set_many(vec![
             ("installedRootHash".into(), json!(manifest["rootHash"].as_str().unwrap_or(""))),
@@ -606,4 +658,28 @@ pub async fn files_update_check() -> Value {
     let present = !game.is_empty() && REQUIRED_FILES.iter().all(|f| data_file_exists(Path::new(&game), via_mo2, f)) && preloader_present(Path::new(&game));
     let failed = via_mo2 && store().str("modpackState") == "failed";
     json!({ "ok": true, "updateAvailable": version != store().str("filesVersion") || !present || failed, "serverVersion": version })
+}
+
+#[cfg(test)]
+mod tests {
+    // Expands the backend's compiled manifest when one is on this machine
+    #[test]
+    fn expands_the_compiled_manifest() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../skymp5-backend/data/manifest.json");
+        let Ok(text) = std::fs::read_to_string(path) else { return };
+        let m = super::expand_manifest(&serde_json::from_str(&text).unwrap());
+        let mods = m["mods"].as_array().unwrap();
+        let mut seen = std::collections::HashSet::new();
+        let mut files = 0;
+        for md in mods {
+            for f in md["files"].as_array().unwrap() {
+                files += 1;
+                assert!(seen.insert(format!("{}|{}", md["name"], f["to"])), "duplicate {} {}", md["name"], f["to"]);
+                let key = f["archive"].as_str().unwrap();
+                assert!(m["archives"].as_array().unwrap().iter().any(|a| a["id"] == key), "no archive {key}");
+            }
+        }
+        assert!(files > 1000 && !m["order"].as_array().unwrap().is_empty() && !m["plugins"].as_array().unwrap().is_empty());
+        println!("mods {} files {} archives {} root {}", mods.len(), files, m["archives"].as_array().unwrap().len(), m["root"].as_array().unwrap().len());
+    }
 }

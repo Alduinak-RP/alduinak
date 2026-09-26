@@ -948,7 +948,7 @@ ipcMain.handle('modlist:diff', () => modsync.readDiff())
 
 function readManifestOrFail() {
   const manifest = modsync.readManifestLight(modsync.paths.manifest)
-  if (!manifest) throw new Error('no install-manifest.json, build the manifest first')
+  if (!manifest) throw new Error('no manifest.json, build the manifest first')
   return manifest
 }
 

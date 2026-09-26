@@ -2,7 +2,8 @@ const router = require('express').Router()
 const fs     = require('fs')
 const path   = require('path')
 
-const MANIFEST_PATH = path.join(__dirname, '..', 'data', 'install-manifest.json')
+const { MANIFEST_NAME, expand } = require('../sources/manifestFormat')
+const MANIFEST_PATH = path.join(__dirname, '..', 'data', MANIFEST_NAME)
 const GAME = 'skyrimspecialedition'
 
 // Minimal HTML escaping for archive names embedded in the page.
@@ -48,7 +49,7 @@ const page = body => `<!doctype html>
 router.get('/', (req, res) => {
   let manifest
   try {
-    manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'))
+    manifest = expand(JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')))
   } catch (err) {
     return res.status(404).type('text/html').send(page(
       `<h1>Mod downloads aren't ready yet</h1>` +

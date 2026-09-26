@@ -7,6 +7,7 @@ const path   = require('path')
 const crypto = require('crypto')
 const config = require('./config')
 const formIds = require('./formIds')
+const { expand } = require(path.join(config.paths.backend, 'sources', 'manifestFormat'))
 
 const VANILLA_PLUGINS = ['Skyrim.esm', 'Update.esm', 'Dawnguard.esm', 'HearthFires.esm', 'Dragonborn.esm']
 const VANILLA_SET = new Set(VANILLA_PLUGINS.map(n => n.toLowerCase()))
@@ -20,8 +21,8 @@ const TES4_LIGHT_FLAG = 0x200
 const RESERVED = new Set(['manifest.json'])
 
 const paths = {
-  manifest:     path.join(config.paths.dataDir, 'install-manifest.json'),
-  prevManifest: path.join(config.paths.dataDir, 'install-manifest.json.prev'),
+  manifest:     path.join(config.paths.dataDir, 'manifest.json'),
+  prevManifest: path.join(config.paths.dataDir, 'manifest.json.prev'),
   diff:         path.join(config.paths.dataDir, 'manifest-diff.json'),
   stamp:        path.join(config.paths.dataDir, 'data-sync.json'),
 }
@@ -139,26 +140,23 @@ function pruneEmptyDirs(dir, root) {
 
 // ── Manifest ─────────────────────────────────────────────────────────────────
 
-// Inline blobs are blanked before parsing so a base64-heavy manifest stays cheap to hold
+// The manifest in the flat shape the sync works with (sources/manifestFormat.js expands the compact file)
 function readManifestLight(file) {
   let text
   try { text = fs.readFileSync(file, 'utf8') }
   catch (err) { if (err.code === 'ENOENT') return null; throw err }
   let m
-  try { m = JSON.parse(text.replace(/"inline":"[A-Za-z0-9+\/=]*"/g, '"inline":""')) }
+  try { m = expand(JSON.parse(text)) }
   catch (err) { throw new Error(`${path.basename(file)} is not valid JSON: ${err.message}`) }
-  text = null
   return {
-    builtAt: m.builtAt || null,
-    order:   Array.isArray(m.order) ? m.order : [],
-    plugins: Array.isArray(m.plugins) ? m.plugins : [],
+    builtAt: m.build || null,
+    order:   m.order,
+    plugins: m.plugins,
     creations: m.creations && Array.isArray(m.creations.plugins) ? { plugins: m.creations.plugins.map(String) } : null,
-    mods: (Array.isArray(m.mods) ? m.mods : []).map(mod => ({
+    mods: m.mods.map(mod => ({
       name: mod.name,
       hash: mod.hash || '',
-      files: (Array.isArray(mod.files) ? mod.files : []).map(f => ({
-        to: f.to, sha256: f.sha256 || '', size: f.size || 0, inline: f.inline != null,
-      })),
+      files: mod.files.map(f => ({ to: f.to, sha256: f.sha256 || '', size: f.size || 0, inline: false })),
     })),
   }
 }

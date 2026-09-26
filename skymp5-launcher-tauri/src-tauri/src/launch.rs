@@ -1,6 +1,6 @@
 // Play: the pre-launch gate, load order sync, the backend launch check, and starting the game
 use crate::gamecopy::{self, PRELOADER_DLLS, VANILLA_MASTERS, VANILLA_ROOT_FILES};
-use crate::install::{self, data_file_exists, preloader_present, write_client_settings, MANIFEST_SCHEMA, REQUIRED_FILES, UPDATE_LAUNCHER_ERROR};
+use crate::install::{self, data_file_exists, preloader_present, write_client_settings, REQUIRED_FILES};
 use crate::{active_server, basic, effective_game_path, game, log, mo2, net, proc, store};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -119,7 +119,6 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
         let keep: Vec<String> = store().get("creationFiles").as_array().into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect();
         mo2::disable_cc_content(game, &order, &keep);
     }
-    if info.as_ref().and_then(|i| i["manifestSchema"].as_u64()).unwrap_or(0) > MANIFEST_SCHEMA { return Err(UPDATE_LAUNCHER_ERROR.into()); }
     let not_ready = launch_readiness(game, via_mo2, info.as_ref());
     if !not_ready.is_empty() { return Err(format!("Not ready to launch:\n{}", not_ready.iter().map(|p| format!("• {p}")).collect::<Vec<_>>().join("\n"))); }
     if let Some(s) = &srv {
@@ -144,7 +143,7 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
     // The backend approves this session for the game server's own check; unreachable fails open, the server still enforces
     let session = store().str("gameSession");
     if !session.is_empty() && info.as_ref().and_then(|i| i["offlineMode"].as_bool()) == Some(false) {
-        let body = json!({ "filesVersion": store().str("filesVersion"), "plugins": order.iter().map(|f| file_name(f)).collect::<Vec<_>>(), "manifestSchema": MANIFEST_SCHEMA });
+        let body = json!({ "filesVersion": store().str("filesVersion"), "plugins": order.iter().map(|f| file_name(f)).collect::<Vec<_>>() });
         match net::post_json(&format!("{}/api/launch-check", net::api_url()), &body, &[("x-session", &session)]).await {
             Ok(check) if check["ok"].as_bool() == Some(false) => {
                 return Err(if check["filesOk"].as_bool() == Some(false) { "Your client files are out of date. Press the button again to update, then launch." } else { "Your plugin load order does not match the server. Run Repair Modlist in Settings." }.into());

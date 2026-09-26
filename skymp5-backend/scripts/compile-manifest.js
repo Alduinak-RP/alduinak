@@ -1,28 +1,28 @@
 'use strict'
 
 /**
- * Compile an install manifest from a reference MO2 install.
+ * Compile data/manifest.json from a reference MO2 install (format in sources/manifestFormat.js).
  * Author overrides live in data/manifest-sources.json (all optional):
- *   { "urls": { "<archiveName>": "https://direct-download/…" }, "rootInclude": ["skse64_loader.exe", …],
+ *   { "urls": { "<archiveName>": "https://direct-download/…" }, "rootInclude": ["d3dx9_42.dll", …],
  *     "creations": { "plugins": ["ccBGSSSE001-Fish.esm", …], "searchDirs": ["Data", …], "extraAccept": { "<file>": [{ "sha256", "size" }] } } }
- * `urls` gives a download source to non-Nexus archives; `rootInclude` lists
- * game-root files to capture (skse64_*.exe/.dll are picked up automatically).
+ * `urls` gives a download source to non-Nexus archives; `rootInclude` lists game-root files to capture.
  * `creations` names Creation Club plugins every Skyrim SE 1.6 install carries: they are hashed from --game, never
  * redistributed, and the launcher copies them out of the player's own game; `extraAccept` adds known store copies.
+ * Files found in no archive are packed into one extras archive the backend serves from /files/extras.
  */
 
 const fs      = require('fs')
+const os      = require('os')
 const path    = require('path')
 const crypto  = require('crypto')
 const zlib    = require('zlib')
 const { execFileSync } = require('child_process')
-const { CLIENT_PACKAGE_LABEL, isClientPackage, sha256File } = require('./client-package')
-// Prefer a full 7-Zip: the standalone 7za from 7zip-bin has no Rar codec, so
-// .rar downloads would be silently skipped and their mods inlined instead.
+const config  = require('../config')
+const { MANIFEST_NAME } = require('../sources/manifestFormat')
+const { readVersions } = require('../sources/versions')
+// Prefer a full 7-Zip: the standalone 7za from 7zip-bin has no Rar codec, so .rar downloads would be skipped
 const SEVEN = [process.env.ALDUINAK_7Z, 'C:\\Program Files\\7-Zip\\7z.exe']
   .find(p => p && fs.existsSync(p)) || require('7zip-bin').path7za
-
-// Args
 
 function parseArgs(argv) {
   const a = { profile: 'Alduinak' }
@@ -38,7 +38,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2))
 if (!args.mo2) {
-  console.error('Usage: node scripts/compile-manifest.js --mo2 <MO2 root> [--game <game root>] [--profile Alduinak]')
+  console.error('Usage: node scripts/compile-manifest.js --mo2 <MO2 root> [--game <game root>] [--profile Alduinak] [--out <file>]')
   process.exit(1)
 }
 
@@ -47,9 +47,10 @@ const DOWNLOADS   = path.join(MO2, 'downloads')
 const MODS        = path.join(MO2, 'mods')
 const PROFILE_DIR = path.join(MO2, 'profiles', args.profile)
 const DATA_DIR    = path.join(__dirname, '..', 'data')
-const OUT         = args.out ? path.resolve(args.out) : path.join(DATA_DIR, 'install-manifest.json')
-const MODLIST_OUT = path.join(path.dirname(OUT), 'modlist.json')
-const VERSION_FILE = path.join(DATA_DIR, 'files-version.json')
+const OUT         = args.out ? path.resolve(args.out) : path.join(DATA_DIR, MANIFEST_NAME)
+const MODLIST_OUT = path.join(DATA_DIR, 'modlist.json')
+const EXTRAS_DIR  = path.join(config.clientFilesDir, 'extras')
+const PUBLIC_API  = (process.env.PUBLIC_API_URL || 'https://api.alduinak.com').replace(/\/+$/, '')
 
 // Where the launcher looks for Creation files, relative to the game root; Keizaal's launcher parks them in _disabledByKzl
 const CREATION_SEARCH_DIRS = ['Data', 'Data/_disabledByKzl', '_disabledByKzl', 'Data/disabled_by_kzl', 'disabled CC mods']
@@ -60,44 +61,29 @@ const CREATION_TITLES = {
   'ccbgssse025-advdsgs.esm': 'Saints & Seducers',
 }
 
-// The launcher writes the client settings into the real Data; a mod copy would shadow it under MO2
+// The launcher writes the client settings on every launch; a mod copy would shadow it under MO2
 const CLIENT_SETTINGS_FILE = 'skymp5-client-settings.txt'
-
-const INLINE_WARN = 50 * 1024 * 1024   // warn when inlining anything this large
-// Hard cap on total inlined base64: the launcher parses the manifest as one
-// JSON string, which V8 caps at ~512 MB. Fail fast with the offenders listed
-// rather than shipping a manifest no client can read.
-const MAX_INLINE_TOTAL = 384 * 1024 * 1024
 
 let sources = { urls: {}, rootInclude: [] }
 try {
   sources = { urls: {}, rootInclude: [], ...JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'manifest-sources.json'), 'utf8')) }
 } catch { /* optional */ }
 
-// Hash helpers
+const sha256Buf = buf => crypto.createHash('sha256').update(buf).digest('hex')
 
-function sha256Buf(buf)  { return crypto.createHash('sha256').update(buf).digest('hex') }
-
-// Streaming sha256 + CRC32 + size: mod folders hold multi-GB BSAs, so file
-// contents must never be loaded into memory just to hash them.
+// Streaming sha256 + CRC32 + size: mod folders hold multi-GB BSAs
 function hashFile(p) {
   return new Promise((resolve, reject) => {
     const h = crypto.createHash('sha256')
     let crc = 0, size = 0
     fs.createReadStream(p)
       .on('data', d => { h.update(d); crc = zlib.crc32(d, crc); size += d.length })
-      .on('end', () => resolve({
-        sha: h.digest('hex'),
-        crc: (crc >>> 0).toString(16).toUpperCase().padStart(8, '0'),
-        size,
-      }))
+      .on('end', () => resolve({ sha: h.digest('hex'), crc: (crc >>> 0).toString(16).toUpperCase().padStart(8, '0'), size }))
       .on('error', reject)
   })
 }
 
-// FS helpers
-
-/** Recursively list files under dir as forward-slash paths relative to base. */
+// Every file under dir as a forward-slash path relative to base
 function walk(dir, base = dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name)
@@ -107,75 +93,40 @@ function walk(dir, base = dir, out = []) {
   return out
 }
 
-/** Read a download's .meta sidecar for Nexus mod/file ids. */
+// A download's .meta sidecar: Nexus mod and file ids
 function readDownloadMeta(name) {
   try {
-    const meta   = fs.readFileSync(path.join(DOWNLOADS, name + '.meta'), 'utf8')
-    const modId  = (meta.match(/^modID\s*=\s*(\d+)/im)  || [])[1]
-    const fileId = (meta.match(/^fileID\s*=\s*(\d+)/im) || [])[1]
-    return { modId: modId ? Number(modId) : 0, fileId: fileId ? Number(fileId) : 0 }
+    const meta = fs.readFileSync(path.join(DOWNLOADS, name + '.meta'), 'utf8')
+    const num = re => Number((meta.match(re) || [])[1] || 0)
+    return { modId: num(/^modID\s*=\s*(\d+)/im), fileId: num(/^fileID\s*=\s*(\d+)/im) }
   } catch { return { modId: 0, fileId: 0 } }
 }
 
-/** Read a mod folder's MO2 meta.ini for its Nexus mod id. */
-function readModId(modDir) {
+// A mod folder's MO2 meta.ini: Nexus mod id and version
+function readModMeta(modDir) {
   try {
-    const id = (fs.readFileSync(path.join(modDir, 'meta.ini'), 'utf8').match(/^modid\s*=\s*(\d+)/im) || [])[1]
-    return id ? Number(id) : 0
-  } catch { return 0 }
+    const meta = fs.readFileSync(path.join(modDir, 'meta.ini'), 'utf8')
+    return { modId: Number((meta.match(/^modid\s*=\s*(\d+)/im) || [])[1] || 0), version: ((meta.match(/^version\s*=\s*(.*)$/im) || [])[1] || '').trim() }
+  } catch { return { modId: 0, version: '' } }
 }
 
-/** List archive entries as [{ path, size, crc }] (files only, with a CRC). */
+// Archive entries as [{ path, size, crc }], files only
 function listEntries(archivePath) {
-  const out = execFileSync(SEVEN, ['l', '-slt', '-ba', archivePath], {
-    encoding: 'utf8',
-    maxBuffer: 256 * 1024 * 1024,
-    timeout: 5 * 60 * 1000,
-  })
+  const out = execFileSync(SEVEN, ['l', '-slt', '-ba', archivePath], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 5 * 60 * 1000 })
   const entries = []
   let cur = null
   const push = () => { if (cur && cur.path) entries.push(cur) }
   for (const line of out.split(/\r?\n/)) {
-    if (line.startsWith('Path = '))        { push(); cur = { path: line.slice(7), size: 0, crc: '', folder: false } }
+    if (line.startsWith('Path = '))               { push(); cur = { path: line.slice(7), size: 0, crc: '', folder: false } }
     else if (cur && line.startsWith('Size = '))   cur.size   = parseInt(line.slice(7), 10) || 0
     else if (cur && line.startsWith('CRC = '))    cur.crc    = line.slice(6).trim()
     else if (cur && line.startsWith('Folder = ')) cur.folder = line.slice(9).trim() === '+'
   }
   push()
-  return entries
-    .filter(e => e.crc && !e.folder)
-    .map(e => ({ path: e.path.split('\\').join('/'), size: e.size, crc: e.crc }))
+  return entries.filter(e => e.crc && !e.folder).map(e => ({ path: e.path.split('\\').join('/'), size: e.size, crc: e.crc }))
 }
 
-// Write the manifest incrementally: JSON.stringify of the whole object dies
-// with "Invalid string length" once inlined files push it past V8's ~512 MB
-// string cap, so each directive is stringified on its own.
-function writeManifestFile(out, m) {
-  const fd = fs.openSync(out, 'w')
-  const w = s => fs.writeSync(fd, s)
-  const writeFiles = list => list.forEach((f, i) => { if (i) w(','); w(JSON.stringify(f)) })
-  try {
-    w('{"schema":' + JSON.stringify(m.schema))
-    w(',"builtAt":' + JSON.stringify(m.builtAt))
-    w(',"game":' + JSON.stringify(m.game))
-    w(',"archives":' + JSON.stringify(m.archives))
-    w(',"mods":[')
-    m.mods.forEach((mod, i) => {
-      if (i) w(',')
-      w('{"name":' + JSON.stringify(mod.name) + ',"modId":' + JSON.stringify(mod.modId) + ',"files":[')
-      writeFiles(mod.files)
-      w('],"hash":' + JSON.stringify(mod.hash) + '}')
-    })
-    w('],"order":' + JSON.stringify(m.order))
-    w(',"plugins":' + JSON.stringify(m.plugins))
-    if (m.creations) w(',"creations":' + JSON.stringify(m.creations))
-    w(',"root":[')
-    writeFiles(m.root)
-    w('],"rootHash":' + JSON.stringify(m.rootHash) + '}')
-  } finally {
-    fs.closeSync(fd)
-  }
-}
+const readText = file => { try { return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') } catch { return '' } }
 
 // Creation Club files: a plugin is accepted only by sha256 and size, its archives by name (the launcher logs a mismatch)
 async function creationsSection() {
@@ -196,244 +147,232 @@ async function creationsSection() {
       const { sha, size } = await hashFile(full)
       const accept = [{ sha256: sha, size }, ...(Array.isArray(extra[name]) ? extra[name] : [])]
       files.push({ name, plugin, to: `Data/${name}`, kind: name === plugin ? 'plugin' : 'archive', title: CREATION_TITLES[plugin.toLowerCase()] || base, accept })
-      console.log(`  creation ${name} (${(size / 1048576).toFixed(1)} MB, sha256 ${sha.slice(0, 16)}…)`)
     }
   }
   const hash = sha256Buf(Buffer.from(files.map(f => `${f.name}:${f.accept.map(a => `${a.sha256}/${a.size}`).join(',')}`).join('\n')))
   return { plugins: c.plugins, searchDirs: Array.isArray(c.searchDirs) ? c.searchDirs : CREATION_SEARCH_DIRS, files, hash }
 }
 
-// Main
+// "Data/Meshes/x.nif" -> ["Data/Meshes", "x.nif"]
+function splitPath(p) {
+  const i = p.lastIndexOf('/')
+  return i < 0 ? ['', p] : [p.slice(0, i), p.slice(i + 1)]
+}
+
+// One compact file entry; `to` is left out when the folder is the same inside the archive and the mod,
+// `name` only when the archive holds the same bytes under another filename
+function fileEntry(key, fromPath, toPath, sha, size) {
+  const [fromDir, fromName] = splitPath(fromPath)
+  const [toDir, file] = splitPath(toPath)
+  const entry = { file }
+  if (fromName !== file) entry.name = fromName
+  entry.from = fromDir ? `${key}/${fromDir}` : key
+  if (toDir !== fromDir) entry.to = toDir ? `root/${toDir}` : 'root'
+  entry.size = size
+  entry.sha256 = sha
+  return entry
+}
+
+// Pretty enough to read: top-level keys on their own lines, one line per mod field and per file entry
+function writeManifestFile(out, m) {
+  const fd = fs.openSync(out, 'w')
+  const w = s => fs.writeSync(fd, s)
+  const list = (items, indent) => items.map(x => indent + JSON.stringify(x)).join(',\n')
+  try {
+    w('{\n')
+    for (const k of ['version', 'build', 'game']) w(`  ${JSON.stringify(k)}: ${JSON.stringify(m[k])},\n`)
+    w('  "mods": [\n')
+    m.mods.forEach((mod, i) => {
+      w('    {\n')
+      for (const k of ['name', 'source', 'modId', 'version', 'hash', 'size']) w(`      ${JSON.stringify(k)}: ${JSON.stringify(mod[k])},\n`)
+      w('      "files": [\n' + list(mod.files, '        ') + '\n      ]\n')
+      w(i < m.mods.length - 1 ? '    },\n' : '    }\n')
+    })
+    w('  ],\n')
+    w('  "gameFiles": [\n' + list(m.gameFiles, '    ') + '\n  ],\n')
+    w(`  "creations": ${JSON.stringify(m.creations)},\n`)
+    for (const k of ['modlist', 'plugins', 'settings']) w(`  ${JSON.stringify(k)}: ${JSON.stringify(m[k])},\n`)
+    w(`  "initweaks": ${JSON.stringify(m.initweaks)}\n}\n`)
+  } finally {
+    fs.closeSync(fd)
+  }
+}
 
 async function main() {
   if (!fs.existsSync(MODS)) throw new Error(`mods folder not found: ${MODS}`)
 
   // 1. Index every archive's entries by (size, CRC32)
-  const archives = []                 // { id, hash, size, name, source, _entries }
-  const index    = new Map()          // "size:CRC" -> [{ id, from, modId, fileId }] in scan order
-  const referenced = new Set()
-
-  const dlNames = fs.existsSync(DOWNLOADS)
-    ? fs.readdirSync(DOWNLOADS).filter(n => !/\.(meta|unfinished)$/i.test(n))
-    : []
-
+  const archives = new Map()          // key -> { key, name, size, sha256, url?, modId, fileId }
+  const index    = new Map()          // "size:CRC" -> [{ key, from, modId, fileId }] in scan order
+  const dlNames = fs.existsSync(DOWNLOADS) ? fs.readdirSync(DOWNLOADS).filter(n => !/\.(meta|unfinished)$/i.test(n)) : []
   for (const name of dlNames) {
     const full = path.join(DOWNLOADS, name)
     let st
     try { st = fs.statSync(full) } catch { continue }
     if (!st.isFile()) continue
-
     let entries
-    try { entries = listEntries(full) }
-    catch { console.warn(`  skipped ${name}: cannot list as archive (unsupported format?)`); continue }
+    try { entries = listEntries(full) } catch { console.warn(`  skipped ${name}: cannot list as archive`); continue }
     if (entries.length === 0) continue
-
     const meta = readDownloadMeta(name)
-    let source
-    // An explicit URL override wins over the Nexus meta: it is the escape
-    // hatch for files whose Nexus pin has died (author removed the version).
-    if (sources.urls[name])             source = { type: 'url', url: sources.urls[name] }
-    else if (meta.modId && meta.fileId) source = { type: 'nexus', modId: meta.modId, fileId: meta.fileId }
-    else                                source = { type: 'manual', name }
-
-    const id   = 'a' + (archives.length + 1)
-    const hash = await sha256File(full)
-    archives.push({ id, hash, size: st.size, name, source })
-
+    const key = 'a' + (archives.size + 1)
+    // An explicit URL wins over the Nexus meta: the escape hatch for a Nexus pin that died
+    archives.set(key, { key, name, size: st.size, sha256: (await hashFile(full)).sha, url: sources.urls[name], modId: meta.modId, fileId: meta.fileId })
     for (const e of entries) {
-      // Every empty file shares one size+crc key, so indexing them makes an
-      // unrelated archive the source for any mod's empty files. They cost
-      // nothing inline, so leave them out and let directiveFor emit them.
+      // Every empty file shares one size+crc key; they go to the extras archive instead
       if (e.size === 0) continue
-      const key = e.size + ':' + e.crc
-      if (!index.has(key)) index.set(key, [])
-      index.get(key).push({ id, from: e.path, modId: meta.modId, fileId: meta.fileId })
+      const k = e.size + ':' + e.crc
+      if (!index.has(k)) index.set(k, [])
+      index.get(k).push({ key, from: e.path, modId: meta.modId, fileId: meta.fileId })
     }
-    console.log(`  indexed ${name} (${entries.length} entries, ${source.type})`)
+    console.log(`  indexed ${name} (${entries.length} entries)`)
   }
 
-  // 2. Resolve the enabled mod order + plugin load order from the profile
-  let order = []
-  try {
-    order = fs.readFileSync(path.join(PROFILE_DIR, 'modlist.txt'), 'utf8')
-      .split(/\r?\n/)
-      .filter(l => l.startsWith('+') || (l.startsWith('-') && l.slice(1).trim().endsWith('_separator')))
-      .map(l => l.slice(1).trim())
-      .filter(Boolean)
-  } catch { /* no profile: fall back to every folder below */ }
-
+  // 2. The profile: MO2's own text files, and the enabled mods in priority order
+  const modlist = readText(path.join(PROFILE_DIR, 'modlist.txt'))
+  let plugins = readText(path.join(PROFILE_DIR, 'plugins.txt'))
+  const settings = readText(path.join(PROFILE_DIR, 'settings.ini'))
+  const initweaks = readText(path.join(PROFILE_DIR, 'initweaks.ini'))
+  let order = modlist.split('\n').filter(l => l.startsWith('+')).map(l => l.slice(1).trim()).filter(Boolean)
   if (order.length === 0) {
     order = fs.readdirSync(MODS, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name)
     console.warn(`No profiles/${args.profile}/modlist.txt found - using all ${order.length} mod folders (unordered).`)
   }
 
-  // plugins.txt: the esp/esm load order (MO2's "*" prefix marks an enabled plugin).
-  let plugins = []
-  try {
-    plugins = fs.readFileSync(path.join(PROFILE_DIR, 'plugins.txt'), 'utf8')
-      .split(/\r?\n/)
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith('#'))
-  } catch { /* no plugins.txt: load order then comes from the server at launch */ }
-
   // The Creations load right after the vanilla masters in Skyrim.ccc order, whatever the MO2 profile says
   const creations = await creationsSection()
   if (creations) {
     const own = new Set(creations.plugins.map(p => p.toLowerCase()))
-    plugins = [...creations.plugins.map(p => `*${p}`), ...plugins.filter(l => !own.has(l.replace(/^[*+-]/, '').trim().toLowerCase()))]
+    const lines = plugins.split('\n').filter(l => !own.has(l.replace(/^[*+-]/, '').trim().toLowerCase()))
+    const at = lines.findIndex(l => l.trim() && !l.startsWith('#'))
+    lines.splice(at < 0 ? lines.length : at, 0, ...creations.plugins.map(p => `*${p}`))
+    plugins = lines.join('\n')
   }
 
-  // 3. Emit a directive per file in each mod folder
-  const mods = []
-  const inlineWarnings = []
-
-  // Stable per-mod content fingerprint so the launcher reinstalls only mods that actually changed on rebuild
-  const contentHash = files =>
-    sha256Buf(Buffer.from(files.map(f => `${f.to}:${f.sha256}`).sort().join('\n')))
-
-  // Inline accounting for the MAX_INLINE_TOTAL guard.
-  let inlineTotal = 0
-  const inlineByLabel = new Map()
-
+  // 3. A file entry per file in each mod folder; unmatched files go to the extras archive
+  const extras = []                   // { stage: "<mod>/<rel>", abs, owner }
+  const contentHash = files => sha256Buf(Buffer.from(files.map(f => `${f.to}:${f.sha256}`).sort().join('\n')))
   // A mod takes a file from the newest archive of its own Nexus mod, else from the first archive scanned
   const pickSource = (hits, modId) => {
     const own = modId ? hits.filter(h => h.modId === modId) : []
     return own.length ? own.reduce((a, b) => (b.fileId > a.fileId ? b : a)) : hits[0]
   }
 
-  async function directiveFor(absFile, toRel, label, modId = 0) {
+  async function collect(owner, absFile, toRel, modId, used, flat) {
     const { sha, crc, size } = await hashFile(absFile)
-    const hits = index.get(size + ':' + crc)
-    if (hits) {
-      const hit = pickSource(hits, modId)
-      referenced.add(hit.id)
-      return { to: toRel, archive: hit.id, from: hit.from, sha256: sha, size }
+    const hit = size > 0 && index.get(size + ':' + crc)
+    if (hit) {
+      const h = pickSource(hit, modId)
+      used.add(h.key)
+      flat.push({ key: h.key, from: h.from, to: toRel, sha, size })
+    } else {
+      const stage = `${owner}/${toRel}`
+      extras.push({ stage, abs: absFile })
+      flat.push({ key: 'x', from: stage, to: toRel, sha, size })
     }
-    if (size > INLINE_WARN) inlineWarnings.push(`${toRel} (${(size / 1048576).toFixed(0)} MB)`)
-    const inline = fs.readFileSync(absFile).toString('base64')
-    inlineTotal += inline.length
-    inlineByLabel.set(label, (inlineByLabel.get(label) || 0) + inline.length)
-    return { to: toRel, inline, sha256: sha, size }
   }
 
-  // Data paths the last client zip carries, by sha256, to flag a mod copy that differs from it
-  let zipped = new Map()
-  try {
-    zipped = new Map(JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8')).files
-      .filter(f => /^Data\//i.test(f.path)).map(f => [f.path.slice(5).toLowerCase(), f.sha256]))
-  } catch { /* no zip built yet */ }
-  const zipDiffers = []
-  let packageDrops = 0, packageMods = 0
-
+  const built = []                    // { name, modId, version, used, flat }
   for (const modName of order) {
     const modDir = path.join(MODS, modName)
     if (!fs.existsSync(modDir)) continue
-    const all = walk(modDir)
-    const kept = all.filter(r => r.toLowerCase() !== 'meta.ini')
-      .filter(r => path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE)
-    // The client zip delivers the SkyMP package into the real Data; a mod copy would shadow it under MO2
-    const rels = kept.filter(r => !isClientPackage(r))
-    if (rels.length < kept.length) {
-      packageDrops += kept.length - rels.length
-      packageMods++
-      console.log(`  [client package] ${modName}: left out ${kept.length - rels.length} file(s) the client zip delivers (${CLIENT_PACKAGE_LABEL})`)
-    }
+    const rels = walk(modDir).filter(r => r.toLowerCase() !== 'meta.ini' && path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE)
     if (rels.length === 0) continue
-
-    const modId = readModId(modDir)
-    const files = []
-    for (const rel of rels) {
-      const f = await directiveFor(path.join(modDir, rel.split('/').join(path.sep)), rel, modName, modId)
-      const zipSha = zipped.get(rel.toLowerCase())
-      if (zipSha && zipSha !== f.sha256) zipDiffers.push(`${modName}: ${rel} differs from the client zip copy`)
-      files.push(f)
-    }
-    mods.push({ name: modName, modId, files, hash: contentHash(files) })
+    const meta = readModMeta(modDir)
+    const used = new Set()
+    const flat = []
+    for (const rel of rels) await collect(modName, path.join(modDir, rel.split('/').join(path.sep)), rel, meta.modId, used, flat)
+    built.push({ name: modName, modId: meta.modId, version: meta.version, used, flat })
   }
 
   // 4. Optional game-root files (preloaders, etc.)
-  const root = []
+  const gameUsed = new Set()
+  const gameFlat = []
   if (args.game) {
-    const gameRoot = path.resolve(args.game)
     for (const rel of new Set(sources.rootInclude || [])) {
-      const full = path.join(gameRoot, rel.split('/').join(path.sep))
+      const full = path.join(path.resolve(args.game), rel.split('/').join(path.sep))
       if (!fs.existsSync(full)) { console.warn(`rootInclude not found, skipping: ${rel}`); continue }
-      root.push(await directiveFor(full, rel, 'root'))
+      await collect('game', full, rel, 0, gameUsed, gameFlat)
     }
   }
 
-  // Fail fast when the inline volume would produce a manifest the launcher
-  // cannot parse - name the offending mods so the fix is obvious.
-  if (inlineTotal > MAX_INLINE_TOTAL) {
-    const top = [...inlineByLabel.entries()]
-      .sort((a, b) => b[1] - a[1]).slice(0, 10)
-      .map(([n, b]) => `  - ${n}: ${(b / 1048576).toFixed(0)} MB inlined`).join('\n')
-    throw new Error(
-      `manifest would inline ${(inlineTotal / 1048576).toFixed(0)} MB of base64 ` +
-      `(limit ${(MAX_INLINE_TOTAL / 1048576).toFixed(0)} MB). ` +
-      'Add the missing source archives to downloads\\ (or "urls" in data/manifest-sources.json) for:\n' + top)
+  // 5. The extras archive, named by its content so a changed build never reuses a stale download
+  let extrasEntry = null
+  if (extras.length) {
+    const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alduinak-extras-'))
+    try {
+      for (const e of extras) {
+        const dest = path.join(stageDir, e.stage.split('/').join(path.sep))
+        fs.mkdirSync(path.dirname(dest), { recursive: true })
+        fs.copyFileSync(e.abs, dest)
+      }
+      const tmp = path.join(os.tmpdir(), `alduinak-extras-${process.pid}.7z`)
+      fs.rmSync(tmp, { force: true })
+      execFileSync(SEVEN, ['a', '-t7z', '-mx=9', '-bso0', '-bsp0', tmp, '.'], { cwd: stageDir })
+      const { sha, size } = await hashFile(tmp)
+      const name = `alduinak-extras-${sha.slice(0, 12)}.7z`
+      fs.mkdirSync(EXTRAS_DIR, { recursive: true })
+      for (const old of fs.readdirSync(EXTRAS_DIR)) if (old !== name) fs.rmSync(path.join(EXTRAS_DIR, old), { force: true })
+      fs.renameSync(tmp, path.join(EXTRAS_DIR, name))
+      extrasEntry = { archive: name, key: 'x', size, sha256: sha, url: `${PUBLIC_API}/files/extras/${encodeURIComponent(name)}` }
+      console.log(`  extras archive ${name}: ${extras.length} file(s), ${(size / 1048576).toFixed(1)} MB`)
+    } finally {
+      fs.rmSync(stageDir, { recursive: true, force: true })
+    }
   }
 
-  // 5. Write the manifest (only referenced archives carry over)
-  const usedArchives = archives
-    .filter(a => referenced.has(a.id))
-    .map(({ id, hash, size, name, source }) => ({ id, hash, size, name, source }))
+  // Archive entries first, then file entries: the launcher resolves every file's key from the same list
+  const entriesFor = (used, flat, modId) => {
+    const out = []
+    for (const key of used) {
+      const a = archives.get(key)
+      const entry = { archive: a.name, key, size: a.size, sha256: a.sha256 }
+      if (a.url) entry.url = a.url
+      else if (a.fileId) entry.fileId = a.fileId
+      if (a.modId && a.modId !== modId) entry.modId = a.modId
+      out.push(entry)
+    }
+    if (flat.some(f => f.key === 'x')) out.push(extrasEntry)
+    for (const f of flat) out.push(fileEntry(f.key, f.from, f.to, f.sha, f.size))
+    return out
+  }
+
+  const mods = built.map(b => ({
+    name: b.name,
+    source: b.flat.some(f => f.key !== 'x' && archives.get(f.key).fileId && !archives.get(f.key).url) ? 'nexus' : 'url',
+    modId: b.modId,
+    version: b.version,
+    hash: contentHash(b.flat.map(f => ({ to: f.to, sha256: f.sha }))),
+    size: b.flat.reduce((n, f) => n + f.size, 0),
+    files: entriesFor(b.used, b.flat, b.modId),
+  }))
 
   const manifest = {
-    // Launchers that predate a schema refuse it; the install-manifest route answers them with an update message
-    schema:  creations ? 3 : 2,
-    builtAt: new Date().toISOString(),
-    game:    'skyrimspecialedition',
-    archives: usedArchives,
+    version: readVersions().client,
+    build: new Date().toISOString(),
+    game: 'skyrimspecialedition',
     mods,
-    order,      // full modlist.txt order, separators included
-    plugins,    // plugins.txt load order
+    gameFiles: entriesFor(gameUsed, gameFlat, 0),
     creations,
-    root,
-    rootHash: contentHash(root),
+    modlist, plugins, settings, initweaks,
   }
-  fs.mkdirSync(DATA_DIR, { recursive: true })
+  fs.mkdirSync(path.dirname(OUT), { recursive: true })
   writeManifestFile(OUT, manifest)
 
-  // Lightweight display list so /api/modlist (the launcher's Modlist panel) keeps its shape without a second source of truth
-  const display = [
-    { name: 'SkyMP Client', required: true, enabled: true, source: 'backend' },
-    ...mods.map(m => ({
-      name: m.name, required: true, enabled: true,
-      source: m.modId ? 'nexus' : 'url',
-      ...(m.modId ? { nexusId: m.modId } : {}),
-    })),
-  ]
+  // Display list for /api/modlist (the launcher's Modlist panel)
+  const display = mods.map(m => ({ name: m.name, required: true, enabled: true, source: m.source, ...(m.modId ? { nexusId: m.modId } : {}) }))
   fs.writeFileSync(MODLIST_OUT, JSON.stringify(display, null, 2) + '\n')
 
-  // Report
-  const inlineCount = mods.reduce((n, m) => n + m.files.filter(f => f.inline != null).length, 0) +
-                      root.filter(f => f.inline != null).length
-  console.log(`\narchives:    ${usedArchives.length} referenced (${archives.length} scanned)`)
-  console.log(`mods:        ${mods.length}`)
-  console.log(`separators:  ${order.filter(n => n.endsWith('_separator')).length}`)
-  console.log(`plugins:     ${plugins.length}`)
-  console.log(`creations:   ${creations ? `${creations.plugins.length} plugins, ${creations.files.length} files (schema 3)` : 'none'}`)
-  console.log(`root files:  ${root.length}`)
-  console.log(`directives:  ${mods.reduce((n, m) => n + m.files.length, 0) + root.length} (${inlineCount} inline)`)
-  console.log(`client package: ${packageDrops} file(s) left out of ${packageMods} mod(s)`)
-
-  if (zipDiffers.length) {
-    console.warn('\nMod files that differ from the client zip copy (the mod copy wins under MO2, the zip in the direct install):')
-    for (const w of zipDiffers) console.warn(`  - ${w}`)
-  }
-  const manual = usedArchives.filter(a => a.source.type === 'manual')
+  const manual = [...archives.values()].filter(a => !a.url && !a.fileId && built.some(b => b.used.has(a.key)))
+  console.log(`\nmods:       ${mods.length}`)
+  console.log(`archives:   ${new Set(built.flatMap(b => [...b.used])).size} referenced (${archives.size} scanned)`)
+  console.log(`files:      ${built.reduce((n, b) => n + b.flat.length, 0)} (${extras.length} in the extras archive)`)
+  console.log(`game files: ${gameFlat.length}`)
+  console.log(`creations:  ${creations ? creations.files.length : 0}`)
   if (manual.length) {
-    console.warn('\nReferenced archives with NO download source - the launcher cannot fetch these.')
-    console.warn('Add a URL for each in data/manifest-sources.json ("urls"):')
+    console.warn('\nReferenced archives with NO download source - add a URL for each in data/manifest-sources.json ("urls"):')
     for (const a of manual) console.warn(`  - ${a.name}`)
   }
-  if (inlineWarnings.length) {
-    console.warn('\nLarge files were inlined (bloats the manifest - add the source archive to downloads\\):')
-    for (const w of inlineWarnings) console.warn(`  - ${w}`)
-  }
-
-  console.log(`\nWrote ${OUT}`)
+  console.log(`\nWrote ${OUT} (${(fs.statSync(OUT).size / 1048576).toFixed(1)} MB)`)
   console.log(`Wrote ${MODLIST_OUT}`)
 }
 

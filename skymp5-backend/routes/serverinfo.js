@@ -2,7 +2,6 @@ const router      = require('express').Router()
 const config      = require('../config')
 const { sessionHints } = require('./master-api')
 const { getHeartbeat, fetchGameJson } = require('./servers')
-const { publishedSchema } = require('./install-manifest')
 const fs          = require('fs')
 const path        = require('path')
 
@@ -47,8 +46,6 @@ router.get('/', async (req, res) => {
     locked,
     // Server's esp/esm load order (basenames, in order); null if offline
     loadOrder:           await getGameLoadOrder(server),
-    // Schema of the install manifest; a launcher that cannot read it must update before installing or playing
-    manifestSchema:      publishedSchema(),
     // lockedAllowList intentionally omitted: never expose the allow-list to clients.
     // Session-aware fields: only meaningful when X-Session header is present
     sessionValid,
