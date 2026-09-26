@@ -12,7 +12,7 @@ room, and appears in the launcher's server list as **Test Server**.
   `build\dist\server` in `C:\Alduinak\testserver` is a separate server.
 - **Its own master key.** The SkyMP client does not use the port the launcher writes.
   It asks `GET /api/servers/<master key>/serverinfo` for the host and port. The test
-  server therefore has its own public key (`TEST_SERVER_MASTER_KEY`, for example
+  server therefore has its own public key (`masterKey` in its settings, for example
   `alduinak-test`). The backend lists it in `/api/servers` and answers its serverinfo,
   `manifest.json` and heartbeat separately. See `skymp5-backend/config.js`
   (`config.servers`).
@@ -22,10 +22,10 @@ room, and appears in the launcher's server list as **Test Server**.
   play can never change the live `characters.json`, faction ranks, bans or balances.
   Its heartbeat is the one write it may make.
 - **Staff only.** The backend admits a session on the test key only when the player
-  holds a role in `TEST_SERVER_ROLE_IDS` (Admins `1521259484859863190`, Developers
-  `1521259396481421475`). Anyone else gets `staffOnly`; the game server kicks them
-  with *This server is for staff only.* and the launcher greys out PLAY for them. The
-  global server lock (`SERVER_LOCKED`) applies on top.
+  holds a role in `access.staffOnlyRoleIds` of its settings (Admins
+  `1521259484859863190`, Developers `1521259396481421475`). Anyone else gets
+  `staffOnly`; the game server kicks them with *This server is for staff only.* and
+  the launcher greys out PLAY for them. Its own `access` lock applies on top.
 - **No console relay.** The backend relay keeps one gamemode connection, which belongs
   to the live server (`say`, `kick` and the daily restart warnings). A folder outside
   the repo cannot find `skymp5-backend\.env`, so its relay stays off, and
@@ -69,16 +69,17 @@ without a BOM (VS Code or Notepad++, never PowerShell `Set-Content`):
 
 | Key | Value |
 |---|---|
-| `name` | `"Test Server"` (the launcher lists the heartbeat name, so keep it equal to `TEST_SERVER_NAME`) |
+| `name` | `"Test Server"` (the name the launcher lists) |
 | `port` | `7787` (its UI port becomes 7788, loopback only) |
 | `maxPlayers` | `20` |
 | `logDir` | `"C:/logs/test"` |
-| `masterKey` | the `TEST_SERVER_MASTER_KEY` value, for example `"alduinak-test"` |
+| `masterKey` | its own public id, for example `"alduinak-test"` (never the live key) |
 | `databaseDriver` | `"file"` |
 | `databaseName` | `"world"` |
 | `databaseUri` | delete the key |
 | `voiceChat.room` | `"alduinak-test"` (LiveKit is shared, the room keeps voice apart) |
 | `discordAuth.guilds[0].eventLogChannelId` | `""` (no login lines or staff alerts from the test server) |
+| `access` | `{ "staffOnlyRoleIds": ["1521259484859863190", "1521259396481421475"] }` |
 
 Keep `master`, `masterApiAuthToken`, `dataDir`, `loadOrder`, `archives`,
 `adminRoles` and the rest as they are live. The test server needs the live
@@ -91,19 +92,19 @@ then use `databaseDriver "mongodb"`, `databaseName "skymp_test"` and its own
 
 ### 2.3 The backend keys
 
-Add to `skymp5-backend\.env`, then restart **AlduinakBackend**:
+The backend reads the test server's name, port, key and access rules from its
+`server-settings.json`. Point it there in `skymp5-backend\.env`, then restart
+**AlduinakBackend**:
 
 ```
-TEST_SERVER_NAME=Test Server
-TEST_SERVER_PORT=7787
-TEST_SERVER_MASTER_KEY=alduinak-test
-TEST_SERVER_ROLE_IDS=1521259484859863190,1521259396481421475
+TEST_SERVER_SETTINGS_PATH=C:\Alduinak\testserver\server-settings.json
 ```
 
-`TEST_SERVER_UI_PORT` defaults to the port + 1 and `TEST_SERVER_ADDRESS` to
-`SERVER_ADDRESS`. The backend refuses to list the test server (with a warning in
-`C:\logs\backend.log`) when its key equals `SERVER_MASTER_KEY` or its ports hit the
-live 7777 or 3000. With `TEST_SERVER_ROLE_IDS` empty nobody can join it.
+Without the key it looks for `testserver\server-settings.json` in the repo. Its UI
+port is the port + 1 and its address is `SERVER_ADDRESS`. The backend refuses to
+list the test server (with a warning in `C:\logs\backend.log`) when its `masterKey`
+equals the live one or its ports hit the live 7777 or 3000. With
+`access.staffOnlyRoleIds` empty nobody can join it.
 
 ### 2.4 The service
 
@@ -185,6 +186,6 @@ C:\tools\nssm\nssm.exe remove AlduinakTestServer confirm
 netsh advfirewall firewall delete rule name="Alduinak Test Game UDP 7787"
 ```
 
-Remove the `TEST_SERVER_*` keys from `skymp5-backend\.env` and restart the backend;
+Remove `TEST_SERVER_SETTINGS_PATH` from `skymp5-backend\.env`, delete the settings file it names, and restart the backend;
 the launcher then lists only Alduinak. Delete `C:\Alduinak\testserver` when you no
 longer need its world.

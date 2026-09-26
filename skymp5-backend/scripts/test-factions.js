@@ -13,7 +13,8 @@ const FILE = path.join(tmp, 'faction-whitelist.json')
 const TOKEN = 'test-manager-token-0123456789'
 process.env.FACTION_WHITELIST_FILE = FILE
 process.env.BAN_LOG_DIR = tmp
-process.env.MASTER_API_AUTH_TOKEN = TOKEN
+process.env.SERVER_SETTINGS_PATH = path.join(tmp, 'server-settings.json')
+fs.writeFileSync(process.env.SERVER_SETTINGS_PATH, JSON.stringify({ masterApiAuthToken: TOKEN }))
 process.env.ROLE_PERMISSIONS_FILE = path.join(tmp, 'role-permissions.json')
 fs.writeFileSync(process.env.ROLE_PERMISSIONS_FILE, JSON.stringify({ roles: { 'role-view': { name: 'View', permissions: ['factions.view', 'factions.manage'] }, 'role-admin': { name: 'Admin', permissions: ['admin.*'] } } }))
 
@@ -22,7 +23,7 @@ const store    = require('../sources/factionWhitelist')
 const sessions = require('../sources/dashboardSessions')
 const managerOrPermission = require('../middleware/managerOrPermission')
 
-const SEED = path.join(__dirname, '..', 'seeds', 'faction-whitelist.json')
+const SEED = path.join(__dirname, '..', 'test', 'fixtures', 'faction-whitelist.json')
 const ACTOR = 'test'
 
 const results = []

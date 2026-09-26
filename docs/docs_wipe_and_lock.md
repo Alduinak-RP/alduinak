@@ -81,20 +81,17 @@ new backup then.
 ## 4. Lock
 
 Lock the server to Jarls (`1521707092212191333`), Admins (`1521259484859863190`) and
-Developers (`1521259396481421475`). In `skymp5-backend\.env`:
+Developers (`1521259396481421475`). In the `access` block of
+`build\dist\server\server-settings.json`:
 
 ```
-SERVER_LOCKED=true
-SERVER_LOCKED_ROLE_IDS=1521707092212191333,1521259484859863190,1521259396481421475
-SERVER_LOCKED_ALLOW=
+"locked": true,
+"lockedRoleIds": ["1521707092212191333", "1521259484859863190", "1521259396481421475"],
 ```
 
-Leave `WHITELIST_ROLE_ID` as it is (it is ignored while locked). The backend reads
-`.env` at start, so this takes effect with the start in section 5.
-
-The dashboard's **Server Access** tab does the same without a restart, but saving it
-writes `skymp5-backend\data\server-access.json`, which then overrides these three
-`.env` keys for good. Use one of the two; the default is `.env`.
+Leave `whitelistRoleId` as it is (it is ignored while locked). The backend re-reads
+the file on every check, so no restart is needed. The dashboard's **Server Access**
+tab writes the same block.
 
 Holders of only another staff role get `serverLocked`. If the bot cannot reach Discord,
 everyone is refused while locked (it fails closed).
@@ -152,6 +149,6 @@ admin and other game logs and the backend's `ban.log` and `faction.log` move int
 
 ## 7. Opening up
 
-When the server opens to everyone: `SERVER_LOCKED=false` in `.env` and restart the
-backend (or untick it in the dashboard if you locked it there). Players already online
-stay until they relog.
+When the server opens to everyone: set `access.locked` to `false` in
+`server-settings.json` (or untick it in the dashboard). Players already online stay
+until they relog.

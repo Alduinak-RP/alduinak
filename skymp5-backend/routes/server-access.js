@@ -2,7 +2,7 @@
 
 const { Router }        = require('express')
 const requirePermission = require('../middleware/requirePermission')
-const serverAccess      = require('../sources/serverAccess')
+const serverAccess      = require('../sources/access/serverAccess')
 const { guardPrivilegedChange } = require('../middleware/requireManager')
 const config            = require('../config')
 

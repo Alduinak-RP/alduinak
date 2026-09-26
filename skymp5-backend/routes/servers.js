@@ -19,7 +19,7 @@ router.get('/', (_req, res) => {
       masterKey:  server.masterKey || null,
       online:     hb?.online ?? null,
       queued:     hb?.queued ?? 0,
-      maxPlayers: hb?.maxPlayers ?? config.serverMaxPlayers,
+      maxPlayers: hb?.maxPlayers ?? server.maxPlayers,
       lastSeen:   hb?.lastSeen ?? null,
     }
   }))
@@ -37,8 +37,8 @@ router.get('/:key/serverinfo', async (req, res) => {
     host:        server.address,
     port:        server.port,
     name:        hb?.name       ?? server.name,
-    maxPlayers:  hb?.maxPlayers ?? config.serverMaxPlayers,
-    offlineMode: config.serverOfflineMode,
+    maxPlayers:  hb?.maxPlayers ?? server.maxPlayers,
+    offlineMode: server.offlineMode,
     masterKey:   server.masterKey || null,
     masterUrl:   config.masterUrl       || null,
     locked,
@@ -48,7 +48,7 @@ router.get('/:key/serverinfo', async (req, res) => {
 })
 
 // Fetch a JSON file a game server publishes on its UI port (the main server's by default).
-function fetchGameJson(pathname, uiPort = config.skympUiPort) {
+function fetchGameJson(pathname, uiPort = config.servers[0].uiPort) {
   return new Promise(resolve => {
     const req = http.get(
       { host: config.skyrimServerHost, port: uiPort, path: pathname, timeout: 3000 },
@@ -98,7 +98,7 @@ router.post('/:key', (req, res) => {
   const { name, maxPlayers, online, queued } = req.body || {}
   heartbeats.set(req.server.id, {
     name:       typeof name       === 'string' ? name       : req.server.name,
-    maxPlayers: typeof maxPlayers === 'number' ? maxPlayers : config.serverMaxPlayers,
+    maxPlayers: typeof maxPlayers === 'number' ? maxPlayers : req.server.maxPlayers,
     online:     typeof online     === 'number' ? online     : null,
     queued:     typeof queued     === 'number' ? queued     : 0,
     lastSeen:   new Date().toISOString(),

@@ -24,6 +24,10 @@ function readEnv(key) {
   } catch { return '' }
 }
 
+function readServerSetting(key) {
+  try { return JSON.parse(fs.readFileSync(serverSettings, 'utf8'))[key] || '' } catch { return '' }
+}
+
 const serverSettings = process.env.ALDUINAK_SERVER_SETTINGS
   || path.join(repoRoot, 'build', 'dist', 'server', 'server-settings.json')
 
@@ -76,11 +80,11 @@ module.exports = {
     dataDir:      path.join(repoRoot, 'skymp5-backend', 'data'),
   },
 
-  // Local backend master API (read live from the backend .env).
+  // Local backend master API: the port from the backend .env, the key and token from server-settings.json
   backendApi: {
     get port()  { return parseInt(readEnv('PORT') || '4000', 10) },
-    get key()   { return readEnv('SERVER_MASTER_KEY') },
-    get token() { return readEnv('MASTER_API_AUTH_TOKEN') },
+    get key()   { return readServerSetting('masterKey') },
+    get token() { return readServerSetting('masterApiAuthToken') },
   },
 
   // WS relay link for the Console command box (read live from the backend .env).

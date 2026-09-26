@@ -13,7 +13,7 @@ process.on('unhandledRejection', (reason) => {
 require('./sources/wsRelay')
 
 // Start Discord bot for role-based access checks
-const discordBot = require('./sources/discordBot')
+const discordBot = require('./sources/discord/bot')
 discordBot.start()
 
 // Start the management dashboard on its own port/subdomain target.

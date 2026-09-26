@@ -30,6 +30,7 @@ const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', pa
     NODE_PATH: [path.join(backendDir, 'node_modules'), path.join(repoRoot, 'server-manager', 'node_modules')].join(path.delimiter),
     ALDUINAK_MANAGER_TEST_ROOT: root,
     ALDUINAK_SERVER_SETTINGS: path.join(root, 'server', 'server-settings.json'),
+    SERVER_SETTINGS_PATH: path.join(root, 'server', 'server-settings.json'),
     ALDUINAK_LOG_DIR: path.join(root, 'logs'),
   },
 })

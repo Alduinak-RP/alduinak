@@ -76,7 +76,7 @@ and the dashboard `Origin` header. The gate covers these paths:
   - a role that holds any privileged permission can never become the whitelist or
     banned role.
   - the bot refuses to add or remove such a role even when it was set outside the
-    dashboard, in `.env` or `data/server-access.json`.
+    dashboard, by a hand edit of the `access` block in `server-settings.json`.
 
   A dashboard ban is still written to `bans.json` in that case. Only the Discord role
   step is skipped.

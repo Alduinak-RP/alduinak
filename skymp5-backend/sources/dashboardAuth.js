@@ -2,7 +2,7 @@
 // Resolves the dashboard session behind a request and drops it once its permissions no longer match the live roles
 
 const sessions   = require('./dashboardSessions')
-const discordBot = require('./discordBot')
+const discordBot = require('./discord/bot')
 const liveEnv    = require('./liveEnv')
 const { effectivePermissions } = require('./permissions')
 

@@ -33,10 +33,10 @@ router.get('/', async (req, res) => {
 
   res.json({
     name:                hb?.name       ?? server.name,
-    maxPlayers:          hb?.maxPlayers ?? config.serverMaxPlayers,
+    maxPlayers:          hb?.maxPlayers ?? server.maxPlayers,
     port:                server.port,
-    offlineMode:         config.serverOfflineMode,
-    npcEnabled:          config.serverNpcEnabled,
+    offlineMode:         server.offlineMode,
+    npcEnabled:          server.npcEnabled,
     gamemode:            config.serverGamemode,
     discordAuthRequired: !!config.discordClientId,
     // Rich Presence application id for the launcher; null keeps the launcher's built-in one

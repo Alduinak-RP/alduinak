@@ -55,7 +55,7 @@ fails it prints a direct download URL - save that zip as
   path, so run the manager from the repo checkout) and talks to the running
   backend's `/api/factions` routes: the backend is the only writer, so the
   backend service must be running. The main process adds
-  `MASTER_API_AUTH_TOKEN` from the backend `.env` and forwards only
+  `masterApiAuthToken` from server-settings.json and forwards only
   `/api/factions` paths made of slugs; the backend honours that token only
   from loopback. Deleting a faction or rank that people hold first lists them
   and arms **Remove N memberships and delete**; deleted ids are never reused.

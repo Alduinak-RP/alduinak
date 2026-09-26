@@ -45,10 +45,8 @@ function writeEnv(agentPort) {
     `MANAGER_AGENT_SECRET=${SECRETS.agent}`,
     `MANAGER_AGENT_PORT=${agentPort}`,
     `MANAGER_LOG_DIR=${path.join(LOGS, 'manager')}`,
-    `MASTER_API_AUTH_TOKEN=${SECRETS.masterToken}`,
     `RELAY_SECRET=${SECRETS.relay}`,
     `MANAGER_AUDIT_WEBHOOK_URL=${SECRETS.webhook}`,
-    'SERVER_MASTER_KEY=public-key',
     'CUSTOM_API_TOKEN=unknown-key-secret-value',
     '',
   ].join('\n'))
@@ -58,7 +56,7 @@ fs.mkdirSync(path.join(ROOT, 'server'), { recursive: true })
 fs.mkdirSync(path.join(ROOT, 'nginx'), { recursive: true })
 fs.mkdirSync(LOGS, { recursive: true })
 fs.writeFileSync(process.env.ALDUINAK_SERVER_SETTINGS, JSON.stringify({
-  name: 'Test', gamemodePath: './gamemode.js', masterApiAuthToken: SECRETS.masterToken, databaseUri: SECRETS.mongo,
+  name: 'Test', gamemodePath: './gamemode.js', masterKey: 'public-key', masterApiAuthToken: SECRETS.masterToken, databaseUri: SECRETS.mongo,
   voiceChat: { enabled: true, apiKey: 'livekit-key-12345678', apiSecret: SECRETS.livekit },
   discordAuth: { botToken: SECRETS.botToken, guilds: [{ guildId: '1' }] },
   metricsAuth: { user: 'metrics', password: SECRETS.metrics },
@@ -78,7 +76,7 @@ writeEnv(1)
 
 const express = require('express')
 const sessions = require('../sources/dashboardSessions')
-const discordBot = require('../sources/discordBot')
+const discordBot = require('../sources/discord/bot')
 const permissions = require('../sources/permissions')
 const safeEqual = require('../sources/safeEqual')
 const { adminSessionExpired } = require('../sources/dashboardAuth')
@@ -91,7 +89,7 @@ const { maskSettings, redactText, secretValues } = require(path.join(MANAGER, 's
 const { createAgent, gitProblem } = require(path.join(MANAGER, 'agent'))
 const { Builder } = require(path.join(MANAGER, 'build'))
 const managerLock = require(path.join(MANAGER, 'managerLock'))
-const serverAccess = require('../sources/serverAccess')
+const serverAccess = require('../sources/access/serverAccess')
 const backendConfig = require('../config')
 
 // Discord member roles as the bot would report them; undefined means Discord is unreachable
@@ -233,7 +231,12 @@ test('escalation guard: a non-privileged edit works and revokes only the session
 })
 
 test('escalation guard: whitelist and banned roles cannot be pointed at a privileged role or changed by non-admins', async () => {
-  const accessFile = path.join(BACKEND, 'data', 'server-access.json')
+  const settingsFile = process.env.ALDUINAK_SERVER_SETTINGS
+  const setAccess = access => {
+    const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'))
+    settings.access = access
+    fs.writeFileSync(settingsFile, JSON.stringify(settings))
+  }
   const adminRole = login('access-admin-role', { roles: [ROLE_ADMIN] })
   const admin = login('access-env-admin', { discordId: ENV_ADMIN })
   const put = (token, body) => api('PUT', '/api/server-access', { headers: fromDashboard(token), body })
@@ -248,18 +251,18 @@ test('escalation guard: whitelist and banned roles cannot be pointed at a privil
   assert.equal((await put(login('access-no-mfa', { discordId: ENV_ADMIN, mfa: false }), { bannedRoleId: ROLE_DEVELOPER })).json.reason, 'mfa')
   assert.equal((await put(admin, { whitelistRoleId: ROLE_DEVELOPER, serverLocked: false })).status, 200)
 
-  // A privileged role set outside the dashboard (.env or the file) is still never assigned or removed by the bot
-  fs.writeFileSync(accessFile, JSON.stringify({ whitelistRoleId: ROLE_STAFF, bannedRoleId: ROLE_STAFF }))
+  // A privileged role set outside the dashboard (a hand edit of server-settings.json) is still never assigned or removed by the bot
+  setAccess({ whitelistRoleId: ROLE_STAFF, bannedRoleId: ROLE_STAFF })
   roleMutations.length = 0
   await assert.rejects(serverAccess.setWhitelisted('200000000000000001', true), err => err.status === 403 && /admin\.\*/.test(err.message))
   await assert.rejects(serverAccess.setWhitelisted('200000000000000002', false), err => err.status === 403)
   await assert.rejects(serverAccess.setBanned('200000000000000001', true), err => err.status === 403)
   assert.deepEqual(roleMutations, [])
 
-  fs.writeFileSync(accessFile, JSON.stringify({ whitelistRoleId: ROLE_DEVELOPER }))
+  setAccess({ whitelistRoleId: ROLE_DEVELOPER })
   await serverAccess.setWhitelisted('200000000000000001', true)
   assert.deepEqual(roleMutations, [['add', '200000000000000001', ROLE_DEVELOPER]])
-  fs.rmSync(accessFile, { force: true })
+  setAccess(undefined)
 })
 
 test('escalation guard: privileged grants need admin.* confirmed by Discord, a dashboard login with 2FA and the dashboard Origin', async () => {

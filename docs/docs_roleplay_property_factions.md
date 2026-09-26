@@ -242,7 +242,7 @@ Nobody acts on their own row: members step down with **Leave Faction**.
 
 ### Launch factions and ranks
 
-The committed seed `skymp5-backend/seeds/faction-whitelist.json` holds 19
+The committed seed `skymp5-backend/test/fixtures/faction-whitelist.json` holds 19
 factions: nine hold courts (West: Haafingar, the Reach, Falkreath, Hjaalmarch;
 East: Eastmarch, Winterhold, the Rift, the Pale; Neutral: Whiterun), five
 military factions (Imperial Legion, Stormcloaks, Thalmor, the Forsworn, the
@@ -423,7 +423,7 @@ which reports every account's slots whenever the character select list is sent.
 - **Who**: reads need `factions.view`, every definition write needs
   `factions.define`, which `admin.*` covers and no role has by default
   (`factions.manage` only assigns members). The Server Manager sends
-  `MASTER_API_AUTH_TOKEN` instead; the backend accepts that token only from
+  the master API token (`masterApiAuthToken` in server-settings.json) instead; the backend accepts that token only from
   a direct loopback connection (socket on 127.0.0.1 or ::1, a loopback `Host`,
   and no `X-Forwarded-For`, `X-Real-IP`, `Forwarded` or `X-Forwarded-Host`
   header, which nginx always adds). The dashboard always uses its Bearer session.

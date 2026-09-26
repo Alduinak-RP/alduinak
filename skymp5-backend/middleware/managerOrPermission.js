@@ -1,5 +1,5 @@
 'use strict'
-// Dashboard Bearer session with a permission, or the Server Manager's MASTER_API_AUTH_TOKEN sent straight to this process over loopback
+// Dashboard Bearer session with a permission, or the Server Manager's master API token sent straight to this process over loopback
 
 const config            = require('../config')
 const requirePermission = require('./requirePermission')

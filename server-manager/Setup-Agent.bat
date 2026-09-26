@@ -21,7 +21,7 @@ if errorlevel 1 (
 )
 
 if not exist "%NSSM%" (
-    echo [ERROR] %NSSM% not found. Run skymp5-backend\Setup-Backend.bat first, it installs NSSM.
+    echo [ERROR] %NSSM% not found. Install NSSM to C:\tools\nssm first.
     pause
     exit /b 1
 )

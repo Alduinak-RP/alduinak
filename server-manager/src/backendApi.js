@@ -43,7 +43,7 @@ async function factionsRequest(method, subPath, body) {
     return { ok: false, status: 0, error: 'refused: the body must be a small JSON object' }
   }
   const token = config.backendApi.token
-  if (!token) return { ok: false, status: 0, error: 'MASTER_API_AUTH_TOKEN is not set in skymp5-backend/.env' }
+  if (!token) return { ok: false, status: 0, error: 'masterApiAuthToken is not set in server-settings.json' }
   try {
     const { status, data } = await backendRequest(method, `/api/factions${subPath}`, { body, headers: { 'X-Auth-Token': token }, timeout: 10000 })
     const ok = status >= 200 && status < 300

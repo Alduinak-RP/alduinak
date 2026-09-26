@@ -3,8 +3,8 @@ const http   = require('http')
 const config = require('../config')
 const { getHeartbeat } = require('./servers')
 
-function metricsAuthHeader() {
-  const { metricsUser: user, metricsPassword: password } = config
+function metricsAuthHeader(server) {
+  const { user, password } = server.metricsAuth
   if (user && password) {
     return { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
   }
@@ -14,10 +14,10 @@ function metricsAuthHeader() {
 // Probe the SkyMP HTTP UI port: any HTTP response (even an auth error) proves the process is up.
 // Player count from Prometheus metrics when readable: online players = skymp_connects_total - skymp_disconnects_total.
 // (The old UDP probe read dead servers as online: a UDP send "succeeds" once the OS accepts the packet.)
-function probeGameServer(host, uiPort) {
+function probeGameServer(server) {
   return new Promise(resolve => {
     const req = http.get(
-      { hostname: host, port: uiPort, path: '/metrics', timeout: 3000, headers: metricsAuthHeader() },
+      { hostname: server.host, port: server.uiPort, path: '/metrics', timeout: 3000, headers: metricsAuthHeader(server) },
       res => {
         let raw = ''
         res.on('data', c => { raw += c })
@@ -59,7 +59,7 @@ router.get('/', async (req, res) => {
   }
 
   if (online === null || (online && players === null)) {
-    const probe = await probeGameServer(server.host, server.uiPort)
+    const probe = await probeGameServer(server)
     if (online === null) online = probe.reachable
     if (online && players === null) players = probe.players
   }

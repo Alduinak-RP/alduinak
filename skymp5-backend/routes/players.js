@@ -4,7 +4,7 @@ const { Router }        = require('express')
 const requirePermission = require('../middleware/requirePermission')
 const profiles          = require('../sources/profiles')
 const players           = require('../sources/players')
-const serverAccess      = require('../sources/serverAccess')
+const serverAccess      = require('../sources/access/serverAccess')
 const factions          = require('../sources/factionWhitelist')
 const bans              = require('../sources/bans')
 

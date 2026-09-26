@@ -19,8 +19,8 @@ const serverSettings = [
   // Mode & auth
   { key: 'offlineMode', label: 'Offline mode',  type: 'bool', group: 'Mode & auth', help: 'When on, any profile id may connect; master/masterKey are ignored.' },
   { key: 'master',      label: 'Master URL',    type: 'text', group: 'Mode & auth', help: 'Master API URL for online-mode session validation. Empty = offline.' },
-  { key: 'masterKey',   label: 'Master key',    type: 'secret', group: 'Mode & auth', help: 'Public server id, not a secret: players receive it via /api/serverinfo and the launcher. Must match the backend SERVER_MASTER_KEY.' },
-  { key: 'masterApiAuthToken', label: 'Master API auth token', type: 'secret', group: 'Mode & auth', help: 'Private secret sent as X-Auth-Token on heartbeats, bans and purchases. Must match the backend MASTER_API_AUTH_TOKEN.' },
+  { key: 'masterKey',   label: 'Master key',    type: 'secret', group: 'Mode & auth', help: 'Public server id, not a secret: players receive it via /api/serverinfo and the launcher. The backend reads it from here.' },
+  { key: 'masterApiAuthToken', label: 'Master API auth token', type: 'secret', group: 'Mode & auth', help: 'Private secret sent as X-Auth-Token on heartbeats, bans and purchases. The backend reads it from here.' },
   { key: 'enableConsoleCommandsForAll', label: 'Console commands for all (keep off)', type: 'bool', group: 'Mode & auth', help: 'Must stay off. The console is disabled on this server; turning this on skips the admin check and gives every player additem, placeatme and the other server console commands.' },
 
   // Gameplay
@@ -112,21 +112,10 @@ const backendEnv = [
 
   // Game server connection
   { key: 'SKYMP_HOST',     label: 'Game server host', type: 'text',   group: 'Game server', placeholder: '127.0.0.1' },
-  { key: 'SKYMP_PORT',     label: 'Game server port (UDP)', type: 'number', group: 'Game server' },
-  { key: 'SKYMP_UI_PORT',  label: 'Game UI/metrics port', type: 'number', group: 'Game server', help: 'HTTP/metrics port of the game server. Empty = 3000 for game port 7777, else game port + 1.' },
   { key: 'SERVER_ADDRESS', label: 'Public address',   type: 'text',   group: 'Game server', help: 'Public IP advertised to external clients.' },
 
   // Server metadata (reported to the launcher)
-  { key: 'SERVER_NAME',        label: 'Server name',      type: 'text',   group: 'Server metadata', help: 'Keep in sync with server-settings.json name.' },
-  { key: 'SERVER_MAX_PLAYERS', label: 'Max players',      type: 'number', group: 'Server metadata' },
-  { key: 'SERVER_OFFLINE_MODE', label: 'Offline mode',    type: 'bool',   group: 'Server metadata', help: 'Must match server-settings.json offlineMode.' },
-  { key: 'SERVER_NPC_ENABLED', label: 'NPCs enabled',     type: 'bool',   group: 'Server metadata' },
   { key: 'SERVER_GAMEMODE',    label: 'Gamemode label',   type: 'text',   group: 'Server metadata', placeholder: 'Roleplay' },
-
-  // Master API
-  { key: 'SERVER_MASTER_KEY',      label: 'Master key',         type: 'secret', group: 'Master API', help: 'Public server id, not a secret. Must match server-settings.json masterKey.' },
-  { key: 'MASTER_URL',             label: 'Master URL',         type: 'text',   group: 'Master API' },
-  { key: 'MASTER_API_AUTH_TOKEN',  label: 'Master API auth token', type: 'secret', group: 'Master API', help: 'Private secret the game server sends as X-Auth-Token. Must match server-settings.json masterApiAuthToken.' },
 
   // Discord OAuth & bot
   { key: 'DISCORD_CLIENT_ID',     label: 'Discord client ID',     type: 'text',   group: 'Discord' },
@@ -144,15 +133,8 @@ const backendEnv = [
   { key: 'WEBSITE_URL',           label: 'Website URL',           type: 'text',   group: 'Admin dashboard' },
 
   // Metrics
-  { key: 'METRICS_USER',     label: 'Metrics user',     type: 'text',   group: 'Metrics' },
-  { key: 'METRICS_PASSWORD', label: 'Metrics password', type: 'secret', group: 'Metrics' },
 
   // Access control
-  { key: 'SERVER_LOCKED',          label: 'Server locked',     type: 'bool', group: 'Access control', help: 'Only allowed roles/users may join when on.' },
-  { key: 'SERVER_LOCKED_ROLE_IDS', label: 'Locked role IDs',   type: 'text', group: 'Access control', help: 'Comma-separated Discord role IDs.' },
-  { key: 'SERVER_LOCKED_ALLOW',    label: 'Locked allow list', type: 'text', group: 'Access control', help: 'Comma-separated Discord user IDs (legacy).' },
-  { key: 'WHITELIST_ROLE_ID',      label: 'Whitelist role ID', type: 'text', group: 'Access control', help: 'Discord role used as the gameplay whitelist.' },
-  { key: 'BANNED_ROLE_ID',         label: 'Banned role ID',    type: 'text', group: 'Access control' },
   { key: 'LAUNCH_CHECK_ENFORCE',   label: 'Enforce launch check', type: 'bool', group: 'Access control', help: 'Refuse connections whose launcher did not verify client files + load order. Unset = enforced (the default); only Off disables it, for players on pre-check launcher builds.' },
   { key: 'BAN_LOG_DIR',            label: 'Ban log directory', type: 'text', group: 'Access control', help: 'Where ban.log and faction.log are written. Empty = the default logs folder.' },
 

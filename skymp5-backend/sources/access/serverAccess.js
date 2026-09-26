@@ -6,25 +6,12 @@ const config = require('../../config')
 const discordBot = require('../discord/bot')
 const permissions = require('../permissions')
 
-// Pre per-server settings; the main server still reads it under its own access block
-const LEGACY_FILE = path.join(__dirname, '..', '..', 'data', 'server-access.json')
 const WHITELIST_PATH = path.join(__dirname, '..', '..', 'data', 'whitelist.json')
 
 const mainServer = () => config.servers[0]
 
 function uniq(values) {
   return [...new Set((values || []).map(v => String(v || '').trim()).filter(Boolean))]
-}
-
-function defaults(server) {
-  return {
-    serverLocked: config.serverLocked,
-    lockedRoleIds: uniq(config.serverLockedRoleIds),
-    lockedDiscordIds: uniq(config.serverLockedAllowList),
-    whitelistRoleId: config.whitelistRoleId || '',
-    bannedRoleId: config.bannedRoleId || '',
-    staffOnlyRoleIds: uniq(server && server.roleIds),
-  }
 }
 
 function readSettingsFile(server) {
@@ -47,29 +34,13 @@ function toBlock(s) {
   }
 }
 
-// A server's rules: its server-settings.json access block over the .env defaults (and, for the main server, the legacy file)
+// A server's rules, from the access block of its server-settings.json
 function load(server = mainServer()) {
-  const base = defaults(server)
-  let legacy = {}
-  if (server === mainServer()) { try { legacy = JSON.parse(fs.readFileSync(LEGACY_FILE, 'utf8')) } catch {} }
-  const block = fromBlock((readSettingsFile(server) || {}).access)
-  return normalize(applyEnvFallbacks({ ...base, ...legacy, ...block }, base))
-}
-
-function applyEnvFallbacks(settings, base) {
-  return {
-    ...settings,
-    whitelistRoleId: settings.whitelistRoleId || base.whitelistRoleId,
-    bannedRoleId: settings.bannedRoleId || base.bannedRoleId,
-  }
+  return normalize(fromBlock((readSettingsFile(server) || {}).access))
 }
 
 function save(data, server) {
   const settings = readSettingsFile(server)
-  if (!settings && server === mainServer()) {
-    fs.writeFileSync(LEGACY_FILE, JSON.stringify(normalize(data), null, 2) + '\n')
-    return
-  }
   if (!settings) {
     const err = new Error(`${server.settingsPath} is missing or unreadable`)
     err.status = 404

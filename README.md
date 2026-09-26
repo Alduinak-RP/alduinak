@@ -47,12 +47,12 @@ Note, this is the default path, change as needed. You should get 3 folders: serv
 7) Follow the instructions inside of \SkyMP\builds\dist\server\README.md
 It will guide you almost completely, including a full server-settings.json to fill out. 
 
-8) Go to \SkyMP\skymp5-backend\ and run Setup-Backend.bat to install the backend service and create your .env.
+8) In \SkyMP\skymp5-backend\ copy .env.example to .env and fill it in, run npm install, and register node server.js as the AlduinakBackend service with NSSM (C:\tools\nssm).
 Then set up and open the Server Manager: go to \SkyMP\server-manager\ and run setup.bat (use Run.bat thereafter).
 The Client tab's "Update client" button does what build-client did (build plugin + front-end + client bucket).
 
-9) In the Server Manager, open the Launcher tab and click "Rebuild".
-This produces AlduinakLauncher.exe and AlduinakLauncher.zip in build\launcher. Upload the zip to your website and point PACKAGE_URL in skymp5-backend/routes/version.js at it; launchers self-update from that link.
+9) In the Server Manager, set the launcher version in the Launcher tab and click "Build launcher" (needs Rust).
+It writes build\launcher\AlduinakLauncher.exe and then publishes the version in skymp5-backend/data/versions.json; launchers self-update from launcherUrl there.
 
 10) Finally, install nginx on your machine with the final script in the root directory.
 This script also will run win-acme to create certs for your API and Dashboard, making it a true server.
