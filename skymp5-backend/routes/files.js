@@ -7,7 +7,6 @@
 const router = require('express').Router()
 const path   = require('path')
 const fs     = require('fs')
-const config = require('../config')
 
 const VERSION_PATH = path.join(__dirname, '..', 'data', 'files-version.json')
 
