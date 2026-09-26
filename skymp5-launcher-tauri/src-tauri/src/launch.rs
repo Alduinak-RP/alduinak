@@ -1,6 +1,6 @@
 // Play: the pre-launch gate, load order sync, the backend launch check, and starting the game
 use crate::gamecopy::{self, PRELOADER_DLLS, VANILLA_MASTERS, VANILLA_ROOT_FILES};
-use crate::install::{self, data_file_exists, preloader_present, write_client_settings, REQUIRED_FILES};
+use crate::install::{self, data_file_exists, preloader_present, write_client_settings, write_game_login, REQUIRED_FILES};
 use crate::{active_server, basic, effective_game_path, game, log, mo2, net, proc, store};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -121,8 +121,9 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
     }
     let not_ready = launch_readiness(game, via_mo2, info.as_ref());
     if !not_ready.is_empty() { return Err(format!("Not ready to launch:\n{}", not_ready.iter().map(|p| format!("• {p}")).collect::<Vec<_>>().join("\n"))); }
+    let settings_path = game.join("Data").join("Platform").join("Plugins").join("skymp5-client-settings.txt");
     if let Some(s) = &srv {
-        write_client_settings(&game.join("Data").join("Platform").join("Plugins").join("skymp5-client-settings.txt"), s, info.as_ref())?;
+        write_client_settings(&settings_path, s, info.as_ref())?;
         log("[launch] client settings written");
     }
     gamecopy::apply_controlmap_override(game);
@@ -140,16 +141,19 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
     }
     // MO2 lockdown: stray overwrite plugins and player mods with plugins or SKSE dlls
     if via_mo2 { mo2::clean_overwrite(); mo2::enforce_mod_rules(); }
-    // The backend approves this session for the game server's own check; unreachable fails open, the server still enforces
+    // The backend approves the files and hands out the single-use play token the game logs in with
     let session = store().str("gameSession");
-    if !session.is_empty() && info.as_ref().and_then(|i| i["offlineMode"].as_bool()) == Some(false) {
+    if !session.is_empty() && srv.is_some() && info.as_ref().and_then(|i| i["offlineMode"].as_bool()) != Some(true) {
         let body = json!({ "filesVersion": store().str("filesVersion"), "plugins": order.iter().map(|f| file_name(f)).collect::<Vec<_>>() });
         match net::post_json(&format!("{}/api/launch-check", net::api_url()), &body, &[("x-session", &session)]).await {
             Ok(check) if check["ok"].as_bool() == Some(false) => {
                 return Err(if check["filesOk"].as_bool() == Some(false) { "Your client files are out of date. Press the button again to update, then launch." } else { "Your plugin load order does not match the server. Run Repair Modlist in Settings." }.into());
             }
-            Ok(_) => log("[launch] launch-check passed"),
-            Err(e) => log(format!("[launch] launch-check unavailable ({e}) - continuing, server will enforce")),
+            Ok(check) => match check["playToken"].as_str() {
+                Some(token) => { write_game_login(&settings_path, token); log("[launch] launch-check passed"); }
+                None => return Err("The login service did not approve this launch. Try again in a minute.".into()),
+            },
+            Err(e) => { log(format!("[launch] launch-check unavailable ({e})")); return Err("The login service is unreachable. Try again in a minute.".into()); }
         }
     }
     Ok(())

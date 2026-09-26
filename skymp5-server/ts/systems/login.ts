@@ -51,7 +51,7 @@ export class Login implements System {
 
   private async getUserProfile(session: string, userId: number, ctx: SystemContext): Promise<UserProfile> {
     const response = await this.fetchRetry(
-      `${this.masterUrl}/api/servers/${this.masterKey}/sessions/${session}`,
+      `${this.masterUrl}/api/servers/${this.masterKey}/sessions/${session}?ip=${encodeURIComponent(ctx.svr.getUserIp(userId))}`,
       this.getFetchOptions('getUserProfile')
     );
 

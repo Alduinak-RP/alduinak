@@ -7,7 +7,8 @@
  * Compares the report against what the backend publishes and records the result on
  * the session; session validation (master-api.js) refuses sessions whose last check
  * is missing or stale, so out-of-date clients can't bypass the launcher's gate.
- * Returns 200 { ok, filesOk, pluginsOk, requiredVersion }; ok false means update/repair.
+ * Returns 200 { ok, filesOk, pluginsOk, requiredVersion, playToken }; ok false means update/repair.
+ * playToken (when ok) replaces the session in the game's login; unredeemed it expires in 2 minutes.
  */
 
 const router = require('express').Router()
@@ -44,9 +45,9 @@ router.post('/', async (req, res) => {
   const reported = normalizePlugins(plugins)
   const pluginsOk = expected.length === 0 || expected.join('|') === reported.join('|')
 
-  recordLaunchCheck(token, { filesVersion: filesVersion || '', filesOk, pluginsOk })
+  const playToken = recordLaunchCheck(token, { filesVersion: filesVersion || '', filesOk, pluginsOk })
 
-  res.json({ ok: filesOk && pluginsOk, filesOk, pluginsOk, requiredVersion })
+  res.json({ ok: filesOk && pluginsOk, filesOk, pluginsOk, requiredVersion, playToken })
 })
 
 module.exports = router

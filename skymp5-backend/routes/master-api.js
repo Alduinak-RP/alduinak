@@ -118,12 +118,44 @@ function currentFilesVersion() {
   return readVersions().client || null
 }
 
+// A passing check hands out the play token the game logs in with: unredeemed it lives PLAY_TOKEN_TTL, then only its first ip may reuse it (reconnects)
+const PLAY_TOKEN_TTL = 2 * 60 * 1000
+
 function recordLaunchCheck(token, check) {
   const entry = sessions.get(token)
-  if (!entry) return false
+  if (!entry) return null
   entry.launchCheck = { ...check, at: Date.now() }
+  entry.play = check.filesOk && check.pluginsOk
+    ? { token: crypto.randomBytes(32).toString('hex'), expiresAt: Date.now() + PLAY_TOKEN_TTL, ip: null }
+    : null
   saveSessions()
-  return true
+  return entry.play && entry.play.token
+}
+
+function findByPlayToken(playToken) {
+  for (const entry of sessions.values())
+    if (entry.play && safeEqual(entry.play.token, playToken)) return entry
+  return null
+}
+
+function redeemPlayToken(playToken, ip) {
+  const entry = findByPlayToken(playToken)
+  if (!entry) return null
+  const play = entry.play
+  if (play.ip === null) {
+    if (play.expiresAt < Date.now()) return null
+    play.ip = ip
+    saveSessions()
+    return entry
+  }
+  return play.ip === ip ? entry : null
+}
+
+// The session behind a game login token, for calls after login such as balances
+function gameSession(token) {
+  const entry = findByPlayToken(token)
+  if (entry && entry.play.ip !== null) return entry
+  return config.playTokenEnforce ? null : sessions.get(token) || null
 }
 
 // Stores the launcher-reported hardware id on the session for ban matching
@@ -218,7 +250,8 @@ router.get('/:key/sessions/:session', async (req, res) => {
   if (!checkKey(req, res)) return
 
   pruneExpired()
-  const entry = sessions.get(req.params.session)
+  const ip = typeof req.query.ip === 'string' ? req.query.ip.trim().slice(0, 64) : ''
+  const entry = redeemPlayToken(req.params.session, ip) || (config.playTokenEnforce ? null : sessions.get(req.params.session))
   if (!entry)
     return res.status(404).json({ error: 'Session not found or expired.' })
 
@@ -530,7 +563,7 @@ router.get('/:key/sessions/:session/balance', (req, res) => {
   if (!checkKey(req, res)) return
 
   pruneExpired()
-  const entry = sessions.get(req.params.session)
+  const entry = gameSession(req.params.session)
   if (!entry)
     return res.status(404).json({ error: 'Session not found or expired.' })
 
@@ -546,7 +579,7 @@ router.post('/:key/sessions/:session/purchase', (req, res) => {
   if (!checkWriteToken(req, res)) return
 
   pruneExpired()
-  const entry = sessions.get(req.params.session)
+  const entry = gameSession(req.params.session)
   if (!entry)
     return res.status(404).json({ error: 'Session not found or expired.' })
 

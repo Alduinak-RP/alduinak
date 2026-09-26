@@ -178,20 +178,22 @@ pub fn write_client_settings(dest: &Path, srv: &Value, info: Option<&Value>) -> 
         if profile_id.is_null() { return Err("No profileId in store - login with Discord before playing".into()); }
         s.insert("gameData".into(), json!({ "profileId": profile_id }));
     } else {
-        let (session, user) = (store().str("gameSession"), store().get("discordUser"));
-        if !session.is_empty() && user.is_object() && !profile_id.is_null() {
-            let auth = dest.parent().and_then(Path::parent).map(|p| p.join("PluginsNoLoad").join("auth-data-no-load.js"));
-            if let Some(auth) = auth {
-                let data = json!({ "session": session, "masterApiId": profile_id, "discordUsername": user["username"].as_str().or(user["tag"].as_str()), "discordDiscriminator": null, "discordAvatar": user["avatar"] });
-                let _ = fs::create_dir_all(auth.parent().unwrap());
-                if let Err(e) = fs::write(&auth, format!("//{data}")) { log(format!("[writeClientSettings] Failed to write auth-data-no-load.js: {e}")); }
-            }
-        }
+        write_game_login(dest, "");
     }
     fs::create_dir_all(dest.parent().unwrap()).map_err(|e| e.to_string())?;
     fs::write(dest, serde_json::to_string_pretty(&Value::Object(s)).unwrap() + "\n").map_err(|e| e.to_string())?;
     store().delete("pendingClientHotkeys");
     Ok(())
+}
+
+// The login the game reads next to the client settings; an empty token leaves it without one until launch-check hands out a play token
+pub fn write_game_login(settings: &Path, token: &str) {
+    let (user, profile_id) = (store().get("discordUser"), store().get("gameProfileId"));
+    if !user.is_object() || profile_id.is_null() { return; }
+    let Some(auth) = settings.parent().and_then(Path::parent).map(|p| p.join("PluginsNoLoad").join("auth-data-no-load.js")) else { return };
+    let data = json!({ "session": token, "masterApiId": profile_id, "discordUsername": user["username"].as_str().or(user["tag"].as_str()), "discordDiscriminator": null, "discordAvatar": user["avatar"] });
+    let _ = fs::create_dir_all(auth.parent().unwrap());
+    if let Err(e) = fs::write(&auth, format!("//{data}")) { log(format!("[writeClientSettings] Failed to write auth-data-no-load.js: {e}")); }
 }
 
 fn complete(payload: Value) {

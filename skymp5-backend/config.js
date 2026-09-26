@@ -44,6 +44,8 @@ const config = module.exports = {
 
   // Refuse game-server connections whose launcher didn't verify client files + load order; set LAUNCH_CHECK_ENFORCE=false to disable (e.g. for launcher builds predating the check)
   launchCheckEnforce: process.env.LAUNCH_CHECK_ENFORCE !== 'false',
+  // false still admits the 24h session token in the game login (launchers before 3.1.0)
+  playTokenEnforce: process.env.PLAY_TOKEN_ENFORCE !== 'false',
 
   // Dashboard auth
   dashboardPort: parseInt(process.env.DASHBOARD_PORT || '4002', 10),
