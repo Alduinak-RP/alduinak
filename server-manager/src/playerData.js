@@ -54,7 +54,8 @@ function buildRows(backend, charsByProfile, whitelistRoleId) {
       const t = played[String(c.formDesc).toLowerCase()] || {}
       return {
         ...c,
-        race: raceOf(a.raceId),
+        // A character whose creator was never finished has no appearance yet
+        race: c.appearance ? raceOf(a.raceId) : 'Unfinished',
         female: !!a.isFemale,
         gold: goldOf(c.inventory),
         seconds: t.seconds || 0,
@@ -113,7 +114,7 @@ const GOLD_BRACKETS = [[0, 50, 'Under 50 gold'], [50, 500, '50 to 499'], [500, 5
 function stats(rows) {
   const count = (list, key) => list.reduce((m, x) => (m[key(x)] = (m[key(x)] || 0) + 1, m), {})
   const bracket = (value, brackets) => brackets.find(([lo, hi]) => value >= lo && value < hi)[2]
-  const chars = rows.flatMap(r => r.characters.filter(c => !c.fallen))
+  const chars = rows.flatMap(r => r.characters.filter(c => !c.fallen && c.appearance))
   const wealth = rows.reduce((n, r) => n + r.gold, 0)
   return {
     players: rows.length,
