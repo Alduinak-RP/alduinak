@@ -440,7 +440,7 @@ test('jobs: builds refuse a dirty or non-main checkout, run one at a time and re
   assert.equal((await start('build.gamemode')).status, 409)
   assert.match(gitProblem({ ...git, branch: 'main', merging: true }), /merge/)
   git.branch = 'main'
-  git.dirty = ['skymp5-client/package.json', 'skymp5-backend/routes/version.js']
+  git.dirty = ['skymp5-client/package.json', 'skymp5-launcher-tauri/src-tauri/tauri.conf.json']
 
   const held = managerLock.acquire({ source: 'electron', kind: 'Build client', actor: 'local:Administrator' })
   assert.equal(held.ok, true)

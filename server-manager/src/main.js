@@ -240,15 +240,6 @@ function setJsonVersion(file, version) {
   fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n')
 }
 
-// Replace const <name> = '...' inside routes/version.js (no-op if already set).
-function setRouteVersion(file, name, version) {
-  const src = fs.readFileSync(file, 'utf8')
-  const re = new RegExp(`(const\\s+${name}\\s*=\\s*)['"][^'"]*['"]`)
-  if (!re.test(src)) throw new Error(`${name} not found in version.js`)
-  const next = src.replace(re, `$1'${version}'`)
-  if (next !== src) fs.writeFileSync(file, next)
-}
-
 // Upsert KEY=value in a .env file, creating the key if missing, preserving the rest.
 function setEnvVar(file, key, value) {
   let txt = ''
@@ -263,13 +254,12 @@ function setEnvVar(file, key, value) {
   fs.writeFileSync(file, txt)
 }
 
-// Anchored at both ends: the version is spliced into backend source
-// (routes/version.js), so trailing garbage must be rejected.
+// Anchored at both ends so trailing garbage never reaches versions.json
 const SEMVER_RE = /^\d+\.\d+\.\d+$/
 
 // Register the getVersion/setVersion IPC pair for one component. The getter reads
 // pkgPath's version; the setter validates the semver, writes pkgPath, then runs
-// each extra writer (e.g. routes/version.js or the backend .env).
+// each extra writer (e.g. the backend's versions.json).
 function registerVersionIpc(name, pkgPath, extraWriteFns) {
   ipcMain.handle(`${name}:getVersion`, () => {
     try { return { version: JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version } }
@@ -286,9 +276,10 @@ function registerVersionIpc(name, pkgPath, extraWriteFns) {
   })
 }
 
-registerVersionIpc('launcher', config.paths.launcherPkg, [v => setRouteVersion(config.paths.versionRoute, 'LATEST_VERSION', v)])
-registerVersionIpc('client', config.paths.clientPkg, [v => setRouteVersion(config.paths.versionRoute, 'CLIENT_VERSION', v)])
-registerVersionIpc('server', config.paths.serverPkg, [v => setRouteVersion(config.paths.versionRoute, 'SERVER_VERSION', v)])
+const writeVersion = key => v => backendModule('versions').writeVersion(key, v)
+registerVersionIpc('launcher', config.paths.launcherPkg, [writeVersion('launcher')])
+registerVersionIpc('client', config.paths.clientPkg, [writeVersion('client')])
+registerVersionIpc('server', config.paths.serverPkg, [writeVersion('server')])
 
 function backendModule(name) {
   return require(path.join(config.paths.backend, 'sources', name))

@@ -26,7 +26,7 @@ const MAX_BODY = 64 * 1024
 const LOG_CHUNK = 65536
 const LOG_CHUNK_MAX = 262144
 // Web builds refuse a checkout with changes other than these, which the Electron manager's version fields rewrite
-const VERSION_FILES = ['skymp5-client/package.json', 'skymp5-server/package.json', 'skymp5-launcher/package.json', 'skymp5-backend/routes/version.js']
+const VERSION_FILES = ['skymp5-client/package.json', 'skymp5-server/package.json', 'skymp5-launcher-tauri/src-tauri/tauri.conf.json']
 
 const RUNNERS = {
   'game.start':     (b, d) => serviceJob(b, d, 'start'),

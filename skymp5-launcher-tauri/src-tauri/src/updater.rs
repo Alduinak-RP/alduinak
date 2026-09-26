@@ -14,12 +14,13 @@ fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 #[tauri::command]
-pub async fn app_check_update() -> Value {
-    let current = env!("CARGO_PKG_VERSION");
+pub async fn app_check_update(app: tauri::AppHandle) -> Value {
+    let current = app.package_info().version.to_string();
+    let current = current.as_str();
     match net::fetch_json(&format!("{}/api/version", net::api_url()), &[]).await {
         Ok(d) => {
-            let latest = d["version"].as_str().unwrap_or("").to_string();
-            json!({ "current": current, "latest": latest, "hasUpdate": compare_versions(&latest, current).is_gt(), "downloadUrl": d["downloadUrl"].as_str().unwrap_or("") })
+            let latest = d["launcher"].as_str().unwrap_or("").to_string();
+            json!({ "current": current, "latest": latest, "hasUpdate": compare_versions(&latest, current).is_gt(), "downloadUrl": d["launcherUrl"].as_str().unwrap_or("") })
         }
         Err(_) => json!({ "current": current, "latest": null, "hasUpdate": false, "downloadUrl": "" }),
     }
@@ -47,7 +48,7 @@ fn unpack_update(pkg: &std::path::Path, dest: &std::path::Path) -> Result<(), St
 pub async fn app_install_update(app: tauri::AppHandle) -> Value {
     let result = async {
         let d = net::fetch_json(&format!("{}/api/version", net::api_url()), &[]).await.map_err(|e| e.message)?;
-        let url = d["packageUrl"].as_str().or(d["downloadUrl"].as_str()).filter(|u| !u.is_empty()).ok_or("No download URL is configured on the server.")?.to_string();
+        let url = d["launcherUrl"].as_str().filter(|u| !u.is_empty()).ok_or("No download URL is configured on the server.")?.to_string();
         // The installer runs with the player's rights, so only HTTPS is accepted
         if !url.starts_with("https:") { return Err("Refusing to install an update from a non-HTTPS URL.".to_string()); }
         let tmp = std::env::temp_dir();

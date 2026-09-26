@@ -55,16 +55,15 @@ module.exports = {
   profile:  process.env.ALDUINAK_MO2_PROFILE || 'Default',
 
   paths: {
-    launcher:     path.join(repoRoot, 'skymp5-launcher'),
+    launcher:     path.join(repoRoot, 'skymp5-launcher-tauri'),
     gamemode:     path.join(repoRoot, 'gamemode'),
     backend:      path.join(repoRoot, 'skymp5-backend'),
     front:        path.join(repoRoot, 'skymp5-front'),
     client:       path.join(repoRoot, 'skymp5-client'),
     server:       path.join(repoRoot, 'skymp5-server'),
-    launcherPkg:  path.join(repoRoot, 'skymp5-launcher', 'package.json'),
+    launcherPkg:  path.join(repoRoot, 'skymp5-launcher-tauri', 'src-tauri', 'tauri.conf.json'),
     clientPkg:    path.join(repoRoot, 'skymp5-client', 'package.json'),
     serverPkg:    path.join(repoRoot, 'skymp5-server', 'package.json'),
-    versionRoute: path.join(repoRoot, 'skymp5-backend', 'routes', 'version.js'),
     backendEnv:   path.join(repoRoot, 'skymp5-backend', '.env'),
     backendEnvExample: path.join(repoRoot, 'skymp5-backend', '.env.example'),
     // The deployed game server's settings (holds secrets; not in the repo).

@@ -256,7 +256,7 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
 
     // 3. SkyMP client files come from a manifest mod
     if client_mods(&manifest) == 0 { return Err("The install manifest has no SkyMP client mod - contact staff.".into()); }
-    let files_version = net::fetch_json(&format!("{}/api/files/version", net::api_url()), &[]).await.ok().and_then(|v| v["version"].as_str().map(String::from));
+    let files_version = client_version().await;
     let core_up_to_date = files_version.as_deref().is_some_and(|v| v == store().str("filesVersion"));
     gamecopy::ensure_client_dirs(&game);
     write_client_settings(&client_settings_path(), &srv, info.as_ref())?;
@@ -592,14 +592,18 @@ pub fn preloader_present(game: &Path) -> bool {
     gamecopy::PRELOADER_DLLS.iter().any(|f| game.join(f).exists())
 }
 
+// The released client version, from the backend's versions.json
+async fn client_version() -> Option<String> {
+    net::fetch_json(&format!("{}/api/version", net::api_url()), &[]).await.ok()?["client"].as_str().filter(|v| !v.is_empty()).map(String::from)
+}
+
 // Update probe for the Play button: the backend's client files version against the installed one
 #[tauri::command]
 pub async fn files_update_check() -> Value {
-    let Ok(vd) = net::fetch_json(&format!("{}/api/files/version", net::api_url()), &[]).await else { return json!({ "ok": false, "updateAvailable": false }) };
+    let Some(version) = client_version().await else { return json!({ "ok": false, "updateAvailable": false }) };
     let game = effective_game_path();
     let via_mo2 = store().bool("mo2Enabled");
     let present = !game.is_empty() && REQUIRED_FILES.iter().all(|f| data_file_exists(Path::new(&game), via_mo2, f)) && preloader_present(Path::new(&game));
     let failed = via_mo2 && store().str("modpackState") == "failed";
-    let version = vd["version"].as_str().unwrap_or("");
     json!({ "ok": true, "updateAvailable": version != store().str("filesVersion") || !present || failed, "serverVersion": version })
 }

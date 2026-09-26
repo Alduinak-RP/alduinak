@@ -47,6 +47,7 @@ const profiles = require('../sources/profiles')
 const players  = require('../sources/players')
 const bans     = require('../sources/bans')
 const safeEqual = require('../sources/safeEqual')
+const { readVersions } = require('../sources/versions')
 
 // Persistent balance store: profileId -> coin balance
 
@@ -113,11 +114,8 @@ function lookupSession(token) {
 
 // Launch sanity check: the launcher reports files version + plugin list to POST /api/launch-check; the result is stored on the session so validation can refuse stale or launcher-skipping clients
 
-const LAUNCH_VERSION_PATH = path.join(__dirname, '..', 'data', 'files-version.json')
-
 function currentFilesVersion() {
-  try { return JSON.parse(fs.readFileSync(LAUNCH_VERSION_PATH, 'utf8')).version || null }
-  catch { return null }   // no package published yet: nothing to enforce
+  return readVersions().client || null
 }
 
 function recordLaunchCheck(token, check) {

@@ -1046,7 +1046,7 @@ async function refreshPlayState() {
 
   updatePlayButton()
 }
-setInterval(refreshPlayState, 10_000)
+setInterval(refreshPlayState, 30_000)
 
 async function pollGameRunning() {
   if (gamePollInFlight) return
@@ -1284,7 +1284,7 @@ async function loadServerInfo() {
 const launcherVersionEl = document.getElementById('launcher-version')
 const clientVersionEl   = document.getElementById('client-version')
 
-// The check runs every 10s (see the polling block at the bottom), so the
+// The check runs every 30s (see the polling block at the bottom), so the
 // UPDATE AVAILABLE state appears while the launcher is open - no restart
 // needed. Progress handlers are registered exactly once here; the periodic
 // check only flips the label state.
@@ -1534,5 +1534,5 @@ loadModlist()
 // label flips to UPDATE AVAILABLE) - all without restarting the launcher.
 // refreshPlayState and pollGameRunning poll on their own 10s timers above.
 setInterval(checkServerStatus, 10_000)
-setInterval(checkLauncherUpdate, 10_000)
+setInterval(checkLauncherUpdate, 30_000)
 refreshPlayState()
