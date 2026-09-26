@@ -9,12 +9,14 @@
     EnumRegKey $R9 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall" $R8
     StrCmp $R9 "" alduinak_electron_done
     IntOp $R8 $R8 + 1
-    ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$R9" "InstallLocation"
+    ; electron-builder writes no InstallLocation; its DisplayIcon sits in the install folder
+    ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$R9" "DisplayIcon"
     StrCmp $R7 "" alduinak_electron_loop
+    ${GetParent} $R7 $R7
     IfFileExists "$R7\Uninstall Alduinak Launcher.exe" 0 alduinak_electron_loop
     DetailPrint "Removing the old Electron launcher from $R7"
     ; _?= keeps the uninstaller in place so ExecWait waits for it
-    ExecWait '"$R7\Uninstall Alduinak Launcher.exe" /S _?=$R7'
+    ExecWait '"$R7\Uninstall Alduinak Launcher.exe" /currentuser /S _?=$R7'
     Delete "$R7\Uninstall Alduinak Launcher.exe"
     ; Only an emptied folder goes; whatever else the player keeps there stays
     RMDir "$R7"
