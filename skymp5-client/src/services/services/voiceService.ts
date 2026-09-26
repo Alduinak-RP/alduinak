@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket } from "./customPacketUtil";
-import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode, domKeyCode } from "./widgetMenuUtil";
+import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode, domKeyCode, readClientSettingNumber, readClientSettingString } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
@@ -254,11 +254,22 @@ export class VoiceService extends ClientListener {
         : (this.modes.find(m => m.key === "talk") || this.modes[0]).key;
     }
 
-    const cfg = { modes: this.modes, mode: this.mode, pttCode: domKeyCode(this.voiceKey) };
+    const cfg = { modes: this.modes, mode: this.mode, pttCode: domKeyCode(this.voiceKey), audio: this.audioSettings() };
     this.pendingRefrId = this.myRefrId();
     this.sp.browser.executeJavaScript(
       `window.__alduinakVoice && window.__alduinakVoice.connect(${JSON.stringify(url)}, ${JSON.stringify(token)}, ${JSON.stringify(cfg)})`
     );
+  }
+
+  // Devices (by label), push-to-talk or voice detection, the detection threshold and the mic gain, all set in the launcher
+  private audioSettings() {
+    return {
+      input: readClientSettingString(this.sp, "voiceInputDevice", ""),
+      output: readClientSettingString(this.sp, "voiceOutputDevice", ""),
+      activation: readClientSettingString(this.sp, "voiceActivation", "ptt"),
+      thresholdDb: readClientSettingNumber(this.sp, "voiceThresholdDb", -40),
+      gainDb: readClientSettingNumber(this.sp, "voiceGainDb", 0),
+    };
   }
 
   private myRefrId(): number {

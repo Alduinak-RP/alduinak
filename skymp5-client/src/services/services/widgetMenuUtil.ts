@@ -178,6 +178,18 @@ export function readClientSettingNumber(sp: Sp, settingName: string, fallback: n
   return fallback;
 }
 
+export function readClientSettingString(sp: Sp, settingName: string, fallback: string): string {
+  try {
+    const settings = sp.settings["skymp5-client"] as any;
+    if (settings && typeof settings[settingName] === "string") {
+      return settings[settingName];
+    }
+  } catch {
+    // fall through to the default
+  }
+  return fallback;
+}
+
 // KeyboardEvent.code by DxScanCode from 1; CEF gets the scan code as is, so extended keys, Num Lock and mouse buttons have none
 const DOM_KEY_CODES = ("Escape Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace Tab " +
   "KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Enter ControlLeft " +

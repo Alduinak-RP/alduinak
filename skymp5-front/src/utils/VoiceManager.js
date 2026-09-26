@@ -1,9 +1,9 @@
 // Proximity voice chat over LiveKit, driven by the game side via window.__alduinakVoice (skymp5-client voiceService.ts).
 // Plain JS on purpose: the repo pins TypeScript 4.6 and livekit-client's types need 5.x.
 // Contract with the game side:
-//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}], mode, pttCode }
+//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}], mode, pttCode, audio: {input, output, activation 'ptt'|'vad', thresholdDb, gainDb} }
 //   disconnect()              leave the room
-//   setPtt(bool)              push-to-talk: enable/disable the mic track
+//   setPtt(bool)              push-to-talk: open/close the mic track; ignored while voice detection opens it
 //   setPttKey(code)           KeyboardEvent.code of the push-to-talk key; the game sees no keys while a menu has focus, so the page reads it then
 //   setMode(key)              Alt+V cycles whisper/talk/shout; the range goes out on the data channel so listeners attenuate by the SPEAKER's loudness
 //   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
@@ -13,7 +13,7 @@
 //   'voice::speaking' <json array of {id, level}: own voice while PTT is held plus audible unmuted speakers, every 150 ms while anyone talks, [] once when quiet>,
 //   'voice::stopped' <identity hex: that voice ended (mute, track gone, left, out of range, own PTT released), so its mouth closes without waiting for a report>
 
-import { Room, RoomEvent, Track } from 'livekit-client';
+import { Room, RoomEvent, Track, LocalAudioTrack } from 'livekit-client';
 
 import whisperImg from '../img/voice/Whisper.png';
 import talkImg from '../img/voice/Talk.png';
@@ -22,6 +22,8 @@ import shoutImg from '../img/voice/Shout.png';
 const UNSUB_HYSTERESIS = 1.15;   // unsubscribe only past range*this (no flapping)
 const BANNER_MS = 1400;          // how long the mode banner stays up
 const SPEAKING_TICK_MS = 150;    // lip sync report cadence while someone talks
+const VAD_TICK_MS = 50;           // voice detection sampling
+const VAD_HOLD_MS = 400;          // keeps transmitting this long after the voice drops below the threshold
 const MODE_IMG = { whisper: whisperImg, talk: talkImg, shout: shoutImg };
 // Fallbacks; the server sends the real list in connect()
 const DEFAULT_MODES = [
@@ -29,6 +31,8 @@ const DEFAULT_MODES = [
   { key: 'talk', label: 'Talk', units: 840 },
   { key: 'shout', label: 'Shout', units: 3150 },
 ];
+
+const dbToGain = (db) => Math.pow(10, db / 20);
 
 function sendToGame(...args) {
   try { window.skyrimPlatform.sendMessage(...args); } catch (e) { /* outside game */ }
@@ -55,7 +59,12 @@ class VoiceManager {
     this.distances = {};       // identity -> game units, refreshed by setPeers
     this.peerRanges = {};      // identity -> that speaker's mode range
     this.ptt = false;
+    this.transmitting = false;   // mic open: push-to-talk held, or voice detected
+    this.vadUntil = 0;
     this.pttCode = '';
+    this.audio = { input: '', output: '', activation: 'ptt', thresholdDb: -40, gainDb: 0 };
+    this.mic = null;             // { stream, ctx, analyser, buf, track }
+    this.sinkId = '';
     this.audioEls = new Map(); // identity -> HTMLAudioElement
     this.bannerEl = null;
     this.bannerTimer = null;
@@ -68,6 +77,65 @@ class VoiceManager {
     if (Array.isArray(cfg.modes) && cfg.modes.length) this.modes = cfg.modes;
     if (cfg.mode && this.modeByKey(cfg.mode)) this.mode = cfg.mode;
     if (typeof cfg.pttCode === 'string') this.setPttKey(cfg.pttCode);
+    if (cfg.audio && typeof cfg.audio === 'object') this.audio = { ...this.audio, ...cfg.audio };
+  }
+
+  get vad() {
+    return this.audio.activation === 'vad';
+  }
+
+  // The launcher stores devices by label: device ids differ between its webview and this browser
+  async deviceIdFor(kind, label) {
+    if (!label) return '';
+    try {
+      const found = (await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === kind && d.label === label);
+      return found ? found.deviceId : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // Mic -> gain -> LiveKit, with a level meter for voice detection; published muted and opened by push-to-talk or detection
+  async openMic(room) {
+    const deviceId = await this.deviceIdFor('audioinput', this.audio.input);
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.gain.value = dbToGain(Number(this.audio.gainDb) || 0);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    const dest = ctx.createMediaStreamDestination();
+    ctx.createMediaStreamSource(stream).connect(gain);
+    gain.connect(analyser);
+    gain.connect(dest);
+    const track = new LocalAudioTrack(dest.stream.getAudioTracks()[0], undefined, true);
+    this.mic = { stream, ctx, analyser, buf: new Float32Array(analyser.fftSize), track };
+    await track.mute();
+    await room.localParticipant.publishTrack(track, { source: Track.Source.Microphone });
+  }
+
+  closeMic() {
+    const mic = this.mic;
+    this.mic = null;
+    if (!mic) return;
+    mic.track.stop();
+    mic.stream.getTracks().forEach((t) => t.stop());
+    mic.ctx.close().catch(() => { /* already closed */ });
+  }
+
+  levelDb() {
+    const { analyser, buf } = this.mic;
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    return 20 * Math.log10(Math.sqrt(sum / buf.length) || 1e-8);
+  }
+
+  vadTick() {
+    if (!this.vad || !this.mic) return;
+    const now = Date.now();
+    if (this.levelDb() >= this.audio.thresholdDb) this.vadUntil = now + VAD_HOLD_MS;
+    this.setTransmit(now < this.vadUntil);
   }
 
   setPttKey(code) {
@@ -127,6 +195,7 @@ class VoiceManager {
         if (stale) stale.remove(); // never leave an orphan playing unmanaged
         const el = track.attach();
         el.volume = 0; // silent until proximity says otherwise
+        if (this.sinkId && el.setSinkId) el.setSinkId(this.sinkId).catch(() => { /* default speaker */ });
         document.body.appendChild(el);
         this.audioEls.set(participant.identity, el);
         this.applyVolume(participant.identity);
@@ -180,16 +249,16 @@ class VoiceManager {
       // Expose the room only once connected so setPtt cannot hit a not-yet-connected room and mis-report micDenied
       this.room = room;
       this.publishRange();
-      if (this.ptt) {
-        try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { /* applied on next press */ }
-      } else {
-        // Pre-warm: the first mic open runs Chromium's device stack in-process
-        // and can hitch; do it at connect so the first PTT only unmutes
-        try {
-          await room.localParticipant.setMicrophoneEnabled(true);
-          await room.localParticipant.setMicrophoneEnabled(false);
-        } catch (e) { /* micDenied is reported on the first real PTT */ }
+      this.sinkId = await this.deviceIdFor('audiooutput', this.audio.output);
+      // Opening the mic at connect also keeps Chromium's in-process device start from hitching the first push-to-talk
+      try {
+        await this.openMic(room);
+      } catch (e) {
+        sendToGame('voice::micDenied', String(e && e.message || e));
       }
+      const wanted = this.transmitting;
+      this.transmitting = false;
+      if (wanted) await this.setTransmit(true);
       sendToGame('voice::ready');
     } catch (e) {
       this.room = null;
@@ -204,6 +273,7 @@ class VoiceManager {
     const room = this.room;
     this.room = null;
     this.lastToken = null;
+    this.closeMic();
     if (room) {
       try { await room.disconnect(); } catch (e) { /* already gone */ }
     }
@@ -216,7 +286,7 @@ class VoiceManager {
   // activeSpeakers lags PTT release and keeps leavers, so also need a live mic and, for remotes, presence, a subscribed track and range
   isTalking(p) {
     if (!p.isMicrophoneEnabled) return false;
-    if (p.isLocal) return this.ptt;
+    if (p.isLocal) return this.transmitting;
     return this.room.remoteParticipants.get(p.identity) === p && this.audioEls.has(p.identity) && this.gainFor(p.identity) > 0;
   }
 
@@ -234,18 +304,25 @@ class VoiceManager {
     sendToGame('voice::speaking', json);
   }
 
-  async setPtt(down) {
+  setPtt(down) {
     this.ptt = !!down;
+    if (!this.vad) this.setTransmit(this.ptt);
+  }
+
+  async setTransmit(on) {
+    if (on === this.transmitting) return;
+    this.transmitting = on;
     this.emitSpeaking();
     // The banner doubles as the transmit indicator: solid while the mic is open, hidden on release
-    if (this.ptt) this.showBanner(this.mode);
+    if (on) this.showBanner(this.mode);
     else this.hideBanner();
-    if (!this.room) return;
-    if (!this.ptt) this.stopped(this.room.localParticipant.identity);
+    if (!this.room || !this.mic) return;
+    if (!on) this.stopped(this.room.localParticipant.identity);
     try {
-      await this.room.localParticipant.setMicrophoneEnabled(this.ptt);
+      if (on) await this.mic.track.unmute();
+      else await this.mic.track.mute();
     } catch (e) {
-      if (this.ptt) sendToGame('voice::micDenied', String(e && e.message || e));
+      if (on) sendToGame('voice::micDenied', String(e && e.message || e));
     }
   }
 
@@ -333,7 +410,7 @@ class VoiceManager {
     el.style.opacity = '1';
     if (this.bannerTimer) { clearTimeout(this.bannerTimer); this.bannerTimer = null; }
     // While transmitting the banner stays until setPtt(false) hides it
-    if (!this.ptt) this.bannerTimer = setTimeout(() => { el.style.opacity = '0'; }, BANNER_MS);
+    if (!this.transmitting) this.bannerTimer = setTimeout(() => { el.style.opacity = '0'; }, BANNER_MS);
   }
 
   hideBanner() {
@@ -360,6 +437,8 @@ setInterval(() => {
     vm.publishRange();
   }
 }, 2000);
+
+setInterval(() => window.__alduinakVoice.vadTick(), VAD_TICK_MS);
 
 // Lip sync clock: LiveKit's speaker event is edge-triggered, range and loudness change between edges
 setInterval(() => window.__alduinakVoice.emitSpeaking(), SPEAKING_TICK_MS);
