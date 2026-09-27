@@ -11,10 +11,27 @@ const client = new Client({
 })
 
 let ready = false
+let membersLoaded = false
+// A role lookup that goes to the Discord API gives up after this, so a rate limit never stalls a login
+const API_TIMEOUT_MS = 4000
 
-client.once('ready', () => {
+function withTimeout(promise) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('discord api timed out')), API_TIMEOUT_MS))])
+}
+
+// Every member is loaded once over the gateway (no REST rate limit); member events keep the cache current after that
+client.once('ready', async () => {
   ready = true
   console.log(`[discord-bot] ready as ${client.user.tag}`)
+  if (!config.discordGuildId) return
+  try {
+    const guild = await client.guilds.fetch(config.discordGuildId)
+    await guild.members.fetch()
+    membersLoaded = true
+    console.log(`[discord-bot] ${guild.members.cache.size} guild member(s) cached`)
+  } catch (err) {
+    console.error('[discord-bot] loading the guild members failed, roles come from the API:', err.message)
+  }
 })
 
 client.on('error', err => {
@@ -101,10 +118,16 @@ async function lookupMemberRoles(discordId) {
   const cached = roleCache.get(discordId)
   if (cached && cached.expiresAt > Date.now()) return cached.roles
 
+  if (ready && membersLoaded) {
+    const guild = client.guilds.cache.get(config.discordGuildId)
+    const member = guild && guild.members.cache.get(discordId)
+    if (member) return [...member.roles.cache.keys()]
+  }
+
   if (ready) {
     try {
       const guild = await client.guilds.fetch(config.discordGuildId)
-      const member = await guild.members.fetch({ user: discordId, force: true })
+      const member = await withTimeout(guild.members.fetch({ user: discordId, force: true }))
       const roles = [...member.roles.cache.keys()]
       roleCache.set(discordId, { roles, expiresAt: Date.now() + ROLE_CACHE_TTL_MS })
       return roles
@@ -118,12 +141,13 @@ async function lookupMemberRoles(discordId) {
   }
 
   try {
-    const roles = await fetchMemberRoles(discordId)
+    const roles = await withTimeout(fetchMemberRoles(discordId))
     roleCache.set(discordId, { roles, expiresAt: Date.now() + ROLE_CACHE_TTL_MS })
     return roles
   } catch (err) {
     console.error('[discord-bot] HTTP fallback also failed:', err.message)
-    return null  // not cached: allows quick recovery once Discord is reachable
+    // The last roles seen beat refusing the login while Discord is rate limiting
+    return cached ? cached.roles : null
   }
 }
 
