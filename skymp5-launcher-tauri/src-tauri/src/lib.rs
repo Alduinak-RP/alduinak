@@ -115,6 +115,8 @@ pub fn run() {
                 .inner_size(1280.0, 720.0)
                 .min_inner_size(1024.0, 600.0)
                 .decorations(false)
+                // The system shadow of a frameless window draws the accent colored border while focused
+                .shadow(false)
                 .background_color(tauri::window::Color(8, 5, 3, 255));
             // Debug builds expose DevTools on a port for testing
             if cfg!(debug_assertions) {
