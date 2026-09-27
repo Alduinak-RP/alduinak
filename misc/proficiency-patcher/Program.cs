@@ -69,13 +69,13 @@ JsonObject? categories = null;
 Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
-    ? [Steps.CraftingStations, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
-       Steps.Racial, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors,
+    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
+       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors,
        categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
+       Steps.Racial, Steps.Retier, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
        Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
@@ -204,7 +204,12 @@ class PatchContext
     public Dictionary<string, Route> Routes => routes ??= Steps.Routes(this);
     public IEnumerable<KeyValuePair<string, string>> Professions => Spec["professions"]!.AsObject().Select(p => new KeyValuePair<string, string>(p.Key, p.Value!.GetValue<string>()));
 
-    public string MarkerEdid(string profession, string rank) => $"AldMastery_{Cap(profession)}_{rank}";
+    public const string MarkerPrefix = "AldProf_";
+    // The markers before the professions revamp; a hotfix run renames them in place so they keep their form ids
+    public const string LegacyMarkerPrefix = "AldMastery_";
+    public string MarkerEdid(string profession, string rank) => $"{MarkerPrefix}{Cap(profession)}_{rank}";
+    // Anyone first, then the ranks, so a tier compares by its index
+    public string[] Tiers => Ranks.Prepend(AnyoneTier).ToArray();
     public static string Cap(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
 
     // Winning record of the load order by editor id, of a given type.
@@ -227,13 +232,31 @@ class PatchContext
     // Own record by editor id, created when missing (idempotent re-runs reuse it).
     // formId pins the record's local id, for the few the client names by "<hex>:<plugin>".
     public T OwnOrNew<T>(IGroup<T> group, string edid, Action<T>? init = null, uint? formId = null) where T : class, IMajorRecord =>
-        OwnOrNew(edid, () => formId is uint id ? AddAt(group, edid, id) : group.AddNew(edid), init);
+        OwnOrNew(edid, () => (formId ?? PinnedId(edid)) is uint id ? AddAt(group, edid, id) : AddNext(group, edid), init);
+
+    // The next free id, stepping over the ids pinned records already hold
+    T AddNext<T>(IGroup<T> group, string edid) where T : class, IMajorRecord
+    {
+        var taken = Mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == Key).Select(r => r.FormKey.ID).ToHashSet();
+        while (taken.Contains(Mod.ModHeader.Stats.NextFormID)) Mod.ModHeader.Stats.NextFormID++;
+        return group.AddNew(edid);
+    }
+
+    // spec formIds: the local id a new own record takes, so records added later never shift the ones before them
+    uint? PinnedId(string edid) => Spec["formIds"]?[edid] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null;
+
+    public void Rename(IMajorRecord rec, string edid)
+    {
+        ownByEdid.Remove(rec.EditorID ?? "");
+        rec.EditorID = edid;
+        ownByEdid[edid] = rec;
+    }
 
     T AddAt<T>(IGroup<T> group, string edid, uint id) where T : class, IMajorRecord
     {
         var key = new FormKey(Key, id);
-        if (Mod.EnumerateMajorRecords().Any(r => r.FormKey == key))
-            throw new SpecException($"'{edid}' wants the pinned id {key}, which another record already holds");
+        if (Mod.EnumerateMajorRecords().FirstOrDefault(r => r.FormKey == key) is { } holder)
+            throw new SpecException($"'{edid}' wants the pinned id {key}, which {holder.EditorID} already holds");
         var rec = group.AddNew(key);
         rec.EditorID = edid;
         return rec;
@@ -284,6 +307,15 @@ static class Steps
     public static void MarkerAbilities(PatchContext c)
     {
         var abilities = c.Spec["abilities"]?.AsObject();
+        Perks(c);
+        // Renamed first: an untilRank perk may ask for a higher marker before its own turn
+        foreach (var old in c.Mod.Spells.Where(s => (s.EditorID ?? "").StartsWith(PatchContext.LegacyMarkerPrefix)).ToList())
+        {
+            var edid = PatchContext.MarkerPrefix + old.EditorID![PatchContext.LegacyMarkerPrefix.Length..];
+            if (c.TryWinning<ISpellGetter>(edid, out _)) continue;
+            c.Rename(old, edid);
+            c.Note($"Marker {PatchContext.LegacyMarkerPrefix}{edid[PatchContext.MarkerPrefix.Length..]} renamed {edid}, keeping {old.FormKey}");
+        }
         foreach (var (profId, label) in c.Professions)
         {
             foreach (var rank in c.Ranks)
@@ -336,6 +368,20 @@ static class Steps
                     spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = stamina, Area = 0, Duration = 0 } });
                 }
             }
+        }
+    }
+
+    // New perks a rank's marker applies; one without entry points exists for conditions only
+    static void Perks(PatchContext c)
+    {
+        foreach (var p in c.Spec["perks"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        {
+            var perk = c.OwnOrNew(c.Mod.Perks, p["edid"]!.GetValue<string>());
+            perk.Name = p["name"]!.GetValue<string>();
+            perk.Description = p["description"]?.GetValue<string>() ?? "";
+            perk.Playable = true;
+            perk.Hidden = false;
+            perk.NumRanks = 1;
         }
     }
 
@@ -744,6 +790,42 @@ static class Steps
         }
         Park(c, named.Where(e => !c.Claimed.Contains(e)), c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>()),
              "uncraftable", u["profession"]!.GetValue<string>());
+        Unpark(c, u);
+    }
+
+    // Parked recipes a later design opens again get the bench they had before the plugin, or the woodworker's for bows, ammo and shields
+    static void Unpark(PatchContext c, JsonObject u)
+    {
+        if (u["unpark"] is not JsonObject spec) return;
+        var parking = c.KeyOf<IKeywordGetter>(u["bench"]!.GetValue<string>());
+        var match = Edids(c, spec["match"]).ToList();
+        var except = Edids(c, spec["except"]).ToList();
+        var from = Edids(c, c.Spec["benchRouting"]!["from"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        foreach (var own in c.Mod.ConstructibleObjects.Where(x => x.WorkbenchKeyword.FormKey == parking && !c.CreationKeys.Contains(x.FormKey.ModKey)).ToList())
+        {
+            var made = c.Cache.TryResolve<IMajorRecordGetter>(own.CreatedObject.FormKey, out var m) ? m : null;
+            var text = $"{own.EditorID}|{made?.EditorID}|{c.NameOf(own.CreatedObject.FormKey)}";
+            if (!match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)) || except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))) continue;
+            var before = c.LoadOrder.PriorityOrder.Where(l => l.ModKey != c.Key && l.Mod != null)
+                .Select(l => l.Mod!.ConstructibleObjects.FirstOrDefault(x => x.FormKey == own.FormKey)).FirstOrDefault(x => x != null);
+            if (before == null || before.WorkbenchKeyword.IsNull || before.WorkbenchKeyword.FormKey == parking) continue;
+            var bench = before.WorkbenchKeyword.FormKey;
+            var wood = WoodworkerProduct(c, own.CreatedObject.FormKey);
+            if (wood != null && from.Contains(bench)) bench = wood.Bench;
+            own.WorkbenchKeyword.SetTo(bench);
+            c.Report.Recipes.Add(new RecipeLine("uncraftable", own.EditorID ?? "", c.NameOf(own.CreatedObject.FormKey), wood?.Profession ?? "-", "-", Items(c, own),
+                                                origin: before.FormKey.ModKey.FileName, note: $"unparked to {c.EdidOf(bench)}"));
+        }
+    }
+
+    // The product rule of benchRouting that claims a created object, if any
+    static Route? WoodworkerProduct(PatchContext c, FormKey product)
+    {
+        var made = ProductKeywords(c, product, out var kind);
+        foreach (var x in c.Spec["benchRouting"]!["products"]!.AsArray().Select(x => x!.AsObject()))
+            if (Edids(c, x["kinds"]).Contains(kind, StringComparer.OrdinalIgnoreCase) || made.Overlaps(Edids(c, x["keywords"]).Select(c.KeyOf<IKeywordGetter>)))
+                return new Route(c.KeyOf<IKeywordGetter>(x["bench"]!.GetValue<string>()), x["bench"]!.GetValue<string>(), x["profession"]!.GetValue<string>());
+        return null;
     }
 
     // Only the bench keyword changes, so a recipe keeps the tier an earlier step gave it
@@ -1536,6 +1618,152 @@ static class Steps
         c.Note($"Racial gear: {string.Join(", ", counts.Select(kv => $"{kv.Value} {kv.Key}"))}");
     }
 
+    // ---- retier: every gated recipe keeps its owner and tier unless a retier rule says otherwise ------------------
+    public static void Retier(PatchContext c)
+    {
+        if (c.Spec["retier"] is not JsonObject spec) return;
+        var tiers = c.Tiers;
+        var craft = Edids(c, spec["craftBenches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var temper = Edids(c, spec["temperBenches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var free = Edids(c, spec["free"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet();
+        var named = new Dictionary<FormKey, (string Prof, string Tier)>();
+        foreach (var (prof, byTier) in (spec["products"] as JsonObject ?? new JsonObject()).Select(kv => (kv.Key, kv.Value!.AsObject())))
+            foreach (var (tier, list) in byTier.Select(kv => (kv.Key, kv.Value!.AsArray())))
+                foreach (var edid in list.Select(x => x!.GetValue<string>()))
+                {
+                    if (!c.TryWinning<IMajorRecordGetter>(edid, out var item)) { c.Error($"retier: product '{edid}' not found"); continue; }
+                    named[item.FormKey] = (prof, tier);
+                }
+        var raise = (spec["raise"] as JsonArray ?? new JsonArray()).Select(x => x!.AsObject())
+            .Select(x => (Tier: Array.IndexOf(tiers, x["tier"]!.GetValue<string>()),
+                          Items: Edids(c, x["items"]).Select(c.KeyOf<IMajorRecordGetter>).ToHashSet(),
+                          Keywords: Edids(c, x["keywords"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet())).ToList();
+        var smelt = spec["smelting"]!.AsObject();
+        var smelter = c.KeyOf<IKeywordGetter>(smelt["bench"]!.GetValue<string>());
+        var smeltTable = TierTable(c, smelt["items"]!.AsObject());
+        var tailor = spec["tailor"]!.AsObject();
+        var tailorMatch = (tailor["match"] as JsonObject ?? new JsonObject()).Select(kv => (Tier: Array.IndexOf(tiers, kv.Key), Words: Edids(c, kv.Value).ToList())).ToList();
+        var clothing = Edids(c, tailor["clothing"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        var clothingTags = (tailor["clothingTags"] as JsonObject ?? new JsonObject()).ToDictionary(kv => kv.Key, kv => c.OwnOrNew(c.Mod.Keywords, kv.Value!.GetValue<string>()).FormKey);
+        var tagFamily = clothingTags.Values.ToHashSet();
+        var tailorKw = TierTable(c, tailor["keywords"]!.AsObject());
+        // Marker spell -> (profession, rank)
+        var markers = new Dictionary<FormKey, (string Prof, string Tier)>();
+        foreach (var (prof, _) in c.Professions)
+            foreach (var rank in c.Ranks)
+                if (c.TryWinning<ISpellGetter>(c.MarkerEdid(prof, rank), out var s)) markers[s.FormKey] = (prof, rank);
+
+        (string? Owner, List<string> Also, string Tier) Current(IConstructibleObjectGetter r)
+        {
+            var held = r.Conditions.Select(x => x.Data).OfType<IHasSpellConditionDataGetter>().Select(d => d.Spell.Link.FormKey).Where(markers.ContainsKey).Select(k => markers[k]).ToList();
+            return held.Count == 0 ? (null, new List<string>(), PatchContext.AnyoneTier) : (held[0].Prof, held.Skip(1).Select(h => h.Prof).ToList(), held[0].Tier);
+        }
+        int Raised(int tier, IConstructibleObjectGetter r, HashSet<FormKey> made)
+        {
+            var inputs = (r.Items ?? new List<IContainerEntryGetter>()).Select(i => i.Item.Item.FormKey).ToHashSet();
+            foreach (var x in raise.Where(x => x.Items.Overlaps(inputs) || x.Keywords.Overlaps(made))) tier = Math.Max(tier, x.Tier);
+            return tier;
+        }
+        // The tailor's tier read off what the item is: its material keyword or its name, otherwise none
+        int TailorTier(IConstructibleObjectGetter r, HashSet<FormKey> made)
+        {
+            var text = $"{r.EditorID}|{c.EdidOf(r.CreatedObject.FormKey)}|{c.NameOf(r.CreatedObject.FormKey)}";
+            var byName = tailorMatch.Where(m => m.Words.Any(w => text.Contains(w, StringComparison.OrdinalIgnoreCase))).Select(m => m.Tier).DefaultIfEmpty(-1).Max();
+            return Math.Max(byName, made.Select(k => tailorKw.GetValueOrDefault(k, -1)).DefaultIfEmpty(-1).Max());
+        }
+
+        var recipes = FinalRecipes(c).Where(kv => craft.Contains(kv.Value.Bench) || temper.Contains(kv.Value.Bench))
+            .Select(kv => c.Winning<IConstructibleObjectGetter>(kv.Value.Edid)).ToList();
+        var plan = new Dictionary<FormKey, (string? Owner, List<string> Also, string Tier, string Why)>();
+        var madeBy = new Dictionary<FormKey, (string Owner, List<string> Also, string Tier)>();
+        var toTag = new Dictionary<FormKey, FormKey>();
+        foreach (var r in recipes.Where(r => craft.Contains(r.WorkbenchKeyword.FormKey)))
+        {
+            var product = r.CreatedObject.FormKey;
+            var made = ItemKeywords(c, product);
+            var (owner, also, tier) = Current(r);
+            var why = "";
+            var inputs = (r.Items ?? new List<IContainerEntryGetter>()).Select(i => i.Item.Item.FormKey).ToList();
+            if (free.Contains(product)) { tier = PatchContext.AnyoneTier; why = "free"; }
+            else if (named.TryGetValue(product, out var n))
+            {
+                // A recipe several professions already shared keeps them; otherwise the named profession takes it over
+                also = also.Contains(n.Prof) ? also.Prepend(owner!).Where(p => p != n.Prof).Distinct().ToList() : new List<string>();
+                (owner, tier, why) = (n.Prof, n.Tier, "named");
+            }
+            else if (r.WorkbenchKeyword.FormKey == smelter && inputs.Any(i => smeltTable.ContainsKey(i) && c.EdidOf(i).StartsWith("Ore", StringComparison.OrdinalIgnoreCase)))
+            {
+                (owner, also, why) = (smelt["profession"]!.GetValue<string>(), new List<string>(), "smelting");
+                tier = tiers[inputs.Append(product).Select(i => smeltTable.GetValueOrDefault(i, 0)).Max()];
+            }
+            else if (owner != null)
+            {
+                if (WoodworkerProduct(c, product) is Route wood && owner != wood.Profession) { also.Remove(wood.Profession); (owner, why) = (wood.Profession, "woodworker product"); }
+                var idx = Array.IndexOf(tiers, tier);
+                // Faction gear keeps the rank its faction rule gave it
+                if (owner == tailor["profession"]!.GetValue<string>() && !c.Claimed.Contains(r.EditorID ?? ""))
+                {
+                    var t = TailorTier(r, made);
+                    if (t >= 0) { idx = t; why = "tailor material"; }
+                    else if (made.Overlaps(clothing) && clothingTags.TryGetValue(tiers[idx], out var tag)) { toTag[product] = tag; why = $"tagged {c.EdidOf(tag)}"; }
+                }
+                var raised = Raised(idx, r, made);
+                if (raised != idx) why = "raised";
+                tier = tiers[raised];
+            }
+            if (owner == null) continue;
+            plan[r.FormKey] = (owner, also, tier, why);
+            // A conversion of finished gear (the closed helmets) says nothing about who can work the material
+            if (inputs.Any(i => IsGear(c, i))) continue;
+            if (!madeBy.TryGetValue(product, out var prev) || Array.IndexOf(tiers, tier) < Array.IndexOf(tiers, prev.Tier)) madeBy[product] = (owner, also, tier);
+        }
+        foreach (var r in recipes.Where(r => temper.Contains(r.WorkbenchKeyword.FormKey)))
+        {
+            var product = r.CreatedObject.FormKey;
+            var made = ItemKeywords(c, product);
+            if (madeBy.TryGetValue(product, out var m)) { plan[r.FormKey] = (m.Owner, m.Also, m.Tier, "follows its recipe"); continue; }
+            var (owner, also, tier) = Current(r);
+            var idx = Array.IndexOf(tiers, tier);
+            var t = TailorTier(r, made);
+            if (WoodworkerProduct(c, product) is Route wood) owner = wood.Profession;
+            else if (t >= 0) (owner, idx) = (tailor["profession"]!.GetValue<string>(), t);
+            if (owner == null) continue;
+            plan[r.FormKey] = (owner, also, tiers[Raised(idx, r, made)], "no recipe makes it");
+        }
+        var changed = 0;
+        foreach (var r in recipes)
+        {
+            if (!plan.TryGetValue(r.FormKey, out var p)) continue;
+            var (owner, also, tier) = Current(r);
+            if (owner == p.Owner && tier == p.Tier && also.SequenceEqual(p.Also)) continue;
+            var cobj = c.Override(c.Mod.ConstructibleObjects, r);
+            SetTier(c, cobj, p.Owner!, p.Tier, p.Also);
+            changed++;
+            c.Report.Recipes.Add(new RecipeLine("retier", r.EditorID ?? "", c.NameOf(r.CreatedObject.FormKey), p.Owner!, p.Tier, Items(c, cobj), origin: r.FormKey.ModKey.FileName,
+                                                note: $"was {owner ?? "-"} {tier}{(p.Why.Length > 0 ? "; " + p.Why : "")}{(p.Also.Count > 0 ? "; also " + string.Join(", ", p.Also) : "")}"));
+        }
+        foreach (var (product, tag) in toTag)
+            if (c.Cache.TryResolve<IMajorRecordGetter>(product, out var item)) Tag(c, item, [tag], tagFamily);
+        c.Note($"Retier: {changed} recipes changed of {plan.Count} gated, {toTag.Count} clothes tagged");
+    }
+
+    // Item or keyword editor id -> index in c.Tiers
+    static Dictionary<FormKey, int> TierTable(PatchContext c, JsonObject table)
+    {
+        var map = new Dictionary<FormKey, int>();
+        foreach (var (tier, list) in table.Select(kv => (kv.Key, kv.Value!.AsArray())))
+        {
+            var idx = Array.IndexOf(c.Tiers, tier);
+            if (idx < 0) throw new SpecException($"unknown tier '{tier}'");
+            foreach (var edid in list.Select(x => x!.GetValue<string>()))
+            {
+                if (!c.TryWinning<IMajorRecordGetter>(edid, out var rec)) { c.Error($"retier: '{edid}' not found"); continue; }
+                map[rec.FormKey] = Math.Max(map.GetValueOrDefault(rec.FormKey), idx);
+            }
+        }
+        return map;
+    }
+
     record FinalRecipe(string Edid, FormKey Bench, FormKey Product);
 
     // Every recipe as it stands after the earlier steps: the plugin's own overrides win over the load order's.
@@ -1742,7 +1970,7 @@ class Report
         md.Add("");
         md.Add("## Marker spells (global form ids for the server)");
         var spells = new JsonObject();
-        foreach (var s in mod.Spells.Where(s => s.FormKey.ModKey == key && (s.EditorID ?? "").StartsWith("AldMastery_")))
+        foreach (var s in mod.Spells.Where(s => s.FormKey.ModKey == key && (s.EditorID ?? "").StartsWith(PatchContext.MarkerPrefix)))
         {
             md.Add($"- {s.EditorID}: {s.FormKey} global 0x{GlobalId(s.FormKey):X8} '{s.Name?.String}' effects={s.Effects.Count}");
             spells[s.EditorID!] = $"0x{GlobalId(s.FormKey):X8}";
@@ -1760,7 +1988,7 @@ class Report
             md.Add("");
             md.Add("| tier | recipe | output | origin | items | flags |");
             md.Add("|---|---|---|---|---|---|");
-            foreach (var r in group.OrderBy(r => Array.IndexOf(new[] { "Anyone", "Novice", "Adept", "Expert", "Master", "disabled" }, r.Tier)).ThenBy(r => r.Output))
+            foreach (var r in group.OrderBy(r => Array.IndexOf(new[] { "Anyone", "Novice", "Adept", "Expert", "Master", "Legendary", "disabled" }, r.Tier)).ThenBy(r => r.Output))
             {
                 var flags = new List<string>();
                 if (r.untouched) flags.Add("untouched");

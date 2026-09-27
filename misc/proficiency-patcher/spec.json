@@ -4,7 +4,9 @@
   "alchemist": "Alchemist",
   "blacksmith": "Blacksmith",
   "cook": "Cook",
+  "farmer": "Farmer",
   "hunter": "Hunter",
+  "mage": "Mage",
   "miner": "Miner",
   "tailor": "Tailor",
   "warrior": "Warrior",
@@ -14,7 +16,8 @@
   "Novice",
   "Adept",
   "Expert",
-  "Master"
+  "Master",
+  "Legendary"
  ],
  "items": {
   "misc": [
@@ -45,6 +48,61 @@
   "GetGlobalValue"
  ],
  "abilities": {
+  "blacksmith": {
+   "Adept": {
+    "perks": [
+     "SteelSmithing",
+     "AdvancedArmors"
+    ]
+   },
+   "Expert": {
+    "perks": [
+     "DwarvenSmithing",
+     "OrcishSmithing",
+     "ElvenSmithing"
+    ]
+   },
+   "Master": {
+    "perks": [
+     "EbonySmithing",
+     "GlassSmithing",
+     "ArcaneBlacksmith"
+    ]
+   },
+   "Legendary": {
+    "perks": [
+     "DaedricSmithing",
+     "DragonArmor"
+    ]
+   }
+  },
+  "farmer": {
+   "Novice": {
+    "perks": [
+     "AldPerk_NoviceFarmer"
+    ]
+   },
+   "Adept": {
+    "perks": [
+     "AldPerk_AdeptFarmer"
+    ]
+   },
+   "Expert": {
+    "perks": [
+     "AldPerk_ExpertFarmer"
+    ]
+   },
+   "Master": {
+    "perks": [
+     "AldPerk_MasterFarmer"
+    ]
+   },
+   "Legendary": {
+    "perks": [
+     "AldPerk_LegendaryFarmer"
+    ]
+   }
+  },
   "hunter": {
    "Adept": {
     "perks": [
@@ -55,6 +113,60 @@
    "Expert": {
     "perks": [
      "EagleEye30"
+    ]
+   }
+  },
+  "miner": {
+   "Novice": {
+    "perks": [
+     "AldPerk_NoviceMiner"
+    ]
+   },
+   "Adept": {
+    "perks": [
+     "AldPerk_AdeptMiner"
+    ]
+   },
+   "Expert": {
+    "perks": [
+     "AldPerk_ExpertMiner"
+    ]
+   },
+   "Master": {
+    "perks": [
+     "AldPerk_MasterMiner"
+    ]
+   },
+   "Legendary": {
+    "perks": [
+     "AldPerk_LegendaryMiner"
+    ]
+   }
+  },
+  "tailor": {
+   "Novice": {
+    "perks": [
+     "AldPerk_HideTailor"
+    ]
+   },
+   "Adept": {
+    "perks": [
+     "AldPerk_FineTailor"
+    ]
+   },
+   "Expert": {
+    "perks": [
+     "AldPerk_LeatherTailor"
+    ]
+   },
+   "Master": {
+    "perks": [
+     "AldPerk_NobleTailor"
+    ]
+   },
+   "Legendary": {
+    "perks": [
+     "AldPerk_DaedricTailor"
     ]
    }
   },
@@ -90,7 +202,208 @@
      "Warmaster"
     ]
    }
+  },
+  "woodworker": {
+   "Novice": {
+    "perks": [
+     "AldPerk_NoviceCarpenter"
+    ]
+   },
+   "Adept": {
+    "perks": [
+     "AldPerk_AdeptCarpenter"
+    ]
+   },
+   "Expert": {
+    "perks": [
+     "AldPerk_ExpertCarpenter"
+    ]
+   },
+   "Master": {
+    "perks": [
+     "AldPerk_MasterCarpenter"
+    ]
+   },
+   "Legendary": {
+    "perks": [
+     "AldPerk_Jesus"
+    ]
+   }
   }
+ },
+ "perks": [
+  {
+   "edid": "AldPerk_HideTailor",
+   "name": "Hide Tailor",
+   "description": "The hide tailor's craft."
+  },
+  {
+   "edid": "AldPerk_FineTailor",
+   "name": "Fine Tailor",
+   "description": "The fine tailor's craft."
+  },
+  {
+   "edid": "AldPerk_LeatherTailor",
+   "name": "Leather Tailor",
+   "description": "The leather tailor's craft."
+  },
+  {
+   "edid": "AldPerk_NobleTailor",
+   "name": "Noble Tailor",
+   "description": "The noble tailor's craft."
+  },
+  {
+   "edid": "AldPerk_DaedricTailor",
+   "name": "Daedric Tailor",
+   "description": "The daedric tailor's craft."
+  },
+  {
+   "edid": "AldPerk_NoviceCarpenter",
+   "name": "Novice Carpenter",
+   "description": "The novice carpenter's craft."
+  },
+  {
+   "edid": "AldPerk_AdeptCarpenter",
+   "name": "Adept Carpenter",
+   "description": "The adept carpenter's craft."
+  },
+  {
+   "edid": "AldPerk_ExpertCarpenter",
+   "name": "Expert Carpenter",
+   "description": "The expert carpenter's craft."
+  },
+  {
+   "edid": "AldPerk_MasterCarpenter",
+   "name": "Master Carpenter",
+   "description": "The master carpenter's craft."
+  },
+  {
+   "edid": "AldPerk_Jesus",
+   "name": "Legendary Carpenter",
+   "description": "The legendary carpenter's craft."
+  },
+  {
+   "edid": "AldPerk_NoviceMiner",
+   "name": "Novice Miner",
+   "description": "The novice miner's craft."
+  },
+  {
+   "edid": "AldPerk_AdeptMiner",
+   "name": "Adept Miner",
+   "description": "The adept miner's craft."
+  },
+  {
+   "edid": "AldPerk_ExpertMiner",
+   "name": "Expert Miner",
+   "description": "The expert miner's craft."
+  },
+  {
+   "edid": "AldPerk_MasterMiner",
+   "name": "Master Miner",
+   "description": "The master miner's craft."
+  },
+  {
+   "edid": "AldPerk_LegendaryMiner",
+   "name": "Legendary Miner",
+   "description": "The legendary miner's craft."
+  },
+  {
+   "edid": "AldPerk_NoviceFarmer",
+   "name": "Novice Farmer",
+   "description": "The novice farmer's craft."
+  },
+  {
+   "edid": "AldPerk_AdeptFarmer",
+   "name": "Adept Farmer",
+   "description": "The adept farmer's craft."
+  },
+  {
+   "edid": "AldPerk_ExpertFarmer",
+   "name": "Expert Farmer",
+   "description": "The expert farmer's craft."
+  },
+  {
+   "edid": "AldPerk_MasterFarmer",
+   "name": "Master Farmer",
+   "description": "The master farmer's craft."
+  },
+  {
+   "edid": "AldPerk_LegendaryFarmer",
+   "name": "Legendary Farmer",
+   "description": "The legendary farmer's craft."
+  }
+ ],
+ "formIds": {
+  "AldProf_Alchemist_Legendary": "0x04126D",
+  "AldProf_Blacksmith_Legendary": "0x04126E",
+  "AldProf_Cook_Legendary": "0x04126F",
+  "AldProf_Farmer_Novice": "0x041270",
+  "AldProf_Farmer_Adept": "0x041271",
+  "AldProf_Farmer_Expert": "0x041272",
+  "AldProf_Farmer_Master": "0x041273",
+  "AldProf_Farmer_Legendary": "0x041274",
+  "AldProf_Hunter_Legendary": "0x041275",
+  "AldProf_Mage_Novice": "0x041276",
+  "AldProf_Mage_Adept": "0x041277",
+  "AldProf_Mage_Expert": "0x041278",
+  "AldProf_Mage_Master": "0x041279",
+  "AldProf_Mage_Legendary": "0x04127A",
+  "AldProf_Miner_Legendary": "0x04127B",
+  "AldProf_Tailor_Legendary": "0x04127C",
+  "AldProf_Warrior_Legendary": "0x04127D",
+  "AldProf_Woodworker_Legendary": "0x04127E",
+  "AldPerk_HideTailor": "0x04127F",
+  "AldPerk_FineTailor": "0x041280",
+  "AldPerk_LeatherTailor": "0x041281",
+  "AldPerk_NobleTailor": "0x041282",
+  "AldPerk_DaedricTailor": "0x041283",
+  "AldPerk_NoviceCarpenter": "0x041284",
+  "AldPerk_AdeptCarpenter": "0x041285",
+  "AldPerk_ExpertCarpenter": "0x041286",
+  "AldPerk_MasterCarpenter": "0x041287",
+  "AldPerk_Jesus": "0x041288",
+  "AldPerk_NoviceMiner": "0x041289",
+  "AldPerk_AdeptMiner": "0x04128A",
+  "AldPerk_ExpertMiner": "0x04128B",
+  "AldPerk_MasterMiner": "0x04128C",
+  "AldPerk_LegendaryMiner": "0x04128D",
+  "AldPerk_NoviceFarmer": "0x04128E",
+  "AldPerk_AdeptFarmer": "0x04128F",
+  "AldPerk_ExpertFarmer": "0x041290",
+  "AldPerk_MasterFarmer": "0x041291",
+  "AldPerk_LegendaryFarmer": "0x041292",
+  "AldMasteryPerk_SteelSmithing": "0x041293",
+  "AldMasteryPerk_AdvancedArmors": "0x041294",
+  "AldMasteryPerk_DwarvenSmithing": "0x041295",
+  "AldMasteryPerk_OrcishSmithing": "0x041296",
+  "AldMasteryPerk_ElvenSmithing": "0x041297",
+  "AldMasteryPerk_EbonySmithing": "0x041298",
+  "AldMasteryPerk_GlassSmithing": "0x041299",
+  "AldMasteryPerk_ArcaneBlacksmith": "0x04129A",
+  "AldMasteryPerk_DaedricSmithing": "0x04129B",
+  "AldMasteryPerk_DragonArmor": "0x04129C",
+  "AldMasteryPerk_AldPerk_HideTailor": "0x04129D",
+  "AldMasteryPerk_AldPerk_FineTailor": "0x04129E",
+  "AldMasteryPerk_AldPerk_LeatherTailor": "0x04129F",
+  "AldMasteryPerk_AldPerk_NobleTailor": "0x0412A0",
+  "AldMasteryPerk_AldPerk_DaedricTailor": "0x0412A1",
+  "AldMasteryPerk_AldPerk_NoviceCarpenter": "0x0412A2",
+  "AldMasteryPerk_AldPerk_AdeptCarpenter": "0x0412A3",
+  "AldMasteryPerk_AldPerk_ExpertCarpenter": "0x0412A4",
+  "AldMasteryPerk_AldPerk_MasterCarpenter": "0x0412A5",
+  "AldMasteryPerk_AldPerk_Jesus": "0x0412A6",
+  "AldMasteryPerk_AldPerk_NoviceMiner": "0x0412A7",
+  "AldMasteryPerk_AldPerk_AdeptMiner": "0x0412A8",
+  "AldMasteryPerk_AldPerk_ExpertMiner": "0x0412A9",
+  "AldMasteryPerk_AldPerk_MasterMiner": "0x0412AA",
+  "AldMasteryPerk_AldPerk_LegendaryMiner": "0x0412AB",
+  "AldMasteryPerk_AldPerk_NoviceFarmer": "0x0412AC",
+  "AldMasteryPerk_AldPerk_AdeptFarmer": "0x0412AD",
+  "AldMasteryPerk_AldPerk_ExpertFarmer": "0x0412AE",
+  "AldMasteryPerk_AldPerk_MasterFarmer": "0x0412AF",
+  "AldMasteryPerk_AldPerk_LegendaryFarmer": "0x0412B0",
+  "AldKeyword_FineClothing": "0x0412B1",
+  "AldKeyword_NobleClothing": "0x0412B2"
  },
  "woodcraftingBench": {
   "edid": "AldWoodcraftingBench",
@@ -987,10 +1300,12 @@
     "OreMalachite",
     "OreQuicksilver",
     "OreEbony",
+    "DLC2OreStalhrim"
+   ],
+   "Legendary": [
+    "DaedraHeart",
     "DragonBone",
-    "DragonScales",
-    "DLC2OreStalhrim",
-    "DaedraHeart"
+    "DragonScales"
    ]
   },
   "addItems": {
@@ -2434,6 +2749,74 @@
     "items": {
      "12SeaSaltOre": 1
     }
+   },
+   {
+    "edid": "AldRecipeWood_HuntingKnife",
+    "formId": "0x0412B3",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "weapBasicKnife01",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "IngotIron": 1,
+     "LeatherStrips": 1,
+     "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_AncientNordBow",
+    "formId": "0x0412B4",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "DraugrBow",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Adept",
+    "items": {
+     "Firewood01": 3,
+     "IngotSteel": 1,
+     "LeatherStrips": 2
+    }
+   },
+   {
+    "edid": "AldRecipeWood_AncientNordArrow",
+    "formId": "0x0412B5",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "DraugrArrow",
+    "count": 24,
+    "profession": "woodworker",
+    "tier": "Adept",
+    "items": {
+     "Firewood01": 1,
+     "IngotSteel": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_SkyforgeNordHeroArrow",
+    "formId": "0x0412B6",
+    "bench": "CraftingSmithingSkyforge",
+    "output": "NordHeroArrow",
+    "count": 24,
+    "profession": "woodworker",
+    "tier": "Master",
+    "items": {
+     "DraugrArrow": 24,
+     "IngotSteel": 1
+    }
+   },
+   {
+    "edid": "AldRecipeWood_SkyforgeSuppleAncientBow",
+    "formId": "0x0412B7",
+    "bench": "CraftingSmithingSkyforge",
+    "output": "DraugrBowSupple",
+    "count": 1,
+    "profession": "woodworker",
+    "tier": "Master",
+    "items": {
+     "DraugrBow": 1,
+     "IngotSteel": 2,
+     "LeatherStrips": 1
+    }
    }
   ]
  },
@@ -3817,26 +4200,6 @@
   "bench": "MothNest1",
   "profession": "blacksmith",
   "recipes": [
-   "RecipeWeaponDaedricBattleAxe",
-   "RecipeWeaponDaedricBow",
-   "RecipeWeaponDaedricDagger",
-   "RecipeWeaponDaedricGreatsword",
-   "RecipeWeaponDaedricMace",
-   "RecipeWeaponDaedricSword",
-   "RecipeWeaponDaedricWarAxe",
-   "RecipeWeaponDaedricWarhammer",
-   "RecipeArmorDaedricBoots",
-   "RecipeArmorDaedricCuirass",
-   "RecipeArmorDaedricGauntlets",
-   "RecipeArmorDaedricHelmet",
-   "RecipeArmorDaedricShield",
-   "RecipeArmorDaedricCuirassaltdk",
-   "RecipeArmorDaedricHelmetaltdk",
-   "RecipeArmorDaedricShieldaltdk",
-   "RecipeArmorArmorDaedricHelmet_CLS",
-   "RecipeArmorArmorDaedricHelmet_D_CLS",
-   "RecipeArmorArmorDaedricHelmet_U_CLS",
-   "DLC1RecipeArrowDaedric",
    "MCERecipeArmorGuardCuirassFalkreath",
    "MCERecipeArmorGuardCuirassHjaalmarch",
    "MCERecipeArmorGuardCuirassMarkarth",
@@ -3975,7 +4338,6 @@
    "0RecipeArmorKhajiitGauntletsJadarri",
    "0RecipeArmorKhajiitGauntletsWater",
    "0RecipeArmorKhajiitGauntletsWhite",
-   "RecipeArmorArmorDragonplateHelmet_U_CLS",
    "RecipeArmor1SilverBoots",
    "RecipeArmor1SilverCuirass",
    "RecipeArmor1SilverGantlets",
@@ -4058,14 +4420,8 @@
    "AldCraftingWoodcrafting"
   ],
   "match": [
-   "Daedric",
    "BiPolar",
    "Bipolar",
-   "Dragonbone",
-   "Dragon Bone Weapon",
-   "Dragonhide",
-   "Dragonscale",
-   "Dragonsteel",
    "Madness",
    "Pelt of Karhu",
    "Boethiah",
@@ -4084,15 +4440,26 @@
    "Vanguard Plate",
    "VanguardPlate",
    "Wheel of Pain",
-   "Orgnum",
-   "Dragon Knight",
-   "DragonKnight",
-   "Dragonplate"
+   "Orgnum"
   ],
   "except": [
    "Chamber",
    "Ambergris"
-  ]
+  ],
+  "unpark": {
+   "match": [
+    "Daedric",
+    "Dragonbone",
+    "Dragon Bone Weapon",
+    "Dragonhide",
+    "Dragonscale",
+    "Dragonsteel",
+    "Dragon Knight",
+    "DragonKnight",
+    "Dragonplate"
+   ],
+   "except": []
+  }
  },
  "leveledItems": [
   {
@@ -6123,7 +6490,8 @@
      "Nord Hero",
      "Skyforge",
      "Nord Mail",
-     "Primitive Nord"
+     "Primitive Nord",
+     "AldRecipeWood_AncientNord"
     ],
     "except": [
      "Nordic Vanguard",
@@ -6282,7 +6650,8 @@
   "keywordPrefix": "AldCat",
   "iconSource": "skyui/icons_item_psychosteve.swf",
   "formIds": {
-   "AldCatRace_Imperial": "0x04125B"
+   "AldCatRace_Imperial": "0x04125B",
+   "AldCatMat_Dragon": "0x0412B8"
   },
   "benches": [
    "CraftingSmithingForge",
@@ -6873,6 +7242,175 @@
      "ccBGSSSE025_RecipeIngotAmber",
      "ccBGSSSE025_RecipeIngotMadness"
     ]
+   }
+  }
+ },
+ "retier": {
+  "craftBenches": [
+   "CraftingSmithingForge",
+   "CraftingSmithingSkyforge",
+   "CraftingSmelter",
+   "DLC2CraftingSmithingSkaalForge",
+   "DLC1CraftingDawnguard",
+   "DLC1LD_CraftingForgeAetherium",
+   "CraftingTanningRack",
+   "MCE_CraftingLoom",
+   "AldCraftingWoodcrafting"
+  ],
+  "temperBenches": [
+   "CraftingSmithingArmorTable",
+   "CraftingSmithingSharpeningWheel"
+  ],
+  "free": [
+   "BYOHMaterialNails",
+   "BYOHMaterialFittingsIron",
+   "BYOHMaterialLock",
+   "BYOHMaterialHinge",
+   "Charcoal",
+   "LeatherStrips",
+   "MCE_Thread",
+   "ClothesPrisonerTunic",
+   "ArmorBanditCuirass",
+   "ArmorBanditCuirass1",
+   "ArmorBanditCuirass2",
+   "ArmorBanditCuirass3",
+   "ArmorBanditBoots",
+   "ArmorBanditGauntlets",
+   "ArmorBanditHelmet",
+   "ArmorStormcloakBoots",
+   "ArmorStormcloakGauntlets"
+  ],
+  "products": {
+   "woodworker": {
+    "Novice": [
+     "LongBow",
+     "DLC1CrossBow",
+     "ArmorHideShield",
+     "ArmorIronShield",
+     "ArmorIronBandedShield",
+     "IronArrow",
+     "ccBGSSSE037_IronBolt",
+     "weapPickaxe",
+     "Axe01",
+     "AldToolHoe",
+     "weapBasicKnife01",
+     "ForswornArrow"
+    ],
+    "Adept": [
+     "HuntingBow",
+     "ArmorSteelShield",
+     "SteelArrow",
+     "DLC1BoltSteel",
+     "ccBGSSSE037_SilverBolt",
+     "DraugrBow",
+     "DraugrArrow",
+     "ccBGSSSE037_CorkbulbArrow",
+     "ccBGSSSE037_CorkbulbBolt"
+    ],
+    "Expert": [
+     "NordHeroBow",
+     "IAShieldSkyforgeLight",
+     "IAShieldSkyforgeHeavy",
+     "DLC2NordicArrow",
+     "DLC2NordicBow",
+     "DLC2ArmorNordicShield",
+     "ElvenBow",
+     "DLC1DwarvenCrossBowEnhanced"
+    ],
+    "Master": [
+     "NordHeroArrow",
+     "DraugrBowSupple"
+    ]
+   }
+  },
+  "raise": [
+   {
+    "tier": "Legendary",
+    "items": [
+     "DaedraHeart",
+     "DragonBone",
+     "DragonScales"
+    ],
+    "keywords": [
+     "ArmorMaterialDaedric",
+     "WeapMaterialDaedric",
+     "ArmorMaterialDragonplate",
+     "ArmorMaterialDragonscale",
+     "DLC1WeapMaterialDragonbone"
+    ]
+   }
+  ],
+  "smelting": {
+   "profession": "miner",
+   "bench": "CraftingSmelter",
+   "items": {
+    "Anyone": [
+     "OreIron",
+     "IngotIron"
+    ],
+    "Novice": [
+     "OreCorundum",
+     "IngotCorundum"
+    ],
+    "Adept": [
+     "OreGold",
+     "IngotGold",
+     "OreSilver",
+     "ingotSilver",
+     "IngotSteel"
+    ],
+    "Expert": [
+     "OreOrichalcum",
+     "IngotOrichalcum",
+     "OreMoonstone",
+     "IngotIMoonstone"
+    ],
+    "Master": [
+     "OreMalachite",
+     "IngotMalachite",
+     "OreQuicksilver",
+     "IngotQuicksilver",
+     "OreEbony",
+     "IngotEbony",
+     "DLC2OreStalhrim"
+    ]
+   }
+  },
+  "tailor": {
+   "profession": "tailor",
+   "keywords": {
+    "Novice": [
+     "ArmorMaterialHide"
+    ],
+    "Adept": [
+     "ArmorMaterialStudded",
+     "AldKeyword_FineClothing"
+    ],
+    "Expert": [
+     "ArmorMaterialLeather"
+    ],
+    "Master": [
+     "ArmorMaterialScaled",
+     "AldKeyword_NobleClothing"
+    ]
+   },
+   "match": {
+    "Legendary": [
+     "Daedric"
+    ]
+   },
+   "clothing": [
+    "ArmorClothing",
+    "ClothingBody",
+    "ClothingRich",
+    "ClothingPoor",
+    "ClothingHead",
+    "ClothingHands",
+    "ClothingFeet"
+   ],
+   "clothingTags": {
+    "Adept": "AldKeyword_FineClothing",
+    "Master": "AldKeyword_NobleClothing"
    }
   }
  }

@@ -207,7 +207,7 @@ def main():
 
     # Nothing is dropped, own records keep their local ids, and new ones take ids past the input's next object id
     for (t, k), r in ri.items():
-        if k[0] == me and (edid(ro[(t, k)]) if (t, k) in ro else None) != edid(r):
+        if k[0] == me and (edid(ro[(t, k)]) if (t, k) in ro else None) not in (edid(r), 'AldProf_' + edid(r)[len('AldMastery_'):] if t == 'SPEL' and edid(r).startswith('AldMastery_') else None):
             problems.append(f'own {t} {show(k)} {edid(r)} lost its local id')
         elif (t, k) not in ro:
             problems.append(f'{t} {show(k)} {edid(r)} was dropped')
@@ -261,7 +261,7 @@ def main():
     switched = set()
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
-    tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and prefix and edid(r).startswith(prefix)}
+    tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and (prefix and edid(r).startswith(prefix) or edid(r).startswith('AldKeyword_'))}
     # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops
     over = spec.get('overrides', {})
     over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
@@ -376,13 +376,18 @@ def main():
         else:
             problems.append(f'{label}: {f"changed ({diff})" if r is not None else "added"}, and no spec section writes it')
 
-    # The marker spells and their shared effect are the ones live characters and server-settings.json name
+    # The marker spells keep the ids live characters and server-settings.json name, renamed AldProf_ by the revamp; their shared effect is unchanged
     for (t, k), r in ri.items():
-        if k[0] == me and (t == 'SPEL' and edid(r).startswith('AldMastery_') or (t, k[1]) == ('MGEF', 0x20E5)):
+        if k[0] == me and t == 'SPEL' and edid(r).startswith(('AldMastery_', 'AldProf_')):
+            want = 'AldProf_' + edid(r).split('_', 1)[1]
+            if (t, k) not in ro or edid(ro[(t, k)]) != want:
+                problems.append(f'{t} {edid(r)}: not kept at {k[1]:06X} as {want}')
+            checked['marker spells kept at their ids'] += 1
+        elif k[0] == me and (t, k[1]) == ('MGEF', 0x20E5):
             why = ck.compare(t, inp, r.flags, r.data(), out, ro[(t, k)].data()) if (t, k) in ro else 'missing'
             if why:
                 problems.append(f'{t} {edid(r)}: changed ({why})')
-            checked['marker spells and effect unchanged'] += 1
+            checked['marker effect unchanged'] += 1
 
     # Every actor and listed reference ends Initially Disabled with no enable parent that could turn it on
     if 'disableActors' in spec:
@@ -420,7 +425,7 @@ def main():
     for e, gid in ids['markerSpells'].items():
         if int(gid, 16) != (slot << 24 | local.get(e, -1)):
             problems.append(f'proficiency-ids.json: {e} is {gid}, the plugin holds it at {local.get(e, -1):06X} in slot {slot:#x}')
-    log.append(f'full slot {slot:#04x}; AldMastery_Hunter_Master {ids["markerSpells"].get("AldMastery_Hunter_Master")}')
+    log.append(f'full slot {slot:#04x}; AldProf_Hunter_Master {ids["markerSpells"].get("AldProf_Hunter_Master")}')
     log.append(f'records: {len(ri)} -> {len(ro)}')
     log.extend(f'  {what}: {n}' for what, n in sorted(checked.items()))
     with open(os.path.join(a.out, 'verify-r13.txt'), 'w', encoding='utf-8') as f:

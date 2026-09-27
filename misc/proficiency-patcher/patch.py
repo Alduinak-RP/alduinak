@@ -5,6 +5,7 @@
 import argparse
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -19,8 +20,8 @@ INITIALLY_DISABLED = 0x800
 NEVER_MASTERS = ('dyndolod.esm', 'dyndolod.esp', 'occlusion.esp')
 NEG_ZERO = b'\x00\x00\x00\x80'
 # Record types the patcher creates or overrides; anything else must survive untouched.
-# ARMO, WEAP and AMMO join them for the crafting-category keywords the menu filters on.
-PATCHED_TYPES = {'KYWD', 'SPEL', 'MGEF', 'FURN', 'COBJ', 'BOOK', 'MISC', 'ARMO', 'WEAP', 'AMMO'}
+# ARMO, WEAP and AMMO join them for the crafting-category keywords the menu filters on, PERK for the profession perks.
+PATCHED_TYPES = {'KYWD', 'SPEL', 'MGEF', 'FURN', 'COBJ', 'BOOK', 'MISC', 'ARMO', 'WEAP', 'AMMO', 'PERK'}
 
 
 def preclean(src, dst):
@@ -176,7 +177,9 @@ def verify(original, patched, log, allowed=lambda k, rec: False):
         idx = rec.fid >> 24
         local = rec.fid & 0xFFFFFF
         owner = masters[idx] if idx < len(masters) else 'self'
-        return (rec.type, owner, local if owner != 'self' else edid(rec) or f'{local:06X}')
+        # The revamp renames the marker spells in place
+        name = re.sub(r'^AldMastery_', 'AldProf_', edid(rec) or '') if rec.type == 'SPEL' else edid(rec)
+        return (rec.type, owner, local if owner != 'self' else name or f'{local:06X}')
     ko = {key_of(r, masters_o): r for r in ro.values()}
     kp = {key_of(r, masters_p): r for r in rp.values()}
     for k, r in ko.items():
