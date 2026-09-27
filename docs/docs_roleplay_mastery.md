@@ -132,20 +132,39 @@ log names any kit item missing from the load order.
 Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 `misc/proficiency-patcher/out/proficiency-report.md` after a run.
 
-| Profession | Anyone | Novice | Adept | Expert | Master |
-|---|---|---|---|---|---|
-| Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions | the plain Potions of each school, attribute and resistance, Cure Disease, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma |
-| Blacksmith | the two war horns | iron and corundum at the forge and the smelter, the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver | orichalcum, dwarven, moonstone, and the gear of the smith's own people | malachite, quicksilver, ebony, stalhrim, the few pieces that take dragon bone or scales (Immersive Armors' Bosmer Hunt set), and the Skyforge |
-| Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue |
-| Hunter | - | the only one who sees and takes pelts off dead animals; tans leather and cuts leather strips at the tanning rack, shared with the tailor | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) |
-| Miner | iron veins and the sea salt deposits | corundum veins | gold and silver veins | orichalcum, moonstone and quicksilver veins | malachite and ebony veins |
-| Tailor | the blank parchment, journal and book | cloaks, capes, the belted tunic and the other everyday clothing, boots and hats, and everything else at the tanning rack and the weaving loom, leather and hide armour included (leather and leather strips are shared with Novice hunters) | fur collars, Quilted Mantle, Argonian Funerary Masks | satchels and the dress of the tailor's own people | Trader's Resource, Reinforced Backpack, Exquisite Cloak, the black Reinforced Satchel |
-| Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster |
-| Woodworker | charcoal, the broom, the blank parchment, journal and book | the tools (woodcutter's axe, pickaxe, hoe), the Long Bow and the iron and wooden bows, arrows and shields | the Hunting Bow, the Colovian Composite Bow, steel, silver and gold bows, arrows and shields, and the drum | the Springsteel Bow, the Dark Colovian Composite Bow, orichalcum, dwarven and moonstone, and the flute | malachite, quicksilver, ebony, glass and stalhrim, and the lute |
+| Profession | Free (Anyone) | Novice | Adept | Expert | Master | Legendary |
+|---|---|---|---|---|---|---|
+| Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions | the plain Potions of each school, attribute and resistance, Cure Disease, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma | - |
+| Blacksmith | the two war horns, nails, iron fittings, locks and hinges | iron and corundum at the forge, the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver; Steel Smithing, Advanced Armors | orichalcum, dwarven, moonstone, and the gear of the smith's own people; Dwarven, Orcish, Elven Smithing | malachite, quicksilver, ebony, stalhrim, and the Skyforge; Ebony, Glass Smithing, Arcane Blacksmith | daedric (Daedra Heart) and dragon (bone, scales) gear, taken off the hidden list; Daedric Smithing, Dragon Armor |
+| Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue | - |
+| Farmer | - | `AldPerk_NoviceFarmer` | `AldPerk_AdeptFarmer` | `AldPerk_ExpertFarmer` | `AldPerk_MasterFarmer` | `AldPerk_LegendaryFarmer` |
+| Hunter | - | the only one who sees and takes pelts off dead animals; tans leather at the tanning rack, shared with the tailor | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) | - |
+| Mage | - | magicka only (server) | | | | |
+| Miner | iron veins, the sea salt deposits, iron ore into ingots at the smelter | corundum veins and ingots | gold and silver veins; gold, silver and steel ingots | orichalcum, moonstone and quicksilver veins; orichalcum and moonstone ingots | malachite and ebony veins; malachite, quicksilver and ebony ingots | - |
+| Tailor | leather strips, the fur armour (the Bandit fur set) and the Stormcloak boots and gauntlets, thread and the roughspun tunic at the loom, the blank parchment, journal and book | hide (`ArmorMaterialHide`), cloaks, capes and everyday clothing | studded (`ArmorMaterialStudded`) and fine clothing (`AldKeyword_FineClothing`) | leather (`ArmorMaterialLeather`), satchels and backpacks | scaled (`ArmorMaterialScaled`) and noble clothing (`AldKeyword_NobleClothing`) | daedric clothing and light armour |
+| Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster | - |
+| Woodworker | charcoal, the broom, the blank parchment, journal and book | the Long Bow, the crossbow, the hide, iron and banded iron shields, iron arrows and bolts, the tools (pickaxe, woodcutter's axe, hoe, hunting knife), Forsworn arrows | the Hunting Bow, steel shields, arrows and bolts, silver bolts, the Ancient Nord bow and arrows (Nords), Corkbulb arrows and bolts | dwarven, elven, chitin, bonemold, nordic and orcish shields, bows, arrows and bolts (race locks kept), the Skyforge bows and shields | glass, ebony and stalhrim bows, arrows and shields (stalhrim: the Skaal), the Nord Hero arrow and the Supple Ancient Bow at the Skyforge | daedric and dragon bows, arrows and shields |
 
-Smithing, tempering and woodworking tiers follow the materials: the highest
-material among a recipe's inputs and its product decides, so elven bows
-(quicksilver) land in Master. Recipes the lists do not mention stay Novice.
+The perks named per rank ride the marker abilities (see "Vanilla perks through
+abilities"); the tailor, woodworker, miner and farmer perks (`AldPerk_*`) are
+empty and exist for conditions.
+
+**The retier step** (`retier` in `spec.json`) applies this table after every
+other step: a recipe keeps its owner and tier unless a rule says otherwise.
+`free` products are open to everyone; `products` names the woodworker's items per
+rank; ore smelted at the smelter belongs to the miner at the ore's tier
+(`smelting`); a tailor recipe takes the tier of its product's material keyword,
+and clothing without one keeps its tier and gains `AldKeyword_FineClothing`
+(Adept) or `AldKeyword_NobleClothing` (Master); faction gear keeps its rank;
+anything taking a Daedra Heart, dragon bone or dragon scales, or making daedric or
+dragon gear, rises to Legendary (`raise`). A temper entry then asks for the
+profession and rank of the recipe that makes the item (a closed-helmet
+conversion does not count), so a tailor or woodworker only improves what they
+can make.
+
+Smithing, tempering and woodworking tiers otherwise follow the materials: the
+highest material among a recipe's inputs and its product decides. Recipes the
+lists do not mention stay Novice.
 The owner's bow list overrides the table: the Long Bow (2 Firewood, 1 Leather
 Strips) and the Hunting Bow (3 Firewood, 2 Leather Strips, 1 Iron Ingot), which
 had no recipe anywhere, are the plugin's own woodworker recipes at Novice and
@@ -412,7 +431,7 @@ container loot are off:
 
 ### Vanilla perks through abilities
 
-The hunter and warrior perks ride the marker abilities: each is a magic effect
+The blacksmith, hunter, warrior and the new profession perks ride the marker abilities: each is a magic effect
 with **Perk to Apply**, so the game grants the vanilla perk locally while the
 ability is held and takes it away with the ability. Dual Flurry rank 1 carries
 a condition `HasSpell(Warrior Master) == 0`, so it switches off once rank 2
@@ -547,9 +566,13 @@ ESL-flagged plugins do not take a full slot).
 `misc/proficiency-patcher/patch.py` does everything below; the layout it
 produces is:
 
-- 32 `SPEL` records `AldMastery_<Profession>_<Rank>`, Ability, constant, self,
+- 50 `SPEL` records `AldProf_<Profession>_<Rank>`, Ability, constant, self,
   no cost, standalone (never on a RACE or NPC_ record, else they could not be
-  revoked); the hunter and warrior ones carry perk effects.
+  revoked); the blacksmith, hunter, warrior, tailor, woodworker, miner and farmer
+  ones carry perk effects. The 32 older `AldMastery_*` markers were renamed in
+  place and keep their form ids; the 18 new ones are pinned in `formIds`
+  (`0x04126D..0x04127E`).
+- 20 `PERK` records `AldPerk_*` (`perks`), empty, pinned at `0x04127F..0x041292`.
 - `KYWD` `AldCraftingAlchemy`, `AldCraftingKiln`, `AldCraftingWoodcrafting`,
   and the mead keywords.
 - `FURN` overrides of the alchemy labs (bench type Create Object, the alchemy
@@ -594,7 +617,7 @@ Constraints that still hold:
 ### Marker spell ids
 
 `masterySpells` in `server-settings.json` is optional now: a profession left
-out of it is resolved at boot from the plugin's `AldMastery_*` editor ids.
+out of it is resolved at boot from the plugin's `AldProf_*` editor ids.
 Setting it still works and takes precedence:
 
 ```json
