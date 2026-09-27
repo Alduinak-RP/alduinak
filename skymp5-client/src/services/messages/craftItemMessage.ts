@@ -10,4 +10,5 @@ interface CraftItemMessageData {
     workbench: number;
     craftInputObjects: Inventory;
     resultObjectId: number;
+    temperHealth?: number;
 }

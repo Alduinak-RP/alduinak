@@ -1,13 +1,17 @@
 // TODO: refactor this out
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 
-import { Actor, ContainerChangedEvent, Menu } from "skyrimPlatform";
+import { Actor, ContainerChangedEvent, Menu, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { Inventory } from "../../sync/inventory";
+import { Inventory, getInventory } from "../../sync/inventory";
 import { MsgType } from "../../messages";
+import { CraftItemMessage } from "../messages/craftItemMessage";
 import { logTrace, logError } from "../../logging";
 
 type FurnitureId = number;
+
+// Workbench (0xadb78) and grinder (0x88108) bench keywords
+const TEMPER_KEYWORDS = ["ArmorTable", "SharpeningWheel"];
 
 export class CraftService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -64,17 +68,47 @@ export class CraftService extends ClientListener {
 
                 const resultObjectId = baseObjId;
 
-                logTrace(this, `Sending craft workbench`, workbench, `resultObjectId`, resultObjectId, `craftInputObjects`, JSON.stringify(craftInputObjects.entries));
-
-                this.controller.emitter.emit("sendMessage", {
-                    message: {
-                        t: MsgType.CraftItem,
-                        data: { workbench, craftInputObjects, resultObjectId },
-                    },
-                    reliability: "reliable"
+                if (!this.isTemperBench(furnitureRef)) {
+                    this.sendCraft({ workbench, craftInputObjects, resultObjectId });
+                    return;
+                }
+                // The improved entry's extra data is readable once the frame ends
+                this.controller.once("update", () => {
+                    const temperHealth = this.temperHealthOf(resultObjectId);
+                    if (temperHealth === undefined) {
+                        logError(this, `No tempered entry found for`, resultObjectId.toString(16));
+                        return;
+                    }
+                    this.sendCraft({ workbench, craftInputObjects, resultObjectId, temperHealth });
                 });
             }
         }
+    }
+
+    private sendCraft(data: CraftItemMessage["data"]) {
+        logTrace(this, `Sending craft`, JSON.stringify(data));
+        this.controller.emitter.emit("sendMessage", {
+            message: { t: MsgType.CraftItem, data },
+            reliability: "reliable"
+        });
+    }
+
+    private isTemperBench(furnitureRef: ObjectReference): boolean {
+        const base = furnitureRef.getBaseObject();
+        return !!base && TEMPER_KEYWORDS.some((name) => {
+            const keyword = this.sp.Keyword.getKeyword(name);
+            return !!keyword && base.hasKeyword(keyword);
+        });
+    }
+
+    // Highest tempered entry of that base, the one just improved
+    private temperHealthOf(baseId: number): number | undefined {
+        let best: number | undefined;
+        for (const entry of getInventory(this.sp.Game.getPlayer() as Actor).entries) {
+            if (entry.baseId !== baseId || !entry.health || entry.health <= 1) continue;
+            if (best === undefined || entry.health > best) best = entry.health;
+        }
+        return best;
     }
 
     private furnitureStreak = new Map<FurnitureId, Inventory>();
