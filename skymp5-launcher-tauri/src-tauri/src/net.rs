@@ -64,6 +64,11 @@ pub async fn fetch_json_within(url: &str, headers: &[(&str, &str)], secs: u64) -
         req = req.header(*k, *v);
     }
     let res = req.send().await.map_err(|e| err(format!("Request failed: {url}: {e}")))?;
+    let res = success_or_error(res, url).await?;
+    res.json::<Value>().await.map_err(|e| err(format!("Invalid JSON from {url}: {e}")))
+}
+
+async fn success_or_error(res: reqwest::Response, url: &str) -> Result<reqwest::Response, HttpError> {
     let status = res.status();
     if status.is_redirection() {
         return Err(HttpError { status: Some(status.as_u16()), server_error: None, message: format!("HTTP {} from {url} (redirect refused)", status.as_u16()) });
@@ -77,7 +82,28 @@ pub async fn fetch_json_within(url: &str, headers: &[(&str, &str)], secs: u64) -
         };
         return Err(HttpError { status: Some(status.as_u16()), server_error: detail, message });
     }
-    res.json::<Value>().await.map_err(|e| err(format!("Invalid JSON from {url}: {e}")))
+    Ok(res)
+}
+
+// A JSON document kept in cache and sent back as its own sha256: the server answers 304 only when its copy has the same hash,
+// so an edited or stale cache is simply downloaded again
+pub async fn fetch_json_cached(url: &str, cache: &std::path::Path, secs: u64) -> Result<Value, HttpError> {
+    use sha2::{Digest, Sha256};
+    let cached = std::fs::read(cache).ok();
+    let mut req = client().get(url).timeout(Duration::from_secs(secs));
+    if let Some(bytes) = &cached {
+        req = req.header("If-None-Match", format!("\"{}\"", hex::encode(Sha256::digest(bytes))));
+    }
+    let res = req.send().await.map_err(|e| err(format!("Request failed: {url}: {e}")))?;
+    if res.status() == reqwest::StatusCode::NOT_MODIFIED {
+        if let Some(v) = cached.and_then(|b| serde_json::from_slice::<Value>(&b).ok()) { return Ok(v); }
+        return fetch_json_within(url, &[], secs).await;
+    }
+    let res = success_or_error(res, url).await?;
+    let bytes = res.bytes().await.map_err(|e| err(format!("Download failed: {url}: {e}")))?;
+    let v = serde_json::from_slice::<Value>(&bytes).map_err(|e| err(format!("Invalid JSON from {url}: {e}")))?;
+    let _ = std::fs::write(cache, &bytes);
+    Ok(v)
 }
 
 pub async fn post_json(url: &str, body: &Value, headers: &[(&str, &str)]) -> Result<Value, HttpError> {

@@ -69,9 +69,9 @@ pub async fn install_skse_into_root(game: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// Fetched fresh on every install run and never cached, so no local copy can be edited
+// Cached in the launcher's data folder; the server checks the copy's hash, so an edited copy is replaced, never trusted
 pub async fn fetch_manifest() -> Result<Value, net::HttpError> {
-    let m = net::fetch_json_within(&format!("{}/api/manifest", net::api_url()), &[], 120).await?;
+    let m = net::fetch_json_cached(&format!("{}/api/manifest", net::api_url()), &crate::store::data_dir().join("manifest-cache.json"), 120).await?;
     if let Some(list) = m["gameExes"].as_array() {
         *crate::game::KNOWN_GAME_EXES.lock().unwrap() = Some(list.iter().filter_map(|h| h.as_str().map(str::to_lowercase)).collect());
     }
