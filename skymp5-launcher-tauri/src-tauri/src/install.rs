@@ -71,7 +71,7 @@ pub async fn install_skse_into_root(game: &Path) -> Result<(), String> {
 
 // Fetched fresh on every install run and never cached, so no local copy can be edited
 pub async fn fetch_manifest() -> Result<Value, net::HttpError> {
-    let m = net::fetch_json(&format!("{}/api/manifest", net::api_url()), &[]).await?;
+    let m = net::fetch_json_within(&format!("{}/api/manifest", net::api_url()), &[], 120).await?;
     if let Some(list) = m["gameExes"].as_array() {
         *crate::game::KNOWN_GAME_EXES.lock().unwrap() = Some(list.iter().filter_map(|h| h.as_str().map(str::to_lowercase)).collect());
     }

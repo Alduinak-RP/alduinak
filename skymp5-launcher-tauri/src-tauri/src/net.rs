@@ -54,7 +54,12 @@ fn err(msg: impl Into<String>) -> HttpError {
 }
 
 pub async fn fetch_json(url: &str, headers: &[(&str, &str)]) -> Result<Value, HttpError> {
-    let mut req = client().get(url).timeout(Duration::from_secs(10));
+    fetch_json_within(url, headers, 10).await
+}
+
+// For large documents such as the install manifest, which a slow connection cannot fetch in 10 seconds
+pub async fn fetch_json_within(url: &str, headers: &[(&str, &str)], secs: u64) -> Result<Value, HttpError> {
+    let mut req = client().get(url).timeout(Duration::from_secs(secs));
     for (k, v) in headers {
         req = req.header(*k, *v);
     }
