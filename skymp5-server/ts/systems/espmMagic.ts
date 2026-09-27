@@ -101,6 +101,37 @@ export const spellEffects = (mp: Mp, spellId: number): SpellEffect[] => {
   return out;
 };
 
+export const SpellType = { Spell: 0 } as const;
+export const CastType = { Concentration: 2 } as const;
+
+export interface SpellInfo {
+  // SPIT type and cast type, -1 when the record is no SPEL
+  type: number;
+  castType: number;
+  // 1 Novice (and Apprentice), 2 Adept, 3 Expert, 4 Master: from the highest MGEF minimum skill
+  tier: number;
+}
+
+const infoCache = new Map<number, SpellInfo>();
+
+export const spellInfo = (mp: Mp, spellId: number): SpellInfo => {
+  const cached = infoCache.get(spellId);
+  if (cached) return cached;
+  const spell = lookup(mp, spellId);
+  const spit = spell?.record?.type === "SPEL" ? fieldData(spell, "SPIT") : null;
+  const minSkill = Math.max(0, ...spellEffects(mp, spellId).map((e) => {
+    const data = fieldData(lookup(mp, e.mgefId), "DATA");
+    return data && data.byteLength >= 0x2c ? view(data).getUint32(0x28, true) : 0;
+  }));
+  const info = {
+    type: spit && spit.byteLength >= 20 ? view(spit).getUint32(8, true) : -1,
+    castType: spit && spit.byteLength >= 20 ? view(spit).getUint32(16, true) : -1,
+    tier: minSkill >= 100 ? 4 : minSkill >= 75 ? 3 : minSkill >= 50 ? 2 : 1,
+  };
+  infoCache.set(spellId, info);
+  return info;
+};
+
 // True when an effect of the spell runs the vanilla ReanimateAshPile script (MGEF VMAD)
 export const turnsToAsh = (mp: Mp, spellId: number): boolean => {
   const cached = ashCache.get(spellId);

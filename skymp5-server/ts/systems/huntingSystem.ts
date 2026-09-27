@@ -22,14 +22,13 @@ type Mp = any;
 //   huntingButcherChance         chance of one extra meat per kind, default 0.25
 //   huntingTrophyChance          chance of one extra pelt per kind, default 0.15
 //   huntingPeltsNeedHunter       true hides pelts on animal corpses from characters who are not hunters, default true
-//   huntingHarvestNeedsHunter    true hides meat on animal corpses from them as well, default false
 //   huntingMeats, huntingPelts   editor id lists replacing DEFAULT_MEATS / DEFAULT_PELTS
 
 const NOTICE_PACKET = "masteryNotice";
 const DEFAULT_BUTCHER_CHANCE = 0.25;
 const DEFAULT_TROPHY_CHANCE = 0.15;
-const BUTCHER_RANK = 2;
-const TROPHY_RANK = 3;
+const BUTCHER_RANK = 3;
+const TROPHY_RANK = 4;
 const MAX_QUEUED_KILLS = 1024;
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
@@ -58,13 +57,12 @@ export class HuntingSystem implements System {
     this.trophyChance = this.chance(all?.["huntingTrophyChance"], DEFAULT_TROPHY_CHANCE);
     const peltRule = all?.["huntingPeltsNeedHunter"];
     this.peltsNeedHunter = peltRule === undefined ? true : !!peltRule;
-    this.harvestNeedsHunter = !!all?.["huntingHarvestNeedsHunter"];
     const meats = this.list(all?.["huntingMeats"], DEFAULT_MEATS);
     const pelts = this.list(all?.["huntingPelts"], DEFAULT_PELTS);
     await this.resolveItems(ctx, meats, pelts, s.dataDir, s.loadOrder);
     this.installHooks();
     const keyworded = Array.from(this.pelts).filter((id) => this.mastery.baseHasKeyword(ctx, id, this.hideKeyword)).length;
-    this.log(`[hunting] ready, butcher ${Math.round(this.butcherChance * 100)}% on ${this.meats.size} meat(s), trophy ${Math.round(this.trophyChance * 100)}% on ${this.pelts.size} listed pelt(s), ${keyworded} of them keyworded ${HIDE_KEYWORD} and any other item carrying it counts too, pelts ${this.peltsNeedHunter ? "need a hunter" : "open to everyone"}, meat ${this.harvestNeedsHunter ? "needs a hunter" : "open to everyone"}`);
+    this.log(`[hunting] ready, butcher ${Math.round(this.butcherChance * 100)}% on ${this.meats.size} meat(s), trophy ${Math.round(this.trophyChance * 100)}% on ${this.pelts.size} listed pelt(s), ${keyworded} of them keyworded ${HIDE_KEYWORD} and any other item carrying it counts too, pelts ${this.peltsNeedHunter ? "need a hunter" : "open to everyone"}`);
   }
 
   private chance(raw: unknown, fallback: number): number {
@@ -151,15 +149,13 @@ export class HuntingSystem implements System {
     }
   }
 
-  // Pelts, and meat when the setting asks for it, are not there at all for a looter who is not a hunter.
+  // Pelts are not there at all for a looter who is not a hunter.
   // Owned pets count as game too, so a non-hunter also stops seeing pelts stored in one that died.
   // Re-read per call, so a profession changed mid-session is honoured on the next take.
   hidesFrom(ctx: SystemContext, viewerId: number, corpseId: number, baseId: number): boolean {
-    if (!this.peltsNeedHunter && !this.harvestNeedsHunter) return false;
-    // huntingHarvestNeedsHunter has always covered pelts as well as meat
-    if (!this.isPelt(ctx, baseId) && !(this.harvestNeedsHunter && this.meats.has(baseId))) return false;
+    if (!this.peltsNeedHunter || !this.isPelt(ctx, baseId)) return false;
     if (this.isPlayer(ctx, corpseId) || !this.isDead(ctx, corpseId) || !this.isAnimal(ctx, corpseId)) return false;
-    return this.mastery.rankOf(ctx, viewerId, "hunter") < 0;
+    return this.mastery.rankOf(ctx, viewerId, "hunter") === 0;
   }
 
   // The keyword covers vanilla, DLC and mod hides; the list carries the Dawnguard ones, which have no keywords.
@@ -207,7 +203,6 @@ export class HuntingSystem implements System {
   private butcherChance = DEFAULT_BUTCHER_CHANCE;
   private trophyChance = DEFAULT_TROPHY_CHANCE;
   private peltsNeedHunter = true;
-  private harvestNeedsHunter = false;
   private meats = new Set<number>();
   private pelts = new Set<number>();
   private animalKeyword = 0;

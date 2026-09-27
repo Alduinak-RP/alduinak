@@ -326,7 +326,7 @@ export class NeedsSystem implements System {
       setImmediate(() => {
         try {
           if (!isAlive(mp, targetId)) return;
-          const drain = this.mastery.rankOf(ctx, targetId, "warrior") >= 0 ? warriorCost : cost;
+          const drain = this.mastery.rankOf(ctx, targetId, "warrior") > 0 ? warriorCost : cost;
           const p = mp.get(targetId, "percentages");
           if (!p || drain <= 0) return;
           const short = Number(p.stamina) < drain;
@@ -369,7 +369,7 @@ export class NeedsSystem implements System {
     if (!entry) return false;
     const keywords = Array.from(this.mastery.stationKeywords(ctx, refrId));
     if (!keywords.length || keywords.some((k) => this.freeBenches.has(k))) return false;
-    const bench = keywords.filter((k) => this.mastery.professionOfBench(k))[0];
+    const bench = keywords.filter((k) => this.mastery.isCraftBench(k))[0];
     if (!bench) return false;
     const cost = this.craftCost(ctx, actorId, bench) * Math.min(1, ...keywords.map((k) => this.benchMult.get(k) ?? 1));
     if (cost <= 0) return false;
@@ -622,8 +622,7 @@ export class NeedsSystem implements System {
   }
 
   private craftCost(ctx: SystemContext, actorId: number, bench: number): number {
-    const profession = this.mastery.professionOfBench(bench);
-    const rank = profession ? this.mastery.rankOf(ctx, actorId, profession) : -1;
+    const rank = this.mastery.craftRank(ctx, actorId, bench) - 1;
     const base = 1 / this.craftsPerHour[clamp(rank, 0, this.craftsPerHour.length - 1)];
     return rank >= 0 ? base * this.memberMult * this.professionMult(ctx, actorId) : base;
   }

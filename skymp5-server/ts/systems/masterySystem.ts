@@ -1,30 +1,24 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
+import { System, Log, SystemContext, Content } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
-import { GOLD_BASE_ID, addGold, addItemTo, addSpellTo, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
+import { spellInfo, SpellType } from "./espmMagic";
+import { GOLD_BASE_ID, addItemTo, addSpellTo, chainMpHook, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
+import { BLANK_BOOK_EDID } from "./writingSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// ── Mastery: one profession per character, ranked by hours of work ────────────
+// ── Professions: one per character, ranked by hours of work ──────────────────
 //
-// A character picks a single profession and keeps it. Rank comes from hours
-// spent at the craft: every server-observed activity that belongs to the
-// character's profession is worth one point, and the next point cannot be
-// earned until an hour has passed since the last one. One point is one hour,
-// so 40/100/180 points make Adept/Expert/Master. Nothing polls: this system
-// chains the native onCraft/onActivate/onEatItem hooks on `mp` (the way
-// HousingSystem does) and the gamemode relays onDeath/onHitDamage through
-// globalThis.__alduinakMasteryEvent (gamemode_extensions/62_mastery.js, which
-// re-owns those two handlers on every hot reload). Every event is validated
-// by the C++ server before it fires and re-checked here for reach and
-// ownership, so a modified client cannot mint points. Each rank grants a marker spell;
-// recipes in the Alduinak plugin carry a HasSpell condition for the marker,
-// which is the one gate the engine honours on both sides: the vanilla crafting
-// menu hides recipes the player cannot make, and the server independently
-// refuses a forged craft packet for them.
+// docs/docs_professions_revamp_contract.md is the fixed interface. Everyone is Free (rank 0); choosing a profession
+// makes the character a Novice of it, and hours of its work raise it to Adept, Expert, Master and Legendary. Every
+// server-observed activity of the profession is worth one hour, at most one per hour. This system chains the native
+// onCraft/onActivate/onSpellCast hooks on `mp` and the gamemode relays kills through globalThis.__alduinakMasteryEvent
+// (gamemode_extensions/62_mastery.js); other systems credit their own work (skinning) through creditWork. Each rank
+// grants a cumulative marker spell AldProf_<Label>_<Rank>; the plugin's recipes condition on it with HasSpell.
+// A mage cannot rise above Adept without having cast an Adept spell, above Expert without an Expert one, and so on.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -33,177 +27,196 @@ type Mp = any;
 //   Server -> Client:
 //     { customPacketType: "masteryMenu", profession, rank, hours, rankHours, professions: [...] }
 //     { customPacketType: "masteryNotice", text }
+//     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka }
 //
-// Persistence: `private.mastery` on the character's actor form, which rides the
-// changeform into Mongo. Hours are per character by design - an alt starts at
-// Novice - so the record belongs on the actor, never on the profile.
+// Persistence: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier } on the actor.
 //
 // server-settings.json keys (all optional):
-//   masteryRankHours             [adept, expert, master] thresholds, default [40, 100, 180]
-//   masteryPointIntervalMinutes  minimum gap between two points, default 60
-//   masterySpells                { "<professionId>": [noviceSpell, adept, expert, master] }
-//                                form ids from the Alduinak plugin. A profession absent from
-//                                the map uses the plugin's AldMastery_<Profession>_<Rank>
-//                                spells (misc/proficiency-patcher writes them); one that has
-//                                neither grants no spell.
-//   masteryActivities            { "<professionId>": { craftKeywords, craftStations,
-//                                activatePrefixes, activateTypes, eatIngredient,
-//                                killKeywords, hitKeywords } } overriding
-//                                DEFAULT_ACTIVITIES key by key. Keywords take an
-//                                editor id ("CraftingSmithingForge"), a hex id
-//                                ("0x88105") or a desc ("88105:Skyrim.esm").
-//   masteryKits                  { "<professionId>": [{ baseId, count }] } overriding
-//                                DEFAULT_KITS key by key, same shape as startingItems;
-//                                [] gives that profession nothing.
-//   masteryKitGold               gold every profession's kit carries on top of its items,
-//                                alchemists included, default 50; 0 turns it off. A
-//                                character marked private.starterGold (its starting items
-//                                carried gold) gets none.
-//   masteryKitGoldSince          ISO date or epoch ms: every character created since then
-//                                whose kit marker carries no gold and that is not marked
-//                                private.starterGold receives it once (at boot for everyone,
-//                                again after login), marked by private.professionKitGold.
-//                                Absent or unparsable: off.
+//   masteryRankHours             [adept, expert, master, legendary] thresholds, default [40, 100, 180, 6000]
+//   masteryPointIntervalMinutes  minimum gap between two hours, default 60
+//   masterySpells                { "<professionId>": [novice, adept, expert, master, legendary] } marker form ids
+//                                overriding the plugin's AldProf_<Label>_<Rank> spells
+//   masteryActivities            { "<professionId>": { craftKeywords, craftStations, activatePrefixes, activateTypes,
+//                                killKeywords } } overriding DEFAULT_ACTIVITIES key by key. Keywords take an editor id,
+//                                a hex id or a desc ("88105:Skyrim.esm").
+//   masteryKits                  { "<professionId>": [{ baseId, count }] } overriding DEFAULT_KITS key by key; [] gives nothing
+//   masteryKitGold               gold every profession's kit carries, default 50; 0 turns it off. A character marked
+//                                private.starterGold (its starting items carried gold) gets none.
 
 const MASTERY_PROP = "private.mastery";
 // Set with a character's first kit and never cleared, so a reset and a new pick bring no second one
 const KIT_PROP = "private.professionKit";
-// Set by the kit gold backfill, { count, at }
-const KIT_GOLD_PROP = "private.professionKitGold";
-// Plugin recipes any character makes at Novice (instruments, broom, war horns) are no one's work
+// Plugin recipes any character makes (instruments, broom, war horns) are no one's work
 const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
+const RECORD_VERSION = 2;
 
-const DEFAULT_RANK_HOURS = [40, 100, 180];
+export const RANK_NAMES = ["Free", "Novice", "Adept", "Expert", "Master", "Legendary"];
+export const FREE = 0;
+export const NOVICE = 1;
+export const ADEPT = 2;
+export const LEGENDARY = 5;
+// Skill level of the character's own profession skills by rank; every other mapped skill stays at the Free level
+const RANK_SKILL = [15, 25, 40, 60, 80, 100];
+const MAGE_MAGICKA = [100, 125, 150, 175, 200, 500];
+
+const DEFAULT_RANK_HOURS = [40, 100, 180, 6000];
 const DEFAULT_POINT_INTERVAL_MINUTES = 60;
 const CHOOSE_COOLDOWN_MS = 1000;
 // Admin grants are for testing and corrections, never a bulk import.
 export const MAX_GRANT = 1000;
 // Events queue up between ticks; anything past this is a runaway loop.
 const MAX_QUEUED_EVENTS = 4096;
-// The C++ only checks that an activator shares the target's world and never
-// asks where a crafter stands, so a forged packet from across Tamriel would
-// otherwise count as work. Generous next to the engine's own reach so a tall
-// vein or a wide forge still qualifies.
+// The C++ never asks where an activator or crafter stands, so a forged packet from afar must not count as work
 const ACTIVATE_REACH = 600;
-// Bow and crossbow hits skip the engine's distance check, and the engine lets
-// melee land from a cell away; the reach the engine means for each is used
-// instead, with room for the biggest creature bounds.
-const RANGED_REACH = 8192;
-const MELEE_REACH = 400;
-// WEAP DNAM animation types that shoot.
-const ANIM_BOW = 7;
-const ANIM_CROSSBOW = 9;
+// Bow kills skip the engine's distance check; the reach a bow means is used instead
+const KILL_REACH = 8192;
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
-// The client wipes and re-applies learnedSpells about a second after spawn;
-// a login backfill has to land after that.
+// The client wipes and re-applies learnedSpells about a second after spawn; a login backfill has to land after that.
 const LOGIN_GRANT_DELAY_MS = 5000;
-
-export const RANK_NAMES = ["Novice", "Adept", "Expert", "Master"];
 
 interface Profession {
   id: string;
   label: string;
   title: string;
-  // What each of the four ranks opens up, shown beside the ladder in the Skills tab.
+  type: string;
+  // Actor values the client sets from professionState
+  skills: string[];
+  // What each rank opens up, Free to Legendary, shown beside the ladder in the Skills tab.
   blurbs: string[];
 }
+
+const MAGIC_SKILLS = ["Alteration", "Conjuration", "Destruction", "Enchanting", "Illusion", "Restoration"];
 
 // Order matches the menu's left-hand column.
 const PROFESSIONS: Profession[] = [
   {
-    id: "alchemist", label: "Alchemist", title: "The Patient Hand",
+    id: "alchemist", label: "Alchemist", title: "The Patient Hand", type: "Crafter/Gatherer", skills: ["Alchemy"],
     blurbs: [
+      "Anyone may gather herbs and brew the simplest remedies.",
       "Minor potions of healing, magicka and stamina.",
       "Weak poisons, and the weak aversions.",
       "The plain potions of every school, attribute and resistance.",
       "Draughts, philters and elixirs: the strongest work of the lab.",
+      "The legendary brews few alchemists ever see.",
     ],
   },
   {
-    id: "blacksmith", label: "Blacksmith", title: "The Forge-Bound",
+    id: "blacksmith", label: "Blacksmith", title: "The Forge-Bound", type: "Crafter", skills: ["Smithing"],
     blurbs: [
+      "Anyone may smelt iron and forge plain iron tools.",
       "Iron and corundum at the forge, and the smelter.",
-      "Steel, silver and gold.",
-      "The arms and armour of your own people, and Dwarven.",
-      "Ebony, malachite and stalhrim, and the Skyforge.",
+      "Steel and advanced armour.",
+      "Dwarven, Orcish and Elven work.",
+      "Ebony and glass, and arcane smithing.",
+      "Daedric arms and dragon armour.",
     ],
   },
   {
-    id: "cook", label: "Cook", title: "The Hearthkeeper",
+    id: "cook", label: "Cook", title: "The Hearthkeeper", type: "Crafter", skills: ["OneHanded"],
     blurbs: [
+      "Anyone may roast a simple meal over a fire.",
       "Steaks, roasts and grilled fish.",
       "Soups and stews.",
       "Baking: bread, sweet rolls and dumplings.",
       "Gourmet dishes, pies and crostatas.",
+      "Feasts fit for a jarl's table.",
     ],
   },
   {
-    id: "hunter", label: "Hunter", title: "The Far Tracker",
+    id: "farmer", label: "Farmer", title: "The Green Hand", type: "Gatherer", skills: ["Pickpocket"],
     blurbs: [
-      "The pelts and hides only a hunter can take whole.",
+      "Anyone may pick what grows, slowly.",
+      "A hoe and a quicker harvest of the fields.",
+      "Crops come in at a glance.",
+      "Every harvest is instant.",
+      "Double yield from every plant.",
+      "Four times the yield from every plant.",
+    ],
+  },
+  {
+    id: "hunter", label: "Hunter", title: "The Far Tracker", type: "Gatherer/Fighter", skills: ["Marksman"],
+    blurbs: [
+      "Anyone may hunt game for its meat.",
+      "Skinning: a hunting knife takes the pelt of a kill.",
       "A faster draw and a steadier aim afield.",
-      "A longer hold on a drawn bow.",
-      "The full craft of the chase.",
+      "A longer hold on a drawn bow, and the butcher's eye.",
+      "Trophy hunting: the full craft of the chase.",
+      "The legend of the wilds.",
     ],
   },
   {
-    id: "miner", label: "Miner", title: "The Deep Delver",
+    id: "mage", label: "Mage", title: "The Arcane Scholar", type: "Fighter", skills: MAGIC_SKILLS,
     blurbs: [
-      "Corundum veins; iron is open to anyone.",
+      "Anyone may learn a few simple spells.",
+      "125 magicka, and the schools of magic opened.",
+      "150 magicka.",
+      "175 magicka; an Adept spell must be known first.",
+      "200 magicka; an Expert spell must be known first.",
+      "500 magicka; a Master spell must be known first.",
+    ],
+  },
+  {
+    id: "miner", label: "Miner", title: "The Deep Delver", type: "Gatherer", skills: ["TwoHanded"],
+    blurbs: [
+      "Anyone with a pickaxe may mine iron.",
+      "Corundum veins.",
       "Gold and silver.",
-      "Orichalcum, moonstone and quicksilver.",
-      "Ebony and malachite.",
+      "Orichalcum and moonstone.",
+      "Malachite, quicksilver, ebony and stalhrim.",
+      "Amber and madness ore.",
     ],
   },
   {
-    id: "tailor", label: "Tailor", title: "The Fine Thread",
+    id: "tailor", label: "Tailor", title: "The Fine Thread", type: "Crafter", skills: ["Smithing", "LightArmor"],
     blurbs: [
-      "Leather, hide and plain cloth at the rack and the loom.",
-      "Fine clothing, robes and the better leathers.",
-      "The dress and light armour of your own people.",
-      "The finest weaves, and the work of your guild or hold.",
+      "Anyone may mend plain clothes.",
+      "Hide, leather and plain cloth at the rack and the loom.",
+      "Fine clothing and robes.",
+      "The better leathers.",
+      "Noble dress, the finest weaves.",
+      "Daedric silks and the rarest hides.",
     ],
   },
   {
-    id: "warrior", label: "Warrior", title: "The Steadfast Guardian",
+    id: "warrior", label: "Warrior", title: "The Steadfast Guardian", type: "Fighter", skills: ["HeavyArmor", "Block"],
     blurbs: [
+      "Anyone may take up a blade.",
       "A surer footing in a fight.",
       "A faster off hand, a shield carried at speed, and deeper wind.",
       "The charge: with a shield, a blade or a greatsword.",
       "The full stance, the sweeping blow, and a warmaster's reach.",
+      "A legend of the battlefield.",
     ],
   },
   {
-    id: "woodworker", label: "Woodworker", title: "The Grain Reader",
+    id: "woodworker", label: "Woodworker", title: "The Grain Reader", type: "Crafter/Gatherer", skills: ["Smithing"],
     blurbs: [
-      "Tools, and iron bows, arrows and shields; charcoal is open to anyone.",
+      "Anyone may chop firewood and burn charcoal.",
+      "Tools, and iron bows, arrows and shields.",
       "Steel, silver and gold bows, arrows and shields, and drums.",
       "Orichalcum and moonstone, and flutes.",
       "Malachite, quicksilver and ebony, and lutes.",
+      "Work so fine it walks on water.",
     ],
   },
 ];
 
 const PROFESSION_IDS = PROFESSIONS.map((p) => p.id);
+const ALL_SKILLS = Array.from(new Set(PROFESSIONS.flatMap((p) => p.skills)));
 
-// What counts as work, per profession. Every list is optional; an empty list
-// never matches. Keywords are resolved to global form ids at boot.
+// What counts as work, per profession. Every list is optional; an empty list never matches.
 interface ActivityRules {
-  // Recipe (COBJ) workbench keyword of a server-validated craft.
+  // Recipe (COBJ) workbench keyword of a server-validated craft or temper.
   craftKeywords: string[];
-  // Keyword on the station itself (isBlacksmithForge...): every craft made there counts, whatever the recipe.
+  // Keyword on the station itself: every craft made there counts, whatever the recipe.
   craftStations: string[];
   // Editor id prefix of the activated reference's base object.
   activatePrefixes: string[];
   // Record type of the activated reference's base object (FLOR, TREE...).
   activateTypes: string[];
-  // Eating a raw ingredient to learn its effects.
-  eatIngredient: boolean;
   // Keywords on the victim's base or race when this character lands the kill.
   killKeywords: string[];
-  // Keywords on the target's base or race when this character lands a hit.
-  hitKeywords: string[];
 }
 
 const ACTOR_TYPES = ["ActorTypeNPC", "ActorTypeCreature", "ActorTypeUndead", "ActorTypeDaedra", "ActorTypeDwarven", "ActorTypeDragon", "ActorTypeGiant", "ActorTypeTroll"];
@@ -212,24 +225,20 @@ const ACTOR_TYPES = ["ActorTypeNPC", "ActorTypeCreature", "ActorTypeUndead", "Ac
 const PLAYER_KEYWORD = "ActorTypeNPC";
 
 const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
-  // A brewed potion counts, opening the lab does not; herbs, tasting and meadery brews count too.
-  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: ["AldCraftingMead"], activateTypes: ["FLOR", "TREE"], eatIngredient: true },
-  // Tempering never reaches the server as a craft, so the grindstone and the
-  // workbench cannot count. Anything made at a forge, anvil or smelter counts, clothing included.
+  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: ["AldCraftingMead"], activateTypes: ["FLOR", "TREE"] },
+  // Anything made at a forge, anvil or smelter counts, and a temper at the workbench or grindstone
   blacksmith: {
-    craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge", "DLC1CraftingDawnguard", "DLC1LD_CraftingForgeAetherium"],
+    craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge", "DLC1CraftingDawnguard", "DLC1LD_CraftingForgeAetherium", "CraftingSmithingArmorTable", "CraftingSmithingSharpeningWheel"],
     craftStations: ["isBlacksmithForge", "isBlacksmithAnvil", "isSmelter"],
   },
-  // A brew at a meadery boiler is open to everyone and counts for the cook as well as the alchemist.
   cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: ["AldCraftingMead"] },
+  farmer: { activateTypes: ["FLOR", "TREE"] },
   hunter: { killKeywords: ["ActorTypeAnimal"] },
   // Veins hand the swing to a linked PickaxeMining*Marker furniture.
   miner: { activatePrefixes: ["MineOre", "PickaxeMining"] },
-  // MoreCraftableEquipment clothes and cloaks are woven at its loom.
-  tailor: { craftKeywords: ["CraftingTanningRack", "MCE_CraftingLoom"] },
-  warrior: { hitKeywords: ACTOR_TYPES },
-  // Hearthfire recipes name BYOHBuildingCarpenter; the bench also carries BYOHCarpenterTable. Bows and charcoal come from the proficiency plugin benches.
-  woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter", "AldCraftingWoodcrafting", "AldCraftingKiln"] },
+  tailor: { craftKeywords: ["CraftingTanningRack", "MCE_CraftingLoom", "CraftingSmithingArmorTable"] },
+  warrior: { killKeywords: ACTOR_TYPES },
+  woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter", "AldCraftingWoodcrafting", "AldCraftingKiln", "CraftingSmithingSharpeningWheel"] },
 };
 
 interface KitItem {
@@ -237,7 +246,7 @@ interface KitItem {
   count: number;
 }
 
-// Skyrim.esm: IngotIron, Leather01, LeatherStrips, Axe01, weapPickaxe, SaltPile, IronDagger, HuntingBow, IronArrow; alchemists have no kit items
+// Skyrim.esm: IngotIron, Leather01, LeatherStrips, Axe01, weapPickaxe, SaltPile, IronDagger, HuntingBow, IronArrow, Hoe; the mage's blank book is added at boot
 const DEFAULT_KITS: Record<string, KitItem[]> = {
   blacksmith: [{ baseId: 0x0005ace4, count: 5 }],
   tailor: [{ baseId: 0x000db5d2, count: 5 }, { baseId: 0x000800e4, count: 5 }],
@@ -246,11 +255,12 @@ const DEFAULT_KITS: Record<string, KitItem[]> = {
   cook: [{ baseId: 0x00034cdf, count: 10 }],
   warrior: [{ baseId: 0x0001397e, count: 1 }],
   hunter: [{ baseId: 0x00013985, count: 1 }, { baseId: 0x0001397d, count: 20 }],
+  farmer: [{ baseId: 0x00025101, count: 1 }],
+  mage: [],
 };
-// Gold001 handed out with every kit, whatever masteryKits says about the items
 const DEFAULT_KIT_GOLD = 50;
 
-const ACTIVITY_KINDS = ["craft", "activate", "eat", "kill", "hit"] as const;
+const ACTIVITY_KINDS = ["craft", "activate", "kill", "cast", "work"] as const;
 type ActivityKind = typeof ACTIVITY_KINDS[number];
 
 interface ActivityEvent {
@@ -259,26 +269,25 @@ interface ActivityEvent {
   detail: Record<string, number>;
 }
 
-// Rules with every keyword resolved to a global form id and types upper-cased.
 interface ResolvedRules {
   craftKeywords: Set<number>;
   craftStations: Set<number>;
   activatePrefixes: string[];
   activateTypes: Set<string>;
-  eatIngredient: boolean;
   killKeywords: Set<number>;
-  hitKeywords: Set<number>;
 }
 
 interface MasteryRecord {
+  v: number;
   profession: string | null;
   points: number;
-  // Epoch ms of the last point; 0 when none has been earned yet.
+  // Epoch ms of the last hour; 0 when none has been earned yet.
   lastPointAt: number;
   rank: number;
-  // Marker spells already handed to this character, so a login does not
-  // re-grant them into the client's spawn-time spell wipe.
+  // Marker spells already handed to this character, so a login does not re-grant them into the client's spawn-time spell wipe.
   granted: number[];
+  // Highest spell tier a mage has cast, 0 before any
+  spellTier: number;
 }
 
 // What the admin panel shows for one character.
@@ -301,7 +310,7 @@ interface Location {
   pos: number[];
 }
 
-const emptyRecord = (): MasteryRecord => ({ profession: null, points: 0, lastPointAt: 0, rank: 0, granted: [] });
+const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0 });
 
 export const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
 
@@ -315,8 +324,10 @@ export class MasterySystem implements System {
     const all = s.allSettings as Record<string, unknown> | null;
 
     const hours = all?.["masteryRankHours"];
-    if (Array.isArray(hours) && hours.length === 3 && hours.every((h) => Number.isFinite(Number(h)))) {
+    if (Array.isArray(hours) && hours.length === DEFAULT_RANK_HOURS.length && hours.every((h) => Number.isFinite(Number(h)))) {
       this.rankHours = hours.map((h) => Number(h));
+    } else if (hours !== undefined) {
+      this.log(`[mastery] masteryRankHours needs ${DEFAULT_RANK_HOURS.length} numbers (adept, expert, master, legendary), default kept`);
     }
     const interval = Number(all?.["masteryPointIntervalMinutes"]);
     if (Number.isFinite(interval) && interval > 0) this.intervalMs = interval * 60000;
@@ -325,44 +336,31 @@ export class MasterySystem implements System {
     if (spells && typeof spells === "object") {
       for (const id of PROFESSION_IDS) {
         const list = (spells as Record<string, unknown>)[id];
-        if (Array.isArray(list) && list.length === RANK_NAMES.length) {
-          this.spells[id] = list.map((v) => Number(v) >>> 0);
-        }
+        if (Array.isArray(list) && list.length === LEGENDARY) this.spells[id] = list.map((v) => Number(v) >>> 0);
       }
     }
 
     this.loadKits(ctx, all?.["masteryKits"]);
     const kitGold = Number(all?.["masteryKitGold"]);
     if (Number.isInteger(kitGold) && kitGold >= 0) this.kitGold = kitGold;
-    const rawSince = all?.["masteryKitGoldSince"];
-    const sinceText = String(rawSince ?? "").trim();
-    const since = typeof rawSince === "number" ? rawSince : /^\d+$/.test(sinceText) ? Number(sinceText) : Date.parse(sinceText);
-    if (Number.isFinite(since) && since > 0) this.kitGoldSince = since;
-    else if (sinceText) this.log(`[mastery] masteryKitGoldSince "${sinceText}" is not a date or epoch ms, kit gold backfill off`);
     await this.loadRules(ctx, all?.["masteryActivities"], s.dataDir, s.loadOrder);
-    await this.loadPluginSpells(ctx, s.dataDir, s.loadOrder);
+    await this.loadPluginForms(ctx, s.dataDir, s.loadOrder);
 
     const configured = Object.keys(this.spells).length;
-    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one point per ${this.intervalMs / 60000} min, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
-    if (configured < PROFESSION_IDS.length) {
-      this.log(`[mastery] professions without masterySpells grant no recipes yet`);
-    }
+    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => {
       this.onActorAssigned(ctx, userId, actorId >>> 0);
     });
-    if (this.kitGoldSince) ctx.gm.once(WORLD_LOADED_EVENT, () => this.backfillKitGold(ctx));
 
-    // Events are only queued so every property write and Papyrus call runs
-    // outside the native event call stack.
+    // Events are only queued so every property write and Papyrus call runs outside the native event call stack.
     (globalThis as any).__alduinakMasteryEvent = (kind: string, actorId: number, detail: unknown) => {
       this.enqueue(kind, actorId, detail);
     };
     this.hookNativeEvents(ctx);
   }
 
-  // Chain onto whatever already owns these `mp` hooks (housing and the bounty
-  // board wrap onActivate the same way) and never change their verdict.
+  // Chain onto whatever already owns these `mp` hooks and never change their verdict.
   private hookNativeEvents(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
     const chain = (name: string, kind: ActivityKind, pick: (args: unknown[]) => [unknown, Record<string, unknown>]) => {
@@ -381,7 +379,7 @@ export class MasterySystem implements System {
     chain("onCraft", "craft", ([actorId, , , recipeId]) =>
       [actorId, { recipeId, held: this.holdsInputs(ctx, Number(actorId) >>> 0, Number(recipeId) >>> 0) ? 1 : 0 }]);
     chain("onActivate", "activate", ([refrId, casterId]) => [casterId, { refrId }]);
-    chain("onEatItem", "eat", ([actorId, baseId]) => [actorId, { baseId }]);
+    chainMpHook(mp, "onSpellCast", (casterId: number, spellId: number) => this.enqueue("cast", casterId, { spellId }));
   }
 
   private enqueue(kind: string, actorId: unknown, detail: unknown): void {
@@ -392,6 +390,12 @@ export class MasterySystem implements System {
     }
     if (this.events.length >= MAX_QUEUED_EVENTS) this.events.shift();
     this.events.push({ kind: kind as ActivityKind, actorId: Number(actorId) >>> 0, detail: numeric });
+  }
+
+  // Work another system verified (skinning); credited like any activity of that profession
+  creditWork(actorId: number, professionId: string): void {
+    const index = PROFESSION_IDS.indexOf(professionId);
+    if (index !== -1) this.enqueue("work", actorId, { profession: index });
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -420,12 +424,12 @@ export class MasterySystem implements System {
   private creditActivity(ctx: SystemContext, ev: ActivityEvent): void {
     const rec = this.read(ctx, ev.actorId);
     if (!rec || !rec.profession) return;
-    // Cheap gate first: hits arrive constantly and most fall inside the hour.
+    if (ev.kind === "cast" && !this.noteCast(ctx, ev.actorId, rec, ev.detail["spellId"])) return;
     const now = Date.now();
     const elapsed = now - rec.lastPointAt;
     if (elapsed >= 0 && elapsed < this.intervalMs) return;
     const rules = this.rules[rec.profession];
-    if (!rules || !this.matches(ctx, rules, ev)) return;
+    if (!rules || !this.matches(ctx, rec, rules, ev)) return;
 
     rec.points += 1;
     rec.lastPointAt = now;
@@ -435,7 +439,20 @@ export class MasterySystem implements System {
     this.syncRank(ctx, ev.actorId, rec, userId);
   }
 
-  private matches(ctx: SystemContext, rules: ResolvedRules, ev: ActivityEvent): boolean {
+  // A mage's cast of a real spell; a higher tier than any before may lift the rank cap. False for anything else.
+  private noteCast(ctx: SystemContext, actorId: number, rec: MasteryRecord, spellId: number): boolean {
+    if (rec.profession !== "mage") return false;
+    const info = spellInfo(ctx.svr as Mp, spellId);
+    if (info.type !== SpellType.Spell) return false;
+    if (info.tier > rec.spellTier) {
+      rec.spellTier = info.tier;
+      this.write(ctx, actorId, rec);
+      if (this.rankFor(rec) !== rec.rank) this.syncRank(ctx, actorId, rec, this.userOf(ctx, actorId));
+    }
+    return true;
+  }
+
+  private matches(ctx: SystemContext, rec: MasteryRecord, rules: ResolvedRules, ev: ActivityEvent): boolean {
     switch (ev.kind) {
       case "craft": {
         const recipeId = ev.detail["recipeId"];
@@ -456,15 +473,12 @@ export class MasterySystem implements System {
         const edid = base.editorId.toLowerCase();
         return rules.activatePrefixes.some((p) => edid.startsWith(p));
       }
-      case "eat":
-        return rules.eatIngredient && this.recordType(ctx, ev.detail["baseId"]) === "INGR";
       case "kill":
-        return this.combatCounts(ctx, ev.actorId, ev.detail["victimId"], rules.killKeywords, RANGED_REACH);
-      case "hit": {
-        const targetId = ev.detail["targetId"];
-        const reach = this.hitReach(ctx, ev.detail["sourceId"]);
-        return reach > 0 && !this.isDead(ctx, targetId) && this.combatCounts(ctx, ev.actorId, targetId, rules.hitKeywords, reach);
-      }
+        return this.killCounts(ctx, ev.actorId, ev.detail["victimId"], rules.killKeywords);
+      case "cast":
+        return true;
+      case "work":
+        return PROFESSION_IDS[ev.detail["profession"]] === rec.profession;
       default:
         return false;
     }
@@ -483,59 +497,72 @@ export class MasterySystem implements System {
     };
   }
 
-  // Adds (or with a negative amount removes) worked hours; rank and marker
-  // spells follow. Returns null for an amount the system refuses.
+  // Adds (or with a negative amount removes) worked hours; rank and marker spells follow. Null for an amount the system refuses.
   grantPoints(ctx: SystemContext, actorId: number, amount: number): MasterySummary | null {
     if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > MAX_GRANT) return null;
     const rec = this.read(ctx, actorId) || emptyRecord();
     rec.points = Math.max(0, rec.points + amount);
+    return this.settle(ctx, actorId, rec);
+  }
+
+  // Lifts the character to Legendary: the hours of the last threshold, and for a mage the spell tier that allows it. Null without a profession.
+  grantLegendary(ctx: SystemContext, actorId: number): MasterySummary | null {
+    const rec = this.read(ctx, actorId);
+    if (!rec || !rec.profession) return null;
+    rec.points = Math.max(rec.points, this.rankHours[this.rankHours.length - 1]);
+    rec.spellTier = Math.max(rec.spellTier, LEGENDARY - 1);
+    return this.settle(ctx, actorId, rec);
+  }
+
+  private settle(ctx: SystemContext, actorId: number, rec: MasteryRecord): MasterySummary {
     this.write(ctx, actorId, rec);
     const userId = this.userOf(ctx, actorId);
-    if (rec.profession) {
-      this.notice(ctx, userId, `Your hours as a ${this.labelOf(rec.profession)} now stand at ${rec.points}.`);
-    }
+    if (rec.profession) this.notice(ctx, userId, `Your hours as a ${this.labelOf(rec.profession)} now stand at ${rec.points}.`);
     this.syncRank(ctx, actorId, rec, userId);
     return this.summaryOf(ctx, actorId);
   }
 
-  // Admin escape hatch: clears the choice so the character may pick again.
-  // Returns false when the character had nothing to clear.
+  // Admin escape hatch: clears the choice so the character may pick again. False when there was nothing to clear.
   resetCharacter(ctx: SystemContext, actorId: number): boolean {
     const rec = this.read(ctx, actorId);
     if (!rec || !rec.profession) return false;
     this.revokeSpells(ctx, actorId, rec);
     // Hours belong to the craft, so a fresh choice starts from nothing.
-    rec.profession = null;
-    rec.points = 0;
-    rec.lastPointAt = 0;
-    rec.rank = 0;
+    Object.assign(rec, { profession: null, points: 0, lastPointAt: 0, rank: FREE, spellTier: 0 });
     this.write(ctx, actorId, rec);
     const userId = this.userOf(ctx, actorId);
-    this.notice(ctx, userId, "Your mastery has been set aside. You may choose again.");
+    this.notice(ctx, userId, "Your profession has been set aside. You may choose again.");
+    this.sendState(ctx, actorId, userId);
     this.sendMenu(ctx, userId);
     return true;
   }
 
   // ── Login ───────────────────────────────────────────────────────────────────
 
-  // Re-check on login: thresholds can be retuned under a character's feet, a
-  // rank earned before a restart still needs its spell, and the actor may
-  // have been wiped and recreated.
+  // Thresholds can be retuned under a character's feet and older records predate the rank ladder, so rank and markers are settled on login.
   private onActorAssigned(ctx: SystemContext, userId: number, actorId: number): void {
+    const mp = ctx.svr as Mp;
+    if (!isPlayerActor(mp, actorId)) return;
     const rec = this.read(ctx, actorId);
-    if (!rec || !rec.profession) return;
-    const corrected = this.rankFor(rec.points);
-    if (corrected < rec.rank) this.revokeAbove(ctx, actorId, rec, corrected);
-    rec.rank = corrected;
-    // Always written back so a legacy playtime record settles into hours.
-    this.write(ctx, actorId, rec);
-    // Spells already in the changeform ride the spawn message down on their
-    // own; only a gap (new config, retuned rank) needs granting, and it has to
-    // wait out the client's spawn-time removeUnlistedSpells.
-    // A craft held without its kit gets the kit on the same delay, and so does the kit gold backfill.
-    if (this.missingSpells(rec).length || !this.hasKit(ctx, actorId) || this.kitGoldDue(ctx, actorId, rec)) {
-      this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
+    if (rec && rec.profession) {
+      if (rec.v !== RECORD_VERSION) this.migrate(ctx, actorId, rec);
+      const corrected = this.rankFor(rec);
+      if (corrected < rec.rank) this.revokeAbove(ctx, actorId, rec, corrected);
+      rec.rank = corrected;
+      this.write(ctx, actorId, rec);
     }
+    this.sendState(ctx, actorId, userId);
+    // Grants, kits and the state again wait out the client's spawn-time spell wipe
+    this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
+  }
+
+  // Markers of the old ladder that are not markers of the new one go; the ones still wanted are granted after the login delay
+  private migrate(ctx: SystemContext, actorId: number, rec: MasteryRecord): void {
+    const wanted = rec.profession ? this.spells[rec.profession] || [] : [];
+    for (const spellId of rec.granted.filter((id) => wanted.indexOf(id) === -1)) this.removeSpell(ctx, actorId, spellId);
+    rec.granted = rec.granted.filter((id) => wanted.indexOf(id) !== -1);
+    rec.v = RECORD_VERSION;
+    this.log(`[mastery] ${hex(actorId)} migrated to the rank ladder: ${rec.profession} ${rec.points}h`);
   }
 
   private flushPendingGrants(ctx: SystemContext): void {
@@ -544,11 +571,14 @@ export class MasterySystem implements System {
     this.pendingGrants.forEach((dueAt, actorId) => {
       if (now < dueAt) return;
       this.pendingGrants.delete(actorId);
+      const userId = this.userOf(ctx, actorId);
+      if (userId < 0) return;
       const rec = this.read(ctx, actorId);
-      if (!rec || !rec.profession) return;
-      this.applySpells(ctx, actorId, rec);
-      this.giveKit(ctx, actorId, this.userOf(ctx, actorId), rec.profession);
-      this.giveKitGold(ctx, actorId, rec);
+      if (rec && rec.profession) {
+        this.applySpells(ctx, actorId, rec);
+        this.giveKit(ctx, actorId, userId, rec.profession);
+      }
+      this.sendState(ctx, actorId, userId);
     });
   }
 
@@ -572,13 +602,13 @@ export class MasterySystem implements System {
       return;
     }
     rec.profession = professionId;
-    rec.rank = this.rankFor(rec.points);
+    rec.v = RECORD_VERSION;
+    rec.rank = this.rankFor(rec);
     this.write(ctx, actorId, rec);
     this.applySpells(ctx, actorId, rec);
     this.notice(ctx, userId, `You take up the craft of the ${this.labelOf(professionId)}.`);
     this.giveKit(ctx, actorId, userId, professionId);
-    // A reset character keeps its gold-less kit marker, so the backfill gold comes with the new pick
-    this.giveKitGold(ctx, actorId, rec);
+    this.sendState(ctx, actorId, userId);
     this.sendMenu(ctx, userId);
   }
 
@@ -598,7 +628,7 @@ export class MasterySystem implements System {
       this.log(`[mastery] kit flag failed for ${hex(actorId)}: ${e}`);
       return;
     }
-    const kit = this.kits[professionId] || [];
+    const kit = (this.kits[professionId] || []).concat(gold > 0 ? [{ baseId: GOLD_BASE_ID, count: gold }] : []);
     for (const item of kit) {
       try {
         addItemTo(mp, actorId, item.baseId, item.count);
@@ -606,70 +636,11 @@ export class MasterySystem implements System {
         this.log(`[mastery] kit item ${hex(item.baseId)} failed for ${hex(actorId)}: ${e}`);
       }
     }
-    if (gold > 0) {
-      try {
-        addItemTo(mp, actorId, GOLD_BASE_ID, gold);
-      } catch (e) {
-        this.log(`[mastery] kit gold failed for ${hex(actorId)}: ${e}`);
-      }
-    }
-    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}, gold ${gold}${gold < this.kitGold ? " (starter gold came at spawn)" : ""}`);
-    if (kit.length || gold > 0) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
+    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}`);
+    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
   }
 
-  // Characters created since masteryKitGoldSince whose kit came without gold and whose starting items carried none; the marker settles each one for good
-  private kitGoldDue(ctx: SystemContext, actorId: number, rec: MasteryRecord): boolean {
-    if (!this.kitGoldSince || this.kitGold <= 0 || !rec.profession) return false;
-    const mp = ctx.svr as Mp;
-    try {
-      if (mp.get(actorId, KIT_GOLD_PROP) || hadStarterGold(mp, actorId)) return false;
-      const kit = mp.get(actorId, KIT_PROP);
-      // No kit marker: giveKit hands the kit and its gold together at login
-      if (!kit || typeof kit.gold === "number") return false;
-      const createdAt = Number(mp.get(actorId, "private.startLocation")?.at) || Number(kit.at) || 0;
-      return createdAt >= this.kitGoldSince;
-    } catch {
-      return false;
-    }
-  }
-
-  // Online actors get the AddItem notice, offline ones an inventory merge
-  private giveKitGold(ctx: SystemContext, actorId: number, rec: MasteryRecord): boolean {
-    if (!this.kitGoldDue(ctx, actorId, rec)) return false;
-    const mp = ctx.svr as Mp;
-    try {
-      mp.set(actorId, KIT_GOLD_PROP, { count: this.kitGold, at: Date.now() });
-      const userId = this.userOf(ctx, actorId);
-      if (userId === -1) {
-        addGold(mp, actorId, this.kitGold);
-      } else {
-        addItemTo(mp, actorId, GOLD_BASE_ID, this.kitGold);
-        this.notice(ctx, userId, `The ${this.kitGold} gold of your starting kit is in your pack.`);
-      }
-    } catch (e) {
-      this.log(`[mastery] kit gold backfill failed for ${hex(actorId)}: ${e}`);
-      return false;
-    }
-    this.log(`[mastery] ${hex(actorId)} kit gold backfill: ${this.kitGold}`);
-    return true;
-  }
-
-  // Runs once the world DB is loaded, so offline characters are settled in one restart
-  private backfillKitGold(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
-    let given = 0;
-    try {
-      for (const actorId of Array.from(mp.getAllForms(0xff) as Uint32Array).filter((id) => isPlayerActor(mp, id))) {
-        const rec = this.read(ctx, actorId);
-        if (rec && this.giveKitGold(ctx, actorId, rec)) given += 1;
-      }
-    } catch (e) {
-      this.log(`[mastery] kit gold backfill could not list the characters: ${e}`);
-    }
-    this.log(`[mastery] kit gold backfill done, ${given} granted (cutoff ${new Date(this.kitGoldSince).toISOString()})`);
-  }
-
-  // ── Menu ────────────────────────────────────────────────────────────────────
+  // ── Menu and state ──────────────────────────────────────────────────────────
 
   private sendMenu(ctx: SystemContext, userId: number): void {
     const actorId = this.actorOf(ctx, userId);
@@ -680,29 +651,52 @@ export class MasterySystem implements System {
       profession: rec.profession,
       rank: rec.rank,
       hours: rec.points,
-      rankHours: [0].concat(this.rankHours),
-      professions: PROFESSIONS,
+      rankHours: [0, 0].concat(this.rankHours),
+      professions: PROFESSIONS.map(({ id, label, title, type, blurbs }) => ({ id, label, title, type, blurbs })),
+    });
+  }
+
+  // Every mapped skill at the Free level, the character's own at its rank level; magicka only for a mage
+  private sendState(ctx: SystemContext, actorId: number, userId: number): void {
+    if (userId < 0) return;
+    const rec = this.read(ctx, actorId) || emptyRecord();
+    const skills: Record<string, number> = {};
+    for (const skill of ALL_SKILLS) skills[skill] = RANK_SKILL[FREE];
+    const own = PROFESSIONS.find((p) => p.id === rec.profession);
+    for (const skill of own ? own.skills : []) skills[skill] = RANK_SKILL[rec.rank];
+    this.send(ctx, userId, {
+      customPacketType: "professionState",
+      profession: rec.profession,
+      rank: rec.rank,
+      rankName: RANK_NAMES[rec.rank],
+      hours: rec.points,
+      skills,
+      magicka: rec.profession === "mage" ? MAGE_MAGICKA[rec.rank] : null,
     });
   }
 
   // ── Ranks and marker spells ─────────────────────────────────────────────────
 
-  private rankFor(points: number): number {
-    let rank = 0;
+  private rankFor(rec: MasteryRecord): number {
+    if (!rec.profession) return FREE;
+    let rank = NOVICE;
     for (let i = 0; i < this.rankHours.length; i++) {
-      if (points >= this.rankHours[i]) rank = i + 1;
+      if (rec.points >= this.rankHours[i]) rank = NOVICE + i + 1;
     }
+    // A mage rises past Adept only as far as one rank above the best spell tier cast
+    if (rec.profession === "mage") rank = Math.min(rank, Math.max(ADEPT, rec.spellTier + 1));
     return rank;
   }
 
   // Rank follows points and the marker spells follow rank, both ways.
   private syncRank(ctx: SystemContext, actorId: number, rec: MasteryRecord, userId: number): void {
     const oldRank = rec.rank;
-    const newRank = this.rankFor(rec.points);
+    const newRank = this.rankFor(rec);
     if (newRank < oldRank) this.revokeAbove(ctx, actorId, rec, newRank);
     rec.rank = newRank;
     this.write(ctx, actorId, rec);
     this.applySpells(ctx, actorId, rec);
+    this.sendState(ctx, actorId, userId);
     if (newRank === oldRank || !rec.profession) return;
     const label = this.labelOf(rec.profession);
     this.notice(ctx, userId, newRank > oldRank
@@ -710,21 +704,14 @@ export class MasterySystem implements System {
       : `Your standing has fallen to ${RANK_NAMES[newRank]} of the ${label}.`);
   }
 
-  // Markers the character should hold but does not yet.
+  // Marker list index 0 is Novice, so a character holds the first `rank` of them.
   private missingSpells(rec: MasteryRecord): number[] {
-    if (!rec.profession) return [];
-    const list = this.spells[rec.profession];
+    const list = rec.profession ? this.spells[rec.profession] : null;
     if (!list) return [];
-    const out: number[] = [];
-    for (let i = 0; i <= rec.rank && i < list.length; i++) {
-      const spellId = list[i];
-      if (spellId && rec.granted.indexOf(spellId) === -1) out.push(spellId);
-    }
-    return out;
+    return list.slice(0, rec.rank).filter((spellId) => spellId && rec.granted.indexOf(spellId) === -1);
   }
 
-  // Every marker up to the current rank; the plugin's recipes condition on the
-  // exact rank they belong to, so a Master still needs the Novice marker.
+  // The plugin's recipes condition on the exact rank they belong to, so a Master still needs the Novice marker.
   private applySpells(ctx: SystemContext, actorId: number, rec: MasteryRecord): void {
     const missing = this.missingSpells(rec);
     if (!missing.length) return;
@@ -735,13 +722,10 @@ export class MasterySystem implements System {
     this.write(ctx, actorId, rec);
   }
 
-  // Take back the markers above keepRank after a rank loss.
   private revokeAbove(ctx: SystemContext, actorId: number, rec: MasteryRecord, keepRank: number): void {
-    if (!rec.profession) return;
-    const list = this.spells[rec.profession];
+    const list = rec.profession ? this.spells[rec.profession] : null;
     if (!list) return;
-    for (let i = keepRank + 1; i < list.length; i++) {
-      const spellId = list[i];
+    for (const spellId of list.slice(keepRank)) {
       const at = rec.granted.indexOf(spellId);
       if (spellId && at !== -1) {
         this.removeSpell(ctx, actorId, spellId);
@@ -757,7 +741,6 @@ export class MasterySystem implements System {
 
   // A console addspell would be client-local and lost on the next actor sync.
   private addSpell(ctx: SystemContext, actorId: number, spellId: number): void {
-    if (!spellId) return;
     try {
       addSpellTo(ctx.svr as Mp, actorId, spellId);
     } catch (e) {
@@ -774,28 +757,53 @@ export class MasterySystem implements System {
     }
   }
 
-  // Marker spells of the professions the settings leave out, by the plugin editor id convention.
-  private async loadPluginSpells(ctx: SystemContext, dataDir: string, loadOrder: string[]): Promise<void> {
+  // Marker spells of the professions the settings leave out, by the plugin editor id convention, and the mage's blank book.
+  private async loadPluginForms(ctx: SystemContext, dataDir: string, loadOrder: string[]): Promise<void> {
     const missing = PROFESSION_IDS.filter((id) => !this.spells[id]);
-    if (!missing.length) return;
-    const edidOf = (id: string, rank: string) => `AldMastery_${id.charAt(0).toUpperCase()}${id.slice(1)}_${rank}`;
-    const names = missing.flatMap((id) => RANK_NAMES.map((rank) => edidOf(id, rank)));
-    const scan = await resolveEditorIds(names, dataDir, loadOrder, this.log, ["SPEL"]);
+    const ranks = RANK_NAMES.slice(NOVICE);
+    const edidOf = (id: string, rank: string) => `AldProf_${this.labelOf(id)}_${rank}`;
+    const names = missing.flatMap((id) => ranks.map((rank) => edidOf(id, rank)));
+    const scan = await resolveEditorIds(names.concat([BLANK_BOOK_EDID]), dataDir, loadOrder, this.log, ["SPEL", "BOOK"]);
     const mp = ctx.svr as Mp;
+    const idOf = (edid: string): number => {
+      const desc = scan.resolved.get(edid.toLowerCase());
+      try { return desc ? mp.getIdFromDesc(desc) >>> 0 : 0; } catch { return 0; }
+    };
     for (const id of missing) {
-      const list = RANK_NAMES.map((rank) => {
-        const desc = scan.resolved.get(edidOf(id, rank).toLowerCase());
-        try { return desc ? mp.getIdFromDesc(desc) >>> 0 : 0; } catch { return 0; }
-      });
+      const list = ranks.map((rank) => idOf(edidOf(id, rank)));
       if (list.some((v) => v)) this.spells[id] = list;
     }
+    const book = idOf(BLANK_BOOK_EDID);
+    if (book && this.kits["mage"] === DEFAULT_KITS["mage"]) this.kits["mage"] = DEFAULT_KITS["mage"].concat([{ baseId: book, count: 1 }]);
+    else if (!book) this.log(`[mastery] ${BLANK_BOOK_EDID} not in the load order, the mage kit has no blank book`);
     this.log(`[mastery] plugin marker spells found for ${missing.filter((id) => this.spells[id]).length}/${missing.length} unconfigured profession(s) in ${scan.scannedMs} ms`);
   }
 
-  // Rank of a character in the given profession, -1 when it follows another craft or none.
+  // Rank of a character in the given profession, Free (0) when it follows another craft or none.
   rankOf(ctx: SystemContext, actorId: number, professionId: string): number {
+    return this.rankIn(ctx, actorId, [professionId]);
+  }
+
+  // Rank when the character follows one of the professions, Free otherwise.
+  rankIn(ctx: SystemContext, actorId: number, professionIds: string[]): number {
     const rec = this.read(ctx, actorId);
-    return rec && rec.profession === professionId ? rec.rank : -1;
+    return rec && rec.profession && professionIds.indexOf(rec.profession) !== -1 ? rec.rank : FREE;
+  }
+
+  // Rank when the character's own profession works this bench keyword, Free otherwise.
+  craftRank(ctx: SystemContext, actorId: number, benchKeyword: number): number {
+    const rec = this.read(ctx, actorId);
+    const rules = rec && rec.profession ? this.rules[rec.profession] : null;
+    return rules && (rules.craftKeywords.has(benchKeyword >>> 0) || rules.craftStations.has(benchKeyword >>> 0)) ? rec!.rank : FREE;
+  }
+
+  // Whether any profession crafts at this bench keyword
+  isCraftBench(benchKeyword: number): boolean {
+    return PROFESSION_IDS.some((id) => this.rules[id] && this.rules[id].craftKeywords.has(benchKeyword >>> 0));
+  }
+
+  professionOf(ctx: SystemContext, actorId: number): string | null {
+    return this.read(ctx, actorId)?.profession ?? null;
   }
 
   // Whether an actor's base records or race carry the keyword; players count as ActorTypeNPC only.
@@ -806,11 +814,6 @@ export class MasterySystem implements System {
   // Whether a base record carries the keyword; the espm lookup is cached per base id.
   baseHasKeyword(ctx: SystemContext, baseId: number, keywordId: number): boolean {
     return !!baseId && !!keywordId && this.baseKeywords(ctx, baseId >>> 0).has(keywordId >>> 0);
-  }
-
-  // Profession whose craft keywords hold this workbench keyword, null for a bench no profession works
-  professionOfBench(benchKeyword: number): string | null {
-    return PROFESSION_IDS.filter((id) => this.rules[id] && this.rules[id].craftKeywords.has(benchKeyword >>> 0))[0] || null;
   }
 
   // Keywords of the furniture or activator behind a reference, empty for anything else
@@ -850,12 +853,10 @@ export class MasterySystem implements System {
         craftStations: pick("craftStations"),
         activatePrefixes: pick("activatePrefixes"),
         activateTypes: pick("activateTypes"),
-        eatIngredient: "eatIngredient" in o ? !!o["eatIngredient"] : !!def.eatIngredient,
         killKeywords: pick("killKeywords"),
-        hitKeywords: pick("hitKeywords"),
       };
       merged[id] = rules;
-      for (const k of rules.craftKeywords.concat(rules.craftStations, rules.killKeywords, rules.hitKeywords)) wanted.add(k);
+      for (const k of rules.craftKeywords.concat(rules.craftStations, rules.killKeywords)) wanted.add(k);
     }
 
     const ids = new Map<string, number>();
@@ -880,17 +881,14 @@ export class MasterySystem implements System {
     this.log(`[mastery] resolved ${ids.size}/${names.length} keyword(s) in ${scan.scannedMs} ms${unresolved.length ? `, unresolved: ${unresolved.join(", ")}` : ""}`);
 
     const toIds = (list: string[]): Set<number> => new Set(list.map((n) => ids.get(n) || 0).filter((v) => v));
-    const toTypes = (list: string[]): Set<string> => new Set(list.map((t) => t.toUpperCase()));
     for (const id of PROFESSION_IDS) {
       const r = merged[id];
       this.rules[id] = {
         craftKeywords: toIds(r.craftKeywords),
         craftStations: toIds(r.craftStations),
         activatePrefixes: r.activatePrefixes.map((p) => p.toLowerCase()),
-        activateTypes: toTypes(r.activateTypes),
-        eatIngredient: r.eatIngredient,
+        activateTypes: new Set(r.activateTypes.map((t) => t.toUpperCase())),
         killKeywords: toIds(r.killKeywords),
-        hitKeywords: toIds(r.hitKeywords),
       };
     }
   }
@@ -909,11 +907,6 @@ export class MasterySystem implements System {
     try { return !!(ctx.svr as Mp).get(refrId, "isDisabled"); } catch { return true; }
   }
 
-  // Corpses never despawn here, so a parked one must not be an hourly target.
-  private isDead(ctx: SystemContext, actorId: number): boolean {
-    try { return !!(ctx.svr as Mp).get(actorId, "isDead"); } catch { return true; }
-  }
-
   private inReach(ctx: SystemContext, loc: Location, refrId: number, reach = ACTIVATE_REACH): boolean {
     const mp = ctx.svr as Mp;
     try {
@@ -927,15 +920,14 @@ export class MasterySystem implements System {
     }
   }
 
-  // Hitting yourself is not work, and neither is a forged blow at an actor
-  // further away than the weapon carries.
-  private combatCounts(ctx: SystemContext, actorId: number, targetId: number, keywords: Set<number>, reach: number): boolean {
-    if (!targetId || targetId === actorId || !keywords.size) return false;
+  // Killing yourself is not work, and neither is a forged kill further away than a bow carries.
+  private killCounts(ctx: SystemContext, actorId: number, victimId: number, keywords: Set<number>): boolean {
+    if (!victimId || victimId === actorId || !keywords.size) return false;
     // A pet, owned or released, is nobody's game
-    if (this.isPet(ctx, targetId)) return false;
+    if (this.isPet(ctx, victimId)) return false;
     const loc = this.locationOf(ctx, actorId);
-    if (!loc || !this.inReach(ctx, loc, targetId, reach)) return false;
-    return this.actorHasAny(ctx, targetId, keywords);
+    if (!loc || !this.inReach(ctx, loc, victimId, KILL_REACH)) return false;
+    return this.actorHasAny(ctx, victimId, keywords);
   }
 
   private isPet(ctx: SystemContext, actorId: number): boolean {
@@ -946,25 +938,7 @@ export class MasterySystem implements System {
     }
   }
 
-  // How far a hit from this source may land: 0 when the source is no weapon or spell.
-  private hitReach(ctx: SystemContext, sourceId: number): number {
-    const hit = this.reachCache.get(sourceId);
-    if (hit !== undefined) return hit;
-    const res = this.lookup(ctx, sourceId);
-    const type = res ? String(res.record.type || "") : "";
-    let reach = 0;
-    if (type === "SPEL") reach = RANGED_REACH;
-    else if (type === "WEAP") {
-      const dnam = (res.record.fields || []).find((f: any) => f.type === "DNAM" && f.data instanceof Uint8Array && f.data.byteLength);
-      const anim = dnam ? dnam.data[0] : -1;
-      reach = anim === ANIM_BOW || anim === ANIM_CROSSBOW ? RANGED_REACH : MELEE_REACH;
-    }
-    this.reachCache.set(sourceId, reach);
-    return reach;
-  }
-
-  // The C++ matches the recipe against the packet's ingredient list, not the
-  // inventory, so a craft with nothing in the bag must not count.
+  // The C++ matches the recipe against the packet's ingredient list, not the inventory, so a craft with nothing in the bag must not count.
   holdsInputs(ctx: SystemContext, actorId: number, recipeId: number): boolean {
     const needed = this.recipeInputs(ctx, recipeId);
     if (!needed.length) return false;
@@ -982,8 +956,7 @@ export class MasterySystem implements System {
     return needed.every((n) => (held.get(n.baseId) || 0) >= n.count);
   }
 
-  // The craft packet names no workbench, so look for a station carrying the
-  // recipe's keyword next to the crafter; a craft from the wilderness earns nothing.
+  // The craft packet names no workbench, so look for a station carrying the recipe's keyword next to the crafter.
   private benchInReach(ctx: SystemContext, actorId: number, bench: number, accept: (stationKeywords: Set<number>) => boolean): boolean {
     const loc = this.locationOf(ctx, actorId);
     if (!loc) return false;
@@ -1019,20 +992,11 @@ export class MasterySystem implements System {
     }
   }
 
-  private fieldFormIds(res: any, fieldType: string): number[] {
-    return espmFieldFormIds(res, fieldType);
-  }
-
-  private recordType(ctx: SystemContext, formId: number): string {
-    const info = this.baseInfo(ctx, formId);
-    return info ? info.type : "";
-  }
-
   // Workbench keyword of a recipe, 0 when unknown.
   recipeBench(ctx: SystemContext, recipeId: number): number {
     const hit = this.benchCache.get(recipeId);
     if (hit !== undefined) return hit;
-    const bench = this.fieldFormIds(this.lookup(ctx, recipeId), "BNAM")[0] || 0;
+    const bench = espmFieldFormIds(this.lookup(ctx, recipeId), "BNAM")[0] || 0;
     this.benchCache.set(recipeId, bench);
     return bench;
   }
@@ -1099,9 +1063,9 @@ export class MasterySystem implements System {
     const out = new Set<number>();
     const rec = this.lookup(ctx, baseId);
     if (rec) {
-      for (const k of this.fieldFormIds(rec, "KWDA")) out.add(k);
-      const raceId = String(rec.record.type) === "NPC_" ? this.fieldFormIds(rec, "RNAM")[0] : 0;
-      if (raceId) for (const k of this.fieldFormIds(this.lookup(ctx, raceId), "KWDA")) out.add(k);
+      for (const k of espmFieldFormIds(rec, "KWDA")) out.add(k);
+      const raceId = String(rec.record.type) === "NPC_" ? espmFieldFormIds(rec, "RNAM")[0] : 0;
+      if (raceId) for (const k of espmFieldFormIds(this.lookup(ctx, raceId), "KWDA")) out.add(k);
     }
     this.keywordCache.set(baseId, out);
     return out;
@@ -1113,18 +1077,16 @@ export class MasterySystem implements System {
     try {
       const raw = (ctx.svr as Mp).get(actorId, MASTERY_PROP);
       if (!raw || typeof raw !== "object") return null;
-      const r = raw as Partial<MasteryRecord> & { seconds?: number };
-      const profession = typeof r.profession === "string" && PROFESSION_IDS.indexOf(r.profession) !== -1
-        ? r.profession
-        : null;
-      // Records from the playtime era carry seconds; a full hour of it is worth a point once.
-      const points = r.points === undefined ? Math.floor(Math.max(0, Number(r.seconds) || 0) / 3600) : Number(r.points);
+      const r = raw as Partial<MasteryRecord>;
+      const profession = typeof r.profession === "string" && PROFESSION_IDS.indexOf(r.profession) !== -1 ? r.profession : null;
       return {
+        v: Number(r.v) || 0,
         profession,
-        points: Math.max(0, Math.floor(points) || 0),
+        points: Math.max(0, Math.floor(Number(r.points)) || 0),
         lastPointAt: Math.max(0, Number(r.lastPointAt) || 0),
-        rank: Math.min(RANK_NAMES.length - 1, Math.max(0, Number(r.rank) || 0)),
+        rank: Math.min(LEGENDARY, Math.max(FREE, Math.floor(Number(r.rank)) || 0)),
         granted: Array.isArray(r.granted) ? r.granted.map((v) => Number(v) >>> 0).filter((v) => v) : [],
+        spellTier: Math.max(0, Math.floor(Number(r.spellTier)) || 0),
       };
     } catch {
       return null;
@@ -1172,7 +1134,6 @@ export class MasterySystem implements System {
   private rankHours = DEFAULT_RANK_HOURS.slice();
   private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };
   private kitGold = DEFAULT_KIT_GOLD;
-  private kitGoldSince = 0;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
   private spells: Record<string, number[]> = {};
   private rules: Record<string, ResolvedRules> = {};
@@ -1183,7 +1144,6 @@ export class MasterySystem implements System {
   private pendingGrants = new Map<number, number>();
 
   private benchCache = new Map<number, number>();
-  private reachCache = new Map<number, number>();
   private inputCache = new Map<number, Array<{ baseId: number; count: number }>>();
   private baseCache = new Map<number, BaseInfo | null>();
   private keywordCache = new Map<number, Set<number>>();

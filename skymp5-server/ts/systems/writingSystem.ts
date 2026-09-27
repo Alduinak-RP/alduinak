@@ -16,13 +16,15 @@ type Mp = any;
 
 // Letters, journals and books whose text stays on the server and whose id rides in the item name; rules and protocol in docs/docs_roleplay_writing.md
 
+export const BLANK_BOOK_EDID = "AldWritingBookBlank";
+
 const EDITOR_IDS = {
   letterBlank: "AldWritingParchmentBlank",
   letter: "AldWritingLetter",
   sealed: "AldWritingLetterSealed",
   journalBlank: "AldWritingJournalBlank",
   journal: "AldWritingJournal",
-  bookBlank: "AldWritingBookBlank",
+  bookBlank: BLANK_BOOK_EDID,
   book: "AldWritingBook",
   wax: "AldSealingWax",
 };

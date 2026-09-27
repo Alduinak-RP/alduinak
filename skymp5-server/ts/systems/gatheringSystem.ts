@@ -81,10 +81,10 @@ const VEIN_DEFAULT_STRIKES = 1;
 // Mining rank needed per ore, by the ore item editor id; unlisted ores are open to everyone.
 const OPEN_TO_ALL = -1;
 const DEFAULT_VEIN_TIERS: Record<string, number> = {
-  OreIron: OPEN_TO_ALL, "12SeaSaltOre": OPEN_TO_ALL, OreCorundum: 0,
-  OreGold: 1, OreSilver: 1,
-  OreOrichalcum: 2, OreMoonstone: 2, OreQuicksilver: 2,
-  OreMalachite: 3, OreEbony: 3,
+  OreIron: OPEN_TO_ALL, "12SeaSaltOre": OPEN_TO_ALL, OreCorundum: 1,
+  OreGold: 2, OreSilver: 2,
+  OreOrichalcum: 3, OreMoonstone: 3, OreQuicksilver: 3,
+  OreMalachite: 4, OreEbony: 4,
 };
 
 // Placed containers open empty on this server, so the honeycomb for the honey recipe comes from here.
@@ -390,7 +390,7 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["requireditemlist"])) {
       return this.deny(ctx, actorId, "You need a woodcutter's axe to chop wood.");
     }
-    if (!this.needs.canChop(ctx, actorId, this.mastery.rankOf(ctx, actorId, "woodworker"), this.chopYield)) {
+    if (!this.needs.canChop(ctx, actorId, this.mastery.rankOf(ctx, actorId, "woodworker") - 1, this.chopYield)) {
       return this.deny(ctx, actorId, CHOP_TIRED);
     }
     if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, "Someone is already using this.");
@@ -439,7 +439,7 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["mineoretoolslist"])) {
       return this.deny(ctx, actorId, "You need a pickaxe to mine this vein.");
     }
-    if (!this.needs.canMine(ctx, actorId, this.mastery.rankOf(ctx, actorId, "miner") >= 0)) {
+    if (!this.needs.canMine(ctx, actorId, this.mastery.rankOf(ctx, actorId, "miner") > 0)) {
       return this.deny(ctx, actorId, "You are too tired to swing a pickaxe. Rest a while.");
     }
     const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) ?? OPEN_TO_ALL;
@@ -499,7 +499,7 @@ export class GatheringSystem implements System {
       s.unseatedLogged = true;
       this.log(`[gathering] ${s.actorId.toString(16)} chops at ${s.furnitureId.toString(16)} with no seat claim, a swing is not checked against standing up`);
     }
-    const rank = this.mastery.rankOf(ctx, s.actorId, "woodworker");
+    const rank = this.mastery.rankOf(ctx, s.actorId, "woodworker") - 1;
     if (!this.needs.canChop(ctx, s.actorId, rank, s.perStrike)) return this.finish(ctx, s, CHOP_TIRED);
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
     s.given += s.perStrike;
@@ -513,7 +513,7 @@ export class GatheringSystem implements System {
     s.strikesLeft -= 1;
     if (s.strikesLeft > 0) return;
     s.strikesLeft = s.strikesPer;
-    const miner = this.mastery.rankOf(ctx, s.actorId, "miner") >= 0;
+    const miner = this.mastery.rankOf(ctx, s.actorId, "miner") > 0;
     // A sitting ends where an activation would be refused, rather than mining the bar into the ground
     if (!this.needs.canMine(ctx, s.actorId, miner)) return this.finish(ctx, s, "You are too tired to keep mining. Rest a while.");
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
