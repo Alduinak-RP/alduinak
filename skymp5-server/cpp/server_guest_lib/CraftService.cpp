@@ -20,7 +20,8 @@ CraftService::CraftService(PartOne& partOne_)
 
 void CraftService::OnCraftItem(const RawMessageData& rawMsgData,
                                const Inventory& inputObjects,
-                               uint32_t workbenchId, uint32_t resultObjectId)
+                               uint32_t workbenchId, uint32_t resultObjectId,
+                               std::optional<float> temperHealth)
 {
   auto& workbench =
     partOne.worldState.GetFormAt<MpObjectReference>(workbenchId);
@@ -54,8 +55,23 @@ void CraftService::OnCraftItem(const RawMessageData& rawMsgData,
   std::vector<uint32_t> workbenchKeywordIds =
     GetWorkbenchKeywordIds(workbenchBase, cache);
 
-  auto recipesList =
-    FindRecipe(me, workbenchKeywordIds, br, inputObjects, resultObjectId);
+  const bool temper = temperHealth.has_value();
+
+  // The engine takes the improved item out and puts it back, it is not a material
+  Inventory materials;
+  for (auto& entry : inputObjects.entries) {
+    if (!temper || entry.baseId != resultObjectId) {
+      materials.entries.push_back(entry);
+    }
+  }
+
+  if (temper && !me->GetInventory().HasItem(resultObjectId)) {
+    return spdlog::error("Unable to temper {:#x}, the actor doesn't hold it",
+                         resultObjectId);
+  }
+
+  auto recipesList = FindRecipe(me, workbenchKeywordIds, br, materials,
+                                resultObjectId, temper);
 
   if (recipesList.empty()) {
     return spdlog::error(
@@ -69,13 +85,17 @@ void CraftService::OnCraftItem(const RawMessageData& rawMsgData,
                  recipesList.size());
   }
 
-  UseCraftRecipe(me, reinterpret_cast<const espm::COBJ*>(recipesList[0].rec),
-                 cache, br, recipesList[0].fileIdx);
+  auto recipe = reinterpret_cast<const espm::COBJ*>(recipesList[0].rec);
+  if (temper) {
+    return UseTemperRecipe(me, recipe, br, recipesList[0].fileIdx,
+                           resultObjectId, *temperHealth);
+  }
+  UseCraftRecipe(me, recipe, cache, br, recipesList[0].fileIdx);
 }
 
 bool CraftService::RecipeItemsMatch(const espm::LookupResult& lookupRes,
                                     const Inventory& inputObjects,
-                                    uint32_t resultObjectId)
+                                    uint32_t resultObjectId, bool temper)
 {
   auto recipe = reinterpret_cast<const espm::COBJ*>(lookupRes.rec);
 
@@ -89,7 +109,7 @@ bool CraftService::RecipeItemsMatch(const espm::LookupResult& lookupRes,
   };
   const bool isTemper = recipeData.benchKeywordId == ArmorTable ||
     recipeData.benchKeywordId == SharpeningWheel;
-  if (isTemper) {
+  if (isTemper != temper) {
     return false;
   }
 
@@ -111,7 +131,7 @@ std::vector<espm::LookupResult> CraftService::FindRecipe(
   std::optional<MpActor*> me,
   std::optional<std::vector<uint32_t>> workbenchKeywordIds,
   const espm::CombineBrowser& br, const Inventory& inputObjects,
-  uint32_t resultObjectId)
+  uint32_t resultObjectId, bool temper)
 {
   if (allRecipes.empty()) {
     allRecipes = br.GetDistinctRecordsByType("COBJ");
@@ -120,7 +140,7 @@ std::vector<espm::LookupResult> CraftService::FindRecipe(
   std::vector<espm::LookupResult> candidatesConsideredUsable;
 
   for (auto& recipe : allRecipes) {
-    if (!RecipeItemsMatch(recipe, inputObjects, resultObjectId)) {
+    if (!RecipeItemsMatch(recipe, inputObjects, resultObjectId, temper)) {
       continue;
     }
 
@@ -227,6 +247,105 @@ void CraftService::UseCraftRecipe(MpActor* me, const espm::COBJ* recipeUsed,
   CraftEvent craftEvent(me, outputFormId, recipeData.outputCount, recipeId,
                         entries);
 
+  craftEvent.Fire(me->GetParent());
+}
+
+float CraftService::GetMaxTemperHealth(MpActor* me,
+                                       const espm::CombineBrowser& br)
+{
+  if (!rankMarkers) {
+    static const std::pair<const char*, int> kRanks[] = {
+      { "_Novice", 1 },
+      { "_Adept", 2 },
+      { "_Expert", 3 },
+      { "_Master", 4 },
+      { "_Legendary", 5 }
+    };
+    rankMarkers.emplace();
+    for (auto& spell : br.GetDistinctRecordsByType("SPEL")) {
+      std::string edid = spell.rec->GetEditorId(cache);
+      if (edid.rfind("AldProf_", 0) != 0) {
+        continue;
+      }
+      for (auto& [suffix, rank] : kRanks) {
+        const std::string s = suffix;
+        if (edid.size() > s.size() &&
+            edid.compare(edid.size() - s.size(), s.size(), s) == 0) {
+          rankMarkers->push_back(
+            { spell.ToGlobalId(spell.rec->GetId()), rank });
+          break;
+        }
+      }
+    }
+    spdlog::info("CraftService found {} profession rank markers",
+                 rankMarkers->size());
+  }
+
+  int rank = 0;
+  for (auto& [spellId, markerRank] : *rankMarkers) {
+    if (markerRank > rank && me->IsSpellLearned(spellId)) {
+      rank = markerRank;
+    }
+  }
+
+  // Free Fine 1.1 up to Legendary 1.6, the engine's quality steps
+  return 1.1f + 0.1f * static_cast<float>(rank);
+}
+
+void CraftService::UseTemperRecipe(MpActor* me, const espm::COBJ* recipeUsed,
+                                   const espm::CombineBrowser& br,
+                                   int espmIdx, uint32_t itemId,
+                                   float temperHealth)
+{
+  const float maxHealth = GetMaxTemperHealth(me, br);
+  const float health = std::min(temperHealth, maxHealth);
+
+  // The worn copy first, then the least improved one
+  const Inventory::Entry* target = nullptr;
+  for (auto& entry : me->GetInventory().entries) {
+    if (entry.baseId != itemId || !entry.count) {
+      continue;
+    }
+    if (!target) {
+      target = &entry;
+      continue;
+    }
+    const bool worn = entry.GetWorn() != Inventory::Worn::None;
+    const bool targetWorn = target->GetWorn() != Inventory::Worn::None;
+    if (worn != targetWorn) {
+      if (worn) {
+        target = &entry;
+      }
+    } else if (entry.health.value_or(1.f) < target->health.value_or(1.f)) {
+      target = &entry;
+    }
+  }
+
+  if (!target || health <= target->health.value_or(1.f) + 0.001f) {
+    return spdlog::error("Temper of {:#x} to {} (max {}) is no improvement",
+                         itemId, temperHealth, maxHealth);
+  }
+
+  Inventory::Entry from = *target;
+  from.count = 1;
+  Inventory::Entry to = from;
+  to.health = health;
+
+  auto recipeData = recipeUsed->GetData(cache);
+  auto mapping = br.GetCombMapping(espmIdx);
+
+  std::vector<Inventory::Entry> entries;
+  for (auto& entry : recipeData.inputObjects) {
+    entries.push_back(
+      { espm::utils::GetMappedId(entry.formId, *mapping), entry.count });
+  }
+
+  auto recipeId = espm::utils::GetMappedId(recipeUsed->GetId(), *mapping);
+
+  spdlog::info("User formId={:#x} tempered {:#x} to {} (asked {}, max {})",
+               me->GetFormId(), itemId, health, temperHealth, maxHealth);
+
+  CraftEvent craftEvent(me, itemId, 1, recipeId, entries, &from, &to);
   craftEvent.Fire(me->GetParent());
 }
 

@@ -1182,7 +1182,8 @@ void ActionListener::OnCraftItem(const RawMessageData& rawMsgData,
                                  const CraftItemMessage& msg)
 {
   craftService->OnCraftItem(rawMsgData, msg.data.craftInputObjects,
-                            msg.data.workbench, msg.data.resultObjectId);
+                            msg.data.workbench, msg.data.resultObjectId,
+                            msg.data.temperHealth);
 }
 
 void ActionListener::OnHostAttempt(const RawMessageData& rawMsgData,

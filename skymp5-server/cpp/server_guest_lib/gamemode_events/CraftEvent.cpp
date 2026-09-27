@@ -4,12 +4,16 @@
 
 CraftEvent::CraftEvent(MpActor* actor_, uint32_t craftedItemBaseId_,
                        uint32_t count_, uint32_t recipeId_,
-                       const std::vector<Inventory::Entry>& entries_)
+                       const std::vector<Inventory::Entry>& entries_,
+                       const Inventory::Entry* temperedFrom_,
+                       const Inventory::Entry* temperedTo_)
   : actor(actor_)
   , craftedItemBaseId(craftedItemBaseId_)
   , count(count_)
   , recipeId(recipeId_)
   , entries(entries_)
+  , temperedFrom(temperedFrom_)
+  , temperedTo(temperedTo_)
 {
 }
 
@@ -36,5 +40,10 @@ std::string CraftEvent::GetArgumentsJsonArray() const
 void CraftEvent::OnFireSuccess(WorldState*)
 {
   actor->RemoveItems(entries);
+  if (temperedFrom && temperedTo) {
+    actor->RemoveItems({ *temperedFrom });
+    actor->AddItems({ *temperedTo });
+    return;
+  }
   actor->AddItem(craftedItemBaseId, count);
 }
