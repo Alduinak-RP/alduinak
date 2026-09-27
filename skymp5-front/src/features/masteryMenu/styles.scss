@@ -118,7 +118,28 @@ $text-dim: rgba(232, 224, 208, 0.6);
     &--chosen {
       color: $gold;
       font-weight: 700;
+      outline: 1px solid $gold;
+      outline-offset: -1px;
+      background: linear-gradient(0deg, rgba(200, 180, 138, 0.25), rgba(200, 180, 138, 0));
     }
+  }
+
+  &__item-label {
+    display: block;
+  }
+
+  &__item-type {
+    display: block;
+    margin-top: 2px;
+    color: $text-dim;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+  }
+
+  &__empty {
+    grid-column: 2 / span 2;
+    grid-row: 2;
   }
 
   &__marker {

@@ -2,13 +2,15 @@ import React, { useEffect, useState } from 'react';
 
 import { assetUrl } from '../../utils/assetUrl';
 
+import { DEFAULT_RANK_HOURS, PROFESSION_TYPES, RANK_NAMES, SHORT_DESC } from './ranks';
 import './styles.scss';
 
 interface Profession {
   id: string;
   label: string;
   title: string;
-  // Per-rank blurbs from the server; RANK_BLURB below is the fallback.
+  type?: string;
+  // Per-rank blurbs from the server by rank index; SHORT_DESC is the fallback.
   blurbs?: string[];
 }
 
@@ -28,22 +30,14 @@ export interface MasteryData {
   events: MasteryEvents;
 }
 
-const RANKS = ['Novice', 'Adept', 'Expert', 'Master'];
-
-// What each rank opens up when the profession names nothing of its own.
-const RANK_BLURB = [
-  'The first recipes of the craft.',
-  'Refined work, and better materials.',
-  'Rare patterns few can attempt.',
-  'The full repertoire of the craft.',
-];
-
 // Artwork is keyed by profession id; the file names predate the labels.
 const ART: Record<string, string> = {
   alchemist: 'Alchemist',
   blacksmith: 'Blacksmith',
   cook: 'Cooking',
+  farmer: 'Cooking',
   hunter: 'Hunting',
+  mage: 'Combat',
   miner: 'Mining',
   tailor: 'Tailor',
   warrior: 'Combat',
@@ -58,6 +52,12 @@ const artFor = (professionId: string): string => {
   } catch (e) {
     return '';
   }
+};
+
+const rankDesc = (p: Profession, i: number): string => {
+  const blurbs = p.blurbs || [];
+  if (blurbs.length >= 5 && blurbs[i]) return blurbs[i];
+  return (SHORT_DESC[p.id] || [])[i] || '';
 };
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -76,16 +76,15 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
   const ev = data.events || ({} as MasteryEvents);
   const professions = data.professions || [];
   const chosen = data.profession;
-  const thresholds = data.rankHours && data.rankHours.length ? data.rankHours : [0, 40, 100, 180];
+  const thresholds = data.rankHours && data.rankHours.length >= 5 ? data.rankHours : DEFAULT_RANK_HOURS;
 
-  // Browsing is free; the chosen craft is what the panel opens on.
-  const [viewing, setViewing] = useState(chosen || (professions[0] ? professions[0].id : ''));
+  // The detail side stays empty until a profession is focused
+  const [viewing, setViewing] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
 
   useEffect(() => {
     if (chosen) {
-      setViewing(chosen);
       setCommitting(false);
       setConfirming(null);
     }
@@ -111,18 +110,17 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
     return () => window.removeEventListener('keydown', onKey, true);
   }, [confirming]);
 
-  const current = professions.filter((p) => p.id === viewing)[0] || professions[0];
-  if (!current) return null;
-
-  const isChosen = chosen === current.id;
-  const art = artFor(current.id);
+  const current = professions.filter((p) => p.id === viewing)[0];
+  const isChosen = !!current && chosen === current.id;
+  const art = current ? artFor(current.id) : '';
+  const shownRanks = RANK_NAMES.filter((_, i) => i < 5 || (isChosen && data.rank >= 5));
 
   return (
     <div className={embedded ? 'mastery mastery--embedded' : 'mastery'}>
       {embedded ? null : <div className="mastery__fade" />}
       <div className="mastery__frame">
         {embedded ? null : <div className="mastery__corner">Skills</div>}
-        <h1 className="mastery__title">{current.label} &mdash; Mastery</h1>
+        <h1 className="mastery__title">{current ? current.label + ' – Mastery' : 'Mastery'}</h1>
 
         <nav className="mastery__list">
           {professions.map((p) => (
@@ -136,60 +134,67 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
               onClick={() => setViewing(p.id)}
             >
               {p.id === chosen ? <span className="mastery__marker">&#9670;</span> : null}
-              {p.label}
+              <span className="mastery__item-label">{p.label}</span>
+              <span className="mastery__item-type">{p.type || PROFESSION_TYPES[p.id] || ''}</span>
             </button>
           ))}
         </nav>
 
-        <section className="mastery__stage">
-          <h2 className="mastery__epithet">{current.title}</h2>
-          {art ? (
-            <img className="mastery__art" src={art} alt="" />
-          ) : (
-            <div className="mastery__art mastery__art--missing" />
-          )}
-          <div className="mastery__stage-foot">
-            {isChosen ? (
-              <p className="mastery__played">
-                {data.hours} {data.hours === 1 ? 'hour' : 'hours'} at the craft
-                <br />
-                <span className="mastery__played--muted mastery__played--hint">Working your craft earns an hour; the next counts an hour later.</span>
-              </p>
-            ) : chosen ? (
-              <p className="mastery__played mastery__played--muted">You follow another craft.</p>
+        {current ? (
+          <section className="mastery__stage">
+            <h2 className="mastery__epithet">{current.title}</h2>
+            {art ? (
+              <img className="mastery__art" src={art} alt="" />
             ) : (
-              <button
-                className="mastery__choose"
-                disabled={committing}
-                onClick={() => setConfirming(current.id)}
-              >
-                {committing ? 'Taking it up...' : 'Take up this craft'}
-              </button>
+              <div className="mastery__art mastery__art--missing" />
             )}
-          </div>
-        </section>
+            <div className="mastery__stage-foot">
+              {isChosen ? (
+                <p className="mastery__played">
+                  {data.hours} {data.hours === 1 ? 'hour' : 'hours'} at the craft
+                  <br />
+                  <span className="mastery__played--muted mastery__played--hint">Working your craft earns an hour; the next counts an hour later.</span>
+                </p>
+              ) : chosen ? (
+                <p className="mastery__played mastery__played--muted">You follow another craft.</p>
+              ) : (
+                <button
+                  className="mastery__choose"
+                  disabled={committing}
+                  onClick={() => setConfirming(current.id)}
+                >
+                  {committing ? 'Taking it up...' : 'Take up this craft'}
+                </button>
+              )}
+            </div>
+          </section>
+        ) : (
+          <section className="mastery__empty" />
+        )}
 
-        <section className="mastery__ranks">
-          {RANKS.map((rankName, i) => {
-            const reached = isChosen && data.rank >= i;
-            return (
-              <div
-                key={rankName}
-                className={'mastery__rank' + (reached ? ' mastery__rank--reached' : '')}
-              >
-                <h3 className="mastery__rank-name">{rankName}</h3>
-                <p className="mastery__rank-perk">{(current.blurbs || [])[i] || RANK_BLURB[i]}</p>
-                <span className="mastery__rank-cost">
-                  {thresholds[i] === 0 ? 'from the start' : thresholds[i] + ' hours'}
-                </span>
-              </div>
-            );
-          })}
-        </section>
+        {current ? (
+          <section className="mastery__ranks">
+            {shownRanks.map((rankName, i) => {
+              const reached = i === 0 || (isChosen && data.rank >= i);
+              return (
+                <div
+                  key={rankName}
+                  className={'mastery__rank' + (reached ? ' mastery__rank--reached' : '')}
+                >
+                  <h3 className="mastery__rank-name">{rankName}</h3>
+                  <p className="mastery__rank-perk">{rankDesc(current, i)}</p>
+                  <span className="mastery__rank-cost">
+                    {i === 0 ? 'everyone' : thresholds[i] === 0 ? 'from the start' : thresholds[i] + ' hours'}
+                  </span>
+                </div>
+              );
+            })}
+          </section>
+        ) : null}
 
         {embedded ? null : <button className="mastery__close" onClick={() => send(ev.close)}>Close</button>}
 
-        {confirming ? (
+        {confirming && current ? (
           <div className="mastery__confirm-shade">
             <div className="mastery__confirm">
               <h3 className="mastery__confirm-title">Take up the {current.label}?</h3>
