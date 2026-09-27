@@ -101,7 +101,8 @@ function currentFilesVersion() {
 }
 
 // A passing check hands out the play token the game logs in with: unredeemed it lives PLAY_TOKEN_TTL, then only its first ip may reuse it (reconnects)
-const PLAY_TOKEN_TTL = 2 * 60 * 1000
+// Long enough for a slow PC to load the whole modlist before it logs in
+const PLAY_TOKEN_TTL = 15 * 60 * 1000
 
 function recordLaunchCheck(token, check) {
   const entry = sessions.get(token)

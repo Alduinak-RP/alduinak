@@ -8,7 +8,7 @@
  * the session; session validation (master-api.js) refuses sessions whose last check
  * is missing or stale, so out-of-date clients can't bypass the launcher's gate.
  * Returns 200 { ok, filesOk, pluginsOk, requiredVersion, playToken }; ok false means update/repair.
- * playToken (when ok) replaces the session in the game's login; unredeemed it expires in 2 minutes.
+ * playToken (when ok) replaces the session in the game's login; unredeemed it expires in 15 minutes.
  */
 
 const router = require('express').Router()
