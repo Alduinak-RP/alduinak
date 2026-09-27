@@ -340,7 +340,9 @@ html, body {
 
 /* Modlist panel */
 .modlist-panel {
-  flex: 1;
+  /* Zero basis: the news sets the row's height and the list scrolls inside it */
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   background: rgba(6, 4, 2, 0.48);
   backdrop-filter: blur(16px);
@@ -450,8 +452,8 @@ html, body {
 .content-layout {
   display: flex;
   gap: 16px;
-  flex: 1;
-  min-height: 0;
+  /* Grows with the news when it runs past the window, and the modlist column stretches to match */
+  flex: 1 0 auto;
 }
 
 .news-section {
