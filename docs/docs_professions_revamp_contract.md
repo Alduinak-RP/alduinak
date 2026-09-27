@@ -78,4 +78,4 @@ entries with `type`; `rank` uses the index above; Legendary is only listed when 
 
 ## Starter kits
 
-Existing kits stay. Farmer: a hoe (00025101) and 50 gold. Mage: 50 gold and a blank book (the writing system's blank).
+Existing kits stay. Farmer: the plugin hoe `AldToolHoe` and 50 gold. Mage: 50 gold and a blank book (the writing system's blank).

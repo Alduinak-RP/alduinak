@@ -16,6 +16,7 @@ interface Profession {
 
 interface MasteryEvents {
   choose: string;
+  reset?: string;
   close: string;
   [key: string]: string;
 }
@@ -26,6 +27,8 @@ export interface MasteryData {
   rank: number;
   hours: number;
   rankHours: number[];
+  // Profession resets this character has left
+  resetsLeft?: number;
   professions: Profession[];
   events: MasteryEvents;
 }
@@ -82,6 +85,7 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
   const [viewing, setViewing] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (chosen) {
@@ -154,6 +158,11 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
                   {data.hours} {data.hours === 1 ? 'hour' : 'hours'} at the craft
                   <br />
                   <span className="mastery__played--muted mastery__played--hint">Working your craft earns an hour; the next counts an hour later.</span>
+                  {ev.reset && (data.resetsLeft || 0) > 0 ? (
+                    <button className="mastery__cancel mastery__reset" onClick={() => setResetting(true)}>
+                      Reset profession ({data.resetsLeft} left)
+                    </button>
+                  ) : null}
                 </p>
               ) : chosen ? (
                 <p className="mastery__played mastery__played--muted">You follow another craft.</p>
@@ -194,12 +203,37 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
 
         {embedded ? null : <button className="mastery__close" onClick={() => send(ev.close)}>Close</button>}
 
+        {resetting && ev.reset ? (
+          <div className="mastery__confirm-shade">
+            <div className="mastery__confirm">
+              <h3 className="mastery__confirm-title">Set your profession aside?</h3>
+              <p className="mastery__confirm-body">
+                Your hours and rank are lost and you may choose a craft again. You have {data.resetsLeft} {data.resetsLeft === 1 ? 'reset' : 'resets'} left on this character.
+              </p>
+              <div className="mastery__confirm-actions">
+                <button
+                  className="mastery__choose"
+                  onClick={() => {
+                    send(ev.reset as string);
+                    setResetting(false);
+                  }}
+                >
+                  Reset
+                </button>
+                <button className="mastery__cancel" onClick={() => setResetting(false)}>
+                  Keep it
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {confirming && current ? (
           <div className="mastery__confirm-shade">
             <div className="mastery__confirm">
               <h3 className="mastery__confirm-title">Take up the {current.label}?</h3>
               <p className="mastery__confirm-body">
-                A character keeps one craft for life. Only an admin can set it aside.
+                A character keeps one craft. It can be reset only {data.resetsLeft === 1 ? 'once' : `${data.resetsLeft || 0} times`}, and the hours go with it.
               </p>
               <div className="mastery__confirm-actions">
                 <button

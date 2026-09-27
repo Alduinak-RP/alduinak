@@ -610,7 +610,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
         {view === 'skills' ? (
           <div className="admin-panel__body">
             {skills && skills.professions && skills.professions.length ? (
-              <MasteryMenu embedded data={{ ...skills, events: { choose: ev.skillChoose, close: ev.close } }} />
+              <MasteryMenu embedded data={{ ...skills, events: { choose: ev.skillChoose, reset: ev.skillReset, close: ev.close } }} />
             ) : (
               <div className="admin-panel__empty">Loading skills</div>
             )}

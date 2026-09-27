@@ -65,7 +65,6 @@ const HARVEST_MS = [5000, 3000, 1000, 0, 0, 0];
 const HARVEST_YIELD = [1, 1, 1, 1, 2, 4];
 const CROP_WORDS = ["wheat", "gourd", "nirnroot", "cabbage", "potato"];
 // Skyrim.esm Hoe
-const HOE = 0x00025101;
 // Skyrim.esm DLC2PickaxeList, every pickaxe
 const PICKAXES = 0x0010acc4;
 // Skyrim.esm LItemGems
@@ -384,7 +383,8 @@ export class GatheringSystem implements System {
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if ((this.harvestUntil.get(actorId) || 0) > Date.now()) return false;
     const mp = ctx.svr as Mp;
-    if (props["crop"] && !holdsItem(mp, actorId, (baseId) => baseId === HOE)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
+    const hoe = this.mastery.hoeFormId();
+    if (props["crop"] && hoe && !holdsItem(mp, actorId, (baseId) => baseId === hoe)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
     const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
     if (!this.needs.canPay(actorId, "gather", rank)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
     const farmer = this.mastery.rankOf(ctx, actorId, "farmer");

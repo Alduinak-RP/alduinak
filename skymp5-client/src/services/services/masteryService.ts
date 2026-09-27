@@ -17,6 +17,7 @@ export interface MasteryInfo {
   rank: number;
   hours: number;
   rankHours: number[];
+  resetsLeft: number;
   professions: Profession[];
 }
 
@@ -28,6 +29,7 @@ export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo 
     rank: Number(content["rank"]) || 0,
     hours: Number(content["hours"]) || 0,
     rankHours: rankHours as number[],
+    resetsLeft: Number(content["resetsLeft"]) || 0,
     professions: professions as Profession[],
   };
 }

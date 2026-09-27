@@ -27,6 +27,7 @@ const serverSettings = [
   { key: 'characterSelect',         label: 'Character select',      type: 'bool',   group: 'Gameplay', help: 'Show the character-select screen on join.' },
   { key: 'characterSelectMaxCharacters', label: 'Max characters',   type: 'number', group: 'Gameplay', help: 'Character slots per player when character select is on (1-10, default 3).' },
   { key: 'npcEnabled',              label: 'NPCs enabled',          type: 'bool',   group: 'Gameplay' },
+  { key: 'masteryResetsPerCharacter', label: 'Profession resets per character', type: 'number', group: 'Gameplay', placeholder: '1', help: 'How many times a player may set their profession aside from the profession menu on one character; the hours go with it. Read at boot. Default 1.' },
   { key: 'goldAlertThreshold',      label: 'Gold alert threshold',  type: 'number', group: 'Gameplay', placeholder: '5000', help: 'Gold a character may gain within 10 seconds before the Security tab gets a Gold Spawning alert. 0 disables it. Read at boot. Default 5000.' },
   { key: 'dailyRestartAt',          label: 'Daily restart time',    type: 'text',   group: 'Gameplay', placeholder: '04:00', help: 'Local HH:MM when the manager agent restarts the game server and archives the logs, with in-game warnings from 1 hour before. off disables it. Read live. Default 04:00.' },
   { key: 'isPapyrusHotReloadEnabled', label: 'Papyrus hot reload',  type: 'bool',   group: 'Gameplay', help: 'Reload compiled .pex scripts on change.' },

@@ -67,6 +67,7 @@ const events = {
   tab: "admin::tab",
   skills: "admin::skills",
   skillChoose: "admin::skillchoose",
+  skillReset: "admin::skillreset",
   itemSearch: "admin::itemsearch",
   itemSpawn: "admin::itemspawn",
   petBases: "admin::petbases",
@@ -544,6 +545,10 @@ export class AdminMenuService extends ClientListener {
     }
     if (kind === events.skills) {
       sendCustomPacket(this.controller, { customPacketType: "masteryInfoRequest" });
+      return;
+    }
+    if (kind === events.skillReset) {
+      sendCustomPacket(this.controller, { customPacketType: "masteryResetRequest" });
       return;
     }
     if (kind === events.skillChoose) {

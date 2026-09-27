@@ -24,12 +24,13 @@ type Mp = any;
 //   Client -> Server:
 //     { customPacketType: "masteryInfoRequest" }
 //     { customPacketType: "masteryChoose", profession: "<id>" }
+//     { customPacketType: "masteryResetRequest" }  the player sets their profession aside, at most masteryResetsPerCharacter times
 //   Server -> Client:
-//     { customPacketType: "masteryMenu", profession, rank, hours, rankHours, professions: [...] }
+//     { customPacketType: "masteryMenu", profession, rank, hours, rankHours, resetsLeft, professions: [...] }
 //     { customPacketType: "masteryNotice", text }
 //     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka }
 //
-// Persistence: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier } on the actor.
+// Persistence: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets } on the actor.
 //
 // server-settings.json keys (all optional):
 //   masteryRankHours             [adept, expert, master, legendary] thresholds, default [40, 100, 180, 6000]
@@ -255,10 +256,12 @@ const DEFAULT_KITS: Record<string, KitItem[]> = {
   cook: [{ baseId: 0x00034cdf, count: 10 }],
   warrior: [{ baseId: 0x0001397e, count: 1 }],
   hunter: [{ baseId: 0x00013985, count: 1 }, { baseId: 0x0001397d, count: 20 }],
-  farmer: [{ baseId: 0x00025101, count: 1 }],
+  farmer: [],
   mage: [],
 };
 const DEFAULT_KIT_GOLD = 50;
+// The farmer's hoe, a plugin record
+const HOE_EDID = "AldToolHoe";
 
 const ACTIVITY_KINDS = ["craft", "activate", "kill", "cast", "work"] as const;
 type ActivityKind = typeof ACTIVITY_KINDS[number];
@@ -288,6 +291,8 @@ interface MasteryRecord {
   granted: number[];
   // Highest spell tier a mage has cast, 0 before any
   spellTier: number;
+  // Profession resets the player has used
+  resets: number;
 }
 
 // What the admin panel shows for one character.
@@ -310,7 +315,7 @@ interface Location {
   pos: number[];
 }
 
-const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0 });
+const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0 });
 
 export const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
 
@@ -329,6 +334,8 @@ export class MasterySystem implements System {
     } else if (hours !== undefined) {
       this.log(`[mastery] masteryRankHours needs ${DEFAULT_RANK_HOURS.length} numbers (adept, expert, master, legendary), default kept`);
     }
+    const resets = Number(all?.["masteryResetsPerCharacter"]);
+    if (Number.isInteger(resets) && resets >= 0) this.resetsPerCharacter = resets;
     const interval = Number(all?.["masteryPointIntervalMinutes"]);
     if (Number.isFinite(interval) && interval > 0) this.intervalMs = interval * 60000;
 
@@ -402,6 +409,7 @@ export class MasterySystem implements System {
     switch (type) {
       case "masteryInfoRequest": this.sendMenu(ctx, userId); break;
       case "masteryChoose": this.onChoose(ctx, userId, content); break;
+      case "masteryResetRequest": this.onResetRequest(ctx, userId); break;
       default: break;
     }
   }
@@ -582,6 +590,24 @@ export class MasterySystem implements System {
     });
   }
 
+  // The player's own reset: the same as the admin one, counted against masteryResetsPerCharacter
+  private onResetRequest(ctx: SystemContext, userId: number): void {
+    const now = Date.now();
+    if (now - (this.lastChooseMs.get(userId) || 0) < CHOOSE_COOLDOWN_MS) return;
+    this.lastChooseMs.set(userId, now);
+    const actorId = this.actorOf(ctx, userId);
+    if (!actorId) return;
+    const rec = this.read(ctx, actorId);
+    if (!rec || !rec.profession) return;
+    if (rec.resets >= this.resetsPerCharacter) {
+      this.notice(ctx, userId, "You have no profession resets left.");
+      return;
+    }
+    rec.resets += 1;
+    this.write(ctx, actorId, rec);
+    this.resetCharacter(ctx, actorId);
+  }
+
   private onChoose(ctx: SystemContext, userId: number, content: Content): void {
     const now = Date.now();
     if (now - (this.lastChooseMs.get(userId) || 0) < CHOOSE_COOLDOWN_MS) return;
@@ -652,6 +678,7 @@ export class MasterySystem implements System {
       rank: rec.rank,
       hours: rec.points,
       rankHours: [0, 0].concat(this.rankHours),
+      resetsLeft: Math.max(0, this.resetsPerCharacter - rec.resets),
       professions: PROFESSIONS.map(({ id, label, title, type, blurbs }) => ({ id, label, title, type, blurbs })),
     });
   }
@@ -763,7 +790,7 @@ export class MasterySystem implements System {
     const ranks = RANK_NAMES.slice(NOVICE);
     const edidOf = (id: string, rank: string) => `AldProf_${this.labelOf(id)}_${rank}`;
     const names = missing.flatMap((id) => ranks.map((rank) => edidOf(id, rank)));
-    const scan = await resolveEditorIds(names.concat([BLANK_BOOK_EDID]), dataDir, loadOrder, this.log, ["SPEL", "BOOK"]);
+    const scan = await resolveEditorIds(names.concat([BLANK_BOOK_EDID, HOE_EDID]), dataDir, loadOrder, this.log, ["SPEL", "BOOK", "WEAP", "MISC"]);
     const mp = ctx.svr as Mp;
     const idOf = (edid: string): number => {
       const desc = scan.resolved.get(edid.toLowerCase());
@@ -773,10 +800,18 @@ export class MasterySystem implements System {
       const list = ranks.map((rank) => idOf(edidOf(id, rank)));
       if (list.some((v) => v)) this.spells[id] = list;
     }
+    this.hoe = idOf(HOE_EDID);
+    if (this.hoe && this.kits["farmer"] === DEFAULT_KITS["farmer"]) this.kits["farmer"] = [{ baseId: this.hoe, count: 1 }];
+    else if (!this.hoe) this.log(`[mastery] ${HOE_EDID} not in the load order, farmers get no hoe and crops need none`);
     const book = idOf(BLANK_BOOK_EDID);
     if (book && this.kits["mage"] === DEFAULT_KITS["mage"]) this.kits["mage"] = DEFAULT_KITS["mage"].concat([{ baseId: book, count: 1 }]);
     else if (!book) this.log(`[mastery] ${BLANK_BOOK_EDID} not in the load order, the mage kit has no blank book`);
     this.log(`[mastery] plugin marker spells found for ${missing.filter((id) => this.spells[id]).length}/${missing.length} unconfigured profession(s) in ${scan.scannedMs} ms`);
+  }
+
+  // The hoe's form id, 0 when the plugin lacks it
+  hoeFormId(): number {
+    return this.hoe;
   }
 
   // Rank of a character in the given profession, Free (0) when it follows another craft or none.
@@ -1087,6 +1122,7 @@ export class MasterySystem implements System {
         rank: Math.min(LEGENDARY, Math.max(FREE, Math.floor(Number(r.rank)) || 0)),
         granted: Array.isArray(r.granted) ? r.granted.map((v) => Number(v) >>> 0).filter((v) => v) : [],
         spellTier: Math.max(0, Math.floor(Number(r.spellTier)) || 0),
+        resets: Math.max(0, Math.floor(Number(r.resets)) || 0),
       };
     } catch {
       return null;
@@ -1135,6 +1171,9 @@ export class MasterySystem implements System {
   private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };
   private kitGold = DEFAULT_KIT_GOLD;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
+  private hoe = 0;
+  // Profession resets a player may use on one character; masteryResetsPerCharacter overrides
+  private resetsPerCharacter = 1;
   private spells: Record<string, number[]> = {};
   private rules: Record<string, ResolvedRules> = {};
   private playerKeyword = 0;
