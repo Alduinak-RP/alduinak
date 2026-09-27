@@ -215,6 +215,20 @@ async function getMembersWithRole(roleId) {
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
+// Plain text into a guild channel; false when the bot is not ready or the channel is unreachable
+async function postToChannel(channelId, text) {
+  if (!ready || !channelId) return false
+  try {
+    const channel = await client.channels.fetch(String(channelId))
+    if (!channel || !channel.isTextBased()) return false
+    await channel.send({ content: String(text).slice(0, 2000), allowedMentions: { parse: [] } })
+    return true
+  } catch (err) {
+    console.error('[discord-bot] posting to channel failed:', err.message)
+    return false
+  }
+}
+
 async function addMemberRole(discordId, roleId) {
   if (!roleId) throw new Error('roleId is required')
   return mutateMemberRole(discordId, roleId, 'PUT')
@@ -265,6 +279,7 @@ function start() {
 }
 
 module.exports = {
+  postToChannel,
   start,
   getMemberRoles,
   lookupMemberRoles,
