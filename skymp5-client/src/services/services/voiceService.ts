@@ -269,6 +269,7 @@ export class VoiceService extends ClientListener {
       activation: readClientSettingString(this.sp, "voiceActivation", "ptt"),
       thresholdDb: readClientSettingNumber(this.sp, "voiceThresholdDb", -40),
       gainDb: readClientSettingNumber(this.sp, "voiceGainDb", 0),
+      outputVolume: readClientSettingNumber(this.sp, "voiceOutputVolume", 100),
     };
   }
 

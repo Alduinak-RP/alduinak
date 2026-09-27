@@ -786,7 +786,7 @@ fieldDiscordPresence.addEventListener('change', () => saveSetting({ discordPrese
 // Voice chat settings: devices are stored by label (the game's browser has its own device ids), and the mic test uses the game's -60..0 dB scale
 const VOIP_MIN_DB = -60
 const VOIP_GAIN_DB = 20   // the volume arrow spans -20..+20 dB
-const voip = { input: '', output: '', activation: 'ptt', thresholdDb: -40, gainDb: 0 }
+const voip = { input: '', output: '', activation: 'ptt', thresholdDb: -40, gainDb: 0, outputVolume: 100 }
 let voipTest = null
 
 const voipCollapse   = document.getElementById('voip-collapse')
@@ -807,6 +807,7 @@ function applyVoiceSettings(v) {
   voip.activation  = v.voiceActivation === 'vad' ? 'vad' : 'ptt'
   voip.thresholdDb = typeof v.voiceThresholdDb === 'number' ? v.voiceThresholdDb : -40
   voip.gainDb      = typeof v.voiceGainDb === 'number' ? v.voiceGainDb : 0
+  voip.outputVolume = typeof v.voiceOutputVolume === 'number' ? v.voiceOutputVolume : 100
   fillVoipDevices([])
   renderVoip()
 }
@@ -820,6 +821,8 @@ function renderVoip() {
   voipGain.style.left = `${(voip.gainDb + VOIP_GAIN_DB) / (2 * VOIP_GAIN_DB) * 100}%`
   voipGain.title = `Microphone volume ${voip.gainDb > 0 ? '+' : ''}${voip.gainDb} dB`
   if (voipTest) voipTest.gain.gain.value = Math.pow(10, voip.gainDb / 20)
+  document.getElementById('voip-output-volume').value = voip.outputVolume
+  document.getElementById('voip-output-volume-value').textContent = `${voip.outputVolume}%`
 }
 
 // A saved device that is unplugged stays selectable so the choice is not lost
@@ -903,6 +906,11 @@ voipInput.addEventListener('change', async () => {
   stopVoipTest()
   syncVoipTest()
 })
+document.getElementById('voip-output-volume').addEventListener('input', e => {
+  voip.outputVolume = Number(e.target.value)
+  renderVoip()
+})
+document.getElementById('voip-output-volume').addEventListener('change', () => saveSetting({ voiceOutputVolume: voip.outputVolume }))
 voipOutput.addEventListener('change', () => {
   voip.output = voipOutput.value
   saveSetting({ voiceOutputDevice: voip.output })

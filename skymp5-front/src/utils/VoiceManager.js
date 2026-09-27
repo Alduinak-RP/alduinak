@@ -1,7 +1,7 @@
 // Proximity voice chat over LiveKit, driven by the game side via window.__alduinakVoice (skymp5-client voiceService.ts).
 // Plain JS on purpose: the repo pins TypeScript 4.6 and livekit-client's types need 5.x.
 // Contract with the game side:
-//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}], mode, pttCode, audio: {input, output, activation 'ptt'|'vad', thresholdDb, gainDb} }
+//   connect(url, token, cfg)  join the room; cfg = { modes: [{key,label,units}], mode, pttCode, audio: {input, output, activation 'ptt'|'vad', thresholdDb, gainDb, outputVolume 0-100} }
 //   disconnect()              leave the room
 //   setPtt(bool)              push-to-talk: open/close the mic track; ignored while voice detection opens it
 //   setPttKey(code)           KeyboardEvent.code of the push-to-talk key; the game sees no keys while a menu has focus, so the page reads it then
@@ -62,7 +62,7 @@ class VoiceManager {
     this.transmitting = false;   // mic open: push-to-talk held, or voice detected
     this.vadUntil = 0;
     this.pttCode = '';
-    this.audio = { input: '', output: '', activation: 'ptt', thresholdDb: -40, gainDb: 0 };
+    this.audio = { input: '', output: '', activation: 'ptt', thresholdDb: -40, gainDb: 0, outputVolume: 100 };
     this.mic = null;             // { stream, ctx, analyser, buf, track }
     this.sinkId = '';
     this.audioEls = new Map(); // identity -> HTMLAudioElement
@@ -362,7 +362,8 @@ class VoiceManager {
     if (!el) return;
     const gain = this.gainFor(identity);
     if (el.volume > 0 && gain === 0) this.stopped(identity);
-    el.volume = gain;
+    // Every other player through the listener's own volume setting
+    el.volume = gain * Math.min(1, Math.max(0, Number(this.audio.outputVolume ?? 100) / 100));
   }
 
   // The game closes that mouth at once instead of waiting for the next report or its 600 ms TTL

@@ -158,8 +158,8 @@ fn open_download_list(missing: &[Value]) {
     let _ = app.opener().open_url(format!("{}/api/nexus-downloads{query}", net::api_url()), None::<&str>);
 }
 
-// Voice chat settings the game reads as is: device labels, "ptt" or "vad", the detection threshold and the mic gain in dB
-pub const VOICE_KEYS: [&str; 5] = ["voiceInputDevice", "voiceOutputDevice", "voiceActivation", "voiceThresholdDb", "voiceGainDb"];
+// Voice chat settings the game reads as is: device labels, "ptt" or "vad", the detection threshold and mic gain in dB, other players' volume in percent
+pub const VOICE_KEYS: [&str; 6] = ["voiceInputDevice", "voiceOutputDevice", "voiceActivation", "voiceThresholdDb", "voiceGainDb", "voiceOutputVolume"];
 
 // Writes the SkyMP client settings from scratch, keeping only the player's hotkeys and FOV; online servers also get the login the game reads
 pub fn write_client_settings(dest: &Path, srv: &Value, info: Option<&Value>) -> Result<(), String> {
