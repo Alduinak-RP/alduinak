@@ -37,6 +37,7 @@ type Mp = any;
 //
 // server-settings.json keys (all optional):
 //   needsEnabled                  false switches hunger and fatigue off, default true
+//   needsFatigueEnabled           false makes every fatigue cost nothing, hunger stays, default true
 //   needsHungerDrainPerHour       hunger points per online hour, default 125 (full to starving in about 8 hours)
 //   needsHungerOffline            true drains hunger while logged out too, default false
 //   needsHungerStart              hunger of a new character, default 145 (Survival's starting value, Satisfied)
@@ -176,6 +177,7 @@ export class NeedsSystem implements System {
     const s = await Settings.get();
     const all = (s.allSettings || {}) as Record<string, unknown>;
     this.enabled = all["needsEnabled"] !== false;
+    this.fatigueOn = all["needsFatigueEnabled"] !== false;
     const num = (key: string, fallback: number, min = 0): number => {
       const v = Number(all[key]);
       return all[key] !== undefined && Number.isFinite(v) && v >= min ? v : fallback;
@@ -326,7 +328,7 @@ export class NeedsSystem implements System {
   private chargeCraft(ctx: SystemContext, actorId: number, recipeId: number): boolean {
     const entry = this.online.get(actorId);
     if (!entry || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
-    const cost = fatigueCost("craft", this.mastery.craftRank(ctx, actorId, this.mastery.recipeBench(ctx, recipeId)));
+    const cost = this.costOf("craft", this.mastery.craftRank(ctx, actorId, this.mastery.recipeBench(ctx, recipeId)));
     if (!this.affords(entry, cost)) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
       return false;
@@ -343,7 +345,7 @@ export class NeedsSystem implements System {
     if (!entry) return false;
     const benches = Array.from(this.mastery.stationKeywords(ctx, refrId)).filter((k) => this.mastery.isCraftBench(k));
     if (!benches.length) return false;
-    const cost = fatigueCost("craft", Math.max(...benches.map((k) => this.mastery.craftRank(ctx, actorId, k))));
+    const cost = this.costOf("craft", Math.max(...benches.map((k) => this.mastery.craftRank(ctx, actorId, k))));
     if (this.affords(entry, cost)) return false;
     this.enqueue(ctx, { kind: "tired", actorId, cost });
     return true;
@@ -354,7 +356,7 @@ export class NeedsSystem implements System {
     const entry = this.online.get(casterId);
     const info = spellInfo(ctx.svr as Mp, spellId);
     if (!entry || !this.enabled || info.type !== SpellType.Spell) return true;
-    const perCast = fatigueCost("magic", this.mastery.rankOf(ctx, casterId, "mage"));
+    const perCast = this.costOf("magic", this.mastery.rankOf(ctx, casterId, "mage"));
     if (info.castType !== CastType.Concentration) {
       if (this.affords(entry, perCast)) return true;
       this.enqueue(ctx, { kind: "tiredCast", actorId: casterId, cost: perCast });
@@ -382,7 +384,7 @@ export class NeedsSystem implements System {
     const info = spellInfo(ctx.svr as Mp, spellId);
     if (!entry || !this.enabled || info.type !== SpellType.Spell || info.castType === CastType.Concentration) return;
     this.catchUp(entry);
-    entry.rec.fatigue = clamp(entry.rec.fatigue - fatigueCost("magic", this.mastery.rankOf(ctx, casterId, "mage")), 0, 1);
+    entry.rec.fatigue = clamp(entry.rec.fatigue - this.costOf("magic", this.mastery.rankOf(ctx, casterId, "mage")), 0, 1);
     this.enqueue(ctx, { kind: "changed", actorId: casterId });
   }
 
@@ -404,7 +406,7 @@ export class NeedsSystem implements System {
     const profession = this.animalKeyword && this.mastery.actorHasKeyword(ctx, victimId, this.animalKeyword) ? "hunter" : "warrior";
     const payers = Array.from(attackers).filter((id) => this.online.has(id));
     for (const actorId of payers) {
-      this.spend(ctx, actorId, fatigueCost("fight", this.mastery.rankOf(ctx, actorId, profession)) / payers.length, "kill");
+      this.spend(ctx, actorId, this.costOf("fight", this.mastery.rankOf(ctx, actorId, profession)) / payers.length, "kill");
     }
   }
 
@@ -494,15 +496,21 @@ export class NeedsSystem implements System {
     }
   }
 
+  private fatigueOn = true;
+
+  private costOf(effort: Effort, rank: number): number {
+    return this.fatigueOn ? fatigueCost(effort, rank) : 0;
+  }
+
   // Whether the bar can pay for one action of this effort at the rank; an offline character or needs switched off are never refused
   canPay(actorId: number, effort: Effort, rank: number): boolean {
     const entry = this.online.get(actorId);
-    return !entry || !this.enabled || this.affords(entry, fatigueCost(effort, rank));
+    return !entry || !this.enabled || this.affords(entry, this.costOf(effort, rank));
   }
 
   // Takes one action of this effort at the rank off the bar; what names the work for the log
   pay(ctx: SystemContext, actorId: number, effort: Effort, rank: number, what: string): void {
-    this.spend(ctx, actorId, fatigueCost(effort, rank), what);
+    this.spend(ctx, actorId, this.costOf(effort, rank), what);
   }
 
   private affords(entry: Online, cost: number): boolean {
