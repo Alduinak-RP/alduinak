@@ -612,6 +612,11 @@ Decimal or hex-as-number both work, in rank order Novice, Adept, Expert, Master.
 `MasterySystem.resetCharacter(ctx, actorId)` clears the choice and revokes the
 markers so the character can pick again; the admin panel's mastery reset uses it.
 The starting kit is not given again: `private.professionKit` stays.
+`adminAction` `masteryLegendary` (`MasterySystem.grantLegendary`) lifts a character
+with a profession to Legendary: its hours to the last threshold (6000) and, for a
+mage, the spell tier that allows it. `masteryGrant` stays capped at 1000 hours per
+grant. The manager's character editor writes `v: 2` records with the rank for the
+hours and drops the old markers; the server settles the rest at login.
 
 ## Wire protocol
 

@@ -38,6 +38,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
+//                     { customPacketType: "adminAction", action: "masteryLegendary", target }  lifts the character to Legendary in its profession
 //                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
 //                     { customPacketType: "adminAction", action: "revive", target }  target: a fallen character's actor id hex (online or not); refused while the profile's living limit is reached
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
@@ -640,6 +641,10 @@ export class AdminSystem implements System {
           this.adminLog(`profile ${adminProfile} set the max attributes of ${target.name} (profile ${target.profileId}) to ${text}`);
           this.reply(mp, userId, true, `${target.name}: ${text}`);
         }
+      } else if (action === "masteryLegendary") {
+        const summary = this.mastery.grantLegendary(ctx, target.actorId);
+        if (summary) this.adminLog(`profile ${adminProfile} made ${target.name} (profile ${target.profileId}) Legendary ${summary.label}, now ${summary.hours}h`);
+        this.reply(mp, userId, !!summary, summary ? `${target.name}: ${summary.hours}h, ${summary.rankName} ${summary.label}` : `${target.name} has no craft`);
       } else if (action === "masteryReset") {
         const ok = this.mastery.resetCharacter(ctx, target.actorId);
         if (ok) this.adminLog(`profile ${adminProfile} reset the craft and hours of ${target.name} (profile ${target.profileId})`);

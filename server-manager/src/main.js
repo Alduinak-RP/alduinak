@@ -590,7 +590,10 @@ async function updateCharacterDoc(formDesc, mutate) {
   _charCache = { at: 0, map: new Map() }
 }
 
-const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'hunter', 'miner', 'tailor', 'warrior', 'woodworker']
+const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'farmer', 'hunter', 'mage', 'miner', 'tailor', 'warrior', 'woodworker']
+// masterySystem.ts: hours for Adept, Expert, Master, Legendary; Novice comes with the choice
+const RANK_HOURS = [40, 100, 180, 6000]
+const MASTERY_VERSION = 2
 const ATTR_LIMIT = 1000   // adminSystem.ts attrSet bounds
 
 function intIn(v, lo, hi, label) {
@@ -599,19 +602,21 @@ function intIn(v, lo, hi, label) {
   return n
 }
 
-// A new profession drops the old one's rank marker spells; the server re-grants the right ones at the next login
+// A new profession, or a record from before the rank ladder, drops its marker spells; the server grants the right ones at the next login
 function applyMastery(cf, df, { profession, hours }) {
   const prof = profession ? String(profession) : null
   if (prof && !PROFESSIONS.includes(prof)) throw new Error(`profession: unknown ${prof}`)
-  const rec = { profession: null, points: 0, lastPointAt: 0, rank: 0, granted: [], ...(df['private.mastery'] || {}) }
-  if (rec.profession !== prof) {
+  const rec = { profession: null, points: 0, lastPointAt: 0, rank: 0, granted: [], spellTier: 0, ...(df['private.mastery'] || {}) }
+  if (rec.profession !== prof || rec.v !== MASTERY_VERSION) {
     const drop = new Set((rec.granted || []).map(Number))
     if (Array.isArray(cf.learnedSpells)) cf.learnedSpells = cf.learnedSpells.filter(id => !drop.has(Number(id)))
     rec.granted = []
-    rec.rank = 0
     rec.profession = prof
   }
+  rec.v = MASTERY_VERSION
   rec.points = intIn(hours, 0, 100000, 'Hours in profession')
+  // The server settles a mage's spell cap and any retuned thresholds at login
+  rec.rank = prof ? 1 + RANK_HOURS.filter(h => rec.points >= h).length : 0
   df['private.mastery'] = rec
 }
 

@@ -2,7 +2,7 @@
 // Players tab: every account from MongoDB with filters, sorting, general stats, the account detail and the character popup.
 // Account changes (ban, kick, delete, faction ranks) go through the backend or the game console; character edits write the store.
 
-const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'hunter', 'miner', 'tailor', 'warrior', 'woodworker']
+const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'farmer', 'hunter', 'mage', 'miner', 'tailor', 'warrior', 'woodworker']
 const FLAG_FILTERS = ['Online', 'GM', 'Banned', 'Dead']
 const GENDER_FILTERS = ['Male', 'Female']
 const SORTS = {
