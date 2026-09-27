@@ -680,13 +680,16 @@ pub fn clean_overwrite() -> Vec<String> {
     removed
 }
 
-// A mod's or overwrite's copy of the client settings would shadow the one written before every launch (voice, hotkeys, login)
+// A mod's or overwrite's copy of these would shadow the ones written before every launch: the game rewrites the login
+// file itself, which under MO2 lands in overwrite and then hands the server a spent play token on every later launch
 pub fn remove_shadowed_client_settings() {
-    let rel = Path::new("Platform").join("Plugins").join("skymp5-client-settings.txt");
+    let rels = [Path::new("Platform").join("Plugins").join("skymp5-client-settings.txt"), Path::new("Platform").join("PluginsNoLoad").join("auth-data-no-load.js")];
     let dirs = fs::read_dir(mods_dir()).into_iter().flatten().flatten().map(|e| e.path()).chain(std::iter::once(root().join("overwrite")));
     for dir in dirs {
-        let file = dir.join(&rel);
-        if file.is_file() && fs::remove_file(&file).is_ok() { log(format!("[mo2] removed {}, it shadowed the launcher's client settings", file.display())); }
+        for rel in &rels {
+            let file = dir.join(rel);
+            if file.is_file() && fs::remove_file(&file).is_ok() { log(format!("[mo2] removed {}, it shadowed the launcher's copy", file.display())); }
+        }
     }
 }
 
