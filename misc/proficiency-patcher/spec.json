@@ -4476,7 +4476,7 @@
   },
   {
    "list": "LootSmallTreasure10",
-   "chanceNone": 95,
+   "chanceNone": 100,
    "remove": [
     "LootGoldChange"
    ]
@@ -4703,21 +4703,11 @@
    "remove": [
     "LootGoldChange",
     "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+    "LootImperialLuck",
+    "WolfPelt",
+    "JewelryRingSilver"
    ],
-   "useAll": true,
-   "add": [
-    {
-     "item": "WolfPelt",
-     "count": 1,
-     "level": 1
-    },
-    {
-     "item": "JewelryRingSilver",
-     "count": 1,
-     "level": 1
-    }
-   ]
+   "useAll": true
   },
   {
    "list": "DeathItemDwarvenSpider",
@@ -5132,6 +5122,127 @@
    "npcs": [
     "EncSkeletonNecroImp01Melee1H",
     "EncSkeletonNecroImp01Missile"
+   ]
+  },
+  {
+   "list": "DeathItemBear",
+   "remove": [
+    "BearPelt"
+   ]
+  },
+  {
+   "list": "DeathItemBearCave",
+   "remove": [
+    "BearCavePelt"
+   ]
+  },
+  {
+   "list": "DeathItemBearSnow",
+   "remove": [
+    "BearSnowPelt"
+   ]
+  },
+  {
+   "list": "DeathItemCow",
+   "remove": [
+    "CowHide"
+   ]
+  },
+  {
+   "list": "DeathItemDeerNew",
+   "remove": [
+    "DeerHide02"
+   ]
+  },
+  {
+   "list": "DeathItemElkFemale",
+   "remove": [
+    "DeerHide"
+   ]
+  },
+  {
+   "list": "DeathItemElkMale",
+   "remove": [
+    "DeerHide"
+   ]
+  },
+  {
+   "list": "DeathItemFox",
+   "remove": [
+    "FoxPelt"
+   ]
+  },
+  {
+   "list": "DeathItemFoxIce",
+   "remove": [
+    "FoxPeltSnow"
+   ]
+  },
+  {
+   "list": "DeathItemGoat",
+   "remove": [
+    "GoatHide"
+   ]
+  },
+  {
+   "list": "DeathItemHorse",
+   "remove": [
+    "HorseHide"
+   ]
+  },
+  {
+   "list": "DeathItemSabrecat",
+   "remove": [
+    "SabreCatPelt"
+   ]
+  },
+  {
+   "list": "DeathItemSabrecatSnow",
+   "remove": [
+    "SabreCatSnowPelt"
+   ]
+  },
+  {
+   "list": "DeathItemWolfIce",
+   "remove": [
+    "WolfIcePelt"
+   ]
+  },
+  {
+   "list": "DLC1DeathItemDeerVale",
+   "remove": [
+    "DLC1DeerHide"
+   ]
+  },
+  {
+   "list": "DLC1DeathItemSabrecatVale",
+   "remove": [
+    "DLC1SabreCatHide"
+   ]
+  },
+  {
+   "list": "DeathItemBearCaveWH",
+   "remove": [
+    "BearCavePeltWH"
+   ]
+  },
+  {
+   "list": "LootGiantAnimalPart75",
+   "remove": [
+    "BearPelt",
+    "CowHide",
+    "DeerHide",
+    "GoatHide",
+    "HorseHide",
+    "WolfPelt"
+   ]
+  },
+  {
+   "list": "DLC2DeathItemBoar",
+   "remove": [
+    "LootGoldChange25",
+    "LootImperialLuck",
+    "LootPerkGoldenTouchChange"
    ]
   }
  ],
