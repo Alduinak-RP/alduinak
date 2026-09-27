@@ -736,6 +736,19 @@ async function refreshIsolatedStatus() {
     isolatedText.textContent = `Alduinak installed at ${st.base || st.dir}`
   }
   refreshDownloadModsState(st)
+  refreshInstallStatus()
+}
+
+// SKSE, the cleaned masters and the installed modlist, each a green dot once in place
+async function refreshInstallStatus() {
+  const st = await window.electronAPI.installStatus()
+  const paint = (key, ok, yes, no) => {
+    document.getElementById(`${key}-status-dot`).className = 'vortex-status-dot' + (ok ? ' dot-ok' : '')
+    document.getElementById(`${key}-status-text`).textContent = ok ? yes : no
+  }
+  paint('skse', st.skse, 'SKSE installed', 'SKSE not installed yet - press PLAY to install it')
+  paint('masters', st.masters, 'Cleaned masters installed', 'Masters not cleaned yet - press PLAY to clean them')
+  paint('modlist', st.modlist, `Modlist installed${st.filesVersion ? ` (client ${st.filesVersion})` : ''}`, 'Modlist not installed yet - press PLAY to install it')
 }
 
 // Copies the vanilla files into the portable game copy; force re-copies every file.

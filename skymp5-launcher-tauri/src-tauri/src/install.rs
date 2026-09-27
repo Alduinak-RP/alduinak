@@ -658,6 +658,18 @@ async fn client_version() -> Option<String> {
     net::fetch_json(&format!("{}/api/version", net::api_url()), &[]).await.ok()?["client"].as_str().filter(|v| !v.is_empty()).map(String::from)
 }
 
+// The Install Options status dots: SKSE, the cleaned masters and the installed modlist
+#[tauri::command]
+pub fn install_status() -> Value {
+    let game_s = effective_game_path();
+    if game_s.is_empty() { return json!({ "skse": false, "masters": false, "modlist": false }); }
+    let game = Path::new(&game_s);
+    let via_mo2 = store().bool("mo2Enabled");
+    let modlist = !store().str("filesVersion").is_empty() && !(via_mo2 && store().str("modpackState") == "failed")
+        && REQUIRED_FILES.iter().all(|f| data_file_exists(game, via_mo2, f)) && preloader_present(game);
+    json!({ "skse": game.join("skse64_loader.exe").exists(), "masters": gamecopy::masters_cleaned(game), "modlist": modlist, "filesVersion": store().str("filesVersion") })
+}
+
 // Update probe for the Play button: the backend's client files version against the installed one
 #[tauri::command]
 pub async fn files_update_check() -> Value {

@@ -250,6 +250,18 @@ async fn cleaned_master_patch(v: &MasterVariant) -> Result<PathBuf, String> {
     Ok(file)
 }
 
+// Every master present in Data has its cleaned size, and at least one is present
+pub fn masters_cleaned(game: &Path) -> bool {
+    let data = game.join("Data");
+    let mut seen = false;
+    for m in MASTERS {
+        let Ok(size) = fs::metadata(data.join(m.name)).map(|md| md.len()) else { continue };
+        if !m.variants.iter().any(|v| v.dst_size == size) { return false; }
+        seen = true;
+    }
+    seen
+}
+
 pub struct MastersResult { pub error: Option<String>, pub cleaned: usize, pub warning: Option<String> }
 
 // Cleans the masters and Creation plugins in Data without keeping backups (Steam/GOG verify restores them); strict turns failures into errors

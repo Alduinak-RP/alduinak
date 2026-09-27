@@ -65,6 +65,7 @@ window.electronAPI = {
   nexusLogin:   () => invoke('nexus_login'),
 
   isolatedStatus: () => invoke('game_isolated_status'),
+  installStatus: () => invoke('install_status'),
   createIsolated: (baseDir, opts) => invoke('game_create_isolated', { baseDir: baseDir || null, opts: opts || {} }),
   onIsolatedProgress: (cb) => on('isolated:progress', cb),
   removeIsolatedListeners: () => off('isolated:progress'),

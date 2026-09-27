@@ -136,6 +136,7 @@ pub fn run() {
             basic::open_external,
             basic::folder_open,
             basic::game_isolated_status,
+            install::install_status,
             settings::graphics_load,
             settings::graphics_save,
             settings::graphics_save_fov,
