@@ -233,54 +233,49 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   400, 52.4% at 600, 76.2% at 800, 100% at 1000. The client always leaves one point, so a starving character has max
   stamina 1.
 
-**Fatigue** is a bar from 0 to 1 (notices show it as a percentage).
-- Every recipe the server accepts costs `1 / needsFatigueCraftsPerHour[rank]`: 1/6, 1/12, 1/18, 1/24 of the bar, by the
-  crafter's rank in the profession owning the recipe's bench (MasterySystem's craft keywords), Novice outside it. One
-  recipe use is one craft, arrow bundles included.
-- A member of the bench's profession pays `needsFatigueMemberMult` (0.5) of that, so 12/24/36/48 crafts per bar by
-  rank; a non-member pays the full Novice cost. Imperials (`appearance.raceId` Imperial or the Imperial child race)
-  pay a further `needsFatigueImperialMult` (0.75) of every own-profession cost: crafts, a warrior's kill, a
-  woodworker's swing and a miner's ore. This is the Imperial racial passive; the plugin carries no effect for it.
-- Charcoal (`AldRecipeKiln_Charcoal`) costs half a smelter craft (`needsFatigueRecipeMult`): 1/12 of the bar outside
-  Blacksmith, then 1/24, 1/48, 1/72 and 1/96 by blacksmith rank (Imperial blacksmiths x0.75), so 12 to 96 charcoal per
-  bar.
-- Free: recipes at benches carrying `AldCraftingMead`, tempering (never sent to the server), and crafts whose inputs
-  the crafter does not hold (MasterySystem's `holdsInputs`; the native side handles those as before).
-- Refills 1.6% per minute, online and offline, with no bed or inn bonus; a full bar may be spent at once.
+**Fatigue** is a bar from 0 to 1 (notices show it as a percentage). It refills at 100% per hour while the character
+is logged in, and nothing else speeds it up or slows it down: no offline refill, no bed, no racial or membership
+discount, no free bench. Eating never costs fatigue.
+
+Every action costs a share of the bar by the character's rank **in the profession the action belongs to**; a character
+of another profession or none pays the Free price (`FATIGUE_COST` and `fatigueCost` in `needsSystem.ts`):
+
+| Rank | Gathering | Crafting | Kill (split) and spell cast |
+|---|---|---|---|
+| Free | 16.6% | 33.2% | 66.4% |
+| Novice | 8.3% | 16.6% | 33.2% |
+| Adept | 4.2% | 8.4% | 16.8% |
+| Expert | 2.1% | 4.2% | 8.4% |
+| Master, Legendary | 1% | 2% | 4% |
+
+- Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
+  (farmer or alchemist) and one skinning (hunter).
+- Crafting is every recipe the server accepts at any station, and every temper at the workbench or grindstone, by the
+  rank of a character whose profession works that bench keyword (MasterySystem `craftRank`). Crafts whose inputs the
+  crafter does not hold are left to the native side uncharged.
+- A kill of an NPC or creature costs the kill price by hunter rank (animals) or warrior rank (everything else),
+  split equally among every player who hit the victim during the fight (the hit relay of `62_mastery.js`; a fight
+  untouched for 10 minutes is forgotten). A kill cannot be refused; the bar just empties.
+- A spell (SPEL of type Spell) costs the cast price by mage rank when its cast starts (`onSpellCast`); a concentration
+  spell instead costs a fifth of that per second held, charged from the `onSpellCastAttempt` keep-alives. A cast the
+  bar cannot pay is refused in `onSpellCastAttempt` with "You are too tired to cast". Scrolls, powers and abilities
+  are free.
 - A craft the bar cannot pay for is refused before the native craft runs. The server sends `needsState` with
   `closeCrafting`, resends the unchanged inventory to undo the recipe the vanilla menu already made locally, and shows
   "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." The craft that leaves the bar
-  unable to pay for another of its kind closes the menu the same way, with the same notice, and undoes nothing, so rapid
-  clicking stops at the last craft the bar pays for. Both, and every fatigue update, go out as soon as the craft is
-  handled rather than on the next one-second poll. A bench does not open when the bar cannot pay its cheapest recipe
-  (a smelter opens while the bar pays for one charcoal; an ingot the bar cannot pay is then refused as above). Logs:
-  `[needs] craft refused for <id>: fatigue X%, needs Y%`, `bench refused` for a bench kept shut,
-  `bar spent, crafting closed` for the close after the last paid craft, and `[needs] <id> <what>: -N pts, fatigue X%`
-  for every kill, chop, ore or harvest charge.
-- Chopping firewood costs each swing's share of the bar by woodworker rank (`needsChopWoodPerBar`): a full bar chops
-  12 firewood outside the profession, 24 at Novice, 48 at Adept, 72 at Expert and 96 at Master, two per swing every
-  ten seconds, before the online refill. The chopper stays at the block across yields and stands up with "You are too
-  tired to swing an axe. Rest a while." once the bar cannot pay for another swing; a block the bar cannot pay one swing
-  at does not open. A swing lands, and costs, only after ten seconds seated at the block; standing up mid-swing gives
-  and costs nothing (`docs_roleplay_mastery.md`, Chopping). Mining ore costs `needsMineFatigue` (20, a miner 10) per ore.
-- Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs `needsPickFatigue` exhaustion points (10,
-  about 1% of the bar) and kneels the picker for `gatheringHarvestSeconds` (2), unable to move or harvest again. Fish
-  (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear and frost
-  mirriam braids, hanging rabbits and pheasants) cost the same fatigue but never kneel. A swimmer never kneels; the
-  server still waits out the kneel before their next harvest. A bar that cannot pay refuses the harvest
-  ("You are too tired to gather"). Catching a bee is free.
-- The bar maps onto Survival's exhaustion scale as `(1 - fatigue) * 960` (`Survival_ExhaustionNeedMaxValue`), so a
-  non-member's six crafts land on 160, 320, 480, 640, 800 and 960.
+  unable to pay for another closes the menu the same way and undoes nothing, so rapid clicking stops at the last craft
+  the bar pays for. A bench does not open when the bar cannot pay one craft there. A station or plant the bar cannot
+  pay turns the worker away ("You are too tired to gather", "... to swing an axe"); a chopper or miner stands up once
+  the bar cannot pay the next action. Logs: `[needs] craft refused for <id>: fatigue X%, needs Y%`, `bench refused`,
+  `bar spent, crafting closed`, `cast refused`, and `[needs] <id> <what>: -N%, fatigue X%` for every kill, chop, ore,
+  harvest or skin charge.
+- The bar maps onto Survival's exhaustion scale as `(1 - fatigue) * 960` (`Survival_ExhaustionNeedMaxValue`).
 - Stages as in `Survival_NeedExhaustion.ApplyExhaustionStage` without sleep: Refreshed (1) below 160, Drained (2) from
   160, Tired (3) from 340, Weary (4) from 560, Debilitated (5) from 800. Survival's stage 0 is its Rested bonus from
   sleeping, which the server never grants. The character holds `Survival_ExhaustionStage<n>`: Drained to Debilitated
-  -25/-50/-75/-100% magicka and stamina regeneration, Tired to Debilitated also -10/-20/-40 disease resistance. The
-  "beneficial potions are less effective" line of their descriptions has no effect record in the plugin.
-- **Max magicka** is reduced by `clamp((exhaustion - 159) / 801, 0, 1)` of the total: about 0.1% after one Novice
-  craft, 20% after two, 40% after three, 60% after four, 80% after five and 100% after six. The last step is ordinary
-  play, not an edge case: a Novice who spends a full bar (six crafts, about an hour of work) is left with max magicka
-  1, the one point the client always keeps. It comes back as the bar refills, about 19% of the maximum per 10 minutes,
-  fully once the bar is past 83.4% (about 52 minutes from empty).
+  -25/-50/-75/-100% magicka and stamina regeneration, Tired to Debilitated also -10/-20/-40 disease resistance.
+- **Max magicka** is reduced by `clamp((exhaustion - 159) / 801, 0, 1)` of the total, so it starts falling once the
+  bar is below 83.4% and reaches the one point the client keeps at an empty bar.
 
 **How the maximums are applied.** Skymp syncs health, stamina and magicka as percentages. The server's `MpActor` knows
 only the race and NPC base values (`GetBaseActorValues`, no spells or perks), each client applies percentages against
@@ -465,13 +460,13 @@ None of these has been run yet.
 - Fatigue readout: with a rested character, mine one vein or craft once; a line `FATIGUE <n>%` with the stage name
   appears above the magicka bar, the magicka bar stays full with no red end (a mage's full magicka reads full), and the
   line goes once fatigue is back at 100. From stage 2 the red end grows by the penalty share, not the fatigue spent.
-- Crafting at a forge as a Novice outside Blacksmith costs 1/6; from a full bar the sixth craft closes the menu with the
-  "too tired" notice and all six items stay, however fast the clicks come. A click that slips in before the close (high
-  ping) is refused: reopen the inventory, the refused item must be absent and its inputs present (the resent inventory
-  corrects the client); logging out for 10 minutes refills 16%.
+- Crafting at a forge as a Free (non-blacksmith) character costs 33.2%; from a full bar the third craft closes the menu
+  with the "too tired" notice and all three items stay. A Novice blacksmith makes six. A click that slips in before the
+  close is refused: the refused item must be absent and its inputs present. Ten minutes online refill 16.7%.
+- Eat any food with a partly spent bar: the fatigue readout must not move.
 - Chopping: sit at a block and wait; the axe keeps swinging, 2 firewood land every 10 seconds, and the player stands up
   only with the "too tired" notice. Stand up (move key) about 5 seconds into a swing: no firewood for it and no fatigue
-  spent. Sit again: the next firewood lands 10 seconds after sitting down.
-- Charcoal at a smelter outside Blacksmith costs 1/12 (8%) each; from a full bar the twelfth closes the menu with the
-  "too tired" notice, however fast the clicks come, and the smelter stays shut until the bar holds 8% again.
+  spent.
+- Two players hit a wolf and one kills it: each pays half a Free kill (33.2%), or half their hunter rank's price.
+- Hold a Flames stream as a non-mage: about 13% per second; it is cut off when the bar runs dry.
 - Admin Item Spawner finds Creation items by name ("Amber", "Fishing Rod", "Hot").

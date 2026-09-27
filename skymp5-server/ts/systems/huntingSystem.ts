@@ -133,7 +133,6 @@ export class HuntingSystem implements System {
 
   private onKill(ctx: SystemContext, kill: Kill): void {
     if (!kill.killerId || !kill.victimId || !this.isPlayer(ctx, kill.killerId)) return;
-    this.needs?.applyKillFatigue(ctx, kill.killerId, this.mastery.summaryOf(ctx, kill.killerId).profession === "warrior");
     const rank = this.mastery.rankOf(ctx, kill.killerId, "hunter");
     if (rank < BUTCHER_RANK || !this.isAnimal(ctx, kill.victimId)) return;
     const dropped = this.inventoryKinds(ctx, kill.victimId);

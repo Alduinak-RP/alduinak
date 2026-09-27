@@ -312,7 +312,7 @@ Benches:
   for placing in the Creation Kit; the existing Hearthfire carpenter's
   workbenches also offer the woodcrafting recipes.
 - **Smelters** carry the charcoal recipe (2 Firewood into 1 Charcoal, open to
-  everyone, half a smelter craft's fatigue); the ore-to-ingot recipes there keep
+  everyone, a craft's fatigue like any other); the ore-to-ingot recipes there keep
   their blacksmith tiers. Credit for charcoal counts as blacksmith work, because
   mastery hours follow the recipe's bench keyword.
 - **Kiln**: the keyword `AldCraftingKiln` stays in the plugin, unused. A kiln
@@ -366,8 +366,8 @@ helps here too.
 
 Each boiler offers only its own mead (keywords `AldCraftingMeadHonningbrew`
 and `AldCraftingMeadBlackBriar`). Brewing is free: the recipes carry no rank
-condition, so any character brews, and the shared `AldCraftingMead` keyword on
-both benches is what the fatigue cost skips. Only an Alchemist earns hours
+condition, so any character brews, at a craft's fatigue like any other bench.
+Only an Alchemist earns hours
 there, under the usual one-per-hour rule: `AldCraftingMead` is an alchemist
 `craftStations` keyword. Nord Mead stays at the alchemy lab.
 
@@ -395,8 +395,7 @@ container loot are off:
   spec `craftingStations.placements`). A mill turned into a crafting station
   opens the crafting menu (whether its push idle still plays first is to be
   confirmed in game), and no profession owns the keyword, so a craft there
-  earns no mastery hours and costs a full Novice craft's fatigue
-  (`needsFatigueCraftsPerHour`, no member share). The vanilla loot lists of
+  earns no mastery hours and costs a Free craft's fatigue. The vanilla loot lists of
   bandits, Forsworn, warlocks and other human foes carry it too.
 - Honey: the cook's cooking pot recipe, one Bee Honeycomb into one Honey,
   open to everyone.
@@ -465,20 +464,9 @@ no firewood for that cycle; sitting down again starts a new cycle. So the
 first firewood lands ten seconds after the sit-down animation, not after
 the key press. A client that never sends the claim keeps the plain ten
 second timing, and the server logs `[gathering] <actor> chops at <block> with
-no seat claim` once per sitting. A full bar chops, before its online refill:
-
-| Woodworker rank | Firewood per full bar |
-|---|---|
-| none | 12 |
-| Novice | 24 |
-| Adept | 48 |
-| Expert | 72 |
-| Master | 96 |
-
-`needsChopWoodPerBar` sets the five numbers. The Imperial passive stretches a
-woodworker's bar by a third (Novice 32, Master 128). The bar refills 1.6% a
-minute meanwhile, so a long sitting runs a little past the table: an Adept
-gets about 50, an Expert 78 and a Master 110 from a full bar.
+no seat claim` once per sitting. Each swing costs one gathering action of the
+fatigue bar by woodworker rank (16.6% Free, 8.3% Novice, 4.2% Adept, 2.1%
+Expert, 1% Master and Legendary; `docs_roleplay_creations_and_needs.md`).
 
 ### Hunting
 

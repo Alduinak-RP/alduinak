@@ -27,9 +27,8 @@ type Mp = any;
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
 //   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 2, never for fish or hanging clutter
 //
-// A swing of the axe and every ore off a vein draw on the same fatigue bar crafting spends (needsChopWoodPerBar by
-// woodworker rank, needsMineFatigue); miners pay the smaller price for their own trade, and a bar that cannot pay
-// for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
+// A swing of the axe, every ore off a vein and every harvest cost one gathering action of the fatigue bar by the rank in
+// woodworker, miner, or farmer and alchemist (NeedsSystem), and a bar that cannot pay for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
 // A swing's firewood lands only after a whole cycle seated at the block (the client's seat claim, FurnitureSeatSystem);
 // standing up mid-cycle ends the sitting with nothing for that cycle, and sitting down again starts a new cycle.
 // A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
@@ -37,7 +36,7 @@ type Mp = any;
 // Produce containers (beehives and apiaries) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
-// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs needsPickFatigue and kneels the picker for
+// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue and kneels the picker for
 // gatheringHarvestSeconds, during which they cannot move or harvest again; the native harvest still hands over the plant's ingredient.
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
@@ -69,6 +68,8 @@ const SEAT_REACH = 400;
 // Nobody works one sitting this long; a stuck session is dropped.
 const MAX_SESSION_MS = 15 * 60000;
 const DENY_NOTICE_MS = 1000;
+// Picking plants is the work of these professions
+const PICKERS = ["farmer", "alchemist"];
 const CHOP_TIRED = "You are too tired to swing an axe. Rest a while.";
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
@@ -373,10 +374,11 @@ export class GatheringSystem implements System {
   private harvest(ctx: SystemContext, refrId: number, actorId: number, readyMs: number, kneelMs: number, grant?: () => void): Verdict {
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if ((this.harvestUntil.get(actorId) || 0) > Date.now()) return false;
-    if (!this.needs.canPick(ctx, actorId)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
+    if (!this.needs.canPay(actorId, "gather", rank)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
     return () => {
       grant?.();
-      this.needs.applyPickFatigue(ctx, actorId);
+      this.needs.pay(ctx, actorId, "gather", rank, "harvest");
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
       if (kneelMs > 0) {
         this.harvestUntil.set(actorId, Date.now() + kneelMs);
@@ -390,7 +392,7 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["requireditemlist"])) {
       return this.deny(ctx, actorId, "You need a woodcutter's axe to chop wood.");
     }
-    if (!this.needs.canChop(ctx, actorId, this.mastery.rankOf(ctx, actorId, "woodworker") - 1, this.chopYield)) {
+    if (!this.needs.canPay(actorId, "gather", this.mastery.rankOf(ctx, actorId, "woodworker"))) {
       return this.deny(ctx, actorId, CHOP_TIRED);
     }
     if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, "Someone is already using this.");
@@ -439,7 +441,7 @@ export class GatheringSystem implements System {
     if (!this.holdsTool(ctx, actorId, props["mineoretoolslist"])) {
       return this.deny(ctx, actorId, "You need a pickaxe to mine this vein.");
     }
-    if (!this.needs.canMine(ctx, actorId, this.mastery.rankOf(ctx, actorId, "miner") > 0)) {
+    if (!this.needs.canPay(actorId, "gather", this.mastery.rankOf(ctx, actorId, "miner"))) {
       return this.deny(ctx, actorId, "You are too tired to swing a pickaxe. Rest a while.");
     }
     const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) ?? OPEN_TO_ALL;
@@ -499,12 +501,12 @@ export class GatheringSystem implements System {
       s.unseatedLogged = true;
       this.log(`[gathering] ${s.actorId.toString(16)} chops at ${s.furnitureId.toString(16)} with no seat claim, a swing is not checked against standing up`);
     }
-    const rank = this.mastery.rankOf(ctx, s.actorId, "woodworker") - 1;
-    if (!this.needs.canChop(ctx, s.actorId, rank, s.perStrike)) return this.finish(ctx, s, CHOP_TIRED);
+    const rank = this.mastery.rankOf(ctx, s.actorId, "woodworker");
+    if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, CHOP_TIRED);
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
     s.given += s.perStrike;
-    this.needs.applyChopFatigue(ctx, s.actorId, rank, s.perStrike);
-    if (!this.needs.canChop(ctx, s.actorId, rank, s.perStrike)) this.finish(ctx, s, CHOP_TIRED);
+    this.needs.pay(ctx, s.actorId, "gather", rank, "chop");
+    if (!this.needs.canPay(s.actorId, "gather", rank)) this.finish(ctx, s, CHOP_TIRED);
   }
 
   private mineStrike(ctx: SystemContext, s: Session, now: number): void {
@@ -513,11 +515,11 @@ export class GatheringSystem implements System {
     s.strikesLeft -= 1;
     if (s.strikesLeft > 0) return;
     s.strikesLeft = s.strikesPer;
-    const miner = this.mastery.rankOf(ctx, s.actorId, "miner") > 0;
+    const rank = this.mastery.rankOf(ctx, s.actorId, "miner");
     // A sitting ends where an activation would be refused, rather than mining the bar into the ground
-    if (!this.needs.canMine(ctx, s.actorId, miner)) return this.finish(ctx, s, "You are too tired to keep mining. Rest a while.");
+    if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, "You are too tired to keep mining. Rest a while.");
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
-    this.needs.applyMineFatigue(ctx, s.actorId, miner);
+    this.needs.pay(ctx, s.actorId, "gather", rank, "ore");
     state.left -= 1;
     if (!state.regenAt) state.regenAt = now + this.regenPer();
     this.writeVein(ctx, s.veinId, state);
