@@ -6,6 +6,7 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 export interface Profession {
   id: string;
   label: string;
+  type?: string;
   title: string;
   blurbs?: string[];
 }
@@ -44,6 +45,8 @@ export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo 
  *                       "hours", "rankHours", "professions" }
  *   Client -> Server: { "customPacketType": "masteryChoose", "profession" }
  *   Server -> Client: { "customPacketType": "masteryNotice", "text" }
+ *   Server -> Client: { "customPacketType": "professionState", "profession", "rank",
+ *                       "rankName", "hours", "skills": { <av>: level }, "magicka" }
  */
 export class MasteryService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -56,5 +59,29 @@ export class MasteryService extends ClientListener {
     if (content && content["customPacketType"] === "masteryNotice" && typeof content["text"] === "string") {
       notifyNextUpdate(this.controller, this.sp, content["text"]);
     }
+    if (content && content["customPacketType"] === "professionState") {
+      const skills = parseSkills(content["skills"]);
+      const magicka = typeof content["magicka"] === "number" ? content["magicka"] as number : null;
+      this.controller.once("update", () => this.applyState(skills, magicka));
+    }
+  }
+
+  // setActorValue writes the base value without the skill level-up notification
+  private applyState(skills: Record<string, number>, magicka: number | null): void {
+    const player = this.sp.Game.getPlayer();
+    if (!player) return;
+    for (const av of Object.keys(skills)) {
+      if (player.getBaseActorValue(av) !== skills[av]) player.setActorValue(av, skills[av]);
+    }
+    if (magicka !== null && player.getBaseActorValue("Magicka") !== magicka) player.setActorValue("Magicka", magicka);
   }
 }
+
+const parseSkills = (raw: unknown): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [av, level] of Object.entries(raw as Record<string, unknown>)) {
+    if (/^[A-Za-z]+$/.test(av) && typeof level === "number" && isFinite(level)) out[av] = level;
+  }
+  return out;
+};
