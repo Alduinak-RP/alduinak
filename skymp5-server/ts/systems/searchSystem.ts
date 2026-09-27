@@ -76,6 +76,8 @@ export class SearchSystem implements System {
   // Set by index.ts: the owner of a pet or companion (0 for none), and whether a living NPC is game
   ownedBy?: (actorId: number) => number;
   isAnimal?: (ctx: SystemContext, actorId: number) => boolean;
+  // Set by index.ts: true when the interaction with a body became something else (skinning), so it is not opened
+  bodyAction?: (ctx: SystemContext, searcherActorId: number, bodyActorId: number) => boolean;
   // Set by index.ts: why a searcher may not open this body, "" when they may
   bodyRefusal?: (searcherActorId: number, bodyActorId: number) => string;
 
@@ -316,6 +318,7 @@ export class SearchSystem implements System {
       else this.startSession(ctx, searcherActorId, targetActorId, false, false, false, true);
       return;
     }
+    if (body && this.bodyAction?.(ctx, searcherActorId, targetActorId)) return;
     const bodyRefusal = body ? this.bodyRefusal?.(searcherActorId, targetActorId) : "";
     if (bodyRefusal) {
       this.notice(ctx, userId, bodyRefusal);

@@ -1,10 +1,10 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
-import { espmContainerEntries, espmFieldFormIds, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
+import { espmContainerEntries, espmFieldFormIds, espmLeveledEntries, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
 import { addItemTo, holdsItem, sendActionLock } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
-import { MasterySystem, RANK_NAMES } from "./masterySystem";
+import { FREE, LEGENDARY, MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
 import { FurnitureSeatSystem } from "./furnitureSeatSystem";
 import { writeFileAtomic } from "./fileUtil";
@@ -21,23 +21,24 @@ type Mp = any;
 //   gatheringVeinTotal           ore collections every vein holds, default 6; 0 uses each record's resourcecounttotal
 //   gatheringVeinRespawnMinutes  minutes after the first ore taken until the whole vein is back, default 1440, 0 keeps it
 //   gatheringVeinRegenMinutes    set: minutes per ore collection grown back, one at a time, instead of the whole vein at once
-//   miningVeinTiers              { "<ore editor id or hex id>": "Novice" | rank index | "Anyone" } overriding DEFAULT_VEIN_TIERS
+//   miningVeinTiers              { "<ore editor id or hex id>": "Novice" | rank index } overriding DEFAULT_VEIN_TIERS; "Free" or 0 is open to anyone
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
-//   gatheringHarvestSeconds      how long harvesting a plant or nirnroot holds the picker kneeling, default 2, never for fish or hanging clutter
 //
 // A swing of the axe, every ore off a vein and every harvest cost one gathering action of the fatigue bar by the rank in
 // woodworker, miner, or farmer and alchemist (NeedsSystem), and a bar that cannot pay for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
 // A swing's firewood lands only after a whole cycle seated at the block (the client's seat claim, FurnitureSeatSystem);
 // standing up mid-cycle ends the sitting with nothing for that cycle, and sitting down again starts a new cycle.
 // A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
-// Every ore but iron and sea salt needs the miner profession at its rank; those two are open to anyone with a pickaxe.
+// Mining needs a pickaxe (PICKAXES), and every ore but iron and sea salt the miner profession at its rank; a vein above the
+// miner's rank, or depleted, reads "You can't identify any useful ore." Every ore has a GEM_CHANCE of a gem besides.
 // Produce containers (beehives and apiaries) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
-// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue and kneels the picker for
-// gatheringHarvestSeconds, during which they cannot move or harvest again; the native harvest still hands over the plant's ingredient.
+// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue and kneels the picker for HARVEST_MS by farmer
+// rank, during which they cannot move or harvest again; the native harvest still hands over the plant's ingredient, a Master farmer
+// gets it twice and a Legendary four times. Crops (CROP_WORDS in the editor id) need a hoe in the inventory.
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
@@ -59,7 +60,18 @@ const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 // Overrides the record's total on every vein; 0 keeps the record's own
 const DEFAULT_VEIN_TOTAL = 6;
 const DEFAULT_PICK_MINUTES = 30;
-const DEFAULT_HARVEST_SECONDS = 2;
+// Kneel of a harvest by farmer rank, Free to Legendary
+const HARVEST_MS = [5000, 3000, 1000, 0, 0, 0];
+const HARVEST_YIELD = [1, 1, 1, 1, 2, 4];
+const CROP_WORDS = ["wheat", "gourd", "nirnroot", "cabbage", "potato"];
+// Skyrim.esm Hoe
+const HOE = 0x00025101;
+// Skyrim.esm DLC2PickaxeList, every pickaxe
+const PICKAXES = 0x0010acc4;
+// Skyrim.esm LItemGems
+const GEM_LIST = 0x0010e992;
+const GEM_CHANCE = 0.02;
+const NO_ORE = "You can't identify any useful ore.";
 const HARVEST_ANIM = "IdleKneelingEnter";
 // The native flora reloot when server-settings names none
 const DEFAULT_PLANT_REGROW_MS = 3600000;
@@ -79,13 +91,13 @@ const VEIN_DEFAULT_COUNT = 1;
 const VEIN_DEFAULT_TOTAL = 3;
 const VEIN_DEFAULT_STRIKES = 1;
 
-// Mining rank needed per ore, by the ore item editor id; unlisted ores are open to everyone.
-const OPEN_TO_ALL = -1;
+// Mining rank needed per ore, by the ore item editor id; unlisted ores are open to everyone. Ores missing from the load order are skipped.
 const DEFAULT_VEIN_TIERS: Record<string, number> = {
-  OreIron: OPEN_TO_ALL, "12SeaSaltOre": OPEN_TO_ALL, OreCorundum: 1,
+  OreIron: 0, "12SeaSaltOre": 0, OreCorundum: 1,
   OreGold: 2, OreSilver: 2,
-  OreOrichalcum: 3, OreMoonstone: 3, OreQuicksilver: 3,
-  OreMalachite: 4, OreEbony: 4,
+  OreOrichalcum: 3, OreMoonstone: 3,
+  OreMalachite: 4, OreQuicksilver: 4, OreEbony: 4, DLC2OreStalhrim: 4,
+  ccBGSSSE025_OreAmber: 5, ccBGSSSE025_OreMadness: 5,
 };
 
 // Placed containers open empty on this server, so the honeycomb for the honey recipe comes from here.
@@ -159,8 +171,6 @@ export class GatheringSystem implements System {
     if (Number.isFinite(veinTotal) && veinTotal >= 0) this.veinTotalOverride = Math.floor(veinTotal);
     const pick = Number(all?.["gatheringPickMinutes"]);
     if (Number.isFinite(pick) && pick >= 0) this.pickMs = pick * 60000;
-    const harvest = Number(all?.["gatheringHarvestSeconds"]);
-    if (Number.isFinite(harvest) && harvest >= 0) this.harvestMs = harvest * 1000;
     const reloot = all?.["reloot"];
     if (reloot && typeof reloot === "object") this.reloot = reloot as Record<string, unknown>;
     const regen = Number(all?.["gatheringVeinRegenMinutes"]);
@@ -178,7 +188,7 @@ export class GatheringSystem implements System {
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels for ${this.harvestMs / 1000} s except at ${this.instantFlora.size} instant flora`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels ${HARVEST_MS.map((ms) => ms / 1000).join("/")} s by farmer rank except at ${this.instantFlora.size} instant flora`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -187,16 +197,14 @@ export class GatheringSystem implements System {
     if (raw && typeof raw === "object") {
       for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
         const tier = typeof value === "string" ? RANK_NAMES.indexOf(value) : Number(value);
-        if (Number.isInteger(tier) && tier >= OPEN_TO_ALL && tier < RANK_NAMES.length) merged[name] = tier;
+        if (Number.isInteger(tier) && tier >= FREE && tier <= LEGENDARY) merged[name] = tier;
         else this.log(`[gathering] miningVeinTiers.${name}: unknown rank ${JSON.stringify(value)}, ignored`);
       }
     }
     const names = Object.keys(merged);
     const ids = await this.resolveIds(ctx, names, ["MISC"], dataDir, loadOrder);
-    for (const [name, id] of ids) if (merged[name] >= 0) this.veinTiers.set(id, merged[name]);
-    const unresolved = names.filter((n) => !ids.has(n));
-    if (unresolved.length) this.log(`[gathering] ore(s) not in the load order, left open to everyone: ${unresolved.join(", ")}`);
-    this.log(`[gathering] vein ores: ${Array.from(ids, ([name, id]) => `${name} ${id.toString(16)} ${merged[name] >= 0 ? RANK_NAMES[merged[name]] : "anyone"}`).join(", ")}`);
+    for (const [name, id] of ids) if (merged[name] > FREE) this.veinTiers.set(id, merged[name]);
+    this.log(`[gathering] vein ores: ${Array.from(ids, ([name, id]) => `${name} ${id.toString(16)} ${RANK_NAMES[merged[name]]}`).join(", ")}`);
   }
 
   // Container base ids that hand out their contents and grow them back, from the defaults or the settings replacement.
@@ -352,13 +360,13 @@ export class GatheringSystem implements System {
     if (!item) return undefined;
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if (this.veinState(ctx, refrId, 1, this.pickMs).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
-    const grant = () => {
-      this.addItem(ctx, actorId, item, 1);
+    const grant = (count: number) => {
+      this.addItem(ctx, actorId, item, count);
       this.hidePicked(ctx, refrId, Date.now() + this.pickMs);
     };
-    if (props["harvest"]) return this.harvest(ctx, refrId, actorId, this.pickMs, this.harvestMs, grant);
+    if (props["harvest"]) return this.harvest(ctx, refrId, actorId, this.pickMs, props, grant);
     return () => {
-      grant();
+      grant(1);
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + this.pickMs });
       return false;
     };
@@ -367,17 +375,23 @@ export class GatheringSystem implements System {
   // The native harvest hands over the ingredient; an already harvested plant is left to it for free
   private onPlant(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>): Verdict {
     if (this.veinState(ctx, refrId, 1, props["regrow"]).left <= 0) return undefined;
-    return this.harvest(ctx, refrId, actorId, props["regrow"], props["instant"] ? 0 : this.harvestMs);
+    const extra = props["item"] ? (count: number) => { if (count > 1) this.addItem(ctx, actorId, this.rollItem(ctx, props["item"]), count - 1); } : undefined;
+    return this.harvest(ctx, refrId, actorId, props["regrow"], props, undefined, extra);
   }
 
-  // Without grant the activation goes on to the native harvest
-  private harvest(ctx: SystemContext, refrId: number, actorId: number, readyMs: number, kneelMs: number, grant?: () => void): Verdict {
+  // Without grant the activation goes on to the native harvest, and extra hands over what a Master or Legendary farmer gets on top
+  private harvest(ctx: SystemContext, refrId: number, actorId: number, readyMs: number, props: Record<string, number>, grant?: (count: number) => void, extra?: (count: number) => void): Verdict {
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if ((this.harvestUntil.get(actorId) || 0) > Date.now()) return false;
+    const mp = ctx.svr as Mp;
+    if (props["crop"] && !holdsItem(mp, actorId, (baseId) => baseId === HOE)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
     const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
     if (!this.needs.canPay(actorId, "gather", rank)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    const farmer = this.mastery.rankOf(ctx, actorId, "farmer");
+    const kneelMs = props["instant"] ? 0 : HARVEST_MS[farmer];
     return () => {
-      grant?.();
+      grant?.(HARVEST_YIELD[farmer]);
+      extra?.(HARVEST_YIELD[farmer]);
       this.needs.pay(ctx, actorId, "gather", rank, "harvest");
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
       if (kneelMs > 0) {
@@ -438,18 +452,15 @@ export class GatheringSystem implements System {
   }
 
   private veinRefusal(ctx: SystemContext, veinId: number, actorId: number, props: Record<string, number>): false | undefined {
-    if (!this.holdsTool(ctx, actorId, props["mineoretoolslist"])) {
+    if (!this.holdsTool(ctx, actorId, PICKAXES)) {
       return this.deny(ctx, actorId, "You need a pickaxe to mine this vein.");
     }
     if (!this.needs.canPay(actorId, "gather", this.mastery.rankOf(ctx, actorId, "miner"))) {
       return this.deny(ctx, actorId, "You are too tired to swing a pickaxe. Rest a while.");
     }
-    const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) ?? OPEN_TO_ALL;
-    if (tier >= 0 && this.mastery.rankOf(ctx, actorId, "miner") < tier) {
-      return this.deny(ctx, actorId, `Only a miner of ${RANK_NAMES[tier]} rank or better can work this vein.`);
-    }
-    if (this.veinState(ctx, veinId, this.veinTotal(props)).left <= 0) {
-      return this.deny(ctx, actorId, "This vein is depleted.");
+    const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) ?? FREE;
+    if (this.mastery.rankOf(ctx, actorId, "miner") < tier || this.veinState(ctx, veinId, this.veinTotal(props)).left <= 0) {
+      return this.deny(ctx, actorId, NO_ORE);
     }
     return undefined;
   }
@@ -511,7 +522,7 @@ export class GatheringSystem implements System {
 
   private mineStrike(ctx: SystemContext, s: Session, now: number): void {
     const state = this.veinState(ctx, s.veinId, s.cap);
-    if (state.left <= 0) return this.finish(ctx, s, "This vein is depleted.");
+    if (state.left <= 0) return this.finish(ctx, s, NO_ORE);
     s.strikesLeft -= 1;
     if (s.strikesLeft > 0) return;
     s.strikesLeft = s.strikesPer;
@@ -520,10 +531,14 @@ export class GatheringSystem implements System {
     if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, "You are too tired to keep mining. Rest a while.");
     this.addItem(ctx, s.actorId, s.resource, s.perStrike);
     this.needs.pay(ctx, s.actorId, "gather", rank, "ore");
+    if (Math.random() < GEM_CHANCE) {
+      const gem = this.rollItem(ctx, GEM_LIST);
+      if (gem !== GEM_LIST) this.addItem(ctx, s.actorId, gem, 1);
+    }
     state.left -= 1;
     if (!state.regenAt) state.regenAt = now + this.regenPer();
     this.writeVein(ctx, s.veinId, state);
-    if (state.left <= 0) this.finish(ctx, s, "The vein is depleted.");
+    if (state.left <= 0) this.finish(ctx, s, NO_ORE);
   }
 
   // Stand the worker up the way the vanilla scripts do, with the station's exit idle.
@@ -707,11 +722,24 @@ export class GatheringSystem implements System {
     else if (type === "ACTI" && scripts.has("mineorescript")) station = { kind: "vein", props: scripts.get("mineorescript")! };
     else if (type === "FURN" && scripts.has("mineorefurniturescript")) station = { kind: "marker", props: scripts.get("mineorefurniturescript")! };
     else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
-    else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1 } };
+    else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1, crop: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
-    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0 } };
+    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0 } };
     this.stationCache.set(baseId, station);
     return station;
+  }
+
+  private isCrop(res: any): boolean {
+    const edid = String(res.record.editorId || "").toLowerCase();
+    return CROP_WORDS.some((w) => edid.includes(w));
+  }
+
+  // An item, or one random pick down a leveled list; the list id itself when it resolves to nothing
+  private rollItem(ctx: SystemContext, formId: number, depth = 0): number {
+    const res = this.lookup(ctx, formId);
+    if (String(res?.record.type || "") !== "LVLI" || depth > 4) return formId;
+    const entries = espmLeveledEntries(res);
+    return entries.length ? this.rollItem(ctx, entries[Math.floor(Math.random() * entries.length)].baseId, depth + 1) : formId;
   }
 
   private isInstantFlora(res: any, baseId: number): boolean {
@@ -812,7 +840,6 @@ export class GatheringSystem implements System {
   private produceMs = new Map<number, number>();
   private instantFlora = new Set<number>();
   private pickMs = DEFAULT_PICK_MINUTES * 60000;
-  private harvestMs = DEFAULT_HARVEST_SECONDS * 1000;
   // Actor id -> epoch ms its harvest kneel ends
   private harvestUntil = new Map<number, number>();
   private reloot: Record<string, unknown> = {};

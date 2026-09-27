@@ -431,16 +431,28 @@ on the Hunter Master marker, bows or crossbows, and a non-player target
 
 ### Mining
 
-`gatheringSystem.ts` refuses a vein whose ore is above the character's miner
-rank ("Only a miner of Adept rank or better can work this vein"); iron and
-corundum stay open. Tiers are `DEFAULT_VEIN_TIERS` by ore editor id, with a
-`miningVeinTiers` override. Any activator carrying `MineOreScript` is a vein,
+Mining needs a pickaxe (any item of the `DLC2PickaxeList` form list,
+`0010ACC4`). `gatheringSystem.ts` answers a vein whose ore is above the
+character's miner rank, or a depleted vein, with "You can't identify any useful
+ore." Tiers (`DEFAULT_VEIN_TIERS` by ore editor id, `miningVeinTiers` override):
+
+| Rank | Ores |
+|---|---|
+| Free | iron, sea salt |
+| Novice | corundum |
+| Adept | gold, silver |
+| Expert | orichalcum, moonstone |
+| Master | malachite, quicksilver, ebony, stalhrim |
+| Legendary | amber, madness ore (only when a vein of them exists in the load order) |
+
+Ores missing from the load order are skipped. Every ore has a 2% chance of a
+gem besides, rolled down the vanilla `LItemGems` leveled list (`0010E992`).
+ Any activator carrying `MineOreScript` is a vein,
 so the 41 **Sea Salt Deposits** of `Saltdeposits.esp` on the northern coasts
 count too: their script hands out Sea Salt Rock (`12SeaSaltOre`, weight 20,
 one rock refines into 50 Salt Pile at a smelter or a grain mill), each has its
 own pickaxe floor marker, and the ore sits in the tier table as open to anyone,
-so the boot line `[gathering] vein ores: ...` lists it with its resolved id and
-an `ore(s) not in the load order` line would name it if the mod went missing.
+so the boot line `[gathering] vein ores: ...` lists it with its resolved id.
 Every vein holds **six ore** (`gatheringVeinTotal`,
 one per strike, so six strikes of five seconds) and **comes back whole 24 hours
 after its first ore was taken** (`gatheringVeinRespawnMinutes`), whether one
@@ -449,6 +461,17 @@ collection at a time. The state is `private.gathering = { left, regenAt }` on
 the vein; older `{ left, resetAt }` records are read as the next regrowth time,
 and a record with ore missing and no regrowth pending (written before the total
 rose from three to six) is read as full.
+
+### Farming
+
+Harvesting a plant kneels the picker by farmer rank: 5 seconds Free (and any
+other profession), 3 Novice, 1 Adept, instant from Expert. A Master farmer gets
+twice the plant's ingredient, a Legendary farmer four times. Crops (flora whose
+editor id holds wheat, gourd, nirnroot, cabbage or potato, and the nirnroot
+activators) need a hoe (`00025101`) in the inventory: "You need a hoe to harvest
+this crop." Tree fruit, mushrooms and flowers need nothing. Fish and hanging
+clutter never kneel. Picking credits farmer and alchemist hours and costs a
+gathering action of fatigue by the better of those ranks.
 
 ### Chopping
 
@@ -472,29 +495,21 @@ Expert, 1% Master and Legendary; `docs_roleplay_creations_and_needs.md`).
 
 `huntingSystem.ts` listens to the mastery kill relay. On an animal kill by an
 Expert hunter, every kind of meat the corpse dropped has a 25% chance to hand
-the hunter one more; a Master also rolls 15% per kind of pelt. The bonus goes
-straight to the hunter's inventory.
+the hunter one more, straight into their inventory.
 
-Pelts belong to hunters at every rank, Novice included. `hidesFrom` is the one
-rule for it: `SearchSystem` leaves a pelt out of the loot window of a looter who
-is not a hunter and refuses their take of it, so the two can never disagree.
-There is no notice, the pelt is simply not there. The profession is read again
-whenever a window opens and on every take, so a character who picks Hunter sees
-pelts from their next search on, with no restart and no relog. A pelt
-is any item carrying the `VendorItemAnimalHide` keyword, which covers mod hides
-too, plus the `huntingPelts` list for the two Dawnguard hides, which carry no
-keywords. The rule covers dead pets as well, since a pet horse or cow drops a
-hide like any other animal; the cost is that a non-hunter who owned the pet also
-stops seeing pelts, or leather, which carries the same keyword, that they had
-stored in it. The rule itself destroys nothing, it only decides who is shown a
-stack, but a body is not forever: a dead pet is removed `petCorpseSeconds` after
-it dies (300 by default, `npcCorpseSeconds` for spawned and companion animals),
-and everything still on it goes with it. So a non-hunter owner does not merely
-lose sight of the pelts and the leather they had stored in a pet, they lose them
-for good once the body is gone. A put is refused for the same stacks a take is,
-so an item a searcher cannot see can never be parked back on the body either.
-Turn the pelt rule off with
-`huntingPeltsNeedHunter` false.
+Pelts never drop as loot: the plugin strips them from creature inventories.
+A hunter (any rank) holding a Hunting Knife (`0001F25A`) skins a dead animal
+with the interact key: spawned animals through `SearchSystem.bodyAction` (the
+search request the client already sends for a body), plugin-placed ones through
+their native activation. The skinner kneels for 5 seconds, then gets the pelt the
+body's NPC_ or race editor id maps to (`DEFAULT_PELT_MAP`, `huntingPeltMap`
+override: the first fragment found wins, e.g. `bearblack` -> Cave Bear Pelt,
+`wolfice` -> Ice Wolf Pelt), costs one gathering action of fatigue by hunter
+rank and credits hunter hours. The body is marked `private.skinned` and gives
+one pelt; the next interaction searches it as usual. A skinner who walks off,
+dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
+the knife is told "A hunting knife would take its pelt." and the body opens.
+Non-hunters just search. No client change is needed.
 
 ---
 

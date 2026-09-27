@@ -258,8 +258,8 @@ const main = async () => {
   // Living NPCs are searched too; hosting's aggro says whether one is fighting
   const searchSystem = new SearchSystem(log, hostingSystem);
   const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
-  // Pelts on game are a hunter's, so a search neither shows nor gives them to anyone else
-  searchSystem.hidesItem = (ctx, viewerId, targetId, baseId) => huntingSystem.hidesFrom(ctx, viewerId, targetId, baseId);
+  // A hunter's interaction with a dead animal skins it before it is searched
+  searchSystem.bodyAction = (ctx, searcherId, bodyId) => huntingSystem.trySkin(ctx, searcherId, bodyId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
   const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);
   hostingSystem.addProvider(() => petSystem.hostables());

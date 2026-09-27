@@ -55,6 +55,18 @@ export const espmContainerEntries = (lookup: any): Array<{ baseId: number; count
   return out;
 };
 
+// LVLO entries of a leveled list: the entry's form id at offset 4 and its count at 8, mapped to global ids.
+export const espmLeveledEntries = (lookup: any): Array<{ baseId: number; count: number }> => {
+  const out: Array<{ baseId: number; count: number }> = [];
+  if (!lookup || !lookup.record || typeof lookup.toGlobalRecordId !== "function") return out;
+  for (const f of lookup.record.fields || []) {
+    if (f.type !== "LVLO" || !(f.data instanceof Uint8Array) || f.data.byteLength < 10) continue;
+    const view = new DataView(f.data.buffer, f.data.byteOffset, f.data.byteLength);
+    try { out.push({ baseId: lookup.toGlobalRecordId(view.getUint32(4, true)) >>> 0, count: Math.max(1, view.getUint16(8, true)) }); } catch { /* unmapped master */ }
+  }
+  return out;
+};
+
 // Default (keywordless) linked reference of a placed espm reference; 0 if absent.
 export const espmLinkedRefId = (lookup: any): number => {
   if (!lookup || !lookup.record || typeof lookup.toGlobalRecordId !== "function") return 0;
