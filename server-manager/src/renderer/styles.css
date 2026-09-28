@@ -52,17 +52,19 @@ select {
   white-space: pre-wrap; word-break: break-word; color: #c8bca6; margin: 0 0 10px;
 }
 
-/* Console: one column per console; a collapsed column keeps a strip with its dot and name */
+/* Console: one container per server group; a collapsed one keeps a strip with its dot and name, the Main Server never folds */
 .console-columns { display: flex; gap: 10px; flex: 1; min-height: 0; }
 .ccol { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #1d1813; border: 1px solid #322a20; border-radius: 6px; }
 .ccol-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #322a20; }
 .ccol-name { font-weight: 600; color: #e8b96b; }
 .ccol-state { font-size: 12px; color: #a99a82; }
+.ccol-group { margin-left: auto; white-space: nowrap; }
 .ccol-fold { margin-left: auto; background: none; border: none; color: #a99a82; cursor: pointer; font-size: 12px; }
+.ccol-group + .ccol-fold { margin-left: 0; }
 .collapse-right .ccol-fold { order: -1; margin-left: 0; }
 .ccol-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 8px 10px; gap: 6px; }
 .ccol.collapsed { flex: 0 0 38px; }
-.ccol.collapsed .ccol-body { display: none; }
+.ccol.collapsed .ccol-body, .ccol.collapsed .ccol-group { display: none; }
 .ccol.collapsed .ccol-head { flex-direction: column; border-bottom: none; height: 100%; padding: 8px 4px; }
 .ccol.collapsed .ccol-name, .ccol.collapsed .ccol-state { writing-mode: vertical-rl; }
 .ccol.collapsed .ccol-fold { margin: 0; transform: scaleX(-1); order: -1; }

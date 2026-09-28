@@ -22,25 +22,36 @@ fails it prints a direct download URL - save that zip as
 
 ## Tabs
 
-- **Console** - three columns: **Nginx**, **Backend** (with **MongoDB** as a
-  second service) and **Game** (with **LiveKit** as a second service). Each
-  service has **START/STOP**, **RESTART** and its own log view, and under the
-  buttons CPU, RAM (and requests/min for Nginx), sampled every 4 s only while
-  the tab is open. Each log keeps the last 100 lines on screen; the files stay
-  in `C:\logs`. Columns collapse sideways (Nginx and Backend to the left, Game
-  to the right) to a strip that still shows status. Only the Game column has
-  the command input.
+- **Console** - three containers: **Backend** (services **Backend** and
+  **Nginx**, collapsible to the left), **Main Server** (**Game**, **MongoDB**
+  and **LiveKit** of the live server, always open) and **Test Server** (the
+  same three services of the test server: `AlduinakTestServer`,
+  `AlduinakMongoTest`, `AlduinakLiveKitTest`, collapsible to the right). Each
+  service has **START/STOP**, **RESTART** and under the buttons CPU, RAM (and
+  requests/min for Nginx), sampled every 4 s only while the tab is open. The
+  log views are Backend/Nginx and Game/MongoDB per server (LiveKit has no log
+  view); each keeps the last 100 lines on screen, the files stay in `C:\logs`
+  (live) and `C:\logs\test` (test). A container's dot and state follow its
+  first service. The two server containers have a **Stop all** button in
+  their head while their game runs, else **Start all** (game, MongoDB and
+  LiveKit in start order; the live MongoDB is kept running while the Backend
+  uses it), and a command input each, wired to that server's own relay
+  (`WS_PORT` and `WS_PORT_TEST` from the backend `.env`). A test service that
+  is not installed yet shows Offline and is skipped by the group buttons.
   - MongoDB (`AlduinakMongo`) starts first, stops last and refuses to stop
-    while Backend or Game run.
+    while Backend or Game run; the test MongoDB refuses while the test Game runs.
   - The log tail asks nssm where each service writes its stdout/stderr
     (`nssm get <svc> AppStdout`) instead of guessing a fixed folder.
   - The command input first checks for **manager commands** and runs them locally:
-    `help`, `status`, `start|stop|restart <mongo|nginx|backend|livekit|game|all>`, and
-    `build <server|launcher|client|native|gamemode>` (build output streams into
-    the console log; one build or sync at a time).
-  - Anything else goes to the game server over the backend WS relay (admin
-    `console` role) and the gamemode's command output streams back into the
-    console. See **Wiring the console** below.
+    `help`, `status` (every service, by container),
+    `start|stop|restart <service|main|test|all>` (services `mongo`, `nginx`,
+    `backend`, `livekit`, `game`, `test-mongo`, `test-livekit`, `test-game`;
+    `backend` names the service, not the container), and
+    `build <server|launcher|client|native|gamemode>` (builds target the test
+    server; the output streams into the console log; one build or sync at a time).
+  - Anything else goes to that container's game server over the backend WS
+    relay (admin `console` role) and the gamemode's command output streams back
+    into the same log. See **Wiring the console** below.
 - **Players** - reads MongoDB directly (`players`, `profiles`, `bans`,
   `playtime` and `changeForms`). A list on the left, the detail on the right,
   with a resizable divider.
@@ -86,33 +97,80 @@ fails it prints a direct download URL - save that zip as
   and arms **Remove N memberships and delete**; deleted ids are never reused.
   Edits reach the game server within about 20 seconds. Faction doors and
   chests are edited in the game server's `faction-access.json`, not here. Test: `node tools/test-factions-proxy.js`.
-- **Build** - three boxes (**Game Server**, **Launcher**, **Client**) sharing one
-  build console. Native code comes from CI (see **Builds** below) unless
-  **Run CMake first** is ticked.
-  - **Game Server**: version, **Build gamemode**, **Run CMake first**,
-    **Build server**.
+- **Build** - four boxes (**Server**, **Client**, **Migrate**, **Launcher**)
+  sharing one build console. Every build targets the **test server**
+  (`build/dist/testserver`, `build/dist/testclient`); the live server only
+  receives files through the Migrate box. Native code comes from CI (see
+  **Builds** below) unless **Run CMake first** is ticked, which configures
+  CMake with `SKYMP_DIST_SERVER_DIR` / `SKYMP_DIST_CLIENT_DIR` pointing at the
+  test dirs.
+  - **Server**: **Live version** (Save writes `server` in
+    `skymp5-backend/data/versions.json`), **Test version** (Save writes
+    `skymp5-server/package.json` and `test.server`), **Build gamemode only**
+    (regenerates `gamemode.js` from `build/dist/testserver/gamemode_extensions`,
+    the Test Server hot-reloads it), **Run CMake first**, **Build server**
+    (TypeScript into `build/dist/testserver/dist_back`, then the gamemode, then
+    the prune; restart the Test Server for `dist_back` or `scam_native.node`).
+  - **Client**: **Live version** (Save writes `client` in `versions.json`),
+    **Test version** (Save writes only `skymp5-client/package.json`),
+    **Run CMake first**, **Update modlist** and the three-state **Build
+    client** button. **Build client** rebuilds the UI and `skymp5-client.js`
+    into `build/dist/testclient` (seeded once from `build/dist/client` when it
+    has no `Data` yet); package its `Data` folder as the Alduinak Client Files
+    mod, upload it to Nexus and install it into MO2. The button then reads
+    **Update Modlist**: it compiles the test manifest from MO2 and, when it
+    differs from the deployed one (mods, files or versions), syncs the test
+    server settings (`loadOrder`), its Data folder and MongoDB purge (backed up
+    first); an unchanged modlist stops there and says so. Then **Update
+    Version** publishes `test.client` from `skymp5-client/package.json` and
+    the button returns to **Build client**. **Update modlist** on its own runs
+    the same sync. Both are disabled with *Test server must be stopped* while
+    the test game runs, and refuse when the test `server-settings.json` still
+    names the live server dir, `dataDir` or database. There is no separate dry run.
+  - **Migrate**: **Live version** and **Test version** fields, each with
+    **Copy test build** (fills the field from `skymp5-client/package.json`,
+    with a note when `skymp5-server/package.json` differs) and **Save** (live
+    writes `client` and `server`, test writes `test.client` and `test.server`).
+    **Migrate server** copies `dist_back`, `scam_native.node`, `gamemode.js`,
+    `gamemode_extensions`, `plugins`, `data/scripts` and the server data json
+    files (NPC-Spawns, weather-regions, Jobs, faction-access, alert-keywords)
+    from the test server to the live one; the world, writings, player state
+    files and `server-settings.json` are never copied. On success it reads
+    **Migrate settings**, which merges every test setting the live file lacks or
+    has differently, except the protected identity keys (name, ports, players,
+    database, dataDir, logDir, voice chat, access, admin and Discord keys, daily
+    restart) and the debug toggles (console commands for all, Papyrus hot
+    reload); `loadOrder` and `archives` are left alone, **Migrate client** syncs
+    them from the manifest so its diff records the plugin shifts the MongoDB
+    purge needs.
+    **Migrate client** installs the test manifest live (`/files/extras-test/`
+    URLs rewritten to `/files/extras/`, the extras archive copied), copies the
+    modlist, syncs the live settings, Data folder and database (skipped when
+    the manifest did not change), then mirrors `build/dist/testclient` onto
+    `build/dist/client` (files the test dir lacks are deleted). Both buttons ask
+    for a second click and are disabled with *Main server must be stopped*
+    while the live game runs. Old files go to
+    `build/dist/backup/<YYYYMMDD-HHMMSS>/server/<item>`,
+    `.../<stamp>/client/Data/<key file>` (except the CEF runtime) and
+    `build/dist/backup/server-settings-<stamp>.json`.
   - **Launcher**: **Save version** writes only `tauri.conf.json`. **Build
     launcher** builds `build/launcher/AlduinakLauncher.exe`; its button then
     turns into **Update Version**, which writes the launcher version into
-    `skymp5-backend/data/versions.json`. Press it only after the exe is
-    uploaded where `launcherUrl` points.
-  - **Client**: **Save version** writes only `skymp5-client/package.json`.
-    **Build client**. **Update modlist** runs, in one go: build manifest (from
-    MO2), sync server settings (`loadOrder`), sync data folder, MongoDB purge
-    (it backs up first). It is disabled with *Server must be stopped* while the
-    game server runs. On success the button turns into **Update Version**,
-    which writes the client version into `versions.json`; press it once the
-    Nexus client files are live. There is no separate dry run.
+    `versions.json`. Press it only after the exe is uploaded where
+    `launcherUrl` points.
   - The change report (mods, plugins, shifted slots, light flags, files,
-    warnings) shows as cards on the Build tab only.
-    `skymp5-backend/data/manifest-diff.json` exists only while the steps run
-    and is deleted on success; after a failure it is kept, so the game start
-    gate still refuses a half-applied load order. **Restore last purge**
-    appears when a purge did not finish (game server stopped): it puts every
-    backed-up document back by `_id`.
-  - Manifest details: the compile writes `install-manifest.json.building` and
-    keeps the last deployed manifest as `install-manifest.json.prev`. A
-    `skymp5-client-settings.txt` in any mod folder and the SkyMP client package
+    warnings) of the last Update modlist or Migrate client shows as cards on
+    the Build tab only; a mod whose MO2 version changed reads `name: v1 -> v2`.
+    `skymp5-backend/data/manifest-diff-test.json` (live: `manifest-diff.json`)
+    exists only while the steps run and is deleted on success; after a failure
+    it is kept, so that game's start gate still refuses a half-applied load
+    order. **Restore last purge** appears when a test purge did not finish
+    (test game stopped): it puts every backed-up document back by `_id`.
+  - Manifest details: the compile writes `manifest-test.json.building` and
+    keeps the last deployed manifest as `manifest-test.json.prev` (the live
+    pair is `manifest.json` / `.prev`, written only by Migrate client), plus
+    `modlist-test.json` and the extras archive under `build/client-files/extras-test`.
+    A `skymp5-client-settings.txt` in any mod folder and the SkyMP client package
     (`Platform/**` and the dlls and pex files listed in
     `skymp5-backend/scripts/client-package.js`) are left out, since the client
     zip delivers them. When several downloads hold the same file, a mod takes
@@ -123,12 +181,13 @@ fails it prints a direct download URL - save that zip as
     a player character that references a removed plugin.
 - **News** - edit the news entries the launcher shows.
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
-  masked secrets) for both `server-settings.json` and the backend `.env`, instead
-  of raw text. Unknown `server-settings.json` keys round-trip through an
-  *Other (raw JSON)* box so nothing is silently dropped. Saving
-  `server-settings.json` keeps the previous file as `server-settings.json.prev`
-  and refuses when the file changed on disk since the tab was loaded (an Update
-  modlist run, a hand edit): reload the tab first.
+  masked secrets) for the live `server-settings.json`, the test server's
+  `server-settings.json (test)` (same fields, `build/dist/testserver`) and the
+  backend `.env`, instead of raw text. Unknown `server-settings.json` keys
+  round-trip through an *Other (raw JSON)* box so nothing is silently dropped.
+  Saving a `server-settings.json` keeps the previous file as
+  `server-settings.json.prev` and refuses when the file changed on disk since
+  the tab was loaded (an Update modlist run, a hand edit): reload the tab first.
 
 - **Security** - alerts stored in MongoDB `securityAlerts`, with a red unread
   count on the tab. Opening a kind marks its alerts read.
@@ -156,16 +215,22 @@ locally was nothing but toolchain whack-a-mole - a newer Visual Studio
 so the manager leaves compilation to CI and just packages the result.
 
 **Before building:** download the CI `dist` artifact and extract it into
-`build/dist/client`, and copy `scam_native.node` from `server-dist` into
-`build/dist/server`.
+`build/dist/testclient` (a missing `Data` folder is seeded from
+`build/dist/client` on the first Build client), and copy `scam_native.node`
+from `server-dist` into `build/dist/testserver`. `Run CMake first` builds
+both locally into the same test dirs instead.
 
 Each Build button then does the JS/packaging work:
 
 | Button | Does |
 |--------|------|
-| **Game Server** | Bundles the TypeScript → `build/dist/server/dist_back/skymp5-server.js`, then prunes `build/dist/server` to the deploy set. `scam_native.node` (from CI) and `gamemode.js` are preserved. |
-| **Launcher** | Builds the Electron installer `AlduinakLauncher.exe` → `build/launcher`, plus `AlduinakLauncher.zip` for the website (launchers from 2.4.0 update from the zip at `PACKAGE_URL` in `routes/version.js`; older ones from the nginx exe). |
-| **Client** | Rebuilds the front-end UI and `skymp5-client.js` into `build/dist/client`, then runs the backend `build-client` script (`populate-files.js` + `merge-files.js`) to zip `build/dist/client/Data` into `skymp-client.zip` + `data/files-version.json` for the launcher to download. The version is `CLIENT_VERSION` in `skymp5-backend/routes/version.js` - set it from the **Client** version field before building: launchers download the zip only when that version changed, so the build stops before the zip when the zip would differ from the last one under an unchanged version (a file added, removed or resized under `Data/`, or a key client file from `KEY_FILES` in `scripts/client-package.js` with a different hash); an unchanged zip under the same version is allowed and logged. Afterwards it prints one line per key file (a match with `build/dist/client`, or STALE) and fails when the zip carries a mod-owned file (a plugin, a top-level `Data/*.json` or the CraftingCategories json), which `populate-files.js` leaves out. |
+| **Build server** | Runs the `build-ts` steps of `skymp5-server/package.json` (`tsc --noEmit`, then esbuild) with the bundle written to `build/dist/testserver/dist_back/skymp5-server.js`, rebuilds `gamemode.js`, then prunes `build/dist/testserver` to the deploy set. `scam_native.node` (from CI or CMake) and `gamemode.js` are preserved. |
+| **Build launcher** | Builds the Tauri installer `AlduinakLauncher.exe` → `build/launcher` (launchers update from `launcherUrl` in `versions.json`). |
+| **Build client** | Rebuilds the front-end UI and `skymp5-client.js` into `build/dist/testclient` (`ALDUINAK_CLIENT_OUT` steers the client webpack output) and checks the key files from `KEY_FILES` in `scripts/client-package.js` are there. The `Data` folder is what goes to Nexus as the Alduinak Client Files mod; the launcher installs it from the manifest like any other mod. |
+| **Migrate server / settings / client** | Copy a tested build to `build/dist/server`, `build/dist/client` and the live manifest, see the Build tab notes above; `node tools/test-migrate.js` exercises the copy, merge, mirror and URL rewrite in temp folders, `node tools/test-modsync-diff.js` the version-aware manifest diff. |
+
+The web manager's **Build server** and **Build gamemode only** jobs use the
+same `Builder`, so they target the test server as well.
 
 **Missing prerequisites are installed automatically.** On Windows each build
 button checks for **Node.js** and **Git** and installs anything missing with
@@ -239,14 +304,21 @@ it), then a Restart job that archives the logs. Test it with
 |-----|---------|---------|
 | `ALDUINAK_LOG_DIR` | `C:\logs` | Fallback log directory (nssm-configured paths win) |
 | `ALDUINAK_SERVER_DIR` | folder of `server-settings.json` | Game server working dir (holds the `world/changeForms` save store) |
-| `ALDUINAK_SERVER_SETTINGS` | `build/dist/server/server-settings.json` | Server settings file edited by the Settings tab |
+| `ALDUINAK_SERVER_SETTINGS` | `build/dist/server/server-settings.json` | Live server settings file (Settings tab, Players, Security, the agent) |
+| `ALDUINAK_TEST_SERVER_DIR` | `build/dist/testserver` | Test game server working dir: every build and Update modlist target it |
+| `ALDUINAK_TEST_SERVER_SETTINGS` | `<test server dir>\server-settings.json` | Test server settings file (Settings tab's test subtab, Update modlist) |
 | `ALDUINAK_MO2_ROOT` | `C:\MO2` | Reference MO2 install (Update modlist) |
-| `ALDUINAK_GAME_ROOT` | `X:\GOG Games\Skyrim Anniversary Edition` | Game root |
-| `ALDUINAK_MO2_PROFILE` | `Default` | MO2 profile to compile |
+| `ALDUINAK_GAME_ROOT` | `C:\GOG Games\Skyrim Anniversary Edition` | Game root |
+| `ALDUINAK_MO2_PROFILE` | `Alduinak` | MO2 profile to compile |
 | `ALDUINAK_BUILD_DIR` | `<repo>\build` | Build output dir; the CI `dist/` payloads and the launcher land here |
 | `ALDUINAK_SERVER_KEEP` | *(none)* | Comma-separated extra names to preserve when pruning `build/dist/server` |
 | `ALDUINAK_NO_AUTO_INSTALL` | *(unset)* | Set to `1` to disable auto-installing prerequisites (Node/Git) via winget; the agent defaults it to `1` |
 | `ALDUINAK_EXTRA_PATH` | *(unset)* | Agent only: folders prepended to PATH, e.g. the Administrator npm folder holding yarn |
 
-The repo path, service names, and the WS relay port/secret (from the backend
-`.env`) are detected automatically.
+The repo path, service names, and the WS relay ports/secret (from the backend
+`.env`: `WS_PORT` for the live server, `WS_PORT_TEST`, default 7779, for the
+test server, one `RELAY_SECRET` for both) are detected automatically; a port
+that is not an integer, or a test port equal to the live one, leaves that
+console offline (its log says so) instead of falling back to the live relay. The test
+game's own logs default to `C:\logs\test` (its `logDir` setting wins);
+`ALDUINAK_LOG_DIR` only applies to the live server.

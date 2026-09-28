@@ -1,6 +1,6 @@
 'use strict'
 
-// Keeps the live game server in step with the compiled MO2 manifest: diffs builds, rewrites the settings loadOrder, mirrors MO2 mods into Data
+// Keeps a game server in step with the compiled MO2 manifest: diffs builds, rewrites the settings loadOrder, mirrors MO2 mods into Data
 
 const fs     = require('fs')
 const path   = require('path')
@@ -20,12 +20,13 @@ const TES4_LIGHT_FLAG = 0x200
 // Files in Data the game server writes itself
 const RESERVED = new Set(['manifest.json'])
 
-const paths = {
-  manifest:     path.join(config.paths.dataDir, 'manifest.json'),
-  prevManifest: path.join(config.paths.dataDir, 'manifest.json.prev'),
-  diff:         path.join(config.paths.dataDir, 'manifest-diff.json'),
-  stamp:        path.join(config.paths.dataDir, 'data-sync.json'),
+// A profile's manifest set under the backend data dir: { manifest, prevManifest, diff, stamp, modlist }
+function pathsFor(profile) {
+  return Object.fromEntries(Object.entries(profile.files).map(([k, name]) => [k, path.join(config.paths.dataDir, name)]))
 }
+
+// The live set; every helper below defaults to it so the deploy scripts and the agent keep working
+const paths = pathsFor(config.profiles.live)
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,7 @@ function readManifestLight(file) {
     mods: m.mods.map(mod => ({
       name: mod.name,
       hash: mod.hash || '',
+      version: mod.version || '',
       files: mod.files.map(f => ({ to: f.to, sha256: f.sha256 || '', size: f.size || 0, inline: false })),
     })),
   }
@@ -261,7 +263,7 @@ function diffFileLists(prevFiles, nextFiles) {
   return { filesAdded, filesRemoved, filesChanged }
 }
 
-function computeDiff({ prev = null, next, settings = {}, previousDiff = null, dataDir, mo2Root, profileDir } = {}) {
+function computeDiff({ prev = null, next, settings = {}, previousDiff = null, dataDir, mo2Root, profileDir, paths: p = paths } = {}) {
   if (!next || !Array.isArray(next.mods)) throw new Error('computeDiff needs the current manifest')
   settings = settings || {}
   dataDir = dataDir || settings.dataDir || ''
@@ -275,9 +277,13 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
   for (const name of prevMods.keys()) if (!nextMods.has(name)) mods.removed.push(name)
   for (const [name, b] of nextMods) {
     const a = prevMods.get(name)
-    if (!a || (a.hash && b.hash && a.hash === b.hash)) continue
-    const d = diffFileLists(a.files, b.files)
-    if ((a.hash && b.hash) || d.filesAdded || d.filesRemoved || d.filesChanged) mods.changed.push({ name, ...d })
+    if (!a) continue
+    // A version bump in MO2 counts as a change even when the files are the same
+    const version = (a.version || '') !== (b.version || '') ? { versionFrom: a.version || '', versionTo: b.version || '' } : null
+    const sameHash = a.hash && b.hash && a.hash === b.hash
+    const d = sameHash ? { filesAdded: 0, filesRemoved: 0, filesChanged: 0 } : diffFileLists(a.files, b.files)
+    const filesDiffer = !sameHash && ((a.hash && b.hash) || d.filesAdded || d.filesRemoved || d.filesChanged)
+    if (filesDiffer || version) mods.changed.push({ name, ...d, ...(version || {}) })
   }
 
   const prevEnabled = prev ? enabledPlugins(prev) : []
@@ -342,7 +348,7 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
   return {
     builtAt: next.builtAt || null,
     prevBuiltAt: prev ? prev.builtAt || null : null,
-    manifestPath: paths.manifest,
+    manifestPath: p.manifest,
     profileDir,
     mods, plugins, files,
     settingsLoadOrder, settingsLoadOrderFrom,
@@ -355,24 +361,34 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
   }
 }
 
-function writeDiff(diff) {
-  writeJsonAtomic(paths.diff, diff)
+// True when the manifest lists the same mods (files and versions), plugins and files as the previous one
+function nothingChanged(diff) {
+  if (!diff) return false
+  const { mods = {}, plugins = {}, files = {} } = diff
+  const n = list => (Array.isArray(list) ? list.length : 0)
+  return !n(mods.added) && !n(mods.removed) && !n(mods.changed)
+    && !n(plugins.added) && !n(plugins.removed) && !plugins.reordered
+    && !files.added && !files.removed && !files.changed
+}
+
+function writeDiff(diff, p = paths) {
+  writeJsonAtomic(p.diff, diff)
   return diff
 }
 
-function readDiff() {
+function readDiff(p = paths) {
   let text
-  try { text = fs.readFileSync(paths.diff, 'utf8') }
+  try { text = fs.readFileSync(p.diff, 'utf8') }
   catch (err) { if (err.code === 'ENOENT') return null; throw err }
   try { return JSON.parse(text) }
-  catch (err) { throw new Error(`manifest-diff.json is not valid JSON: ${err.message}`) }
+  catch (err) { throw new Error(`${path.basename(p.diff)} is not valid JSON: ${err.message}`) }
 }
 
-function updateDiff(patch) {
-  const diff = readDiff()
-  if (!diff) throw new Error('no manifest-diff.json to update, compute a diff first')
+function updateDiff(patch, p = paths) {
+  const diff = readDiff(p)
+  if (!diff) throw new Error(`no ${path.basename(p.diff)} to update, compute a diff first`)
   Object.assign(diff, patch)
-  return writeDiff(diff)
+  return writeDiff(diff, p)
 }
 
 // The manager refuses to start the game server while a synced load order still waits for its MongoDB purge
@@ -471,7 +487,7 @@ async function copyVerified({ src, dest, sha256, size }) {
   }
 }
 
-async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root = config.mo2Root, log, dryRun = false } = {}) {
+async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root = config.mo2Root, log, dryRun = false, paths: p = paths } = {}) {
   const line = lineLogger(log)
   const fail = error => ({ ok: false, error, plan: null, applied: null, stamp })
   if (!manifest || !Array.isArray(manifest.mods)) return fail('no manifest loaded')
@@ -488,7 +504,7 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
   // A stamp written for another Data folder describes files this one never received
   let stampFiles = stamp && Array.isArray(stamp.files) ? stamp.files : []
   if (stamp && stamp.dataDir && fileKey(path.resolve(String(stamp.dataDir))) !== fileKey(dataRoot)) {
-    line(`[data] ${basename(paths.stamp)} was written for ${stamp.dataDir}, not ${dataRoot}: ignored`)
+    line(`[data] ${basename(p.stamp)} was written for ${stamp.dataDir}, not ${dataRoot}: ignored`)
     stampFiles = []
   }
   for (const f of stampFiles) {
@@ -584,7 +600,7 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
     files.push({ to: rec.to, sha256: rec.sha256, size: rec.size, mod: rec.mod })
   }
   const newStamp = { syncedAt: new Date().toISOString(), manifestBuiltAt: manifest.builtAt || null, dataDir: dataRoot, files }
-  writeJsonAtomic(paths.stamp, newStamp)
+  writeJsonAtomic(p.stamp, newStamp)
 
   line(`[data] done: ${applied.copied} copied, ${applied.deleted} deleted, ${plan.upToDate} already up to date, ${applied.errors.length} error(s), ${plan.missingSources.length} missing source(s)`)
   const problems = applied.errors.length + plan.missingSources.length
@@ -598,12 +614,14 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
 module.exports = {
   VANILLA_PLUGINS,
   paths,
+  pathsFor,
   readManifestLight,
   enabledPlugins,
   resolveExpected,
   unprovidedPlugins,
   readPluginFlags,
   computeDiff,
+  nothingChanged,
   writeDiff,
   readDiff,
   updateDiff,

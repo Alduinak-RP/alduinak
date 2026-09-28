@@ -24,21 +24,30 @@ function readEnv(key) {
   } catch { return '' }
 }
 
-// systemLog.path of the repo's mongod.cfg, which the AlduinakMongo service loads
-function mongoLogFile() {
-  try {
-    const m = /^\s*path:\s*(.+?)\s*$/m.exec(fs.readFileSync(path.join(repoRoot, 'deploy', 'mongodb', 'mongod.cfg'), 'utf8'))
-    if (m) return m[1]
-  } catch {}
-  return 'C:\\Alduinak\\mongodb\\log\\mongod.log'
+// A relay port from the backend .env: an integer in range, else NaN so the relay client refuses to connect
+function relayPort(key, fallback) {
+  const port = Number(readEnv(key) || fallback)
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : NaN
 }
 
-function readServerSetting(key) {
-  try { return JSON.parse(fs.readFileSync(serverSettings, 'utf8'))[key] || '' } catch { return '' }
+// systemLog.path of a mongod config under deploy/mongodb, which the matching MongoDB service loads
+function mongoLogFile(cfgName, fallback) {
+  try {
+    const m = /^\s*path:\s*(.+?)\s*$/m.exec(fs.readFileSync(path.join(repoRoot, 'deploy', 'mongodb', cfgName), 'utf8'))
+    if (m) return m[1]
+  } catch {}
+  return fallback
+}
+
+function readServerSetting(key, file = serverSettings) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8'))[key] || '' } catch { return '' }
 }
 
 const serverSettings = process.env.ALDUINAK_SERVER_SETTINGS
   || path.join(repoRoot, 'build', 'dist', 'server', 'server-settings.json')
+const serverDir = process.env.ALDUINAK_SERVER_DIR || path.dirname(serverSettings)
+const testServerDir = process.env.ALDUINAK_TEST_SERVER_DIR || path.join(repoRoot, 'build', 'dist', 'testserver')
+const testServerSettings = process.env.ALDUINAK_TEST_SERVER_SETTINGS || path.join(testServerDir, 'server-settings.json')
 
 module.exports = {
   repoRoot,
@@ -49,24 +58,63 @@ module.exports = {
   // launcher and game server consume) and launcher/ (the Electron installer).
   buildDir: process.env.ALDUINAK_BUILD_DIR || path.join(repoRoot, 'build'),
 
+  // Console tab containers; a service's group decides which one lists it
+  groups: [
+    { key: 'backend', label: 'Backend' },
+    { key: 'main',    label: 'Main Server' },
+    { key: 'test',    label: 'Test Server' },
+  ],
+
   // nssm services. `key` is the short label shown in the UI; `name` is the
   // actual Windows service. Order is the start order (stop order is reversed).
   // Renamed services: migrate the live box by re-running build/dist/server/install-services.bat
   // legacyNames are pre-rename service names the manager falls back to until then.
-  // column: the Console tab column that shows the service; logFiles: logs nssm does not know (MongoDB is a plain Windows service)
+  // logFiles: logs nssm does not know (MongoDB is a plain Windows service)
   services: [
-    { key: 'mongo',   name: 'AlduinakMongo',      legacyNames: [],                                label: 'MongoDB',  column: 'backend', logFiles: [mongoLogFile()] },
-    { key: 'nginx',   name: 'AlduinakNginx',      legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx',    column: 'nginx', accessLog: 'C:\\nginx\\logs\\access.log' },
-    { key: 'backend', name: 'AlduinakBackend',    legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend',  column: 'backend' },
-    { key: 'livekit', name: 'AlduinakLiveKit',    legacyNames: [],                                label: 'LiveKit',  column: 'game' },
-    { key: 'game',    name: 'AlduinakGameServer', legacyNames: ['SkyrpGameServer'],               label: 'Game',     column: 'game' },
+    { key: 'mongo',        name: 'AlduinakMongo',       legacyNames: [],                                label: 'MongoDB', group: 'main',    logFiles: [mongoLogFile('mongod.cfg', 'C:\\Alduinak\\mongodb\\log\\mongod.log')] },
+    { key: 'nginx',        name: 'AlduinakNginx',       legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx',   group: 'backend', accessLog: 'C:\\nginx\\logs\\access.log' },
+    { key: 'backend',      name: 'AlduinakBackend',     legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend', group: 'backend' },
+    { key: 'livekit',      name: 'AlduinakLiveKit',     legacyNames: [],                                label: 'LiveKit', group: 'main' },
+    { key: 'game',         name: 'AlduinakGameServer',  legacyNames: ['SkyrpGameServer'],               label: 'Game',    group: 'main' },
+    { key: 'test-mongo',   name: 'AlduinakMongoTest',   legacyNames: [],                                label: 'MongoDB', group: 'test',    logFiles: [mongoLogFile('mongod-test.cfg', 'C:\\Alduinak\\mongodb-test\\log\\mongod.log')] },
+    { key: 'test-livekit', name: 'AlduinakLiveKitTest', legacyNames: [],                                label: 'LiveKit', group: 'test' },
+    { key: 'test-game',    name: 'AlduinakTestServer',  legacyNames: [],                                label: 'Game',    group: 'test' },
   ],
+
+  // The two game servers: live receives files only through the Migrate box, every build targets buildProfile.
+  // files: this profile's manifest set under paths.dataDir; versionsPrefix: its keys in versions.json
+  profiles: {
+    live: {
+      key: 'live', label: 'Main Server', backendId: 'alduinak',
+      serverDir, serverSettings,
+      clientOut: path.join(repoRoot, 'build', 'dist', 'client'),
+      services: { game: 'game', mongo: 'mongo', livekit: 'livekit' },
+      files: { manifest: 'manifest.json', prevManifest: 'manifest.json.prev', diff: 'manifest-diff.json', stamp: 'data-sync.json', modlist: 'modlist.json' },
+      extrasDir: 'extras', versionsPrefix: '',
+      get relayPort() { return relayPort('WS_PORT', 7778) },
+      // chat.log lives wherever the gamemode writes it: env var, then the logDir key of server-settings.json, then the default
+      get logDir() { return process.env.ALDUINAK_LOG_DIR || readServerSetting('logDir', serverSettings) || 'C:\\logs' },
+    },
+    test: {
+      key: 'test', label: 'Test Server', backendId: 'test',
+      serverDir: testServerDir, serverSettings: testServerSettings,
+      clientOut: path.join(repoRoot, 'build', 'dist', 'testclient'),
+      services: { game: 'test-game', mongo: 'test-mongo', livekit: 'test-livekit' },
+      files: { manifest: 'manifest-test.json', prevManifest: 'manifest-test.json.prev', diff: 'manifest-diff-test.json', stamp: 'data-sync-test.json', modlist: 'modlist-test.json' },
+      extrasDir: 'extras-test', versionsPrefix: 'test.',
+      // The live port here would put the test console on the live game
+      get relayPort() { const p = relayPort('WS_PORT_TEST', 7779); return p === relayPort('WS_PORT', 7778) ? NaN : p },
+      get logDir() { return readServerSetting('logDir', testServerSettings) || 'C:\\logs\\test' },
+    },
+  },
+  buildProfile: 'test',
 
   // Reference MO2 install used to compile the manifest (the Modlist tab).
   mo2Root:  process.env.ALDUINAK_MO2_ROOT  || 'C:\\MO2',
   gameRoot: process.env.ALDUINAK_GAME_ROOT || 'C:\\GOG Games\\Skyrim Anniversary Edition',
   profile:  process.env.ALDUINAK_MO2_PROFILE || 'Alduinak',
 
+  // Live server paths; the modules that stay live-only (players, security, playtime, agent) read these
   paths: {
     launcher:     path.join(repoRoot, 'skymp5-launcher-tauri'),
     gamemode:     path.join(repoRoot, 'gamemode'),
@@ -83,7 +131,7 @@ module.exports = {
     serverSettings,
     // The game server's working directory: its file-database (changeForms)
     // and data dir live here. Defaults to the folder holding server-settings.json.
-    serverDir:    process.env.ALDUINAK_SERVER_DIR || path.dirname(serverSettings),
+    serverDir,
     launcherOut:  path.join(repoRoot, 'build', 'launcher'),
     clientOut:    path.join(repoRoot, 'build', 'dist', 'client'),
     dataDir:      path.join(repoRoot, 'skymp5-backend', 'data'),
@@ -98,7 +146,7 @@ module.exports = {
 
   // WS relay link for the Console command box (read live from the backend .env).
   relay: {
-    get port()   { return parseInt(readEnv('WS_PORT') || '7778', 10) },
+    get port()   { return relayPort('WS_PORT', 7778) },
     // No fallback secret: when RELAY_SECRET is unset the relay must fail auth
     // rather than silently authenticate with a well-known default.
     get secret() { return readEnv('RELAY_SECRET') },

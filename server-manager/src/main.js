@@ -9,6 +9,7 @@ const config = require('./config')
 const { Builder } = require('./build')
 const schema = require('./settingsSchema')
 const modsync = require('./modsync')
+const migrate = require('./migrate')
 const mongoPurge = require('./mongoPurge')
 const managerLock = require('./managerLock')
 const { createConsoleRelay } = require('./relayClient')
@@ -45,7 +46,7 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow()
   startLogTail()
-  consoleRelay.connect()
+  for (const relay of Object.values(relays)) relay.connect()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
   // One-time hint when the box still runs pre-rename service names.
   setTimeout(async () => {
@@ -63,13 +64,13 @@ ipcMain.handle('services:status', () => statusAll())
 ipcMain.handle('service:action', (_e, key, action) => doServiceAction(key, action))
 // Sampled only while the Console tab is open
 ipcMain.handle('services:stats', () => serviceStats.sample().catch(() => ({})))
-ipcMain.handle('services:action', (_e, action) => doServicesAction(action))
+ipcMain.handle('services:action', (_e, action, group) => doServicesAction(action, group))
 
 const tailState = {}   // file -> last byte offset
 let logTargets = []    // [{ file, label }]
 
 serviceHooks.onRotated = file => { delete tailState[file] }
-serviceHooks.status = text => send('console:relay', { kind: 'status', text })
+serviceHooks.status = (text, profile) => send('console:relay', { kind: 'status', text, profile })
 
 async function refreshLogTargets() {
   logTargets = await discoverLogTargets()
@@ -101,77 +102,89 @@ function startLogTail() {
   setInterval(refreshLogTargets, 30000)   // services may be re-installed/reconfigured
 }
 
-const consoleRelay = createConsoleRelay({
-  onStatus: text => send('console:relay', { kind: 'status', text }),
-  onOutput: text => send('console:relay', { kind: 'output', text }),
-})
+// One relay per game server; the live one also answers the Players tab queries
+const relays = Object.fromEntries(Object.values(config.profiles).map(p => [p.key, createConsoleRelay({
+  port: p.relayPort,
+  onStatus: text => send('console:relay', { kind: 'status', text, profile: p.key }),
+  onOutput: text => send('console:relay', { kind: 'output', text, profile: p.key }),
+})]))
+const consoleRelay = relays.live
 
 // Console box: manager commands are handled locally, anything else is
-// forwarded to the game server console over the WS relay (the gamemode).
+// forwarded to that server's game console over its WS relay (the gamemode).
 const BUILD_KINDS = ['server', 'launcher', 'client', 'native', 'gamemode']
+const GROUP_KEYS = config.groups.map(g => g.key)
 const CONSOLE_HELP = [
   'Manager commands:',
-  '  help                           this help',
-  '  status                         service status',
-  '  start|stop|restart <svc|all>   control services (' + config.services.map(s => s.key).join(', ') + ')',
-  '  build <' + BUILD_KINDS.join('|') + '>   run a build (output streams here)',
-  'Anything else is sent to the game server console (gamemode).',
+  '  help                                 this help',
+  '  status                               service status by container',
+  '  start|stop|restart <svc|group|all>   control services (' + config.services.map(s => s.key).join(', ') + '; groups ' + GROUP_KEYS.join(', ') + ')',
+  '  build <' + BUILD_KINDS.join('|') + '>   run a build for the ' + config.profiles[config.buildProfile].label + ' (output streams here)',
+  "Anything else is sent to this server's game console (gamemode).",
 ].join('\n')
 
-function consoleOut(text) { send('console:relay', { kind: 'output', text: text + '\n' }) }
+function consoleOut(text, profile) { send('console:relay', { kind: 'output', text: text + '\n', profile }) }
 
 // Returns a result object when the command was handled locally, null otherwise.
-async function tryLocalCommand(cmd) {
+async function tryLocalCommand(cmd, profile) {
   const parts = cmd.split(/\s+/)
   const verb = parts[0].toLowerCase()
   const arg = (parts[1] || '').toLowerCase()
+  const out = text => consoleOut(text, profile)
+  const relay = relays[profile]
   // help/status also go to the gamemode so its command list and player count
   // append below the local output (fan-out arrives via console:relay).
   if (verb === 'help' || verb === '?') {
-    consoleOut(CONSOLE_HELP)
-    if (!consoleRelay.command('help').ok) consoleOut('(game console offline - gamemode commands unavailable)')
+    out(CONSOLE_HELP)
+    if (!relay.command('help').ok) out('(game console offline - gamemode commands unavailable)')
     return { ok: true }
   }
   if (verb === 'status') {
     const st = await statusAll()
-    consoleOut(config.services.map(s => `${s.label}: ${st[s.key] || 'unknown'}`).join('\n'))
-    consoleRelay.command('status')
+    out(config.groups.map(g => `[${g.label}] ` + config.services.filter(s => s.group === g.key).map(s => `${s.label}: ${st[s.key] || 'unknown'}`).join(', ')).join('\n'))
+    relay.command('status')
     return { ok: true }
   }
   if (verb === 'start' || verb === 'stop' || verb === 'restart') {
+    // A service key wins over a group of the same name (backend)
     const keys = config.services.map(s => s.key)
-    if (!arg || (arg !== 'all' && !keys.includes(arg))) {
-      consoleOut(`usage: ${verb} <${keys.join('|')}|all>`)
+    const targets = [...keys, ...GROUP_KEYS.filter(g => !keys.includes(g)), 'all']
+    if (!targets.includes(arg)) {
+      out(`usage: ${verb} <${targets.join('|')}>`)
       return { ok: true }
     }
-    consoleOut(`${verb} ${arg}…`)
-    const r = arg === 'all' ? await doServicesAction(verb) : await doServiceAction(arg, verb)
-    consoleOut((r.steps || [r.error || 'failed']).join('\n'))
+    out(`${verb} ${arg}…`)
+    const r = keys.includes(arg) ? await doServiceAction(arg, verb) : await doServicesAction(verb, arg === 'all' ? undefined : arg)
+    out((r.steps || [r.error || 'failed']).join('\n'))
     return { ok: r.ok !== false }
   }
   if (verb === 'build') {
-    if (!BUILD_KINDS.includes(arg)) { consoleOut(`usage: build <${BUILD_KINDS.join('|')}>`); return { ok: true } }
+    if (!BUILD_KINDS.includes(arg)) { out(`usage: build <${BUILD_KINDS.join('|')}>`); return { ok: true } }
     const holder = managerLock.holder()
-    if (holder) { consoleOut(`a build or sync is already running (${managerLock.describe(holder)}) - wait for it to finish`); return { ok: true } }
-    consoleOut(`starting ${arg} build…`)
+    if (holder) { out(`a build or sync is already running (${managerLock.describe(holder)}) - wait for it to finish`); return { ok: true } }
+    out(`starting ${arg} build…`)
     // Not awaited: builds take minutes; progress streams via build:log and the
     // outcome is reported here when it lands.
-    runBuild(arg).then(r => consoleOut(r.ok ? `${arg} build complete` : `${arg} build failed: ${r.error || 'see log'}`))
+    runBuild(arg).then(r => out(r.ok ? `${arg} build complete` : `${arg} build failed: ${r.error || 'see log'}`))
     return { ok: true }
   }
   return null
 }
 
-ipcMain.handle('console:command', async (_e, text) => {
+ipcMain.handle('console:command', async (_e, text, profile) => {
   const cmd = String(text || '').trim()
   if (!cmd) return { ok: false, error: 'empty command' }
-  const local = await tryLocalCommand(cmd)
+  if (!relays[profile]) profile = 'live'
+  const local = await tryLocalCommand(cmd, profile)
   if (local) return local
-  return consoleRelay.command(cmd)
+  return relays[profile].command(cmd)
 })
 
-// Builds stream to build:log, the Modlist tab's operations to modlist:log
-function builder(channel = 'build:log') { return new Builder(t => send(channel, t)) }
+// Builds stream to build:log, the modlist and migrate operations to modlist:log; the Builder targets the test server unless told otherwise
+function builder(channel = 'build:log', profile) { return new Builder(t => send(channel, t), profile) }
+
+const LIVE = config.profiles.live
+const profileOrLive = key => config.profiles[key] || LIVE
 
 // One build or sync at a time: console commands, the Build tab, the Modlist tab and the web manager agent share this lock.
 async function exclusive(fn) {
@@ -281,15 +294,26 @@ function registerVersionIpc(name, pkgPath, extraWriteFns) {
 }
 
 const writeVersion = key => v => backendModule('versions').writeVersion(key, v)
-// The launcher and client versions reach versions.json only through Update Version, once their files are live
+// The launcher and client versions reach versions.json only through Update Version, once their files are live;
+// the server package version is the test server's, the Migrate box publishes it live
 registerVersionIpc('launcher', config.paths.launcherPkg, [])
 registerVersionIpc('client', config.paths.clientPkg, [])
-registerVersionIpc('server', config.paths.serverPkg, [writeVersion('server')])
+registerVersionIpc('server', config.paths.serverPkg, [writeVersion('test.server')])
 
-const PUBLISHED_PKG = { launcher: config.paths.launcherPkg, client: config.paths.clientPkg }
+// versions.json keys the Build tab may set directly (dotted keys address the test block)
+const VERSION_KEYS = ['client', 'server', 'test.client', 'test.server']
+const PUBLISHED_PKG = { launcher: config.paths.launcherPkg, client: config.paths.clientPkg, 'test.client': config.paths.clientPkg }
 
 ipcMain.handle('versions:published', () => {
   try { return { ok: true, versions: backendModule('versions').readVersions() } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('versions:set', (_e, key, version) => {
+  if (!VERSION_KEYS.includes(key)) return { ok: false, error: `unknown version key ${key}` }
+  version = String(version || '').trim()
+  if (!SEMVER_RE.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
+  try { backendModule('versions').writeVersion(key, version); return { ok: true, version } }
   catch (err) { return { ok: false, error: err.message } }
 })
 
@@ -895,21 +919,41 @@ function readSettingsOrEmpty(file) {
 }
 
 // null when the file is missing, throws on invalid JSON
-function readSettingsOrNull() {
-  const { settings, mtimeMs } = readSettingsOrEmpty(config.paths.serverSettings)
+function readSettingsOrNull(file = config.paths.serverSettings) {
+  const { settings, mtimeMs } = readSettingsOrEmpty(file)
   return mtimeMs === null ? null : settings
 }
 
-// The Modlist sync and purge actions refuse to run without the live settings
-function requireSettings() {
-  const settings = readSettingsOrNull()
-  if (!settings) throw new Error(`server-settings.json not found at ${config.paths.serverSettings}`)
+// The modlist sync, purge and migrate actions refuse to run without that server's settings
+function requireSettings(profile = LIVE) {
+  const settings = readSettingsOrNull(profile.serverSettings)
+  if (!settings) throw new Error(`${profile.label} server-settings.json not found at ${profile.serverSettings}`)
   return settings
 }
 
+// Update modlist on another profile must never reach the live server dir, Data folder or database
+function liveOverlap(profile) {
+  if (profile === LIVE) return null
+  const live = readSettingsOrNull(LIVE.serverSettings) || {}
+  const test = requireSettings(profile)
+  const key = v => String(v).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  // host:port plus databaseName names the database; credentials and options do not
+  const host = uri => (/^[a-z+]+:\/\/(?:[^@/]*@)?([^/?]+)/i.exec(String(uri)) || [])[1] || String(uri)
+  const db = s => (s.databaseUri ? `${host(s.databaseUri)}/${s.databaseName || ''}` : '')
+  const checks = [['server dir', profile.serverDir, LIVE.serverDir], ['settings file', profile.serverSettings, LIVE.serverSettings], ['dataDir', test.dataDir, live.dataDir], ['database', db(test), db(live)]]
+  for (const [what, a, b] of checks) {
+    if (a && b && key(a) === key(b)) return `refused: the ${profile.label} ${what} (${a}) is the ${LIVE.label}'s, fix ${profile.serverSettings} first`
+  }
+  return null
+}
+
+// The server-settings.json subtabs of the Settings tab, both edited with the serverSettings schema
+const SETTINGS_FILES = { serverSettings: config.paths.serverSettings, testServerSettings: config.profiles.test.serverSettings }
+const settingsFile = key => (Object.hasOwn(SETTINGS_FILES, key) ? SETTINGS_FILES[key] : null)
+
 ipcMain.handle('settings:read', (_e, key) => {
-  if (key === 'serverSettings') {
-    const file = config.paths.serverSettings
+  if (settingsFile(key)) {
+    const file = settingsFile(key)
     let values, mtimeMs
     try { ({ settings: values, mtimeMs } = readSettingsOrEmpty(file)) }
     catch (err) { return { ok: false, path: file, error: err.message } }
@@ -930,8 +974,8 @@ ipcMain.handle('settings:read', (_e, key) => {
 // mtimeMs is the value settings:read returned; a file edited since then (Sync server settings, a hand edit) is never overwritten
 ipcMain.handle('settings:write', (_e, key, values, extraRaw, mtimeMs) => {
   try {
-    if (key === 'serverSettings') {
-      const file = config.paths.serverSettings
+    if (settingsFile(key)) {
+      const file = settingsFile(key)
       // A corrupt file must block the save, or this write replaces the live config with {}.
       let current, now
       try { ({ settings: current, mtimeMs: now } = readSettingsOrEmpty(file)) }
@@ -999,48 +1043,48 @@ ipcMain.handle('news:addImage', async () => {
 })
 
 
-// Modlist: Build tab > Client > Update modlist
+// Modlist: Build tab > Client > Update modlist, per game server (the renderer runs it for the test server)
 
-// Compile the manifest into a .building file and diff it against the last deployed one; only a successful diff rotates it into place
-async function updateManifest() {
-  const b = builder('modlist:log')
-  const previousDiff = modsync.readDiff()
-  const settings = readSettingsOrNull()
-  if (!settings) b.line('[manifest] WARNING: server-settings.json not found, the load order the database was written under is recorded as empty')
-  const dep = await b.ensureDeps(config.paths.backend, 'backend', 'npm')   // compile-manifest needs 7zip-bin
-  if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
-  const live = modsync.paths.manifest
-  const building = live + '.building'
-  const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile, '--out', building]
-  if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
-  // shell=false: config-derived paths with spaces or shell metacharacters cannot split args
-  const r = await b.run('node', args, config.paths.backend, 'compile-manifest', null, false)
+// Diffs a compiled .building manifest against the profile's deployed one; only a successful diff rotates it into place.
+// A manifest that lists the same mods (files and versions), plugins and files is discarded: { ok, unchanged: true, diff }
+async function installBuiltManifest(profile, building, b) {
+  const paths = modsync.pathsFor(profile)
+  const previousDiff = modsync.readDiff(paths)
+  const settings = readSettingsOrNull(profile.serverSettings)
+  if (!settings) b.line(`[manifest] WARNING: ${profile.label} server-settings.json not found, the load order the database was written under is recorded as empty`)
+  const live = paths.manifest
   const rotate = modsync.shouldRotatePrev(previousDiff)
   let prev, diff
   try {
-    if (!r.ok) throw new Error('compile-manifest failed')
     const next = modsync.readManifestLight(building)
-    if (!next) throw new Error('compile-manifest wrote no usable manifest')
-    prev = modsync.readManifestLight(rotate ? live : modsync.paths.prevManifest)
-    diff = modsync.computeDiff({ prev, next, settings: settings || {}, previousDiff })
+    if (!next) throw new Error(`no usable manifest at ${path.basename(building)}`)
+    prev = modsync.readManifestLight(rotate ? live : paths.prevManifest)
+    diff = modsync.computeDiff({ prev, next, settings: settings || {}, previousDiff, paths })
   } catch (err) {
     fs.rmSync(building, { force: true })
     b.line(`[manifest] ${err.message}; ${path.basename(live)} and the previous diff are untouched`)
     return { ok: false, error: err.message }
   }
+  // A pending diff means an earlier run did not finish, so its steps run again even without new changes
+  if (!previousDiff && prev && modsync.nothingChanged(diff)) {
+    fs.rmSync(building, { force: true })
+    b.line(`[manifest] no changes against ${path.basename(live)} (built ${prev.builtAt || '?'}), kept as is`)
+    return { ok: true, unchanged: true, diff }
+  }
   if (rotate && prev) {
-    fs.copyFileSync(live, modsync.paths.prevManifest)
-    b.line(`[manifest] deployed manifest snapshotted to ${path.basename(modsync.paths.prevManifest)}`)
+    fs.copyFileSync(live, paths.prevManifest)
+    b.line(`[manifest] deployed manifest snapshotted to ${path.basename(paths.prevManifest)}`)
   }
   const renameErr = await replaceFile(building, live)
   if (renameErr) {
-    return { ok: false, error: `could not replace ${path.basename(live)}: ${renameErr.message}; the compiled manifest is waiting in ${path.basename(building)} and the next Build manifest overwrites it` }
+    return { ok: false, error: `could not replace ${path.basename(live)}: ${renameErr.message}; the compiled manifest is waiting in ${path.basename(building)} and the next run overwrites it` }
   }
-  modsync.writeDiff(diff)
+  modsync.writeDiff(diff, paths)
   const { mods, plugins, files } = diff
   b.line(`[manifest] diff vs ${prev ? prev.builtAt : 'nothing'}: mods +${mods.added.length} -${mods.removed.length} ~${mods.changed.length}, ` +
     `plugins +${plugins.added.length} -${plugins.removed.length}${plugins.reordered ? ' (reordered)' : ''}, ` +
     `files +${files.added} -${files.removed} ~${files.changed}`)
+  for (const c of mods.changed) if (c.versionFrom !== undefined) b.line(`[manifest] ${c.name}: ${c.versionFrom || '?'} -> ${c.versionTo || '?'}`)
   const shifted = Array.isArray(diff.shiftedPlugins) ? diff.shiftedPlugins : []
   const flagChanges = Array.isArray(diff.flagChanges) ? diff.flagChanges : []
   if (diff.purgeNeeded) {
@@ -1051,91 +1095,238 @@ async function updateManifest() {
   return { ok: true, diff }
 }
 
-ipcMain.handle('modlist:diff', () => modsync.readDiff())
+// Compile the profile's manifest from MO2 into a .building file and install it
+async function updateManifest(profile, b = builder('modlist:log', profile)) {
+  const paths = modsync.pathsFor(profile)
+  const dep = await b.ensureDeps(config.paths.backend, 'backend', 'npm')   // compile-manifest needs 7zip-bin
+  if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
+  const building = paths.manifest + '.building'
+  const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile, '--out', building,
+    '--modlist-out', paths.modlist, '--extras-dir', profile.extrasDir, '--server', profile.backendId]
+  if (fs.existsSync(path.join(config.gameRoot, 'SkyrimSE.exe'))) args.push('--game', config.gameRoot)
+  // shell=false: config-derived paths with spaces or shell metacharacters cannot split args
+  const r = await b.run('node', args, config.paths.backend, 'compile-manifest', null, false)
+  if (!r.ok) {
+    fs.rmSync(building, { force: true })
+    b.line(`[manifest] compile-manifest failed; ${path.basename(paths.manifest)} and the previous diff are untouched`)
+    return { ok: false, error: 'compile-manifest failed' }
+  }
+  return installBuiltManifest(profile, building, b)
+}
 
-function readManifestOrFail() {
-  const manifest = modsync.readManifestLight(modsync.paths.manifest)
-  if (!manifest) throw new Error('no manifest.json, build the manifest first')
+ipcMain.handle('modlist:diff', (_e, profileKey) => modsync.readDiff(modsync.pathsFor(profileOrLive(profileKey))))
+
+function readManifestOrFail(paths) {
+  const manifest = modsync.readManifestLight(paths.manifest)
+  if (!manifest) throw new Error(`no ${path.basename(paths.manifest)}, build the manifest first`)
   return manifest
 }
 
 // Record a sync step on the stored diff; a missing or unreadable diff only logs
-function stampDiff(patch, log) {
-  try { if (modsync.readDiff()) modsync.updateDiff(patch) }
+function stampDiff(paths, patch, log) {
+  try { if (modsync.readDiff(paths)) modsync.updateDiff(patch, paths) }
   catch (err) { log(`[diff] not updated: ${err.message}`) }
 }
 
-function syncServerSettings(b) {
-  const manifest = readManifestOrFail()
-  requireSettings()
-  const r = modsync.syncSettings({ manifest, settingsPath: config.paths.serverSettings, log: t => b.line(t), dryRun: false })
-  if (r.ok) stampDiff({ syncedSettingsAt: new Date().toISOString() }, t => b.line(t))
+function syncServerSettings(b, profile) {
+  const paths = modsync.pathsFor(profile)
+  const manifest = readManifestOrFail(paths)
+  requireSettings(profile)
+  const r = modsync.syncSettings({ manifest, settingsPath: profile.serverSettings, log: t => b.line(t), dryRun: false })
+  if (r.ok) stampDiff(paths, { syncedSettingsAt: new Date().toISOString() }, t => b.line(t))
   return r
 }
 
-async function syncDataFolder(b) {
-  const manifest = readManifestOrFail()
-  const prev = modsync.readManifestLight(modsync.paths.prevManifest)
-  const stamp = readJsonOrNull(modsync.paths.stamp)
-  const settings = requireSettings()
+async function syncDataFolder(b, profile) {
+  const paths = modsync.pathsFor(profile)
+  const manifest = readManifestOrFail(paths)
+  const prev = modsync.readManifestLight(paths.prevManifest)
+  const stamp = readJsonOrNull(paths.stamp)
+  const settings = requireSettings(profile)
   if (!settings.dataDir) return { ok: false, error: 'server-settings.json has no dataDir' }
-  // syncData persists data-sync.json itself after a real run
-  const r = await modsync.syncData({ manifest, prev, stamp, dataDir: settings.dataDir, mo2Root: config.mo2Root, log: t => b.line(t), dryRun: false })
-  if (r.ok) stampDiff({ syncedDataAt: new Date().toISOString() }, t => b.line(t))
+  // syncData persists the stamp file itself after a real run
+  const r = await modsync.syncData({ manifest, prev, stamp, dataDir: settings.dataDir, mo2Root: config.mo2Root, log: t => b.line(t), dryRun: false, paths })
+  if (r.ok) stampDiff(paths, { syncedDataAt: new Date().toISOString() }, t => b.line(t))
   return r
 }
 
-async function purgeDatabase(b) {
+async function purgeDatabase(b, profile) {
+  const paths = modsync.pathsFor(profile)
   const log = t => b.line(`[purge] ${t}`)
-  const manifest = readManifestOrFail()
-  const diff = modsync.readDiff()
+  const manifest = readManifestOrFail(paths)
+  const diff = modsync.readDiff(paths)
   if (!diff) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
-  const settings = requireSettings()
+  const settings = requireSettings(profile)
   const r = await mongoPurge.purgeRemovedMods({
     settings, diff, dryRun: false, log,
     newLoadOrder: [...modsync.VANILLA_PLUGINS, ...modsync.enabledPlugins(manifest)],
     currentLoadOrder: (Array.isArray(settings.loadOrder) ? settings.loadOrder : []).map(modsync.basename),
     startPoints: settings.startPoints,
-    backupDir: config.paths.serverDir,
+    backupDir: profile.serverDir,
     // Throwing here aborts the purge before its first write, so no write ever happens without a recorded backup
-    onWriteStart: ({ backupFile }) => { modsync.updateDiff({ purgeStartedAt: new Date().toISOString(), purgeBackup: backupFile }) },
+    onWriteStart: ({ backupFile }) => { modsync.updateDiff({ purgeStartedAt: new Date().toISOString(), purgeBackup: backupFile }, paths) },
   })
-  if (r.ok) stampDiff({ purgedAt: new Date().toISOString(), purgeStartedAt: null }, log)
+  if (r.ok) stampDiff(paths, { purgedAt: new Date().toISOString(), purgeStartedAt: null }, log)
   return r
 }
 
-// Update modlist: manifest, server settings, data folder and the MongoDB purge in one go, with the game server stopped.
-// The change report comes back to the window; its file lives only while the steps run, and stays after a failure so the start gate holds.
-ipcMain.handle('modlist:run', () => exclusive(async () => {
-  const b = builder('modlist:log')
-  const blocked = await requireGameStopped(t => b.line(t), false)
-  if (blocked) return blocked
-  const built = await updateManifest()
-  if (!built.ok) return built
+// Server settings, data folder and MongoDB purge for a freshly installed manifest, each under a banner; the diff file goes on success
+async function applyManifest(b, profile, diff) {
   const steps = [
-    ['server settings', () => syncServerSettings(b)],
-    ['data folder', () => syncDataFolder(b)],
-    ['MongoDB purge', () => purgeDatabase(b)],
+    ['server settings', () => syncServerSettings(b, profile)],
+    ['data folder', () => syncDataFolder(b, profile)],
+    ['MongoDB purge', () => purgeDatabase(b, profile)],
   ]
   for (const [label, run] of steps) {
     b.line(`\n######## ${label} ########`)
     const r = await run()
-    if (!r.ok) return { ok: false, error: `${label}: ${r.error || 'failed'}`, diff: built.diff, report: r.report }
+    if (!r.ok) return { ok: false, error: `${label}: ${r.error || 'failed'}`, diff, report: r.report }
   }
-  fs.rmSync(modsync.paths.diff, { force: true })
-  return { ok: true, diff: built.diff }
+  fs.rmSync(modsync.pathsFor(profile).diff, { force: true })
+  return { ok: true, diff }
+}
+
+// Update modlist: manifest, server settings, data folder and the MongoDB purge in one go, with that game server stopped.
+// The change report comes back to the window; its file lives only while the steps run, and stays after a failure so the start gate holds.
+ipcMain.handle('modlist:run', (_e, profileKey) => exclusive(async () => {
+  const profile = profileOrLive(profileKey)
+  const b = builder('modlist:log', profile)
+  const blocked = await requireGameStopped(t => b.line(t), false, profile)
+  if (blocked) return blocked
+  const overlap = liveOverlap(profile)
+  if (overlap) { b.line(overlap); return { ok: false, error: overlap } }
+  const built = await updateManifest(profile, b)
+  if (!built.ok) return built
+  if (built.unchanged) {
+    b.line(`MO2 modlist matches the ${profile.label} manifest (mods and versions), nothing to sync`)
+    return built
+  }
+  return applyManifest(b, profile, built.diff)
 }))
 
 // Puts the last purge backup back and reopens the diff for another purge
-ipcMain.handle('modlist:purgeRestore', () => exclusive(async () => {
-  const b = builder('modlist:log')
+ipcMain.handle('modlist:purgeRestore', (_e, profileKey) => exclusive(async () => {
+  const profile = profileOrLive(profileKey)
+  const paths = modsync.pathsFor(profile)
+  const b = builder('modlist:log', profile)
   const log = t => b.line(`[restore] ${t}`)
-  const diff = modsync.readDiff()
-  if (!diff || !diff.purgeBackup) return { ok: false, error: 'no purge backup recorded in manifest-diff.json' }
-  const settings = requireSettings()
-  const blocked = await requireGameStopped(log, false)
+  const diff = modsync.readDiff(paths)
+  if (!diff || !diff.purgeBackup) return { ok: false, error: `no purge backup recorded in ${path.basename(paths.diff)}` }
+  const settings = requireSettings(profile)
+  const blocked = await requireGameStopped(log, false, profile)
   if (blocked) return blocked
+  const overlap = liveOverlap(profile)
+  if (overlap) { log(overlap); return { ok: false, error: overlap } }
   const r = await mongoPurge.restorePurge({ settings, backupFile: diff.purgeBackup, log })
-  if (r.ok) stampDiff({ purgeStartedAt: null, purgeBackup: null, purgedAt: null }, log)
+  if (r.ok) stampDiff(paths, { purgeStartedAt: null, purgeBackup: null, purgedAt: null }, log)
   return r
+}))
+
+// Migrate: Build tab > Migrate, the only way test files reach the live server (which must be stopped)
+
+const TEST = config.profiles.test
+const backupRoot = () => path.join(config.buildDir, 'dist', 'backup')
+// The backend serves client files from CLIENT_FILES_DIR (its .env), default build/client-files
+const clientFilesDir = () => readEnvValues(config.paths.backendEnv).CLIENT_FILES_DIR || path.join(config.repoRoot, 'build', 'client-files')
+
+ipcMain.handle('migrate:server', () => exclusive(async () => {
+  const b = builder('modlist:log', LIVE)
+  b.banner('Migrate server: test -> live')
+  const blocked = await requireGameStopped(t => b.line(t), false, LIVE)
+  if (blocked) return blocked
+  if (!fs.existsSync(path.join(TEST.serverDir, 'dist_back', 'skymp5-server.js'))) {
+    return { ok: false, error: `no dist_back/skymp5-server.js in ${TEST.serverDir}, Build server first` }
+  }
+  const backupDir = path.join(backupRoot(), migrate.stamp(), 'server')
+  b.line(`[migrate] ${TEST.serverDir} -> ${LIVE.serverDir}, old copies in ${backupDir}`)
+  try {
+    const { copied } = migrate.copyServerItems({ from: TEST.serverDir, to: LIVE.serverDir, backupDir, log: t => b.line(`[migrate] ${t}`) })
+    b.line(`\n✓ ${copied.length} item(s) copied to the Main Server; press Migrate settings next, then start the Main Server.`)
+    return { ok: true, copied, backupDir }
+  } catch (err) {
+    return { ok: false, error: err.message, backupDir }
+  }
+}))
+
+ipcMain.handle('migrate:settings', () => exclusive(async () => {
+  const b = builder('modlist:log', LIVE)
+  b.banner('Migrate settings: test -> live')
+  const blocked = await requireGameStopped(t => b.line(t), false, LIVE)
+  if (blocked) return blocked
+  let live, test
+  try { live = requireSettings(LIVE); test = requireSettings(TEST) }
+  catch (err) { return { ok: false, error: err.message } }
+  const backupFile = path.join(backupRoot(), `server-settings-${migrate.stamp()}.json`)
+  try {
+    fs.mkdirSync(backupRoot(), { recursive: true })
+    fs.copyFileSync(LIVE.serverSettings, backupFile)
+    b.line(`[migrate] live server-settings.json backed up to ${backupFile}`)
+    const { merged, added, changed, kept } = migrate.mergeSettings({ live, test, log: t => b.line(`[migrate] ${t}`) })
+    if (!added.length && !changed.length) b.line('[migrate] live settings already carry every test setting')
+    else modsync.writeSettingsFile(LIVE.serverSettings, merged)
+    b.line(`\n✓ settings merged: ${added.length} added, ${changed.length} changed, ${kept.length} protected key(s) kept; start the Main Server.`)
+    return { ok: true, added, changed, kept, backupFile }
+  } catch (err) {
+    return { ok: false, error: err.message, backupFile }
+  }
+}))
+
+// A manifest step that had nothing new leaves the live settings, Data folder and database as they are
+function skipStep(log) {
+  log('manifest unchanged, skipped')
+  return { ok: true }
+}
+
+ipcMain.handle('migrate:client', () => exclusive(async () => {
+  const b = builder('modlist:log', LIVE)
+  b.banner('Migrate client: test -> live')
+  const blocked = await requireGameStopped(t => b.line(t), false, LIVE)
+  if (blocked) return blocked
+  const testPaths = modsync.pathsFor(TEST)
+  const livePaths = modsync.pathsFor(LIVE)
+  if (!fs.existsSync(path.join(TEST.clientOut, 'Data'))) return { ok: false, error: `${TEST.clientOut} has no Data folder, Build client first` }
+  if (!fs.existsSync(testPaths.manifest)) return { ok: false, error: `no ${path.basename(testPaths.manifest)}, run Update modlist for the Test Server first` }
+  const backupDir = path.join(backupRoot(), migrate.stamp())
+  const log = t => b.line(`[migrate] ${t}`)
+  let diff = null
+  let unchanged = false
+  const steps = [
+    ['manifest', async () => {
+      const text = migrate.rewriteExtrasUrls(fs.readFileSync(testPaths.manifest, 'utf8'), TEST.extrasDir, LIVE.extrasDir)
+      const names = migrate.extrasArchives(text, LIVE.extrasDir)
+      const { missing } = migrate.copyExtras({ names, from: path.join(clientFilesDir(), TEST.extrasDir), to: path.join(clientFilesDir(), LIVE.extrasDir), log })
+      if (missing.length) return { ok: false, error: `extras archive(s) missing from ${path.join(clientFilesDir(), TEST.extrasDir)}: ${missing.join(', ')}` }
+      const building = livePaths.manifest + '.building'
+      fs.writeFileSync(building, text)
+      const r = await installBuiltManifest(LIVE, building, b)
+      if (r.ok) { diff = r.diff; unchanged = Boolean(r.unchanged) }
+      return r
+    }],
+    ['modlist', () => {
+      if (!fs.existsSync(testPaths.modlist)) return { ok: false, error: `no ${path.basename(testPaths.modlist)}` }
+      fs.copyFileSync(testPaths.modlist, livePaths.modlist)
+      log(`${path.basename(testPaths.modlist)} -> ${path.basename(livePaths.modlist)}`)
+      return { ok: true }
+    }],
+    ['server settings', () => (unchanged ? skipStep(log) : syncServerSettings(b, LIVE))],
+    ['data folder', () => (unchanged ? skipStep(log) : syncDataFolder(b, LIVE))],
+    ['MongoDB purge', () => (unchanged ? skipStep(log) : purgeDatabase(b, LIVE))],
+    ['client files', () => {
+      const { KEY_FILES } = require(path.join(config.paths.backend, 'scripts', 'client-package'))
+      migrate.backupClientKeyFiles({ clientDir: LIVE.clientOut, keyFiles: KEY_FILES, backupDir: path.join(backupDir, 'client'), log })
+      log(`mirroring ${TEST.clientOut} -> ${LIVE.clientOut}`)
+      const r = migrate.mirrorDir({ from: TEST.clientOut, to: LIVE.clientOut, log })
+      log(`client files: ${r.copied} copied, ${r.deleted} deleted, ${r.unchanged} unchanged`)
+      return { ok: true }
+    }],
+  ]
+  for (const [label, run] of steps) {
+    b.line(`\n######## ${label} ########`)
+    let r
+    try { r = await run() } catch (err) { r = { ok: false, error: err.message } }
+    if (!r.ok) return { ok: false, error: `${label}: ${r.error || 'failed'}`, diff, report: r.report, backupDir }
+  }
+  if (!unchanged) fs.rmSync(livePaths.diff, { force: true })
+  b.line('\n✓ client migrated to the Main Server; save the Live version in the Migrate box so launchers pick it up, then start the Main Server.')
+  return { ok: true, diff, backupDir }
 }))

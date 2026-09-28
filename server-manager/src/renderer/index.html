@@ -48,18 +48,71 @@
     <section id="build" class="panel">
       <div class="build-cols">
         <div class="build-col">
-          <h3>Game Server</h3>
+          <h3>Server</h3>
           <div class="field">
-            <label>Version</label>
+            <label>Live version <span class="muted">(versions.json)</span></label>
+            <div class="row">
+              <input id="server-live-version" type="text" placeholder="1.0.0" />
+              <button id="server-live-save" class="action small">Save</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Test version <span class="muted" id="server-test-published"></span></label>
             <div class="row">
               <input id="server-version" type="text" placeholder="1.0.0" />
               <button id="server-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Bundles the TS server into build/dist/server and rebuilds <code>gamemode.js</code> from <code>gamemode_extensions/</code>.</small>
-          <button id="build-gamemode" class="action">Build gamemode</button>
+          <small>Builds land in <code>build/dist/testserver</code>: the TS bundle into <code>dist_back</code>, <code>gamemode.js</code> from <code>gamemode_extensions/</code>. The Test Server hot-reloads gamemode.js; restart it for dist_back or scam_native.node. Test version Save writes <code>skymp5-server/package.json</code> and the test server version.</small>
+          <button id="build-gamemode" class="action">Build gamemode only</button>
           <label class="chk"><input type="checkbox" id="build-server-native" /> Run CMake first (C++ changed, VS 2022)</label>
           <button id="build-server" class="action go">Build server</button>
+        </div>
+        <div class="build-col">
+          <h3>Client</h3>
+          <div class="field">
+            <label>Live version <span class="muted">(versions.json)</span></label>
+            <div class="row">
+              <input id="client-live-version" type="text" placeholder="1.0.0" />
+              <button id="client-live-save" class="action small">Save</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Test version <span class="muted" id="client-test-published"></span></label>
+            <div class="row">
+              <input id="client-version" type="text" placeholder="1.0.0" />
+              <button id="client-save" class="action small">Save</button>
+            </div>
+          </div>
+          <small>Build client rebuilds the UI and skymp5-client.js into <code>build/dist/testclient</code>; package its Data folder as the Alduinak Client Files mod, upload it to Nexus and install it into MO2. The button then reads Update Modlist (manifest from MO2, test server load order, Data folder and database), then Update Version, which publishes the test client version. Test version Save writes <code>skymp5-client/package.json</code> only.</small>
+          <label class="chk"><input type="checkbox" id="build-client-native" /> Run CMake first (C++ changed, VS 2022)</label>
+          <button id="modlist-run" class="action">Update modlist</button>
+          <span id="modlist-gate" class="gate" hidden>Test server must be stopped</span>
+          <button id="modlist-purge-restore" class="action small stop" hidden>Restore last purge</button>
+          <button id="build-client" class="action go">Build client</button>
+        </div>
+        <div class="build-col">
+          <h3>Migrate</h3>
+          <div class="field">
+            <label>Live version <span class="muted" id="migrate-live-now"></span></label>
+            <div class="row">
+              <input id="migrate-live-version" type="text" placeholder="1.0.0" />
+              <button id="migrate-live-copy" class="action small">Copy test build</button>
+              <button id="migrate-live-save" class="action small">Save</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Test version <span class="muted" id="migrate-test-now"></span></label>
+            <div class="row">
+              <input id="migrate-test-version" type="text" placeholder="1.0.0" />
+              <button id="migrate-test-copy" class="action small">Copy test build</button>
+              <button id="migrate-test-save" class="action small">Save</button>
+            </div>
+          </div>
+          <small>Only way to the Main Server, which must be stopped. Migrate server copies dist_back, scam_native.node, gamemode and the server data files (never the world, settings or player state); it then reads Migrate settings, which merges new test settings into the live server-settings.json without touching its name, ports, players, database, access or Discord keys. Migrate client installs the test manifest, modlist and extras live, syncs the live load order, Data folder and database and mirrors build/dist/testclient onto build/dist/client. Old files go to <code>build/dist/backup</code>. Live version Save writes client and server into versions.json; Copy test build fills the field from the test build.</small>
+          <span id="migrate-gate" class="gate" hidden>Main server must be stopped</span>
+          <button id="migrate-server" class="action">Migrate server</button>
+          <button id="migrate-client" class="action go">Migrate client</button>
         </div>
         <div class="build-col">
           <h3>Launcher</h3>
@@ -72,22 +125,6 @@
           </div>
           <small>Save sets the version of the next build only. Build launcher writes <code>build/launcher/AlduinakLauncher.exe</code>; upload it, then Update Version tells every launcher to update.</small>
           <button id="build-launcher" class="action go">Build launcher</button>
-        </div>
-        <div class="build-col">
-          <h3>Client</h3>
-          <div class="field">
-            <label>Version <span class="muted" id="client-live"></span></label>
-            <div class="row">
-              <input id="client-version" type="text" placeholder="1.0.0" />
-              <button id="client-save" class="action small">Save</button>
-            </div>
-          </div>
-          <small>Build client rebuilds the UI and skymp5-client.js into build/dist/client for the Nexus client files. Update modlist builds the manifest from MO2, syncs the server's load order and Data folder and fixes the database for moved or removed plugins; then Update Version, once the Nexus files are live.</small>
-          <label class="chk"><input type="checkbox" id="build-client-native" /> Run CMake first (C++ changed, VS 2022)</label>
-          <button id="build-client" class="action">Build client</button>
-          <button id="modlist-run" class="action go">Update modlist</button>
-          <span id="modlist-gate" class="gate" hidden>Server must be stopped</span>
-          <button id="modlist-purge-restore" class="action small stop" hidden>Restore last purge</button>
         </div>
       </div>
       <div id="modlist-diff" class="cards"></div>
@@ -113,6 +150,7 @@
     <section id="settings" class="panel">
       <div class="subtabs">
         <button class="subtab active" data-cfg="serverSettings">server-settings.json</button>
+        <button class="subtab" data-cfg="testServerSettings">server-settings.json (test)</button>
         <button class="subtab" data-cfg="backendEnv">backend .env</button>
       </div>
       <div class="row">

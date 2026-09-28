@@ -1,22 +1,27 @@
 'use strict'
-// Console tab: one column per console (Nginx, Backend with MongoDB, Game with LiveKit), each with its services' controls,
-// usage and logs. Columns collapse sideways to a strip that still shows the status.
+// Console tab: three containers (Backend, Main Server, Test Server), each with its services' controls, usage and logs.
+// The side containers collapse sideways to a strip that still shows the status; the Main Server stays open.
 
 const CONSOLE_LINES = 100
 const STATS_MS = 4000
 const STATUS_MS = 10000
 
-// services: the column's services, the first is its own; collapse: the side the column folds to
+// services: the container's services, the first is its own (dot, state and command log); log: false means no log view;
+// group: the Start/Stop all target; profile: the relay behind the command input; collapse: the side the container folds to
 const COLUMNS = [
-  { key: 'nginx',   label: 'Nginx',   services: [{ key: 'nginx', label: 'Nginx' }], collapse: 'left' },
-  { key: 'backend', label: 'Backend', services: [{ key: 'backend', label: 'Backend' }, { key: 'mongo', label: 'MongoDB' }], collapse: 'left' },
-  { key: 'game',    label: 'Game',    services: [{ key: 'game', label: 'Game' }, { key: 'livekit', label: 'LiveKit' }], collapse: 'right', input: true },
+  { key: 'backend', label: 'Backend', services: [{ key: 'backend', label: 'Backend' }, { key: 'nginx', label: 'Nginx' }], collapse: 'left' },
+  { key: 'main', label: 'Main Server', group: 'main', profile: 'live', input: true,
+    services: [{ key: 'game', label: 'Game' }, { key: 'mongo', label: 'MongoDB' }, { key: 'livekit', label: 'LiveKit', log: false }] },
+  { key: 'test', label: 'Test Server', group: 'test', profile: 'test', input: true, collapse: 'right',
+    services: [{ key: 'test-game', label: 'Game' }, { key: 'test-mongo', label: 'MongoDB' }, { key: 'test-livekit', label: 'LiveKit', log: false }] },
 ]
-const serviceColumn = Object.fromEntries(COLUMNS.flatMap(c => c.services.map(s => [s.key, c.key])))
+const columnOfProfile = Object.fromEntries(COLUMNS.filter(c => c.profile).map(c => [c.profile, c]))
 let serviceStatus = {}
 
 const logOf = key => $(`#clog-${key}`)
-const gameLog = () => logOf('game')
+const hasLog = svc => svc.log !== false
+// The command log of a profile's container (its game log); unknown profiles land in the live one
+const consoleLog = profile => logOf((columnOfProfile[profile] || columnOfProfile.live).services[0].key)
 
 function readCollapsed() {
   try { return JSON.parse(localStorage.getItem('consoleCollapsed') || '{}') } catch { return {} }
@@ -27,53 +32,57 @@ function renderColumns() {
   const collapsed = readCollapsed()
   box.innerHTML = ''
   for (const col of COLUMNS) {
-    const c = el('section', { className: `ccol collapse-${col.collapse}` + (collapsed[col.key] ? ' collapsed' : ''), id: `ccol-${col.key}` })
+    const c = el('section', { className: 'ccol' + (col.collapse ? ` collapse-${col.collapse}` : '') + (col.collapse && collapsed[col.key] ? ' collapsed' : ''), id: `ccol-${col.key}` })
     const head = el('div', { className: 'ccol-head' })
     head.appendChild(el('span', { className: 'dot', id: `cdot-${col.key}` }))
     head.appendChild(el('span', { className: 'ccol-name' }, esc(col.label)))
     head.appendChild(el('span', { className: 'ccol-state', id: `cstate-${col.key}` }))
-    const fold = el('button', { className: 'ccol-fold', title: 'Collapse or expand' }, col.collapse === 'left' ? '&#9664;' : '&#9654;')
-    fold.addEventListener('click', () => {
-      const next = readCollapsed()
-      next[col.key] = !next[col.key]
-      try { localStorage.setItem('consoleCollapsed', JSON.stringify(next)) } catch {}
-      c.classList.toggle('collapsed', !!next[col.key])
-    })
-    head.appendChild(fold)
+    if (col.group) {
+      const all = el('button', { className: 'action small ccol-group', id: `ctoggle-${col.key}` }, 'Start all')
+      all.addEventListener('click', () => groupAction(col, serviceStatus[col.services[0].key] === 'SERVICE_RUNNING' ? 'stop' : 'start'))
+      head.appendChild(all)
+    }
+    if (col.collapse) {
+      const fold = el('button', { className: 'ccol-fold', title: 'Collapse or expand' }, col.collapse === 'left' ? '&#9664;' : '&#9654;')
+      fold.addEventListener('click', () => {
+        const next = readCollapsed()
+        next[col.key] = !next[col.key]
+        try { localStorage.setItem('consoleCollapsed', JSON.stringify(next)) } catch {}
+        c.classList.toggle('collapsed', !!next[col.key])
+      })
+      head.appendChild(fold)
+    }
     c.appendChild(head)
 
     const body = el('div', { className: 'ccol-body' })
     for (const svc of col.services) {
       const row = el('div', { className: 'csvc' })
       const line = el('div', { className: 'csvc-line' })
-      if (col.services.length > 1) {
-        line.appendChild(el('span', { className: 'dot', id: `sdot-${svc.key}` }))
-        line.appendChild(el('span', { className: 'csvc-name' }, esc(svc.label)))
-      }
+      line.appendChild(el('span', { className: 'dot', id: `sdot-${svc.key}` }))
+      line.appendChild(el('span', { className: 'csvc-name' }, esc(svc.label)))
       const toggle = el('button', { className: 'action small', id: `stoggle-${svc.key}` }, 'START')
-      toggle.addEventListener('click', () => serviceAction(svc, serviceStatus[svc.key] === 'SERVICE_RUNNING' ? 'stop' : 'start'))
+      toggle.addEventListener('click', () => serviceAction(col, svc, serviceStatus[svc.key] === 'SERVICE_RUNNING' ? 'stop' : 'start'))
       const restart = el('button', { className: 'action small' }, 'RESTART')
-      restart.addEventListener('click', () => serviceAction(svc, 'restart'))
+      restart.addEventListener('click', () => serviceAction(col, svc, 'restart'))
       line.appendChild(toggle)
       line.appendChild(restart)
       row.appendChild(line)
       row.appendChild(el('div', { className: 'csvc-stats', id: `sstats-${svc.key}` }))
       body.appendChild(row)
     }
-    if (col.services.length > 1) {
-      const views = el('div', { className: 'clog-views' })
-      col.services.forEach((svc, i) => {
-        const b = el('button', { className: 'subtab' + (i === 0 ? ' active' : '') }, esc(svc.label))
-        b.addEventListener('click', () => {
-          views.querySelectorAll('.subtab').forEach(x => x.classList.remove('active'))
-          b.classList.add('active')
-          col.services.forEach(s => { logOf(s.key).hidden = s.key !== svc.key })
-        })
-        views.appendChild(b)
+    const logged = col.services.filter(hasLog)
+    const views = el('div', { className: 'clog-views' })
+    logged.forEach((svc, i) => {
+      const b = el('button', { className: 'subtab' + (i === 0 ? ' active' : '') }, esc(svc.label))
+      b.addEventListener('click', () => {
+        views.querySelectorAll('.subtab').forEach(x => x.classList.remove('active'))
+        b.classList.add('active')
+        logged.forEach(s => { logOf(s.key).hidden = s.key !== svc.key })
       })
-      body.appendChild(views)
-    }
-    col.services.forEach((svc, i) => {
+      views.appendChild(b)
+    })
+    body.appendChild(views)
+    logged.forEach((svc, i) => {
       const pre = el('pre', { className: 'log clog', id: `clog-${svc.key}` })
       pre.dataset.max = String(CONSOLE_LINES)
       pre.hidden = i !== 0
@@ -88,10 +97,11 @@ function renderColumns() {
         e.preventDefault()
         const text = input.value.trim()
         if (!text) return
-        appendLog(gameLog(), `> ${text}\n`)
+        const log = consoleLog(col.profile)
+        appendLog(log, `> ${text}\n`)
         input.value = ''
-        const r = await window.mgr.consoleCommand(text)
-        if (!r.ok) appendLog(gameLog(), `[command not delivered] ${r.error}\n`)
+        const r = await window.mgr.consoleCommand(text, col.profile)
+        if (!r.ok) appendLog(log, `[command not delivered] ${r.error}\n`)
       })
       body.appendChild(form)
     }
@@ -100,18 +110,27 @@ function renderColumns() {
   }
 }
 
-async function serviceAction(svc, action) {
-  const log = logOf(svc.key)
+// Runs one service action with every console button disabled and its steps written to log
+async function runAction(log, title, run) {
   $$('#console-columns button.action').forEach(b => { b.disabled = true })
-  appendLog(log, `\n--- ${action} ${svc.label} ---\n`)
+  appendLog(log, `\n--- ${title} ---\n`)
   try {
-    const r = await window.mgr.serviceAction(svc.key, action)
+    const r = await run()
     if (r.steps) r.steps.forEach(x => appendLog(log, x + '\n'))
     if (r.error) appendLog(log, 'error: ' + r.error + '\n')
     if (r.status) paintConsoleStatus(r.status)
   } finally {
     $$('#console-columns button.action').forEach(b => { b.disabled = false })
   }
+}
+
+// A service without a log view (LiveKit) reports into its container's first log
+function serviceAction(col, svc, action) {
+  return runAction(logOf(svc.key) || logOf(col.services[0].key), `${action} ${svc.label}`, () => window.mgr.serviceAction(svc.key, action))
+}
+
+function groupAction(col, action) {
+  return runAction(logOf(col.services[0].key), `${action} all: ${col.label}`, () => window.mgr.servicesAction(action, col.group))
 }
 
 function paintConsoleStatus(st) {
@@ -121,9 +140,10 @@ function paintConsoleStatus(st) {
     const own = col.services[0].key
     $(`#cdot-${col.key}`).className = 'dot ' + (up(own) ? 'ok' : 'bad')
     $(`#cstate-${col.key}`).textContent = up(own) ? 'Online' : 'Offline'
+    const all = $(`#ctoggle-${col.key}`)
+    if (all) all.textContent = up(own) ? 'Stop all' : 'Start all'
     for (const svc of col.services) {
-      const dot = $(`#sdot-${svc.key}`)
-      if (dot) dot.className = 'dot ' + (up(svc.key) ? 'ok' : 'bad')
+      $(`#sdot-${svc.key}`).className = 'dot ' + (up(svc.key) ? 'ok' : 'bad')
       $(`#stoggle-${svc.key}`).textContent = up(svc.key) ? 'STOP' : 'START'
     }
   }
@@ -147,13 +167,12 @@ async function refreshStats() {
   }
 }
 
-window.mgr.onLog(d => {
-  const target = logOf(d.service) || logOf(serviceColumn[d.service]) || gameLog()
-  appendLog(target, d.text)
-})
+// Each service's log goes to its own view; a service without one (LiveKit) is not shown
+window.mgr.onLog(d => appendLog(logOf(d.service), d.text))
 window.mgr.onConsoleRelay(d => {
-  if (d.kind === 'status') appendLog(gameLog(), `\n[console] ${d.text}\n`)
-  else appendLog(gameLog(), d.text.endsWith('\n') ? d.text : d.text + '\n')
+  const log = consoleLog(d.profile)
+  if (d.kind === 'status') appendLog(log, `\n[console] ${d.text}\n`)
+  else appendLog(log, d.text.endsWith('\n') ? d.text : d.text + '\n')
 })
 
 renderColumns()
@@ -161,4 +180,6 @@ refreshConsoleStatus()
 setInterval(refreshConsoleStatus, STATUS_MS)
 setInterval(refreshStats, STATS_MS)
 document.addEventListener('tab-shown', e => { if (e.detail === 'console') refreshStats() })
-appendLog(gameLog(), "Type 'help' for manager commands (services, builds); anything else goes to the game console.\n")
+for (const col of COLUMNS.filter(c => c.input)) {
+  appendLog(consoleLog(col.profile), `Type 'help' for manager commands (services, builds); anything else goes to the ${col.label} game console.\n`)
+}

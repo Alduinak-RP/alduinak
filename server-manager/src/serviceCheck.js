@@ -20,8 +20,8 @@ function nssm(verb, name, ...rest) {
 }
 
 // nssm reports stopped for a server started by hand, but its process still holds the native module open
-function nativeModuleLocked() {
-  const file = path.join(config.paths.serverDir, 'scam_native.node')
+function nativeModuleLocked(profile = config.profiles.live) {
+  const file = path.join(profile.serverDir, 'scam_native.node')
   if (!fs.existsSync(file)) return null
   try { fs.closeSync(fs.openSync(file, 'r+')); return null }
   catch (err) { return LOCK_CODES.includes(err.code) ? 'a game server process still holds scam_native.node (started outside nssm?), stop it first' : null }
@@ -47,10 +47,11 @@ async function serviceStatus(key) {
 }
 
 // A running game server re-upserts every loaded form and rewrites its registries
-async function gameServerBlocker() {
-  const { name, status } = await serviceStatus('game')
+async function gameServerBlocker(profileKey = 'live') {
+  const profile = config.profiles[profileKey]
+  const { name, status } = await serviceStatus(profile.services.game)
   if (status !== 'SERVICE_STOPPED') return `${name} is ${status || 'in an unknown state (neither nssm nor sc could query it)'}, stop it first`
-  return nativeModuleLocked()
+  return nativeModuleLocked(profile)
 }
 
 module.exports = { LOCK_CODES, nssm, nativeModuleLocked, serviceStatus, gameServerBlocker }

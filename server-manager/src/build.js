@@ -19,11 +19,15 @@ function extensionsManifest(files) {
   return { sha256: sha256(files.map(f => `${f.sha256}  ${f.name}\n`).join('')), files }
 }
 
+const fwd = p => String(p).replace(/\\/g, '/')
+
 // Most Build buttons are pure JS/packaging: bundle TypeScript, build the launcher, zip client files.
 // buildNative() compiles the C++ locally with CMake + MSVC (needs the VS 2022 C++ workload); the CI Rebuild button builds the same on GitHub.
+// Every build lands in the profile's dirs (serverDir, clientOut); the default is config.buildProfile, the test server.
 class Builder {
-  constructor(log) {
+  constructor(log, profile = config.profiles[config.buildProfile]) {
     this.log = log || (() => {})
+    this.profile = profile
   }
 
   line(text) { this.log(text.endsWith('\n') ? text : text + '\n') }
@@ -197,11 +201,11 @@ class Builder {
   }
 
   // Configure + build the C++ with CMake/MSVC, same flags as the "Dist Windows Flatrim" CI workflow (.github/actions/pr_base).
-  // The repo pins the CMake binary dir to <repo>/build - the same tree the live
-  // deploy uses - so artifacts land in build/dist directly, no copy step.
+  // The repo pins the CMake binary dir to <repo>/build; SKYMP_DIST_SERVER_DIR and SKYMP_DIST_CLIENT_DIR
+  // point the artifacts at the profile's dirs, so they land there directly, no copy step.
   // opts.targets limits the build (e.g. ['skymp5-server']); omit for everything.
   async buildNative(opts = {}) {
-    this.banner('Native (C++) build')
+    this.banner(`Native (C++) build for the ${this.profile.label}`)
     if (!isWin) return { ok: false, error: 'native build is Windows-only' }
 
     const tc = this.checkNativeToolchain()
@@ -218,15 +222,16 @@ class Builder {
     const buildDir = path.join(config.repoRoot, 'build')
     fs.mkdirSync(buildDir, { recursive: true })
 
-    // The linker writes scam_native.node straight into the live dist/server;
+    // The linker writes scam_native.node straight into the profile's server dir;
     // fail before the long build instead of at the very end.
     const serverOnly = Array.isArray(opts.targets) && opts.targets.every(t => t === 'skymp5-server')
     const buildsServer = !Array.isArray(opts.targets) || opts.targets.includes('skymp5-server')
+    const { serverDir, clientOut } = this.profile
     if (buildsServer) {
-      const nodeBin = path.join(buildDir, 'dist', 'server', 'scam_native.node')
+      const nodeBin = path.join(serverDir, 'scam_native.node')
       if (fs.existsSync(nodeBin)) {
         try { fs.closeSync(fs.openSync(nodeBin, 'r+')) }
-        catch { return { ok: false, error: 'scam_native.node is locked - stop the game service before a server native build' } }
+        catch { return { ok: false, error: `scam_native.node is locked - stop the ${this.profile.label} game service before a server native build` } }
       }
     }
 
@@ -261,16 +266,18 @@ class Builder {
       '-DDOWNLOAD_SKYRIM_DATA=OFF',
       `-DBUILD_UNIT_TESTS=${opts.unitTests ? 'ON' : 'OFF'}`,
       `-DSKYRIM_VR=${opts.skyrimVr ? 'ON' : 'OFF'}`,
+      `-DSKYMP_DIST_SERVER_DIR=${fwd(serverDir)}`,
+      `-DSKYMP_DIST_CLIENT_DIR=${fwd(clientOut)}`,
     ]
     if (config.gameRoot && fs.existsSync(config.gameRoot)) {
-      args.push(`-DSKYRIM_DIR=${config.gameRoot.replace(/\\/g, '/')}`)
+      args.push(`-DSKYRIM_DIR=${fwd(config.gameRoot)}`)
     }
 
     // The client TS bundle feeds native packaging; CI builds it before configuring (pr_base "Early build skymp5-client").
     if (!serverOnly) {
       const clientDeps = await this.ensureDeps(config.paths.client, 'client')
       if (!clientDeps.ok) return clientDeps
-      const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle')
+      const early = await this.run(this.packageManager(), ['run', 'build'], config.paths.client, 'client: build bundle', this.clientBundleEnv())
       if (!early.ok) return { ok: false, error: 'client bundle build failed - see log' }
     }
 
@@ -284,10 +291,10 @@ class Builder {
 
     // The server post-build step regenerates server-settings.json with
     // upstream defaults (it force-sets offlineMode and master), so snapshot
-    // the live files and put them back afterwards.
-    // With BUILD_GAMEMODE off, the ALL build also empties gamemode.js through skymp5-functions-lib.
+    // the deployed files and put them back afterwards.
+    // With BUILD_GAMEMODE off, the ALL build also touches gamemode.js through skymp5-functions-lib.
     const guarded = ['server-settings.json', 'launch_server.bat', 'gamemode.js'].map(name => {
-      const file = path.join(buildDir, 'dist', 'server', name)
+      const file = path.join(serverDir, name)
       let before = null
       try { before = fs.readFileSync(file) } catch {}
       return { file, before }
@@ -304,28 +311,24 @@ class Builder {
       try { after = fs.readFileSync(g.file) } catch {}
       if (!after || !after.equals(g.before)) {
         fs.writeFileSync(g.file, g.before)
-        this.line(`[native] restored live ${path.basename(g.file)} (the build regenerates it with upstream defaults)`)
+        this.line(`[native] restored ${path.basename(g.file)} (the build regenerates it with upstream defaults)`)
       }
     }
     if (!build.ok) return { ok: false, error: 'cmake build failed - see log' }
 
-    const outDir = path.join(buildDir, 'dist')
     this.line('')
     const expected = []
-    if (buildsServer) expected.push('server/scam_native.node')
-    if (!serverOnly) expected.push('client/Data/SKSE/Plugins/SkyrimPlatform.dll')
-    for (const rel of expected) {
-      const p = path.join(outDir, rel)
-      this.line(fs.existsSync(p) ? `✓ ${rel}` : `MISSING ${rel}`)
-    }
-    this.line(`\n✓ Native build complete; artifacts are live in ${outDir}`)
-    return { ok: true, out: outDir }
+    if (buildsServer) expected.push(path.join(serverDir, 'scam_native.node'))
+    if (!serverOnly) expected.push(path.join(clientOut, 'Data', 'SKSE', 'Plugins', 'SkyrimPlatform.dll'))
+    for (const p of expected) this.line(fs.existsSync(p) ? `✓ ${p}` : `MISSING ${p}`)
+    this.line(`\n✓ Native build complete for the ${this.profile.label}: server ${serverDir}, client ${clientOut}`)
+    return { ok: true, out: { serverDir, clientOut } }
   }
 
-  // Purges build/dist/server except for settings, world, and the CI-built artifacts.
+  // Purges the profile's server dir except for settings, world, and the CI-built artifacts.
   pruneServerDeploy() {
-    const deployDir = path.join(config.buildDir, 'dist', 'server')
-    const keep = new Set(['world', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'starter-grants.json', 'zone-spawns.json', 'companions.json', 'housing.json', 'pets.json', 'npc-spawns.json', 'writings', 'faction-access.json', 'jobs.json', 'alert-keywords.json', 'gathering-picks.json', 'weather-state.json', 'weather-regions.json'])
+    const deployDir = this.profile.serverDir
+    const keep = new Set(['world', 'gamemode.js', 'gamemode_extensions', 'plugins', 'dist_back', 'scam_native.node', 'data', 'sign-gamemode.js', 'signing-private.pem', 'install-services.bat', 'launch_server.bat', 'readme.md', 'starter-grants.json', 'zone-spawns.json', 'companions.json', 'housing.json', 'pets.json', 'npc-spawns.json', 'writings', 'faction-access.json', 'jobs.json', 'alert-keywords.json', 'gathering-picks.json', 'weather-state.json', 'weather-regions.json', 'bodies.json'])
     for (const extra of (process.env.ALDUINAK_SERVER_KEEP || '').split(',')) {
       const n = extra.trim().toLowerCase(); if (n) keep.add(n)
     }
@@ -341,12 +344,13 @@ class Builder {
     }
   }
 
-  // GAMEMODE: concatenate build/dist/server/gamemode_extensions/*.js (sorted by
+  // GAMEMODE: concatenate <serverDir>/gamemode_extensions/*.js (sorted by
   // filename) into gamemode.js. The game server hot-reloads the result within a
   // second, so this needs no service restart.
   async buildGamemode() {
-    this.banner('Gamemode')
-    const serverDir = config.paths.serverDir
+    this.banner(`Gamemode (${this.profile.label})`)
+    const serverDir = this.profile.serverDir
+    if (!fs.existsSync(serverDir)) return { ok: false, error: `${this.profile.label} dir not found: ${serverDir} (run deploy/testserver/setup-testserver.ps1 first)` }
     const extDir = path.join(serverDir, 'gamemode_extensions')
     const target = path.join(serverDir, 'gamemode.js')
     let parts = []
@@ -388,16 +392,33 @@ class Builder {
     return { ok: true, extensions }
   }
 
-  // GAME SERVER: bundle the TypeScript into build/dist/server/dist_back. The native
-  // scam_native.node comes prebuilt from CI (the "server-dist" artifact); drop it
-  // next to dist_back and it's preserved by the prune step. Does not restart the
-  // service.
+  // The package.json build-ts script bundles into the live dist, so its two steps run here with the profile's outfile
+  async buildServerTs(dir) {
+    const script = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).scripts['build-ts'] || ''
+    const [tsc, esbuild] = script.split('&&').map(s => s.trim().split(/\s+/)).filter(a => a[0])
+    if (!tsc || !esbuild || !esbuild.some(a => a.startsWith('--outfile='))) return { ok: false, error: 'skymp5-server/package.json has no build-ts script of the form "tsc ... && esbuild ... --outfile=..."' }
+    const outfile = path.join(this.profile.serverDir, 'dist_back', 'skymp5-server.js')
+    const bin = name => path.join(dir, 'node_modules', '.bin', isWin ? `${name}.cmd` : name)
+    // shell:true on Windows (.cmd shims), so a spaced outfile path is quoted here
+    const quote = a => (/\s/.test(a) ? `"${a}"` : a)
+    const t = await this.run(bin(tsc[0]), tsc.slice(1), dir, 'game server: ' + tsc.join(' '))
+    if (!t.ok) return { ok: false, error: 'tsc failed - TypeScript errors stop the build (see log)' }
+    const args = esbuild.slice(1).map(a => (a.startsWith('--outfile=') ? quote(`--outfile=${outfile}`) : a))
+    const e = await this.run(bin(esbuild[0]), args, dir, `game server: esbuild -> ${outfile}`)
+    return e.ok ? { ok: true } : { ok: false, error: 'esbuild failed (see log)' }
+  }
+
+  // GAME SERVER: bundle the TypeScript into <serverDir>/dist_back. The native
+  // scam_native.node comes from CI (the "server-dist" artifact) or Run CMake first;
+  // it sits next to dist_back and is preserved by the prune step. Does not restart the service.
   async buildServer(opts = {}) {
-    this.banner('Game server')
+    const { label, serverDir } = this.profile
+    this.banner(`Game server (${label})`)
     const pre = await this.ensurePrereqs()
     if (!pre.ok) return pre
+    if (!fs.existsSync(serverDir)) return { ok: false, error: `${label} dir not found: ${serverDir} (run deploy/testserver/setup-testserver.ps1 first)` }
     if (opts.native) {
-      // Targeted: only the server native module; its output lands in dist/server directly
+      // Targeted: only the server native module; its output lands in the profile's server dir directly
       const nat = await this.buildNative({ targets: ['skymp5-server'] })
       if (!nat.ok) return nat
     }
@@ -406,18 +427,17 @@ class Builder {
     if (!dep.ok) return dep
 
     // TS bundle, safe to overwrite even while the server runs (read at startup).
-    const pm = this.packageManager()
-    const r = await this.run(pm, pm === 'yarn' ? ['build-ts'] : ['run', 'build-ts'], dir, 'game server: build-ts')
-    if (!r.ok) return { ok: false, error: 'build-ts failed - TypeScript errors stop the build (see log)' }
+    const r = await this.buildServerTs(dir)
+    if (!r.ok) return r
 
     const gm = await this.buildGamemode()
     if (!gm.ok) return gm
 
     this.pruneServerDeploy()
-    if (!fs.existsSync(path.join(config.buildDir, 'dist', 'server', 'scam_native.node'))) {
-      this.line('\n[server] note: scam_native.node is not in build/dist/server - copy it from the CI "server-dist" artifact so the game server can start.')
+    if (!fs.existsSync(path.join(serverDir, 'scam_native.node'))) {
+      this.line(`\n[server] note: scam_native.node is not in ${serverDir} - copy it from the CI "server-dist" artifact or tick Run CMake first so the game server can start.`)
     }
-    this.line('\n✓ Game server TS bundle built into build/dist/server (native scam_native.node comes from CI).')
+    this.line(`\n✓ Game server TS bundle built into ${serverDir}; the ${label} hot-reloads gamemode.js, restart it for dist_back or scam_native.node.`)
     return { ok: true, extensions: gm.extensions }
   }
 
@@ -451,13 +471,18 @@ class Builder {
     return { ok: true, out: config.paths.launcherOut }
   }
 
-  // FRONT-END: rebuild the chat/UI webpack bundle into build/dist/client. webpack
+  // The client webpack config writes skymp5-client.js where ALDUINAK_CLIENT_OUT points
+  clientBundleEnv() {
+    return { ALDUINAK_CLIENT_OUT: path.join(this.profile.clientOut, 'Data', 'Platform', 'Plugins') }
+  }
+
+  // FRONT-END: rebuild the chat/UI webpack bundle into the profile's client dir. webpack
   // reads skymp5-front/config.js (gitignored) for its output path, so we write it
   // to target the client dist's Data/Platform/UI folder.
   async buildFront() {
     this.banner('Front-end UI')
     const dir = config.paths.front
-    const uiOut = path.join(config.paths.clientOut, 'Data', 'Platform', 'UI')
+    const uiOut = path.join(this.profile.clientOut, 'Data', 'Platform', 'UI')
     try {
       fs.writeFileSync(path.join(dir, 'config.js'), `module.exports = { outputPath: ${JSON.stringify(uiOut)} };\n`)
     } catch (err) {
@@ -485,36 +510,55 @@ class Builder {
     return { ok: true }
   }
 
-  // CLIENT LOGIC: rebuild skymp5-client.js into build/dist/client. Its webpack
-  // config already targets Data/Platform/Plugins, so no output wiring is needed.
+  // CLIENT LOGIC: rebuild skymp5-client.js into the profile's client dir (Data/Platform/Plugins)
   async buildClientLogic() {
     this.banner('Client logic (skymp5-client.js)')
     const dir = config.paths.client
     const dep = await this.ensureDeps(dir, 'client logic')
     if (!dep.ok) return dep
     const pm = this.packageManager()
-    const r = await this.run(pm, pm === 'yarn' ? ['build'] : ['run', 'build'], dir, 'client logic: webpack build')
+    const env = this.clientBundleEnv()
+    const r = await this.run(pm, pm === 'yarn' ? ['build'] : ['run', 'build'], dir, 'client logic: webpack build', env)
     if (!r.ok) return { ok: false, error: 'client logic build failed (see log)' }
-    this.line('\n✓ skymp5-client.js built into build/dist/client/Data/Platform/Plugins.')
+    this.line(`\n✓ skymp5-client.js built into ${env.ALDUINAK_CLIENT_OUT}.`)
     return { ok: true }
   }
 
-  // CLIENT: rebuild the client-side JS (front-end UI + skymp5-client.js) into build/dist/client.
+  // A client dir without Data starts as a copy of the live one, so the CI dlls and fonts are in place before the JS lands
+  seedClientDir() {
+    const { clientOut } = this.profile
+    const live = config.profiles.live.clientOut
+    if (fs.existsSync(path.join(clientOut, 'Data')) || path.resolve(clientOut) === path.resolve(live)) return { ok: true }
+    if (!fs.existsSync(path.join(live, 'Data'))) {
+      return { ok: false, error: `client build output not found at ${path.join(clientOut, 'Data')} and nothing to seed it from (${live}) - download the CI "dist" artifact (PR Windows Flatrim workflow) and extract it there, then Build again.` }
+    }
+    this.line(`[client] ${clientOut} has no Data folder yet, seeding it once from ${live}…`)
+    try { fs.cpSync(live, clientOut, { recursive: true }) }
+    catch (err) { return { ok: false, error: `could not seed ${clientOut} from ${live}: ${err.message}` } }
+    this.line('[client] seeded.')
+    return { ok: true }
+  }
+
+  // CLIENT: rebuild the client-side JS (front-end UI + skymp5-client.js) into the profile's client dir.
   // Players get it through the Alduinak Client Files mod; the native .dll binaries come from CI or the CMake build.
   async buildClient(opts = {}) {
-    this.banner('Client')
+    const { label, clientOut } = this.profile
+    this.banner(`Client (${label})`)
     const pre = await this.ensurePrereqs()
     if (!pre.ok) return pre
 
+    const seed = this.seedClientDir()
+    if (!seed.ok) return seed
+
     if (opts.native) {
-      // Targeted: the platform DLLs + client bundle, written into dist/client directly
+      // Targeted: the platform DLLs + client bundle, written into the profile's client dir directly
       const nat = await this.buildNative({ targets: ['skymp5-client', 'skyrim-platform'] })
       if (!nat.ok) return nat
     }
 
-    const clientData = path.join(config.paths.clientOut, 'Data')
+    const clientData = path.join(clientOut, 'Data')
     if (!fs.existsSync(clientData)) {
-      return { ok: false, error: `client build output not found at ${clientData} - download the CI "dist" artifact (PR Windows Flatrim workflow) and extract it into build/dist/client, then Build again.` }
+      return { ok: false, error: `client build output not found at ${clientData} - download the CI "dist" artifact (PR Windows Flatrim workflow) and extract it into ${clientOut}, then Build again.` }
     }
 
     // Rebuild the client-side JS before packaging so the launcher ships the latest
@@ -527,8 +571,8 @@ class Builder {
     const missing = clientPackage.KEY_FILES.filter(rel => !fs.existsSync(path.join(clientData, rel)))
     if (missing.length) return { ok: false, error: `client files missing from ${clientData}: ${missing.join(', ')} - rebuild the client (Native for a dll)` }
     this.line(`
-✓ Client built into ${config.paths.clientOut}. Copy its Data folder into the Alduinak Client Files mod, upload it to Nexus, then Compile Manifest.`)
-    return { ok: true, out: config.paths.clientOut }
+✓ Client built into ${clientOut}. Package ${clientData} as the Alduinak Client Files mod, upload it to Nexus, install it into MO2 (${path.join(config.mo2Root, 'mods', 'Alduinak Client Files')}), then press Update Modlist.`)
+    return { ok: true, out: clientOut }
   }
 }
 

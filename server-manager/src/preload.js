@@ -6,9 +6,9 @@ contextBridge.exposeInMainWorld('mgr', {
   // Console / services
   servicesStatus:  ()             => ipcRenderer.invoke('services:status'),
   serviceAction:   (key, action)  => ipcRenderer.invoke('service:action', key, action),
-  servicesAction:  (action)       => ipcRenderer.invoke('services:action', action),
+  servicesAction:  (action, group) => ipcRenderer.invoke('services:action', action, group),
   servicesStats:   ()             => ipcRenderer.invoke('services:stats'),
-  consoleCommand:  (text)         => ipcRenderer.invoke('console:command', text),
+  consoleCommand:  (text, profile) => ipcRenderer.invoke('console:command', text, profile),
   onLog:           (cb)           => ipcRenderer.on('log:data', (_e, d) => cb(d)),
   onConsoleRelay:  (cb)           => ipcRenderer.on('console:relay', (_e, d) => cb(d)),
   onBuildLog:      (cb)           => ipcRenderer.on('build:log', (_e, t) => cb(t)),
@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('mgr', {
   serverSetVersion:   (v)  => ipcRenderer.invoke('server:setVersion', v),
   versionsPublished:  ()   => ipcRenderer.invoke('versions:published'),
   versionsPublish:    (k)  => ipcRenderer.invoke('versions:publish', k),
+  versionsSet:        (k, v) => ipcRenderer.invoke('versions:set', k, v),
+  migrateServer:      ()   => ipcRenderer.invoke('migrate:server'),
+  migrateSettings:    ()   => ipcRenderer.invoke('migrate:settings'),
+  migrateClient:      ()   => ipcRenderer.invoke('migrate:client'),
 
   // Players tab
   playersList:    ()              => ipcRenderer.invoke('players:list'),
@@ -59,10 +63,10 @@ contextBridge.exposeInMainWorld('mgr', {
   newsDelete:   (i)         => ipcRenderer.invoke('news:delete', i),
   newsAddImage: ()          => ipcRenderer.invoke('news:addImage'),
 
-  // Build tab > Client > Update modlist
-  modlistRun:            () => ipcRenderer.invoke('modlist:run'),
-  modlistDiff:           () => ipcRenderer.invoke('modlist:diff'),
-  modlistPurgeRestore:   () => ipcRenderer.invoke('modlist:purgeRestore'),
+  // Build tab > Client > Update modlist, per game server profile ('live' | 'test')
+  modlistRun:            (profile) => ipcRenderer.invoke('modlist:run', profile),
+  modlistDiff:           (profile) => ipcRenderer.invoke('modlist:diff', profile),
+  modlistPurgeRestore:   (profile) => ipcRenderer.invoke('modlist:purgeRestore', profile),
 
   // Security tab
   securityUnread:   ()     => ipcRenderer.invoke('security:unread'),

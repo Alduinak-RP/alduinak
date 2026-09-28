@@ -109,6 +109,8 @@ let SCHEMA = { serverSettings: [], backendEnv: [] }
 let settingsKey = 'serverSettings'
 let currentValues = {}
 let settingsMtimeMs = null   // server-settings.json mtime at load; the save refuses when it changed since
+// Both server-settings.json subtabs (live and test) share the serverSettings schema
+const schemaKey = () => settingsKey === 'testServerSettings' ? 'serverSettings' : settingsKey
 
 window.mgr.settingsSchema().then(s => { SCHEMA = s; loadSettings() })
 
@@ -137,7 +139,7 @@ async function loadSettings() {
 function renderSettingsForm(extra) {
   const form = $('#settings-form')
   form.innerHTML = ''
-  const fields = SCHEMA[settingsKey] || []
+  const fields = SCHEMA[schemaKey()] || []
   const groups = []
   const byGroup = {}
   for (const f of fields) {
@@ -153,7 +155,7 @@ function renderSettingsForm(extra) {
   }
 
   // server-settings.json
-  if (settingsKey === 'serverSettings') {
+  if (schemaKey() === 'serverSettings') {
     const fs = el('fieldset', { className: 'sgroup' })
     fs.appendChild(el('legend', {}, 'Other (raw JSON)'))
     const wrap = el('div', { className: 'sfield wide' })
@@ -217,7 +219,7 @@ function renderField(f) {
 
 function collectSettings() {
   const values = {}
-  for (const f of (SCHEMA[settingsKey] || [])) {
+  for (const f of (SCHEMA[schemaKey()] || [])) {
     const id = 'set-' + f.key
     if (f.type === 'bool') {
       const checked = document.querySelector(`input[name="${id}"]:checked`)
@@ -233,7 +235,7 @@ function collectSettings() {
 $('#settings-reload').addEventListener('click', loadSettings)
 $('#settings-save').addEventListener('click', async () => {
   const values = collectSettings()
-  const extra = settingsKey === 'serverSettings' ? ($('#settings-extra')?.value || '') : undefined
+  const extra = schemaKey() === 'serverSettings' ? ($('#settings-extra')?.value || '') : undefined
   $('#settings-status').textContent = 'saving…'
   const r = await window.mgr.settingsWrite(settingsKey, values, extra, settingsMtimeMs)
   if (r.ok && r.mtimeMs !== undefined) settingsMtimeMs = r.mtimeMs

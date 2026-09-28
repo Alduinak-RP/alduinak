@@ -5,14 +5,19 @@
 const WebSocket = require('ws')
 const config = require('./config')
 
-// onStatus(text) reports connection changes, onOutput(text) receives console output that no pending query consumed
-function createConsoleRelay({ onStatus = () => {}, onOutput = () => {} } = {}) {
+// onStatus(text) reports connection changes, onOutput(text) receives console output that no pending query consumed; port picks the relay (live by default)
+function createConsoleRelay({ onStatus = () => {}, onOutput = () => {}, port = config.relay.port } = {}) {
   return {
     ws: null, connected: false, timer: null, pending: new Map(),
     connect() {
       if (this.ws) return
+      // A bad port never falls back to another relay: that console would drive the wrong game
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        onStatus(`relay port ${port} is not usable (WS_PORT and WS_PORT_TEST in the backend .env must be distinct integers); console offline until it is fixed and the manager restarted`)
+        return
+      }
       let ws
-      try { ws = new WebSocket(`ws://127.0.0.1:${config.relay.port}`) }
+      try { ws = new WebSocket(`ws://127.0.0.1:${port}`) }
       catch { return this.scheduleReconnect() }
       this.ws = ws
       ws.on('open', () => ws.send(JSON.stringify({ type: 'auth', role: 'console', secret: config.relay.secret })))

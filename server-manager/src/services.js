@@ -9,10 +9,19 @@ const modsync = require('./modsync')
 const playtime = require('./playtime')
 const { nssm, nativeModuleLocked } = require('./serviceCheck')
 
-// Host callbacks: onRotated(file) after a log is archived, status(text) for warnings
+// Host callbacks: onRotated(file) after a log is archived, status(text, profileKey) for warnings
 const hooks = { onRotated: () => {}, status: () => {} }
 
 const serviceByKey = Object.fromEntries(config.services.map(s => [s.key, s]))
+const LIVE = config.profiles.live
+
+// The profile a game, MongoDB or LiveKit service belongs to; undefined for the backend group
+function profileOf(svc) {
+  return Object.values(config.profiles).find(p => Object.values(p.services).includes(svc.key))
+}
+
+// A profile's manifest set under the backend data dir
+const dataPaths = modsync.pathsFor
 
 // nssm start/stop returns before the service settles (exiting non-zero on the
 // transient *_PENDING states), so poll `nssm status` until the target state.
@@ -44,30 +53,39 @@ async function probeService(svc) {
 
 async function serviceName(svc) { return (await probeService(svc)).name }
 
-async function gameStatus() { return nssm('status', await serviceName(serviceByKey.game)) }
+async function gameStatus(profile = LIVE) { return nssm('status', await serviceName(serviceByKey[profile.services.game])) }
 
 // Lenient read for the players and log tabs: {} when the file is missing or invalid
-function readServerSettings() {
-  try { return modsync.readSettingsFile(config.paths.serverSettings).settings } catch { return {} }
+function readServerSettings(profile = LIVE) {
+  try { return modsync.readSettingsFile(profile.serverSettings).settings } catch { return {} }
 }
 
 // Until the purge ran, the database still holds ids encoded under the old load order
-function purgePending() {
+function purgePending(profile = LIVE) {
   let diff = null
-  try { diff = modsync.readDiff() } catch {}
+  try { diff = modsync.readDiff(dataPaths(profile)) } catch {}
   if (!modsync.purgePending(diff)) return null
   return 'refused: a MongoDB purge is pending for the new load order, run Purge MongoDB (or Restore last purge) first'
 }
 
+// The backend and the game servers hold their MongoDB open; stopping it under them loses writes
+const MONGO_USERS = { mongo: ['backend', 'game'], 'test-mongo': ['test-game'] }
+
+// Installed and not stopped (running or in a pending state)
+async function isActive(key) {
+  const status = await nssm('status', await serviceName(serviceByKey[key]))
+  return /^SERVICE_/.test(status) && status !== 'SERVICE_STOPPED'
+}
+
 async function act(svc, verb) {
-  // The backend and the game server hold MongoDB open; stopping it under them loses writes
-  if (svc.key === 'mongo' && verb === 'stop') {
-    for (const dep of ['backend', 'game']) {
-      if (await nssm('status', await serviceName(serviceByKey[dep])) !== 'SERVICE_STOPPED') return { ok: false, text: `refused: stop ${serviceByKey[dep].label} first` }
+  if (verb === 'stop') {
+    for (const dep of MONGO_USERS[svc.key] || []) {
+      if (await isActive(dep)) return { ok: false, text: `refused: stop ${serviceByKey[dep].label} first` }
     }
   }
-  if (svc.key === 'game' && verb === 'start') {
-    const pending = purgePending()
+  const profile = profileOf(svc)
+  if (verb === 'start' && profile && svc.key === profile.services.game) {
+    const pending = purgePending(profile)
     if (pending) return { ok: false, text: pending }
   }
   const name = await serviceName(svc)
@@ -90,17 +108,14 @@ function datestamp(d) {
   return `${monthDirName(d)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`
 }
 
-// chat.log lives wherever the gamemode writes it; mirror its resolution chain
-// (env var, then the optional logDir key in server-settings.json, then default).
-function chatLogDir() {
-  return process.env.ALDUINAK_LOG_DIR || readServerSettings().logDir || 'C:\\logs'
-}
+// chat.log lives wherever that profile's gamemode writes it
+function chatLogDir(profile = LIVE) { return profile.logDir }
 
 const GAME_LOG_FILES = ['chat.log', 'admin.log', 'pvp.log', 'pk.log', 'trading.log', 'bounty.log', 'writing.log']
 // The backend opens these per write, so they can be archived while it runs
 const AUDIT_LOG_FILES = ['ban.log', 'faction.log']
 
-// nssm stdout/stderr files plus, for the game server, the gamemode and backend audit logs
+// nssm stdout/stderr files plus, for a game server, its gamemode logs and (live only) the backend audit logs
 async function serviceLogFiles(svc) {
   const name = await serviceName(svc)
   const files = []
@@ -109,18 +124,19 @@ async function serviceLogFiles(svc) {
     if (p) files.push(p)
   }
   files.push(...(svc.logFiles || []))
-  if (svc.key === 'game') {
+  const profile = profileOf(svc)
+  if (profile && svc.key === profile.services.game) {
     for (const f of GAME_LOG_FILES) {
-      files.push(path.join(chatLogDir(), f))
+      files.push(path.join(chatLogDir(profile), f))
     }
-    for (const f of AUDIT_LOG_FILES) files.push(path.join(config.auditLogDir, f))
+    if (profile === LIVE) for (const f of AUDIT_LOG_FILES) files.push(path.join(config.auditLogDir, f))
   }
   return files
 }
 
 // Rename the active log with a datestamp and file it under <dir>\YYYY-MM
 // (month taken from the file's last write, so a December log lands in December).
-function archiveLogFile(file) {
+function archiveLogFile(file, profileKey) {
   let stat
   try { stat = fs.statSync(file) } catch { return }
   if (!stat.isFile() || stat.size === 0) return
@@ -132,7 +148,7 @@ function archiveLogFile(file) {
     fs.renameSync(file, path.join(monthDir, `${base}-${datestamp(stat.mtime)}${ext}`))
     hooks.onRotated(file) // fresh file: restart the tail from the top
   } catch (err) {
-    hooks.status(`log rotation skipped for ${file}: ${err.message}`)
+    hooks.status(`log rotation skipped for ${file}: ${err.message}`, profileKey)
   }
 }
 
@@ -168,16 +184,18 @@ async function countPlaytime(file) {
   try { pieces = fs.readdirSync(dir).filter(e => e.startsWith(base + '-') && e.endsWith(ext) && /^\d/.test(e.slice(base.length + 1))) } catch {}
   for (const f of [...pieces.map(e => path.join(dir, e)), file]) {
     try { await playtime.addFromLog(f, readServerSettings()) }
-    catch (err) { hooks.status(`hours played not counted from ${f}: ${err.message}`) }
+    catch (err) { hooks.status(`hours played not counted from ${f}: ${err.message}`, LIVE.key) }
   }
 }
 
+// Hours played count only for the live game
 async function rotateServiceLogs(svc) {
   const files = await serviceLogFiles(svc)
-  if (svc.key === 'game' && files[0]) await countPlaytime(files[0])
+  const profileKey = profileOf(svc)?.key
+  if (svc.key === LIVE.services.game && files[0]) await countPlaytime(files[0])
   for (const file of files) {
     sweepRotatedLogs(file)
-    archiveLogFile(file)
+    archiveLogFile(file, profileKey)
   }
 }
 
@@ -200,13 +218,22 @@ async function doServiceAction(key, action) {
   return { ok, steps, status: await statusAll() }
 }
 
-// Act on every service in order (stop order reversed) - the "all" controls.
-async function doServicesAction(action) {
+// Act on every service in order (stop order reversed), or only on one group's services.
+// A service that is not installed is skipped, so a missing test profile never fails the live ones.
+async function doServicesAction(action, group) {
+  if (group && !config.groups.some(g => g.key === group)) return { ok: false, error: `unknown group ${group}` }
+  const list = config.services.filter(s => !group || s.group === group)
+  const status = await statusAll()
   const steps = []
   let ok = true
-  const step = async (s, verb) => { const r = await act(s, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`) }
-  const doStop  = async () => { for (const s of [...config.services].reverse()) await step(s, 'stop') }
-  const doStart = async () => { for (const s of config.services)                await step(s, 'start') }
+  const step = async (s, verb) => {
+    if (!/^SERVICE_/.test(status[s.key] || '')) { steps.push(`${s.label}: not installed, skipped`); return }
+    // A group stop of the main server leaves MongoDB to the backend that still uses it
+    if (verb === 'stop' && group === 'main' && s.key === 'mongo' && await isActive('backend')) { steps.push(`${s.label}: kept running, Backend uses it`); return }
+    const r = await act(s, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`)
+  }
+  const doStop  = async () => { for (const s of [...list].reverse()) await step(s, 'stop') }
+  const doStart = async () => { for (const s of list)                await step(s, 'start') }
   if (action === 'stop') await doStop()
   else if (action === 'start') await doStart()
   else if (action === 'restart') { await doStop(); await doStart() }
@@ -236,19 +263,20 @@ async function discoverLogTargets() {
   }
   // Fallbacks
   const fallbacks = [
-    ['gameserver.log', 'Game', 'game'], ['gameserver-err.log', 'Game (err)', 'game'],
-    ['backend.log', 'Backend', 'backend'], ['backend-err.log', 'Backend (err)', 'backend'],
+    [config.logDir, 'gameserver.log', 'Game', 'game'], [config.logDir, 'gameserver-err.log', 'Game (err)', 'game'],
+    [config.logDir, 'backend.log', 'Backend', 'backend'], [config.logDir, 'backend-err.log', 'Backend (err)', 'backend'],
+    [config.profiles.test.logDir, 'gameserver.log', 'Game', 'test-game'], [config.profiles.test.logDir, 'gameserver-err.log', 'Game (err)', 'test-game'],
   ]
-  for (const [name, label, key] of fallbacks) add(path.join(config.logDir, name), label, key)
+  for (const [dir, name, label, key] of fallbacks) add(path.join(dir, name), label, key)
   for (const f of ['error.log', 'access.log']) add(path.join('C:\\nginx', 'logs', f), `Nginx (${f.replace('.log', '')})`, 'nginx')
   // Keep only the files that actually exist right now (re-checked on each refresh).
   return targets.filter(t => { try { return fs.statSync(t.file).isFile() } catch { return false } })
 }
 
 // A running game server re-upserts every loaded form, so database writes need it stopped; a dry run only warns
-async function requireGameStopped(log, dryRun) {
-  const status = await gameStatus()
-  const error = status === 'SERVICE_STOPPED' ? nativeModuleLocked() : `the game server is ${status || 'in an unknown state'}, stop it first`
+async function requireGameStopped(log, dryRun, profile = LIVE) {
+  const status = await gameStatus(profile)
+  const error = status === 'SERVICE_STOPPED' ? nativeModuleLocked(profile) : `the ${profile.label} game is ${status || 'in an unknown state'}, stop it first`
   if (!error) return null
   if (dryRun) { log(`WARNING: ${error} (a dry run needs no stop)`); return null }
   return { ok: false, error }
@@ -259,6 +287,8 @@ module.exports = {
   serviceByKey,
   resolvedNames,
   serviceName,
+  profileOf,
+  dataPaths,
   gameStatus,
   readServerSettings,
   purgePending,

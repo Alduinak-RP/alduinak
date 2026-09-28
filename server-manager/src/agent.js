@@ -298,7 +298,8 @@ function createAgent(overrides = {}) {
     ['GET', /^\/services$/, async () => {
       const status = await deps.statusAll()
       return { body: {
-        services: config.services.map(s => ({ key: s.key, label: s.label, name: services.resolvedNames[s.key] || s.name, status: status[s.key] || 'unknown', controllable: s.key === 'game' })),
+        // The dashboard stays live-only, so the test group is not listed
+        services: config.services.filter(s => s.group !== 'test').map(s => ({ key: s.key, label: s.label, name: services.resolvedNames[s.key] || s.name, status: status[s.key] || 'unknown', controllable: s.key === 'game' })),
         busy: deps.lock.holder(),
         purgePending: deps.purgePending(),
       } }
