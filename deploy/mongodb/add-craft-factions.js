@@ -14,17 +14,17 @@ const USAGE = [
 
 // id must match the patcher's factions.list id (or its alias in factionCraftSystem.ts); group slugs to the id's second part
 const FACTIONS = [
-  { id: 'faction:skaal', group: 'Skaal', name: 'The Skaal', type: 'guild' },
-  { id: 'faction:blades', group: 'Blades', name: 'The Blades', type: 'military' },
-  { id: 'faction:silver-hand', group: 'Silver Hand', name: 'The Silver Hand', type: 'military' },
-  { id: 'faction:camonna-tong', group: 'Camonna Tong', name: 'Camonna Tong', type: 'guild' },
-  { id: 'faction:psijic', group: 'Psijic', name: 'The Psijic Order', type: 'guild' },
-  { id: 'faction:mythic-dawn', group: 'Mythic Dawn', name: 'Mythic Dawn', type: 'guild' },
-  { id: 'faction:greybeards', group: 'Greybeards', name: 'The Greybeards', type: 'guild' },
+  { id: 'faction:skaal', group: 'Skaal', name: 'The Skaal', type: 'guild', province: 'Morrowind' },
+  { id: 'faction:blades', group: 'Blades', name: 'The Blades', type: 'military', province: 'Cyrodiil' },
+  { id: 'faction:silver-hand', group: 'Silver Hand', name: 'The Silver Hand', type: 'military', province: 'Skyrim' },
+  { id: 'faction:camonna-tong', group: 'Camonna Tong', name: 'Camonna Tong', type: 'guild', province: 'Morrowind' },
+  { id: 'faction:psijic', group: 'Psijic', name: 'The Psijic Order', type: 'guild', province: 'Summerset' },
+  { id: 'faction:mythic-dawn', group: 'Mythic Dawn', name: 'Mythic Dawn', type: 'guild', province: 'Cyrodiil' },
+  { id: 'faction:greybeards', group: 'Greybeards', name: 'The Greybeards', type: 'guild', province: 'Skyrim' },
   // A hold court must be one of the nine holds, so the Great Houses are guilds; factionCraftSystem maps them to the hold:<house> markers
-  { id: 'faction:house-redoran', group: 'House Redoran', name: 'House Redoran', type: 'guild' },
-  { id: 'faction:house-indoril', group: 'House Indoril', name: 'House Indoril', type: 'guild' },
-  { id: 'faction:house-telvanni', group: 'House Telvanni', name: 'House Telvanni', type: 'guild' },
+  { id: 'faction:house-redoran', group: 'House Redoran', name: 'House Redoran', type: 'guild', province: 'Morrowind' },
+  { id: 'faction:house-indoril', group: 'House Indoril', name: 'House Indoril', type: 'guild', province: 'Morrowind' },
+  { id: 'faction:house-telvanni', group: 'House Telvanni', name: 'House Telvanni', type: 'guild', province: 'Morrowind' },
 ]
 
 const RANKS = [
@@ -57,7 +57,7 @@ async function main() {
     return
   }
   for (const f of missing) {
-    let { faction } = await call('POST', '', { type: f.type, group: f.group, name: f.name })
+    let { faction } = await call('POST', '', { type: f.type, group: f.group, name: f.name, province: f.province })
     if (faction.id !== f.id) throw new Error(`${f.group} became ${faction.id}, not ${f.id}; delete it in the Factions tab and fix the group name`)
     for (const r of RANKS) ({ faction } = await call('POST', `${pathOf(f.id)}/ranks`, { ...r, rev: faction.rev }))
     console.log(`created ${f.id} with ${faction.ranks.map(r => r.rank).join(', ')}`)

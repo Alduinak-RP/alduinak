@@ -39,6 +39,7 @@ export interface FactionDef {
   scope: string;
   type: FactionType;
   name: string;
+  province: string;
   color: string;
   regencyEnabled: boolean;
   // Ordered stand-ins; the first one online acts while no leader is
@@ -112,6 +113,7 @@ export function buildFactions(raw: { factions?: unknown[]; requirements?: unknow
       scope,
       type: factionType(r.type, scope),
       name: str(r.name) || str(r.group) || id,
+      province: str(r.province) || "Skyrim",
       color: /^[0-9a-f]{6}$/.test(str(r.color)) ? str(r.color) : DEFAULT_COLOR,
       regencyEnabled: r.regencyEnabled === true,
       regents: regentSeats(r.regents),

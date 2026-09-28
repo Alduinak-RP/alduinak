@@ -17,6 +17,13 @@ const SCOPES = ['hold', 'faction']
 // What the game groups factions by; a character joins at most one faction of each type. scope stays the id prefix
 const TYPES = ['hold', 'military', 'guild']
 // Hold keys as housing names them; a court's group may carry the article, as in the-rift
+const PROVINCES = ['Skyrim', 'Cyrodiil', 'Morrowind', 'High Rock', 'Valenwood', 'Elsweyr', 'Black Marsh', 'Summerset']
+// Province given to a faction stored without one, matched on its id and name
+const PROVINCE_DEFAULTS = [
+  ['Morrowind', /indoril|redoran|telvanni|morag-tong|camonna-tong|skaal/],
+  ['Cyrodiil', /mythic-dawn|empire|imperial|legion|blades/],
+  ['Summerset', /thalmor|psijic|aldmeri|dominion/],
+]
 const HOLDS = ['haafingar', 'reach', 'falkreath', 'hjaalmarch', 'eastmarch', 'winterhold', 'rift', 'pale', 'whiterun']
 // Hold ranks that manage property when the rank carries no housing flag
 const HOLD_MANAGER_RANKS = ['jarl', 'steward']
@@ -60,11 +67,17 @@ function normalizeRegents(raw) {
   return out
 }
 
-// The retired zone field is dropped on the next save
-const dropZone = f => {
-  if (!f || typeof f !== 'object' || !('zone' in f)) return f
+function defaultProvince(f) {
+  const key = `${f.id || ''} ${String(f.name || '')} ${String(f.group || '')}`.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const hit = PROVINCE_DEFAULTS.find(([, re]) => re.test(key))
+  return hit ? hit[0] : 'Skyrim'
+}
+
+// The retired zone field is dropped and a missing province filled in on the next save
+const normalizeFaction = f => {
+  if (!f || typeof f !== 'object') return f
   const { zone, ...rest } = f
-  return rest
+  return PROVINCES.includes(rest.province) ? rest : { ...rest, province: defaultProvince(rest) }
 }
 
 // Unknown top-level keys survive a write
@@ -72,7 +85,7 @@ function normalize(data) {
   const retired = data.retired && typeof data.retired === 'object' ? data.retired : {}
   return {
     ...data,
-    factions: arr(data.factions).map(dropZone),
+    factions: arr(data.factions).map(normalizeFaction),
     requirements: arr(data.requirements).map(req => (req && typeof req.id === 'string' ? { ...req, permission: permissionOf(req.id) } : req)),
     assignments: arr(data.assignments),
     retired: { factions: arr(retired.factions).map(String), ranks: arr(retired.ranks).map(String) },
@@ -191,6 +204,7 @@ function effectiveFactions(data) {
       type: TYPES.includes(f.type) ? f.type : defaultType(scope),
       group: String(f.group || ''),
       name: String(f.name || f.group || f.id),
+      province: PROVINCES.includes(f.province) ? f.province : defaultProvince(f),
       color: COLOR_RE.test(String(f.color || '')) ? f.color : '',
       regencyEnabled: f.regencyEnabled === true,
       regents: normalizeRegents(f.regents),
@@ -201,7 +215,7 @@ function effectiveFactions(data) {
     const id = factionIdOf(req.id)
     if (!id || byId.has(id)) continue
     const scope = String(req.scope || id.split(':')[0])
-    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), color: '', regencyEnabled: false, regents: [], rev: 0 })
+    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), province: defaultProvince({ id, group: req.group }), color: '', regencyEnabled: false, regents: [], rev: 0 })
   }
   return [...byId.values()]
 }
@@ -241,6 +255,7 @@ function definitions() {
     factions: effectiveFactions(data).map(f => factionView(data, f, decorated)),
     retired: data.retired,
     scopes: SCOPES,
+    provinces: PROVINCES,
     holds: HOLDS,
   }
 }
@@ -297,7 +312,7 @@ function checkRev(data, faction, rev) {
 function recordFor(data, faction, actor, now) {
   let record = data.factions.find(f => f && f.id === faction.id)
   if (!record) {
-    record = { id: faction.id, scope: faction.scope, group: faction.group, name: faction.name, color: '', createdAt: now, createdBy: actor || null }
+    record = { id: faction.id, scope: faction.scope, group: faction.group, name: faction.name, province: faction.province, color: '', createdAt: now, createdBy: actor || null }
     data.factions.push(record)
   }
   return record
@@ -317,6 +332,12 @@ function requireName(value, what) {
   const name = cleanText(value)
   if (!name) throw fail(400, `${what} is required`)
   return name
+}
+
+function normalizeProvince(value) {
+  const province = PROVINCES.find(p => p.toLowerCase() === String(value || '').trim().toLowerCase())
+  if (!province) throw fail(400, `province must be one of ${PROVINCES.join(', ')}`)
+  return province
 }
 
 function normalizeColor(value) {
@@ -391,6 +412,7 @@ function createFaction(input, actor) {
   const now = new Date().toISOString()
   data.factions.push({
     id, scope, type, group, name,
+    province: input.province === undefined || input.province === '' ? defaultProvince({ id, name, group }) : normalizeProvince(input.province),
     regencyEnabled: false,
     regents: [],
     color: normalizeColor(input.color),
@@ -408,7 +430,7 @@ function updateFaction(id, input, actor) {
   checkRev(data, faction, input.rev)
   const now = new Date().toISOString()
   const record = recordFor(data, faction, actor, now)
-  const before = { name: faction.name, type: faction.type, color: faction.color }
+  const before = { name: faction.name, type: faction.type, province: faction.province, color: faction.color }
   if (input.type !== undefined) {
     const type = String(input.type || '').trim().toLowerCase()
     if (!TYPES.includes(type)) throw fail(400, `type must be ${TYPES.join(', ')}`)
@@ -420,6 +442,7 @@ function updateFaction(id, input, actor) {
     if (effectiveFactions(data).some(f => f.id !== id && f.name.toLowerCase() === name.toLowerCase())) throw fail(409, `another faction is already named ${name}`)
     record.name = name
   }
+  if (input.province !== undefined) record.province = normalizeProvince(input.province)
   if (input.color !== undefined) record.color = normalizeColor(input.color)
   const changes = changesBetween(before, record)
   if (!Object.keys(changes).length) return { faction: factionView(data, faction) }
