@@ -13,6 +13,13 @@ one-shot migration.
   when they are missing. Claude does not run installers or register services.
 - `wipe-world.js` - backup, verify, apply and restore for a full world wipe
   before a deploy. Runbook: [`docs/docs_database_wipe.md`](../../docs/docs_database_wipe.md).
+- `forbidden-items.py` + `strip-inventories.js` - one-time strip of gear above
+  Adept, jewelry, spell tomes, scrolls, staves, enchanted gear and learned spells
+  (abilities stay) from characters and claimed containers. Run
+  `python deploy/mongodb/forbidden-items.py --plugin <staged AlduinakAdditions.esp>`
+  to write `forbidden-items.json` for the live load order, then
+  `node deploy/mongodb/strip-inventories.js` (plan), `backup --out <dir>`, and
+  `apply --backup <dir> --apply` with the game server stopped; `restore --backup <dir> --apply` undoes it.
 
 ## Steps
 

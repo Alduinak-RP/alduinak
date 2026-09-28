@@ -27,4 +27,30 @@ function nativeModuleLocked() {
   catch (err) { return LOCK_CODES.includes(err.code) ? 'a game server process still holds scam_native.node (started outside nssm?), stop it first' : null }
 }
 
-module.exports = { LOCK_CODES, nssm, nativeModuleLocked }
+function scStatus(name) {
+  return new Promise(resolve => {
+    execFile('sc.exe', ['query', name], { windowsHide: true, timeout: 5000 }, (err, stdout) => {
+      const m = /STATE\s*:\s*\d+\s+([A-Z_]+)/.exec(String(stdout || ''))
+      resolve(m ? `SERVICE_${m[1]}` : null)
+    })
+  })
+}
+
+// nssm under the canonical then legacy names, then sc query
+async function serviceStatus(key) {
+  const svc = config.services.find(s => s.key === key)
+  for (const name of [svc.name, ...(svc.legacyNames || [])]) {
+    const status = await nssm('status', name)
+    if (/^SERVICE_/.test(status)) return { name, status }
+  }
+  return { name: svc.name, status: await scStatus(svc.name) }
+}
+
+// A running game server re-upserts every loaded form and rewrites its registries
+async function gameServerBlocker() {
+  const { name, status } = await serviceStatus('game')
+  if (status !== 'SERVICE_STOPPED') return `${name} is ${status || 'in an unknown state (neither nssm nor sc could query it)'}, stop it first`
+  return nativeModuleLocked()
+}
+
+module.exports = { LOCK_CODES, nssm, nativeModuleLocked, serviceStatus, gameServerBlocker }
