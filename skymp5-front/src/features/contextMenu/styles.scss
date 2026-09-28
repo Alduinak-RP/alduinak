@@ -21,7 +21,7 @@ $cm-marker: url('../../img/skyrim/Menu Icons/Indicator.png');
     pointer-events: auto;
     position: absolute;
     min-width: 178px;
-    max-width: 264px;
+    max-width: 440px;
     padding: 2px 0 4px;
     background-color: rgba(6, 6, 6, 0.9);
     background-clip: padding-box;
@@ -49,6 +49,20 @@ $cm-marker: url('../../img/skyrim/Menu Icons/Indicator.png');
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  &__columns {
+    display: flex;
+    align-items: flex-start;
+  }
+
+  &__column {
+    flex: 1 1 0;
+    min-width: 178px;
+
+    &--danger {
+      border-left: 1px solid rgba(180, 60, 52, 0.45);
+    }
   }
 
   &__row {
@@ -86,6 +100,25 @@ $cm-marker: url('../../img/skyrim/Menu Icons/Indicator.png');
 
       &::before {
         opacity: 1;
+      }
+    }
+
+    &:disabled {
+      color: #5f5f5f;
+      cursor: default;
+      background: none;
+
+      &::before {
+        opacity: 0;
+      }
+    }
+
+    &--danger {
+      color: #e07a6e;
+
+      &:hover:not(:disabled) {
+        background: linear-gradient(90deg, rgba(180, 40, 32, 0.4), rgba(180, 40, 32, 0.05));
+        color: #ffb3a8;
       }
     }
 

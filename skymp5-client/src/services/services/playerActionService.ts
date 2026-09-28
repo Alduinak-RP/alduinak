@@ -34,20 +34,22 @@ export const isPlayerCharacterId = (controller: CombinedController, remoteId: nu
 interface PlayerAction {
   id: string;
   label: string;
+  danger?: boolean;
+  disabled?: boolean;
 }
 
 // Character interaction menu, kept intentionally small (Trade is a dedicated button above these).
 const ACTIONS: PlayerAction[] = [
   { id: 'introduce', label: 'Introduce' },
   { id: 'search', label: 'Search' },
-  { id: 'capture', label: 'Restrain' },
+  { id: 'capture', label: 'Restrain', danger: true },
   { id: 'carry', label: 'Carry' },
   { id: 'release', label: 'Release' },
   { id: 'stabilize', label: 'Stabilize' },
-  { id: 'finishOff', label: 'Finish Off' },
-  { id: 'prepareExecution', label: 'Prepare Execution' },
-  { id: 'execute', label: 'Execute' },
-  { id: 'assassinate', label: 'Assassinate' },
+  { id: 'finishOff', label: 'Finish Off', danger: true },
+  { id: 'prepareExecution', label: 'Prepare Execution', danger: true },
+  { id: 'execute', label: 'Execute', danger: true },
+  { id: 'assassinate', label: 'Assassinate', danger: true },
   { id: 'factionRecruit', label: 'Recruit' },
 ];
 

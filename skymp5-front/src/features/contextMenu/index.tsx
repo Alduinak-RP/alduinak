@@ -5,6 +5,9 @@ import './styles.scss';
 interface MenuAction {
   id: string;
   label: string;
+  // Lethal and hostile actions, listed in their own red column
+  danger?: boolean;
+  disabled?: boolean;
 }
 
 interface ContextMenuEvents {
@@ -43,6 +46,17 @@ const ContextMenu = ({ data }: { data: ContextMenuData }) => {
 
   const ev = data.events || ({} as ContextMenuEvents);
   const actions = data.actions || [];
+  const dangers = actions.filter((a) => a.danger);
+  const row = (a: MenuAction) => (
+    <button
+      key={a.id}
+      className={'context-menu__row' + (a.danger ? ' context-menu__row--danger' : '')}
+      disabled={a.disabled}
+      onClick={() => send(ev.action, a.id)}
+    >
+      {a.label}
+    </button>
+  );
 
   // Panel hangs down-right of the crosshair, clamped inside the viewport before first paint.
   useLayoutEffect(() => {
@@ -54,7 +68,7 @@ const ContextMenu = ({ data }: { data: ContextMenuData }) => {
     left = Math.max(margin, Math.min(left, window.innerWidth - el.offsetWidth - margin));
     top = Math.max(margin, Math.min(top, window.innerHeight - el.offsetHeight - margin));
     setPos({ left, top });
-  }, [data.targetName, actions.length]);
+  }, [data.targetName, actions.length, dangers.length]);
 
   const style = pos
     ? { left: pos.left + 'px', top: pos.top + 'px' }
@@ -64,14 +78,15 @@ const ContextMenu = ({ data }: { data: ContextMenuData }) => {
     <div className="context-menu">
       <div className="context-menu__panel" ref={panelRef} style={style}>
         <div className="context-menu__title">{data.targetName}</div>
-        {!data.hideTrade ? (
-          <button className="context-menu__row" onClick={() => send(ev.trade)}>{data.tradeLabel || 'Trade'}</button>
-        ) : null}
-        {actions.map((a) => (
-          <button key={a.id} className="context-menu__row" onClick={() => send(ev.action, a.id)}>
-            {a.label}
-          </button>
-        ))}
+        <div className="context-menu__columns">
+          <div className="context-menu__column">
+            {!data.hideTrade ? (
+              <button className="context-menu__row" onClick={() => send(ev.trade)}>{data.tradeLabel || 'Trade'}</button>
+            ) : null}
+            {actions.filter((a) => !a.danger).map(row)}
+          </div>
+          {dangers.length ? <div className="context-menu__column context-menu__column--danger">{dangers.map(row)}</div> : null}
+        </div>
         <button className="context-menu__row context-menu__row--close" onClick={() => send(ev.close)}>
           Close
         </button>
