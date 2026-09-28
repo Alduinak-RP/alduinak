@@ -66,7 +66,7 @@ function loadSettings() {
 function requireDriver() {
   try {
     purge = require(path.join(SM, 'mongoPurge'))
-    BSON = require('mongodb').BSON
+    BSON = require(require.resolve('mongodb', { paths: [SM] })).BSON
   } catch (err) {
     if (err.code === 'MODULE_NOT_FOUND' && /'mongodb'/.test(err.message)) throw new Refusal('mongodb driver not found: run npm install in server-manager (or set NODE_PATH to its node_modules)')
     throw err
