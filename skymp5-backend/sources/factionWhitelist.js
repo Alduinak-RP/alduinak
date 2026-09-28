@@ -16,7 +16,6 @@ const MAX_SLOT = 9
 const SCOPES = ['hold', 'faction']
 // What the game groups factions by; a character joins at most one faction of each type. scope stays the id prefix
 const TYPES = ['hold', 'military', 'guild']
-const ZONES = ['', 'west', 'east', 'neutral']
 // Hold keys as housing names them; a court's group may carry the article, as in the-rift
 const HOLDS = ['haafingar', 'reach', 'falkreath', 'hjaalmarch', 'eastmarch', 'winterhold', 'rift', 'pale', 'whiterun']
 // Hold ranks that manage property when the rank carries no housing flag
@@ -61,12 +60,19 @@ function normalizeRegents(raw) {
   return out
 }
 
+// The retired zone field is dropped on the next save
+const dropZone = f => {
+  if (!f || typeof f !== 'object' || !('zone' in f)) return f
+  const { zone, ...rest } = f
+  return rest
+}
+
 // Unknown top-level keys survive a write
 function normalize(data) {
   const retired = data.retired && typeof data.retired === 'object' ? data.retired : {}
   return {
     ...data,
-    factions: arr(data.factions),
+    factions: arr(data.factions).map(dropZone),
     requirements: arr(data.requirements).map(req => (req && typeof req.id === 'string' ? { ...req, permission: permissionOf(req.id) } : req)),
     assignments: arr(data.assignments),
     retired: { factions: arr(retired.factions).map(String), ranks: arr(retired.ranks).map(String) },
@@ -185,7 +191,6 @@ function effectiveFactions(data) {
       type: TYPES.includes(f.type) ? f.type : defaultType(scope),
       group: String(f.group || ''),
       name: String(f.name || f.group || f.id),
-      zone: ZONES.includes(f.zone) ? f.zone : '',
       color: COLOR_RE.test(String(f.color || '')) ? f.color : '',
       regencyEnabled: f.regencyEnabled === true,
       regents: normalizeRegents(f.regents),
@@ -196,7 +201,7 @@ function effectiveFactions(data) {
     const id = factionIdOf(req.id)
     if (!id || byId.has(id)) continue
     const scope = String(req.scope || id.split(':')[0])
-    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), zone: '', color: '', regencyEnabled: false, regents: [], rev: 0 })
+    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), color: '', regencyEnabled: false, regents: [], rev: 0 })
   }
   return [...byId.values()]
 }
@@ -236,7 +241,6 @@ function definitions() {
     factions: effectiveFactions(data).map(f => factionView(data, f, decorated)),
     retired: data.retired,
     scopes: SCOPES,
-    zones: ZONES,
     holds: HOLDS,
   }
 }
@@ -293,7 +297,7 @@ function checkRev(data, faction, rev) {
 function recordFor(data, faction, actor, now) {
   let record = data.factions.find(f => f && f.id === faction.id)
   if (!record) {
-    record = { id: faction.id, scope: faction.scope, group: faction.group, name: faction.name, zone: '', color: '', createdAt: now, createdBy: actor || null }
+    record = { id: faction.id, scope: faction.scope, group: faction.group, name: faction.name, color: '', createdAt: now, createdBy: actor || null }
     data.factions.push(record)
   }
   return record
@@ -313,12 +317,6 @@ function requireName(value, what) {
   const name = cleanText(value)
   if (!name) throw fail(400, `${what} is required`)
   return name
-}
-
-function normalizeZone(value) {
-  const zone = String(value || '')
-  if (!ZONES.includes(zone)) throw fail(400, 'zone must be west, east, neutral or empty')
-  return zone
 }
 
 function normalizeColor(value) {
@@ -393,7 +391,6 @@ function createFaction(input, actor) {
   const now = new Date().toISOString()
   data.factions.push({
     id, scope, type, group, name,
-    zone: normalizeZone(input.zone),
     regencyEnabled: false,
     regents: [],
     color: normalizeColor(input.color),
@@ -411,7 +408,7 @@ function updateFaction(id, input, actor) {
   checkRev(data, faction, input.rev)
   const now = new Date().toISOString()
   const record = recordFor(data, faction, actor, now)
-  const before = { name: faction.name, type: faction.type, zone: faction.zone, color: faction.color }
+  const before = { name: faction.name, type: faction.type, color: faction.color }
   if (input.type !== undefined) {
     const type = String(input.type || '').trim().toLowerCase()
     if (!TYPES.includes(type)) throw fail(400, `type must be ${TYPES.join(', ')}`)
@@ -423,7 +420,6 @@ function updateFaction(id, input, actor) {
     if (effectiveFactions(data).some(f => f.id !== id && f.name.toLowerCase() === name.toLowerCase())) throw fail(409, `another faction is already named ${name}`)
     record.name = name
   }
-  if (input.zone !== undefined) record.zone = normalizeZone(input.zone)
   if (input.color !== undefined) record.color = normalizeColor(input.color)
   const changes = changesBetween(before, record)
   if (!Object.keys(changes).length) return { faction: factionView(data, faction) }

@@ -106,7 +106,6 @@ async function run() {
     assert.equal(status(() => store.createFaction({ type: 'hold', group: 'Rift' }, ACTOR)).status, 409)
     assert.equal(status(() => store.createFaction({ type: 'guild', group: '!!!' }, ACTOR)).status, 400)
     assert.equal(status(() => store.createFaction({ type: 'guild', group: 'Vigilants', color: 'red' }, ACTOR)).status, 400)
-    assert.equal(status(() => store.createFaction({ type: 'guild', group: 'Vigilants', zone: 'north' }, ACTOR)).status, 400)
     assert.equal(status(() => store.createFaction({ type: 'military', group: 'Legion Two', name: 'imperial legion' }, ACTOR)).status, 409)
     assert.equal(status(() => store.createFaction({ type: 'guild', group: 'Companions' }, ACTOR)).status, 409)
     const { faction } = store.createFaction({ type: 'guild', group: 'Vigilants of Stendarr', color: '#AABBCC', zone: 'neutral' }, ACTOR)

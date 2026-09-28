@@ -17,7 +17,6 @@
   ]
   const TYPE_NAMES = { hold: 'Hold', military: 'Military', guild: 'Guild' }
   const SCOPE_NAMES = { hold: 'Hold court', faction: 'Army or guild' }
-  const ZONE_NAMES = { '': 'None', west: 'West', east: 'East', neutral: 'Neutral' }
   const HOLD_NAMES = { reach: 'The Reach', rift: 'The Rift', pale: 'The Pale' }
   const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/
   const COLOR_RE = /^[0-9a-f]{6}$/
@@ -45,7 +44,7 @@
 
   function mount(root, { request, onSelectPlayer = null, onChange = null } = {}) {
     const state = {
-      factions: [], retiredFactions: [], zones: Object.keys(ZONE_NAMES), holds: [], canDefine: false, loaded: false,
+      factions: [], retiredFactions: [], holds: [], canDefine: false, loaded: false,
       selected: '', rank: '', creating: false, filter: '', members: null, confirm: null, busy: false,
     }
 
@@ -124,7 +123,6 @@
       state.factions = data.factions || []
       state.holds = data.holds || []
       state.retiredFactions = (data.retired && data.retired.factions) || []
-      state.zones = data.zones || state.zones
       state.canDefine = data.canDefine === true
       state.loaded = true
       if (!current()) state.selected = ''
@@ -167,10 +165,6 @@
             </li>`).join('')
     }
 
-    function zoneOptions(selected) {
-      return state.zones.map(z => `<option value="${esc(z)}"${z === selected ? ' selected' : ''}>${esc(ZONE_NAMES[z] ?? z)}</option>`).join('')
-    }
-
     function colorFields(color) {
       const hex = COLOR_RE.test(color) ? color : 'c9a36b'
       return `
@@ -194,7 +188,6 @@
           <h4>Faction</h4>
           <div class="fe-grid">
             <label>Display name <input name="name" value="${esc(faction.name)}" maxlength="48" required data-write></label>
-            <label>Zone <select name="zone" data-write>${zoneOptions(faction.zone)}</select></label>
             ${colorFields(faction.color)}
           </div>
           <p class="fe-muted">Type ${esc(TYPE_NAMES[faction.type] || faction.type)}, group ${esc(faction.group || faction.id)}.</p>
@@ -332,7 +325,6 @@
             <label data-scope="hold"${scope === 'hold' ? '' : ' hidden'}>Hold <select name="hold" data-write>${free.map(h => `<option value="${esc(h)}">${esc(holdName(h))}</option>`).join('')}</select></label>
             <label data-scope="faction"${scope === 'faction' ? '' : ' hidden'}>Group <input name="group" maxlength="48" placeholder="Vigilants of Stendarr" data-write></label>
             <label>Display name <input name="name" maxlength="48" placeholder="Same as the group" data-write></label>
-            <label>Zone <select name="zone" data-write>${zoneOptions('')}</select></label>
             ${colorFields('')}
           </div>
           <p class="fe-muted">The id comes from the kind and group, cannot change once created, and is never reused after a delete. ${free.length ? '' : 'Every hold has a court, and a hold whose court was deleted cannot get a new one.'}</p>
@@ -356,7 +348,7 @@
       const type = form.elements.scope.value
       const group = type === 'hold' ? holdName(form.elements.hold.value || '') : form.elements.group.value
       return run('Creating…', async () => {
-        const data = await call('POST', '', { type, group, name: form.elements.name.value, zone: form.elements.zone.value, color: colorValue(form) })
+        const data = await call('POST', '', { type, group, name: form.elements.name.value, color: colorValue(form) })
         replaceFaction(data.faction)
         state.creating = false
         state.selected = data.faction.id
@@ -368,7 +360,7 @@
 
     function saveFaction(form) {
       const faction = current()
-      const body = { rev: faction.rev, name: form.elements.name.value, zone: form.elements.zone.value, color: colorValue(form) }
+      const body = { rev: faction.rev, name: form.elements.name.value, color: colorValue(form) }
       return run('Saving…', async () => {
         const data = await call('PATCH', factionPath(faction.id), body)
         replaceFaction(data.faction)

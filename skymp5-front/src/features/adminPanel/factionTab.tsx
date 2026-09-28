@@ -28,7 +28,6 @@ export interface FactionColumn {
   id: string;
   name: string;
   type: FactionType;
-  zone: string;
   color: string;
   rankName: string;
   title: string;
@@ -42,7 +41,6 @@ export interface FactionDetail {
   id: string;
   name: string;
   type: FactionType;
-  zone: string;
   color: string;
   myRank: string; // '' when viewing as staff without a rank
   acting: boolean;
@@ -70,7 +68,7 @@ export interface FactionMenuData {
   titleFactionId: string; // the faction whose title is shown with the character's name, '' for none
   main: FactionColumn[];
   byType: Partial<Record<FactionType, string>>; // the character's faction of each type
-  factions: Array<{ id: string; name: string; type: FactionType; zone: string; color: string; rank: string }>;
+  factions: Array<{ id: string; name: string; type: FactionType; color: string; rank: string }>;
   selected: string;
   detail: FactionDetail | null;
   regency: FactionRegency | null; // present only while the viewer leads a faction
@@ -91,7 +89,6 @@ const TYPE_TABS: Array<{ id: FactionType; label: string }> = [
 ];
 
 const TYPE_LABEL: Record<FactionType, string> = { hold: 'Hold', military: 'Military', guild: 'Guild' };
-const ZONES: Record<string, string> = { west: 'West', east: 'East', neutral: 'Neutral' };
 
 interface MenuState {
   x: number;
@@ -207,7 +204,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
         {main.map((c) => (
           <div key={c.id} className="admin-panel__column">
             <div className="admin-panel__column-row"><span>Name:</span><span style={{ color: '#' + c.color }}>{c.name}</span></div>
-            <div className="admin-panel__column-row"><span>Type:</span><span>{TYPE_LABEL[c.type] || c.type}{ZONES[c.zone] ? ' (' + ZONES[c.zone] + ')' : ''}</span></div>
+            <div className="admin-panel__column-row"><span>Type:</span><span>{TYPE_LABEL[c.type] || c.type}</span></div>
             <div className="admin-panel__column-row"><span>Rank:</span><span>{c.rankName}</span></div>
             <div className="admin-panel__column-row"><span>Leader:</span><span>{c.leaderName}</span></div>
             <div className="admin-panel__column-row"><span>Members:</span><span>{c.members}</span></div>
