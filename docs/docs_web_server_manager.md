@@ -172,6 +172,15 @@ check this list.
 
 ### Builds from the web
 
+Web **Build server** and **Build gamemode only** jobs target the **Test Server**, the
+same profile the Electron manager builds: they write `build/dist/testserver`
+(`dist_back`, `gamemode.js`) and read `build/dist/testserver/gamemode_extensions`. The
+test game server hot-reloads `gamemode.js`; after **Build server**, restart the Test
+Server from the Electron manager's Console tab, because the web Start, Restart and
+Stop actions still control only the live `AlduinakGameServer`. Live never receives a
+web build directly; it gets the files through the Electron manager's Migrate box
+(`docs_test_server.md` section 5).
+
 A web build runs only when all of these hold:
 
 - the live checkout is on `main`
@@ -181,7 +190,7 @@ A web build runs only when all of these hold:
 
 The commit id is stored in the job record and in the audit log.
 
-`build/dist/server/gamemode_extensions` is **not in git**, so the checks above say
+`build/dist/testserver/gamemode_extensions` is **not in git**, so the checks above say
 nothing about the gamemode parts. Anyone with file access on the box can change them.
 Every **Build gamemode only** and **Build server** job therefore also records their
 hashes:
@@ -196,7 +205,7 @@ name order, in the form `<lowercase sha256><two spaces><file name>` plus a newli
 list the parts on the box in that form and compare them with a job's `gamemode.files`:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 build\dist\server\gamemode_extensions\*.js | Sort-Object Path | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" }
+Get-FileHash -Algorithm SHA256 build\dist\testserver\gamemode_extensions\*.js | Sort-Object Path | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" }
 ```
 
 **Start** and **Restart** are refused while a MongoDB purge is pending, the same rule
@@ -311,11 +320,12 @@ A Server tab that is only refreshing on its own does not count. Log in again.
   anywhere.
 
 **Builds.**
-- **Build gamemode only** regenerates `gamemode.js` from `gamemode_extensions`. The
-  server hot-reloads it, no restart needed. The job log lists each part with its
+- **Build gamemode only** regenerates the Test Server's `gamemode.js` from its
+  `gamemode_extensions`. The test server hot-reloads it, no restart needed. The job log lists each part with its
   hash, and the Jobs tab shows the combined hash beside the commit.
-- **Build server** bundles the TypeScript into `dist_back` and rebuilds the gamemode.
-  Afterwards, restart the game server so the new bundle loads.
+- **Build server** bundles the TypeScript into the Test Server's `dist_back` and rebuilds
+  its gamemode. Afterwards, restart the Test Server from the Electron manager so the new
+  bundle loads.
 - A refused build names the reason. Either the checkout is not on main, a merge is in
   progress, it has uncommitted changes, or another task holds the lock. Fix the
   checkout on the box, or wait.
