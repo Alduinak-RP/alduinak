@@ -46,7 +46,18 @@ const DEFAULT_FACTIONS = [
   "faction:dawnguard", "faction:forsworn", "faction:morag-tong", "faction:skaal",
   // Created in the dashboard; a marker the plugin does not carry yet is skipped at boot
   "faction:synod", "faction:crowns", "faction:temple-of-the-divines",
+  "faction:blades", "faction:camonna-tong", "faction:silver-hand", "faction:greybeards",
+  "faction:psijic", "faction:mythic-dawn",
+  "faction:house-redoran", "faction:house-indoril", "faction:house-telvanni",
 ];
+
+// The backend makes hold courts only of the nine holds, so the Great Houses are guilds there and keep the plugin's hold markers
+const MARKER_ALIASES: Record<string, string> = {
+  "faction:house-redoran": "hold:redoran",
+  "faction:house-indoril": "hold:indoril",
+  "faction:house-telvanni": "hold:telvanni",
+};
+const markerFactionOf = (factionId: string): string => MARKER_ALIASES[factionId] ?? factionId;
 
 export const markerEdidOf = (factionId: string): string =>
   "AldFaction_" + factionId.replace(/[^A-Za-z0-9]/g, "");
@@ -68,10 +79,10 @@ export class FactionCraftSystem implements System {
       ? (configured as unknown[]).filter((v) => typeof v === "string") as string[]
       : DEFAULT_FACTIONS;
 
-    const scan = await resolveEditorIds(ids.map(markerEdidOf), s.dataDir, s.loadOrder, this.log, ["SPEL"]);
+    const scan = await resolveEditorIds(ids.map((id) => markerEdidOf(markerFactionOf(id))), s.dataDir, s.loadOrder, this.log, ["SPEL"]);
     const mp = ctx.svr as Mp;
     for (const id of ids) {
-      const desc = scan.resolved.get(markerEdidOf(id).toLowerCase());
+      const desc = scan.resolved.get(markerEdidOf(markerFactionOf(id)).toLowerCase());
       if (!desc) continue;
       try { this.spells.set(id, mp.getIdFromDesc(desc) >>> 0); } catch { /* not in this plugin */ }
     }
