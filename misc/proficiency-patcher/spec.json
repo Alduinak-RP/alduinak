@@ -403,7 +403,8 @@
   "AldMasteryPerk_AldPerk_MasterFarmer": "0x0412AF",
   "AldMasteryPerk_AldPerk_LegendaryFarmer": "0x0412B0",
   "AldKeyword_FineClothing": "0x0412B1",
-  "AldKeyword_NobleClothing": "0x0412B2"
+  "AldKeyword_NobleClothing": "0x0412B2",
+  "AldLootDwarvenScrapPiece": "0x0412B9"
  },
  "woodcraftingBench": {
   "edid": "AldWoodcraftingBench",
@@ -4498,42 +4499,21 @@
   },
   {
    "list": "DeathItemFalmer",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "LItemFalmerEar50",
-    "LItemFalmerEar25"
-   ],
    "useAll": true,
    "add": [
     {
      "item": "FalmerEar",
      "count": 1,
      "level": 1
-    },
-    {
-     "item": "FalmerSword",
-     "count": 1,
-     "level": 1
-    },
-    {
-     "item": "ArmorFalmerHelmet",
-     "count": 1,
-     "level": 1
-    },
-    {
-     "item": "ArmorFalmerShield",
-     "count": 1,
-     "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "AldLootDraugrWeapon50",
    "new": true,
    "formId": "0x041260",
-   "chanceNone": 50,
+   "chanceNone": 0,
    "useAll": false,
    "add": [
     {
@@ -4550,13 +4530,24 @@
   },
   {
    "list": "DeathItemDraugr",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "DeathItemDraugrGold",
-    "LItemBoneMeal25"
+   "useAll": true,
+   "add": [
+    {
+     "item": "BoneMeal",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "RuinsLinenPile01",
+     "count": 1,
+     "level": 1
+    }
    ],
+   "clear": true
+  },
+  {
+   "list": "DeathItemDraugrMage",
+   "clear": true,
    "useAll": true,
    "add": [
     {
@@ -4570,26 +4561,20 @@
      "level": 1
     },
     {
+     "item": "AldLootDraugrWeapon50",
+     "count": 1,
+     "level": 1
+    },
+    {
      "item": "ArmorIronShield",
      "count": 1,
      "level": 1
     },
     {
      "item": "DraugrArrow",
-     "count": 10,
-     "level": 1
-    },
-    {
-     "item": "AldLootDraugrWeapon50",
-     "count": 1,
+     "count": 5,
      "level": 1
     }
-   ]
-  },
-  {
-   "list": "DeathItemDraugrMage",
-   "remove": [
-    "DeathItemDraugrGold"
    ]
   },
   {
@@ -4613,11 +4598,24 @@
   },
   {
    "list": "DeathItemFrostbiteSpider",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
+   "useAll": true,
+   "add": [
+    {
+     "item": "FrostbiteVenom",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "SpiderEgg",
+     "count": 2,
+     "level": 1
+    }
    ],
+   "clear": true
+  },
+  {
+   "list": "DeathItemFrostbiteSpiderGiant",
+   "clear": true,
    "useAll": true,
    "add": [
     {
@@ -4634,11 +4632,6 @@
   },
   {
    "list": "DeathItemTroll",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck"
-   ],
    "useAll": true,
    "add": [
     {
@@ -4651,16 +4644,11 @@
      "count": 1,
      "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemTrollFrost",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "TrollFat"
-   ],
    "useAll": true,
    "add": [
     {
@@ -4673,17 +4661,11 @@
      "count": 1,
      "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemChaurus",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "ChaurusChitin",
-    "DeathItemChaurusEggs25"
-   ],
    "useAll": true,
    "add": [
     {
@@ -4696,7 +4678,8 @@
      "count": 2,
      "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemWolf",
@@ -4710,18 +4693,50 @@
    "useAll": true
   },
   {
+   "list": "AldLootDwarvenScrapPiece",
+   "new": true,
+   "formId": "0x0412B9",
+   "chanceNone": 0,
+   "useAll": false,
+   "add": [
+    {
+     "item": "DwarvenScrapBent",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenLargeScrap3",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenPlateMetalLarge",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenLargeScrap",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenPlateMetalSmall",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenLargeScrap2",
+     "count": 1,
+     "level": 1
+    }
+   ]
+  },
+  {
    "list": "DeathItemDwarvenSpider",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "LootDwarvenSpiderSoulGem50",
-    "LItemDwarvenOil50"
-   ],
    "useAll": true,
    "add": [
     {
-     "item": "SoulGemPetty",
+     "item": "SoulGemPettyFilled",
      "count": 1,
      "level": 1
     },
@@ -4729,8 +4744,14 @@
      "item": "DwarvenOil",
      "count": 1,
      "level": 1
+    },
+    {
+     "item": "AldLootDwarvenScrapPiece",
+     "count": 1,
+     "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "AldLootDwarvenBolts",
@@ -4748,19 +4769,15 @@
   },
   {
    "list": "DeathItemDwarvenSphere",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "LootDwarvenScrap25",
-    "LootDwarvenSphereSoulGem50",
-    "LItemDwarvenOil50",
-    "DLC1LootSphereBolts"
-   ],
    "useAll": true,
    "add": [
     {
-     "item": "SoulGemCommon",
+     "item": "AldLootDwarvenBolts",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "SoulGemCommonFilled",
      "count": 1,
      "level": 1
     },
@@ -4768,25 +4785,12 @@
      "item": "DwarvenOil",
      "count": 3,
      "level": 1
-    },
-    {
-     "item": "AldLootDwarvenBolts",
-     "count": 1,
-     "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemDwarvenCenturion",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "LootDwarvenScrap25",
-    "LootDwarvenCenturionSoulGem",
-    "DwarvenOil",
-    "LItemDwarvenOil50"
-   ],
    "useAll": true,
    "add": [
     {
@@ -4798,8 +4802,19 @@
      "item": "DwarvenOil",
      "count": 5,
      "level": 1
+    },
+    {
+     "item": "AldLootDwarvenScrapPiece",
+     "count": 1,
+     "level": 1
+    },
+    {
+     "item": "DwarvenCenturionDynamo",
+     "count": 1,
+     "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemDwarvenBallista",
@@ -4809,12 +4824,6 @@
   },
   {
    "list": "DeathItemFrostAtronach",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "FrostSalts"
-   ],
    "useAll": true,
    "add": [
     {
@@ -4827,16 +4836,11 @@
      "count": 2,
      "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemFlameAtronach",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "FireSalts"
-   ],
    "useAll": true,
    "add": [
     {
@@ -4844,17 +4848,11 @@
      "count": 2,
      "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemHagraven",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "HagravenFeathers",
-    "LItemHagravenClaw25"
-   ],
    "useAll": true,
    "add": [
     {
@@ -4866,19 +4864,15 @@
      "item": "HagravenClaw",
      "count": 2,
      "level": 1
-    },
-    {
-     "item": "LootHagravenChestPotions25",
-     "count": 1,
-     "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "AldLootSkeletonWeapon",
    "new": true,
    "formId": "0x041262",
-   "chanceNone": 50,
+   "chanceNone": 70,
    "useAll": false,
    "add": [
     {
@@ -4905,25 +4899,15 @@
   },
   {
    "list": "DeathItemSkeleton",
-   "remove": [
-    "LootGoldChange",
-    "LootPerkGoldenTouchChange",
-    "LootImperialLuck",
-    "LItemBoneMeal25"
-   ],
    "useAll": true,
    "add": [
     {
      "item": "BoneMeal",
      "count": 1,
      "level": 1
-    },
-    {
-     "item": "AldLootSkeletonWeapon",
-     "count": 1,
-     "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "AldLootSkeletonStaff",
@@ -4978,7 +4962,8 @@
    ],
    "npcs": [
     "dunLabyrinthianSkeletonMage"
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "AldLootDraugrArmor20",
@@ -5020,13 +5005,9 @@
      "item": "SoulGemGreater",
      "count": 1,
      "level": 1
-    },
-    {
-     "item": "SoulGemGrand",
-     "count": 1,
-     "level": 1
     }
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "AldDeathItemDraugrDeathlord",
@@ -5037,11 +5018,6 @@
     {
      "item": "BoneMeal",
      "count": 3,
-     "level": 1
-    },
-    {
-     "item": "DraugrSword",
-     "count": 1,
      "level": 1
     },
     {
@@ -5062,7 +5038,8 @@
    ],
    "npcs": [
     "EncDraugr05TemplateEbony"
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "AldLootImperialBow50",
@@ -5099,21 +5076,6 @@
    "useAll": true,
    "add": [
     {
-     "item": "ImperialSword",
-     "count": 1,
-     "level": 1
-    },
-    {
-     "item": "SteelArrow",
-     "count": 5,
-     "level": 1
-    },
-    {
-     "item": "AldLootImperialBow50",
-     "count": 1,
-     "level": 1
-    },
-    {
      "item": "AldLootImperialHelmet10",
      "count": 1,
      "level": 1
@@ -5122,7 +5084,8 @@
    "npcs": [
     "EncSkeletonNecroImp01Melee1H",
     "EncSkeletonNecroImp01Missile"
-   ]
+   ],
+   "clear": true
   },
   {
    "list": "DeathItemBear",
@@ -5145,25 +5108,29 @@
   {
    "list": "DeathItemCow",
    "remove": [
-    "CowHide"
+    "CowHide",
+    "FoodBeef"
    ]
   },
   {
    "list": "DeathItemDeerNew",
    "remove": [
-    "DeerHide02"
+    "DeerHide02",
+    "FoodVenison"
    ]
   },
   {
    "list": "DeathItemElkFemale",
    "remove": [
-    "DeerHide"
+    "DeerHide",
+    "FoodVenison"
    ]
   },
   {
    "list": "DeathItemElkMale",
    "remove": [
-    "DeerHide"
+    "DeerHide",
+    "FoodVenison"
    ]
   },
   {
@@ -5181,13 +5148,15 @@
   {
    "list": "DeathItemGoat",
    "remove": [
-    "GoatHide"
+    "GoatHide",
+    "FoodGoatMeat"
    ]
   },
   {
    "list": "DeathItemHorse",
    "remove": [
-    "HorseHide"
+    "HorseHide",
+    "FoodHorseMeat"
    ]
   },
   {
@@ -5211,7 +5180,8 @@
   {
    "list": "DLC1DeathItemDeerVale",
    "remove": [
-    "DLC1DeerHide"
+    "DLC1DeerHide",
+    "FoodVenison"
    ]
   },
   {
@@ -5234,7 +5204,12 @@
     "DeerHide",
     "GoatHide",
     "HorseHide",
-    "WolfPelt"
+    "WolfPelt",
+    "WolfIcePelt",
+    "SabreCatPelt",
+    "BearCavePelt",
+    "SabreCatSnowPelt",
+    "BearSnowPelt"
    ]
   },
   {
@@ -5242,7 +5217,69 @@
    "remove": [
     "LootGoldChange25",
     "LootImperialLuck",
-    "LootPerkGoldenTouchChange"
+    "LootPerkGoldenTouchChange",
+    "DLC2LootBoarIngredients90"
+   ]
+  },
+  {
+   "list": "DeathItemChicken",
+   "remove": [
+    "FoodChicken"
+   ]
+  },
+  {
+   "list": "DeathItemDog",
+   "remove": [
+    "FoodDogMeat"
+   ]
+  },
+  {
+   "list": "DeathItemHare",
+   "remove": [
+    "FoodRabbit"
+   ]
+  },
+  {
+   "list": "DeathItemHorker",
+   "remove": [
+    "FoodHorkerMeat"
+   ]
+  },
+  {
+   "list": "DeathItemMammoth",
+   "remove": [
+    "FoodMammothMeat"
+   ]
+  },
+  {
+   "list": "DeathItemMudCrab01",
+   "remove": [
+    "BYOHFoodMudcrabLegs"
+   ]
+  },
+  {
+   "list": "DeathItemMudCrab02",
+   "remove": [
+    "BYOHFoodMudcrabLegs"
+   ]
+  },
+  {
+   "list": "DeathItemMudCrab03",
+   "remove": [
+    "BYOHFoodMudcrabLegs"
+   ]
+  },
+  {
+   "list": "DLC2DeathItemAshHopper",
+   "remove": [
+    "DLC2LItemAshHooperMeat"
+   ]
+  },
+  {
+   "list": "MWRHuskyDeathItem",
+   "remove": [
+    "FoodDogMeat",
+    "MWRHuskyPelt"
    ]
   }
  ],
@@ -7524,5 +7561,109 @@
     "Master": "AldKeyword_NobleClothing"
    }
   }
- }
+ },
+ "npcInventories": [
+  {
+   "npcs": [
+    "EncFalmer01MeleeA",
+    "EncFalmer02Melee",
+    "EncFalmer03Melee",
+    "EncFalmer04Melee",
+    "EncFalmer05Melee"
+   ],
+   "clearOutfit": true,
+   "items": [
+    {
+     "item": "FalmerSword",
+     "count": 1
+    },
+    {
+     "item": "ArmorFalmerShield",
+     "count": 1
+    },
+    {
+     "item": "ArmorFAlmerHelmet",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "npcs": [
+    "dunFolgunthurThralls_LvlDraugrAmbushMissile",
+    "EncDraugr01Template",
+    "EncDraugr02Template",
+    "EncDraugr02Template2H",
+    "EncDraugr02TemplateBoss",
+    "EncDraugr03Template",
+    "EncDraugr03TemplateBoss",
+    "EncDraugr04TemplateBoss"
+   ],
+   "items": [
+    {
+     "item": "AldLootDraugrWeapon50",
+     "count": 1
+    },
+    {
+     "item": "ArmorIronShield",
+     "count": 1
+    },
+    {
+     "item": "DraugrArrow",
+     "count": 5
+    }
+   ]
+  },
+  {
+   "npcs": [
+    "dunFolgunthurThralls_LvlDraugrAmbushWarlock",
+    "dunLabyrinthianSkeletonMage"
+   ],
+   "items": []
+  },
+  {
+   "npcs": [
+    "EncDraugr05TemplateMissileEbony"
+   ],
+   "items": [
+    {
+     "item": "DraugrSword",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "npcs": [
+    "EncSkeleton01Melee1H",
+    "EncSkeleton01Melee1Hshield",
+    "EncSkeleton01Melee2H",
+    "EncSkeleton01Missile"
+   ],
+   "items": [
+    {
+     "item": "AldLootSkeletonWeapon",
+     "count": 1
+    }
+   ]
+  },
+  {
+   "npcs": [
+    "dunKilkreathGhostImperialMelee",
+    "dunKilkreathGhostImperialMissile"
+   ],
+   "items": [
+    {
+     "item": "Imperialsword",
+     "count": 1
+    },
+    {
+     "item": "SteelArrow",
+     "count": 5
+    },
+    {
+     "item": "AldLootImperialBow50",
+     "count": 1
+    }
+   ]
+  }
+ ]
 }

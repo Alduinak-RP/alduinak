@@ -862,6 +862,12 @@ static class Steps
             }
             rec.Entries ??= new ExtendedList<LeveledItemEntry>();
             var changes = new List<string>();
+            // A list with exactly the named contents drops every entry before the adds
+            if (e["clear"]?.GetValue<bool>() == true && rec.Entries.Count > 0)
+            {
+                rec.Entries.Clear();
+                changes.Add("cleared");
+            }
             if (e["chanceNone"] is JsonNode chance)
             {
                 rec.ChanceNone = new Percent(chance.GetValue<int>() / 100.0);
@@ -900,6 +906,30 @@ static class Steps
                 changes.Add($"death item of {npc}");
             }
             c.Note($"Leveled list {edid} ({rec.FormKey}): {(changes.Count > 0 ? string.Join(", ", changes) : "unchanged")}");
+        }
+        NpcInventories(c);
+    }
+
+    // The server adds CNTO and outfit at creation and reads them off the record the Use Inventory walk stops at
+    static void NpcInventories(PatchContext c)
+    {
+        foreach (var e in c.Spec["npcInventories"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        {
+            var items = (e["items"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+                .Select(a => (edid: a["item"]!.GetValue<string>(), key: c.KeyOf<IItemGetter>(a["item"]!.GetValue<string>()), count: a["count"]?.GetValue<int>() ?? 1)).ToList();
+            foreach (var npc in Edids(c, e["npcs"]))
+            {
+                if (!c.TryWinning<INpcGetter>(npc, out var winning)) { c.Error($"npc inventories: npc '{npc}' not found"); continue; }
+                var rec = c.Override(c.Mod.Npcs, winning);
+                rec.Items = new ExtendedList<ContainerEntry>(items.Select(i => new ContainerEntry { Item = new ContainerItem { Item = i.key.ToLink<IItemGetter>(), Count = i.count } }));
+                var outfit = "";
+                if (e["clearOutfit"]?.GetValue<bool>() == true && !rec.DefaultOutfit.IsNull)
+                {
+                    outfit = $", outfit {c.EdidOf(rec.DefaultOutfit.FormKey)} cleared";
+                    rec.DefaultOutfit.Clear();
+                }
+                c.Note($"NPC inventory {npc}: {(items.Count > 0 ? string.Join(", ", items.Select(i => $"{i.count}x {i.edid}")) : "empty")}{outfit}");
+            }
         }
     }
 
