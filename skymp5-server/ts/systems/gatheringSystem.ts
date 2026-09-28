@@ -113,6 +113,8 @@ const DEFAULT_PRODUCE_YIELD: Record<string, Record<string, number>> = {
 // Flora harvested without the kneel: fish (it breaks a swimmer's animation) and hanging clutter, plus any editor id starting with Hanging
 const INSTANT_FLORA = ["FXAmbWaterSalmon01A", "FXAmbWaterSalmon01B", "FXAmbWaterSalmon02A", "FXAmbWaterSalmon02B", "SlaughterfishEggNest01", "DeadSalmon01", "DeadSalmon02", "WHOarFish", "WHOarFishHanging", "WHOarFishHangingBig", "HangingElvesEar01", "HangingFrostMirriam", "HangingGarlicBraid", "HangingRabbit01", "HangingRabbit02", "HangingPheasant01", "HangingPheasant02"];
 const INSTANT_PREFIX = "hanging";
+// Rabbits, pheasants and salmon hanging on racks are free to take: no fatigue
+const FREE_RACK_RE = /^(hangingrabbit|hangingpheasant|deadsalmon|whoarfishhanging)/;
 
 type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";
 
@@ -390,12 +392,12 @@ export class GatheringSystem implements System {
     if (props["crop"] && hoe && !holdsItem(mp, actorId, (baseId) => baseId === hoe)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
     const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
     const flora = !props["crop"];
-    if (!this.needs.canPay(actorId, "gather", rank, flora)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    if (!props["free"] && !this.needs.canPay(actorId, "gather", rank, flora)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
     const kneelMs = props["instant"] ? 0 : flora ? FLORA_MS : CROP_MS;
     return () => {
       grant?.(YIELD_BY_RANK[rank]);
       extra?.(YIELD_BY_RANK[rank]);
-      this.needs.pay(ctx, actorId, "gather", rank, "harvest", flora);
+      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", rank, "harvest", flora);
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
       if (kneelMs > 0) {
         this.harvestUntil.set(actorId, Date.now() + kneelMs);
@@ -728,7 +730,7 @@ export class GatheringSystem implements System {
     else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
     else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1, crop: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
-    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0 } };
+    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0, free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0 } };
     this.stationCache.set(baseId, station);
     return station;
   }

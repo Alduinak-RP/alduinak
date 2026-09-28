@@ -260,6 +260,7 @@ const main = async () => {
   const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
   // A hunter's interaction with a dead animal skins it before it is searched
   searchSystem.bodyAction = (ctx, searcherId, bodyId) => huntingSystem.trySkin(ctx, searcherId, bodyId);
+  searchSystem.hidesItem = (ctx, _viewerId, bodyId, baseId) => huntingSystem.hidesMeat(ctx, bodyId, baseId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
   const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);
   hostingSystem.addProvider(() => petSystem.hostables());

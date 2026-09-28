@@ -251,7 +251,9 @@ takes real effort costs more of it (0.9.6 values; actions per full bar in bracke
 | Expert | 2.8% (36, double yield) | 2.8% (36) | 5.6% (18) |
 | Master, Legendary | 2.8% (36, triple yield) | 2.1% (48) | 4.2% (24) |
 
-Half cost: flora (plants that are not crops), refining at the smelter, cooking, alchemy and skinning. Spells cost nothing.
+Half cost: flora (plants that are not crops), refining (the smelter, the tanning rack and thread), cooking, alchemy and
+skinning. Rabbits, pheasants and salmon hanging on racks cost nothing. Spells cost nothing. A shared recipe (smelting,
+tanning, charcoal) gives every profession that shares it both its rank discount and its hours.
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
   (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
@@ -260,7 +262,8 @@ Half cost: flora (plants that are not crops), refining at the smelter, cooking, 
   rank of a character whose profession works that bench keyword (MasterySystem `craftCost`). Smiths and miners both get
   their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal.
   Crafts whose inputs the crafter does not hold are left to the native side uncharged.
-- Skinning (hunter rank) costs half a kill.
+- Skinning (hunter rank) costs half a kill. Only a hunter's skinning takes an animal's pelt and meat; a search of the
+  body never shows its meat.
 - A kill of an NPC or creature costs the kill price by hunter rank (animals) or warrior rank (everything else),
   split equally among every player who hit the victim during the fight (the hit relay of `62_mastery.js`; a fight
   untouched for 10 minutes is forgotten). A kill cannot be refused; the bar just empties.

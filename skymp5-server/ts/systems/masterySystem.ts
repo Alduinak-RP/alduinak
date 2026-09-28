@@ -51,8 +51,10 @@ const KIT_PROP = "private.professionKit";
 const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
 // Recipes whose rank bonus belongs to several professions, by editor id prefix
 const SHARED_RECIPES: Array<[string, string[]]> = [["AldRecipeKiln_Charcoal", ["woodworker", "blacksmith", "miner"]]];
-// Crafting at their benches costs half: cooking, alchemy, and refining at the miner's smelter
-const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner"];
+// Crafting at their benches costs half: cooking, alchemy, and refining at the smelter (miner) and the tanning rack (hunter)
+const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner", "hunter"];
+// Refining made at another bench, by the editor id of what the recipe makes
+const HALF_COST_PRODUCTS = new Set(["mce_thread"]);
 const RECORD_VERSION = 2;
 
 export const RANK_NAMES = ["Free", "Novice", "Adept", "Expert", "Master", "Legendary"];
@@ -471,7 +473,7 @@ export class MasterySystem implements System {
         const recipeId = ev.detail["recipeId"];
         const bench = this.recipeBench(ctx, recipeId);
         if (!ev.detail["held"] || !bench || this.isCommonRecipe(ctx, recipeId)) return false;
-        const byKeyword = rules.craftKeywords.has(bench);
+        const byKeyword = rules.craftKeywords.has(bench) || this.sharesRecipe(ctx, recipeId, rec.profession);
         if (!byKeyword && !rules.craftStations.size) return false;
         return this.benchInReach(ctx, ev.actorId, bench, (keywords) =>
           byKeyword || Array.from(rules.craftStations).some((k) => keywords.has(k)));
@@ -843,7 +845,15 @@ export class MasterySystem implements System {
     const edid = this.baseInfo(ctx, recipeId)?.editorId || "";
     const shared = SHARED_RECIPES.find(([prefix]) => edid.startsWith(prefix));
     const rank = shared ? this.rankIn(ctx, actorId, shared[1]) : this.craftRank(ctx, actorId, bench);
-    return { rank, half: this.halfCostBench(bench) };
+    const product = this.baseInfo(ctx, espmFieldFormIds(this.lookup(ctx, recipeId), "CNAM")[0] || 0)?.editorId || "";
+    return { rank, half: this.halfCostBench(bench) || HALF_COST_PRODUCTS.has(product.toLowerCase()) };
+  }
+
+  // Whether a shared recipe also counts for this profession
+  private sharesRecipe(ctx: SystemContext, recipeId: number, profession: string | null): boolean {
+    if (!profession) return false;
+    const edid = this.baseInfo(ctx, recipeId)?.editorId || "";
+    return SHARED_RECIPES.some(([prefix, professions]) => edid.startsWith(prefix) && professions.indexOf(profession) !== -1);
   }
 
   halfCostBench(benchKeyword: number): boolean {

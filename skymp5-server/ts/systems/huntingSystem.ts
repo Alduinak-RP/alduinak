@@ -15,10 +15,11 @@ type Mp = any;
 // Kills reach this system through the mastery relay (gamemode 62_mastery.js -> globalThis.__alduinakMasteryEvent),
 // which fires before the engine adds the death items; the queue is drained a tick later, when they are there.
 //
-// Pelts never drop as loot (the plugin strips them). A hunter holding a hunting knife skins a dead animal: the interact
-// key on the body (SearchSystem's bodyAction for spawned animals, the native activation for plugin ones) kneels them for
-// SKIN_SECONDS, then hands the pelt the body's race or base editor id maps to, once per body. The next interaction
-// searches the body as usual. Skinning costs one gathering action of fatigue by hunter rank and credits hunter hours.
+// Pelts never drop as loot (the plugin strips them), and a search never shows an animal's meat (SearchSystem's hidesItem).
+// A hunter holding a hunting knife skins a dead animal: the interact key on the body (SearchSystem's bodyAction for spawned
+// animals, the native activation for plugin ones) kneels them for SKIN_SECONDS, then hands the pelt the body's race or base
+// editor id maps to and the body's meat, once per body. The next interaction searches the body as usual. Skinning costs
+// half a kill of fatigue by hunter rank and credits hunter hours.
 //
 // server-settings.json keys (all optional):
 //   huntingButcherChance         chance of one extra meat per kind, default 0.25
@@ -151,7 +152,7 @@ export class HuntingSystem implements System {
     const rank = this.mastery.rankOf(ctx, actorId, "hunter");
     if (!rank || this.skinning.has(bodyId) || !this.isAnimal(ctx, bodyId) || this.isSkinned(mp, bodyId)) return false;
     const peltId = this.peltOf(ctx, bodyId);
-    if (!peltId || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
+    if ((!peltId && !this.meatOf(mp, bodyId).length) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
     const refusal = !holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE) ? "A hunting knife would take its pelt."
       : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
     if (refusal) {
@@ -176,7 +177,8 @@ export class HuntingSystem implements System {
         mp.set(bodyId, SKINNED_PROP, 0);
         return;
       }
-      addItemTo(mp, actorId, peltId, 1);
+      if (peltId) addItemTo(mp, actorId, peltId, 1);
+      this.takeMeat(mp, actorId, bodyId);
       this.needs.pay(ctx, actorId, "fight", this.mastery.rankOf(ctx, actorId, "hunter"), "skin", true);
       this.mastery.creditWork(actorId, "hunter");
       this.log(`[hunting] ${hex(actorId)} skinned ${hex(bodyId)} for ${hex(peltId)}`);
@@ -218,6 +220,28 @@ export class HuntingSystem implements System {
       }
     } catch { /* not a container */ }
     return out;
+  }
+
+  // Only a hunter's skinning takes an animal's meat
+  hidesMeat(ctx: SystemContext, bodyId: number, baseId: number): boolean {
+    return this.meats.has(baseId >>> 0) && this.isAnimal(ctx, bodyId);
+  }
+
+  private meatOf(mp: Mp, bodyId: number): Array<{ baseId: number; count: number }> {
+    try {
+      const entries: any[] = mp.get(bodyId, "inventory")?.entries || [];
+      return entries.filter((e) => this.meats.has(Number(e.baseId) >>> 0) && Number(e.count) > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  private takeMeat(mp: Mp, actorId: number, bodyId: number): void {
+    const meat = this.meatOf(mp, bodyId);
+    if (!meat.length) return;
+    const entries: any[] = mp.get(bodyId, "inventory")?.entries || [];
+    mp.set(bodyId, "inventory", { entries: entries.filter((e) => !this.meats.has(Number(e.baseId) >>> 0)) });
+    for (const e of meat) addItemTo(mp, actorId, Number(e.baseId) >>> 0, Number(e.count));
   }
 
   isAnimal(ctx: SystemContext, actorId: number): boolean {
