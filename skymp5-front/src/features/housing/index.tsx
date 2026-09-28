@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
+import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 import './styles.scss';
 
 interface HousingEvents {
@@ -59,6 +60,7 @@ const Housing = ({ data }: { data: HousingData }) => {
   const canLock = hasAccess && data.canLock !== false;
 
   const [rename, setRename] = useState(data.name || '');
+  const [voiding, setVoiding] = useState(false);
 
   // The client tears the widget down on close, but a re-push while it is open
   // (after lock, rename, ...) keeps this instance - follow the server's name.
@@ -116,7 +118,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           ) : null}
 
           {manages && data.hasKeys ? (
-            <button className="housing__button" onClick={() => send(ev.revokeKeys)}>Void all keys</button>
+            <button className="housing__button" onClick={() => setVoiding(true)}>Void all keys</button>
           ) : null}
 
           {manages ? (
@@ -183,6 +185,18 @@ const Housing = ({ data }: { data: HousingData }) => {
           </button>
         </div>
       </div>
+      {voiding ? (
+        <ConfirmDialog
+          title="Void all keys?"
+          body="Every key cut for this property stops working, including the ones you hold."
+          confirmLabel="Void keys"
+          onConfirm={() => {
+            send(ev.revokeKeys);
+            setVoiding(false);
+          }}
+          onCancel={() => setVoiding(false)}
+        />
+      ) : null}
     </div>
   );
 };

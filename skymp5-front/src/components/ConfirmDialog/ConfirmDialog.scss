@@ -1,0 +1,77 @@
+// The mastery menu's black-and-gold confirmation, shared by every menu
+$gold: #c8b48a;
+$border: rgba(200, 180, 138, 0.45);
+$border-dim: rgba(200, 180, 138, 0.22);
+$text: #e8e0d0;
+$text-dim: rgba(232, 224, 208, 0.6);
+
+.confirm-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.78);
+  font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
+
+  &__box {
+    width: min(420px, 80%);
+    padding: 26px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid $border;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.9);
+  }
+
+  &__title {
+    margin: 0;
+    color: $gold;
+    font-family: 'Bankir-Retro', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  &__body {
+    margin: 0;
+    color: $text;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  &__button {
+    padding: 9px 18px;
+    border: 1px solid $border;
+    background: rgba(200, 180, 138, 0.1);
+    color: $gold;
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+
+    &:hover {
+      background: rgba(200, 180, 138, 0.22);
+      border-color: $gold;
+      color: #fff;
+    }
+
+    &--cancel {
+      background: transparent;
+      border-color: $border-dim;
+      color: $text-dim;
+    }
+  }
+}

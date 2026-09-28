@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
 import Dropdown from './dropdown';
+import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 
 export type FactionType = 'hold' | 'military' | 'guild';
 
@@ -125,6 +126,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
     setMenu(null);
     send(ev.faction, JSON.stringify(Object.assign({ factionId }, payload)));
   };
+  const leaving = main.find((c) => confirm === 'leave:' + c.id);
   const target = (m: FactionMember) => ({ profileId: m.profileId, slot: m.slot });
 
   // A type tab is shown while the character belongs to that type, and to staff so they can browse every faction
@@ -219,11 +221,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
               />
               {'Show Title' + (c.title ? ' (' + c.title + ')' : '')}
             </label>
-            {confirm === 'leave:' + c.id ? (
-              <Button text="Confirm leave" width={150} height={32} onClick={() => act(c.id, { action: 'leave' })} />
-            ) : (
-              <Button text="Leave Faction" width={150} height={32} onClick={() => setConfirm('leave:' + c.id)} />
-            )}
+            <Button text="Leave Faction" width={150} height={32} onClick={() => setConfirm('leave:' + c.id)} />
           </div>
         ))}
       </div>
@@ -383,6 +381,15 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
       {activeTab === 'regency' ? regencyTab() : null}
       {activeTab !== 'main' && activeTab !== 'regency' ? rosterTab(activeTab) : null}
       {contextMenu()}
+      {leaving ? (
+        <ConfirmDialog
+          title={`Leave ${leaving.name}?`}
+          body="You give up your rank and title in this faction."
+          confirmLabel="Leave"
+          onConfirm={() => act(leaving.id, { action: 'leave' })}
+          onCancel={() => setConfirm('')}
+        />
+      ) : null}
     </div>
   );
 };

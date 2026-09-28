@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { assetUrl } from '../../utils/assetUrl';
+import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 
 import { DEFAULT_RANK_HOURS, PROFESSION_TYPES, RANK_NAMES, SHORT_DESC } from './ranks';
 import './styles.scss';
@@ -101,19 +102,6 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
   }, [ev.close, embedded]);
 
-  // index.js fires menu:escape globally; while the commit dialog is up,
-  // Escape should back out of the dialog rather than the whole menu.
-  useEffect(() => {
-    if (!confirming) return undefined;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopImmediatePropagation();
-      setConfirming(null);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [confirming]);
-
   const current = professions.filter((p) => p.id === viewing)[0];
   const isChosen = !!current && chosen === current.id;
   const art = current ? artFor(current.id) : '';
@@ -204,54 +192,32 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
         {embedded ? null : <button className="mastery__close" onClick={() => send(ev.close)}>Close</button>}
 
         {resetting && ev.reset ? (
-          <div className="mastery__confirm-shade">
-            <div className="mastery__confirm">
-              <h3 className="mastery__confirm-title">Set your profession aside?</h3>
-              <p className="mastery__confirm-body">
-                Your hours and rank are lost and you may choose a craft again. You have {data.resetsLeft} {data.resetsLeft === 1 ? 'reset' : 'resets'} left on this character.
-              </p>
-              <div className="mastery__confirm-actions">
-                <button
-                  className="mastery__choose"
-                  onClick={() => {
-                    send(ev.reset as string);
-                    setResetting(false);
-                  }}
-                >
-                  Reset
-                </button>
-                <button className="mastery__cancel" onClick={() => setResetting(false)}>
-                  Keep it
-                </button>
-              </div>
-            </div>
-          </div>
+          <ConfirmDialog
+            title="Set your profession aside?"
+            body={`Your hours and rank are lost and you may choose a craft again. You have ${data.resetsLeft} ${data.resetsLeft === 1 ? 'reset' : 'resets'} left on this character.`}
+            confirmLabel="Reset"
+            cancelLabel="Keep it"
+            onConfirm={() => {
+              send(ev.reset as string);
+              setResetting(false);
+            }}
+            onCancel={() => setResetting(false)}
+          />
         ) : null}
 
         {confirming && current ? (
-          <div className="mastery__confirm-shade">
-            <div className="mastery__confirm">
-              <h3 className="mastery__confirm-title">Take up the {current.label}?</h3>
-              <p className="mastery__confirm-body">
-                A character keeps one craft. It can be reset only {data.resetsLeft === 1 ? 'once' : `${data.resetsLeft || 0} times`}, and the hours go with it.
-              </p>
-              <div className="mastery__confirm-actions">
-                <button
-                  className="mastery__choose"
-                  onClick={() => {
-                    send(ev.choose, confirming);
-                    setCommitting(true);
-                    setConfirming(null);
-                  }}
-                >
-                  Commit
-                </button>
-                <button className="mastery__cancel" onClick={() => setConfirming(null)}>
-                  Not yet
-                </button>
-              </div>
-            </div>
-          </div>
+          <ConfirmDialog
+            title={`Take up the ${current.label}?`}
+            body={`A character keeps one craft. It can be reset only ${data.resetsLeft === 1 ? 'once' : `${data.resetsLeft || 0} times`}, and the hours go with it.`}
+            confirmLabel="Commit"
+            cancelLabel="Not yet"
+            onConfirm={() => {
+              send(ev.choose, confirming);
+              setCommitting(true);
+              setConfirming(null);
+            }}
+            onCancel={() => setConfirming(null)}
+          />
         ) : null}
       </div>
     </div>
