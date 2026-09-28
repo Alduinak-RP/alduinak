@@ -36,9 +36,9 @@ type Mp = any;
 // Produce containers (beehives and apiaries) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
-// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue and kneels the picker for HARVEST_MS by farmer
-// rank, during which they cannot move or harvest again; the native harvest still hands over the plant's ingredient, a Master farmer
-// gets it twice and a Legendary four times. Crops (CROP_WORDS in the editor id) need a hoe in the inventory.
+// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue (flora half) and kneels the picker for CROP_MS or FLORA_MS,
+// during which they cannot move or harvest again; a farmer's or alchemist's yield follows YIELD_BY_RANK. Crops (CROP_WORDS in the editor id)
+// need a hoe in the inventory.
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
@@ -61,8 +61,11 @@ const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 const DEFAULT_VEIN_TOTAL = 6;
 const DEFAULT_PICK_MINUTES = 30;
 // Kneel of a harvest by farmer rank, Free to Legendary
-const HARVEST_MS = [5000, 3000, 1000, 0, 0, 0];
-const HARVEST_YIELD = [1, 1, 1, 1, 2, 4];
+// A crop needs a hoe and 5 s; flora takes 2 s and costs half
+const CROP_MS = 5000;
+const FLORA_MS = 2000;
+// What one node, swing or strike hands over by the worker's rank: double at Adept, triple at Master
+const YIELD_BY_RANK = [1, 1, 2, 2, 3, 3];
 const CROP_WORDS = ["wheat", "gourd", "nirnroot", "cabbage", "potato"];
 // Skyrim.esm Hoe
 // Skyrim.esm DLC2PickaxeList, every pickaxe
@@ -187,7 +190,7 @@ export class GatheringSystem implements System {
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels ${HARVEST_MS.map((ms) => ms / 1000).join("/")} s by farmer rank except at ${this.instantFlora.size} instant flora`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels ${CROP_MS / 1000} s for a crop and ${FLORA_MS / 1000} s for flora except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -386,13 +389,13 @@ export class GatheringSystem implements System {
     const hoe = this.mastery.hoeFormId();
     if (props["crop"] && hoe && !holdsItem(mp, actorId, (baseId) => baseId === hoe)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
     const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
-    if (!this.needs.canPay(actorId, "gather", rank)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
-    const farmer = this.mastery.rankOf(ctx, actorId, "farmer");
-    const kneelMs = props["instant"] ? 0 : HARVEST_MS[farmer];
+    const flora = !props["crop"];
+    if (!this.needs.canPay(actorId, "gather", rank, flora)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    const kneelMs = props["instant"] ? 0 : flora ? FLORA_MS : CROP_MS;
     return () => {
-      grant?.(HARVEST_YIELD[farmer]);
-      extra?.(HARVEST_YIELD[farmer]);
-      this.needs.pay(ctx, actorId, "gather", rank, "harvest");
+      grant?.(YIELD_BY_RANK[rank]);
+      extra?.(YIELD_BY_RANK[rank]);
+      this.needs.pay(ctx, actorId, "gather", rank, "harvest", flora);
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
       if (kneelMs > 0) {
         this.harvestUntil.set(actorId, Date.now() + kneelMs);
@@ -514,8 +517,9 @@ export class GatheringSystem implements System {
     }
     const rank = this.mastery.rankOf(ctx, s.actorId, "woodworker");
     if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, CHOP_TIRED);
-    this.addItem(ctx, s.actorId, s.resource, s.perStrike);
-    s.given += s.perStrike;
+    const count = s.perStrike * YIELD_BY_RANK[rank];
+    this.addItem(ctx, s.actorId, s.resource, count);
+    s.given += count;
     this.needs.pay(ctx, s.actorId, "gather", rank, "chop");
     if (!this.needs.canPay(s.actorId, "gather", rank)) this.finish(ctx, s, CHOP_TIRED);
   }
@@ -529,7 +533,7 @@ export class GatheringSystem implements System {
     const rank = this.mastery.rankOf(ctx, s.actorId, "miner");
     // A sitting ends where an activation would be refused, rather than mining the bar into the ground
     if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, "You are too tired to keep mining. Rest a while.");
-    this.addItem(ctx, s.actorId, s.resource, s.perStrike);
+    this.addItem(ctx, s.actorId, s.resource, s.perStrike * YIELD_BY_RANK[rank]);
     this.needs.pay(ctx, s.actorId, "gather", rank, "ore");
     if (Math.random() < GEM_CHANCE) {
       const gem = this.rollItem(ctx, GEM_LIST);

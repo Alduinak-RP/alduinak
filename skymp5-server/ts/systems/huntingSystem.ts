@@ -153,7 +153,7 @@ export class HuntingSystem implements System {
     const peltId = this.peltOf(ctx, bodyId);
     if (!peltId || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
     const refusal = !holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE) ? "A hunting knife would take its pelt."
-      : !this.needs.canPay(actorId, "gather", rank) ? "You are too tired to skin it. Rest a while." : "";
+      : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
     if (refusal) {
       setImmediate(() => notifyActor(mp, actorId, refusal));
       return false;
@@ -177,7 +177,7 @@ export class HuntingSystem implements System {
         return;
       }
       addItemTo(mp, actorId, peltId, 1);
-      this.needs.pay(ctx, actorId, "gather", this.mastery.rankOf(ctx, actorId, "hunter"), "skin");
+      this.needs.pay(ctx, actorId, "fight", this.mastery.rankOf(ctx, actorId, "hunter"), "skin", true);
       this.mastery.creditWork(actorId, "hunter");
       this.log(`[hunting] ${hex(actorId)} skinned ${hex(bodyId)} for ${hex(peltId)}`);
     } catch (e) {

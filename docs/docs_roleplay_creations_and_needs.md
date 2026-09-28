@@ -240,26 +240,30 @@ discount, no free bench. Eating never costs fatigue.
 Every action costs a share of the bar by the character's rank **in the profession the action belongs to**; a character
 of another profession or none pays the Free price (`FATIGUE_COST` and `fatigueCost` in `needsSystem.ts`):
 
-| Rank | Gathering | Crafting | Kill (split) and spell cast |
+The point is economy regulation and realism: one person can only add so much to the economy per hour, and work that
+takes real effort costs more of it (0.9.6 values; actions per full bar in brackets):
+
+| Rank | Gathering | Crafting | Kill (split) |
 |---|---|---|---|
-| Free | 16.6% | 33.2% | 66.4% |
-| Novice | 8.3% | 16.6% | 33.2% |
-| Adept | 4.2% | 8.4% | 16.8% |
-| Expert | 2.1% | 4.2% | 8.4% |
-| Master, Legendary | 1% | 2% | 4% |
+| Free | 8.3% (12) | 33.3% (3) | 33.3% (3) |
+| Novice | 4.2% (24) | 8.3% (12) | 16.7% (6) |
+| Adept | 4.2% (24, double yield) | 4.2% (24) | 8.3% (12) |
+| Expert | 2.8% (36, double yield) | 2.8% (36) | 5.6% (18) |
+| Master, Legendary | 2.8% (36, triple yield) | 2.1% (48) | 4.2% (24) |
+
+Half cost: flora (plants that are not crops), refining at the smelter, cooking, alchemy and skinning. Spells cost nothing.
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
-  (farmer or alchemist) and one skinning (hunter).
+  (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
+  A crop needs a hoe and takes 5 s; flora takes 2 s.
 - Crafting is every recipe the server accepts at any station, and every temper at the workbench or grindstone, by the
-  rank of a character whose profession works that bench keyword (MasterySystem `craftRank`). Crafts whose inputs the
-  crafter does not hold are left to the native side uncharged.
+  rank of a character whose profession works that bench keyword (MasterySystem `craftCost`). Smiths and miners both get
+  their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal.
+  Crafts whose inputs the crafter does not hold are left to the native side uncharged.
+- Skinning (hunter rank) costs half a kill.
 - A kill of an NPC or creature costs the kill price by hunter rank (animals) or warrior rank (everything else),
   split equally among every player who hit the victim during the fight (the hit relay of `62_mastery.js`; a fight
   untouched for 10 minutes is forgotten). A kill cannot be refused; the bar just empties.
-- A spell (SPEL of type Spell) costs the cast price by mage rank when its cast starts (`onSpellCast`); a concentration
-  spell instead costs a fifth of that per second held, charged from the `onSpellCastAttempt` keep-alives. A cast the
-  bar cannot pay is refused in `onSpellCastAttempt` with "You are too tired to cast". Scrolls, powers and abilities
-  are free.
 - A craft the bar cannot pay for is refused before the native craft runs. The server sends `needsState` with
   `closeCrafting`, resends the unchanged inventory to undo the recipe the vanilla menu already made locally, and shows
   "You are too tired to craft: fatigue X%, this work needs Y%. Rest about N minutes." The craft that leaves the bar

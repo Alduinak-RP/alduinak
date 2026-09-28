@@ -104,7 +104,7 @@ character starts with one 50:
 | Profession | Kit |
 |---|---|
 | Alchemist | 50 gold |
-| Farmer | Hoe (`0x25101`) and 50 gold |
+| Farmer | Hoe (`AldToolHoe`) and 50 gold |
 | Mage | a blank book (`AldWritingBookBlank`) and 50 gold |
 | Blacksmith | 5 Iron Ingot (`0x5ACE4`) and 50 gold |
 | Cook | 10 Salt Pile (`0x34CDF`) and 50 gold |
@@ -483,12 +483,12 @@ rose from three to six) is read as full.
 
 ### Farming
 
-Harvesting a plant kneels the picker by farmer rank: 5 seconds Free (and any
-other profession), 3 Novice, 1 Adept, instant from Expert. A Master farmer gets
-twice the plant's ingredient, a Legendary farmer four times. Crops (flora whose
-editor id holds wheat, gourd, nirnroot, cabbage or potato, and the nirnroot
-activators) need a hoe (`00025101`) in the inventory: "You need a hoe to harvest
-this crop." Tree fruit, mushrooms and flowers need nothing. Fish and hanging
+Harvesting a crop kneels the picker 5 seconds and flora 2 seconds, whatever the
+rank; a farmer's or alchemist's yield doubles at Adept and triples at Master.
+Crops (flora whose editor id holds wheat, gourd, nirnroot, cabbage or potato, and
+the nirnroot activators) need the plugin hoe `AldToolHoe` in the inventory: "You
+need a hoe to harvest this crop." Tree fruit, mushrooms and flowers need nothing
+and cost half the fatigue. Fish and hanging
 clutter never kneel. Picking credits farmer and alchemist hours and costs a
 gathering action of fatigue by the better of those ranks.
 
@@ -507,8 +507,9 @@ first firewood lands ten seconds after the sit-down animation, not after
 the key press. A client that never sends the claim keeps the plain ten
 second timing, and the server logs `[gathering] <actor> chops at <block> with
 no seat claim` once per sitting. Each swing costs one gathering action of the
-fatigue bar by woodworker rank (16.6% Free, 8.3% Novice, 4.2% Adept, 2.1%
-Expert, 1% Master and Legendary; `docs_roleplay_creations_and_needs.md`).
+fatigue bar by woodworker rank (8.3% Free, 4.2% Novice and Adept, 2.8% Expert
+and up; `docs_roleplay_creations_and_needs.md`), and yields double at Adept and
+triple at Master.
 
 ### Hunting
 

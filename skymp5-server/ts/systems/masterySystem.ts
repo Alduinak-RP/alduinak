@@ -49,6 +49,10 @@ const MASTERY_PROP = "private.mastery";
 const KIT_PROP = "private.professionKit";
 // Plugin recipes any character makes (instruments, broom, war horns) are no one's work
 const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
+// Recipes whose rank bonus belongs to several professions, by editor id prefix
+const SHARED_RECIPES: Array<[string, string[]]> = [["AldRecipeKiln_Charcoal", ["woodworker", "blacksmith", "miner"]]];
+// Crafting at their benches costs half: cooking, alchemy, and refining at the miner's smelter
+const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner"];
 const RECORD_VERSION = 2;
 
 export const RANK_NAMES = ["Free", "Novice", "Adept", "Expert", "Master", "Legendary"];
@@ -234,9 +238,10 @@ const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
   },
   cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: ["AldCraftingMead"] },
   farmer: { activateTypes: ["FLOR", "TREE"] },
-  hunter: { killKeywords: ["ActorTypeAnimal"] },
-  // Veins hand the swing to a linked PickaxeMining*Marker furniture.
-  miner: { activatePrefixes: ["MineOre", "PickaxeMining"] },
+  // Hunters and tailors both tan leather
+  hunter: { killKeywords: ["ActorTypeAnimal"], craftKeywords: ["CraftingTanningRack"] },
+  // Veins hand the swing to a linked PickaxeMining*Marker furniture; smiths and miners both smelt
+  miner: { activatePrefixes: ["MineOre", "PickaxeMining"], craftKeywords: ["CraftingSmelter"] },
   tailor: { craftKeywords: ["CraftingTanningRack", "MCE_CraftingLoom", "CraftingSmithingArmorTable"] },
   warrior: { killKeywords: ACTOR_TYPES },
   woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter", "AldCraftingWoodcrafting", "AldCraftingKiln", "CraftingSmithingSharpeningWheel"] },
@@ -830,6 +835,19 @@ export class MasterySystem implements System {
     const rec = this.read(ctx, actorId);
     const rules = rec && rec.profession ? this.rules[rec.profession] : null;
     return rules && (rules.craftKeywords.has(benchKeyword >>> 0) || rules.craftStations.has(benchKeyword >>> 0)) ? rec!.rank : FREE;
+  }
+
+  // The rank that prices a craft and whether it costs half; shared recipes take the best of their professions
+  craftCost(ctx: SystemContext, actorId: number, recipeId: number): { rank: number; half: boolean } {
+    const bench = this.recipeBench(ctx, recipeId);
+    const edid = this.baseInfo(ctx, recipeId)?.editorId || "";
+    const shared = SHARED_RECIPES.find(([prefix]) => edid.startsWith(prefix));
+    const rank = shared ? this.rankIn(ctx, actorId, shared[1]) : this.craftRank(ctx, actorId, bench);
+    return { rank, half: this.halfCostBench(bench) };
+  }
+
+  halfCostBench(benchKeyword: number): boolean {
+    return HALF_COST_BENCHES_OF.some((id) => !!this.rules[id] && this.rules[id].craftKeywords.has(benchKeyword >>> 0));
   }
 
   // Whether any profession crafts at this bench keyword

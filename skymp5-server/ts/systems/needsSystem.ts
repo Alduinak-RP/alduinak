@@ -14,8 +14,8 @@ type Mp = any;
 // Hunger runs from 0 (full) to 1000 and drains only while the character is online and past character creation; eating a food takes it down by the
 // amount needsFoodHunger gives its Survival hunger effect, or else the effect's Survival_HungerRestoreEffectScript AmountToRestore global.
 // Fatigue is a bar from 0 to 1 that refills at 100% per online hour and nothing else. Work costs a share of it by the character's rank in
-// the profession the work belongs to (Free for any other): gathering FATIGUE_COST, crafting and tempering twice that, a kill four times
-// (split among everyone who hit the victim), a spell cast four times, a concentration spell a fifth of a cast per second held. Work the bar
+// the profession the work belongs to (Free for any other), from FATIGUE_COST: gathering, crafting and tempering, and a kill (split among everyone
+// who hit the victim); flora, refining, cooking, alchemy and skinning cost half, and spells cost nothing. Work the bar
 // cannot pay is refused; a craft is refused before the native craft runs and the client's local craft is undone by resending its inventory,
 // and the craft that leaves the bar short of another closes the menu. Eating never costs fatigue. The bar maps onto Survival's exhaustion
 // scale as (1 - fatigue) * 960.
@@ -94,9 +94,14 @@ const DEFAULT_FATIGUE_STAGES = [80, 160, 340, 560, 800];
 const DEFAULT_HUNGER_START = 145;
 const DEFAULT_EXHAUSTION_MAX = 960;
 // Share of the bar one gathering action costs by rank, Free to Legendary
-const FATIGUE_COST = [0.166, 0.083, 0.042, 0.021, 0.01, 0.01];
+// Share of the bar one action costs by rank, Free to Legendary: gathering 12/24/24/36/36 an hour, crafting 3/12/24/36/48, a kill 3/6/12/18/24
+const FATIGUE_COST: Record<Effort, number[]> = {
+  gather: [1 / 12, 1 / 24, 1 / 24, 1 / 36, 1 / 36, 1 / 36],
+  craft: [1 / 3, 1 / 12, 1 / 24, 1 / 36, 1 / 48, 1 / 48],
+  fight: [1 / 3, 1 / 6, 1 / 12, 1 / 18, 1 / 24, 1 / 24],
+  magic: [0, 0, 0, 0, 0, 0],
+};
 export type Effort = "gather" | "craft" | "fight" | "magic";
-const EFFORT_MULT: Record<Effort, number> = { gather: 1, craft: 2, fight: 4, magic: 4 };
 const CONCENTRATION_SHARE_PER_SEC = 0.2;
 // A concentration keep-alive further apart than this starts a new channel
 const CONCENTRATION_GAP_MS = 1500;
@@ -147,6 +152,7 @@ type AbilityField = "stageSpell" | "fatigueSpell";
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 const pct = (v: number): number => Math.round(v * 100);
+const tenth = (v: number): number => Math.round(v * 1000) / 10;
 const share = (v: number): number => Math.round(v * 10000) / 10000;
 const numberList = (v: unknown, length: number): number[] | null =>
   Array.isArray(v) && v.length === length && v.every((x) => Number.isFinite(Number(x))) ? v.map(Number) : null;
@@ -162,7 +168,8 @@ const lookup = (mp: Mp, id: number): any => {
   try { return id ? mp.lookupEspmRecordById(id) : null; } catch { return null; }
 };
 
-export const fatigueCost = (effort: Effort, rank: number): number => FATIGUE_COST[clamp(rank, 0, LEGENDARY)] * EFFORT_MULT[effort];
+// half: flora, refining, cooking, alchemy and skinning cost half
+export const fatigueCost = (effort: Effort, rank: number, half = false): number => FATIGUE_COST[effort][clamp(rank, 0, LEGENDARY)] * (half ? 0.5 : 1);
 
 // Survival_NeedBase.ApplyAttributePenalty: the share of the maximum lost, from the stage 2 value up to the need's maximum
 export const attributePenaltyShare = (value: number, stage2Value: number, max: number): number =>
@@ -202,7 +209,7 @@ export class NeedsSystem implements System {
     }
     const probe = await this.resolveForms(ctx, foodHunger, s.dataDir, s.loadOrder);
     const foodLine = Object.entries(foodHunger).map(([edid, v]) => `${edid.replace(FOOD_EFFECT_PREFIX, "")} ${v}`).join(", ");
-    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue refills 100% per online hour, gathering costs ${FATIGUE_COST.map((c) => c * 100).join("/")}% by rank, crafting x2, kills and spells x4, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}`);
+    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue refills 100% per online hour, costs by rank: gathering ${FATIGUE_COST.gather.map(tenth).join("/")}%, crafting ${FATIGUE_COST.craft.map(tenth).join("/")}%, kills ${FATIGUE_COST.fight.map(tenth).join("/")}%, spells free, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
@@ -328,7 +335,8 @@ export class NeedsSystem implements System {
   private chargeCraft(ctx: SystemContext, actorId: number, recipeId: number): boolean {
     const entry = this.online.get(actorId);
     if (!entry || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
-    const cost = this.costOf("craft", this.mastery.craftRank(ctx, actorId, this.mastery.recipeBench(ctx, recipeId)));
+    const priced = this.mastery.craftCost(ctx, actorId, recipeId);
+    const cost = this.costOf("craft", priced.rank, priced.half);
     if (!this.affords(entry, cost)) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
       return false;
@@ -345,7 +353,7 @@ export class NeedsSystem implements System {
     if (!entry) return false;
     const benches = Array.from(this.mastery.stationKeywords(ctx, refrId)).filter((k) => this.mastery.isCraftBench(k));
     if (!benches.length) return false;
-    const cost = this.costOf("craft", Math.max(...benches.map((k) => this.mastery.craftRank(ctx, actorId, k))));
+    const cost = Math.min(...benches.map((k) => this.costOf("craft", this.mastery.craftRank(ctx, actorId, k), this.mastery.halfCostBench(k))));
     if (this.affords(entry, cost)) return false;
     this.enqueue(ctx, { kind: "tired", actorId, cost });
     return true;
@@ -498,19 +506,19 @@ export class NeedsSystem implements System {
 
   private fatigueOn = true;
 
-  private costOf(effort: Effort, rank: number): number {
-    return this.fatigueOn ? fatigueCost(effort, rank) : 0;
+  private costOf(effort: Effort, rank: number, half = false): number {
+    return this.fatigueOn ? fatigueCost(effort, rank, half) : 0;
   }
 
   // Whether the bar can pay for one action of this effort at the rank; an offline character or needs switched off are never refused
-  canPay(actorId: number, effort: Effort, rank: number): boolean {
+  canPay(actorId: number, effort: Effort, rank: number, half = false): boolean {
     const entry = this.online.get(actorId);
-    return !entry || !this.enabled || this.affords(entry, this.costOf(effort, rank));
+    return !entry || !this.enabled || this.affords(entry, this.costOf(effort, rank, half));
   }
 
   // Takes one action of this effort at the rank off the bar; what names the work for the log
-  pay(ctx: SystemContext, actorId: number, effort: Effort, rank: number, what: string): void {
-    this.spend(ctx, actorId, this.costOf(effort, rank), what);
+  pay(ctx: SystemContext, actorId: number, effort: Effort, rank: number, what: string, half = false): void {
+    this.spend(ctx, actorId, this.costOf(effort, rank, half), what);
   }
 
   private affords(entry: Online, cost: number): boolean {
