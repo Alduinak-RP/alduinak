@@ -425,7 +425,7 @@ serverPickerBtn.addEventListener('click', e => {
 document.addEventListener('click', () => setServerMenuOpen(false))
 document.addEventListener('keydown', e => { if (e.key === 'Escape') setServerMenuOpen(false) })
 
-// Status, lock and PLAY state follow the selected server
+// Status, lock, modlist and PLAY state follow the selected server
 serverMenu.addEventListener('click', async e => {
   const li = e.target.closest('.server-option')
   if (!li) return
@@ -436,6 +436,7 @@ serverMenu.addEventListener('click', async e => {
   await window.electronAPI.saveSettings({ activeServerId: pickerActiveId })
   checkServerStatus()
   loadServerInfo()
+  loadModlist()
   refreshPlayState()
 })
 

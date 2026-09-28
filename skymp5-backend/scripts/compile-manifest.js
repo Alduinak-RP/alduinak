@@ -8,7 +8,8 @@
  * `urls` gives a download source to non-Nexus archives; `rootInclude` lists game-root files to capture.
  * `creations` names Creation Club plugins every Skyrim SE 1.6 install carries: they are hashed from --game, never
  * redistributed, and the launcher copies them out of the player's own game; `extraAccept` adds known store copies.
- * Files found in no archive are packed into one extras archive the backend serves from /files/extras.
+ * Files found in no archive are packed into one extras archive the backend serves from /files/<extras dir>.
+ * --out, --modlist-out, --extras-dir and --server select another game server's manifest, modlist, extras folder and client version.
  */
 
 const fs      = require('fs')
@@ -19,7 +20,7 @@ const zlib    = require('zlib')
 const { execFileSync } = require('child_process')
 const config  = require('../config')
 const { MANIFEST_NAME } = require('../sources/manifestFormat')
-const { readVersions } = require('../sources/versions')
+const { versionsFor } = require('../sources/versions')
 // Prefer a full 7-Zip: the standalone 7za from 7zip-bin has no Rar codec, so .rar downloads would be skipped
 const SEVEN = [process.env.ALDUINAK_7Z, 'C:\\Program Files\\7-Zip\\7z.exe']
   .find(p => p && fs.existsSync(p)) || require('7zip-bin').path7za
@@ -32,13 +33,16 @@ function parseArgs(argv) {
     else if (k === '--game')    a.game    = argv[++i]
     else if (k === '--profile') a.profile = argv[++i]
     else if (k === '--out')     a.out     = argv[++i]
+    else if (k === '--modlist-out') a.modlistOut = argv[++i]
+    else if (k === '--extras-dir')  a.extrasDir  = argv[++i]
+    else if (k === '--server')      a.server     = argv[++i]
   }
   return a
 }
 
 const args = parseArgs(process.argv.slice(2))
 if (!args.mo2) {
-  console.error('Usage: node scripts/compile-manifest.js --mo2 <MO2 root> [--game <game root>] [--profile Alduinak] [--out <file>]')
+  console.error('Usage: node scripts/compile-manifest.js --mo2 <MO2 root> [--game <game root>] [--profile Alduinak] [--out <file>] [--modlist-out <file>] [--extras-dir <name>] [--server <id>]')
   process.exit(1)
 }
 
@@ -48,8 +52,10 @@ const MODS        = path.join(MO2, 'mods')
 const PROFILE_DIR = path.join(MO2, 'profiles', args.profile)
 const DATA_DIR    = path.join(__dirname, '..', 'data')
 const OUT         = args.out ? path.resolve(args.out) : path.join(DATA_DIR, MANIFEST_NAME)
-const MODLIST_OUT = path.join(DATA_DIR, 'modlist.json')
-const EXTRAS_DIR  = path.join(config.clientFilesDir, 'extras')
+const MODLIST_OUT = args.modlistOut ? path.resolve(args.modlistOut) : path.join(DATA_DIR, 'modlist.json')
+// Folder under config.clientFilesDir and the /files/<name> URL segment the backend serves it from
+const EXTRAS_NAME = args.extrasDir || 'extras'
+const EXTRAS_DIR  = path.join(config.clientFilesDir, EXTRAS_NAME)
 const PUBLIC_API  = (process.env.PUBLIC_API_URL || 'https://api.alduinak.com').replace(/\/+$/, '')
 
 // Where the launcher looks for Creation files, relative to the game root; Keizaal's launcher parks them in _disabledByKzl
@@ -313,7 +319,7 @@ async function main() {
       fs.mkdirSync(EXTRAS_DIR, { recursive: true })
       for (const old of fs.readdirSync(EXTRAS_DIR)) if (old !== name) fs.rmSync(path.join(EXTRAS_DIR, old), { force: true })
       fs.renameSync(tmp, path.join(EXTRAS_DIR, name))
-      extrasEntry = { archive: name, key: 'x', size, sha256: sha, url: `${PUBLIC_API}/files/extras/${encodeURIComponent(name)}` }
+      extrasEntry = { archive: name, key: 'x', size, sha256: sha, url: `${PUBLIC_API}/files/${EXTRAS_NAME}/${encodeURIComponent(name)}` }
       console.log(`  extras archive ${name}: ${extras.length} file(s), ${(size / 1048576).toFixed(1)} MB`)
     } finally {
       fs.rmSync(stageDir, { recursive: true, force: true })
@@ -347,7 +353,7 @@ async function main() {
   }))
 
   const manifest = {
-    version: readVersions().client,
+    version: versionsFor(args.server).client,
     build: new Date().toISOString(),
     game: 'skyrimspecialedition',
     mods,

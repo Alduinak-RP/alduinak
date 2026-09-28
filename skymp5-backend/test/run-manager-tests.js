@@ -1,5 +1,5 @@
 'use strict'
-// Runs the manager security tests against a throwaway copy of the backend and manager code, so no live data, .env or log folder is ever read or written
+// Runs every test/*.test.js against a throwaway copy of the backend and manager code, so no live data, .env or log folder is ever read or written
 // Usage: node test/run-manager-tests.js [scratch folder]
 
 const fs   = require('fs')
@@ -19,7 +19,9 @@ for (const rel of ['config.js', 'package.json', 'routes', 'sources', 'middleware
 }
 fs.cpSync(path.join(repoRoot, 'server-manager', 'src'), path.join(root, 'server-manager', 'src'), { recursive: true, filter: skip })
 
-const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', path.join(root, 'skymp5-backend', 'test', 'manager-security.test.js')], {
+const testDir = path.join(root, 'skymp5-backend', 'test')
+const testFiles = fs.readdirSync(testDir).filter(f => f.endsWith('.test.js')).map(f => path.join(testDir, f))
+const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', ...testFiles], {
   cwd: path.join(root, 'skymp5-backend'),
   stdio: 'inherit',
   env: {
@@ -31,6 +33,9 @@ const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', pa
     ALDUINAK_MANAGER_TEST_ROOT: root,
     ALDUINAK_SERVER_SETTINGS: path.join(root, 'server', 'server-settings.json'),
     SERVER_SETTINGS_PATH: path.join(root, 'server', 'server-settings.json'),
+    // The manager builds into its test profile, so that profile lands on the same scratch server dir
+    ALDUINAK_TEST_SERVER_DIR: path.join(root, 'server'),
+    ALDUINAK_TEST_SERVER_SETTINGS: path.join(root, 'server', 'server-settings.json'),
     ALDUINAK_LOG_DIR: path.join(root, 'logs'),
   },
 })

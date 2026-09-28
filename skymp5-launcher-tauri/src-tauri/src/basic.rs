@@ -98,7 +98,7 @@ pub async fn api_serverinfo() -> Value {
 
 #[tauri::command]
 pub async fn api_modlist() -> Value {
-    match net::fetch_json(&format!("{}/api/modlist", net::api_url()), &[]).await {
+    match net::fetch_json(&format!("{}/api/modlist{}", net::api_url(), server_query()), &[]).await {
         Ok(Value::Array(items)) => json!({ "ok": true, "items": items }),
         Ok(_) => json!({ "ok": true, "items": [] }),
         Err(e) => json!({ "ok": false, "error": e.message }),

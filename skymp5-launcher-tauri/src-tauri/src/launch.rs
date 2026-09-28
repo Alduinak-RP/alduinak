@@ -144,7 +144,11 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
     // The backend approves the files and hands out the single-use play token the game logs in with
     let session = store().str("gameSession");
     if !session.is_empty() && srv.is_some() && info.as_ref().and_then(|i| i["offlineMode"].as_bool()) != Some(true) {
-        let body = json!({ "filesVersion": store().str("filesVersion"), "plugins": order.iter().map(|f| file_name(f)).collect::<Vec<_>>() });
+        let body = json!({
+            "filesVersion": store().str("filesVersion"),
+            "plugins": order.iter().map(|f| file_name(f)).collect::<Vec<_>>(),
+            "server": srv.as_ref().and_then(|s| s.get("id").cloned()).unwrap_or(Value::Null),
+        });
         match net::post_json(&format!("{}/api/launch-check", net::api_url()), &body, &[("x-session", &session)]).await {
             Ok(check) if check["ok"].as_bool() == Some(false) => {
                 return Err(if check["filesOk"].as_bool() == Some(false) { "Your client files are out of date. Press the button again to update, then launch." } else { "Your plugin load order does not match the server. Run Repair Modlist in Settings." }.into());

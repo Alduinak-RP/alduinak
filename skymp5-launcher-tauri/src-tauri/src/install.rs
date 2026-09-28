@@ -1,7 +1,7 @@
 // The modlist install: MO2 (unless Mod Manager is None), the manifest replay, SKSE and cleanup, plus the separate install steps
 use crate::gamecopy::{self, progress, CREATIONS_STAMP, NEVER_LAUNCHED_ERROR};
 use crate::settings::client_settings_path;
-use crate::{active_server, auth, basic, effective_game_path, isolated_game_dir, isolated_game_ready, log, mo2, net, proc, send, store};
+use crate::{active_server, auth, basic, effective_game_path, isolated_game_dir, isolated_game_ready, log, mo2, net, proc, send, server_query, store};
 use regex::Regex;
 use sha2::Digest;
 use serde_json::{json, Map, Value};
@@ -69,9 +69,14 @@ pub async fn install_skse_into_root(game: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// Cached in the launcher's data folder; the server checks the copy's hash, so an edited copy is replaced, never trusted
+// Cached per server in the launcher's data folder; the server checks the copy's hash, so an edited copy is replaced, never trusted
 pub async fn fetch_manifest() -> Result<Value, net::HttpError> {
-    let m = net::fetch_json_cached(&format!("{}/api/manifest", net::api_url()), &crate::store::data_dir().join("manifest-cache.json"), 120).await?;
+    let query = server_query();
+    let id: String = if query.is_empty() { String::new() } else {
+        active_server().and_then(|s| s["id"].as_str().map(|i| i.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')).collect())).unwrap_or_default()
+    };
+    let cache = crate::store::data_dir().join(if id.is_empty() { "manifest-cache.json".to_string() } else { format!("manifest-cache-{id}.json") });
+    let m = net::fetch_json_cached(&format!("{}/api/manifest{query}", net::api_url()), &cache, 120).await?;
     if let Some(list) = m["gameExes"].as_array() {
         *crate::game::KNOWN_GAME_EXES.lock().unwrap() = Some(list.iter().filter_map(|h| h.as_str().map(str::to_lowercase)).collect());
     }
@@ -154,7 +159,9 @@ fn open_download_list(missing: &[Value]) {
         let s = &a["source"];
         Some(format!("{}-{}", s["modId"].as_i64()?, s["fileId"].as_i64().map(|f| f.to_string()).unwrap_or_else(|| "any".into())))
     }).collect();
-    let query = if need.is_empty() { String::new() } else { format!("?need={}", url::form_urlencoded::byte_serialize(need.join(",").as_bytes()).collect::<String>()) };
+    let server = server_query();
+    let sep = if server.is_empty() { "?" } else { "&" };
+    let query = if need.is_empty() { server.clone() } else { format!("{server}{sep}need={}", url::form_urlencoded::byte_serialize(need.join(",").as_bytes()).collect::<String>()) };
     let _ = app.opener().open_url(format!("{}/api/nexus-downloads{query}", net::api_url()), None::<&str>);
 }
 
@@ -653,9 +660,9 @@ pub fn preloader_present(game: &Path) -> bool {
     gamecopy::PRELOADER_DLLS.iter().any(|f| game.join(f).exists())
 }
 
-// The released client version, from the backend's versions.json
+// The selected server's released client version, from the backend's versions.json
 async fn client_version() -> Option<String> {
-    net::fetch_json(&format!("{}/api/version", net::api_url()), &[]).await.ok()?["client"].as_str().filter(|v| !v.is_empty()).map(String::from)
+    net::fetch_json(&format!("{}/api/version{}", net::api_url(), server_query()), &[]).await.ok()?["client"].as_str().filter(|v| !v.is_empty()).map(String::from)
 }
 
 // The Install Options status dots: SKSE, the cleaned masters and the installed modlist

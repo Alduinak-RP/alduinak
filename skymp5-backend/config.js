@@ -91,7 +91,7 @@ Object.defineProperty(config, 'masterApiAuthToken', { get: () => main.masterApiA
 Object.defineProperty(config, 'masterUrl', { get: () => main.master, enumerable: true })
 
 // The test server is listed when its settings file exists with its own master key and ports; it reads live backend state but never writes it
-const testSettings = process.env.TEST_SERVER_SETTINGS_PATH || path.join(REPO_ROOT, 'testserver', 'server-settings.json')
+const testSettings = process.env.TEST_SERVER_SETTINGS_PATH || path.join(REPO_ROOT, 'build', 'dist', 'testserver', 'server-settings.json')
 if (fs.existsSync(testSettings)) {
   const test = gameServer('test', testSettings, { readOnly: true, staffOnly: true })
   if (!test.masterKey || test.masterKey === main.masterKey) console.warn('[config] the test server has no master key of its own: test server not listed')
@@ -101,3 +101,8 @@ if (fs.existsSync(testSettings)) {
 
 config.serverByKey = key => (key && config.servers.find(s => s.masterKey === key)) || null
 config.serverById  = id => config.servers.find(s => s.id === id) || null
+// ?server=<id> lookups: an unknown or missing id means the main server
+config.serverOrMain = id => config.serverById(id) || config.servers[0]
+
+// The test game server's console relay, bound to loopback by sources/wsRelay.js
+config.testRelayPort = parseInt(process.env.WS_PORT_TEST || '7779', 10)

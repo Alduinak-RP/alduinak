@@ -1,9 +1,9 @@
 const router = require('express').Router()
 const fs     = require('fs')
-const path   = require('path')
+const config = require('../config')
 
-const { MANIFEST_NAME, expand } = require('../sources/manifestFormat')
-const MANIFEST_PATH = path.join(__dirname, '..', 'data', MANIFEST_NAME)
+const { expand } = require('../sources/manifestFormat')
+const { manifestPath } = require('../sources/serverFiles')
 const GAME = 'skyrimspecialedition'
 
 // Minimal HTML escaping for archive names embedded in the page.
@@ -45,11 +45,11 @@ const page = body => `<!doctype html>
 </html>`
 
 // HTML page of every Nexus archive's download link; free accounts can't use the API, so players Ctrl+click links (about 5 at a time) to start Mod Manager Downloads
-// ?need=<modId>-<fileId>,... narrows the list to what the launcher is still missing.
+// ?need=<modId>-<fileId>,... narrows the list to what the launcher is still missing; ?server=<id> reads that server's manifest.
 router.get('/', (req, res) => {
   let manifest
   try {
-    manifest = expand(JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')))
+    manifest = expand(JSON.parse(fs.readFileSync(manifestPath(config.serverOrMain(req.query.server).id), 'utf8')))
   } catch (err) {
     return res.status(404).type('text/html').send(page(
       `<h1>Mod downloads aren't ready yet</h1>` +

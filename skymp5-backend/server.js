@@ -63,8 +63,8 @@ function start() {
 
   // Simple Cleaned Masters .vcdiff patches the launcher applies to the player's masters
   app.use('/files/cleaned-masters', express.static(path.join(config.clientFilesDir, 'cleaned-masters')))
-  // Mod files found in no download archive, packed by compile-manifest
-  app.use('/files/extras', express.static(path.join(config.clientFilesDir, 'extras')))
+  // Mod files found in no download archive, packed by compile-manifest; extras-test holds the test server's archive
+  for (const dir of ['extras', 'extras-test']) app.use(`/files/${dir}`, express.static(path.join(config.clientFilesDir, dir)))
 
   // News images: served at /images/<filename>
   app.use('/images', express.static(path.join(__dirname, 'public', 'images')))

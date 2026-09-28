@@ -45,7 +45,7 @@ const profiles = require('../sources/profiles')
 const players  = require('../sources/players')
 const bans     = require('../sources/bans')
 const safeEqual = require('../sources/safeEqual')
-const { readVersions } = require('../sources/versions')
+const { versionsFor } = require('../sources/versions')
 const db = require('../sources/db')
 const security = require('../sources/security')
 
@@ -96,8 +96,8 @@ function lookupSession(token) {
 
 // Launch sanity check: the launcher reports files version + plugin list to POST /api/launch-check; the result is stored on the session so validation can refuse stale or launcher-skipping clients
 
-function currentFilesVersion() {
-  return readVersions().client || null
+function currentFilesVersion(serverId = config.servers[0].id) {
+  return versionsFor(serverId).client || null
 }
 
 // A passing check hands out the play token the game logs in with: unredeemed it lives PLAY_TOKEN_TTL, then only its first ip may reuse it (reconnects)
@@ -150,14 +150,16 @@ function recordSessionHwid(token, hwid) {
   return true
 }
 
-// Returns { ok: true } or { ok: false, error } for the session-validation gate.
-function launchGateStatus(entry) {
+// Returns { ok: true } or { ok: false, error } for the session-validation gate of one game server.
+function launchGateStatus(entry, server = config.servers[0]) {
   if (!config.launchCheckEnforce) return { ok: true }
   // A launcher too old for the published install manifest, whatever files it reports
-  const required = currentFilesVersion()
+  const required = currentFilesVersion(server.id)
   if (!required) return { ok: true }   // no published package: can't compare
   const lc = entry.launchCheck
   if (!lc) return { ok: false, error: 'launchCheckMissing' }
+  // A check made for another game server verified that server's files, not these
+  if (lc.server && lc.server !== server.id) return { ok: false, error: 'launchCheckMissing' }
   if (lc.filesVersion !== required) return { ok: false, error: 'clientOutdated' }
   if (lc.pluginsOk === false) return { ok: false, error: 'loadOrderMismatch' }
   return { ok: true }
@@ -260,7 +262,7 @@ router.get('/:key/sessions/:session', async (req, res) => {
   }
 
   // Refuse clients whose files/load order weren't verified by the launcher right before this game start
-  const gate = launchGateStatus(entry)
+  const gate = launchGateStatus(entry, req.server)
   if (!gate.ok) {
     console.log(`[master-api] refused session for ${entry.username || entry.profileId}: ${gate.error}`)
     return res.status(403).json({ error: gate.error })

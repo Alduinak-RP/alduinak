@@ -1,15 +1,16 @@
 const router = require('express').Router()
 const fs     = require('fs')
 const path   = require('path')
+const config = require('../config')
+const { modlistPath } = require('../sources/serverFiles')
 
-const MODLIST_PATH = path.join(__dirname, '..', 'data', 'modlist.json')
-
-// allows editing data/modlist.json without restarting the backend.
-router.get('/', (_req, res) => {
+// GET /api/modlist?server=<id>: read on every call, so editing data/modlist*.json needs no backend restart
+router.get('/', (req, res) => {
+  const file = modlistPath(config.serverOrMain(req.query.server).id)
   try {
-    res.json(JSON.parse(fs.readFileSync(MODLIST_PATH, 'utf8')))
+    res.json(JSON.parse(fs.readFileSync(file, 'utf8')))
   } catch (err) {
-    res.status(500).json({ error: `modlist.json is missing or invalid: ${err.message}` })
+    res.status(500).json({ error: `${path.basename(file)} is missing or invalid: ${err.message}` })
   }
 })
 
