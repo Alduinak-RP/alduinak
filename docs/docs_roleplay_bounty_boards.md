@@ -94,8 +94,8 @@ invisible primitive, which floats about 105-155 units above the visible board
 and to one side of it, where a strongbox would hang in the air and catch the
 crosshair meant for the board (the server cannot move a placed non-actor, so
 the base should be small or flat). The posting fees pile
-up in it. Its base is `bountyBoardStashBase` (default `c674b:Skyrim.esm`, the
-vanilla ash pile, a CONT with no base items); a base that is not a CONT is
+up in it. Its base is `bountyBoardStashBase` (default `10aad2:Skyrim.esm`, the
+vanilla strongbox, a CONT with no base items); a base that is not a CONT is
 logged at startup and the fee is then simply destroyed, as before. The base
 must carry no items of its own, because the engine re-adds base items when a
 container is emptied.
@@ -195,7 +195,7 @@ menu closes itself when the browser loses focus, like the mastery menu.
 | `bountyBoardMaxNotes` | 40 | notices one board holds |
 | `bountyBoardMaxTextLen` | 500 | characters per notice |
 | `bountyBoardMaxDistance` | 512 | posting reach in game units |
-| `bountyBoardStashBase` | `c674b:Skyrim.esm` | CONT base of the strongbox, as a `hex:Plugin` desc or a load-order id |
+| `bountyBoardStashBase` | `10aad2:Skyrim.esm` | CONT base of the strongbox, as a `hex:Plugin` desc or a load-order id |
 
 `bountyBoardCostGold` and `bountyBoardStashBase` also have rows in the manager
 **Settings** tab (Interactions group), so they can be changed there without

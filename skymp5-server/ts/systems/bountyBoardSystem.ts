@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
-import { GOLD_BASE_ID, addGold, baseTypeOf } from "./actorUtil";
+import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf } from "./actorUtil";
 import { containerDesc, placeAtMe } from "./npcPlacement";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -47,7 +47,7 @@ type Mp = any;
 //   bountyBoardMaxNotes     notices one board holds, default 40
 //   bountyBoardMaxTextLen   characters per notice, default 500
 //   bountyBoardMaxDistance  posting reach in game units, default 512
-//   bountyBoardStashBase    CONT base of the strongbox, default c674b:Skyrim.esm
+//   bountyBoardStashBase    CONT base of the strongbox, default 10aad2:Skyrim.esm
 
 const BOARD_PROP = "private.bountyBoard";
 
@@ -62,7 +62,7 @@ const DEFAULT_MAX_NOTES = 40;
 const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
 // The vanilla ash pile: a CONT with no base items and a flat mesh at the board's foot
-const DEFAULT_STASH_BASE = "c674b:Skyrim.esm";
+const DEFAULT_STASH_BASE = "10aad2:Skyrim.esm";
 const NOT_MANAGER_NOTICE = "Only the hold's steward or jarl may open the board's strongbox.";
 
 const POST_COOLDOWN_MS = 5000;
@@ -562,15 +562,22 @@ export class BountyBoardSystem implements System {
   // The board's strongbox, placed on first use at the foot of the visible board; 0 when none can be had
   private stashOf(ctx: SystemContext, primary: number, rec: BoardRecord): number {
     const mp = ctx.svr as Mp;
-    if (rec.stash && this.isStash(ctx, rec.stash)) {
-      this.stashes.set(rec.stash, primary);
-      return rec.stash;
+    const old = rec.stash && this.isStash(ctx, rec.stash) ? rec.stash : 0;
+    if (old && (!this.stashDesc || baseIdOf(mp, old) === mp.getIdFromDesc(this.stashDesc) >>> 0)) {
+      this.stashes.set(old, primary);
+      return old;
     }
     if (!this.worldLoaded || !this.stashDesc) return 0;
     let stash = 0;
     try {
       stash = placeAtMe(mp, this.stashAnchors.get(primary) || primary, this.stashDesc) >>> 0;
-      mp.set(stash, "inventory", { entries: [] });
+      // A strongbox of an older base hands its fees over and goes away
+      mp.set(stash, "inventory", old ? mp.get(old, "inventory") : { entries: [] });
+      if (old) {
+        mp.set(old, "inventory", { entries: [] });
+        mp.set(old, "isDisabled", true);
+        this.stashes.delete(old);
+      }
     } catch (e) {
       this.log(`[bounty] could not place the ${this.boardNameOf(primary)} board strongbox: ${e}`);
       return 0;
