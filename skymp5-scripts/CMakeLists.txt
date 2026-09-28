@@ -12,7 +12,7 @@ if(BUILD_SCRIPTS)
 
     add_custom_command(
         TARGET skymp5-scripts POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/pex ${CMAKE_BINARY_DIR}/dist/server/data/scripts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/pex ${SKYMP_DIST_SERVER_DIR}/data/scripts
     )
 else()
     add_custom_target(skymp5-scripts ALL

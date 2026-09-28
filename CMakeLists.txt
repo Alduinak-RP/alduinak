@@ -159,6 +159,14 @@ if(CPPCOV_PATH)
   endif()
 endif()
 
+# Where the server and client artifacts land; the manager points them at build/dist/testserver and build/dist/testclient
+set(SKYMP_DIST_SERVER_DIR "${CMAKE_BINARY_DIR}/dist/server" CACHE PATH "Directory the game server artifacts are written to")
+set(SKYMP_DIST_CLIENT_DIR "${CMAKE_BINARY_DIR}/dist/client" CACHE PATH "Directory the client artifacts are written to")
+file(TO_CMAKE_PATH "${SKYMP_DIST_SERVER_DIR}" SKYMP_DIST_SERVER_DIR)
+file(TO_CMAKE_PATH "${SKYMP_DIST_CLIENT_DIR}" SKYMP_DIST_CLIENT_DIR)
+message(STATUS SKYMP_DIST_SERVER_DIR=${SKYMP_DIST_SERVER_DIR})
+message(STATUS SKYMP_DIST_CLIENT_DIR=${SKYMP_DIST_CLIENT_DIR})
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -246,7 +254,7 @@ endforeach()
 if(INSTALL_CLIENT_DIST)
   add_custom_target(
     install_client_dist ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/dist/client ${SKYRIM_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${SKYMP_DIST_CLIENT_DIR} ${SKYRIM_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   )
   add_dependencies(install_client_dist skymp5-client skyrim-platform)
@@ -271,7 +279,7 @@ foreach(TEST_SCRIPT ${INTEGRATION_TESTS})
 
   set(ADD_TEST_ARGS
     -DTEST_SCRIPT=${TEST_SCRIPT}
-    -DSERVER_DIR=${CMAKE_BINARY_DIR}/dist/server
+    -DSERVER_DIR=${SKYMP_DIST_SERVER_DIR}
     -DSERVER_SETTINGS_BASE_JSON=${CMAKE_BINARY_DIR}/server-settings-base.json
   )
   if(TEST_DB_DIR)

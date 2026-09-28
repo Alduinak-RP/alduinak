@@ -38,7 +38,8 @@ console.log(`Source dir is '${getSourceDir()}'`);
 
 let bin = path.join(getBinaryDir(), "skyrim-platform/_platform_se");
 let sourceDir = path.join(getSourceDir());
-let distDir = path.join(getBinaryDir(), "dist/client");
+// SKYMP_DIST_CLIENT_DIR lets a build target another client dir (the manager builds into dist/testclient)
+let distDir = process.env.SKYMP_DIST_CLIENT_DIR ? path.resolve(process.env.SKYMP_DIST_CLIENT_DIR) : path.join(getBinaryDir(), "dist/client");
 
 const createDirectory = (path) => {
   if (!fs.existsSync(path)) {

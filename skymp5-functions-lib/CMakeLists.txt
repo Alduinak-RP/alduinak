@@ -13,7 +13,7 @@ if(BUILD_GAMEMODE)
   set(GAMEMODE_ZIP_URL "https://github.com/${GAMEMODE_REPO}/archive/refs/heads/${GAMEMODE_BRANCH}.zip")
   set(GAMEMODE_ZIP_DEST "${CMAKE_BINARY_DIR}/gamemode.zip")
   set(GAMEMODE_ZIP_EXTRACT_DIR "${CMAKE_BINARY_DIR}/gamemode-zip")
-  set(GAMEMODE_JS_DEST_DIR "${CMAKE_BINARY_DIR}/dist/server")
+  set(GAMEMODE_JS_DEST_DIR "${SKYMP_DIST_SERVER_DIR}")
 
   set(DEPLOY_BRANCH "$ENV{DEPLOY_BRANCH}")
   set(AUTO_MERGE_REPO "Pospelove/auto-merge-action")
@@ -35,7 +35,7 @@ if(BUILD_GAMEMODE)
 
   add_custom_target(skymp5-functions-lib ALL
     SOURCES ${source}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/dist/server
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SKYMP_DIST_SERVER_DIR}
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/${GAMEMODE_REPO_NAME}-${GAMEMODE_BRANCH}
     COMMAND ${CMAKE_COMMAND} -E env DOWNLOAD_NO_PROGRESS=1
             ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/${source}
@@ -45,7 +45,8 @@ else()
   add_custom_target(skymp5-functions-lib ALL
     SOURCES ${source}
     COMMAND ${CMAKE_COMMAND} -E echo "Building skymp5-functions-lib is disabled. To enable it, set BUILD_GAMEMODE to ON."
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/dist/server
-    COMMAND ${CMAKE_COMMAND} -E true > ${CMAKE_BINARY_DIR}/dist/server/gamemode.js
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SKYMP_DIST_SERVER_DIR}
+    # touch keeps a deployed gamemode.js (the manager generates it) and still creates an empty one on CI
+    COMMAND ${CMAKE_COMMAND} -E touch ${SKYMP_DIST_SERVER_DIR}/gamemode.js
   )
 endif()

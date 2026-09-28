@@ -13,7 +13,7 @@ if(BUILD_FRONT)
   set(FRONTEND_ZIP_URL "https://github.com/${FRONTEND_REPO}/archive/refs/heads/${FRONTEND_BRANCH}.zip")
   set(FRONTEND_ZIP_DEST "${CMAKE_BINARY_DIR}/frontend.zip")
   set(FRONTEND_ZIP_EXTRACT_DIR "${CMAKE_BINARY_DIR}/frontend-zip")
-  set(FRONTEND_JS_DEST_DIR "${CMAKE_BINARY_DIR}/dist/client/Data/Platform/UI")
+  set(FRONTEND_JS_DEST_DIR "${SKYMP_DIST_CLIENT_DIR}/Data/Platform/UI")
 
   set(DEPLOY_BRANCH "$ENV{DEPLOY_BRANCH}")
   set(AUTO_MERGE_REPO "Pospelove/auto-merge-action")
@@ -35,7 +35,7 @@ if(BUILD_FRONT)
 
   add_custom_target(skymp5-front ALL
     SOURCES ${source}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/dist/client
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SKYMP_DIST_CLIENT_DIR}
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_CURRENT_BINARY_DIR}/${FRONTEND_REPO_NAME}-${FRONTEND_BRANCH}
     COMMAND ${CMAKE_COMMAND} -E env DOWNLOAD_NO_PROGRESS=1
             ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/${source}

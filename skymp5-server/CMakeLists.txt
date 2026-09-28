@@ -58,16 +58,16 @@ if(NOT EMSCRIPTEN)
   # Make 'cmake --build . --target skymp5-server' building typescript part as well
   add_dependencies(${PROJECT_NAME} skymp5-server-ts)
 
-  # Put build artifacts into build/dist/server
+  # Put build artifacts into SKYMP_DIST_SERVER_DIR
   if(WIN32)
     set_target_properties(${PROJECT_NAME} PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/dist/server"
-      RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/dist/server"
+      RUNTIME_OUTPUT_DIRECTORY_DEBUG "${SKYMP_DIST_SERVER_DIR}"
+      RUNTIME_OUTPUT_DIRECTORY_RELEASE "${SKYMP_DIST_SERVER_DIR}"
     )
   else()
     add_custom_command(
       TARGET ${PROJECT_NAME} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> ${CMAKE_BINARY_DIR}/dist/server/$<TARGET_FILE_NAME:${PROJECT_NAME}>
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> ${SKYMP_DIST_SERVER_DIR}/$<TARGET_FILE_NAME:${PROJECT_NAME}>
     )
   endif()
 
@@ -79,7 +79,7 @@ endif()
 # All targets are ready
 
 if(WIN32)
-  # On Windows create launch_server.bat in ./build/dist/server
+  # On Windows create launch_server.bat in SKYMP_DIST_SERVER_DIR
   # This .bat file is for launching the server
   set(bat "node dist_back/skymp5-server.js\n")
   set(bat "${bat}pause\n")
@@ -96,11 +96,11 @@ if(WIN32)
 
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/launch_server.bat.tmp ${CMAKE_BINARY_DIR}/dist/server/launch_server.bat
+    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/launch_server.bat.tmp ${SKYMP_DIST_SERVER_DIR}/launch_server.bat
   )
 endif()
 
-# Create server-settings.json in build/dist/server
+# Create server-settings.json in SKYMP_DIST_SERVER_DIR
 
 if(SKYRIM_DIR)
   set(esm_prefix "${SKYRIM_DIR}/Data/")
@@ -115,17 +115,17 @@ message(STATUS "esm_prefix is '${esm_prefix}'")
 if(TARGET ${PROJECT_NAME})
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -DESM_PREFIX=${esm_prefix} -DSERVER_SETTINGS_JSON_PATH=${CMAKE_BINARY_DIR}/dist/server/server-settings.json -DSERVER_SETTINGS_BASE_JSON_PATH=${CMAKE_BINARY_DIR}/server-settings-base.json -DOFFLINE_MODE=${OFFLINE_MODE} -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
+    COMMAND ${CMAKE_COMMAND} -DESM_PREFIX=${esm_prefix} -DSERVER_SETTINGS_JSON_PATH=${SKYMP_DIST_SERVER_DIR}/server-settings.json -DSERVER_SETTINGS_BASE_JSON_PATH=${CMAKE_BINARY_DIR}/server-settings-base.json -DOFFLINE_MODE=${OFFLINE_MODE} -P ${CMAKE_SOURCE_DIR}/cmake/scripts/generate_server_settings.cmake
   )
 
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${SKYMP5_SERVER_SOURCE_DIR}/package.json ${CMAKE_BINARY_DIR}/dist/server/package.json
+    COMMAND ${CMAKE_COMMAND} -E copy ${SKYMP5_SERVER_SOURCE_DIR}/package.json ${SKYMP_DIST_SERVER_DIR}/package.json
   )
 
   add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${SKYMP5_SERVER_SOURCE_DIR}/yarn.lock ${CMAKE_BINARY_DIR}/dist/server/yarn.lock
+    COMMAND ${CMAKE_COMMAND} -E copy ${SKYMP5_SERVER_SOURCE_DIR}/yarn.lock ${SKYMP_DIST_SERVER_DIR}/yarn.lock
   )
 endif()
 
