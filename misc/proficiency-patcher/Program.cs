@@ -801,7 +801,9 @@ static class Steps
         var match = Edids(c, spec["match"]).ToList();
         var except = Edids(c, spec["except"]).ToList();
         var from = Edids(c, c.Spec["benchRouting"]!["from"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
-        foreach (var own in c.Mod.ConstructibleObjects.Where(x => x.WorkbenchKeyword.FormKey == parking && !c.CreationKeys.Contains(x.FormKey.ModKey)).ToList())
+        // creations: Creation Club recipes the plugin parked come back too
+        var creations = spec["creations"]?.GetValue<bool>() == true;
+        foreach (var own in c.Mod.ConstructibleObjects.Where(x => x.WorkbenchKeyword.FormKey == parking && (creations || !c.CreationKeys.Contains(x.FormKey.ModKey))).ToList())
         {
             var made = c.Cache.TryResolve<IMajorRecordGetter>(own.CreatedObject.FormKey, out var m) ? m : null;
             var text = $"{own.EditorID}|{made?.EditorID}|{c.NameOf(own.CreatedObject.FormKey)}";
@@ -1552,11 +1554,14 @@ static class Steps
             var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
             var text = $"{cobj.Edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
             var creation = c.CreationKeys.Contains(key.ModKey);
-            var hit = rules.FirstOrDefault(r => (!creation || r.Creations)
+            var hits = rules.Where(r => (!creation || r.Creations)
                                              && (r.Match.Count > 0 && r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
                                                  || r.All.Count > 0 && r.All.All(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)))
-                                             && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)));
-            if (hit.Id == null) continue;
+                                             && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (hits.Count == 0) continue;
+            var hit = hits[0];
+            if (hits.Select(h => h.Name).Distinct().Count() > 1)
+                c.Note($"Ambiguous faction match: {cobj.Edid} ({c.NameOf(cobj.Product)}) matches {string.Join(", ", hits.Select(h => h.Name).Distinct())}; took {hit.Name}");
             if (!c.TryWinning<IConstructibleObjectGetter>(cobj.Edid, out var winning)) { c.Error($"factions: recipe '{cobj.Edid}' not found"); continue; }
             var rec = c.Override(c.Mod.ConstructibleObjects, winning);
             // The game's own factions and a people's gate mean nothing on faction gear; membership replaces them
@@ -1605,9 +1610,7 @@ static class Steps
         {
             if (!benches.Contains(cobj.Bench) || c.CreationKeys.Contains(key.ModKey)) continue;
             var edid = cobj.Edid;
-            // A recipe a faction already owns is that faction's, whatever people its gear is styled after;
-            // gating it twice would ask for the race and the membership at once
-            if (c.Claimed.Contains(edid)) continue;
+            // Faction gear of a people asks for both: the faction's marker and the race
             var made = c.Cache.TryResolve<IMajorRecordGetter>(cobj.Product, out var m) ? m : null;
             var text = $"{edid}|{made?.EditorID}|{c.NameOf(cobj.Product)}";
             if (clear.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)))
@@ -1622,10 +1625,14 @@ static class Steps
             var inputs = c.TryWinning<IConstructibleObjectGetter>(edid, out var recipe)
                 ? (recipe.Items ?? new List<IContainerEntryGetter>()).Select(i => i.Item.Item.FormKey).ToList()
                 : new List<FormKey>();
-            var hit = rules.FirstOrDefault(r => (r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
+            var hits = rules.Where(r => (r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))
                                                  || r.Items.Count > 0 && inputs.Any(r.Items.Contains))
-                                             && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)));
-            if (hit.Name == null) continue;
+                                             && !r.Except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)))
+                // A people named by the gear wins over one its ingredients suggest
+                .OrderBy(r => r.Match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)) ? 0 : 1).ToList();
+            if (hits.Count == 0) continue;
+            var hit = hits[0];
+            if (hits.Count > 1) c.Note($"Ambiguous race match: {edid} ({c.NameOf(cobj.Product)}) matches {string.Join(", ", hits.Select(h => h.Name))}; took {hit.Name}");
             if (!c.TryWinning<IConstructibleObjectGetter>(edid, out var winning)) { c.Error($"racial: recipe '{edid}' not found"); continue; }
             var rec = c.Override(c.Mod.ConstructibleObjects, winning);
             rec.Conditions.RemoveAll(cond => cond.Data is IGetIsRaceConditionDataGetter);
@@ -1760,6 +1767,7 @@ static class Steps
             if (owner == null) continue;
             plan[r.FormKey] = (owner, also, tiers[Raised(idx, r, made)], "no recipe makes it");
         }
+        ApplyRankRules(c, spec, recipes, plan, r => Current(r).Owner);
         var changed = 0;
         foreach (var r in recipes)
         {
@@ -1775,6 +1783,36 @@ static class Steps
         foreach (var (product, tag) in toTag)
             if (c.Cache.TryResolve<IMajorRecordGetter>(product, out var item)) Tag(c, item, [tag], tagFamily);
         c.Note($"Retier: {changed} recipes changed of {plan.Count} gated, {toTag.Count} clothes tagged");
+    }
+
+    // retier.rules: named gear takes a fixed rank, craft and temper alike; keepOwners keep their profession, others go to profession
+    static void ApplyRankRules(PatchContext c, JsonObject spec, List<IConstructibleObjectGetter> recipes,
+                               Dictionary<FormKey, (string? Owner, List<string> Also, string Tier, string Why)> plan, Func<IConstructibleObjectGetter, string?> current)
+    {
+        foreach (var rule in (spec["rules"] as JsonArray ?? new JsonArray()).Select(x => x!.AsObject()))
+        {
+            var name = rule["name"]!.GetValue<string>();
+            var tier = rule["tier"]!.GetValue<string>();
+            if (Array.IndexOf(c.Ranks, tier) < 0) throw new SpecException($"retier rule {name}: unknown tier '{tier}'");
+            var match = Edids(c, rule["match"]).ToList();
+            var except = Edids(c, rule["except"]).ToList();
+            var benches = Edids(c, rule["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+            var profession = rule["profession"]?.GetValue<string>();
+            var keep = Edids(c, rule["keepOwners"]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var count = 0;
+            foreach (var r in recipes)
+            {
+                if (benches.Count > 0 && !benches.Contains(r.WorkbenchKeyword.FormKey)) continue;
+                var text = $"{r.EditorID}|{c.EdidOf(r.CreatedObject.FormKey)}|{c.NameOf(r.CreatedObject.FormKey)}";
+                if (!match.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase)) || except.Any(x => text.Contains(x, StringComparison.OrdinalIgnoreCase))) continue;
+                (string? Owner, List<string> Also, string Tier, string Why) p = plan.TryGetValue(r.FormKey, out var planned) ? planned : (current(r), new List<string>(), PatchContext.AnyoneTier, "");
+                var owner = p.Owner != null && (profession == null || keep.Contains(p.Owner)) ? p.Owner : profession;
+                if (owner == null) { c.Warn($"retier rule {name}: {r.EditorID} has no profession to rank"); continue; }
+                plan[r.FormKey] = (owner, owner == p.Owner ? p.Also : new List<string>(), tier, $"rule {name}");
+                count++;
+            }
+            c.Note($"Rank rule {name}: {count} recipes at {profession ?? "their profession"} {tier}");
+        }
     }
 
     // Item or keyword editor id -> index in c.Tiers

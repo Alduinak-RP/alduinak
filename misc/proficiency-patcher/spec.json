@@ -4421,16 +4421,12 @@
    "AldCraftingWoodcrafting"
   ],
   "match": [
-   "BiPolar",
-   "Bipolar",
-   "Madness",
    "Pelt of Karhu",
    "Boethiah",
    "Cultist",
    "Ulfric",
    "Emperor's",
    "Vaermina",
-   "Amber",
    "Falmer Double Axe",
    "FalmerDoubleAxe",
    "Ancient Falmer",
@@ -4457,9 +4453,23 @@
     "Dragonsteel",
     "Dragon Knight",
     "DragonKnight",
-    "Dragonplate"
+    "Dragonplate",
+    "Amber",
+    "Madness",
+    "BiPolar",
+    "Bipolar"
    ],
-   "except": []
+   "except": [
+    "Ambergris",
+    "Chamber",
+    "Pelt of Karhu",
+    "Boethiah",
+    "Cultist",
+    "Ulfric",
+    "Emperor's",
+    "Vaermina"
+   ],
+   "creations": true
   }
  },
  "leveledItems": [
@@ -6015,7 +6025,9 @@
    "DLC1LD_CraftingForgeAetherium",
    "CraftingTanningRack",
    "MCE_CraftingLoom",
-   "AldCraftingWoodcrafting"
+   "AldCraftingWoodcrafting",
+   "CraftingSmithingArmorTable",
+   "CraftingSmithingSharpeningWheel"
   ],
   "list": [
    {
@@ -6196,13 +6208,12 @@
     "id": "faction:imperial-legion",
     "name": "Imperial Legion",
     "match": [
-     "Imperial",
+     "Steel Imperial Gauntlets",
+     "SteelImperialGauntlets",
+     "Imperial War Horn",
+     "ImperialWarHorn",
      "Penitus",
      "Titus Mede"
-    ],
-    "except": [
-     "Moon Monk",
-     "Imperial Emissary"
     ]
    },
    {
@@ -6221,7 +6232,8 @@
     "match": [
      "Stormcloak",
      "Einherjar",
-     "Nord War Horn"
+     "Nord War Horn",
+     "NordWarHorn"
     ],
     "except": [
      "Fur Boots",
@@ -6280,14 +6292,16 @@
     "id": "faction:camonna-tong",
     "name": "Camonna Tong",
     "match": [
-     "Camonna"
+     "Camonna",
+     "CamonnaTong"
     ]
    },
    {
     "id": "faction:silver-hand",
     "name": "The Silver Hand",
     "match": [
-     "Silver Hand"
+     "Silver Hand",
+     "SilverHand"
     ]
    },
    {
@@ -6309,7 +6323,8 @@
     "id": "faction:mythic-dawn",
     "name": "Mythic Dawn",
     "match": [
-     "Mythic Dawn"
+     "Mythic Dawn",
+     "MythicDawn"
     ]
    },
    {
@@ -6330,7 +6345,8 @@
     "id": "hold:telvanni",
     "name": "House Telvanni",
     "match": [
-     "Ash Reader"
+     "Ash Reader",
+     "AshReader"
     ]
    },
    {
@@ -6339,11 +6355,7 @@
    },
    {
     "id": "faction:crowns",
-    "name": "The Crowns",
-    "match": [
-     "Crown Plate",
-     "CrownPlate"
-    ]
+    "name": "The Crowns"
    },
    {
     "id": "faction:temple-of-the-divines",
@@ -6526,7 +6538,9 @@
     ],
     "match": [
      "Orcish",
-     "Orsimer"
+     "Orsimer",
+     "Orc ",
+     " Orc"
     ],
     "items": [
      "IngotOrichalcum",
@@ -6542,7 +6556,9 @@
     "match": [
      "Elven",
      "Aldmeri",
-     "Alinor"
+     "Alinor",
+     "Elvish",
+     "Altmer"
     ]
    },
    {
@@ -6568,7 +6584,14 @@
      "Rihad",
      "Redguard",
      "Hammerfell",
-     "Stros M'Kai"
+     "Stros M'Kai",
+     "Forebear",
+     "Desert",
+     "Crown Plate",
+     "CrownPlate",
+     "Crown Sword",
+     "CrownSword",
+     "CrwnlSword"
     ],
     "except": [
      "Dark Alik'r",
@@ -6584,7 +6607,11 @@
     ],
     "match": [
      "Argonian",
-     "Saxhleel"
+     "Saxhleel",
+     "Marsh"
+    ],
+    "except": [
+     "Marshal"
     ]
    },
    {
@@ -6596,7 +6623,8 @@
     "match": [
      "Bosmer",
      "WoodElf",
-     "Wood Elf"
+     "Wood Elf",
+     "Valenwood"
     ]
    },
    {
@@ -6657,7 +6685,12 @@
      "Breton Knight",
      "Paladin",
      "Hedge Knight",
-     "Rugged Plate"
+     "Rugged Plate",
+     "Hedge-Knight",
+     "HedgeKnight",
+     "Full Plate",
+     "FullPlate",
+     "Rugged"
     ]
    },
    {
@@ -6667,7 +6700,12 @@
      "ImperialRaceVampire"
     ],
     "match": [
-     "Colovian"
+     "Colovian",
+     "Nibenese",
+     "Imperial"
+    ],
+    "except": [
+     "Imperial Emissary"
     ]
    }
   ]
@@ -7560,7 +7598,55 @@
     "Adept": "AldKeyword_FineClothing",
     "Master": "AldKeyword_NobleClothing"
    }
-  }
+  },
+  "rules": [
+   {
+    "name": "Stalhrim",
+    "match": [
+     "Stalhrim",
+     "Stahlrim"
+    ],
+    "tier": "Master"
+   },
+   {
+    "name": "Legendary smith",
+    "match": [
+     "Amber",
+     "Madness",
+     "BiPolar",
+     "Bipolar",
+     "Daedric"
+    ],
+    "except": [
+     "Ambergris",
+     "Chamber"
+    ],
+    "tier": "Legendary",
+    "profession": "blacksmith",
+    "keepOwners": [
+     "tailor",
+     "woodworker",
+     "miner"
+    ]
+   },
+   {
+    "name": "Expert tailor",
+    "benches": [
+     "CraftingTanningRack",
+     "MCE_CraftingLoom"
+    ],
+    "match": [
+     "Embellished",
+     "Noble",
+     "Embroidered",
+     "Fine Raiment",
+     "FineRaiment",
+     "Wedding"
+    ],
+    "tier": "Expert",
+    "profession": "tailor"
+   }
+  ]
  },
  "npcInventories": [
   {
