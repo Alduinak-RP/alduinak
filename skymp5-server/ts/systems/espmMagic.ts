@@ -67,14 +67,14 @@ const lookup = (mp: Mp, id: number): any => {
   }
 };
 
-// Effects of a SPEL or SCRL record in order; cached, plugin data never changes at runtime
+// Effects of a SPEL, SCRL or ALCH record in order; cached, plugin data never changes at runtime
 export const spellEffects = (mp: Mp, spellId: number): SpellEffect[] => {
   const cached = effectCache.get(spellId);
   if (cached) return cached;
   const out: SpellEffect[] = [];
   const spell = lookup(mp, spellId);
   const type = spell?.record?.type;
-  if (type === "SPEL" || type === "SCRL") {
+  if (type === "SPEL" || type === "SCRL" || type === "ALCH") {
     let mgefId = 0;
     for (const f of spell.record.fields) {
       if (!(f?.data instanceof Uint8Array)) continue;
@@ -99,6 +99,29 @@ export const spellEffects = (mp: Mp, spellId: number): SpellEffect[] => {
   }
   effectCache.set(spellId, out);
   return out;
+};
+
+const MGEF_DETRIMENTAL = 0x4;
+const ARCHETYPE_VALUE_MODIFIER = 0;
+const AV_HEALTH = 24;
+const healingCache = new Map<number, number>();
+
+// Health an ALCH restores through non-detrimental value modifiers of Health, 0 for any other item
+export const potionHealing = (mp: Mp, itemId: number): number => {
+  const cached = healingCache.get(itemId);
+  if (cached !== undefined) return cached;
+  let total = 0;
+  if (lookup(mp, itemId)?.record?.type === "ALCH") {
+    for (const e of spellEffects(mp, itemId)) {
+      const data = fieldData(lookup(mp, e.mgefId), "DATA");
+      if (!data || data.byteLength < 0x48) continue;
+      const v = view(data);
+      if (v.getUint32(0, true) & MGEF_DETRIMENTAL) continue;
+      if (v.getUint32(0x40, true) === ARCHETYPE_VALUE_MODIFIER && v.getUint32(0x44, true) === AV_HEALTH) total += e.magnitude;
+    }
+  }
+  healingCache.set(itemId, total);
+  return total;
 };
 
 export const SpellType = { Spell: 0 } as const;

@@ -40,12 +40,12 @@ interface PlayerAction {
 
 // Character interaction menu, kept intentionally small (Trade is a dedicated button above these).
 const ACTIONS: PlayerAction[] = [
+  { id: 'givePotion', label: 'Give Potion' },
   { id: 'introduce', label: 'Introduce' },
   { id: 'search', label: 'Search' },
   { id: 'capture', label: 'Restrain', danger: true },
   { id: 'carry', label: 'Carry' },
   { id: 'release', label: 'Release' },
-  { id: 'stabilize', label: 'Stabilize' },
   { id: 'finishOff', label: 'Finish Off', danger: true },
   { id: 'prepareExecution', label: 'Prepare Execution', danger: true },
   { id: 'execute', label: 'Execute', danger: true },
@@ -60,7 +60,7 @@ const PACKET_ACTIONS: Record<string, string> = {
   capture: 'captureRequest',
   carry: 'carryRequest',
   release: 'releaseRequest',
-  stabilize: 'stabilizeRequest',
+  givePotion: 'givePotionRequest',
   finishOff: 'finishOffRequest',
   prepareExecution: 'prepareExecutionRequest',
   execute: 'executeRequest',
@@ -71,7 +71,7 @@ const PACKET_ACTIONS: Record<string, string> = {
 // Actions shown only when the server's playerMenuState flag for this target says they apply; Release keeps its older flag name
 const SERVER_FLAGS: Record<string, string> = {
   release: 'canRelease',
-  stabilize: 'stabilize',
+  givePotion: 'givePotion',
   finishOff: 'finishOff',
   prepareExecution: 'prepareExecution',
   execute: 'execute',
@@ -233,6 +233,7 @@ export class PlayerActionService extends ClientListener {
     this.playerTarget = remoteId;
     // Flagged actions appear only when the server confirms they apply to this target
     this.menuFlags = {};
+    this.hasPotion = false;
     sendCustomPacket(this.controller, { customPacketType: "playerMenuRequest", target: remoteId });
     logTrace(this, `Opening player-action menu for`, targetName);
     const wait = this.menuWait = ++this.menuWaitSeq;
@@ -244,8 +245,10 @@ export class PlayerActionService extends ClientListener {
     if (content?.["customPacketType"] !== "playerMenuState" || content["target"] !== this.playerTarget) return;
     const flags: Record<string, boolean> = {};
     for (const [id, key] of Object.entries(SERVER_FLAGS)) flags[id] = content[key] === true;
-    const changed = Object.keys(flags).some((id) => flags[id] !== !!this.menuFlags[id]);
+    const hasPotion = content["hasPotion"] === true;
+    const changed = hasPotion !== this.hasPotion || Object.keys(flags).some((id) => flags[id] !== !!this.menuFlags[id]);
     this.menuFlags = flags;
+    this.hasPotion = hasPotion;
     const wait = this.menuWait;
     if (wait) {
       // Native calls are unsafe in the packet handler
@@ -323,7 +326,7 @@ export class PlayerActionService extends ClientListener {
     const noCarry = this.controller.lookupListener(RestraintService).isPoseLocked;
     const canRecruit = this.controller.lookupListener(FactionService).canRecruit;
     const actions = ACTIONS.filter((a) => (a.id !== 'carry' || !noCarry) && (!(a.id in SERVER_FLAGS) || this.menuFlags[a.id]) &&
-      (a.id !== 'factionRecruit' || canRecruit));
+      (a.id !== 'factionRecruit' || canRecruit)).map((a) => a.id === 'givePotion' && !this.hasPotion ? { ...a, disabled: true } : a);
     if (this.controller.lookupListener(JobService).load) actions.push(PUT_DOWN);
     return { ACTIONS: actions, targetName, hideTrade: false, events, WIDGET_ID };
   }
@@ -355,6 +358,8 @@ export class PlayerActionService extends ClientListener {
   private playerTarget = 0;
   // Action id -> whether the server's playerMenuState says it applies to the target
   private menuFlags: Record<string, boolean> = {};
+  // Whether the server found a healing potion on this player for Give Potion
+  private hasPotion = false;
   // Token of the open waiting for the server's answer, 0 when none
   private menuWait = 0;
   private menuWaitSeq = 0;

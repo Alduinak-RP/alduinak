@@ -62,12 +62,13 @@ behaviour-graph events — no ESP required.**
   health. While a Finish Off plays, Restrain and Carry are refused ("They are
   being finished off."), and a rescuer whose patient is healed or taken first
   is told they no longer need help.
-- **Stabilize**: anyone without magic can rescue a downed player. Stabilize
-  shows in the X menu on a downed player in reach. The rescuer kneels
-  (`IdleKneeling`) for 5 s, unable to move or fight, while the victim's timer
-  waits; then the victim stands up at 10% health. If the rescuer goes down,
-  dies or leaves first, the victim's timer resumes with the time that was left.
-  One rescuer at a time; a restrained or carrying player cannot stabilize.
+- **Give Potion**: the first X menu action on a downed player. It is greyed
+  out when the giver carries no healing potion (an ALCH with a non-detrimental
+  Restore Health effect). The server takes the one that restores the least,
+  restores that much health on the victim and stands them up at the healed
+  threshold, like a healing spell. It re-checks on use and refuses with a
+  notice when the potion is gone, the target is out of reach or a Finish Off
+  is under way; a restrained or carrying player cannot give one.
 - **Finish off** (`executionSystem.ts`): a holder of the faction `execute`
   permission, or staff with the `factions` cap, sees Finish Off in the X menu
   on a downed player in reach. It needs a drawn melee weapon: bows, staves
@@ -472,15 +473,15 @@ prisoner can also be carried).
 | --- | --- | --- |
 | `restraintState` `{ boundHands?, carried? }` | Server → victim client | Apply bound-hands / carried state |
 | `bleedoutState` `{ downed, seconds?, died? }` | Server → downed player's client | Kneel and lock controls, or stand up (no stand-up when `died`) |
-| `stabilizeRequest` `{ target }` | Rescuer client → server | Stabilize a downed player |
+| `givePotionRequest` `{ target }` | Giver client → server | Give a downed player the smallest healing potion |
 | `finishOffRequest` `{ target }` | Client → server | Finish off a downed player |
 | `pairedIdle` `{ attacker, target, idle, ms, standUp, kneel, seq }` | Server → both players and viewers | Play a killmove on both copies, after the victim's stand-up when `standUp`, on a kneeling victim when `kneel` (a missing `kneel` means `!standUp`), at once for an assassination; `ms` is the cap |
 | `assassinateRequest` `{ target }` | Client → server | Assassinate a standing player from behind |
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
-| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (stabilizing, harvesting); a mounted or swimming player skips it |
-| `playerMenuState` `{ target, canRelease, stabilize, finishOff, prepareExecution, execute, assassinate }` | Server → requester | Which flagged X menu actions apply to the target |
+| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting); a mounted or swimming player skips it |
+| `playerMenuState` `{ target, canRelease, givePotion, hasPotion, finishOff, prepareExecution, execute, assassinate }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 
 All restraint/bleedout **rules, timers, permissions and persistence are

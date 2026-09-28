@@ -2,7 +2,9 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
 import { CaptureSystem, isRestrained } from "./captureSystem";
 import { toFormId } from "./formIdUtil";
-import { BLEEDOUT_PROP, addItemTo, chainMpHook, hex, isAlive, isNear, isPlayerActor, nameShownTo, notifyActor, sendActionLock, userOf } from "./actorUtil";
+import { BLEEDOUT_PROP, addItemTo, chainMpHook, hex, isAlive, isNear, isPlayerActor, nameShownTo, notifyActor, userOf } from "./actorUtil";
+import { potionHealing } from "./espmMagic";
+import { readInventory, withCount } from "./inventoryExtras";
 import { appendLog, describeActor, logDirOf, sendJson } from "./playerText";
 import { deathAlert, markDeathAlerted } from "./discordAlerts";
 
@@ -24,11 +26,6 @@ const GRACE_MS = 3000;
 // A reported drop this large while downed is damage over time
 const DOT_DROP = 0.005;
 const TICK_MS = 250;
-
-const STABILIZE_SECONDS = 5;
-const STABILIZED_HEALTH = 0.1;
-// The rescuer's vanilla kneel (IDLE FB90B CheckCorpse)
-const STABILIZE_ANIM = "IdleKneeling";
 
 interface Downed {
   deadline: number;
@@ -76,7 +73,10 @@ export class BleedoutSystem implements System {
 
     this.capture.rescueDowned = (actorId) => this.end(actorId, "rescued");
     this.capture.rescueRefusal = (actorId) => this.downed.get(actorId)?.hold?.fatal ? "They are being finished off." : "";
-    this.capture.menuFlagProviders.push((requesterId, targetId) => ({ stabilize: !this.stabilizeRefusal(requesterId, targetId) }));
+    this.capture.menuFlagProviders.push((requesterId, targetId) => ({
+      givePotion: this.downed.has(targetId) && targetId !== requesterId,
+      hasPotion: !!this.smallestPotion(requesterId),
+    }));
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => this.onActorAssigned(actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.onLeave(actorId >>> 0));
   }
@@ -100,7 +100,7 @@ export class BleedoutSystem implements System {
   }
 
   customPacket(userId: number, type: string, content: Content): void {
-    if (type === "stabilizeRequest") this.onStabilizeRequest(userId, toFormId(content.target, 0));
+    if (type === "givePotionRequest") this.onGivePotionRequest(userId, toFormId(content.target, 0));
   }
 
   disconnect(userId: number): void {
@@ -203,7 +203,7 @@ export class BleedoutSystem implements System {
     if (!state.pausedAt && now >= state.deadline) this.die(actorId, "bled out");
   }
 
-  // Timed work on a downed player (stabilize, finish off): the timer waits and done runs when it completes; the refusal, or "" once started
+  // Timed work on a downed player (finish off): the timer waits and done runs when it completes; the refusal, or "" once started
   hold(victimId: number, actorId: number, ms: number, done: () => void, fatal = false): string {
     const refusal = this.holdRefusal(victimId, actorId);
     if (refusal) return refusal;
@@ -255,39 +255,60 @@ export class BleedoutSystem implements System {
     state.hold = undefined;
   }
 
-  // Why the rescuer may not stabilize the target, "" when they may
-  private stabilizeRefusal(rescuerId: number, targetId: number): string {
+  // Why the giver may not give the target a potion, "" when they may
+  private givePotionRefusal(giverId: number, targetId: number): string {
     const mp = this.mp;
-    if (!this.downed.has(targetId) || targetId === rescuerId) return "They are not bleeding out.";
-    if (!isAlive(mp, rescuerId) || this.downed.has(rescuerId) || isRestrained(mp, rescuerId) || this.capture.carriedOf(rescuerId)) {
+    if (!this.downed.has(targetId) || targetId === giverId) return "They are not bleeding out.";
+    if (!isAlive(mp, giverId) || this.downed.has(giverId) || isRestrained(mp, giverId) || this.capture.carriedOf(giverId)) {
       return "You cannot do that now.";
     }
-    if (!isNear(mp, rescuerId, targetId, this.capture.interactRange)) return "They are out of reach.";
-    return this.holdRefusal(targetId, rescuerId);
+    if (!isNear(mp, giverId, targetId, this.capture.interactRange)) return "They are out of reach.";
+    if (this.downed.get(targetId)!.hold) return "Someone is already tending to them.";
+    return "";
   }
 
-  private onStabilizeRequest(userId: number, targetId: number): void {
+  // The healing potion that restores the least health, 0 when the actor carries none
+  private smallestPotion(actorId: number): number {
+    let best = 0;
+    let bestHealing = Infinity;
+    try {
+      for (const e of readInventory(this.mp, actorId).entries) {
+        const baseId = e.baseId >>> 0;
+        const healing = e.count > 0 ? potionHealing(this.mp, baseId) : 0;
+        if (healing > 0 && healing < bestHealing) {
+          best = baseId;
+          bestHealing = healing;
+        }
+      }
+    } catch { /* form gone */ }
+    return best;
+  }
+
+  private onGivePotionRequest(userId: number, targetId: number): void {
     const mp = this.mp;
-    let rescuerId = 0;
-    try { rescuerId = mp.getUserActor(userId) >>> 0; } catch { return; }
-    if (!rescuerId) return;
-    const refusal = this.stabilizeRefusal(rescuerId, targetId) ||
-      this.hold(targetId, rescuerId, STABILIZE_SECONDS * 1000, () => this.stabilized(targetId, rescuerId));
+    let giverId = 0;
+    try { giverId = mp.getUserActor(userId) >>> 0; } catch { return; }
+    if (!giverId) return;
+    const potion = this.smallestPotion(giverId);
+    const refusal = this.givePotionRefusal(giverId, targetId) || (potion ? "" : "You have no healing potion.");
     if (refusal) {
-      notifyActor(mp, rescuerId, refusal);
+      notifyActor(mp, giverId, refusal);
       return;
     }
-    sendActionLock(mp, rescuerId, STABILIZE_ANIM, STABILIZE_SECONDS);
-    notifyActor(mp, rescuerId, `You tend to ${nameShownTo(mp, rescuerId, targetId)}'s wounds.`);
-    notifyActor(mp, targetId, `${nameShownTo(mp, targetId, rescuerId)} is tending to your wounds.`);
-    this.log(`[bleedout] ${hex(rescuerId)} stabilizes ${hex(targetId)}`);
-  }
-
-  private stabilized(victimId: number, rescuerId: number): void {
-    const mp = this.mp;
-    this.standUp(victimId, "stabilized", STABILIZED_HEALTH);
-    notifyActor(mp, victimId, `${nameShownTo(mp, victimId, rescuerId)} stabilized you.`);
-    notifyActor(mp, rescuerId, `You stabilized ${nameShownTo(mp, rescuerId, victimId)}.`);
+    try {
+      const inv = readInventory(mp, giverId);
+      const index = inv.entries.findIndex((e) => (e.baseId >>> 0) === potion && e.count > 0);
+      const entries = inv.entries.map((e, i) => (i === index ? withCount(e, e.count - 1) : e)).filter((e) => e.count > 0);
+      mp.set(giverId, "inventory", { ...inv, entries });
+      mp.callPapyrusFunction("method", "Actor", "RestoreActorValue", { type: "form", desc: mp.getDescFromId(targetId) }, ["Health", potionHealing(mp, potion)]);
+    } catch (e) {
+      this.log(`[bleedout] ${hex(giverId)} giving potion ${hex(potion)} to ${hex(targetId)} failed: ${e}`);
+      return;
+    }
+    this.standUp(targetId, "healed", this.healedHealth);
+    notifyActor(mp, targetId, `${nameShownTo(mp, targetId, giverId)} gave you a healing potion.`);
+    notifyActor(mp, giverId, `You gave ${nameShownTo(mp, giverId, targetId)} a healing potion.`);
+    this.log(`[bleedout] ${hex(giverId)} gave potion ${hex(potion)} to ${hex(targetId)}`);
   }
 
   private announceDown(actorId: number, downerId: number): void {
@@ -305,8 +326,8 @@ export class BleedoutSystem implements System {
     this.log(`[bleedout] ${hex(actorId)} downed by ${hex(downerId)}`);
   }
 
-  // Healed, rescued or stabilized: the player stands up where they knelt
-  private end(actorId: number, reason: "healed" | "rescued" | "stabilized"): void {
+  // Healed or rescued: the player stands up where they knelt
+  private end(actorId: number, reason: "healed" | "rescued"): void {
     const state = this.downed.get(actorId);
     if (!state) return;
     if (state.hold) notifyActor(this.mp, state.hold.actorId, `${nameShownTo(this.mp, state.hold.actorId, actorId)} no longer needs your help.`);
@@ -315,7 +336,7 @@ export class BleedoutSystem implements System {
     this.log(`[bleedout] ${hex(actorId)} ${reason}`);
   }
 
-  private standUp(actorId: number, reason: "healed" | "stabilized", health: number): void {
+  private standUp(actorId: number, reason: "healed", health: number): void {
     this.end(actorId, reason);
     try {
       const values = this.mp.get(actorId, "percentages");
