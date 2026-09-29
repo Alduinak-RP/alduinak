@@ -464,7 +464,10 @@ a player it still lists ("already occupies it, blocking"). Two client rules keep
 a seat from sticking: a press on any furniture while the player sits nowhere
 sends that closing activation first (a no-op on the server when it holds no
 seat; the echo of the client's own activation is exempt so a fresh seat is not
-given straight back), and a bench that never seats the player within 15 s of
+given straight back, and so are a press within 3 s of the last press on the
+same furniture and any press while the client still waits on a seat the server
+granted there, since that seat may not show yet and the wait releases it
+itself), and a bench that never seats the player within 15 s of
 the server's answer is released anyway (the Crafting Menu being open counts as
 seated, the seated phase itself is never capped). Both log to
 `skyrim-platform.log` (`released any seat on furniture`, `never seated the

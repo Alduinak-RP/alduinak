@@ -42,6 +42,24 @@ const takeLocalActivation = (remoteTarget: number): boolean => {
     return Date.now() - at <= LOCAL_ACTIVATION_TTL_MS;
 };
 
+// A repeated press on the same furniture within this long may be answered by a seat the player does not show yet
+const SEAT_ANSWER_MS = 3000;
+
+// Furniture whose seat RemoteServer is still waiting on, by remote target id; that wait sends the closing activation itself
+const seatWaits = new Map<number, number>();
+// The wait notes itself every 0.1 s, so one left hanging by a load stops counting after this long
+const SEAT_WAIT_FRESH_MS = 3000;
+
+export const noteSeatWait = (remoteTarget: number): void => {
+    seatWaits.set(remoteTarget, Date.now());
+};
+
+export const endSeatWait = (remoteTarget: number): void => {
+    seatWaits.delete(remoteTarget);
+};
+
+const isSeatWaiting = (remoteTarget: number): boolean => Date.now() - (seatWaits.get(remoteTarget) ?? 0) < SEAT_WAIT_FRESH_MS;
+
 export class ActivationService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
@@ -51,6 +69,7 @@ export class ActivationService extends ClientListener {
 
     private firstIgnoredMs = new Map<number, number>();
     private lastSeatReleaseLog = 0;
+    private lastFurniturePress = { target: 0, at: 0 };
 
     // The server's answer per plugin door: a press on a load door teleports and never reverses a swing
     private loadDoors = new Map<number, boolean>();
@@ -137,6 +156,13 @@ export class ActivationService extends ClientListener {
         if (e.target.getBaseObject()?.getType() !== FormType.Furniture) {
             return;
         }
+        const now = Date.now();
+        const repeated = this.lastFurniturePress.target === target && now - this.lastFurniturePress.at < SEAT_ANSWER_MS;
+        this.lastFurniturePress = { target, at: now };
+        // A seat granted to an earlier press, still in flight or not shown yet, is not stale
+        if (repeated || isSeatWaiting(target)) {
+            return;
+        }
         if (this.sp.Game.getPlayer()?.getFurnitureReference()) {
             return;
         }
@@ -147,7 +173,6 @@ export class ActivationService extends ClientListener {
             },
             reliability: "reliable"
         });
-        const now = Date.now();
         if (now - this.lastSeatReleaseLog >= SEAT_RELEASE_LOG_GAP_MS) {
             this.lastSeatReleaseLog = now;
             logToPlatformLog(this, `released any seat on furniture ${target.toString(16)} before activating it`);

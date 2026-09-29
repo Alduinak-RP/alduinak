@@ -33,7 +33,7 @@ import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
 import { CharacterSelectService } from './characterSelectService';
 import { CreationLightService } from './creationLightService';
-import { markLocalActivation } from './activationService';
+import { endSeatWait, markLocalActivation, noteSeatWait } from './activationService';
 import { UpdateMovementMessage } from '../messages/updateMovementMessage';
 import { ChangeValuesMessage } from '../messages/changeValuesMessage';
 import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
@@ -432,8 +432,11 @@ export class RemoteServer extends ClientListener {
         factName = "'ContainerMenu open'";
         delaySeconds = 0.0;
       } else if (baseType === FormType.Furniture) {
-        // A crafting station opens its menu before the sit is observable, so the menu counts as the seat too
-        functionChecker = () => !!Game.getPlayer()?.getFurnitureReference() || Ui.isMenuOpen(Menu.Crafting);
+        // A crafting station opens its menu before the sit is observable, so the menu counts as the seat too; each check marks the wait as running
+        functionChecker = () => {
+          noteSeatWait(remoteId);
+          return !!Game.getPlayer()?.getFurnitureReference() || Ui.isMenuOpen(Menu.Crafting);
+        };
         factName = "'getFurnitureReference not null or Crafting Menu open'";
         delaySeconds = 1.0;
       }
@@ -486,6 +489,7 @@ export class RemoteServer extends ClientListener {
             message: message,
             reliability: "reliable"
           });
+          if (baseType === FormType.Furniture) endSeatWait(remoteId);
 
           logTrace(this, "onOpenContainerMesage - sent ActivateMessage", message);
         });
