@@ -708,6 +708,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             <div className="admin-panel__actions">
               <Button text="TP to" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
               <Button text="Summon" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.summon)} />
+              {ev.needsReset ? <Button text="Reset needs" width={124} height={32} disabled={!actionsEnabled} onClick={() => act(ev.needsReset)} /> : null}
               {canKick ? <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} /> : null}
               {canKick && ev.pk ? (
                 selectedPlayer && selectedPlayer.a && pkArmed === selectedPlayer.a ? (

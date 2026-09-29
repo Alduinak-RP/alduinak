@@ -206,6 +206,9 @@ export const fatigueCost = (effort: Effort, rank: number, half = false): number 
 export const attributePenaltyShare = (value: number, stage2Value: number, max: number): number =>
   clamp((value - (stage2Value - 1)) / Math.max(EPSILON, max - (stage2Value - 1)), 0, 1);
 
+// Emitted on SystemContext.gm (actorId, by, done(ok)) by AdminSystem's Reset needs: an online character gets the new-character hunger and fatigue
+export const NEEDS_RESET_EVENT = "needsReset";
+
 export class NeedsSystem implements System {
   systemName = "NeedsSystem";
 
@@ -249,6 +252,7 @@ export class NeedsSystem implements System {
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
     ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.startFresh(ctx, actorId >>> 0));
+    ctx.gm.on(NEEDS_RESET_EVENT, (actorId: number, by: string, done?: (ok: boolean) => void) => done?.(this.resetBy(ctx, actorId >>> 0, by)));
     this.installHooks(ctx);
   }
 
@@ -594,6 +598,13 @@ export class NeedsSystem implements System {
     this.write(ctx, actorId, entry.rec);
     this.syncStages(ctx, actorId, entry);
     this.sendState(ctx, actorId, false);
+  }
+
+  private resetBy(ctx: SystemContext, actorId: number, by: string): boolean {
+    if (!this.online.has(actorId)) return false;
+    this.startFresh(ctx, actorId);
+    this.log(`[needs] ${hex(actorId)} reset by ${by}`);
+    return true;
   }
 
   disconnect(userId: number, ctx: SystemContext): void {

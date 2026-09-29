@@ -3,6 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest, missingCap } from "./adminRoles";
 import { NpcSpawnSystem } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
+import { NEEDS_RESET_EVENT } from "./needsSystem";
 import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
 import { WeatherSystem } from "./weatherSystem";
@@ -40,6 +41,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
 //                     { customPacketType: "adminAction", action: "masteryLegendary", target }  lifts the character to Legendary in its profession
 //                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
+//                     { customPacketType: "adminAction", action: "needsReset", target }  hunger and fatigue back to the new-character values, the client re-synced
 //                     { customPacketType: "adminAction", action: "revive", target }  target: a fallen character's actor id hex (online or not); refused while the profile's living limit is reached
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..10000, self allowed
@@ -691,6 +693,12 @@ export class AdminSystem implements System {
         const ok = this.mastery.resetCharacter(ctx, target.actorId);
         if (ok) this.adminLog(`profile ${adminProfile} reset the craft and hours of ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, ok, ok ? `Reset the craft and hours of ${target.name}` : `${target.name} has no craft to reset`);
+      } else if (action === "needsReset") {
+        // NeedsSystem answers synchronously; no answer means needs are switched off
+        const result: { ok: boolean | null } = { ok: null };
+        ctx.gm.emit(NEEDS_RESET_EVENT, target.actorId, `profile ${adminProfile}`, (done: boolean) => { result.ok = done; });
+        if (result.ok) this.adminLog(`profile ${adminProfile} reset the hunger and fatigue of ${target.name} (profile ${target.profileId})`);
+        this.reply(mp, userId, !!result.ok, result.ok ? `Reset the hunger and fatigue of ${target.name}` : result.ok === null ? "Needs are switched off on this server" : `${target.name} has no needs to reset yet`);
       } else if (action === "itemSpawn") {
         this.spawnItem(mp, userId, myActorId, adminProfile, tier, target, content);
       } else {

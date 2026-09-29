@@ -63,6 +63,7 @@ const events = {
   masteryGrant: "admin::masterygrant",
   masteryReset: "admin::masteryreset",
   attrSet: "admin::attrset",
+  needsReset: "admin::needsreset",
   revive: "admin::revive",
   tab: "admin::tab",
   skills: "admin::skills",
@@ -698,6 +699,10 @@ export class AdminMenuService extends ClientListener {
       });
       // The roster carries the values shown in the fields
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+      return;
+    }
+    if (kind === events.needsReset) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "needsReset", target: String(e.arguments[1] ?? "") });
       return;
     }
     if (kind === events.revive) {
