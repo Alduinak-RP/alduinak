@@ -33,6 +33,7 @@ import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
 import { CharacterSelectService } from './characterSelectService';
 import { CreationLightService } from './creationLightService';
+import { markLocalActivation } from './activationService';
 import { UpdateMovementMessage } from '../messages/updateMovementMessage';
 import { ChangeValuesMessage } from '../messages/changeValuesMessage';
 import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
@@ -130,6 +131,8 @@ const PLAYER_TELEPORT_REACH = 4096;
 const PLAYER_TELEPORT_SAME = 256;
 const RACE_MENU_RETRY_MS = 5000;
 const RACE_MENU_RETRIES = 3;
+// How long a furniture activation may take to seat the player before its seat is given back
+const FURNITURE_SEAT_WAIT_MS = 15000;
 
 interface PlayerTeleport {
   pos: NiPoint3;
@@ -415,6 +418,7 @@ export class RemoteServer extends ClientListener {
         return;
       }
 
+      markLocalActivation(remoteId);
       refr.activate(Game.getPlayer(), true);
 
       const baseObject = refr.getBaseObject();
@@ -428,8 +432,9 @@ export class RemoteServer extends ClientListener {
         factName = "'ContainerMenu open'";
         delaySeconds = 0.0;
       } else if (baseType === FormType.Furniture) {
-        functionChecker = () => !!Game.getPlayer()?.getFurnitureReference();
-        factName = "'getFurnitureReference not null'";
+        // A crafting station opens its menu before the sit is observable, so the menu counts as the seat too
+        functionChecker = () => !!Game.getPlayer()?.getFurnitureReference() || Ui.isMenuOpen(Menu.Crafting);
+        factName = "'getFurnitureReference not null or Crafting Menu open'";
         delaySeconds = 1.0;
       }
 
@@ -442,10 +447,23 @@ export class RemoteServer extends ClientListener {
 
       (async () => {
         logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be true");
-        while (!functionChecker()) await Utility.wait(0.1);
+        // A seat the engine never takes would hold the server's occupancy for good, so the wait for it is bounded; the seated phase is not
+        const seatDeadline = Date.now() + FURNITURE_SEAT_WAIT_MS;
+        let seated = true;
+        while (!functionChecker()) {
+          if (baseType === FormType.Furniture && Date.now() > seatDeadline) {
+            seated = false;
+            break;
+          }
+          await Utility.wait(0.1);
+        }
 
-        logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be false");
-        while (functionChecker()) await Utility.wait(0.1);
+        if (seated) {
+          logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be false");
+          while (functionChecker()) await Utility.wait(0.1);
+        } else {
+          logToPlatformLog(this, `furniture ${remoteId.toString(16)} never seated the player within ${FURNITURE_SEAT_WAIT_MS} ms, releasing the seat`);
+        }
 
         logTrace(this, "onOpenContainerMesage - menu closed", factName);
         if (baseType === FormType.Container) {

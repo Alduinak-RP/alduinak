@@ -135,12 +135,12 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Profession | Free (Anyone) | Novice | Adept | Expert | Master | Legendary |
 |---|---|---|---|---|---|---|
 | Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions | the plain Potions of each school, attribute and resistance, Cure Disease, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma | - |
-| Blacksmith | the two war horns, nails, iron fittings, locks and hinges | iron and corundum at the forge, the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver; Steel Smithing, Advanced Armors | orichalcum, dwarven, moonstone, and the gear of the smith's own people; Dwarven, Orcish, Elven Smithing | malachite, quicksilver, ebony, stalhrim, and the Skyforge; Ebony, Glass Smithing, Arcane Blacksmith | daedric (Daedra Heart) and dragon (bone, scales) gear, taken off the hidden list; Daedric Smithing, Dragon Armor |
+| Blacksmith | the two war horns, nails, iron fittings, locks and hinges | iron and corundum at the forge, iron and corundum ingots at the smelter (shared with the miner), the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver; gold, silver and steel ingots at the smelter (shared with the miner); Steel Smithing, Advanced Armors | orichalcum, dwarven, moonstone, and the gear of the smith's own people; orichalcum and moonstone ingots at the smelter; Dwarven, Orcish, Elven Smithing | malachite, quicksilver, ebony, stalhrim, and the Skyforge; malachite, quicksilver and ebony ingots at the smelter; Ebony, Glass Smithing, Arcane Blacksmith | daedric (Daedra Heart) and dragon (bone, scales) gear, taken off the hidden list; Daedric Smithing, Dragon Armor |
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue | - |
 | Farmer | - | `AldPerk_NoviceFarmer` | `AldPerk_AdeptFarmer` | `AldPerk_ExpertFarmer` | `AldPerk_MasterFarmer` | `AldPerk_LegendaryFarmer` |
 | Hunter | - | the only one who sees and takes pelts off dead animals; tans leather at the tanning rack, shared with the tailor | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) | - |
 | Mage | - | magicka only (server) | | | | |
-| Miner | iron veins, the sea salt deposits, iron ore into ingots at the smelter | corundum veins and ingots | gold and silver veins; gold, silver and steel ingots | orichalcum, moonstone and quicksilver veins; orichalcum and moonstone ingots | malachite and ebony veins; malachite, quicksilver and ebony ingots | - |
+| Miner | iron veins, the sea salt deposits | corundum veins; iron and corundum ingots at the smelter (every smelter ore recipe is open to a blacksmith of the same rank) | gold and silver veins; gold, silver and steel ingots | orichalcum, moonstone and quicksilver veins; orichalcum and moonstone ingots | malachite and ebony veins; malachite, quicksilver and ebony ingots | - |
 | Tailor | leather strips, the fur armour (the Bandit fur set) and the Stormcloak boots and gauntlets, thread and the roughspun tunic at the loom, the blank parchment, journal and book | hide (`ArmorMaterialHide`), cloaks, capes and everyday clothing | studded (`ArmorMaterialStudded`) and fine clothing (`AldKeyword_FineClothing`) | leather (`ArmorMaterialLeather`), satchels and backpacks | scaled (`ArmorMaterialScaled`) and noble clothing (`AldKeyword_NobleClothing`) | daedric clothing and light armour |
 | Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster | - |
 | Woodworker | charcoal, the broom, the blank parchment, journal and book | the Long Bow, the crossbow, the hide, iron and banded iron shields, iron arrows and bolts, the tools (pickaxe, woodcutter's axe, hoe, hunting knife), Forsworn arrows | the Hunting Bow, steel shields, arrows and bolts, silver bolts, the Ancient Nord bow and arrows (Nords), Corkbulb arrows and bolts | dwarven, elven, chitin, bonemold, nordic and orcish shields, bows, arrows and bolts (race locks kept), the Skyforge bows and shields | glass, ebony and stalhrim bows, arrows and shields (stalhrim: the Skaal), the Nord Hero arrow and the Supple Ancient Bow at the Skyforge | daedric and dragon bows, arrows and shields |
@@ -152,8 +152,9 @@ empty and exist for conditions.
 **The retier step** (`retier` in `spec.json`) applies this table after every
 other step: a recipe keeps its owner and tier unless a rule says otherwise.
 `free` products are open to everyone; `products` names the woodworker's items per
-rank; ore smelted at the smelter belongs to the miner at the ore's tier
-(`smelting`); a tailor recipe takes the tier of its product's material keyword,
+rank; ore smelted at the smelter belongs to the miner at the ore's tier, with
+the blacksmith alongside in the same OR group (`smelting`, `also`), so smelting
+iron is Novice work of either and no longer open to everyone; a tailor recipe takes the tier of its product's material keyword,
 and clothing without one keeps its tier and gains `AldKeyword_FineClothing`
 (Adept) or `AldKeyword_NobleClothing` (Master); faction gear keeps its rank;
 anything taking a Daedra Heart, dragon bone or dragon scales, or making daedric or
@@ -331,8 +332,8 @@ Benches:
   for placing in the Creation Kit; the existing Hearthfire carpenter's
   workbenches also offer the woodcrafting recipes.
 - **Smelters** carry the charcoal recipe (2 Firewood into 1 Charcoal, open to
-  everyone, a craft's fatigue like any other); the ore-to-ingot recipes there keep
-  their blacksmith tiers. Credit for charcoal counts as blacksmith work, because
+  everyone, a craft's fatigue like any other); the ore-to-ingot recipes there are
+  the miner's or the blacksmith's at the ore's rank, iron and corundum at Novice. Credit for charcoal counts as blacksmith work, because
   mastery hours follow the recipe's bench keyword.
 - **Kiln**: the keyword `AldCraftingKiln` stays in the plugin, unused. A kiln
   mod can claim it and the charcoal recipe moves back with one spec field.
@@ -447,6 +448,24 @@ on the Hunter Master marker, bows or crossbows, and a non-player target
 ---
 
 ## Server rules
+
+### Bench seats
+
+A crafting station is furniture: the press reaches the server first, which
+seats the player (`TryOccupyFurniture`, one occupant per marker) and answers
+with OpenContainer, and only then does the client activate the bench locally.
+The seat is given back by the client's closing activation, sent once the player
+has sat and stood up again plus one second, and a station refuses every press of
+a player it still lists ("already occupies it, blocking"). Two client rules keep
+a seat from sticking: a press on any furniture while the player sits nowhere
+sends that closing activation first (a no-op on the server when it holds no
+seat; the echo of the client's own activation is exempt so a fresh seat is not
+given straight back), and a bench that never seats the player within 15 s of
+the server's answer is released anyway (the Crafting Menu being open counts as
+seated, the seated phase itself is never capped). Both log to
+`skyrim-platform.log` (`released any seat on furniture`, `never seated the
+player within`). A seat that outlived a logout is dropped server-side at the
+next character select.
 
 ### Mining
 

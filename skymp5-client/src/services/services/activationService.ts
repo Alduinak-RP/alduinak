@@ -1,4 +1,4 @@
-import { ActivateEvent, Actor } from "skyrimPlatform";
+import { ActivateEvent, Actor, FormType } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { MsgType } from "../../messages";
 import { getInventory } from "../../sync/inventory";
@@ -25,6 +25,23 @@ const LOAD_DOOR_ANSWER_MS = 3000;
 // Runtime refs never carry a teleport, so only plugin doors are asked about
 const FIRST_RUNTIME_ID = 0xff000000;
 
+const SEAT_RELEASE_LOG_GAP_MS = 5000;
+
+// The engine activations RemoteServer issues itself to open a server-approved container or furniture, by remote target id
+const localActivations = new Map<number, number>();
+const LOCAL_ACTIVATION_TTL_MS = 2000;
+
+export const markLocalActivation = (remoteTarget: number): void => {
+    localActivations.set(remoteTarget, Date.now());
+};
+
+const takeLocalActivation = (remoteTarget: number): boolean => {
+    const at = localActivations.get(remoteTarget);
+    if (at === undefined) return false;
+    localActivations.delete(remoteTarget);
+    return Date.now() - at <= LOCAL_ACTIVATION_TTL_MS;
+};
+
 export class ActivationService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
@@ -33,6 +50,7 @@ export class ActivationService extends ClientListener {
     }
 
     private firstIgnoredMs = new Map<number, number>();
+    private lastSeatReleaseLog = 0;
 
     // The server's answer per plugin door: a press on a load door teleports and never reverses a swing
     private loadDoors = new Map<number, boolean>();
@@ -72,6 +90,10 @@ export class ActivationService extends ClientListener {
             return;
         }
 
+        if (e.caster.getFormID() === 0x14) {
+          this.releaseStaleSeat(e, target);
+        }
+
         const openState = e.target.getOpenState();
 
         // TODO: add this to skyrimPlatform.ts
@@ -102,6 +124,34 @@ export class ActivationService extends ClientListener {
             logToPlatformLog(this, `door ${target.toString(16)} still ${openState === OpenState.Opening ? "opening" : "closing"} ${now - firstIgnored} ms after the first ignored press, sending the activation anyway`);
         }
         this.sendActivation(caster, target);
+    }
+
+    // The server keeps the player's seat on a bench until the client's closing activation, which a crash, a kick or a lost sit never sends,
+    // and then refuses every later press ("already occupies it"); a press on furniture while the player sits nowhere releases that seat first,
+    // a no-op on the server when it holds none, and the closing branch skips the activation hooks
+    private releaseStaleSeat(e: ActivateEvent, target: number) {
+        // The echo of RemoteServer's own activation follows the server's seat by a frame and must not give it back
+        if (takeLocalActivation(target)) {
+            return;
+        }
+        if (e.target.getBaseObject()?.getType() !== FormType.Furniture) {
+            return;
+        }
+        if (this.sp.Game.getPlayer()?.getFurnitureReference()) {
+            return;
+        }
+        this.controller.emitter.emit("sendMessage", {
+            message: {
+                t: MsgType.Activate,
+                data: { caster: 0x14, target, isSecondActivation: true }
+            },
+            reliability: "reliable"
+        });
+        const now = Date.now();
+        if (now - this.lastSeatReleaseLog >= SEAT_RELEASE_LOG_GAP_MS) {
+            this.lastSeatReleaseLog = now;
+            logToPlatformLog(this, `released any seat on furniture ${target.toString(16)} before activating it`);
+        }
     }
 
     private askLoadDoor(caster: number, target: number) {
