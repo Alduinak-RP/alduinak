@@ -3,6 +3,7 @@ import { System, Log, SystemContext, AFTERLIFE_EVENT } from "./system";
 import { addItemTo, addSpellTo, chainMpHook, hex, holdsItem, isAlive, isPlayerActor, notifyActor, removeSpellFrom, userOf } from "./actorUtil";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { readInventory, sameExtras } from "./inventoryExtras";
+import { AdminRoleConfig, AdminTier, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -75,13 +76,32 @@ interface RealmLook {
   alpha: number;
 }
 const NO_LOOK: RealmLook = { shaderId: 0, spellId: 0, outfit: [], alpha: 1 };
-// Living characters per player; override with the "characterSelectMaxCharacters" server setting (1-10)
+// Living characters per player: "characterSelectMaxCharacters" for everyone, "characterSelectStaffMaxCharacters" for every admin tier (1-10 each)
 const DEFAULT_MAX_CHARACTERS = 3;
+const DEFAULT_STAFF_MAX_CHARACTERS = 3;
 
-export const readMaxCharacters = (all: Record<string, unknown> | null): number => {
-  const raw = Number(all?.["characterSelectMaxCharacters"]);
-  return Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : DEFAULT_MAX_CHARACTERS;
+const readLimit = (raw: unknown, fallback: number): number => {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 10 ? n : fallback;
 };
+
+export interface CharacterLimits {
+  base: number;
+  staff: number;
+  roleCfg: AdminRoleConfig;
+}
+
+export const readCharacterLimits = (all: Record<string, unknown> | null): CharacterLimits => ({
+  base: readLimit(all?.["characterSelectMaxCharacters"], DEFAULT_MAX_CHARACTERS),
+  staff: readLimit(all?.["characterSelectStaffMaxCharacters"], DEFAULT_STAFF_MAX_CHARACTERS),
+  roleCfg: readAdminRoleConfig(all),
+});
+
+export const maxCharactersFor = (limits: CharacterLimits, tier: AdminTier | null): number => (tier ? limits.staff : limits.base);
+
+// For callers without the login identity at hand: the tier from the roles the profile's characters stored at their last login
+export const profileMaxCharacters = (mp: Mp, limits: CharacterLimits, profileId: number): number =>
+  maxCharactersFor(limits, actorsOf(mp, profileId).map((a) => adminTierOf(mp, a, limits.roleCfg)).find((t) => t !== null) ?? null);
 
 const realmIdOf = (realm: unknown): RealmId | null =>
   typeof realm === "string" && Object.prototype.hasOwnProperty.call(REALMS, realm) ? realm as RealmId : null;
@@ -148,7 +168,7 @@ export class AfterlifeSystem implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     this.ctx = ctx;
     const mp = ctx.svr as Mp;
-    this.maxCharacters = readMaxCharacters((await Settings.get()).allSettings as Record<string, unknown> | null);
+    this.limits = readCharacterLimits((await Settings.get()).allSettings as Record<string, unknown> | null);
     (globalThis as any).__alduinakRevive = (actorId: number, by: string) => this.revive(Number(actorId) >>> 0, String(by));
     await this.resolveLooks(mp);
     chainMpHook(mp, "onRespawn", (rawId: number) => {
@@ -250,7 +270,7 @@ export class AfterlifeSystem implements System {
     if (!isAlive(mp, actorId)) return "They are dead right now, wait for the respawn";
     let profileId = -1;
     try { profileId = Number(mp.get(actorId, "profileId")); } catch { return "Character not found"; }
-    if (livingCount(mp, profileId) >= this.maxCharacters) return "The extra slot is in use: delete the character created in it first";
+    if (livingCount(mp, profileId) >= profileMaxCharacters(mp, this.limits, profileId)) return "The extra slot is in use: delete the character created in it first";
     try {
       mp.set(actorId, AFTERLIFE_PROP, null);
       mp.set(actorId, "private.permaDead", null);
@@ -449,6 +469,6 @@ export class AfterlifeSystem implements System {
 
   private ctx: SystemContext | null = null;
   private nextPollAt = 0;
-  private maxCharacters = DEFAULT_MAX_CHARACTERS;
+  private limits = readCharacterLimits(null);
   private looks: Record<RealmId, RealmLook> = { sovngarde: NO_LOOK, soulCairn: NO_LOOK };
 }

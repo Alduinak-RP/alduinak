@@ -6,7 +6,8 @@ import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
 import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, arrivalPos, parseStartLocations } from "./startLocations";
 import { kickWithReason } from "./kickUtil";
-import { REALMS, afterlifeOf, isFallen, readMaxCharacters } from "./afterlifeSystem";
+import { REALMS, afterlifeOf, isFallen, maxCharactersFor, profileMaxCharacters, readCharacterLimits } from "./afterlifeSystem";
+import { adminTierFor } from "./adminRoles";
 import { GOLD_BASE_ID, STARTER_GOLD_PROP, chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
 import { isOutsideBorder, insideSpot } from "./worldBorder";
@@ -128,7 +129,7 @@ export class Spawn implements System {
   constructor(private log: Log) { }
 
   private characterSelect = false;
-  private maxCharacters = readMaxCharacters(null);
+  private limits = readCharacterLimits(null);
   private startingItems = DEFAULT_STARTING_ITEMS;
   private startLocations = DEFAULT_START_LOCATIONS;
   private logoutGraceMs = DEFAULT_LOGOUT_GRACE_MS;
@@ -157,7 +158,7 @@ export class Spawn implements System {
     this.characterSelect = !!(this.settingsObject.allSettings &&
       (this.settingsObject.allSettings as Record<string, unknown>)["characterSelect"]);
     const all = this.settingsObject.allSettings as Record<string, unknown> | null;
-    this.maxCharacters = readMaxCharacters(all);
+    this.limits = readCharacterLimits(all);
     const parsedItems = parseStartingItems(all?.["startingItems"]);
     if (parsedItems) this.startingItems = parsedItems;
     if (all?.["startLocations"] !== undefined) {
@@ -362,8 +363,13 @@ export class Spawn implements System {
     } catch { return ""; }
   }
 
+  // Every admin tier gets the staff limit; the tier comes from the login identity, as the queue bypass does
+  private maxFor(auth: { profileId: number; roles: string[] }): number {
+    return maxCharactersFor(this.limits, adminTierFor(auth.profileId, auth.roles, this.limits.roleCfg));
+  }
+
   // Characters never change slot, since faction rows, character names and starter grants are keyed by it
-  private slotMap(ctx: SystemContext, profileId: number): (number | undefined)[] {
+  private slotMap(ctx: SystemContext, profileId: number, max: number): (number | undefined)[] {
     const mp = ctx.svr as unknown as Mp;
     const taken: (number | undefined)[] = [];
     const unassigned: number[] = [];
@@ -380,7 +386,7 @@ export class Spawn implements System {
         unassigned.push(a);
       }
     }
-    const size = Math.min(MAX_SLOTS, Math.max(this.maxCharacters + fallen, taken.length));
+    const size = Math.min(MAX_SLOTS, Math.max(max + fallen, taken.length));
     const slots = Array.from({ length: size }, (_, i) => taken[i]);
     for (const a of unassigned) {
       let free = slots.indexOf(undefined);
@@ -393,8 +399,8 @@ export class Spawn implements System {
   }
 
   // Fallen characters do not count against the living limit
-  private canCreate(mp: Mp, slots: (number | undefined)[]): boolean {
-    return slots.filter((a) => a !== undefined && !isFallen(mp, a)).length < this.maxCharacters;
+  private canCreate(mp: Mp, slots: (number | undefined)[], max: number): boolean {
+    return slots.filter((a) => a !== undefined && !isFallen(mp, a)).length < max;
   }
 
   private isPermaDead(mp: Mp, actorId: number): boolean {
@@ -434,14 +440,16 @@ export class Spawn implements System {
   // notice is shown above the slot list, so a refused choice never looks like nothing happened; "" clears it, undefined keeps the client's line
   private sendCharacterList(ctx: SystemContext, userId: number, profileId: number, notice?: string): void {
     const mp = ctx.svr as unknown as Mp;
-    const slots = this.slotMap(ctx, profileId);
+    const auth = this.authCache.get(userId) ?? this.pending.get(userId);
+    const max = auth ? this.maxFor(auth) : profileMaxCharacters(mp, this.limits, profileId);
+    const slots = this.slotMap(ctx, profileId, max);
     const characters = slots.map((actorId, i) => {
       if (actorId === undefined) return null;
       const name = this.characterName(ctx, actorId) || `Character ${i + 1}`;
       const realm = afterlifeOf(mp, actorId);
       return realm ? { name, dead: false, info: `In ${REALMS[realm].label}` } : { name, dead: this.isPermaDead(mp, actorId) };
     });
-    const lockedSlots = this.canCreate(mp, slots) ? [] : slots.flatMap((a, i) => (a === undefined ? [i] : []));
+    const lockedSlots = this.canCreate(mp, slots, max) ? [] : slots.flatMap((a, i) => (a === undefined ? [i] : []));
     const intro = this.startLocations.length
       ? { pages: INTRO_PAGES, question: INTRO_QUESTION, locations: this.startLocations.map(({ id, label }) => ({ id, label })) }
       : undefined;
@@ -465,7 +473,8 @@ export class Spawn implements System {
     if (!auth || !Number.isInteger(slot) || slot < 0) return;
 
     const mp = ctx.svr as unknown as Mp;
-    const slots = this.slotMap(ctx, auth.profileId);
+    const max = this.maxFor(auth);
+    const slots = this.slotMap(ctx, auth.profileId, max);
     if (slot >= slots.length) return;
     let actorId = slots[slot];
     const isNew = actorId === undefined;
@@ -477,7 +486,7 @@ export class Spawn implements System {
       return;
     }
 
-    if (isNew && !this.canCreate(mp, slots)) {
+    if (isNew && !this.canCreate(mp, slots, max)) {
       this.log(`Refusing character creation in slot ${slot} for profile ${auth.profileId}: living limit reached`);
       this.sendCharacterList(ctx, userId, auth.profileId, "You already have the maximum number of living characters.");
       return;
@@ -824,7 +833,7 @@ export class Spawn implements System {
     const auth = this.pending.get(userId);
     if (!auth || !Number.isInteger(slot) || slot < 0 || slot >= MAX_SLOTS) return;
 
-    const actorId = this.slotMap(ctx, auth.profileId)[slot];
+    const actorId = this.slotMap(ctx, auth.profileId, this.maxFor(auth))[slot];
     if (actorId !== undefined) {
       // Fallen characters may be deleted too (destroying the body); the extra slot they opened closes with them
       const fallen = isFallen(ctx.svr as unknown as Mp, actorId);

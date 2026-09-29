@@ -6,7 +6,7 @@ import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
 import { WeatherSystem } from "./weatherSystem";
-import { AfterlifeSystem, REALMS, fallenLabel, fallenOf, livingCount, readMaxCharacters } from "./afterlifeSystem";
+import { AfterlifeSystem, REALMS, fallenLabel, fallenOf, livingCount, profileMaxCharacters, readCharacterLimits } from "./afterlifeSystem";
 import { ExecutionSystem } from "./executionSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
@@ -160,7 +160,7 @@ export class AdminSystem implements System {
     this.execution = execution;
   }
 
-  private maxCharacters = readMaxCharacters(null);
+  private limits = readCharacterLimits(null);
 
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private masterUrl = "";
@@ -190,7 +190,7 @@ export class AdminSystem implements System {
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
     this.roleCfg = readAdminRoleConfig(all);
-    this.maxCharacters = readMaxCharacters(all);
+    this.limits = readCharacterLimits(all);
     for (const warning of this.roleCfg.capWarnings) this.log(`AdminSystem: ${warning}`);
     // Configured entries first, in Temples unless they set a group; a generated row never shadows a name already listed
     const configured: any[] = Array.isArray(all?.["adminTeleportLocations"]) ? all["adminTeleportLocations"] : [];
@@ -393,7 +393,7 @@ export class AdminSystem implements System {
       try { n = String(ctx.svr.getActorName(a) ?? "").trim(); } catch { }
       return { a: a.toString(16), n: n || "(no name)", s: Number.isInteger(s) ? s : null, r: fallenLabel(mp, a) };
     });
-    return { f, ok: livingCount(mp, profileId) < this.maxCharacters };
+    return { f, ok: livingCount(mp, profileId) < profileMaxCharacters(mp, this.limits, profileId) };
   }
 
   // Permanent max attribute change of one character, stored on the actor so it outlives the session

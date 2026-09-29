@@ -577,7 +577,19 @@ Searches for `index.js` if a directory specified.
 
 ## characterSelectMaxCharacters
 
-With `characterSelect` on, how many living characters a profile may hold (1-10, default 3). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again, and so does a staff revive (admin panel Players sub-tab or the Server Manager Players tab), which is refused while the living count is at this limit. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
+With `characterSelect` on, how many living characters a profile may hold (1-10, default 3; staff use `characterSelectStaffMaxCharacters` instead). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again, and so does a staff revive (admin panel Players sub-tab or the Server Manager Players tab), which is refused while the living count is at this limit. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
+
+## characterSelectStaffMaxCharacters
+
+The living limit of every admin tier (`adminRoles` senior, developer and gm, plus `adminProfileIds`; 1-10, default 3) in place of `characterSelectMaxCharacters`. The tier comes from the Discord roles of the login, so a role change takes a relog; the afterlife extra slots and the revive refusal follow the same number. A staff member who loses the role keeps every character but creates none past the ordinary limit.
+
+```json5
+{
+  // ...
+  "characterSelectStaffMaxCharacters": 3
+  // ...
+}
+```
 
 ## afterlifeLooks
 
