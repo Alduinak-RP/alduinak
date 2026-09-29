@@ -38,6 +38,9 @@ export interface HousingData {
 // Mirrors cleanName in the server's housingSystem.
 const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
 
+// Actions that ask before they go to the server
+type Pending = 'voidKeys' | 'giveUp';
+
 const send = (key: string, ...args: unknown[]): void => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,7 +63,18 @@ const Housing = ({ data }: { data: HousingData }) => {
   const canLock = hasAccess && data.canLock !== false;
 
   const [rename, setRename] = useState(data.name || '');
-  const [voiding, setVoiding] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
+
+  const confirms: Record<Pending, { title: string; body: string; label: string; event: string }> = {
+    voidKeys: {
+      title: 'Void all keys?',
+      body: 'Every key cut for this property stops working, including the ones you hold.',
+      label: 'Void keys',
+      event: ev.revokeKeys,
+    },
+    giveUp: { title: `Give up ${displayName}?`, body: 'Anyone may claim it afterwards.', label: 'Give up', event: ev.abandon },
+  };
+  const dialog = pending ? confirms[pending] : null;
 
   // The client tears the widget down on close, but a re-push while it is open
   // (after lock, rename, ...) keeps this instance - follow the server's name.
@@ -118,7 +132,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           ) : null}
 
           {manages && data.hasKeys ? (
-            <button className="housing__button" onClick={() => setVoiding(true)}>Void all keys</button>
+            <button className="housing__button" onClick={() => setPending('voidKeys')}>Void all keys</button>
           ) : null}
 
           {manages ? (
@@ -128,7 +142,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           ) : null}
 
           {isOwner ? (
-            <button className="housing__button housing__button--danger" onClick={() => send(ev.abandon)}>
+            <button className="housing__button housing__button--danger" onClick={() => setPending('giveUp')}>
               Give up
             </button>
           ) : null}
@@ -185,16 +199,16 @@ const Housing = ({ data }: { data: HousingData }) => {
           </button>
         </div>
       </div>
-      {voiding ? (
+      {dialog ? (
         <ConfirmDialog
-          title="Void all keys?"
-          body="Every key cut for this property stops working, including the ones you hold."
-          confirmLabel="Void keys"
+          title={dialog.title}
+          body={dialog.body}
+          confirmLabel={dialog.label}
           onConfirm={() => {
-            send(ev.revokeKeys);
-            setVoiding(false);
+            send(dialog.event);
+            setPending(null);
           }}
-          onCancel={() => setVoiding(false)}
+          onCancel={() => setPending(null)}
         />
       ) : null}
     </div>
