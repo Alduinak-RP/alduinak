@@ -126,6 +126,18 @@ is and writes one `VanillaMenuService: ...` line to `skyrim-platform.log`.
   which `ShiftTab` and `onTabClick` do nothing and the saved tab reads as the
   last one. `QuestsTab`, `StatsTab` and `TabButtonHelp` are hidden and
   `SystemTab` moves to the middle slot. J therefore lands where Esc does.
+- **System page**: lists Settings, Controls and Quit (and anything else the
+  engine adds that is not dropped). Quicksave, Save, Load, Installed Content,
+  Creations (`$MOD MANAGER`), Mod Configuration and Help get `filterFlag = 0`
+  on their entry objects in `...SystemFader.Page_mc.CategoryList_mc.List_mc`,
+  a `Shared.CenteredScrollingList` whose `ListFilterer` then neither draws
+  them nor lets the keys, mouse wheel or pointer land on them, and the list's
+  `InvalidateData` redraws it. The entries stay in `entryList`, so
+  `SystemPage.UpdateIndices`, its `IDX_*` members and the engine's
+  `SetSaveDisabled` still line up with them (splicing them out would make
+  Settings run Quicksave). The page adds Installed Content and Creations when
+  it first starts, so the list is kept at `_alpha` 0 until a pass finds its
+  entry count unchanged; a later change of count trims it again.
 
 ---
 
