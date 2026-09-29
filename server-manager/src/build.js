@@ -441,8 +441,7 @@ class Builder {
     return { ok: true, extensions: gm.extensions }
   }
 
-  // LAUNCHER: the website installer carries the cleaned-master patches (build/launcher-website); the one nginx
-  // serves from build/launcher leaves them out, since every launcher update and download from this box would carry them
+  // LAUNCHER: the website installer (build/launcher-website) carries the cleaned-master patches, the nginx one (build/launcher) leaves them out
   async buildLauncher() {
     this.banner('Launcher')
     const pre = await this.ensurePrereqs()
