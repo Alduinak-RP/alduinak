@@ -99,9 +99,10 @@ const SESSION_MODES = ["speed", "freecam"];
 // Teleport tab sections, the front's LOC_GROUPS ids
 const TELEPORT_GROUPS = ["cities", "villages", "forts", "temples", "oblivion", "other"];
 
-// The Oblivion section: the afterlife arrivals and the Apocrypha origin (Dragonborn.esm COC marker 1C305 in DLC2ApocryphaOrigin); a configured entry of the same name replaces one
+// The Oblivion section: the afterlife arrivals, the Hall of Valor and the Apocrypha origin (Dragonborn.esm COC marker 1C305 in DLC2ApocryphaOrigin); a configured entry of the same name replaces one
 const REALM_LOCATIONS = [
   { name: "Sovngarde", kind: "", group: "oblivion", ...REALMS.sovngarde.arrival },
+  { name: "Hall of Valor", kind: "", group: "oblivion", cellOrWorldDesc: "95c44:Skyrim.esm", pos: [-266, 147, -448], rot: [0, 0, 359] },
   { name: "Soul Cairn", kind: "", group: "oblivion", ...REALMS.soulCairn.arrival },
   { name: "Apocrypha", kind: "", group: "oblivion", cellOrWorldDesc: "1c0b2:Dragonborn.esm", pos: [2604.03, 97, 1192.59], rot: [0, 0, 0] },
 ];
