@@ -8,7 +8,7 @@ import { getMovement } from "../../sync/movementGet";
 import * as worldViewMisc from "../../view/worldViewMisc";
 
 import { Animation, AnimationSource, needsReliableSend } from "../../sync/animation";
-import { Actor, EquipEvent, FormType } from "skyrimPlatform";
+import { Actor, EquipEvent, FormType, Menu } from "skyrimPlatform";
 import { getAppearance } from "../../sync/appearance";
 import { ActorValues, getActorValues } from "../../sync/actorvalues";
 import { countWorn, getEquipment } from "../../sync/equipment";
@@ -29,6 +29,10 @@ import { Movement } from "../../sync/movement";
 import { logTrace, logToPlatformLog } from "../../logging";
 
 const playerFormId = 0x14;
+
+// Menus named in a zero-worn report, the ones that undress or re-dress the player or hide the engine's equips
+const REPORT_MENUS = [Menu.Inventory, Menu.Container, Menu.Crafting, Menu.RaceSex, Menu.Loading, Menu.Favorites, Menu.Magic, Menu.Barter, Menu.Gift];
+const ZERO_WORN_LOG_GAP_MS = 2000;
 
 // TODO: split this service into EquipmentService, MovementService, AnimationService, ActorValueService, HostAttemptsService
 export class SendInputsService extends ClientListener {
@@ -84,6 +88,7 @@ export class SendInputsService extends ClientListener {
         if (type !== FormType.Book && type !== FormType.Potion && type !== FormType.Ingredient) {
             // Trigger UpdateEquipment only for equips that are not spell tomes, potions, ingredients
             this.equipmentChanged = true;
+            this.lastEquip = { baseId: event.baseObj.getFormID(), at: Date.now() };
         }
 
         // Send OnEquip for all equips, else the server won't trigger spell learn, potion drink, eating, Papyrus
@@ -100,7 +105,18 @@ export class SendInputsService extends ClientListener {
 
         if (event.actor.getFormID() === playerFormId) {
             this.equipmentChanged = true;
+            this.lastUnequip = { baseId: event.baseObj.getFormID(), at: Date.now() };
         }
+    }
+
+    // A report that reads naked is what undresses the player for everyone once the server accepts it; the line names what was going on
+    private logZeroWornReport(player: Actor, numChanges: number, entries: number) {
+        const now = Date.now();
+        if (now - this.lastZeroWornLog < ZERO_WORN_LOG_GAP_MS) return;
+        this.lastZeroWornLog = now;
+        const menus = REPORT_MENUS.filter((menu) => this.sp.Ui.isMenuOpen(menu)).join(",") || "none";
+        const last = (e?: { baseId: number; at: number }) => e ? `${e.baseId.toString(16)} ${now - e.at} ms ago` : "none";
+        logToPlatformLog(this, `zero-worn equipment report #${numChanges}: ${entries} entries, menus ${menus}, last equip ${last(this.lastEquip)}, last unequip ${last(this.lastUnequip)}, furniture ${player.getFurnitureReference()?.getFormID().toString(16) ?? "none"}, dead ${player.isDead()}, 3D ${player.is3DLoaded()}`);
     }
 
     private onLoadGame() {
@@ -321,6 +337,8 @@ export class SendInputsService extends ClientListener {
             if (this.spawnReportsToLog > 0) {
                 this.spawnReportsToLog--;
                 logToPlatformLog(this, `equipment report #${eq.numChanges} after spawn: worn ${countWorn(eq.inv)} of ${eq.inv.entries.length}`);
+            } else if (countWorn(eq.inv) === 0) {
+                this.logZeroWornReport(this.sp.Game.getPlayer() as Actor, eq.numChanges, eq.inv.entries.length);
             }
             const message: MessageWithRefrId<UpdateEquipmentMessage> = {
                 t: MsgType.UpdateEquipment,
@@ -387,6 +405,9 @@ export class SendInputsService extends ClientListener {
     private lastEquipmentSentMs = 0;
     private numEquipmentChanges = 0;
     private spawnReportsToLog = 0;
+    private lastEquip?: { baseId: number; at: number };
+    private lastUnequip?: { baseId: number; at: number };
+    private lastZeroWornLog = 0;
     private prevValues: ActorValues = { health: 0, stamina: 0, magicka: 0 };
     private prevActorValuesUpdateTime = 0;
     private prevCastingDetectedTime = 0;

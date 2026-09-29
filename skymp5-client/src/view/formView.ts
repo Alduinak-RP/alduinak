@@ -1,7 +1,7 @@
 import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving, isInSitPose } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
-import { isBadMenuShown, applyEquipment, resyncHandGraph, wearsExactly } from "../sync/equipment";
+import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, resyncHandGraph, wearsExactly } from "../sync/equipment";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
@@ -594,8 +594,10 @@ export class FormView {
         // 1. Place ~90 bots and force them to reequip iron swords to the left hand (rate should be ~50ms)
         // 2. Open your inventory and reequip different items fast
         // 3. After 1-2 minutes close your inventory and see that HUD disappeared
+        // An apply before the 3D is in strips and re-dresses a copy without a skeleton; lastNumChanges stays unset so the next update retries
         if (
           ac &&
+          refr.is3DLoaded() &&
           !isBadMenuShown() &&
           Date.now() - this.eqState.lastEqMoment > 500 &&
           Date.now() - this.spawnMoment > -1 &&
@@ -611,6 +613,7 @@ export class FormView {
             this.eqState.resyncAt = Date.now() + FormView.handGraphCheckDelayMs;
             this.redrawTints();
           }
+          this.eqState.verifyNumChanges = model.equipment.numChanges;
           this.eqState.lastEqMoment = Date.now();
           //}
           //const res: boolean = applyEquipment(ac, model.equipment);
@@ -619,12 +622,18 @@ export class FormView {
       }
     }
 
-    // A recreated copy can hold its weapon while the graph still swings fists, once per equipment change after the apply settled
-    if (this.eqState.resyncAt && Date.now() >= this.eqState.resyncAt && !model.isMyClone && !mounted && !alreadyHosted) {
+    // Once per equipment change after the apply settled: the engine drops equips from that routine, so the outfit is checked and completed,
+    // and a recreated copy can hold its weapon while the graph still swings fists
+    if (this.eqState.resyncAt && Date.now() >= this.eqState.resyncAt && !model.isMyClone && !mounted) {
       const ac = Actor.from(refr);
       if (ac && refr.is3DLoaded() && !this.isSettling(ac)) {
         this.eqState.resyncAt = 0;
-        resyncHandGraph(ac, (text) => logToPlatformLog("FormView", `${(this.remoteRefrId ?? 0).toString(16)} ${text}`));
+        if (model.equipment && model.equipment.numChanges === this.eqState.verifyNumChanges) {
+          this.verifyCopyOutfit(ac, model.equipment, !!model.appearance);
+        }
+        if (!alreadyHosted) {
+          resyncHandGraph(ac, (text) => logToPlatformLog("FormView", `${(this.remoteRefrId ?? 0).toString(16)} ${text}`));
+        }
       }
     }
 
@@ -707,6 +716,17 @@ export class FormView {
     const name = refr.getDisplayName();
     const title = (model as Record<string, unknown>)["ff_factionTitle"];
     return voip + (typeof title === "string" && title ? `${title} ${name}` : name);
+  }
+
+  // The missing pieces are equipped without the strip that races the skeleton; a player copy's head is rebuilt through the tint pass so it keeps its own tints
+  private verifyCopyOutfit(ac: Actor, eq: Equipment, isPlayerCopy: boolean): void {
+    const missing = getMissingWorn(ac, eq);
+    if (missing.length === 0) return;
+    const total = countWorn(eq.inv);
+    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy outfit after settle: ${total - missing.length} of ${total} worn, re-dressing ${missing.map((e) => e.baseId.toString(16)).join("/")}`);
+    equipEntries(ac, missing);
+    if (isPlayerCopy) this.redrawTints();
+    else ac.queueNiNodeUpdate();
   }
 
   // The shared arrays double as identity keys for the recreate check
@@ -948,7 +968,7 @@ export class FormView {
   }
 
   private getDefaultEquipState() {
-    return { lastNumChanges: 0, lastEqMoment: 0, resyncAt: 0 };
+    return { lastNumChanges: 0, lastEqMoment: 0, resyncAt: 0, verifyNumChanges: -1 };
   };
 
   private getDefaultAppearanceState() {

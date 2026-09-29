@@ -1,6 +1,7 @@
 import {
   Actor,
   Ammo,
+  Armor,
   Game,
   ObjectReference,
   Spell,
@@ -91,6 +92,17 @@ export const getUnwornSaved = (ac: Actor, eq: Equipment): Entry[] => {
   return getPlayerWorn(eq).filter((s) =>
     local.some((l) => l.baseId === s.baseId && l.count > 0) &&
     !local.some((l) => l.baseId === s.baseId && (s.wornLeft ? l.wornLeft : l.worn)));
+};
+
+// Worn entries a copy does not show: not equipped, or armour whose biped slot reads empty because the skeleton was never built for it
+export const getMissingWorn = (ac: Actor, eq: Equipment): Entry[] => {
+  return filterWorn(eq.inv).entries.filter((e) => {
+    const form = Game.getFormEx(e.baseId);
+    if (!form) return false;
+    if (!ac.isEquipped(form)) return true;
+    const armor = Armor.from(form);
+    return !!armor && ac.getWornForm(armor.getSlotMask())?.getFormID() !== form.getFormID();
+  });
 };
 
 // Equips without the strip applyEquipment does, so nothing leaves the inventory
