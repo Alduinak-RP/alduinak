@@ -346,7 +346,10 @@ to one stays playable but is confined to it.
   `private.afterlife` before moving such a character out.
 - **Soul trap**: only a caster with the faction `execute` permission, or staff
   with the `factions` cap, sends a player to the Soul Cairn. Anyone else still
-  fills the black soul gem, and the player is not marked.
+  fills the black soul gem, and the player is not marked. A hold court's right
+  counts only inside its own hold: outside it, a caster holding no other right
+  is told the border notice and the player is not marked
+  (`docs_roleplay_property_factions.md`, Territory).
 - **An extra slot**: a character in an afterlife no longer counts toward
   `characterSelectMaxCharacters`, so its profile may create another living
   character. The character keeps its slot and stays playable. Its faction ranks

@@ -6,6 +6,7 @@ import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles"
 import { isNear, isPlayerActor, nameShownTo, userOf, userSlotCount } from "./actorUtil";
 import { formIdFromConfig } from "./formIdUtil";
 import { HousingSystem } from "./housingSystem";
+import { holdName, holdOfActor } from "./holdOf";
 import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
 import { adminAudit } from "./discordAlerts";
@@ -17,7 +18,9 @@ type Mp = any;
 // character and slot). A character joins at most one faction of each type, leads at most one faction anywhere, and shows at most one
 // faction title. This system runs the rules in game: the Personal Menu Faction tabs, recruiting with consent, rank changes, removals,
 // regency, faction-only doors and containers, and releasing a deleted or perma-dead character's ranks. Hold uniforms are crafted
-// by the ranks carrying craft (FactionCraftSystem), never issued here.
+// by the ranks carrying craft (FactionCraftSystem), never issued here. A hold court's powers reach only inside its own hold
+// (territoryRefusal): rank changes, regency, its doors and chests, hold property and executions; recruiting, removing and crafting
+// work anywhere, and admins are exempt.
 // Docs: docs/docs_roleplay_property_factions.md section 6.
 //
 // Client -> server:
@@ -62,6 +65,8 @@ const RELEASE_RETRY_MS = 30000;
 const MAX_QUEUED = 3;
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
+// One border refusal line per actor this often
+const BORDER_LOG_MS = 60000;
 
 // Bounty board name to the hold whose ranks tend it
 const HOLD_BY_BOARD: Record<string, string> = {
@@ -146,8 +151,9 @@ export class FactionSystem implements System {
     if (Number.isFinite(distance) && distance > 0) this.inviteDistance = distance;
     this.roleCfg = readAdminRoleConfig(all);
 
-    this.housing.factionGate = (actorId, refrId) => this.gate(actorId, refrId);
+    this.housing.factionGate = (actorId, refrId, action) => this.gate(actorId, refrId, action);
     this.housing.factionDef = (factionId) => (this.definitionsLoaded ? this.defs.get(factionId) ?? null : undefined);
+    this.housing.territoryRefusal = (actorId, factionId, action) => this.territoryRefusal(actorId, factionId, action);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
@@ -414,6 +420,8 @@ export class FactionSystem implements System {
     if (!target || !rules.canSetRank(faction, auth, memberRank, target)) {
       return this.notice(userId, "You cannot give them that rank.");
     }
+    const outside = this.territoryRefusal(actorId, faction.id, "rank change");
+    if (outside) return this.notice(userId, outside);
     if (target.capacity !== null && (await this.roster(faction.id, true)).filter((m) => m.rankSlug === target.slug).length >= target.capacity) {
       return this.notice(userId, `${target.name} is full.`);
     }
@@ -450,6 +458,8 @@ export class FactionSystem implements System {
 
   private async regencyAction(userId: number, actorId: number, faction: rules.FactionDef, auth: rules.Authority, action: string, content: Content): Promise<void> {
     if (!rules.canManageRegency(auth)) return this.notice(userId, "Only the leader seats regents.");
+    const outside = this.territoryRefusal(actorId, faction.id, "regency change");
+    if (outside) return this.notice(userId, outside);
     const backend = this.backend()!;
     const seats = faction.regents.slice();
     const sameSeat = (a: rules.RegentSeat, b: rules.RegentSeat) => a.profileId === b.profileId && a.slot === b.slot;
@@ -744,15 +754,15 @@ export class FactionSystem implements System {
 
   // ── Doors and containers ────────────────────────────────────────────────────
 
-  // Either half of a teleport pair names the faction; players outside it are refused, NPCs pass
-  private gate(actorId: number, refrId: number): { name: string; allowed: boolean } | null {
+  // Either half of a teleport pair names the faction; outsiders are refused, NPCs pass, a court's ranks pass only inside its hold
+  private gate(actorId: number, refrId: number, action = ""): { name: string; allowed: boolean; refusal: string } | null {
     if (!this.accessByRef.size) return null;
     const entry = this.housing.doorSides(this.ctx, refrId).map((id) => this.accessByRef.get(id)).find(Boolean);
     if (!entry) return null;
     const name = entry.label || entry.factions.map((id) => this.defs.get(id)?.name || id).join(" or ");
-    if (!isPlayerActor(this.mp, actorId)) return { name, allowed: true };
+    if (!isPlayerActor(this.mp, actorId)) return { name, allowed: true, refusal: "" };
     // A rank list on the entry names who may pass; without one every rank with the faction access flag may
-    const allowed = this.membershipsOfActor(actorId).some((m) => {
+    const admitted = this.membershipsOfActor(actorId).filter((m) => {
       if (!entry.factions.includes(m.factionId)) return false;
       const ranks = Array.isArray(entry.ranks) ? entry.ranks : entry.ranks ? entry.ranks[m.factionId] : null;
       if (ranks) return ranks.includes(m.rankSlug);
@@ -760,7 +770,8 @@ export class FactionSystem implements System {
       const faction = this.defs.get(m.factionId);
       return !!faction && !!rules.rankOf(faction, m.rankSlug)?.factionAccess;
     });
-    return { name, allowed };
+    if (admitted.some((m) => !this.territoryRefusal(actorId, m.factionId))) return { name, allowed: true, refusal: "" };
+    return { name, allowed: false, refusal: admitted.length ? this.territoryRefusal(actorId, admitted[0].factionId, action) : "" };
   }
 
   private loadAccessFile(): void {
@@ -985,8 +996,8 @@ export class FactionSystem implements System {
     return this.isStaff(actorId) || this.hasFactionPermission(actorId, "execute");
   }
 
-  // The factions whose rank gives this character the permission; FactionCraftSystem gates the craft markers on it
-  factionsWith(actorId: number, key: rules.Permission): string[] {
+  // The factions whose rank gives the permission, with here only those reaching where the actor stands; FactionCraftSystem gates on it
+  factionsWith(actorId: number, key: rules.Permission, here = false): string[] {
     const access = this.cachedAccess(actorId);
     // Definitions not in yet: no permission is granted rather than all of them
     return rules.membershipsOf(access)
@@ -994,7 +1005,39 @@ export class FactionSystem implements System {
         const faction = this.defs.get(m.factionId);
         return !!faction && rules.hasPermission(this.authorityOf(actorId, faction, access), key);
       })
-      .map((m) => m.factionId);
+      .map((m) => m.factionId)
+      .filter((id) => !here || !this.territoryRefusal(actorId, id));
+  }
+
+  // "" when a rank carrying the permission reaches where the actor stands (or none carries it), else the first one's border notice
+  borderRefusal(actorId: number, key: rules.Permission, action: string): string {
+    const granting = this.factionsWith(actorId, key);
+    if (!granting.length || this.factionsWith(actorId, key, true).length) return "";
+    return this.territoryRefusal(actorId, granting[0], action);
+  }
+
+  // "" inside the court's own hold, for an army or a guild, and for admins; with an action the refusal is logged
+  territoryRefusal(actorId: number, factionId: string, action = ""): string {
+    const hold = rules.factionHold(factionId);
+    if (!hold || adminTierOf(this.mp, actorId, this.roleCfg) !== null) return "";
+    const here = holdOfActor(this.mp, actorId);
+    if (here?.key === hold) return "";
+    const faction = this.defs.get(factionId);
+    const auth = faction ? this.authorityOf(actorId, faction, this.cachedAccess(actorId)) : null;
+    const rank = auth?.rank ? (auth.acting ? rules.titleOf(faction!, auth.rank, true, false) : auth.rank.name) : "a member";
+    const factionName = faction?.name ?? factionId;
+    if (action) this.logBorder(actorId, `${action} refused for ${this.who(actorId)} as ${rank} of ${factionName} outside ${holdName(hold)}, in ${here?.name ?? "no hold"}`);
+    return rules.borderNotice(rank, factionName, holdName(hold));
+  }
+
+  private logBorder(actorId: number, text: string): void {
+    const now = Date.now();
+    if (now - (this.borderLogged.get(actorId) ?? 0) < BORDER_LOG_MS) return;
+    if (this.borderLogged.size >= 512) {
+      for (const [id, at] of Array.from(this.borderLogged)) if (now - at >= BORDER_LOG_MS) this.borderLogged.delete(id);
+    }
+    this.borderLogged.set(actorId, now);
+    this.log(`[factions] ${text}`);
   }
 
   canRemoveBoardPosts(actorId: number, boardName: string): boolean {
@@ -1118,6 +1161,7 @@ export class FactionSystem implements System {
   private titles = new Map<number, string>();
   private invites = new Map<number, PendingInvite>();
   private inviteCooldown = new Map<string, number>();
+  private borderLogged = new Map<number, number>();
   private nextConsentId = CONSENT_ID_BASE;
   private queues = new Map<number, Promise<void>>();
   private queueDepth = new Map<number, number>();

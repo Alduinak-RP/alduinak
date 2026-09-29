@@ -1,14 +1,15 @@
 import * as path from "path";
 import { scanRecords, espmDesc, cstr, LogFn, EspmRecord } from "./espmEditorIds";
 import { createStringsReader } from "./espmStrings";
-import { formIdFromConfig } from "./formIdUtil";
+import { espmRefrFieldId, formIdFromConfig } from "./formIdUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
 // The hold a placed reference lies in: its cell's location (XLCN) walked up the parent locations (PNAM) to the location
 // carrying the LocTypeHold keyword. An exterior cell without one takes its worldspace's location (the walled cities), then
-// the hold most located cells share on the nearest ring of cells around it, up to NEAREST_CELLS out.
+// the hold most located cells share on the nearest ring of cells around it, up to NEAREST_CELLS out. Where an actor stands
+// searches up to ACTOR_NEAREST_CELLS out, and an interior whose location is in no hold takes the hold its load doors lead to.
 
 export interface Hold {
   // As housing and the court factions name holds: "whiterun", "rift", "reach"
@@ -22,6 +23,8 @@ const RECORD_DELETED = 0x20;
 const CELL_INTERIOR = 0x01;
 const CELL_UNITS = 4096;
 const NEAREST_CELLS = 3;
+// 1028 of Tamriel's 11187 exterior cells carry a location; 12 rings reach one from every cell inside Skyrim's border
+const ACTOR_NEAREST_CELLS = 12;
 const MAX_PARENT_DEPTH = 16;
 
 interface LocationRec {
@@ -36,6 +39,11 @@ const interiorHolds = new Map<number, Hold>();
 // World id -> "x,y" cell grid -> hold
 const exteriorHolds = new Map<number, Map<string, Hold>>();
 const worldHolds = new Map<number, Hold>();
+// Every worldspace id, so a cell id tells an exterior from an interior
+const worldIds = new Set<number>();
+const holdsByKey = new Map<string, Hold>();
+// Interior cell id whose location is in no hold -> the hold its load doors lead to
+const doorHolds = new Map<number, Hold | null>();
 
 const fieldOf = (rec: EspmRecord, type: string): Buffer | undefined => rec.fields.find((f) => f.type === type)?.data;
 
@@ -123,6 +131,9 @@ export async function loadHolds(mp: Mp, dataDir: string, loadOrder: string[], lo
   interiorHolds.clear();
   exteriorHolds.clear();
   worldHolds.clear();
+  worldIds.clear();
+  holdsByKey.clear();
+  doorHolds.clear();
   for (const [desc, loc] of cells) {
     const hold = holdOfLocation(loc);
     const id = hold ? idOf(desc) : 0;
@@ -138,9 +149,11 @@ export async function loadHolds(mp: Mp, dataDir: string, loadOrder: string[], lo
   }
   for (const [desc, loc] of worlds) {
     const hold = loc ? holdOfLocation(loc) : null;
-    const id = hold ? idOf(desc) : 0;
-    if (id) worldHolds.set(id, hold!);
+    const id = idOf(desc);
+    if (id) worldIds.add(id);
+    if (id && hold) worldHolds.set(id, hold);
   }
+  for (const hold of resolved.values()) if (hold) holdsByKey.set(hold.key, hold);
   const located = Array.from(exteriorHolds.values()).reduce((n, m) => n + m.size, 0);
   log(`[holds] ${holdKeyword ? "" : `no ${HOLD_KEYWORD} keyword, `}${interiorHolds.size} interior cell(s), ${located} exterior cell(s) and ${worldHolds.size} worldspace(s) in a hold, from ${locations.size} location(s) in ${Date.now() - started} ms`);
 }
@@ -163,11 +176,11 @@ const exactHold = (mp: Mp, refrId: number): Hold | null => {
 };
 
 // The hold most located cells share on the nearest ring that has any
-const nearbyHold = (mp: Mp, refrId: number): Hold | null => {
+const nearbyHold = (mp: Mp, refrId: number, rings = NEAREST_CELLS): Hold | null => {
   const at = whereIs(mp, refrId);
   const byGrid = at ? exteriorHolds.get(at.cell) : undefined;
   if (!at || !byGrid) return null;
-  for (let r = 1; r <= NEAREST_CELLS; r++) {
+  for (let r = 1; r <= rings; r++) {
     const votes = new Map<string, { hold: Hold; n: number }>();
     for (let dx = -r; dx <= r; dx++) {
       for (let dy = -r; dy <= r; dy++) {
@@ -197,4 +210,43 @@ export function holdOfRefs(mp: Mp, refrIds: number[]): Hold | null {
     if (hold) return hold;
   }
   return null;
+}
+
+// The first load door near the actor whose far side lies in a hold; remembered per cell once any door was seen
+const holdByDoors = (mp: Mp, actorId: number, cell: number): Hold | null => {
+  const known = doorHolds.get(cell);
+  if (known !== undefined) return known;
+  let near: unknown[] = [];
+  try {
+    near = mp.getNeighborsByPosition(String(mp.get(actorId, "worldOrCellDesc")), mp.get(actorId, "pos")) ?? [];
+  } catch {
+    return null;
+  }
+  let doors = 0;
+  for (const raw of near) {
+    const far = espmRefrFieldId(mp, Number(raw) >>> 0, "XTEL");
+    if (!far) continue;
+    doors++;
+    const hold = holdOfRefs(mp, [far]);
+    if (hold) {
+      doorHolds.set(cell, hold);
+      return hold;
+    }
+  }
+  if (doors) doorHolds.set(cell, null);
+  return null;
+};
+
+// Where an actor stands: its cell's hold, else outdoors the nearest located cells' hold, indoors the hold its load doors lead to
+export function holdOfActor(mp: Mp, actorId: number): Hold | null {
+  const exact = exactHold(mp, actorId);
+  if (exact) return exact;
+  const at = whereIs(mp, actorId);
+  if (!at) return null;
+  return worldIds.has(at.cell) ? nearbyHold(mp, actorId, ACTOR_NEAREST_CELLS) : holdByDoors(mp, actorId, at.cell);
+}
+
+// "The Rift"; the key capitalized for a hold the scan never saw
+export function holdName(key: string): string {
+  return holdsByKey.get(key)?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
 }

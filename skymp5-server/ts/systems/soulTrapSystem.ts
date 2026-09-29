@@ -72,7 +72,7 @@ export class SoulTrapSystem implements System {
     private log: Log,
     private companions?: { isCompanionActor(actorId: number): boolean },
     private afterlife?: AfterlifeSystem,
-    private factions?: { canExecute(actorId: number): boolean },
+    private factions?: { canExecute(actorId: number): boolean; borderRefusal(actorId: number, key: "execute", action: string): string },
     private bodies?: BodySystem,
     private captives?: { freeCaptive(ctx: SystemContext, actorId: number): void },
   ) { }
@@ -143,7 +143,9 @@ export class SoulTrapSystem implements System {
     }
     notifyActor(mp, casterId, "Soul captured!");
     // The victim is dead here, so it is only marked and its respawn takes it to the Soul Cairn
-    const pk = player && !!this.factions?.canExecute(casterId);
+    const outside = player ? this.factions?.borderRefusal(casterId, "execute", "soul trap") ?? "" : "";
+    if (outside) notifyActor(mp, casterId, outside);
+    const pk = player && !outside && !!this.factions?.canExecute(casterId);
     // A character already fallen keeps its pack: the Soul Cairn refuses it and no body is left
     if (pk && !isFallen(mp, targetId)) this.bodies?.leaveBody(targetId, `soul trapped by ${hex(casterId)}`);
     // Before the move, since a carried captive is set down at the carrier

@@ -249,6 +249,7 @@ export class ExecutionSystem implements System {
     const held = this.weaponTypeOf(killerId);
     const idle = held ? this.pickFrom(this.sneakFinishers, held, null) : 0;
     const refusal = this.assassinateRefusal(killerId, victimId) ||
+      this.factions.borderRefusal(killerId, "execute", "assassination") ||
       (idle ? "" : "You need a melee weapon in hand to assassinate them.") ||
       (isWeaponDrawn(mp, killerId) ? "" : "Draw your weapon first.");
     if (refusal) {
@@ -292,6 +293,7 @@ export class ExecutionSystem implements System {
     const held = this.weaponTypeOf(killerId);
     const idle = this.pickFinisher(held);
     const refusal = this.finishOffRefusal(killerId, victimId) ||
+      this.factions.borderRefusal(killerId, "execute", "finish off") ||
       (idle ? "" : "You need a melee weapon in hand to finish them off.") ||
       (isWeaponDrawn(mp, killerId) ? "" : "Draw your weapon first.") ||
       this.bleedout.hold(victimId, killerId, this.pairMaxMs, () => this.slay(victimId, killerId, "finished off"), true);
@@ -332,7 +334,7 @@ export class ExecutionSystem implements System {
     const mp = this.mp;
     const executorId = this.actorOf(userId);
     if (!executorId) return;
-    const refusal = this.prepareRefusal(executorId, prisonerId);
+    const refusal = this.prepareRefusal(executorId, prisonerId) || this.factions.borderRefusal(executorId, "execute", "prepare execution");
     const blockId = refusal ? 0 : this.blockNear(executorId);
     const spot = blockId ? this.spotBy(blockId, this.prisonerOffset) : null;
     if (!spot) {
@@ -360,6 +362,7 @@ export class ExecutionSystem implements System {
     if (!executorId) return;
     const idle = this.killMoveOf(executorId);
     const refusal = this.executeRefusal(executorId, prisonerId) ||
+      this.factions.borderRefusal(executorId, "execute", "execution") ||
       (idle ? "" : "You need a melee weapon in hand to execute them.") ||
       (isWeaponDrawn(mp, executorId) ? "" : "Draw your weapon first.");
     const prisoner = this.prisoners.get(prisonerId);
@@ -484,7 +487,7 @@ export class ExecutionSystem implements System {
   // A PK: a kill the gate never sees, a body left behind, then the soul goes to Sovngarde
   private slay(victimId: number, killerId: number, how: string): void {
     const mp = this.mp;
-    const rights = this.factions.factionsWith(killerId, "execute");
+    const rights = this.factions.factionsWith(killerId, "execute", true);
     const line = `${describeActor(mp, killerId)} ${how} ${describeActor(mp, victimId)}, ${whereOf(mp, victimId)}` +
       ` (${rights.length ? `execute right of ${rights.join(", ")}` : "staff"})`;
     (globalThis as any).__alduinakMarkDeathAlerted?.(victimId);

@@ -71,7 +71,11 @@ behaviour-graph events — no ESP required.**
   is under way; a restrained or carrying player cannot give one.
 - **Finish off** (`executionSystem.ts`): a holder of the faction `execute`
   permission, or staff with the `factions` cap, sees Finish Off in the X menu
-  on a downed player in reach. It needs a drawn melee weapon: bows, staves
+  on a downed player in reach. A hold court's right reaches only inside its
+  own hold: elsewhere Finish Off, Prepare Execution, Execute and Assassinate
+  still show but answer "Your authority as <rank> of <faction> ends at the
+  <hold> border." (`docs_roleplay_property_factions.md`, Territory; an army's
+  or guild's right and admins are not bound). It needs a drawn melee weapon: bows, staves
   and fists are refused ("You need a melee weapon in hand to finish them
   off."), a sheathed one too ("Draw your weapon first.", read through Papyrus
   `Actor.IsWeaponDrawn`, so the killer's copies already show it). With

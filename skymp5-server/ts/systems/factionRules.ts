@@ -100,6 +100,13 @@ export function splitRequirementId(requirementId: unknown): [string, string] | n
 // Housing tables name holds without the article the backend groups carry ("the-rift" and "rift" are one hold)
 export const holdKey = (slug: string): string => slug.replace(/^the-/, "");
 
+// The hold a court's powers are bound to ("hold:the-rift" -> "rift"), "" for armies and guilds
+export const factionHold = (factionId: string): string => (factionId.startsWith("hold:") ? holdKey(factionId.slice(5)) : "");
+
+// "The Rift" reads "the Rift border"
+export const borderNotice = (rankName: string, factionName: string, holdName: string): string =>
+  `Your authority as ${rankName} of ${factionName} ends at the ${holdName.replace(/^the\s+/i, "")} border.`;
+
 // The master-api GET /factions reply as ladders keyed by faction id
 export function buildFactions(raw: { factions?: unknown[]; requirements?: unknown[] } | null): Map<string, FactionDef> {
   const out = new Map<string, FactionDef>();
@@ -173,8 +180,8 @@ export function membershipsOf(access: unknown): Membership[] {
 // Hold ranks by hold key, for housing
 export function holdRanksOf(access: unknown): Array<{ factionId: string; hold: string; rank: string }> {
   return membershipsOf(access)
-    .filter((m) => m.factionId.startsWith("hold:"))
-    .map((m) => ({ factionId: m.factionId, hold: holdKey(m.factionId.slice(5)), rank: m.rankSlug }));
+    .filter((m) => factionHold(m.factionId))
+    .map((m) => ({ factionId: m.factionId, hold: factionHold(m.factionId), rank: m.rankSlug }));
 }
 
 // Staff, a leader and a regent standing in for one all act with the whole ladder's rights

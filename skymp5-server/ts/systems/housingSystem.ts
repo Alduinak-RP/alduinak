@@ -46,7 +46,7 @@ type Mp = any;
 //
 // Holds. A property lies in the hold its door's location belongs to (holdOf.ts: the cell's location walked up to the
 // LocTypeHold one, either half of a teleport pair). Ranks that manage hold property (Jarl and Steward by default) manage
-// only the claims inside their own court's hold; admins manage every claim.
+// only the claims inside their own court's hold, and only while standing inside it; admins manage every claim.
 
 const HOUSING_PROP = "private.housing";
 const OWNER_INDEX_PROP = "private.indexed.housingOwner";
@@ -70,6 +70,8 @@ const MAX_ESPM_CACHE = 4096;
 const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
+// What a hold official may do to someone else's claim
+const MANAGER_ACTIONS = new Set(["abandon", "breaklock", "revoke", "rename", "revokekeys", "transfer", "grantcontainer"]);
 const CHANGE_FAILED = "That cannot be changed right now.";
 const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ and - only.";
 
@@ -155,12 +157,12 @@ export class HousingSystem implements System {
 
   // Faction doors and containers refuse outsiders; locked means locked for everyone, access only lets a player unlock it from the menu
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): boolean {
-    const faction = this.factionGate ? this.factionGate(casterId, targetId) : null;
+    const faction = this.factionGate ? this.factionGate(casterId, targetId, "faction door") : null;
     if (faction && !faction.allowed && !this.isAdmin(ctx, casterId)) {
       const userId = this.userOf(ctx, casterId);
       if (!this.firstDenial(userId)) return false;
-      this.notice(ctx, userId, `Only ${faction.name} may use this.`);
-      this.log(`[housing] ${targetId.toString(16)} denied to ${this.who(ctx, casterId)}: belongs to ${faction.name}`);
+      this.notice(ctx, userId, faction.refusal || `Only ${faction.name} may use this.`);
+      if (!faction.refusal) this.log(`[housing] ${targetId.toString(16)} denied to ${this.who(ctx, casterId)}: belongs to ${faction.name}`);
       return false;
     }
     const primary = this.primaryOf(ctx, targetId);
@@ -246,7 +248,13 @@ export class HousingSystem implements System {
     }
     const rec = this.read(ctx, primary) || emptyRecord();
     const isOwner = rec.owner !== 0 && rec.owner === this.profileOf(ctx, actorId);
-    const isManager = this.isManager(ctx, actorId, primary);
+    const asManager = !isOwner && MANAGER_ACTIONS.has(action);
+    const managing = this.managerRefusal(ctx, actorId, primary, asManager ? action : "");
+    if (managing && asManager) {
+      this.notice(ctx, userId, managing);
+      return;
+    }
+    const isManager = managing === "";
 
     switch (action) {
       case "claim": this.doClaim(ctx, userId, actorId, primary, rec); break;
@@ -461,7 +469,8 @@ export class HousingSystem implements System {
     const owned = !!rec && rec.owner !== 0;
     const profileId = this.profileOf(ctx, actorId);
     const isOwner = owned && rec!.owner === profileId;
-    const isManager = !!primary && this.isManager(ctx, actorId, primary);
+    // An official outside the hold still gets the manager view, and each action tells them why it is refused
+    const isManager = !!primary && this.managerRefusal(ctx, actorId, primary) !== null;
     const canLock = owned && this.hasAccess(ctx, primary, rec!, actorId);
     const holdsKey = canLock && !isOwner && !isManager;
 
@@ -493,11 +502,14 @@ export class HousingSystem implements System {
   // Set by PetSystem: the kind of pets storable at a door, shown as the menu's Pets option
   petCategoryOf: ((actorId: number, refrId: number) => string) | null = null;
 
-  // Set by FactionSystem: the faction a door or container belongs to and whether this actor may use it, null when it is no faction's
-  factionGate: ((actorId: number, refrId: number) => { name: string; allowed: boolean } | null) | null = null;
+  // Set by FactionSystem: a faction door's owner, whether this actor may use it and the border notice; null when it is no faction's
+  factionGate: ((actorId: number, refrId: number, action?: string) => { name: string; allowed: boolean; refusal: string } | null) | null = null;
 
   // Set by FactionSystem: a loaded faction definition, so each hold rank's property flag picks the hold managers
   factionDef: ((factionId: string) => FactionDef | null | undefined) | null = null;
+
+  // Set by FactionSystem: the border notice of a court rank used outside its hold, "" inside it; with an action it is logged
+  territoryRefusal: ((actorId: number, factionId: string, action?: string) => string) | null = null;
 
   // Both halves of a teleport door, just the ref for anything else
   doorSides(ctx: SystemContext, refrId: number): number[] {
@@ -558,13 +570,16 @@ export class HousingSystem implements System {
     };
   }
 
-  private isManager(ctx: SystemContext, actorId: number, primary: number): boolean {
-    if (this.isAdmin(ctx, actorId)) return true;
+  // "" for a manager of this claim, the border notice for its hold's official standing outside the hold, null for anyone else
+  private managerRefusal(ctx: SystemContext, actorId: number, primary: number, action = ""): string | null {
+    if (this.isAdmin(ctx, actorId)) return "";
     const hold = this.holdOf(ctx, primary);
-    if (!hold) return false;
+    if (!hold) return null;
     let access: unknown = null;
-    try { access = (ctx.svr as Mp).get(actorId, "private.skympAccess"); } catch { return false; }
-    return holdRanksOf(access).some((r) => r.hold === hold.key && managesHold(this.factionDef?.(r.factionId), r.rank));
+    try { access = (ctx.svr as Mp).get(actorId, "private.skympAccess"); } catch { return null; }
+    const ranks = holdRanksOf(access).filter((r) => r.hold === hold.key && managesHold(this.factionDef?.(r.factionId), r.rank));
+    if (!ranks.length) return null;
+    return this.territoryRefusal ? this.territoryRefusal(actorId, ranks[0].factionId, action) : "";
   }
 
   // Every admin tier overrides housing claims
