@@ -125,8 +125,14 @@ line to `skyrim-platform.log`.
   restored (so that page's bottom bar listeners end) and then
   `RestoreSavedSettings(true, true)`, the engine's own tabs-disabled mode, in
   which `ShiftTab` and `onTabClick` do nothing and the saved tab reads as the
-  last one. `QuestsTab`, `StatsTab` and `TabButtonHelp` are hidden and
-  `SystemTab` moves to the middle slot. J therefore lands where Esc does.
+  last one. `QuestsTab`, `StatsTab`, `TabButtonHelp` and the pages behind
+  the two tabs (`QuestsFader`, `StatsFader`) are hidden and `SystemTab` moves
+  to the middle slot on the first pass that finds `SystemTab`, which runs in
+  the `menuOpen` task itself, before the queued invokes land; so neither the
+  other tabs nor J's Quests page show while the menu fades in. `SystemTab` is
+  centred again once selected (a selected tab can draw at another width), and
+  a switch that never lands puts all of them back. J therefore lands where
+  Esc does.
 - **System page**: lists Settings, Controls and Quit (and anything else the
   engine adds that is not dropped). Quicksave, Save, Load, Installed Content,
   Creations (`$MOD MANAGER`), Mod Configuration and Help get `filterFlag = 0`

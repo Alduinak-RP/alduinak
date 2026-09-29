@@ -5,9 +5,11 @@ import { keepMenusClosed } from "./menuBlockUtil";
 
 // Paths and members of SkyUI's quest_journal.swf (SkyUI_SE.bsa wins over Skyrim - Interface.bsa)
 const JOURNAL_ROOT = "_root.QuestJournalFader.Menu_mc";
+const journalAt = (member: string) => `${JOURNAL_ROOT}.${member}`;
 // Quest_Journal.PAGE_SYSTEM, the last tab
 const SYSTEM_TAB = 2;
-const HIDDEN_JOURNAL_TABS = ["QuestsTab", "StatsTab", "TabButtonHelp"];
+// The other tabs, the tab key help and the pages behind those tabs
+const HIDDEN_JOURNAL_CLIPS = ["QuestsTab", "StatsTab", "TabButtonHelp", "QuestsFader", "StatsFader"];
 const SYSTEM_LIST_HOLDER = `${JOURNAL_ROOT}.SystemFader.Page_mc.CategoryList_mc`;
 // A Shared.CenteredScrollingList, which shows and steps through only the entries its filterer matches
 const SYSTEM_LIST = `${SYSTEM_LIST_HOLDER}.List_mc`;
@@ -39,7 +41,9 @@ interface JournalState {
   misses: number;
   settle: number;
   switches: number;
-  tabsHidden: boolean;
+  // SystemTab._x from before it was centred, set once the other clips are hidden
+  systemTabX?: number;
+  onSystem: boolean;
   entryCount: number;
   // entryList indices of the filtered out entries
   hiddenEntries: number[];
@@ -53,7 +57,9 @@ export class VanillaMenuService extends ClientListener {
     super();
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.Journal) {
-        this.journal = { misses: 0, settle: 0, switches: 0, tabsHidden: false, entryCount: -1, hiddenEntries: [], listHidden: false, failed: false };
+        this.journal = { misses: 0, settle: 0, switches: 0, onSystem: false, entryCount: -1, hiddenEntries: [], listHidden: false, failed: false };
+        // menuOpen runs as a task after this update's handler, so the first pass is not left to the next update
+        this.trimJournal(this.journal);
       }
       if (e.name === Menu.Tween) this.tween = { misses: 0, trimmed: false };
       if (e.name === Menu.HUD) this.hudDirty = true;
@@ -137,33 +143,48 @@ export class VanillaMenuService extends ClientListener {
       return;
     }
     const ui = this.sp.Ui;
-    const at = (member: string) => `${JOURNAL_ROOT}.${member}`;
-    if (ui.getString(Menu.Journal, at("SystemTab._name")) !== "SystemTab") {
-      if (++j.misses > MAX_PATH_MISSES) this.failJournal(j, `${at("SystemTab")} not found`);
+    if (ui.getString(Menu.Journal, journalAt("SystemTab._name")) !== "SystemTab") {
+      if (++j.misses > MAX_PATH_MISSES) this.failJournal(j, `${journalAt("SystemTab")} not found`);
       return;
     }
-    const tab = ui.getInt(Menu.Journal, at("iCurrentTab"));
-    if (!ui.getBool(Menu.Journal, at("bTabsDisabled")) || tab !== SYSTEM_TAB) {
+    // Hidden at once, as the switch to System lands only when the queued invokes run
+    if (j.systemTabX === undefined) {
+      j.systemTabX = ui.getFloat(Menu.Journal, journalAt("SystemTab._x"));
+      this.setJournalClipsShown(false);
+      this.centreSystemTab();
+    }
+    const tab = ui.getInt(Menu.Journal, journalAt("iCurrentTab"));
+    if (!ui.getBool(Menu.Journal, journalAt("bTabsDisabled")) || tab !== SYSTEM_TAB) {
       if (++j.switches > MAX_JOURNAL_SWITCHES) return this.failJournal(j, `stays on tab ${tab}`);
       // The System page may add entries when it starts, so its list stays unseen until they are trimmed
       this.setSystemListShown(j, false);
       // ShiftTab ends the open page first, so its bottom bar listeners do not follow onto System
-      if (tab !== SYSTEM_TAB) ui.invokeInt(Menu.Journal, at("ShiftTab"), SYSTEM_TAB - tab);
+      if (tab !== SYSTEM_TAB) ui.invokeInt(Menu.Journal, journalAt("ShiftTab"), SYSTEM_TAB - tab);
       // With tabs disabled the saved tab argument is ignored and the last tab is used
-      ui.invokeBoolA(Menu.Journal, at("RestoreSavedSettings"), [true, true]);
+      ui.invokeBoolA(Menu.Journal, journalAt("RestoreSavedSettings"), [true, true]);
       j.settle = INVOKE_SETTLE_UPDATES;
       return;
     }
-    if (!j.tabsHidden) {
-      j.tabsHidden = true;
-      const statsX = ui.getFloat(Menu.Journal, at("StatsTab._x"));
-      const statsWidth = ui.getFloat(Menu.Journal, at("StatsTab._width"));
-      const systemWidth = ui.getFloat(Menu.Journal, at("SystemTab._width"));
-      ui.setFloat(Menu.Journal, at("SystemTab._x"), statsX + (statsWidth - systemWidth) / 2);
-      for (const clip of HIDDEN_JOURNAL_TABS) ui.setBool(Menu.Journal, at(`${clip}._visible`), false);
-      this.logOnce("journal", `Journal Menu shows System only, hid ${HIDDEN_JOURNAL_TABS.join(", ")}`);
+    if (!j.onSystem) {
+      j.onSystem = true;
+      // The selected tab can draw at another width
+      this.centreSystemTab();
+      this.logOnce("journal", `Journal Menu shows System only, hid ${HIDDEN_JOURNAL_CLIPS.join(", ")}`);
     }
     this.trimSystemEntries(j);
+  }
+
+  private setJournalClipsShown(shown: boolean): void {
+    for (const clip of HIDDEN_JOURNAL_CLIPS) this.sp.Ui.setBool(Menu.Journal, journalAt(`${clip}._visible`), shown);
+  }
+
+  // SystemTab takes the middle slot, StatsTab's
+  private centreSystemTab(): void {
+    const ui = this.sp.Ui;
+    const statsX = ui.getFloat(Menu.Journal, journalAt("StatsTab._x"));
+    const statsWidth = ui.getFloat(Menu.Journal, journalAt("StatsTab._width"));
+    const systemWidth = ui.getFloat(Menu.Journal, journalAt("SystemTab._width"));
+    ui.setFloat(Menu.Journal, journalAt("SystemTab._x"), statsX + (statsWidth - systemWidth) / 2);
   }
 
   // Filtered entries keep their indices, so the page's IDX_ members and SetSaveDisabled still line up
@@ -222,6 +243,10 @@ export class VanillaMenuService extends ClientListener {
   private failJournal(j: JournalState, why: string): void {
     j.failed = true;
     this.setSystemListShown(j, true);
+    if (j.systemTabX !== undefined) {
+      this.sp.Ui.setFloat(Menu.Journal, journalAt("SystemTab._x"), j.systemTabX);
+      this.setJournalClipsShown(true);
+    }
     this.logOnce(`journal:${why}`, `Journal Menu left as it is: ${why}`);
   }
 
