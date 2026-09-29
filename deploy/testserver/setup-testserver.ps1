@@ -167,13 +167,13 @@ Say "2/6 MongoDB (database $MongoDb on AlduinakMongo, 27017)"
 if (Get-Service AlduinakMongoTest -ErrorAction SilentlyContinue) {
   Say "retiring the AlduinakMongoTest service (the test world lives in $MongoDb on AlduinakMongo now)"
   Stop-Service AlduinakMongoTest -Force -ErrorAction SilentlyContinue
-  $mongod = (Get-ChildItem "C:Program FilesMongoDBServer*inmongod.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+  $mongod = (Get-ChildItem "C:\Program Files\MongoDB\Server\*\bin\mongod.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
   $removed = $false
   if ($mongod) { $p = Start-Process $mongod -ArgumentList "--remove --serviceName AlduinakMongoTest" -Wait -PassThru; $removed = ($p.ExitCode -eq 0) }
   if (-not $removed) { sc.exe delete AlduinakMongoTest | Out-Null }
   Say "AlduinakMongoTest service removed"
 }
-if (Test-Path "C:Alduinakmongodb-test") { Remove-Item -Recurse -Force "C:Alduinakmongodb-test"; Say "removed C:Alduinakmongodb-test" }
+if (Test-Path "C:\Alduinak\mongodb-test") { Remove-Item -Recurse -Force "C:\Alduinak\mongodb-test"; Say "removed C:\Alduinak\mongodb-test" }
 if ((Get-Service AlduinakMongo -ErrorAction SilentlyContinue).Status -ne 'Running') { throw "AlduinakMongo is not running; start it (manager Console tab, MongoDB) and re-run" }
 $secrets = @{ ALDUINAK_MONGO_PWD = $MongoPassword; ALDUINAK_MONGO_ADMIN_PWD = $AdminPassword }
 # Granting again on a re-run is a no-op
