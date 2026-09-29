@@ -122,17 +122,20 @@ private:
   void ApplyParalysis(MpActor& aggressor, MpActor& target, uint32_t spellId);
   bool IsParalyzed(const MpActor& actor);
 
-  // A blocked NPC swing still casts its combat hit spell (the Falmer poison) in the victim's own engine, which reports the loss
+  // A blocked Falmer swing still casts its hit poison in the victim's own engine, which reports the loss
   struct BlockedHitGuard
   {
     std::chrono::steady_clock::time_point at;
     uint32_t aggressorId = 0;
+    // Health points of reported loss still to refuse
+    float budget = 0.f;
     bool logged = false;
   };
 
-  void GuardBlockedNpcHit(const MpActor& aggressor, const MpActor& target);
-  bool RefusesReportedHealthDrop(const MpActor& actor, float current,
-                                 float reported);
+  void TrackNpcHitPoison(const MpActor& aggressor, const MpActor& target,
+                         bool blocked);
+  float GuardReportedHealth(const MpActor& actor, float current,
+                            float reported);
 
   void TickRestorationChannel(uint32_t casterId, uint32_t generation);
   MpActor* GetRestorationChannelTarget(uint32_t casterId,

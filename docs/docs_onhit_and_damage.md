@@ -104,11 +104,21 @@ poisons the player locally as before, invisible to god mode and `onHitDamageAtte
 
 The poison's damage reaches the server only through the victim's own `ChangeValues` report, which `OnChangeValues`
 used to accept whenever it lowered the health (only a rise is cropped as regeneration); a downing that follows reads
-`[bleedout] <actor> downed by 0`, since a report carries no aggressor. So the server holds the line itself: when
-`OnWeaponHit` resolves an NPC's weapon hit on a player as blocked (the raised-shield rule above, `hitData.isHitBlocked`),
-it opens a 4 s guard on that player (the Falmer poison lasts 3 s, the rest covers the report's travel), each blocked
-hit restarting it, and a health report lower than the server's value inside the guard is refused: the server keeps
-its value and echoes it back, so the client's health returns to it. The first refusal of each guard logs
-`OnChangeValues - <actor> health report <server> -> <reported> refused, blocked a hit of <npc> <ms> ms ago`. Any other
-local-only damage reported in those 4 s (a fall, a burn still ticking) is refused the same way; damage the server
-computes (weapon and spell hits) never passes through the report and is not affected.
+`[bleedout] <actor> downed by 0`, since a report carries no aggressor. So the server holds the line itself, for the
+only NPCs that carry such a perk: every carrier of `crFalmerPoison01-05` and `DLC1crFalmerPoison06` in Skyrim.esm,
+Dawnguard.esm and Dragonborn.esm is FalmerRace (0x131F4), so a wolf, bandit or skeever never opens the guard. When
+`OnWeaponHit` resolves a FalmerRace NPC's weapon hit on a player as blocked (the raised-shield rule above,
+`hitData.isHitBlocked`), it opens a 7 s guard on that player (the strongest poison, `DLC1crFalmerPoisonedWeapon06`,
+lasts 4 s, plus the client's 2 s `ChangeValues` throttle and the report's travel) holding 48 health points, that
+poison's whole course (12 a second for 4 s), turned into a share of the bar with the base health the server's hit
+damage uses; each blocked hit restarts it with the full 48. A health report lower than
+the server's value inside the guard is refused up to what is left of those points: the server keeps its value (or
+lowers it only by the part of the drop beyond them) and echoes it back, so the client's health returns to it, and the
+points refused are spent. An unblocked hit from a FalmerRace NPC closes the guard at once (`OnWeaponHit - <actor>
+poison guard closed, unblocked hit of <npc>`), because its poison lands and the report cannot tell it from the
+blocked one's. The first refusal of each guard logs `OnChangeValues - <actor> health report <server> -> <reported> kept
+at <value>, blocked a hit of <npc> <ms> ms ago, <points> of 48 poison health refused`. Other local-only damage reported
+inside the guard (a fall, a burn still ticking, another player's damage over time) is refused only while points are
+left, so at most 48 health of it per blocked Falmer swing; damage the server computes (weapon and spell hits) never
+passes through the report and is not affected. Two Falmer poisoning through a block at once can exceed the 48 points,
+and the excess lands.

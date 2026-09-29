@@ -1306,16 +1306,15 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
       return;
     }
 
-    if (av == espm::ActorValue::Health &&
-        RefusesReportedHealthDrop(*actor, currentVal, *inputVal)) {
-      outVal = currentVal;
-      sendOutMsg = true;
-      return;
-    }
-
     float newVal = *inputVal;
 
     if (av == espm::ActorValue::Health) {
+      newVal = GuardReportedHealth(*actor, currentVal, newVal);
+      if (MathUtils::IsNearlyEqual(currentVal, newVal)) {
+        outVal = currentVal;
+        sendOutMsg = true;
+        return;
+      }
       newVal = CropHealthRegeneration(newVal, timeAfterRegeneration, actor);
     } else if (av == espm::ActorValue::Magicka) {
       newVal = CropMagickaRegeneration(newVal, timeAfterRegeneration, actor);
@@ -2239,9 +2238,7 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     }
   }
 
-  if (hitData.isHitBlocked) {
-    GuardBlockedNpcHit(*aggressor, targetActor);
-  }
+  TrackNpcHitPoison(*aggressor, targetActor, hitData.isHitBlocked);
 
   float damage = partOne.CalculateDamage(*aggressor, targetActor, hitData);
   damage = damage < 0.f ? 0.f : damage;
@@ -2358,50 +2355,85 @@ void ActionListener::UpdateWardChannel(uint32_t casterId,
 }
 
 namespace {
-// The Falmer poison lasts 3 s; the rest covers the report's travel
-constexpr auto kBlockedHitGuard = std::chrono::seconds(4);
+// Every NPC carrying a combat hit poison perk (crFalmerPoison01-05, DLC1crFalmerPoison06) is FalmerRace
+constexpr uint32_t kFalmerRace = 0x131f4;
+// The strongest of those poisons, DLC1crFalmerPoisonedWeapon06: 12 health a second for 4 s
+constexpr float kBlockedHitPoisonHealth = 48.f;
+// That poison's 4 s, the client's 2 s ChangeValues throttle and the report's travel
+constexpr auto kBlockedHitGuard = std::chrono::seconds(7);
+
+bool CarriesHitPoison(const MpActor& actor)
+{
+  if (actor.GetProfileId() >= 0) {
+    return false;
+  }
+  try {
+    return actor.GetRaceId() == kFalmerRace;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
 }
 
-void ActionListener::GuardBlockedNpcHit(const MpActor& aggressor,
-                                        const MpActor& target)
+// A blocked Falmer swing opens the guard, an unblocked one closes it since its poison lands and the report cannot tell the two apart
+void ActionListener::TrackNpcHitPoison(const MpActor& aggressor,
+                                       const MpActor& target, bool blocked)
 {
-  if (aggressor.GetProfileId() >= 0 || target.GetProfileId() < 0) {
+  if (target.GetProfileId() < 0 || !CarriesHitPoison(aggressor)) {
+    return;
+  }
+  if (!blocked) {
+    if (blockedHitGuards.erase(target.GetFormId())) {
+      spdlog::info("OnWeaponHit - {:x} poison guard closed, unblocked hit of "
+                   "{:x}",
+                   target.GetFormId(), aggressor.GetFormId());
+    }
     return;
   }
   const auto now = std::chrono::steady_clock::now();
   std::erase_if(blockedHitGuards, [&](const auto& entry) {
     return now - entry.second.at > kBlockedHitGuard;
   });
-  blockedHitGuards[target.GetFormId()] =
-    BlockedHitGuard{ now, aggressor.GetFormId(), false };
+  auto& guard = blockedHitGuards[target.GetFormId()];
+  guard.at = now;
+  guard.aggressorId = aggressor.GetFormId();
+  guard.budget = kBlockedHitPoisonHealth;
 }
 
-// The victim's own report of a lower health right after a blocked NPC swing is the hit spell's damage, so the server keeps its value
-bool ActionListener::RefusesReportedHealthDrop(const MpActor& actor,
-                                               float current, float reported)
+// A lower health reported inside the guard is the blocked hit's poison, so the server keeps its value for up to that poison's damage
+float ActionListener::GuardReportedHealth(const MpActor& actor, float current,
+                                          float reported)
 {
   if (reported >= current) {
-    return false;
+    return reported;
   }
   auto it = blockedHitGuards.find(actor.GetFormId());
   if (it == blockedHitGuards.end()) {
-    return false;
+    return reported;
   }
-  const auto elapsed = std::chrono::steady_clock::now() - it->second.at;
-  if (elapsed > kBlockedHitGuard) {
+  auto& guard = it->second;
+  const auto elapsed = std::chrono::steady_clock::now() - guard.at;
+  if (elapsed > kBlockedHitGuard || guard.budget <= 0.f) {
     blockedHitGuards.erase(it);
-    return false;
+    return reported;
   }
-  if (!it->second.logged) {
-    it->second.logged = true;
+  float baseHealth = 0.f;
+  const float allowed = std::max(
+    reported,
+    CalculateCurrentHealthPercentage(actor, guard.budget, current,
+                                     &baseHealth));
+  const float refused = (allowed - reported) * baseHealth;
+  guard.budget -= refused;
+  if (!guard.logged) {
+    guard.logged = true;
     spdlog::info(
-      "OnChangeValues - {:x} health report {} -> {} refused, blocked a hit "
-      "of {:x} {} ms ago",
-      actor.GetFormId(), current, reported, it->second.aggressorId,
-      std::chrono::duration_cast<std::chrono::milliseconds>(elapsed)
-        .count());
+      "OnChangeValues - {:x} health report {} -> {} kept at {}, blocked a "
+      "hit of {:x} {} ms ago, {} of {} poison health refused",
+      actor.GetFormId(), current, reported, allowed, guard.aggressorId,
+      std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(),
+      refused, kBlockedHitPoisonHealth);
   }
-  return true;
+  return allowed;
 }
 
 // A ward covers the same frontal arc as a raised shield
