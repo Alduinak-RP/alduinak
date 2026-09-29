@@ -1,4 +1,4 @@
-import { Flora, Form, FormType, MotionType, ObjectReference } from "skyrimPlatform";
+import { Flora, Form, FormType, ObjectReference } from "skyrimPlatform";
 import { NiPoint3 } from "../sync/movement";
 import { FormTypeEx } from "./formTypeEx";
 
@@ -72,24 +72,12 @@ export class ObjectReferenceEx {
       || ObjectReferenceEx.isUntouchable(base);
   }
 
+  // Placed havok objects are keyframed natively (SkyrimPlatform StaticFreeze.cpp), server copies by SpawnProcess
   static dealWithRef(self: ObjectReference, base: Form): void {
-    const t = base.getType();
-    const isItem = FormTypeEx.isItem(t);
-
     self.blockActivation(ObjectReferenceEx.wantsActivationBlock(base));
 
     if (self.isLocked()) {
       self.lock(false, false);
-    }
-
-    if (isItem) {
-      self.setMotionType(MotionType.Keyframed, false);
-    }
-
-    // https://github.com/skyrim-multiplayer/issue-tracker/issues/36
-    // Coin purses are flora with havok, so every flora is frozen, not only the ingredient kind
-    if (t === FormType.Flora) {
-      self.setMotionType(MotionType.Keyframed, false);
     }
   }
 }
