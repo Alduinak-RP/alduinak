@@ -12,12 +12,23 @@ const SYSTEM_LIST_HOLDER = `${JOURNAL_ROOT}.SystemFader.Page_mc.CategoryList_mc`
 const SYSTEM_LIST = `${SYSTEM_LIST_HOLDER}.List_mc`;
 // Text keys of the System entries to drop; $MOD MANAGER reads CREATIONS
 const HIDDEN_SYSTEM_ENTRIES = ["$QUICKSAVE", "$SAVE", "$LOAD", "$INSTALLED CONTENT", "$MOD MANAGER", "$MOD CONFIGURATION", "$HELP"];
+// Paths and members of SkyUI's tweenmenu.swf
+const TWEEN_ROOT = "_root.TweenMenu_mc";
+// TweenMenu.FrameToLabelMap[1]: the Selections_mc frame label that Up (and the Skills rect) highlights
+const TWEEN_SKILLS_LABEL = "_global.TweenMenu.FrameToLabelMap.1";
+// Selections_mc frame of the "Skills" label
+const TWEEN_SKILLS_FRAME = 2;
 // Updates a menu may take to expose its movie before its paths count as missing
 const MAX_PATH_MISSES = 10;
 // Invokes run later on the UI queue, so a state the engine sets back is applied again a few times
 const MAX_JOURNAL_SWITCHES = 5;
 // Updates to wait after an invoke before reading the state it set
 const INVOKE_SETTLE_UPDATES = 2;
+
+interface TweenState {
+  misses: number;
+  trimmed: boolean;
+}
 
 interface JournalState {
   misses: number;
@@ -38,14 +49,48 @@ export class VanillaMenuService extends ClientListener {
         this.journal = { misses: 0, settle: 0, switches: 0, tabsHidden: false, entryCount: -1, listHidden: false, failed: false };
       }
     });
+    this.controller.on("menuOpen", (e) => {
+      if (e.name === Menu.Tween) this.tween = { misses: 0, trimmed: false };
+    });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.Journal) this.journal = undefined;
+      if (e.name === Menu.Tween) this.tween = undefined;
     });
     this.controller.on("update", () => this.onUpdate());
   }
 
   private onUpdate(): void {
     if (this.journal && !this.journal.failed) this.trimJournal(this.journal);
+    if (this.tween) this.trimTween(this.tween);
+  }
+
+  // Up and the Skills rect highlight the "None" frame, so a second Up or Enter never reaches OpenHighlightedMenu(1)
+  private trimTween(t: TweenState): void {
+    const ui = this.sp.Ui;
+    const at = (member: string) => `${TWEEN_ROOT}.${member}`;
+    if (!t.trimmed) {
+      if (ui.getString(Menu.Tween, at("SkillsInputRect._name")) !== "SkillsInputRect") {
+        if (++t.misses > MAX_PATH_MISSES) {
+          this.tween = undefined;
+          this.logOnce("tween:missing", `Tween Menu left as it is: ${at("SkillsInputRect")} not found`);
+        }
+        return;
+      }
+      t.trimmed = true;
+      const label = ui.getString(Menu.Tween, TWEEN_SKILLS_LABEL);
+      ui.setString(Menu.Tween, TWEEN_SKILLS_LABEL, "None");
+      const remapped = ui.getString(Menu.Tween, TWEEN_SKILLS_LABEL) === "None";
+      ui.setBool(Menu.Tween, at("Selections_mc.SkillsText_mc._visible"), false);
+      // onMouseDown reaches every clip, hidden or not, so the rect's handlers are replaced
+      ui.setBool(Menu.Tween, at("SkillsInputRect.onMouseDown"), false);
+      ui.setBool(Menu.Tween, at("SkillsInputRect.onRollOver"), false);
+      ui.setBool(Menu.Tween, at("SkillsInputRect._visible"), false);
+      this.logOnce("tween", `Tween Menu hides Skills; Up highlights ${remapped ? "nothing" : `"${label}", reset each update`}`);
+    }
+    // Backstop for a highlight that still reached the Skills frame
+    if (ui.getInt(Menu.Tween, at("Selections_mc._currentframe")) === TWEEN_SKILLS_FRAME) {
+      ui.invokeString(Menu.Tween, at("Selections_mc.gotoAndStop"), "None");
+    }
   }
 
   // Esc and J both land on the System page with the other tabs gone, the state RestoreSavedSettings sets when the engine disables tabs
@@ -129,5 +174,6 @@ export class VanillaMenuService extends ClientListener {
   }
 
   private journal?: JournalState;
+  private tween?: TweenState;
   private logged = new Set<string>();
 }

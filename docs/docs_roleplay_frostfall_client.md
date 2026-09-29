@@ -138,6 +138,16 @@ is and writes one `VanillaMenuService: ...` line to `skyrim-platform.log`.
   Settings run Quicksave). The page adds Installed Content and Creations when
   it first starts, so the list is kept at `_alpha` 0 until a pass finds its
   entry count unchanged; a later change of count trims it again.
+- **Tween menu (Tab)**: no Skills option. `TweenMenu.handleInput` opens a
+  direction's menu on its second press (or Enter) once `Selections_mc` sits on
+  that direction's frame, and `SkillsInputRect.onMouseDown` opens Skills
+  straight away. The service sets `_global.TweenMenu.FrameToLabelMap[1]` (Up)
+  to `"None"`, so Up highlights nothing and never opens anything, hides
+  `Selections_mc.SkillsText_mc` and `SkillsInputRect`, and replaces the
+  rect's `onMouseDown` and `onRollOver` with `false` (a hidden clip still gets
+  `onMouseDown`). Should the label map not be reachable, a `Selections_mc`
+  that lands on the Skills frame is sent back to `"None"` on the next update.
+  The engine still hears `HighlightMenu(1)` on Up, which only plays its sound.
 
 ---
 
