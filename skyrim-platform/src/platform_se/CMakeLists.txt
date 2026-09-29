@@ -173,8 +173,14 @@ if(NOT "${SKIP_SKYRIM_PLATFORM_BUILDING}")
   
   # this target was originally called pack, now it is called skyrim-platform
   # so we can use add_dependencies(x skyrim-platform) in other projects
+  # cmake -E env cannot resolve the yarn shim on Windows, only yarn.cmd
+  if(WIN32)
+    set(pack_yarn yarn.cmd)
+  else()
+    set(pack_yarn yarn)
+  endif()
   add_custom_target(skyrim-platform ALL
-    COMMAND ${CMAKE_COMMAND} -E env "SKYMP_DIST_CLIENT_DIR=${SKYMP_DIST_CLIENT_DIR}" yarn --cwd \"${SKYRIM_PLATFORM_SOURCE_DIR}/tools/dev_service\" run pack$<$<CONFIG:Debug>:-debug>
+    COMMAND ${CMAKE_COMMAND} -E env "\"SKYMP_DIST_CLIENT_DIR=${SKYMP_DIST_CLIENT_DIR}\"" ${pack_yarn} --cwd \"${SKYRIM_PLATFORM_SOURCE_DIR}/tools/dev_service\" run pack$<$<CONFIG:Debug>:-debug>
   )
 
   if(DEPENDENCIES_FOR_CUSTOM_TARGETS)
