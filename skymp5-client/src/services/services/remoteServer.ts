@@ -1310,8 +1310,9 @@ export class RemoteServer extends ClientListener {
     logToPlatformLog(this, `showRaceMenu (${why}), loading ${Ui.isMenuOpen(Menu.Loading)}`);
     unequipDefaultOutfit();
     // Lit before the menu pauses the engine
-    this.controller.lookupListener(CreationLightService).onRaceMenuShowing();
-    Game.showRaceMenu();
+    this.controller.lookupListener(CreationLightService).placeBeforeMenu(() => {
+      if (this.raceMenuPending && !Ui.isMenuOpen(Menu.RaceSex)) Game.showRaceMenu();
+    });
   }
 
   // A pending creation whose menu never opened calls it again once no loading screen or focused page is up

@@ -209,16 +209,23 @@ browser page or character select menu up), it calls `showRaceMenu` again, up to
 another page takes focus, so the race menu never opens under a hidden page.
 
 A creation at night or in bad weather is lit by the client (`CreationLightService`):
-Candlelight (Skyrim.esm SPEL 0x43324) is applied to the player right before
-`Game.showRaceMenu` and again when the RaceSex menu opens, on by default, and
-the creation light key toggles it while the menu is open (client setting
+a light reference of Skyrim.esm LIGH 0x3FA58 `MagicLightLightSpell01` (the light
+Candlelight and Magelight carry, radius 450) is placed 90 units in front of the
+player and 150 up, and the race menu opens 0.4 s later, once its 3D has loaded
+while the game still runs: the RaceSex menu pauses the engine, and a spell effect
+applied to the player (Candlelight, as before) does not start until an actor
+update, so it never lit the menu. It is on by default; the creation light key
+toggles it (enable / disable) while the menu is open (client setting
 `creationLightKeyCode`, F5 when unset; a letter would type into the name field,
-so keep it a function key). It is refreshed every 50 s while the game runs and
-dispelled when the menu closes, on a spawn and on a disconnect. The effect never
-reaches the server: SkyrimPlatform emits `spellCast` only for a spell in the
-caster's hands. Each apply and dispel logs `candlelight on/off (<why>), race menu
-<bool>, light effect <bool>` to `skyrim-platform.log`. The synopsis placeholder
-`[get creation light button]` resolves to that key.
+so keep it a function key), and it is deleted when the menu closes, on a spawn and
+on a disconnect. While the menu is open the page shows over it with only the
+`creationHint` widget visible, "Press F5 to toggle the light" (the key's launcher
+name) in the bottom right corner; `BrowserService.setVisibleOver` keeps the page
+drawn under that one blocking menu without focus and switches the name tags and
+other texts off meanwhile. Nothing reaches the server. Each step logs `light
+placed/removed (<why>)`, `race menu open` or `toggled on/off` with the race menu
+state and the light's `3D` and `disabled` flags to `skyrim-platform.log`. The
+synopsis placeholder `[get creation light button]` resolves to that key.
 
 ## Data provenance
 

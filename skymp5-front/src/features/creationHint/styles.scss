@@ -1,0 +1,21 @@
+// Creation light hint in the bottom right corner of the vanilla race menu. Never interactive.
+
+$text: #e8e0d0;
+
+body.creationHint-only {
+  visibility: hidden;
+}
+
+.creationHint {
+  visibility: visible;
+  position: fixed;
+  right: 3.5%;
+  bottom: 12%;
+  z-index: 20;
+  pointer-events: none;
+  color: $text;
+  font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
+  font-size: 20px;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}

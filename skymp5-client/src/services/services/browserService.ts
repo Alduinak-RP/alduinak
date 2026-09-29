@@ -110,8 +110,8 @@ export class BrowserService extends ClientListener {
 
   private onMenuOpen(e: MenuOpenEvent) {
     if (this.isBadMenu(e.name)) {
-      this.sp.browser.setVisible(false);
       this.badMenusOpen.add(e.name);
+      if (!this.showsOverBadMenus()) this.sp.browser.setVisible(false);
     } else if (e.name === Menu.HUD && !this.uiHidden) {
       this.sp.browser.setVisible(true);
     }
@@ -127,6 +127,20 @@ export class BrowserService extends ClientListener {
     if (e.name === Menu.HUD) {
       this.sp.browser.setVisible(false);
     }
+  }
+
+  // A widget that must show over a blocking vanilla menu, such as the creation light hint over the race menu; the page still never takes focus there
+  setVisibleOver(menu: Menu, on: boolean): void {
+    if (on === this.visibleOver.has(menu)) return;
+    if (on) this.visibleOver.add(menu);
+    else this.visibleOver.delete(menu);
+    // Name tags and other texts would draw over the menu with the page
+    this.sp.setTextsVisibility(this.visibleOver.size ? "off" : "inheritBrowser");
+    if (this.badMenusOpen.has(menu)) this.sp.browser.setVisible(this.showsOverBadMenus());
+  }
+
+  private showsOverBadMenus(): boolean {
+    return !this.uiHidden && Array.from(this.badMenusOpen).every((menu) => this.visibleOver.has(menu));
   }
 
   private isCaptureKeyDown(isDown: (key: number) => boolean): boolean {
@@ -174,6 +188,7 @@ export class BrowserService extends ClientListener {
   }
 
   private badMenusOpen = new Set<string>();
+  private visibleOver = new Set<string>();
   private uiHidden = false;
   private hideKeyWasDown = false;
   // A chat Controls row waits for a press, so Esc and the free-cursor key belong to the page
