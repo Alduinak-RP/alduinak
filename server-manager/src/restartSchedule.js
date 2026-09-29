@@ -161,7 +161,7 @@ function writeHeartbeat(dir, source, log) {
   writeJsonAtomic(heartbeatFile(dir), { source, pid: process.pid, at: new Date().toISOString(), log })
 }
 
-// One runner per occurrence: the first to create its marker runs it
+// One runner per occurrence and per restart warning: the first to create its marker runs it
 function claimRun(dir, id, at) {
   const runs = path.join(dir, 'schedule-runs')
   fs.mkdirSync(runs, { recursive: true })
@@ -236,8 +236,11 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
       if (due.length) {
         due.forEach(lead => c.sent.add(lead))
         const lead = Math.min(...due)
-        const r = act.say(task.target, warningText(lead))
-        note(`restart warning (${lead} min) on ${task.target}${r && r.ok === false ? ` not sent: ${r.error}` : ''}`)
+        // Claimed like the run, so a second runner never repeats a warning
+        if (claim(`${task.id}.warn${lead}`, c.target)) {
+          const r = act.say(task.target, warningText(lead))
+          note(`restart warning (${lead} min) on ${task.target}${r && r.ok === false ? ` not sent: ${r.error}` : ''}`)
+        }
       }
     }
     if (t < c.target || (c.retryAt && t < c.retryAt)) return

@@ -44,7 +44,9 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 }
 
-app.whenReady().then(() => {
+// One manager per session: a second launch only focuses this window, so the scheduler, relays and log tails never run twice
+if (!app.requestSingleInstanceLock()) app.quit()
+else app.whenReady().then(() => {
   createWindow()
   startLogTail()
   for (const relay of Object.values(relays)) relay.connect()
@@ -58,6 +60,11 @@ app.whenReady().then(() => {
       send('console:relay', { kind: 'status', text: `legacy service names in use (${legacy.map(s => resolvedNames[s.key]).join(', ')}) - run build\\dist\\server\\install-services.bat once to migrate` })
     }
   }, 4000)
+})
+app.on('second-instance', () => {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 	

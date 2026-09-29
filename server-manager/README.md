@@ -218,8 +218,10 @@ fails it prints a direct download URL - save that zip as
   York time; Save writes the file. The `AlduinakManager` agent runs the
   schedule when its service is installed and running (it writes a heartbeat,
   `schedule-runner.json`, every 20 s); otherwise this app runs it while it is
-  open, and the tab says so in red. Each run is claimed once in
-  `schedule-runs/`, so the agent and the app never both run it. A task whose
+  open, and the tab says so in red. Each run and each restart warning is
+  claimed once in `schedule-runs/`, so the agent and the app (or a manager
+  open in another Windows session) never both send it; launching this app
+  again only brings the open window forward. A task whose
   time passed more than 10 minutes ago (manager closed, box asleep) waits for
   its next time. The runner's last lines show under the table and as
   `[schedule]` lines in the Console tab. `dailyRestartAt` in

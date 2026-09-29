@@ -34,7 +34,7 @@ function harness({ start, tasks = [task()], timeZone = NY, running = true, repli
     now: () => clock.t,
   })
   const run = async (until, step = 20000) => { while (clock.t <= until) { await s.tick(); clock.t += step } }
-  return { clock, said, commands, services, logs, run }
+  return { clock, said, commands, services, logs, run, tick: () => s.tick() }
 }
 
 async function main() {
@@ -100,10 +100,19 @@ async function main() {
   assert.deepEqual(h.commands, [['test', 'status', utc(14, 1)]])
   assert.deepEqual(h.services, [['test', 'stop', utc(14, 2)], ['test', 'start', utc(14, 3)]])
 
-  // Another runner claimed the occurrence: warnings are local, the restart is not repeated
+  // Another runner claimed the occurrence and its warnings: nothing is repeated
   h = harness({ start: utc(7, 59), claim: () => false })
   await h.run(utc(8, 5))
-  assert.equal(h.services.length, 0)
+  assert.equal(h.services.length + h.said.length, 0)
+
+  // Two runners sharing the claims (two open managers, or the agent and the app at a hand-over): each warning and the restart go out once
+  const store = new Set()
+  const shared = (id, at) => !store.has(`${id}@${at}`) && !!store.add(`${id}@${at}`)
+  const a = harness({ start: utc(6, 30), claim: shared })
+  const b = harness({ start: utc(6, 30), claim: shared })
+  for (let t = utc(6, 30); t <= utc(8, 5); t += 20000) { a.clock.t = b.clock.t = t; await b.tick(); await a.tick() }
+  assert.deepEqual([...a.said, ...b.said].map(s => s[1]).sort(), S.WARN_MINUTES.map(S.warningText).sort())
+  assert.equal(a.services.length + b.services.length, 1)
 
   // Inactive (the agent runs it): nothing; taking over mid-window skips the passed warnings
   let on = false
@@ -153,6 +162,8 @@ async function main() {
     assert.equal(S.claimRun(dir, 't1', soon), true)
     assert.equal(S.claimRun(dir, 't1', soon), false)
     assert.equal(S.claimRun(dir, 't2', soon), true)
+    assert.equal(S.claimRun(dir, 't1.warn5', soon), true)
+    assert.equal(S.claimRun(dir, 't1.warn5', soon), false)
     assert.equal(S.agentActive(dir), false)
     S.writeHeartbeat(dir, 'app', [])
     assert.equal(S.agentActive(dir), false)
