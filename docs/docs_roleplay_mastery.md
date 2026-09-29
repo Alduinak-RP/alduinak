@@ -554,7 +554,8 @@ body's own NPC_ editor id is tried first, then the race that supplies its traits
 the first fragment found in the earliest name wins, so a snow bear templated on the
 black bear gives Snow Bear Pelt, e.g. `bearblack` -> Bear Pelt, `bearcave` and
 `bearbrown` -> Cave Bear Pelt, `bearsnow` -> Snow Bear Pelt, `wolfice` -> Ice
-Wolf Pelt (the vanilla death items). The log line `[hunting] <id> skins <body>
+Wolf Pelt, `foxarctic` (the arctic fox `EncFoxArctic`) -> Snow Fox Pelt (the
+vanilla death items). The log line `[hunting] <id> skins <body>
 (<names>): <fragment> in <name>` names the match. It costs one gathering action of fatigue by hunter
 rank and credits hunter hours. The body is marked `private.skinned` and gives
 one pelt; the next interaction searches it as usual. A skinner who walks off,
