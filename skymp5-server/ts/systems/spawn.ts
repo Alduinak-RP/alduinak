@@ -230,9 +230,22 @@ export class Spawn implements System {
     try {
       const actorId = ctx.svr.getUserActor(userId);
       if (actorId !== 0) {
+        this.logGold(ctx.svr as unknown as Mp, actorId, "logs out");
         this.schedulePark(ctx, actorId);
       }
     } catch { /* form vanished */ }
+  }
+
+  // Gold at logout, at the grace despawn and at login, so a reported loss lands in one of those windows
+  private logGold(mp: Mp, actorId: number, what: string): void {
+    let gold = 0;
+    let profileId: unknown = "?";
+    try {
+      const entries: any[] = mp.get(actorId, "inventory")?.entries ?? [];
+      gold = entries.reduce((n, e) => n + ((Number(e?.baseId) >>> 0) === GOLD_BASE_ID ? Number(e?.count) || 0 : 0), 0);
+      profileId = mp.get(actorId, "profileId");
+    } catch { return; }
+    this.log(`[gold] ${hex(actorId)} (profile ${profileId}) ${what} with ${gold} gold`);
   }
 
   // Disable the body after the logout grace unless re-selected first; also detaches a still-connected owner when firing, since re-selecting a DISABLED actor while still mapped would stream CreateActor(isMe) twice
@@ -242,6 +255,7 @@ export class Spawn implements System {
       this.parkTimers.delete(actorId);
       const wasParked = this.parked.delete(actorId);
       try {
+        this.logGold(ctx.svr as unknown as Mp, actorId, "despawned");
         ctx.svr.setEnabled(actorId, false);
         const userId = ctx.svr.getUserByActor(actorId);
         if (userId >= 0 && userId < 0xffff && ctx.svr.getUserActor(userId) === actorId) {
@@ -332,6 +346,7 @@ export class Spawn implements System {
         try {
           const actorId = ctx.svr.getUserActor(userId);
           if (actorId !== 0) {
+            this.logGold(ctx.svr as unknown as Mp, actorId, "quits to the menu");
             this.schedulePark(ctx, actorId);
             ctx.gm.emit(USER_MENU_QUIT_EVENT, userId, actorId);
           }
@@ -536,6 +551,7 @@ export class Spawn implements System {
       this.log("Creating character", actorId.toString(16), "in slot", slot, loc ? `at ${loc.id}` : "at a start point");
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
+      this.logGold(mp, actorId, "logs in");
     }
     this.scheduleKit(ctx, actorId, EQUIP_KIT_SPAWN_DELAY_MS);
 
@@ -874,6 +890,7 @@ export class Spawn implements System {
       .find((a) => !this.isPermaDead(mp, a));
     if (actorId) {
       this.log("Loading character", actorId.toString(16));
+      this.logGold(mp, actorId, "logs in");
       this.cancelPark(actorId); // reconnected within the logout grace
       this.unpark(ctx, actorId);
       this.releaseSeat(ctx, actorId);
