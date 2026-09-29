@@ -1,8 +1,8 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
-import { espmFieldFormIds } from "./formIdUtil";
-import { addItemTo, baseIdOf, chainMpHook, hex, holdsItem, isAlive, isNear, isPlayerActor, notifyActor, sendActionLock } from "./actorUtil";
+import { addItemTo, chainMpHook, hex, holdsItem, isAlive, isNear, isPlayerActor, notifyActor, sendActionLock } from "./actorUtil";
+import { effectiveRaceId, npcChainOf } from "./npcTemplate";
 import { MasterySystem } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
 
@@ -171,24 +171,18 @@ export class HuntingSystem implements System {
     try { return !!mp.get(bodyId, SKINNED_PROP); } catch { return true; }
   }
 
-  // The lower-cased NPC_ editor ids of the body's template chain and their races', which the pelt and meat rules match
+  // Lower-cased editor ids the pelt and meat rules match: the body's own NPC_, the race that supplies its traits, then its templates
   private namesOf(ctx: SystemContext, bodyId: number): string[] {
     const mp = ctx.svr as Mp;
     const lookup = (id: number): any => { try { return id ? mp.lookupEspmRecordById(id) : null; } catch { return null; } };
-    let chain: number[] = [];
-    try {
-      const tpl = mp.get(bodyId, "templateChain");
-      if (Array.isArray(tpl)) chain = tpl.map((x: unknown) => Number(x) >>> 0);
-    } catch { /* not an actor */ }
-    const names: string[] = [];
-    for (const id of [baseIdOf(mp, bodyId), ...chain]) {
+    const edidOf = (id: number, type: string): string => {
       const res = lookup(id);
-      if (res?.record?.type !== "NPC_") continue;
-      names.push(String(res.record.editorId || "").toLowerCase());
-      const race = lookup(espmFieldFormIds(res, "RNAM")[0] || 0);
-      if (race?.record) names.push(String(race.record.editorId || "").toLowerCase());
-    }
-    return names;
+      return res?.record?.type === type ? String(res.record.editorId || "").toLowerCase() : "";
+    };
+    const chain = npcChainOf(mp, bodyId);
+    const names = chain.map((id) => edidOf(id, "NPC_"));
+    names.splice(1, 0, edidOf(effectiveRaceId(mp, chain), "RACE"));
+    return names.filter((n) => n);
   }
 
   // Only a hunter's skinning takes an animal's meat

@@ -6,6 +6,7 @@ import { spellInfo, SpellType } from "./espmMagic";
 import { GOLD_BASE_ID, addItemTo, addSpellTo, chainMpHook, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
 import { BLANK_BOOK_EDID } from "./writingSystem";
+import { effectiveRaceId, npcChainOf } from "./npcTemplate";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -1094,14 +1095,16 @@ export class MasterySystem implements System {
     return info;
   }
 
-  // Keywords of the NPC_ records in the actor's template chain and their race.
+  // Keywords of the NPC_ records in the actor's template chain and of the race that supplies its traits.
   private actorHasAny(ctx: SystemContext, actorId: number, keywords: Set<number>): boolean {
     if (!keywords.size || !actorId) return false;
     const mp = ctx.svr as Mp;
     let profileId = -1;
     try { profileId = Number(mp.get(actorId, "profileId")); } catch { /* not an actor */ }
     if (profileId >= 0) return keywords.has(this.playerKeyword);
-    for (const baseId of this.baseChain(mp, actorId)) {
+    const chain = npcChainOf(mp, actorId);
+    const raceId = effectiveRaceId(mp, chain);
+    for (const baseId of raceId ? [...chain, raceId] : chain) {
       for (const k of this.baseKeywords(ctx, baseId)) {
         if (keywords.has(k)) return true;
       }
@@ -1109,27 +1112,11 @@ export class MasterySystem implements System {
     return false;
   }
 
-  private baseChain(mp: Mp, actorId: number): number[] {
-    const chain: number[] = [];
-    try { chain.push(mp.getIdFromDesc(String(mp.get(actorId, "baseDesc"))) >>> 0); } catch { /* no base */ }
-    try {
-      const tpl = mp.get(actorId, "templateChain");
-      if (Array.isArray(tpl)) for (const id of tpl) chain.push(Number(id) >>> 0);
-    } catch { /* not an actor */ }
-    return chain.filter((id, i) => id && chain.indexOf(id) === i);
-  }
-
-  // Keywords of any base record, plus its race's for an NPC_.
+  // Keywords of any base record (a RACE included); an NPC_'s placeholder race is never read here.
   private baseKeywords(ctx: SystemContext, baseId: number): Set<number> {
     const hit = this.keywordCache.get(baseId);
     if (hit) return hit;
-    const out = new Set<number>();
-    const rec = this.lookup(ctx, baseId);
-    if (rec) {
-      for (const k of espmFieldFormIds(rec, "KWDA")) out.add(k);
-      const raceId = String(rec.record.type) === "NPC_" ? espmFieldFormIds(rec, "RNAM")[0] : 0;
-      if (raceId) for (const k of espmFieldFormIds(this.lookup(ctx, raceId), "KWDA")) out.add(k);
-    }
+    const out = new Set<number>(espmFieldFormIds(this.lookup(ctx, baseId), "KWDA"));
     this.keywordCache.set(baseId, out);
     return out;
   }
