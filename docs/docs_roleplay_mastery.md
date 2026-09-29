@@ -434,6 +434,16 @@ container loot are off:
   little at startup (`activatePickService.ts`, see
   `docs_roleplay_interaction_prompts.md`). The tenth Warbirds hive in the
   Whiterun exterior (`102001FF`) is disabled with its nine siblings.
+- Sleeping Tree Sap: the sap spigot on the Sleeping Tree (`dunSleepingTreeSapSpigot`,
+  the one placed ref `000AED8B` at Sleeping Tree Camp) runs the vanilla
+  `defaultFakeHarvestableScript`, which never runs on this server.
+  `gatheringSystem.ts` takes any activator or flora with that script: E hands
+  over its `PotionHarvested` (or `IngredientHarvested`), one Sleeping Tree Sap
+  (`000AED90`; the script has no count), costs nothing and plays nothing, and
+  the spigot then gives nothing for 20 hours ("There is nothing to gather here
+  yet."). The wait rides the ref as `private.gathering`, like a vein, so it
+  survives a restart; the log line is `[gathering] <id> harvested
+  dunSleepingTreeSapSpigot aed8b for aed90`.
 
 ### Vanilla perks through abilities
 

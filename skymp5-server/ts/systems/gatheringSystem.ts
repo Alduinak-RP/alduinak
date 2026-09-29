@@ -42,6 +42,8 @@ type Mp = any;
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
+// A fake harvestable (defaultFakeHarvestableScript: the Sleeping Tree's sap spigot) hands over its potion or ingredient on E,
+// once per FAKE_HARVEST_MS per reference, costs nothing and plays nothing; the vanilla script never runs on this server.
 
 const VEIN_PROP = "private.gathering";
 // Picked refs still hidden, { "<ref id hex>": epoch ms it grows back }
@@ -60,6 +62,8 @@ const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 // Overrides the record's total on every vein; 0 keeps the record's own
 const DEFAULT_VEIN_TOTAL = 6;
 const DEFAULT_PICK_MINUTES = 30;
+// A fake harvestable gives its item again this long after it was taken
+const FAKE_HARVEST_MS = 20 * 3600000;
 // Kneel of a harvest by farmer rank, Free to Legendary
 // A crop needs a hoe and 5 s; flora takes 2 s and costs half
 const CROP_MS = 5000;
@@ -119,7 +123,7 @@ const INSTANT_PREFIX = "hanging";
 // Rabbits, pheasants and salmon hanging on racks are free to take: no fatigue
 const FREE_RACK_RE = /^(hangingrabbit|hangingpheasant|deadsalmon|whoarfishhanging)/;
 
-type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";
+type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant" | "fake";
 
 interface Station {
   kind: StationKind;
@@ -344,6 +348,7 @@ export class GatheringSystem implements System {
       case "produce": return this.onProduce(ctx, targetId, casterId, station.props);
       case "pick": return this.onPick(ctx, targetId, casterId, station.props, station.name);
       case "plant": return this.onPlant(ctx, targetId, casterId, station.props, station.name);
+      case "fake": return this.onFakeHarvest(ctx, targetId, casterId, station.props, station.name);
       default: return undefined;
     }
   }
@@ -377,6 +382,20 @@ export class GatheringSystem implements System {
     return () => {
       grant(1);
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + this.pickMs });
+      return false;
+    };
+  }
+
+  // The script's potion or ingredient, one per FAKE_HARVEST_MS; the ref stays shown, the vein state on its changeform keeps the wait over a restart
+  private onFakeHarvest(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>, name: string): Verdict {
+    const item = props["potionharvested"] || props["ingredientharvested"];
+    if (!item) return undefined;
+    if (!this.withinReach(ctx, actorId, refrId)) return false;
+    if (this.veinState(ctx, refrId, 1, FAKE_HARVEST_MS).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
+    return () => {
+      this.addItem(ctx, actorId, item, 1);
+      this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + FAKE_HARVEST_MS });
+      this.log(`[gathering] ${actorId.toString(16)} harvested ${name} ${refrId.toString(16)} for ${item.toString(16)}`);
       return false;
     };
   }
@@ -736,6 +755,7 @@ export class GatheringSystem implements System {
     else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
     else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1, crop: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
+    else if ((type === "ACTI" || type === "FLOR") && scripts.has("defaultfakeharvestablescript")) station = { kind: "fake", props: scripts.get("defaultfakeharvestablescript")! };
     else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0, free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0 } };
     const out = station ? { ...station, name } : null;
     this.stationCache.set(baseId, out);
