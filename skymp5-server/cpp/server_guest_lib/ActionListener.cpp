@@ -1306,6 +1306,13 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
       return;
     }
 
+    if (av == espm::ActorValue::Health &&
+        RefusesReportedHealthDrop(*actor, currentVal, *inputVal)) {
+      outVal = currentVal;
+      sendOutMsg = true;
+      return;
+    }
+
     float newVal = *inputVal;
 
     if (av == espm::ActorValue::Health) {
@@ -2232,6 +2239,10 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     }
   }
 
+  if (hitData.isHitBlocked) {
+    GuardBlockedNpcHit(*aggressor, targetActor);
+  }
+
   float damage = partOne.CalculateDamage(*aggressor, targetActor, hitData);
   damage = damage < 0.f ? 0.f : damage;
   // A block stops the blade, not the poison on it; a bash never carries it
@@ -2344,6 +2355,53 @@ void ActionListener::UpdateWardChannel(uint32_t casterId,
     return now - entry.second.lastRefresh > kCastRefreshTimeout;
   });
   wardChannels[casterId] = WardChannel{ spellCastData.spell, now };
+}
+
+namespace {
+// The Falmer poison lasts 3 s; the rest covers the report's travel
+constexpr auto kBlockedHitGuard = std::chrono::seconds(4);
+}
+
+void ActionListener::GuardBlockedNpcHit(const MpActor& aggressor,
+                                        const MpActor& target)
+{
+  if (aggressor.GetProfileId() >= 0 || target.GetProfileId() < 0) {
+    return;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  std::erase_if(blockedHitGuards, [&](const auto& entry) {
+    return now - entry.second.at > kBlockedHitGuard;
+  });
+  blockedHitGuards[target.GetFormId()] =
+    BlockedHitGuard{ now, aggressor.GetFormId(), false };
+}
+
+// The victim's own report of a lower health right after a blocked NPC swing is the hit spell's damage, so the server keeps its value
+bool ActionListener::RefusesReportedHealthDrop(const MpActor& actor,
+                                               float current, float reported)
+{
+  if (reported >= current) {
+    return false;
+  }
+  auto it = blockedHitGuards.find(actor.GetFormId());
+  if (it == blockedHitGuards.end()) {
+    return false;
+  }
+  const auto elapsed = std::chrono::steady_clock::now() - it->second.at;
+  if (elapsed > kBlockedHitGuard) {
+    blockedHitGuards.erase(it);
+    return false;
+  }
+  if (!it->second.logged) {
+    it->second.logged = true;
+    spdlog::info(
+      "OnChangeValues - {:x} health report {} -> {} refused, blocked a hit "
+      "of {:x} {} ms ago",
+      actor.GetFormId(), current, reported, it->second.aggressorId,
+      std::chrono::duration_cast<std::chrono::milliseconds>(elapsed)
+        .count());
+  }
+  return true;
 }
 
 // A ward covers the same frontal arc as a raised shield

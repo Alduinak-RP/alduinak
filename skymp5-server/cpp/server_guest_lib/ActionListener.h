@@ -122,6 +122,18 @@ private:
   void ApplyParalysis(MpActor& aggressor, MpActor& target, uint32_t spellId);
   bool IsParalyzed(const MpActor& actor);
 
+  // A blocked NPC swing still casts its combat hit spell (the Falmer poison) in the victim's own engine, which reports the loss
+  struct BlockedHitGuard
+  {
+    std::chrono::steady_clock::time_point at;
+    uint32_t aggressorId = 0;
+    bool logged = false;
+  };
+
+  void GuardBlockedNpcHit(const MpActor& aggressor, const MpActor& target);
+  bool RefusesReportedHealthDrop(const MpActor& actor, float current,
+                                 float reported);
+
   void TickRestorationChannel(uint32_t casterId, uint32_t generation);
   MpActor* GetRestorationChannelTarget(uint32_t casterId,
                                        const RestorationChannel& channel);
@@ -155,6 +167,7 @@ private:
   std::unordered_map<uint32_t, WardChannel> wardChannels;
   std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
     paralyzedUntil;
+  std::unordered_map<uint32_t, BlockedHitGuard> blockedHitGuards;
 
   // TODO: inverse dependency
   std::shared_ptr<CraftService> craftService;

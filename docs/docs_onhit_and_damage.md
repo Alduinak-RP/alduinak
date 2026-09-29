@@ -101,3 +101,14 @@ tick was lost. `hit` events from NPC aggressors with a
 non-weapon source are logged once per source every 5 s (`HitService: npc ... hit the player with source ...`), which
 says whether the engine raises a hit event for a given hit spell at all. An unblocked hit from a hosted NPC still
 poisons the player locally as before, invisible to god mode and `onHitDamageAttempt`.
+
+The poison's damage reaches the server only through the victim's own `ChangeValues` report, which `OnChangeValues`
+used to accept whenever it lowered the health (only a rise is cropped as regeneration); a downing that follows reads
+`[bleedout] <actor> downed by 0`, since a report carries no aggressor. So the server holds the line itself: when
+`OnWeaponHit` resolves an NPC's weapon hit on a player as blocked (the raised-shield rule above, `hitData.isHitBlocked`),
+it opens a 4 s guard on that player (the Falmer poison lasts 3 s, the rest covers the report's travel), each blocked
+hit restarting it, and a health report lower than the server's value inside the guard is refused: the server keeps
+its value and echoes it back, so the client's health returns to it. The first refusal of each guard logs
+`OnChangeValues - <actor> health report <server> -> <reported> refused, blocked a hit of <npc> <ms> ms ago`. Any other
+local-only damage reported in those 4 s (a fall, a burn still ticking) is refused the same way; damage the server
+computes (weapon and spell hits) never passes through the report and is not affected.
