@@ -1,4 +1,4 @@
-import { Actor, EquipEvent } from "skyrimPlatform";
+import { Actor, EquipEvent, EquippedItemType, Weapon, WeaponType } from "skyrimPlatform";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RespawnNeededError } from "../../lib/errors";
@@ -24,6 +24,11 @@ const RESPAWN_UNEQUIP_WINDOW_MS = 10000;
 const HANDS_SETTLED_MS = 5000;
 // Seconds between the put back on and the take off, like a player doing it by hand
 const HAND_CYCLE_S = 1;
+// GetEquippedItemType's hands
+const LEFT_HAND = 0;
+const RIGHT_HAND = 1;
+const TWO_HANDED_ITEMS = new Set<number>([EquippedItemType.Greatsword, EquippedItemType.Battleaxe, EquippedItemType.Bow, EquippedItemType.Crossbow]);
+const TWO_HANDED_WEAPONS = new Set<number>([WeaponType.Greatsword, WeaponType.Battleaxe, WeaponType.Bow, WeaponType.Crossbow]);
 
 interface RespawnWeapon {
   baseId: number;
@@ -207,7 +212,8 @@ export class DeathService extends ClientListener {
   private cycleHands(): void {
     const player = this.sp.Game.getPlayer();
     if (!player || player.isDead() || this.playerDead) return;
-    const off = this.respawnWeapons.filter((w) => player.getEquippedWeapon(w.left)?.getFormID() !== w.baseId && player.getItemCount(this.sp.Game.getFormEx(w.baseId)) > 0);
+    // A hand the player has filled since (their own weapon swap included) keeps what they chose
+    const off = this.respawnWeapons.filter((w) => player.getEquippedWeapon(w.left)?.getFormID() !== w.baseId && player.getItemCount(this.sp.Game.getFormEx(w.baseId)) > 0 && this.isHandFree(player, w));
     this.logHands(player, `respawn unequip settled, cycling ${off.length}`);
     if (!off.length) return;
     off.forEach((w) => player.equipItemEx(this.sp.Game.getFormEx(w.baseId), w.left ? 2 : 1, false, false));
@@ -220,6 +226,14 @@ export class DeathService extends ClientListener {
         if (after) this.logHands(after, "respawn hands cycled");
       }));
     }));
+  }
+
+  private isHandFree(player: Actor, w: RespawnWeapon): boolean {
+    const hand = player.getEquippedItemType(w.left ? LEFT_HAND : RIGHT_HAND);
+    const other = player.getEquippedItemType(w.left ? RIGHT_HAND : LEFT_HAND);
+    if (hand !== EquippedItemType.Fist || TWO_HANDED_ITEMS.has(other)) return false;
+    const weapon = Weapon.from(this.sp.Game.getFormEx(w.baseId));
+    return !weapon || !TWO_HANDED_WEAPONS.has(weapon.getWeaponType()) || other === EquippedItemType.Fist;
   }
 
   private logHands(player: Actor, what: string): void {

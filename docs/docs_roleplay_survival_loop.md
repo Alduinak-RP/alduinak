@@ -323,7 +323,10 @@ behaviour-graph events — no ESP required.**
   the weapons in hand at the resurrect and, when one of them is unequipped
   within 10 s, waits until 5 s after the resurrect and runs that cycle
   itself: the weapon goes back on, and 1 s later off again, leaving it in the
-  pack as before. It logs `respawn unequip settled, cycling <n>` and
+  pack as before. Only a hand still empty then is cycled: a hand the player
+  has filled since (another weapon, their own swap included, a spell, shield
+  or torch, or a two-hander holding both) keeps what they chose, and a noted
+  two-hander waits for both hands to be empty. It logs `respawn unequip settled, cycling <n>` and
   `respawn hands cycled` to `skyrim-platform.log` with the graph's
   `iRightHandType` / `iLeftHandType`, the drawn state and the worn weapons.
 - **Revive** (`AfterlifeSystem.revive`): staff with the `players` cap return
