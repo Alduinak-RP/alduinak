@@ -40,12 +40,13 @@ export class CreationLightService extends ClientListener {
     return this.key;
   }
 
-  // RemoteServer hands over the race menu opening, which runs once the light had time to load
-  placeBeforeMenu(openMenu: () => void): void {
+  // RemoteServer hands over the race menu opening, which runs once the light had time to load, and whether its creation is still pending
+  placeBeforeMenu(openMenu: () => void, pending: () => boolean): void {
     this.on = true;
     this.place("before menu");
     this.openMenu = openMenu;
     this.openAt = Date.now() + LIGHT_SETTLE_MS;
+    this.pending = pending;
   }
 
   private onMenuOpen(e: MenuOpenEvent): void {
@@ -66,6 +67,8 @@ export class CreationLightService extends ClientListener {
 
   // The page never has focus under the race menu, so the key is polled from the update loop with edge detection
   private onUpdate(): void {
+    // A creation dropped before its menu opened (retries given up, the server's close) takes its light along
+    if (this.pending && !this.menuOpen && !this.pending()) this.end("creation dropped");
     if (this.openMenu && Date.now() >= this.openAt) {
       const open = this.openMenu;
       this.openMenu = null;
@@ -106,6 +109,7 @@ export class CreationLightService extends ClientListener {
   private end(why: string): void {
     this.on = false;
     this.openMenu = null;
+    this.pending = null;
     this.showHint(false);
     const light = this.lightRef();
     if (!light) return;
@@ -159,4 +163,5 @@ export class CreationLightService extends ClientListener {
   private hintShown = false;
   private openMenu: (() => void) | null = null;
   private openAt = 0;
+  private pending: (() => boolean) | null = null;
 }

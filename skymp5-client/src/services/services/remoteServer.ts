@@ -1312,7 +1312,7 @@ export class RemoteServer extends ClientListener {
     // Lit before the menu pauses the engine
     this.controller.lookupListener(CreationLightService).placeBeforeMenu(() => {
       if (this.raceMenuPending && !Ui.isMenuOpen(Menu.RaceSex)) Game.showRaceMenu();
-    });
+    }, () => this.raceMenuPending);
   }
 
   // A pending creation whose menu never opened calls it again once no loading screen or focused page is up

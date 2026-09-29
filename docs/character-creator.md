@@ -217,8 +217,10 @@ applied to the player (Candlelight, as before) does not start until an actor
 update, so it never lit the menu. It is on by default; the creation light key
 toggles it (enable / disable) while the menu is open (client setting
 `creationLightKeyCode`, F5 when unset; a letter would type into the name field,
-so keep it a function key), and it is deleted when the menu closes, on a spawn and
-on a disconnect. While the menu is open the page shows over it with only the
+so keep it a function key), and it is deleted when the menu closes, on a spawn, on
+a disconnect and when the creation is dropped before its menu opened (the retries
+above given up, or the server closing it within the 0.4 s), logged `light removed
+(creation dropped)`. While the menu is open the page shows over it with only the
 `creationHint` widget visible, "Press F5 to toggle the light" (the key's launcher
 name) in the bottom right corner; `BrowserService.setVisibleOver` keeps the page
 drawn under that one blocking menu without focus and switches the name tags and
