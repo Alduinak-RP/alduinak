@@ -522,7 +522,9 @@ Pelts never drop as loot: the plugin strips them from creature inventories.
 A hunter (any rank) holding a Hunting Knife (`0001F25A`) skins a dead animal
 with the interact key: spawned animals through `SearchSystem.bodyAction` (the
 search request the client already sends for a body), plugin-placed ones through
-their native activation. The skinner kneels for 5 seconds, then gets the pelt the
+their native activation. The skinner crouches over it for 5 seconds (the
+`IdleKneeling` graph event, which is what the `IdleSearchBody` idle plays; the
+idle's editor id is no behaviour event and plays nothing), then gets the pelt the
 body's editor ids map to (`DEFAULT_PELT_MAP`, `huntingPeltMap` override): the
 body's own NPC_ editor id is tried first, then the race that supplies its traits
 (a Use Traits template's placeholder race is skipped), then its template NPC_s, and

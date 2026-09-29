@@ -34,7 +34,8 @@ const ANIMAL_KEYWORD = "ActorTypeAnimal";
 const HUNTING_KNIFE = 0x0001f25a;
 const SKIN_SECONDS = 5;
 const SKIN_REACH = 400;
-const SKIN_ANIM = "IdleSearchBody";
+// Graph event of the IdleSearchBody idle (Skyrim.esm 000EFC64 ENAM); the idle's editor id itself is no behaviour event
+const SKIN_ANIM = "IdleKneeling";
 // Holds the skinner's actor id once a skinning started, so a body gives one pelt
 const SKINNED_PROP = "private.skinned";
 
