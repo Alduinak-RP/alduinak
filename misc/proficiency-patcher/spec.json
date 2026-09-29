@@ -7145,7 +7145,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). Then the duplicate floor of Digitus Quintus' House, the Two-Moons Delegation Hall (The Great City of Solitude cell 00B213): the flat SMDEFloSol03 tile 00B27A at (320,-1008,0) z-fights the ceiling-carrying SMDEFloSol01 tile 00B448 one unit east of it, so the flat one goes and the ceiling stays. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -7185,7 +7185,8 @@
    "205626:Warbirds Whiterun Metropolis.esp",
    "07C613:Warbirds Whiterun Metropolis.esp",
    "07C5FE:Warbirds Whiterun Metropolis.esp",
-   "001F23:AlduinakAdditions.esp"
+   "001F23:AlduinakAdditions.esp",
+   "00B27A:The Great City of Solitude.esp"
   ]
  },
  "enableReferences": {
