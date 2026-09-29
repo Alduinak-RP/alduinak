@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest, missingCap } from "./adminRoles";
-import { NpcSpawnSystem } from "./npcSpawnSystem";
+import { NpcSpawnSystem, pick } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { NEEDS_RESET_EVENT } from "./needsSystem";
 import { PetSystem, PetKind } from "./petSystem";
@@ -34,7 +34,7 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action, target }  action: teleportTo | summon | kick | ban (target: actor id hex) | teleportLoc (target: location name)
 //                     { customPacketType: "adminAction", action: "pk", target }  the finish off PK on an online living character: they die, leave a body and go to Sovngarde
 //                     { customPacketType: "adminAction", action: "toggleMode", mode, on? }  on: the client reports a mode it already left, recorded without an echo
-//                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry
+//                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry, plus Edit: <zone name> when it replaces that zone
 //                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
 //                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
 //                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
@@ -845,10 +845,14 @@ export class AdminSystem implements System {
         this.reply(mp, userId, false, "Bad zone data");
         return;
       }
-      const zoneName = String((raw as Record<string, unknown>)["Name"] ?? "");
+      const zoneName = String(pick(raw, "name") ?? "").trim();
+      // Save names the zone it replaces in Edit
+      const edited = String(pick(raw, "edit") ?? "").trim();
       this.npcSpawns.addZone(raw).then(err => {
-        if (!err) this.adminLog(`profile ${adminProfile} added npc zone '${zoneName}'`);
-        this.replyIfSameAdmin(mp, userId, myActorId, !err, err ?? `Added zone ${zoneName}`);
+        if (!err) this.adminLog(edited
+          ? `profile ${adminProfile} edited npc zone '${edited}'${edited === zoneName ? "" : ` -> '${zoneName}'`}`
+          : `profile ${adminProfile} added npc zone '${zoneName}'`);
+        this.replyIfSameAdmin(mp, userId, myActorId, !err, err ?? `${edited ? "Saved" : "Added"} zone ${zoneName}`);
         if (!err) this.sendZones(mp, userId, myActorId);
       }).catch(e => {
         this.log(`AdminSystem: npcZoneAdd by profile ${adminProfile} failed: ${e}`);

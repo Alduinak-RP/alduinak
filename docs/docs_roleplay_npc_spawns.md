@@ -466,9 +466,10 @@ views:
   where it stands in the file, refusing when it is gone (`'<Name>' is no
   longer in ./NPC-Spawns.json`) or when the new `Name` belongs to another
   zone. The replaced entry is written in the documented field names, so any
-  other key a hand-written entry carried is dropped. The toast still reads
-  `Added zone <Name>` (the reply text lives in `adminSystem.ts`), and the
-  admin log records the save as an add.
+  other key a hand-written entry carried is dropped. The toast reads
+  `Saved zone <Name>` (an Add reads `Added zone <Name>`), and the admin log
+  records `profile N edited npc zone '<old Name>' -> '<Name>'` (without the
+  arrow when the name stayed).
 
 Add, Save and Delete rewrite the whole file (`JSON.stringify(..., null, 2)`, written
 through a temp file and renamed): hand-written entries keep their own field
@@ -485,7 +486,7 @@ Everything goes through the server log and the manager console, prefixed
 - `N/M zone(s) loaded from ./NPC-Spawns.json (boot | file changed | admin add | admin edit | admin delete), carried K zone(s)`
   and, when editor ids were involved, `resolved a/b editor id(s) in X ms, unresolved: ...`
 - `'<Name>' appended to ./NPC-Spawns.json by admin` / `'<Name>' replaced '<old Name>' in ./NPC-Spawns.json by admin` / `'<Name>' removed from ./NPC-Spawns.json by admin`;
-  the admin log (`admin.log`) names the profile that added, reset, deleted or teleported to a zone
+  the admin log (`admin.log`) names the profile that added, edited, reset, deleted or teleported to a zone
 - `'<Name>' entered by <player name> (<hex actor id>)` once per player entering
   the zone; there is no line for leaving
 - `navmesh spots for N/M zone(s) in X ms; rings kept for: ...` after each scan, naming the zones without navmesh near `POS`;
