@@ -1,22 +1,18 @@
-// Pet rename prompt, a compact sheet in the housing panel's red/black palette.
+// "X wants to trade" prompt in the housing panel's red/black look; passive, so only the panel takes the pointer.
 
 @use '../../styles/redPanel' as *;
 
-.pet-prompt {
+.trade-invite {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 53;
+  z-index: 51;
   display: grid;
   place-items: center;
   pointer-events: none;
   font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
-
-  &__fade {
-    @include red-fade;
-  }
 
   &__panel {
     @include red-panel;
@@ -26,31 +22,19 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    text-align: center;
   }
 
   &__title {
     @include red-title;
-    text-align: center;
     font-size: clamp(18px, 2vw, 22px);
   }
 
-  &__input {
-    @include red-input;
-    height: 36px;
-    font-size: 16px;
-    text-align: center;
-  }
-
-  &__hint {
-    margin: -6px 0 0;
-    text-align: center;
-    color: $text-muted;
-    font-size: 13px;
+  &__body {
+    margin: 0;
+    color: $text-body;
+    font-size: 14px;
     letter-spacing: 0.04em;
-
-    &--bad {
-      color: $red-border-bright;
-    }
   }
 
   &__actions {

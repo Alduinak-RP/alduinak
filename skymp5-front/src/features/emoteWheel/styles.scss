@@ -1,23 +1,16 @@
 // Emote wheel, ported from Vengeful Realms (used with permission), restyled
 // to the Alduinak red/black look shared with the death screen and chat.
 
-$fast: 140ms ease;
+@use '../../styles/redPanel' as *;
+
 $medium: 260ms ease;
 
 $black-fill: rgba(10, 8, 8, 0.72);
 $black-fill-outer: rgba(16, 14, 14, 0.68);
-$red-border-dim: rgba(110, 30, 28, 0.55);
 $red-border-dim-outer: rgba(90, 28, 28, 0.5);
-$red-fill-active: rgba(80, 20, 20, 0.78);
 $red-fill-active-outer: rgba(120, 24, 24, 0.72);
-$red-border-bright: rgba(200, 70, 60, 0.85);
 $red-border-brighter: rgba(220, 85, 72, 0.9);
-$red-glow: rgba(180, 30, 30, 0.4);
-$red-hairline: rgba(180, 60, 50, 0.45);
-$text-bright: #f2e6e3;
-$text-label: rgba(230, 220, 218, 0.88);
 $text-label-small: rgba(210, 195, 195, 0.8);
-$text-muted: rgba(210, 170, 165, 0.65);
 $text-locked: rgba(200, 192, 190, 0.4);
 $grey-fill-locked: rgba(20, 19, 19, 0.6);
 $grey-fill-locked-hover: rgba(40, 38, 38, 0.7);
@@ -127,7 +120,7 @@ $grey-border-locked-hover: rgba(150, 142, 140, 0.6);
   &__segment-label,
   &__segment-label-small {
     pointer-events: none;
-    fill: $text-label;
+    fill: $text-body;
     text-anchor: middle;
     dominant-baseline: middle;
     letter-spacing: 0.065em;

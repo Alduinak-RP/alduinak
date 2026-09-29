@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 
-import Button from '../../constructorComponents/button';
 import './styles.scss';
 
 // One stack as resolved by the client (name already looked up from the baseId).
@@ -133,8 +132,9 @@ const Trade = ({ data }: { data: TradeData }) => {
 
   return (
     <div className="trade">
+      <div className="trade__fade" />
       <div className="trade__window">
-        <div className="trade__header">Trade with {data.partnerName}</div>
+        <h2 className="trade__header">Trade with {data.partnerName}</h2>
 
         <div className="trade__body">
           {/* Left: my offerable inventory */}
@@ -151,20 +151,19 @@ const Trade = ({ data }: { data: TradeData }) => {
 
           {/* Center: cancel / lock / trade */}
           <div className="trade__actions">
-            <Button text="Cancel" width={112} height={36} onClick={() => send(ev.cancel)} />
-            <Button
-              text={data.myLocked ? 'Unlock' : 'Lock'}
-              width={112}
-              height={36}
-              onClick={() => send(data.myLocked ? ev.unlock : ev.lock)}
-            />
-            <Button
-              text={data.iAccepted ? 'Waiting…' : 'Trade'}
-              width={112}
-              height={36}
+            <button className="trade__button trade__button--quiet" onClick={() => send(ev.cancel)}>
+              Cancel
+            </button>
+            <button className="trade__button" onClick={() => send(data.myLocked ? ev.unlock : ev.lock)}>
+              {data.myLocked ? 'Unlock' : 'Lock'}
+            </button>
+            <button
+              className="trade__button trade__button--primary"
               disabled={!tradeAvailable}
               onClick={() => send(ev.accept)}
-            />
+            >
+              {data.iAccepted ? 'Waiting…' : 'Trade'}
+            </button>
           </div>
 
           {/* Right: my offer above the partner's offer */}
@@ -194,11 +193,13 @@ const Trade = ({ data }: { data: TradeData }) => {
         {prompt ? (
           <div className="trade__prompt-overlay">
             <div className="trade__prompt">
-              <div className="trade__prompt-title">
+              <h3 className="trade__prompt-title">
                 {prompt.dir === 'add' ? 'Add how many' : 'Remove how many'} {prompt.item.name}?
-              </div>
+              </h3>
               <div className="trade__prompt-row">
-                <Button text="-" width={44} height={36} onClick={() => clampPromptCount(promptCount - 1)} />
+                <button className="trade__button trade__button--narrow" onClick={() => clampPromptCount(promptCount - 1)}>
+                  -
+                </button>
                 <input
                   className="trade__prompt-input"
                   type="number"
@@ -207,12 +208,20 @@ const Trade = ({ data }: { data: TradeData }) => {
                   value={promptCount}
                   onChange={(e) => clampPromptCount(parseInt(e.target.value, 10))}
                 />
-                <Button text="+" width={44} height={36} onClick={() => clampPromptCount(promptCount + 1)} />
-                <Button text="All" width={64} height={36} onClick={() => setPromptCount(prompt.item.count)} />
+                <button className="trade__button trade__button--narrow" onClick={() => clampPromptCount(promptCount + 1)}>
+                  +
+                </button>
+                <button className="trade__button trade__button--narrow" onClick={() => setPromptCount(prompt.item.count)}>
+                  All
+                </button>
               </div>
               <div className="trade__prompt-row">
-                <Button text="Confirm" width={128} height={36} onClick={confirmPrompt} />
-                <Button text="Back" width={128} height={36} onClick={() => setPrompt(null)} />
+                <button className="trade__button trade__button--primary" onClick={confirmPrompt}>
+                  Confirm
+                </button>
+                <button className="trade__button trade__button--quiet" onClick={() => setPrompt(null)}>
+                  Back
+                </button>
               </div>
             </div>
           </div>

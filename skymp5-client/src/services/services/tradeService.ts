@@ -566,16 +566,13 @@ export class TradeService extends ClientListener {
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
+  // The front's tradeInvite feature draws it and sends the accept or decline event back
   private inviteWidgetSetter = () => {
     const widget: any = {
-      type: "form",
+      type: "tradeInvite",
       id: INVITE_WIDGET_ID,
-      caption: "Trade Request",
-      elements: [
-        { type: "text", text: inviteFrom + " wants to trade with you.", tags: [] },
-        { type: "button", text: "Accept", tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], click: () => window.skyrimPlatform.sendMessage(events.inviteAccept) },
-        { type: "button", text: "Decline", tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.inviteDecline) },
-      ],
+      from: inviteFrom,
+      events: { accept: events.inviteAccept, decline: events.inviteDecline },
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== INVITE_WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));

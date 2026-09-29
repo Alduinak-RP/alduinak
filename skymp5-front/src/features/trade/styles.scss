@@ -1,10 +1,10 @@
-// Player-to-player trade window: inventory left, cancel/lock/trade center, both offers stacked right; a locked pane glows gold.
+// Player-to-player trade window in the housing menus' red/black look: inventory left, cancel/lock/trade center, both offers stacked right; a locked pane glows red.
 
-$trade-gold: #c8b48a;
-$trade-gold-dim: #8a7a55;
-$trade-bg: rgba(12, 12, 12, 0.92);
-$trade-pane-bg: rgba(0, 0, 0, 0.45);
-$trade-border: rgba(200, 180, 138, 0.45);
+@use '../../styles/redPanel' as *;
+
+$pane-bg: rgba(0, 0, 0, 0.35);
+$pane-border: rgba(110, 30, 28, 0.3);
+$tag-red: rgba(220, 110, 100, 0.9);
 
 .trade {
   position: fixed;
@@ -19,27 +19,27 @@ $trade-border: rgba(200, 180, 138, 0.45);
   font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
   z-index: 50;
 
+  &__fade {
+    @include red-fade;
+  }
+
   &__window {
+    @include red-panel;
     pointer-events: auto;
-    position: relative;
     width: min(1180px, 94vw);
     height: min(780px, 88vh);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-    background: $trade-bg;
-    border: 1px solid $trade-border;
-    box-shadow: 0 0 24px rgba(0, 0, 0, 0.8);
-    color: $trade-gold;
-    padding: 18px 20px 20px;
+    color: $text-body;
+    padding: 24px 24px 22px;
   }
 
   &__header {
+    @include red-title;
     text-align: center;
-    font-size: 22px;
-    letter-spacing: 1px;
-    color: $trade-gold;
-    border-bottom: 1px solid $trade-border;
+    font-size: clamp(20px, 2vw, 26px);
+    border-bottom: 1px solid $red-border-dim;
     padding-bottom: 10px;
     margin-bottom: 14px;
   }
@@ -53,12 +53,13 @@ $trade-border: rgba(200, 180, 138, 0.45);
   }
 
   &__pane {
-    background: $trade-pane-bg;
-    border: 1px solid $trade-border;
+    background: $pane-bg;
+    border: 1px solid $pane-border;
     padding: 8px 10px;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    transition: border-color $fast, box-shadow $fast, background $fast;
 
     &--inventory {
       flex: 1.3;
@@ -70,11 +71,11 @@ $trade-border: rgba(200, 180, 138, 0.45);
       min-height: 0;
     }
 
-    // A locked offer glows gold until either side changes their offer.
+    // A locked offer glows red until either side changes their offer.
     &--locked {
-      border-color: $trade-gold;
-      box-shadow: 0 0 10px rgba(200, 180, 138, 0.55), inset 0 0 14px rgba(200, 180, 138, 0.18);
-      background: rgba(64, 54, 30, 0.5);
+      border-color: $red-border-bright;
+      box-shadow: 0 0 10px $red-glow, inset 0 0 14px rgba(180, 30, 30, 0.18);
+      background: rgba(50, 12, 12, 0.6);
     }
   }
 
@@ -88,17 +89,19 @@ $trade-border: rgba(200, 180, 138, 0.45);
   }
 
   &__pane-title {
-    font-size: 16px;
-    color: $trade-gold;
-    border-bottom: 1px solid $trade-border;
-    padding-bottom: 4px;
+    color: $text-muted;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    border-bottom: 1px solid $red-border-dim;
+    padding-bottom: 6px;
     margin-bottom: 6px;
     white-space: nowrap;
   }
 
   &__lock {
-    color: $trade-gold;
-    font-size: 13px;
+    color: $tag-red;
+    font-size: 12px;
     margin-left: 6px;
   }
 
@@ -117,10 +120,10 @@ $trade-border: rgba(200, 180, 138, 0.45);
     }
 
     &::-webkit-scrollbar-thumb {
-      background: rgba(200, 180, 138, 0.35);
+      background: $red-border-dim;
 
       &:hover {
-        background: rgba(200, 180, 138, 0.6);
+        background: $red-border-bright;
       }
     }
   }
@@ -131,26 +134,27 @@ $trade-border: rgba(200, 180, 138, 0.45);
     align-items: center;
     padding: 5px 8px;
     font-size: clamp(15px, 1.2vw, 18px);
-    color: $trade-gold;
-    border-bottom: 1px solid rgba(200, 180, 138, 0.12);
+    color: $text-body;
+    border-bottom: 1px solid rgba(110, 30, 28, 0.2);
+    transition: background $fast, color $fast;
 
     &--clickable {
       cursor: pointer;
 
       &:hover {
-        background: rgba(200, 180, 138, 0.16);
-        color: #fff;
+        background: $red-fill-active;
+        color: $text-bright;
       }
     }
   }
 
   &__item-count {
-    color: $trade-gold-dim;
+    color: $text-muted;
     margin-left: 12px;
   }
 
   &__item-tag {
-    color: $trade-gold-dim;
+    color: $text-muted;
     font-size: 0.8em;
     margin-left: 8px;
     text-transform: uppercase;
@@ -162,7 +166,7 @@ $trade-border: rgba(200, 180, 138, 0.45);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: $trade-gold-dim;
+    color: $text-muted;
     font-style: italic;
     min-height: 70px;
   }
@@ -171,17 +175,19 @@ $trade-border: rgba(200, 180, 138, 0.45);
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: center;
+    align-items: stretch;
     gap: 12px;
-    flex: 0 0 128px;
+    flex: 0 0 140px;
   }
 
-  // Scale SkyrimButton's default 30px type down to fit the compact 36px-tall action/prompt buttons.
-  &__actions,
-  &__prompt-row {
-    .skymp-input-button .skymp-input-button_text {
-      font-size: 16px;
-      line-height: 18px;
+  &__button {
+    @include red-button;
+    min-width: 112px;
+
+    &--narrow {
+      min-width: 44px;
+      padding-left: 0;
+      padding-right: 0;
     }
   }
 
@@ -199,17 +205,19 @@ $trade-border: rgba(200, 180, 138, 0.45);
   }
 
   &__prompt {
-    background: $trade-bg;
-    border: 1px solid $trade-border;
-    padding: 20px 24px;
+    @include red-panel;
+    padding: 26px 24px 20px;
     text-align: center;
-    min-width: 320px;
+    width: min(360px, 90%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
 
   &__prompt-title {
-    font-size: 18px;
-    color: $trade-gold;
-    margin-bottom: 16px;
+    @include red-title;
+    font-size: clamp(16px, 1.6vw, 20px);
+    white-space: normal;
   }
 
   &__prompt-row {
@@ -217,24 +225,21 @@ $trade-border: rgba(200, 180, 138, 0.45);
     align-items: center;
     justify-content: center;
     gap: 8px;
-    margin-top: 10px;
   }
 
   &__prompt-input {
+    @include red-input;
     width: 80px;
-    height: 32px;
+    height: 36px;
     text-align: center;
     font-size: 18px;
-    color: $trade-gold;
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid $trade-border;
   }
 
   @media (max-width: 900px), (max-height: 640px) {
     &__window {
       width: 96vw;
       height: 92vh;
-      padding: 12px 14px 14px;
+      padding: 18px 16px 16px;
     }
   }
 }

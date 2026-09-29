@@ -14,6 +14,7 @@ import DeathScreen from './constructorComponents/death';
 import SkillsMenu from './features/skillsMenu';
 import TestMenu from './features/testMenu';
 import Trade from './features/trade';
+import TradeInvite from './features/tradeInvite';
 import AdminPanel from './features/adminPanel';
 import ContextMenu from './features/contextMenu';
 import CharCreator from './features/charCreator';
@@ -224,6 +225,8 @@ const Constructor = props => {
       );
     case 'trade':
       return <Trade data={rend} />;
+    case 'tradeInvite':
+      return <TradeInvite data={rend} />;
     case 'adminPanel':
       return <AdminPanel data={rend} />;
     case 'contextMenu':
