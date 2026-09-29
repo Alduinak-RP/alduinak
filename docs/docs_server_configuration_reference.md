@@ -639,7 +639,7 @@ Contains a list of spawn points, one of which will be chosen at random. With `ch
 
 The start locations a new character chooses from with `characterSelect` on. Pressing Play on an Empty slot shows the synopsis (two pages), then "Where will your journey begin?" with one button per entry and a confirmation. The server checks the chosen `id` against this list and creates the character there. The coordinates never come from the client, and an unknown or missing id creates nothing and resends the character list. Each arrival lands at a random point up to 100 units from `pos`, 64 units higher, so a crowd does not stack on one spot. The character's race menu then opens there as before, and the id is saved on the character as `private.startLocation` (`{ id, at }`). Respawn is unchanged (the nearest temple).
 
-The key is optional. Without it the server uses the six built-in locations below (Tamriel, angle 0). `[]` turns the intro off, so an Empty slot creates at once at a `startPoints` entry. A malformed list logs a warning and keeps the built-in locations. `angleZ` defaults to 0 and `worldOrCell` to `0x3c`. Edit it in `server-settings.json` on the server and restart the game service.
+The key is optional. Without it the server uses the seven built-in locations below (Tamriel, angle 0). `[]` turns the intro off, so an Empty slot creates at once at a `startPoints` entry. A malformed list logs a warning and keeps the built-in locations. `angleZ` defaults to 0 and `worldOrCell` to `0x3c`. Edit it in `server-settings.json` on the server and restart the game service.
 
 A character whose creation is unfinished (`private.creationPending`, set at creation and cleared when the race menu is accepted) neither takes nor deals weapon or spell damage.
 
@@ -652,7 +652,8 @@ A character whose creation is unfinished (`private.creationPending`, set at crea
     { "id": "pale-pass", "label": "Pale Pass - Cyrodiil Border", "pos": [27471, -115853, 20361], "angleZ": 0, "worldOrCell": "0x3c" },
     { "id": "morrowind-gate", "label": "Morrowind Gate - Riften", "pos": [212996.14, -111249.54, 8059.13], "angleZ": 0, "worldOrCell": "0x3c" },
     { "id": "solitude-docks", "label": "Solitude Docks", "pos": [-63893.07, 95463.61, -13936.59], "angleZ": 0, "worldOrCell": "0x3c" },
-    { "id": "dunmeth-pass", "label": "Dunmeth Pass - Windhelm", "pos": [174009.45, 38223.89, -9091.38], "angleZ": 0, "worldOrCell": "0x3c" }
+    { "id": "dunmeth-pass", "label": "Dunmeth Pass - Windhelm", "pos": [174009.45, 38223.89, -9091.38], "angleZ": 0, "worldOrCell": "0x3c" },
+    { "id": "druadach-pass", "label": "Druadach Pass - High Rock", "pos": [-159824, 94571, -8524], "angleZ": 0, "worldOrCell": "0x3c" }
   ]
   // ...
 }

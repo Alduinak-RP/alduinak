@@ -25,6 +25,7 @@ export const DEFAULT_START_LOCATIONS: StartLocation[] = [
   { id: "morrowind-gate", label: "Morrowind Gate - Riften", pos: [212996.14, -111249.54, 8059.13], angleZ: 0, worldOrCell: TAMRIEL },
   { id: "solitude-docks", label: "Solitude Docks", pos: [-63893.07, 95463.61, -13936.59], angleZ: 0, worldOrCell: TAMRIEL },
   { id: "dunmeth-pass", label: "Dunmeth Pass - Windhelm", pos: [174009.45, 38223.89, -9091.38], angleZ: 0, worldOrCell: TAMRIEL },
+  { id: "druadach-pass", label: "Druadach Pass - High Rock", pos: [-159824, 94571, -8524], angleZ: 0, worldOrCell: TAMRIEL },
 ];
 
 // Arrivals land up to this far from the point, lifted a little so a sloped offset never starts underground
