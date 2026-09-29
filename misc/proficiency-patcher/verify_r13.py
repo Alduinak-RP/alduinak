@@ -265,11 +265,12 @@ def main():
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and (prefix and edid(r).startswith(prefix) or edid(r).startswith('AldKeyword_'))}
-    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops
+    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops, a global everything but its value
     over = spec.get('overrides', {})
     over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
     over_cobj = {form_key(r['recipe']): r['count'] for r in over.get('recipes', [])}
     over_qust = {form_key(q['quest']): q['dropScripts'] for q in over.get('quests', [])}
+    over_glob = {form_key(g['global']): g['value'] for g in over.get('globals', [])}
     over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
     over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', [])}
     for (t, k), q in ro.items():
@@ -346,6 +347,13 @@ def main():
             if why or left or q.flags & ~COMPRESSED != flags & ~COMPRESSED:
                 problems.append(f'{label}: not {src.name}\'s quest with only {over_qust[k]} dropped ({why or left})')
             checked['quests overridden without named scripts'] += 1
+        elif t == 'GLOB' and k in over_glob:
+            src, flags, data, _ = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('FLTV',))
+            fltv = dict(parse_subs(q.data())).get('FLTV', b'')
+            if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or len(fltv) != 4 or abs(struct.unpack('<f', fltv)[0] - over_glob[k]) > 1e-6:
+                problems.append(f'{label}: not {src.name}\'s global with only the value set to {over_glob[k]} ({why or fltv.hex()})')
+            checked['globals overridden for their value'] += 1
         elif t == 'REFR' and k[0] == me and edid(q) in over_refs and r is not None:
             why = ck.compare(t, inp, r.flags, r.data(), out, q.data(), skip=('XSCL',))
             xscl = dict(parse_subs(q.data())).get('XSCL', b'')

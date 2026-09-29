@@ -1448,6 +1448,16 @@ static class Steps
             var removed = ctx.GetOrAddAsOverride(c.Mod).VirtualMachineAdapter?.Scripts.RemoveAll(s => drop.Contains(s.Name)) ?? 0;
             c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): {removed} script(s) dropped ({string.Join(", ", drop)})");
         }
+        foreach (var g in Entries(o["globals"]))
+        {
+            var key = FormKey.Factory(g["global"]!.GetValue<string>());
+            if (!cache.TryResolveContext<IGlobal, IGlobalGetter>(key, out var ctx)) { c.Error($"overrides: global {key} not found"); continue; }
+            var value = g["value"]!.GetValue<float>();
+            var global = (Global)ctx.GetOrAddAsOverride(c.Mod);
+            var from = global.RawFloat;
+            global.RawFloat = value;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): value {from} -> {value}");
+        }
     }
 
     static IEnumerable<JsonObject> Entries(JsonNode? list) =>
