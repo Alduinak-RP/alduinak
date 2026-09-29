@@ -14,6 +14,8 @@ import { logToPlatformLog, logTrace } from "../../logging";
 
 const PEERS_INTERVAL_MS = 400;
 const TOKEN_RETRY_MS = 5000;
+// The token retry makes a down voice server report the same error every few seconds
+const VOICE_ERROR_REPEAT_LOG_MS = 600000;
 const AFK_PING_INTERVAL_MS = 60000;
 const PLAYER_ID_SPACE = 0xff000000;
 
@@ -75,6 +77,9 @@ export class VoiceService extends ClientListener {
   // An engine key-up the focused poll took over, still owed if focus leaves before the key reads up
   private deferredRelease = false;
   private micDeniedShown = false;
+  private lastVoiceError = "";
+  private lastVoiceErrorAt = 0;
+  private voiceErrorRepeats = 0;
   private nextTokenAttemptAt = 0;
   private nextPeersAt = 0;
   private nextAfkPingAt = 0;
@@ -192,6 +197,11 @@ export class VoiceService extends ClientListener {
     if (kind === "voice::ready") {
       // Only the front's ack marks the session healthy; a connect call landing on an unloaded page never acks and the 5s loop retries
       this.connectedForRefrId = this.pendingRefrId;
+      if (this.lastVoiceError) {
+        logToPlatformLog(this, `voice connected again after "${this.lastVoiceError}" and ${this.voiceErrorRepeats} repeats since its line`);
+        this.lastVoiceError = "";
+        this.voiceErrorRepeats = 0;
+      }
     } else if (kind === "voice::micDenied") {
       if (!this.micDeniedShown) {
         this.micDeniedShown = true;
@@ -203,7 +213,7 @@ export class VoiceService extends ClientListener {
       // Room dropped: forget the session and ask for a fresh token shortly
       this.connectedForRefrId = 0;
       this.nextTokenAttemptAt = Date.now() + TOKEN_RETRY_MS;
-      logToPlatformLog(this, `voice error from front: ${e.arguments[1]}`);
+      this.logVoiceError(String(e.arguments[1]));
     } else if (kind === "voice::ptt") {
       // The front already toggled its own mic; only the game-side state follows
       if (String(e.arguments[1]) === "1") {
@@ -215,6 +225,20 @@ export class VoiceService extends ClientListener {
         this.logPtt("mic closed", "front key");
       }
     }
+  }
+
+  // A new text is logged at once, the same text again at most once per VOICE_ERROR_REPEAT_LOG_MS with the count it stood for
+  private logVoiceError(text: string) {
+    const now = Date.now();
+    if (text === this.lastVoiceError && now - this.lastVoiceErrorAt < VOICE_ERROR_REPEAT_LOG_MS) {
+      this.voiceErrorRepeats++;
+      return;
+    }
+    const repeats = this.voiceErrorRepeats ? ` (${this.voiceErrorRepeats} repeats of "${this.lastVoiceError}" since the last line)` : "";
+    this.lastVoiceError = text;
+    this.lastVoiceErrorAt = now;
+    this.voiceErrorRepeats = 0;
+    logToPlatformLog(this, `voice error from front: ${text}${repeats}`);
   }
 
   private resetSession() {
