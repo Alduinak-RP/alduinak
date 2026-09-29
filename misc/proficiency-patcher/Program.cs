@@ -1288,6 +1288,15 @@ static class Steps
         var listed = t["recipes"]!.AsArray().Select(x => x!.AsObject()).ToDictionary(r => r["edid"]!.GetValue<string>(), r => r, StringComparer.OrdinalIgnoreCase);
         var tierOf = TierMap(t["tiers"]?.AsObject() ?? new JsonObject());
         var benches = Edids(c, t["benches"]).Select(c.KeyOf<IKeywordGetter>).ToHashSet();
+        // Further condition functions dropped from the named recipes only: a gate of their own mod no tailor can pass
+        var drop = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (function, list) in t["dropConditions"] as JsonObject ?? new JsonObject())
+            foreach (var e in Edids(c, list))
+            {
+                if (!drop.TryGetValue(e, out var set)) drop[e] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                set.Add(function);
+            }
+        var dropped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // Products other professions make too: their recipes at the benches gain those markers beside the owner's
         var shared = (t["shared"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
             .Select(s => (Products: Edids(c, s["products"]).Select(c.KeyOf<IItemGetter>).ToHashSet(), Also: Edids(c, s["also"]).ToList())).ToList();
@@ -1312,8 +1321,10 @@ static class Steps
                     cobj.Items.Add(new ContainerEntry { Item = new ContainerItem { Item = ing.FormKey.ToLink<IItemGetter>(), Count = item.Value!.GetValue<int>() } });
                 }
             }
-            var stripped = cobj.Conditions.Any(cond => strip.Contains(FunctionOf(cond)));
-            cobj.Conditions.RemoveAll(cond => strip.Contains(FunctionOf(cond)));
+            var gone = strip;
+            if (drop.TryGetValue(edid, out var own)) { gone = strip.Union(own).ToHashSet(StringComparer.OrdinalIgnoreCase); dropped.Add(edid); }
+            var stripped = cobj.Conditions.Any(cond => gone.Contains(FunctionOf(cond)));
+            cobj.Conditions.RemoveAll(cond => gone.Contains(FunctionOf(cond)));
             var tier = r?["tier"]?.GetValue<string>() ?? tierOf.GetValueOrDefault(edid, c.Ranks[0]);
             var owner = r?["profession"]?.GetValue<string>() ?? profession;
             var also = shared.Where(s => s.Products.Contains(cobj.CreatedObject.FormKey)).SelectMany(s => s.Also).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -1325,6 +1336,8 @@ static class Steps
             var bench = c.KeyOf<IKeywordGetter>(r["bench"]!.GetValue<string>());
             NewRecipe(c, r, bench, profession, "AldRecipeTailor_");
         }
+        foreach (var edid in drop.Keys.Where(e => !dropped.Contains(e)))
+            c.Error($"tailoring: dropConditions recipe '{edid}' is neither listed nor swept, so nothing drops its conditions");
         if (t["disableRecipes"] is JsonArray disable)
             Park(c, disable.Select(x => x!.GetValue<string>()), c.KeyOf<IKeywordGetter>(t["disabledBench"]!.GetValue<string>()), "tailoring", profession);
     }

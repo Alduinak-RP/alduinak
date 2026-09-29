@@ -3059,6 +3059,22 @@
     "MCERecipeClothesWeddingDress"
    ]
   },
+  "dropConditions": {
+   "GetBaseActorValue": [
+    "MCERecipeClothesRobesMageApprentice",
+    "MCERecipeClothesRobesMageAdept",
+    "MCERecipeClothesRobesMageExpert",
+    "MCERecipeClothesRobesMageMaster",
+    "MCERecipeClothesRobesMageApprenticeHood",
+    "MCERecipeClothesRobesMageAdeptHood"
+   ],
+   "GetIsID": [
+    "RecipeArmorevgsmpbasicpouchLarmor",
+    "RecipeArmorevgsmpbasicpouchLDARKarmor",
+    "RecipeArmorevgsmpbasicpouchRarmor",
+    "RecipeArmorevgsmpbasicpouchRDARKarmor"
+   ]
+  },
   "shared": [
    {
     "products": [
