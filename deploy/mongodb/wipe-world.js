@@ -12,6 +12,7 @@ const SM = path.join(__dirname, '..', '..', 'server-manager', 'src')
 const config = require(path.join(SM, 'config'))
 const formIds = require(path.join(SM, 'formIds'))
 const modsync = require(path.join(SM, 'modsync'))
+const formDescIndex = require(path.join(SM, 'formDescIndex'))
 const { nativeModuleLocked, serviceStatus, gameServerBlocker } = require(path.join(SM, 'serviceCheck'))
 
 const USAGE = [
@@ -307,6 +308,20 @@ async function collectionNames(db) {
   return (await db.listCollections({}, { nameOnly: true }).toArray()).map(c => c.name).sort()
 }
 
+// { docs, indexed } of changeForms, or null when it does not exist
+async function changeFormsState(db) {
+  if (!(await collectionNames(db)).includes(CF)) return null
+  const col = db.collection(CF)
+  return { docs: await col.countDocuments(), indexed: (await col.indexes()).some(formDescIndex.isFormDescIndex) }
+}
+
+// Logged, never thrown: the manager ensures it again before every game start
+async function ensureIndex() {
+  console.log(`  ${(await formDescIndex.ensureFormDescIndex(settings)).line}`)
+}
+
+const indexAction = () => ({ label: `create the ${formDescIndex.NAME} index on ${settings.databaseName}.${CF}`, run: ensureIndex })
+
 function byId(docs) {
   return [...docs].sort((a, b) => String(a._id).localeCompare(String(b._id)))
 }
@@ -450,7 +465,8 @@ async function restoreTest(db, dir, info) {
     const got = await check.countDocuments()
     if (got !== expected) throw new Error(`restore test: ${RESTORE_CHECK} holds ${got} document(s), the backup ${expected}`)
     let compared = ''
-    if ((await collectionNames(db)).includes(CF)) {
+    // After a wipe changeForms is left empty with its index, so there is nothing to compare
+    if (((await changeFormsState(db)) || {}).docs) {
       const ids = async col => new Set((await col.find({}, { projection: { _id: 1 } }).toArray()).map(d => String(d._id)))
       const live = await ids(db.collection(CF))
       const restored = await ids(check)
@@ -753,6 +769,7 @@ async function verifyMode(flags) {
         console.log(`  ${name}: ${plural(count, 'document', 'documents')}${backed}`)
       }
       if (!names.includes(CF)) return
+      console.log(`  ${CF} ${formDescIndex.NAME} index: ${(await changeFormsState(db)).indexed ? 'present' : 'missing (the next game start through the manager creates it)'}`)
       printStats(await changeFormStats(db), '  ')
       if (!liveSlots) return
       let bad = 0
@@ -822,12 +839,12 @@ async function applyMode(flags) {
     const names = await collectionNames(db)
     const counts = {}
     for (const name of names) counts[name] = await db.collection(name).countDocuments()
-    return { names, counts, stats: names.includes(CF) ? await changeFormStats(db) : null }
+    return { names, counts, stats: names.includes(CF) ? await changeFormStats(db) : null, cf: await changeFormsState(db) }
   })
   const unknown = live.names.filter(n => !DB_DROP.includes(n) && !DB_KEEP.includes(n) && n !== CHARACTERS && n !== FACTIONS && n !== RESTORE_CHECK)
   if (unknown.length) plan.blockers.push(`unclassified collection(s) ${unknown.join(', ')}: list them in DB_DROP or DB_KEEP in wipe-world.js`)
   for (const name of DB_KEEP.filter(n => live.names.includes(n))) console.log(`  ${name}: kept`)
-  if (live.names.includes(CF)) {
+  if (live.cf && live.cf.docs) {
     console.log(`  ${CF}: ${plural(live.counts[CF], 'document', 'documents')}`)
     printStats(live.stats, '  ')
     if (live.counts[CF] !== info.collections[CF]) plan.blockers.push(`${CF} holds ${live.counts[CF]} document(s), the backup ${CF in info.collections ? info.collections[CF] : 'none'}: something wrote since the backup (a game server boot?), take a new backup`)
@@ -839,8 +856,10 @@ async function applyMode(flags) {
         if ((await collectionNames(db)).includes(CF)) throw new Error(`${CF} still exists after the drop`)
       }),
     })
+    plan.actions.push(indexAction())
   } else {
-    console.log(`  ${CF}: already dropped`)
+    console.log(`  ${CF}: ${live.cf ? 'empty' : 'already dropped'}, ${formDescIndex.NAME} index ${live.cf && live.cf.indexed ? 'present' : 'missing'}`)
+    if (!(live.cf && live.cf.indexed)) plan.actions.push(indexAction())
     if (live.names.includes(RESTORE_CHECK)) plan.actions.push({ label: `drop the leftover ${RESTORE_CHECK}`, run: () => withDb(db => db.collection(RESTORE_CHECK).drop()) })
   }
 
@@ -920,7 +939,8 @@ async function applyMode(flags) {
   }
 
   const problems = []
-  if ((await withDb(collectionNames)).includes(CF)) problems.push(`${CF} still exists`)
+  const cf = await withDb(changeFormsState)
+  if (cf && cf.docs) problems.push(`${CF} still holds ${cf.docs} document(s)`)
   for (const name of Object.keys(SERVER_RESET)) if (!/^(reset|absent)/.test(registryState(path.join(serverDir, name)))) problems.push(`${name} is not reset`)
   if (isDir(wdir) && fs.readdirSync(wdir).length) problems.push(`${WRITINGS_DIR}/ is not empty`)
   const after = await withDb(readBackend)
@@ -928,6 +948,7 @@ async function applyMode(flags) {
   if (after.factions && arrLen(after.factions.assignments)) problems.push(`${FACTIONS}.${FACTIONS_DOC} still has assignments`)
   if (problems.length) throw new Error(`re-read after the wipe: ${problems.join(', ')}`)
   console.log('\nwipe done and re-read')
+  if (!(cf && cf.indexed)) console.log(`WARNING: ${CF} has no ${formDescIndex.NAME} index; the next game start through the manager creates it`)
   console.log('next:')
   console.log(`  1. node deploy/mongodb/wipe-world.js verify --backup "${dir}" and fix every EDIT line`)
   console.log('  2. Build > Client > Update modlist in the manager, with the game server stopped')
@@ -1021,8 +1042,8 @@ async function restoreMode(flags) {
     for (const name of await collectionNames(db)) counts[name] = await db.collection(name).countDocuments()
     return counts
   })
-  for (const name of restored) console.log(`  ${name}: ${name in live ? live[name] : 'absent'} -> ${info.collections[name]}`)
   const restored = Object.keys(info.collections).filter(n => !BACKEND_COLLECTIONS.includes(n) && !SESSION_COLLECTIONS.includes(n))
+  for (const name of restored) console.log(`  ${name}: ${name in live ? live[name] : 'absent'} -> ${info.collections[name]}`)
   const extra = Object.keys(live).filter(n => !restored.includes(n) && !BACKEND_COLLECTIONS.includes(n) && n !== RESTORE_CHECK)
   if (extra.length) console.log(`  not in the backup, left as is: ${extra.join(', ')}`)
   plan.actions.push({
@@ -1038,6 +1059,8 @@ async function restoreMode(flags) {
         }
       })
       console.log('  counts match the backup')
+      // A dump taken before the index existed restores changeForms without it
+      if (restored.includes(CF)) await ensureIndex()
     },
   })
   const sameOrder = liveOrder().map(n => n.toLowerCase()).join('|') === (info.loadOrder || []).map(o => o.name.toLowerCase()).join('|')
