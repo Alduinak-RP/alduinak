@@ -47,7 +47,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | Field | Required | Default | Meaning and accepted forms |
 |---|---|---|---|
 | `Name` | yes | | label printed in every log line about the zone; at most 64 characters and unique across the file (case-insensitive) |
-| `Type` | no | inferred | `Wildlife`, `Monster` or `Dungeon` (case-insensitive), a label the admin panel shows and filters by; it changes nothing in game. Blank or unknown: `Dungeon` when `ID` is an interior cell, else `Wildlife` when every NPC base resolves (through leveled lists and Use Traits templates) to races carrying `ActorTypeAnimal`, else `Monster`; an unknown value logs `'<Name>' Type '<value>' is not Wildlife, Monster, Dungeon, inferred instead` |
+| `Type` | no | inferred | `Wildlife`, `Monster` or `Dungeon` (case-insensitive), a label the admin panel shows and filters by; it changes nothing in game. Blank or unknown: `Dungeon` when `ID` is an interior cell, else `Wildlife` when every NPC base resolves (through leveled lists and Use Traits templates) to races carrying `ActorTypeAnimal` other than troll, spider and chaurus races, else `Monster`; an unknown value logs `'<Name>' Type '<value>' is not Wildlife, Monster, Dungeon, inferred instead` |
 | `ID` | yes | | the cell or worldspace the zone lives in: an editor id (`Kagrenzel01`, `Tamriel`), a form desc (`1a26f:Skyrim.esm`) or a load-order form id (`0x0001A26F`, `0001A26F`) |
 | `POS` | yes | | centre of the zone: `{ "x": .., "y": .., "z": .. }`, `[x, y, z]` or `"x, y, z"` |
 | `Size` | no | 2000 | trigger radius in game units |
@@ -57,15 +57,14 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
 
 Every zone of the test server's file carries its `Type` since 2026-09-29, set
-by that inference rule from the load order (233 Dungeon, 306 Wildlife, 34
+by that inference rule from the load order (233 Dungeon, 282 Wildlife, 58
 Monster); a file without `Type` gets the same values inferred at load. The
-rule has edge cases the panel's Edit can correct: Darkwater
-Pass (`DarkwaterWorld`) and Shadowgreen Cavern (`ShadowgreenCavernWorld`) are
-worldspaces, so their zones are Monster or Wildlife rather than Dungeon; and
-`ActorTypeAnimal` is on the troll, frostbite spider, chaurus, skeever,
-mudcrab, horker and mammoth races too, so outdoor troll, spider and chaurus
-zones (Frost Troll Ambush, Labyrinthian Frost Troll, Frostbite Grotto Spider,
-Glacial Hatchlings Chaurus and others) are Wildlife.
+game puts `ActorTypeAnimal` on troll, frostbite spider and chaurus races, so the
+rule names those races Monster (the 24 outdoor zones such as Frost Troll Ambush
+and Glacial Hatchlings Chaurus). Skeever, mudcrab, horker and mammoth zones stay
+Wildlife. The panel's Edit corrects the rest: Darkwater Pass
+(`DarkwaterWorld`) and Shadowgreen Cavern (`ShadowgreenCavernWorld`) are
+worldspaces, so their zones are Monster or Wildlife rather than Dungeon.
 
 An entry that fails a check (no `Name`, a `Name` longer than 64 characters,
 unknown `ID`, unusable `POS`, no valid NPC, more than 40 NPCs in total) is

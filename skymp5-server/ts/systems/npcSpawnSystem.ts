@@ -62,6 +62,8 @@ const CORPSE_LOG_MS = 10000;
 const CORPSE_CONSUMED_EVENT = "corpseConsumed";
 // Skyrim.esm ActorTypeAnimal, the race keyword that makes a zone Wildlife
 const ANIMAL_KEYWORD = 0x00013798;
+// Races the game tags ActorTypeAnimal that the zone list files under Monster
+const MONSTER_RACE_WORDS = /troll|spider|chaurus/i;
 
 export const ZONE_TYPES = ["Wildlife", "Monster", "Dungeon"] as const;
 export type ZoneType = typeof ZONE_TYPES[number];
@@ -685,7 +687,7 @@ export class NpcSpawnSystem implements System {
   private kindByBase = new Map<string, SpotKind>();
   private animalByBase = new Map<string, boolean>();
 
-  // Dungeon in an interior (a zone ID is a worldspace outdoors, never an exterior cell), Wildlife when every NPC resolves to animal races only, else Monster
+  // Dungeon in an interior (a zone ID is a worldspace outdoors, never an exterior cell), Wildlife when every NPC resolves to animal races that are not trolls, spiders or chaurus, else Monster
   private inferType(mp: Mp, cellOrWorldId: number, npcs: ZoneNpc[]): ZoneType {
     let interior = false;
     try { interior = mp.lookupEspmRecordById(cellOrWorldId)?.record?.type === "CELL"; } catch { }
@@ -697,7 +699,10 @@ export class NpcSpawnSystem implements System {
   private isAnimalBase(mp: Mp, baseDesc: string): boolean {
     let animal = this.animalByBase.get(baseDesc);
     if (animal === undefined) {
-      const animalRace = (res: any): boolean => espmFieldFormIds(this.raceOf(mp, res), "KWDA").includes(ANIMAL_KEYWORD);
+      const animalRace = (res: any): boolean => {
+        const race = this.raceOf(mp, res);
+        return espmFieldFormIds(race, "KWDA").includes(ANIMAL_KEYWORD) && !MONSTER_RACE_WORDS.test(String(race?.record?.editorId ?? ""));
+      };
       try {
         const id = mp.getIdFromDesc(baseDesc) >>> 0;
         animal = this.anyNpc(mp, id, TEMPLATE_USE_TRAITS, animalRace) && !this.anyNpc(mp, id, TEMPLATE_USE_TRAITS, (res) => !animalRace(res));
