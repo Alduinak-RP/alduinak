@@ -26,6 +26,14 @@ interface PendingSpells {
   spellIds: number[];
   at: number;
   healthBefore: number;
+  source: string;
+  // IsBlocking and facing when the spell landed, the verdict when no weapon hit pairs with it
+  blockingPose: boolean;
+}
+
+interface Swing {
+  at: number;
+  blocked: boolean;
 }
 
 // Creature poison hit spells (the Falmer perk's crFalmerPoisonedWeapon, spider and chaurus bites) are cast by the victim's own engine and never reach the server,
@@ -36,6 +44,7 @@ export class NpcHitSpellBlockService extends ClientListener {
     super();
     this.controller.on("hit", (e) => this.onHit(e));
     this.controller.on("magicEffectApply", (e) => this.onMagicEffectApply(e));
+    this.controller.on("update", () => this.expirePending());
     this.controller.once("update", () => this.resolveDawnguard());
   }
 
@@ -54,15 +63,14 @@ export class NpcHitSpellBlockService extends ClientListener {
       this.record(aggressorId, [spell.getFormID()], now, "hit");
       return;
     }
-    // A weapon or unarmed swing: blocked, or replayed by a copy another client runs
+    // A weapon or unarmed swing: blocked, replayed by a copy another client runs, or a hit the engine let through
     const reason = e.isHitBlocked ? "blocked" : !isHostedByMe(aggressorId) ? "not hosted" : "";
-    if (!reason) return;
-    this.blockedAt.set(aggressorId, now);
+    this.prune(now);
+    this.swings.set(aggressorId, { at: now, blocked: !!reason });
     const pending = this.pending.get(aggressorId);
-    if (pending && now - pending.at <= PAIR_WINDOW_MS) {
-      this.pending.delete(aggressorId);
-      this.dispel(aggressorId, pending, reason);
-    }
+    if (!pending || now - pending.at > PAIR_WINDOW_MS) return;
+    this.pending.delete(aggressorId);
+    if (reason) this.dispel(aggressorId, pending, `${reason}, ${pending.source}`);
   }
 
   private onMagicEffectApply(e: MagicEffectApplyEvent): void {
@@ -78,19 +86,32 @@ export class NpcHitSpellBlockService extends ClientListener {
     this.record(aggressorId, spellIds, Date.now(), "effect");
   }
 
-  // Dispelled at once when the swing was blocked or replayed, else kept for the weapon hit still to come
+  // The paired weapon hit decides, whichever of the two events comes first; the pose only decides when no weapon hit comes
   private record(aggressorId: number, spellIds: number[], now: number, source: string): void {
     const player = Game.getPlayer();
     if (!player) return;
-    const entry: PendingSpells = { spellIds, at: now, healthBefore: player.getActorValuePercentage("health") };
-    const blocked = now - (this.blockedAt.get(aggressorId) ?? 0) <= PAIR_WINDOW_MS;
-    const reason = !isHostedByMe(aggressorId) ? "not hosted" : blocked ? "blocked" : this.isBlockingToward(player, aggressorId) ? "blocking pose" : "";
-    if (reason) {
-      this.dispel(aggressorId, entry, `${reason}, ${source}`);
+    const entry: PendingSpells = { spellIds, at: now, healthBefore: player.getActorValuePercentage("health"), source, blockingPose: false };
+    if (!isHostedByMe(aggressorId)) {
+      this.dispel(aggressorId, entry, `not hosted, ${source}`);
       return;
     }
+    const swing = this.swings.get(aggressorId);
+    if (swing && now - swing.at <= PAIR_WINDOW_MS) {
+      if (swing.blocked) this.dispel(aggressorId, entry, `blocked, ${source}`);
+      return;
+    }
+    entry.blockingPose = this.isBlockingToward(player, aggressorId);
     this.pending.set(aggressorId, entry);
-    this.prune(now);
+  }
+
+  private expirePending(): void {
+    if (this.pending.size === 0) return;
+    const now = Date.now();
+    this.pending.forEach((entry, id) => {
+      if (now - entry.at <= PAIR_WINDOW_MS) return;
+      this.pending.delete(id);
+      if (entry.blockingPose) this.dispel(id, entry, `blocking pose, ${entry.source}`);
+    });
   }
 
   private dispel(aggressorId: number, entry: PendingSpells, reason: string): void {
@@ -150,8 +171,7 @@ export class NpcHitSpellBlockService extends ClientListener {
   }
 
   private prune(now: number): void {
-    this.pending.forEach((entry, id) => { if (now - entry.at > PAIR_WINDOW_MS) this.pending.delete(id); });
-    this.blockedAt.forEach((at, id) => { if (now - at > PAIR_WINDOW_MS) this.blockedAt.delete(id); });
+    this.swings.forEach((swing, id) => { if (now - swing.at > PAIR_WINDOW_MS) this.swings.delete(id); });
   }
 
   private logThrottled(key: string, text: string): void {
@@ -162,6 +182,6 @@ export class NpcHitSpellBlockService extends ClientListener {
   }
 
   private pending = new Map<number, PendingSpells>();
-  private blockedAt = new Map<number, number>();
+  private swings = new Map<number, Swing>();
   private loggedAt = new Map<string, number>();
 }

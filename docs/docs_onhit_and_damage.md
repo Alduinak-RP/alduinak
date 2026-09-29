@@ -93,9 +93,11 @@ are applied by the victim's own engine when the copy's swing connects: the perk 
 client relays, and the race attack spells the client does send are refused by `CanHitWithSpell` (the NPC neither
 holds nor learned them), so the server never sees them and its raised-shield rule cannot zero them. The client's
 `NpcHitSpellBlockService` therefore dispels a Contact-delivery poison hit spell from an NPC aggressor when the paired
-weapon hit was blocked (or the player holds a block facing the aggressor), and always when the aggressor is a copy
-this client does not host (its swing is a replay, the host reports the real hit), and puts the health back to the
-value before the effect when only the poison's own first tick was lost. `hit` events from NPC aggressors with a
+weapon hit (within 250 ms, in either order) was blocked; an unblocked paired hit keeps the poison, and only when no
+weapon hit pairs with the spell does the pose decide (the player held a block facing the aggressor as the spell
+landed). It always dispels when the aggressor is a copy this client does not host (its swing is a replay, the host
+reports the real hit), and puts the health back to the value before the effect when only the poison's own first
+tick was lost. `hit` events from NPC aggressors with a
 non-weapon source are logged once per source every 5 s (`HitService: npc ... hit the player with source ...`), which
 says whether the engine raises a hit event for a given hit spell at all. An unblocked hit from a hosted NPC still
 poisons the player locally as before, invisible to god mode and `onHitDamageAttempt`.
