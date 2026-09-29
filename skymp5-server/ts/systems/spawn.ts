@@ -75,6 +75,8 @@ const EQUIP_KIT_DELAY_MS = 1500;
 const EQUIP_KIT_SPAWN_DELAY_MS = 5000;
 // Worn weapons are unequipped this long after a respawn, once the client's get-up is over
 const RESPAWN_UNEQUIP_DELAY_MS = 3000;
+// A dressed player's accepted zero-worn report is logged at most this often per actor
+const ZERO_WORN_LOG_MS = 10000;
 
 // Character creator settings ("charCreator" server setting); disabled keeps the vanilla race menu
 interface CharCreatorSettings {
@@ -161,6 +163,9 @@ export class Spawn implements System {
   private respawnTimers = new Map<number, ReturnType<typeof setTimeout>>();
   // Users whose ignored charCreatorResult was already logged this connection
   private creatorResultIgnored = new Set<number>();
+  // actorId -> worn base ids of the last accepted equipment report and its time, for the zero-worn diagnostic
+  private lastWorn = new Map<number, { bases: number[]; at: number }>();
+  private zeroWornLoggedAt = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
@@ -221,6 +226,11 @@ export class Spawn implements System {
   }
 
   disconnect(userId: number, ctx: SystemContext): void {
+    try {
+      const actorId = ctx.svr.getUserActor(userId);
+      this.lastWorn.delete(actorId);
+      this.zeroWornLoggedAt.delete(actorId);
+    } catch { /* form vanished */ }
     this.pending.delete(userId);
     this.authCache.delete(userId);
     this.lastMenuRequestMs.delete(userId);
@@ -651,6 +661,7 @@ export class Spawn implements System {
         if (isAllowed && this.isKitPending(mp, actorId >>> 0) && this.wearsKit(equipment)) {
           mp.set(actorId >>> 0, "private.kitPending", false);
         }
+        if (isAllowed) this.watchZeroWorn(mp, actorId >>> 0, equipment);
       } catch (e) { this.log(`[spawn] kit check failed: ${e}`); }
       if (!previous) return true;
       try { return previous.call(mp, actorId, equipment, isAllowed) !== false; }
@@ -700,6 +711,37 @@ export class Spawn implements System {
       }
     }
     this.log(`[respawn] ${hex(actorId)} sheathes ${worn.length} weapon(s)`);
+  }
+
+  // Base ids worn in a client equipment report
+  private wornBases(equipment: unknown): number[] {
+    const entries = (equipment as { inv?: { entries?: unknown } })?.inv?.entries;
+    if (!Array.isArray(entries)) return [];
+    return entries
+      .filter((e: { worn?: unknown; wornLeft?: unknown }) => e?.worn === true || e?.wornLeft === true)
+      .map((e: { baseId?: unknown }) => toBaseId(e?.baseId) ?? 0)
+      .filter((b) => b > 0);
+  }
+
+  // An accepted report that undresses a dressed player is logged with what it dropped, so a real wipe can be told from undressing; once per actor per 10 s
+  private watchZeroWorn(mp: Mp, actorId: number, equipment: unknown): void {
+    const now = Date.now();
+    const bases = this.wornBases(equipment);
+    const prev = this.lastWorn.get(actorId);
+    this.lastWorn.set(actorId, { bases, at: now });
+    if (bases.length || !prev?.bases.length || now - (this.zeroWornLoggedAt.get(actorId) ?? 0) < ZERO_WORN_LOG_MS) return;
+    this.zeroWornLoggedAt.set(actorId, now);
+    let held = 0;
+    let anim: unknown = "";
+    try {
+      const inv: any[] = mp.get(actorId, "inventory")?.entries ?? [];
+      const owned = new Set(inv.map((e) => Number(e?.baseId) >>> 0));
+      held = prev.bases.filter((b) => owned.has(b)).length;
+      anim = mp.get(actorId, "lastAnimEvent");
+    } catch { /* form vanished */ }
+    const userId = userOf(mp, actorId);
+    const assignedAgo = userId >= 0 && this.lastAssignMs.has(userId) ? `${now - (this.lastAssignMs.get(userId) ?? now)} ms after assign` : "no assign time";
+    this.log(`[equip] ${hex(actorId)} zero-worn report accepted: dropped ${prev.bases.length} worn (${prev.bases.map(hex).join(",")}), ${held} still in the inventory, ${now - prev.at} ms after the last worn report, ${assignedAgo}, alive ${isAlive(mp, actorId)}, last anim '${anim ?? ""}'`);
   }
 
   private wearsKit(equipment: unknown): boolean {
