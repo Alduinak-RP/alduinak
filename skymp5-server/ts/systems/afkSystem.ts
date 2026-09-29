@@ -1,17 +1,17 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { kickWithReason } from "./kickUtil";
-import { userSlotCount, isCreationPending, chainMpHook, userOf, hex } from "./actorUtil";
+import { userSlotCount, isCreationPending, chainMpHook, userOf, hex, baseTypeOf } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
 // AFK autokick. Active = a move past MOVE_UNITS or a turn past TURN_DEGREES since the last counted sample (movement packets
 // never reach TS, so position polling stands in), a CustomPacket the client only sends on a key press or a menu click
-// (ACTIVE_PACKET_TYPES), a chat line, a craft, or an activation of a new target. Everything the client sends on its own
-// (seat claims, craft reports, weather, needs, time, admin, mastery, faction and debug requests, teleport reports, anim
-// results, knowledge) counts for nothing, and neither does the drift of a looped animation: while the client holds a seat
-// claim (crafting stations, chopping blocks, mining markers, chairs) the position is not compared at all.
+// (ACTIVE_PACKET_TYPES), a chat line, a craft, or an activation of anything but furniture that is no repeat. Everything
+// the client sends on its own (seat claims, craft reports, weather, needs, time, admin, mastery, faction and debug requests,
+// teleport reports, anim results, knowledge) counts for nothing, and neither does the drift of a looped animation: while the
+// client holds a seat claim (crafting stations, chopping blocks, mining markers, chairs) the position is not compared at all.
 // Kick leaves the body enabled so the normal logout grace parks it.
 //
 // server-settings.json keys:
@@ -26,7 +26,7 @@ const TURN_DEGREES = 10;
 // A seat claim whose holder stands this far from where they sat is over (FurnitureSeatSystem's own rule)
 const LEFT_SEAT_DISTANCE = 48;
 const DEBUG_AFTER_MS = 10 * 60000;
-// A second activation of the same target this soon is a client loop, not a player pressing E again
+// Activations of one target closer together than this are a client loop; every repeat restarts the window
 const ACTIVATE_REPEAT_MS = 2000;
 // The chat line arrives without a customPacketType (index.ts reads it as "undefined") and names itself in content.type
 const CHAT_PACKET_TYPE = "cef::chat:send";
@@ -130,8 +130,10 @@ export class AfkSystem implements System {
     const state = userId >= 0 ? this.states.get(userId) : undefined;
     if (!state) return;
     const now = Date.now();
-    if (state.lastActivate.target === targetId && now - state.lastActivate.at < ACTIVATE_REPEAT_MS) return;
+    const repeat = state.lastActivate.target === targetId && now - state.lastActivate.at < ACTIVATE_REPEAT_MS;
     state.lastActivate = { target: targetId, at: now };
+    // Furniture never counts: the crafts at a bench do, and a chopping block's Activate storm comes in bursts
+    if (repeat || baseTypeOf(this.mp, targetId) === "FURN") return;
     this.touch(userId, `activate ${hex(targetId)}`);
   }
 
@@ -172,7 +174,7 @@ export class AfkSystem implements System {
       if (!this.kickMs) continue;
       const idleMs = now - state.lastActivity;
       if (idleMs >= this.kickMs) {
-        this.log(`AfkSystem: kicking user ${userId} (actor ${hex(actorId)}) after ${Math.round(idleMs / 60000)} min idle, last activity ${state.lastChannel} at ${new Date(state.lastActivity).toISOString().slice(11, 19)}${state.seat ? `, seated at ${hex(state.seat.furniture)}` : ""}`);
+        this.log(`AfkSystem: kicking user ${userId} (actor ${hex(actorId)}) after ${Math.round(idleMs / 60000)} min idle, last activity ${state.lastChannel} at ${new Date(state.lastActivity).toTimeString().slice(0, 8)}${state.seat ? `, seated at ${hex(state.seat.furniture)}` : ""}`);
         try {
           kickWithReason(mp, userId, `You were disconnected after ${Math.round(this.kickMs / 60000)} minutes of inactivity.`);
         } catch (e) { this.log(`AfkSystem: kick failed: ${e}`); }
