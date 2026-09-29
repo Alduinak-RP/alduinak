@@ -166,24 +166,32 @@ fails it prints a direct download URL - save that zip as
     `.../<stamp>/client/Data/<key file>` (except the CEF runtime) and
     `build/dist/backup/server-settings-<stamp>.json`.
   - **Launcher**: **Save version** writes only `tauri.conf.json`. **Build
-    launcher** first copies the cleaned-master patches
-    (`build/client-files/cleaned-masters/*.vcdiff`, GOG and Steam, about
-    55 MB) into the gitignored
-    `skymp5-launcher-tauri/src-tauri/resources/cleaned-masters`, so the
-    installer carries them and a fresh install cleans its masters without
-    downloading them from this server (a patch missing from the install or
-    failing its checksum still downloads from `/files/cleaned-masters`); it
-    stops with an error when that folder has no patch. It then builds
-    `build/launcher/AlduinakLauncher.exe`; its button then
-    turns into **Update Version**, which writes the launcher version into
+    launcher** builds two installers of the same launcher. The website one (about 60 MB),
+    `build/launcher-website/AlduinakLauncher.exe`, carries the cleaned-master
+    patches (`build/client-files/cleaned-masters/*.vcdiff`, GOG and Steam,
+    about 55 MB, copied into the gitignored
+    `skymp5-launcher-tauri/src-tauri/resources/cleaned-masters` for the
+    build), so a fresh install from it cleans its masters without downloading
+    them from this server (a patch missing from the install or failing its
+    checksum still downloads from `/files/cleaned-masters`); the build stops
+    with an error when that folder has no patch. The nginx one (about 3.6 MB),
+    `build/launcher/AlduinakLauncher.exe` (served at
+    `https://api.alduinak.com/downloads/`), is re-bundled without the patches,
+    since every launcher update and download from this box would carry them:
+    it serves Electron launchers up to 2.3.0 and any `launcherUrl` or website
+    download link still pointing at this server, whose fresh installs keep
+    downloading the patches from here as before. The build log notes when
+    `launcherUrl` is still on this server. The button then turns into
+    **Update Version**, which writes the launcher version into
     `versions.json`. Press it only after the installer is uploaded where
     `launcherUrl` points. **Download URL** (Save) writes `launcherUrl` in
     `versions.json` (https only; default `https://alduinak.com/download`, the
-    website, which redirects to its CDN zip). Zip the exe and upload the zip to
-    the website before Update Version; the launcher's updater follows the
-    redirect and unpacks the zip, so launcher downloads never touch this
-    server. The one exception: Electron launchers up to 2.3.0 run
-    `/api/version`'s `downloadUrl` as an exe and cannot unpack a zip, so
+    website, which redirects to its CDN zip). Zip the website installer and
+    upload the zip to the website before Update Version; the launcher's
+    updater follows the redirect and unpacks the zip, so launcher downloads
+    never touch this server once `launcherUrl` and the website's download
+    link point at that zip. The one exception: Electron launchers up to 2.3.0
+    run `/api/version`'s `downloadUrl` as an exe and cannot unpack a zip, so
     that field stays on `legacyDownloadUrl` in `versions.json` (default
     the nginx `https://api.alduinak.com/downloads/AlduinakLauncher.exe`);
     keep that exe on nginx for them.
@@ -289,7 +297,7 @@ Each Build button then does the JS/packaging work:
 | Button | Does |
 |--------|------|
 | **Build server** | Runs the `build-ts` steps of `skymp5-server/package.json` (`tsc --noEmit`, then esbuild) with the bundle written to `build/dist/testserver/dist_back/skymp5-server.js`, rebuilds `gamemode.js`, then prunes `build/dist/testserver` to the deploy set. `scam_native.node` (from CI or CMake) and `gamemode.js` are preserved. |
-| **Build launcher** | Copies the cleaned-master patches from `build/client-files/cleaned-masters` into the launcher's resources, then builds the Tauri installer `AlduinakLauncher.exe` → `build/launcher` (launchers update from `launcherUrl` in `versions.json`). |
+| **Build launcher** | Builds the Tauri installer twice: with the cleaned-master patches from `build/client-files/cleaned-masters` → `build/launcher-website/AlduinakLauncher.exe` (zip it for the website, where `launcherUrl` in `versions.json` should point), then re-bundled without them → `build/launcher/AlduinakLauncher.exe`, which nginx serves. |
 | **Build client** | Rebuilds the front-end UI and `skymp5-client.js` into `build/dist/testclient` (`ALDUINAK_CLIENT_OUT` steers the client webpack output) and checks the key files from `KEY_FILES` in `scripts/client-package.js` are there. The `Data` folder is what goes to Nexus as the Alduinak Client Files mod; the launcher installs it from the manifest like any other mod. |
 | **Migrate server / settings / client** | Copy a tested build to `build/dist/server`, `build/dist/client` and the live manifest, see the Build tab notes above; `node tools/test-migrate.js` exercises the copy, merge, mirror and URL rewrite in temp folders, `node tools/test-modsync-diff.js` the version-aware manifest diff. |
 

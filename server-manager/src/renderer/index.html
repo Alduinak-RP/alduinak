@@ -133,7 +133,7 @@
               <button id="launcher-url-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Version Save sets the version of the next build only. Build launcher writes <code>build/launcher/AlduinakLauncher.exe</code>; zip it and upload the zip to the website so the Download URL serves it (https only; the launcher follows the website's redirect and unpacks the zip), then Update Version tells every launcher to update. Downloads then come from the website, not this server.</small>
+          <small>Version Save sets the version of the next build only. Build launcher writes <code>build/launcher-website/AlduinakLauncher.exe</code> (with the cleaned-master patches) and <code>build/launcher/AlduinakLauncher.exe</code> (without them, served by nginx for old launchers); zip the website one and upload the zip to the website so the Download URL serves it (https only; the launcher follows the website's redirect and unpacks the zip), then Update Version tells every launcher to update. Downloads then come from the website, not this server.</small>
           <button id="build-launcher" class="action go">Build launcher</button>
         </div>
       </div>

@@ -441,7 +441,8 @@ class Builder {
     return { ok: true, extensions: gm.extensions }
   }
 
-  // LAUNCHER: the Tauri installer, copied to build/launcher where nginx serves it to launchers
+  // LAUNCHER: the website installer carries the cleaned-master patches (build/launcher-website); the one nginx
+  // serves from build/launcher leaves them out, since every launcher update and download from this box would carry them
   async buildLauncher() {
     this.banner('Launcher')
     const pre = await this.ensurePrereqs()
@@ -449,39 +450,60 @@ class Builder {
     const dir = config.paths.launcher
     const dep = await this.ensureDeps(dir, 'launcher', 'npm')
     if (!dep.ok) return dep
-    // The installer bundles the cleaned-master patches the backend serves, so fresh installs skip that download
     const mastersSrc = path.join(config.repoRoot, 'build', 'client-files', 'cleaned-masters')
     const mastersDst = path.join(dir, 'src-tauri', 'resources', 'cleaned-masters')
     const isPatch = f => f.toLowerCase().endsWith('.vcdiff')
+    const clearPatches = () => { for (const f of fs.readdirSync(mastersDst).filter(isPatch)) fs.unlinkSync(path.join(mastersDst, f)) }
     const patches = fs.existsSync(mastersSrc) ? fs.readdirSync(mastersSrc).filter(isPatch) : []
-    if (!patches.length) return { ok: false, error: `no cleaned-master patches (*.vcdiff) in ${mastersSrc}, the launcher bundles them` }
+    if (!patches.length) return { ok: false, error: `no cleaned-master patches (*.vcdiff) in ${mastersSrc}, the website installer bundles them` }
     try {
       fs.mkdirSync(mastersDst, { recursive: true })
-      for (const f of fs.readdirSync(mastersDst).filter(f => isPatch(f) && !patches.includes(f))) fs.unlinkSync(path.join(mastersDst, f))
+      clearPatches()
       for (const f of patches) fs.copyFileSync(path.join(mastersSrc, f), path.join(mastersDst, f))
     } catch (err) {
       return { ok: false, error: `launcher: could not copy the cleaned-master patches (${err.message})` }
     }
-    this.line(`[launcher] bundling ${patches.length} cleaned-master patch(es) from ${mastersSrc}`)
+    this.line(`[launcher] bundling ${patches.length} cleaned-master patch(es) from ${mastersSrc} into the website installer`)
     const cargo = path.join(process.env.USERPROFILE || '', '.cargo', 'bin')
     // Windows keeps PATH under whatever casing it came with; a second key would be ambiguous
     const pathKey = Object.keys(process.env).find(k => k.toUpperCase() === 'PATH') || 'PATH'
-    const build = await this.run('npx', ['tauri', 'build'], dir, 'launcher: tauri build',
-      { [pathKey]: `${cargo};${process.env[pathKey] || ''}` })
+    const env = { [pathKey]: `${cargo};${process.env[pathKey] || ''}` }
+    const build = await this.run('npx', ['tauri', 'build'], dir, 'launcher: tauri build (website installer)', env)
     if (!build.ok) return { ok: false, error: 'tauri build failed - see log (is Rust installed?)' }
     const bundle = path.join(dir, 'src-tauri', 'target', 'release', 'bundle', 'nsis')
-    // Older installers stay in the bundle folder, so pick the one for this version
     const version = JSON.parse(fs.readFileSync(config.paths.launcherPkg, 'utf8')).version
-    const built = fs.readdirSync(bundle).find(f => f.toLowerCase().endsWith(`_${version}_x64-setup.exe`))
-    if (!built) return { ok: false, error: `no ${version} installer found in ${bundle}` }
-    fs.mkdirSync(config.paths.launcherOut, { recursive: true })
-    const exePath = path.join(config.paths.launcherOut, config.launcherArtifact)
-    // Copied aside then renamed, so a launcher never downloads a half-written installer
-    fs.copyFileSync(path.join(bundle, built), exePath + '.part')
-    fs.renameSync(exePath + '.part', exePath)
-    this.line(`[launcher] upload it, then press Update Version to publish ${version}`)
+    const place = outDir => {
+      // Older installers stay in the bundle folder, so pick the one for this version
+      const built = fs.readdirSync(bundle).find(f => f.toLowerCase().endsWith(`_${version}_x64-setup.exe`))
+      if (!built) return null
+      fs.mkdirSync(outDir, { recursive: true })
+      const exePath = path.join(outDir, config.launcherArtifact)
+      // Copied aside then renamed, so a launcher never downloads a half-written installer
+      fs.copyFileSync(path.join(bundle, built), exePath + '.part')
+      fs.renameSync(exePath + '.part', exePath)
+      return exePath
+    }
+    const webExe = place(path.join(config.repoRoot, 'build', 'launcher-website'))
+    if (!webExe) return { ok: false, error: `no ${version} installer found in ${bundle}` }
+    try { clearPatches() } catch (err) {
+      return { ok: false, error: `launcher: could not remove the cleaned-master patches for the nginx installer (${err.message})` }
+    }
+    // Re-bundles the same binary without the patches, no second compile
+    const plain = await this.run('npx', ['tauri', 'bundle'], dir, 'launcher: tauri bundle (nginx installer, no patches)', env)
+    if (!plain.ok) return { ok: false, error: 'tauri bundle failed - see log' }
+    const exePath = place(config.paths.launcherOut)
+    if (!exePath) return { ok: false, error: `no ${version} installer found in ${bundle}` }
+    this.line(`[launcher] website installer, with the patches → ${webExe}: zip it and upload the zip to the website`)
+    this.line(`[launcher] nginx installer, without them → ${exePath}: Electron launchers up to 2.3.0 and a launcherUrl on this server get it`)
+    try {
+      const v = require(path.join(config.paths.backend, 'sources', 'versions')).readVersions()
+      if (new URL(v.launcherUrl).host === new URL(v.legacyDownloadUrl).host) {
+        this.line(`[launcher] note: launcherUrl ${v.launcherUrl} is on this server, so launcher updates keep coming from the nginx installer and fresh installs keep downloading the patches from here; save the website zip's URL as Download URL to move both off this box`)
+      }
+    } catch { /* unreadable versions.json: nothing to compare */ }
+    this.line(`[launcher] upload the zip, then press Update Version to publish ${version}`)
     this.line(`
-✓ Launcher built → ${exePath}`)
+✓ Launcher built → ${webExe} (website) and ${exePath} (nginx)`)
     return { ok: true, out: config.paths.launcherOut }
   }
 
