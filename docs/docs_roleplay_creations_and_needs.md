@@ -263,7 +263,7 @@ with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate
 brandy, flin, sujamma, shein and matze, the Windhelm and Dawnstar meads and wines; not juice, water, milk or skooma, and
 not Rotgut or Battle-Brew Special unless `needsAlcoholItems` names them. The drinker sees "The drink warms you: your Cook
 work costs 25% less fatigue for 10 minutes." and the server logs `[needs] <id> drinks <editor id>: Cook crafts -25%
-until <hh:mm>`; `drinkUntil` rides `private.needs`, so the warmth survives a relog.
+until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so the warmth survives a relog.
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
   (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).

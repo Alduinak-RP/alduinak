@@ -507,7 +507,7 @@ export class NeedsSystem implements System {
     const edid = String(lookup(ctx.svr as Mp, baseId)?.record?.editorId || hex(baseId));
     const label = profession.charAt(0).toUpperCase() + profession.slice(1);
     const minutes = Math.round(this.alcoholMs / 60000);
-    this.log(`[needs] ${hex(actorId)} drinks ${edid}: ${label} crafts -${pct(this.alcoholDiscount)}% until ${new Date(entry.rec.drinkUntil).toISOString().slice(11, 16)}`);
+    this.log(`[needs] ${hex(actorId)} drinks ${edid}: ${label} crafts -${pct(this.alcoholDiscount)}% until ${new Date(entry.rec.drinkUntil).toTimeString().slice(0, 5)}`);
     // Inside the native eat hook: the packet goes out once it has returned
     setImmediate(() => this.notice(ctx, entry.userId, fresh
       ? `The drink warms you: your ${label} work costs ${pct(this.alcoholDiscount)}% less fatigue for ${minutes} minutes.`
