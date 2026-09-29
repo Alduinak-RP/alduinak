@@ -98,6 +98,7 @@ import { CellAnimationsService } from "./services/services/cellAnimationsService
 import { ActivatePickService } from "./services/services/activatePickService";
 import { FurnitureAnimationsService } from "./services/services/furnitureAnimationsService";
 import { LipSyncService } from "./services/services/lipSyncService";
+import { VanillaMenuService } from "./services/services/vanillaMenuService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -167,6 +168,7 @@ const main = () => {
       new BountyBoardService(sp, controller),
       new WritingService(sp, controller),
       new InteractionPromptService(sp, controller),
+      new VanillaMenuService(sp, controller),
       new RestraintService(sp, controller),
       new PairedIdleService(sp, controller),
       new JobService(sp, controller),

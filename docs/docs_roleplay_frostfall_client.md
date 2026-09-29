@@ -109,6 +109,26 @@ Permissions are enforced **server-side** — unauthorized buttons just reply
 
 ---
 
+## Vanilla menus
+
+`VanillaMenuService` trims the vanilla menus the browser menus replace. It
+works at runtime through SKSE's UI natives (`Ui.get*`, `Ui.set*`,
+`Ui.invoke*`) on the menus' own ActionScript, read from the SWFs that win in
+this load order: SkyUI's `quest_journal.swf` and `tweenmenu.swf` inside
+`SkyUI_SE.bsa` (plugin archives load over `Skyrim - Interface.bsa`; no loose
+copy exists in the MO2 mods). A path that is not there leaves the menu as it
+is and writes one `VanillaMenuService: ...` line to `skyrim-platform.log`.
+
+- **Journal (Esc and J)**: opens on the System page only. The service calls
+  `_root.QuestJournalFader.Menu_mc.ShiftTab` to leave the page the engine
+  restored (so that page's bottom bar listeners end) and then
+  `RestoreSavedSettings(true, true)`, the engine's own tabs-disabled mode, in
+  which `ShiftTab` and `onTabClick` do nothing and the saved tab reads as the
+  last one. `QuestsTab`, `StatsTab` and `TabButtonHelp` are hidden and
+  `SystemTab` moves to the middle slot. J therefore lands where Esc does.
+
+---
+
 ## Gamemode patch (leadership bridge)
 
 Stock SkyMP never turns the dashboard's `private.skympAccess` into the
