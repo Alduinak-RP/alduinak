@@ -4,7 +4,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { closeWidget, onWidgetsCleared, refreshFormMenu } from "./widgetMenuUtil";
-import { applyNeedsPenalties } from "../../sync/attributePenalty";
+import { applyNeedsPenalties, EXHAUSTION_PENALTY_AV, HUNGER_PENALTY_AV } from "../../sync/attributePenalty";
 import { logToPlatformLog } from "../../logging";
 
 // Globals the Survival DOBJ keys name: the HUD draws their 0-100 value as the red end of a meter
@@ -54,7 +54,19 @@ export class NeedsService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "needsRequest" });
     }));
     // A load resets the HUD's survival cache; a needsState that landed mid-load is re-applied
-    this.controller.on("loadGame", () => this.controller.once("update", () => this.applyPenalties()));
+    this.controller.on("loadGame", () => this.controller.once("update", () => {
+      // What the loaded save carries before the penalty goes on again: a nonzero Variable02/03 here would make the apply start from a false amount
+      logToPlatformLog(this, `before load re-apply: ${this.describeMaxima()}`);
+      this.applyPenalties();
+    }));
+  }
+
+  // The maxima the penalties act on and the applied amounts Survival keeps in Variable02/03
+  private describeMaxima(): string {
+    const player = this.sp.Game.getPlayer();
+    if (!player) return "no player";
+    const r = (v: number) => Math.round(v);
+    return `stamMax=${r(player.getActorValueMax("Stamina"))} magMax=${r(player.getActorValueMax("Magicka"))} v02=${r(player.getActorValue(HUNGER_PENALTY_AV))} v03=${r(player.getActorValue(EXHAUSTION_PENALTY_AV))}`;
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -95,7 +107,7 @@ export class NeedsService extends ClientListener {
     set(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN, needs.survivalMode ? 1 : 0);
     // Read back: "none" means the form lookup failed, so the HUD never saw the value
     const read = (id: number, plugin: string) => find(id, plugin)?.getValue() ?? "none";
-    const line = `survival hud toggle=${read(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN)} enabled=${read(SURVIVAL_ENABLED_GLOBAL, SURVIVAL_PLUGIN)} hunger=${read(HUNGER_PENALTY_GLOBAL, UPDATE_ESM)} exhaustion=${read(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM)}`;
+    const line = `survival hud toggle=${read(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN)} enabled=${read(SURVIVAL_ENABLED_GLOBAL, SURVIVAL_PLUGIN)} hunger=${read(HUNGER_PENALTY_GLOBAL, UPDATE_ESM)} exhaustion=${read(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM)} ${this.describeMaxima()}`;
     if (line === this.lastHudLog) return;
     this.lastHudLog = line;
     logToPlatformLog(this, line);
