@@ -112,11 +112,11 @@ const PROFESSIONS: Profession[] = [
   {
     id: "blacksmith", label: "Blacksmith", title: "The Forge-Bound", type: "Crafter", skills: ["Smithing"],
     blurbs: [
-      "Anyone may smelt iron and forge plain iron tools.",
-      "Iron and corundum at the forge, and the smelter.",
-      "Steel and advanced armour.",
-      "Dwarven, Orcish and Elven work.",
-      "Ebony and glass, and arcane smithing.",
+      "Anyone may make nails, fittings, locks, hinges and the war horns.",
+      "Iron and corundum at the forge, the tools, and iron, corundum and steel ingots at the smelter.",
+      "Steel and advanced armour, and gold and silver ingots.",
+      "Dwarven, Orcish and Elven work, and orichalcum and moonstone ingots.",
+      "Ebony and glass, arcane smithing, and malachite, quicksilver and ebony ingots.",
       "Daedric arms and dragon armour.",
     ],
   },
@@ -167,11 +167,11 @@ const PROFESSIONS: Profession[] = [
   {
     id: "miner", label: "Miner", title: "The Deep Delver", type: "Gatherer", skills: ["TwoHanded"],
     blurbs: [
-      "Anyone with a pickaxe may mine iron.",
-      "Corundum veins.",
-      "Gold and silver.",
-      "Orichalcum and moonstone.",
-      "Malachite, quicksilver, ebony and stalhrim.",
+      "Anyone with a pickaxe may mine iron and sea salt.",
+      "Corundum veins, and iron, corundum and steel ingots at the smelter.",
+      "Gold and silver, veins and ingots.",
+      "Orichalcum and moonstone, veins and ingots.",
+      "Malachite, quicksilver, ebony and stalhrim, veins and ingots.",
       "Amber and madness ore.",
     ],
   },
