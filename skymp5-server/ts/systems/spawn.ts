@@ -267,10 +267,7 @@ export class Spawn implements System {
       try {
         this.logGold(ctx.svr as unknown as Mp, actorId, "despawned");
         ctx.svr.setEnabled(actorId, false);
-        const userId = ctx.svr.getUserByActor(actorId);
-        if (userId >= 0 && userId < 0xffff && ctx.svr.getUserActor(userId) === actorId) {
-          ctx.svr.setUserActor(userId, 0);
-        }
+        this.detachUser(ctx, actorId);
         this.log("Logout grace expired, actor", actorId.toString(16), "despawned");
       } catch { /* form vanished */ }
       // Disable keeps the stored pose; cleared here or the CreateActor of the next Enable still carries the sit
@@ -308,10 +305,19 @@ export class Spawn implements System {
     }
   }
 
-  // A body kept through the grace still occupies the crafting station it was using when the connection dropped, and only Disable runs the C++ sinks that free it; a body already disabled is left alone
+  // A body kept through the grace still holds its crafting station and only Disable runs the C++ sinks that free it; a still-mapped owner is detached first, or Enable and setUserActor would each stream it a CreateActor(isMe)
   private releaseSeat(ctx: SystemContext, actorId: number): void {
-    try { ctx.svr.setEnabled(actorId, false); }
-    catch (e) { this.log(`[spawn] releasing the seat of ${hex(actorId)} failed: ${e}`); }
+    try {
+      this.detachUser(ctx, actorId);
+      ctx.svr.setEnabled(actorId, false);
+    } catch (e) { this.log(`[spawn] releasing the seat of ${hex(actorId)} failed: ${e}`); }
+  }
+
+  private detachUser(ctx: SystemContext, actorId: number): void {
+    const userId = ctx.svr.getUserByActor(actorId);
+    if (userId >= 0 && userId < 0xffff && ctx.svr.getUserActor(userId) === actorId) {
+      ctx.svr.setUserActor(userId, 0);
+    }
   }
 
   private cancelPark(actorId: number): void {
