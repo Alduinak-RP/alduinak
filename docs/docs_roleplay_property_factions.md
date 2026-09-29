@@ -146,7 +146,9 @@ One tick after a chest closes (so the closing frame's events have run),
 `Trace in RemoteServer: container residual [...]` lists any stack still out of
 step with the last known inventory, which means the engine never reported that
 move to JS. The server logs every put that arrives
-as `[put] <actor> puts <base> x<n> into <target>`.
+as `[put] <actor> puts <base> x<n> into <target>` and every take it lets through
+as `[take] <actor> takes <base> x<n> from <source>` (2026-09, B14: container
+withdrawals were the one item movement the log did not show).
 
 Before sending, each put and drop passes the `SweetCantDrop` keyword check.
 No plugin of this load order defines that keyword, and the engine's

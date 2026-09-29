@@ -159,6 +159,7 @@ export class SearchSystem implements System {
       if (allowed && taken) {
         this.recordTake(ctx, sourceId >>> 0, actorId >>> 0, taken, baseId >>> 0, count);
       }
+      if (allowed) this.log(`[take] ${(actorId >>> 0).toString(16)} takes ${(baseId >>> 0).toString(16)} x${count} from ${(sourceId >>> 0).toString(16)}`);
       return allowed;
     };
   }

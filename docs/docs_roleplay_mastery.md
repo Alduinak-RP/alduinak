@@ -401,7 +401,11 @@ container loot are off:
   minutes after a harvest (`reloot.FLOR` and `reloot.TREE`); a picked nirnroot
   or a caught bee or firefly is gone for everyone for `gatheringPickMinutes`,
   30 as well.
-- Salt Pile: the salt every cooked meat needs as well. The Sea Salt Deposits
+- Salt Pile: the salt every cooked meat needs as well (a report of salt
+  "disappearing" is checked against `GoldWatchSystem`'s `[inv] ... salt A -> B, N
+  unexplained` lines, which name the interval's crafts, eats, puts, drops, takes
+  and trade packets, and against the `[put]` and `[take]` lines; see
+  `goldAlertThreshold` in the settings reference). The Sea Salt Deposits
   on the northern coasts (`Saltdeposits.esp`, mined like any vein, see Mining
   below) give Sea Salt Rock, weight 20, and the smelter's `12RecipeSeaSaltPile`
   refines one rock into 50 Salt Pile, open to everyone; `AlduinakAdditions.esp`
