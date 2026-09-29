@@ -6,7 +6,7 @@ import './styles.scss';
 interface HousingEvents {
   claim: string;
   abandon: string;
-  revoke: string;
+  breakLock: string;
   lock: string;
   unlock: string;
   transfer: string;
@@ -40,7 +40,7 @@ export interface HousingData {
 const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
 
 // Actions that ask before they go to the server
-type Pending = 'voidKeys' | 'giveUp';
+type Pending = 'voidKeys' | 'giveUp' | 'breakLock';
 
 const send = (key: string, ...args: unknown[]): void => {
   try {
@@ -74,6 +74,12 @@ const Housing = ({ data }: { data: HousingData }) => {
       event: ev.revokeKeys,
     },
     giveUp: { title: `Give up ${displayName}?`, body: 'Anyone may claim it afterwards.', label: 'Give up', event: ev.abandon },
+    breakLock: {
+      title: `Break the lock on ${displayName}?`,
+      body: 'The owner and every key holder lose it, every key stops working and anyone may claim it.',
+      label: 'Break lock',
+      event: ev.breakLock,
+    },
   };
   const dialog = pending ? confirms[pending] : null;
 
@@ -151,8 +157,8 @@ const Housing = ({ data }: { data: HousingData }) => {
           ) : null}
 
           {isManager && data.owned ? (
-            <button className="housing__button housing__button--danger" onClick={() => send(ev.revoke)}>
-              Revoke ownership
+            <button className="housing__button housing__button--danger" onClick={() => setPending('breakLock')}>
+              Break lock
             </button>
           ) : null}
 

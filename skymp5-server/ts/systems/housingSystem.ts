@@ -25,7 +25,7 @@ type Mp = any;
 //     { customPacketType: "propertyInfoRequest", target: <refrId> }
 //     { customPacketType: "propertyRequest", action, target, recipient?, name? }
 //       action: claim | abandon | lock | unlock | rename | transfer
-//             | revoke | createkey | revokekeys | grantcontainer
+//             | breaklock (revoke from older clients) | createkey | revokekeys | grantcontainer
 //   Server -> Client:
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked,
 //       canLock, hasKeys, canGrantContainers, ownerName, pets, hold }
@@ -251,7 +251,8 @@ export class HousingSystem implements System {
     switch (action) {
       case "claim": this.doClaim(ctx, userId, actorId, primary, rec); break;
       case "abandon": this.doAbandon(ctx, userId, actorId, primary, rec, isOwner, isManager); break;
-      case "revoke": this.doRevoke(ctx, userId, actorId, primary, rec, isManager); break;
+      case "breaklock":
+      case "revoke": this.doBreakLock(ctx, userId, actorId, primary, rec, isManager); break;
       case "lock": this.doLock(ctx, userId, actorId, primary, rec, true); break;
       case "unlock": this.doLock(ctx, userId, actorId, primary, rec, false); break;
       case "rename": this.doRename(ctx, userId, primary, rec, isOwner, isManager, content["name"]); break;
@@ -314,21 +315,26 @@ export class HousingSystem implements System {
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doRevoke(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isManager: boolean): void {
+  // The owner and every key holder lose it, the keys are voided and the door is unlocked and claimable again
+  private doBreakLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isManager: boolean): void {
     if (!isManager) {
-      this.notice(ctx, userId, "You cannot revoke this.");
+      this.refuse(ctx, userId, actorId, "breaklock", primary, "Only an admin or this hold's Jarl or Steward may break this lock.");
       return;
     }
     if (rec.owner === 0) {
       this.notice(ctx, userId, "Nobody owns this.");
       return;
     }
-    const formerName = rec.ownerName || "the owner";
+    const formerOwner = rec.owner;
+    const formerName = rec.name;
+    const claim = this.claimLabel(primary, rec);
     if (!this.release(ctx, primary, rec)) {
       this.notice(ctx, userId, CHANGE_FAILED);
       return;
     }
-    this.notice(ctx, userId, `Taken back from ${formerName}.`);
+    this.log(`[housing] lock broken by ${this.who(ctx, actorId)} on ${claim} (${this.holdOf(ctx, primary)?.name ?? "no hold"})`);
+    this.notice(ctx, userId, "The lock is broken. Anyone may claim it now.");
+    this.noticeProfile(ctx, formerOwner, `The lock on ${formerName || "one of your properties"} was broken. It is no longer yours.`);
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -959,6 +965,14 @@ export class HousingSystem implements System {
 
   private notice(ctx: SystemContext, userId: number, text: string): void {
     this.send(ctx, userId, { customPacketType: "propertyNotice", text });
+  }
+
+  // Every online character of the profile
+  private noticeProfile(ctx: SystemContext, profileId: number, text: string): void {
+    for (const userId of this.onlineUsers(ctx)) {
+      const actorId = this.actorOf(ctx, userId);
+      if (actorId && this.profileOf(ctx, actorId) === profileId) this.notice(ctx, userId, text);
+    }
   }
 
   // Logged as well as told, so a failed test shows where the request stopped

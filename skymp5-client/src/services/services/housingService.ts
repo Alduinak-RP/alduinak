@@ -25,7 +25,7 @@ const NOT_PROPERTY_TEXT = "That cannot be claimed.";
 const events = {
   claim: 'housing:claim',
   abandon: 'housing:abandon',
-  revoke: 'housing:revoke',
+  breakLock: 'housing:breaklock',
   lock: 'housing:lock',
   unlock: 'housing:unlock',
   transfer: 'housing:transfer',
@@ -119,7 +119,7 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  * means not property); 'claimable' adds a claim button; 'owner' offers
  * rename/keys/lock/transfer/abandon; 'manager' (an admin, or a Jarl or Steward
  * of the hold the property lies in, shown from `hold`) offers
- * grant/revoke/rename, and lock only when canLock is set; 'keyholder' offers
+ * grant/break lock/rename, and lock only when canLock is set; 'keyholder' offers
  * lock/unlock. Transfer and grant-container are two-step: pick the action,
  * then look at the recipient and press the interact key again. Cut a key asks
  * for the key's name in a prompt over the menu and sends createkey with it. A
@@ -276,7 +276,7 @@ export class HousingService extends ClientListener {
       // propertyMenu on success so the new state shows in place.
       case events.claim:
       case events.abandon:
-      case events.revoke:
+      case events.breakLock:
       case events.lock:
       case events.unlock:
       case events.revokeKeys: {
