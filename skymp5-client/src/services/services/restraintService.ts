@@ -41,6 +41,11 @@ const PAIR_END_GRACE_MS = 1500;
 const POSE_SWAP_DELAY_S = 0.1;
 // A server move reattaches the player's 3D a few frames after the packet; the held pose is sent again once that settled
 const TELEPORT_SETTLE_S = 0.5;
+// An action lock's pose should be playing this long after it was sent; one that is not is logged at most once a minute
+const LOCK_POSE_CHECK_S = 1.5;
+const LOCK_POSE_LOG_MS = 60000;
+// Master graph variable set while an idle plays
+const IDLE_PLAYING_VAR = "bIdlePlaying";
 
 // Carried body is held ahead of and above the carrier, turned 45 degrees from their facing; the server may override these
 const CARRY_FORWARD = 16;
@@ -104,7 +109,7 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   { "customPacketType": "executionState", "pose": "bleedOutStart" }
  *
  *   // Timed work such as harvesting (actorUtil.sendActionLock); a new lock replaces the old one:
- *   { "customPacketType": "actionLock", "anim": "IdleKneeling", "seconds": 5, "exitAnim": "IdleForceDefaultState" }
+ *   { "customPacketType": "actionLock", "anim": "IdleKneelingEnter", "seconds": 5, "exitAnim": "IdleForceDefaultState" }
  *
  *   // A stagger the server decided, such as a block without the stamina for it (actorUtil.sendStagger):
  *   { "customPacketType": "stagger", "magnitude": 0.5 }
@@ -133,7 +138,8 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *     and holds the player still without fighting, sneaking or activation for
  *     the seconds, then plays exitAnim. Going down or dying ends it early,
  *     every other pose wins over it, and a mounted or swimming player or one
- *     another pose already holds ignores it.
+ *     another pose already holds ignores it. A pose with no idle playing
+ *     1.5 s after it was sent is logged (once a minute) to the Platform log.
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
@@ -158,7 +164,9 @@ export class RestraintService extends ClientListener {
           ctx.animEventName = "";
         }
       },
-      leave: () => { },
+      leave: (ctx) => {
+        if (this.lock && ctx.animEventName === this.lock.anim) this.lockPoseAccepted = ctx.animationSucceeded;
+      },
     }, 0x14, 0x14);
 
     // A game reload wipes the pose; restore it
@@ -573,6 +581,7 @@ export class RestraintService extends ClientListener {
   private setPose(player: Actor, desired: string): void {
     const previous = this.appliedPose;
     const previousExit = this.appliedExit;
+    if (desired === this.lock?.anim) this.checkLockPose(desired);
     this.appliedPose = desired;
     this.appliedExit = desired === this.lock?.anim ? this.lock.exitAnim : exitOf(desired);
     const token = ++this.poseToken;
@@ -593,6 +602,21 @@ export class RestraintService extends ClientListener {
         if (p && token === this.poseToken) {
           this.sp.Debug.sendAnimationEvent(p, desired);
         }
+      });
+    });
+  }
+
+  // Diagnostic for a work pose that shows nothing: whether the graph took the event and an idle still plays
+  private checkLockPose(anim: string): void {
+    this.lockPoseAccepted = false;
+    this.sp.Utility.wait(LOCK_POSE_CHECK_S).then(() => {
+      this.controller.once("update", () => {
+        const player = this.sp.Game.getPlayer();
+        const now = Date.now();
+        if (!player || this.lock?.anim !== anim || now - this.lastLockPoseLogMs < LOCK_POSE_LOG_MS) return;
+        if (player.getAnimationVariableBool(IDLE_PLAYING_VAR)) return;
+        this.lastLockPoseLogMs = now;
+        logToPlatformLog(this, `action lock pose ${anim}: graph accepted ${this.lockPoseAccepted}, no idle playing ${LOCK_POSE_CHECK_S} s later, weapon drawn ${player.isWeaponDrawn()}`);
       });
     });
   }
@@ -704,6 +728,8 @@ export class RestraintService extends ClientListener {
   private executionPose = "";
   private pairedUntil = 0;
   private lock: ActionLock | null = null;
+  private lockPoseAccepted = false;
+  private lastLockPoseLogMs = 0;
   private stillControlsApplied = false;
   // The bleedout's camera and menu lock, which a disable call with false never lifts
   private downedControlsApplied = false;

@@ -549,9 +549,14 @@ Pelts never drop as loot: the plugin strips them from creature inventories.
 A hunter (any rank) holding a Hunting Knife (`0001F25A`) skins a dead animal
 with the interact key: spawned animals through `SearchSystem.bodyAction` (the
 search request the client already sends for a body), plugin-placed ones through
-their native activation. The skinner crouches over it for 5 seconds (the
-`IdleKneeling` graph event, which is what the `IdleSearchBody` idle plays; the
-idle's editor id is no behaviour event and plays nothing), then gets the pelt the
+their native activation. The skinner kneels over it for 5 seconds with
+`IdleKneelingEnter`, the event the flora harvest and the emote wheel's Kneel
+send, which plays the same kneel clips (`IdleKneelEnter.hkx`, `IdleKneelIdle.hkx`)
+as the `IdleSearchBody` idle. That idle's own event, `IdleKneeling`, goes to a
+state that leaves on `IdleStop` and showed nothing on a player; its editor id is
+no behaviour event at all. A work pose that has no idle playing 1.5 s after it
+was sent is logged to the client's Platform log (`action lock pose ...`), once a
+minute. Then the skinner gets the pelt the
 body's editor ids map to (`DEFAULT_PELT_MAP`, `huntingPeltMap` override): the
 body's own NPC_ editor id is tried first, then the race that supplies its traits
 (a Use Traits template's placeholder race is skipped), then its template NPC_s, and
@@ -565,7 +570,8 @@ rank and credits hunter hours. The body is marked `private.skinned` and gives
 one pelt; the next interaction searches it as usual. A skinner who walks off,
 dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
 the knife is told "A hunting knife would take its pelt." and the body opens.
-Non-hunters just search. No client change is needed.
+Non-hunters just search. The kneel needs only the server build; the Platform
+log line comes with the next client build.
 
 ---
 
