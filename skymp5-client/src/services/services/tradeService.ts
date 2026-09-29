@@ -145,7 +145,7 @@ export class TradeService extends ClientListener {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
-    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.cancelOnHide(); });
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.cancelTrade("hide"); });
     // A kick or a lost server ends the trade server-side; the widgets must not cover the Disconnected dialog or the reconnect forms
     this.controller.emitter.on("connectionDisconnect", () => this.closeOnDisconnect());
   }
@@ -156,16 +156,17 @@ export class TradeService extends ClientListener {
     this.closeAll();
   }
 
-  // Hiding ends the trade on both sides like the cancel button, else the partner's next move reopens it
-  private cancelOnHide(): void {
+  // Ends the trade on both sides like the cancel button, else the partner's next move reopens it
+  private cancelTrade(reason: string, keepFocus = false): void {
     if (!this.windowOpen && !this.invitePending) return;
+    logTrace(this, `Trade ui cancelled on`, reason, `window`, this.windowOpen, `invite`, this.invitePending);
     if (this.windowOpen) {
       sendCustomPacket(this.controller, { customPacketType: "tradeCancel" });
     }
     if (this.invitePending) {
       sendCustomPacket(this.controller, { customPacketType: "tradeRespond", accept: false });
     }
-    this.closeAll();
+    this.closeAll(keepFocus);
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -177,6 +178,10 @@ export class TradeService extends ClientListener {
     }
 
     switch (content["customPacketType"]) {
+      // The character select clears only forms and takes the focus, so the invite and the window would stay over it
+      case "characterSelectMenu":
+        this.cancelTrade("character select", true);
+        break;
       case "tradeInvite":
         inviteFrom = typeof content["fromName"] === "string" ? content["fromName"] as string : "Someone";
         logTrace(this, `Trade invite from`, inviteFrom);
@@ -555,7 +560,7 @@ export class TradeService extends ClientListener {
     closeWidget(this.sp, INVITE_WIDGET_ID);
   }
 
-  private closeAll(): void {
+  private closeAll(keepFocus = false): void {
     this.state = null;
     this.lockPending = false;
     this.closeWidget();
@@ -563,7 +568,7 @@ export class TradeService extends ClientListener {
     // Only surrender focus we actually took (the invite never grabs it).
     if (this.windowOpen) {
       this.windowOpen = false;
-      this.sp.browser.setFocused(false);
+      if (!keepFocus) this.sp.browser.setFocused(false);
     }
   }
 
