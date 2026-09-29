@@ -124,6 +124,15 @@ function parseCharCreatorSettings(raw: unknown): CharCreatorSettings {
 //   Client -> Server:
 //     { customPacketType: "characterSelectResult", action: "play"|"create"|"delete", slot, start?: locationId }
 //     { customPacketType: "characterSelectMenuRequest", loadError?: string, viaPauseMenu?: boolean }
+// The verified login identity; username is the account name, kept private on the character
+interface Auth {
+  profileId: number;
+  roles: string[];
+  discordId?: string;
+  access?: unknown;
+  username?: string;
+}
+
 export class Spawn implements System {
   systemName = "Spawn";
   constructor(private log: Log) { }
@@ -138,9 +147,9 @@ export class Spawn implements System {
   private modHair: ModHairCatalog | null = null;
   private settingsObject!: Settings;
   // userId -> auth context awaiting a character selection
-  private pending = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
+  private pending = new Map<number, Auth>();
   // userId -> last resolved auth context, kept for the whole connection so the menu can reopen after a mid-session quit to main menu
-  private authCache = new Map<number, { profileId: number; roles: string[]; discordId?: string; access?: unknown }>();
+  private authCache = new Map<number, Auth>();
   // userId -> timestamps backing the onMenuRequest anti-abuse guards
   private lastMenuRequestMs = new Map<number, number>();
   private lastAssignMs = new Map<number, number>();
@@ -176,15 +185,15 @@ export class Spawn implements System {
     this.installCreationDamageHook(ctx);
     this.installRespawnHook(ctx);
 
-    const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown) => {
+    const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, access?: unknown, username?: string) => {
       if (this.characterSelect) {
-        const auth = { profileId: userProfileId, roles: discordRoleIds, discordId, access };
+        const auth: Auth = { profileId: userProfileId, roles: discordRoleIds, discordId, access, username };
         this.authCache.set(userId, auth);
         this.pending.set(userId, auth);
         this.sendCharacterList(ctx, userId, userProfileId, "");
         return;
       }
-      this.legacySpawn(ctx, userId, userProfileId, discordRoleIds, discordId, access);
+      this.legacySpawn(ctx, userId, userProfileId, discordRoleIds, discordId, access, username);
     };
     ctx.gm.on("spawnAllowed", listenerFn);
     (ctx.svr as any)._onSpawnAllowed = listenerFn;
@@ -353,8 +362,10 @@ export class Spawn implements System {
 
   // Mirror the resolved auth context onto the actor; indexed.discordId is only rewritten when it actually changes, keeping the private index stable
   private applyAuthProps(mp: Mp, actorId: number, profileId: number,
-    roles: string[], discordId?: string, access?: unknown): void {
+    roles: string[], discordId?: string, access?: unknown, username?: string): void {
     mp.set(actorId, "private.discordRoles", roles);
+    // Read by AdminSystem's account names mode; private, so it never streams to neighbours
+    if (username) mp.set(actorId, "private.accountName", username);
     if (discordId !== undefined &&
       mp.get(actorId, "private.indexed.discordId") !== discordId) {
       mp.set(actorId, "private.indexed.discordId", discordId);
@@ -557,7 +568,7 @@ export class Spawn implements System {
     }
 
     this.applyAuthProps(mp, actorId, auth.profileId, auth.roles, auth.discordId,
-      filterAccessForSlot(auth.access, slot));
+      filterAccessForSlot(auth.access, slot), auth.username);
 
     ctx.gm.emit("userAssignActor", userId, actorId);
     // Gamemode store re-sync: re-runs its connect chain when a switch assigns a new body
@@ -856,7 +867,7 @@ export class Spawn implements System {
   // Legacy single-character path (flag off): original behaviour kept
 
   private legacySpawn(ctx: SystemContext, userId: number, userProfileId: number,
-    discordRoleIds: string[], discordId?: string, access?: unknown): void {
+    discordRoleIds: string[], discordId?: string, access?: unknown, username?: string): void {
     const mp = ctx.svr as unknown as Mp;
     // Perma-dead characters are locked here too (see onSelectCharacter): skip them and start a fresh character instead
     let actorId = ctx.svr.getActorsByProfileId(userProfileId)
@@ -889,7 +900,7 @@ export class Spawn implements System {
     }
     this.scheduleKit(ctx, actorId, EQUIP_KIT_SPAWN_DELAY_MS);
 
-    this.applyAuthProps(mp, actorId, userProfileId, discordRoleIds, discordId, access);
+    this.applyAuthProps(mp, actorId, userProfileId, discordRoleIds, discordId, access, username);
 
     ctx.gm.emit("userAssignActor", userId, actorId);
     // Gamemode store re-sync: re-runs its connect chain when a switch assigns a new body

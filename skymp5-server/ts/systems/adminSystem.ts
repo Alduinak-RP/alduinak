@@ -60,6 +60,7 @@ type Mp = any;
 //                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | oblivion | other; the front files a missing or unknown group under Other
 //                     { customPacketType: "attributeBonus", health, magicka, stamina }  the character's permanent max attribute change, re-sent on every actor assign
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
+//                     { customPacketType: "adminNames", byActor: { "<hex actorId>": { n: account name, t: senior | developer | gm | null } } }  when the names mode turns on and, while an admin holds it, on every actor assign and disconnect; admins only
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
 //                     { customPacketType: "adminPos", cellOrWorldDesc, pos }  after npcZonePos; fills the Add NPC form or one end of the job form
 //                     { customPacketType: "adminJobs", jobs: [JobSummary] }  after jobList and after every job mutation
@@ -88,7 +89,11 @@ const ADMIN_MODES: Array<{ id: string; label: string }> = [
   { id: "smite", label: "Smite" },
   { id: "healhit", label: "Heal on Hit" },
   { id: "speed", label: "Speed" }, // the client raises SpeedMult
+  { id: "names", label: "Account names" }, // the client draws private.accountName on every floating tag
 ];
+
+// The mode whose roster travels in the admin-only adminNames packet, never in a neighbour-visible property
+const NAMES_MODE = "names";
 
 // Modes mirrored onto the neighbors-visible ff_adminModes actor property (registered in gamemode.js)
 const MIRRORED_MODES = ["god", "smite", "healhit", "invis", "ghost"];
@@ -219,6 +224,7 @@ export class AdminSystem implements System {
         if (!actorId) return;
         mp.set(actorId, "consoleCommandsAllowed", false);
         this.resyncModes(mp, userId, actorId, this.isAdminActor(mp, actorId));
+        this.broadcastNames(mp);
         // A spawn re-reads the base attributes from the plugins, so the stored change is applied again
         this.sendAttrBonus(mp, userId, actorId);
       } catch (e) {
@@ -465,9 +471,33 @@ export class AdminSystem implements System {
   }
 
   // Slots are reused, so the next player in this slot gets the refusal diagnostic again
-  disconnect(userId: number): void {
+  disconnect(userId: number, ctx: SystemContext): void {
     this.menuRefusalLogged.delete(userId);
     this.spawnAt.delete(userId);
+    this.broadcastNames(ctx.svr as Mp, userId);
+  }
+
+  // The account name roster of everyone online, to one admin; the leaving user is left out of a disconnect broadcast
+  private sendNames(mp: Mp, userId: number, except = -1): void {
+    const byActor: Record<string, { n: string; t: AdminTier | null }> = {};
+    for (const p of this.onlinePlayers(mp)) {
+      if (p.userId === except) continue;
+      let n = "";
+      try { n = String(mp.get(p.actorId, "private.accountName") ?? ""); } catch { }
+      byActor[p.actorId.toString(16)] = { n: n || `profile ${p.profileId}`, t: this.tierOf(mp, p.actorId) };
+    }
+    try {
+      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminNames", byActor }));
+    } catch { }
+  }
+
+  // Every admin holding the names mode gets the roster again
+  private broadcastNames(mp: Mp, except = -1): void {
+    if (!Array.from(this.modesByProfile.values()).some((state) => state[NAMES_MODE])) return;
+    for (const p of this.onlinePlayers(mp)) {
+      if (p.userId === except || !this.modesByProfile.get(p.profileId)?.[NAMES_MODE] || !this.isAdminActor(mp, p.actorId)) continue;
+      this.sendNames(mp, p.userId, except);
+    }
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -1011,6 +1041,7 @@ export class AdminSystem implements System {
     const on = !!state[mode];
     if (MIRRORED_MODES.includes(mode)) this.writeModeMirror(mp, actorId, state);
     if (typeof reported !== "boolean") this.sendMode(mp, userId, mode, on);
+    if (mode === NAMES_MODE && on) this.sendNames(mp, userId);
     // Only freecam falling off on its own is reported by the client, and that repeats a toggle already alerted
     const freecamReport = typeof reported === "boolean" && mode === "freecam" && !on;
     this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}${typeof reported === "boolean" ? " (client report)" : ""}`, !freecamReport);

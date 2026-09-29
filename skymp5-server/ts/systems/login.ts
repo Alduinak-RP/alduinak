@@ -16,6 +16,8 @@ type Mp = any; // TODO
 interface UserProfile {
   id: number;
   discordId: string | null;
+  // The Discord account name the backend session carries; stored on the character as private.accountName
+  username?: string;
 }
 
 namespace DiscordErrors {
@@ -265,7 +267,7 @@ export class Login implements System {
           gameFactions: (profile as any).gameFactions || [],
           factions: (profile as any).factions || [],
         };
-        this.emit(ctx, LOGIN_VERIFIED_EVENT, userId, profile.id, rolesToAssign, profile.discordId, skympAccess);
+        this.emit(ctx, LOGIN_VERIFIED_EVENT, userId, profile.id, rolesToAssign, profile.discordId, skympAccess, typeof profile.username === "string" ? profile.username : "");
         loginsCounter.inc();
         this.log("Logged as " + profile.id);
       })()
