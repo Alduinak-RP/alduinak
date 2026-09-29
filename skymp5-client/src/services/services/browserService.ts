@@ -47,9 +47,12 @@ export class BrowserService extends ClientListener {
 
   private onQueryKeyCodeBindings(e: QueryKeyCodeBindings) {
     // Same gate as the menu hotkeys: never fires from typed chat text or the console
-    if (e.isDown([this.hideUiKey]) && !this.sp.browser.isFocused() && !isConsoleOpen(this.sp)) {
+    // isDown means held and the query fires on every change of the pressed-key count, so only the press edge toggles: a key pressed while the hide key is still held leaves the interface alone
+    const hideKeyDown = e.isDown([this.hideUiKey]);
+    if (hideKeyDown && !this.hideKeyWasDown && !this.sp.browser.isFocused() && !isConsoleOpen(this.sp)) {
       this.setUiHidden(!this.uiHidden);
     }
+    this.hideKeyWasDown = hideKeyDown;
     // A hidden page must not take keyboard focus away from the game
     const canFocus = !this.uiHidden && this.badMenusOpen.size === 0;
     if (this.keyCaptureHeld && !this.isCaptureKeyDown((key) => e.isDown([key]))) this.keyCaptureHeld = false;
@@ -172,6 +175,7 @@ export class BrowserService extends ClientListener {
 
   private badMenusOpen = new Set<string>();
   private uiHidden = false;
+  private hideKeyWasDown = false;
   // A chat Controls row waits for a press, so Esc and the free-cursor key belong to the page
   private keyCapture = false;
   // The Esc or free-cursor press that ended a capture stays inert until released
@@ -204,6 +208,7 @@ export class BrowserService extends ClientListener {
 
   setHideUiKey(override: number): void {
     this.hideUiKey = override || this.launcherHideUiKeyCode;
+    this.hideKeyWasDown = false;
   }
 
   setFreeCursorKey(override: number): void {

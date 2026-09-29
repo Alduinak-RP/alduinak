@@ -1,12 +1,12 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket } from "./customPacketUtil";
-import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode, domKeyCode, readClientSettingNumber, readClientSettingString } from "./widgetMenuUtil";
+import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode, domKeyCode, readClientSettingNumber, readClientSettingString, isUiHidden } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { RemoteServer } from "./remoteServer";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
-import { logTrace } from "../../logging";
+import { logToPlatformLog, logTrace } from "../../logging";
 
 // Proximity voice chat: push-to-talk (default V, launcher-configurable via voicePushToTalkKeyCode) + LiveKit room managed by VoiceManager in the skymp5-front CEF page.
 // This service owns the game side: room token requests, peer distances to the browser, and the PTT key; audibility is distance vs the server-provided range (chat "say" range by default), same-world only.
@@ -109,11 +109,16 @@ export class VoiceService extends ClientListener {
         if (e.isDown) this.cycleMode();
         return;
       }
-      this.pressPtt();
+      this.pressPtt("key event");
     } else if (e.isUp && this.pttDown) {
       if (this.focusedPollHolds()) this.deferredRelease = true;
-      else this.releasePtt();
+      else this.releasePtt("key up event");
     }
+  }
+
+  // Which side closed or opened the mic and what the interface state was, so a "cannot talk" report reads from the log
+  private logPtt(what: string, why: string) {
+    logToPlatformLog(this, `${what} (${why}): ui hidden ${isUiHidden(this.controller)}, page focused ${this.sp.browser.isFocused()}, console ${isConsoleOpen(this.sp)}, key ${this.voiceKey} reads down ${this.sp.Input.isKeyPressed(this.voiceKey)}`);
   }
 
   // A focused menu hides held mouse buttons from the engine, so its key-up is not real while the key still reads down
@@ -121,8 +126,9 @@ export class VoiceService extends ClientListener {
     return this.sp.browser.isFocused() && !domKeyCode(this.voiceKey) && this.sp.Input.isKeyPressed(this.voiceKey);
   }
 
-  private pressPtt() {
+  private pressPtt(why: string) {
     this.pttDown = true;
+    this.logPtt("mic open", why);
     this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(true)`);
     this.sendAfkPing();
   }
@@ -174,9 +180,10 @@ export class VoiceService extends ClientListener {
     } catch (e) { }
   }
 
-  private releasePtt() {
+  private releasePtt(why: string) {
     this.pttDown = false;
     this.deferredRelease = false;
+    this.logPtt("mic closed", why);
     this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPtt(false)`);
   }
 
@@ -196,20 +203,22 @@ export class VoiceService extends ClientListener {
       // Room dropped: forget the session and ask for a fresh token shortly
       this.connectedForRefrId = 0;
       this.nextTokenAttemptAt = Date.now() + TOKEN_RETRY_MS;
-      logTrace(this, `voice error from front: ${e.arguments[1]}`);
+      logToPlatformLog(this, `voice error from front: ${e.arguments[1]}`);
     } else if (kind === "voice::ptt") {
       // The front already toggled its own mic; only the game-side state follows
       if (String(e.arguments[1]) === "1") {
         this.pttDown = true;
+        this.logPtt("mic open", "front key");
         this.sendAfkPing();
       } else {
         this.pttDown = false;
+        this.logPtt("mic closed", "front key");
       }
     }
   }
 
   private resetSession() {
-    if (this.pttDown) this.releasePtt();
+    if (this.pttDown) this.releasePtt("session reset");
     this.connectedForRefrId = 0;
     this.pendingRefrId = 0;
     this.disabledByServer = false;
@@ -294,11 +303,11 @@ export class VoiceService extends ClientListener {
     if (this.altDown && !this.isAltPressed()) this.altDown = false;
 
     // The console never reports a key-up, and our actor can despawn under a held key (character park, connection loss)
-    if (this.pttDown && (isConsoleOpen(this.sp) || !myRefr)) this.releasePtt();
+    if (this.pttDown && (isConsoleOpen(this.sp) || !myRefr)) this.releasePtt(myRefr ? "console open" : "no actor");
 
     // A key pressed in a menu and released after it closed reaches neither side, so poll it once the game has the keyboard back
-    if (this.pttDown && !this.sp.browser.isFocused() && this.voiceKeyReadsUp()) this.releasePtt();
-    if (this.pttDown && this.deferredRelease && !this.sp.Input.isKeyPressed(this.voiceKey)) this.releasePtt();
+    if (this.pttDown && !this.sp.browser.isFocused() && this.voiceKeyReadsUp()) this.releasePtt("engine reads the key up");
+    if (this.pttDown && this.deferredRelease && !this.sp.Input.isKeyPressed(this.voiceKey)) this.releasePtt("deferred key up");
 
     // The page cannot see mouse buttons or keys without a DOM code, so a focused menu polls them here
     if (!domKeyCode(this.voiceKey)) {
@@ -306,8 +315,8 @@ export class VoiceService extends ClientListener {
       const pressedNow = down && !this.polledKeyDown;
       this.polledKeyDown = down;
       if (this.sp.browser.isFocused() && myRefr && !isConsoleOpen(this.sp)) {
-        if (pressedNow && !this.pttDown && !this.isAltPressed()) this.pressPtt();
-        else if (!down && this.pttDown) this.releasePtt();
+        if (pressedNow && !this.pttDown && !this.isAltPressed()) this.pressPtt("focused poll");
+        else if (!down && this.pttDown) this.releasePtt("focused poll reads up");
       }
     }
 
