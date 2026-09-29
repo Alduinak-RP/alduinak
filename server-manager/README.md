@@ -208,8 +208,10 @@ fails it prints a direct download URL - save that zip as
 - **Schedule** - timed tasks for the Main or the Test Server, kept in
   `<MANAGER_LOG_DIR or C:\logs\manager>\schedule.json`: **Restart** (the
   `Server restart in N minutes` warnings 60, 30, 10, 5, 4, 3, 2 and 1 minutes
-  before, then a restart; skipped when that game is stopped, waits up to 30
-  minutes for a build holding the busy lock), **Say** (broadcast a message),
+  before, then a restart; skipped when that game is stopped, refused before
+  anything stops while a MongoDB purge is pending (as a scheduled Start is),
+  waits up to 30 minutes for a build holding the busy lock), **Say**
+  (broadcast a message),
   **Console command** (a game console command, as typed in the Console tab),
   **Start** and **Stop**. Each task has a time (HH:MM) and optional weekdays
   (none ticked = every day) in the tab's time zone, an IANA name (default

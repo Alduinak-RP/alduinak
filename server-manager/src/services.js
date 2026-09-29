@@ -221,6 +221,9 @@ async function doServiceAction(key, action) {
 
 // A scheduled start, stop or restart of a profile's game under the shared busy lock; busy is set when another task holds it
 async function lockedServiceAction(source, profile, verb) {
+  // Refused before the stop half of a restart, so a pending purge never leaves the server down
+  const pending = verb === 'start' || verb === 'restart' ? purgePending(profile) : null
+  if (pending) return { ok: false, error: pending }
   let lock
   try { lock = managerLock.acquire({ source, kind: `scheduled ${verb} (${profile.label})`, actor: 'schedule' }) }
   catch (err) { return { ok: false, error: `cannot take the build lock: ${err.message}` } }
