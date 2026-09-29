@@ -1084,6 +1084,10 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `huntingMeats` | vanilla and DLC list | Editor ids of what counts as meat for the butcher bonus |
 | `huntingPeltMap` | see `DEFAULT_PELT_MAP` in `huntingSystem.ts` | `{ "<editor id fragment>": "<pelt editor id>" }` replacing the default: the pelt a skinned body gives. The body's own NPC_ editor id is tried first, then the race that supplies its traits, then its template NPC_s (lower-cased); the first fragment found in the earliest name wins |
 
+## goldAlertThreshold
+
+`GoldWatchSystem` samples every online character's gold every 10 s. A rise above `goldAlertThreshold` (default `5000`, `0` disables the alert) between two samples logs `GoldWatchSystem: <name> (profile P) went from A to B gold` and posts a `goldSpawn` security alert to the manager's Security tab. The first sample of a character only sets its baseline. Since 2026-09 (B24, B14) the same samples watch drops: every drop of gold and every drop of Salt Pile (`0x34cdf`) that the actor's own actions in the interval do not explain are logged as `[inv] <name> (<id>, profile P) gold|salt A -> B[, N unexplained] (interval: crafts C, eats E, puts P, drops D, takes T[, packets tradeAccept bountyBoardPost])`, where the tallies come from the `onCraft` (the recipe's inputs of that item), `onEatItem`, `onPutItem`, `onDropItem` and `onTakeItem` hooks after every other system had its say, and the packets are the trade and bounty board sends the hooks never see. Together with `spawn.ts`'s `[gold] <id> logs out|quits|despawned|logs in with N gold` lines a reported loss lands in one of three windows: during play (an `[inv]` line), the parked body (logout vs despawn) or offline (despawn vs login, the only window persistence can explain).
+
 ## enableGamemodeDataUpdatesBroadcast
 
 A boolean setting that controls hot-reloading behavior for connected clients.
