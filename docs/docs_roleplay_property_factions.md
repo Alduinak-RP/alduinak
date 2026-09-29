@@ -404,13 +404,17 @@ the Falkreath Warhammer) stays Master.
   cell (the location chain under Hold property), else outdoors the hold most
   located cells share on the nearest ring of cells up to 12 out (only 1028 of
   Tamriel's 11187 exterior cells carry a location, and 12 rings reach one from
-  every cell inside Skyrim's border), else indoors the hold the first load
-  door near the character leads to (such as the City of Dawnstar and Riften
-  Extension rooms, whose cells carry no location). Anything else
-  (Solstheim, the afterlife realms, a room whose doors lead nowhere known) is
-  outside every hold. A refusal is logged at most once a minute per
-  character: `[factions] <action> refused for <name> (profile N) as <rank> of
-  <faction> outside <hold>, in <hold or no hold>`.
+  every cell inside Skyrim's border), else indoors the hold the load doors
+  near the character lead to, found as for a character standing on the far
+  side (so up to 12 rings out there), and through further rooms without a
+  location when a door leads only into one, up to 8 rooms (such as the City of
+  Dawnstar and Riften Extension rooms, whose cells carry no location; the
+  Castle Volkihar rooms with a door onto Tamriel read Haafingar, like the
+  ground outside those doors). Anything else (Solstheim, the afterlife realms,
+  a room whose doors lead nowhere known) is outside every hold. A refusal is
+  logged at most once a minute per character: `[factions] <action> refused
+  for <name> (profile N) as <rank> of <faction> outside <hold>, in <hold or
+  no hold>`.
 - **Hold property**: ranks with `housing` (by default the Jarl and the Steward,
   who also count until the game server has loaded the definitions) manage the
   claims inside their own hold, and only there and while standing inside it

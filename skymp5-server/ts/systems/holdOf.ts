@@ -9,7 +9,8 @@ type Mp = any;
 // The hold a placed reference lies in: its cell's location (XLCN) walked up the parent locations (PNAM) to the location
 // carrying the LocTypeHold keyword. An exterior cell without one takes its worldspace's location (the walled cities), then
 // the hold most located cells share on the nearest ring of cells around it, up to NEAREST_CELLS out. Where an actor stands
-// searches up to ACTOR_NEAREST_CELLS out, and an interior whose location is in no hold takes the hold its load doors lead to.
+// searches up to ACTOR_NEAREST_CELLS out, and an interior whose location is in no hold takes the hold its load doors lead to,
+// through further rooms in no hold when they lead only there.
 
 export interface Hold {
   // As housing and the court factions name holds: "whiterun", "rift", "reach"
@@ -26,6 +27,8 @@ const NEAREST_CELLS = 3;
 // 1028 of Tamriel's 11187 exterior cells carry a location; 12 rings reach one from every cell inside Skyrim's border
 const ACTOR_NEAREST_CELLS = 12;
 const MAX_PARENT_DEPTH = 16;
+// Rooms in no hold walked through load doors before an interior counts as outside every hold
+const MAX_DOOR_ROOMS = 8;
 
 interface LocationRec {
   edid: string;
@@ -212,26 +215,43 @@ export function holdOfRefs(mp: Mp, refrIds: number[]): Hold | null {
   return null;
 }
 
-// The first load door near the actor whose far side lies in a hold; remembered per cell once any door was seen
+// Far halves of the load doors near a reference
+const farDoorsNear = (mp: Mp, refrId: number): number[] => {
+  let near: unknown[] = [];
+  try {
+    near = mp.getNeighborsByPosition(String(mp.get(refrId, "worldOrCellDesc")), mp.get(refrId, "pos")) ?? [];
+  } catch {
+    return [];
+  }
+  return near.map((raw) => espmRefrFieldId(mp, Number(raw) >>> 0, "XTEL")).filter((far) => far);
+};
+
+// The hold the fewest load doors away, walking on through rooms in no hold; remembered per room once any door was seen
 const holdByDoors = (mp: Mp, actorId: number, cell: number): Hold | null => {
   const known = doorHolds.get(cell);
   if (known !== undefined) return known;
-  let near: unknown[] = [];
-  try {
-    near = mp.getNeighborsByPosition(String(mp.get(actorId, "worldOrCellDesc")), mp.get(actorId, "pos")) ?? [];
-  } catch {
-    return null;
-  }
+  const rooms = new Set([cell]);
+  let from = [actorId];
   let doors = 0;
-  for (const raw of near) {
-    const far = espmRefrFieldId(mp, Number(raw) >>> 0, "XTEL");
-    if (!far) continue;
-    doors++;
-    const hold = holdOfRefs(mp, [far]);
-    if (hold) {
-      doorHolds.set(cell, hold);
-      return hold;
+  while (from.length) {
+    const next: number[] = [];
+    for (const refrId of from) {
+      for (const far of farDoorsNear(mp, refrId)) {
+        doors++;
+        const at = whereIs(mp, far);
+        if (!at) continue;
+        const hold = exactHold(mp, far) ?? (worldIds.has(at.cell) ? nearbyHold(mp, far, ACTOR_NEAREST_CELLS) : null);
+        if (hold) {
+          doorHolds.set(cell, hold);
+          return hold;
+        }
+        if (!worldIds.has(at.cell) && !rooms.has(at.cell) && rooms.size < MAX_DOOR_ROOMS) {
+          rooms.add(at.cell);
+          next.push(far);
+        }
+      }
     }
+    from = next;
   }
   if (doors) doorHolds.set(cell, null);
   return null;
