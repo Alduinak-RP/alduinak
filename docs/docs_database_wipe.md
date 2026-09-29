@@ -19,7 +19,7 @@ server start gate again.
 
 | Store | What happens |
 |---|---|
-| MongoDB `skymp.changeForms` | **Dropped.** This removes characters, inventories, spells, mastery, knowledge, stored pets, housing claim records, bounty notes, container and flora state, runtime NPCs, and every per-character dynamic field (`private.jobs` trip counters, the `private.writings` counter, faction stamps). |
+| MongoDB `skymp.changeForms` | **Dropped**, then created again empty with its `formDesc_1` index (`docs/docs_write_load.md`). This removes characters, inventories, spells, mastery, knowledge, stored pets, housing claim records, bounty notes, container and flora state, runtime NPCs, and every per-character dynamic field (`private.jobs` trip counters, the `private.writings` counter, faction stamps). |
 | `build/dist/server/housing.json`, `zone-spawns.json` | Reset to `[]` |
 | `build/dist/server/companions.json` | Reset to `{"active":[],"corpses":[],"stored":[]}` |
 | `build/dist/server/pets.json` | Reset to `{"active":[],"released":[]}` |
@@ -52,8 +52,8 @@ Run every command from the main checkout: `cd C:\Users\Administrator\Desktop\ald
 | `node deploy\mongodb\wipe-world.js restore --backup "<dir>" --test` | Restores the dump into the throwaway collection `skymp.wipeRestoreCheck`, compares counts and `_id`s with the backup and the live collection, then drops it. |
 | `node deploy\mongodb\wipe-world.js verify [--backup "<dir>"] [--order <plugins.txt>]` | Read-only report on services, collection counts, state files, form ids sitting in shifted slots (with the value each must become) and the start gate (`manifest-diff.json`). |
 | `node deploy\mongodb\wipe-world.js apply [--backup "<dir>"]` | Dry run: prints the plan and every reason it would refuse. Without `--backup` it uses the newest `rollback-wipe-*` folder and prints which one. |
-| `node deploy\mongodb\wipe-world.js apply --backup "<dir>" --apply` | Runs the wipe: saves the current `manifest-diff.json` into the backup, repeats the restore test, drops `changeForms`, resets the files and moves the logs. |
-| `node deploy\mongodb\wipe-world.js restore --backup "<dir>" [--with-settings] [--apply]` | Puts a backup back (a dry run without `--apply`). With `--apply` it first backs up the live data into `pre-restore-<yyyyMMdd-HHmmss>`. `--with-settings` also restores `server-settings.json` and the manifest state for a full revert. |
+| `node deploy\mongodb\wipe-world.js apply --backup "<dir>" --apply` | Runs the wipe: saves the current `manifest-diff.json` into the backup, repeats the restore test, drops `changeForms` and creates its `formDesc_1` index, resets the files and moves the logs. |
+| `node deploy\mongodb\wipe-world.js restore --backup "<dir>" [--with-settings] [--apply]` | Puts a backup back (a dry run without `--apply`). With `--apply` it first backs up the live data into `pre-restore-<yyyyMMdd-HHmmss>`, and after `mongorestore` it ensures the `formDesc_1` index. `--with-settings` also restores `server-settings.json` and the manifest state for a full revert. |
 
 **Guards:**
 - **Game server:** `backup`, `apply --apply` and `restore --apply` refuse unless `AlduinakGameServer` reports `SERVICE_STOPPED` (nssm, then `sc query`) and no process holds `scam_native.node`.

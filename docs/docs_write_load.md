@@ -14,7 +14,7 @@ online on average, 48 at peak), `C:\logs\2026-09\gameserver-*.log`,
 | Finding | Share today | At 1000 players | Status |
 |---|---|---|---|
 | `isDead` read on every activated door, chair or container | 49% of log lines, 46% of bytes | about 400 MB of log a day | Fixed (C27) |
-| No index on `changeForms.formDesc`: every save scans the whole collection | 2.4 to 3.2 ms per saved form | saver falls behind (see below) | Owner: create the index |
+| No index on `changeForms.formDesc`: every save scans the whole collection | 2.4 to 3.2 ms per saved form | saver falls behind (see below) | Automatic (C27): every game start through the manager (the 04:00 restart too) and every wipe create it |
 | `ff_afterlife` not registered in the live gamemode | 1.4% of lines | one 6-line error per login | Registered in the test gamemode; live gets it with Migrate server |
 | Papyrus natives the server lacks, skipped scripts, "explosion is not supported" | 12% of lines | about 1.2M lines a day | Recommendation (C++) |
 | Login dumps the profile object over 31 lines | 7% of lines | about 700k lines a day | Recommendation (TS) |
@@ -75,10 +75,10 @@ which are small): 1 to 2 when empty, 283 at 45 players (2026-09-29 13h), 420 at
 55 players (2026-09-28 17h), peak minute 867. About 7 writes per player per
 minute. A player's document is about 12 KB.
 
-## 3. The missing `formDesc` index (owner action)
+## 3. The missing `formDesc` index (now created automatically)
 
 `MongoDatabase` never creates an index, and `changeForms` is dropped and created
-again by every wipe (last on 2026-09-22), so it only has `_id`. The server
+again by every wipe (last on 2026-09-22), so it only had `_id`. The server
 filters on `formDesc`, so every saved form scans the whole collection. The slow
 query log shows it:
 
@@ -102,18 +102,38 @@ with the population, so the total grows with both:
 with world state over time, so it gets slower between wipes even at today's
 population.)
 
-Recommendation, in `mongosh` as an admin, for both databases (safe while the
-server runs; the build takes about a second on 10k documents):
+Owner decision (2026-09-29): index at the 04:00 restart. Done (C27), with no
+C++ change:
+
+- **Every game start through the manager** (Console START, RESTART, Start
+  all, the `start`/`restart` commands, the Schedule tab's restarts and
+  starts, the agent's game jobs; live `skymp` and test `skymp_test`) first
+  ensures the index `formDesc_1` (`{ formDesc: 1 }`) on that profile's
+  `changeForms`, while the game is stopped
+  (`server-manager/src/formDescIndex.js`, called from `act()` in
+  `services.js`). A start that finds any `{ formDesc: 1 }` index only lists
+  the indexes; otherwise it runs `createIndex`, which is idempotent. The 04:00
+  restart is the first such start. It logs one
+  line into the start's steps (Console log, schedule log, job log):
+  `[index] changeForms.formDesc present on skymp (12 ms)`, `created on
+  skymp (N ms)`, or `not ensured on skymp: <reason>`. It never blocks or
+  fails the start: the file driver, a missing `mongodb` module, MongoDB down
+  or no answer within 15 s give the `not ensured` line and the start goes on.
+- **After a wipe**: `wipe-world.js apply` creates it right after the drop
+  (plan step `create the formDesc_1 index on skymp.changeForms`), `restore
+  --apply` ensures it after `mongorestore`, and `verify` prints whether it is
+  there. Both log the same `[index]` line.
+
+The manual way, in `mongosh` as an admin (safe while the server runs; the
+build takes about a second on 10k documents):
 
 ```javascript
 db.getSiblingDB("skymp").changeForms.createIndex({ formDesc: 1 })
 db.getSiblingDB("skymp_test").changeForms.createIndex({ formDesc: 1 })
 ```
 
-It must be created again after every wipe (`deploy/mongodb/wipe-world.js` drops
-the collection). A lasting fix is to create it in code: in the
-`MongoDatabase` constructor (C++, CI flatrim build) or in `wipe-world.js` right
-after the drop. A `unique` index would also guard against duplicate documents,
+A server started outside the manager (by hand or `nssm start`) gets the index
+at its next start through the manager. A `unique` index would also guard against duplicate documents,
 but it fails if any already exist; check first with
 `db.changeForms.aggregate([{ $group: { _id: "$formDesc", n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }])`.
 
@@ -197,3 +217,6 @@ Recommendations, largest first:
 - Slow saves: `"Slow query"` lines whose command is `"update":"changeForms"`;
   after the index they should disappear, and a per-form line should show
   `IXSCAN { formDesc: 1 }` instead of `COLLSCAN`.
+- The index itself: the Console or the Schedule tab's run line after a game
+  start (`[index] changeForms.formDesc present on skymp`), or
+  `db.getSiblingDB("skymp").changeForms.getIndexes()` in `mongosh`.
