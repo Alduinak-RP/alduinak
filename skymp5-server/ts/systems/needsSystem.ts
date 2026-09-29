@@ -824,19 +824,24 @@ export class NeedsSystem implements System {
     return true;
   }
 
-  // An ability swapped in while the client was still loading was wiped with its learnedSpells; a plain AddSpell sends no
-  // snippet for a spell the server already lists, so each held one is removed and added again. The flag stays for the
-  // login window: a re-send that itself landed before the wipe is repeated by the next once-per-load packet
+  // The client's load wipe drops a swap and re-learns the spawn snapshot's stage; a snippet only goes out when the server's
+  // list changes, so each other stage is added then removed and the held one removed then added, for the login window
   private resendAbilities(ctx: SystemContext, actorId: number, entry: Online): void {
     if (!entry.swappedSinceAssign) return;
     const mp = ctx.svr as Mp;
-    for (const field of ["stageSpell", "fatigueSpell"] as AbilityField[]) {
+    for (const [field, stages] of [["stageSpell", this.hungerSpells], ["fatigueSpell", this.fatigueSpells]] as [AbilityField, number[]][]) {
       const spellId = entry.rec[field];
-      if (!spellId) continue;
       try {
-        removeSpellFrom(mp, actorId, spellId);
-        addSpellTo(mp, actorId, spellId);
-        this.log(`[needs] ${hex(actorId)} ability resent after login ${hex(spellId)}`);
+        for (const stale of stages) {
+          if (!stale || stale === spellId) continue;
+          addSpellTo(mp, actorId, stale);
+          removeSpellFrom(mp, actorId, stale);
+        }
+        if (spellId) {
+          removeSpellFrom(mp, actorId, spellId);
+          addSpellTo(mp, actorId, spellId);
+        }
+        this.log(`[needs] ${hex(actorId)} ${spellId ? `ability resent after login ${hex(spellId)}, other stages cleared` : `${field} stages cleared after login`}`);
       } catch (e) {
         this.log(`[needs] ${field} re-send failed for ${hex(actorId)}: ${e}`);
       }

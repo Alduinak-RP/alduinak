@@ -354,10 +354,13 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
   F% (<stage>), saved <age> ago, abilities <hex>/<hex>`; the stage abilities are checked 5 s later. The client's
   `needsRequest` (sent at its createActor) makes the server resend the state (`[needs] <id> request: state resent`).
   That packet and the two the client sends once per load (`weatherRequest` and `gameTimeRequest` at its `loadGame`, about
-  a second before its learnedSpells wipe) each schedule, 3 s later, a remove-and-add of any stage ability swapped inside
-  the first 3 minutes after the assign (`[needs] <id> ability resent after login <hex>`), because a swap that landed while
-  the client was still loading is dropped by that wipe; a re-send that itself came too early is repeated by the next
-  once-per-load packet, and the 5 s path stays for clients that never ask.
+  a second before its learnedSpells wipe) each schedule, 3 s later, a re-send of the stage abilities when one was swapped
+  inside the first 3 minutes after the assign (`[needs] <id> ability resent after login <hex>, other stages cleared`), because
+  a swap that landed while the client was still loading is dropped by that wipe, which also re-learns the stage the spawn
+  snapshot listed. Every other stage ability of each need is added and removed (a removal only reaches the client when the
+  server lists the spell), and the held one removed and added, so the client ends with exactly one stage per need; a
+  re-send that itself came too early is repeated by the next once-per-load packet, and the 5 s path stays for clients that
+  never ask.
 
 **HUD:** as in vanilla Survival, the penalty shows as a red segment at the end of the stamina bar (hunger) and the
 magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. Fatigue itself has a
