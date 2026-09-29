@@ -2818,6 +2818,18 @@
      "IngotSteel": 2,
      "LeatherStrips": 1
     }
+   },
+   {
+    "edid": "AldRecipeSmith_BreakdownIronKatana",
+    "formId": "0x0412BA",
+    "bench": "CraftingSmelter",
+    "output": "IngotIron",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "IWIronKatana": 1
+    }
    }
   ]
  },
@@ -4296,6 +4308,7 @@
    "MCERecipeArmorTsunCuirass",
    "MCERecipeArmorTsunGauntlets",
    "MCERecipeWeaponAkaviriKatana",
+   "IWBreakdownIronKatana",
    "MCERecipeWeaponSilverGreatsword",
    "MCERecipeWeaponSilverSword",
    "MCERecipeArrowForsworn",
