@@ -168,6 +168,13 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   killed once its 3D is in and is not stood up first, and every kill of a copy
   logs `DeathService: kill <id> (<trigger>): 3D, z, distance to the server pos`
   plus the corpse's height 3 s later to `skyrim-platform.log`.
+- A death is the server's to declare. A copy is immortal from the frame it is
+  placed, and the client hosting an NPC reports it dead in its movement only
+  when the server's `isDead` says so; a copy that died in its own engine while
+  the server holds it alive (a fall before its collision loaded) stays alive
+  for the other viewers and is logged once per copy (`movementGet: hosted <id>
+  engine-dead while the server says alive: 3D, z`). Every viewer kills its copy
+  from the server's `isDead` property or the death-state container.
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.

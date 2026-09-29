@@ -271,7 +271,15 @@ export class FormView {
         if (model.appearance && model.appearance.name) {
           refr?.setDisplayName("" + model.appearance.name, true);
         }
-        Actor.from(refr)?.setActorValue("attackDamageMult", 0);
+        const spawned = Actor.from(refr);
+        if (spawned) {
+          spawned.setActorValue("attackDamageMult", 0);
+          // Immortal from the first frame: a copy dying while its collision still loads would have its host report a death the server never saw
+          spawned.startDeferredKill();
+          spawned.setActorValue("health", 1000000);
+          spawned.setActorValue("magicka", 1000000);
+          this.localImmortal = true;
+        }
       }
       this.refrId = (refr as ObjectReference).getFormID();
     }

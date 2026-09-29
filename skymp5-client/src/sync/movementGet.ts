@@ -2,6 +2,19 @@ import { FormModel } from '../view/model';
 import { ObjectReference, Actor, TESModPlatform } from "skyrimPlatform";
 import { NiPoint3, Movement, RunMode } from "./movement";
 import { ObjectReferenceEx } from '../extensions/objectReferenceEx';
+import { logToPlatformLog } from '../logging';
+
+// Hosted copies already logged as dead in their own engine while the server holds them alive
+const engineDeadLogged = new Set<number>();
+const ENGINE_DEAD_LOGGED_LIMIT = 256;
+
+const noteEngineDeadHosted = (refr: ObjectReference, pos: NiPoint3): void => {
+  const id = refr.getFormID();
+  if (engineDeadLogged.has(id)) return;
+  if (engineDeadLogged.size >= ENGINE_DEAD_LOGGED_LIMIT) engineDeadLogged.clear();
+  engineDeadLogged.add(id);
+  logToPlatformLog("movementGet", `hosted ${id.toString(16)} engine-dead while the server says alive: 3D ${refr.is3DLoaded()}, z ${Math.round(pos[2])}`);
+};
 
 class PlayerCharacterSpeedCalculator {
   static savePosition(pos: NiPoint3, worldOrCell: number) {
@@ -75,6 +88,14 @@ export const getMovement = (refr: ObjectReference, form?: FormModel): Movement =
 
   const worldOrCell = refr.getWorldSpace() || refr.getParentCell();
 
+  // A hosted NPC's death is the server's to declare; its copy's own engine death (a fall before its collision loaded) is only logged
+  const hostedNpc = refr.getFormID() !== 0x14;
+  const engineDead = !!(ac && ac.isDead());
+  const modelDead = form?.isDead ?? false;
+  if (hostedNpc && engineDead && !modelDead) {
+    noteEngineDeadHosted(refr, pos);
+  }
+
   return {
     worldOrCell: worldOrCell?.getFormID() || 0,
     pos,
@@ -87,7 +108,7 @@ export const getMovement = (refr: ObjectReference, form?: FormModel): Movement =
     isSneaking: !!(ac && isSneaking(ac)),
     isBlocking: !!(ac && ac.getAnimationVariableBool("IsBlocking")),
     isWeapDrawn: !!(ac && ac.isWeaponDrawn()),
-    isDead: (form?.isDead ?? false) || !!(ac && ac.isDead()),
+    isDead: hostedNpc ? modelDead : modelDead || engineDead,
     healthPercentage: healthPercentage || 0,
     lookAt,
     speed
