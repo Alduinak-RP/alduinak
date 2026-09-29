@@ -218,6 +218,7 @@ def main():
     disable_refs = {form_key(x) for x in spec.get('disableReferences', {}).get('refs', [])}
     enable_refs = {form_key(x) for x in spec.get('enableReferences', {}).get('refs', [])}
     problems.extend(f'{show(k)} is in disableReferences and enableReferences both' for k in sorted(disable_refs & enable_refs))
+    listed_refs = disable_refs | enable_refs
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
     winners, actors, parents, spells, races, weapons, lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
@@ -242,7 +243,7 @@ def main():
                 effects[edid(r)] = k
             if r.type == 'RACE':
                 races[edid(r)] = id_list(pl, r.data(), 'SPLO')
-            if ((r.type, k) in ro or r.type == 'REFR' and k in disable_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
+            if ((r.type, k) in ro or r.type == 'REFR' and k in listed_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
                 winners[(r.type, k)] = (pl, r.flags, r.data(), pl.container(r, CELL_GROUPS if r.type != 'CELL' else WORLD_GROUPS))
         pl.buf = None
     for (t, k), r in ro.items():
@@ -426,9 +427,11 @@ def main():
         flags = final.flags if final is not None else winners.get(('REFR', k), (None, 0))[1]
         if not flags & (DISABLED | DELETED):
             problems.append(f'disableReferences {show(k)} is not Initially Disabled')
+    # A winner already enabled gets no override, so its own flags decide
     for k in enable_refs:
         final = ro.get(('REFR', k))
-        if final is None or final.flags & DISABLED:
+        flags = final.flags if final is not None else winners.get(('REFR', k), (None, DISABLED))[1]
+        if flags & (DISABLED | DELETED):
             problems.append(f'enableReferences {show(k)} is not enabled in the output')
 
     # proficiency-ids.json carries the full slot the server and the game give the plugin

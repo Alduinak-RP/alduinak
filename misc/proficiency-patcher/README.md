@@ -111,7 +111,7 @@ records). The first run restores the Mutagen NuGet package.
    added and an enable parent turned into the player, opposite, and with `disableActors` no actor can still be
    enabled and no reference hangs on one switched off with the opposite state; a new cell or worldspace override is
    its winner's record (a worldspace: the last winner outside `notFrom`, without the offset table); a
-   `disableReferences` reference only gains Initially Disabled and an `enableReferences` reference only loses it, ending enabled; an item of `overrides.misc` is its winner with only
+   `disableReferences` reference only gains Initially Disabled and an `enableReferences` reference only loses it, ending enabled (one whose winner is already enabled has no override and passes on the winner's flags); an item of `overrides.misc` is its winner with only
    the weight set, a recipe of `overrides.recipes` its winner with only the created count set, a food of
    `overrides.foods` its winner with only the named effect swapped, a quest of `overrides.quests` its winner without
    the scripts it names, and a reference of
