@@ -93,7 +93,7 @@ const Housing = ({ data }: { data: HousingData }) => {
 
         {!hasAccess ? (
           <p className="housing__empty">
-            {view === 'claimable' ? 'Nobody has claimed this yet. Claiming needs a lock.' : "This isn't yours."}
+            {view === 'claimable' ? 'Nobody has claimed this yet. Claiming uses up one lock.' : "This isn't yours."}
           </p>
         ) : null}
 
