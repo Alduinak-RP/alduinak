@@ -32,6 +32,7 @@ export interface HousingData {
   canGrantContainers: boolean;
   ownerName: string | null;
   pets?: string; // "stable" | "farm" | "house" when pets are kept at this door, else ""
+  hold?: string; // The hold the property lies in, "" outside every hold
   events: HousingEvents;
 }
 
@@ -104,6 +105,8 @@ const Housing = ({ data }: { data: HousingData }) => {
         {data.ownerName && !isOwner ? (
           <p className="housing__owner">Owner: {data.ownerName}</p>
         ) : null}
+
+        {data.hold ? <p className="housing__owner">Hold: {data.hold}</p> : null}
 
         {!hasAccess ? (
           <p className="housing__empty">

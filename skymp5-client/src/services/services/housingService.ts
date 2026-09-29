@@ -67,6 +67,8 @@ interface PropertyMenuInfo {
   ownerName: string | null;
   // "stable" | "farm" | "house" when pets are kept at this door, else ""
   pets: string;
+  // The hold the property lies in, "" outside every hold
+  hold: string;
 }
 
 // The server's petList reply: the pets storable at a door
@@ -79,7 +81,7 @@ interface PetListInfo {
 // Module-level state shared with the browser-side widget setter via runtime injection
 let info: PropertyMenuInfo = {
   target: 0, view: 'denied', owned: false, name: null, locked: false,
-  canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null, pets: '',
+  canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null, pets: '', hold: '',
 };
 let targetLabel = '';
 let petList: PetListInfo = { door: 0, category: '', pets: [] };
@@ -105,7 +107,7 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  *
  *   Client -> Server: { "customPacketType": "propertyInfoRequest", "target": <id> }
  *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view", "owned",
- *                       "name", "locked", "canLock", "hasKeys", "canGrantContainers", "ownerName", "pets" }
+ *                       "name", "locked", "canLock", "hasKeys", "canGrantContainers", "ownerName", "pets", "hold" }
  *   Client -> Server: { "customPacketType": "propertyRequest", "action", "target",
  *                       "recipient"?, "name"? }  (createkey names the key)
  *   Server -> Client: { "customPacketType": "propertyNotice", "text" }
@@ -115,7 +117,8 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  *
  * Views: 'denied' shows only "You don't own this" ('denied' with owned false
  * means not property); 'claimable' adds a claim button; 'owner' offers
- * rename/keys/lock/transfer/abandon; 'manager' (admin, jarl or steward) offers
+ * rename/keys/lock/transfer/abandon; 'manager' (an admin, or a Jarl or Steward
+ * of the hold the property lies in, shown from `hold`) offers
  * grant/revoke/rename, and lock only when canLock is set; 'keyholder' offers
  * lock/unlock. Transfer and grant-container are two-step: pick the action,
  * then look at the recipient and press the interact key again. Cut a key asks
@@ -211,6 +214,7 @@ export class HousingService extends ClientListener {
           canGrantContainers: content["canGrantContainers"] === true,
           ownerName: typeof content["ownerName"] === "string" ? content["ownerName"] as string : null,
           pets: typeof content["pets"] === "string" ? content["pets"] as string : "",
+          hold: typeof content["hold"] === "string" ? content["hold"] as string : "",
         };
         this.openMenu();
         break;
@@ -377,6 +381,7 @@ export class HousingService extends ClientListener {
       canGrantContainers: info.canGrantContainers,
       ownerName: info.ownerName,
       pets: info.pets,
+      hold: info.hold,
       events: events,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);

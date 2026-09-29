@@ -5,7 +5,8 @@ import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
 import { addItemTo, holdsItem, takeItemFrom, userSlotCount } from "./actorUtil";
-import { FactionDef, holdKey, holdRanksOf, managesHold } from "./factionRules";
+import { FactionDef, holdRanksOf, managesHold } from "./factionRules";
+import { Hold, holdOfRefs, loadHolds } from "./holdOf";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -27,7 +28,7 @@ type Mp = any;
 //             | revoke | createkey | revokekeys | grantcontainer
 //   Server -> Client:
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked,
-//       canLock, hasKeys, canGrantContainers, ownerName }
+//       canLock, hasKeys, canGrantContainers, ownerName, pets, hold }
 //     { customPacketType: "propertyNotice", text }
 //     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
@@ -42,6 +43,10 @@ type Mp = any;
 // Teleport doors are claimed as a pair. The record lives on the lower of the two
 // form ids (the "primary"); the far side stores a pointer to it, so locking a
 // house from the inside locks the outside too.
+//
+// Holds. A property lies in the hold its door's location belongs to (holdOf.ts: the cell's location walked up to the
+// LocTypeHold one, either half of a teleport pair). Ranks that manage hold property (Jarl and Steward by default) manage
+// only the claims inside their own court's hold; admins manage every claim.
 
 const HOUSING_PROP = "private.housing";
 const OWNER_INDEX_PROP = "private.indexed.housingOwner";
@@ -67,29 +72,6 @@ const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
 const CHANGE_FAILED = "That cannot be changed right now.";
 const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ and - only.";
-
-// Interior cells that belong to a hold, from HoldClaims::GetHoldCells(); names are hold keys (factionRules.holdKey).
-// Only these can resolve a hold manager; everything else is owner + admin only.
-const HOLD_CELLS: Record<number, string> = {
-  0x000165a8: "whiterun",   // Breezehome
-  0x0001b131: "whiterun",   // Dragonsreach Dungeon
-  0x0003480e: "eastmarch",  // Hjerim
-  0x000d7b12: "eastmarch",  // Windhelm Barracks
-  0x000c9f1a: "rift",       // Honeyside
-  0x0008bfe6: "rift",       // Riften Jail
-  0x00017013: "reach",      // Vlindrel Hall
-  0x00018b22: "reach",      // Hall of Justice
-  0x000165a0: "haafingar",  // Proudspire Manor
-  0x000136c9: "haafingar",  // Castle Dour Dungeon
-  0x0301ab54: "pale",       // Heljarchen Hall
-  0x0001620b: "pale",       // Dawnstar jail
-  0x0300307b: "falkreath",  // Lakeview Manor
-  0x000fa3d9: "falkreath",  // Falkreath jail
-  0x0300307e: "hjaalmarch", // Windstad Manor
-  0x00038a92: "hjaalmarch", // Morthal jail
-  0x0001e7e0: "winterhold", // College quarters
-  0x0001e7e2: "winterhold", // Winterhold jail
-};
 
 // One claimed property. Stored on the primary reference. owner 0 is an
 // ownerless stub kept only to carry `serial` forward.
@@ -143,6 +125,7 @@ export class HousingSystem implements System {
     try { this.lockBaseId = ((ctx.svr as Mp).getIdFromDesc(LOCK_DESC) >>> 0) || LOCK_BASE_ID_FALLBACK; } catch { }
 
     this.claimed = this.loadRegistry();
+    await loadHolds(ctx.svr as Mp, s.dataDir, s.loadOrder, this.log);
     this.installActivationHook(ctx);
     ctx.gm.on("userAssignActor", (userId: number) => this.onActorAssigned(ctx, userId));
     this.log(`[housing] ready, ${this.claimed.length} claimed refs in the registry, uncut key stacks ${this.keySplitOnLogin ? "split" : "kept"} at login`);
@@ -495,6 +478,7 @@ export class HousingSystem implements System {
       canGrantContainers: (isOwner || isManager) && owned && this.baseTypeOf(ctx, primary) === "CONT",
       ownerName: owned ? (rec!.ownerName || "Someone") : null,
       pets: this.petCategoryOf ? this.petCategoryOf(actorId, primary || target) : "",
+      hold: primary ? (this.holdOf(ctx, primary)?.name ?? "") : "",
     });
   }
 
@@ -574,7 +558,7 @@ export class HousingSystem implements System {
     if (!hold) return false;
     let access: unknown = null;
     try { access = (ctx.svr as Mp).get(actorId, "private.skympAccess"); } catch { return false; }
-    return holdRanksOf(access).some((r) => r.hold === holdKey(hold) && managesHold(this.factionDef?.(r.factionId), r.rank));
+    return holdRanksOf(access).some((r) => r.hold === hold.key && managesHold(this.factionDef?.(r.factionId), r.rank));
   }
 
   // Every admin tier overrides housing claims
@@ -582,24 +566,9 @@ export class HousingSystem implements System {
     return adminTierOf(ctx.svr as Mp, actorId, this.roleCfg) !== null;
   }
 
-  // The hold a property answers to. Either half of a teleport pair may be the
-  // primary, so check both; only the interior side is in the table.
-  private holdOf(ctx: SystemContext, primary: number): string | null {
-    const own = HOLD_CELLS[this.cellOf(ctx, primary)];
-    if (own) return own;
-    const partner = this.partnerOf(ctx, primary);
-    return partner ? (HOLD_CELLS[this.cellOf(ctx, partner)] || null) : null;
-  }
-
-  // The cell this reference itself stands in.
-  private cellOf(ctx: SystemContext, refrId: number): number {
-    const mp = ctx.svr as Mp;
-    try {
-      const desc = mp.get(refrId, "worldOrCellDesc");
-      return desc ? (mp.getIdFromDesc(desc) >>> 0) : 0;
-    } catch {
-      return 0;
-    }
+  // The hold a property answers to, from either half of a teleport pair
+  private holdOf(ctx: SystemContext, primary: number): Hold | null {
+    return holdOfRefs(ctx.svr as Mp, this.doorSides(ctx, primary));
   }
 
   // Claiming has to happen at the door, not from a form id typed into a packet.
