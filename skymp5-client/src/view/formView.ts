@@ -27,10 +27,10 @@ export interface ScreenResolution {
 
 type AdminView = "visible" | "hidden" | "ghost";
 
-// Account name and staff tier of a player, fed to admins holding the Names mode by AdminModeService
-export interface AccountNameEntry {
+// An admin's account name and staff tier, streamed as ff_adminTag while their Show account name mode is on
+interface AdminTag {
   n: string;
-  t: string | null;
+  t: string;
 }
 
 const DEFAULT_TAG_COLOR = [1, 1, 1, 0.8];
@@ -646,13 +646,13 @@ export class FormView {
       }
     }
 
-    const identifies = !!FormView.accountNameOf(this.getRemoteRefrId());
+    const identifies = !!FormView.adminTagOf(model);
     const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId()) || identifies;
     if (showTag && this.refrId && model.appearance?.name) {
       const headPart = "NPC Head [Head]";
       const maxNicknameDrawDistance = 1000;
       const playerActor = Game.getPlayer()!;
-      // Names mode identifies sneaking, masked and invisible players too
+      // An admin tag shows through sneaking, masks and invisibility
       const isVisibleByPlayer = (identifies || (!model.movement?.isSneaking && !this.isSweetHidePerson(refr) && !this.isInvisible(refr)))
         && playerActor.getDistance(refr) <= maxNicknameDrawDistance
         && playerActor.hasLOS(refr)
@@ -670,7 +670,7 @@ export class FormView {
         if (!this.textNameId && headScreenPos[2] > 0) {
           this.createdTagName = this.tagName(refr, model);
           this.createdActorIdLine = FormView.showsActorIdLine();
-          this.createdTagColor = this.tagColor();
+          this.createdTagColor = this.tagColor(model);
           this.textNameId = createText(textXPos, textYPos, this.createdTagName, this.createdTagColor);
           setTextSize(this.textNameId, 0.5);
           // Local (ffxxxxxx) actor id on a second line under the name
@@ -695,7 +695,7 @@ export class FormView {
           // Rename (/mask), a fresh introduction, a toggled id line or a tier colour: recreate
           if (this.textNameId
             && (this.tagName(refr, model) !== this.createdTagName || this.createdActorIdLine !== FormView.showsActorIdLine()
-              || this.tagColor() !== this.createdTagColor)) {
+              || this.tagColor(model) !== this.createdTagColor)) {
             this.removeNickname();
           }
           if (this.textNameId) {
@@ -717,9 +717,9 @@ export class FormView {
   private tagName(refr: ObjectReference, model: FormModel): string {
     const remoteId = this.getRemoteRefrId();
     const voip = FormView.isSpeaking(remoteId) ? `${FormView.voipGlyph} ` : "";
-    // Names mode: the account name stands in for the character tag, introductions and the chat toggle aside
-    const account = FormView.accountNameOf(remoteId);
-    if (account) return voip + account.n;
+    // An admin acting as staff shows the account name in place of the character, introductions and the chat toggle aside
+    const adminTag = FormView.adminTagOf(model);
+    if (adminTag) return voip + adminTag.n;
     if (!FormView.isDisplayingNicknames) return FormView.voipGlyph;
     if (!knowsCharacter(remoteId)) return `${voip}Stranger`;
     const name = refr.getDisplayName();
@@ -739,8 +739,8 @@ export class FormView {
   }
 
   // The shared arrays double as identity keys for the recreate check
-  private tagColor(): number[] {
-    const tier = FormView.accountNameOf(this.getRemoteRefrId())?.t;
+  private tagColor(model: FormModel): number[] {
+    const tier = FormView.adminTagOf(model)?.t;
     return (tier && TIER_TAG_COLORS[tier]) || DEFAULT_TAG_COLOR;
   }
 
@@ -1076,14 +1076,10 @@ export class FormView {
     return (FormView.speakingUntil.get(remoteId) ?? 0) > Date.now();
   }
 
-  // Admin mode Names: on while the server holds it for this admin, the roster arrives as the adminNames packet
-  public static showAccountNames = false;
-  public static accountNames = new Map<number, AccountNameEntry>();
-
-  // Only an admin ever receives the roster, and the mode packet never reaches anyone else
-  private static accountNameOf(remoteId: number): AccountNameEntry | undefined {
-    if (!FormView.showAccountNames || !FormView.viewerIsAdmin()) return undefined;
-    return FormView.accountNames.get(remoteId);
+  private static adminTagOf(model: FormModel): AdminTag | undefined {
+    const tag = (model as Record<string, unknown>)["ff_adminTag"] as Record<string, unknown> | null | undefined;
+    if (!tag || typeof tag !== "object" || typeof tag["n"] !== "string" || !tag["n"] || typeof tag["t"] !== "string") return undefined;
+    return { n: tag["n"], t: tag["t"] };
   }
 
   // The id line never shows without the name above it

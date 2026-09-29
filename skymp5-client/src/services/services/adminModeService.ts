@@ -5,12 +5,10 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { adminGhostAlpha, setAdminGhostShader } from "../../view/adminGhostLook";
-import { AccountNameEntry, FormView } from "../../view/formView";
 
 const LOOK_REAPPLY_MS = 2000;
 const SHADER_REPLAY_DELAY_MS = 1000;
-const LOCAL_MODES = ["god", "noclip", "ghost", "invis", "speed", "freecam", "names"];
-const ADMIN_TIERS = ["senior", "developer", "gm"];
+const LOCAL_MODES = ["god", "noclip", "ghost", "invis", "speed", "freecam"];
 const SPEED_MULT = 300;
 const PLAYER_FORM_ID = 0x14;
 const FREE_CAMERA_STATE = 3;
@@ -28,8 +26,7 @@ export const isFreeCamera = (sp: Sp): boolean => sp.Game.getCameraState() === FR
  * Speed raises the base SpeedMult to 300 and puts the saved base back when turned off, on disconnect and on death.
  * Freecam ends on disconnect and on death; a camera that leaves free mode by itself (a load, a forced third person) is reported to the server.
  * God and Ghost also hold server-side (AdminSystem refuses hit damage); FormView hides remote invis admins via ff_adminModes, shows them to admins as ghosts, and shows Ghost admins to everyone as ghosts.
- * Names draws every player's account name in place of the character tag, coloured by staff tier; the roster comes only to admins holding the mode:
- *   { customPacketType: "adminNames", byActor: { "<hex actorId>": { n: string, t: "senior" | "developer" | "gm" | null } } }
+ * Show account name is server-side: AdminSystem streams the admin's account name and tier as ff_adminTag, and FormView draws it on their tag for everyone near.
  */
 export class AdminModeService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -50,31 +47,11 @@ export class AdminModeService extends ClientListener {
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
     const content = parseCustomPacket(event);
-    if (!content) return;
-    if (content["customPacketType"] === "adminNames") {
-      this.onAdminNames(content["byActor"]);
-      return;
-    }
-    if (content["customPacketType"] !== "adminMode") return;
+    if (!content || content["customPacketType"] !== "adminMode") return;
     const mode = String(content["mode"] ?? "");
     const on = !!content["on"];
     // Natives throw in the packet-handler context; defer to update
     this.controller.once("update", () => this.apply(mode, on));
-  }
-
-  // The roster replaces the previous one whole, so a player who left drops out
-  private onAdminNames(byActor: unknown): void {
-    const names = new Map<number, AccountNameEntry>();
-    if (byActor && typeof byActor === "object") {
-      for (const [hex, raw] of Object.entries(byActor as Record<string, unknown>)) {
-        const actorId = parseInt(hex, 16);
-        const entry = raw as Record<string, unknown> | null;
-        if (!Number.isFinite(actorId) || !entry || typeof entry["n"] !== "string") continue;
-        const tier = typeof entry["t"] === "string" && ADMIN_TIERS.includes(entry["t"]) ? entry["t"] : null;
-        names.set(actorId, { n: entry["n"], t: tier });
-      }
-    }
-    FormView.accountNames = names;
   }
 
   private apply(mode: string, on: boolean, notify = true): void {
@@ -120,9 +97,7 @@ export class AdminModeService extends ClientListener {
         showSystemNotification(this.sp, on ? "Heal-on-hit enabled" : "Heal-on-hit disabled");
         break;
       case "names":
-        FormView.showAccountNames = on;
-        if (!on) FormView.accountNames = new Map();
-        if (notify) showSystemNotification(this.sp, on ? "Account names: tags show account names, red senior, blue developer, green GM" : "Account names off");
+        if (notify) showSystemNotification(this.sp, on ? "Show account name: players near you see your account name in your staff colour" : "Show account name off, your tag shows your character again");
         break;
       default:
         break;
