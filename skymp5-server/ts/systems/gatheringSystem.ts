@@ -124,6 +124,8 @@ type StationKind = "chop" | "vein" | "marker" | "produce" | "pick" | "plant";
 interface Station {
   kind: StationKind;
   props: Record<string, number>;
+  // Editor id of the base record, for the log
+  name: string;
 }
 
 interface Session {
@@ -340,8 +342,8 @@ export class GatheringSystem implements System {
       case "vein": return this.onVein(ctx, targetId, casterId, station.props);
       case "marker": return this.onMiningMarker(ctx, targetId, casterId, station.props);
       case "produce": return this.onProduce(ctx, targetId, casterId, station.props);
-      case "pick": return this.onPick(ctx, targetId, casterId, station.props);
-      case "plant": return this.onPlant(ctx, targetId, casterId, station.props);
+      case "pick": return this.onPick(ctx, targetId, casterId, station.props, station.name);
+      case "plant": return this.onPlant(ctx, targetId, casterId, station.props, station.name);
       default: return undefined;
     }
   }
@@ -362,7 +364,7 @@ export class GatheringSystem implements System {
   }
 
   // Nirnroot and bees: one ingredient on E, then nothing there for an hour
-  private onPick(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>): Verdict {
+  private onPick(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>, name: string): Verdict {
     const item = props["item"];
     if (!item) return undefined;
     if (!this.withinReach(ctx, actorId, refrId)) return false;
@@ -371,7 +373,7 @@ export class GatheringSystem implements System {
       this.addItem(ctx, actorId, item, count);
       this.hidePicked(ctx, refrId, Date.now() + this.pickMs);
     };
-    if (props["harvest"]) return this.harvest(ctx, refrId, actorId, this.pickMs, props, grant);
+    if (props["harvest"]) return this.harvest(ctx, refrId, actorId, this.pickMs, props, name, grant);
     return () => {
       grant(1);
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + this.pickMs });
@@ -380,14 +382,14 @@ export class GatheringSystem implements System {
   }
 
   // The native harvest hands over the ingredient; an already harvested plant is left to it for free
-  private onPlant(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>): Verdict {
+  private onPlant(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>, name: string): Verdict {
     if (this.veinState(ctx, refrId, 1, props["regrow"]).left <= 0) return undefined;
     const extra = props["item"] ? (count: number) => { if (count > 1) this.addItem(ctx, actorId, this.rollItem(ctx, props["item"]), count - 1); } : undefined;
-    return this.harvest(ctx, refrId, actorId, props["regrow"], props, undefined, extra);
+    return this.harvest(ctx, refrId, actorId, props["regrow"], props, name, undefined, extra);
   }
 
   // Without grant the activation goes on to the native harvest, and extra hands over what a Master or Legendary farmer gets on top
-  private harvest(ctx: SystemContext, refrId: number, actorId: number, readyMs: number, props: Record<string, number>, grant?: (count: number) => void, extra?: (count: number) => void): Verdict {
+  private harvest(ctx: SystemContext, refrId: number, actorId: number, readyMs: number, props: Record<string, number>, name: string, grant?: (count: number) => void, extra?: (count: number) => void): Verdict {
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if ((this.harvestUntil.get(actorId) || 0) > Date.now()) return false;
     const mp = ctx.svr as Mp;
@@ -400,7 +402,7 @@ export class GatheringSystem implements System {
     return () => {
       grant?.(YIELD_BY_RANK[rank]);
       extra?.(YIELD_BY_RANK[rank]);
-      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", rank, "harvest", flora);
+      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", rank, `harvest ${name} ${flora ? "flora" : "crop"} r${rank}`, flora);
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
       if (kneelMs > 0) {
         this.harvestUntil.set(actorId, Date.now() + kneelMs);
@@ -725,8 +727,9 @@ export class GatheringSystem implements System {
     if (hit !== undefined) return hit;
     const res = this.lookup(ctx, baseId);
     const type = res ? String(res.record.type || "") : "";
+    const name = String(res?.record.editorId || "") || baseId.toString(16);
     const scripts = res ? readVmadScripts(res) : new Map<string, Record<string, number>>();
-    let station: Station | null = null;
+    let station: Omit<Station, "name"> | null = null;
     if (type === "FURN" && scripts.has("resourcefurniturescript")) station = { kind: "chop", props: scripts.get("resourcefurniturescript")! };
     else if (type === "ACTI" && scripts.has("mineorescript")) station = { kind: "vein", props: scripts.get("mineorescript")! };
     else if (type === "FURN" && scripts.has("mineorefurniturescript")) station = { kind: "marker", props: scripts.get("mineorefurniturescript")! };
@@ -734,8 +737,9 @@ export class GatheringSystem implements System {
     else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1, crop: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
     else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0, free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0 } };
-    this.stationCache.set(baseId, station);
-    return station;
+    const out = station ? { ...station, name } : null;
+    this.stationCache.set(baseId, out);
+    return out;
   }
 
   private isCrop(res: any): boolean {
