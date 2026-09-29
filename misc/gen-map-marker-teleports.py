@@ -67,6 +67,8 @@ KINDS = {
 NUDGES = {
     # The marker sits in the entrance stairs; land in front of the doors at (50915, -36112, 22584)
     ('High Hrothgar', 'Fort'): (-1155.79, 155.07, 14.65),
+    # Helgen.esp rebuilds the town over the vanilla spot; land in the rebuilt town at (15697, -81172, 8202)
+    ('Helgen', 'Town'): (-2653.4, -1691.03, -1002.41),
 }
 
 TEMPLE = 'Temple'

@@ -48,7 +48,7 @@ export const MAP_MARKER_LOCATIONS = [
   { name: "Greymoor Village", kind: "Settlement", group: "villages", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-11075.86, -602.95, -6705.33], rot: [0, 0, 337.08] },
   { name: "Haafingar Stormcloak Camp", kind: "Stormcloak Camp", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-92573.87, 89628.8, -12200.44], rot: [0, 0, 5.88] },
   { name: "Harmugstahl", kind: "Fort", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [-137142.45, 55392.14, -7762.87], rot: [0, 0, 0] },
-  { name: "Helgen", kind: "Town", group: "villages", cellOrWorldDesc: "3c:Skyrim.esm", pos: [18350.4, -79480.97, 9204.41], rot: [0, 0, 84.98] },
+  { name: "Helgen", kind: "Town", group: "villages", cellOrWorldDesc: "3c:Skyrim.esm", pos: [15697, -81172, 8202], rot: [0, 0, 84.98] },
   { name: "Heljarchen Hall", kind: "Town", group: "villages", cellOrWorldDesc: "3c:Skyrim.esm", pos: [31439.17, 38616.27, -5746.75], rot: [0, 0, 0] },
   { name: "High Hrothgar", kind: "Fort", group: "forts", cellOrWorldDesc: "3c:Skyrim.esm", pos: [50915, -36112, 22584], rot: [0, 0, 176.19] },
   { name: "Highpoint Tower", kind: "Fort", group: "forts", cellOrWorldDesc: "800:Dragonborn.esm", pos: [49334.44, 38003.54, 4709.49], rot: [0, 0, 0] },
