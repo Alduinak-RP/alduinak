@@ -14,8 +14,8 @@ type Mp = any;
 // bodyAction for spawned animals, the native activation for plugin ones) crouches them over it for SKIN_SECONDS, then hands
 // the pelt and the meat the body's race or base editor id maps to, once per body; an Expert hunter's butcher's eye may add one
 // more cut. The skinner also takes what else the carcass carries, then the body disappears for everyone: a zone corpse on the
-// corpseConsumed event (NpcSpawnSystem), any other body disabled until the engine respawns it. A pet's body stays and gives
-// only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
+// corpseConsumed event (NpcSpawnSystem), any other body disabled for good, as no other NPC respawns (placed ones never do and the
+// gamemode's death hook gives the rest a 1e9 s delay). A pet's body stays and gives only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
 //
 // server-settings.json keys (all optional):
 //   huntingButcherChance         chance an Expert or better hunter's skinning gives one more cut of meat, default 0.25
@@ -97,7 +97,6 @@ export class HuntingSystem implements System {
     const meatMap = rawMeat && typeof rawMeat === "object" ? rawMeat as Record<string, [string, number]> : DEFAULT_MEAT_MAP;
     await this.resolveItems(ctx, meats, peltMap, meatMap, s.dataDir, s.loadOrder);
     chainMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => !this.trySkin(ctx, casterId >>> 0, targetId >>> 0));
-    chainMpHook(ctx.svr as Mp, "onRespawn", (actorId: number) => { this.onRespawn(ctx, actorId >>> 0); });
     this.log(`[hunting] ready, ${this.pelts.length} pelt and ${this.meatRules.length} meat rule(s) for skinning, butcher ${Math.round(this.butcherChance * 100)}%`);
   }
 
@@ -231,25 +230,15 @@ export class HuntingSystem implements System {
     return taken.length;
   }
 
-  // A zone corpse goes at once on corpseConsumed; any other body is disabled until it respawns
+  // A zone corpse goes at once on corpseConsumed; any other body never respawns, so it stays disabled
   private consumeBody(ctx: SystemContext, bodyId: number): void {
     try { ctx.gm.emit(CORPSE_CONSUMED_EVENT, bodyId); } catch (e) { this.log(`[hunting] ${CORPSE_CONSUMED_EVENT} listener failed for ${hex(bodyId)}: ${e}`); }
     const mp = ctx.svr as Mp;
     try {
       if (mp.get(bodyId, "isDead") !== true) return;
       mp.set(bodyId, "isDisabled", true);
-      this.log(`[hunting] body ${hex(bodyId)} hidden until it respawns`);
+      this.log(`[hunting] body ${hex(bodyId)} hidden for good`);
     } catch { /* removed by its zone */ }
-  }
-
-  // A respawned body can be skinned again, and one hidden after its skinning comes back
-  private onRespawn(ctx: SystemContext, actorId: number): void {
-    const mp = ctx.svr as Mp;
-    try {
-      if (!mp.get(actorId, SKINNED_PROP)) return;
-      mp.set(actorId, SKINNED_PROP, 0);
-      if (mp.get(actorId, "isDisabled") === true) mp.set(actorId, "isDisabled", false);
-    } catch { /* form gone */ }
   }
 
   private isPet(mp: Mp, actorId: number): boolean {
