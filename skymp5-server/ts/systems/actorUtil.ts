@@ -279,6 +279,30 @@ export const addGold = (mp: Mp, actorId: number, amount: number): void => {
   mp.set(actorId, "inventory", { entries });
 };
 
+// Takes count of a base item out of the inventory record itself, plain copies before named or tempered ones; false when the
+// actor holds fewer or the write fails, and nothing is taken then
+export const takeItemFrom = (mp: Mp, actorId: number, baseId: number, count: number): boolean => {
+  if (count <= 0) return true;
+  try {
+    const inv = mp.get(actorId, "inventory");
+    const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries.map((e: any) => ({ ...e })) : [];
+    const plain = (e: any): boolean => Object.keys(e).every((k) => k === "baseId" || k === "count" || ((k === "worn" || k === "wornLeft") && !e[k]));
+    const ofBase = entries.filter((e) => (Number(e?.baseId) >>> 0) === (baseId >>> 0) && Number(e.count) > 0);
+    let left = count;
+    for (const e of [...ofBase.filter(plain), ...ofBase.filter((e) => !plain(e))]) {
+      if (left <= 0) break;
+      const n = Math.min(left, Number(e.count) || 0);
+      e.count = Number(e.count) - n;
+      left -= n;
+    }
+    if (left > 0) return false;
+    mp.set(actorId, "inventory", { entries: entries.filter((e) => Number(e.count) > 0) });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // Forms of a previous run exist only after the world DB loads (WORLD_LOADED_EVENT); plugin refs, player characters and ids failing isOurs are kept
 export const destroyLeftovers = (mp: Mp, ids: number[], isOurs: (id: number) => boolean): number =>
   ids.filter((id) => {

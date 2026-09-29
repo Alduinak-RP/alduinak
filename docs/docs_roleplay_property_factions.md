@@ -63,8 +63,12 @@ This covers:
 
 - **4. House claiming** — players claim the door to an interior cell.
   A player may hold any number of properties. Claiming needs a Lock
-  (HearthFires `BYOHMaterialLock`, `3012:HearthFires.esm`) in the inventory;
-  it is not used up, and admins need none.
+  (HearthFires `BYOHMaterialLock`, `3012:HearthFires.esm`) in the inventory
+  and uses one up per claim, admins included (2026-09, B33); locking and
+  unlocking the claimed property stay free, and a container granted into an
+  owned house (`grantcontainer`) needs none. The server logs
+  `[housing] lock spent by <who> on claim <id>`; a failed inventory write
+  refuses the claim, and a failed claim write hands the lock back.
 - **5. Locks** — owners lock/unlock doors and containers inside cells they own.
 - **6. Factions**: hold courts, armies and guilds with per-character ranks,
   recruitment, regency, titles, crafted uniforms and faction-only doors and
@@ -165,8 +169,10 @@ The `target` is a form id you can resolve with `mp.getDescFromId(target)` /
 2. **claim** — if the cell is unowned (or the requester is a Jarl/admin with
    override), set the owner to the requesting player and persist it. Reject with
    a `propertyNotice` if it's already owned by someone else.
-   Refuse with "You need a lock to claim this." unless the requester is an
-   admin or carries a Lock (3012:HearthFires.esm); the lock is not consumed.
+   Refuse with "You need a lock to claim this." unless the requester carries
+   a Lock (3012:HearthFires.esm); one lock is consumed by the claim, admins
+   included (the lock is taken before the claim is written, so a failed write
+   never claims for free; a failed claim write hands it back).
    - Persist e.g. `mp.set(cellOrDoorId, "private.owner", profileId)`. Consider an
      indexed property (`private.indexed.ownerProfileId`) so you can look up a
      player's houses with `mp.findFormsByPropertyValue(...)`.

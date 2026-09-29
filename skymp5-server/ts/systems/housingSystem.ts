@@ -4,7 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
-import { holdsItem, userSlotCount } from "./actorUtil";
+import { addItemTo, holdsItem, takeItemFrom, userSlotCount } from "./actorUtil";
 import { FactionDef, holdKey, holdRanksOf, managesHold } from "./factionRules";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -55,7 +55,7 @@ const DEFAULT_KEY_LABEL = "Property Key";
 const KEY_CREDENTIAL = /\(([0-9A-F]+(?:-\d+)?)(?:\/\d+)?\)$/;
 // A key cut before the cut number existed: TAG or TAG-serial only
 const UNCUT_KEY = /^Property Key \(([0-9A-F]+)(?:-\d+)?\)$/;
-// HearthFires BYOHMaterialLock; claiming needs one in the inventory.
+// HearthFires BYOHMaterialLock; a claim uses one up, admins included. Locking and unlocking are free.
 const LOCK_DESC = "3012:HearthFires.esm";
 const LOCK_BASE_ID_FALLBACK = 0x03003012;
 
@@ -290,7 +290,8 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "Somebody already owns this.");
       return;
     }
-    if (!this.isAdmin(ctx, actorId) && !holdsItem(ctx.svr as Mp, actorId, (id) => id === this.lockBaseId)) {
+    const mp = ctx.svr as Mp;
+    if (!holdsItem(mp, actorId, (id) => id === this.lockBaseId)) {
       this.notice(ctx, userId, "You need a lock to claim this.");
       return;
     }
@@ -299,11 +300,21 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "You cannot claim anything right now.");
       return;
     }
+    // The lock goes first, so a failed inventory write never claims for free
+    if (!takeItemFrom(mp, actorId, this.lockBaseId, 1)) {
+      this.notice(ctx, userId, CHANGE_FAILED);
+      this.log(`[housing] claim ${primary.toString(16)} by ${this.who(ctx, actorId)} refused: the lock could not be taken`);
+      return;
+    }
     rec.owner = profileId;
     rec.ownerName = this.nameOf(ctx, actorId);
     rec.partner = this.partnerOf(ctx, primary);
-    if (!this.commit(ctx, userId, primary, rec)) return;
-    this.notice(ctx, userId, "This is yours now.");
+    if (!this.commit(ctx, userId, primary, rec)) {
+      try { addItemTo(mp, actorId, this.lockBaseId, 1); } catch (e) { this.log(`[housing] could not hand the lock back to ${this.who(ctx, actorId)}: ${e}`); }
+      return;
+    }
+    this.log(`[housing] lock spent by ${this.who(ctx, actorId)} on ${this.claimLabel(primary, rec)}`);
+    this.notice(ctx, userId, "This is yours now. The lock is fitted.");
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
