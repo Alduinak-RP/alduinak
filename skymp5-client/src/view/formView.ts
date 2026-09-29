@@ -646,16 +646,16 @@ export class FormView {
       }
     }
 
-    const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId()) || !!FormView.accountNameOf(this.getRemoteRefrId());
+    const identifies = !!FormView.accountNameOf(this.getRemoteRefrId());
+    const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId()) || identifies;
     if (showTag && this.refrId && model.appearance?.name) {
       const headPart = "NPC Head [Head]";
       const maxNicknameDrawDistance = 1000;
       const playerActor = Game.getPlayer()!;
-      const isVisibleByPlayer = !model.movement?.isSneaking
+      // Names mode identifies sneaking, masked and invisible players too
+      const isVisibleByPlayer = (identifies || (!model.movement?.isSneaking && !this.isSweetHidePerson(refr) && !this.isInvisible(refr)))
         && playerActor.getDistance(refr) <= maxNicknameDrawDistance
         && playerActor.hasLOS(refr)
-        && !this.isSweetHidePerson(refr)
-        && !this.isInvisible(refr)
         && FormView.adminViewOf(model) !== "hidden";
       if (isVisibleByPlayer) {
         const headScreenPos = worldPointToScreenPoint([
