@@ -1,20 +1,31 @@
 <#
   Alduinak Test Server setup. RUN THIS YOURSELF in an elevated PowerShell.
   Creates the test profile next to the live server: build\dist\testserver and
-  build\dist\testclient, the AlduinakMongoTest, AlduinakLiveKitTest and
-  AlduinakTestServer services, a test server-settings.json derived from the
-  live one, and the backend's test manifest set. Safe to re-run: every step
-  skips what already exists. It never stops, edits or restarts a live service
-  or file. See deploy/testserver/README.md and docs/docs_test_server.md.
+  build\dist\testclient, the skymp_test database on the live AlduinakMongo
+  instance, the AlduinakLiveKitTest and AlduinakTestServer services, a test
+  server-settings.json derived from the live one, and the backend's test
+  manifest set. Safe to re-run: every step skips what already exists. It never
+  stops, edits or restarts a live service or file. See
+  deploy/testserver/README.md and docs/docs_test_server.md.
 
   Claude does not run this (registering services, firewall rules and writing
   the backend data are operator actions).
 
   Usage (elevated):
     powershell -ExecutionPolicy Bypass -File deploy\testserver\setup-testserver.ps1 -MongoPassword "YourStrongPassword"
+    ... -MongoPassword "<skympuser password>" -AdminPassword "<alduinakAdmin password>"
+
+  -MongoPassword is the skympuser password (it goes into the test databaseUri).
+  skympuser needs readWrite and dbAdmin on skymp_test; granting roles takes the
+  root user alduinakAdmin (-AdminPassword, created once by
+  deploy\mongodb\rotate-password.ps1 -CreateAdmin). Without -AdminPassword the
+  script tries the grant as skympuser and stops with instructions when MongoDB
+  refuses, before any service is registered.
 #>
 param(
   [Parameter(Mandatory = $true)] [string] $MongoPassword,
+  [string] $AdminPassword = "",
+  [string] $AdminUser = "alduinakAdmin",
   [string] $MasterKey = "",
   [int] $Port = 7787,
   [int] $MaxPlayers = 20,
@@ -37,13 +48,13 @@ $testClient   = Join-Path $Repo "build\dist\testclient"
 $testSettings = Join-Path $testServer "server-settings.json"
 $backendEnv   = Join-Path $Repo "skymp5-backend\.env"
 $backendData  = Join-Path $Repo "skymp5-backend\data"
-$mongoCfg     = Join-Path $Repo "deploy\mongodb\mongod-test.cfg"
 $livekitSrc   = Join-Path $Repo "deploy\livekit\livekit-test.yaml"
 $livekitLive  = "C:\Alduinak\livekit"
 $livekitRoot  = "C:\Alduinak\livekit-test"
 $livekitCfg   = Join-Path $livekitRoot "livekit.yaml"
-$mongoRoot    = "C:\Alduinak\mongodb-test"
+$MongoUri     = "mongodb://127.0.0.1:27017/admin"
 $MongoUser    = "skympuser"
+$MongoDb      = "skymp_test"
 
 function Say($msg) { Write-Host "[testserver] $msg" }
 
@@ -74,6 +85,15 @@ function Invoke-NodeScript([string] $js, [hashtable] $vars) {
   }
 }
 
+# Passwords reach mongosh as env vars, off its command line; the JS uses no double quotes (deploy\mongodb\rotate-password.ps1)
+function Invoke-Mongo([string] $uri, [string] $js) {
+  foreach ($k in $secrets.Keys) { Set-Item -Path "Env:$k" -Value ([string] $secrets[$k]) }
+  try { $out = & $mongosh $uri --quiet --eval $js }
+  finally { foreach ($k in $secrets.Keys) { Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue } }
+  if ($LASTEXITCODE -ne 0) { throw "mongosh failed (exit $LASTEXITCODE): $out" }
+  return ($out | Out-String).Trim()
+}
+
 function Add-FirewallRule([string] $name, [string] $proto, [string] $ports) {
   netsh advfirewall firewall show rule name="$name" | Out-Null
   if ($LASTEXITCODE -eq 0) { Say "firewall rule '$name' already exists"; return }
@@ -89,8 +109,6 @@ if (-not (Test-Path $nssm)) { throw "nssm not found (server-manager\tools or C:\
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
 if (-not $node) { $node = "C:\Program Files\nodejs\node.exe" }
 if (-not (Test-Path $node)) { throw "node.exe not found; install Node.js or put it on PATH" }
-$mongod = (Get-ChildItem "C:\Program Files\MongoDB\Server\*\bin\mongod.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-if (-not $mongod) { throw "mongod.exe not found under C:\Program Files\MongoDB\Server; run deploy\mongodb\setup-mongodb.ps1 first" }
 $mongosh = (Get-Command mongosh -ErrorAction SilentlyContinue).Source
 if (-not $mongosh) {
   foreach ($cand in @("$env:LOCALAPPDATA\Programs\mongosh\mongosh.exe", "C:\Program Files\mongosh\mongosh.exe")) { if (Test-Path $cand) { $mongosh = $cand; break } }
@@ -141,39 +159,50 @@ if (Test-Path $testClient) {
 } else {
   Write-Warning "$liveClient is missing; the manager's Build client seeds $testClient later"
 }
-New-Item -ItemType Directory -Force -Path $LogDir, "$mongoRoot\data", "$mongoRoot\log", $livekitRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $LogDir, $livekitRoot | Out-Null
 
-# 2. MongoDB test service
-Say "2/6 MongoDB (AlduinakMongoTest on 27018)"
-if (-not (Get-Service AlduinakMongoTest -ErrorAction SilentlyContinue)) {
-  Say "registering AlduinakMongoTest from $mongoCfg"
-  $p = Start-Process $mongod -ArgumentList "--config `"$mongoCfg`" --install --serviceName AlduinakMongoTest --serviceDisplayName `"Alduinak MongoDB (test)`"" -Wait -PassThru
-  if ($p.ExitCode -ne 0) { throw "mongod --install failed (exit $($p.ExitCode)); see $mongoRoot\log\mongod.log" }
+# 2. Database skymp_test on the live MongoDB instance
+Say "2/6 MongoDB (database $MongoDb on AlduinakMongo, 27017)"
+# The first cut of this setup registered a separate test mongod; the shared instance replaces it
+if (Get-Service AlduinakMongoTest -ErrorAction SilentlyContinue) {
+  Say "retiring the AlduinakMongoTest service (the test world lives in $MongoDb on AlduinakMongo now)"
+  Stop-Service AlduinakMongoTest -Force -ErrorAction SilentlyContinue
+  $mongod = (Get-ChildItem "C:Program FilesMongoDBServer*inmongod.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+  $removed = $false
+  if ($mongod) { $p = Start-Process $mongod -ArgumentList "--remove --serviceName AlduinakMongoTest" -Wait -PassThru; $removed = ($p.ExitCode -eq 0) }
+  if (-not $removed) { sc.exe delete AlduinakMongoTest | Out-Null }
+  Say "AlduinakMongoTest service removed"
 }
-if ((Get-Service AlduinakMongoTest).Status -ne 'Running') { Start-Service AlduinakMongoTest; Start-Sleep -Seconds 5 }
-if ((Get-Service AlduinakMongoTest).Status -ne 'Running') { throw "AlduinakMongoTest is not running; check $mongoRoot\log\mongod.log" }
-# The localhost exception lets the first user be created without auth; the JS uses no double quotes and reads the password from the environment
-$js = @"
-try {
-  db = db.getSiblingDB('admin');
-  db.createUser({ user: '$MongoUser', pwd: process.env.ALDUINAK_MONGO_PWD, roles: [ { role: 'readWrite', db: 'skymp' }, { role: 'dbAdmin', db: 'skymp' } ] });
-  print('CREATED');
-} catch (e) {
-  if (/already exists/.test(e.message)) { print('EXISTS'); }
-  else if (/requires authentication/.test(e.message)) { print('SKIPPED'); }
-  else { print('FAILED: ' + e.message); quit(1); }
+if (Test-Path "C:Alduinakmongodb-test") { Remove-Item -Recurse -Force "C:Alduinakmongodb-test"; Say "removed C:Alduinakmongodb-test" }
+if ((Get-Service AlduinakMongo -ErrorAction SilentlyContinue).Status -ne 'Running') { throw "AlduinakMongo is not running; start it (manager Console tab, MongoDB) and re-run" }
+$secrets = @{ ALDUINAK_MONGO_PWD = $MongoPassword; ALDUINAK_MONGO_ADMIN_PWD = $AdminPassword }
+# Granting again on a re-run is a no-op
+$grantJs = "db.getSiblingDB('admin').grantRolesToUser('$MongoUser', [ { role: 'readWrite', db: '$MongoDb' }, { role: 'dbAdmin', db: '$MongoDb' } ]); print('GRANTED');"
+if ($AdminPassword) {
+  $res = Invoke-Mongo $MongoUri "db.getSiblingDB('admin').auth('$AdminUser', process.env.ALDUINAK_MONGO_ADMIN_PWD); $grantJs"
+  if ($res -notmatch 'GRANTED') { throw "grantRolesToUser did not confirm: $res" }
+  Say "granted $MongoUser readWrite and dbAdmin on $MongoDb as $AdminUser"
+} else {
+  # skympuser holds no user admin role unless the owner added one; an authorization error means the admin user is needed
+  $res = Invoke-Mongo $MongoUri "try { db.getSiblingDB('admin').auth('$MongoUser', process.env.ALDUINAK_MONGO_PWD); $grantJs } catch (e) { print((e.code === 13 || /not authorized/i.test(e.message)) ? 'UNAUTHORIZED' : 'FAILED: ' + e.message); }"
+  if ($res -match 'GRANTED') {
+    Say "granted $MongoUser readWrite and dbAdmin on $MongoDb (as $MongoUser itself)"
+  } elseif ($res -match 'UNAUTHORIZED') {
+    Write-Host ""
+    Write-Host "  $MongoUser may not grant roles. Create the root user $AdminUser once, in a quiet moment (it restarts AlduinakMongo for a few seconds):"
+    Write-Host "    powershell -ExecutionPolicy Bypass -File deploy\mongodb\rotate-password.ps1 -NewPassword '<the current $MongoUser password>' -CreateAdmin '<new admin password>'"
+    Write-Host "  (the current password keeps the live databaseUri and the game server as they are; ADMIN_CREATED confirms the new user)"
+    Write-Host "  then re-run this setup with -AdminPassword '<new admin password>'."
+    Write-Host ""
+    throw "stopped before registering any service: $MongoUser needs readWrite and dbAdmin on $MongoDb"
+  } else {
+    throw "grantRolesToUser failed: $res"
+  }
 }
-"@
-$env:ALDUINAK_MONGO_PWD = $MongoPassword
-try { $out = & $mongosh "mongodb://127.0.0.1:27018/admin" --quiet --eval $js }
-finally { Remove-Item Env:ALDUINAK_MONGO_PWD -ErrorAction SilentlyContinue }
-if ($LASTEXITCODE -ne 0) { throw "mongosh failed during 'createUser' (exit $LASTEXITCODE): $out" }
-switch ("$out".Trim()) {
-  'CREATED' { Say "created user $MongoUser on the test mongod" }
-  'EXISTS'  { Say "user $MongoUser already exists on the test mongod" }
-  'SKIPPED' { Say "skipped creating ${MongoUser}: auth is on and a user already exists (localhost exception closed)" }
-  default   { throw "createUser did not succeed: $out" }
-}
+# Confirms -MongoPassword, which goes into the test databaseUri, and the grant
+$res = Invoke-Mongo $MongoUri "db.getSiblingDB('admin').auth('$MongoUser', process.env.ALDUINAK_MONGO_PWD); print('OK ' + db.getSiblingDB('$MongoDb').getCollectionNames().length);"
+if ($res -notmatch '(?m)^OK (\d+)') { throw "$MongoUser cannot read ${MongoDb}: $res" }
+Say "$MongoUser reads $MongoDb ($($Matches[1]) collections)"
 
 # 3. LiveKit test service
 Say "3/6 LiveKit (AlduinakLiveKitTest on 7890/7891, UDP 50300-50500)"
@@ -253,8 +282,8 @@ const out = Object.assign({}, live, {
   logDir: norm(e.ALDUINAK_TS_LOGDIR),
   masterKey: e.ALDUINAK_TS_MASTERKEY,
   databaseDriver: 'mongodb',
-  databaseName: 'skymp',
-  databaseUri: 'mongodb://skympuser:' + encodeURIComponent(e.ALDUINAK_MONGO_PWD) + '@127.0.0.1:27018/skymp?authSource=admin',
+  databaseName: e.ALDUINAK_TS_DB,
+  databaseUri: 'mongodb://' + e.ALDUINAK_TS_DBUSER + ':' + encodeURIComponent(e.ALDUINAK_MONGO_PWD) + '@127.0.0.1:27017/' + e.ALDUINAK_TS_DB + '?authSource=admin',
   dataDir: testData,
   loadOrder: swap(live.loadOrder),
   archives: swap(live.archives),
@@ -274,7 +303,8 @@ console.log('[settings] ' + out.loadOrder.length + ' plugins, ' + out.archives.l
   Invoke-NodeScript $derive @{
     ALDUINAK_TS_LIVE = (Join-Path $liveServer "server-settings.json"); ALDUINAK_TS_OUT = $testSettings
     ALDUINAK_TS_PORT = $Port; ALDUINAK_TS_MAXPLAYERS = $MaxPlayers; ALDUINAK_TS_LOGDIR = $LogDir
-    ALDUINAK_TS_MASTERKEY = $MasterKey; ALDUINAK_MONGO_PWD = $MongoPassword; ALDUINAK_TS_DATADIR = $DataDir
+    ALDUINAK_TS_MASTERKEY = $MasterKey; ALDUINAK_TS_DATADIR = $DataDir
+    ALDUINAK_MONGO_PWD = $MongoPassword; ALDUINAK_TS_DBUSER = $MongoUser; ALDUINAK_TS_DB = $MongoDb
     ALDUINAK_TS_ADDRESS = $address; ALDUINAK_TS_LK_KEY = $lkKey; ALDUINAK_TS_LK_SECRET = $lkSecret
   }
   Say "wrote $testSettings (master key $MasterKey)"
@@ -353,7 +383,7 @@ if (v.test && typeof v.test === 'object') {
 Write-Host ""
 Say "done. Next:"
 Write-Host "  1. Restart AlduinakBackend: it lists the Test Server and opens the test console relay on port $wsPortTest (WS_PORT_TEST in skymp5-backend\.env)."
-Write-Host "  2. Restart the Server Manager, then start the Test Server from its Console tab (Test Server > Start all)."
+Write-Host "  2. Restart the Server Manager, then start the Test Server from its Console tab (Test Server > Start all; MongoDB is the shared AlduinakMongo, already running)."
 Write-Host "  3. Delete the stale $Repo\testserver folder if it still exists; the backend reads build\dist\testserver now."
 Write-Host "  4. Bump the launcher version and Build launcher so players get per-server manifests."
 Write-Host "  Master key of the test server: $MasterKey (in $testSettings)."

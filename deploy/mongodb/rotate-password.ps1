@@ -11,6 +11,8 @@
 # Optional: -CreateAdmin '<adminPassword>' also creates a root user
 # (alduinakAdmin) in that window. Later rotations that pass
 # -AdminPassword '<adminPassword>' log in as it and need no downtime at all.
+# To only create the admin, pass the current password as -NewPassword: the
+# settings file stays as it is and the game server needs no restart.
 
 param(
   [Parameter(Mandatory = $true)][string]$NewPassword,
@@ -101,21 +103,24 @@ if (-not $rotated) { throw 'rotation failed' }
 # added: the server's JSON.parse rejects a BOM.
 $raw = Get-Content $Settings -Raw
 $escaped = [uri]::EscapeDataString($NewPassword)
-$updated = [regex]::Replace(
-  $raw,
-  '("databaseUri"\s*:\s*")mongodb://([^:]+):([^@]+)@',
-  { param($m) $m.Groups[1].Value + 'mongodb://' + $m.Groups[2].Value + ':' + $escaped + '@' }
-)
-if ($updated -eq $raw) { throw "databaseUri not updated in $Settings, update it by hand" }
-[System.IO.File]::WriteAllText($Settings, $updated, (New-Object System.Text.UTF8Encoding($false)))
-Write-Host "[rotate] databaseUri updated in $Settings"
+$uriRe = '("databaseUri"\s*:\s*")mongodb://([^:]+):([^@]+)@'
+$current = [regex]::Match($raw, $uriRe)
+if (-not $current.Success) { throw "databaseUri not found in $Settings, update it by hand" }
+# The current password (a -CreateAdmin only run) leaves the file and the game server alone
+$unchanged = [uri]::UnescapeDataString($current.Groups[3].Value) -eq $NewPassword
+if ($unchanged) {
+  Write-Host "[rotate] databaseUri in $Settings already carries this password, nothing to update"
+} else {
+  $updated = [regex]::Replace($raw, $uriRe, { param($m) $m.Groups[1].Value + 'mongodb://' + $m.Groups[2].Value + ':' + $escaped + '@' })
+  [System.IO.File]::WriteAllText($Settings, $updated, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host "[rotate] databaseUri updated in $Settings"
+  # The merged dump is regenerated at boot and still holds the old secret
+  $merged = Join-Path (Split-Path $Settings) 'server-settings-merged.json'
+  if (Test-Path $merged) { Remove-Item $merged -Force; Write-Host '[rotate] removed stale server-settings-merged.json' }
+}
 
-# The merged dump is regenerated at boot and still holds the old secret
-$merged = Join-Path (Split-Path $Settings) 'server-settings-merged.json'
-if (Test-Path $merged) { Remove-Item $merged -Force; Write-Host '[rotate] removed stale server-settings-merged.json' }
-
-# Confirm the new credentials work with authorization back on
+# Confirm the credentials work with authorization back on
 $newUri = "mongodb://${User}:${escaped}@127.0.0.1:27017/skymp?authSource=admin"
 $count = Invoke-Mongo $newUri "print(db.getSiblingDB('skymp').changeForms.countDocuments({}))"
 Write-Host "[rotate] verified: changeForms docs = $count"
-Write-Host '[rotate] DONE. Restart AlduinakGameServer so it picks up the new password.'
+if ($unchanged) { Write-Host '[rotate] DONE. Password unchanged, AlduinakGameServer needs no restart.' } else { Write-Host '[rotate] DONE. Restart AlduinakGameServer so it picks up the new password.' }
