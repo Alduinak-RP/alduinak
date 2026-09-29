@@ -35,9 +35,11 @@ export class StaticRefsService extends ClientListener {
     const content = parseCustomPacket(e);
     if (!content || content["customPacketType"] !== "untouchableBaseIds" || !Array.isArray(content["ids"])) return;
     ObjectReferenceEx.setUntouchableBaseIds((content["ids"] as unknown[]).map(Number).filter((id) => id > 0));
-    // Refs that attached before the list arrived are looked at again
-    const cell = this.sp.Game.getPlayer()?.getParentCell();
-    if (cell) this.queueCell(cell);
+    // The player's cell is looked at again for refs that attached before the list; Game natives throw in the packet handler's tick context
+    this.controller.once("update", () => {
+      const cell = this.sp.Game.getPlayer()?.getParentCell();
+      if (cell) this.queueCell(cell);
+    });
   }
 
   // Fired per reference; a reattached cell recreates its refs without the block
