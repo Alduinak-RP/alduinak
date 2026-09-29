@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FIN
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
 import { CastType, SpellType, fieldData, keywordConditionsPass, spellEffects, spellInfo, view } from "./espmMagic";
-import { addSpellTo, removeSpellFrom, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
+import { addSpellTo, removeSpellFrom, formatWait, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
 import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -70,8 +70,11 @@ const NOTICE_PACKET = "masteryNotice";
 const HUNGER_MAX = 1000;
 const POLL_MS = 1000;
 const TICK_MS = 60000;
-// The client wipes and re-applies learnedSpells about a second after spawn; a stage ability change has to land after that
+// The client wipes and re-applies learnedSpells about a second after its load; a stage ability change has to land after that.
+// The load can outlast this, so the client's needsRequest (sent once its widgets are up) schedules a second sync that re-sends
+// any ability swapped since the assign, which the wipe would otherwise have dropped
 const LOGIN_SYNC_DELAY_MS = 5000;
+const REQUEST_SYNC_DELAY_MS = 2000;
 const NOTICE_GAP_MS = 2000;
 // Longest a pending race menu or creator holds hunger; a creation stuck past this drains like play
 const CREATION_HUNGER_HOLD_MS = 20 * 60000;
@@ -151,6 +154,9 @@ interface Online {
   // Last state sent to the client, so the minute tick only sends changes
   sent: string;
   syncStageAt: number;
+  // The needsRequest sync re-sends the held abilities when one was swapped since the assign
+  resyncAbilities: boolean;
+  swappedSinceAssign: boolean;
   // Epoch ms the minute tick first saw this character's creation pending, 0 when it is not, -1 once the hold ran out
   pendingSince: number;
 }
@@ -566,9 +572,11 @@ export class NeedsSystem implements System {
     const now = Date.now();
     const stored = this.read(ctx, actorId);
     const rec = stored || { v: 2, hunger: this.hungerStart, fatigue: 1, at: now, stageSpell: 0, fatigueSpell: 0, wellFed: false, drinkUntil: 0 };
+    const savedAgo = stored ? formatWait(now - stored.at) : "never";
     if (stored) this.advance(rec, now, false);
-    this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, pendingSince: 0 });
+    this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, resyncAbilities: false, swappedSinceAssign: false, pendingSince: 0 });
     this.write(ctx, actorId, rec);
+    this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}`);
     this.sendState(ctx, actorId, false);
   }
 
@@ -598,10 +606,15 @@ export class NeedsSystem implements System {
     this.online.delete(actorId);
   }
 
+  // The client asks once its widgets are up, after its load: the state goes out again and the abilities are checked shortly after
   customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
     if (type !== REQUEST_PACKET || !this.enabled) return;
     for (const [actorId, entry] of this.online) {
-      if (entry.userId === userId) this.sendState(ctx, actorId, false, true);
+      if (entry.userId !== userId) continue;
+      this.sendState(ctx, actorId, false, true);
+      entry.syncStageAt = Date.now() + REQUEST_SYNC_DELAY_MS;
+      entry.resyncAbilities = true;
+      this.log(`[needs] ${hex(actorId)} request: state resent${entry.swappedSinceAssign ? ", abilities to re-send" : ""}`);
     }
   }
 
@@ -662,6 +675,10 @@ export class NeedsSystem implements System {
           this.sendState(ctx, actorId, false);
         } else if (entry.syncStageAt && now >= entry.syncStageAt) {
           entry.syncStageAt = 0;
+          if (entry.resyncAbilities) {
+            entry.resyncAbilities = false;
+            this.resendAbilities(ctx, actorId, entry);
+          }
           this.syncStages(ctx, actorId, entry);
         }
       } catch (e) {
@@ -795,8 +812,28 @@ export class NeedsSystem implements System {
       return false;
     }
     entry.rec[field] = want;
+    entry.swappedSinceAssign = true;
     this.write(ctx, actorId, entry.rec);
     return true;
+  }
+
+  // An ability swapped in while the client was still loading was wiped with its learnedSpells; a plain AddSpell sends no
+  // snippet for a spell the server already lists, so each held one is removed and added again
+  private resendAbilities(ctx: SystemContext, actorId: number, entry: Online): void {
+    if (!entry.swappedSinceAssign) return;
+    entry.swappedSinceAssign = false;
+    const mp = ctx.svr as Mp;
+    for (const field of ["stageSpell", "fatigueSpell"] as AbilityField[]) {
+      const spellId = entry.rec[field];
+      if (!spellId) continue;
+      try {
+        removeSpellFrom(mp, actorId, spellId);
+        addSpellTo(mp, actorId, spellId);
+        this.log(`[needs] ${hex(actorId)} ability resent after login ${hex(spellId)}`);
+      } catch (e) {
+        this.log(`[needs] ${field} re-send failed for ${hex(actorId)}: ${e}`);
+      }
+    }
   }
 
   private sendState(ctx: SystemContext, actorId: number, closeCrafting: boolean, force = false): void {

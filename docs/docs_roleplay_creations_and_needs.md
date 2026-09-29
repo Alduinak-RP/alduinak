@@ -285,7 +285,10 @@ until <hh:mm>`; `drinkUntil` rides `private.needs`, so the warmth survives a rel
   pay turns the worker away ("You are too tired to gather", "... to swing an axe"); a chopper or miner stands up once
   the bar cannot pay the next action. Logs: `[needs] craft refused for <id>: fatigue X%, needs Y%`, `bench refused`,
   `bar spent, crafting closed`, `cast refused`, and `[needs] <id> <what>: -N%, fatigue X%` for every kill, chop, ore,
-  harvest or skin charge.
+  harvest or skin charge. The client writes `NeedsService: survival hud toggle=.. enabled=.. hunger=.. exhaustion=..
+  stamMax=.. magMax=.. v02=.. v03=..` to `skyrim-platform.log` whenever an applied state changes those values, and
+  `before load re-apply: stamMax=.. magMax=.. v02=.. v03=..` once per game load before the penalty goes on again, so a
+  login whose maxima disagree with the readout can be read from the player's log.
 - The bar maps onto Survival's exhaustion scale as `(1 - fatigue) * 960` (`Survival_ExhaustionNeedMaxValue`).
 - Stages as in `Survival_NeedExhaustion.ApplyExhaustionStage` without sleep: Refreshed (1) below 160, Drained (2) from
   160, Tired (3) from 340, Weary (4) from 560, Debilitated (5) from 800. Survival's stage 0 is its Rested bonus from
@@ -345,6 +348,12 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
   rested), the penalties the 0-1 share of the maximum removed; survivalMode sets the client's `Survival_ModeToggle`
   (`needsSurvivalModeFlag`).
 - Notices reuse `masteryNotice`.
+- Login (2026-09, B21): the assign sends `needsState` at once and logs `[needs] <id> online: hunger H (<stage>), fatigue
+  F% (<stage>), saved <age> ago, abilities <hex>/<hex>`; the stage abilities are checked 5 s later. The client's
+  `needsRequest` (sent once its widgets are up, after its load) makes the server resend the state (`[needs] <id> request:
+  state resent`) and, 2 s later, remove and add again any stage ability swapped since the assign (`[needs] <id> ability
+  resent after login <hex>`), because a swap that landed while the client was still loading is dropped by its
+  learnedSpells wipe a second after the load; the 5 s path stays for clients that never ask.
 
 **HUD:** as in vanilla Survival, the penalty shows as a red segment at the end of the stamina bar (hunger) and the
 magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. Fatigue itself has a
