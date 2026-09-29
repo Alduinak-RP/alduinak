@@ -8,7 +8,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 51;
+  z-index: 40; // the form layer, under the context menu (48) and the admin panel (50)
   display: grid;
   place-items: center;
   pointer-events: none;
