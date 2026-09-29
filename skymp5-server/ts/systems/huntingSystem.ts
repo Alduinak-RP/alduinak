@@ -13,8 +13,9 @@ type Mp = any;
 // SearchSystem's hidesItem). A hunter holding a hunting knife skins a dead animal: the interact key on the body (SearchSystem's
 // bodyAction for spawned animals, the native activation for plugin ones) crouches them over it for SKIN_SECONDS, then hands
 // the pelt and the meat the body's race or base editor id maps to, once per body; an Expert hunter's butcher's eye may add one
-// more cut. The next interaction searches the body as usual. Skinning costs half a kill of fatigue by hunter rank and credits
-// hunter hours.
+// more cut. The skinner also takes what else the carcass carries, then the body disappears for everyone: a zone corpse on the
+// corpseConsumed event (NpcSpawnSystem), any other body disabled until the engine respawns it. A pet's body stays and gives
+// only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
 //
 // server-settings.json keys (all optional):
 //   huntingButcherChance         chance an Expert or better hunter's skinning gives one more cut of meat, default 0.25
@@ -38,6 +39,10 @@ const SKIN_REACH = 400;
 const SKIN_ANIM = "IdleKneelingEnter";
 // Holds the skinner's actor id once a skinning started, so a body gives one pelt
 const SKINNED_PROP = "private.skinned";
+// Emitted on SystemContext.gm (bodyId) once a skinning completed; NpcSpawnSystem removes a zone corpse at once
+const CORPSE_CONSUMED_EVENT = "corpseConsumed";
+// PetSystem's record on a pet actor
+const PET_PROP = "private.pet";
 
 // Raw meat the vanilla and DLC animals drop; VendorItemFoodRaw misses most of the meat, so they are listed.
 const DEFAULT_MEATS = ["FoodVenison", "FoodRabbit", "FoodBeef", "FoodGoatMeat", "FoodHorseMeat", "FoodHorkerMeat", "FoodMammothMeat", "FoodChicken", "FoodDogMeat", "BYOHFoodMudcrabLegs", "DLC2FoodBoarMeat", "DLC2FoodAshHopperLeg", "DLC2FoodAshHopperMeat"];
@@ -92,6 +97,7 @@ export class HuntingSystem implements System {
     const meatMap = rawMeat && typeof rawMeat === "object" ? rawMeat as Record<string, [string, number]> : DEFAULT_MEAT_MAP;
     await this.resolveItems(ctx, meats, peltMap, meatMap, s.dataDir, s.loadOrder);
     chainMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => !this.trySkin(ctx, casterId >>> 0, targetId >>> 0));
+    chainMpHook(ctx.svr as Mp, "onRespawn", (actorId: number) => { this.onRespawn(ctx, actorId >>> 0); });
     this.log(`[hunting] ready, ${this.pelts.length} pelt and ${this.meatRules.length} meat rule(s) for skinning, butcher ${Math.round(this.butcherChance * 100)}%`);
   }
 
@@ -167,7 +173,8 @@ export class HuntingSystem implements System {
         return;
       }
       if (peltId) addItemTo(mp, actorId, peltId, 1);
-      this.takeMeat(mp, actorId, bodyId);
+      const pet = this.isPet(mp, bodyId);
+      const stacks = this.takeFrom(mp, actorId, bodyId, pet ? (baseId) => this.meats.has(baseId) : () => true);
       if (meat) {
         const butcher = this.mastery.rankOf(ctx, actorId, "hunter") >= BUTCHER_RANK && Math.random() < this.butcherChance;
         addItemTo(mp, actorId, meat.meatId, meat.count + (butcher ? 1 : 0));
@@ -175,7 +182,8 @@ export class HuntingSystem implements System {
       }
       this.needs.pay(ctx, actorId, "fight", this.mastery.rankOf(ctx, actorId, "hunter"), "skin", true);
       this.mastery.creditWork(actorId, "hunter");
-      this.log(`[hunting] ${hex(actorId)} skinned ${hex(bodyId)} for ${hex(peltId)}`);
+      this.log(`[hunting] ${hex(actorId)} skinned ${hex(bodyId)} for ${hex(peltId)} and ${stacks} stack(s) of the carcass`);
+      if (!pet) this.consumeBody(ctx, bodyId);
     } catch (e) {
       this.log(`[hunting] skinning ${hex(bodyId)} by ${hex(actorId)} failed: ${e}`);
     }
@@ -213,12 +221,39 @@ export class HuntingSystem implements System {
     }
   }
 
-  private takeMeat(mp: Mp, actorId: number, bodyId: number): void {
-    const meat = this.meatOf(mp, bodyId);
-    if (!meat.length) return;
+  // Moves the body's stacks that match to the skinner; the number of stacks moved
+  private takeFrom(mp: Mp, actorId: number, bodyId: number, match: (baseId: number) => boolean): number {
     const entries: any[] = mp.get(bodyId, "inventory")?.entries || [];
-    mp.set(bodyId, "inventory", { entries: entries.filter((e) => !this.meats.has(Number(e.baseId) >>> 0)) });
-    for (const e of meat) addItemTo(mp, actorId, Number(e.baseId) >>> 0, Number(e.count));
+    const taken = entries.filter((e) => Number(e.count) > 0 && match(Number(e.baseId) >>> 0));
+    if (!taken.length) return 0;
+    mp.set(bodyId, "inventory", { entries: entries.filter((e) => !taken.includes(e)) });
+    for (const e of taken) addItemTo(mp, actorId, Number(e.baseId) >>> 0, Number(e.count));
+    return taken.length;
+  }
+
+  // A zone corpse goes at once on corpseConsumed; any other body is disabled until it respawns
+  private consumeBody(ctx: SystemContext, bodyId: number): void {
+    try { ctx.gm.emit(CORPSE_CONSUMED_EVENT, bodyId); } catch (e) { this.log(`[hunting] ${CORPSE_CONSUMED_EVENT} listener failed for ${hex(bodyId)}: ${e}`); }
+    const mp = ctx.svr as Mp;
+    try {
+      if (mp.get(bodyId, "isDead") !== true) return;
+      mp.set(bodyId, "isDisabled", true);
+      this.log(`[hunting] body ${hex(bodyId)} hidden until it respawns`);
+    } catch { /* removed by its zone */ }
+  }
+
+  // A respawned body can be skinned again, and one hidden after its skinning comes back
+  private onRespawn(ctx: SystemContext, actorId: number): void {
+    const mp = ctx.svr as Mp;
+    try {
+      if (!mp.get(actorId, SKINNED_PROP)) return;
+      mp.set(actorId, SKINNED_PROP, 0);
+      if (mp.get(actorId, "isDisabled") === true) mp.set(actorId, "isDisabled", false);
+    } catch { /* form gone */ }
+  }
+
+  private isPet(mp: Mp, actorId: number): boolean {
+    try { return !!mp.get(actorId, PET_PROP); } catch { return false; }
   }
 
   isAnimal(ctx: SystemContext, actorId: number): boolean {

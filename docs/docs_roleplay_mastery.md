@@ -567,7 +567,15 @@ Wolf Pelt, `foxarctic` (the arctic fox `EncFoxArctic`) -> Snow Fox Pelt (the
 vanilla death items). The log line `[hunting] <id> skins <body>
 (<names>): <fragment> in <name>` names the match. It costs one gathering action of fatigue by hunter
 rank and credits hunter hours. The body is marked `private.skinned` and gives
-one pelt; the next interaction searches it as usual. A skinner who walks off,
+one pelt. The skinner also takes everything else the carcass carries (claws,
+teeth and the like), then the body disappears for everyone: HuntingSystem emits
+`corpseConsumed` (the body's id) on the gamemode bus, NpcSpawnSystem removes a
+zone animal's corpse at once and keeps the slot's respawn timer, and any other
+body (a plugin-placed animal) is disabled (`[hunting] body <id> hidden until it
+respawns`) until the engine respawns it, when it is enabled again with the
+`private.skinned` mark cleared, so it can be skinned again. A pet's body stays
+and gives only its meat; players and companions are never skinned (no
+`ActorTypeAnimal`). A skinner who walks off,
 dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
 the knife is told "A hunting knife would take its pelt." and the body opens.
 Non-hunters just search. The kneel needs only the server build; the Platform
