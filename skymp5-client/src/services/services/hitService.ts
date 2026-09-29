@@ -5,6 +5,9 @@ import { FormType, HitEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { MsgType } from "../../messages";
 import { Hit } from "../messages/hitMessage";
+import { logToPlatformLog } from "../../logging";
+
+const NPC_SPELL_HIT_LOG_GAP_MS = 5000;
 
 export class HitService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -17,6 +20,8 @@ export class HitService extends ClientListener {
         // TODO: allow non-weapon sources
         const aggressor = e.aggressor.getFormID();
         if (aggressor < 0xff000000 && aggressor !== 0x14) return; // all skymp npcs are FF+
+
+        this.logNpcSpellHit(e, aggressor);
 
         if (aggressor >= 0xff000000 && !isHostedByMe(aggressor)) {
             return;
@@ -72,6 +77,16 @@ export class HitService extends ClientListener {
         return hitData;
     }
 
+    // Whether the engine raises a hit event for a creature's hit spell (perk or race attack) on the player, per source
+    private logNpcSpellHit(e: HitEvent, aggressor: number) {
+        if (aggressor === 0x14 || e.target.getFormID() !== 0x14 || !e.source || this.sp.Weapon.from(e.source)) return;
+        const sourceId = e.source.getFormID();
+        const now = Date.now();
+        if (now - (this.npcSpellHitLoggedAt.get(sourceId) ?? 0) < NPC_SPELL_HIT_LOG_GAP_MS) return;
+        this.npcSpellHitLoggedAt.set(sourceId, now);
+        logToPlatformLog(this, `npc ${aggressor.toString(16)} (hosted ${isHostedByMe(aggressor)}) hit the player with source ${sourceId.toString(16)} type ${e.source.getType()}, blocked ${e.isHitBlocked}`);
+    }
+
     private pruneRecentMagicHits(now: number) {
         if (this.recentMagicHits.size <= 64) {
             return;
@@ -85,4 +100,5 @@ export class HitService extends ClientListener {
 
     private readonly magicHitDedupMs = 100;
     private recentMagicHits: Map<string, number> = new Map();
+    private npcSpellHitLoggedAt: Map<number, number> = new Map();
 }

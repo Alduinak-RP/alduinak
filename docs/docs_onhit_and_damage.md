@@ -84,3 +84,18 @@ Each landed hit spends one use of the poison on the server's copy and sends the 
 engine already matches because it spent the same charge; a hit refused by the attack speed check or the gamemode leaves
 the charge, and the client's later crafted-extras report reconciles it. Copies of other players never carry the
 poison extra on the client, so the victim's own engine cannot apply it a second time.
+
+Creature hit spells are not weapon poisons. The Falmer poison is the perk `crFalmerPoison01-05` (Dawnguard adds
+`DLC1crFalmerPoison06`) whose "Apply Combat Hit Spell" entry casts `crFalmerPoisonedWeapon0x` (SPEL type Poison,
+delivery Contact, one Health effect resisted by PoisonResist); spider and chaurus bites, the giant club slam, the
+spriggan claw and the atronach and death hound melee spells are race attack spells of the same delivery. All of them
+are applied by the victim's own engine when the copy's swing connects: the perk hit spell raises no hit event the
+client relays, and the race attack spells the client does send are refused by `CanHitWithSpell` (the NPC neither
+holds nor learned them), so the server never sees them and its raised-shield rule cannot zero them. The client's
+`NpcHitSpellBlockService` therefore dispels a Contact-delivery poison hit spell from an NPC aggressor when the paired
+weapon hit was blocked (or the player holds a block facing the aggressor), and always when the aggressor is a copy
+this client does not host (its swing is a replay, the host reports the real hit), and puts the health back to the
+value before the effect when only the poison's own first tick was lost. `hit` events from NPC aggressors with a
+non-weapon source are logged once per source every 5 s (`HitService: npc ... hit the player with source ...`), which
+says whether the engine raises a hit event for a given hit spell at all. An unblocked hit from a hosted NPC still
+poisons the player locally as before, invisible to god mode and `onHitDamageAttempt`.

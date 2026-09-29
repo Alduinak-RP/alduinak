@@ -25,6 +25,7 @@ import { CraftedExtrasService } from "./services/services/craftedExtrasService";
 import { DropItemService } from "./services/services/dropItemService";
 import { HitService } from "./services/services/hitService";
 import { CloneSpellGuardService } from "./services/services/cloneSpellGuardService";
+import { NpcHitSpellBlockService } from "./services/services/npcHitSpellBlockService";
 import { RagdollService } from "./services/services/ragdollService";
 import { DeathService } from "./services/services/deathService";
 import { DeathScreenService } from "./services/services/deathScreenService";
@@ -126,6 +127,7 @@ const main = () => {
       new DropItemService(sp, controller),
       new HitService(sp, controller),
       new CloneSpellGuardService(sp, controller),
+      new NpcHitSpellBlockService(sp, controller),
       new RagdollService(sp, controller),
       new DeathService(sp, controller),
       new DeathScreenService(sp, controller),
