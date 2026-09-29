@@ -7528,13 +7528,14 @@
   ],
   "smelting": {
    "profession": "miner",
+   "also": [
+    "blacksmith"
+   ],
    "bench": "CraftingSmelter",
    "items": {
-    "Anyone": [
-     "OreIron",
-     "IngotIron"
-    ],
     "Novice": [
+     "OreIron",
+     "IngotIron",
      "OreCorundum",
      "IngotCorundum"
     ],

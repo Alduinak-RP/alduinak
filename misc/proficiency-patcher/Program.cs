@@ -1730,7 +1730,7 @@ static class Steps
             }
             else if (r.WorkbenchKeyword.FormKey == smelter && inputs.Any(i => smeltTable.ContainsKey(i) && c.EdidOf(i).StartsWith("Ore", StringComparison.OrdinalIgnoreCase)))
             {
-                (owner, also, why) = (smelt["profession"]!.GetValue<string>(), new List<string>(), "smelting");
+                (owner, also, why) = (smelt["profession"]!.GetValue<string>(), Edids(c, smelt["also"]).ToList(), "smelting");
                 tier = tiers[inputs.Append(product).Select(i => smeltTable.GetValueOrDefault(i, 0)).Max()];
             }
             else if (owner != null)
