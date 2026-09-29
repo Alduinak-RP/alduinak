@@ -236,17 +236,24 @@ pub const MASTERS: &[Master] = &[
 // Folder earlier launchers and the standalone patcher kept original masters in
 const BACKUP_DIR: &str = "Original ESMs backups";
 
-// The launcher's bundled cleaning patch, else one downloaded once into the downloads folder; both verified by sha256
-async fn cleaned_master_patch(v: &MasterVariant) -> Result<PathBuf, String> {
+// The launcher's own copy of a cleaning patch, when it passes its checksum
+async fn bundled_patch(v: &MasterVariant) -> Option<PathBuf> {
     let bundled = resource_dir().join("cleaned-masters").join(v.patch);
-    if bundled.exists() {
-        if mo2::sha256_file(&bundled).await.map(|h| h == v.patch_sha256).unwrap_or(false) { return Ok(bundled); }
-        log(format!("[masters] the bundled {} fails its checksum, downloading it", v.patch));
-    }
+    if !bundled.exists() { return None; }
+    if mo2::sha256_file(&bundled).await.map(|h| h == v.patch_sha256).unwrap_or(false) { return Some(bundled); }
+    log(format!("[masters] the bundled {} fails its checksum, downloading it", v.patch));
+    None
+}
+
+// A verified cleaning patch in the downloads folder, copied from the bundle or downloaded; xdelta3 cannot open non-ANSI paths like the install folder's
+async fn cleaned_master_patch(v: &MasterVariant) -> Result<PathBuf, String> {
     let dir = mo2::downloads_dir().join("cleaned-masters");
     let file = dir.join(v.patch);
     if file.exists() && mo2::sha256_file(&file).await.map(|h| h == v.patch_sha256).unwrap_or(false) { return Ok(file); }
     let _ = fs::create_dir_all(&dir);
+    if let Some(bundled) = bundled_patch(v).await {
+        if tokio::fs::copy(&bundled, &file).await.is_ok() { return Ok(file); }
+    }
     net::download_file(&format!("{}/files/cleaned-masters/{}", net::api_url(), v.patch), &file, &[], |_, _| {}).await?;
     if mo2::sha256_file(&file).await? != v.patch_sha256 {
         let _ = fs::remove_file(&file);
@@ -499,14 +506,13 @@ pub async fn create_isolated(base_override: Option<String>, force: bool) -> Resu
 mod tests {
     use super::*;
 
-    // Every patch bundled on this machine matches the table and is picked over a download
+    // Every patch bundled on this machine matches the table
     #[tokio::test]
-    async fn bundled_patches_are_used() {
+    async fn bundled_patches_match() {
         for v in MASTERS.iter().flat_map(|m| m.variants) {
             let bundled = resource_dir().join("cleaned-masters").join(v.patch);
             if !bundled.exists() { continue; }
-            assert_eq!(mo2::sha256_file(&bundled).await.unwrap(), v.patch_sha256, "{}", v.patch);
-            assert_eq!(cleaned_master_patch(v).await.unwrap(), bundled, "{}", v.patch);
+            assert_eq!(bundled_patch(v).await, Some(bundled), "{}", v.patch);
         }
     }
 }
