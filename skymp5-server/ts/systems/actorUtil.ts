@@ -107,10 +107,10 @@ export const isPlayerActor = (mp: Mp, actorId: number): boolean => {
   }
 };
 
-// False for dead actors and for anything that is not an actor
+// False for dead actors and for anything that is not an actor; isDead on a non-actor would log a native error block
 export const isAlive = (mp: Mp, actorId: number): boolean => {
   try {
-    return mp.get(actorId, "isDead") === false;
+    return mp.get(actorId, "type") === "MpActor" && mp.get(actorId, "isDead") === false;
   } catch {
     return false;
   }
