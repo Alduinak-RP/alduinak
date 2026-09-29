@@ -58,6 +58,8 @@ const DEFAULT_CORPSE_SECONDS = 300;
 const CORPSE_JUMP_UNITS = 64;
 const CORPSE_SINK_UNITS = 32;
 const CORPSE_LOG_MS = 10000;
+// Emitted on SystemContext.gm (bodyId) by HuntingSystem once a skinning completes; a zone corpse then goes at once
+const CORPSE_CONSUMED_EVENT = "corpseConsumed";
 
 interface ZoneNpc {
   baseDesc: string;
@@ -238,6 +240,7 @@ export class NpcSpawnSystem implements System {
     if (Number.isFinite(rawCorpse) && rawCorpse > 0) this.corpseMs = rawCorpse * 1000;
     this.cleanupLeftovers(this.mp);
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
+    ctx.gm.on(CORPSE_CONSUMED_EVENT, (bodyId: number) => this.consumeCorpse(Number(bodyId) >>> 0));
     await this.queueLoad("boot");
     this.watchFile();
     this.ready = true;
@@ -762,11 +765,14 @@ export class NpcSpawnSystem implements System {
       let gone = false;
       // A throw means the form is gone, which counts as dead
       try { dead = mp.get(entry.id, "isDead") === true; } catch { dead = gone = true; }
-      if (!dead) continue;
-      entry.diedAt = now;
-      zone.slotReadyAt[entry.slot] = zone.respawnSeconds > 0 ? now + zone.respawnSeconds * 1000 : NEVER_READY;
-      if (!gone) this.corpses.set(entry.id, now + this.corpseMs);
+      if (dead) this.markDead(zone, entry, now, gone);
     }
+  }
+
+  private markDead(zone: Zone, entry: Spawned, now: number, gone = false): void {
+    entry.diedAt = now;
+    zone.slotReadyAt[entry.slot] = zone.respawnSeconds > 0 ? now + zone.respawnSeconds * 1000 : NEVER_READY;
+    if (!gone) this.corpses.set(entry.id, now + this.corpseMs);
   }
 
   // Dead zone NPCs that jump between polls or sink under the navmesh are logged, the evidence for the corpse sync reports
@@ -808,19 +814,40 @@ export class NpcSpawnSystem implements System {
     let removed = 0;
     for (const [id, at] of Array.from(this.corpses)) {
       if (at > now) continue;
-      this.corpses.delete(id);
-      this.corpsePos.delete(id);
-      try { mp.destroyActor(id); } catch { }
-      // The slot keeps its entry and cooldown; id 0 marks its corpse as gone
-      for (const zone of this.zones) {
-        for (const entry of zone.spawned) {
-          if (entry.id === id) entry.id = 0;
-        }
-      }
+      this.destroyCorpse(mp, id);
       removed++;
     }
     if (!removed) return;
     this.log(`NpcSpawnSystem: removed ${removed} corpse(s) ${this.corpseMs / 1000} s after death`);
+    this.saveSpawns();
+  }
+
+  // The slot keeps its entry and cooldown; id 0 marks its corpse as gone
+  private destroyCorpse(mp: Mp, id: number): void {
+    this.corpses.delete(id);
+    this.corpsePos.delete(id);
+    try { mp.destroyActor(id); } catch { }
+    for (const zone of this.zones) {
+      for (const entry of zone.spawned) {
+        if (entry.id === id) entry.id = 0;
+      }
+    }
+  }
+
+  // A consumed (skinned) corpse this system placed goes at once, as if its timer had run out; a death the poll has not seen yet starts the slot's Respawn first
+  private consumeCorpse(bodyId: number): void {
+    if (!bodyId) return;
+    const zone = this.zones.find((z) => z.spawned.some((e) => e.id === bodyId));
+    const entry = zone?.spawned.find((e) => e.id === bodyId);
+    if (!entry && !this.corpses.has(bodyId)) return;
+    if (zone && entry && !entry.diedAt) {
+      let dead = false;
+      try { dead = this.mp.get(bodyId, "isDead") === true; } catch { }
+      if (!dead) return;
+      this.markDead(zone, entry, Date.now());
+    }
+    this.destroyCorpse(this.mp, bodyId);
+    this.log(`NpcSpawnSystem: corpse ${hex(bodyId)}${zone ? ` of '${zone.name}'` : ""} consumed, removed at once`);
     this.saveSpawns();
   }
 

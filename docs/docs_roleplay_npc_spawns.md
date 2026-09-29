@@ -8,7 +8,8 @@ walks into the radius the server places the NPCs (a server-side `PlaceAtMe`,
 no plugin edit needed); when the last player has been gone long enough it
 removes them again; NPCs killed in between come back after a per-zone delay
 that keeps running even while the zone is empty. Every corpse disappears 5
-minutes after the kill, whatever the zone does in the meantime. The file is
+minutes after the kill, whatever the zone does in the meantime, and a skinned
+animal at once. The file is
 watched, so edits apply without a restart, and the NPCs sub-tab of the Personal Menu's Admin tab
 lists, adds, resets and deletes zones in game.
 
@@ -161,7 +162,11 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   second poll), independent of `Respawn`, `Despawn` and file reloads: a slot
   refilled sooner gets its fresh NPC while the old corpse stays, and a zone
   that despawns sooner leaves its corpses until their time is up. Only an
-  admin reset removes corpses early. Set `"npcCorpseSeconds"` in
+  admin reset and a skinning remove corpses early: once a hunter's skinning
+  completes, `HuntingSystem` emits `corpseConsumed` with the body's id on the
+  systems' event bus, and a corpse this system placed is destroyed for
+  everyone at once, exactly as if its timer had run out, so the slot keeps its
+  `Respawn` cooldown and refills on schedule. Set `"npcCorpseSeconds"` in
   `server-settings.json` to change the 300 second default. On each client the
   copy's translation and follow package are stopped before the kill so the
   ragdoll is not dragged into the ground, a copy that arrives as a corpse is
@@ -460,6 +465,7 @@ Everything goes through the server log and the manager console, prefixed
 - `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456)`
 - `'<Name>' despawned 4 npc(s)`
 - `removed a/b leftover npc(s) from previous runs (c found by their tag)` on boot, once the world DB has loaded (the ids come from `zone-spawns.json` and from a scan of every persisted `ff` form for the spawner tag)
+- `corpse ff000123 of '<Name>' consumed, removed at once` after a skinning
 - `corpse ff000123 of '<Name>' moved 200 units, now at x,y,z (navmesh z n), dead 40 s` / `lies 50 units under the navmesh` for a dead NPC whose body jumped or sank
 - skipped entries, unreadable plugins and spawn failures, each naming the zone
 
