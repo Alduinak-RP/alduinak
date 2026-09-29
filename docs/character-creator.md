@@ -208,6 +208,18 @@ browser page or character select menu up), it calls `showRaceMenu` again, up to
 3 times, and stops once the menu has closed. The 5 s restart whenever chat or
 another page takes focus, so the race menu never opens under a hidden page.
 
+A creation at night or in bad weather is lit by the client (`CreationLightService`):
+Candlelight (Skyrim.esm SPEL 0x43324) is applied to the player right before
+`Game.showRaceMenu` and again when the RaceSex menu opens, on by default, and
+the creation light key toggles it while the menu is open (client setting
+`creationLightKeyCode`, F5 when unset; a letter would type into the name field,
+so keep it a function key). It is refreshed every 50 s while the game runs and
+dispelled when the menu closes, on a spawn and on a disconnect. The effect never
+reaches the server: SkyrimPlatform emits `spellCast` only for a spell in the
+caster's hands. Each apply and dispel logs `candlelight on/off (<why>), race menu
+<bool>, light effect <bool>` to `skyrim-platform.log`. The synopsis placeholder
+`[get creation light button]` resolves to that key.
+
 ## Data provenance
 
 `skymp5-front/src/features/charCreator/data/headparts.json` and `tints.json`

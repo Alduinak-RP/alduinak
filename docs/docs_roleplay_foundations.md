@@ -205,7 +205,9 @@ character select panel) walks through:
    `emoteWheelKeyCode` (EmoteService), `[get release mouse button]` is
    `freeCursorKeyCode`, `[get hide interface button]` is `hideUiKeyCode` and
    `[get activate chat button]` is the chat key from `chatFocusKeyCodes`, or
-   Enter when only Enter is bound (BrowserService). Key names match launcher
+   Enter when only Enter is bound (BrowserService), and
+   `[get creation light button]` is `creationLightKeyCode` (CreationLightService,
+   F5 when unset). Key names match launcher
    Settings. A line whose key is unbound is left out.
 2. The question with one button per start location, stacked, and **Back**.
 3. A confirmation, "Begin at <label>?", with **Back** (to the list) and

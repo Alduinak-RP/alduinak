@@ -44,6 +44,7 @@ import { BrowserService } from "./services/services/browserService";
 import { AuthService } from "./services/services/authService";
 import { CharacterSelectService } from "./services/services/characterSelectService";
 import { CharCreatorService } from "./services/services/charCreatorService";
+import { CreationLightService } from "./services/services/creationLightService";
 import { HousingService } from "./services/services/housingService";
 import { PetService } from "./services/services/petService";
 import { MountService } from "./services/services/mountService";
@@ -153,6 +154,7 @@ const main = () => {
       new AuthService(sp, controller),
       new CharacterSelectService(sp, controller),
       new CharCreatorService(sp, controller),
+      new CreationLightService(sp, controller),
       new HousingService(sp, controller),
       new PetService(sp, controller),
       new MountService(sp, controller),

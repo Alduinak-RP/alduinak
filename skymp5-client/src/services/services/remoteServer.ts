@@ -32,6 +32,7 @@ import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
 import { CharacterSelectService } from './characterSelectService';
+import { CreationLightService } from './creationLightService';
 import { UpdateMovementMessage } from '../messages/updateMovementMessage';
 import { ChangeValuesMessage } from '../messages/changeValuesMessage';
 import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
@@ -1283,6 +1284,8 @@ export class RemoteServer extends ClientListener {
     }
     logToPlatformLog(this, `showRaceMenu (${why}), loading ${Ui.isMenuOpen(Menu.Loading)}`);
     unequipDefaultOutfit();
+    // Lit before the menu pauses the engine
+    this.controller.lookupListener(CreationLightService).onRaceMenuShowing();
     Game.showRaceMenu();
   }
 

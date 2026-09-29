@@ -12,6 +12,7 @@ import { BrowserService } from "./browserService";
 import { VoiceService } from "./voiceService";
 import { PlayerActionService } from "./playerActionService";
 import { EmoteService } from "./emoteService";
+import { CreationLightService } from "./creationLightService";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -52,6 +53,7 @@ const INTRO_KEYS: [string, (controller: CombinedController) => number][] = [
   ["[get release mouse button]", (c) => c.lookupListener(BrowserService).freeCursorKeyCode],
   ["[get hide interface button]", (c) => c.lookupListener(BrowserService).hideUiKeyCode],
   ["[get activate chat button]", (c) => c.lookupListener(BrowserService).chatKeyCode],
+  ["[get creation light button]", (c) => c.lookupListener(CreationLightService).keyCode],
 ];
 
 // Event keys exchanged with the browser; namespaced to avoid collisions with other "browserMessage" listeners.
