@@ -586,12 +586,11 @@ one pelt. The skinner also takes everything else the carcass carries (claws,
 teeth and the like), then the body disappears for everyone: HuntingSystem emits
 `corpseConsumed` (the body's id) on the gamemode bus, NpcSpawnSystem removes a
 zone animal's corpse at once and keeps the slot's respawn timer, and any other
-body (an admin- or console-placed animal, a companion's) is disabled for good
-(`[hunting] body <id> hidden for good`): no such NPC ever respawns, since placed
-NPCs carry a 1e9 s `spawnDelay` and the gamemode's death hook (`55_death.js`)
-gives every other killed NPC the same, and plugin-placed NPCs are not loaded
-while `npcEnabled` is false. A companion's body still goes on its own corpse
-timer. Only zone animals come back. A pet's body stays
+body (an admin- or console-placed animal) is disabled for good (`[hunting] body
+<id> hidden for good`): no such NPC ever respawns, since placed NPCs carry a
+1e9 s `spawnDelay` and the gamemode's death hook (`55_death.js`) gives every
+other killed NPC the same, and plugin-placed NPCs are not loaded while
+`npcEnabled` is false. Only zone animals come back. A pet's body stays
 and gives only its meat; players and companions are never skinned (no
 `ActorTypeAnimal`). A skinner who walks off,
 dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
