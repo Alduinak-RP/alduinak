@@ -255,6 +255,16 @@ Half cost: flora (plants that are not crops), refining (the smelter, the tanning
 skinning. Rabbits, pheasants and salmon hanging on racks cost nothing. Spells cost nothing. A shared recipe (smelting,
 tanning, charcoal) gives every profession that shares it both its rank discount and its hours.
 
+**Warmed by drink.** A cook or alchemist of Novice or better who drinks an alcohol pays `needsAlcoholDiscount` (25%)
+less fatigue for the crafts priced by their own rank (the cooking pot and oven for a cook, the alchemy lab for an
+alchemist, shared recipes) for `needsAlcoholMinutes` (10); another drink refreshes the timer and never stacks, and the
+discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. An alcohol is an ALCH drunk
+with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine,
+brandy, flin, sujamma, shein and matze, the Windhelm and Dawnstar meads and wines; not juice, water, milk or skooma, and
+not Rotgut or Battle-Brew Special unless `needsAlcoholItems` names them. The drinker sees "The drink warms you: your Cook
+work costs 25% less fatigue for 10 minutes." and the server logs `[needs] <id> drinks <editor id>: Cook crafts -25%
+until <hh:mm>`; `drinkUntil` rides `private.needs`, so the warmth survives a relog.
+
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
   (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
   A crop needs a hoe and takes 5 s of hoeing (`IdleHoe`); flora takes a 2 s kneel.

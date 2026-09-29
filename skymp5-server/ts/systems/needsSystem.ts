@@ -1,10 +1,10 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FINISHED_EVENT } from "./system";
-import { resolveEditorIds } from "./espmEditorIds";
+import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
-import { CastType, SpellType, keywordConditionsPass, spellInfo } from "./espmMagic";
+import { CastType, SpellType, fieldData, keywordConditionsPass, spellEffects, spellInfo, view } from "./espmMagic";
 import { addSpellTo, removeSpellFrom, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
-import { LEGENDARY, MasterySystem } from "./masterySystem";
+import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -19,6 +19,10 @@ type Mp = any;
 // cannot pay is refused; a craft is refused before the native craft runs and the client's local craft is undone by resending its inventory,
 // and the craft that leaves the bar short of another closes the menu. Eating never costs fatigue. The bar maps onto Survival's exhaustion
 // scale as (1 - fatigue) * 960.
+// Warmed by drink: a cook or alchemist (Novice or better) who drinks an alcohol pays needsAlcoholDiscount less fatigue for the crafts priced
+// by their own rank for needsAlcoholMinutes; another drink refreshes the timer and never stacks. An alcohol is an ALCH drunk with the
+// ITMPotionUse sound that carries a detrimental stamina or magicka rate effect (every vanilla ale, mead, wine, brandy, flin, sujamma, shein
+// and matze; not juice, water, milk or skooma), or one needsAlcoholItems names.
 // Each need holds the Survival stage ability of its stage (screen effects stripped by AlduinakCreations.esp) and reduces a
 // maximum like Survival_NeedBase.ApplyAttributePenalty: hunger max stamina, fatigue max magicka, by
 // clamp((value - (stage 2 value - 1)) / (max - (stage 2 value - 1)), 0, 1) of the total. The server sends that share and
@@ -33,7 +37,7 @@ type Mp = any;
 //                     maximum removed; survivalMode sets the client's Survival_ModeToggle; closeCrafting closes the Crafting Menu
 //                     { customPacketType: "masteryNotice", text }
 //
-// Persistence: `private.needs` = { v, hunger, fatigue, at, stageSpell, fatigueSpell, wellFed } on the character's actor form.
+// Persistence: `private.needs` = { v, hunger, fatigue, at, stageSpell, fatigueSpell, wellFed, drinkUntil } on the character's actor form.
 //
 // server-settings.json keys (all optional):
 //   needsEnabled                  false switches hunger and fatigue off, default true
@@ -49,6 +53,9 @@ type Mp = any;
 //   needsExhaustionMax            exhaustion of an empty fatigue bar, default 960 (Survival_ExhaustionNeedMaxValue)
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
 //   needsSurvivalModeFlag         true sets the client's Survival_ModeToggle (SRVT, esl 0x828) to 1, the global HUDMenu polls each frame to draw the penalty segments, default true
+//   needsAlcoholDiscount          share of the craft cost a warmed cook or alchemist saves, default 0.25; 0 turns the rule off
+//   needsAlcoholMinutes           how long a drink warms, default 10
+//   needsAlcoholItems             { "<ALCH editor id or hex id>": true | false } counting an item as alcohol or not, over the record rule
 //   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
 //   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
 //   blockStaggerWithoutStamina    a blocker whose stamina is below the cost is staggered, default true
@@ -110,6 +117,18 @@ const REGEN_PER_MS = 1 / 3600000;
 const FIGHT_FORGET_MS = 10 * 60000;
 const ANIMAL_KEYWORD = "ActorTypeAnimal";
 const STAGGER_COOLDOWN_MS = 1000;
+// Warmed by drink: the professions whose own-rank crafts a drink discounts
+const ALCOHOL_PROFESSIONS = ["cook", "alchemist"];
+const DEFAULT_ALCOHOL_DISCOUNT = 0.25;
+const DEFAULT_ALCOHOL_MINUTES = 10;
+// ALCH ENIT: value, flags, addiction, addiction chance, use sound
+const ENIT_USE_SOUND_OFFSET = 16;
+const POTION_USE_SOUND = "ITMPotionUse";
+// MGEF DATA: flags at 0, archetype at 0x40, actor value at 0x44
+const MGEF_DETRIMENTAL = 0x4;
+const ARCHETYPE_VALUE_MODIFIER = 0;
+// Actor values the drinks damage: MagickaRate and StaminaRateMult
+const DRINK_RATE_VALUES = new Set([28, 157]);
 
 interface NeedsRecord {
   v: number;
@@ -122,6 +141,8 @@ interface NeedsRecord {
   fatigueSpell: number;
   // Survival's hasBonus: set when a meal empties hunger, cleared once hunger reaches the first stage value
   wellFed: boolean;
+  // Epoch ms until which a drink discounts the character's own crafts, 0 when none
+  drinkUntil: number;
 }
 
 interface Online {
@@ -200,6 +221,8 @@ export class NeedsSystem implements System {
     this.exhaustionMax = num("needsExhaustionMax", DEFAULT_EXHAUSTION_MAX, 1);
     this.penalties = all["needsAttributePenalties"] !== false;
     this.survivalModeFlag = all["needsSurvivalModeFlag"] !== false;
+    this.alcoholDiscount = clamp(num("needsAlcoholDiscount", DEFAULT_ALCOHOL_DISCOUNT), 0, 1);
+    this.alcoholMs = num("needsAlcoholMinutes", DEFAULT_ALCOHOL_MINUTES) * 60000;
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
       all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0);
 
@@ -208,8 +231,10 @@ export class NeedsSystem implements System {
       return;
     }
     const probe = await this.resolveForms(ctx, foodHunger, s.dataDir, s.loadOrder);
+    await this.resolveAlcohol(ctx, all["needsAlcoholItems"], s.dataDir, s.loadOrder);
     const foodLine = Object.entries(foodHunger).map(([edid, v]) => `${edid.replace(FOOD_EFFECT_PREFIX, "")} ${v}`).join(", ");
-    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue refills 100% per online hour, costs by rank: gathering ${FATIGUE_COST.gather.map(tenth).join("/")}%, crafting ${FATIGUE_COST.craft.map(tenth).join("/")}%, kills ${FATIGUE_COST.fight.map(tenth).join("/")}%, spells free, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}`);
+    const drinkLine = this.alcoholDiscount > 0 && this.alcoholMs > 0 ? `a drink saves ${ALCOHOL_PROFESSIONS.join(" and ")}s ${pct(this.alcoholDiscount)}% on their own crafts for ${this.alcoholMs / 60000} min` : "drinks discount nothing";
+    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue refills 100% per online hour, costs by rank: gathering ${FATIGUE_COST.gather.map(tenth).join("/")}%, crafting ${FATIGUE_COST.craft.map(tenth).join("/")}%, kills ${FATIGUE_COST.fight.map(tenth).join("/")}%, spells free, ${drinkLine}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
@@ -241,6 +266,28 @@ export class NeedsSystem implements System {
     if (effects.resolved.has(PROBE_EFFECT.toLowerCase()) && !probe) this.log(`[needs] ${PROBE_EFFECT} carries no ${HUNGER_RESTORE_SCRIPT} amount in the load order: hunger effects outside needsFoodHunger restore nothing (AlduinakCreations.esp must keep Survival's effect edits)`);
     if (missing.length) this.log(`[needs] not in the load order, ignored: ${missing.join(", ")}`);
     return probe;
+  }
+
+  // The potion use sound and the needsAlcoholItems overrides; an editor id that is not in the load order is logged
+  private async resolveAlcohol(ctx: SystemContext, raw: unknown, dataDir: string, loadOrder: string[]): Promise<void> {
+    const mp = ctx.svr as Mp;
+    const overrides = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const edids = Object.keys(overrides).filter(isEditorId);
+    const scan = await resolveEditorIds([POTION_USE_SOUND, ...edids], dataDir, loadOrder, this.log, ["SNDR", "ALCH"]);
+    const idOf = (name: string): number => {
+      try {
+        if (!isEditorId(name)) return parseInt(name, 16) >>> 0;
+        const desc = scan.resolved.get(name.toLowerCase());
+        return desc ? mp.getIdFromDesc(desc) >>> 0 : 0;
+      } catch { return 0; }
+    };
+    this.potionUseSound = idOf(POTION_USE_SOUND);
+    const missing: string[] = this.potionUseSound ? [] : [POTION_USE_SOUND];
+    for (const [name, v] of Object.entries(overrides)) {
+      const id = idOf(name);
+      if (id) this.alcoholOverrides.set(id, v === true); else missing.push(name);
+    }
+    if (missing.length) this.log(`[needs] alcohol names not in the load order, ignored: ${missing.join(", ")}`);
   }
 
   // ── Native hooks: decide from memory, never write here ────────────────────
@@ -336,7 +383,7 @@ export class NeedsSystem implements System {
     const entry = this.online.get(actorId);
     if (!entry || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
     const priced = this.mastery.craftCost(ctx, actorId, recipeId);
-    const cost = this.costOf("craft", priced.rank, priced.half);
+    const cost = this.costOf("craft", priced.rank, priced.half) * this.drinkMultiplier(ctx, actorId, entry, priced.rank);
     if (!this.affords(entry, cost)) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
       return false;
@@ -353,7 +400,10 @@ export class NeedsSystem implements System {
     if (!entry) return false;
     const benches = Array.from(this.mastery.stationKeywords(ctx, refrId)).filter((k) => this.mastery.isCraftBench(k));
     if (!benches.length) return false;
-    const cost = Math.min(...benches.map((k) => this.costOf("craft", this.mastery.craftRank(ctx, actorId, k), this.mastery.halfCostBench(k))));
+    const cost = Math.min(...benches.map((k) => {
+      const rank = this.mastery.craftRank(ctx, actorId, k);
+      return this.costOf("craft", rank, this.mastery.halfCostBench(k)) * this.drinkMultiplier(ctx, actorId, entry, rank);
+    }));
     if (this.affords(entry, cost)) return false;
     this.enqueue(ctx, { kind: "tired", actorId, cost });
     return true;
@@ -418,7 +468,7 @@ export class NeedsSystem implements System {
     }
   }
 
-  // Every hunger effect whose HasKeyword conditions pass restores its amount, as each would run its own script
+  // Every hunger effect whose HasKeyword conditions pass restores its amount, as each would run its own script; an alcohol also warms
   private eat(ctx: SystemContext, actorId: number, baseId: number): void {
     const entry = this.online.get(actorId);
     if (!entry) return;
@@ -426,11 +476,62 @@ export class NeedsSystem implements System {
     const restore = this.foodEffectsOf(mp, baseId)
       .filter((e) => keywordConditionsPass(mp, e.mgefId, actorId))
       .reduce((sum, e) => sum + e.amount, 0);
-    if (!restore) return;
+    const warmed = this.isAlcohol(mp, baseId) && this.warmBy(ctx, actorId, entry, baseId);
+    if (!restore && !warmed) return;
     this.catchUp(entry);
-    entry.rec.hunger = clamp(entry.rec.hunger - restore, 0, HUNGER_MAX);
-    if (entry.rec.hunger <= 0) entry.rec.wellFed = true;
+    if (restore) {
+      entry.rec.hunger = clamp(entry.rec.hunger - restore, 0, HUNGER_MAX);
+      if (entry.rec.hunger <= 0) entry.rec.wellFed = true;
+    }
     this.enqueue(ctx, { kind: "changed", actorId });
+  }
+
+  // A cook or alchemist of Novice or better is warmed for alcoholMs from now; anyone else gets the hunger only
+  private warmBy(ctx: SystemContext, actorId: number, entry: Online, baseId: number): boolean {
+    if (this.alcoholDiscount <= 0 || this.alcoholMs <= 0) return false;
+    const profession = this.mastery.professionOf(ctx, actorId);
+    if (!profession || ALCOHOL_PROFESSIONS.indexOf(profession) === -1 || this.mastery.rankOf(ctx, actorId, profession) <= FREE) return false;
+    const now = Date.now();
+    const fresh = entry.rec.drinkUntil < now;
+    entry.rec.drinkUntil = now + this.alcoholMs;
+    const edid = String(lookup(ctx.svr as Mp, baseId)?.record?.editorId || hex(baseId));
+    const label = profession.charAt(0).toUpperCase() + profession.slice(1);
+    const minutes = Math.round(this.alcoholMs / 60000);
+    this.log(`[needs] ${hex(actorId)} drinks ${edid}: ${label} crafts -${pct(this.alcoholDiscount)}% until ${new Date(entry.rec.drinkUntil).toISOString().slice(11, 16)}`);
+    this.notice(ctx, entry.userId, fresh
+      ? `The drink warms you: your ${label} work costs ${pct(this.alcoholDiscount)}% less fatigue for ${minutes} minutes.`
+      : `The drink keeps you warm for another ${minutes} minutes.`);
+    return true;
+  }
+
+  // The share of a craft's cost a warmed character pays, for work priced by their own rank; 1 for everyone else
+  private drinkMultiplier(ctx: SystemContext, actorId: number, entry: Online, rank: number): number {
+    if (rank <= FREE || !entry.rec.drinkUntil || Date.now() >= entry.rec.drinkUntil) return 1;
+    const profession = this.mastery.professionOf(ctx, actorId);
+    return profession && ALCOHOL_PROFESSIONS.indexOf(profession) !== -1 ? 1 - this.alcoholDiscount : 1;
+  }
+
+  // An ALCH drunk with the potion sound that damages a stamina or magicka rate, unless needsAlcoholItems says otherwise; cached
+  private isAlcohol(mp: Mp, baseId: number): boolean {
+    const hit = this.alcoholCache.get(baseId);
+    if (hit !== undefined) return hit;
+    let alcohol = this.alcoholOverrides.get(baseId);
+    if (alcohol === undefined) {
+      const res = lookup(mp, baseId);
+      const enit = res?.record?.type === "ALCH" ? fieldData(res, "ENIT") : null;
+      let sound = 0;
+      if (enit && enit.byteLength >= ENIT_USE_SOUND_OFFSET + 4) {
+        try { sound = res.toGlobalRecordId(view(enit).getUint32(ENIT_USE_SOUND_OFFSET, true)) >>> 0; } catch { sound = 0; }
+      }
+      alcohol = !!this.potionUseSound && sound === this.potionUseSound && spellEffects(mp, baseId).some((e) => {
+        const data = fieldData(lookup(mp, e.mgefId), "DATA");
+        if (!data || data.byteLength < 0x48) return false;
+        const v = view(data);
+        return (v.getUint32(0, true) & MGEF_DETRIMENTAL) !== 0 && v.getUint32(0x40, true) === ARCHETYPE_VALUE_MODIFIER && DRINK_RATE_VALUES.has(v.getUint32(0x44, true));
+      });
+    }
+    this.alcoholCache.set(baseId, alcohol);
+    return alcohol;
   }
 
   // Handled once the native hook has returned, so a close reaches the client before the next click
@@ -464,7 +565,7 @@ export class NeedsSystem implements System {
     if (!this.isPlayerCharacter(ctx, actorId)) return;
     const now = Date.now();
     const stored = this.read(ctx, actorId);
-    const rec = stored || { v: 2, hunger: this.hungerStart, fatigue: 1, at: now, stageSpell: 0, fatigueSpell: 0, wellFed: false };
+    const rec = stored || { v: 2, hunger: this.hungerStart, fatigue: 1, at: now, stageSpell: 0, fatigueSpell: 0, wellFed: false, drinkUntil: 0 };
     if (stored) this.advance(rec, now, false);
     this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, pendingSince: 0 });
     this.write(ctx, actorId, rec);
@@ -475,7 +576,7 @@ export class NeedsSystem implements System {
   private startFresh(ctx: SystemContext, actorId: number): void {
     const entry = this.online.get(actorId);
     if (!entry) return;
-    Object.assign(entry.rec, { hunger: this.hungerStart, fatigue: 1, at: Date.now(), wellFed: false });
+    Object.assign(entry.rec, { hunger: this.hungerStart, fatigue: 1, at: Date.now(), wellFed: false, drinkUntil: 0 });
     entry.pendingSince = 0;
     this.write(ctx, actorId, entry.rec);
     this.syncStages(ctx, actorId, entry);
@@ -751,6 +852,7 @@ export class NeedsSystem implements System {
         stageSpell: Number(raw.stageSpell) >>> 0,
         fatigueSpell: Number(raw.fatigueSpell) >>> 0,
         wellFed: raw.wellFed === true,
+        drinkUntil: Math.max(0, Number(raw.drinkUntil) || 0),
       };
     } catch {
       return null;
@@ -776,6 +878,12 @@ export class NeedsSystem implements System {
   private exhaustionMax = DEFAULT_EXHAUSTION_MAX;
   private penalties = true;
   private survivalModeFlag = true;
+  private alcoholDiscount = DEFAULT_ALCOHOL_DISCOUNT;
+  private alcoholMs = DEFAULT_ALCOHOL_MINUTES * 60000;
+  private potionUseSound = 0;
+  // needsAlcoholItems by form id, then every ALCH asked about
+  private alcoholOverrides = new Map<number, boolean>();
+  private alcoholCache = new Map<number, boolean>();
 
   private hungerSpells: number[] = [];
   private fatigueSpells: number[] = [];
