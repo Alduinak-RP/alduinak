@@ -386,9 +386,12 @@ def main():
             checked['references moved to their overridden position'] += 1
         elif t == 'REFR' and k in disable_refs:
             src, flags, data, cell = ref
-            why = ck.compare(t, src, flags, data, out, q.data())
+            parent = enable_parent(src, data)
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('XESP',))
             if q.flags & ~COMPRESSED != (flags | DISABLED) & ~COMPRESSED or cell != where:
                 why = f'flags {flags:#x} -> {q.flags:#x}, cell {cell} -> {where}'
+            elif enable_parent(out, q.data()) != (parent if parent in (None, (PLAYER_REF, 1)) else (PLAYER_REF, 1)):
+                why = f'enable parent {parent} -> {enable_parent(out, q.data())}'
             if why:
                 problems.append(f'{label}: not {src.name}\'s reference Initially Disabled ({why})')
             checked['disableReferences references'] += 1
@@ -443,8 +446,11 @@ def main():
     for k in disable_refs:
         final = ro.get(('REFR', k)) or ro.get(('ACHR', k))
         flags = final.flags if final is not None else winners.get(('REFR', k), (None, 0))[1]
+        parent = parents.get(k, (None, 0, None))[2]
         if not flags & (DISABLED | DELETED):
             problems.append(f'disableReferences {show(k)} is not Initially Disabled')
+        elif not flags & DELETED and parent not in (None, (PLAYER_REF, 1)):
+            problems.append(f'disableReferences {show(k)} can still be enabled by its enable parent {parent}')
     # A winner already enabled gets no override, so its own flags decide
     for k in enable_refs:
         final = ro.get(('REFR', k))

@@ -1362,11 +1362,13 @@ static class Steps
             var key = FormKey.Factory(name);
             var contexts = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(key).ToList();
             if (contexts.Count == 0) { c.Error($"disable reference: {name} not found"); continue; }
-            if ((contexts[0].Record.MajorRecordFlagsRaw & InitiallyDisabled) != 0) { already++; continue; }
+            var parent = ParentCanEnable(contexts[0].Record.EnableParent);
+            if ((contexts[0].Record.MajorRecordFlagsRaw & InitiallyDisabled) != 0 && !parent) { already++; continue; }
             var rec = contexts[0].GetOrAddAsOverride(c.Mod);
             rec.MajorRecordFlagsRaw |= InitiallyDisabled;
+            if (parent) rec.EnableParent = AlwaysOff();
             disabled++;
-            c.Note($"Disabled reference {name} ({c.EdidOf(rec.Base.FormKey)}) from {contexts[0].ModKey}");
+            c.Note($"Disabled reference {name} ({c.EdidOf(rec.Base.FormKey)}) from {contexts[0].ModKey}{(parent ? ", enable parent now the player, opposite" : "")}");
         }
         c.Note($"Disable references: {disabled} newly disabled, {already} already disabled");
     }
@@ -1396,6 +1398,14 @@ static class Steps
 
     const int InitiallyDisabled = 0x800;
     const int Deleted = 0x20;
+    static readonly FormKey PlayerRef = FormKey.Factory("000014:Skyrim.esm");
+
+    // An enable parent decides over the flag unless it is the player, opposite: always off, the xEdit idiom for a removed reference
+    static bool ParentCanEnable(IEnableParentGetter? p) =>
+        p != null && !(p.Reference.FormKey == PlayerRef && p.Flags.HasFlag(EnableParent.Flag.SetEnableStateToOppositeOfParent));
+
+    static EnableParent AlwaysOff() =>
+        new() { Reference = PlayerRef.ToLink<IPlacedGetter>(), Flags = EnableParent.Flag.SetEnableStateToOppositeOfParent };
 
     // ---- overrides: one field of a record another plugin defines, a quest's scripts, or an own placed reference -----
     public static void Overrides(PatchContext c)
@@ -1477,8 +1487,7 @@ static class Steps
     {
         if (c.Spec["disableActors"] is not JsonObject spec) return;
         var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
-        var player = FormKey.Factory("000014:Skyrim.esm");
-        var keep = Edids(c, spec["except"]).Select(x => FormKey.Factory(x)).Append(player).ToHashSet();
+        var keep = Edids(c, spec["except"]).Select(x => FormKey.Factory(x)).Append(PlayerRef).ToHashSet();
         int already = 0, parents = 0;
         var disabled = new Dictionary<ModKey, int>();
         var worlds = c.Mod.Worldspaces.Select(w => w.FormKey).ToHashSet();
@@ -1486,7 +1495,7 @@ static class Steps
         {
             var r = ctx.Record;
             if (keep.Contains(r.FormKey) || (r.MajorRecordFlagsRaw & Deleted) != 0) continue;
-            var off = r.EnableParent == null || r.EnableParent.Reference.FormKey == player && r.EnableParent.Flags.HasFlag(EnableParent.Flag.SetEnableStateToOppositeOfParent);
+            var off = !ParentCanEnable(r.EnableParent);
             if ((r.MajorRecordFlagsRaw & InitiallyDisabled) != 0 && off) { already++; continue; }
             // The cell comes from its own winner, not from the plugin the actor wins in
             if (ctx.Parent?.Record is ICellGetter cell) cache.ResolveContext<ICell, ICellGetter>(cell.FormKey).GetOrAddAsOverride(c.Mod);
@@ -1494,7 +1503,7 @@ static class Steps
             rec.MajorRecordFlagsRaw |= InitiallyDisabled;
             if (!off)
             {
-                rec.EnableParent = new EnableParent { Reference = player.ToLink<IPlacedGetter>(), Flags = EnableParent.Flag.SetEnableStateToOppositeOfParent };
+                rec.EnableParent = AlwaysOff();
                 parents++;
             }
             disabled[ctx.ModKey] = disabled.GetValueOrDefault(ctx.ModKey) + 1;
