@@ -73,6 +73,21 @@ interface PanelNpcZone {
   total: number;
   inside: number; // players inside the zone
   readyInSec: number; // seconds until every slot may spawn, 0 = ready, -1 = never until reset
+  type?: string; // Wildlife, Monster or Dungeon; absent from older servers
+  entry?: PanelZoneEntry; // what Edit fills the Add form with; absent from older servers
+}
+
+// One NPC-Spawns.json entry (npcSpawnSystem.ts ZoneEntry).
+interface PanelZoneEntry {
+  Name: string;
+  Type?: string;
+  ID: string;
+  POS: { x: number; y: number; z: number };
+  Size?: number;
+  Spread?: number;
+  NPC: string[];
+  Despawn?: number;
+  Respawn?: number;
 }
 
 // One grantable pet base from the petBases packet (petSystem.ts baseList).
@@ -238,8 +253,13 @@ const ZONE_FILTERS: Array<{ id: ZoneFilter; label: string }> = [
 ];
 
 // Field names follow NPC-Spawns.json; the server applies its own defaults to a blank Size, Spread, Despawn or Respawn.
-const EMPTY_ZONE_FORM = { name: '', id: '', x: '', y: '', z: '', size: '2100', spread: '', npc: '', despawn: '120', respawn: '1800' };
+const EMPTY_ZONE_FORM = { name: '', id: '', x: '', y: '', z: '', size: '2100', spread: '', npc: '', despawn: '120', respawn: '1800', type: '' };
 type ZoneForm = typeof EMPTY_ZONE_FORM;
+
+const ZONE_TYPES = ['Wildlife', 'Monster', 'Dungeon'];
+// Auto leaves Type blank, so the server infers it from the zone's cell and NPCs
+const ZONE_TYPE_CHOICES = [{ value: '', label: 'Auto' }].concat(ZONE_TYPES.map((t) => ({ value: t, label: t })));
+const ZONE_TYPE_FILTERS = [{ value: '', label: 'All types' }].concat(ZONE_TYPES.map((t) => ({ value: t, label: t })));
 
 const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: string }> = [
   { key: 'name', label: 'Name', placeholder: 'Kagrenzel Falmer' },
@@ -384,6 +404,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [npcSub, setNpcSub] = useState<NpcSub>('list');
   const [zoneFilter, setZoneFilter] = useState<ZoneFilter>('none');
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
+  const [zoneSearch, setZoneSearch] = useState('');
+  const [zoneType, setZoneType] = useState('');
+  // Name of the zone the Add form is editing; null while it adds a new one
+  const [editingZone, setEditingZone] = useState<string | null>(null);
   const [grantHours, setGrantHours] = useState('1');
   const [attrs, setAttrs] = useState<Record<string, string>>(attrForm(null));
   const [petKind, setPetKind] = useState<PetKind>('horse');
@@ -537,7 +561,9 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   };
 
   // On cooldown: any slot still waiting to respawn, "No respawn" included
-  const shownZones = npcZones.filter((z) => zoneFilter === 'none' || (zoneFilter === 'active' ? z.active : zoneLeft(z) !== 0));
+  const zoneQuery = zoneSearch.trim().toLowerCase();
+  const shownZones = npcZones.filter((z) => (zoneFilter === 'none' || (zoneFilter === 'active' ? z.active : zoneLeft(z) !== 0))
+    && (!zoneType || z.type === zoneType) && (!zoneQuery || z.name.toLowerCase().indexOf(zoneQuery) !== -1));
 
   const setField = (key: keyof ZoneForm, value: string): void => setZoneForm({ ...zoneForm, [key]: value });
 
@@ -545,10 +571,29 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     && isNum(zoneForm.x) && isNum(zoneForm.y) && isNum(zoneForm.z)
     && isBlankOrNum(zoneForm.size) && isBlankOrNum(zoneForm.spread) && isBlankOrNum(zoneForm.despawn) && isBlankOrNum(zoneForm.respawn);
 
-  const addZone = (): void => {
+  const clearZoneForm = (): void => {
+    setZoneForm(EMPTY_ZONE_FORM);
+    setEditingZone(null);
+  };
+
+  const editZone = (z: PanelNpcZone): void => {
+    const e = z.entry;
+    if (!e) return;
+    const text = (v?: number): string => (v === undefined || v === null ? '' : String(v));
+    setZoneForm({
+      name: e.Name, id: e.ID, x: text(e.POS.x), y: text(e.POS.y), z: text(e.POS.z), size: text(e.Size), spread: text(e.Spread),
+      npc: e.NPC.join('\n'), despawn: text(e.Despawn), respawn: text(e.Respawn), type: e.Type || '',
+    });
+    setEditingZone(z.name);
+    setNpcSub('add');
+  };
+
+  // Save names the edited zone in Edit and the server replaces that entry in place; Add appends a new one
+  const submitZone = (save: boolean): void => {
     if (!canAddZone) return;
     send(ev.npcAdd, JSON.stringify({
       Name: zoneForm.name.trim(),
+      Type: zoneForm.type || undefined,
       ID: zoneForm.id.trim(),
       POS: { x: Number(zoneForm.x), y: Number(zoneForm.y), z: Number(zoneForm.z) },
       Size: optionalNumber(zoneForm.size),
@@ -556,9 +601,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       NPC: zoneForm.npc.split('\n').map((s) => s.trim()).filter(Boolean),
       Despawn: optionalNumber(zoneForm.despawn),
       Respawn: optionalNumber(zoneForm.respawn),
+      Edit: save && editingZone ? editingZone : undefined,
     }));
     // The server toast reports success or the reason; the list refreshes on the npcZones push
-    setZoneForm(EMPTY_ZONE_FORM);
+    clearZoneForm();
     setNpcSub('list');
   };
 
@@ -897,6 +943,18 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             </div>
 
             {npcSub === 'list' ? (
+              <div className="admin-panel__filters">
+                <input
+                  className="admin-panel__search"
+                  placeholder="Search zones"
+                  value={zoneSearch}
+                  onChange={(e) => setZoneSearch(e.target.value)}
+                />
+                <Dropdown className="admin-panel__zone-type" value={zoneType} options={ZONE_TYPE_FILTERS} onChange={setZoneType} />
+              </div>
+            ) : null}
+
+            {npcSub === 'list' ? (
               <div className="admin-panel__list">
                 {shownZones.length === 0 ? (
                   <div className="admin-panel__empty">{npcZones.length === 0 ? 'No zones configured' : 'No zones match the filter'}</div>
@@ -907,7 +965,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                         <span className="admin-panel__cell admin-panel__cell--name">{z.name}</span>
                         <span className="admin-panel__cell admin-panel__cell--status">
                           <span className={'admin-panel__dot' + (z.active ? ' admin-panel__dot--online' : '')} />
-                          {zoneStatus(z)}
+                          {(z.type ? z.type + ' \u00b7 ' : '') + zoneStatus(z)}
                         </span>
                       </div>
                       <div className="admin-panel__zone-buttons">
@@ -915,6 +973,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                         {ev.npcActivate ? <Button text="Activate" width={84} height={24} onClick={() => send(ev.npcActivate, z.name)} /> : null}
                         {ev.npcDeactivate ? <Button text="Deactivate" width={100} height={24} onClick={() => send(ev.npcDeactivate, z.name)} /> : null}
                         <Button text="Reset" width={64} height={24} onClick={() => send(ev.npcReset, z.name)} />
+                        {z.entry && ev.npcAdd ? <Button text="Edit" width={52} height={24} onClick={() => editZone(z)} /> : null}
                         <Button text="Delete" width={68} height={24} onClick={() => send(ev.npcDelete, z.name)} />
                       </div>
                     </div>
@@ -980,6 +1039,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                       />
                     </label>
                   ))}
+                  <div className="admin-panel__field">
+                    Type
+                    <Dropdown value={zoneForm.type} options={ZONE_TYPE_CHOICES} onChange={(v) => setField('type', v)} />
+                  </div>
                   <label className="admin-panel__field admin-panel__field--wide">
                     NPC entries, one per line: base id and count
                     <textarea
@@ -992,8 +1055,13 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 </div>
                 <div className="admin-panel__actions">
                   {ev.npcPos ? <Button text="Get current pos" width={168} height={32} onClick={() => send(ev.npcPos)} /> : null}
-                  <Button text="Add" width={104} height={32} disabled={!canAddZone} onClick={addZone} />
+                  <Button text="Add" width={104} height={32} disabled={!canAddZone} onClick={() => submitZone(false)} />
+                  {editingZone ? <Button text="Save" width={104} height={32} disabled={!canAddZone} onClick={() => submitZone(true)} /> : null}
+                  {editingZone ? <Button text="Cancel" width={104} height={32} onClick={clearZoneForm} /> : null}
                 </div>
+                {editingZone ? (
+                  <span className="admin-panel__hint">Editing {editingZone}: Save replaces it in place, Add stores the form as a new zone.</span>
+                ) : null}
               </div>
             )}
           </div>

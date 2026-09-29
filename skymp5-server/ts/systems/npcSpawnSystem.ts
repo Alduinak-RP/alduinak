@@ -60,6 +60,11 @@ const CORPSE_SINK_UNITS = 32;
 const CORPSE_LOG_MS = 10000;
 // Emitted on SystemContext.gm (bodyId) by HuntingSystem once a skinning completes; a zone corpse then goes at once
 const CORPSE_CONSUMED_EVENT = "corpseConsumed";
+// Skyrim.esm ActorTypeAnimal, the race keyword that makes a zone Wildlife
+const ANIMAL_KEYWORD = 0x00013798;
+
+export const ZONE_TYPES = ["Wildlife", "Monster", "Dungeon"] as const;
+export type ZoneType = typeof ZONE_TYPES[number];
 
 interface ZoneNpc {
   baseDesc: string;
@@ -75,6 +80,9 @@ interface Spawned {
 
 interface Zone {
   name: string;
+  type: ZoneType;
+  // The entry as parsed, for the admin panel's Edit
+  draft: Draft;
   cellOrWorldDesc: string;
   cellOrWorldId: number;
   pos: number[];
@@ -110,16 +118,33 @@ interface Draft {
   npcs: { id: string; count: number }[];
   despawnSeconds: number;
   respawnSeconds: number;
+  // Unset: inferred from the cell and the NPCs
+  type?: ZoneType;
+}
+
+// One zone in the documented NPC-Spawns.json field names
+export interface ZoneEntry {
+  Name: string;
+  Type: ZoneType;
+  ID: string;
+  POS: { x: number; y: number; z: number };
+  Size: number;
+  Spread?: number;
+  NPC: string[];
+  Despawn: number;
+  Respawn: number;
 }
 
 export interface ZoneSummary {
   name: string;
+  type: ZoneType;
   active: boolean;
   alive: number;
   total: number;
   inside: number;
   // Seconds until every slot may spawn: 0 = ready, -1 = never until reset
   readyInSec: number;
+  entry: ZoneEntry;
 }
 
 type Reject = (msg: string) => void;
@@ -208,6 +233,18 @@ const isHexId = (text: string): boolean => /^0x[0-9a-f]{1,8}$/i.test(text) || /^
 // ID forms: "1a26f:Skyrim.esm" desc, "0x0001A26F" / "0001A26F" load-order id, anything else an editor id
 
 const entryName = (raw: unknown): string => String(pick(raw, "name") ?? "").trim().toLowerCase();
+
+const toEntry = (d: Draft, type: ZoneType): ZoneEntry => ({
+  Name: d.name,
+  Type: type,
+  ID: d.locator,
+  POS: { x: d.pos[0], y: d.pos[1], z: d.pos[2] },
+  Size: d.radius,
+  Spread: d.spread,
+  NPC: d.npcs.map((n) => (n.count > 1 ? `${n.id} ${n.count}` : n.id)),
+  Despawn: d.despawnSeconds,
+  Respawn: d.respawnSeconds,
+});
 
 export class NpcSpawnSystem implements System {
   systemName = "NpcSpawnSystem";
@@ -375,8 +412,11 @@ export class NpcSpawnSystem implements System {
     // Blank scatters over the whole Size, 0 keeps the rings
     const spreadRaw = num(pick(raw, "spread"), NaN);
     const spread = spreadRaw === 0 ? 0 : spreadRaw > 0 ? Math.min(radius, spreadRaw) : undefined;
+    const typeText = String(pick(raw, "type") ?? "").trim();
+    const type = ZONE_TYPES.find((t) => t.toLowerCase() === typeText.toLowerCase());
+    if (typeText && !type) this.log(`NpcSpawnSystem: '${name}' Type '${typeText}' is not ${ZONE_TYPES.join(", ")}, inferred instead`);
     return {
-      name, locator, pos, radius, spread, npcs,
+      name, locator, pos, radius, spread, npcs, type,
       despawnSeconds: Math.max(0, num(pick(raw, "despawn"), DEFAULT_DESPAWN)),
       respawnSeconds: Math.max(0, num(pick(raw, "respawn"), DEFAULT_RESPAWN)),
     };
@@ -470,7 +510,8 @@ export class NpcSpawnSystem implements System {
     }
     const slots = npcs.flatMap((n) => Array<ZoneNpc>(n.count).fill(n));
     return {
-      name: draft.name, cellOrWorldDesc, cellOrWorldId, pos: draft.pos, radius: draft.radius, spread: draft.spread, npcs, slots,
+      name: draft.name, type: draft.type ?? this.inferType(mp, cellOrWorldId, npcs), draft,
+      cellOrWorldDesc, cellOrWorldId, pos: draft.pos, radius: draft.radius, spread: draft.spread, npcs, slots,
       total: slots.length,
       despawnSeconds: draft.despawnSeconds,
       respawnSeconds: draft.respawnSeconds,
@@ -642,6 +683,29 @@ export class NpcSpawnSystem implements System {
 
   private hostileByBase = new Map<string, boolean>();
   private kindByBase = new Map<string, SpotKind>();
+  private animalByBase = new Map<string, boolean>();
+
+  // Dungeon in an interior (a zone ID is a worldspace outdoors, never an exterior cell), Wildlife when every NPC resolves to animal races only, else Monster
+  private inferType(mp: Mp, cellOrWorldId: number, npcs: ZoneNpc[]): ZoneType {
+    let interior = false;
+    try { interior = mp.lookupEspmRecordById(cellOrWorldId)?.record?.type === "CELL"; } catch { }
+    if (interior) return "Dungeon";
+    return npcs.every((n) => this.isAnimalBase(mp, n.baseDesc)) ? "Wildlife" : "Monster";
+  }
+
+  // Leveled list entries and Use Traits templates are followed; every NPC_ reached must have an ActorTypeAnimal race
+  private isAnimalBase(mp: Mp, baseDesc: string): boolean {
+    let animal = this.animalByBase.get(baseDesc);
+    if (animal === undefined) {
+      const animalRace = (res: any): boolean => espmFieldFormIds(this.raceOf(mp, res), "KWDA").includes(ANIMAL_KEYWORD);
+      try {
+        const id = mp.getIdFromDesc(baseDesc) >>> 0;
+        animal = this.anyNpc(mp, id, TEMPLATE_USE_TRAITS, animalRace) && !this.anyNpc(mp, id, TEMPLATE_USE_TRAITS, (res) => !animalRace(res));
+      } catch { animal = false; }
+      this.animalByBase.set(baseDesc, animal);
+    }
+    return animal;
+  }
 
   private isHostileBase(mp: Mp, baseDesc: string): boolean {
     let hostile = this.hostileByBase.get(baseDesc);
@@ -671,9 +735,13 @@ export class NpcSpawnSystem implements System {
     return kind;
   }
 
-  private raceData(mp: Mp, npc: any): DataView | null {
+  private raceOf(mp: Mp, npc: any): any {
     const raceId = espmFieldFormIds(npc, "RNAM")[0];
-    const fields: any[] = (raceId && mp.lookupEspmRecordById(raceId)?.record?.fields) || [];
+    try { return raceId ? mp.lookupEspmRecordById(raceId) : null; } catch { return null; }
+  }
+
+  private raceData(mp: Mp, npc: any): DataView | null {
+    const fields: any[] = this.raceOf(mp, npc)?.record?.fields || [];
     const data = fields.find((f) => f?.type === "DATA" && f.data instanceof Uint8Array)?.data;
     return data && data.byteLength >= RACE_SIZE_OFFSET + 4 ? view(data) : null;
   }
@@ -948,15 +1016,17 @@ export class NpcSpawnSystem implements System {
     const now = Date.now();
     return this.zones.map((z) => ({
       name: z.name,
+      type: z.type,
       active: z.spawned.length > 0,
       alive: z.spawned.filter((e) => !e.diedAt).length,
       total: z.total,
       inside: z.inside.size,
       readyInSec: this.readyInSec(z, now),
+      entry: toEntry(z.draft, z.type),
     }));
   }
 
-  // Validates like a file load, then appends the entry in the documented field names; null on success, else the reason
+  // Validates like a file load, then appends the entry in the documented field names, or with an Edit field replaces the entry of that name in place; null on success, else the reason
   async addZone(raw: unknown): Promise<string | null> {
     const reasons: string[] = [];
     const reject: Reject = (msg) => reasons.push(msg);
@@ -964,29 +1034,24 @@ export class NpcSpawnSystem implements System {
     if (!draft) return reasons[0];
     const s = await Settings.get();
     const scan = await resolveEditorIds(isEditorId(draft.locator) ? [draft.locator] : [], s.dataDir, s.loadOrder, this.log);
-    this.buildZone(this.mp, draft, scan.resolved, reject);
-    if (reasons.length) return reasons[0];
+    const zone = this.buildZone(this.mp, draft, scan.resolved, reject);
+    if (!zone || reasons.length) return reasons[0];
     const file = this.readZoneFile();
     if (typeof file === "string") return file;
-    if (file.list.some((e) => entryName(e) === draft.name.toLowerCase())) return `'${draft.name}' already exists`;
-    file.list.push({
-      Name: draft.name,
-      ID: draft.locator,
-      POS: { x: draft.pos[0], y: draft.pos[1], z: draft.pos[2] },
-      Size: draft.radius,
-      Spread: draft.spread,
-      NPC: draft.npcs.map((n) => n.count > 1 ? `${n.id} ${n.count}` : n.id),
-      Despawn: draft.despawnSeconds,
-      Respawn: draft.respawnSeconds,
-    });
+    const edit = String(pick(raw, "edit") ?? "").trim();
+    const at = edit ? file.list.findIndex((e) => entryName(e) === edit.toLowerCase()) : -1;
+    if (edit && at < 0) return `'${edit}' is no longer in ${ZONES_FILE}`;
+    if (file.list.some((e, i) => i !== at && entryName(e) === draft.name.toLowerCase())) return `'${draft.name}' already exists`;
+    if (at < 0) file.list.push(toEntry(draft, zone.type));
+    else file.list[at] = toEntry(draft, zone.type);
     try {
       this.writeZoneFile(file, file.list);
     } catch (e) {
       this.log(`NpcSpawnSystem: ${ZONES_FILE} write failed: ${e}`);
       return `${ZONES_FILE} write failed, see server log`;
     }
-    this.log(`NpcSpawnSystem: '${draft.name}' appended to ${ZONES_FILE} by admin`);
-    await this.queueLoad("admin add");
+    this.log(`NpcSpawnSystem: '${draft.name}' ${at < 0 ? "appended to" : `replaced '${edit}' in`} ${ZONES_FILE} by admin`);
+    await this.queueLoad(at < 0 ? "admin add" : "admin edit");
     return null;
   }
 

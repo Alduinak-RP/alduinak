@@ -33,6 +33,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 [
   {
     "Name": "Kagrenzel Falmer",
+    "Type": "Dungeon",
     "ID": "Kagrenzel01",
     "POS": { "x": 191763, "y": -29429, "z": 8280 },
     "Size": 2000,
@@ -46,6 +47,7 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | Field | Required | Default | Meaning and accepted forms |
 |---|---|---|---|
 | `Name` | yes | | label printed in every log line about the zone; at most 64 characters and unique across the file (case-insensitive) |
+| `Type` | no | inferred | `Wildlife`, `Monster` or `Dungeon` (case-insensitive), a label the admin panel shows and filters by; it changes nothing in game. Blank or unknown: `Dungeon` when `ID` is an interior cell, else `Wildlife` when every NPC base resolves (through leveled lists and Use Traits templates) to races carrying `ActorTypeAnimal`, else `Monster`; an unknown value logs `'<Name>' Type '<value>' is not Wildlife, Monster, Dungeon, inferred instead` |
 | `ID` | yes | | the cell or worldspace the zone lives in: an editor id (`Kagrenzel01`, `Tamriel`), a form desc (`1a26f:Skyrim.esm`) or a load-order form id (`0x0001A26F`, `0001A26F`) |
 | `POS` | yes | | centre of the zone: `{ "x": .., "y": .., "z": .. }`, `[x, y, z]` or `"x, y, z"` |
 | `Size` | no | 2000 | trigger radius in game units |
@@ -53,6 +55,17 @@ panel rewrites the file. Field names are matched case-insensitively (`Name`,
 | `NPC` | yes | | what to place: one string, an array of strings, or objects `{ "id": "..", "count": n }`; a string is `"<base id> <count>"`, the count optional; at most 40 NPCs per zone in total |
 | `Despawn` | no | 120 | seconds after the last player left before every living NPC of the zone is destroyed (corpses keep their own 5 minute timer); the timer does not run while any living NPC of the zone within `3 x Size` of `POS` is fighting a player (a damaging hit within `npcAggroHostSeconds`), for 5 minutes at most; `0` = never |
 | `Respawn` | no | 1800 | seconds after an NPC died before a fresh copy may stand at its spot, counted even while the zone is empty; `0` = never until the zone despawns or an admin resets it |
+
+Every zone of the test server's file carries its `Type` since 2026-09-29, set
+by that inference rule from the load order (233 Dungeon, 306 Wildlife, 34
+Monster); a file without `Type` gets the same values inferred at load. The
+rule has edge cases the panel's Edit can correct: Darkwater
+Pass (`DarkwaterWorld`) and Shadowgreen Cavern (`ShadowgreenCavernWorld`) are
+worldspaces, so their zones are Monster or Wildlife rather than Dungeon; and
+`ActorTypeAnimal` is on the troll, frostbite spider, chaurus, skeever,
+mudcrab, horker and mammoth races too, so outdoor troll, spider and chaurus
+zones (Frost Troll Ambush, Labyrinthian Frost Troll, Frostbite Grotto Spider,
+Glacial Hatchlings Chaurus and others) are Wildlife.
 
 An entry that fails a check (no `Name`, a `Name` longer than 64 characters,
 unknown `ID`, unusable `POS`, no valid NPC, more than 40 NPCs in total) is
@@ -388,7 +401,7 @@ The file is watched with chokidar (`awaitWriteFinish`). About two seconds
 after the last write the file is parsed and resolved again; if it is valid,
 the new zones replace the old ones and a load summary is logged. A zone whose
 `Name` (case-insensitive) and definition (location, `POS`, `Size`, `Spread`,
-NPC list, `Despawn`, `Respawn`) did not change is carried over with its NPCs, cooldowns
+NPC list, `Despawn`, `Respawn`; not `Type`) did not change is carried over with its NPCs, cooldowns
 and players intact, so adding or removing one zone leaves the others running;
 the summary counts them as `carried N zone(s)`. Editing any field of a zone
 despawns it and starts it fresh; renaming one does the same. Invalid JSON, or
@@ -411,7 +424,10 @@ views:
   Radio buttons beside the sub-tabs filter it: **On cooldown** (any slot
   still waiting to respawn, `No respawn` included), **Active** (NPCs
   placed) or **None** (every zone, the default). A partly killed zone
-  matches both of the first two.
+  matches both of the first two. Above the list a search box keeps the zones
+  whose name contains the text (case-insensitive) and a dropdown keeps one
+  `Type` (**All types**, **Wildlife**, **Monster**, **Dungeon**); all three
+  filters apply together. Each row's status line starts with its `Type`.
   - **TP** puts the admin on `POS`. That counts as being inside, so a ready
     zone spawns on the next poll, at least 768 units from the admin where the
     navmesh allows it.
@@ -425,11 +441,16 @@ views:
     leaves the zone empty until Activate or Reset.
   - **Reset** destroys the zone's NPCs and clears every cooldown; it fills up
     again on the next poll with a player inside.
+  - **Edit** opens the Add view filled with the zone's entry (the values the
+    server parsed: an NPC count above 20 or a `Spread` above `Size` shows
+    clamped). **Save** replaces that entry in place, **Add** stores the form
+    as a new zone (it needs a new `Name`), **Cancel** empties the form.
   - **Delete** removes the entry from `NPC-Spawns.json` (single click, no
     confirmation) and despawns it.
 - **Add** takes Name, ID, X/Y/Z, Size (2100 filled in, the value every live
-  zone uses), Spread (blank for the whole Size, `0` for rings), one NPC entry
-  per line (`00023A99 4`), Despawn and Respawn. **Get current pos** fills ID and X/Y/Z with where the
+  zone uses), Spread (blank for the whole Size, `0` for rings), Despawn,
+  Respawn, Type (**Auto** infers it as above and writes the result) and one NPC entry
+  per line (`00023A99 4`). **Get current pos** fills ID and X/Y/Z with where the
   server has the admin right now: the ID as the form desc of the worldspace
   outdoors or the cell indoors (`3c:Skyrim.esm`), the same location the
   zone check compares players against, and the position to two decimals.
@@ -439,9 +460,17 @@ views:
   validates exactly like a file load (unknown ID, non-`NPC_` base, duplicate
   name, more than 40 NPCs, a Name over 64 characters and missing fields are
   refused with a toast naming the reason) and appends the entry in the field
-  names shown above.
+  names shown above. Save sends the same `npcZoneAdd` packet with one more
+  field, `"Edit": "<the zone's name when Edit was clicked>"`: the server
+  validates the same way, then replaces the entry of that name (case-insensitive)
+  where it stands in the file, refusing when it is gone (`'<Name>' is no
+  longer in ./NPC-Spawns.json`) or when the new `Name` belongs to another
+  zone. The replaced entry is written in the documented field names, so any
+  other key a hand-written entry carried is dropped. The toast still reads
+  `Added zone <Name>` (the reply text lives in `adminSystem.ts`), and the
+  admin log records the save as an add.
 
-Add and Delete rewrite the whole file (`JSON.stringify(..., null, 2)`, written
+Add, Save and Delete rewrite the whole file (`JSON.stringify(..., null, 2)`, written
 through a temp file and renamed): hand-written entries keep their own field
 names and values, a `{ "zones": [...] }` wrapper keeps its key spelling and its
 other top-level keys, but hand formatting is normalised. A file that is not
@@ -453,9 +482,9 @@ panel write carries every unchanged zone over.
 Everything goes through the server log and the manager console, prefixed
 `NpcSpawnSystem:`:
 
-- `N/M zone(s) loaded from ./NPC-Spawns.json (boot | file changed | admin add | admin delete), carried K zone(s)`
+- `N/M zone(s) loaded from ./NPC-Spawns.json (boot | file changed | admin add | admin edit | admin delete), carried K zone(s)`
   and, when editor ids were involved, `resolved a/b editor id(s) in X ms, unresolved: ...`
-- `'<Name>' appended to ./NPC-Spawns.json by admin` / `'<Name>' removed from ./NPC-Spawns.json by admin`;
+- `'<Name>' appended to ./NPC-Spawns.json by admin` / `'<Name>' replaced '<old Name>' in ./NPC-Spawns.json by admin` / `'<Name>' removed from ./NPC-Spawns.json by admin`;
   the admin log (`admin.log`) names the profile that added, reset, deleted or teleported to a zone
 - `'<Name>' entered by <player name> (<hex actor id>)` once per player entering
   the zone; there is no line for leaving

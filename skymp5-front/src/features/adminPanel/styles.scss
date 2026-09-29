@@ -395,6 +395,11 @@ $admin-row-gutter: 16px;
     }
   }
 
+  // Zones list: the type filter beside the search box
+  &__zone-type {
+    flex: 0 0 160px;
+  }
+
   &__zone-buttons {
     display: flex;
     flex: 0 0 auto;
