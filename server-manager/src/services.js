@@ -15,7 +15,7 @@ const hooks = { onRotated: () => {}, status: () => {} }
 const serviceByKey = Object.fromEntries(config.services.map(s => [s.key, s]))
 const LIVE = config.profiles.live
 
-// The profile a game, MongoDB or LiveKit service belongs to; undefined for the backend group
+// The profile a game or LiveKit service belongs to; the shared MongoDB resolves to live, the backend group to undefined
 function profileOf(svc) {
   return Object.values(config.profiles).find(p => Object.values(p.services).includes(svc.key))
 }
@@ -68,8 +68,8 @@ function purgePending(profile = LIVE) {
   return 'refused: a MongoDB purge is pending for the new load order, run Purge MongoDB (or Restore last purge) first'
 }
 
-// The backend and the game servers hold their MongoDB open; stopping it under them loses writes
-const MONGO_USERS = { mongo: ['backend', 'game'], 'test-mongo': ['test-game'] }
+// The backend and both game servers hold MongoDB open; stopping it under them loses writes
+const MONGO_USERS = { mongo: ['backend', 'game', 'test-game'] }
 
 // Installed and not stopped (running or in a pending state)
 async function isActive(key) {
@@ -228,8 +228,6 @@ async function doServicesAction(action, group) {
   let ok = true
   const step = async (s, verb) => {
     if (!/^SERVICE_/.test(status[s.key] || '')) { steps.push(`${s.label}: not installed, skipped`); return }
-    // A group stop of the main server leaves MongoDB to the backend that still uses it
-    if (verb === 'stop' && group === 'main' && s.key === 'mongo' && await isActive('backend')) { steps.push(`${s.label}: kept running, Backend uses it`); return }
     const r = await act(s, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`)
   }
   const doStop  = async () => { for (const s of [...list].reverse()) await step(s, 'stop') }

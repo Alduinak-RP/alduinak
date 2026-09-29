@@ -52,7 +52,7 @@ select {
   white-space: pre-wrap; word-break: break-word; color: #c8bca6; margin: 0 0 10px;
 }
 
-/* Console: one container per server group; a collapsed one keeps a strip with its dot and name, the Main Server never folds */
+/* Console: one container per service group; a collapsed one keeps a strip with its dot and name */
 .console-columns { display: flex; gap: 10px; flex: 1; min-height: 0; }
 .ccol { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #1d1813; border: 1px solid #322a20; border-radius: 6px; }
 .ccol-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #322a20; }

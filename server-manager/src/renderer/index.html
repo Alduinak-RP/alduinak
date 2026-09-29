@@ -64,8 +64,8 @@
             </div>
           </div>
           <small>Builds land in <code>build/dist/testserver</code>: the TS bundle into <code>dist_back</code>, <code>gamemode.js</code> from <code>gamemode_extensions/</code>. The Test Server hot-reloads gamemode.js; restart it for dist_back or scam_native.node. Test version Save writes <code>skymp5-server/package.json</code> and the test server version.</small>
-          <button id="build-gamemode" class="action">Build gamemode only</button>
           <label class="chk"><input type="checkbox" id="build-server-native" /> Run CMake first (C++ changed, VS 2022)</label>
+          <button id="build-gamemode" class="action">Build gamemode only</button>
           <button id="build-server" class="action go">Build server</button>
         </div>
         <div class="build-col">
@@ -94,22 +94,24 @@
         <div class="build-col">
           <h3>Migrate</h3>
           <div class="field">
-            <label>Live version <span class="muted" id="migrate-live-now"></span></label>
+            <label>Live <span class="muted" id="migrate-live-now"></span></label>
             <div class="row">
-              <input id="migrate-live-version" type="text" placeholder="1.0.0" />
+              <input id="migrate-live-server" type="text" placeholder="server" />
+              <input id="migrate-live-client" type="text" placeholder="client" />
               <button id="migrate-live-copy" class="action small">Copy test build</button>
               <button id="migrate-live-save" class="action small">Save</button>
             </div>
           </div>
           <div class="field">
-            <label>Test version <span class="muted" id="migrate-test-now"></span></label>
+            <label>Test <span class="muted" id="migrate-test-now"></span></label>
             <div class="row">
-              <input id="migrate-test-version" type="text" placeholder="1.0.0" />
+              <input id="migrate-test-server" type="text" placeholder="server" />
+              <input id="migrate-test-client" type="text" placeholder="client" />
               <button id="migrate-test-copy" class="action small">Copy test build</button>
               <button id="migrate-test-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Only way to the Main Server, which must be stopped. Migrate server copies dist_back, scam_native.node, gamemode and the server data files (never the world, settings or player state); it then reads Migrate settings, which merges new test settings into the live server-settings.json without touching its name, ports, players, database, access or Discord keys. Migrate client installs the test manifest, modlist and extras live, syncs the live load order, Data folder and database and mirrors build/dist/testclient onto build/dist/client. Old files go to <code>build/dist/backup</code>. Live version Save writes client and server into versions.json; Copy test build fills the field from the test build.</small>
+          <small>Only way to the Main Server, which must be stopped. Migrate server copies dist_back, scam_native.node, gamemode and the server data files (never the world, settings or player state); it then reads Migrate settings, which merges new test settings into the live server-settings.json without touching its name, ports, players, database, access or Discord keys. Migrate client installs the test manifest, modlist and extras live, syncs the live load order, Data folder and database and mirrors build/dist/testclient onto build/dist/client. Old files go to <code>build/dist/backup</code>. The Live and Test rows publish the server and client versions of that side in versions.json (Save writes the filled fields only); Copy test build fills both from the skymp5-server and skymp5-client packages. Versions may carry a build, e.g. 1.2.3-b4 or 1.2.3+4.</small>
           <span id="migrate-gate" class="gate" hidden>Main server must be stopped</span>
           <button id="migrate-server" class="action">Migrate server</button>
           <button id="migrate-client" class="action go">Migrate client</button>

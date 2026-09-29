@@ -1,6 +1,6 @@
 'use strict'
-// Console tab: three containers (Backend, Main Server, Test Server), each with its services' controls, usage and logs.
-// The side containers collapse sideways to a strip that still shows the status; the Main Server stays open.
+// Console tab: four containers (Backend, MongoDB, Main Server, Test Server), each with its services' controls, usage and logs.
+// Every container collapses sideways to a strip that still shows the status; the two server containers hold the command box.
 
 const CONSOLE_LINES = 100
 const STATS_MS = 4000
@@ -10,10 +10,11 @@ const STATUS_MS = 10000
 // group: the Start/Stop all target; profile: the relay behind the command input; collapse: the side the container folds to
 const COLUMNS = [
   { key: 'backend', label: 'Backend', services: [{ key: 'backend', label: 'Backend' }, { key: 'nginx', label: 'Nginx' }], collapse: 'left' },
-  { key: 'main', label: 'Main Server', group: 'main', profile: 'live', input: true,
-    services: [{ key: 'game', label: 'Game' }, { key: 'mongo', label: 'MongoDB' }, { key: 'livekit', label: 'LiveKit', log: false }] },
+  { key: 'mongo', label: 'MongoDB', services: [{ key: 'mongo', label: 'MongoDB' }], collapse: 'left' },
+  { key: 'main', label: 'Main Server', group: 'main', profile: 'live', input: true, collapse: 'right',
+    services: [{ key: 'game', label: 'Game' }, { key: 'livekit', label: 'LiveKit', log: false }] },
   { key: 'test', label: 'Test Server', group: 'test', profile: 'test', input: true, collapse: 'right',
-    services: [{ key: 'test-game', label: 'Game' }, { key: 'test-mongo', label: 'MongoDB' }, { key: 'test-livekit', label: 'LiveKit', log: false }] },
+    services: [{ key: 'test-game', label: 'Game' }, { key: 'test-livekit', label: 'LiveKit', log: false }] },
 ]
 const columnOfProfile = Object.fromEntries(COLUMNS.filter(c => c.profile).map(c => [c.profile, c]))
 let serviceStatus = {}
@@ -32,7 +33,7 @@ function renderColumns() {
   const collapsed = readCollapsed()
   box.innerHTML = ''
   for (const col of COLUMNS) {
-    const c = el('section', { className: 'ccol' + (col.collapse ? ` collapse-${col.collapse}` : '') + (col.collapse && collapsed[col.key] ? ' collapsed' : ''), id: `ccol-${col.key}` })
+    const c = el('section', { className: `ccol collapse-${col.collapse}` + (collapsed[col.key] ? ' collapsed' : ''), id: `ccol-${col.key}` })
     const head = el('div', { className: 'ccol-head' })
     head.appendChild(el('span', { className: 'dot', id: `cdot-${col.key}` }))
     head.appendChild(el('span', { className: 'ccol-name' }, esc(col.label)))
@@ -42,24 +43,26 @@ function renderColumns() {
       all.addEventListener('click', () => groupAction(col, serviceStatus[col.services[0].key] === 'SERVICE_RUNNING' ? 'stop' : 'start'))
       head.appendChild(all)
     }
-    if (col.collapse) {
-      const fold = el('button', { className: 'ccol-fold', title: 'Collapse or expand' }, col.collapse === 'left' ? '&#9664;' : '&#9654;')
-      fold.addEventListener('click', () => {
-        const next = readCollapsed()
-        next[col.key] = !next[col.key]
-        try { localStorage.setItem('consoleCollapsed', JSON.stringify(next)) } catch {}
-        c.classList.toggle('collapsed', !!next[col.key])
-      })
-      head.appendChild(fold)
-    }
+    const fold = el('button', { className: 'ccol-fold', title: 'Collapse or expand' }, col.collapse === 'left' ? '&#9664;' : '&#9654;')
+    fold.addEventListener('click', () => {
+      const next = readCollapsed()
+      next[col.key] = !next[col.key]
+      try { localStorage.setItem('consoleCollapsed', JSON.stringify(next)) } catch {}
+      c.classList.toggle('collapsed', !!next[col.key])
+    })
+    head.appendChild(fold)
     c.appendChild(head)
 
+    // A single-service container skips the per-service name row and the log subtabs: the head already names it
+    const single = col.services.length === 1
     const body = el('div', { className: 'ccol-body' })
     for (const svc of col.services) {
       const row = el('div', { className: 'csvc' })
       const line = el('div', { className: 'csvc-line' })
-      line.appendChild(el('span', { className: 'dot', id: `sdot-${svc.key}` }))
-      line.appendChild(el('span', { className: 'csvc-name' }, esc(svc.label)))
+      if (!single) {
+        line.appendChild(el('span', { className: 'dot', id: `sdot-${svc.key}` }))
+        line.appendChild(el('span', { className: 'csvc-name' }, esc(svc.label)))
+      }
       const toggle = el('button', { className: 'action small', id: `stoggle-${svc.key}` }, 'START')
       toggle.addEventListener('click', () => serviceAction(col, svc, serviceStatus[svc.key] === 'SERVICE_RUNNING' ? 'stop' : 'start'))
       const restart = el('button', { className: 'action small' }, 'RESTART')
@@ -71,17 +74,19 @@ function renderColumns() {
       body.appendChild(row)
     }
     const logged = col.services.filter(hasLog)
-    const views = el('div', { className: 'clog-views' })
-    logged.forEach((svc, i) => {
-      const b = el('button', { className: 'subtab' + (i === 0 ? ' active' : '') }, esc(svc.label))
-      b.addEventListener('click', () => {
-        views.querySelectorAll('.subtab').forEach(x => x.classList.remove('active'))
-        b.classList.add('active')
-        logged.forEach(s => { logOf(s.key).hidden = s.key !== svc.key })
+    if (!single) {
+      const views = el('div', { className: 'clog-views' })
+      logged.forEach((svc, i) => {
+        const b = el('button', { className: 'subtab' + (i === 0 ? ' active' : '') }, esc(svc.label))
+        b.addEventListener('click', () => {
+          views.querySelectorAll('.subtab').forEach(x => x.classList.remove('active'))
+          b.classList.add('active')
+          logged.forEach(s => { logOf(s.key).hidden = s.key !== svc.key })
+        })
+        views.appendChild(b)
       })
-      views.appendChild(b)
-    })
-    body.appendChild(views)
+      body.appendChild(views)
+    }
     logged.forEach((svc, i) => {
       const pre = el('pre', { className: 'log clog', id: `clog-${svc.key}` })
       pre.dataset.max = String(CONSOLE_LINES)
@@ -143,7 +148,8 @@ function paintConsoleStatus(st) {
     const all = $(`#ctoggle-${col.key}`)
     if (all) all.textContent = up(own) ? 'Stop all' : 'Start all'
     for (const svc of col.services) {
-      $(`#sdot-${svc.key}`).className = 'dot ' + (up(svc.key) ? 'ok' : 'bad')
+      const dot = $(`#sdot-${svc.key}`)
+      if (dot) dot.className = 'dot ' + (up(svc.key) ? 'ok' : 'bad')
       $(`#stoggle-${svc.key}`).textContent = up(svc.key) ? 'STOP' : 'START'
     }
   }

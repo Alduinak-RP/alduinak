@@ -32,10 +32,11 @@ async function loadVersions() {
   $('#client-live-version').value = v.client || ''
   $('#server-test-published').textContent = `(published ${t.server || '?'})`
   $('#client-test-published').textContent = `(published ${t.client || '?'})`
-  $('#migrate-live-version').value = v.client || v.server || ''
-  $('#migrate-test-version').value = t.client || t.server || ''
-  $('#migrate-live-now').textContent = `(client ${v.client || '?'}, server ${v.server || '?'})`
-  $('#migrate-test-now').textContent = `(client ${t.client || '?'}, server ${t.server || '?'})`
+  for (const [side, src] of [['live', v], ['test', t]]) {
+    $(`#migrate-${side}-server`).value = src.server || ''
+    $(`#migrate-${side}-client`).value = src.client || ''
+    $(`#migrate-${side}-now`).textContent = `(server ${src.server || '?'}, client ${src.client || '?'})`
+  }
 }
 
 async function saveVersion(label, run) {
@@ -44,11 +45,14 @@ async function saveVersion(label, run) {
   if (r.ok) loadVersions()
 }
 
-// Both versions.json keys of a server side: the root pair for live, the test block for test
-async function setPair(prefix, version) {
-  for (const key of ['client', 'server']) {
-    const r = await window.mgr.versionsSet(prefix + key, version)
-    if (!r.ok) return r
+// The filled server and client fields of a Migrate row: root keys for live, the test block for test
+async function saveMigrateRow(side) {
+  const prefix = side === 'test' ? 'test.' : ''
+  const filled = ['server', 'client'].map(k => [k, $(`#migrate-${side}-${k}`).value.trim()]).filter(([, v]) => v)
+  if (!filled.length) return { ok: false, error: 'fill the server or client version first' }
+  for (const [k, v] of filled) {
+    const r = await window.mgr.versionsSet(prefix + k, v)
+    if (!r.ok) return { ok: false, error: `${k}: ${r.error}` }
   }
   return { ok: true }
 }
@@ -59,20 +63,21 @@ const versionSavers = [
   ['#server-save', 'server test version', () => window.mgr.serverSetVersion($('#server-version').value)],
   ['#client-live-save', 'client live version', () => window.mgr.versionsSet('client', $('#client-live-version').value)],
   ['#server-live-save', 'server live version', () => window.mgr.versionsSet('server', $('#server-live-version').value)],
-  ['#migrate-live-save', 'live client and server versions', () => setPair('', $('#migrate-live-version').value)],
-  ['#migrate-test-save', 'test client and server versions', () => setPair('test.', $('#migrate-test-version').value)],
+  ['#migrate-live-save', 'live server and client versions', () => saveMigrateRow('live')],
+  ['#migrate-test-save', 'test server and client versions', () => saveMigrateRow('test')],
 ]
 for (const [sel, label, run] of versionSavers) $(sel).addEventListener('click', () => saveVersion(label, run))
 
-// Copy test build: the client package version, with a note when the server package differs
-async function copyTestBuild(input) {
-  const [client, server] = await Promise.all([window.mgr.clientGetVersion(), window.mgr.serverGetVersion()])
-  if (!client.version) return appendLog(buildLog(), `\nError: ${client.error || 'no client version'}\n`)
-  input.value = client.version
-  if (server.version && server.version !== client.version) appendLog(buildLog(), `\nnote: skymp5-server/package.json is ${server.version}, skymp5-client/package.json ${client.version}; the field took the client's\n`)
+// Copy test build: each field from its own package.json
+async function copyTestBuild(side) {
+  const [server, client] = await Promise.all([window.mgr.serverGetVersion(), window.mgr.clientGetVersion()])
+  for (const [k, r] of [['server', server], ['client', client]]) {
+    if (r.version) $(`#migrate-${side}-${k}`).value = r.version
+    else appendLog(buildLog(), `\nError: ${r.error || `no ${k} version`}\n`)
+  }
 }
-$('#migrate-live-copy').addEventListener('click', () => copyTestBuild($('#migrate-live-version')))
-$('#migrate-test-copy').addEventListener('click', () => copyTestBuild($('#migrate-test-version')))
+$('#migrate-live-copy').addEventListener('click', () => copyTestBuild('live'))
+$('#migrate-test-copy').addEventListener('click', () => copyTestBuild('test'))
 
 async function runStep(label, fn) {
   setBusy(true)

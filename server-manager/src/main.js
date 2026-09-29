@@ -118,7 +118,7 @@ const CONSOLE_HELP = [
   'Manager commands:',
   '  help                                 this help',
   '  status                               service status by container',
-  '  start|stop|restart <svc|group|all>   control services (' + config.services.map(s => s.key).join(', ') + '; groups ' + GROUP_KEYS.join(', ') + ')',
+  '  start|stop|restart <svc|group|all>   control services (' + config.services.map(s => s.key).join(', ') + '; groups ' + GROUP_KEYS.join(', ') + '; a service key wins over a group of the same name)',
   '  build <' + BUILD_KINDS.join('|') + '>   run a build for the ' + config.profiles[config.buildProfile].label + ' (output streams here)',
   "Anything else is sent to this server's game console (gamemode).",
 ].join('\n')
@@ -271,11 +271,17 @@ function setEnvVar(file, key, value) {
   fs.writeFileSync(file, txt)
 }
 
-// Anchored at both ends so trailing garbage never reaches versions.json
+// Anchored at both ends so trailing garbage never reaches versions.json. The launcher stays three numbers (updater.rs
+// parses them); client and server versions may carry a prerelease or build part, the launcher compares them as strings.
 const SEMVER_RE = /^\d+\.\d+\.\d+$/
+const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
+function versionError(key, version) {
+  if (key === 'launcher') return SEMVER_RE.test(version) ? null : 'Use a semver like 1.2.3'
+  return VERSION_RE.test(version) ? null : 'Use a version like 1.2.3, 1.2.3-b4 or 1.2.3+4'
+}
 
 // Register the getVersion/setVersion IPC pair for one component. The getter reads
-// pkgPath's version; the setter validates the semver, writes pkgPath, then runs
+// pkgPath's version; the setter validates the version, writes pkgPath, then runs
 // each extra writer (e.g. the backend's versions.json).
 function registerVersionIpc(name, pkgPath, extraWriteFns) {
   ipcMain.handle(`${name}:getVersion`, () => {
@@ -284,7 +290,8 @@ function registerVersionIpc(name, pkgPath, extraWriteFns) {
   })
   ipcMain.handle(`${name}:setVersion`, (_e, version) => {
     version = String(version || '').trim()
-    if (!SEMVER_RE.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
+    const error = versionError(name, version)
+    if (error) return { ok: false, error }
     try {
       setJsonVersion(pkgPath, version)
       for (const fn of extraWriteFns) fn(version)
@@ -312,7 +319,8 @@ ipcMain.handle('versions:published', () => {
 ipcMain.handle('versions:set', (_e, key, version) => {
   if (!VERSION_KEYS.includes(key)) return { ok: false, error: `unknown version key ${key}` }
   version = String(version || '').trim()
-  if (!SEMVER_RE.test(version)) return { ok: false, error: 'Use a semver like 1.2.3' }
+  const error = versionError(key, version)
+  if (error) return { ok: false, error }
   try { backendModule('versions').writeVersion(key, version); return { ok: true, version } }
   catch (err) { return { ok: false, error: err.message } }
 })
@@ -322,8 +330,8 @@ ipcMain.handle('versions:publish', (_e, key) => {
   const pkg = PUBLISHED_PKG[key]
   if (!pkg) return { ok: false, error: 'unknown component' }
   try {
-    const version = JSON.parse(fs.readFileSync(pkg, 'utf8')).version
-    if (!SEMVER_RE.test(String(version))) return { ok: false, error: `bad version ${version}` }
+    const version = String(JSON.parse(fs.readFileSync(pkg, 'utf8')).version)
+    if (versionError(key, version)) return { ok: false, error: `bad version ${version}` }
     backendModule('versions').writeVersion(key, version)
     return { ok: true, version }
   } catch (err) { return { ok: false, error: err.message } }
@@ -936,10 +944,14 @@ function liveOverlap(profile) {
   if (profile === LIVE) return null
   const live = readSettingsOrNull(LIVE.serverSettings) || {}
   const test = requireSettings(profile)
+  // The game server defaults an unnamed mongodb database to db while the purge would open the URI path one
+  if ((test.databaseDriver || 'file') === 'mongodb' && !test.databaseName) return `refused: ${profile.serverSettings} has no databaseName, set it (skymp_test) first`
   const key = v => String(v).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-  // host:port plus databaseName names the database; credentials and options do not
+  // host:port plus the database name; credentials and options do not count
   const host = uri => (/^[a-z+]+:\/\/(?:[^@/]*@)?([^/?]+)/i.exec(String(uri)) || [])[1] || String(uri)
-  const db = s => (s.databaseUri ? `${host(s.databaseUri)}/${s.databaseName || ''}` : '')
+  // An empty databaseName makes the driver open the URI path database (else test), so compare what the purge would open
+  const uriDb = uri => decodeURIComponent((/^[a-z+]+:\/\/(?:[^@/]*@)?[^/?]+\/([^?]*)/i.exec(String(uri)) || [])[1] || '') || 'test'
+  const db = s => (s.databaseUri ? `${host(s.databaseUri)}/${s.databaseName || uriDb(s.databaseUri)}` : '')
   const checks = [['server dir', profile.serverDir, LIVE.serverDir], ['settings file', profile.serverSettings, LIVE.serverSettings], ['dataDir', test.dataDir, live.dataDir], ['database', db(test), db(live)]]
   for (const [what, a, b] of checks) {
     if (a && b && key(a) === key(b)) return `refused: the ${profile.label} ${what} (${a}) is the ${LIVE.label}'s, fix ${profile.serverSettings} first`

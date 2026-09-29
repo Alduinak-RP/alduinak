@@ -22,31 +22,36 @@ fails it prints a direct download URL - save that zip as
 
 ## Tabs
 
-- **Console** - three containers: **Backend** (services **Backend** and
-  **Nginx**, collapsible to the left), **Main Server** (**Game**, **MongoDB**
-  and **LiveKit** of the live server, always open) and **Test Server** (the
-  same three services of the test server: `AlduinakTestServer`,
-  `AlduinakMongoTest`, `AlduinakLiveKitTest`, collapsible to the right). Each
-  service has **START/STOP**, **RESTART** and under the buttons CPU, RAM (and
-  requests/min for Nginx), sampled every 4 s only while the tab is open. The
-  log views are Backend/Nginx and Game/MongoDB per server (LiveKit has no log
-  view); each keeps the last 100 lines on screen, the files stay in `C:\logs`
-  (live) and `C:\logs\test` (test). A container's dot and state follow its
-  first service. The two server containers have a **Stop all** button in
-  their head while their game runs, else **Start all** (game, MongoDB and
-  LiveKit in start order; the live MongoDB is kept running while the Backend
-  uses it), and a command input each, wired to that server's own relay
-  (`WS_PORT` and `WS_PORT_TEST` from the backend `.env`). A test service that
-  is not installed yet shows Offline and is skipped by the group buttons.
-  - MongoDB (`AlduinakMongo`) starts first, stops last and refuses to stop
-    while Backend or Game run; the test MongoDB refuses while the test Game runs.
+- **Console** - four containers, left to right: **Backend** (services
+  **Backend** and **Nginx**, collapsible to the left), **MongoDB** (the one
+  `AlduinakMongo` instance, which serves the backend and both game servers:
+  database `skymp` live, `skymp_test` test; its log view and START/STOP,
+  RESTART row; collapsible to the left), **Main Server** (**Game** and
+  **LiveKit** of the live server, collapsible to the right) and **Test
+  Server** (`AlduinakTestServer` and `AlduinakLiveKitTest`, collapsible to the
+  right). Each service has **START/STOP**, **RESTART** and under the buttons
+  CPU, RAM (and requests/min for Nginx), sampled every 4 s only while the tab
+  is open. The log views are Backend/Nginx, MongoDB and Game per server
+  (LiveKit has no log view); each keeps the last 100 lines on screen, the
+  files stay in `C:\logs` (live) and `C:\logs\test` (test). A container's dot
+  and state follow its first service. The two server containers have a **Stop
+  all** button in their head while their game runs, else **Start all**
+  (LiveKit then Game in start order, reversed for stop), and a command input
+  each, wired to that server's own relay (`WS_PORT` and `WS_PORT_TEST` from
+  the backend `.env`). A test service that is not installed yet shows Offline
+  and is skipped by the group buttons.
+  - MongoDB starts first, stops last and refuses to stop while Backend, Game
+    or the test Game run.
   - The log tail asks nssm where each service writes its stdout/stderr
     (`nssm get <svc> AppStdout`) instead of guessing a fixed folder.
   - The command input first checks for **manager commands** and runs them locally:
     `help`, `status` (every service, by container),
-    `start|stop|restart <service|main|test|all>` (services `mongo`, `nginx`,
-    `backend`, `livekit`, `game`, `test-mongo`, `test-livekit`, `test-game`;
-    `backend` names the service, not the container), and
+    `start|stop|restart <service|backend|mongo|main|test|all>` (services
+    `mongo`, `nginx`, `backend`, `livekit`, `game`, `test-livekit`,
+    `test-game`; groups `backend` = Nginx and Backend, `mongo`, `main` =
+    LiveKit and Game, `test`; a service key wins over a group of the same
+    name, so `backend` names the service, and `all` walks every service in
+    start order, reversed for stop), and
     `build <server|launcher|client|native|gamemode>` (builds target the test
     server; the output streams into the console log; one build or sync at a time).
   - Anything else goes to that container's game server over the backend WS
@@ -106,11 +111,12 @@ fails it prints a direct download URL - save that zip as
   test dirs.
   - **Server**: **Live version** (Save writes `server` in
     `skymp5-backend/data/versions.json`), **Test version** (Save writes
-    `skymp5-server/package.json` and `test.server`), **Build gamemode only**
-    (regenerates `gamemode.js` from `build/dist/testserver/gamemode_extensions`,
-    the Test Server hot-reloads it), **Run CMake first**, **Build server**
-    (TypeScript into `build/dist/testserver/dist_back`, then the gamemode, then
-    the prune; restart the Test Server for `dist_back` or `scam_native.node`).
+    `skymp5-server/package.json` and `test.server`), **Run CMake first**,
+    **Build gamemode only** (regenerates `gamemode.js` from
+    `build/dist/testserver/gamemode_extensions`, the Test Server hot-reloads
+    it), **Build server** (TypeScript into `build/dist/testserver/dist_back`,
+    then the gamemode, then the prune; restart the Test Server for `dist_back`
+    or `scam_native.node`).
   - **Client**: **Live version** (Save writes `client` in `versions.json`),
     **Test version** (Save writes only `skymp5-client/package.json`),
     **Run CMake first**, **Update modlist** and the three-state **Build
@@ -127,10 +133,13 @@ fails it prints a direct download URL - save that zip as
     the same sync. Both are disabled with *Test server must be stopped* while
     the test game runs, and refuse when the test `server-settings.json` still
     names the live server dir, `dataDir` or database. There is no separate dry run.
-  - **Migrate**: **Live version** and **Test version** fields, each with
-    **Copy test build** (fills the field from `skymp5-client/package.json`,
-    with a note when `skymp5-server/package.json` differs) and **Save** (live
-    writes `client` and `server`, test writes `test.client` and `test.server`).
+  - **Migrate**: two rows of version fields, **Live** (`server`, `client`) and
+    **Test** (`test.server`, `test.client`), the published values next to the
+    label. Each row has **Copy test build** (fills the server field from
+    `skymp5-server/package.json` and the client field from
+    `skymp5-client/package.json`) and **Save** (writes the filled fields of
+    that row into `versions.json`; an empty field is left alone). Client and
+    server versions stay independent everywhere.
     **Migrate server** copies `dist_back`, `scam_native.node`, `gamemode.js`,
     `gamemode_extensions`, `plugins`, `data/scripts` and the server data json
     files (NPC-Spawns, weather-regions, Jobs, faction-access, alert-keywords)
@@ -158,6 +167,12 @@ fails it prints a direct download URL - save that zip as
     turns into **Update Version**, which writes the launcher version into
     `versions.json`. Press it only after the exe is uploaded where
     `launcherUrl` points.
+  - Version forms: client and server versions (the package files, `client`,
+    `server`, `test.client`, `test.server`) are semver with an optional
+    prerelease or build part, `1.2.3`, `1.2.3-b4` or `1.2.3+4`; the launcher
+    compares client versions as strings, so a build suffix is safe. The
+    launcher version itself stays three numbers (`1.2.3`), its updater parses
+    them.
   - The change report (mods, plugins, shifted slots, light flags, files,
     warnings) of the last Update modlist or Migrate client shows as cards on
     the Build tab only; a mod whose MO2 version changed reads `name: v1 -> v2`.
