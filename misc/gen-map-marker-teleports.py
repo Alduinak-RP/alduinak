@@ -63,8 +63,11 @@ KINDS = {
     **{t: 'Castle' for t in range(35, 52, 2)},
 }
 
-# (name, kind) -> offset added to the marker position; High Hrothgar's marker sits under the courtyard in the entrance stairs
-NUDGES = {('High Hrothgar', 'Fort'): (-200.0, 0.0, 230.0)}
+# (name, kind) -> offset added to the marker position, for markers whose fast-travel spot lands badly
+NUDGES = {
+    # The marker sits in the entrance stairs; land in front of the doors at (50915, -36112, 22584)
+    ('High Hrothgar', 'Fort'): (-1155.79, 155.07, 14.65),
+}
 
 TEMPLE = 'Temple'
 
