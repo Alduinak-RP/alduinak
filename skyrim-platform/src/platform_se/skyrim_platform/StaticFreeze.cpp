@@ -63,6 +63,8 @@ std::mutex g_requestsMutex;
 Requests g_requests;
 
 std::unordered_map<RE::FormID, Pending> g_pending;
+// Refs keyframed since their 3D last loaded, so a later event re-arms their follow-ups
+std::unordered_set<RE::FormID> g_frozen;
 std::unordered_map<RE::FormID, CellStats> g_cellStats;
 std::unordered_set<RE::FormID> g_loggedCells;
 
@@ -252,6 +254,7 @@ bool Look(RE::FormID id, Pending& pending, Clock::time_point now)
 {
   const auto ref = RE::TESForm::LookupByID<RE::TESObjectREFR>(id);
   if (!ref) {
+    g_frozen.erase(id);
     return false;
   }
   const auto root = ref->Get3D();
@@ -284,11 +287,14 @@ bool Look(RE::FormID id, Pending& pending, Clock::time_point now)
     Record(ref, Result::kNo3D, pending.fromSweep, now);
     return false;
   }
-  if (!FreezeDynamic(ref, root)) {
-    Record(ref, Result::kNoHavok, pending.fromSweep, now);
+  const bool frozen = FreezeDynamic(ref, root);
+  Record(ref, frozen ? Result::kFrozen : Result::kNoHavok, pending.fromSweep,
+         now);
+  // An event may rebuild the havok of a ref frozen earlier
+  if (!frozen && (pending.fromSweep || !g_frozen.contains(id))) {
     return false;
   }
-  Record(ref, Result::kFrozen, pending.fromSweep, now);
+  g_frozen.insert(id);
   pending.due = now + kFollowUpGaps[0];
   pending.pass = 1;
   return true;
@@ -303,6 +309,7 @@ void TakeRequests(Clock::time_point now)
   }
   if (requests.reset) {
     g_pending.clear();
+    g_frozen.clear();
     g_cellStats.clear();
   }
   for (const auto& [id, loaded] : requests.refs) {
@@ -311,6 +318,7 @@ void TakeRequests(Clock::time_point now)
       g_pending[id] = Pending{ now };
     } else {
       g_pending.erase(id);
+      g_frozen.erase(id);
     }
   }
   const auto sweep = [&](RE::TESObjectREFR* ref) {

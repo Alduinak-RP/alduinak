@@ -103,7 +103,9 @@ disarmed weapon (they must stay pickable) or server copies, which
 keyframes the server's non-item copies again whenever their 3D reloads). A
 ref whose 3D is not in yet is looked at again every 200 ms (up to 50 times; a
 disabled one waits for its next `objectLoaded`), and a frozen ref is looked at
-again one and three seconds later in case its havok was rebuilt.
+again one and three seconds later in case its havok was rebuilt, a schedule
+that every later `objectLoaded` or `cellAttach` of it starts over until its 3D
+unloads.
 `skyrim-platform.log` carries one line per cell and session at most, written
 once the cell's refs have been quiet for 5 s: `StaticFreeze: cell X froze N
 refs (S only by a load sweep, R frozen again on a follow-up); kept H without
