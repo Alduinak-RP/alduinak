@@ -13,7 +13,8 @@ fixed cross-workstream interface is `docs/docs_professions_revamp_contract.md`.
   `parseMasteryMenu` and `masteryNotice` toasts) and `adminMenuService.ts`, which
   requests and shows the menu: the **Skills** tab of the Personal Menu, opened
   with the interact key (`X`) on nothing.
-- Front piece: `skymp5-front/src/features/masteryMenu/`, embedded in `features/adminPanel`
+- Front piece: `skymp5-front/src/features/masteryMenu/`, embedded in `features/adminPanel`;
+  the tab is tall enough to show all six ranks unscrolled on screens 900 px high or more.
 - Server pieces: `skymp5-server/ts/systems/masterySystem.ts` (ranks, markers,
   worked hours), `gatheringSystem.ts` (vein tiers, vein regrowth, beehives),
   `huntingSystem.ts` (hunter bonuses).

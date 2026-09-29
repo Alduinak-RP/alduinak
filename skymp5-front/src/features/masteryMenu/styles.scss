@@ -228,12 +228,16 @@ $text-dim: rgba(232, 224, 208, 0.6);
     overflow-y: auto;
   }
 
+  // Name and hours share the top row; a rank grows with its text and never shrinks under it
   &__rank {
-    flex: 1 1 0;
-    min-height: 96px;
-    padding: 12px 14px;
+    flex: 1 0 auto;
+    min-height: 84px;
+    padding: 10px 14px;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr;
+    column-gap: 10px;
+    align-items: center;
     border-bottom: 1px solid $border-dim;
     opacity: 0.45;
     transition: opacity $medium;
@@ -245,6 +249,8 @@ $text-dim: rgba(232, 224, 208, 0.6);
   }
 
   &__rank-name {
+    grid-column: 1;
+    grid-row: 1;
     margin: 0;
     color: $gold;
     font-family: 'Bankir-Retro', Georgia, serif;
@@ -255,6 +261,9 @@ $text-dim: rgba(232, 224, 208, 0.6);
   }
 
   &__rank-perk {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: start;
     margin: 0;
     padding: 6px 0 0 18px;
     color: $text;
@@ -263,6 +272,8 @@ $text-dim: rgba(232, 224, 208, 0.6);
   }
 
   &__rank-cost {
+    grid-column: 2;
+    grid-row: 1;
     justify-self: end;
     padding: 2px 8px;
     background: rgba(200, 180, 138, 0.14);
@@ -326,9 +337,10 @@ $text-dim: rgba(232, 224, 208, 0.6);
   display: block;
   pointer-events: auto;
 
+  // Tall enough for all six ranks unscrolled; the Personal Menu chrome around it is about 205px
   .mastery__frame {
     width: 100%;
-    height: 560px;
+    height: clamp(560px, calc(100vh - 220px), 680px);
   }
 
   .mastery__title {
