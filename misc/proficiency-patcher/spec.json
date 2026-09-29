@@ -3444,7 +3444,7 @@
    {
     "edid": "002RecipeCommonArmor01",
     "name": "Boiled Leather Cuirass",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingTanningRack",
     "items": {
      "ArmorLeatherCuirass": 1,
@@ -3455,7 +3455,7 @@
    {
     "edid": "002RecipeCommonArmor10",
     "name": "Robed Iron Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingTanningRack",
     "items": {
      "ArmorIronCuirass": 1,
@@ -3466,7 +3466,7 @@
    {
     "edid": "002RecipeCommonArmor11",
     "name": "Robed Iron Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingTanningRack",
     "items": {
      "ArmorIronCuirass": 1,
@@ -3477,7 +3477,7 @@
    {
     "edid": "002RecipeCommonArmor05",
     "name": "Leather Doublet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 1,
@@ -3487,7 +3487,7 @@
    {
     "edid": "002RecipeCommonArmor06",
     "name": "Leather Doublet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 1,
@@ -3497,7 +3497,7 @@
    {
     "edid": "002RecipeCommonArmor07",
     "name": "Leather Doublet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 1,
@@ -4193,7 +4193,712 @@
     "profession": "blacksmith"
    }
   ],
-  "newRecipes": [],
+  "newRecipes": [
+   {
+    "edid": "AldRecipeTailor_002CommonRobe01",
+    "formId": "0x0412BC",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe01",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe02",
+    "formId": "0x0412BD",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe02",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe03",
+    "formId": "0x0412BE",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe03",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe04",
+    "formId": "0x0412BF",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe04",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe05",
+    "formId": "0x0412C0",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe05",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe06",
+    "formId": "0x0412C1",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe06",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe07",
+    "formId": "0x0412C2",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe07",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe08",
+    "formId": "0x0412C3",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe08",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe09",
+    "formId": "0x0412C4",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe09",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe10",
+    "formId": "0x0412C5",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe10",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe11",
+    "formId": "0x0412C6",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe11",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe12",
+    "formId": "0x0412C7",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe12",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe13",
+    "formId": "0x0412C8",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe13",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe14",
+    "formId": "0x0412C9",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe14",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe15",
+    "formId": "0x0412CA",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe15",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe16",
+    "formId": "0x0412CB",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe16",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe17",
+    "formId": "0x0412CC",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe17",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe18",
+    "formId": "0x0412CD",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe18",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe19",
+    "formId": "0x0412CE",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe19",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe20",
+    "formId": "0x0412CF",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe20",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe21",
+    "formId": "0x0412D0",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe21",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002CommonRobe22",
+    "formId": "0x0412D1",
+    "bench": "MCE_CraftingLoom",
+    "output": "002CommonRobe22",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes01",
+    "formId": "0x0412D2",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes01",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes02",
+    "formId": "0x0412D3",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes02",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes03",
+    "formId": "0x0412D4",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes03",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes04",
+    "formId": "0x0412D5",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes04",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes05",
+    "formId": "0x0412D6",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes05",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes06",
+    "formId": "0x0412D7",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes06",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes07",
+    "formId": "0x0412D8",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes07",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes08",
+    "formId": "0x0412D9",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes08",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes09",
+    "formId": "0x0412DA",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes09",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes10",
+    "formId": "0x0412DB",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes10",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes11",
+    "formId": "0x0412DC",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes11",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes12",
+    "formId": "0x0412DD",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes12",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes13",
+    "formId": "0x0412DE",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes13",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes14",
+    "formId": "0x0412DF",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes14",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes15",
+    "formId": "0x0412E0",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes15",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes16",
+    "formId": "0x0412E1",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes16",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes17",
+    "formId": "0x0412E2",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes17",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes18",
+    "formId": "0x0412E3",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes18",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes19",
+    "formId": "0x0412E4",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes19",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes20",
+    "formId": "0x0412E5",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes20",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes21",
+    "formId": "0x0412E6",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes21",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes22",
+    "formId": "0x0412E7",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes22",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes23",
+    "formId": "0x0412E8",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes23",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes24",
+    "formId": "0x0412E9",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes24",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes25",
+    "formId": "0x0412EA",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes25",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes26",
+    "formId": "0x0412EB",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes26",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes27",
+    "formId": "0x0412EC",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes27",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes28",
+    "formId": "0x0412ED",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes28",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes29",
+    "formId": "0x0412EE",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes29",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes30",
+    "formId": "0x0412EF",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes30",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes31",
+    "formId": "0x0412F0",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes31",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes32",
+    "formId": "0x0412F1",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes32",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes33",
+    "formId": "0x0412F2",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes33",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes34",
+    "formId": "0x0412F3",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes34",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes35",
+    "formId": "0x0412F4",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes35",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes36",
+    "formId": "0x0412F5",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes36",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes37",
+    "formId": "0x0412F6",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes37",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes38",
+    "formId": "0x0412F7",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes38",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes39",
+    "formId": "0x0412F8",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes39",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes40",
+    "formId": "0x0412F9",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes40",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes41",
+    "formId": "0x0412FA",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes41",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   },
+   {
+    "edid": "AldRecipeTailor_002TravelClothes42",
+    "formId": "0x0412FB",
+    "bench": "MCE_CraftingLoom",
+    "output": "002TravelClothes42",
+    "count": 1,
+    "tier": "Novice",
+    "items": {
+     "MCE_Thread": 4
+    }
+   }
+  ],
   "disableRecipes": [
    "MCERecipeClothesChild01Female",
    "MCERecipeClothesChild02Female",
@@ -7672,6 +8377,19 @@
      "Wedding"
     ],
     "tier": "Expert",
+    "profession": "tailor"
+   },
+   {
+    "name": "Common cloaks and clothes",
+    "benches": [
+     "CraftingTanningRack",
+     "MCE_CraftingLoom"
+    ],
+    "match": [
+     "vol_CapeRecipe_Leather",
+     "002RecipeCommonArmor"
+    ],
+    "tier": "Novice",
     "profession": "tailor"
    }
   ]
