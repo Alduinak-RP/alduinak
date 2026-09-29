@@ -418,10 +418,12 @@ VarValue PapyrusObjectReference::PlaceAtMe(
   worldState->AddForm(std::move(newRefr), newRefrId);
 
   auto& refr = worldState->GetFormAt<MpObjectReference>(newRefrId);
-  refr.ForceSubscriptionsUpdate();
-
+  // A disabled placement subscribes nobody, so no client sees the new ref at
+  // the anchor before it is moved; Enable does the only subscription
   if (abInitiallyDisabled) {
     refr.Disable();
+  } else {
+    refr.ForceSubscriptionsUpdate();
   }
   return VarValue(std::make_shared<MpFormGameObject>(&refr));
 }
