@@ -71,10 +71,13 @@ const HUNGER_MAX = 1000;
 const POLL_MS = 1000;
 const TICK_MS = 60000;
 // The client wipes and re-applies learnedSpells about a second after its load; a stage ability change has to land after that.
-// The load can outlast this, so the client's needsRequest (sent once its widgets are up) schedules a second sync that re-sends
-// any ability swapped since the assign, which the wipe would otherwise have dropped
+// The load can outlast this, so the packets the client sends once per load (weatherRequest and gameTimeRequest at its loadGame,
+// needsRequest at its createActor) each schedule a re-send of any ability swapped during the login window, which the wipe
+// would otherwise have dropped
 const LOGIN_SYNC_DELAY_MS = 5000;
-const REQUEST_SYNC_DELAY_MS = 2000;
+const RESYNC_DELAY_MS = 3000;
+const LOGIN_WINDOW_MS = 3 * 60000;
+const LOAD_PACKETS = new Set(["weatherRequest", "gameTimeRequest"]);
 const NOTICE_GAP_MS = 2000;
 // Longest a pending race menu or creator holds hunger; a creation stuck past this drains like play
 const CREATION_HUNGER_HOLD_MS = 20 * 60000;
@@ -154,8 +157,9 @@ interface Online {
   // Last state sent to the client, so the minute tick only sends changes
   sent: string;
   syncStageAt: number;
-  // The needsRequest sync re-sends the held abilities when one was swapped since the assign
-  resyncAbilities: boolean;
+  // A re-send of the held abilities is due when one was swapped inside the login window
+  assignedAt: number;
+  resyncAt: number;
   swappedSinceAssign: boolean;
   // Epoch ms the minute tick first saw this character's creation pending, 0 when it is not, -1 once the hold ran out
   pendingSince: number;
@@ -575,7 +579,7 @@ export class NeedsSystem implements System {
     const rec = stored || { v: 2, hunger: this.hungerStart, fatigue: 1, at: now, stageSpell: 0, fatigueSpell: 0, wellFed: false, drinkUntil: 0 };
     const savedAgo = stored ? formatWait(now - stored.at) : "never";
     if (stored) this.advance(rec, now, false);
-    this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, resyncAbilities: false, swappedSinceAssign: false, pendingSince: 0 });
+    this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, assignedAt: now, resyncAt: 0, swappedSinceAssign: false, pendingSince: 0 });
     this.write(ctx, actorId, rec);
     this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}`);
     this.sendState(ctx, actorId, false);
@@ -607,14 +611,14 @@ export class NeedsSystem implements System {
     this.online.delete(actorId);
   }
 
-  // The client asks once its widgets are up, after its load: the state goes out again and the abilities are checked shortly after
+  // needsRequest: the state goes out again; that and the once-per-load packets each schedule the ability re-send
   customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
-    if (type !== REQUEST_PACKET || !this.enabled) return;
+    if (!this.enabled || (type !== REQUEST_PACKET && !LOAD_PACKETS.has(type))) return;
     for (const [actorId, entry] of this.online) {
       if (entry.userId !== userId) continue;
+      entry.resyncAt = Date.now() + RESYNC_DELAY_MS;
+      if (type !== REQUEST_PACKET) continue;
       this.sendState(ctx, actorId, false, true);
-      entry.syncStageAt = Date.now() + REQUEST_SYNC_DELAY_MS;
-      entry.resyncAbilities = true;
       this.log(`[needs] ${hex(actorId)} request: state resent${entry.swappedSinceAssign ? ", abilities to re-send" : ""}`);
     }
   }
@@ -676,12 +680,14 @@ export class NeedsSystem implements System {
           this.sendState(ctx, actorId, false);
         } else if (entry.syncStageAt && now >= entry.syncStageAt) {
           entry.syncStageAt = 0;
-          if (entry.resyncAbilities) {
-            entry.resyncAbilities = false;
-            this.resendAbilities(ctx, actorId, entry);
-          }
           this.syncStages(ctx, actorId, entry);
         }
+        if (entry.resyncAt && now >= entry.resyncAt) {
+          entry.resyncAt = 0;
+          this.resendAbilities(ctx, actorId, entry);
+          this.syncStages(ctx, actorId, entry);
+        }
+        if (tick && entry.swappedSinceAssign && now - entry.assignedAt > LOGIN_WINDOW_MS) entry.swappedSinceAssign = false;
       } catch (e) {
         this.log(`[needs] update for ${hex(actorId)} failed: ${e}`);
       }
@@ -813,16 +819,16 @@ export class NeedsSystem implements System {
       return false;
     }
     entry.rec[field] = want;
-    entry.swappedSinceAssign = true;
+    if (Date.now() - entry.assignedAt < LOGIN_WINDOW_MS) entry.swappedSinceAssign = true;
     this.write(ctx, actorId, entry.rec);
     return true;
   }
 
   // An ability swapped in while the client was still loading was wiped with its learnedSpells; a plain AddSpell sends no
-  // snippet for a spell the server already lists, so each held one is removed and added again
+  // snippet for a spell the server already lists, so each held one is removed and added again. The flag stays for the
+  // login window: a re-send that itself landed before the wipe is repeated by the next once-per-load packet
   private resendAbilities(ctx: SystemContext, actorId: number, entry: Online): void {
     if (!entry.swappedSinceAssign) return;
-    entry.swappedSinceAssign = false;
     const mp = ctx.svr as Mp;
     for (const field of ["stageSpell", "fatigueSpell"] as AbilityField[]) {
       const spellId = entry.rec[field];
