@@ -152,6 +152,7 @@ export interface AdminPanelData {
   debug?: DebugData | null;
   npcZones?: PanelNpcZone[]; // absent on older clients
   npcZonesAt?: number; // Date.now() when npcZones arrived, the countdown base
+  npcZoneResult?: { ok: boolean; at: number } | null; // the server's latest answer to Add or Save, absent on older clients
   caps?: Partial<Record<AdminSub | 'kick' | 'ban' | 'factions', boolean>>; // server-resolved tier capabilities, absent on older servers
   tier?: string; // "senior" | "developer" | "gm", absent on older servers
   mastery?: PanelMastery | null; // the admin's own standing, absent on older servers
@@ -408,6 +409,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [zoneType, setZoneType] = useState('');
   // Name of the zone the Add form is editing; null while it adds a new one
   const [editingZone, setEditingZone] = useState<string | null>(null);
+  // An Add or Save waits for the server's answer; a refusal keeps the form as it was
+  const [zonePending, setZonePending] = useState(false);
   const [grantHours, setGrantHours] = useState('1');
   const [attrs, setAttrs] = useState<Record<string, string>>(attrForm(null));
   const [petKind, setPetKind] = useState<PetKind>('horse');
@@ -574,7 +577,17 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const clearZoneForm = (): void => {
     setZoneForm(EMPTY_ZONE_FORM);
     setEditingZone(null);
+    setZonePending(false);
   };
+
+  const zoneResultAt = data.npcZoneResult ? data.npcZoneResult.at : 0;
+  useEffect(() => {
+    if (!zonePending || !data.npcZoneResult) return;
+    setZonePending(false);
+    if (!data.npcZoneResult.ok) return;
+    clearZoneForm();
+    setNpcSub('list');
+  }, [zoneResultAt]);
 
   const editZone = (z: PanelNpcZone): void => {
     const e = z.entry;
@@ -585,6 +598,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       npc: e.NPC.join('\n'), despawn: text(e.Despawn), respawn: text(e.Respawn), type: e.Type || '',
     });
     setEditingZone(z.name);
+    setZonePending(false);
     setNpcSub('add');
   };
 
@@ -603,9 +617,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       Respawn: optionalNumber(zoneForm.respawn),
       Edit: save && editingZone ? editingZone : undefined,
     }));
-    // The server toast reports success or the reason; the list refreshes on the npcZones push
-    clearZoneForm();
-    setNpcSub('list');
+    // The server toast reports success or the reason; success empties the form and shows the list, which refreshes on the npcZones push
+    setZonePending(true);
   };
 
   // The bases arrive with the panel; the Pets sub-tab asks again only when they never came

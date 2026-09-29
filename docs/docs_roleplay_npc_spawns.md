@@ -460,7 +460,9 @@ views:
   validates exactly like a file load (unknown ID, non-`NPC_` base, duplicate
   name, more than 40 NPCs, a Name over 64 characters and missing fields are
   refused with a toast naming the reason) and appends the entry in the field
-  names shown above. Save sends the same `npcZoneAdd` packet with one more
+  names shown above. The form empties and the list returns only once the
+  server accepted the Add or Save; a refusal leaves the form (and the zone
+  being edited) as it was, to correct and send again. Save sends the same `npcZoneAdd` packet with one more
   field, `"Edit": "<the zone's name when Edit was clicked>"`: the server
   validates the same way, then replaces the entry of that name (case-insensitive)
   where it stands in the file, refusing when it is gone (`'<Name>' is no

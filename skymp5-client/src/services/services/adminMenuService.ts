@@ -326,6 +326,11 @@ export class AdminMenuService extends ClientListener {
     } else if (content["customPacketType"] === "adminActionResult") {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
       if (content["ok"] === true && this.menuOpen && SELF_TELEPORTS.includes(String(content["action"] ?? ""))) this.closeMenu();
+      // The Add form keeps its values until the server accepted them
+      if (content["action"] === "npcZoneAdd") {
+        panelData.npcZoneResult = { ok: content["ok"] === true, at: Date.now() };
+        this.pushData();
+      }
     }
   }
 

@@ -67,7 +67,7 @@ type Mp = any;
 //                     { customPacketType: "adminJobs", jobs: [JobSummary] }  after jobList and after every job mutation
 //                     { customPacketType: "adminWeather", regions: [WeatherRegionRow], weathers?: [{desc, edid, kind}], at }  after weatherList (with the catalog) and after every weather change; at: server epoch ms
 //                     { customPacketType: "adminItems", query, kind, page, pages, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
-//                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp, jobTp), which closes the menu
+//                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp, jobTp), which closes the menu, and on every npcZoneAdd answer, which the Add form waits for
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
 // Non-admin requests are ignored silently; every Personal Menu open sends adminMenuRequest, so that refusal is logged once per user slot.
@@ -842,7 +842,7 @@ export class AdminSystem implements System {
       let raw: unknown;
       try { raw = JSON.parse(String(content["zone"] ?? "")); } catch { raw = null; }
       if (!raw || typeof raw !== "object") {
-        this.reply(mp, userId, false, "Bad zone data");
+        this.reply(mp, userId, false, "Bad zone data", action);
         return;
       }
       const zoneName = String(pick(raw, "name") ?? "").trim();
@@ -852,11 +852,11 @@ export class AdminSystem implements System {
         if (!err) this.adminLog(edited
           ? `profile ${adminProfile} edited npc zone '${edited}'${edited === zoneName ? "" : ` -> '${zoneName}'`}`
           : `profile ${adminProfile} added npc zone '${zoneName}'`);
-        this.replyIfSameAdmin(mp, userId, myActorId, !err, err ?? `${edited ? "Saved" : "Added"} zone ${zoneName}`);
+        this.replyIfSameAdmin(mp, userId, myActorId, !err, err ?? `${edited ? "Saved" : "Added"} zone ${zoneName}`, action);
         if (!err) this.sendZones(mp, userId, myActorId);
       }).catch(e => {
         this.log(`AdminSystem: npcZoneAdd by profile ${adminProfile} failed: ${e}`);
-        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log", action);
       });
       return;
     }
@@ -1188,12 +1188,12 @@ export class AdminSystem implements System {
   }
 
   // The HTTP round-trip outlives the packet handler; verify the userId slot still belongs to the same admin before sending the toast
-  private replyIfSameAdmin(mp: Mp, userId: number, adminActorId: number, ok: boolean, text: string): void {
+  private replyIfSameAdmin(mp: Mp, userId: number, adminActorId: number, ok: boolean, text: string, action?: string): void {
     try {
       if (mp.getUserActor(userId) !== adminActorId) return;
     } catch {
       return;
     }
-    this.reply(mp, userId, ok, text);
+    this.reply(mp, userId, ok, text, action);
   }
 }
