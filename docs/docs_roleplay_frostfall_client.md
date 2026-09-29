@@ -147,7 +147,16 @@ is and writes one `VanillaMenuService: ...` line to `skyrim-platform.log`.
   rect's `onMouseDown` and `onRollOver` with `false` (a hidden clip still gets
   `onMouseDown`). Should the label map not be reachable, a `Selections_mc`
   that lands on the Skills frame is sent back to `"None"` on the next update.
-  The engine still hears `HighlightMenu(1)` on Up, which only plays its sound.
+  The engine still hears `HighlightMenu(1)` on Up, as for any direction.
+- **Skills menu (StatsMenu)**: never shows. SkyrimPlatform hooks
+  `MenuOpenHandler::CanProcess` (vtable slot 1, `Hooks.cpp`
+  `InstallQuickStatsBlock`) and refuses the `Quick Stats` user event (`/` by
+  default), so the key opens nothing and the first press logs `Quick Stats
+  key ignored` to `skyrim-platform.log`; the Tween menu has no Skills (above).
+  Anything else that opens StatsMenu is closed on its `menuOpen` by
+  `keepMenusClosed` (one frame at most, logged once as `StatsMenu opened and
+  was closed at once`). The Personal menu's Skills tab is a browser page and
+  is not affected.
 
 ---
 

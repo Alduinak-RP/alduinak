@@ -1,6 +1,7 @@
 import { Menu } from "skyrimPlatform";
 import { logToPlatformLog } from "../../logging";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { keepMenusClosed } from "./menuBlockUtil";
 
 // Paths and members of SkyUI's quest_journal.swf (SkyUI_SE.bsa wins over Skyrim - Interface.bsa)
 const JOURNAL_ROOT = "_root.QuestJournalFader.Menu_mc";
@@ -57,6 +58,8 @@ export class VanillaMenuService extends ClientListener {
       if (e.name === Menu.Tween) this.tween = undefined;
     });
     this.controller.on("update", () => this.onUpdate());
+    // SkyrimPlatform drops the Quick Stats key and the Tween Menu has no Skills; anything else that opens StatsMenu is shut at once
+    keepMenusClosed(this.sp, this.controller, [Menu.Stats], () => this.logOnce("stats", "StatsMenu opened and was closed at once"));
   }
 
   private onUpdate(): void {
