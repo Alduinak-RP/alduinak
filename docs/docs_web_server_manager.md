@@ -349,7 +349,9 @@ else must be done in game or on the box.
 `America/New_York`; without the file, one daily Main Server restart at 04:00 New York
 time). Before a restart it broadcasts `Server restart in N minutes. Please find a safe
 spot and log out.` with `say` 60 (shown as 1 hour), 30, 10, 5, 4, 3, 2 and 1 minutes
-before. A warning whose time already passed when the agent started is skipped. A Main
+before. A warning whose time already passed when the agent started is skipped; a task
+that fell due in the minute or two the Electron manager needs to notice a stopped agent
+(or while the agent restarted) still runs once, within 10 minutes of its time. A Main
 Server restart, start or stop runs as a normal job by *Schedule*, so the logs are
 archived into `C:\logs\YYYY-MM` (the game logs plus the backend's `ban.log` and
 `faction.log`) and the audit and Jobs tab record it. If a build holds the lock it

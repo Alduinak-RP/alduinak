@@ -157,6 +157,13 @@ function agentActive(dir, now = Date.now()) {
   return !!hb && hb.source === 'agent' && heartbeatFresh(hb, now)
 }
 
+// The instant of the last heartbeat any runner wrote, or null
+function lastBeatAt(dir) {
+  const hb = readHeartbeat(dir)
+  const at = hb ? Date.parse(hb.at) : NaN
+  return Number.isFinite(at) ? at : null
+}
+
 function writeHeartbeat(dir, source, log) {
   writeJsonAtomic(heartbeatFile(dir), { source, pid: process.pid, at: new Date().toISOString(), log })
 }
@@ -177,13 +184,14 @@ function describe(task) {
   return `${what} on ${task.target} (${task.id})`
 }
 
-// act: say(target, text) and command(target, text) -> { ok, error }, service(target, verb) -> Promise<{ ok, busy, error, detail }>, gameRunning(target) -> Promise<bool>
-function createScheduler({ read, act, log, active = () => true, claim = () => true, beat = () => {}, now = Date.now }) {
+// act: say(target, text) and command(target, text) -> { ok, error }, service(target, verb) -> Promise<{ ok, busy, error, detail }>, gameRunning(target) -> Promise<bool>; lastBeat() -> ms or null
+function createScheduler({ read, act, log, active = () => true, claim = () => true, beat = () => {}, lastBeat = () => null, now = Date.now }) {
   const cycles = new Map()
   const recent = []
   let lastError = null
   let ticking = false
   let timer = null
+  let wasActive = false
 
   function note(text) {
     recent.push(`${new Date(now()).toISOString()} ${text}`)
@@ -191,8 +199,10 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
     log(text)
   }
 
-  function newCycle(task, timeZone, sig, t) {
-    const target = nextRun(task, timeZone, t)
+  function newCycle(task, timeZone, sig, t, resumeFrom) {
+    // Taking over within the late grace of the last runner's heartbeat, an occurrence due since that beat still runs unless it was claimed
+    const from = resumeFrom !== null && t - resumeFrom <= LATE_MINUTES * MINUTE ? Math.min(t, resumeFrom - TICK_MS) : t
+    const target = nextRun(task, timeZone, from)
     if (target === null) return null
     // Warnings whose time already passed when the cycle starts are skipped, never sent late
     return { sig, target, sent: new Set(WARN_MINUTES.filter(lead => target - lead * MINUTE <= t)), retryAt: null, claimed: false }
@@ -220,16 +230,17 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
     return true
   }
 
-  async function step(task, timeZone, t) {
+  async function step(task, timeZone, t, resumeFrom) {
     const sig = JSON.stringify([task.kind, task.target, task.time, task.days, task.message, task.command, timeZone])
     let c = cycles.get(task.id)
     // A DST change between now and the target moves it; recomputed only before the warnings start
     if (c && c.sig === sig && t < c.target - HOUR && nextRun(task, timeZone, t) !== c.target) c = null
     if (!c || c.sig !== sig) {
-      c = newCycle(task, timeZone, sig, t)
+      c = newCycle(task, timeZone, sig, t, resumeFrom)
       if (!c) { cycles.delete(task.id); return }
       cycles.set(task.id, c)
-      note(`next ${describe(task)} at ${formatAt(c.target, timeZone)}`)
+      const late = c.target <= t
+      note(`${late ? 'catching up' : 'next'} ${describe(task)} ${late ? 'due at' : 'at'} ${formatAt(c.target, timeZone)}`)
     }
     if (task.kind === 'restart') {
       const due = WARN_MINUTES.filter(lead => !c.sent.has(lead) && t >= c.target - lead * MINUTE)
@@ -255,15 +266,17 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
     if (ticking) return
     ticking = true
     try {
-      if (!active()) { cycles.clear(); return }
+      if (!active()) { cycles.clear(); wasActive = false; return }
       const t = now()
+      const resumeFrom = wasActive ? null : lastBeat()
+      wasActive = true
       const { schedule, error } = read()
       if (error && error !== lastError) note(error)
       lastError = error
       const enabled = schedule.tasks.filter(task => task.enabled)
       for (const id of cycles.keys()) if (!enabled.some(task => task.id === id)) cycles.delete(id)
       for (const task of enabled) {
-        try { await step(task, schedule.timeZone, t) } catch (err) { note(`${describe(task)} error: ${err.message}`); cycles.delete(task.id) }
+        try { await step(task, schedule.timeZone, t, resumeFrom) } catch (err) { note(`${describe(task)} error: ${err.message}`); cycles.delete(task.id) }
       }
       beat(recent.slice())
     } catch (err) {
@@ -284,5 +297,5 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
 module.exports = {
   WARN_MINUTES, KINDS, TARGETS, DEFAULT_TIME_ZONE, HEARTBEAT_STALE_MS,
   warningText, parseAt, seedSchedule, validTimeZone, nextRun, formatAt, normalizeSchedule,
-  scheduleFile, readSchedule, writeSchedule, readHeartbeat, heartbeatFresh, agentActive, writeHeartbeat, claimRun, createScheduler,
+  scheduleFile, readSchedule, writeSchedule, readHeartbeat, heartbeatFresh, agentActive, lastBeatAt, writeHeartbeat, claimRun, createScheduler,
 }

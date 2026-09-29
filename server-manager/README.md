@@ -221,9 +221,12 @@ fails it prints a direct download URL - save that zip as
   open, and the tab says so in red. Each run and each restart warning is
   claimed once in `schedule-runs/`, so the agent and the app (or a manager
   open in another Windows session) never both send it; launching this app
-  again only brings the open window forward. A task whose
-  time passed more than 10 minutes ago (manager closed, box asleep) waits for
-  its next time. The runner's last lines show under the table and as
+  again only brings the open window forward. A runner that takes over from
+  one whose heartbeat stopped less than 10 minutes ago (the agent restarted
+  or crashed, the app reopened) still runs a task that fell due since that
+  heartbeat and nobody claimed, without the warnings it missed. Otherwise a
+  task whose time passed more than 10 minutes ago (manager closed, box
+  asleep) waits for its next time. The runner's last lines show under the table and as
   `[schedule]` lines in the Console tab. `dailyRestartAt` in
   `server-settings.json` is no longer read.
 - **News** - edit the news entries the launcher shows.

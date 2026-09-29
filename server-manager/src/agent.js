@@ -307,6 +307,7 @@ function createAgent(overrides = {}) {
       read: () => schedule.readSchedule(schedule.scheduleFile(deps.dir())),
       claim: (id, at) => schedule.claimRun(deps.dir(), id, at),
       beat: log => schedule.writeHeartbeat(deps.dir(), 'agent', log),
+      lastBeat: () => schedule.lastBeatAt(deps.dir()),
       act: {
         say: (target, text) => relays[target].command(`say ${text}`),
         command: (target, text) => relays[target].command(text),

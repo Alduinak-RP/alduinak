@@ -126,6 +126,7 @@ const scheduler = schedule.createScheduler({
   active: () => !schedule.agentActive(scheduleDir()),
   claim: (id, at) => schedule.claimRun(scheduleDir(), id, at),
   beat: log => schedule.writeHeartbeat(scheduleDir(), 'app', log),
+  lastBeat: () => schedule.lastBeatAt(scheduleDir()),
   act: {
     say: (target, text) => relays[target].command(`say ${text}`),
     command: (target, text) => relays[target].command(text),

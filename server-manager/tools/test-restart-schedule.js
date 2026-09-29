@@ -14,7 +14,7 @@ const NY = 'America/New_York'
 const utc = (h, m, d = 22, mo = 9) => Date.UTC(2026, mo - 1, d, h, m)
 const task = over => ({ id: 't1', enabled: true, kind: 'restart', target: 'live', time: '04:00', days: [], message: '', command: '', ...over })
 
-function harness({ start, tasks = [task()], timeZone = NY, running = true, replies = [], claim = () => true, active = () => true }) {
+function harness({ start, tasks = [task()], timeZone = NY, running = true, replies = [], claim = () => true, active = () => true, lastBeat = () => null }) {
   const clock = { t: start }
   const said = []
   const commands = []
@@ -30,6 +30,7 @@ function harness({ start, tasks = [task()], timeZone = NY, running = true, repli
     },
     claim,
     active,
+    lastBeat,
     log: text => logs.push(text),
     now: () => clock.t,
   })
@@ -123,6 +124,26 @@ async function main() {
   await h.run(utc(8, 1))
   assert.deepEqual(h.said.map(s => s[1]), [3, 2, 1].map(S.warningText))
   assert.equal(h.services.length, 1)
+
+  // Taking over after the target from a runner whose heartbeat stopped just before it: the occurrence still runs, once, without late warnings
+  on = false
+  h = harness({ start: utc(7, 59), active: () => on, lastBeat: () => utc(7, 58) + 50000 })
+  await h.run(utc(8, 0))
+  on = true
+  await h.run(utc(8, 5))
+  assert.deepEqual(h.services, [['live', 'restart', utc(8, 0) + 20000]])
+  assert.equal(h.said.length, 0)
+
+  // The previous runner had claimed it: not repeated, and the next cycle is the next day
+  h = harness({ start: utc(8, 0) + 20000, lastBeat: () => utc(7, 59) + 40000, claim: (id, at) => at !== utc(8, 0) })
+  await h.run(utc(8, 10))
+  assert.equal(h.services.length, 0)
+  assert.deepEqual(h.logs.filter(l => /^next /.test(l)).length, 1)
+
+  // A heartbeat older than the late grace (the manager was closed): a missed occurrence waits for its next time
+  h = harness({ start: utc(8, 5), lastBeat: () => utc(2, 0) })
+  await h.run(utc(8, 10))
+  assert.equal(h.services.length, 0)
 
   // An edit to the time moves the pending occurrence
   const tasks = [task()]
