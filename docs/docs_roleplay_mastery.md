@@ -483,8 +483,9 @@ rose from three to six) is read as full.
 
 ### Farming
 
-Harvesting a crop kneels the picker 5 seconds and flora 2 seconds, whatever the
-rank; a farmer's or alchemist's yield doubles at Adept and triples at Master.
+Harvesting a crop hoes the field for 5 seconds (the `IdleHoe` farming idle, left
+through `IdleStop` so the hoe prop goes away) and flora kneels the picker 2 seconds,
+whatever the rank; a farmer's or alchemist's yield doubles at Adept and triples at Master.
 Crops (flora whose editor id holds wheat, gourd, nirnroot, cabbage or potato, and
 the nirnroot activators) need the plugin hoe `AldToolHoe` in the inventory: "You
 need a hoe to harvest this crop." Tree fruit, mushrooms and flowers need nothing

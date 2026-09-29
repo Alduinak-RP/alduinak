@@ -257,7 +257,7 @@ tanning, charcoal) gives every profession that shares it both its rank discount 
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
   (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
-  A crop needs a hoe and takes 5 s; flora takes 2 s.
+  A crop needs a hoe and takes 5 s of hoeing (`IdleHoe`); flora takes a 2 s kneel.
 - Crafting is every recipe the server accepts at any station, and every temper at the workbench or grindstone, by the
   rank of a character whose profession works that bench keyword (MasterySystem `craftCost`). Smiths and miners both get
   their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal.

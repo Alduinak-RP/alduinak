@@ -36,9 +36,9 @@ type Mp = any;
 // Produce containers (beehives and apiaries) never open: E hands over what the container record holds, then it grows back.
 // Nirnroot and the critters that carry an ingredient are picked the same way; their vanilla scripts also wait on events the server never sees,
 // so the server disables the picked ref for everyone and enables it again once it has grown back (gathering-picks.json keeps that over a restart).
-// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue (flora half) and kneels the picker for CROP_MS or FLORA_MS,
-// during which they cannot move or harvest again; a farmer's or alchemist's yield follows YIELD_BY_RANK. Crops (CROP_WORDS in the editor id)
-// need a hoe in the inventory.
+// Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue (flora half) and holds the picker for CROP_MS or FLORA_MS,
+// during which they cannot move or harvest again: a crop is hoed (IdleHoe, left through IdleStop so the hoe prop goes away), flora kneels;
+// a farmer's or alchemist's yield follows YIELD_BY_RANK. Crops (CROP_WORDS in the editor id) need a hoe in the inventory.
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
@@ -75,6 +75,9 @@ const GEM_LIST = 0x0010e992;
 const GEM_CHANCE = 0.02;
 const NO_ORE = "You can't identify any useful ore.";
 const HARVEST_ANIM = "IdleKneelingEnter";
+// Crops: the looping farming idle with its hoe prop; a prop idle must exit through IdleStop, IdleForceDefaultState leaves the hoe in hand
+const CROP_ANIM = "IdleHoe";
+const CROP_EXIT_ANIM = "IdleStop";
 // The native flora reloot when server-settings names none
 const DEFAULT_PLANT_REGROW_MS = 3600000;
 // Engine furniture reach is 256; a wall marker stands a little off its vein.
@@ -192,7 +195,7 @@ export class GatheringSystem implements System {
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest kneels ${CROP_MS / 1000} s for a crop and ${FLORA_MS / 1000} s for flora except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop and kneels ${FLORA_MS / 1000} s for flora except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -401,7 +404,7 @@ export class GatheringSystem implements System {
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
       if (kneelMs > 0) {
         this.harvestUntil.set(actorId, Date.now() + kneelMs);
-        sendActionLock(ctx.svr as Mp, actorId, HARVEST_ANIM, kneelMs / 1000);
+        sendActionLock(ctx.svr as Mp, actorId, flora ? HARVEST_ANIM : CROP_ANIM, kneelMs / 1000, flora ? undefined : CROP_EXIT_ANIM);
       }
       return grant ? false : undefined;
     };
