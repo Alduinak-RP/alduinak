@@ -69,6 +69,8 @@ const CREATION_TITLES = {
 
 // The launcher writes the client settings on every launch; a mod copy would shadow it under MO2
 const CLIENT_SETTINGS_FILE = 'skymp5-client-settings.txt'
+// Written by SKSE plugins while the game runs (ActorLimitFix.log): a shipped copy changes size and fails the launcher's check
+const RUNTIME_FILE_RE = /\.log$/i
 
 let sources = { urls: {}, rootInclude: [] }
 try {
@@ -281,7 +283,7 @@ async function main() {
   for (const modName of order) {
     const modDir = path.join(MODS, modName)
     if (!fs.existsSync(modDir)) continue
-    const rels = walk(modDir).filter(r => r.toLowerCase() !== 'meta.ini' && path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE)
+    const rels = walk(modDir).filter(r => r.toLowerCase() !== 'meta.ini' && path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE && !RUNTIME_FILE_RE.test(r))
     if (rels.length === 0) continue
     const meta = readModMeta(modDir)
     const used = new Set()
