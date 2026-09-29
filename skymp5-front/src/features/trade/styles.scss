@@ -99,6 +99,42 @@ $tag-red: rgba(220, 110, 100, 0.9);
     white-space: nowrap;
   }
 
+  // Vanilla-style category tabs over the inventory list
+  &__tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+
+  &__tab {
+    padding: 4px 8px;
+    border: 1px solid $pane-border;
+    background: transparent;
+    color: $text-muted;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background $fast, border-color $fast, color $fast;
+
+    &:hover {
+      border-color: $red-border-dim;
+      color: $text-bright;
+    }
+
+    &--active {
+      background: $red-fill-active;
+      border-color: $red-border-bright;
+      color: $text-bright;
+    }
+
+    &--empty {
+      opacity: 0.45;
+    }
+  }
+
   &__lock {
     color: $tag-red;
     font-size: 12px;

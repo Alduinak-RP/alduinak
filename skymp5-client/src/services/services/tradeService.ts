@@ -4,7 +4,7 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
-import { BrowserMessageEvent, ObjectReference } from "skyrimPlatform";
+import { BrowserMessageEvent, FormType, ObjectReference } from "skyrimPlatform";
 import { getInventory, Entry, EnchantmentEffect, effectsKey, isBoundItem, isNamedItemBase } from "../../sync/inventory";
 import { logTrace } from "../../logging";
 
@@ -44,6 +44,7 @@ interface UiItem {
   name: string;
   tags?: string[];
   equipped?: boolean;
+  category?: string; // the inventory tab of the left pane
 }
 
 // Property keys and writings: the name is the identity
@@ -134,11 +135,11 @@ let inviteFrom = '';
  *     { customPacketType: "tradeSetOffer", items: [{ baseId, count, ...extras }], seq }
  *     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
  *
- * The window shows the player's own (offerable) inventory on the left and two
- * stacked boxes on the right: their own offer and the partner's. Offers and
- * lock/accept state are owned by the server; the client renders the latest
- * `tradeState`, shows its own offer until the server has seen it (seq/mySeq),
- * and only resolves item names locally.
+ * The window shows the player's own (offerable) inventory on the left, sorted
+ * into vanilla-style tabs, and two stacked boxes on the right: their own offer
+ * and the partner's. Offers and lock/accept state are owned by the server;
+ * the client renders the latest `tradeState`, shows its own offer until the
+ * server has seen it (seq/mySeq), and only resolves item names locally.
  */
 export class TradeService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -483,6 +484,37 @@ export class TradeService extends ClientListener {
     }
   }
 
+  // Vanilla inventory tabs by form type; gold and everything unlisted is misc
+  private categoryOf(baseId: number): string {
+    const cached = this.categoryCache.get(baseId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    let category = "misc";
+    try {
+      const form = this.sp.Game.getFormEx(baseId);
+      if (!form) {
+        return category;
+      }
+      const type = form.getType();
+      if (type === FormType.Weapon || type === FormType.Ammo) {
+        category = "weapons";
+      } else if (type === FormType.Armor) {
+        category = "apparel";
+      } else if (type === FormType.Potion) {
+        category = this.sp.Potion.from(form)?.isFood() ? "food" : "potions";
+      } else if (type === FormType.Ingredient) {
+        category = "ingredients";
+      } else if (type === FormType.Book) {
+        category = "books";
+      }
+    } catch (e) {
+      return category;
+    }
+    this.categoryCache.set(baseId, category);
+    return category;
+  }
+
   private withNames(items: Item[]): UiItem[] {
     return items.map((i) => this.toUiItem(i));
   }
@@ -505,6 +537,7 @@ export class TradeService extends ClientListener {
         if (equipped) {
           ui.equipped = true;
         }
+        ui.category = this.categoryOf(item.baseId);
         out.push(ui);
       }
     });
@@ -600,4 +633,5 @@ export class TradeService extends ClientListener {
   private windowOpen = false;
   private invitePending = false;
   private nameCache = new Map<number, string>();
+  private categoryCache = new Map<number, string>();
 }

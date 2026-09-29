@@ -10,6 +10,7 @@ interface UiItem {
   name: string;
   tags?: string[];
   equipped?: boolean;
+  category?: string; // inventory tab id set by the client, misc when absent
 }
 
 interface TradeEvents {
@@ -36,6 +37,20 @@ export interface TradeData {
   stackPromptThreshold: number;
   events: TradeEvents;
 }
+
+// The inventory pane's tabs in vanilla order; gold is a misc item
+const TABS: Array<{ id: string; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'weapons', label: 'Weapons' },
+  { id: 'apparel', label: 'Apparel' },
+  { id: 'potions', label: 'Potions' },
+  { id: 'food', label: 'Food' },
+  { id: 'ingredients', label: 'Ingredients' },
+  { id: 'books', label: 'Books' },
+  { id: 'misc', label: 'Misc' },
+];
+
+const inTab = (item: UiItem, tab: string): boolean => tab === 'all' || (item.category || 'misc') === tab;
 
 const send = (key: string, ...args: unknown[]): void => {
   try {
@@ -89,6 +104,7 @@ interface CountPrompt {
 const Trade = ({ data }: { data: TradeData }) => {
   const [prompt, setPrompt] = useState<CountPrompt | null>(null);
   const [promptCount, setPromptCount] = useState(1);
+  const [tab, setTab] = useState('all');
 
   const ev = data.events || ({} as TradeEvents);
   const threshold = data.stackPromptThreshold || 5;
@@ -130,6 +146,9 @@ const Trade = ({ data }: { data: TradeData }) => {
   // The Trade button unlocks only when both sides have locked their offers.
   const tradeAvailable = data.bothLocked && !data.iAccepted;
 
+  const inventory = data.inventory || [];
+  const shownInventory = inventory.filter((item) => inTab(item, tab));
+
   return (
     <div className="trade">
       <div className="trade__fade" />
@@ -140,11 +159,26 @@ const Trade = ({ data }: { data: TradeData }) => {
           {/* Left: my offerable inventory */}
           <div className="trade__pane trade__pane--inventory">
             <div className="trade__pane-title">
-              Your Inventory <span className="trade__lock">({(data.inventory || []).length})</span>
+              Your Inventory <span className="trade__lock">({shownInventory.length})</span>
+            </div>
+            <div className="trade__tabs">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  className={
+                    'trade__tab' +
+                    (t.id === tab ? ' trade__tab--active' : '') +
+                    (inventory.some((item) => inTab(item, t.id)) ? '' : ' trade__tab--empty')
+                  }
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
             <ItemList
-              items={data.inventory}
-              emptyText="Nothing to trade"
+              items={shownInventory}
+              emptyText={tab === 'all' ? 'Nothing to trade' : 'Nothing here to trade'}
               onItemClick={(item) => clickItem('add', item)}
             />
           </div>
