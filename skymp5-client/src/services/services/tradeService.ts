@@ -146,6 +146,14 @@ export class TradeService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.cancelOnHide(); });
+    // A kick or a lost server ends the trade server-side; the widgets must not cover the Disconnected dialog or the reconnect forms
+    this.controller.emitter.on("connectionDisconnect", () => this.closeOnDisconnect());
+  }
+
+  private closeOnDisconnect(): void {
+    if (!this.windowOpen && !this.invitePending) return;
+    logTrace(this, `Trade ui closed on disconnect, window`, this.windowOpen, `invite`, this.invitePending);
+    this.closeAll();
   }
 
   // Hiding ends the trade on both sides like the cancel button, else the partner's next move reopens it
