@@ -8,6 +8,23 @@ namespace {
 
 thread_local bool g_cursorIsOpenByFocus = false;
 
+// The name of an open vanilla menu that draws the cursor, empty when none is
+std::string MenuUsingCursor(RE::UI* ui)
+{
+  for (auto& menu : ui->menuStack) {
+    if (!menu || !menu->menuFlags.all(RE::IMenu::Flag::kUsesCursor)) {
+      continue;
+    }
+    for (auto& entry : ui->menuMap) {
+      if (entry.second.menu.get() == menu.get()) {
+        return entry.first.c_str();
+      }
+    }
+    return "?";
+  }
+  return "";
+}
+
 inline CEFUtils::MyChromiumApp& GetApp()
 {
   auto overlayService = OverlayService::GetInstance();
@@ -67,8 +84,14 @@ Napi::Value BrowserApiTilted::SetFocused(const Napi::CallbackInfo& info)
       }
     } else {
       if (g_cursorIsOpenByFocus) {
-        msgQ->AddMessage(RE::CursorMenu::MENU_NAME, RE::UI_MESSAGE_TYPE::kHide,
-                         NULL);
+        // A vanilla menu opened while the page had focus still needs the cursor; it hides it itself when it closes
+        const auto keptFor = MenuUsingCursor(ui);
+        if (keptFor.empty()) {
+          msgQ->AddMessage(RE::CursorMenu::MENU_NAME,
+                           RE::UI_MESSAGE_TYPE::kHide, NULL);
+        } else {
+          spdlog::info("Browser unfocused under {}, cursor kept", keptFor);
+        }
         g_cursorIsOpenByFocus = false;
       }
     }
