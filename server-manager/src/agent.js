@@ -13,7 +13,7 @@ const services = require('./services')
 const managerLock = require('./managerLock')
 const modsync = require('./modsync')
 const { createConsoleRelay } = require('./relayClient')
-const { createRestartSchedule } = require('./restartSchedule')
+const schedule = require('./restartSchedule')
 const { maskSettings, secretValues, redactText } = require('./settingsMask')
 
 const backendModule = name => require(path.join(config.paths.backend, 'sources', name))
@@ -292,6 +292,31 @@ function createAgent(overrides = {}) {
     deps.audit.append({ actor: { discordId: job.actor.discordId, username: job.actor.username }, ip: job.actor.ip, action: 'job.finish', target: job.kind, jobId: job.id, commit: job.commit, gamemodeSha256: job.gamemode && job.gamemode.sha256, gamemodeFiles: job.gamemode && job.gamemode.files.length, outcome: job.status, detail: job.result.error })
   }
 
+  // Live service tasks run as jobs so the web Jobs tab and audit record them; test ones take the busy lock directly
+  async function scheduledService(target, verb) {
+    if (target !== 'live') return services.lockedServiceAction('agent', config.profiles[target], verb)
+    const r = await startJob(`game.${verb}`, { discordId: 'scheduler', username: 'Schedule', ip: '127.0.0.1' })
+    if (r.status === 202) return { ok: true, detail: `job ${r.body.jobId}` }
+    return { ok: false, busy: !!(r.body && r.body.busy), error: (r.body && r.body.error) || `status ${r.status}` }
+  }
+
+  function startSchedule() {
+    const relays = { live: relay, test: createConsoleRelay({ port: config.profiles.test.relayPort, onStatus: text => console.log(`[test relay] ${text}`) }) }
+    relays.test.connect()
+    schedule.createScheduler({
+      read: () => schedule.readSchedule(schedule.scheduleFile(deps.dir())),
+      claim: (id, at) => schedule.claimRun(deps.dir(), id, at),
+      beat: log => schedule.writeHeartbeat(deps.dir(), 'agent', log),
+      act: {
+        say: (target, text) => relays[target].command(`say ${text}`),
+        command: (target, text) => relays[target].command(text),
+        service: scheduledService,
+        gameRunning: async target => (await deps.statusAll())[config.profiles[target].services.game] === 'SERVICE_RUNNING',
+      },
+      log: text => { console.log(`[schedule] ${text}`); pushConsole(`[schedule] ${text}`, 'status') },
+    }).start()
+  }
+
   const routes = [
     ['GET', /^\/health$/, async () => ({ body: { ok: true, pid: process.pid, relayConnected: relay.connected, busy: deps.lock.holder(), running: running && running.id } })],
 
@@ -441,13 +466,7 @@ function createAgent(overrides = {}) {
         markInterrupted()
         if (!deps.relay) {
           relay.connect()
-          createRestartSchedule({
-            at: () => config.autoRestartAt,
-            say: text => relay.command(`say ${text}`),
-            restart: () => startJob('game.restart', { discordId: 'scheduler', username: 'Daily restart', ip: '127.0.0.1' }),
-            gameRunning: async () => (await deps.statusAll()).game === 'SERVICE_RUNNING',
-            log: text => { console.log(`[schedule] ${text}`); pushConsole(`[schedule] ${text}`, 'status') },
-          }).start()
+          startSchedule()
         }
         resolve(server)
       })

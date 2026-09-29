@@ -153,15 +153,13 @@ module.exports = {
     get secret() { return readEnv('RELAY_SECRET') },
   },
 
-  // AlduinakManager agent: loopback port, backend shared secret, and the folder for its lock, jobs and audit (read live from the backend .env)
+  // AlduinakManager agent: loopback port, backend shared secret, and the folder for its lock, jobs, audit and schedule.json (read live from the backend .env)
   agent: {
+    serviceName: 'AlduinakManager',
     get port()   { return parseInt(readEnv('MANAGER_AGENT_PORT') || '4003', 10) },
     get secret() { return readEnv('MANAGER_AGENT_SECRET') },
     get dir()    { return readEnv('MANAGER_LOG_DIR') || path.join(module.exports.logDir, 'manager') },
   },
-
-  // Daily game restart time (local HH:MM, or off), read live from server-settings.json
-  get autoRestartAt() { return String(readServerSetting('dailyRestartAt') || '04:00') },
 
   // Backend audit logs (ban.log, faction.log), mirroring auditLog.js
   get auditLogDir() { return readEnv('BAN_LOG_DIR') || module.exports.logDir },

@@ -7,6 +7,7 @@ const fs   = require('fs')
 const config = require('./config')
 const modsync = require('./modsync')
 const playtime = require('./playtime')
+const managerLock = require('./managerLock')
 const { nssm, nativeModuleLocked } = require('./serviceCheck')
 
 // Host callbacks: onRotated(file) after a log is archived, status(text, profileKey) for warnings
@@ -218,6 +219,18 @@ async function doServiceAction(key, action) {
   return { ok, steps, status: await statusAll() }
 }
 
+// A scheduled start, stop or restart of a profile's game under the shared busy lock; busy is set when another task holds it
+async function lockedServiceAction(source, profile, verb) {
+  let lock
+  try { lock = managerLock.acquire({ source, kind: `scheduled ${verb} (${profile.label})`, actor: 'schedule' }) }
+  catch (err) { return { ok: false, error: `cannot take the build lock: ${err.message}` } }
+  if (!lock.ok) return { ok: false, busy: true, error: `another task is running: ${managerLock.describe(lock.holder)}` }
+  try {
+    const r = await doServiceAction(profile.services.game, verb)
+    return r.ok ? { ok: true } : { ok: false, error: (r.steps || []).join('; ') || r.error || `${verb} failed` }
+  } finally { lock.release() }
+}
+
 // Act on every service in order (stop order reversed), or only on one group's services.
 // A service that is not installed is skipped, so a missing test profile never fails the live ones.
 async function doServicesAction(action, group) {
@@ -295,6 +308,7 @@ module.exports = {
   statusAll,
   doServiceAction,
   doServicesAction,
+  lockedServiceAction,
   discoverLogTargets,
   requireGameStopped,
 }

@@ -12,11 +12,12 @@ const modsync = require('./modsync')
 const migrate = require('./migrate')
 const mongoPurge = require('./mongoPurge')
 const managerLock = require('./managerLock')
+const schedule = require('./restartSchedule')
 const { createConsoleRelay } = require('./relayClient')
 const { LOCK_CODES, nssm } = require('./serviceCheck')
 const {
   hooks: serviceHooks, serviceByKey, resolvedNames, serviceName, gameStatus, readServerSettings,
-  statusAll, doServiceAction, doServicesAction, discoverLogTargets, requireGameStopped,
+  statusAll, doServiceAction, doServicesAction, lockedServiceAction, discoverLogTargets, requireGameStopped,
 } = require('./services')
 const { backendRequest, factionsRequest } = require('./backendApi')
 const playerData = require('./playerData')
@@ -47,6 +48,7 @@ app.whenReady().then(() => {
   createWindow()
   startLogTail()
   for (const relay of Object.values(relays)) relay.connect()
+  scheduler.start()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
   // One-time hint when the box still runs pre-rename service names.
   setTimeout(async () => {
@@ -109,6 +111,48 @@ const relays = Object.fromEntries(Object.values(config.profiles).map(p => [p.key
   onOutput: text => send('console:relay', { kind: 'output', text, profile: p.key }),
 })]))
 const consoleRelay = relays.live
+
+// Schedule tab: the agent service runs schedule.json; this app runs it only while no fresh agent heartbeat exists
+const scheduleDir = () => config.agent.dir
+const scheduler = schedule.createScheduler({
+  read: () => schedule.readSchedule(schedule.scheduleFile(scheduleDir())),
+  active: () => !schedule.agentActive(scheduleDir()),
+  claim: (id, at) => schedule.claimRun(scheduleDir(), id, at),
+  beat: log => schedule.writeHeartbeat(scheduleDir(), 'app', log),
+  act: {
+    say: (target, text) => relays[target].command(`say ${text}`),
+    command: (target, text) => relays[target].command(text),
+    service: (target, verb) => lockedServiceAction('electron', config.profiles[target], verb),
+    gameRunning: async target => (await gameStatus(config.profiles[target])) === 'SERVICE_RUNNING',
+  },
+  log: text => send('console:relay', { kind: 'status', text: `[schedule] ${text}`, profile: 'live' }),
+})
+
+async function scheduleState() {
+  const dir = scheduleDir()
+  const file = schedule.scheduleFile(dir)
+  const r = schedule.readSchedule(file)
+  const now = Date.now()
+  const hb = schedule.readHeartbeat(dir)
+  const agent = schedule.agentActive(dir, now)
+  const nextOf = t => { const at = schedule.nextRun(t, r.schedule.timeZone, now); return at === null ? '' : schedule.formatAt(at, r.schedule.timeZone) }
+  return {
+    ok: true, file, exists: r.exists, error: r.error, schedule: r.schedule,
+    next: Object.fromEntries(r.schedule.tasks.map(t => [t.id, nextOf(t)])),
+    runner: agent ? 'agent' : 'app',
+    beatAt: agent ? hb.at : null,
+    agentService: await nssm('status', config.agent.serviceName),
+    log: (agent ? hb.log : scheduler.recent()) || [],
+  }
+}
+
+ipcMain.handle('schedule:read', () => scheduleState().catch(err => ({ ok: false, error: err.message })))
+ipcMain.handle('schedule:save', async (_e, raw) => {
+  try { schedule.writeSchedule(schedule.scheduleFile(scheduleDir()), raw) }
+  catch (err) { return { ok: false, error: err.message } }
+  scheduler.tick()
+  return scheduleState().catch(err => ({ ok: false, error: err.message }))
+})
 
 // Console box: manager commands are handled locally, anything else is
 // forwarded to that server's game console over its WS relay (the gamemode).

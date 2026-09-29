@@ -31,9 +31,9 @@ Everything from r13 must be live before the wipe, because the wipe is the last o
   refuses unknown server-folder entries, but an unknown backend file survives
   silently.
 
-If the daily restart is already running (section 6 done earlier), keep the window
-outside 03:00 to 04:30 box time, or set `dailyRestartAt` to `"off"` in
-`server-settings.json` until the end.
+If the scheduled restart is already running (section 6 done earlier), keep the window
+outside 03:00 to 04:30 New York time, or untick it in the manager's **Schedule** tab
+until the end.
 
 ## 2. Stop and back up
 
@@ -124,10 +124,11 @@ everyone is refused while locked (it fails closed).
 Rollback: [docs_database_wipe.md](docs_database_wipe.md) section 4B,
 `restore --backup $dir [--with-settings] --apply`.
 
-## 6. Install the agent (daily restart)
+## 6. Install the agent (scheduled restart)
 
-The daily 04:00 restart with its warnings runs inside the `AlduinakManager` agent, which
-is not installed on this box yet. One time:
+The Schedule tab's tasks (by default a daily 04:00 New York time restart with its
+warnings) run inside the `AlduinakManager` agent, which is not installed on this box
+yet; until it is, they run only while the Electron manager is open. One time:
 
 1. Generate a secret and add it to `skymp5-backend\.env`:
    ```
@@ -136,20 +137,20 @@ is not installed on this box yet. One time:
    ```
    MANAGER_AGENT_SECRET=<the 64 hex characters>
    ```
-   `dailyRestartAt` in `server-settings.json` can stay unset (04:00 box time, Pacific). `off` disables it.
 2. Restart **AlduinakBackend**.
 3. Run `server-manager\Setup-Agent.bat` (it asks for admin rights and installs
    `AlduinakManager`). In the nssm editor's **Log on** tab choose *This account*,
    `.\Administrator` and the password, then *Edit service*. Start it:
    `& C:\tools\nssm\nssm.exe start AlduinakManager`.
-4. `C:\logs\manager-agent.log` shows `[schedule] next daily restart at ...`. The
-   dashboard **Server** tab shows *Agent online*.
+4. `C:\logs\manager-agent.log` shows `[schedule] next restart on live (daily-restart) at ...`.
+   The dashboard **Server** tab shows *Agent online*, and the manager's **Schedule** tab
+   *Runner: the AlduinakManager service*.
 
 From then on, every day the game gets `say` warnings 1 hour, 30, 10, 5, 4, 3, 2 and 1
-minutes before 04:00, then restarts as a *Daily restart* job, and its logs, the chat,
+minutes before 04:00 New York time, then restarts as a job by *Schedule*, and its logs, the chat,
 admin and other game logs and the backend's `ban.log` and `faction.log` move into
 `C:\logs\YYYY-MM`. See [docs_web_server_manager.md](docs_web_server_manager.md),
-*Daily restart*.
+*Scheduled restarts and tasks*.
 
 ## 7. Opening up
 

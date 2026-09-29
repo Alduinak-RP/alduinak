@@ -205,6 +205,25 @@ fails it prints a direct download URL - save that zip as
     previous manifest or sync put there, sha256-verifies copies and never
     touches vanilla masters; the purge refuses on an unreadable light flag or
     a player character that references a removed plugin.
+- **Schedule** - timed tasks for the Main or the Test Server, kept in
+  `<MANAGER_LOG_DIR or C:\logs\manager>\schedule.json`: **Restart** (the
+  `Server restart in N minutes` warnings 60, 30, 10, 5, 4, 3, 2 and 1 minutes
+  before, then a restart; skipped when that game is stopped, waits up to 30
+  minutes for a build holding the busy lock), **Say** (broadcast a message),
+  **Console command** (a game console command, as typed in the Console tab),
+  **Start** and **Stop**. Each task has a time (HH:MM) and optional weekdays
+  (none ticked = every day) in the tab's time zone, an IANA name (default
+  `America/New_York`), whatever the box's own zone is (Pacific today). Without
+  a `schedule.json` the default is one daily Main Server restart at 04:00 New
+  York time; Save writes the file. The `AlduinakManager` agent runs the
+  schedule when its service is installed and running (it writes a heartbeat,
+  `schedule-runner.json`, every 20 s); otherwise this app runs it while it is
+  open, and the tab says so in red. Each run is claimed once in
+  `schedule-runs/`, so the agent and the app never both run it. A task whose
+  time passed more than 10 minutes ago (manager closed, box asleep) waits for
+  its next time. The runner's last lines show under the table and as
+  `[schedule]` lines in the Console tab. `dailyRestartAt` in
+  `server-settings.json` is no longer read.
 - **News** - edit the news entries the launcher shows.
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
   masked secrets) for the live `server-settings.json`, the test server's
@@ -319,9 +338,9 @@ the same time. Restart the `AlduinakManager` service after changing
 `server-manager/src`, but never while a web job runs. See
 `docs/docs_web_server_manager.md` for the security model and runbook.
 
-The agent also runs the daily game restart (`src/restartSchedule.js`): `say` warnings
-from 1 hour before `dailyRestartAt` (`server-settings.json`, default `04:00`, `off` disables
-it), then a Restart job that archives the logs. Test it with
+The agent also runs the Schedule tab's tasks (`src/restartSchedule.js`); a Main
+Server restart, start or stop runs as a web job, so the Jobs tab and the audit record
+it, and the restart archives the logs. Test the scheduler with
 `node tools/test-restart-schedule.js`.
 
 ## Configuration (environment variables)

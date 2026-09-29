@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('mgr', {
   migrateSettings:    ()   => ipcRenderer.invoke('migrate:settings'),
   migrateClient:      ()   => ipcRenderer.invoke('migrate:client'),
 
+  // Schedule tab
+  scheduleRead:       ()   => ipcRenderer.invoke('schedule:read'),
+  scheduleSave:       (s)  => ipcRenderer.invoke('schedule:save', s),
+
   // Players tab
   playersList:    ()              => ipcRenderer.invoke('players:list'),
   playersDetail:  (id)            => ipcRenderer.invoke('players:detail', id),

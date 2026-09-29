@@ -47,7 +47,7 @@ manager) only receives files through the manager's **Migrate** box.
 - **Its own console.** The backend runs a second relay on `WS_PORT_TEST`, bound to
   loopback; the gamemode part `80_relay.js` connects to the port in `WS_PORT`, which the
   service sets. The manager's **Test Server** container talks to that relay. The
-  dashboard's web console and the daily restart stay live-only.
+  dashboard's web console stays live-only; a Schedule tab task picks Main or Test Server.
 - **Managed from the manager.** Console tab, four containers: **Backend**, **MongoDB**
   (the shared `AlduinakMongo`, its log, START/STOP/RESTART; it refuses to stop while the
   backend or either game runs), **Main Server** and **Test Server** (Game and LiveKit
@@ -111,7 +111,7 @@ copy of `build\dist\client`. `C:\logs\test` and `C:\Alduinak\livekit-test` are c
 | `dataDir`, `loadOrder`, `archives` | the test Data folder; the live lists with the folder prefix swapped |
 | `voiceChat` | `ws://<SERVER_ADDRESS from .env>:7890`, the generated test keys, room `alduinak-test` |
 | `discordAuth.guilds[*].eventLogChannelId`, `securityAlertChannelId` | `""` (no login lines or alerts from the test server) |
-| `dailyRestartAt` | `"off"` |
+| `dailyRestartAt` | `"off"` (no longer read; the manager's Schedule tab replaced it) |
 | `access` | unlocked, no whitelist or banned role, `staffOnlyRoleIds` Admins and Developers |
 
 Everything else (`master`, `masterApiAuthToken`, `adminRoles`, ...) stays as live. The

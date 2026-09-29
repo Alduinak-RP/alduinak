@@ -301,9 +301,11 @@ Known gaps worth closing later:
 5. **Test it.** Log into the dashboard with a Staff account that has Discord 2FA. Open
    **Server** and check that the status shows *Agent online*. Then run **Build
    gamemode only** once.
-6. **Check the daily restart.** `C:\logs\manager-agent.log` shows
-   `[schedule] next daily restart at ...` for 04:00 box time. The agent is what runs it,
-   so there is no daily restart until this service is installed and running.
+6. **Check the schedule.** `C:\logs\manager-agent.log` shows
+   `[schedule] next restart on live (daily-restart) at ...`, 04:00 New York time by
+   default. The Electron manager's **Schedule** tab then reads *Runner: the
+   AlduinakManager service*. Until this service runs, only an open Electron manager runs
+   the schedule.
 
 ## 4. Staff runbook
 
@@ -342,17 +344,19 @@ A Server tab that is only refreshing on its own does not count. Log in again.
 `kick <name>`, `players` and `status`. Output from the game appears below. Anything
 else must be done in game or on the box.
 
-**Daily restart.** The agent restarts the game server every day at `dailyRestartAt`
-(`server-settings.json`, local box time, default `04:00`, read live; `off` disables it).
-It broadcasts `Server restart in N minutes. Please find a safe spot and log out.` with
-`say` 60 (shown as 1 hour), 30, 10, 5, 4, 3, 2 and 1 minutes before. A warning whose
-time already passed when the agent started is skipped. At the target it runs a normal
-**Restart** job as *Daily restart*, so the logs are archived into `C:\logs\YYYY-MM`
-(the game logs plus the backend's `ban.log` and `faction.log`) and the audit and Jobs
-tab record it. If a build holds the lock it retries each minute for 30 minutes; a
-pending purge or a game server stopped by hand skips that day. The `[schedule]` lines
-appear in the Console tab and `C:\logs\manager-agent.log`. Keep a database wipe or a
-long build outside 03:00 to 04:30, or set `dailyRestartAt` to `off` for it.
+**Scheduled restarts and tasks.** The agent runs the tasks of the Electron manager's
+**Schedule** tab (`C:\logs\manager\schedule.json`, times in its IANA time zone, default
+`America/New_York`; without the file, one daily Main Server restart at 04:00 New York
+time). Before a restart it broadcasts `Server restart in N minutes. Please find a safe
+spot and log out.` with `say` 60 (shown as 1 hour), 30, 10, 5, 4, 3, 2 and 1 minutes
+before. A warning whose time already passed when the agent started is skipped. A Main
+Server restart, start or stop runs as a normal job by *Schedule*, so the logs are
+archived into `C:\logs\YYYY-MM` (the game logs plus the backend's `ban.log` and
+`faction.log`) and the audit and Jobs tab record it. If a build holds the lock it
+retries each minute for 30 minutes; a pending purge or a game server stopped by hand
+skips that restart. The `[schedule]` lines appear in the Console tab and
+`C:\logs\manager-agent.log`. Keep a database wipe or a long build away from a restart
+time, or untick the task in the Schedule tab for it. `dailyRestartAt` is no longer read.
 
 **Settings tab.** A read-only view. Edit settings on the box with the Electron
 manager.

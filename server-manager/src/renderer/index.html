@@ -13,6 +13,7 @@
     <button class="tab" data-tab="players">Players</button>
     <button class="tab" data-tab="factions">Factions</button>
     <button class="tab" data-tab="build">Build</button>
+    <button class="tab" data-tab="schedule">Schedule</button>
     <button class="tab" data-tab="news">News</button>
     <button class="tab" data-tab="settings">Settings</button>
     <button class="tab" data-tab="security">Security <span class="count-badge" id="security-badge" hidden></span></button>
@@ -140,6 +141,25 @@
       <pre id="build-log" class="log"></pre>
     </section>
 
+    <section id="schedule" class="panel">
+      <div id="schedule-runner" class="sched-runner"></div>
+      <div class="row">
+        <label for="schedule-tz" class="muted">Time zone</label>
+        <input id="schedule-tz" type="text" list="schedule-tz-list" placeholder="America/New_York" autocomplete="off" />
+        <datalist id="schedule-tz-list"></datalist>
+        <button id="schedule-add" class="action">Add task</button>
+        <button id="schedule-reload" class="action">Reload</button>
+        <button id="schedule-save" class="action go">Save</button>
+        <span id="schedule-status" class="status"></span>
+      </div>
+      <small>Times are in the time zone above (an IANA name), not the box's own. <b>Restart</b> broadcasts <i>Server restart in N minutes</i> 60, 30, 10, 5, 4, 3, 2 and 1 minutes before, then restarts that game server; it is skipped when that server is stopped and waits up to 30 minutes for a running build. <b>Say</b> broadcasts the message, <b>Console command</b> sends a game console command as typed in the Console tab, <b>Start</b> and <b>Stop</b> control the game service. No day ticked means every day. A task whose time passed more than 10 minutes ago (box asleep, nothing running) waits for its next time. Saved to <code id="schedule-file"></code>.</small>
+      <table class="sched-table">
+        <thead><tr><th>On</th><th>Task</th><th>Server</th><th>Time</th><th>Days</th><th>Message or command</th><th>Next run</th><th></th></tr></thead>
+        <tbody id="schedule-tasks"></tbody>
+      </table>
+      <pre id="schedule-log" class="log"></pre>
+    </section>
+
     <section id="news" class="panel">
       <div class="row">
         <button id="news-refresh" class="action">Reload</button>
@@ -201,6 +221,7 @@
   <script src="console.js"></script>
   <script src="players.js"></script>
   <script src="build.js"></script>
+  <script src="schedule.js"></script>
   <script src="security.js"></script>
   <script src="../../../skymp5-backend/public/dashboard/faction-editor.js"></script>
   <script src="factions.js"></script>

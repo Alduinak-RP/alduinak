@@ -31,7 +31,6 @@ const serverSettings = [
   { key: 'securityAlertChannelId',  label: 'Security alert channel', type: 'text', group: 'Gameplay', help: 'Discord channel id where the backend posts every new Security tab alert (ban evasion, gold spawning). Read live. Empty posts nothing.' },
   { key: 'needsFatigueEnabled',     label: 'Fatigue enabled',       type: 'bool', group: 'Gameplay', help: 'Off makes every craft, gather, kill and cast cost no fatigue; hunger keeps running. Read at boot. Default on.' },
   { key: 'goldAlertThreshold',      label: 'Gold alert threshold',  type: 'number', group: 'Gameplay', placeholder: '5000', help: 'Gold a character may gain within 10 seconds before the Security tab gets a Gold Spawning alert. 0 disables it. Read at boot. Default 5000.' },
-  { key: 'dailyRestartAt',          label: 'Daily restart time',    type: 'text',   group: 'Gameplay', placeholder: '04:00', help: 'Local HH:MM when the manager agent restarts the game server and archives the logs, with in-game warnings from 1 hour before. off disables it. Read live. Default 04:00.' },
   { key: 'isPapyrusHotReloadEnabled', label: 'Papyrus hot reload',  type: 'bool',   group: 'Gameplay', help: 'Reload compiled .pex scripts on change.' },
   { key: 'enableGamemodeDataUpdatesBroadcast', label: 'Broadcast gamemode updates', type: 'bool', group: 'Gameplay', help: 'Push gamemode script updates to connected clients.' },
   { key: 'locale',                  label: 'Locale file',           type: 'text',   group: 'Gameplay', help: 'File in data/localization (no .json) for M.GetText().' },

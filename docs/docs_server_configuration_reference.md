@@ -562,6 +562,13 @@ How far, in game units between actor roots, a player may be from another player,
 }
 ```
 
+## dailyRestartAt
+
+No longer read. The scheduled restart (and any other timed say, console command, start
+or stop) is set in the Server Manager's **Schedule** tab, stored in
+`C:\logs\manager\schedule.json` with its own time zone (default `America/New_York`);
+see `server-manager/README.md`. A leftover key is harmless.
+
 ## gamemodePath
 
 Contains a relative or an absolute path to a file or directory with a gamemode.
@@ -741,7 +748,7 @@ Every player opens the Personal Menu with the interact key (X by default) while 
 - **Admin**, shown only once the server confirms the player's admin tier, with the sub-tabs:
   - Players: roster, teleport to, summon, kick, PK (the selected online character dies, leaves a body and goes to Sovngarde, the finish off PK, see `docs_roleplay_survival_loop.md` section 8), ban, mastery grant and reset, a permanent max health, magicka and stamina change of the selected online character (-1000..1000 each, absolute not additive, 0 for the plugins' own values; it is stored on the character, survives a relog and the hunger and fatigue penalties recompute against the new maximum), and Revive for the selected profile's fallen characters (Sovngarde, the Soul Cairn or perma-dead, online or not; refused while a character made in the extra slot is alive, see `docs_roleplay_survival_loop.md` section 8);
   - Teleport: named locations, map markers and temples in collapsible sections;
-  - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit, Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn) and Account names (every player's floating tag shows the account name in place of the character name, introductions and the chat name toggle aside, sneaking, masked (`SweetHidePerson`) and invisible players included, within the usual 1000 units and line of sight, red for the senior tier, blue for developers, green for GMs, white for everyone else; the roster travels in the admin-only `adminNames` packet, never in a neighbour-visible property);
+  - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit, Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn) and Show account name (while it is on, everyone near the admin sees the admin's own account name on the admin's floating tag in place of the character name, so players know they are dealing with staff and not a character: red for the senior tier, blue for developers, green for GMs; it shows whatever the viewer's chat name toggle or introductions say, through sneaking, a mask (`SweetHidePerson`) or invisibility, within the usual 1000 units and line of sight, and an Invisible admin stays hidden; off, or on a character switch, the tag shows the character again. It rides the neighbour-visible `ff_adminTag` actor property, `{ n: account name, t: senior | developer | gm }` while on and `null` while off, registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_adminModes`, built with Build gamemode only);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`, grant pets, and place, teleport to either end of and delete the passive jobs of `Jobs.json`, see `docs_roleplay_jobs.md`;
   - Item Spawner, see below;
   - Weather: every weather region with its current weather, the time left, the players in it and the one the admin stands in; force a weather on a region until cleared or for a number of minutes, and clear it, see `docs_roleplay_weather.md`.
