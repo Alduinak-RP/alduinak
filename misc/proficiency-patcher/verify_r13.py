@@ -265,12 +265,13 @@ def main():
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and (prefix and edid(r).startswith(prefix) or edid(r).startswith('AldKeyword_'))}
-    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops, a global everything but its value
+    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops, a global everything but its value, a moved reference everything but its position
     over = spec.get('overrides', {})
     over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
     over_cobj = {form_key(r['recipe']): r['count'] for r in over.get('recipes', [])}
     over_qust = {form_key(q['quest']): q['dropScripts'] for q in over.get('quests', [])}
     over_glob = {form_key(g['global']): g['value'] for g in over.get('globals', [])}
+    over_move = {form_key(m['ref']): m['pos'] for m in over.get('moves', [])}
     over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
     over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', [])}
     for (t, k), q in ro.items():
@@ -374,6 +375,15 @@ def main():
             if why or not rnam or out.key(struct.unpack('<I', rnam)[0]) != lists.get(head_parts[edid(q)]):
                 problems.append(f'{label}: not {src.name}\'s head part offered to {head_parts[edid(q)]} ({why or "race list"})')
             checked['head parts given their race list'] += 1
+        elif t == 'REFR' and k in over_move:
+            src, flags, data, cell = ref
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('DATA',))
+            was, now = dict(parse_subs(data)).get('DATA', b''), dict(parse_subs(q.data())).get('DATA', b'')
+            moved = len(was) == len(now) == 24 and struct.unpack('<3f', was[12:]) == struct.unpack('<3f', now[12:]) \
+                and all(abs(x - y) <= 1e-3 for x, y in zip(struct.unpack('<3f', now[:12]), over_move[k]))
+            if why or not moved or q.flags & ~COMPRESSED != flags & ~COMPRESSED or cell != where:
+                problems.append(f'{label}: not {src.name}\'s reference with only the position set to {over_move[k]} ({why or now.hex()}, cell {cell} -> {where})')
+            checked['references moved to their overridden position'] += 1
         elif t == 'REFR' and k in disable_refs:
             src, flags, data, cell = ref
             why = ck.compare(t, src, flags, data, out, q.data())

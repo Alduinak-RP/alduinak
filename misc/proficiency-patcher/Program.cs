@@ -1070,19 +1070,23 @@ static class Steps
     public static void World(PatchContext c)
     {
         if (c.Spec["world"] is not JsonObject w) return;
-        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
         foreach (var p in w["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
             PlaceOwn(c, p, "world");
         foreach (var mv in w["moves"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
-        {
-            var key = FormKey.Factory(mv["ref"]!.GetValue<string>());
-            var refs = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(key).ToList();
-            if (refs.Count == 0 || refs[0].Record.Placement == null) { c.Error($"world: reference {key} is not a placed object"); continue; }
-            var rec = refs[0].GetOrAddAsOverride(c.Mod);
-            var from = rec.Placement!.Position;
-            rec.Placement.Position = Vec3(mv["pos"]);
-            c.Note($"World move {key} ({c.EdidOf(rec.Base.FormKey)}): {from} in {refs[0].ModKey} -> {rec.Placement.Position}");
-        }
+            MoveReference(c, mv, "world");
+    }
+
+    // An override of the winner at the new position, keeping everything else it wins with
+    static void MoveReference(PatchContext c, JsonObject mv, string kind)
+    {
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        var key = FormKey.Factory(mv["ref"]!.GetValue<string>());
+        var refs = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(key).ToList();
+        if (refs.Count == 0 || refs[0].Record.Placement == null) { c.Error($"{kind}: reference {key} is not a placed object"); return; }
+        var rec = refs[0].GetOrAddAsOverride(c.Mod);
+        var from = rec.Placement!.Position;
+        rec.Placement.Position = Vec3(mv["pos"]);
+        c.Note($"Move ({kind}) {key} ({c.EdidOf(rec.Base.FormKey)}): {from} in {refs[0].ModKey} -> {rec.Placement.Position}");
     }
 
     // A reference of the plugin's own at a pinned local id, in an override of its cell taken from the load order winner
@@ -1458,6 +1462,8 @@ static class Steps
             global.RawFloat = value;
             c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): value {from} -> {value}");
         }
+        foreach (var mv in Entries(o["moves"]))
+            MoveReference(c, mv, "overrides");
     }
 
     static IEnumerable<JsonObject> Entries(JsonNode? list) =>
