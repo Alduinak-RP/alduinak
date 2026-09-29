@@ -317,6 +317,8 @@ export class FormView {
     this.loaded3DMoment = 0;
     this.dealtWithRef = false;
     const refrId = this.refrId;
+    // Unmarked at once, since a copy spawned right after a game load can reuse the id
+    if (refrId >= 0xff000000) ObjectReferenceEx.markServerCopy(refrId, false);
     this.mountState = makeMountState();
     once("update", () => {
       if (refrId >= 0xff000000) {
@@ -334,7 +336,6 @@ export class FormView {
           });
         }
         SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refrId, -1);
-        ObjectReferenceEx.markServerCopy(refrId, false);
       }
     })
 
