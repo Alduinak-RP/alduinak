@@ -1057,7 +1057,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `gatheringPickMinutes` | `30` | Minutes a picked nirnroot or ingredient-carrying critter (bees, fireflies) stays gone. The server disables the picked ref for everyone and enables it again when the time is up; `gathering-picks.json` in the server's working folder (beside `housing.json`) keeps the pending ones over a restart |
 | `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
 | `huntingMeats` | vanilla and DLC list | Editor ids of what counts as meat for the butcher bonus |
-| `huntingPeltMap` | see `DEFAULT_PELT_MAP` in `huntingSystem.ts` | `{ "<editor id fragment>": "<pelt editor id>" }` replacing the default: the pelt a skinned body gives, by the first fragment found in its NPC_ or race editor ids |
+| `huntingPeltMap` | see `DEFAULT_PELT_MAP` in `huntingSystem.ts` | `{ "<editor id fragment>": "<pelt editor id>" }` replacing the default: the pelt a skinned body gives. The body's own NPC_ editor id is tried first, then the race that supplies its traits, then its template NPC_s (lower-cased); the first fragment found in the earliest name wins |
 
 ## enableGamemodeDataUpdatesBroadcast
 

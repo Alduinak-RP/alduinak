@@ -522,9 +522,14 @@ A hunter (any rank) holding a Hunting Knife (`0001F25A`) skins a dead animal
 with the interact key: spawned animals through `SearchSystem.bodyAction` (the
 search request the client already sends for a body), plugin-placed ones through
 their native activation. The skinner kneels for 5 seconds, then gets the pelt the
-body's NPC_ or race editor id maps to (`DEFAULT_PELT_MAP`, `huntingPeltMap`
-override: the first fragment found wins, e.g. `bearblack` -> Cave Bear Pelt,
-`wolfice` -> Ice Wolf Pelt), costs one gathering action of fatigue by hunter
+body's editor ids map to (`DEFAULT_PELT_MAP`, `huntingPeltMap` override): the
+body's own NPC_ editor id is tried first, then the race that supplies its traits
+(a Use Traits template's placeholder race is skipped), then its template NPC_s, and
+the first fragment found in the earliest name wins, so a snow bear templated on the
+black bear gives Snow Bear Pelt, e.g. `bearblack` -> Bear Pelt, `bearcave` and
+`bearbrown` -> Cave Bear Pelt, `bearsnow` -> Snow Bear Pelt, `wolfice` -> Ice
+Wolf Pelt (the vanilla death items). The log line `[hunting] <id> skins <body>
+(<names>): <fragment> in <name>` names the match. It costs one gathering action of fatigue by hunter
 rank and credits hunter hours. The body is marked `private.skinned` and gives
 one pelt; the next interaction searches it as usual. A skinner who walks off,
 dies or logs out before the 5 seconds leaves the body skinnable. A hunter without

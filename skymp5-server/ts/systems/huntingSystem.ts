@@ -19,8 +19,9 @@ type Mp = any;
 // server-settings.json keys (all optional):
 //   huntingButcherChance         chance an Expert or better hunter's skinning gives one more cut of meat, default 0.25
 //   huntingMeats                 editor id list replacing DEFAULT_MEATS
-//   huntingPeltMap               { "<editor id fragment>": "<pelt editor id>" } replacing DEFAULT_PELT_MAP; the first
-//                                fragment found in the body's NPC_ or race editor ids (lower-cased) wins
+//   huntingPeltMap               { "<editor id fragment>": "<pelt editor id>" } replacing DEFAULT_PELT_MAP; the body's own NPC_
+//                                editor id is tried first, then its race, then its templates (lower-cased), and the first
+//                                fragment found in the earliest name that holds one wins
 //   huntingMeatMap               { "<editor id fragment>": ["<meat editor id>", count] } replacing DEFAULT_MEAT_MAP, matched the same way
 
 const NOTICE_PACKET = "masteryNotice";
@@ -39,9 +40,10 @@ const SKINNED_PROP = "private.skinned";
 
 // Raw meat the vanilla and DLC animals drop; VendorItemFoodRaw misses most of the meat, so they are listed.
 const DEFAULT_MEATS = ["FoodVenison", "FoodRabbit", "FoodBeef", "FoodGoatMeat", "FoodHorseMeat", "FoodHorkerMeat", "FoodMammothMeat", "FoodChicken", "FoodDogMeat", "BYOHFoodMudcrabLegs", "DLC2FoodBoarMeat", "DLC2FoodAshHopperLeg", "DLC2FoodAshHopperMeat"];
-// Specific fragments first: the race editor ids are BearBlackRace, DLC1SabreCatGlowRace and so on, the NPC_ ones EncWolfIce
+// Specific fragments first: the race editor ids are BearBlackRace, DLC1SabreCatGlowRace and so on, the NPC_ ones EncWolfIce.
+// Bears follow the vanilla death items: the black bear gives Bear Pelt, brown and cave bears Cave Bear Pelt, snow bears Snow Bear Pelt
 const DEFAULT_PELT_MAP: Record<string, string> = {
-  bearblack: "BearCavePelt", bearcave: "BearCavePelt", bearsnow: "BearSnowPelt", bear: "BearPelt",
+  bearblack: "BearPelt", bearbrown: "BearCavePelt", bearcave: "BearCavePelt", bearsnow: "BearSnowPelt", bear: "BearPelt",
   sabrecatglow: "DLC1SabreCatHide", sabrecatvale: "DLC1SabreCatHide", sabrecatsnow: "SabreCatSnowPelt", sabrecat: "SabreCatPelt",
   wolfice: "WolfIcePelt", icewolf: "WolfIcePelt", wolf: "WolfPelt",
   foxsnow: "FoxPeltSnow", snowfox: "FoxPeltSnow", fox: "FoxPelt",
@@ -55,6 +57,15 @@ interface MeatRule {
   meatId: number;
   count: number;
 }
+
+// Name-major: the earliest name holding any rule's fragment decides, and the first rule found in it wins
+const firstRuleFor = <T extends { fragment: string }>(names: string[], rules: T[]): { name: string; rule: T } | undefined => {
+  for (const name of names) {
+    const rule = rules.find((r) => name.includes(r.fragment));
+    if (rule) return { name, rule };
+  }
+  return undefined;
+};
 
 const DEFAULT_MEAT_MAP: Record<string, [string, number]> = {
   elk: ["FoodVenison", 2], deer: ["FoodVenison", 2], rabbit: ["FoodRabbit", 1], hare: ["FoodRabbit", 1],
@@ -125,8 +136,9 @@ export class HuntingSystem implements System {
     const rank = this.mastery.rankOf(ctx, actorId, "hunter");
     if (!rank || this.skinning.has(bodyId) || !this.isAnimal(ctx, bodyId) || this.isSkinned(mp, bodyId)) return false;
     const names = this.namesOf(ctx, bodyId);
-    const peltId = this.pelts.find((p) => names.some((n) => n.includes(p.fragment)))?.peltId || 0;
-    const meat = this.meatRules.find((m) => names.some((n) => n.includes(m.fragment)));
+    const pelt = firstRuleFor(names, this.pelts);
+    const peltId = pelt?.rule.peltId || 0;
+    const meat = firstRuleFor(names, this.meatRules)?.rule;
     if ((!peltId && !meat && !this.meatOf(mp, bodyId).length) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
     const refusal = !holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE) ? "A hunting knife would take its pelt."
       : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
@@ -139,6 +151,7 @@ export class HuntingSystem implements System {
       try { mp.set(bodyId, SKINNED_PROP, actorId); } catch { /* body gone */ }
       sendActionLock(mp, actorId, SKIN_ANIM, SKIN_SECONDS);
     });
+    this.log(`[hunting] ${hex(actorId)} skins ${hex(bodyId)} (${names.join(" > ") || "no names"}): ${pelt ? `${pelt.rule.fragment} in ${pelt.name}` : "no pelt rule"}`);
     setTimeout(() => this.finishSkin(ctx, actorId, bodyId, peltId, meat), SKIN_SECONDS * 1000);
     return true;
   }
