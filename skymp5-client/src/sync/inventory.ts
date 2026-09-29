@@ -26,6 +26,7 @@ import {
 } from "skyrimPlatform";
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { createEnchantment } from "skyrimPlatform";
+import { logToPlatformLog } from "../logging";
 
 // Vanilla boundArrow, added by bound bow effects
 const BOUND_ARROW_ID = 0x10b0a7;
@@ -498,6 +499,16 @@ const resetBase = (refr: ObjectReference): void => {
   }
 };
 
+const WORN_AMMO_LOG_GAP_MS = 10000;
+let wornAmmoLoggedAt = 0;
+
+// Arrows the server does not know about, such as ones picked up from the world, are taken back here
+const logWornAmmoRemoval = (refr: ObjectReference, baseId: number, count: number): void => {
+  if (refr.getFormID() !== 0x14 || Date.now() - wornAmmoLoggedAt < WORN_AMMO_LOG_GAP_MS) return;
+  wornAmmoLoggedAt = Date.now();
+  logToPlatformLog("applyInventory", `server has ${count} fewer of the equipped ammo ${baseId.toString(16)}, removed and kept equipped`);
+};
+
 export const applyInventory = (
   refr: ObjectReference,
   newInventory: Inventory,
@@ -524,8 +535,8 @@ export const applyInventory = (
 
     let queueNiNodeUpdateNeeded = false;
 
-    const worn = !!e.worn;
-    const wornLeft = !!e.wornLeft;
+    let worn = !!e.worn;
+    let wornLeft = !!e.wornLeft;
 
     let oneStepCount = e.count / absCount;
 
@@ -564,6 +575,14 @@ export const applyInventory = (
           // Why would actor have 60k arrows?
           e.count = 1;
         }
+      }
+
+      // The worn state would unequip the whole quiver; the stack stays equipped while arrows are left and the engine unequips the last one itself
+      if (e.count < 0 && e.count >= -1000 && Ammo.from(f)) {
+        if (worn || wornLeft) logWornAmmoRemoval(refr, e.baseId, -e.count);
+        absCount = 1;
+        oneStepCount = e.count;
+        worn = wornLeft = false;
       }
     }
 
