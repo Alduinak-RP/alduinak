@@ -54,7 +54,7 @@ const MAX_TEMPLATE_DEPTH = 8;
 const NEVER_READY = -1;
 // A corpse is removed this long after death, whatever its zone does. Overridable via "npcCorpseSeconds".
 const DEFAULT_CORPSE_SECONDS = 300;
-// Corpse position log: a body that moved this far between polls, or lies this far under the navmesh, is logged at most every CORPSE_LOG_MS
+// Corpse position log: a body that moved this far between polls is logged at most every CORPSE_LOG_MS, one that lies this far under the navmesh once per sinking
 const CORPSE_JUMP_UNITS = 64;
 const CORPSE_SINK_UNITS = 32;
 const CORPSE_LOG_MS = 10000;
@@ -226,7 +226,7 @@ export class NpcSpawnSystem implements System {
   private corpses = new Map<number, number>();
   private corpseMs = DEFAULT_CORPSE_SECONDS * 1000;
   // Dead zone NPC id -> last polled position and when it was last logged
-  private corpsePos = new Map<number, { pos: number[]; loggedAt: number }>();
+  private corpsePos = new Map<number, { pos: number[]; loggedAt: number; sunkLogged: boolean }>();
   // Navmesh spots by area for the whole run, since plugins only change with a restart
   private spotCache = new Map<string, Spots | null>();
   private scanning = new Set<string>();
@@ -776,13 +776,15 @@ export class NpcSpawnSystem implements System {
       let pos: number[];
       try { pos = mp.getActorPos(entry.id); } catch { continue; }
       const last = this.corpsePos.get(entry.id);
-      const seen = { pos, loggedAt: last?.loggedAt ?? 0 };
-      this.corpsePos.set(entry.id, seen);
       const jump = last ? distance(last.pos, pos) : 0;
       const ground = zone.spots ? navmeshZAt(zone.spots, pos[0], pos[1], pos[2]) : null;
       const sunk = ground === null ? 0 : ground - pos[2];
-      if ((jump < CORPSE_JUMP_UNITS && sunk < CORPSE_SINK_UNITS) || now - seen.loggedAt < CORPSE_LOG_MS) continue;
+      const isSunk = sunk >= CORPSE_SINK_UNITS;
+      const seen = { pos, loggedAt: last?.loggedAt ?? 0, sunkLogged: isSunk && (last?.sunkLogged ?? false) };
+      this.corpsePos.set(entry.id, seen);
+      if ((jump < CORPSE_JUMP_UNITS && (!isSunk || seen.sunkLogged)) || now - seen.loggedAt < CORPSE_LOG_MS) continue;
       seen.loggedAt = now;
+      seen.sunkLogged = isSunk;
       const what = [jump >= CORPSE_JUMP_UNITS ? `moved ${Math.round(jump)} units` : "", sunk >= CORPSE_SINK_UNITS ? `lies ${Math.round(sunk)} units under the navmesh` : ""].filter(Boolean).join(", ");
       this.log(`NpcSpawnSystem: corpse ${hex(entry.id)} of '${zone.name}' ${what}, now at ${pos.map(Math.round).join(",")}${ground === null ? "" : ` (navmesh z ${Math.round(ground)})`}, dead ${Math.round((now - entry.diedAt) / 1000)} s`);
     }

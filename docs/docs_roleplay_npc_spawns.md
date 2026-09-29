@@ -206,9 +206,9 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   crash or a restart are destroyed on boot through `zone-spawns.json` and
   through the `private.npcSpawner` tag every placed NPC carries, which catches
   the corpses of earlier runs whose file entry was lost.
-- A dead zone NPC whose body moved 64 or more units between two polls, or lies
-  32 or more units under the navmesh, is logged (at most every 10 s per body)
-  as evidence for the corpse sync reports.
+- A dead zone NPC whose body moved 64 or more units between two polls is logged
+  (at most every 10 s per body), and one that lies 32 or more units under the
+  navmesh is logged once when it sinks, as evidence for the corpse sync reports.
 - A failed spawn (`PlaceAtMe` error) puts the slot on a 30 second cooldown
   instead of retrying every poll.
 
