@@ -7537,14 +7537,14 @@
      "OreIron",
      "IngotIron",
      "OreCorundum",
-     "IngotCorundum"
+     "IngotCorundum",
+     "IngotSteel"
     ],
     "Adept": [
      "OreGold",
      "IngotGold",
      "OreSilver",
-     "ingotSilver",
-     "IngotSteel"
+     "ingotSilver"
     ],
     "Expert": [
      "OreOrichalcum",
