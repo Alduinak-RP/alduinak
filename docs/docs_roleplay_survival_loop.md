@@ -316,7 +316,16 @@ behaviour-graph events — no ESP required.**
   `[respawn] <actor> sheathes <n> weapon(s)`; the player draws it again by
   hand. A weapon equipped in those 3 s stays, and nothing is sent when the
   player has died again, respawned again (the newer respawn's timer
-  replaces it) or disconnected.
+  replaces it) or disconnected. That unequip reaches the client while its
+  get-up is still running and left the graph reading a weapon with nothing
+  in hand (the player walked as if armed and could not draw until they
+  equipped and unequipped the weapon), so the client's `DeathService` notes
+  the weapons in hand at the resurrect and, when one of them is unequipped
+  within 10 s, waits until 5 s after the resurrect and runs that cycle
+  itself: the weapon goes back on, and 1 s later off again, leaving it in the
+  pack as before. It logs `respawn unequip settled, cycling <n>` and
+  `respawn hands cycled` to `skyrim-platform.log` with the graph's
+  `iRightHandType` / `iLeftHandType`, the drawn state and the worn weapons.
 - **Revive** (`AfterlifeSystem.revive`): staff with the `players` cap return
   a fallen character (Sovngarde, the Soul Cairn or perma-dead) to the living.
   The admin panel's Players sub-tab lists the selected profile's fallen

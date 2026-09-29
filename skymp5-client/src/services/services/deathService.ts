@@ -1,4 +1,4 @@
-import { Actor } from "skyrimPlatform";
+import { Actor, EquipEvent } from "skyrimPlatform";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RespawnNeededError } from "../../lib/errors";
@@ -18,12 +18,24 @@ const RESURRECT_RAGDOLL_MS = 2000;
 // The ragdoll has come to rest by then, so the second height tells whether the corpse sank
 const CORPSE_RECHECK_S = 3;
 const CORPSE_LOG_GAP_MS = 1000;
+// Spawn.installRespawnHook takes the worn weapons off 3 s after the server's respawn; an unequip this soon after the resurrect is that one
+const RESPAWN_UNEQUIP_WINDOW_MS = 10000;
+// The get-up and the body rebuild are over by then
+const HANDS_SETTLED_MS = 5000;
+// Seconds between the put back on and the take off, like a player doing it by hand
+const HAND_CYCLE_S = 1;
+
+interface RespawnWeapon {
+  baseId: number;
+  left: boolean;
+}
 
 export class DeathService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     controller.once("update", () => this.onceUpdate());
     controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
+    controller.on("unequip", (e) => this.onUnequip(e));
     this.hookDisableKillMoves();
     this.hookDisableStagger();
     this.hookDisableBlockedAnims();
@@ -147,6 +159,7 @@ export class DeathService extends ClientListener {
       this.sp.Utility.wait(7.5).then(() => this.busyForOtherReasonsCounter--);
       this.allowedPlayerAnimations = null;
       actor.setDontMove(false);
+      this.noteRespawnWeapons(actor);
       this.restoreLimbs(actor);
       this.ressurectWithPushKill(actor);
     } else {
@@ -171,6 +184,47 @@ export class DeathService extends ClientListener {
     if (!actor || this.playerDead) return;
     actor.queueNiNodeUpdate();
     if (actor.isInKillMove()) this.sp.Debug.sendAnimationEvent(actor, IDLE_EXIT_ANIM);
+  }
+
+  private noteRespawnWeapons(actor: Actor): void {
+    this.resurrectAt = Date.now();
+    this.respawnWeapons = [false, true]
+      .map((left) => ({ baseId: actor.getEquippedWeapon(left)?.getFormID() ?? 0, left }))
+      .filter((w) => w.baseId !== 0);
+    this.handsQueued = false;
+  }
+
+  // The server's unequip lands during the get-up and leaves the hands' graph reading a weapon with nothing in hand, so the player
+  // could not draw again until they equipped and unequipped it; that cycle is run for them once the get-up is over
+  private onUnequip(e: EquipEvent): void {
+    if (!e.actor || e.actor.getFormID() !== this.playerActorId || !e.baseObj || this.handsQueued) return;
+    const sinceResurrect = Date.now() - this.resurrectAt;
+    if (sinceResurrect > RESPAWN_UNEQUIP_WINDOW_MS || !this.respawnWeapons.some((w) => w.baseId === e.baseObj.getFormID())) return;
+    this.handsQueued = true;
+    this.sp.Utility.wait(Math.max(HAND_CYCLE_S, (HANDS_SETTLED_MS - sinceResurrect) / 1000)).then(() => this.controller.once("update", () => this.cycleHands()));
+  }
+
+  private cycleHands(): void {
+    const player = this.sp.Game.getPlayer();
+    if (!player || player.isDead() || this.playerDead) return;
+    const off = this.respawnWeapons.filter((w) => player.getEquippedWeapon(w.left)?.getFormID() !== w.baseId && player.getItemCount(this.sp.Game.getFormEx(w.baseId)) > 0);
+    this.logHands(player, `respawn unequip settled, cycling ${off.length}`);
+    if (!off.length) return;
+    off.forEach((w) => player.equipItemEx(this.sp.Game.getFormEx(w.baseId), w.left ? 2 : 1, false, false));
+    this.sp.Utility.wait(HAND_CYCLE_S).then(() => this.controller.once("update", () => {
+      const actor = this.sp.Game.getPlayer();
+      if (!actor || actor.isDead() || this.playerDead) return;
+      off.forEach((w) => actor.unequipItemEx(this.sp.Game.getFormEx(w.baseId), w.left ? 2 : 1, false));
+      this.sp.Utility.wait(HAND_CYCLE_S).then(() => this.controller.once("update", () => {
+        const after = this.sp.Game.getPlayer();
+        if (after) this.logHands(after, "respawn hands cycled");
+      }));
+    }));
+  }
+
+  private logHands(player: Actor, what: string): void {
+    const worn = [false, true].map((left) => player.getEquippedWeapon(left)?.getFormID().toString(16) ?? "-").join("/");
+    logToPlatformLog(this, `${what}: graph right ${player.getAnimationVariableInt("iRightHandType")} left ${player.getAnimationVariableInt("iLeftHandType")}, drawn ${player.isWeaponDrawn()}, worn ${worn}`);
   }
 
   private killWithPush = (actor: Actor): void => {
@@ -211,4 +265,8 @@ export class DeathService extends ClientListener {
   private busyForOtherReasonsCounter = 0;
 
   private lastCorpseLog = 0;
+
+  private resurrectAt = 0;
+  private respawnWeapons: RespawnWeapon[] = [];
+  private handsQueued = false;
 }
