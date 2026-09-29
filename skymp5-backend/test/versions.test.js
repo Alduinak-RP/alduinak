@@ -43,6 +43,22 @@ test('versions: the test block defaults to empty strings and dotted keys write i
   assert.deepEqual(after.test, { client: '2.0.0', server: '2.0.1' })
 })
 
+test('version route: launcherUrl feeds launcherUrl and packageUrl, old Electron launchers keep the nginx exe in downloadUrl', () => {
+  const file = path.resolve(__dirname, '..', 'data', 'versions.json')
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify({ launcher: '3.1.0', launcherUrl: 'https://alduinak.com/download' }))
+  try {
+    let body = null
+    require('../routes/version').stack[0].route.stack[0].handle({ query: {} }, { json: b => { body = b } })
+    assert.equal(body.version, '3.1.0')
+    assert.equal(body.launcherUrl, 'https://alduinak.com/download')
+    assert.equal(body.packageUrl, 'https://alduinak.com/download')
+    assert.equal(body.downloadUrl, 'https://api.alduinak.com/downloads/AlduinakLauncher.exe')
+  } finally {
+    fs.rmSync(file, { force: true })
+  }
+})
+
 test('server files: the main server keeps the plain names, any other id is suffixed', () => {
   const data = path.resolve(__dirname, '..', 'data')
   const main = config.servers[0].id

@@ -174,7 +174,11 @@ fails it prints a direct download URL - save that zip as
     website, which redirects to its CDN zip). Zip the exe and upload the zip to
     the website before Update Version; the launcher's updater follows the
     redirect and unpacks the zip, so launcher downloads never touch this
-    server.
+    server. The one exception: Electron launchers up to 2.3.0 run
+    `/api/version`'s `downloadUrl` as an exe and cannot unpack a zip, so
+    that field stays on `legacyDownloadUrl` in `versions.json` (default
+    the nginx `https://api.alduinak.com/downloads/AlduinakLauncher.exe`);
+    keep that exe on nginx for them.
   - Version forms: client and server versions (the package files, `client`,
     `server`, `test.client`, `test.server`) are semver with an optional
     prerelease or build part, `1.2.3`, `1.2.3-b4` or `1.2.3+4`; the launcher

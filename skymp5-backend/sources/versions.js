@@ -1,7 +1,7 @@
 'use strict'
 
 // data/versions.json holds every release version; it is read on each call, so the manager's edits need no backend restart
-// Shape: { launcher, client, server, launcherUrl, test: { client, server } }; the test block belongs to the test game server
+// Shape: { launcher, client, server, launcherUrl, legacyDownloadUrl, test: { client, server } }; the test block belongs to the test game server
 const fs = require('fs')
 const path = require('path')
 
@@ -15,6 +15,8 @@ const DEFAULTS = {
   client: '',
   server: '',
   launcherUrl: 'https://alduinak.com/download',
+  // Electron launchers up to 2.3.0 run whatever this serves as an exe, so it stays on the nginx installer
+  legacyDownloadUrl: 'https://api.alduinak.com/downloads/AlduinakLauncher.exe',
 }
 const TEST_DEFAULTS = { client: '', server: '' }
 
