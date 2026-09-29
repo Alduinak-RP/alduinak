@@ -125,7 +125,14 @@
               <button id="launcher-save" class="action small">Save</button>
             </div>
           </div>
-          <small>Save sets the version of the next build only. Build launcher writes <code>build/launcher/AlduinakLauncher.exe</code>; upload it, then Update Version tells every launcher to update.</small>
+          <div class="field">
+            <label>Download URL <span class="muted">(versions.json launcherUrl)</span></label>
+            <div class="row">
+              <input id="launcher-url" type="text" placeholder="https://alduinak.com/download" />
+              <button id="launcher-url-save" class="action small">Save</button>
+            </div>
+          </div>
+          <small>Version Save sets the version of the next build only. Build launcher writes <code>build/launcher/AlduinakLauncher.exe</code>; zip it and upload the zip to the website so the Download URL serves it (https only; the launcher follows the website's redirect and unpacks the zip), then Update Version tells every launcher to update. Downloads then come from the website, not this server.</small>
           <button id="build-launcher" class="action go">Build launcher</button>
         </div>
       </div>

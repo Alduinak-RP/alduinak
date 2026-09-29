@@ -17,8 +17,9 @@ Everything from r13 must be live before the wipe, because the wipe is the last o
   box, and click **Save version** (it writes `skymp5-launcher-tauri\src-tauri\tauri.conf.json`
   only). Build launcher leaves `build\launcher\AlduinakLauncher.exe`; its button then
   turns into **Update Version**, which writes `launcher` in
-  `skymp5-backend\data\versions.json`. Press it only once the exe is served where
-  `launcherUrl` points (nginx `/downloads/`), so players update to a file that exists.
+  `skymp5-backend\data\versions.json`. Press it only once the installer is served where
+  `launcherUrl` points (the Launcher box's Download URL, by default the website's
+  `https://alduinak.com/download` zip), so players update to a file that exists.
 - The plugin copies in the MO2 mod, the GOG `Data` folder and `build\dist\client\Data`,
   then **Build > Client > Update modlist** with the game server stopped (it builds the
   manifest, syncs the server settings and the data folder and runs the MongoDB purge).

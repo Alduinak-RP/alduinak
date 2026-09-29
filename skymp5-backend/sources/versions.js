@@ -14,7 +14,7 @@ const DEFAULTS = {
   launcher: '0.0.0',
   client: '',
   server: '',
-  launcherUrl: 'https://api.alduinak.com/downloads/AlduinakLauncher.exe',
+  launcherUrl: 'https://alduinak.com/download',
 }
 const TEST_DEFAULTS = { client: '', server: '' }
 

@@ -28,6 +28,7 @@ async function loadVersions() {
   const v = pub.versions
   const t = v.test || {}
   $('#launcher-live').textContent = `Live: ${v.launcher || '?'}`
+  $('#launcher-url').value = v.launcherUrl || ''
   $('#server-live-version').value = v.server || ''
   $('#client-live-version').value = v.client || ''
   $('#server-test-published').textContent = `(published ${t.server || '?'})`
@@ -59,6 +60,7 @@ async function saveMigrateRow(side) {
 
 const versionSavers = [
   ['#launcher-save', 'launcher version', () => window.mgr.launcherSetVersion($('#launcher-version').value)],
+  ['#launcher-url-save', 'launcher download URL', () => window.mgr.versionsSet('launcherUrl', $('#launcher-url').value)],
   ['#client-save', 'client test version', () => window.mgr.clientSetVersion($('#client-version').value)],
   ['#server-save', 'server test version', () => window.mgr.serverSetVersion($('#server-version').value)],
   ['#client-live-save', 'client live version', () => window.mgr.versionsSet('client', $('#client-live-version').value)],

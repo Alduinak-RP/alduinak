@@ -277,7 +277,15 @@ const SEMVER_RE = /^\d+\.\d+\.\d+$/
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 function versionError(key, version) {
   if (key === 'launcher') return SEMVER_RE.test(version) ? null : 'Use a semver like 1.2.3'
+  if (key === 'launcherUrl') return launcherUrlError(version)
   return VERSION_RE.test(version) ? null : 'Use a version like 1.2.3, 1.2.3-b4 or 1.2.3+4'
+}
+
+// The launcher's updater installs only over https and follows the website's redirect to its CDN zip
+function launcherUrlError(url) {
+  let parsed = null
+  try { parsed = new URL(url) } catch { /* reported below */ }
+  return parsed && parsed.protocol === 'https:' && parsed.hostname && !/\s/.test(url) && url.length <= 500 ? null : 'Use a full https:// URL'
 }
 
 // Register the getVersion/setVersion IPC pair for one component. The getter reads
@@ -308,7 +316,7 @@ registerVersionIpc('client', config.paths.clientPkg, [])
 registerVersionIpc('server', config.paths.serverPkg, [writeVersion('test.server')])
 
 // versions.json keys the Build tab may set directly (dotted keys address the test block)
-const VERSION_KEYS = ['client', 'server', 'test.client', 'test.server']
+const VERSION_KEYS = ['client', 'server', 'test.client', 'test.server', 'launcherUrl']
 const PUBLISHED_PKG = { launcher: config.paths.launcherPkg, client: config.paths.clientPkg, 'test.client': config.paths.clientPkg }
 
 ipcMain.handle('versions:published', () => {
