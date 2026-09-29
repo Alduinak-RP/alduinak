@@ -50,8 +50,9 @@ keeps its display name with a verb picked from its base form type.
   container it opens the housing menu, and on anything else, a world NPC
   included, the Personal Menu.
 - **Living server NPCs** (spawned bandits, guards, Falmer and the like, remote
-  id in the `0xff` space): verb "Search" over their name; both Activate and
-  the interact key open the container window at once, no consent. A game
+  id in the `0xff` space): verb "Taunt" over their name, and neither Activate
+  nor the interact key does anything yet (no packet); once dead the body reads
+  "Search" and opens the container window at once, no consent. A game
   animal (race keyword `ActorTypeAnimal`) shows its name with no verb, since
   it is hunted, not searched. The server never opens a living NPC: only its
   body is searched. A `searchRequest` for one (an older client) is refused,

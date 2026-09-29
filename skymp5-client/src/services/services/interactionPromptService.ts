@@ -182,9 +182,9 @@ export class InteractionPromptService extends ClientListener {
       const name = (ref.getDisplayName() || "").trim();
       if (!name) return null;
       if (remoteId < 0xff000000) return { verb: "Talk", label: name };
-      // A living server NPC is searched; no dialogue on the clone
+      // A living server NPC is taunted and searched only once dead; no dialogue on the clone
       try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-      return { verb: this.isAnimal(ref) ? "" : "Search", label: name };
+      return { verb: this.isAnimal(ref) ? "" : "Taunt", label: name };
     }
     // The engine must not start a dialogue or a local loot window on the clone under our menu.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
