@@ -59,6 +59,11 @@
 .fe-list li:hover { background: var(--fe-panel); }
 .fe-list li.fe-selected { background: var(--fe-panel); border-left: 3px solid var(--fe-accent); }
 .fe-list li.fe-empty { cursor: default; color: var(--fe-muted); }
+.fe-list li.fe-group {
+  cursor: default; padding: 4px 12px; position: sticky; top: 0; z-index: 1;
+  background: var(--fe-panel); color: var(--fe-accent); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+}
+.fe-list li.fe-group .fe-muted { font-size: 11px; text-transform: none; letter-spacing: 0; }
 .fe-line { display: flex; align-items: center; gap: 8px; }
 .fe-name { font-weight: 600; }
 .fe-sub { font-size: 11px; color: var(--fe-muted); margin-top: 2px; }

@@ -98,14 +98,15 @@ function assignmentsOf(whitelist, discordId) {
   })
 }
 
-// Faction and rank choices for the character popup
+// Faction and rank choices for the character popup, by province then name
 function factionChoices(whitelist) {
   const ranks = (whitelist.requirements || []).filter(r => r && r.id)
   return (whitelist.factions || []).map(f => ({
     id: f.id,
     name: f.name || f.id,
+    province: f.province || 'Skyrim',
     ranks: ranks.filter(r => r.id.startsWith(f.id + ':')).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map(r => ({ id: r.id, rank: r.rank || r.id })),
-  }))
+  })).sort((a, b) => a.province.localeCompare(b.province) || a.name.localeCompare(b.name))
 }
 
 const HOUR_BRACKETS = [[0, 1, 'Under 1 hour'], [1, 4, '1 to 3 hours'], [4, 12, '4 to 11'], [12, 24, '12 to 23'], [24, 48, '24 to 47'], [48, 128, '48 to 127'], [128, 400, '128 to 399'], [400, 1200, '400 to 1199'], [1200, Infinity, '1200+']]

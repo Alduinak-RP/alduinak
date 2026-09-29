@@ -78,7 +78,8 @@ fails it prints a direct download URL - save that zip as
     backend must run.
   - The character popup edits name, max health/stamina/magicka change
     (`private.attrBonus`), profession and hours, coordinates and cell
-    (**Save**), faction ranks for that character, and has the appearance and
+    (**Save**), faction ranks for that character (the faction list is grouped
+    by province, then sorted by name), and has the appearance and
     inventory editors. **Send to Sovngarde** and **Send to Soul Cairn** need
     the game server stopped; **Revive** shows only on a fallen character.
     Make edits with the game server stopped.
@@ -91,7 +92,9 @@ fails it prints a direct download URL - save that zip as
   ranks (name, ladder order, capacity) and what each rank may do: a tick matrix
   of the ranks it may appoint, promote to, demote from and remove, plus flags
   for inviting, crafting faction gear, managing hold property, and faction
-  doors and chests. It is the same editor as the dashboard's Factions view
+  doors and chests. The list sorts by name (courts first) or, with **Group by
+  province**, under a heading per province; the choice is remembered on that
+  computer and the search box matches provinces too. It is the same editor as the dashboard's Factions view
   (`skymp5-backend/public/dashboard/faction-editor.js`, loaded by relative
   path, so run the manager from the repo checkout) and talks to the running
   backend's `/api/factions` routes: the backend is the only writer, so the

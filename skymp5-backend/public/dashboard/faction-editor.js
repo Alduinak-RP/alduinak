@@ -22,6 +22,7 @@
   const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/
   const COLOR_RE = /^[0-9a-f]{6}$/
   const SAMPLE = 10
+  const SORT_KEY = 'factionEditor.sort'
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]))
   const slugOf = rank => String(rank.id).split(':')[2]
@@ -30,6 +31,12 @@
   const slotText = slot => (slot === null || slot === undefined ? 'every character' : `character ${Number(slot) + 1}`)
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
   const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x))
+  const provinceOf = faction => faction.province || 'Skyrim'
+  const byName = (a, b) => (a.scope === 'hold' ? 0 : 1) - (b.scope === 'hold' ? 0 : 1) || a.name.localeCompare(b.name)
+
+  function readSort() {
+    try { return localStorage.getItem(SORT_KEY) === 'province' ? 'province' : 'name' } catch { return 'name' }
+  }
 
   // Faction ids are "<scope>:<group>" slugs, so paths never need encoding and cannot leave /api/factions
   function factionPath(id, suffix = '') {
@@ -46,13 +53,17 @@
   function mount(root, { request, onSelectPlayer = null, onChange = null } = {}) {
     const state = {
       factions: [], retiredFactions: [], provinces: PROVINCES, holds: [], canDefine: false, loaded: false,
-      selected: '', rank: '', creating: false, filter: '', members: null, confirm: null, busy: false,
+      selected: '', rank: '', creating: false, filter: '', sort: readSort(), members: null, confirm: null, busy: false,
     }
 
     root.classList.add('fe')
     root.innerHTML = `
       <div class="fe-toolbar">
-        <input class="fe-search" type="search" placeholder="Search factions" autocomplete="off">
+        <input class="fe-search" type="search" placeholder="Search factions or provinces" autocomplete="off">
+        <select class="fe-sort" title="List order">
+          <option value="name"${state.sort === 'name' ? ' selected' : ''}>Sort by name</option>
+          <option value="province"${state.sort === 'province' ? ' selected' : ''}>Group by province</option>
+        </select>
         <button class="fe-btn fe-primary" type="button" data-act="new" data-write>New faction</button>
         <button class="fe-btn" type="button" data-act="refresh">Refresh</button>
         <span class="fe-status" role="status"></span>
@@ -155,14 +166,20 @@
 
     function renderList() {
       const q = state.filter.trim().toLowerCase()
+      const grouped = state.sort === 'province'
       const shown = state.factions
-        .filter(f => !q || f.name.toLowerCase().includes(q) || f.id.includes(q))
-        .sort((a, b) => (a.scope === 'hold' ? 0 : 1) - (b.scope === 'hold' ? 0 : 1) || a.name.localeCompare(b.name))
+        .filter(f => !q || f.name.toLowerCase().includes(q) || f.id.includes(q) || provinceOf(f).toLowerCase().includes(q))
+        .sort((a, b) => (grouped ? provinceOf(a).localeCompare(provinceOf(b)) : 0) || byName(a, b))
+      const heading = (f, i) => {
+        if (!grouped || (i > 0 && provinceOf(shown[i - 1]) === provinceOf(f))) return ''
+        const count = shown.filter(x => provinceOf(x) === provinceOf(f)).length
+        return `<li class="fe-group">${esc(provinceOf(f))} <span class="fe-muted">${plural(count, 'faction', 'factions')}</span></li>`
+      }
       $('.fe-list').innerHTML = !state.loaded ? '<li class="fe-empty">Loading…</li>'
         : !shown.length ? `<li class="fe-empty">${q ? 'No matches.' : 'No factions yet.'}</li>`
-          : shown.map(f => `
+          : shown.map((f, i) => `${heading(f, i)}
             <li data-act="select" data-id="${esc(f.id)}" class="${f.id === state.selected ? 'fe-selected' : ''}">
-              <div class="fe-line">${swatch(f.color)}<span class="fe-name">${esc(f.name)}</span><span class="fe-badge">${esc(f.province || 'Skyrim')}</span><span class="fe-badge">${esc(TYPE_NAMES[f.type] || f.type || SCOPE_NAMES[f.scope])}</span></div>
+              <div class="fe-line">${swatch(f.color)}<span class="fe-name">${esc(f.name)}</span><span class="fe-badge">${esc(provinceOf(f))}</span><span class="fe-badge">${esc(TYPE_NAMES[f.type] || f.type || SCOPE_NAMES[f.scope])}</span></div>
               <div class="fe-sub">${esc(f.id)} · ${plural(f.ranks.length, 'rank', 'ranks')} · ${plural(f.members, 'member', 'members')}</div>
             </li>`).join('')
     }
@@ -521,6 +538,12 @@
     })
 
     root.addEventListener('change', event => {
+      if (event.target.classList.contains('fe-sort')) {
+        state.sort = event.target.value === 'province' ? 'province' : 'name'
+        try { localStorage.setItem(SORT_KEY, state.sort) } catch { /* per-viewer convenience only */ }
+        renderList()
+        return
+      }
       if (event.target.name === 'scope' && event.target.form && event.target.form.dataset.form === 'create') syncCreateScope(event.target.form)
     })
 

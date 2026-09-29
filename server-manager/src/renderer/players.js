@@ -320,7 +320,11 @@ function renderCmFaction() {
   const row = el('div', { className: 'row' })
   const fac = el('select', { className: 'sinput' })
   fac.appendChild(el('option', { value: '' }, 'Faction…'))
-  for (const f of detail.factions) fac.appendChild(el('option', { value: f.id }, esc(f.name)))
+  const groups = new Map()
+  for (const f of detail.factions) {
+    if (!groups.has(f.province)) groups.set(f.province, fac.appendChild(el('optgroup', { label: f.province })))
+    groups.get(f.province).appendChild(el('option', { value: f.id }, esc(f.name)))
+  }
   const rank = el('select', { className: 'sinput' })
   const fillRanks = () => {
     rank.innerHTML = ''

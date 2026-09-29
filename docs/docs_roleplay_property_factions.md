@@ -429,7 +429,8 @@ One editor, `skymp5-backend/public/dashboard/faction-editor.js`, runs in the
 dashboard's Factions view (Definitions) and in the Server Manager's **Factions**
 tab. It creates, edits and deletes factions (type, group, display name, zone,
 colour), their ranks (name, title, ladder order, capacity) and each rank's lists
-and flags from the table above. Faction doors and chests stay in the game
+and flags from the table above. Its list sorts by name or, with **Group by
+province**, under a heading per province. Faction doors and chests stay in the game
 server's hand-edited `faction-access.json`. Assignments still pick a character slot in the
 dashboard's Assignments panel; the character names come from the game server,
 which reports every account's slots whenever the character select list is sent.
