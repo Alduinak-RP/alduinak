@@ -1,3 +1,4 @@
+import * as path from "path";
 import { scanRecords, espmDesc, cstr, LogFn, EspmRecord } from "./espmEditorIds";
 import { createStringsReader } from "./espmStrings";
 import { formIdFromConfig } from "./formIdUtil";
@@ -105,11 +106,15 @@ export async function loadHolds(mp: Mp, dataDir: string, loadOrder: string[], lo
     resolved.set(desc, hold);
     return hold;
   };
+  // getIdFromDesc matches plugin names case-sensitively, so the lower-case keys take the load order's spelling back
+  const fileNames = new Map(loadOrder.map((entry): [string, string] => [path.basename(entry).toLowerCase(), path.basename(entry)]));
   const ids = new Map<string, number>();
   const idOf = (desc: string): number => {
     let id = ids.get(desc);
     if (id === undefined) {
-      id = formIdFromConfig(mp, desc);
+      const at = desc.indexOf(":");
+      const file = desc.slice(at + 1);
+      id = formIdFromConfig(mp, desc.slice(0, at + 1) + (fileNames.get(file) ?? file));
       ids.set(desc, id);
     }
     return id;
