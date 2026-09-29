@@ -18,7 +18,7 @@ type Mp = any;
 // A bound player is searched without consent too; startSession tells them who is searching, and such a search ends once they are freed. A player who is only carried is asked as usual.
 // A restrained (bound or carried) player cannot search anyone.
 // A dead player's body gives up a limited number of distinct items (a stack counts once); the take that reaches the limit closes the window and respawns the player, which removes the body.
-// A living server NPC opens without consent too, unless it is someone's pet or companion, an animal, or in combat (a damaging hit with a player within npcAggroHostSeconds); it gives up loose items only, and no weapon or armour piece moves either way.
+// A living server NPC is never searched: only its body is. Its owner is pointed at the pet menu, anyone else is refused.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -27,7 +27,7 @@ type Mp = any;
 //     { customPacketType: "searchEnd" }                              // searcher closed the window
 //   Server -> Client:
 //     { customPacketType: "searchConsentRequest", requestId, text }  // -> target
-//     { customPacketType: "searchApproved", target, body, npc, entries }  // -> searcher: open the window
+//     { customPacketType: "searchApproved", target, body, entries }  // -> searcher: open the window
 //     { customPacketType: "searchClose" }                            // -> searcher: close it
 //     { customPacketType: "searchNotice", text }                     // corner toast
 
@@ -63,8 +63,6 @@ interface SearchSession {
   auto: boolean;
   // A pet's inventory opened by its owner
   pet: boolean;
-  // A living server NPC
-  npc: boolean;
 }
 
 export class SearchSystem implements System {
@@ -73,7 +71,7 @@ export class SearchSystem implements System {
 
   // Set by index.ts: items a looter may not have off this body. Asked again on every take, so the window and the server agree
   hidesItem?: (ctx: SystemContext, viewerActorId: number, targetActorId: number, baseId: number) => boolean;
-  // Set by index.ts: the owner of a pet or companion (0 for none), and whether a living NPC is game
+  // Set by index.ts: the owner of a pet or companion (0 for none), and whether a living NPC is game, for the refusal's wording
   ownedBy?: (actorId: number) => number;
   isAnimal?: (ctx: SystemContext, actorId: number) => boolean;
   // Set by index.ts: true when the interaction with a body became something else (skinning), so it is not opened
@@ -104,8 +102,6 @@ export class SearchSystem implements System {
   private playerBodyTakeLimit = DEFAULT_PLAYER_BODY_TAKE_LIMIT;
   // NPC base id -> extra reach of its body
   private bodyReachCache = new Map<number, number>();
-  // Item base id -> whether it is a weapon or armour piece
-  private gearCache = new Map<number, boolean>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -124,11 +120,10 @@ export class SearchSystem implements System {
     this.installPutHook(ctx);
   }
 
-  // The window lists stacks without names, so property keys and writings stay put, and a stack the window never showed is not there to move; a living NPC neither gives up nor accepts gear
+  // The window lists stacks without names, so property keys and writings stay put, and a stack the window never showed is not there to move
   private stuck(ctx: SystemContext, targetActorId: number, actorId: number, baseId: number): boolean {
     return this.isSearching(targetActorId, actorId)
-      && (isNamedItemBase(baseId) || this.hidden(ctx, actorId, targetActorId, baseId)
-        || (this.sessions.get(targetActorId)?.npc === true && this.isGear(ctx, baseId)));
+      && (isNamedItemBase(baseId) || this.hidden(ctx, actorId, targetActorId, baseId));
   }
 
   // A worn stack the searcher's copy still shows after another looter took it is not on the body
@@ -210,17 +205,8 @@ export class SearchSystem implements System {
     }
     for (const s of Array.from(this.sessions.values())) {
       // A side that lost its user (character switch, logout-grace park) ends the search
-      if (this.userOf(ctx, s.searcherActorId) < 0 || (!s.body && !s.pet && !s.npc && this.userOf(ctx, s.targetActorId) < 0)) {
+      if (this.userOf(ctx, s.searcherActorId) < 0 || (!s.body && !s.pet && this.userOf(ctx, s.targetActorId) < 0)) {
         this.endSession(ctx, s, "", "user gone");
-        continue;
-      }
-      // A killed NPC reopens as a body under the body rules
-      if (s.npc && this.isDead(ctx, s.targetActorId)) {
-        this.endSession(ctx, s, "");
-        continue;
-      }
-      if (s.npc && this.hosting.inCombat(s.targetActorId)) {
-        this.endSession(ctx, s, "They are fighting.");
         continue;
       }
       // Respawned, revived or despawned
@@ -314,9 +300,8 @@ export class SearchSystem implements System {
     }
     const body = this.isDead(ctx, targetActorId);
     if (!body && !this.isPlayerCharacter(ctx, targetActorId)) {
-      const refusal = this.npcRefusal(ctx, searcherActorId, targetActorId);
-      if (refusal) this.notice(ctx, userId, refusal);
-      else this.startSession(ctx, searcherActorId, targetActorId, false, false, false, true);
+      this.notice(ctx, userId, this.npcRefusal(ctx, searcherActorId, targetActorId));
+      this.log(`[search] ${searcherActorId.toString(16)} refused living npc ${targetActorId.toString(16)}`);
       return;
     }
     if (body && this.bodyAction?.(ctx, searcherActorId, targetActorId)) return;
@@ -409,7 +394,7 @@ export class SearchSystem implements System {
     }
   }
 
-  // Why a living NPC may not be searched, "" when it may
+  // Only the dead are searched; the wording tells a pet's owner where its inventory is
   private npcRefusal(ctx: SystemContext, searcherActorId: number, targetActorId: number): string {
     const owner = this.ownedBy?.(targetActorId) ?? 0;
     if (owner) return owner === searcherActorId ? "Use the pet menu." : "That is someone's companion.";
@@ -418,10 +403,10 @@ export class SearchSystem implements System {
     } catch (e) {
       this.log(`[search] animal check failed: ${e}`);
     }
-    return this.hosting.inCombat(targetActorId) ? "They are fighting." : "";
+    return "Only the dead can be searched.";
   }
 
-  private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean, auto = false, pet = false, npc = false): void {
+  private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean, auto = false, pet = false): void {
     const searcherUser = this.userOf(ctx, searcherActorId);
     const taken = body ? this.bodyTakesOf(ctx, targetActorId) : undefined;
     if (taken && taken.size >= this.playerBodyTakeLimit) {
@@ -432,23 +417,22 @@ export class SearchSystem implements System {
       this.notice(ctx, searcherUser, "The search could not start.");
       return;
     }
-    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, auto, pet, npc });
+    this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, auto, pet });
     this.searching.set(searcherActorId, targetActorId);
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
       target: targetActorId,
       body,
-      npc,
       // Simple stacks of the real inventory: the searcher's local clone never holds it, so the client syncs the clone before opening the window
-      entries: this.visibleEntriesOf(ctx, searcherActorId, targetActorId, body, npc),
+      entries: this.visibleEntriesOf(ctx, searcherActorId, targetActorId, body),
     }));
     this.notice(ctx, this.userOf(ctx, targetActorId),
       `${nameShownTo(ctx.svr,targetActorId, searcherActorId)} is searching ${body ? "your body" : "you"}.`);
-    this.log(`[search] ${searcherActorId.toString(16)} searches ${this.kindOf({ body, npc })}${targetActorId.toString(16)}`);
+    this.log(`[search] ${searcherActorId.toString(16)} searches ${this.kindOf({ body })}${targetActorId.toString(16)}`);
   }
 
-  private kindOf(s: { body: boolean, npc: boolean }): string {
-    return s.body ? "body " : s.npc ? "npc " : "";
+  private kindOf(s: { body: boolean }): string {
+    return s.body ? "body " : "";
   }
 
   // Opens a pet's inventory for its owner in the vanilla container window; empty result on success, else the refusal
@@ -701,28 +685,13 @@ export class SearchSystem implements System {
     return this.simpleEntriesOf(ctx, actorId).reduce((sum, e) => sum + (e.baseId === baseId ? e.count : 0), 0);
   }
 
-  // On a body the client drops the stacks the server left out, so a hidden item is simply not in the window; a living NPC keeps its gear
-  private visibleEntriesOf(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean, npc: boolean): { baseId: number, count: number }[] {
+  // On a body the client drops the stacks the server left out, so a hidden item is simply not in the window
+  private visibleEntriesOf(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): { baseId: number, count: number }[] {
     const entries = this.simpleEntriesOf(ctx, targetActorId);
-    if (npc) {
-      return entries.filter((e) => !this.isGear(ctx, e.baseId));
-    }
     if (!body || !this.hidesItem) {
       return entries;
     }
     return entries.filter((e) => !this.hidden(ctx, searcherActorId, targetActorId, e.baseId));
-  }
-
-  // The server equipment of an NPC holds only its best weapon, so what it wears is told by record type, not by worn flags
-  private isGear(ctx: SystemContext, baseId: number): boolean {
-    let gear = this.gearCache.get(baseId);
-    if (gear === undefined) {
-      let type = "";
-      try { type = String((ctx.svr as Mp).lookupEspmRecordById(baseId)?.record?.type ?? ""); } catch { /* unknown base */ }
-      gear = type === "WEAP" || type === "ARMO";
-      this.gearCache.set(baseId, gear);
-    }
-    return gear;
   }
 
   private hidden(ctx: SystemContext, searcherActorId: number, targetActorId: number, baseId: number): boolean {

@@ -53,16 +53,12 @@ keeps its display name with a verb picked from its base form type.
   id in the `0xff` space): verb "Search" over their name; both Activate and
   the interact key open the container window at once, no consent. A game
   animal (race keyword `ActorTypeAnimal`) shows its name with no verb, since
-  it is hunted, not searched. The server refuses someone else's pet or
-  companion ("That is someone's companion."; a foreign companion still reads
-  Search, the client cannot tell it from a bandit), game animals, and an NPC
-  that exchanged a damaging hit with a player within `npcAggroHostSeconds`
-  ("They are fighting."; the window also closes when a fight starts or the
-  NPC dies, after which it reopens as a body). A living NPC gives up only
-  what it carries loose: gold, potions, ingredients, ammo, keys, books and
-  misc. Its weapons and armour still show, since the clone wears them, but a
-  weapon or armour piece moves neither way: a take of one and a put of one
-  are both refused and snap back, so a living NPC cannot be armed either.
+  it is hunted, not searched. The server never opens a living NPC: only its
+  body is searched. A `searchRequest` for one (an older client) is refused,
+  logged `[search] <searcher> refused living npc <id>`, with "Use the pet
+  menu." for the owner of a pet, "That is someone's companion." for someone
+  else's pet or companion, "Look at a player or a body to search." for a game
+  animal and "Only the dead can be searched." for anyone else.
 - **Pets** (`ff_pet` on a server NPC, see `docs_roleplay_pets.md`): the pet's name with
   Ride on any horse, Harvest on your own livestock, Command on your own dog or
   conjured companion, no verb on someone else's animal; X on your own pet opens
