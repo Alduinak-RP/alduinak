@@ -5,24 +5,27 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { parseCustomPacket } from "./customPacketUtil";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { FormTypeEx } from "../../extensions/formTypeEx";
-import { logError, logTrace } from "../../logging";
+import { logError, logToPlatformLog } from "../../logging";
 
 // World clutter is frozen as its cell or 3D loads so local havok cannot move it
 const FROZEN_TYPES = [FormType.MovableStatic, FormType.Flora, FormType.Activator, FormType.Furniture, FormType.Static, FormType.Container, ...FormTypeEx.itemTypes];
 
 // Mods place havok item meshes as statics and containers, so those are frozen unless the model sits in a folder that never carries havok
-const NON_HAVOK_MODEL = /^(meshes[\\/])?(architecture|landscape|dungeons|lod|terrain|markers?|effects)[\\/]|^marker/i;
+const NON_HAVOK_MODEL = /^(meshes[\\/])?(architecture|landscape|dungeons|lod|terrain|markers?|effects|dyndolod)[\\/]|^marker/i;
 
 const SWEEP_MS = 200;
 // Refs looked at per sweep tick, pending retries included
 const SWEEP_BUDGET = 128;
 // Part of the budget the pending retries may take, so the cell sweep always keeps the rest
 const PENDING_BUDGET = 32;
-const TRACKED_LIMIT = 8192;
-// A ref frozen as it loaded is frozen once more after the havok body had a physics step to attach
-const SECOND_PASS_MS = 1000;
+// A city grid tracks over ten thousand ids; a smaller cap made every pass start over and re-issue every freeze
+const TRACKED_LIMIT = 65536;
+// A ref frozen as it loaded is frozen again after the havok body had a physics step to attach, and once more in case the first step was late
+const FOLLOW_UP_PASSES_MS = [1000, 3000];
 // Sweep ticks a ref that loaded without 3D is retried before the cell sweep alone looks after it
 const PENDING_TRIES = 50;
+// The froze line goes to the platform log, which a throw reaches, so it is rate limited
+const FROZE_LOG_GAP_MS = 5000;
 
 interface CellSweep {
   id: number;
@@ -129,14 +132,16 @@ export class StaticRefsService extends ClientListener {
     this.sweeps.push({ id, cell, type: 0, index: 0, froze: 0 });
   }
 
-  // Havok bodies attach on the physics step after the 3D, so the first setMotionType may have found nothing to freeze
+  // Havok bodies attach on the physics step after the 3D, so the first setMotionType may have found nothing to freeze;
+  // a pass is dropped only when the ref or its 3D is gone, never by the cache trim
   private secondPassSlice(now: number): void {
     let budget = SWEEP_BUDGET;
     while (budget-- > 0 && this.secondPass.length && this.secondPass[0].at <= now) {
       const { id } = this.secondPass.shift()!;
-      if (!this.frozen.has(id)) continue;
       const ref = ObjectReference.from(this.sp.Game.getFormEx(id));
-      if (ref?.is3DLoaded()) ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
+      if (!ref?.is3DLoaded()) continue;
+      ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
+      this.followUpCalls++;
     }
   }
 
@@ -183,9 +188,14 @@ export class StaticRefsService extends ClientListener {
   }
 
   private endPass(sweep: CellSweep): void {
-    if (sweep.froze > 0 || this.pending.size !== this.loggedPending) {
+    const now = Date.now();
+    if ((sweep.froze > 0 || this.pending.size !== this.loggedPending) && now - this.lastFrozeLog >= FROZE_LOG_GAP_MS) {
       this.loggedPending = this.pending.size;
-      logTrace(this, `froze ${sweep.froze} refs in cell ${sweep.id.toString(16)}, pending ${this.pending.size}, ${this.sweeps.length} cells attached`);
+      this.lastFrozeLog = now;
+      // The call counters cover every path since the previous line, so a backlog of latent calls shows as a large number
+      logToPlatformLog(this, `froze ${sweep.froze} refs in cell ${sweep.id.toString(16)}, pending ${this.pending.size}, ${this.sweeps.length} cells attached, setMotionType calls ${this.freezeCalls} + ${this.followUpCalls} follow-up, tracked ${this.frozen.size} frozen ${this.ignored.size} ignored`);
+      this.freezeCalls = 0;
+      this.followUpCalls = 0;
     }
     sweep.type = 0;
     sweep.index = 0;
@@ -214,11 +224,15 @@ export class StaticRefsService extends ClientListener {
     }
     if (this.frozen.has(id)) return "done";
     ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
+    this.freezeCalls++;
     // Pickups and untouchable decor only go through the server, which syncs or refuses them
     if (isItem || ObjectReferenceEx.isUntouchable(base)) ref.blockActivation(true);
     this.trimCaches();
     this.frozen.add(id);
-    if (secondPass) this.secondPass.push({ id, at: Date.now() + SECOND_PASS_MS });
+    if (secondPass) {
+      const now = Date.now();
+      for (const delay of FOLLOW_UP_PASSES_MS) this.secondPass.push({ id, at: now + delay });
+    }
     this.noteFirstFreeze(base, type);
     return "frozen";
   }
@@ -227,13 +241,12 @@ export class StaticRefsService extends ClientListener {
   private noteFirstFreeze(base: Form, type: number): void {
     if (this.seenTypes.has(type)) return;
     this.seenTypes.add(type);
-    logTrace(this, `first freeze of type ${type}: base ${base.getFormID().toString(16)} model ${base.getWorldModelPath() || "?"}`);
+    logToPlatformLog(this, `first freeze of type ${type}: base ${base.getFormID().toString(16)} model ${base.getWorldModelPath() || "?"}`);
   }
 
-  // Every visited cell adds refs, so a long session starts over rather than growing without bound
+  // Every visited cell adds refs, so a long session forgets the dismissed ids rather than growing without bound; frozen ids stay, or every ref would be frozen again
   private trimCaches(): void {
     if (this.frozen.size + this.ignored.size < TRACKED_LIMIT) return;
-    this.frozen.clear();
     this.ignored.clear();
   }
 
@@ -259,4 +272,7 @@ export class StaticRefsService extends ClientListener {
   private secondPass: Array<{ id: number; at: number }> = [];
   private seenTypes = new Set<number>();
   private loggedPending = 0;
+  private lastFrozeLog = 0;
+  private freezeCalls = 0;
+  private followUpCalls = 0;
 }

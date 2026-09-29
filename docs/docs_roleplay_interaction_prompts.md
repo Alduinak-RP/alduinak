@@ -100,15 +100,23 @@ service freezes whose 3D is not in yet goes on a pending list retried every
 200 ms (up to 50 times, at most 32 of the 128-refs-per-tick budget, the rest
 always goes to the cell sweep; actors, markers and other bases it never
 freezes are dismissed before the 3D check), and a ref frozen as it
-loaded gets one more `setMotionType` a second later, since the havok body
-attaches on the physics step after the 3D; `cellDetach` and unload forget the
-ref so it is frozen again when it comes back. Every attached cell stays in the
-sweep rotation until it detaches. The platform log carries one trace per pass
-(`froze N refs in cell X, pending M, K cells attached`, only when something
-froze or the pending count moved) and one `first freeze of type T: base ...
-model ...` line per base type, which is what to read when an object still
-moves: its console id and model folder tell whether it is a skipped
-`NON_HAVOK_MODEL` folder or a class the sweep never reaches. Player drops
+loaded gets two more `setMotionType` calls, one and three seconds later, since
+the havok body attaches on the physics step after the 3D (a follow-up is
+dropped only when the ref or its 3D is gone); `cellDetach` and unload forget
+the ref so it is frozen again when it comes back, and `objectLoaded` re-arms
+the follow-ups. Every attached cell stays in the sweep rotation until it
+detaches. The frozen and dismissed ids are cached up to 65536 (a city grid
+tracks over ten thousand); past that only the dismissed set is forgotten, so
+frozen refs are never re-issued wholesale. `DynDOLOD\` models count as
+havok-free like `lod\`. `skyrim-platform.log` carries one line per pass at
+most every 5 s (`StaticRefsService: froze N refs in cell X, pending M, K cells
+attached, setMotionType calls A + B follow-up, tracked F frozen I ignored`,
+only when something froze or the pending count moved; a large call count is
+a backlog of latent calls) and one `first freeze of type T: base ... model
+...` line per base type, which is what to read when an object still moves:
+its console id and model folder tell whether it is a skipped
+`NON_HAVOK_MODEL` folder or a class the sweep never reaches. The in-game
+console never shows these lines, only the platform log does. Player drops
 (`ff` ids) stay dynamic and pickable.
 
 ## Switches and verification
