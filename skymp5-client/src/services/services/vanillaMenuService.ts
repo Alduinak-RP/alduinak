@@ -19,6 +19,10 @@ const TWEEN_ROOT = "_root.TweenMenu_mc";
 const TWEEN_SKILLS_LABEL = "_global.TweenMenu.FrameToLabelMap.1";
 // Selections_mc frame of the "Skills" label
 const TWEEN_SKILLS_FRAME = 2;
+// hudmenu.swf's movie; SkyUI's widget manager puts its widgets in WidgetContainer beside it
+const HUD_ROOT = "_root.HUDMovieBaseInstance";
+const HUD_CLIPS = [HUD_ROOT, "_root.WidgetContainer"];
+const HUD_RECHECK_MS = 1000;
 // Updates a menu may take to expose its movie before its paths count as missing
 const MAX_PATH_MISSES = 10;
 // Invokes run later on the UI queue, so a state the engine sets back is applied again a few times
@@ -49,13 +53,17 @@ export class VanillaMenuService extends ClientListener {
       if (e.name === Menu.Journal) {
         this.journal = { misses: 0, settle: 0, switches: 0, tabsHidden: false, entryCount: -1, listHidden: false, failed: false };
       }
-    });
-    this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.Tween) this.tween = { misses: 0, trimmed: false };
+      if (e.name === Menu.HUD) this.hudDirty = true;
     });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.Journal) this.journal = undefined;
       if (e.name === Menu.Tween) this.tween = undefined;
+      if (e.name === Menu.Loading) this.hudDirty = true;
+    });
+    this.controller.emitter.on("uiHiddenChanged", (e) => {
+      this.hudHidden = e.hidden;
+      this.hudDirty = true;
     });
     this.controller.on("update", () => this.onUpdate());
     // SkyrimPlatform drops the Quick Stats key and the Tween Menu has no Skills; anything else that opens StatsMenu is shut at once
@@ -65,6 +73,30 @@ export class VanillaMenuService extends ClientListener {
   private onUpdate(): void {
     if (this.journal && !this.journal.failed) this.trimJournal(this.journal);
     if (this.tween) this.trimTween(this.tween);
+    this.syncHud();
+  }
+
+  // The hide UI key also hides the vanilla HUD (compass, bars, crosshair, messages and SkyUI widgets); a new HUD movie or a script that shows it again is hidden once more
+  private syncHud(): void {
+    if (!this.hudHidden && !this.hudWritten) return;
+    const ui = this.sp.Ui;
+    if (!ui.isMenuOpen(Menu.HUD)) return;
+    const now = Date.now();
+    if (!this.hudDirty) {
+      if (!this.hudHidden || now < this.hudCheckAt) return;
+      this.hudCheckAt = now + HUD_RECHECK_MS;
+      if (!ui.getBool(Menu.HUD, `${HUD_ROOT}._visible`)) return;
+      this.logOnce("hud:reshown", "HUD Menu was visible again while the interface is hidden, hid it again");
+    }
+    this.hudDirty = false;
+    this.hudCheckAt = now + HUD_RECHECK_MS;
+    if (ui.getString(Menu.HUD, `${HUD_ROOT}._name`) !== "HUDMovieBaseInstance") {
+      this.logOnce("hud:missing", `HUD Menu left as it is: ${HUD_ROOT} not found`);
+      return;
+    }
+    for (const clip of HUD_CLIPS) ui.setBool(Menu.HUD, `${clip}._visible`, !this.hudHidden);
+    this.hudWritten = this.hudHidden;
+    if (this.hudHidden) this.logOnce("hud", `HUD Menu hidden with the interface (${HUD_CLIPS.join(", ")})`);
   }
 
   // Up and the Skills rect highlight the "None" frame, so a second Up or Enter never reaches OpenHighlightedMenu(1)
@@ -178,5 +210,10 @@ export class VanillaMenuService extends ClientListener {
 
   private journal?: JournalState;
   private tween?: TweenState;
+  private hudHidden = false;
+  // True while the HUD clips were last written hidden
+  private hudWritten = false;
+  private hudDirty = false;
+  private hudCheckAt = 0;
   private logged = new Set<string>();
 }

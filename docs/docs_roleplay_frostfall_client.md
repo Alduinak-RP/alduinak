@@ -20,7 +20,7 @@ All menus render as `form` widgets and **preserve SkyMP's chat widget**
 | `X` | PlayerActionService | `altInteractKeyCode` (launcher Server Hotkeys > Interact / Menus; `0` or missing reads as `X`) | Interact / Menus: the one menu key, routed by what the crosshair is on (see below). With the chat settings' "hold the interact key" on, every menu the press opens (player and carried-load `pa:` menus, Personal, housing, pet, the bounty board strongbox and the search window on a body, both engine container windows closed with their Tab key, `closeContainerMenu`) closes when the key is released, which the client reads with an `Input.isKeyPressed` poll while the menu is open (`armHeldMenu` / `claimHeldMenu` in `widgetMenuUtil.ts`). A menu that starts taking typed text (the housing menu's Cut a key prompt, or its rename field taking focus, `housing:typing`) lets go of the key (`releaseHeldMenus`) and stays open until closed. A menu that waits for the server (the player menu's 500 ms `playerMenuState` wait, the housing, pet, strongbox and search replies) stays shut when the key was let go before it could open, unless it was pressed again during the player menu's wait |
 | `F6` | BrowserService | `freeCursorKeyCode` | Free / lock the mouse cursor. Focusing the page opens the vanilla cursor when no menu has it; the unfocus that follows keeps it while a vanilla menu that draws the cursor (inventory, container, magic, map, message box and the like) opened in between, and that menu hides it when it closes (SkyrimPlatform `BrowserApiTilted::SetFocused`, logged `Browser unfocused under <menu>, cursor kept` in `skyrim-platform.log`), so a page menu that led into a vanilla one no longer leaves it without a mouse |
 | `Enter`, `T` | BrowserService | `chatFocusKeyCodes` | Focus the chat box to type |
-| `F1` | BrowserService | `hideUiKeyCode` | Hide every overlay (chat, prompts, nametags, voice banner, open menus); press again to show. The toggle fires on the press edge only, so another key pressed while F1 is still held (push-to-talk, say) leaves the interface as it is. Menu hotkeys and chat focus are inert while hidden; push-to-talk is not: the mic opens as usual, only the banner that shows it is hidden. Every mic open and close writes a `VoiceService: mic open/closed (<why>): ui hidden, page focused, console, key reads down` line to `skyrim-platform.log`, as does a `voice::error` from the page (a new error text at once, the same text again at most every 10 minutes with the count of repeats, and one `voice connected again` line when the room comes back). Server screens (death, trade, consent prompts, character select) bring the interface back |
+| `F1` | BrowserService | `hideUiKeyCode` | Hide every overlay (chat, prompts, nametags, voice banner, open menus) and the vanilla HUD (compass, health, magicka and stamina bars, crosshair, messages, SkyUI widgets; see Vanilla menus); press again to show. The toggle fires on the press edge only, so another key pressed while F1 is still held (push-to-talk, say) leaves the interface as it is. Menu hotkeys and chat focus are inert while hidden; push-to-talk is not: the mic opens as usual, only the banner that shows it is hidden. Every mic open and close writes a `VoiceService: mic open/closed (<why>): ui hidden, page focused, console, key reads down` line to `skyrim-platform.log`, as does a `voice::error` from the page (a new error text at once, the same text again at most every 10 minutes with the count of repeats, and one `voice connected again` line when the room comes back). Server screens (death, trade, consent prompts, character select) bring the interface back |
 | `B` | EmoteService | `emoteWheelKeyCode` (launcher Server Hotkeys > Emote Wheel) | Open the emote wheel; the same key closes it again, as do Esc and a right-click. The open wheel holds browser focus, so the front forwards the press and the client matches it with `domKeyCode`: that works for scan codes up to 88 except Num Lock, not for extended keys (arrows, the Insert/Home/Page block, Right Ctrl/Alt, Numpad Enter and /, Windows keys) or mouse buttons. With the chat settings' "hold the emote wheel key" on, the wheel stays open while the key is held (an `Input.isKeyPressed` poll, so any key) and the release plays the emote the wheel last reported as hovered (`emote:hover`) or just closes it. W, A, S, D and Space cancel a playing emote, and drawing a weapon or spell ends it |
 
 Every `...KeyCode` setting also takes a mouse button as DxScanCode 256 + n
@@ -114,10 +114,11 @@ Permissions are enforced **server-side** — unauthorized buttons just reply
 `VanillaMenuService` trims the vanilla menus the browser menus replace. It
 works at runtime through SKSE's UI natives (`Ui.get*`, `Ui.set*`,
 `Ui.invoke*`) on the menus' own ActionScript, read from the SWFs that win in
-this load order: SkyUI's `quest_journal.swf` and `tweenmenu.swf` inside
-`SkyUI_SE.bsa` (plugin archives load over `Skyrim - Interface.bsa`; no loose
-copy exists in the MO2 mods). A path that is not there leaves the menu as it
-is and writes one `VanillaMenuService: ...` line to `skyrim-platform.log`.
+this load order: SkyUI's `quest_journal.swf`, `tweenmenu.swf` and
+`hudmenu.swf` inside `SkyUI_SE.bsa` (plugin archives load over
+`Skyrim - Interface.bsa`; no loose copy exists in the MO2 mods). A path that
+is not there leaves the menu as it is and writes one `VanillaMenuService: ...`
+line to `skyrim-platform.log`.
 
 - **Journal (Esc and J)**: opens on the System page only. The service calls
   `_root.QuestJournalFader.Menu_mc.ShiftTab` to leave the page the engine
@@ -157,6 +158,17 @@ is and writes one `VanillaMenuService: ...` line to `skyrim-platform.log`.
   `keepMenusClosed` (one frame at most, logged once as `StatsMenu opened and
   was closed at once`). The Personal menu's Skills tab is a browser page and
   is not affected.
+- **HUD with the hide UI key (`F1`)**: `BrowserService.setUiHidden` emits
+  `uiHiddenChanged`, and on the next update the service sets `_visible` on
+  `_root.HUDMovieBaseInstance` (hudmenu.swf's whole HUD: compass, the three
+  bars, crosshair, stealth meter, subtitles, messages) and
+  `_root.WidgetContainer` (SkyUI's widgets) in the `HUD Menu` movie. The HUD's
+  ActionScript only toggles that clip's children, so the value holds through
+  menus opening and closing. The HUD Menu opening again or a load screen
+  closing writes it again, and while hidden a check every second writes it
+  again should the movie show it (a new HUD movie after a load). Showing the
+  interface restores both clips; nothing is written while the interface was
+  never hidden.
 
 ---
 
