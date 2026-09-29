@@ -216,6 +216,8 @@ def main():
     # Winners before the plugin: the records the output overrides and every actor's state; every record key feeds the form id check
     known = {here << 24 | k[1] for _, k in list(ri) + list(ro) if k[0] == me}
     disable_refs = {form_key(x) for x in spec.get('disableReferences', {}).get('refs', [])}
+    enable_refs = {form_key(x) for x in spec.get('enableReferences', {}).get('refs', [])}
+    problems.extend(f'{show(k)} is in disableReferences and enableReferences both' for k in sorted(disable_refs & enable_refs))
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
     winners, actors, parents, spells, races, weapons, lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
@@ -371,6 +373,14 @@ def main():
             if why:
                 problems.append(f'{label}: not {src.name}\'s reference Initially Disabled ({why})')
             checked['disableReferences references'] += 1
+        elif t == 'REFR' and k in enable_refs:
+            src, flags, data, cell = ref
+            why = ck.compare(t, src, flags, data, out, q.data())
+            if q.flags & ~COMPRESSED != (flags & ~DISABLED) & ~COMPRESSED or cell != where:
+                why = f'flags {flags:#x} -> {q.flags:#x}, cell {cell} -> {where}'
+            if why:
+                problems.append(f'{label}: not {src.name}\'s reference with Initially Disabled cleared ({why})')
+            checked['enableReferences references'] += 1
         elif t in patch.PATCHED_TYPES or allowed((t, 'self' if k[0] == me else k[0], k[1] if k[0] != me else edid(q) or f'{k[1]:06X}'), q):
             checked[f'{t} added or changed by the spec'] += 1
         else:
@@ -416,6 +426,10 @@ def main():
         flags = final.flags if final is not None else winners.get(('REFR', k), (None, 0))[1]
         if not flags & (DISABLED | DELETED):
             problems.append(f'disableReferences {show(k)} is not Initially Disabled')
+    for k in enable_refs:
+        final = ro.get(('REFR', k))
+        if final is None or final.flags & DISABLED:
+            problems.append(f'enableReferences {show(k)} is not enabled in the output')
 
     # proficiency-ids.json carries the full slot the server and the game give the plugin
     ids = json.load(open(os.path.join(a.out, 'proficiency-ids.json'), encoding='utf-8'))

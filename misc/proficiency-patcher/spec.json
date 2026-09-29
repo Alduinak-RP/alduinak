@@ -7188,6 +7188,12 @@
    "001F23:AlduinakAdditions.esp"
   ]
  },
+ "enableReferences": {
+  "comment": "References a Creation Kit cleanup pass switched off by mistake, turned back on: the hallway piece ImpLHall2Way02 of Gallows Rock (GallowsRock01, at 6400/-6048/512), disabled with the whole cell's rubble in the plugin's own overrides. The plugin's copy loses Initially Disabled every run.",
+  "refs": [
+   "04167C:Skyrim.esm"
+  ]
+ },
  "overrides": {
   "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). Runs in the hotfix list too.",
   "misc": [

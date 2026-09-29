@@ -107,9 +107,10 @@ def spec_overrides(spec):
     # Overrides of other types the spec names: placed references by form key, enchantments, leveled lists, races and head parts by editor id
     s = json.load(open(spec, encoding='utf-8'))
     refs = {('REFR', p['ref'].split(':')[1].lower(), int(p['ref'].split(':')[0], 16)) for p in s.get('placements', [])}
-    # References the spec disables: the same form-key spelling, plus the plugin's own, which are changed in place
-    for r in s.get('disableReferences', {}).get('refs', []):
-        refs.add(('REFR', r.split(':', 1)[1].lower(), int(r.split(':', 1)[0], 16)))
+    # References the spec disables or enables again: the same form-key spelling, plus the plugin's own, which are changed in place
+    for section in ('disableReferences', 'enableReferences'):
+        for r in s.get(section, {}).get('refs', []):
+            refs.add(('REFR', r.split(':', 1)[1].lower(), int(r.split(':', 1)[0], 16)))
     enchs = {e['enchantment'].lower() for e in s.get('enchantmentMagnitudes', [])}
     named = {('RACE', r.lower()) for r in s.get('races', {}).get('races', [])} | {('HDPT', p.lower()) for h in s.get('headParts', []) for p in h['parts']}
     named |= {('LVLI', e['list'].lower()) for e in s.get('leveledItems', [])}

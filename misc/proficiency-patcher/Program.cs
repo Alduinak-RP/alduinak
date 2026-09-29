@@ -70,12 +70,12 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors,
+       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors,
        categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
+       Steps.Racial, Steps.Retier, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
        Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
@@ -1352,6 +1352,29 @@ static class Steps
             c.Note($"Disabled reference {name} ({c.EdidOf(rec.Base.FormKey)}) from {contexts[0].ModKey}");
         }
         c.Note($"Disable references: {disabled} newly disabled, {already} already disabled");
+    }
+
+    // ---- references a Creation Kit pass switched off that the owner wants back ----------------------------------
+    //
+    // The mirror of DisableReferences: the plugin's own override, or a new override of the winner, loses
+    // Initially Disabled on every run. The record is otherwise the winner's, so the piece comes back as it was.
+    public static void EnableReferences(PatchContext c)
+    {
+        if (c.Spec["enableReferences"] is not JsonObject spec) return;
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        int already = 0, enabled = 0;
+        foreach (var name in Edids(c, spec["refs"]))
+        {
+            var key = FormKey.Factory(name);
+            var contexts = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(key).ToList();
+            if (contexts.Count == 0) { c.Error($"enable reference: {name} not found"); continue; }
+            if ((contexts[0].Record.MajorRecordFlagsRaw & InitiallyDisabled) == 0) { already++; continue; }
+            var rec = contexts[0].GetOrAddAsOverride(c.Mod);
+            rec.MajorRecordFlagsRaw &= ~InitiallyDisabled;
+            enabled++;
+            c.Note($"Enabled reference {name} ({c.EdidOf(rec.Base.FormKey)}) from {contexts[0].ModKey}");
+        }
+        c.Note($"Enable references: {enabled} newly enabled, {already} already enabled");
     }
 
     const int InitiallyDisabled = 0x800;
