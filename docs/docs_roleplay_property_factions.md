@@ -417,6 +417,12 @@ The Personal Menu's Faction tab holds up to five tabs of its own:
   a member opens what the viewer may do to them.
 - **Regency** appears only for a leader and is described under Rules.
 
+Staff add and remove members from the Admin tab's Players list: with an online
+character selected, its Faction box narrows Province, then Type, then Faction
+(each sorted by name) and then lists that faction's positions in ladder order,
+the lowest preselected, next to **Add** and **Remove**
+(`skymp5-front/src/features/adminPanel/factionAssign.tsx`).
+
 ### Editing factions (dashboard and Server Manager)
 
 One editor, `skymp5-backend/public/dashboard/faction-editor.js`, runs in the

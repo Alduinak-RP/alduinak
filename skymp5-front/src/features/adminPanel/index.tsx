@@ -5,6 +5,7 @@ import { copyText } from '../../utils/copyText';
 import MasteryMenu, { MasteryData } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
 import FactionTab, { FactionMenuData } from './factionTab';
+import FactionAssign from './factionAssign';
 import Dropdown from './dropdown';
 import Jobs, { AdminPos, JobRow } from './jobs';
 import WeatherTab, { WeatherMenuData } from './weatherTab';
@@ -385,7 +386,6 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const [zoneForm, setZoneForm] = useState<ZoneForm>(EMPTY_ZONE_FORM);
   const [grantHours, setGrantHours] = useState('1');
   const [attrs, setAttrs] = useState<Record<string, string>>(attrForm(null));
-  const [factionRank, setFactionRank] = useState('');
   const [petKind, setPetKind] = useState<PetKind>('horse');
   const [petBase, setPetBase] = useState('');
   const [petName, setPetName] = useState('');
@@ -489,9 +489,6 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
   // Filled from the selected row, so the fields show what the character carries now
   const canSetAttrs = !!ev.attrSet && actionsEnabled && ATTR_FIELDS.every((f) => isAttrAmount(attrs[f.key]));
-  const factionDetail = data.faction?.detail || null;
-  const factionRankOptions = factionDetail?.ranks || [];
-  const pickedFactionRank = factionRankOptions.some((r) => r.slug === factionRank) ? factionRank : factionRankOptions[factionRankOptions.length - 1]?.slug || '';
 
   const locFilter = locSearch.trim().toLowerCase();
   const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
@@ -746,41 +743,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               </div>
             ) : null}
             {selectedPlayer && caps.factions !== false ? (
-              <div className="admin-panel__mastery">
-                <div className="admin-panel__mastery-row">
-                  <span className="admin-panel__mastery-who">Faction</span>
-                  <Dropdown
-                    className="admin-panel__faction-pick"
-                    value={factionDetail?.id || ''}
-                    placeholder={data.faction?.factions?.length ? 'Choose a faction' : 'Loading factions'}
-                    disabled={!data.faction?.factions?.length}
-                    options={(data.faction?.factions || []).map((f) => ({ value: f.id, label: f.name }))}
-                    onChange={(id) => ev.factionMenu && send(ev.factionMenu, id)}
-                  />
-                  <Dropdown
-                    className="admin-panel__faction-pick"
-                    value={pickedFactionRank}
-                    disabled={!factionDetail}
-                    options={factionRankOptions.map((r) => ({ value: r.slug, label: r.name }))}
-                    onChange={setFactionRank}
-                  />
-                  <Button
-                    text="Add"
-                    width={72}
-                    height={30}
-                    disabled={!actionsEnabled || !factionDetail || !pickedFactionRank}
-                    onClick={() => selectedPlayer.a && send(ev.faction, JSON.stringify({ action: 'adminAdd', factionId: factionDetail?.id, rank: pickedFactionRank, target: parseInt(selectedPlayer.a, 16) }))}
-                  />
-                  <Button
-                    text="Remove"
-                    width={88}
-                    height={30}
-                    disabled={!actionsEnabled || !factionDetail}
-                    onClick={() => selectedPlayer.a && send(ev.faction, JSON.stringify({ action: 'adminRemove', factionId: factionDetail?.id, target: parseInt(selectedPlayer.a, 16) }))}
-                  />
-                </div>
-                <span className="admin-panel__hint">Choose a faction and role, then add or remove the selected online character.</span>
-              </div>
+              <FactionAssign faction={data.faction} ev={ev} send={send} target={selectedPlayer.a} enabled={actionsEnabled} />
             ) : null}
             <div className="admin-panel__filters">
               <input

@@ -91,7 +91,7 @@ const TYPE_TABS: Array<{ id: FactionType; label: string }> = [
   { id: 'guild', label: 'Guild' },
 ];
 
-const TYPE_LABEL: Record<FactionType, string> = { hold: 'Hold', military: 'Military', guild: 'Guild' };
+export const TYPE_LABEL: Record<FactionType, string> = { hold: 'Hold', military: 'Military', guild: 'Guild' };
 
 interface MenuState {
   x: number;

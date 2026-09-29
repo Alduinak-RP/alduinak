@@ -516,6 +516,20 @@ $admin-row-gutter: 16px;
   // Faction tab: picker, name and rank badges, per-member controls
   &__faction-pick {
     flex: 0 0 240px;
+
+    // Players tab: province and type are short, the faction name takes the room left
+    &--short {
+      flex: 0 0 116px;
+    }
+
+    &--wide {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    &--rank {
+      flex: 0 0 150px;
+    }
   }
 
   &__faction-name {
