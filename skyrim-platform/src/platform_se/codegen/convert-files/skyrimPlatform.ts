@@ -1650,6 +1650,8 @@ export declare function setCollision(refrFormId: number, collision: boolean): vo
 
 export declare function mountActor(rider: Actor | number, mount: Actor | number): boolean;
 
+export declare function markServerCopy(refrFormId: number, serverCopy: boolean): void;
+
 // Based on Form.pex
 export declare class Form extends PapyrusObject {
   static from(papyrusObject: PapyrusObject | null): Form | null

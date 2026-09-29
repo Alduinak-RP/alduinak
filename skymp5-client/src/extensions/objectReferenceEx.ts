@@ -1,3 +1,4 @@
+import * as sp from "skyrimPlatform";
 import { Flora, Form, FormType, ObjectReference } from "skyrimPlatform";
 import { NiPoint3 } from "../sync/movement";
 import { FormTypeEx } from "./formTypeEx";
@@ -72,7 +73,13 @@ export class ObjectReferenceEx {
       || ObjectReferenceEx.isUntouchable(base);
   }
 
-  // Placed havok objects are keyframed natively (SkyrimPlatform StaticFreeze.cpp), server copies by SpawnProcess
+  // SkyrimPlatform keeps runtime items dynamic, as engine drops must stay, unless they are the client's copies of server items
+  static markServerCopy(refrId: number, serverCopy: boolean): void {
+    const native = (sp as any).markServerCopy;
+    if (typeof native === "function") native(refrId, serverCopy);
+  }
+
+  // Havok objects are keyframed natively (SkyrimPlatform StaticFreeze.cpp), server copies by SpawnProcess too
   static dealWithRef(self: ObjectReference, base: Form): void {
     self.blockActivation(ObjectReferenceEx.wantsActivationBlock(base));
 

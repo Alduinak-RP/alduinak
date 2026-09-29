@@ -10,6 +10,7 @@ import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState,
 import { Movement, NiPoint3 } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
+import { FormTypeEx } from "../extensions/formTypeEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
@@ -242,6 +243,7 @@ export class FormView {
 
         if (refr !== null) {
           SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refr.getFormID(), 1);
+          if (FormTypeEx.isItem(base.getType())) ObjectReferenceEx.markServerCopy(refr.getFormID(), true);
         }
 
         // TODO: reset all states?
@@ -332,6 +334,7 @@ export class FormView {
           });
         }
         SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refrId, -1);
+        ObjectReferenceEx.markServerCopy(refrId, false);
       }
     })
 

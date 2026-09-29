@@ -6,6 +6,7 @@ namespace ObjectReferenceApi {
 
 Napi::Value SetCollision(const Napi::CallbackInfo& info);
 Napi::Value MountActor(const Napi::CallbackInfo& info);
+Napi::Value MarkServerCopy(const Napi::CallbackInfo& info);
 
 inline void Register(Napi::Env env, Napi::Object& exports)
 {
@@ -15,5 +16,8 @@ inline void Register(Napi::Env env, Napi::Object& exports)
   exports.Set(
     "mountActor",
     Napi::Function::New(env, NapiHelper::WrapCppExceptions(MountActor)));
+  exports.Set(
+    "markServerCopy",
+    Napi::Function::New(env, NapiHelper::WrapCppExceptions(MarkServerCopy)));
 }
 }

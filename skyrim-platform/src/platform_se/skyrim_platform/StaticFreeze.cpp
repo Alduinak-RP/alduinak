@@ -54,6 +54,7 @@ struct CellStats
 struct Requests
 {
   std::vector<std::pair<RE::FormID, bool>> refs;
+  std::vector<std::pair<RE::FormID, bool>> serverCopies;
   std::vector<RE::FormID> cells;
   bool sweepAll = false;
   bool reset = false;
@@ -65,6 +66,8 @@ Requests g_requests;
 std::unordered_map<RE::FormID, Pending> g_pending;
 // Refs keyframed since their 3D last loaded, so a later event re-arms their follow-ups
 std::unordered_set<RE::FormID> g_frozen;
+// The client's copies of server items, which SpawnProcess keyframes as it enables them
+std::unordered_set<RE::FormID> g_serverCopies;
 std::unordered_map<RE::FormID, CellStats> g_cellStats;
 std::unordered_set<RE::FormID> g_loggedCells;
 
@@ -177,8 +180,9 @@ std::optional<Result> KeptReason(RE::TESObjectREFR* ref)
   if (base->Is(RE::FormType::Ammo)) {
     return Result::kAmmo;
   }
-  // Engine drops like a disarmed weapon stay pickable; SpawnProcess freezes server copies
-  if (ref->IsDynamicForm() && IsItem(base->GetFormType())) {
+  // Engine drops like a disarmed weapon stay pickable
+  if (ref->IsDynamicForm() && IsItem(base->GetFormType()) &&
+      !g_serverCopies.contains(ref->GetFormID())) {
     return Result::kRuntimeItem;
   }
   return std::nullopt;
@@ -291,7 +295,9 @@ bool Look(RE::FormID id, Pending& pending, Clock::time_point now)
   Record(ref, frozen ? Result::kFrozen : Result::kNoHavok, pending.fromSweep,
          now);
   // An event may rebuild the havok of a ref frozen earlier
-  if (!frozen && (pending.fromSweep || !g_frozen.contains(id))) {
+  const bool frozenEarlier =
+    g_frozen.contains(id) || g_serverCopies.contains(id);
+  if (!frozen && (pending.fromSweep || !frozenEarlier)) {
     return false;
   }
   g_frozen.insert(id);
@@ -310,7 +316,15 @@ void TakeRequests(Clock::time_point now)
   if (requests.reset) {
     g_pending.clear();
     g_frozen.clear();
+    g_serverCopies.clear();
     g_cellStats.clear();
+  }
+  for (const auto& [id, serverCopy] : requests.serverCopies) {
+    if (serverCopy) {
+      g_serverCopies.insert(id);
+    } else {
+      g_serverCopies.erase(id);
+    }
   }
   for (const auto& [id, loaded] : requests.refs) {
     // New 3D brings new havok bodies, so the ref starts over
@@ -387,6 +401,11 @@ void StaticFreeze::HandleSkseMessage(SKSE::MessagingInterface::Message* msg)
       Request([](Requests& r) { r.sweepAll = true; });
       break;
   }
+}
+
+void StaticFreeze::MarkServerCopy(RE::FormID id, bool serverCopy)
+{
+  Request([&](Requests& r) { r.serverCopies.emplace_back(id, serverCopy); });
 }
 
 void StaticFreeze::Update()
