@@ -19,10 +19,10 @@ interface Realm {
 }
 
 export const REALMS: Record<RealmId, Realm> = {
-  // The COC marker of the Hall of Valor (Skyrim.esm CELL 95C44, REFR 95F39); the hall's doors only lead to the Sovngarde world
+  // Outdoors near the vanilla Sovngarde start (Skyrim.esm WRLD 2EE41, COC marker REFR 326A4 heading 28.65); the hall's doors only lead back to this world
   sovngarde: {
     label: "Sovngarde",
-    arrival: { cellOrWorldDesc: "95c44:Skyrim.esm", pos: [-590.44, -131.84, -357.73], rot: [0, 0, 359] },
+    arrival: { cellOrWorldDesc: "2ee41:Skyrim.esm", pos: [59253, 57280, 11473], rot: [0, 0, 28.65] },
     // The Sovngarde world, the vanilla hall and the plugin's duplicate hall
     spaces: new Set(["2ee41:Skyrim.esm", "95c44:Skyrim.esm", "815:AlduinakAdditions.esp"]),
   },
