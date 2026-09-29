@@ -15,7 +15,7 @@ online on average, 48 at peak), `C:\logs\2026-09\gameserver-*.log`,
 |---|---|---|---|
 | `isDead` read on every activated door, chair or container | 49% of log lines, 46% of bytes | about 400 MB of log a day | Fixed (C27) |
 | No index on `changeForms.formDesc`: every save scans the whole collection | 2.4 to 3.2 ms per saved form | saver falls behind (see below) | Owner: create the index |
-| `ff_afterlife` not registered in the live gamemode | 1.4% of lines | one 6-line error per login | Owner: register the property |
+| `ff_afterlife` not registered in the live gamemode | 1.4% of lines | one 6-line error per login | Registered in the test gamemode; live gets it with Migrate server |
 | Papyrus natives the server lacks, skipped scripts, "explosion is not supported" | 12% of lines | about 1.2M lines a day | Recommendation (C++) |
 | Login dumps the profile object over 31 lines | 7% of lines | about 700k lines a day | Recommendation (TS) |
 | Logging is synchronous on the game thread | all lines | 60 to 130 lines a second | Recommendation (C++) |
@@ -170,10 +170,9 @@ day) at 1000 players. Without the fix it would have been about twice that.
 
 Recommendations, largest first:
 
-1. Owner, live file: add
-   `try { mp.makeProperty('ff_afterlife', { isVisibleByOwner: true, isVisibleByNeighbors: true, updateOwner: '', updateNeighbor: '' }) } catch (err) { console.error('[afterlife] makeProperty ff_afterlife: ' + (err && err.message)) }`
-   to `build/dist/server/gamemode_extensions/50_properties.js`, then Build
-   gamemode only. This also makes the realm look reach clients.
+1. Done on the test server: `build/dist/testserver/gamemode_extensions/50_properties.js`
+   registers `ff_afterlife` (Build gamemode only there). Migrate server copies the part
+   to live. This also makes the realm look reach clients.
 2. C++: log each missing Papyrus native, each skipped script and the explosion
    warning once per name per boot instead of on every activation (a static set in
    the VM and in `PlaceAtMe`). About 13k of the 108k lines measured.
