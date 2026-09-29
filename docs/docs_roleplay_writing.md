@@ -41,15 +41,20 @@ never by form id.
 | `AldWritingBook` | Book | `dunWhiteRiverWatchBlankBook` | `AldWritable` |
 | `AldSealingWax` (MISC) | Sealing Wax | `GlazedCandles01` | |
 
-Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or, from
-1 Leather, 1 Leather Strips and 1 Firewood, at the woodcrafting bench; the
+Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or at
+the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`) with
+leather and strips; a Novice woodworker makes the paper from firewood; the
 Sealing Wax is Novice blacksmith work:
 
 | Output | Bench | Ingredients |
 |---|---|---|
-| Blank Parchment | tanning rack | 1 Leather Strips |
-| Blank Journal | tanning rack | 1 Leather, 2 Leather Strips |
-| Blank Book | tanning rack | 2 Leather, 4 Leather Strips |
+| Roll of Paper (4) | woodcrafting bench | 1 Firewood (woodworker Novice) |
+| Blank Parchment | tanning rack | 1 Roll of Paper, 1 Leather Strips |
+| Blank Parchment | woodcrafting bench | 1 Roll of Paper, 1 Leather Strips |
+| Blank Journal | tanning rack | 2 Roll of Paper, 1 Leather, 2 Leather Strips |
+| Blank Journal | woodcrafting bench | 2 Roll of Paper, 1 Leather, 1 Leather Strips |
+| Blank Book | tanning rack | 4 Roll of Paper, 2 Leather, 4 Leather Strips |
+| Blank Book | woodcrafting bench | 4 Roll of Paper, 1 Leather, 1 Leather Strips |
 | Sealing Wax | smelter | 1 Beehive Husk, 1 Charcoal |
 
 No quill or inkwell is needed. Only the server creates the written items

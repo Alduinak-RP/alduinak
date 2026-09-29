@@ -2830,6 +2830,18 @@
     "items": {
      "IWIronKatana": 1
     }
+   },
+   {
+    "edid": "AldRecipeWood_PaperRoll",
+    "formId": "0x0412BB",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "PaperRoll",
+    "count": 4,
+    "profession": "woodworker",
+    "tier": "Novice",
+    "items": {
+     "Firewood01": 1
+    }
    }
   ]
  },
@@ -7183,6 +7195,7 @@
     "profession": "tailor",
     "tier": "Anyone",
     "items": {
+     "PaperRoll": 1,
      "LeatherStrips": 1
     }
    },
@@ -7194,6 +7207,7 @@
     "profession": "tailor",
     "tier": "Anyone",
     "items": {
+     "PaperRoll": 2,
      "Leather01": 1,
      "LeatherStrips": 2
     }
@@ -7206,6 +7220,7 @@
     "profession": "tailor",
     "tier": "Anyone",
     "items": {
+     "PaperRoll": 4,
      "Leather01": 2,
      "LeatherStrips": 4
     }
@@ -7218,9 +7233,8 @@
     "profession": "woodworker",
     "tier": "Anyone",
     "items": {
-     "Leather01": 1,
-     "LeatherStrips": 1,
-     "Firewood01": 1
+     "PaperRoll": 1,
+     "LeatherStrips": 1
     }
    },
    {
@@ -7231,9 +7245,9 @@
     "profession": "woodworker",
     "tier": "Anyone",
     "items": {
+     "PaperRoll": 2,
      "Leather01": 1,
-     "LeatherStrips": 1,
-     "Firewood01": 1
+     "LeatherStrips": 1
     }
    },
    {
@@ -7244,9 +7258,9 @@
     "profession": "woodworker",
     "tier": "Anyone",
     "items": {
+     "PaperRoll": 4,
      "Leather01": 1,
-     "LeatherStrips": 1,
-     "Firewood01": 1
+     "LeatherStrips": 1
     }
    },
    {
