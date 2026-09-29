@@ -54,6 +54,10 @@ const MAX_TEMPLATE_DEPTH = 8;
 const NEVER_READY = -1;
 // A corpse is removed this long after death, whatever its zone does. Overridable via "npcCorpseSeconds".
 const DEFAULT_CORPSE_SECONDS = 300;
+// Corpse position log: a body that moved this far between polls, or lies this far under the navmesh, is logged at most every CORPSE_LOG_MS
+const CORPSE_JUMP_UNITS = 64;
+const CORPSE_SINK_UNITS = 32;
+const CORPSE_LOG_MS = 10000;
 
 interface ZoneNpc {
   baseDesc: string;
@@ -179,6 +183,24 @@ const view = (data: Uint8Array): DataView => new DataView(data.buffer, data.byte
 
 const distance = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
+// Navmesh height under (x, y): of the triangles covering the point, the one whose height is nearest z; null off the mesh
+const navmeshZAt = (spots: Spots, x: number, y: number, z: number): number | null => {
+  const c = spots.corners;
+  let best: number | null = null;
+  for (let i = 0; i + 8 < c.length; i += 9) {
+    const x0 = c[i], y0 = c[i + 1], x1 = c[i + 3], y1 = c[i + 4], x2 = c[i + 6], y2 = c[i + 7];
+    const d = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
+    if (d === 0) continue;
+    const a = ((y1 - y2) * (x - x2) + (x2 - x1) * (y - y2)) / d;
+    const b = ((y2 - y0) * (x - x2) + (x0 - x2) * (y - y2)) / d;
+    const g = 1 - a - b;
+    if (a < -0.001 || b < -0.001 || g < -0.001) continue;
+    const h = a * c[i + 2] + b * c[i + 5] + g * c[i + 8];
+    if (best === null || Math.abs(h - z) < Math.abs(best - z)) best = h;
+  }
+  return best;
+};
+
 const isHexId = (text: string): boolean => /^0x[0-9a-f]{1,8}$/i.test(text) || /^[0-9a-f]{1,8}$/i.test(text);
 
 // ID forms: "1a26f:Skyrim.esm" desc, "0x0001A26F" / "0001A26F" load-order id, anything else an editor id
@@ -203,6 +225,8 @@ export class NpcSpawnSystem implements System {
   // Dead NPC actorId -> epoch ms when its corpse is destroyed
   private corpses = new Map<number, number>();
   private corpseMs = DEFAULT_CORPSE_SECONDS * 1000;
+  // Dead zone NPC id -> last polled position and when it was last logged
+  private corpsePos = new Map<number, { pos: number[]; loggedAt: number }>();
   // Navmesh spots by area for the whole run, since plugins only change with a restart
   private spotCache = new Map<string, Spots | null>();
   private scanning = new Set<string>();
@@ -488,7 +512,10 @@ export class NpcSpawnSystem implements System {
     for (const zone of this.zones) {
       this.updateInside(mp, zone, playerIds);
       const occupied = zone.inside.size > 0;
-      if (zone.spawned.length) this.checkDeaths(mp, zone, now);
+      if (zone.spawned.length) {
+        this.checkDeaths(mp, zone, now);
+        this.watchCorpses(mp, zone, now);
+      }
       if (occupied) {
         zone.emptySince = 0;
         zone.holdSince = 0;
@@ -742,6 +769,25 @@ export class NpcSpawnSystem implements System {
     }
   }
 
+  // Dead zone NPCs that jump between polls or sink under the navmesh are logged, the evidence for the corpse sync reports
+  private watchCorpses(mp: Mp, zone: Zone, now: number): void {
+    for (const entry of zone.spawned) {
+      if (!entry.diedAt || !entry.id) continue;
+      let pos: number[];
+      try { pos = mp.getActorPos(entry.id); } catch { continue; }
+      const last = this.corpsePos.get(entry.id);
+      const seen = { pos, loggedAt: last?.loggedAt ?? 0 };
+      this.corpsePos.set(entry.id, seen);
+      const jump = last ? distance(last.pos, pos) : 0;
+      const ground = zone.spots ? navmeshZAt(zone.spots, pos[0], pos[1], pos[2]) : null;
+      const sunk = ground === null ? 0 : ground - pos[2];
+      if ((jump < CORPSE_JUMP_UNITS && sunk < CORPSE_SINK_UNITS) || now - seen.loggedAt < CORPSE_LOG_MS) continue;
+      seen.loggedAt = now;
+      const what = [jump >= CORPSE_JUMP_UNITS ? `moved ${Math.round(jump)} units` : "", sunk >= CORPSE_SINK_UNITS ? `lies ${Math.round(sunk)} units under the navmesh` : ""].filter(Boolean).join(", ");
+      this.log(`NpcSpawnSystem: corpse ${hex(entry.id)} of '${zone.name}' ${what}, now at ${pos.map(Math.round).join(",")}${ground === null ? "" : ` (navmesh z ${Math.round(ground)})`}, dead ${Math.round((now - entry.diedAt) / 1000)} s`);
+    }
+  }
+
   // A corpse is left to its timer unless forced (admin reset); a death the poll has not seen yet starts its timer here
   private removeNpc(mp: Mp, id: number, force = false): void {
     if (!id) return;
@@ -752,6 +798,7 @@ export class NpcSpawnSystem implements System {
     }
     if (!force && this.corpses.has(id)) return;
     this.corpses.delete(id);
+    this.corpsePos.delete(id);
     try { mp.destroyActor(id); } catch { }
   }
 
@@ -760,6 +807,7 @@ export class NpcSpawnSystem implements System {
     for (const [id, at] of Array.from(this.corpses)) {
       if (at > now) continue;
       this.corpses.delete(id);
+      this.corpsePos.delete(id);
       try { mp.destroyActor(id); } catch { }
       // The slot keeps its entry and cooldown; id 0 marks its corpse as gone
       for (const zone of this.zones) {
@@ -813,16 +861,30 @@ export class NpcSpawnSystem implements System {
     this.leftovers = Array.isArray(ids) ? ids.map((id) => Number(id) >>> 0).filter((id) => id > 0) : [];
   }
 
-  // Saved forms load in attachSaveStorage after every system's init; NPCs this run placed are never touched
+  // Saved forms load in attachSaveStorage after every system's init; NPCs this run placed are never touched.
+  // Besides the spawns file, every persisted ff form carrying the spawner tag is a leftover: zone NPCs of earlier runs whose file entry was lost stayed as permanent corpses
   private removeLeftovers(): void {
     const current = new Set(this.zones.flatMap((z) => z.spawned.map((e) => e.id)));
-    const ids = this.leftovers.filter((id) => !current.has(id));
+    const tagged = this.taggedForms();
+    const ids = Array.from(new Set([...this.leftovers, ...tagged])).filter((id) => !current.has(id));
     this.leftovers = [];
     if (ids.length) {
       const removed = destroyLeftovers(this.mp, ids, (id) => !!this.mp.get(id, TAG_PROP));
-      this.log(`NpcSpawnSystem: removed ${removed}/${ids.length} leftover npc(s) from the previous run`);
+      this.log(`NpcSpawnSystem: removed ${removed}/${ids.length} leftover npc(s) from previous runs (${tagged.length} found by their tag)`);
     }
     this.saveSpawns();
+  }
+
+  private taggedForms(): number[] {
+    const out: number[] = [];
+    try {
+      for (const id of Array.from(new Uint32Array(this.mp.getAllForms(0xff)))) {
+        try { if (this.mp.get(id, TAG_PROP)) out.push(id >>> 0); } catch { /* unloaded form */ }
+      }
+    } catch (e) {
+      this.log(`NpcSpawnSystem: leftover tag scan failed: ${e}`);
+    }
+    return out;
   }
 
   private saveSpawns(): void {

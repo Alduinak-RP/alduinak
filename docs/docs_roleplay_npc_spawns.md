@@ -191,7 +191,12 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   counts as dead. Once the slot's `Respawn` has elapsed and a player is inside,
   a new actor is placed at the slot; the corpse goes when its own timer ends.
 - With `Despawn: 0` the NPCs stay until the server restarts; leftovers from a
-  crash or a restart are destroyed on boot through `zone-spawns.json`.
+  crash or a restart are destroyed on boot through `zone-spawns.json` and
+  through the `private.npcSpawner` tag every placed NPC carries, which catches
+  the corpses of earlier runs whose file entry was lost.
+- A dead zone NPC whose body moved 64 or more units between two polls, or lies
+  32 or more units under the navmesh, is logged (at most every 10 s per body)
+  as evidence for the corpse sync reports.
 - A failed spawn (`PlaceAtMe` error) puts the slot on a 30 second cooldown
   instead of retrying every poll.
 
@@ -442,7 +447,8 @@ Everything goes through the server log and the manager console, prefixed
 - `'<Name>' spawned 4/4 npc(s) (navmesh): 23a99:Skyrim.esm x4`, `(rings)` for `Spread: 0` or a zone without navmesh
 - `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456)`
 - `'<Name>' despawned 4 npc(s)`
-- `removed a/b leftover npc(s) from the previous run` on boot, once the world DB has loaded (the ids come from `zone-spawns.json`)
+- `removed a/b leftover npc(s) from previous runs (c found by their tag)` on boot, once the world DB has loaded (the ids come from `zone-spawns.json` and from a scan of every persisted `ff` form for the spawner tag)
+- `corpse ff000123 of '<Name>' moved 200 units, now at x,y,z (navmesh z n), dead 40 s` / `lies 50 units under the navmesh` for a dead NPC whose body jumped or sank
 - skipped entries, unreadable plugins and spawn failures, each naming the zone
 
 ## Deployment
