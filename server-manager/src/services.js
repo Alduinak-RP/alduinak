@@ -8,6 +8,7 @@ const config = require('./config')
 const modsync = require('./modsync')
 const playtime = require('./playtime')
 const managerLock = require('./managerLock')
+const formDescIndex = require('./formDescIndex')
 const { nssm, nativeModuleLocked } = require('./serviceCheck')
 
 // Host callbacks: onRotated(file) after a log is archived, status(text, profileKey) for warnings
@@ -78,6 +79,16 @@ async function isActive(key) {
   return /^SERVICE_/.test(status) && status !== 'SERVICE_STOPPED'
 }
 
+// The profile's changeForms formDesc index, ensured before its game starts; one line, never a refusal
+async function ensureIndex(profile) {
+  let settings
+  try { ({ settings } = modsync.readSettingsFile(profile.serverSettings)) }
+  catch (err) { return formDescIndex.notEnsured(profile.label, `${profile.serverSettings} cannot be read (${err.code || err.message})`) }
+  try { return (await formDescIndex.ensureFormDescIndex(settings)).line }
+  catch (err) { return formDescIndex.notEnsured(settings && settings.databaseName, err.message) }
+}
+
+// { ok, text, notes }: notes are lines logged ahead of the result
 async function act(svc, verb) {
   if (verb === 'stop') {
     for (const dep of MONGO_USERS[svc.key] || []) {
@@ -85,21 +96,26 @@ async function act(svc, verb) {
     }
   }
   const profile = profileOf(svc)
-  if (verb === 'start' && profile && svc.key === profile.services.game) {
+  const isGame = !!profile && svc.key === profile.services.game
+  if (verb === 'start' && isGame) {
     const pending = purgePending(profile)
     if (pending) return { ok: false, text: pending }
   }
   const name = await serviceName(svc)
+  const notes = []
   // Archive logs while the service is stopped (nssm frees the file handle),
   // so a restart (stop then start) always begins a fresh log file.
   if (verb === 'start' && await nssm('status', name) === 'SERVICE_STOPPED') {
     await rotateServiceLogs(svc)
+    if (isGame) notes.push(await ensureIndex(profile))
   }
   await nssm(verb, name)
   const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
-  if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
-  return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
+  if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started', notes }
+  return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})`, notes }
 }
+
+const stepLines = (svc, r) => [...(r.notes || []), `${svc.label}: ${r.text}`]
 
 // ── Log rotation: datestamp on restart, archived into <dir>\YYYY-MM ────────────
 
@@ -210,13 +226,14 @@ async function doServiceAction(key, action) {
   const svc = serviceByKey[key]
   if (!svc) return { ok: false, error: `unknown service ${key}` }
   const steps = []
+  const notes = []
   let ok = true
-  const step = async verb => { const r = await act(svc, verb); ok = ok && r.ok; steps.push(`${svc.label}: ${r.text}`); return r.ok }
+  const step = async verb => { const r = await act(svc, verb); ok = ok && r.ok; notes.push(...(r.notes || [])); steps.push(...stepLines(svc, r)); return r.ok }
   if (action === 'stop') await step('stop')
   else if (action === 'start') await step('start')
   else if (action === 'restart') { if (await step('stop')) await step('start') }
   else return { ok: false, error: `unknown action ${action}` }
-  return { ok, steps, status: await statusAll() }
+  return { ok, steps, notes, status: await statusAll() }
 }
 
 // A scheduled start, stop or restart of a profile's game under the shared busy lock; busy is set when another task holds it
@@ -230,7 +247,7 @@ async function lockedServiceAction(source, profile, verb) {
   if (!lock.ok) return { ok: false, busy: true, error: `another task is running: ${managerLock.describe(lock.holder)}` }
   try {
     const r = await doServiceAction(profile.services.game, verb)
-    return r.ok ? { ok: true } : { ok: false, error: (r.steps || []).join('; ') || r.error || `${verb} failed` }
+    return r.ok ? { ok: true, detail: r.notes.join('; ') || undefined } : { ok: false, error: (r.steps || []).join('; ') || r.error || `${verb} failed` }
   } finally { lock.release() }
 }
 
@@ -244,7 +261,7 @@ async function doServicesAction(action, group) {
   let ok = true
   const step = async (s, verb) => {
     if (!/^SERVICE_/.test(status[s.key] || '')) { steps.push(`${s.label}: not installed, skipped`); return }
-    const r = await act(s, verb); ok = ok && r.ok; steps.push(`${s.label}: ${r.text}`)
+    const r = await act(s, verb); ok = ok && r.ok; steps.push(...stepLines(s, r))
   }
   const doStop  = async () => { for (const s of [...list].reverse()) await step(s, 'stop') }
   const doStart = async () => { for (const s of list)                await step(s, 'start') }
