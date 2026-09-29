@@ -2994,10 +2994,21 @@
     "MCERecipeClothesMinerClothes"
    ],
    "Adept": [
-    "MCERecipeClothesFineClothes01",
-    "MCERecipeClothesFineClothes01Variant",
-    "MCERecipeClothesFineClothes02",
-    "MCERecipeClothesFineClothes02Variant",
+    "MCERecipeClothesRobesMageNovice",
+    "MCERecipeClothesRobesMageApprentice",
+    "MCERecipeClothesRobesMageAdept",
+    "MCERecipeClothesRobesMageExpert",
+    "MCERecipeClothesRobesMageMaster",
+    "MCERecipeClothesRobesMageNoviceHood",
+    "MCERecipeClothesRobesMageApprenticeHood",
+    "MCERecipeClothesRobesMageAdeptHood",
+    "MCERecipeClothesCollegeBootsApprenticeVariant1",
+    "MCERecipeClothesCollegeBootsCommonVariant1",
+    "MCERecipeClothesMGBoots",
+    "MCERecipeClothesMGBootsArchmage",
+    "MCERecipeClothesMGHoodArchmage",
+    "MCERecipeClothesMGRobesArchmage",
+    "MCERecipeClothesMGRobesArchmage1Hooded",
     "0RecipeArmorKhajiitBoots_Clothes",
     "0RecipeArmorKhajiitBootsDark_Clothes",
     "0RecipeArmorKhajiitBootsWhite_Clothes",
@@ -3037,7 +3048,10 @@
     "0RecipeArmorKhajiitRobesWater_Clothes"
    ],
    "Expert": [
-    "MCERecipeClothesRobesMageApprenticeHood",
+    "MCERecipeClothesFineClothes01",
+    "MCERecipeClothesFineClothes01Variant",
+    "MCERecipeClothesFineClothes02",
+    "MCERecipeClothesFineClothes02Variant",
     "MCERecipeClothesJarl_var1",
     "MCERecipeClothesJarl03_var1",
     "MCERecipeClothesJarl03",
@@ -3505,9 +3519,33 @@
     }
    },
    {
+    "edid": "RecipeArmorevgsmpbasicpouchLarmor",
+    "name": "Tied Linen Pouch (Left)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack"
+   },
+   {
+    "edid": "RecipeArmorevgsmpbasicpouchLDARKarmor",
+    "name": "Tied Linen Pouch (Left)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack"
+   },
+   {
+    "edid": "RecipeArmorevgsmpbasicpouchRarmor",
+    "name": "Tied Linen Pouch (Right)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack"
+   },
+   {
+    "edid": "RecipeArmorevgsmpbasicpouchRDARKarmor",
+    "name": "Tied Linen Pouch (Right)",
+    "tier": "Expert",
+    "bench": "CraftingTanningRack"
+   },
+   {
     "edid": "RecipeArmorevgsmpsturdypouchLarmor",
     "name": "Sturdy Pouch (Left)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3518,7 +3556,7 @@
    {
     "edid": "RecipeArmorevgsmpsturdypouchLDARKarmor",
     "name": "Sturdy Pouch (Left)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3529,7 +3567,7 @@
    {
     "edid": "RecipeArmorevgsmpsturdypouchRarmor",
     "name": "Sturdy Pouch (Right)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3540,7 +3578,7 @@
    {
     "edid": "RecipeArmorevgsmpsturdypouchRDARKarmor",
     "name": "Sturdy Pouch (Right)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3623,7 +3661,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackarmor",
     "name": "Reinforced Backpack",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3634,7 +3672,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackDARKarmor",
     "name": "Reinforced Backpack",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3645,7 +3683,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackLTHarmor",
     "name": "Reinforced Backpack",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3656,7 +3694,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackLIGHTarmor",
     "name": "Reinforced Backpack",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3667,7 +3705,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -3680,7 +3718,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternDARKarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -3693,7 +3731,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternLTHarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -3706,7 +3744,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternLIGHTarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Master",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -6330,7 +6368,7 @@
   {
    "enchantment": "TR_Carry_200_Ench1",
    "effect": "EnchFortifyCarryConstantSelf",
-   "magnitude": 60,
+   "magnitude": 80,
    "armors": [
     "evgsmptraderpackarmor",
     "evgsmptraderpackGRAYarmor",
@@ -6340,7 +6378,7 @@
   {
    "enchantment": "TRLantern_LightEnch1",
    "effect": "EnchFortifyCarryConstantSelf",
-   "magnitude": 60,
+   "magnitude": 80,
    "armors": [
     "evgsmptraderpacklanternarmor",
     "evgsmptraderpacklanternGRAYarmor",
@@ -8369,14 +8407,26 @@
      "MCE_CraftingLoom"
     ],
     "match": [
-     "Embellished",
+     "Embellished Robes",
      "Noble",
-     "Embroidered",
+     "Embroidered Garment",
      "Fine Raiment",
      "FineRaiment",
+     "Fine Clothes",
      "Wedding"
     ],
     "tier": "Expert",
+    "profession": "tailor"
+   },
+   {
+    "name": "Adept backpacks",
+    "benches": [
+     "CraftingTanningRack"
+    ],
+    "match": [
+     "evgsmpreinforcedbackpack"
+    ],
+    "tier": "Adept",
     "profession": "tailor"
    },
    {
