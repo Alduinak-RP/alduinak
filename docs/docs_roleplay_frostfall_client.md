@@ -149,7 +149,14 @@ line to `skyrim-platform.log`.
   `SetSaveDisabled` still line up with them (splicing them out would make
   Settings run Quicksave). The page adds Installed Content and Creations when
   it first starts, so the list is kept at `_alpha` 0 until a pass finds its
-  entry count unchanged; a later change of count trims it again.
+  entry count unchanged; a later change of count trims it again. While
+  unseen the list also takes no input: `bDisableInput` is set at once and a
+  `setInteractive(false)` is queued after the service's own invokes (the
+  page's `startPage`, run by a queued `ShiftTab`, makes the list interactive
+  again), so Enter, Right, a gamepad A or a click in the first frames cannot
+  run Quicksave or open Load on entries the player cannot see.
+  `setInteractive(true)` gives input back once it shows, when the page is in
+  `MAIN_STATE` (in its other states the page keeps the list disabled itself).
 - **Tween menu (Tab)**: no Skills option. `TweenMenu.handleInput` opens a
   direction's menu on its second press (or Enter) once `Selections_mc` sits on
   that direction's frame, and `SkillsInputRect.onMouseDown` opens Skills

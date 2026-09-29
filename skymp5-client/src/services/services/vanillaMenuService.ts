@@ -10,7 +10,10 @@ const journalAt = (member: string) => `${JOURNAL_ROOT}.${member}`;
 const SYSTEM_TAB = 2;
 // The other tabs, the tab key help and the pages behind those tabs
 const HIDDEN_JOURNAL_CLIPS = ["QuestsTab", "StatsTab", "TabButtonHelp", "QuestsFader", "StatsFader"];
-const SYSTEM_LIST_HOLDER = `${JOURNAL_ROOT}.SystemFader.Page_mc.CategoryList_mc`;
+const SYSTEM_PAGE = `${JOURNAL_ROOT}.SystemFader.Page_mc`;
+// SystemPage.MAIN_STATE, the only state in which the page makes its category list interactive
+const SYSTEM_MAIN_STATE = 0;
+const SYSTEM_LIST_HOLDER = `${SYSTEM_PAGE}.CategoryList_mc`;
 // A Shared.CenteredScrollingList, which shows and steps through only the entries its filterer matches
 const SYSTEM_LIST = `${SYSTEM_LIST_HOLDER}.List_mc`;
 // Text keys of the System entries to drop; $MOD MANAGER reads CREATIONS
@@ -156,12 +159,12 @@ export class VanillaMenuService extends ClientListener {
     const tab = ui.getInt(Menu.Journal, journalAt("iCurrentTab"));
     if (!ui.getBool(Menu.Journal, journalAt("bTabsDisabled")) || tab !== SYSTEM_TAB) {
       if (++j.switches > MAX_JOURNAL_SWITCHES) return this.failJournal(j, `stays on tab ${tab}`);
-      // The System page may add entries when it starts, so its list stays unseen until they are trimmed
-      this.setSystemListShown(j, false);
       // ShiftTab ends the open page first, so its bottom bar listeners do not follow onto System
       if (tab !== SYSTEM_TAB) ui.invokeInt(Menu.Journal, journalAt("ShiftTab"), SYSTEM_TAB - tab);
       // With tabs disabled the saved tab argument is ignored and the last tab is used
       ui.invokeBoolA(Menu.Journal, journalAt("RestoreSavedSettings"), [true, true]);
+      // The System page may add entries when it starts, so its list stays unseen until they are trimmed
+      this.setSystemListShown(j, false);
       j.settle = INVOKE_SETTLE_UPDATES;
       return;
     }
@@ -234,10 +237,21 @@ export class VanillaMenuService extends ClientListener {
     j.settle = INVOKE_SETTLE_UPDATES;
   }
 
+  // An unseen list still takes keys and clicks on its untrimmed entries, so it is not interactive until shown
   private setSystemListShown(j: JournalState, shown: boolean): void {
+    const ui = this.sp.Ui;
+    if (!shown) {
+      ui.setBool(Menu.Journal, `${SYSTEM_LIST}.bDisableInput`, true);
+      // Queued after a ShiftTab, whose startPage makes the list interactive again
+      ui.invokeBool(Menu.Journal, `${SYSTEM_LIST}.setInteractive`, false);
+    }
     if (j.listHidden !== shown) return;
     j.listHidden = !shown;
-    this.sp.Ui.setFloat(Menu.Journal, `${SYSTEM_LIST_HOLDER}._alpha`, shown ? 100 : 0);
+    ui.setFloat(Menu.Journal, `${SYSTEM_LIST_HOLDER}._alpha`, shown ? 100 : 0);
+    // Other states keep the list disabled so a click on it reads as going back
+    if (shown && ui.getInt(Menu.Journal, `${SYSTEM_PAGE}.iCurrentState`) === SYSTEM_MAIN_STATE) {
+      ui.invokeBool(Menu.Journal, `${SYSTEM_LIST}.setInteractive`, true);
+    }
   }
 
   private failJournal(j: JournalState, why: string): void {
