@@ -186,6 +186,7 @@ const LOC_GROUPS: Array<{ id: string; label: string }> = [
   { id: 'villages', label: 'Villages' },
   { id: 'forts', label: 'Forts' },
   { id: 'temples', label: 'Temples' },
+  { id: 'oblivion', label: 'Oblivion' },
   { id: 'other', label: 'Other' }
 ];
 
