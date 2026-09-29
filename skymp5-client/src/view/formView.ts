@@ -27,6 +27,19 @@ export interface ScreenResolution {
 
 type AdminView = "visible" | "hidden" | "ghost";
 
+// Account name and staff tier of a player, fed to admins holding the Names mode by AdminModeService
+export interface AccountNameEntry {
+  n: string;
+  t: string | null;
+}
+
+const DEFAULT_TAG_COLOR = [1, 1, 1, 0.8];
+const TIER_TAG_COLORS: Record<string, number[]> = {
+  senior: [1, 0.25, 0.25, 0.9],
+  developer: [0.3, 0.55, 1, 0.9],
+  gm: [0.3, 0.9, 0.3, 0.9],
+};
+
 let _screenResolution: ScreenResolution | undefined;
 export const getScreenResolution = (): ScreenResolution => {
   if (!_screenResolution) {
@@ -615,7 +628,7 @@ export class FormView {
       }
     }
 
-    const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId());
+    const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId()) || !!FormView.accountNameOf(this.getRemoteRefrId());
     if (showTag && this.refrId && model.appearance?.name) {
       const headPart = "NPC Head [Head]";
       const maxNicknameDrawDistance = 1000;
@@ -639,7 +652,8 @@ export class FormView {
         if (!this.textNameId && headScreenPos[2] > 0) {
           this.createdTagName = this.tagName(refr, model);
           this.createdActorIdLine = FormView.showsActorIdLine();
-          this.textNameId = createText(textXPos, textYPos, this.createdTagName, [1, 1, 1, 0.8]);
+          this.createdTagColor = this.tagColor();
+          this.textNameId = createText(textXPos, textYPos, this.createdTagName, this.createdTagColor);
           setTextSize(this.textNameId, 0.5);
           // Local (ffxxxxxx) actor id on a second line under the name
           if (this.createdActorIdLine) {
@@ -660,9 +674,10 @@ export class FormView {
           if (deleteNickname) {
             this.removeNickname();
           }
-          // Rename (/mask), a fresh introduction or a toggled id line: recreate
+          // Rename (/mask), a fresh introduction, a toggled id line or a tier colour: recreate
           if (this.textNameId
-            && (this.tagName(refr, model) !== this.createdTagName || this.createdActorIdLine !== FormView.showsActorIdLine())) {
+            && (this.tagName(refr, model) !== this.createdTagName || this.createdActorIdLine !== FormView.showsActorIdLine()
+              || this.tagColor() !== this.createdTagColor)) {
             this.removeNickname();
           }
           if (this.textNameId) {
@@ -683,12 +698,21 @@ export class FormView {
   // Real name once introduced to the local player, else "Stranger"; Show Title puts the faction title in front of it, and a talking player gets the VOIP glyph (the glyph alone while names are hidden)
   private tagName(refr: ObjectReference, model: FormModel): string {
     const remoteId = this.getRemoteRefrId();
-    if (!FormView.isDisplayingNicknames) return FormView.voipGlyph;
     const voip = FormView.isSpeaking(remoteId) ? `${FormView.voipGlyph} ` : "";
+    // Names mode: the account name stands in for the character tag, introductions and the chat toggle aside
+    const account = FormView.accountNameOf(remoteId);
+    if (account) return voip + account.n;
+    if (!FormView.isDisplayingNicknames) return FormView.voipGlyph;
     if (!knowsCharacter(remoteId)) return `${voip}Stranger`;
     const name = refr.getDisplayName();
     const title = (model as Record<string, unknown>)["ff_factionTitle"];
     return voip + (typeof title === "string" && title ? `${title} ${name}` : name);
+  }
+
+  // The shared arrays double as identity keys for the recreate check
+  private tagColor(): number[] {
+    const tier = FormView.accountNameOf(this.getRemoteRefrId())?.t;
+    return (tier && TIER_TAG_COLORS[tier]) || DEFAULT_TAG_COLOR;
   }
 
   // Every invisibility effect carries MagicInvisibility, the spell and the potion alike
@@ -1002,6 +1026,7 @@ export class FormView {
   private textActorIdId: number | undefined = undefined;
   private createdTagName = "";
   private createdActorIdLine = false;
+  private createdTagColor: number[] = DEFAULT_TAG_COLOR;
 
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
@@ -1020,6 +1045,16 @@ export class FormView {
 
   public static isSpeaking(remoteId: number): boolean {
     return (FormView.speakingUntil.get(remoteId) ?? 0) > Date.now();
+  }
+
+  // Admin mode Names: on while the server holds it for this admin, the roster arrives as the adminNames packet
+  public static showAccountNames = false;
+  public static accountNames = new Map<number, AccountNameEntry>();
+
+  // Only an admin ever receives the roster, and the mode packet never reaches anyone else
+  private static accountNameOf(remoteId: number): AccountNameEntry | undefined {
+    if (!FormView.showAccountNames || !FormView.viewerIsAdmin()) return undefined;
+    return FormView.accountNames.get(remoteId);
   }
 
   // The id line never shows without the name above it
