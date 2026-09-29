@@ -102,9 +102,10 @@ always goes to the cell sweep; actors, markers and other bases it never
 freezes are dismissed before the 3D check), and a ref frozen as it
 loaded gets two more `setMotionType` calls, one and three seconds later, since
 the havok body attaches on the physics step after the 3D (a follow-up is
-dropped only when the ref or its 3D is gone); `cellDetach` and unload forget
-the ref so it is frozen again when it comes back, and `objectLoaded` re-arms
-the follow-ups. Every attached cell stays in the sweep rotation until it
+dropped only when the ref or its 3D is gone; each delay has its own queue that
+holds a ref once, so the one-second passes of a burst never wait behind its
+three-second ones); `cellDetach` and unload forget the ref so it is frozen
+again when it comes back, and `objectLoaded` re-arms the follow-ups. Every attached cell stays in the sweep rotation until it
 detaches. The frozen and dismissed ids are cached up to 65536 (a city grid
 tracks over ten thousand); past that only the dismissed set is forgotten, so
 frozen refs are never re-issued wholesale. `DynDOLOD\` models count as

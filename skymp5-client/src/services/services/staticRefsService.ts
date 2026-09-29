@@ -110,7 +110,7 @@ export class StaticRefsService extends ClientListener {
     try {
       const cell = this.sp.Game.getPlayer()?.getParentCell();
       if (cell) this.trackCell(cell);
-      this.secondPassSlice(now);
+      this.followUpSlice(now);
       this.sweepSlice(SWEEP_BUDGET - this.pendingSlice());
     } catch (err) {
       // A cell that went away drops out instead of failing every tick
@@ -133,15 +133,20 @@ export class StaticRefsService extends ClientListener {
   }
 
   // Havok bodies attach on the physics step after the 3D, so the first setMotionType may have found nothing to freeze;
-  // a pass is dropped only when the ref or its 3D is gone, never by the cache trim
-  private secondPassSlice(now: number): void {
+  // a pass is dropped only when the ref or its 3D is gone, never by the cache trim; the earlier pass takes the budget first
+  private followUpSlice(now: number): void {
     let budget = SWEEP_BUDGET;
-    while (budget-- > 0 && this.secondPass.length && this.secondPass[0].at <= now) {
-      const { id } = this.secondPass.shift()!;
-      const ref = ObjectReference.from(this.sp.Game.getFormEx(id));
-      if (!ref?.is3DLoaded()) continue;
-      ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
-      this.followUpCalls++;
+    for (const queue of this.followUps) {
+      const entries = queue.entries();
+      for (let next = entries.next(); !next.done && budget > 0 && next.value[1] <= now; next = entries.next()) {
+        const id = next.value[0];
+        budget--;
+        queue.delete(id);
+        const ref = ObjectReference.from(this.sp.Game.getFormEx(id));
+        if (!ref?.is3DLoaded()) continue;
+        ref.setMotionType(MotionType.Keyframed, false).catch(() => { /* ref vanished */ });
+        this.followUpCalls++;
+      }
     }
   }
 
@@ -231,7 +236,11 @@ export class StaticRefsService extends ClientListener {
     this.frozen.add(id);
     if (secondPass) {
       const now = Date.now();
-      for (const delay of FOLLOW_UP_PASSES_MS) this.secondPass.push({ id, at: now + delay });
+      // A re-armed ref moves to the back of each queue, so every queue stays in due order and holds a ref once
+      FOLLOW_UP_PASSES_MS.forEach((delay, i) => {
+        this.followUps[i].delete(id);
+        this.followUps[i].set(id, now + delay);
+      });
     }
     this.noteFirstFreeze(base, type);
     return "frozen";
@@ -269,7 +278,8 @@ export class StaticRefsService extends ClientListener {
   private ignored = new Set<number>();
   // Ref id -> sweep ticks it was retried without 3D
   private pending = new Map<number, number>();
-  private secondPass: Array<{ id: number; at: number }> = [];
+  // One queue per follow-up delay, ref id -> due time
+  private followUps = FOLLOW_UP_PASSES_MS.map(() => new Map<number, number>());
   private seenTypes = new Set<number>();
   private loggedPending = 0;
   private lastFrozeLog = 0;
