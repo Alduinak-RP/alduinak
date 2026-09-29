@@ -783,10 +783,13 @@ export class RemoteServer extends ClientListener {
     if (msg.props && !msg.props.isHostedByOther) {
     }
 
+    // A creation request that reached us before our own spawn is re-issued for it; a finished one stays closed
+    const carryRaceMenu = msg.isMe && this.raceMenuPending;
     if (msg.isMe) {
       this.raceMenuPending = false;
     }
-    if (msg.props && msg.props.isRaceMenuOpen && msg.isMe) {
+    if (msg.isMe && (carryRaceMenu || (msg.props && msg.props.isRaceMenuOpen))) {
+      if (carryRaceMenu) logToPlatformLog(this, `race menu request carried over to spawn ${spawnSeq}`);
       this.onSetRaceMenuOpenMessage({ message: { t: MsgType.SetRaceMenuOpen, open: true } });
     }
 

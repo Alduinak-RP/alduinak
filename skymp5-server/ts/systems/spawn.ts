@@ -527,13 +527,13 @@ export class Spawn implements System {
     this.unpark(ctx, actorId);
     ctx.svr.setEnabled(actorId, true);
     if (!isNew) this.bringInsideBorder(mp, actorId);
+    // Set before the user is attached so the flag rides the spawn packet; a separate request can reach the client before its own spawn
+    if (isNew && !this.charCreator.enabled) ctx.svr.setRaceMenuOpen(actorId, true);
     ctx.svr.setUserActor(userId, actorId);
     if (isNew) {
       if (this.charCreator.enabled) {
         mp.set(actorId, "private.charCreatorPending", true);
         this.sendCharCreatorOpen(ctx, userId, auth.profileId, actorId);
-      } else {
-        ctx.svr.setRaceMenuOpen(actorId, true);
       }
     } else if (this.charCreator.enabled && this.isCharCreatorPending(mp, actorId)) {
       // Relog protection: an unfinished creator reopens until a submission is accepted
@@ -863,12 +863,11 @@ export class Spawn implements System {
       mp.set(actorId, "private.kitPending", true);
       mp.set(actorId, "private.creationPending", true);
       this.log("Creating character", actorId.toString(16));
+      if (!this.charCreator.enabled) ctx.svr.setRaceMenuOpen(actorId, true);
       ctx.svr.setUserActor(userId, actorId);
       if (this.charCreator.enabled) {
         mp.set(actorId, "private.charCreatorPending", true);
         this.sendCharCreatorOpen(ctx, userId, userProfileId, actorId);
-      } else {
-        ctx.svr.setRaceMenuOpen(actorId, true);
       }
     }
     this.scheduleKit(ctx, actorId, EQUIP_KIT_SPAWN_DELAY_MS);
