@@ -41,6 +41,8 @@ interface JournalState {
   switches: number;
   tabsHidden: boolean;
   entryCount: number;
+  // entryList indices of the filtered out entries
+  hiddenEntries: number[];
   listHidden: boolean;
   failed: boolean;
 }
@@ -51,7 +53,7 @@ export class VanillaMenuService extends ClientListener {
     super();
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.Journal) {
-        this.journal = { misses: 0, settle: 0, switches: 0, tabsHidden: false, entryCount: -1, listHidden: false, failed: false };
+        this.journal = { misses: 0, settle: 0, switches: 0, tabsHidden: false, entryCount: -1, hiddenEntries: [], listHidden: false, failed: false };
       }
       if (e.name === Menu.Tween) this.tween = { misses: 0, trimmed: false };
       if (e.name === Menu.HUD) this.hudDirty = true;
@@ -170,24 +172,45 @@ export class VanillaMenuService extends ClientListener {
     const count = ui.getInt(Menu.Journal, `${SYSTEM_LIST}.entryList.length`);
     if (count === j.entryCount) {
       this.setSystemListShown(j, true);
+      this.keepSystemSelectionShown(j);
       return;
     }
     this.setSystemListShown(j, false);
     const texts: string[] = [];
+    j.hiddenEntries = [];
     for (let i = 0; i < count; i++) {
       const entry = `${SYSTEM_LIST}.entryList.${i}`;
       const text = ui.getString(Menu.Journal, `${entry}.text`);
       texts.push(text);
+      if (!HIDDEN_SYSTEM_ENTRIES.includes(text)) continue;
       // ListFilterer.EntryMatchesFilter fails an entry whose filterFlag has no bit of its filter
-      if (HIDDEN_SYSTEM_ENTRIES.includes(text)) ui.setInt(Menu.Journal, `${entry}.filterFlag`, 0);
+      ui.setInt(Menu.Journal, `${entry}.filterFlag`, 0);
+      j.hiddenEntries.push(i);
     }
     if (!texts.some(Boolean)) return this.failJournal(j, `${SYSTEM_LIST}.entryList unreadable (${count} entries)`);
-    ui.invokeBool(Menu.Journal, `${SYSTEM_LIST}.InvalidateData`, false);
+    this.redrawSystemList(j);
     j.entryCount = count;
-    j.settle = INVOKE_SETTLE_UPDATES;
     const kept = texts.filter((text) => !HIDDEN_SYSTEM_ENTRIES.includes(text));
     const dropped = texts.filter((text) => HIDDEN_SYSTEM_ENTRIES.includes(text));
     this.logOnce(`system:${texts.join()}`, `System page keeps ${kept.join(", ")}, hid ${dropped.join(", ")}`);
+  }
+
+  // Returning from the tab row selects entryList index scrollPosition, a hidden entry while Settings is centred at 0
+  private keepSystemSelectionShown(j: JournalState): void {
+    const ui = this.sp.Ui;
+    const selected = ui.getInt(Menu.Journal, `${SYSTEM_LIST}.iSelectedIndex`);
+    if (selected !== -1 && !j.hiddenEntries.includes(selected)) return;
+    // No selection is right only while the tab row has focus
+    if (ui.getBool(Menu.Journal, `${SYSTEM_LIST}.bNoSelectionMode`)) return;
+    this.redrawSystemList(j);
+  }
+
+  // On PC UpdateList keeps the old selection, which can be a hidden entry, unless asked to recentre
+  private redrawSystemList(j: JournalState): void {
+    const ui = this.sp.Ui;
+    ui.setBool(Menu.Journal, `${SYSTEM_LIST}.bRecenterSelection`, true);
+    ui.invokeBool(Menu.Journal, `${SYSTEM_LIST}.InvalidateData`, false);
+    j.settle = INVOKE_SETTLE_UPDATES;
   }
 
   private setSystemListShown(j: JournalState, shown: boolean): void {

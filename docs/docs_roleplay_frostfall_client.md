@@ -133,7 +133,12 @@ line to `skyrim-platform.log`.
   on their entry objects in `...SystemFader.Page_mc.CategoryList_mc.List_mc`,
   a `Shared.CenteredScrollingList` whose `ListFilterer` then neither draws
   them nor lets the keys, mouse wheel or pointer land on them, and the list's
-  `InvalidateData` redraws it. The entries stay in `entryList`, so
+  `InvalidateData` redraws it with `bRecenterSelection` set (on PC it
+  otherwise keeps the selection on Quicksave at index 0, and no entry is
+  drawn highlighted). Should the selection land on a dropped entry or on none
+  outside the tab row later (Up to the tab row and Down again selects
+  `entryList[scrollPosition]`), the next update recentres it the same way.
+  The entries stay in `entryList`, so
   `SystemPage.UpdateIndices`, its `IDX_*` members and the engine's
   `SetSaveDisabled` still line up with them (splicing them out would make
   Settings run Quicksave). The page adds Installed Content and Creations when
