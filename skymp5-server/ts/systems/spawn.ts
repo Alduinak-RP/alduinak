@@ -275,6 +275,12 @@ export class Spawn implements System {
     }
   }
 
+  // A body kept through the grace still occupies the crafting station it was using when the connection dropped, and only Disable runs the C++ sinks that free it; a body already disabled is left alone
+  private releaseSeat(ctx: SystemContext, actorId: number): void {
+    try { ctx.svr.setEnabled(actorId, false); }
+    catch (e) { this.log(`[spawn] releasing the seat of ${hex(actorId)} failed: ${e}`); }
+  }
+
   private cancelPark(actorId: number): void {
     const handle = this.parkTimers.get(actorId);
     if (handle !== undefined) {
@@ -534,6 +540,7 @@ export class Spawn implements System {
     // Selecting the character cancels its pending logout-grace despawn; enable BEFORE setUserActor, PartOne throws on disabled actors
     this.cancelPark(actorId);
     this.unpark(ctx, actorId);
+    if (!isNew) this.releaseSeat(ctx, actorId);
     ctx.svr.setEnabled(actorId, true);
     if (!isNew) this.bringInsideBorder(mp, actorId);
     // Set before the user is attached so the flag rides the spawn packet; a separate request can reach the client before its own spawn
@@ -858,6 +865,7 @@ export class Spawn implements System {
       this.log("Loading character", actorId.toString(16));
       this.cancelPark(actorId); // reconnected within the logout grace
       this.unpark(ctx, actorId);
+      this.releaseSeat(ctx, actorId);
       ctx.svr.setEnabled(actorId, true);
       this.bringInsideBorder(mp, actorId);
       ctx.svr.setUserActor(userId, actorId);
