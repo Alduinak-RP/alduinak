@@ -64,7 +64,7 @@ async function main() {
   assert.equal(r.line, '[index] changeForms.formDesc not ensured on skymp: no answer within 0.06 s')
   assert.equal(I.TIMEOUT_MS, 15000)
 
-  // A connection that lands after the cap still finishes and is closed
+  // A connection that lands after the cap is closed without touching the collection
   let land
   s = stub(idOnly)
   r = await I.ensureFormDescIndex(settings, { open: () => new Promise(res => { land = () => res(s.open(settings)) }), timeoutMs: 30 })
@@ -72,8 +72,19 @@ async function main() {
   assert.equal(s.calls.closed, 0)
   land()
   for (let i = 0; i < 5; i++) await tick()
-  assert.equal(s.calls.created.length, 1)
+  assert.equal(s.calls.created.length, 0, 'no index build after the cap, the game may be booting')
   assert.equal(s.calls.closed, 1, 'a late connection is closed')
+
+  // listIndexes answering after the cap skips createIndex too
+  let answer
+  s = stub(idOnly)
+  const slowCol = { indexes: () => new Promise(res => { answer = () => res(idOnly) }), createIndex: async (key, opts) => { s.calls.created.push([key, opts]) } }
+  r = await I.ensureFormDescIndex(settings, { open: async () => ({ ...(await s.open(settings)), col: slowCol }), timeoutMs: 30 })
+  assert.equal(r.line, '[index] changeForms.formDesc not ensured on skymp: no answer within 0.03 s')
+  answer()
+  for (let i = 0; i < 5; i++) await tick()
+  assert.equal(s.calls.created.length, 0, 'no index build after the cap, the game may be booting')
+  assert.equal(s.calls.closed, 1)
 
   // A connection error is one line with the URI masked
   r = await I.ensureFormDescIndex(settings, { open: async () => { throw new Error(`connect ECONNREFUSED ${settings.databaseUri}`) } })

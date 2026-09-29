@@ -17,12 +17,13 @@ function isFormDescIndex(index) {
   return key.length === 1 && key[0][0] === 'formDesc' && Number(key[0][1]) === 1
 }
 
-// 'present' or 'created'; a missing collection is created with the index
-async function ensureOn(col) {
+// 'present' or 'created'; a missing collection is created with the index; abandoned() true skips createIndex
+async function ensureOn(col, abandoned = () => false) {
   let list
   try { list = await col.indexes() }
   catch (err) { if (err && err.code === NAMESPACE_NOT_FOUND) list = []; else throw err }
   if (list.some(isFormDescIndex)) return 'present'
+  if (abandoned()) return TIMEOUT
   await col.createIndex(KEY, { name: NAME })
   return 'created'
 }
@@ -41,12 +42,14 @@ async function ensureFormDescIndex(settings, { open, timeoutMs = TIMEOUT_MS } = 
 
   let client = null
   let timer = null
+  // Set once the cap wins, so work answering late never builds the index while the game boots
+  let late = false
   const work = (async () => {
     const opened = await (open || purge.openChangeForms)(settings)
     client = opened.client
-    return ensureOn(opened.col)
+    return late ? TIMEOUT : ensureOn(opened.col, () => late)
   })()
-  const timeout = new Promise(resolve => { timer = setTimeout(resolve, timeoutMs, TIMEOUT) })
+  const timeout = new Promise(resolve => { timer = setTimeout(() => { late = true; resolve(TIMEOUT) }, timeoutMs) })
   let outcome = null
   let error = null
   try { outcome = await Promise.race([work, timeout]) } catch (err) { error = err }
