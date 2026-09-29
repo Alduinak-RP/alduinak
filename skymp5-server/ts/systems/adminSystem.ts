@@ -6,7 +6,7 @@ import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
 import { WeatherSystem } from "./weatherSystem";
-import { AfterlifeSystem, fallenLabel, fallenOf, livingCount, readMaxCharacters } from "./afterlifeSystem";
+import { AfterlifeSystem, REALMS, fallenLabel, fallenOf, livingCount, readMaxCharacters } from "./afterlifeSystem";
 import { ExecutionSystem } from "./executionSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
@@ -57,7 +57,7 @@ type Mp = any;
 //                       av: the online row's permanent max attribute change {health, magicka, stamina}
 //                       f: the profile's fallen characters [{a, n, s, r}] (actor id hex, name, slot, realm or perma-dead), ok: whether a revive is allowed (living characters below the limit); both only when f is not empty
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
-//                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | other; the front files a missing or unknown group under Other
+//                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | oblivion | other; the front files a missing or unknown group under Other
 //                     { customPacketType: "attributeBonus", health, magicka, stamina }  the character's permanent max attribute change, re-sent on every actor assign
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
 //                     { customPacketType: "npcZones", zones: [ZoneSummary] }  after npcZonesRequest and after every zone mutation
@@ -97,7 +97,14 @@ const MIRRORED_MODES = ["god", "smite", "healhit", "invis", "ghost"];
 const SESSION_MODES = ["speed", "freecam"];
 
 // Teleport tab sections, the front's LOC_GROUPS ids
-const TELEPORT_GROUPS = ["cities", "villages", "forts", "temples", "other"];
+const TELEPORT_GROUPS = ["cities", "villages", "forts", "temples", "oblivion", "other"];
+
+// The Oblivion section: the afterlife arrivals and the Apocrypha origin (Dragonborn.esm COC marker 1C305 in DLC2ApocryphaOrigin); a configured entry of the same name replaces one
+const REALM_LOCATIONS = [
+  { name: "Sovngarde", kind: "", group: "oblivion", ...REALMS.sovngarde.arrival },
+  { name: "Soul Cairn", kind: "", group: "oblivion", ...REALMS.soulCairn.arrival },
+  { name: "Apocrypha", kind: "", group: "oblivion", cellOrWorldDesc: "1c0b2:Dragonborn.esm", pos: [2604.03, 97, 1192.59], rot: [0, 0, 0] },
+];
 
 interface TeleportLocation {
   name: string;
@@ -191,7 +198,7 @@ export class AdminSystem implements System {
       if (unlisted(loc)) this.locations.push(loc);
     }
     // A generated temple in a configured entry's cell is left out; its name becomes that entry's blank kind so the search finds both
-    for (const loc of MAP_MARKER_LOCATIONS.map(raw => this.parseLocation(ctx.svr as Mp, raw, raw.group))) {
+    for (const loc of [...REALM_LOCATIONS, ...MAP_MARKER_LOCATIONS].map(raw => this.parseLocation(ctx.svr as Mp, raw, raw.group))) {
       if (!unlisted(loc)) continue;
       const twin = loc.group === "temples" ? this.locations.find(l => l.cellId === loc.cellId) : undefined;
       if (!twin) this.locations.push(loc);
